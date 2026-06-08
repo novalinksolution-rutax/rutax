@@ -34,12 +34,14 @@ Módulos del monolito (límites claros, no mezclar):
 - `integraciones` — adaptadores aislados (un "puerto" por servicio: ML, DTE, pagos). El núcleo NO llama APIs externas directo.
 
 ## Comandos
-(Ajusta tras el scaffold; mantén esta sección al día — es la de mayor valor para el agente.)
-- Dev: `npm run dev`
+(Mantén esta sección al día — es la de mayor valor para el agente.)
+- Dev: `npm run dev` (Next.js + Turbopack)
 - Build: `npm run build`
-- Lint / typecheck: `npm run lint`
-- Tests: `npm test` — debe incluir pruebas de aislamiento (RLS) y de reglas de dinero
-- Base de datos: migraciones versionadas e idempotentes (Supabase CLI o el flujo elegido). Nada de DDL crudo fuera de migraciones.
+- Lint: `npm run lint`
+- Typecheck: `npm run typecheck`
+- Tests: aún no hay framework instalado — al definirlo (Fase A), debe incluir pruebas de aislamiento (RLS) y de reglas de dinero, y registrarse aquí como `npm test`
+- Base de datos: migraciones versionadas e idempotentes vía Supabase CLI (aún no inicializado — se hace en Fase A junto con el esquema multi-tenant). Nada de DDL crudo fuera de migraciones.
+- Variables de entorno: copia `.env.example` a `.env.local` y completa las claves de Supabase (Settings > API). Nunca commitees `.env.local`.
 
 ## Datos y tipo de información
 Modelo de datos (alto nivel): el tenant es el courier; cada courier tiene sellers, conductores, pedidos (Flex + same-day), tarifas, incidencias y los documentos de dinero (líneas de cobro/liquidación, facturas DTE, liquidaciones, conciliación). Toda tabla de negocio lleva `tenant_id`.
