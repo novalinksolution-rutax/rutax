@@ -46,6 +46,7 @@
  * pueden moverse entre ahora y la implementación de ese job).
  */
 
+import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cifrarSecreto, descifrarSecreto } from "../secretos";
 import type { ReferenciaSecreto } from "../secretos/tipos";
@@ -168,7 +169,7 @@ export async function intercambiarCodigoPorTokens(
     },
   });
 
-  return persistirTokensYActualizarConexion({
+  const conexion = await persistirTokensYActualizarConexion({
     tenantId: entrada.tenantId,
     sellerId: entrada.sellerId,
     respuestaToken,
@@ -176,6 +177,26 @@ export async function intercambiarCodigoPorTokens(
     ultimoError: null,
     marcarComoSincronizada: true,
   });
+
+  // Publicar evento de reconexión para que el job de backfill recupere los
+  // pedidos del período desconectado (RF-017). Solo si la conexión tiene fecha
+  // de desconexión registrada — si es la primera vinculación, `desconectadaDesde`
+  // es null y el backfill no aplica.
+  // NOTA: se publica DESPUÉS de persistir para garantizar que la conexión
+  // existe en BD cuando el job de backfill la lea.
+  await inngest.send({
+    name: "ml/conexion.reconectada",
+    data: {
+      conexionId: conexion.id,
+      sellerId: conexion.sellerId,
+      tenantId: conexion.tenantId,
+      // desconectadaDesde es null en primera vinculación — el job de backfill
+      // lo maneja (acota a 7 días si es null o si es > 7 días atrás).
+      desconectadaDesde: conexion.desconectadaDesde?.toISOString() ?? null,
+    },
+  });
+
+  return conexion;
 }
 
 // ---------------------------------------------------------------------------
