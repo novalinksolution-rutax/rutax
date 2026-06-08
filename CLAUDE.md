@@ -39,7 +39,7 @@ Módulos del monolito (límites claros, no mezclar):
 - Build: `npm run build`
 - Lint: `npm run lint`
 - Typecheck: `npm run typecheck`
-- Tests: aún no hay framework instalado — al definirlo (Fase A), debe incluir pruebas de aislamiento (RLS) y de reglas de dinero, y registrarse aquí como `npm test`
+- Tests: `npm test` (Vitest — pruebas unitarias del lado servidor: RBAC, onboarding/invitaciones, cifrado de secretos, adaptador OAuth ML, reglas de dinero; conviven junto a su código fuente como `*.test.ts`, ver `vitest.config.ts`). `npm run test:watch` para modo watch. Las pruebas de aislamiento RLS viven aparte, en pgTAP (`supabase/tests/database/`, vía `npx supabase test db`).
 - Base de datos: migraciones versionadas e idempotentes vía Supabase CLI (aún no inicializado — se hace en Fase A junto con el esquema multi-tenant). Nada de DDL crudo fuera de migraciones.
 - Variables de entorno: copia `.env.example` a `.env.local` y completa las claves de Supabase (Settings > API). Nunca commitees `.env.local`.
 
