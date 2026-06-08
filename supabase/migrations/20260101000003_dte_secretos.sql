@@ -216,6 +216,15 @@ create policy courier_config_dte_update_interno
     and identidad.claim_tipo_usuario() = 'interno'
   );
 
+-- Guard de defensa en profundidad — mismo patrón que `conductores`/
+-- `conexiones_seller_ml`/`sellers`/`tarifas` (`identidad.solo_interno_edita`,
+-- definida en la migración 0002): convierte el "UPDATE 0" silencioso que
+-- vería un seller/conductor autenticado en un 42501 explícito y auditable.
+drop trigger if exists trg_courier_config_dte_solo_interno_edita on identidad.courier_config_dte;
+create trigger trg_courier_config_dte_solo_interno_edita
+  before update on identidad.courier_config_dte
+  for each statement execute function identidad.solo_interno_edita();
+
 alter table identidad.folios_caf enable row level security;
 alter table identidad.folios_caf force row level security;
 
@@ -252,6 +261,14 @@ create policy folios_caf_update_interno
     tenant_id = identidad.claim_tenant_id()
     and identidad.claim_tipo_usuario() = 'interno'
   );
+
+-- Guard de defensa en profundidad — mismo patrón que las demás tablas
+-- "solo interno" (`identidad.solo_interno_edita`, migración 0002): 42501
+-- explícito en vez de "UPDATE 0" silencioso ante un UPDATE de seller/conductor.
+drop trigger if exists trg_folios_caf_solo_interno_edita on identidad.folios_caf;
+create trigger trg_folios_caf_solo_interno_edita
+  before update on identidad.folios_caf
+  for each statement execute function identidad.solo_interno_edita();
 
 -- -----------------------------------------------------------------------------
 -- 6. Grants de API (secretos_cifrados queda DELIBERADAMENTE fuera de todo esto:

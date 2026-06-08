@@ -394,6 +394,29 @@ begin
   -- Solo aplica a updates ejecutados como `authenticated` (el cliente). Las
   -- funciones service_role (rol→cambio, suspensión) usan service_role y
   -- pasan por bitácora; no las bloqueamos aquí.
+  --
+  -- NOTA — por qué NO hay aquí un guard de "fila ajena ⇒ 42501" (a diferencia
+  -- de `sellers`/`tarifas`/`invitaciones`, ver `identidad.solo_interno_edita`):
+  -- la política `usuarios_perfil_update_propio` ya exige `using (id = auth.uid())`,
+  -- así que un seller/conductor que apunta a la fila de OTRO usuario nunca
+  -- llega a este disparador FOR EACH ROW — RLS la excluye ANTES de que el
+  -- trigger se evalúe fila por fila, y Postgres reporta "UPDATE 0" sin pasar
+  -- por aquí (confirmado empíricamente: un trigger por fila jamás ve filas que
+  -- el `using` ya filtró). Un guard `old.id <> auth.uid()` en este disparador
+  -- sería código muerto — nunca se ejecutaría en el escenario que pretende
+  -- cubrir. Y a diferencia de `sellers`/`tarifas` (donde CUALQUIER intento de
+  -- escritura por un no-interno es ilegítimo y un guard de sentencia puede
+  -- lanzar 42501 sin mirar la fila), aquí el self-update SÍ es legítimo — no
+  -- existe forma de distinguir "apunto a mi propia fila" de "apunto a la fila
+  -- ajena" sin inspeccionar el WHERE, algo que ningún disparador puede hacer.
+  --
+  -- Esa ambigüedad ("UPDATE 0" tanto si la fila no existe como si es ajena) es
+  -- aquí CORRECTA y deseable: ambos casos producen la misma respuesta, sin
+  -- oracle que permita a un atacante distinguir "existe pero no es mía" de
+  -- "no existe" — exactamente la propiedad de no-fuga que sí faltaba en
+  -- `sellers`/`tarifas` (donde el atacante SÍ puede *ver* la fila vía SELECT,
+  -- así que el "UPDATE 0" en una fila visible es una inconsistencia confusa
+  -- y no-auditable, no una protección).
   if auth.role() = 'authenticated' then
     if new.tenant_id is distinct from old.tenant_id
        or new.tipo_usuario is distinct from old.tipo_usuario
@@ -401,7 +424,9 @@ begin
        or new.estado is distinct from old.estado
        or new.seller_id is distinct from old.seller_id
        or new.driver_id is distinct from old.driver_id then
-      raise exception 'No autorizado: tenant_id, tipo_usuario, rol, estado, seller_id y driver_id solo se modifican vía funciones internas auditadas';
+      raise exception using
+        errcode = '42501',
+        message = 'No autorizado: tenant_id, tipo_usuario, rol, estado, seller_id y driver_id solo se modifican vía funciones internas auditadas';
     end if;
   end if;
   return new;

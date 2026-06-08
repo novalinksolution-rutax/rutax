@@ -134,6 +134,19 @@ create policy tarifas_update_interno
     and identidad.claim_tipo_usuario() = 'interno'
   );
 
+-- Guard de defensa en profundidad (mismo patrón que `conductores`/
+-- `conexiones_seller_ml`/`sellers`, ver `identidad.solo_interno_edita` en la
+-- migración 0002): sin este disparador, un seller que intente
+-- `update tarifas set ... where seller_id = <su propio id>` recibiría
+-- "UPDATE 0" silencioso (RLS filtra todo, pero Postgres no distingue "no
+-- autorizado" de "no encontrado" en un UPDATE) en lugar de un 42501 explícito
+-- y auditable. Se aplica aquí también porque `tarifas` es justo la tabla que
+-- §8.2 más enfatiza como "el seller JAMÁS la ve ni la toca, ni la suya".
+drop trigger if exists trg_tarifas_solo_interno_edita on identidad.tarifas;
+create trigger trg_tarifas_solo_interno_edita
+  before update on identidad.tarifas
+  for each statement execute function identidad.solo_interno_edita();
+
 -- -----------------------------------------------------------------------------
 -- 3. conexiones_seller_ml — P1 + P2 (el seller ve y puede iniciar reconexión
 --    de SU conexión; tokens/salud los escriben solo jobs/service_role)

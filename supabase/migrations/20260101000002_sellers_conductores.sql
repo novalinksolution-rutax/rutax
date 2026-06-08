@@ -269,6 +269,34 @@ create trigger trg_conductores_solo_interno_edita
   before update on identidad.conductores
   for each statement execute function identidad.solo_interno_edita();
 
+-- Mismo guard en `invitaciones` (creada en la migración 0001, antes de que
+-- esta función existiera — el disparador se agrega aquí, donde la función ya
+-- está disponible). Un interno SÍ puede ver invitaciones de su tenant
+-- (política `invitaciones_select_interno`); un seller/conductor que intente
+-- `update invitaciones set estado = 'revocada' where id = ...` (p. ej. para
+-- intentar autoaceptarse o sabotear una invitación ajena) vería "UPDATE 0"
+-- silencioso sin este guard — la política ya lo bloquea correctamente, pero
+-- Postgres no distingue "no autorizado" de "no encontrado". 42501 explícito.
+drop trigger if exists trg_invitaciones_solo_interno_edita on identidad.invitaciones;
+create trigger trg_invitaciones_solo_interno_edita
+  before update on identidad.invitaciones
+  for each statement execute function identidad.solo_interno_edita();
+
+-- Mismo guard en `sellers`: el seller SÍ puede *ver* su propia fila
+-- (política `sellers_select` de §5), así que un UPDATE suyo sobre ella no
+-- cae en "0 filas visibles" por tenant — cae en "0 filas visibles para
+-- escritura" (el `using` de `sellers_update_interno` exige tipo_usuario =
+-- 'interno'), que Postgres resolvería como "UPDATE 0" silencioso. Sin este
+-- disparador, un seller que intente `update sellers set ... where id =
+-- <su propia fila>` no vería ningún error — exactamente el patrón de "UPDATE
+-- silencioso" que la nota de la sesión anterior pidió perseguir en otras
+-- políticas. Lo cerramos aquí con el mismo guard reusado en
+-- `conductores`/`conexiones_seller_ml`.
+drop trigger if exists trg_sellers_solo_interno_edita on identidad.sellers;
+create trigger trg_sellers_solo_interno_edita
+  before update on identidad.sellers
+  for each statement execute function identidad.solo_interno_edita();
+
 -- -----------------------------------------------------------------------------
 -- 7. Grants de API para las vistas nuevas
 -- -----------------------------------------------------------------------------
