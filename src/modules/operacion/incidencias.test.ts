@@ -10,7 +10,8 @@
 
 import { describe, expect, it } from "vitest";
 import { abrirIncidencia, actualizarIncidencia } from "./incidencias";
-import { ErrorValidacion } from "@/modules/identidad/errores";
+import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
+import { ErrorPedidoNoEncontrado } from "./errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { TipoIncidencia } from "./tipos";
 
@@ -491,5 +492,164 @@ describe("actualizarIncidencia — control de acceso", () => {
         coordinador,
       ),
     ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+});
+
+// =============================================================================
+// actualizarIncidencia — no se puede actualizar una incidencia ya cerrada (BUG)
+// =============================================================================
+
+describe("actualizarIncidencia — incidencia cerrada no se puede reabrir", () => {
+  it("BUG: actualizar una incidencia 'cerrada' debería lanzar ErrorConflicto", async () => {
+    const ahora = new Date().toISOString();
+    const incidenciaCerrada: FilaIncidencia = {
+      id: "inc-cerrada",
+      tenant_id: TENANT_A,
+      pedido_id: PEDIDO_1,
+      seller_id: SELLER_1,
+      tipo: "otro",
+      estado: "cerrada",
+      descripcion: null,
+      notas_resolucion: "Resuelta",
+      afecta_cobro: true,
+      afecta_liquidacion: true,
+      abierta_por_usuario_id: null,
+      resuelta_por_usuario_id: "usuario-supervisor-1",
+      abierta_en: ahora,
+      resuelta_en: ahora,
+      creado_en: ahora,
+      actualizado_en: ahora,
+    };
+
+    const { cliente } = crearClienteFalso({ incidencias: [incidenciaCerrada] });
+    const supervisor = actorSupervisor();
+
+    // REGLA DE NEGOCIO: las incidencias cerradas son inmutables.
+    // Si el código actual NO lanza en este caso, es un bug de negocio real
+    // que debe ser corregido antes de la Fase C (el motor dinero-entrega
+    // lee afecta_cobro/afecta_liquidacion de incidencias cerradas; si se
+    // pudieran modificar retroactivamente, los cálculos quedarían incorrectos).
+    await expect(
+      actualizarIncidencia(
+        cliente,
+        {
+          incidenciaId: "inc-cerrada",
+          tenantId: TENANT_A,
+          estado: "abierta", // intentar reabrir una cerrada
+        },
+        supervisor,
+      ),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+  });
+
+  it("BUG: actualizar notas de una incidencia 'resuelta' debería lanzar ErrorConflicto", async () => {
+    const ahora = new Date().toISOString();
+    const incidenciaResuelta: FilaIncidencia = {
+      id: "inc-resuelta-2",
+      tenant_id: TENANT_A,
+      pedido_id: PEDIDO_1,
+      seller_id: SELLER_1,
+      tipo: "paquete_danado",
+      estado: "resuelta",
+      descripcion: null,
+      notas_resolucion: "Resuelta",
+      afecta_cobro: true,
+      afecta_liquidacion: true,
+      abierta_por_usuario_id: null,
+      resuelta_por_usuario_id: "usuario-supervisor-1",
+      abierta_en: ahora,
+      resuelta_en: ahora,
+      creado_en: ahora,
+      actualizado_en: ahora,
+    };
+
+    const { cliente } = crearClienteFalso({ incidencias: [incidenciaResuelta] });
+    const supervisor = actorSupervisor();
+
+    // Las incidencias resueltas también son inmutables para afecta_cobro/afecta_liquidacion.
+    // Permitir cambiar el estado de 'resuelta' a 'abierta' invalida el historial de dinero.
+    await expect(
+      actualizarIncidencia(
+        cliente,
+        {
+          incidenciaId: "inc-resuelta-2",
+          tenantId: TENANT_A,
+          estado: "en_gestion", // intentar retroceder una resuelta
+        },
+        supervisor,
+      ),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+  });
+});
+
+// =============================================================================
+// abrirIncidencia — tenant cruzado (aislamiento)
+// =============================================================================
+
+describe("abrirIncidencia — aislamiento de tenant", () => {
+  it("no puede abrir incidencia para un pedido de otro tenant", async () => {
+    const TENANT_B = "bbbb0000-0000-0000-0000-000000000099";
+    // El pedido PEDIDO_1 pertenece a TENANT_A, pero la entrada indica TENANT_B
+    const { cliente } = crearClienteFalso({
+      pedidos: [{ id: PEDIDO_1, tenant_id: TENANT_A, seller_id: SELLER_1 }],
+    });
+
+    // Cuando el tenant de la entrada no coincide con el del pedido,
+    // el SELECT contra BD devolvería null (RLS lo filtra en prod).
+    // En el mock, el pedido no se encuentra porque tenant_id = TENANT_B no coincide.
+    await expect(
+      abrirIncidencia(cliente, {
+        tenantId: TENANT_B, // tenant diferente al del pedido
+        pedidoId: PEDIDO_1,
+        sellerId: SELLER_1,
+        tipo: "otro",
+      }),
+    ).rejects.toBeInstanceOf(ErrorPedidoNoEncontrado);
+  });
+});
+
+// =============================================================================
+// abrirIncidencia — tipo reagendado tiene afecta_liquidacion=false (regla clave Fase C)
+// =============================================================================
+
+describe("abrirIncidencia — invariante reagendado (crítico para motor dinero)", () => {
+  it("reagendado: afecta_cobro=true, afecta_liquidacion=false (conductor igual salió a ruta)", async () => {
+    const { cliente, estado } = crearClienteFalso();
+
+    const incidencia = await abrirIncidencia(cliente, {
+      tenantId: TENANT_A,
+      pedidoId: PEDIDO_1,
+      sellerId: SELLER_1,
+      tipo: "reagendado",
+    });
+
+    expect(incidencia.afectaCobro).toBe(true);
+    expect(incidencia.afectaLiquidacion).toBe(false);
+    // Verificar que persistió correctamente en el estado
+    const guardada = estado.incidencias.find((i) => i.id === incidencia.id);
+    expect(guardada?.afecta_cobro).toBe(true);
+    expect(guardada?.afecta_liquidacion).toBe(false);
+  });
+
+  it("todos los tipos que NO son reagendado tienen afecta_liquidacion=true", async () => {
+    const tiposConLiquidacion: TipoIncidencia[] = [
+      "destinatario_ausente",
+      "direccion_erronea",
+      "paquete_danado",
+      "rechazo_destinatario",
+      "problema_acceso",
+      "otro",
+    ];
+
+    for (const tipo of tiposConLiquidacion) {
+      const { cliente } = crearClienteFalso();
+      const incidencia = await abrirIncidencia(cliente, {
+        tenantId: TENANT_A,
+        pedidoId: PEDIDO_1,
+        sellerId: SELLER_1,
+        tipo,
+      });
+      expect(incidencia.afectaLiquidacion, `tipo '${tipo}' debe tener afectaLiquidacion=true`).toBe(true);
+    }
   });
 });

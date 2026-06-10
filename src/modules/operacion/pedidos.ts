@@ -33,6 +33,21 @@ import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { validarTransicion } from "./maquina-estados";
 import { abrirIncidencia } from "./incidencias";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { inngest } from "@/lib/inngest/cliente";
+
+/**
+ * Estados de pedido financieramente relevantes: al transicionar a cualquiera
+ * de estos estados, `actualizarEstadoPedido` publica el evento
+ * `dinero/pedido.estado_financiero_relevante` post-commit (best-effort).
+ */
+const ESTADOS_FINANCIEROS = new Set<EstadoPedido>([
+  'entregado',
+  'entregado_manual',
+  'fallido',
+  'fallido_manual',
+  'devuelto',
+  'cancelado',
+]);
 
 // =============================================================================
 // Mapper de fila de BD → interfaz Pedido
@@ -173,9 +188,11 @@ export async function actualizarEstadoPedido(
   }
 
   // 2. Leer estado actual del pedido — con aislamiento de tenant.
+  // Se incluyen las columnas necesarias para el evento financiero post-commit:
+  // seller_id, driver_id_asignado, tipo_pedido, tarifa_aplicable_id.
   const { data: pedidoActual, error: errorLectura } = await cliente
     .from("pedidos")
-    .select("id, estado, seller_id, tenant_id")
+    .select("id, estado, seller_id, tenant_id, driver_id_asignado, tipo_pedido, tarifa_aplicable_id")
     .eq("id", entrada.pedidoId)
     .eq("tenant_id", entrada.tenantId)
     .maybeSingle();
@@ -262,6 +279,34 @@ export async function actualizarEstadoPedido(
         motivo: entrada.motivo,
       },
     });
+  }
+
+  // 8. Post-commit: publicar evento financiero si el nuevo estado es relevante.
+  // Es best-effort — un fallo de Inngest NO debe bloquear la transición de estado.
+  // El pedido ya está en el nuevo estado en BD independientemente del motor de dinero.
+  // Si el evento no llega, el job C6 (conciliación) lo detectará y generará un
+  // evento de conciliación para resolución manual.
+  if (ESTADOS_FINANCIEROS.has(entrada.estadoNuevo)) {
+    try {
+      await inngest.send({
+        name: 'dinero/pedido.estado_financiero_relevante',
+        id: `pedido-financiero-${entrada.pedidoId}`,
+        data: {
+          pedidoId: entrada.pedidoId,
+          tenantId: entrada.tenantId,
+          sellerId: pedidoActual.seller_id as string,
+          driverIdAsignado: (pedidoActual.driver_id_asignado as string | null) ?? null,
+          estadoNuevo: entrada.estadoNuevo as 'entregado' | 'entregado_manual' | 'fallido' | 'fallido_manual' | 'devuelto' | 'cancelado',
+          estadoAnterior: estadoActual,
+          fechaTransicion: new Date().toISOString(),
+          tipoPedido: pedidoActual.tipo_pedido as 'flex' | 'same_day',
+          tarifaAplicableId: (pedidoActual.tarifa_aplicable_id as string | null) ?? null,
+        },
+      });
+    } catch {
+      // El evento es best-effort post-commit. Si falla, el job C6 lo detectará
+      // por conciliación. NUNCA relanzar — el pedido ya está en su nuevo estado.
+    }
   }
 
   return pedido;

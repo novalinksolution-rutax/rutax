@@ -242,7 +242,7 @@ function crearClienteFalso(seed?: {
     // --- asignaciones_pedido ---
     if (tabla === "asignaciones_pedido") {
       return {
-        select: (_cols?: string) => {
+        select: (_cols?: string, _opts?: Record<string, unknown>) => {
           const filtros: Array<[string, unknown]> = [];
 
           function buildChain() {
@@ -252,11 +252,14 @@ function crearClienteFalso(seed?: {
                 return buildChain();
               },
               in(_c: string, _vals: string[]) { return buildChain(); },
-              then(resolve: (r: { data: FilaAsignacion[]; error: null }) => void) {
+              then(resolve: (r: { data: FilaAsignacion[] | null; count: number; error: null }) => void) {
                 const filtradas = estado.asignaciones.filter((a) =>
                   filtros.every(([c, v]) => (a as unknown as Record<string, unknown>)[c] === v),
                 );
-                resolve({ data: filtradas, error: null });
+                // Con head:true Supabase devuelve data=null y count=N.
+                // El mock devuelve ambos para que el código de producción funcione
+                // independientemente de si usa data o count.
+                resolve({ data: filtradas, count: filtradas.length, error: null });
               },
             };
           }
@@ -485,14 +488,108 @@ describe("crearManifiesto — control de acceso", () => {
 // confirmarManifiesto — transición de estado
 // =============================================================================
 
+// =============================================================================
+// asignarPedidosAManifiesto — BUG: asignación a manifiesto ya confirmado
+// =============================================================================
+
+describe("asignarPedidosAManifiesto — manifiesto en estado no-borrador (BUG)", () => {
+  it("BUG: asignar pedido a un manifiesto 'confirmado' debería lanzar ErrorConflicto", async () => {
+    // El manifiesto ya está confirmado — no debe aceptar nuevas asignaciones
+    const { cliente } = crearClienteFalso({
+      manifiestos: [
+        {
+          id: MANIFIESTO_A,
+          tenant_id: TENANT_A,
+          driver_id: DRIVER_1,
+          nombre: "Ruta A",
+          fecha_operacion: "2026-06-08",
+          estado: "confirmado", // <-- ya confirmado
+          notas: null,
+          creado_por_usuario_id: null,
+          confirmado_en: new Date().toISOString(),
+          completado_en: null,
+          creado_en: new Date().toISOString(),
+          actualizado_en: new Date().toISOString(),
+        },
+      ],
+    });
+
+    // Un manifiesto confirmado NO debe aceptar nuevas asignaciones de pedidos.
+    // La ruta operacional correcta sería volver a borrador o crear un nuevo manifiesto.
+    await expect(
+      asignarPedidosAManifiesto(cliente, MANIFIESTO_A, [PEDIDO_1]),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+  });
+
+  it("BUG: asignar pedido a un manifiesto 'en_ruta' debería lanzar ErrorConflicto", async () => {
+    const { cliente } = crearClienteFalso({
+      manifiestos: [
+        {
+          id: MANIFIESTO_A,
+          tenant_id: TENANT_A,
+          driver_id: DRIVER_1,
+          nombre: "Ruta A",
+          fecha_operacion: "2026-06-08",
+          estado: "en_ruta", // conductor ya salió
+          notas: null,
+          creado_por_usuario_id: null,
+          confirmado_en: new Date().toISOString(),
+          completado_en: null,
+          creado_en: new Date().toISOString(),
+          actualizado_en: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await expect(
+      asignarPedidosAManifiesto(cliente, MANIFIESTO_A, [PEDIDO_1]),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+  });
+});
+
+// =============================================================================
+// confirmarManifiesto
+// =============================================================================
+
 describe("confirmarManifiesto", () => {
   it("confirma un manifiesto 'borrador' → 'confirmado'", async () => {
-    const { cliente } = crearClienteFalso();
+    // Con al menos una asignación activa (necesario después del fix de validación).
+    const ahora = new Date().toISOString();
+    const { cliente } = crearClienteFalso({
+      asignaciones: [
+        {
+          id: "asig-para-confirmar",
+          tenant_id: TENANT_A,
+          pedido_id: PEDIDO_1,
+          manifiesto_id: MANIFIESTO_A,
+          driver_id: DRIVER_1,
+          seller_id: SELLER_1,
+          activa: true,
+          asignado_por_usuario_id: null,
+          asignado_en: ahora,
+          desasignado_en: null,
+        },
+      ],
+    });
 
     const confirmado = await confirmarManifiesto(cliente, MANIFIESTO_A, TENANT_A);
 
     expect(confirmado.estado).toBe("confirmado");
     expect(confirmado.confirmadoEn).not.toBeNull();
+  });
+
+  it("BUG: confirmar un manifiesto sin pedidos asignados debería lanzar ErrorConflicto", async () => {
+    // El manifiesto existe en borrador pero no tiene ningún pedido asignado.
+    // Confirmar un manifiesto vacío no tiene sentido operacional:
+    // el conductor saldría sin entregas.
+    const { cliente } = crearClienteFalso({
+      asignaciones: [], // sin asignaciones
+    });
+
+    // Si el código actual NO lanza, es un bug: los manifiestos vacíos no deben confirmarse.
+    await expect(
+      confirmarManifiesto(cliente, MANIFIESTO_A, TENANT_A),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
   });
 
   it("lanza ErrorConflicto si el manifiesto no está en 'borrador'", async () => {

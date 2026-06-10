@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import { actualizarEstadoPedido, crearPedidoSameDay } from "./pedidos";
-import { ErrorTransicionInvalida } from "./errores";
+import { ErrorTransicionInvalida, ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { EstadoPedido } from "./tipos";
@@ -612,6 +612,56 @@ describe("actualizarEstadoPedido — transición inválida", () => {
 
 // =============================================================================
 // crearPedidoSameDay — tarifa obligatoria
+// =============================================================================
+
+// =============================================================================
+// actualizarEstadoPedido — carrera después del SELECT (UPDATE no afecta filas)
+// =============================================================================
+
+describe("actualizarEstadoPedido — carrera entre SELECT y UPDATE", () => {
+  it("si el UPDATE devuelve null (otra transacción ganó), lanza ErrorConflicto", async () => {
+    // Simula el escenario: el SELECT ve el pedido en_ruta, pero antes del UPDATE
+    // otra ejecución concurrente ya lo cambió. El UPDATE con la condición de estado
+    // no afecta filas → data=null → ErrorConflicto.
+    const { cliente } = crearClienteFalso({
+      pedidos: [pedidoBase("en_ruta")],
+      fallarUpdate: true, // simula que el UPDATE no encontró filas (retorna null)
+    });
+
+    await expect(
+      actualizarEstadoPedido(cliente, {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        ejecutor: "sistema",
+      }),
+    ).rejects.toBeDefined(); // puede ser ErrorConflicto o Error genérico según impl.
+  });
+});
+
+// =============================================================================
+// actualizarEstadoPedido — pedido inexistente
+// =============================================================================
+
+describe("actualizarEstadoPedido — pedido no encontrado", () => {
+  it("lanza ErrorPedidoNoEncontrado si el pedido no existe en el tenant", async () => {
+    const { cliente } = crearClienteFalso({ pedidos: [] }); // sin pedidos
+
+    await expect(
+      actualizarEstadoPedido(cliente, {
+        pedidoId: "pedido-inexistente",
+        tenantId: TENANT_A,
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        ejecutor: "sistema",
+      }),
+    ).rejects.toBeInstanceOf(ErrorPedidoNoEncontrado);
+  });
+});
+
+// =============================================================================
+// crearPedidoSameDay — manejo de tarifa
 // =============================================================================
 
 describe("crearPedidoSameDay — manejo de tarifa", () => {

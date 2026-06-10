@@ -60,7 +60,7 @@ function resolverAfectacion(tipo: TipoIncidencia): ReglaAfectacion {
 // =============================================================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function filaAIncidencia(fila: Record<string, any>): Incidencia {
+export function filaAIncidencia(fila: Record<string, any>): Incidencia {
   return {
     id: fila.id,
     tenantId: fila.tenant_id,
@@ -222,6 +222,16 @@ export async function actualizarIncidencia(
   if (!actual) {
     throw new ErrorConflicto(
       `La incidencia '${entrada.incidenciaId}' no existe o no pertenece al tenant`,
+    );
+  }
+
+  // Las incidencias cerradas o resueltas son inmutables para proteger la
+  // integridad del motor entrega→dinero (Fase C): afecta_cobro y afecta_liquidacion
+  // ya fueron registrados y no se deben alterar retroactivamente.
+  if (actual.estado === "cerrada" || actual.estado === "resuelta") {
+    throw new ErrorConflicto(
+      `La incidencia '${entrada.incidenciaId}' está en estado '${actual.estado}' ` +
+        `y no puede modificarse (inmutable para integridad financiera)`,
     );
   }
 

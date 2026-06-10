@@ -120,7 +120,7 @@ export async function asignarPedidosAManifiesto(
   // Leer el manifiesto para obtener tenant_id y driver_id.
   const { data: manifiesto, error: errorManifiesto } = await cliente
     .from("manifiestos")
-    .select("id, tenant_id, driver_id")
+    .select("id, tenant_id, driver_id, estado")
     .eq("id", manifiestoId)
     .maybeSingle();
 
@@ -130,6 +130,15 @@ export async function asignarPedidosAManifiesto(
 
   if (!manifiesto) {
     throw new ErrorConflicto(`El manifiesto '${manifiestoId}' no existe`);
+  }
+
+  // Solo se puede asignar pedidos a un manifiesto en estado 'borrador'.
+  // Un manifiesto confirmado o en ruta no acepta nuevas asignaciones.
+  if (manifiesto.estado !== "borrador") {
+    throw new ErrorConflicto(
+      `No se pueden asignar pedidos al manifiesto '${manifiestoId}': ` +
+        `estado actual '${manifiesto.estado}' (se requiere 'borrador')`,
+    );
   }
 
   const { tenant_id: tenantId, driver_id: driverId } = manifiesto;
@@ -301,6 +310,25 @@ export async function confirmarManifiesto(
   if (actual.estado !== "borrador") {
     throw new ErrorConflicto(
       `No se puede confirmar el manifiesto: estado actual '${actual.estado}' (se requiere 'borrador')`,
+    );
+  }
+
+  // Un manifiesto sin pedidos asignados no tiene sentido confirmar.
+  const { count: cantidadAsignados, error: errorAsig } = await cliente
+    .from("asignaciones_pedido")
+    .select("*", { count: "exact", head: true })
+    .eq("manifiesto_id", manifiestoId)
+    .eq("tenant_id", tenantId)
+    .eq("activa", true);
+
+  if (errorAsig) {
+    throw new Error(`Error al verificar pedidos del manifiesto: ${errorAsig.message}`);
+  }
+
+  if (!cantidadAsignados || cantidadAsignados === 0) {
+    throw new ErrorConflicto(
+      `No se puede confirmar el manifiesto '${manifiestoId}': no tiene pedidos asignados. ` +
+        `Asigna al menos un pedido antes de confirmar.`,
     );
   }
 

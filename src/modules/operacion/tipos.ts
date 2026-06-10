@@ -229,4 +229,23 @@ export interface MetricasOperativas {
   tasaEntrega: number; // 0.0 – 1.0
   incidenciasAbiertas: number;
   conexionesCaidas: number;
+  /** Conductores del tenant con estado='activo' (no depende de la fecha). */
+  conductoresActivos: number;
+  /**
+   * Conductores distintos con un manifiesto en estado 'confirmado' o
+   * 'en_ruta' para `fecha_operacion` = la fecha de las métricas.
+   */
+  conductoresListosHoy: number;
+  /**
+   * Top 5 comunas con más pedidos del día (mismo criterio que `pedidosDia`),
+   * ordenado descendente por cantidad. El resto de comunas se agrupa en una
+   * entrada con comuna = "Otras" (si existe remanente).
+   */
+  paquetesPorComuna: Array<{ comuna: string; cantidad: number }>;
+  /**
+   * Pedidos cuya fecha_compromiso fue el día anterior a la fecha de las
+   * métricas y que aún no llegaron a un estado terminal (entregado,
+   * entregado_manual, fallido, fallido_manual, cancelado, devuelto).
+   */
+  rezagadosAyer: number;
 }
