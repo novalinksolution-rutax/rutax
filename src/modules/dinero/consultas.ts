@@ -1,0 +1,351 @@
+/**
+ * Consultas de lectura del módulo `dinero`.
+ *
+ * Estas funciones son usadas por Server Components del frontend para mostrar
+ * períodos, líneas, DTE y liquidaciones. Todas operan dentro del tenant del
+ * usuario (aislamiento garantizado por RLS en BD + el filtro explícito tenant_id
+ * en la query como defensa en profundidad).
+ *
+ * Ninguna función aquí escribe en BD ni tiene side effects.
+ */
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type {
+  PeriodoCobro,
+  LineaCobro,
+  LineaLiquidacion,
+  DocumentoDte,
+  Liquidacion,
+  EventoConciliacion,
+  EstadoPeriodo,
+  EstadoEventoConciliacion,
+} from './tipos';
+
+// =============================================================================
+// Mappers de fila BD → interfaz
+// =============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToPeriodoCobro(f: Record<string, any>): PeriodoCobro {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    sellerId: f.seller_id,
+    fechaInicio: f.fecha_inicio,
+    fechaFin: f.fecha_fin,
+    tipoPeriodo: f.tipo_periodo,
+    estado: f.estado,
+    totalLineas: f.total_lineas ?? 0,
+    montoTotalClp: f.monto_total_clp !== null ? Number(f.monto_total_clp) : null,
+    documentoDteId: f.documento_dte_id ?? null,
+    cerradoEn: f.cerrado_en ?? null,
+    cerradoPorUsuarioId: f.cerrado_por_usuario_id ?? null,
+    creadoEn: f.creado_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToLineaCobro(f: Record<string, any>): LineaCobro {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    sellerId: f.seller_id,
+    pedidoId: f.pedido_id,
+    periodoCobroidId: f.periodo_cobro_id ?? null,
+    tarifaId: f.tarifa_id,
+    montoBaseClp: Number(f.monto_base_clp),
+    ajusteIncidenciaClp: Number(f.ajuste_incidencia_clp ?? 0),
+    montoFinalClp: Number(f.monto_final_clp),
+    concepto: f.concepto,
+    tipoPedido: f.tipo_pedido,
+    fechaEntrega: f.fecha_entrega,
+    incidenciaId: f.incidencia_id ?? null,
+    origenGeneracion: f.origen_generacion,
+    generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
+    notas: f.notas ?? null,
+    creadoEn: f.creado_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToLineaLiquidacion(f: Record<string, any>): LineaLiquidacion {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    driverId: f.driver_id,
+    pedidoId: f.pedido_id,
+    liquidacionId: f.liquidacion_id ?? null,
+    montoBaseClp: Number(f.monto_base_clp),
+    ajusteIncidenciaClp: Number(f.ajuste_incidencia_clp ?? 0),
+    montoFinalClp: Number(f.monto_final_clp),
+    concepto: f.concepto,
+    fechaEntrega: f.fecha_entrega,
+    incidenciaId: f.incidencia_id ?? null,
+    origenGeneracion: f.origen_generacion,
+    generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
+    notas: f.notas ?? null,
+    creadoEn: f.creado_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToDocumentoDte(f: Record<string, any>): DocumentoDte {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    sellerId: f.seller_id,
+    periodoCobroidId: f.periodo_cobro_id,
+    tipoDocumento: f.tipo_documento as 33 | 61,
+    folio: f.folio,
+    fechaEmision: f.fecha_emision,
+    montoNetoclp: Number(f.monto_neto_clp),
+    montoIvaClp: Number(f.monto_iva_clp),
+    montoTotalClp: Number(f.monto_total_clp),
+    xmlDteRef: f.xml_dte_ref ?? null,
+    pdfRef: f.pdf_ref ?? null,
+    proveedorDteIdExterno: f.proveedor_dte_id_externo ?? null,
+    estadoSii: f.estado_sii,
+    estadoProveedor: f.estado_proveedor,
+    errorDescripcion: f.error_descripcion ?? null,
+    dteReferenciaId: f.dte_referencia_id ?? null,
+    emitidoEn: f.emitido_en,
+    creadoEn: f.creado_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToLiquidacion(f: Record<string, any>): Liquidacion {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    driverId: f.driver_id,
+    fechaInicio: f.fecha_inicio,
+    fechaFin: f.fecha_fin,
+    tipoPeriodo: f.tipo_periodo,
+    estado: f.estado,
+    totalEntregas: f.total_entregas ?? 0,
+    montoTotalClp: f.monto_total_clp !== null ? Number(f.monto_total_clp) : null,
+    tipoRelacionConductor: f.tipo_relacion_conductor,
+    pdfRef: f.pdf_ref ?? null,
+    notas: f.notas ?? null,
+    generadoEn: f.generado_en ?? null,
+    generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
+    creadoEn: f.creado_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToEventoConciliacion(f: Record<string, any>): EventoConciliacion {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    sellerId: f.seller_id ?? null,
+    periodoCobroidId: f.periodo_cobro_id ?? null,
+    tipoDiferencia: f.tipo_diferencia,
+    pedidoId: f.pedido_id ?? null,
+    descripcion: f.descripcion,
+    montoDiferenciaClp: f.monto_diferencia_clp !== null ? Number(f.monto_diferencia_clp) : null,
+    estado: f.estado,
+    resueltoPorUsuarioId: f.resuelto_por_usuario_id ?? null,
+    resueltaEn: f.resuelto_en ?? null,
+    jobRunId: f.job_run_id ?? null,
+    creadoEn: f.creado_en,
+  };
+}
+
+// =============================================================================
+// Períodos de cobro
+// =============================================================================
+
+/**
+ * Lista períodos de cobro del tenant (con filtros opcionales de seller y estado).
+ * Para el dueño/administración: todos los períodos del tenant.
+ * Para el seller: solo los suyos (RLS lo refuerza en BD; aquí también filtramos).
+ */
+export async function listarPeriodosCobro(
+  cliente: SupabaseClient,
+  tenantId: string,
+  sellerId?: string,
+  estado?: EstadoPeriodo,
+): Promise<PeriodoCobro[]> {
+  let query = cliente
+    .schema('dinero')
+    .from('periodos_cobro')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('fecha_inicio', { ascending: false });
+
+  if (sellerId) query = query.eq('seller_id', sellerId);
+  if (estado) query = query.eq('estado', estado);
+
+  const { data, error } = await query;
+
+  if (error) throw new Error(`Error al listar períodos de cobro: ${error.message}`);
+  return (data ?? []).map(filaToPeriodoCobro);
+}
+
+/**
+ * Obtiene un período de cobro con sus líneas incluidas.
+ */
+export async function obtenerPeriodoCobro(
+  cliente: SupabaseClient,
+  tenantId: string,
+  periodoId: string,
+): Promise<(PeriodoCobro & { lineas: LineaCobro[] }) | null> {
+  const { data: periodoData, error: periodoError } = await cliente
+    .schema('dinero')
+    .from('periodos_cobro')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('id', periodoId)
+    .maybeSingle();
+
+  if (periodoError) throw new Error(`Error al obtener período: ${periodoError.message}`);
+  if (!periodoData) return null;
+
+  const lineas = await listarLineasCobroPorPeriodo(cliente, tenantId, periodoId);
+
+  return { ...filaToPeriodoCobro(periodoData), lineas };
+}
+
+/**
+ * Lista las líneas de cobro de un período específico.
+ */
+export async function listarLineasCobroPorPeriodo(
+  cliente: SupabaseClient,
+  tenantId: string,
+  periodoId: string,
+): Promise<LineaCobro[]> {
+  const { data, error } = await cliente
+    .schema('dinero')
+    .from('lineas_cobro')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('periodo_cobro_id', periodoId)
+    .order('fecha_entrega', { ascending: true });
+
+  if (error) throw new Error(`Error al listar líneas de cobro: ${error.message}`);
+  return (data ?? []).map(filaToLineaCobro);
+}
+
+// =============================================================================
+// Documentos DTE
+// =============================================================================
+
+/**
+ * Lista documentos DTE del tenant. Opcionalmente filtrado por seller.
+ */
+export async function listarDocumentosDte(
+  cliente: SupabaseClient,
+  tenantId: string,
+  sellerId?: string,
+): Promise<DocumentoDte[]> {
+  let query = cliente
+    .schema('dinero')
+    .from('documentos_dte')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('fecha_emision', { ascending: false });
+
+  if (sellerId) query = query.eq('seller_id', sellerId);
+
+  const { data, error } = await query;
+
+  if (error) throw new Error(`Error al listar documentos DTE: ${error.message}`);
+  return (data ?? []).map(filaToDocumentoDte);
+}
+
+// =============================================================================
+// Liquidaciones
+// =============================================================================
+
+/**
+ * Lista liquidaciones del tenant. Opcionalmente filtrado por conductor.
+ * Para el dueño/administración: todas del tenant.
+ * Para el conductor: solo las suyas (RLS lo refuerza en BD).
+ */
+export async function listarLiquidaciones(
+  cliente: SupabaseClient,
+  tenantId: string,
+  driverId?: string,
+): Promise<Liquidacion[]> {
+  let query = cliente
+    .schema('dinero')
+    .from('liquidaciones')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('fecha_inicio', { ascending: false });
+
+  if (driverId) query = query.eq('driver_id', driverId);
+
+  const { data, error } = await query;
+
+  if (error) throw new Error(`Error al listar liquidaciones: ${error.message}`);
+  return (data ?? []).map(filaToLiquidacion);
+}
+
+/**
+ * Obtiene una liquidación con sus líneas de liquidación incluidas.
+ */
+export async function obtenerLiquidacion(
+  cliente: SupabaseClient,
+  tenantId: string,
+  liquidacionId: string,
+): Promise<(Liquidacion & { lineas: LineaLiquidacion[] }) | null> {
+  const { data: liqData, error: liqError } = await cliente
+    .schema('dinero')
+    .from('liquidaciones')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('id', liquidacionId)
+    .maybeSingle();
+
+  if (liqError) throw new Error(`Error al obtener liquidación: ${liqError.message}`);
+  if (!liqData) return null;
+
+  const { data: lineasData, error: lineasError } = await cliente
+    .schema('dinero')
+    .from('lineas_liquidacion')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('liquidacion_id', liquidacionId)
+    .order('fecha_entrega', { ascending: true });
+
+  if (lineasError) throw new Error(`Error al listar líneas de liquidación: ${lineasError.message}`);
+
+  const lineas = (lineasData ?? []).map(filaToLineaLiquidacion);
+  return { ...filaToLiquidacion(liqData), lineas };
+}
+
+// =============================================================================
+// Conciliación
+// =============================================================================
+
+/**
+ * Lista eventos de conciliación del tenant.
+ * Solo para roles internos (dueño/administración) — RLS lo refuerza en BD.
+ */
+export async function listarEventosConciliacion(
+  cliente: SupabaseClient,
+  tenantId: string,
+  estado?: EstadoEventoConciliacion,
+): Promise<EventoConciliacion[]> {
+  let query = cliente
+    .schema('dinero')
+    .from('eventos_conciliacion')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('creado_en', { ascending: false });
+
+  if (estado) query = query.eq('estado', estado);
+
+  const { data, error } = await query;
+
+  if (error) throw new Error(`Error al listar eventos de conciliación: ${error.message}`);
+  return (data ?? []).map(filaToEventoConciliacion);
+}
