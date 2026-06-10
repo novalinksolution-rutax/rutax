@@ -210,7 +210,7 @@ create table operacion.pedidos (
   -- Idempotencia de ingesta: el job de ingesta ML hace UPSERT sobre
   -- (tenant_id, ml_shipment_id). Solo aplica cuando ml_shipment_id IS NOT NULL
   -- (los same_day_manual no tienen shipment_id de ML).
-  constraint pedidos_ml_shipment_uk unique nulls not distinct (tenant_id, ml_shipment_id),
+  constraint pedidos_ml_shipment_uk unique (tenant_id, ml_shipment_id),
 
   -- El seller referenciado debe pertenecer al mismo tenant que el pedido.
   -- FK compuesta sobre identidad.sellers (tenant_id, id) — requiere la constraint
@@ -1019,3 +1019,9 @@ grant select, insert, update on public.manifiestos           to authenticated;
 grant select, insert, update on public.asignaciones_pedido   to authenticated;
 grant select, insert, update on public.incidencias           to authenticated;
 grant select, insert, update on public.evidencias_incidencia to authenticated;
+
+-- service_role: BYPASSRLS salta políticas pero NO reemplaza GRANT SQL.
+-- Necesita USAGE en el schema y privilegios en tablas para que las vistas
+-- security_invoker=true funcionen cuando las consultan Server Components.
+grant usage on schema operacion to service_role;
+grant select, insert, update, delete on all tables in schema operacion to service_role;

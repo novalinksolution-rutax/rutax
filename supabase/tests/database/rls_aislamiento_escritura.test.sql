@@ -109,8 +109,8 @@ declare
 begin
   insert into identidad.tenants (id, nombre_fantasia, razon_social, rut, estado)
   values
-    (t_a, 'Courier A', 'Courier A SpA', '76123456-7', 'activo'),
-    (t_b, 'Courier B', 'Courier B SpA', '76987654-3', 'activo')
+    (t_a, 'Courier A', 'Courier A SpA', '76111111-1', 'activo'),
+    (t_b, 'Courier B', 'Courier B SpA', '76222222-2', 'activo')
   on conflict (id) do nothing;
 
   insert into auth.users (id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data, aud, role)

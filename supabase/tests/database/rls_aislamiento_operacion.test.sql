@@ -21,7 +21,7 @@
 
 begin;
 
-select plan(30);
+select plan(37);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (mismo mecanismo que los archivos existentes;
@@ -121,8 +121,8 @@ begin
   -- o en aislamiento)
   insert into identidad.tenants (id, nombre_fantasia, razon_social, rut, estado)
   values
-    (t_a, 'Courier A', 'Courier A SpA', '76123456-7', 'activo'),
-    (t_b, 'Courier B', 'Courier B SpA', '76987654-3', 'activo')
+    (t_a, 'Courier A', 'Courier A SpA', '76111111-1', 'activo'),
+    (t_b, 'Courier B', 'Courier B SpA', '76222222-2', 'activo')
   on conflict (id) do nothing;
 
   -- auth.users
@@ -558,15 +558,161 @@ select is(
 -- =============================================================================
 
 select results_eq(
-  $$ select count(*)::int from operacion.pedidos $$,
+  $$ select count(*)::int from operacion.pedidos where tenant_id in ('aaaaaaaa-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002') $$,
   $$ values (4) $$,
   'control positivo: como postgres existen los 4 pedidos de fixture'
 );
 
 select results_eq(
-  $$ select count(*)::int from operacion.manifiestos $$,
+  $$ select count(*)::int from operacion.manifiestos where tenant_id in ('aaaaaaaa-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002') $$,
   $$ values (3) $$,
   'control positivo: como postgres existen los 3 manifiestos de fixture'
+);
+
+-- =============================================================================
+-- BLOQUE 9 · INSERT isolation — sellers y conductores no pueden insertar
+-- =============================================================================
+
+-- El trigger solo_interno_edita() protege INSERT también (lanza 42501).
+-- Aquí verificamos que el guard cubre INSERT, no solo UPDATE.
+
+-- Seller que intenta INSERT en pedidos: 42501
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000003'::uuid, -- u_seller_a
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'seller', 'seller',
+  p_seller_id => 'aaaaaaaa-1111-0000-0000-000000000001'::uuid -- s_a
+);
+
+select throws_ok(
+  $$ insert into public.pedidos
+       (tenant_id, seller_id, tipo_pedido, origen, estado,
+        destinatario_nombre, destinatario_direccion, destinatario_comuna)
+     values (
+       'aaaaaaaa-0000-0000-0000-000000000001',
+       'aaaaaaaa-1111-0000-0000-000000000001',
+       'same_day', 'same_day_manual', 'pendiente_asignacion',
+       'Destinatario Falso', 'Calle Falsa 999', 'Santiago'
+     ) $$,
+  '42501',
+  null,
+  'GUARD INSERT pedidos: seller que intenta INSERT recibe 42501 explícito (no puede crear pedidos directamente)'
+);
+
+-- Conductor que intenta INSERT en manifiestos: 42501
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000006'::uuid, -- u_conductor_a
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'conductor', 'conductor',
+  p_driver_id => 'aaaaaaaa-2222-0000-0000-000000000001'::uuid -- d_a
+);
+
+select throws_ok(
+  $$ insert into public.manifiestos
+       (tenant_id, driver_id, nombre, fecha_operacion, estado)
+     values (
+       'aaaaaaaa-0000-0000-0000-000000000001',
+       'aaaaaaaa-2222-0000-0000-000000000001',
+       'Manifiesto Falso', '2026-06-08', 'borrador'
+     ) $$,
+  '42501',
+  null,
+  'GUARD INSERT manifiestos: conductor que intenta INSERT recibe 42501 explícito'
+);
+
+-- =============================================================================
+-- BLOQUE 10 · Conductor A2 no ve pedido asignado a Conductor A (P3 explícito)
+-- =============================================================================
+
+-- Reasignar pedido_a1 a Conductor A para tener un pedido asignado explícito.
+-- (pedido_a1 ya tiene driver_id_asignado = d_a después del BLOQUE 7 que lo desactivó;
+--  re-insertamos la asignación como postgres para esta verificación).
+
+select test_cerrar_sesion();
+
+-- Asignación temporal: pedido_a2 → manifiesto_a2 (conductor A2) para dar a A2 algo.
+-- (no necesitamos insertar — solo verificar que conductor A2 no puede ver
+--  pedidos del conductor A). El fixture ya tiene pedido_a1 sin driver_id_asignado
+--  (lo desactivamos en BLOQUE 7). Reactivamos para este bloque:
+update operacion.asignaciones_pedido
+set activa = true, desasignado_en = null
+where id = 'aaaaaaaa-7777-0000-0000-000000000001';
+
+-- Ahora pedido_a1.driver_id_asignado = d_a (trigger re-sincronizó al activar).
+-- Conductor A2 NO debe ver ese pedido.
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000007'::uuid, -- u_conductor_a2
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'conductor', 'conductor',
+  p_driver_id => 'aaaaaaaa-2222-0000-0000-000000000003'::uuid -- d_a2
+);
+
+select is_empty(
+  $$ select 1 from public.pedidos
+     where driver_id_asignado = 'aaaaaaaa-2222-0000-0000-000000000001' $$, -- d_a
+  'P3 explícito: conductor A2 NO ve pedido asignado al conductor A (mismo tenant, diferente driver_id_asignado)'
+);
+
+-- =============================================================================
+-- BLOQUE 11 · Seller ve solo sus incidencias (conteo preciso), no de otro seller
+-- =============================================================================
+
+-- Verificar que el COUNT de incidencias es exactamente 1 (la de su pedido)
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000003'::uuid, -- u_seller_a
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'seller', 'seller',
+  p_seller_id => 'aaaaaaaa-1111-0000-0000-000000000001'::uuid -- s_a
+);
+
+select results_eq(
+  $$ select count(*)::int from public.incidencias $$,
+  $$ values (1) $$,
+  'P2 incidencias: seller A ve exactamente 1 incidencia (la propia) — no incidencias de otros sellers'
+);
+
+-- Seller A2 (que no tiene incidencias) ve 0
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000004'::uuid, -- u_seller_a2
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'seller', 'seller',
+  p_seller_id => 'aaaaaaaa-1111-0000-0000-000000000003'::uuid -- s_a2
+);
+
+select results_eq(
+  $$ select count(*)::int from public.incidencias $$,
+  $$ values (0) $$,
+  'P2 incidencias: seller A2 ve 0 incidencias (no tiene ninguna propia, y no ve las del seller A)'
+);
+
+-- =============================================================================
+-- BLOQUE 12 · evidencias_incidencia — seller solo ve sus evidencias
+-- =============================================================================
+
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000003'::uuid, -- u_seller_a
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'seller', 'seller',
+  p_seller_id => 'aaaaaaaa-1111-0000-0000-000000000001'::uuid -- s_a
+);
+
+select results_eq(
+  $$ select count(*)::int from public.evidencias_incidencia $$,
+  $$ values (1) $$,
+  'P2 evidencias: seller A ve exactamente su evidencia (no la de otro seller)'
+);
+
+-- Seller A2 no ve evidencias ajenas
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000004'::uuid, -- u_seller_a2
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'seller', 'seller',
+  p_seller_id => 'aaaaaaaa-1111-0000-0000-000000000003'::uuid -- s_a2
+);
+
+select is_empty(
+  $$ select 1 from public.evidencias_incidencia $$,
+  'P2 evidencias: seller A2 NO ve evidencias del seller A (mismo tenant, diferente seller_id)'
 );
 
 select * from finish();

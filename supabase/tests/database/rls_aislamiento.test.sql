@@ -116,8 +116,8 @@ begin
   -- Tenants
   insert into identidad.tenants (id, nombre_fantasia, razon_social, rut, estado)
   values
-    (t_a, 'Courier A', 'Courier A SpA', '76123456-7', 'activo'),
-    (t_b, 'Courier B', 'Courier B SpA', '76987654-3', 'activo')
+    (t_a, 'Courier A', 'Courier A SpA', '76111111-1', 'activo'),
+    (t_b, 'Courier B', 'Courier B SpA', '76222222-2', 'activo')
   on conflict (id) do nothing;
 
   -- auth.users (mínimo necesario para las FKs de usuarios_perfil/bitácora)
@@ -619,13 +619,13 @@ select isnt_empty(
 );
 
 select results_eq(
-  $$ select count(*)::int from identidad.tarifas $$,
+  $$ select count(*)::int from identidad.tarifas where tenant_id in ('aaaaaaaa-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002') $$,
   $$ values (3) $$,
   'control positivo: como postgres existen las 3 tarifas de fixture (2 del tenant A + 1 del tenant B)'
 );
 
 select results_eq(
-  $$ select count(*)::int from identidad.sellers $$,
+  $$ select count(*)::int from identidad.sellers where tenant_id in ('aaaaaaaa-0000-0000-0000-000000000001', 'bbbbbbbb-0000-0000-0000-000000000002') $$,
   $$ values (3) $$,
   'control positivo: como postgres existen los 3 sellers de fixture — confirma que lo visto antes es RLS filtrando, no ausencia de datos'
 );

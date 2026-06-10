@@ -227,6 +227,8 @@ create or replace function identidad.custom_access_token_hook(event jsonb)
 returns jsonb
 language plpgsql
 stable
+security definer
+set search_path = identidad, public
 as $$
 declare
   claims     jsonb;
@@ -273,9 +275,8 @@ revoke all on function identidad.custom_access_token_hook(jsonb) from public, an
 grant usage on schema identidad to supabase_auth_admin;
 grant execute on function identidad.custom_access_token_hook(jsonb) to supabase_auth_admin;
 
--- supabase_auth_admin necesita poder leer usuarios_perfil para construir los claims,
--- saltándose RLS (es un rol de servicio interno, no expuesto a clientes).
-grant select on identidad.usuarios_perfil to supabase_auth_admin;
+-- SECURITY DEFINER hace que la función corra como su owner (postgres/superuser),
+-- lo que bypasea RLS al leer identidad.usuarios_perfil para construir los claims.
 
 -- -----------------------------------------------------------------------------
 -- 7. Funciones auxiliares de claims (para usar dentro de políticas RLS)
