@@ -11,7 +11,7 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { cerrarPeriodoManualmente } from "@/modules/dinero/acciones";
+import { cerrarPeriodoManualmente, emitirFacturaPeriodo } from "@/modules/dinero/acciones";
 
 export async function accionCerrarPeriodo(
   periodoId: string,
@@ -21,11 +21,42 @@ export async function accionCerrarPeriodo(
     return { ok: false, mensaje: "No autenticado." };
   }
   try {
-    await cerrarPeriodoManualmente(sesion.usuario.tenantId, periodoId, sesion.usuario);
+    await cerrarPeriodoManualmente(
+      sesion.usuario.tenantId,
+      periodoId,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
     return { ok: true };
   } catch (err) {
     const mensaje =
       err instanceof Error ? err.message : "Error desconocido al cerrar el período.";
+    return { ok: false, mensaje };
+  }
+}
+
+/**
+ * Emitir factura (DTE) del período cerrado — compuerta de aprobación (B1-1).
+ * Única vía de emisión; el cierre no factura. Requiere `emitir_facturas`.
+ */
+export async function accionEmitirFactura(
+  periodoId: string,
+): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+  try {
+    await emitirFacturaPeriodo(
+      sesion.usuario.tenantId,
+      periodoId,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error desconocido al emitir la factura.";
     return { ok: false, mensaje };
   }
 }

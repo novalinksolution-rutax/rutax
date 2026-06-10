@@ -37,8 +37,10 @@ vi.mock('@/modules/identidad/auditoria', () => ({
 }));
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { inngest } from '@/lib/inngest/cliente';
 import {
   cerrarPeriodoManualmente,
+  emitirFacturaPeriodo,
   marcarLiquidacionPagada,
   resolverEventoConciliacion,
 } from './acciones';
@@ -158,7 +160,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioConRol('supervisor');
 
     await expect(
-      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario),
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -166,7 +168,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioConRol('coordinador');
 
     await expect(
-      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario),
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -174,7 +176,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioConRol('seller');
 
     await expect(
-      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario),
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -182,7 +184,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioConRol('conductor');
 
     await expect(
-      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario),
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -190,7 +192,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioConRol('super_admin');
 
     await expect(
-      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario),
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -198,7 +200,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioSuspendido('dueno');
 
     await expect(
-      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario),
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -206,7 +208,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioInvitado('administracion');
 
     await expect(
-      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario),
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -218,7 +220,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     const usuario = usuarioConRol('supervisor');
 
     try {
-      await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario);
+      await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001');
       expect.fail('Debería haber lanzado ErrorValidacion');
     } catch (err) {
       expect(err).toBeInstanceOf(ErrorValidacion);
@@ -273,7 +275,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     // El RBAC pasa; el resto del flujo puede fallar por el mock incompleto,
     // pero el error no debe ser ErrorValidacion.
     try {
-      await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario);
+      await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -311,7 +313,7 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario);
+      await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -329,31 +331,31 @@ describe('marcarLiquidacionPagada — RBAC', () => {
 
   it('rol supervisor → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('supervisor')),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('supervisor'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol coordinador → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('coordinador')),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('coordinador'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol seller → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('seller')),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('seller'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol conductor → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('conductor')),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('conductor'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('usuario suspendido con rol dueno → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioSuspendido('dueno')),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioSuspendido('dueno'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -376,7 +378,7 @@ describe('marcarLiquidacionPagada — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await marcarLiquidacionPagada('tenant-a', 'liq-001', usuario);
+      await marcarLiquidacionPagada('tenant-a', 'liq-001', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -395,7 +397,7 @@ describe('marcarLiquidacionPagada — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await marcarLiquidacionPagada('tenant-a', 'liq-001', usuario);
+      await marcarLiquidacionPagada('tenant-a', 'liq-001', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -413,31 +415,31 @@ describe('resolverEventoConciliacion — RBAC', () => {
 
   it('rol supervisor → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioConRol('supervisor')),
+      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioConRol('supervisor'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol coordinador → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioConRol('coordinador')),
+      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioConRol('coordinador'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol seller → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'resuelto', usuarioConRol('seller')),
+      resolverEventoConciliacion('tenant-a', 'evento-001', 'resuelto', usuarioConRol('seller'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol conductor → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'ignorado', usuarioConRol('conductor')),
+      resolverEventoConciliacion('tenant-a', 'evento-001', 'ignorado', usuarioConRol('conductor'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('usuario suspendido → lanza ErrorValidacion incluso con rol administracion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioSuspendido('administracion')),
+      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioSuspendido('administracion'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -452,7 +454,7 @@ describe('resolverEventoConciliacion — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await resolverEventoConciliacion('tenant-a', 'evento-001', 'resuelto', usuario);
+      await resolverEventoConciliacion('tenant-a', 'evento-001', 'resuelto', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -469,7 +471,7 @@ describe('resolverEventoConciliacion — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuario);
+      await resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -497,7 +499,7 @@ describe('resolverEventoConciliacion — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-de-tenant-b', 'resuelto', usuario),
+      resolverEventoConciliacion('tenant-a', 'evento-de-tenant-b', 'resuelto', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -515,7 +517,7 @@ describe('resolverEventoConciliacion — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await resolverEventoConciliacion('tenant-a', 'evento-inexistente', 'resuelto', usuario);
+      await resolverEventoConciliacion('tenant-a', 'evento-inexistente', 'resuelto', usuario, 'actor-001');
       expect.fail('Debería haber lanzado ErrorValidacion');
     } catch (err) {
       expect(err).toBeInstanceOf(ErrorValidacion);
@@ -609,5 +611,97 @@ describe('cerrarPeriodoManualmente — lógica de cálculo de totales', () => {
     const montoTotal = lineas.reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0);
     expect(montoTotal).toBe(5500);
     expect(Number.isInteger(montoTotal)).toBe(true);
+  });
+});
+
+// =============================================================================
+// Tests de emitirFacturaPeriodo — compuerta de aprobación de facturación (B1-1)
+// =============================================================================
+// Garantiza que la emisión del DTE: (1) exige capacidad `emitir_facturas`,
+// (2) solo procede sobre un período en estado `cerrado` (nunca `abierto` ni ya
+// `facturado`), y (3) en el happy path publica `dinero/periodo.emision-solicitada`
+// (el único disparador de C3). El cron de cierre NO debe poder emitir.
+
+function crearMockPeriodo(estado: string, extra: Record<string, unknown> = {}) {
+  return {
+    schema: vi.fn().mockReturnThis(),
+    from: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: {
+        id: 'periodo-001',
+        tenant_id: 'tenant-a',
+        seller_id: 'seller-a',
+        fecha_inicio: '2026-06-01',
+        fecha_fin: '2026-06-30',
+        estado,
+        monto_total_clp: 11400,
+        documento_dte_id: null,
+        ...extra,
+      },
+      error: null,
+    }),
+  };
+}
+
+describe('emitirFacturaPeriodo — compuerta de aprobación (B1-1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rol supervisor → lanza ErrorValidacion (no puede emitir facturas)', async () => {
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('supervisor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol seller → lanza ErrorValidacion', async () => {
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('seller'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol conductor → lanza ErrorValidacion', async () => {
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('conductor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('período ABIERTO → lanza ErrorValidacion (debe estar cerrado para facturar)', async () => {
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearMockPeriodo('abierto') as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('período YA FACTURADO → lanza ErrorValidacion (no re-emite)', async () => {
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearMockPeriodo('facturado', { documento_dte_id: 'dte-001' }) as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('administracion'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('dueño + período CERRADO (sandbox) → publica dinero/periodo.emision-solicitada', async () => {
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearMockPeriodo('cerrado') as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+
+    await emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001');
+
+    expect(inngest.send).toHaveBeenCalledTimes(1);
+    const evento = vi.mocked(inngest.send).mock.calls[0][0] as {
+      name: string;
+      data: { modo: string; solicitadoPorUsuarioId: string };
+    };
+    expect(evento.name).toBe('dinero/periodo.emision-solicitada');
+    expect(evento.data.modo).toBe('sandbox');
+    expect(evento.data.solicitadoPorUsuarioId).toBe('actor-001');
   });
 });

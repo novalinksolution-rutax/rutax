@@ -1,36 +1,30 @@
 "use client";
 
 /**
- * Dialog de confirmación para cerrar un período de cobro (flujo D-1 y D-2).
+ * Dialog de confirmación para EMITIR la factura (DTE) de un período cerrado.
  *
- * Criterio C-1: usa formatearCLP para el monto.
- * Al confirmar: llama a accionCerrarPeriodo. Muestra spinner y toast.
+ * Es la compuerta de aprobación humana del motor entrega→dinero (B1-1): el
+ * cierre del período NO factura; emitir el DTE es una acción deliberada,
+ * porque un DTE es irreversible ante el SII sin nota de crédito.
+ *
+ * Al confirmar: llama a accionEmitirFactura (gate `emitir_facturas`).
  */
 
 import { useState, useTransition } from "react";
+import { FileText } from "lucide-react";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import { accionCerrarPeriodo } from "./actions";
+import { accionEmitirFactura } from "./actions";
 
 interface Props {
   periodoId: string;
   sellerNombre: string;
-  fechaInicio: string;
-  fechaFin: string;
   totalLineas: number;
   montoTotalClp: number | null;
 }
 
-function formatearFechaCorta(fechaIso: string): string {
-  if (!fechaIso || fechaIso.length < 10) return fechaIso;
-  const [anio, mes, dia] = fechaIso.slice(0, 10).split("-");
-  return `${dia}/${mes}/${anio}`;
-}
-
-export function DialogCerrarPeriodo({
+export function DialogEmitirFactura({
   periodoId,
   sellerNombre,
-  fechaInicio,
-  fechaFin,
   totalLineas,
   montoTotalClp,
 }: Props) {
@@ -42,11 +36,10 @@ export function DialogCerrarPeriodo({
   function handleConfirmar() {
     setError(null);
     startTransition(async () => {
-      const resultado = await accionCerrarPeriodo(periodoId);
+      const resultado = await accionEmitirFactura(periodoId);
       if (resultado.ok) {
         setExito(true);
         setAbierto(false);
-        // Recargar para reflejar el nuevo estado en la tabla
         window.location.reload();
       } else {
         setError(resultado.mensaje);
@@ -55,9 +48,7 @@ export function DialogCerrarPeriodo({
   }
 
   if (exito) {
-    return (
-      <span className="text-xs text-green-700 font-medium">Cerrando...</span>
-    );
+    return <span className="text-xs font-medium text-green-700">Emitiendo factura…</span>;
   }
 
   return (
@@ -65,43 +56,33 @@ export function DialogCerrarPeriodo({
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+        className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
       >
-        Cerrar período
+        <FileText className="size-4" aria-hidden="true" />
+        Emitir factura
       </button>
 
       {abierto && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-labelledby="dialog-cerrar-titulo"
+          aria-labelledby="dialog-emitir-titulo"
           className="fixed inset-0 z-50 flex items-center justify-center"
         >
-          {/* Overlay */}
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => !isPending && setAbierto(false)}
             aria-hidden="true"
           />
 
-          {/* Panel */}
           <div className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-xl">
-            <h2
-              id="dialog-cerrar-titulo"
-              className="text-lg font-semibold text-foreground"
-            >
-              Cerrar período de {sellerNombre}
+            <h2 id="dialog-emitir-titulo" className="text-lg font-semibold text-foreground">
+              Emitir factura de {sellerNombre}
             </h2>
 
             <div className="mt-4 space-y-3">
               <p className="text-sm text-muted-foreground">
-                Período:{" "}
-                <span className="font-medium text-foreground">
-                  {formatearFechaCorta(fechaInicio)} – {formatearFechaCorta(fechaFin)}
-                </span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Total de líneas:{" "}
+                Líneas a facturar:{" "}
                 <span className="font-medium text-foreground">{totalLineas}</span>
               </p>
               <p className="text-sm text-muted-foreground">
@@ -112,11 +93,10 @@ export function DialogCerrarPeriodo({
               </p>
             </div>
 
-            <p className="mt-4 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
-              Cerrar el período consolida sus líneas y lo deja listo para revisar.
-              <strong> No emite la factura todavía:</strong> después podrás revisar el
-              detalle y emitir el DTE con el botón “Emitir factura”. El cierre no se puede
-              deshacer.
+            <p className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              Se emitirá un DTE (factura electrónica) bajo el RUT de tu courier. Un
+              documento emitido al SII <strong>no se puede anular</strong>: corregirlo
+              exige una nota de crédito. Revisa el monto y las líneas antes de confirmar.
             </p>
 
             {error && (
@@ -133,7 +113,7 @@ export function DialogCerrarPeriodo({
                 type="button"
                 onClick={() => setAbierto(false)}
                 disabled={isPending}
-                className="rounded-md border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                className="rounded-md border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
               >
                 Cancelar
               </button>
@@ -141,15 +121,15 @@ export function DialogCerrarPeriodo({
                 type="button"
                 onClick={handleConfirmar}
                 disabled={isPending}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
                 {isPending && (
                   <span
-                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
                     aria-hidden="true"
                   />
                 )}
-                {isPending ? "Cerrando..." : "Confirmar cierre"}
+                {isPending ? "Emitiendo…" : "Confirmar emisión"}
               </button>
             </div>
           </div>

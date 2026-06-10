@@ -28,6 +28,7 @@ export async function accionMarcarLiquidacionPagada(
       sesion.usuario.tenantId,
       liquidacionId,
       sesion.usuario,
+      sesion.usuarioId,
     );
     return { ok: true };
   } catch (err) {

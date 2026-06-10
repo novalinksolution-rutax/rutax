@@ -25,6 +25,7 @@ export async function accionResolverEvento(
       eventoId,
       resolucion,
       sesion.usuario,
+      sesion.usuarioId,
     );
     return { ok: true };
   } catch (err) {
@@ -72,7 +73,7 @@ export async function accionRestaurarEventoPendiente(
 
     await registrarEnBitacora(supabase, {
       tenantId,
-      actorUsuarioId: null,
+      actorUsuarioId: sesion.usuarioId,
       actorTipo: "usuario",
       accion: "dinero.evento_conciliacion_restaurado",
       entidadTipo: "evento_conciliacion",

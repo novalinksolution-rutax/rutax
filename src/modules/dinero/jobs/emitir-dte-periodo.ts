@@ -1,8 +1,13 @@
 /**
  * Job C3 · dinero/emitirDtePeriodo
  * =====================================================================
- * Trigger: evento `dinero/periodo.cerrado`
- * (publicado por C2 o por `cerrarPeriodoManualmente`)
+ * Trigger: evento `dinero/periodo.emision-solicitada`
+ * (publicado SOLO por la acción humana `emitirFacturaPeriodo`, gate
+ *  `puedeEmitirFacturas` — compuerta de aprobación de facturación, B1-1).
+ *
+ * NUNCA se dispara desde el cron de cierre: cerrar un período no emite su DTE.
+ * Un DTE es irreversible ante el SII sin nota de crédito, así que la emisión
+ * exige que una persona con permiso de facturación la solicite explícitamente.
  *
  * Responsabilidad:
  * - Reservar un folio CAF del tenant (transaccional con FOR UPDATE).
@@ -47,7 +52,7 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
   {
     id: 'dinero/emitirDtePeriodo',
     name: 'Dinero · Emitir DTE de período cerrado',
-    triggers: [{ event: 'dinero/periodo.cerrado' }],
+    triggers: [{ event: 'dinero/periodo.emision-solicitada' }],
     retries: 4,
   },
   async ({ event, step, logger, runId }) => {

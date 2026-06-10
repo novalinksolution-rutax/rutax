@@ -22,6 +22,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
+import { DialogEmitirFactura } from "./dialog-emitir-factura";
 import { BotonDescargaDocumento } from "./boton-descarga-documento";
 
 export const metadata: Metadata = {
@@ -146,6 +147,19 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                 sellerNombre={sellerNombre}
                 fechaInicio={periodo.fechaInicio}
                 fechaFin={periodo.fechaFin}
+                totalLineas={periodo.totalLineas}
+                montoTotalClp={periodo.montoTotalClp}
+              />
+            </div>
+          )}
+
+          {/* Compuerta de aprobación (B1-1): período cerrado y aún sin DTE →
+              ofrecer emitir la factura como acción humana deliberada. */}
+          {periodo.estado === "cerrado" && !dte && (
+            <div className="shrink-0">
+              <DialogEmitirFactura
+                periodoId={periodo.id}
+                sellerNombre={sellerNombre}
                 totalLineas={periodo.totalLineas}
                 montoTotalClp={periodo.montoTotalClp}
               />

@@ -38,13 +38,20 @@ import type { EstadoEventoConciliacion } from './tipos';
  *
  * Efectos:
  * - Suma lineas_cobro, cuenta filas, actualiza estado a `cerrado`.
- * - Publica evento `dinero/periodo.cerrado` → dispara jobs C3 y C6.
- * - Registra en bitácora.
+ * - Publica evento `dinero/periodo.cerrado` → dispara SOLO C6 (conciliación).
+ *   El cierre NO emite el DTE: para facturar hay que llamar después a
+ *   `emitirFacturaPeriodo` (compuerta de aprobación humana, B1-1).
+ * - Registra en bitácora con el autor (`actorUsuarioId`).
+ *
+ * @param actorUsuarioId UUID de auth del usuario que ejecuta la acción
+ *   (`sesion.usuarioId`). Queda en la bitácora y en `cerrado_por_usuario_id`
+ *   — RNF-04 exige registrar "quién".
  */
 export async function cerrarPeriodoManualmente(
   tenantId: string,
   periodoId: string,
   usuario: UsuarioActual,
+  actorUsuarioId: string,
 ): Promise<void> {
   if (!puedeEmitirFacturas(usuario)) {
     throw new ErrorValidacion(
@@ -92,11 +99,9 @@ export async function cerrarPeriodoManualmente(
       total_lineas: totalLineas,
       monto_total_clp: montoTotal,
       cerrado_en: new Date().toISOString(),
-      // BUG FIX: `usuario.sellerId` era incorrecto aquí — un usuario interno
-      // (dueño/admin) no tiene `sellerId`. El campo correcto sería el UUID de
-      // auth del usuario, que `UsuarioActual` no expone aún. Se deja null hasta
-      // que `UsuarioActual` incluya `userId` (issue pendiente Fase C.1).
-      cerrado_por_usuario_id: null,
+      // RNF-04: registramos quién cerró el período. `actorUsuarioId` es el UUID
+      // de auth (`sesion.usuarioId`) que el llamador (Server Action) propaga.
+      cerrado_por_usuario_id: actorUsuarioId,
       actualizado_en: new Date().toISOString(),
     })
     .eq('id', periodoId)
@@ -109,7 +114,7 @@ export async function cerrarPeriodoManualmente(
   // financiera quede auditada aunque `inngest.send` falle.
   await registrarEnBitacora(supabase, {
     tenantId,
-    actorUsuarioId: null, // el usuario actual no tiene un UUID de auth aquí; el llamador puede pasarlo
+    actorUsuarioId,
     actorTipo: 'usuario',
     accion: 'dinero.periodo_cerrado_manual',
     entidadTipo: 'periodo_cobro',
@@ -121,8 +126,9 @@ export async function cerrarPeriodoManualmente(
     },
   });
 
-  // Publicar evento para C3 (emisión DTE) y C6 (conciliación) — después de la
-  // bitácora para que la acción financiera quede auditada aunque esto falle.
+  // Publicar evento para C6 (conciliación) — después de la bitácora para que la
+  // acción financiera quede auditada aunque esto falle. NO dispara la emisión
+  // del DTE: cerrar ≠ facturar. La emisión exige `emitirFacturaPeriodo` (B1-1).
   await inngest.send({
     name: 'dinero/periodo.cerrado',
     id: `periodo-cerrado-manual-${periodoId}`,
@@ -133,6 +139,124 @@ export async function cerrarPeriodoManualmente(
       fechaInicio: periodo.fecha_inicio as string,
       fechaFin: periodo.fecha_fin as string,
       montoTotalClp: montoTotal,
+    },
+  });
+}
+
+// =============================================================================
+// emitirFacturaPeriodo — COMPUERTA DE APROBACIÓN DE FACTURACIÓN (B1-1)
+// =============================================================================
+
+/**
+ * Solicita la emisión del DTE de un período YA cerrado. Es la compuerta de
+ * aprobación humana del motor entrega→dinero: ningún proceso automático (el
+ * cron `cerrar-periodo`) emite un DTE; solo esta acción, disparada por una
+ * persona con permiso de facturación, publica el evento que activa C3.
+ *
+ * Por qué existe: un DTE emitido al SII es irreversible sin nota de crédito
+ * (RF-038, fuera del MVP). El levantamiento le da al dueño la acción "aprobar
+ * facturación" y exige "previsualización antes de facturar". Auto-emitir en un
+ * cron violaría ambas y convertiría un error de tarifa en un problema
+ * tributario real del courier.
+ *
+ * Precondiciones:
+ * - Capacidad `emitir_facturas` (dueño o administración).
+ * - El período debe estar en estado `cerrado` (no `abierto`, no `facturado`).
+ * - Para emisión REAL (no sandbox): el courier debe tener habilitada
+ *   explícitamente `emision_dte_real_habilitada` en su config DTE (opt-in).
+ *
+ * Efectos:
+ * - Registra en bitácora (`dinero.emision_dte_solicitada`, con autor).
+ * - Publica `dinero/periodo.emision-solicitada` → dispara C3 (emitirDtePeriodo).
+ */
+export async function emitirFacturaPeriodo(
+  tenantId: string,
+  periodoId: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeEmitirFacturas(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede emitir facturas (DTE).',
+    );
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  // Leer el período y verificar tenant + estado.
+  const { data: periodo, error: errorLectura } = await supabase
+    .schema('dinero')
+    .from('periodos_cobro')
+    .select('id, tenant_id, seller_id, fecha_inicio, fecha_fin, estado, monto_total_clp, documento_dte_id')
+    .eq('id', periodoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errorLectura) throw new Error(`Error al leer período: ${errorLectura.message}`);
+  if (!periodo) throw new ErrorValidacion(`Período ${periodoId} no encontrado en el tenant.`);
+
+  if (periodo.estado === 'facturado' || periodo.documento_dte_id) {
+    throw new ErrorValidacion('El período ya fue facturado — no se puede re-emitir su DTE.');
+  }
+  if (periodo.estado !== 'cerrado') {
+    throw new ErrorValidacion(
+      `Solo se puede facturar un período en estado 'cerrado'. Estado actual: '${periodo.estado}'. ` +
+        'Cierra el período y revísalo antes de emitir la factura.',
+    );
+  }
+
+  // Resolver el modo de emisión. Por defecto SANDBOX (stub, sin SII real):
+  // la emisión real exige opt-in explícito por courier — defensa en
+  // profundidad sobre el switch de entorno `DTE_SANDBOX_MODE`.
+  const sandbox = process.env.DTE_SANDBOX_MODE !== 'false';
+  const modo: 'sandbox' | 'real' = sandbox ? 'sandbox' : 'real';
+
+  if (modo === 'real') {
+    const { data: config } = await supabase
+      .schema('identidad')
+      .from('courier_config_dte')
+      .select('emision_dte_real_habilitada')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (!config?.emision_dte_real_habilitada) {
+      throw new ErrorValidacion(
+        'La emisión real de DTE no está habilitada para este courier. ' +
+          'Actívala explícitamente en la configuración antes de facturar al SII.',
+      );
+    }
+  }
+
+  const montoTotal = Math.round(Number(periodo.monto_total_clp ?? 0));
+
+  // Bitácora ANTES de publicar el evento (acción financiera auditada aunque
+  // `inngest.send` falle).
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.emision_dte_solicitada',
+    entidadTipo: 'periodo_cobro',
+    entidadId: periodoId,
+    detalle: {
+      seller_id: periodo.seller_id,
+      monto_total_clp: montoTotal,
+      modo,
+    },
+  });
+
+  await inngest.send({
+    name: 'dinero/periodo.emision-solicitada',
+    id: `emision-solicitada-${periodoId}`,
+    data: {
+      periodoCobroidId: periodoId,
+      tenantId,
+      sellerId: periodo.seller_id,
+      fechaInicio: periodo.fecha_inicio as string,
+      fechaFin: periodo.fecha_fin as string,
+      montoTotalClp: montoTotal,
+      solicitadoPorUsuarioId: actorUsuarioId,
+      modo,
     },
   });
 }
@@ -152,6 +276,7 @@ export async function marcarLiquidacionPagada(
   tenantId: string,
   liquidacionId: string,
   usuario: UsuarioActual,
+  actorUsuarioId: string,
 ): Promise<void> {
   if (!puedeGestionarLiquidacionesConductores(usuario)) {
     throw new ErrorValidacion(
@@ -193,7 +318,7 @@ export async function marcarLiquidacionPagada(
 
   await registrarEnBitacora(supabase, {
     tenantId,
-    actorUsuarioId: null,
+    actorUsuarioId,
     actorTipo: 'usuario',
     accion: 'dinero.liquidacion_marcada_pagada',
     entidadTipo: 'liquidacion',
@@ -222,6 +347,7 @@ export async function resolverEventoConciliacion(
   eventoId: string,
   resolucion: Extract<EstadoEventoConciliacion, 'revisado' | 'resuelto' | 'ignorado'>,
   usuario: UsuarioActual,
+  actorUsuarioId: string,
 ): Promise<void> {
   if (!puedeVerConciliacion(usuario)) {
     throw new ErrorValidacion(
@@ -251,8 +377,7 @@ export async function resolverEventoConciliacion(
     .update({
       estado: resolucion,
       resuelto_en: new Date().toISOString(),
-      // resuelto_por_usuario_id: se omitiría si no hay UUID disponible aquí;
-      // el llamador puede complementar si tiene el auth user id del JWT.
+      resuelto_por_usuario_id: actorUsuarioId,
     })
     .eq('id', eventoId)
     .eq('tenant_id', tenantId);
@@ -263,7 +388,7 @@ export async function resolverEventoConciliacion(
 
   await registrarEnBitacora(supabase, {
     tenantId,
-    actorUsuarioId: null,
+    actorUsuarioId,
     actorTipo: 'usuario',
     accion: 'dinero.evento_conciliacion_resuelto',
     entidadTipo: 'evento_conciliacion',

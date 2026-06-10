@@ -10,7 +10,7 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { cerrarPeriodoManualmente } from "@/modules/dinero/acciones";
+import { cerrarPeriodoManualmente, emitirFacturaPeriodo } from "@/modules/dinero/acciones";
 
 // =============================================================================
 // Cerrar período manualmente
@@ -29,11 +29,44 @@ export async function accionCerrarPeriodo(
       sesion.usuario.tenantId,
       periodoId,
       sesion.usuario,
+      sesion.usuarioId,
     );
     return { ok: true };
   } catch (err) {
     const mensaje =
       err instanceof Error ? err.message : "Error desconocido al cerrar el período.";
+    return { ok: false, mensaje };
+  }
+}
+
+// =============================================================================
+// Emitir factura (DTE) — compuerta de aprobación humana (B1-1)
+// =============================================================================
+
+/**
+ * Solicita la emisión del DTE de un período YA cerrado. Es la única vía por la
+ * que se emite una factura: el cierre del período (manual o por cron) NO
+ * factura. Requiere capacidad `emitir_facturas` (validada en la acción).
+ */
+export async function accionEmitirFactura(
+  periodoId: string,
+): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+
+  try {
+    await emitirFacturaPeriodo(
+      sesion.usuario.tenantId,
+      periodoId,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error desconocido al emitir la factura.";
     return { ok: false, mensaje };
   }
 }

@@ -8,7 +8,9 @@
  * - Calcular totales (suma de monto_final_clp, cuenta de líneas).
  * - Actualizar estado a `cerrado`.
  * - Publicar evento `dinero/periodo.cerrado` para cada período cerrado.
- *   → Dispara C3 (emisión DTE) y C6 (conciliación) en paralelo.
+ *   → Dispara SOLO C6 (conciliación), un chequeo detective de solo lectura.
+ *   El cron NUNCA emite el DTE: cerrar ≠ facturar. La emisión exige la acción
+ *   humana `emitirFacturaPeriodo` (compuerta de aprobación, B1-1).
  *
  * Idempotencia:
  * - La transición `abierto → cerrado` es idempotente: el UPDATE con
