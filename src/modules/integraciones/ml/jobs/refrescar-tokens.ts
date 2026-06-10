@@ -39,7 +39,7 @@ export const jobRefrescarTokens = inngest.createFunction(
   {
     id: "ml/refrescarTokens",
     name: "ML · Refrescar tokens de sellers",
-    triggers: [{ cron: "0 */30 * * * *" }],
+    triggers: [{ cron: "*/30 * * * *" }],
     // Reintentos ante error transitorio — Inngest los aplica automáticamente.
     retries: 3,
   },

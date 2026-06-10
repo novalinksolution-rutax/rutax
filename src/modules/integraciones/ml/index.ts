@@ -10,6 +10,8 @@ export {
   intercambiarCodigoPorTokens,
   refrescarToken,
   obtenerConexionPorSeller,
+  obtenerEtiquetaEnvio,
+  ErrorConexionMlRequiereRevinculacion,
 } from "./puerto";
 
 export type {
@@ -18,6 +20,8 @@ export type {
   IniciarAutorizacionEntrada,
   IniciarAutorizacionResultado,
   IntercambiarCodigoEntrada,
+  ObtenerEtiquetaEnvioEntrada,
+  ObtenerEtiquetaEnvioResultado,
   RazonFalloRefresco,
   RefrescarTokenEntrada,
   RefrescarTokenResultado,

@@ -50,7 +50,7 @@ import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cifrarSecreto, descifrarSecreto } from "../secretos";
 import type { ReferenciaSecreto } from "../secretos/tipos";
-import { ML_API_BASE_URL, ErrorHttpMl, peticionMl } from "./cliente-http";
+import { ML_API_BASE_URL, ErrorHttpMl, peticionMl, peticionBinariaMl } from "./cliente-http";
 import { CacheIdempotencia } from "../resiliencia";
 import type {
   ConexionSellerMl,
@@ -58,11 +58,38 @@ import type {
   IniciarAutorizacionEntrada,
   IniciarAutorizacionResultado,
   IntercambiarCodigoEntrada,
+  ObtenerEtiquetaEnvioEntrada,
+  ObtenerEtiquetaEnvioResultado,
   RazonFalloRefresco,
   RefrescarTokenEntrada,
   RefrescarTokenResultado,
   RespuestaTokenMl,
 } from "./tipos";
+
+/**
+ * El seller debe re-vincular su cuenta de Mercado Libre (cuenta PRINCIPAL/
+ * manager — skill `flex-ml`) antes de poder usar este puerto. Se lanza cuando
+ * `refrescarToken` devuelve `requiere_revinculacion` al intentar obtener un
+ * access_token vigente para una operación (p. ej. descargar una etiqueta).
+ *
+ * El llamador (route handler) debe capturar este error específicamente para
+ * mostrar un mensaje accionable ("reconecta tu cuenta de Mercado Libre") en
+ * vez de un error genérico — distinción exigida por la skill `flex-ml` y §7.
+ */
+export class ErrorConexionMlRequiereRevinculacion extends Error {
+  readonly sellerId: string;
+  readonly conexionId: string;
+
+  constructor(sellerId: string, conexionId: string) {
+    super(
+      `La conexión con Mercado Libre del seller ${sellerId} requiere re-vinculación ` +
+        "(el refresh_token fue rechazado/revocado). El seller debe reconectar su cuenta.",
+    );
+    this.name = "ErrorConexionMlRequiereRevinculacion";
+    this.sellerId = sellerId;
+    this.conexionId = conexionId;
+  }
+}
 
 /**
  * Credenciales de la app de Mercado Libre (`client_id`/`client_secret`).
@@ -363,6 +390,124 @@ export async function obtenerConexionPorSeller(sellerId: string): Promise<Conexi
 }
 
 // ---------------------------------------------------------------------------
+// 5. Etiquetas de envío (RF-021) — descarga el PDF de `shipment_labels`.
+//
+// VERIFICACIÓN CONTRA DOCUMENTACIÓN OFICIAL VIGENTE (lo volátil):
+// Fuente: developers.mercadolibre.com — "Mercado Envíos / shipment_labels"
+// (consultada en esta iteración):
+// - Endpoint: `GET /shipment_labels?shipment_ids={id1},{id2}&response_type=pdf`
+//   (host `https://api.mercadolibre.com`, igual que el resto del adaptador).
+// - `shipment_ids` admite múltiples IDs separados por coma — este puerto solo
+//   expone un `shipment_id` a la vez (RF-021 pide etiqueta individual), pero
+//   la ruta queda lista para extenderse a lote si se necesita.
+// - `response_type=pdf` (alternativa `zpl2`, devuelve un .zip con PDF + .txt
+//   para impresora Zebra) — usamos `pdf` porque es lo que RF-021 requiere.
+// - Respuesta: binario `application/pdf` (no JSON) — requiere
+//   `Authorization: Bearer {access_token}`. Por eso se usa `peticionBinariaMl`
+//   en vez de `peticionMl`.
+// - Re-confirmar antes de producción: la skill flex-ml exige reverificar
+//   "lo volátil" (endpoints, formatos) cada vez que se toque este puerto.
+// ---------------------------------------------------------------------------
+
+/**
+ * Margen de seguridad antes de que expire el access_token: si vence en menos
+ * de este margen (o ya venció), se refresca proactivamente en vez de esperar
+ * a que ML responda 401. Evita una ida y vuelta extra con ML en el caso común.
+ */
+const MARGEN_REFRESCO_PROACTIVO_MS = 5 * 60_000;
+
+/**
+ * Obtiene un `access_token` vigente para el seller, refrescándolo primero si
+ * está vencido o a punto de vencer (margen de 5 minutos).
+ *
+ * SOLO para uso inmediato dentro de la misma operación que lo solicita —
+ * NUNCA se debe propagar el valor de retorno hacia capas superiores, logs,
+ * bitácora ni respuestas HTTP (regla dura del proyecto: secretos nunca en
+ * claro fuera de este adaptador).
+ *
+ * Lanza `ErrorConexionMlRequiereRevinculacion` si el refresco determina que
+ * el seller debe reconectar su cuenta — el llamador debe distinguir este caso
+ * (skill flex-ml: "lo resolví con refresco" vs. "requiere re-vinculación").
+ */
+export async function obtenerAccessTokenValido(sellerId: string): Promise<string> {
+  let conexion = await leerFilaConexionPorSeller(sellerId);
+  if (!conexion) {
+    throw new Error(`No existe conexión ML para el seller ${sellerId}.`);
+  }
+
+  if (conexion.estado_salud === "desvinculada") {
+    throw new ErrorConexionMlRequiereRevinculacion(sellerId, conexion.id);
+  }
+
+  const expiraEn = conexion.token_expira_en ? new Date(conexion.token_expira_en) : null;
+  const necesitaRefresco =
+    !conexion.access_token_ref ||
+    !expiraEn ||
+    expiraEn.getTime() - Date.now() < MARGEN_REFRESCO_PROACTIVO_MS;
+
+  if (necesitaRefresco) {
+    const resultado = await refrescarToken({ conexionId: conexion.id });
+    if (resultado.resultado === "requiere_revinculacion") {
+      throw new ErrorConexionMlRequiereRevinculacion(sellerId, conexion.id);
+    }
+
+    // Releer la fila tras el refresco para obtener el `access_token_ref`
+    // recién persistido (refrescarToken devuelve `ConexionSellerMl`, que NO
+    // expone `*_ref` deliberadamente — ver tipos.ts).
+    const recargada = await leerFilaConexionPorId(conexion.id);
+    if (!recargada || !recargada.access_token_ref) {
+      throw new Error(
+        `La conexión ML ${conexion.id} quedó sin access_token_ref tras refrescar.`,
+      );
+    }
+    conexion = recargada;
+  }
+
+  if (!conexion.access_token_ref) {
+    throw new Error(`La conexión ML ${conexion.id} no tiene access_token_ref.`);
+  }
+
+  const descifrado = await descifrarSecreto(conexion.access_token_ref);
+  if (typeof descifrado.valor !== "string") {
+    throw new Error("El access_token descifrado no tiene el formato esperado (texto).");
+  }
+
+  // El valor en claro vive solo en esta variable local; el llamador inmediato
+  // (obtenerEtiquetaEnvio) lo usa para construir el header Authorization y lo
+  // descarta — nunca se reasigna a estructuras de mayor vida ni se loguea.
+  return descifrado.valor;
+}
+
+/**
+ * Descarga la etiqueta de envío (PDF) para un `shipment_id` de Mercado Libre,
+ * usando el access_token vigente del seller (refrescando si es necesario).
+ *
+ * Resiliencia: `peticionBinariaMl` reutiliza `reintentarConBackoff` — 429/5xx
+ * de ML se reintentan con backoff respetando `Retry-After`; 4xx definitivos
+ * (token inválido, shipment no encontrado) se propagan como `ErrorHttpMl` no
+ * reintentable.
+ */
+export async function obtenerEtiquetaEnvio(
+  entrada: ObtenerEtiquetaEnvioEntrada,
+): Promise<ObtenerEtiquetaEnvioResultado> {
+  const accessToken = await obtenerAccessTokenValido(entrada.sellerId);
+
+  const parametros = new URLSearchParams({
+    shipment_ids: entrada.mlShipmentId,
+    response_type: "pdf",
+  });
+
+  const respuesta = await peticionBinariaMl({
+    metodo: "GET",
+    ruta: `/shipment_labels?${parametros.toString()}`,
+    accessToken,
+    accept: "application/pdf",
+  });
+
+  return { contenido: respuesta.contenido, contentType: respuesta.contentType };
+}
+
+// ---------------------------------------------------------------------------
 // Helpers internos de persistencia — todos vía service_role (la escritura de
 // tokens/salud está reservada a roles internos/jobs, nunca al seller, según
 // §8.2 y el trigger `solo_interno_edita`).
@@ -408,6 +553,24 @@ async function leerFilaConexionPorId(conexionId: string): Promise<FilaConexionIn
     .from("conexiones_seller_ml")
     .select(COLUMNAS_CONEXION)
     .eq("id", conexionId)
+    .maybeSingle();
+
+  if (error) throw new Error(`No se pudo leer la conexión ML: ${error.message}`);
+  return (data as unknown as FilaConexionInterna | null) ?? null;
+}
+
+/**
+ * Variante de `leerFilaConexionPorId` que busca por `seller_id` y devuelve la
+ * forma cruda (con `*_ref`) — usada por `obtenerAccessTokenValido`, que
+ * necesita `access_token_ref`/`token_expira_en` además de `estado_salud`.
+ */
+async function leerFilaConexionPorSeller(sellerId: string): Promise<FilaConexionInterna | null> {
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .select(COLUMNAS_CONEXION)
+    .eq("seller_id", sellerId)
     .maybeSingle();
 
   if (error) throw new Error(`No se pudo leer la conexión ML: ${error.message}`);

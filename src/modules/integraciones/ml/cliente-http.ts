@@ -129,6 +129,59 @@ export async function peticionMl<T>(peticion: PeticionMl): Promise<T> {
   }, peticion.opcionesReintento);
 }
 
+export interface PeticionBinariaMl {
+  metodo: "GET";
+  ruta: string;
+  /** Token de acceso — NUNCA se loguea; solo se usa para construir el header. */
+  accessToken: string;
+  /** Header `Accept` a enviar — p. ej. `application/pdf` para etiquetas. */
+  accept?: string;
+  opcionesReintento?: OpcionesReintento;
+}
+
+export interface RespuestaBinariaMl {
+  contenido: ArrayBuffer;
+  contentType: string;
+}
+
+/**
+ * Variante de `peticionMl` para respuestas binarias (p. ej. PDF/ZIP de
+ * `shipment_labels`) — conserva el mismo backoff/reintentos/clasificación de
+ * `ErrorHttpMl` que `peticionMl`, pero no intenta parsear JSON.
+ */
+export async function peticionBinariaMl(peticion: PeticionBinariaMl): Promise<RespuestaBinariaMl> {
+  return reintentarConBackoff(async () => {
+    const url = `${ML_API_BASE_URL}${peticion.ruta}`;
+    const encabezados: Record<string, string> = {
+      accept: peticion.accept ?? "application/octet-stream",
+      // Construido en el último momento posible; nunca asignado a una
+      // variable de mayor vida ni incluido en logs/objetos de error.
+      authorization: `Bearer ${peticion.accessToken}`,
+    };
+
+    const respuesta = await fetch(url, {
+      method: peticion.metodo,
+      headers: encabezados,
+    });
+
+    if (!respuesta.ok) {
+      const cuerpoError = await leerCuerpoSeguro(respuesta);
+      const retryAfterMs = leerRetryAfterMs(respuesta.headers);
+      throw new ErrorHttpMl(
+        `Mercado Libre respondió ${respuesta.status} para ${peticion.metodo} ${peticion.ruta}`,
+        respuesta.status,
+        cuerpoError,
+        retryAfterMs,
+      );
+    }
+
+    return {
+      contenido: await respuesta.arrayBuffer(),
+      contentType: respuesta.headers.get("content-type") ?? "application/octet-stream",
+    };
+  }, peticion.opcionesReintento);
+}
+
 /**
  * Lee el cuerpo de una respuesta de error sin arriesgar una segunda excepción
  * si el cuerpo no es JSON válido o ya fue consumido.

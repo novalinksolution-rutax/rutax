@@ -103,3 +103,20 @@ export type RazonFalloRefresco =
   | "limite_de_tasa"
   | "error_transitorio_proveedor"
   | "desconocido";
+
+// ---------------------------------------------------------------------------
+// Etiquetas de envío (RF-021)
+// ---------------------------------------------------------------------------
+
+export interface ObtenerEtiquetaEnvioEntrada {
+  sellerId: string;
+  /** `shipment_id` de Mercado Libre — identifica el envío Flex/same-day. */
+  mlShipmentId: string;
+}
+
+export interface ObtenerEtiquetaEnvioResultado {
+  /** Cuerpo binario de la etiqueta (PDF) — el llamador lo sirve sin transformarlo. */
+  contenido: ArrayBuffer;
+  /** Content-Type devuelto por ML — esperado `application/pdf`. */
+  contentType: string;
+}
