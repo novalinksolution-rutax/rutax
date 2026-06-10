@@ -50,7 +50,7 @@ import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cifrarSecreto, descifrarSecreto } from "../secretos";
 import type { ReferenciaSecreto } from "../secretos/tipos";
-import { ML_API_BASE_URL, ErrorHttpMl, peticionMl, peticionBinariaMl } from "./cliente-http";
+import { ML_AUTH_BASE_URL, ErrorHttpMl, peticionMl, peticionBinariaMl } from "./cliente-http";
 import { CacheIdempotencia } from "../resiliencia";
 import type {
   ConexionSellerMl,
@@ -148,7 +148,9 @@ export function iniciarAutorizacion(
   });
 
   return {
-    urlAutorizacion: `${ML_API_BASE_URL}/authorization?${parametros.toString()}`,
+    // Consentimiento en el host de Chile (auth.mercadolibre.cl), NO en el host
+    // global de la API. El token sí se intercambia en api.mercadolibre.com.
+    urlAutorizacion: `${ML_AUTH_BASE_URL}/authorization?${parametros.toString()}`,
   };
 }
 

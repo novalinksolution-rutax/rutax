@@ -48,7 +48,8 @@ describe("iniciarAutorizacion — construcción de URL (pura, sin red)", () => {
 
     const url = new URL(urlAutorizacion);
 
-    expect(url.origin).toBe("https://api.mercadolibre.com");
+    // Consentimiento en el host de Chile (no en el host global de la API).
+    expect(url.origin).toBe("https://auth.mercadolibre.cl");
     expect(url.pathname).toBe("/authorization");
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("client_id")).toBe("APP-ID-DE-PRUEBA");

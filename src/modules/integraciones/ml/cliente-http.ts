@@ -33,6 +33,17 @@ import {
 
 export const ML_API_BASE_URL = "https://api.mercadolibre.com";
 
+/**
+ * Host de la pantalla de AUTORIZACIÓN (consentimiento OAuth del seller).
+ * Es ESPECÍFICO por país: para Chile es `auth.mercadolibre.cl`. No confundir
+ * con `ML_API_BASE_URL` (`api.mercadolibre.com`, global), que se usa para el
+ * intercambio/refresco de tokens (`/oauth/token`) y todas las llamadas a la
+ * API. Redirigir el consentimiento al host global produce errores crípticos
+ * (sitio incorrecto / invalid_client). Proyecto Chile-only (CLAUDE.md) → host
+ * fijo, no configurable por ahora.
+ */
+export const ML_AUTH_BASE_URL = "https://auth.mercadolibre.cl";
+
 export class ErrorHttpMl extends Error implements Partial<ErrorReintentable> {
   readonly status: number;
   readonly reintentable?: true;
