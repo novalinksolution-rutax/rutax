@@ -33,6 +33,14 @@ Módulos del monolito (límites claros, no mezclar):
 - `dinero` — motor entrega→dinero, facturación DTE, liquidaciones, conciliación, cobranza.
 - `integraciones` — adaptadores aislados (un "puerto" por servicio: ML, DTE, pagos). El núcleo NO llama APIs externas directo.
 
+Convenciones de rutas en `src/app/` (Next.js App Router, App Router groups):
+- `(tenant)/` — área autenticada de roles internos del courier (dueño, supervisor, coordinador, administración). Layout único `(tenant)/layout.tsx` con navegación condicionada por capacidad RBAC. Todas las pantallas nuevas del courier (operación, manifiestos, dinero, configuración, onboarding, equipo, sellers) van aquí.
+- `portal/` — portal del seller (login propio en `portal/login`, pedidos, cobros con descarga de factura PDF, incidencias).
+- `conductor/` — vista del conductor (manifiesto del día, liquidaciones), pensada como PWA.
+- `login/` — login de usuarios internos del courier.
+- `(app)/` — grupo heredado de Fase A, reemplazado por `(tenant)`. No agregar pantallas nuevas ahí; está pendiente de limpieza.
+- `api/courier/*`, `api/operaciones/*` — endpoints de descarga/exportación (etiqueta ML, exportación de datos RNF-13). Mismo gating RBAC que la pantalla equivalente.
+
 ## Comandos
 (Mantén esta sección al día — es la de mayor valor para el agente.)
 - Dev: `npm run dev` (Next.js + Turbopack)
@@ -40,7 +48,8 @@ Módulos del monolito (límites claros, no mezclar):
 - Lint: `npm run lint`
 - Typecheck: `npm run typecheck`
 - Tests: `npm test` (Vitest — pruebas unitarias del lado servidor: RBAC, onboarding/invitaciones, cifrado de secretos, adaptador OAuth ML, reglas de dinero; conviven junto a su código fuente como `*.test.ts`, ver `vitest.config.ts`). `npm run test:watch` para modo watch. Las pruebas de aislamiento RLS viven aparte, en pgTAP (`supabase/tests/database/`, vía `npx supabase test db`).
-- Base de datos: migraciones versionadas e idempotentes vía Supabase CLI (aún no inicializado — se hace en Fase A junto con el esquema multi-tenant). Nada de DDL crudo fuera de migraciones.
+- Base de datos: migraciones versionadas e idempotentes en `supabase/migrations/` (Supabase CLI). Nada de DDL crudo fuera de migraciones.
+- Entorno local/staging: ver `docs/PRUEBA.md` para arranque completo (Supabase local, `npx supabase db seed` carga `supabase/seed.sql` con datos de demo de un solo tenant, Inngest Dev Server, credenciales de demo). Úsalo para QA funcional antes de marcar un ítem del checklist como hecho.
 - Variables de entorno: copia `.env.example` a `.env.local` y completa las claves de Supabase (Settings > API). Nunca commitees `.env.local`.
 
 ## Datos y tipo de información
@@ -60,10 +69,20 @@ Clasificación de sensibilidad (define cómo se trata cada dato):
 - Hosting: Vercel + Supabase.
 - Integraciones como adaptadores aislados (un "puerto" por servicio: ML, DTE, pagos).
 
+## Invariantes y convenciones transversales (no perderlas al extender)
+- **Compuerta de aprobación de facturación (NO auto-emitir DTE)**: emitir un DTE es irreversible ante el SII sin nota de crédito (RF-038, fuera del MVP). Ningún proceso automático (cron) emite facturas. El cron `cerrar-periodo` SOLO cierra (`abierto`→`cerrado`) y dispara `dinero/periodo.cerrado`, que activa únicamente la conciliación (C6, detective, de solo lectura). La emisión (`cerrado`→`facturado`) exige la acción humana `emitirFacturaPeriodo` (gate `puedeEmitirFacturas`), que publica `dinero/periodo.emision-solicitada` → C3. No re-acoplar la emisión al cierre.
+- **Bitácora antes que efectos externos, y con autor**: cualquier acción financiera o de acceso se registra en `bitacora_auditoria` ANTES de publicar un evento Inngest o llamar a una integración externa, así la auditoría queda completa aunque el paso siguiente falle. Toda acción financiera de un usuario lleva su `actorUsuarioId` (`sesion.usuarioId`, el UUID de auth) — RNF-04 exige el "quién". Patrón de referencia: `emitirFacturaPeriodo`/`cerrarPeriodoManualmente` en `src/modules/dinero/acciones.ts`.
+- **Eventos Inngest tipados**: los contratos de eventos del motor entrega→dinero viven en `src/lib/inngest/eventos.ts` (`dinero/periodo.cerrado` → solo conciliación; `dinero/periodo.emision-solicitada` → solo emisión DTE). Todo evento nuevo del motor se define ahí antes de emitirse o consumirse.
+- **Adaptador DTE en modo sandbox + opt-in real**: `src/modules/integraciones/dte/adaptadores/simplefactura.ts` corre con `DTE_SANDBOX_MODE=true` y NO emite DTEs reales al SII. La emisión real exige, además, opt-in explícito por courier (`identidad.courier_config_dte.emision_dte_real_habilitada`, default `false`). No cambiar a modo real sin decisión explícita del usuario y revisión de `seguridad-cumplimiento`. El adaptador real candidato (Openfactura) tiene un esqueleto validado en `docs/arquitectura/validacion-dte-openfactura.md`.
+- **Helpers de UI compartidos**: formato de moneda CLP, traducción/colores de estados y catálogo de comunas RM viven en `src/lib/ui/`. Reusarlos en vez de duplicar lógica de presentación entre `(tenant)`, `portal` y `conductor`.
+- **Checklist de pruebas funcionales**: `checklist-pruebas-funcionales-mvp.md` (raíz) registra el estado de cada RF/escenario E2E. Actualízalo (`[x]`/`[ ]`/`N/A` + nota) después de implementar y probar cada feature — es la fuente de verdad de "qué falta" para el MVP.
+
 ## Orden de construcción (MVP en fases)
-- A. Cimiento: multi-tenant + RLS, RBAC, onboarding del courier (certificado + proveedor DTE + folios), tarifas, OAuth del seller + refresco de tokens.
-- B. Operación: ingesta Flex + panel multi-seller, same-day ad-hoc, asignación + manifiesto, estados, incidencias, salud de conexiones + reconexión + backfill, dashboard del dueño, vista de conductor, portal del seller.
-- C. Motor entrega→dinero: líneas de cobro/liquidación, reglas de incidencia, conciliación, facturación DTE, liquidación de conductores.
+- A. Cimiento: multi-tenant + RLS, RBAC, onboarding del courier (certificado + proveedor DTE + folios), tarifas, OAuth del seller + refresco de tokens. **Estado: implementado.**
+- B. Operación: ingesta Flex + panel multi-seller, same-day ad-hoc, asignación + manifiesto, estados, incidencias, salud de conexiones + reconexión + backfill, dashboard del dueño, vista de conductor, portal del seller. **Estado: implementado.**
+- C. Motor entrega→dinero: líneas de cobro/liquidación, reglas de incidencia, conciliación, facturación DTE (sandbox), liquidación de conductores. **Estado: implementado y verificado end-to-end con datos de demo (ver checklist).**
+
+Pendiente (no implementar sin pedido explícito): observabilidad/Sentry, disponibilidad y respaldos (devops) — ver "Hallazgos de este pase" en el checklist.
 
 ## Orquestación (cómo enrutar el trabajo)
 Esta sesión principal coordina y delega; los subagentes NO se llaman entre sí (delegación de un solo nivel). Antes de actuar, lee este mapa y delega al agente correcto:
@@ -88,3 +107,7 @@ Antes de tocar integraciones externas, dinero o esquema de BD, carga la skill co
 Convierte estos documentos a Markdown en `docs/` para que el `@`-referencing funcione:
 - `@docs/levantamiento.md` — especificación completa: RF-001..RF-051, requerimientos no funcionales, usuarios y permisos, procesos AS-IS→TO-BE, arquitectura, roadmap, riesgos y plan de agentes/skills.
 - `@docs/informe-mercado.md` — contexto de mercado, competidores, modelo de negocio y TAM/SAM/SOM.
+- `@docs/arquitectura/fase-a-cimiento.md`, `@docs/arquitectura/fase-b-operacion.md`, `@docs/arquitectura/fase-c-dinero.md` — decisiones de arquitectura por fase (modelo de datos, RLS, contratos entre módulos).
+- `@docs/ux/fase-a-onboarding.md`, `@docs/ux/fase-b-operacion.md`, `@docs/ux/fase-c-dinero.md` — flujos y wireframes conceptuales por fase.
+- `@docs/PRUEBA.md` — guía de arranque del entorno local/staging y datos de demo (un solo tenant).
+- `@checklist-pruebas-funcionales-mvp.md` — checklist de pruebas funcionales del MVP; mantenerlo al día.
