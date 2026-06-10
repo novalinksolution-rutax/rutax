@@ -1,34 +1,35 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { createClient } from "@/lib/supabase/server";
 import {
-  puedeGestionarConfiguracionDte,
-  puedeGestionarUsuariosYRoles,
-  puedeVerReportesEjecutivos,
   puedeAsignarYReasignarPedidos,
-  puedeGenerarManifiestos,
   puedeAjustarOperacionDiaria,
+  puedeVerReportesEjecutivos,
+  puedeGenerarManifiestos,
+  puedeGestionarUsuariosYRoles,
+  puedeGestionarConfiguracionDte,
   puedeEmitirFacturas,
   puedeGestionarLiquidacionesConductores,
   puedeVerConciliacion,
+  puedeVerBitacoraAuditoria,
 } from "@/modules/identidad/capacidades";
 import { BarraSuperior } from "@/components/app-shell/barra-superior";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
 import { resolverEstadoOnboarding } from "@/app/(tenant)/onboarding/estado";
 
 /**
- * Cascarón mínimo del área autenticada — sirve a las pantallas D-K de este
- * lote (onboarding del courier, equipo, sellers). No reemplaza al dashboard
- * del dueño (RF-046, fuera de alcance) — es justo el andamiaje de navegación
- * que esas pantallas necesitan para no quedar sueltas.
+ * Layout del área autenticada para roles internos del courier (dueño, supervisor,
+ * coordinador, administración). Los conductores van a /conductor y los sellers
+ * a /portal — nunca deben llegar aquí.
  *
- * La navegación se ajusta por capacidad — no porque "ocultar baste" (la
- * autorización real vive en el backend, CLAUDE.md), sino porque mostrar un
- * enlace a una sección que el actor no puede usar es, en sí, un error de UX
- * (lleva a un caso "sin permiso" evitable).
+ * Redirección por rol al iniciar sesión:
+ * - dueno → /dashboard
+ * - supervisor / coordinador → /operaciones
+ * - administracion → /onboarding (sin sección operativa en este MVP)
  */
-export default async function LayoutApp({ children }: { children: React.ReactNode }) {
+export default async function LayoutTenant({ children }: { children: React.ReactNode }) {
   const sesion = await obtenerSesionActual();
+
   if (!sesion) {
     redirect("/login");
   }
@@ -37,6 +38,15 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
   }
   if (!sesion.usuario.tenantId) {
     redirect("/login");
+  }
+
+  // Conductores → su PWA, no el backoffice.
+  if (sesion.usuario.tipoUsuario === "conductor") {
+    redirect("/conductor/manifiesto");
+  }
+  // Sellers → su portal.
+  if (sesion.usuario.tipoUsuario === "seller") {
+    redirect("/portal");
   }
 
   const supabase = await createClient();
@@ -53,7 +63,6 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
 
   const enlaces: { href: string; etiqueta: string }[] = [];
 
-  // Operación — solo para roles internos operativos
   if (puedeVerReportesEjecutivos(sesion.usuario)) {
     enlaces.push({ href: "/dashboard", etiqueta: "Dashboard" });
   }
@@ -73,21 +82,20 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
     enlaces.push({ href: "/dinero/conciliacion", etiqueta: "Conciliación" });
   }
 
-  // Configuración
   enlaces.push({ href: "/onboarding", etiqueta: "Onboarding" });
   if (puedeGestionarUsuariosYRoles(sesion.usuario)) {
     enlaces.push({ href: "/equipo", etiqueta: "Equipo" });
   }
   enlaces.push({ href: "/sellers", etiqueta: "Sellers" });
+  if (puedeVerBitacoraAuditoria(sesion.usuario)) {
+    enlaces.push({ href: "/configuracion/exportar-datos", etiqueta: "Exportar datos" });
+  }
 
-  // Banner persistente de onboarding incompleto (§1.3): solo se calcula y
-  // muestra a quien puede ACTUAR sobre esos pasos — mostrarlo a alguien que no
-  // puede resolverlo sería ruido sin acción posible (criterio §5 transversal:
-  // "todo estado lleva una acción clara").
   const puedeActuarSobreOnboarding = puedeGestionarConfiguracionDte(sesion.usuario);
-  const estadoOnboarding = puedeActuarSobreOnboarding && sesion.usuario.tenantId
-    ? await resolverEstadoOnboarding(sesion.usuario.tenantId)
-    : null;
+  const estadoOnboarding =
+    puedeActuarSobreOnboarding && sesion.usuario.tenantId
+      ? await resolverEstadoOnboarding(sesion.usuario.tenantId)
+      : null;
 
   return (
     <div className="flex min-h-svh flex-col bg-muted/20">

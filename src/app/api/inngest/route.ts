@@ -32,17 +32,40 @@ import { jobEjecutarBackfill } from "@/modules/integraciones/ml/jobs/ejecutar-ba
 // Jobs de notificaciones
 import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaciones/conexion-caida";
 
+// Jobs de operación
+import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
+
+// Jobs de Dinero (Fase C — motor entrega→dinero)
+import { jobGenerarLineas } from "@/modules/dinero/jobs/generar-lineas";
+import { jobCerrarPeriodo } from "@/modules/dinero/jobs/cerrar-periodo";
+import { jobEmitirDtePeriodo } from "@/modules/dinero/jobs/emitir-dte-periodo";
+import { jobGenerarLiquidacionConductor } from "@/modules/dinero/jobs/generar-liquidacion-conductor";
+import { jobPollingEstadoDte } from "@/modules/dinero/jobs/polling-estado-dte";
+import { jobConciliarPeriodo } from "@/modules/dinero/jobs/conciliar-periodo";
+import { jobAlertaFoliosProximos } from "@/modules/dinero/jobs/alerta-folios-proximos";
+
 /**
  * Array de todas las funciones de Inngest del sistema.
  * Se pasa completo al `serve()` para que el servidor de Inngest las conozca.
  */
 const funciones = [
+  // Jobs ML (Fase B)
   jobRefrescarTokens,
   jobSondeoSaludConexiones,
   jobProcesarShipmentActualizado,
   jobPollingEstadosPedidos,
   jobEjecutarBackfill,
   jobNotificacionConexionCaida,
+  // Jobs de operación
+  jobNotificacionIncidenciasSinGestion,
+  // Jobs Dinero (Fase C)
+  jobGenerarLineas,
+  jobCerrarPeriodo,
+  jobEmitirDtePeriodo,
+  jobGenerarLiquidacionConductor,
+  jobPollingEstadoDte,
+  jobConciliarPeriodo,
+  jobAlertaFoliosProximos,
 ];
 
 export const { GET, POST, PUT } = serve({

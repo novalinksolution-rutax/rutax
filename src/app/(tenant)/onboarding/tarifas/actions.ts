@@ -55,7 +55,7 @@ export async function obtenerEstadoTarifas(): Promise<
   const [{ data: filasTarifas, error: errorTarifas }, { data: filasSellers, error: errorSellers }] = await Promise.all([
     supabase
       .from("tarifas")
-      .select("id, seller_id, tipo_entrega, zona, monto_clp, vigente_desde, vigente_hasta, estado, sellers(razon_social)")
+      .select("id, seller_id, tipo_entrega, zona, monto_clp, vigente_desde, vigente_hasta, estado, sellers!tarifas_seller_id_fkey(razon_social)")
       .eq("tenant_id", sesion.usuario.tenantId)
       .order("estado", { ascending: true })
       .order("vigente_desde", { ascending: false }),
