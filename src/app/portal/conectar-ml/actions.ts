@@ -26,7 +26,7 @@ import { randomBytes } from "node:crypto";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarConexionMlPropia } from "@/modules/identidad/capacidades";
 import { iniciarAutorizacion } from "@/modules/integraciones/ml";
-import { COOKIE_MODO_ML, COOKIE_STATE_ML, type ModoConexionMl } from "./compartido";
+import { COOKIE_MODO_ML, COOKIE_STATE_ML, obtenerUrlBasePublica, type ModoConexionMl } from "./compartido";
 
 const VIGENCIA_STATE_SEGUNDOS = 10 * 60;
 
@@ -36,12 +36,17 @@ export interface IniciarConexionMlResultado {
   mensaje?: string;
 }
 
-/** Arma el `redirect_uri` a partir del host de la petición actual. */
+/**
+ * Arma el `redirect_uri` desde la URL base pública canónica (`APP_PUBLIC_URL`
+ * si está configurada; si no, el host de la petición). Debe coincidir EXACTO
+ * con el registrado en ML y con el que usa el callback al canjear el `code`.
+ */
 async function construirRedirectUri(): Promise<string> {
   const cabeceras = await headers();
   const protocolo = cabeceras.get("x-forwarded-proto") ?? "https";
   const host = cabeceras.get("x-forwarded-host") ?? cabeceras.get("host");
-  return `${protocolo}://${host}/oauth/ml/callback`;
+  const base = obtenerUrlBasePublica(`${protocolo}://${host}`);
+  return `${base}/oauth/ml/callback`;
 }
 
 /**

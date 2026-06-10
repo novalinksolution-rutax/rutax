@@ -32,6 +32,7 @@ import { esErrorReintentable } from "@/modules/integraciones/resiliencia";
 import {
   COOKIE_MODO_ML,
   COOKIE_STATE_ML,
+  obtenerUrlBasePublica,
   type ModoConexionMl,
   type ResultadoCallbackMl,
 } from "@/app/portal/conectar-ml/compartido";
@@ -51,7 +52,12 @@ function limpiarCookiesFlujo(respuesta: NextResponse): void {
 }
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams, origin: originPeticion } = new URL(request.url);
+  // URL base pública canónica: detrás de un túnel, `originPeticion` es
+  // `localhost`; el `redirect_uri` del canje y las redirecciones deben usar el
+  // dominio público (el mismo registrado en ML) para no romper el OAuth ni
+  // perder las cookies de sesión al saltar de dominio.
+  const origin = obtenerUrlBasePublica(originPeticion);
 
   const almacenCookies = await cookies();
   const stateCookie = almacenCookies.get(COOKIE_STATE_ML)?.value ?? null;
