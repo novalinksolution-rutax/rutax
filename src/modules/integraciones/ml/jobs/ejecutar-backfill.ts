@@ -35,6 +35,15 @@ import { ML_API_BASE_URL } from "../cliente-http";
 const VENTANA_MAXIMA_DIAS = 7;
 const PAGE_SIZE = 50;
 
+/**
+ * Tipo logístico de Mercado Libre que corresponde a Flex (el seller/courier
+ * hace el last-mile). Es el ÚNICO que este SaaS ingiere: Full (`fulfillment`),
+ * Colecta (`cross_docking`) y Agencia (`drop_off`/`xd_drop_off`) los despacha
+ * ML, no hay conductor del courier — el motor entrega→dinero no aplica.
+ * Fuente: campo `logistic_type` del shipment en la API de ML.
+ */
+export const LOGISTIC_TYPE_FLEX = "self_service";
+
 interface EventoConexionReconectada {
   conexionId: string;
   sellerId: string;
@@ -69,6 +78,41 @@ interface OrderMl {
   };
   date_created?: string;
   status?: string;
+}
+
+/**
+ * Trae el `logistic_type` de un lote de shipments vía el endpoint batch de ML
+ * (`GET /shipments?ids=`). Devuelve un mapa shipmentId → logistic_type para
+ * filtrar a Flex antes de ingerir. Un shipment ausente/sin tipo queda como
+ * `null` → se OMITE (no se asume Flex): preferimos no ingerir que mis-ingerir
+ * un Full como Flex.
+ */
+export async function obtenerLogisticTypePorShipment(
+  shipmentIds: string[],
+  accessToken: string,
+): Promise<Map<string, string | null>> {
+  const mapa = new Map<string, string | null>();
+  if (shipmentIds.length === 0) return mapa;
+
+  const idsParam = shipmentIds.join(",");
+  const respuesta = await fetch(
+    `${ML_API_BASE_URL}/shipments?ids=${encodeURIComponent(idsParam)}`,
+    { method: "GET", headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" } },
+  );
+
+  if (!respuesta.ok) {
+    throw new Error(`ML respondió ${respuesta.status} para batch de shipments (backfill)`);
+  }
+
+  const shipments = (await respuesta.json()) as Array<{
+    id: number | string;
+    logistic_type?: string | null;
+  }>;
+
+  for (const s of shipments ?? []) {
+    mapa.set(String(s.id), s.logistic_type ?? null);
+  }
+  return mapa;
 }
 
 export const jobEjecutarBackfill = inngest.createFunction(
@@ -197,6 +241,7 @@ export const jobEjecutarBackfill = inngest.createFunction(
       const supabase = crearClienteServiceRole();
       let offset = 0;
       let totalProcesados = 0;
+      let totalOmitidosNoFlex = 0;
       let hayMas = true;
 
       // Inngest serializa el retorno de step.run a JSON — las fechas quedan
@@ -237,12 +282,28 @@ export const jobEjecutarBackfill = inngest.createFunction(
         const orders: OrderMl[] = body.results ?? [];
         const paging = body.paging;
 
+        // Resolver el logistic_type de los envíos de esta página en un solo
+        // batch, para ingerir SOLO Flex (self_service) y descartar Full/Colecta/
+        // Agencia, que ML despacha (no hay conductor del courier).
+        const shipmentIdsPagina = orders
+          .map((o) => (o.shipping?.shipment_id ? String(o.shipping.shipment_id) : null))
+          .filter((id): id is string => id !== null);
+        const mapaLogistic = await obtenerLogisticTypePorShipment(shipmentIdsPagina, accessToken);
+
         for (const order of orders) {
           const shipmentId = order.shipping?.shipment_id
             ? String(order.shipping.shipment_id)
             : null;
 
           if (!shipmentId) continue;
+
+          // Filtro de alcance: solo Flex. Si el tipo no es self_service
+          // (Full/Colecta/Agencia) o no se pudo resolver, se omite — nunca se
+          // ingiere como Flex.
+          if (mapaLogistic.get(shipmentId) !== LOGISTIC_TYPE_FLEX) {
+            totalOmitidosNoFlex++;
+            continue;
+          }
 
           // Upsert en operacion.pedidos con origen = 'backfill'
           // ON CONFLICT (tenant_id, ml_shipment_id) → actualizar estado_ml si difiere
@@ -277,6 +338,13 @@ export const jobEjecutarBackfill = inngest.createFunction(
 
         offset += orders.length;
         hayMas = offset < (paging?.total ?? 0);
+      }
+
+      if (totalOmitidosNoFlex > 0) {
+        logger.info(
+          `Backfill conexión ${conexionId}: ${totalOmitidosNoFlex} envíos omitidos ` +
+            "por no ser Flex (self_service) — Full/Colecta/Agencia fuera de alcance.",
+        );
       }
 
       // El accessToken sale de scope aquí.

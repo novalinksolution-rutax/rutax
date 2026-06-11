@@ -13,7 +13,8 @@
  * 5. Pedidos sin shipment_id son ignorados (no se insertan).
  * 6. Token nunca aparece en parámetros públicos del job (seguridad).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { obtenerLogisticTypePorShipment, LOGISTIC_TYPE_FLEX } from "./ejecutar-backfill";
 
 // =============================================================================
 // Lógica de cálculo de ventana — extraída para prueba pura (sin Inngest/BD)
@@ -301,5 +302,105 @@ describe("ejecutarBackfill — paginación (cálculo de hayMas)", () => {
 
   it("offset=100, total=100 → no hay más páginas", () => {
     expect(hayMasPaginas(100, 100)).toBe(false);
+  });
+});
+
+// =============================================================================
+// Filtro de alcance: solo Flex (self_service) — Full/Colecta/Agencia se omiten
+// =============================================================================
+
+describe("ejecutarBackfill — obtenerLogisticTypePorShipment (batch real)", () => {
+  it("mapea cada shipment a su logistic_type; ausente → null", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: 111, logistic_type: "self_service" },
+        { id: 222, logistic_type: "fulfillment" },
+        { id: 333 }, // sin logistic_type → null
+      ],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const mapa = await obtenerLogisticTypePorShipment(["111", "222", "333"], "tok-secreto");
+
+    expect(mapa.get("111")).toBe("self_service");
+    expect(mapa.get("222")).toBe("fulfillment");
+    expect(mapa.get("333")).toBe(null);
+    // El token va en el header Authorization, NUNCA en la URL.
+    const urlLlamada = String(fetchMock.mock.calls[0][0]);
+    expect(urlLlamada).not.toContain("tok-secreto");
+    vi.unstubAllGlobals();
+  });
+
+  it("lista vacía → no llama a fetch y devuelve mapa vacío", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const mapa = await obtenerLogisticTypePorShipment([], "tok");
+    expect(mapa.size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("respuesta no-ok → lanza (lo reintenta Inngest)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }));
+    await expect(obtenerLogisticTypePorShipment(["1"], "tok")).rejects.toThrow();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("ejecutarBackfill — decisión de filtro: solo se ingiere Flex", () => {
+  interface OrderMl {
+    id: number | string;
+    shipping?: { shipment_id?: number | string | null };
+  }
+
+  /** Espejo fiel de la decisión dentro del loop for(order of orders) del job. */
+  function shipmentsIngeridos(orders: OrderMl[], mapaLogistic: Map<string, string | null>): string[] {
+    const out: string[] = [];
+    for (const order of orders) {
+      const sid = order.shipping?.shipment_id ? String(order.shipping.shipment_id) : null;
+      if (!sid) continue;
+      if (mapaLogistic.get(sid) !== LOGISTIC_TYPE_FLEX) continue;
+      out.push(sid);
+    }
+    return out;
+  }
+
+  it("Full (fulfillment) → omitido", () => {
+    const orders: OrderMl[] = [{ id: 1, shipping: { shipment_id: 222 } }];
+    const mapa = new Map<string, string | null>([["222", "fulfillment"]]);
+    expect(shipmentsIngeridos(orders, mapa)).toHaveLength(0);
+  });
+
+  it("mixto Flex + Full + Colecta → solo el Flex", () => {
+    const orders: OrderMl[] = [
+      { id: 1, shipping: { shipment_id: 111 } },
+      { id: 2, shipping: { shipment_id: 222 } },
+      { id: 3, shipping: { shipment_id: 333 } },
+    ];
+    const mapa = new Map<string, string | null>([
+      ["111", "self_service"],
+      ["222", "fulfillment"],
+      ["333", "cross_docking"],
+    ]);
+    expect(shipmentsIngeridos(orders, mapa)).toEqual(["111"]);
+  });
+
+  it("logistic_type ausente (null) → omitido (no se asume Flex)", () => {
+    const orders: OrderMl[] = [{ id: 1, shipping: { shipment_id: 444 } }];
+    const mapa = new Map<string, string | null>([["444", null]]);
+    expect(shipmentsIngeridos(orders, mapa)).toHaveLength(0);
+  });
+
+  it("todos Flex → todos ingeridos", () => {
+    const orders: OrderMl[] = [
+      { id: 1, shipping: { shipment_id: 111 } },
+      { id: 2, shipping: { shipment_id: 222 } },
+    ];
+    const mapa = new Map<string, string | null>([
+      ["111", "self_service"],
+      ["222", "self_service"],
+    ]);
+    expect(shipmentsIngeridos(orders, mapa)).toEqual(["111", "222"]);
   });
 });
