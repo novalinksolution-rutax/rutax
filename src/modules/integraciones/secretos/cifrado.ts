@@ -166,7 +166,14 @@ export async function cifrarSecreto(entrada: CifrarEntrada): Promise<CifrarResul
     .insert({
       tenant_id: entrada.tenantId,
       tipo_secreto: entrada.tipoSecreto,
-      valor_cifrado: paquete,
+      // BUG FIX (crítico): NO pasar el Buffer crudo. supabase-js (PostgREST)
+      // serializa un Buffer a JSON como {"type":"Buffer","data":[...]}, y eso
+      // (texto) es lo que terminaba guardado en la columna `bytea` — el secreto
+      // quedaba IRRECUPERABLE (al leerlo, el primer byte era `{` 0x7b, no el
+      // byte de versión, y el descifrado fallaba → conexiones marcadas como
+      // desvinculadas). Se envía como hex `\x...`, el formato de entrada bytea
+      // de Postgres, simétrico con la lectura (`bufferDesdeColumnaBytea`).
+      valor_cifrado: `\\x${paquete.toString("hex")}`,
       metadata: metadataPersistida,
       vence_en: entrada.venceEn ? entrada.venceEn.toISOString() : null,
     })
