@@ -121,16 +121,59 @@ class ErrorHttpOpenfactura extends Error implements Partial<ErrorReintentable> {
   readonly status: number;
   readonly reintentable?: true;
   readonly retryAfterMs?: number;
+  /** Mensaje operativo saneado del cuerpo `{error:{...}}` (sin secretos). */
+  readonly mensajeProveedor?: string;
+  /** Código de negocio del proveedor (p. ej. `"OF-10"`), si vino. */
+  readonly codigoProveedor?: string;
 
-  constructor(mensaje: string, status: number, retryAfterMs?: number) {
+  constructor(
+    mensaje: string,
+    status: number,
+    opts?: { retryAfterMs?: number; mensajeProveedor?: string; codigoProveedor?: string },
+  ) {
     super(mensaje);
     this.name = 'ErrorHttpOpenfactura';
     this.status = status;
+    if (opts?.mensajeProveedor) this.mensajeProveedor = opts.mensajeProveedor;
+    if (opts?.codigoProveedor) this.codigoProveedor = opts.codigoProveedor;
     if (status === 429 || status >= 500) {
       this.reintentable = true;
-      if (retryAfterMs !== undefined) this.retryAfterMs = retryAfterMs;
+      if (opts?.retryAfterMs !== undefined) this.retryAfterMs = opts.retryAfterMs;
     }
   }
+}
+
+/**
+ * Extrae un mensaje operativo SANEADO del cuerpo de error de Openfactura, cuyo
+ * shape fue verificado en vivo: `{ error: { message, code, details:[{field,
+ * issue}] } }`. Solo toma texto de negocio (mensaje, código y el primer
+ * field/issue) — nunca el cuerpo crudo completo ni headers, y la API key jamás
+ * viaja en el body. Devuelve `null` si el cuerpo no tiene esa forma.
+ */
+function extraerErrorOpenfactura(
+  cuerpo: unknown,
+): { mensaje: string; codigo?: string } | null {
+  if (!cuerpo || typeof cuerpo !== 'object' || !('error' in cuerpo)) return null;
+  const err = (cuerpo as { error?: unknown }).error;
+  if (!err || typeof err !== 'object') return null;
+  const e = err as { message?: string; code?: string; details?: Array<{ field?: string; issue?: string }> };
+  const detalle = Array.isArray(e.details) && e.details.length > 0 ? e.details[0] : undefined;
+  const partes = [
+    e.message,
+    detalle?.field && detalle.field !== 'Error' ? `[${detalle.field}]` : undefined,
+    detalle?.issue,
+  ].filter(Boolean);
+  if (partes.length === 0 && !e.code) return null;
+  return { mensaje: partes.join(' ') || 'error sin descripción', codigo: e.code };
+}
+
+/**
+ * ¿El error del proveedor indica folios/CAF agotados? Heurística sobre el
+ * mensaje saneado, a falta de un código dedicado documentado por Openfactura.
+ * El job C3 usa esto para NO reintentar y alertar (job C7) en vez de fallar duro.
+ */
+function pareceFolioAgotado(texto: string): boolean {
+  return /folio|caf|timbr/i.test(texto) && /agotad|insuficien|sin\s|no\s+hay|disponib/i.test(texto);
 }
 
 // ---------------------------------------------------------------------------
@@ -192,8 +235,24 @@ interface OpenfacturaDocumentResponse {
   /** XML firmado en base64 (presente si se pidió "XML" en `response`). */
   XML?: string;
   TIMBRE?: string;
-  // El cuerpo de error de Openfactura usa `{ message, code, details }`.
-  error?: { message?: string; code?: number };
+  /**
+   * Cuerpo de error de Openfactura — VERIFICADO EN VIVO contra el sandbox
+   * (`scripts/validacion-dte-openfactura.mjs`, junio 2026):
+   *   `{ error: { message, code, details: [{ field, issue }] } }`
+   * `code` es un STRING tipo `"OF-02"` / `"OF-10"` (NO numérico, como asumía el
+   * esqueleto original), y `details` es un array con el campo y el problema
+   * concretos. Ninguno de estos campos lleva secretos (la API key viaja solo en
+   * el header `apikey`), así que el cuerpo es seguro para construir el mensaje
+   * operativo del error.
+   *
+   * Códigos observados: `OF-02` = faltan campos obligatorios; `OF-10` =
+   * validación de campos (p. ej. actividad económica no registrada).
+   */
+  error?: {
+    message?: string;
+    code?: string;
+    details?: Array<{ field?: string; issue?: string }>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -255,14 +314,15 @@ export class OpenfacturaAdapter implements PuertoDte {
     // Idempotency-Key estable: un reintento de red no debe emitir dos veces.
     const idempotencyKey = `${entrada.rutEmisor}-${tipoDocumento}-${entrada.folio}`;
 
-    // TODO-VALIDAR-EN-VIVO: confirmar contra el sandbox que el POST con un
-    // `response` que incluye "PDF" y "XML" devuelve ambos INLINE en base64 en
-    // la misma respuesta (el SDK lo indica, pero hay que verlo en vivo).
+    // VERIFICADO EN VIVO (sandbox, junio 2026): el POST con `response`
+    // incluyendo "PDF"/"XML"/"TIMBRE" devuelve los tres INLINE en base64 en la
+    // misma respuesta, junto a `TOKEN` (hex de 64) y `FOLIO` (auto-asignado).
     const respuesta = await this.peticion<OpenfacturaDocumentResponse>({
       metodo: 'POST',
       ruta: '/v2/dte/document',
       cuerpoJson: payload,
       idempotencyKey,
+      tenantId,
     });
 
     return {
@@ -296,23 +356,30 @@ export class OpenfacturaAdapter implements PuertoDte {
   ): Promise<ConsultarEstadoDteResultado> {
     this.exigirApiKey();
 
-    // TODO-VALIDAR-EN-VIVO: el path de consulta es
-    //   GET /v2/dte/document/{rut}/{type}/{documentNumber}/{value}
-    // Requiere rut emisor + tipo + folio + un "value" (parámetro de formato).
-    // PROBLEMA DE CONTRATO: el puerto entrega solo `idExternoProveedor` (el
-    // TOKEN), no el {rut}/{type}/{folio} que este GET necesita. Opciones:
-    //   (a) persistir esos datos y pasarlos al puerto (cambio de firma), o
-    //   (b) confirmar si existe un GET por TOKEN (no documentado en el SDK).
-    // Hasta resolverlo en vivo, este método NO puede construir la URL real.
-    // Documentado en el gap analysis; NO cambiamos la firma del puerto aquí.
+    // VERIFICADO EN VIVO (sandbox, junio 2026): el path es
+    //   GET /v2/dte/document/{rut}/{tipo}/{folio}/{value}
+    // (4 segmentos tras `document`; sin el último da 404 "Api no encontrada").
+    // DOS BLOQUEOS QUE EL SANDBOX NO PUDO RESOLVER:
+    //   (a) `{value}` es un CÓDIGO DE VERIFICACIÓN propietario, NO el monto
+    //       total ni el neto ni el rut receptor ni el TOKEN (todos probados →
+    //       OF-10 "X es Incorrecto"). No está documentado públicamente; se
+    //       confirma con soporte de Haulmer o en producción.
+    //   (b) El estado SII es asíncrono y con CAF SIMULADO el sandbox NO lo
+    //       resuelve a aceptado/rechazado → el shape real de `mapearEstadoSii`
+    //       sigue sin observarse en vivo. Requiere ambiente de certificación.
+    // PROBLEMA DE CONTRATO ADICIONAL: el puerto entrega solo `idExternoProveedor`
+    // (el TOKEN), no el {rut}/{tipo}/{folio} que el GET necesita → al cablear
+    // hay que persistir rut/tipo/folio + el código de verificación.
+    // Ver docs/arquitectura/validacion-dte-openfactura.md (sección "Validación
+    // en vivo — resultados").
     void idExternoProveedor;
     void tenantId;
 
     throw new ErrorDteProveedor(
       501,
-      'consultarEstadoDte (Openfactura): pendiente de validar en vivo el shape ' +
-        'del estado SII y la clave de consulta (TOKEN vs rut/tipo/folio) — ver ' +
-        'docs/arquitectura/validacion-dte-openfactura.md',
+      'consultarEstadoDte (Openfactura): bloqueado por el {value} de verificación ' +
+        '(propietario, no documentado) y el estado SII asíncrono no observable en ' +
+        'sandbox (CAF simulado) — ver docs/arquitectura/validacion-dte-openfactura.md',
     );
 
     // FORMA OBJETIVO una vez validado en vivo (referencia, no ejecutable):
@@ -446,6 +513,8 @@ export class OpenfacturaAdapter implements PuertoDte {
     ruta: string;
     cuerpoJson?: unknown;
     idempotencyKey?: string;
+    /** tenantId del llamador, para poder lanzar `ErrorFolioAgotado` con el quién. */
+    tenantId?: string;
   }): Promise<T> {
     return reintentarConBackoff(async () => {
       const headers: Record<string, string> = {
@@ -465,16 +534,20 @@ export class OpenfacturaAdapter implements PuertoDte {
 
       if (!respuesta.ok) {
         const retryAfterMs = this.leerRetryAfterMs(respuesta.headers);
-        // No incluimos el cuerpo crudo en el error de transporte para evitar
-        // filtrar datos sensibles; el detalle operativo se mapea aparte.
-        // TODO-VALIDAR-EN-VIVO: confirmar el shape del cuerpo de error de
-        // Openfactura (`{ message, code, details }`) y mapear:
-        //  - "sin folios"/CAF agotado → ErrorFolioAgotado (no reintentable)
-        //  - rechazo de validación de esquema → ErrorDteProveedor 4xx
+        // VERIFICADO EN VIVO: el cuerpo de error es `{error:{message,code,
+        // details:[{field,issue}]}}` y NO contiene secretos (la API key viaja
+        // solo en el header). Extraemos un mensaje operativo saneado para
+        // diagnóstico — nunca el cuerpo crudo completo.
+        const cuerpoError = await respuesta.json().catch(() => null);
+        const detalle = extraerErrorOpenfactura(cuerpoError);
         throw new ErrorHttpOpenfactura(
           `Openfactura respondió ${respuesta.status} para ${opts.metodo} ${opts.ruta}`,
           respuesta.status,
-          retryAfterMs,
+          {
+            retryAfterMs,
+            mensajeProveedor: detalle?.mensaje,
+            codigoProveedor: detalle?.codigo,
+          },
         );
       }
 
@@ -482,10 +555,18 @@ export class OpenfacturaAdapter implements PuertoDte {
     }).catch((error: unknown) => {
       // Traducir el error de transporte al error de dominio del puerto.
       if (error instanceof ErrorHttpOpenfactura) {
-        throw new ErrorDteProveedor(
-          error.status,
-          `Openfactura: error HTTP ${error.status} (sin exponer credenciales ni cuerpo crudo)`,
-        );
+        // CAF/folios agotados → error de dominio NO reintentable (el job C3 no
+        // debe reintentar; debe alertar vía C7). Heurística sobre el mensaje
+        // saneado, a falta de un código dedicado de Openfactura.
+        if (opts.tenantId && error.mensajeProveedor && pareceFolioAgotado(error.mensajeProveedor)) {
+          throw new ErrorFolioAgotado(opts.tenantId);
+        }
+        // El mensaje saneado del proveedor SÍ es seguro de propagar (sin
+        // credenciales ni cuerpo crudo) — ayuda al diagnóstico operativo.
+        const sufijo = error.mensajeProveedor
+          ? `: ${error.codigoProveedor ? `[${error.codigoProveedor}] ` : ''}${error.mensajeProveedor}`
+          : ' (sin detalle del proveedor)';
+        throw new ErrorDteProveedor(error.status, `Openfactura${sufijo}`);
       }
       throw error;
     });

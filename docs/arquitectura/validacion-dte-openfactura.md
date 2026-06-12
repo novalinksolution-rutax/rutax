@@ -8,8 +8,9 @@ del stub.
 
 **Estado:** investigación de contrato + adaptador esqueleto
 (`src/modules/integraciones/dte/adaptadores/openfactura.ts`) **hechos**.
-Validación **en vivo pendiente** (requiere credenciales del sandbox — ver
-"Qué necesita decidir/proveer el dueño").
+Validación **en vivo EJECUTADA** (11-jun-2026) contra el sandbox público de
+Openfactura — ver la sección **"Validación en vivo — resultados"** al final.
+El harness reproducible vive en `scripts/validacion-dte-openfactura.mjs`.
 
 > El esqueleto **no está cableado** en la fábrica `obtenerPuertoDte`: el stub
 > sigue siendo el default del MVP. Es material de validación de contrato, no un
@@ -97,3 +98,81 @@ Todo esto es **aditivo** y no rompe el stub: el MVP sigue corriendo en sandbox.
 Mientras tanto, el sistema sigue en **sandbox stub** y la **emisión real exige
 opt-in explícito por courier** (`courier_config_dte.emision_dte_real_habilitada`,
 migración 0007) + la **compuerta de aprobación humana** (`emitirFacturaPeriodo`).
+
+---
+
+## 5. Validación en vivo — resultados (11-jun-2026)
+
+Ejecutada con `scripts/validacion-dte-openfactura.mjs` contra el sandbox
+`https://dev-api.haulmer.com` usando la **API key de prueba pública** que Haulmer
+documenta (`928e15a2…`, CAF simulado, sin efectos tributarios — no es un secreto
+de tenant). Emisor de prueba: `76795561-8` (HAULMER SPA). Tres llamadas:
+emisión, consulta y caso de error.
+
+### ✅ Confirmado en vivo
+
+1. **PDF/XML/TIMBRE INLINE en base64 (brecha 1 — RESUELTA).** El `POST
+   /v2/dte/document` con `response: ["XML","PDF","TIMBRE","FOLIO"]` devolvió, en
+   la **misma** respuesta de emisión:
+   - `TOKEN`: string hex de 64 chars → `idExternoProveedor`.
+   - `FOLIO`: number, **auto-asignado** por el proveedor (p. ej. 188872).
+   - `PDF` (~207 KB), `XML` (~15 KB), `TIMBRE` (~7 KB): **base64 inline**.
+   - `WARNING`: array de objetos (ver abajo).
+   → Confirma el diseño: el job C3 debe **subir esos base64 a Storage privado**
+   y guardar `pdf_ref`/`xml_dte_ref` (el puerto declara `xmlUrl`/`pdfUrl`, pero
+   el contenido llega inline, no como URL).
+
+2. **Shape del cuerpo de error.** `{ error: { message, code, details:[{field,
+   issue}] } }`. **`code` es STRING** (`"OF-02"`, `"OF-10"`), no numérico como
+   asumía el esqueleto → **corregido** en `openfactura.ts`
+   (`OpenfacturaDocumentResponse.error`, helper `extraerErrorOpenfactura`). El
+   cuerpo NO lleva secretos → es seguro propagar un mensaje saneado para
+   diagnóstico. Códigos observados: `OF-02` faltan campos obligatorios; `OF-10`
+   validación de campos.
+
+3. **Path de consulta.** Es `GET /v2/dte/document/{rut}/{tipo}/{folio}/{value}`
+   (4 segmentos; sin el último → 404 "Api no encontrada").
+
+### ⚠️ Hallazgos de producción
+
+4. **`RznSoc` debe calzar con el SII.** La emisión devolvió `WARNING:
+   [{ "RznSoc": "Razón Social no corresponde con nuestros registros" }]`. En
+   producción, la razón social de cada courier debe coincidir EXACTO con el
+   registro del SII → validarlo en el onboarding del courier.
+
+5. **`Acteco` debe estar registrado.** El `Acteco` del ejemplo oficial (525130)
+   ya no está registrado para el emisor de prueba → `OF-10 "Actividad económica
+   no registrada"`. En producción, el courier emite con su(s) Acteco real(es).
+
+### ❌ No resoluble en sandbox (queda para soporte Haulmer / certificación)
+
+6. **`{value}` de la consulta es un código de verificación propietario**
+   (brecha 3 — PARCIAL). Probados monto total (119), neto (100), rut receptor,
+   TOKEN y 0 → todos `OF-10 "X es Incorrecto"`. No está documentado
+   públicamente. Se confirma con soporte de Haulmer o en producción.
+
+7. **Estado SII asíncrono (brecha 2 — ABIERTA).** Con CAF **simulado** el
+   sandbox no envía al SII real, por lo que el documento nunca resuelve a
+   aceptado/rechazado → el shape de `mapearEstadoSii` **sigue sin observarse**.
+   Requiere ambiente de certificación del SII. La tabla de mapeo sigue siendo
+   hipótesis y `consultarEstadoDte` lanza 501 hasta validarla.
+
+### Lo aplicado al código tras esta validación
+
+- `OpenfacturaDocumentResponse.error` con el shape real (`code:string`,
+  `details[]`).
+- `extraerErrorOpenfactura` + `pareceFolioAgotado`: mensaje de error saneado y
+  clasificación CAF-agotado → `ErrorFolioAgotado` (no reintentable).
+- `peticion` propaga el mensaje del proveedor saneado (sin secretos ni cuerpo
+  crudo) en `ErrorDteProveedor`, y recibe `tenantId` para el caso folio-agotado.
+- Comentarios `TODO-VALIDAR-EN-VIVO` de emisión y consulta actualizados con lo
+  confirmado vs. lo que sigue abierto.
+
+### Próximos pasos (cuando el dueño decida avanzar a real)
+
+- Conseguir, con soporte de Haulmer, el significado del `{value}` de consulta y
+  el shape del estado SII en certificación → cerrar brechas 2 y 3.
+- Decidir el cableado del puerto para recibir base64 (vs. URL) y persistir
+  rut/tipo/folio + código de verificación para la consulta.
+- **No** cablear `OpenfacturaAdapter` como default sin: decisión comercial del
+  proveedor, opt-in por courier y revisión de `seguridad-cumplimiento`.
