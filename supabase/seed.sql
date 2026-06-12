@@ -20,10 +20,12 @@ end $$;
 --   • instance_id debe ser '00000000-...' (GoTrue filtra por este valor)
 --   • auth.identities necesita provider_id = email (no UUID) para email provider
 --   • auth.identities.email es columna GENERATED — no se incluye en INSERT
+--   • auth.users.confirmed_at es columna GENERATED en GoTrue v2 (se calcula de
+--     email_confirmed_at) — NO se incluye en el INSERT (si no, error 428C9).
 -- =============================================================================
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
-  email_confirmed_at, confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
   created_at, updated_at,
   confirmation_token, email_change, email_change_token_new, recovery_token,
   is_sso_user, is_anonymous
@@ -33,42 +35,42 @@ insert into auth.users (
    'authenticated','authenticated',
    'dueno@despachos-centro.cl',
    crypt('Demo2026!', gen_salt('bf')),
-   now(), now(),
+   now(),
    '{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','',false,false),
   ('20000000-0000-0000-0000-000000000002',
    '00000000-0000-0000-0000-000000000000',
    'authenticated','authenticated',
    'supervisor@despachos-centro.cl',
    crypt('Demo2026!', gen_salt('bf')),
-   now(), now(),
+   now(),
    '{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','',false,false),
   ('20000000-0000-0000-0000-000000000003',
    '00000000-0000-0000-0000-000000000000',
    'authenticated','authenticated',
    'coordinador@despachos-centro.cl',
    crypt('Demo2026!', gen_salt('bf')),
-   now(), now(),
+   now(),
    '{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','',false,false),
   ('20000000-0000-0000-0000-000000000004',
    '00000000-0000-0000-0000-000000000000',
    'authenticated','authenticated',
    'admin.financiero@despachos-centro.cl',
    crypt('Demo2026!', gen_salt('bf')),
-   now(), now(),
+   now(),
    '{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','',false,false),
   ('20000000-0000-0000-0000-000000000005',
    '00000000-0000-0000-0000-000000000000',
    'authenticated','authenticated',
    'conductor.demo@despachos-centro.cl',
    crypt('Demo2026!', gen_salt('bf')),
-   now(), now(),
+   now(),
    '{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','',false,false),
   ('20000000-0000-0000-0000-000000000006',
    '00000000-0000-0000-0000-000000000000',
    'authenticated','authenticated',
    'seller@falabellatech.cl',
    crypt('Demo2026!', gen_salt('bf')),
-   now(), now(),
+   now(),
    '{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','',false,false)
 on conflict (id) do nothing;
 

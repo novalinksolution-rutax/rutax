@@ -8,6 +8,8 @@
  */
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { accionCerrarPeriodo } from "./actions";
 
@@ -34,9 +36,9 @@ export function DialogCerrarPeriodo({
   totalLineas,
   montoTotalClp,
 }: Props) {
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [exito, setExito] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleConfirmar() {
@@ -44,20 +46,17 @@ export function DialogCerrarPeriodo({
     startTransition(async () => {
       const resultado = await accionCerrarPeriodo(periodoId);
       if (resultado.ok) {
-        setExito(true);
         setAbierto(false);
-        // Recargar para reflejar el nuevo estado en la tabla
-        window.location.reload();
+        toast.success("Período cerrado", {
+          description: "Ya puedes revisar el detalle y emitir la factura.",
+        });
+        // Refresco suave: re-renderiza la tabla con el nuevo estado SIN perder el
+        // toast (un reload duro lo borraría).
+        router.refresh();
       } else {
         setError(resultado.mensaje);
       }
     });
-  }
-
-  if (exito) {
-    return (
-      <span className="text-xs text-green-700 font-medium">Cerrando...</span>
-    );
   }
 
   return (

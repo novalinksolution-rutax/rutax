@@ -11,6 +11,8 @@
  */
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { FileText } from "lucide-react";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { accionEmitirFactura } from "./actions";
@@ -28,9 +30,9 @@ export function DialogEmitirFactura({
   totalLineas,
   montoTotalClp,
 }: Props) {
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [exito, setExito] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleConfirmar() {
@@ -38,17 +40,16 @@ export function DialogEmitirFactura({
     startTransition(async () => {
       const resultado = await accionEmitirFactura(periodoId);
       if (resultado.ok) {
-        setExito(true);
         setAbierto(false);
-        window.location.reload();
+        toast.success("Factura emitida", {
+          description: "El DTE se generó en modo sandbox (no se envió al SII real).",
+        });
+        // Refresco suave: el período pasa a "facturado" sin perder el toast.
+        router.refresh();
       } else {
         setError(resultado.mensaje);
       }
     });
-  }
-
-  if (exito) {
-    return <span className="text-xs font-medium text-green-700">Emitiendo factura…</span>;
   }
 
   return (

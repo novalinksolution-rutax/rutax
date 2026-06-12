@@ -8,6 +8,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cerrarPeriodoManualmente, emitirFacturaPeriodo } from "@/modules/dinero/acciones";
@@ -31,6 +32,8 @@ export async function accionCerrarPeriodo(
       sesion.usuario,
       sesion.usuarioId,
     );
+    // Refresca la lista de períodos (cambia de "abierto" a "cerrado").
+    revalidatePath("/dinero/periodos");
     return { ok: true };
   } catch (err) {
     const mensaje =
@@ -63,6 +66,9 @@ export async function accionEmitirFactura(
       sesion.usuario,
       sesion.usuarioId,
     );
+    // Refresca el detalle y la lista (el período pasa a "facturado").
+    revalidatePath(`/dinero/periodos/${periodoId}`);
+    revalidatePath("/dinero/periodos");
     return { ok: true };
   } catch (err) {
     const mensaje =

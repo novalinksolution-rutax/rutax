@@ -1,0 +1,24 @@
+-- =============================================================================
+-- Fix: service_role debe poder ESCRIBIR la bitácora a través de la vista pública
+-- =============================================================================
+-- Bug latente (Fase A, migración 0004): `registrarEnBitacora` inserta en la vista
+-- `security_invoker` `public.bitacora_auditoria` usando el cliente `service_role`
+-- (el esquema `identidad` no está expuesto a PostgREST, por eso se usa la vista).
+--
+-- La migración 0004 hizo `revoke insert, update, delete on public.bitacora_auditoria
+-- from authenticated, anon, public`. Como `service_role` recibía esos privilegios
+-- por el pseudo-rol PUBLIC, el revoke se los quitó, y NUNCA se le re-otorgaron
+-- explícitamente → todo INSERT a la bitácora vía service_role fallaba con
+-- "permission denied for view bitacora_auditoria". Esto bloquea cualquier acción
+-- que audita ANTES de su efecto (cerrar período, emitir factura, cobranza, etc.).
+--
+-- La tabla base `identidad.bitacora_auditoria` SÍ tiene INSERT/SELECT para
+-- service_role; solo faltaba el privilegio sobre la VISTA. Al ser
+-- `security_invoker = true`, el INSERT a través de la vista corre con los
+-- privilegios de service_role sobre la tabla base (que ya existen), por lo que
+-- basta con re-otorgar el privilegio sobre la vista.
+--
+-- Idempotente: GRANT es repetible sin error.
+-- =============================================================================
+
+grant select, insert on public.bitacora_auditoria to service_role;
