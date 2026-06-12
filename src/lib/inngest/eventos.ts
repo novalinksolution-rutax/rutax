@@ -12,6 +12,14 @@
  *   (emitirDtePeriodo). Es la compuerta de aprobación de facturación: ningún
  *   proceso automático (cron) puede emitir un DTE sin que una persona lo
  *   solicite explícitamente.
+ * - `EventoPagoRecibido`: publicado por el endpoint de webhook de Fintoc
+ *   (`api/webhooks/fintoc`) tras validar la firma y registrar en bitácora,
+ *   consumido por el job de matching (`dinero/jobs/conciliar-pago.ts`). La capa
+ *   "pagado" del motor entrega→dinero (cobranza courier→seller).
+ * - `EventoPagoConciliado`: publicado por el job de matching al imputar un pago
+ *   contra un período `facturado`, consumido por la proyección de `estado_cobro`
+ *   (en el MVP, la escribe el mismo job de matching antes de emitir el evento;
+ *   el evento queda como punto de extensión para notificaciones al seller).
  *
  * Regla de importación: solo tipos — ningún lado importa lógica del otro.
  * El publisher solo necesita el `name` + `data`; el consumer idem.
@@ -84,5 +92,65 @@ export interface EventoEmisionSolicitada {
     solicitadoPorUsuarioId: string;
     /** 'sandbox' (stub, sin SII real) | 'real' (emisión real al SII). */
     modo: 'sandbox' | 'real';
+  };
+}
+
+/**
+ * Capa "pagado" del motor entrega→dinero — cobranza courier→seller (Fintoc).
+ *
+ * Publicado por el endpoint de webhook `api/webhooks/fintoc/route.ts` DESPUÉS de:
+ *   1. validar la firma `Fintoc-Signature` (obligatoria — Fintoc SÍ firma), y
+ *   2. registrar la recepción del pago en `bitacora_auditoria` (bitácora ANTES
+ *      del efecto, patrón del proyecto).
+ * Consumido por el job de matching `dinero/jobs/conciliar-pago.ts` (idempotente).
+ *
+ * El payload NO incluye secretos: ni el `link_token` ni el secreto de webhook
+ * viajan aquí. `linkTokenRef` es la referencia OPACA (uuid) al secreto cifrado
+ * en `identidad.secretos_cifrados` — nunca el valor — para trazar de qué cuenta
+ * conectada vino el movimiento al persistirlo en `pagos_recibidos.link_token_ref`.
+ */
+export interface EventoPagoRecibido {
+  name: 'dinero/pago.recibido';
+  data: {
+    tenantId: string;
+    /** `Movement.id` de Fintoc — llave de idempotencia de ingesta por tenant. */
+    movimientoExternoId: string;
+    /** Monto en CLP entero (positivo = entra dinero a la cuenta del courier). */
+    montoClp: number;
+    /** Fecha del movimiento en ISO date (`YYYY-MM-DD`). */
+    fechaMovimiento: string;
+    /**
+     * RUT de la contraparte ya normalizado (solo dígitos + DV), o `null` si
+     * Fintoc no expuso `sender_account`. `null` = no atribuible por RUT.
+     */
+    contraparteRutNormalizado: string | null;
+    contraparteNombre: string | null;
+    /** Referencia OPACA (uuid) al secreto del link en secretos_cifrados. NUNCA el token. */
+    linkTokenRef: string;
+  };
+}
+
+/**
+ * Resultado de una conciliación de pago contra un período `facturado`.
+ *
+ * Publicado por el job de matching (`dinero/jobs/conciliar-pago.ts`) cuando
+ * imputa un pago a un período. Consumido por la proyección de `estado_cobro`
+ * (en el MVP el propio job ya proyecta a `periodos_cobro` antes de emitirlo; el
+ * evento es el punto de extensión para notificar al seller "tu cobro fue pagado").
+ *
+ * - `pagado_total`: el pago salda el saldo del período → `estado_cobro = 'pagado'`.
+ * - `pagado_parcial`: el pago abona parte del saldo → `estado_cobro = 'parcial'`.
+ */
+export interface EventoPagoConciliado {
+  name: 'dinero/pago.conciliado';
+  data: {
+    tenantId: string;
+    /** UUID de la fila `dinero.pagos_recibidos` conciliada. */
+    pagoRecibidoId: string;
+    sellerId: string;
+    periodoCobroId: string;
+    /** Monto imputado en este pago (CLP entero). */
+    montoClp: number;
+    resultado: 'pagado_total' | 'pagado_parcial';
   };
 }

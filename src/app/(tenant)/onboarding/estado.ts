@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 export type EstadoPasoDte = "pendiente" | "en_proceso" | "activo" | "con_problemas";
 export type EstadoPasoFolios = "no_aplica" | "pendiente" | "vigente";
 export type EstadoPasoTarifas = "sin_tarifas" | "configuradas";
+export type EstadoPasoCobranza = "pendiente" | "conectado" | "con_problemas";
 
 export interface EstadoOnboardingCourier {
   nombreFantasia: string;
@@ -41,6 +42,13 @@ export interface EstadoOnboardingCourier {
   tarifas: {
     estado: EstadoPasoTarifas;
     cantidad: number;
+  };
+  cobranza: {
+    estado: EstadoPasoCobranza;
+    /** `true` si el courier ya conectó su banco (link_token guardado). */
+    bancoConectado: boolean;
+    /** Alias legible de la cuenta conectada, o null. */
+    cuentaBancoAlias: string | null;
   };
 }
 
@@ -68,7 +76,7 @@ export function proveedorGestionaFolios(proveedorDte: string | null): boolean {
 export async function resolverEstadoOnboarding(tenantId: string): Promise<EstadoOnboardingCourier> {
   const supabase = await createClient();
 
-  const [tenantRes, dteRes, foliosRes, tarifasRes] = await Promise.all([
+  const [tenantRes, dteRes, foliosRes, tarifasRes, cobranzaRes] = await Promise.all([
     supabase.from("tenants").select("nombre_fantasia").eq("id", tenantId).maybeSingle(),
     supabase
       .from("courier_config_dte")
@@ -77,6 +85,11 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
       .maybeSingle(),
     supabase.from("folios_caf").select("id, estado").eq("tenant_id", tenantId),
     supabase.from("tarifas").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("estado", "activa"),
+    supabase
+      .from("courier_config_cobranza")
+      .select("estado_conexion, cuenta_banco_alias, link_token_ref")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
   ]);
 
   const nombreFantasia = (tenantRes.data?.nombre_fantasia as string | undefined) ?? "tu courier";
@@ -102,6 +115,20 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
 
   const cantidadTarifas = tarifasRes.count ?? 0;
   const estadoTarifas: EstadoPasoTarifas = cantidadTarifas > 0 ? "configuradas" : "sin_tarifas";
+
+  // Cobranza (paso informativo/no bloqueante, como Folios): el banco conectado
+  // habilita la conciliación automática de pagos, pero no bloquea operar.
+  const estadoConexionCobranza = (cobranzaRes.data?.estado_conexion as string | undefined) ?? null;
+  const bancoConectado = Boolean(cobranzaRes.data?.link_token_ref);
+  const cuentaBancoAlias = (cobranzaRes.data?.cuenta_banco_alias as string | undefined) ?? null;
+  let estadoCobranza: EstadoPasoCobranza;
+  if (estadoConexionCobranza === "error" || estadoConexionCobranza === "revocado") {
+    estadoCobranza = "con_problemas";
+  } else if (bancoConectado) {
+    estadoCobranza = "conectado";
+  } else {
+    estadoCobranza = "pendiente";
+  }
 
   // "Completo" (§1.3): DTE activo + al menos una tarifa vigente. Folios CAF
   // NUNCA bloquea — puede depender 100% del proveedor (§1.2, decisión "qué
@@ -130,6 +157,11 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
     tarifas: {
       estado: estadoTarifas,
       cantidad: cantidadTarifas,
+    },
+    cobranza: {
+      estado: estadoCobranza,
+      bancoConectado,
+      cuentaBancoAlias,
     },
   };
 }

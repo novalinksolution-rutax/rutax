@@ -15,6 +15,8 @@ import type {
   EstadoLiquidacion,
   EstadoEventoConciliacion,
   TipoDiferenciaConciliacion,
+  EstadoMatchPago,
+  EstadoCobroPeriodo,
 } from "@/modules/dinero/tipos";
 
 // =============================================================================
@@ -263,6 +265,54 @@ export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> =
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {
   return TEXTO_TIPO_DIFERENCIA[tipo] ?? tipo;
 }
+
+// =============================================================================
+// EstadoMatchPago — cobranza Fintoc (capa "pagado")
+// =============================================================================
+
+export const TEXTO_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, string> = {
+  sin_atribuir: "Sin atribuir",
+  atribuido: "Atribuido",
+  conciliado: "Conciliado",
+  parcial: "Pago parcial",
+  sobrante: "Sobrante",
+  descartado: "Descartado",
+};
+
+export function traducirEstadoMatchPago(estado: EstadoMatchPago): string {
+  return TEXTO_ESTADO_MATCH_PAGO[estado] ?? estado;
+}
+
+export const COLOR_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, string> = {
+  sin_atribuir: "bg-orange-100 text-orange-800 border-orange-200",
+  atribuido: "bg-blue-100 text-blue-800 border-blue-200",
+  conciliado: "bg-green-100 text-green-800 border-green-200",
+  parcial: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  sobrante: "bg-purple-100 text-purple-800 border-purple-200",
+  descartado: "bg-gray-100 text-gray-600 border-gray-200",
+};
+
+// =============================================================================
+// EstadoCobroPeriodo — cobranza Fintoc (proyección del período)
+// =============================================================================
+
+export const TEXTO_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, string> = {
+  no_aplica: "Sin cobro",
+  pendiente: "Por cobrar",
+  parcial: "Pago parcial",
+  pagado: "Pagado",
+};
+
+export function traducirEstadoCobroPeriodo(estado: EstadoCobroPeriodo): string {
+  return TEXTO_ESTADO_COBRO_PERIODO[estado] ?? estado;
+}
+
+export const COLOR_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, string> = {
+  no_aplica: "bg-gray-100 text-gray-500 border-gray-200",
+  pendiente: "bg-amber-100 text-amber-800 border-amber-200",
+  parcial: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  pagado: "bg-green-100 text-green-800 border-green-200",
+};
 
 // =============================================================================
 // Utilidades comunes

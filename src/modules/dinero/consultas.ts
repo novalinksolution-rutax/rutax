@@ -19,6 +19,8 @@ import type {
   EventoConciliacion,
   EstadoPeriodo,
   EstadoEventoConciliacion,
+  PagoRecibido,
+  EstadoMatchPago,
 } from './tipos';
 
 // =============================================================================
@@ -40,6 +42,9 @@ function filaToPeriodoCobro(f: Record<string, any>): PeriodoCobro {
     documentoDteId: f.documento_dte_id ?? null,
     cerradoEn: f.cerrado_en ?? null,
     cerradoPorUsuarioId: f.cerrado_por_usuario_id ?? null,
+    estadoCobro: f.estado_cobro ?? 'no_aplica',
+    montoPagadoClp: f.monto_pagado_clp !== null && f.monto_pagado_clp !== undefined ? Number(f.monto_pagado_clp) : 0,
+    pagadoEn: f.pagado_en ?? null,
     creadoEn: f.creado_en,
     actualizadoEn: f.actualizado_en,
   };
@@ -348,4 +353,57 @@ export async function listarEventosConciliacion(
 
   if (error) throw new Error(`Error al listar eventos de conciliación: ${error.message}`);
   return (data ?? []).map(filaToEventoConciliacion);
+}
+
+// =============================================================================
+// Pagos recibidos (cobranza Fintoc — capa "pagado")
+// =============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToPagoRecibido(f: Record<string, any>): PagoRecibido {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    sellerId: f.seller_id ?? null,
+    periodoCobroId: f.periodo_cobro_id ?? null,
+    movimientoExternoId: f.movimiento_externo_id,
+    montoClp: Number(f.monto_clp),
+    fechaMovimiento: f.fecha_movimiento,
+    contraparteRutNormalizado: f.contraparte_rut_normalizado ?? null,
+    contraparteNombre: f.contraparte_nombre ?? null,
+    estadoMatch: f.estado_match,
+    atribuidoPorUsuarioId: f.atribuido_por_usuario_id ?? null,
+    atribuidoEn: f.atribuido_en ?? null,
+    creadoEn: f.creado_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+/**
+ * Lista los pagos recibidos del tenant para la bandeja de revisión de cobranza.
+ * Opcionalmente filtra por uno o varios estados de match.
+ *
+ * Solo para roles internos (la RLS de `pagos_recibidos` lo refuerza en BD; el
+ * filtro `tenant_id` es defensa en profundidad). Ordena por fecha de movimiento
+ * descendente (lo más reciente primero).
+ */
+export async function listarPagosRecibidos(
+  cliente: SupabaseClient,
+  tenantId: string,
+  estados?: EstadoMatchPago[],
+): Promise<PagoRecibido[]> {
+  let query = cliente
+    .schema('dinero')
+    .from('pagos_recibidos')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('fecha_movimiento', { ascending: false })
+    .order('creado_en', { ascending: false });
+
+  if (estados && estados.length > 0) query = query.in('estado_match', estados);
+
+  const { data, error } = await query;
+
+  if (error) throw new Error(`Error al listar pagos recibidos: ${error.message}`);
+  return (data ?? []).map(filaToPagoRecibido);
 }

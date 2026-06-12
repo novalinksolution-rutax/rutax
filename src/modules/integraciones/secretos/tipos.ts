@@ -9,7 +9,13 @@ export type TipoSecreto =
   | "credenciales_proveedor_dte"
   | "token_oauth_ml_access"
   | "token_oauth_ml_refresh"
-  | "archivo_caf";
+  | "archivo_caf"
+  // Cobranza Fintoc (migración 20260601000008): el `link_token` identifica la
+  // cuenta bancaria conectada del courier; el secreto de webhook valida la
+  // firma `Fintoc-Signature`. Ambos son POR-TENANT y se cifran como los tokens
+  // de ML. Espejo del enum SQL `identidad.tipo_secreto`.
+  | "token_link_fintoc"
+  | "secreto_webhook_fintoc";
 
 /**
  * Referencia opaca devuelta tras cifrar: lo único que las tablas de negocio

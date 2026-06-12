@@ -18,6 +18,8 @@ import {
   COLOR_ESTADO_PERIODO,
   traducirEstadoSii,
   colorBadgeEstadoSii,
+  traducirEstadoCobroPeriodo,
+  COLOR_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 
@@ -136,8 +138,9 @@ export default async function PaginaCobrosPortal() {
                     <th className="px-4 py-2" style={{ width: "22%" }}>Período</th>
                     <th className="px-4 py-2" style={{ width: "18%" }}>Estado</th>
                     <th className="hidden px-4 py-2 text-right sm:table-cell" style={{ width: "10%" }}>Líneas</th>
-                    <th className="hidden px-4 py-2 text-right md:table-cell" style={{ width: "20%" }}>Monto total</th>
-                    <th className="px-4 py-2" style={{ width: "30%" }}>Factura</th>
+                    <th className="hidden px-4 py-2 text-right md:table-cell" style={{ width: "18%" }}>Monto total</th>
+                    <th className="px-4 py-2" style={{ width: "22%" }}>Factura</th>
+                    <th className="px-4 py-2" style={{ width: "14%" }}>Pago</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -196,6 +199,17 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
           </div>
         ) : (
           <span className="text-xs text-muted-foreground">Sin factura</span>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        {periodo.estadoCobro === "no_aplica" ? (
+          <span className="text-xs text-muted-foreground">—</span>
+        ) : (
+          <span
+            className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
+          >
+            {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
+          </span>
         )}
       </td>
     </tr>

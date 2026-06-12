@@ -50,6 +50,24 @@ export type EstadoEventoConciliacion =
   | 'resuelto'
   | 'ignorado';
 
+/**
+ * Estado de atribución/conciliación de un pago recibido (capa "pagado" — Fintoc).
+ * Espejo del enum SQL `dinero.estado_match_pago` (migración 0008).
+ */
+export type EstadoMatchPago =
+  | 'sin_atribuir'   // ingerido, aún sin seller asignado
+  | 'atribuido'      // asociado a un seller, falta conciliar contra período
+  | 'conciliado'     // cuadra con un periodo_cobro (pago completo)
+  | 'parcial'        // abona parcialmente un período (falta saldo)
+  | 'sobrante'       // monto excede lo adeudado / no calza con ningún saldo
+  | 'descartado';    // no corresponde a cobranza (devolución, error, etc.)
+
+/**
+ * Estado de cobro de un período (proyección derivada que escribe el job de
+ * matching). Espejo del CHECK SQL `periodos_cobro.estado_cobro` (migración 0008).
+ */
+export type EstadoCobroPeriodo = 'no_aplica' | 'pendiente' | 'parcial' | 'pagado';
+
 // =============================================================================
 // Entidades — espejo de las tablas del schema `dinero`
 // =============================================================================
@@ -126,6 +144,43 @@ export interface PeriodoCobro {
   documentoDteId: string | null;
   cerradoEn: string | null;
   cerradoPorUsuarioId: string | null;
+  /**
+   * Estado de cobro del período (proyección derivada de los pagos conciliados).
+   * Lo escribe SOLO el job de matching (service_role); la fuente de verdad son
+   * las filas de `pagos_recibidos`. `no_aplica` mientras no hay cobranza.
+   */
+  estadoCobro: EstadoCobroPeriodo;
+  /** Suma de pagos imputados al período (CLP entero). 0 si no hay pagos. */
+  montoPagadoClp: number;
+  /** Marca de tiempo del cierre del cobro (cuando pasa a `pagado`), o null. */
+  pagadoEn: string | null;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+/**
+ * Una fila de `dinero.pagos_recibidos`.
+ * Movimiento bancario (Fintoc) recibido del seller hacia la cuenta del courier.
+ * `sellerId`/`periodoCobroId` son null hasta que el matching (o una persona) los
+ * resuelve. El secreto `link_token` NUNCA viaja aquí — solo la referencia opaca.
+ */
+export interface PagoRecibido {
+  id: string;
+  tenantId: string;
+  sellerId: string | null;
+  periodoCobroId: string | null;
+  /** `Movement.id` de Fintoc — llave de idempotencia de ingesta. */
+  movimientoExternoId: string;
+  /** Monto en CLP entero. Siempre positivo (un pago entrante). */
+  montoClp: number;
+  /** Fecha del movimiento — formato 'YYYY-MM-DD'. */
+  fechaMovimiento: string;
+  /** RUT de la contraparte normalizado (sin puntos ni guion), o null. */
+  contraparteRutNormalizado: string | null;
+  contraparteNombre: string | null;
+  estadoMatch: EstadoMatchPago;
+  atribuidoPorUsuarioId: string | null;
+  atribuidoEn: string | null;
   creadoEn: string;
   actualizadoEn: string;
 }

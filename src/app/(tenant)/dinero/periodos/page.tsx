@@ -22,6 +22,8 @@ import {
   COLOR_ESTADO_PERIODO,
   traducirEstadoSii,
   colorBadgeEstadoSii,
+  traducirEstadoCobroPeriodo,
+  COLOR_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
@@ -292,9 +294,10 @@ export default async function PaginaPeriodosCobro({
                   <th className="hidden px-4 py-2 sm:table-cell" style={{ width: "20%" }}>Período</th>
                   <th className="px-4 py-2" style={{ width: "12%" }}>Estado</th>
                   <th className="hidden px-4 py-2 text-right md:table-cell" style={{ width: "8%" }}>Líneas</th>
-                  <th className="hidden px-4 py-2 text-right lg:table-cell" style={{ width: "15%" }}>Monto total</th>
-                  <th className="hidden px-4 py-2 xl:table-cell" style={{ width: "12%" }}>Estado SII</th>
-                  <th className="px-4 py-2 text-right" style={{ width: "13%" }}>
+                  <th className="hidden px-4 py-2 text-right lg:table-cell" style={{ width: "13%" }}>Monto total</th>
+                  <th className="hidden px-4 py-2 lg:table-cell" style={{ width: "11%" }}>Cobro</th>
+                  <th className="hidden px-4 py-2 xl:table-cell" style={{ width: "11%" }}>Estado SII</th>
+                  <th className="px-4 py-2 text-right" style={{ width: "12%" }}>
                     <span className="sr-only">Acciones</span>
                   </th>
                 </tr>
@@ -372,6 +375,26 @@ function BadgeEstadoSiiInline({ estadoSii }: { estadoSii: DocumentoDte["estadoSi
   );
 }
 
+function BadgeEstadoCobro({ periodo }: { periodo: PeriodoConDte }) {
+  // El cobro solo aplica a períodos facturados; mientras no lo estén, no hay
+  // nada que cobrar todavía.
+  if (periodo.estadoCobro === "no_aplica") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
+      title={
+        periodo.estadoCobro === "parcial"
+          ? `Pagado: ${formatearCLPOGuion(periodo.montoPagadoClp)}`
+          : undefined
+      }
+    >
+      {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
+    </span>
+  );
+}
+
 function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
   const badgeClases = COLOR_ESTADO_PERIODO[periodo.estado];
   const textoBadge = traducirEstadoPeriodoCobro(
@@ -413,6 +436,11 @@ function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
       {/* Monto total */}
       <td className="hidden px-4 py-3 text-right tabular-nums font-medium lg:table-cell">
         {formatearCLPOGuion(periodo.montoTotalClp)}
+      </td>
+
+      {/* Estado de cobro */}
+      <td className="hidden px-4 py-3 lg:table-cell">
+        <BadgeEstadoCobro periodo={periodo} />
       </td>
 
       {/* Estado SII */}

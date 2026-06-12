@@ -43,6 +43,8 @@ import { jobGenerarLiquidacionConductor } from "@/modules/dinero/jobs/generar-li
 import { jobPollingEstadoDte } from "@/modules/dinero/jobs/polling-estado-dte";
 import { jobConciliarPeriodo } from "@/modules/dinero/jobs/conciliar-periodo";
 import { jobAlertaFoliosProximos } from "@/modules/dinero/jobs/alerta-folios-proximos";
+import { jobConciliarPago } from "@/modules/dinero/jobs/conciliar-pago";
+import { jobAlertaMorosidad } from "@/modules/dinero/jobs/alerta-morosidad";
 
 /**
  * Array de todas las funciones de Inngest del sistema.
@@ -66,6 +68,9 @@ const funciones = [
   jobPollingEstadoDte,
   jobConciliarPeriodo,
   jobAlertaFoliosProximos,
+  // Jobs de cobranza (capa "pagado" — Fintoc)
+  jobConciliarPago,
+  jobAlertaMorosidad,
 ];
 
 export const { GET, POST, PUT } = serve({

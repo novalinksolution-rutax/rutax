@@ -24,6 +24,8 @@ import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { ErrorValidacion } from '@/modules/identidad/errores';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import type { EstadoEventoConciliacion } from './tipos';
+import { conciliarPagoPersistido } from './aplicar-pago';
+import { esEstadoTerminal } from './matching-pago';
 
 // =============================================================================
 // cerrarPeriodoManualmente
@@ -398,4 +400,242 @@ export async function resolverEventoConciliacion(
       estado_anterior: evento.estado,
     },
   });
+}
+
+// =============================================================================
+// atribuirPagoManualmente — resolución manual de cobranza (capa "pagado")
+// =============================================================================
+
+/**
+ * Atribuye manualmente un pago recibido (sin atribuir o sobrante) a un seller y,
+ * opcionalmente, a un período de cobro, y vuelve a correr la conciliación
+ * (cascada de matching) con ese seller forzado. Pensada para los pagos que el
+ * motor no pudo atribuir solo (sin RUT de contraparte, o ambigüedad) — la
+ * conciliación es detective, la decide una persona.
+ *
+ * Precondiciones:
+ * - Capacidad `ver_conciliacion` (dueño o administración) — el mismo gate que
+ *   gobierna la conciliación/finanzas del motor entrega→dinero.
+ * - El pago debe pertenecer al tenant y NO estar en estado terminal
+ *   (`conciliado`/`descartado`).
+ * - El seller debe pertenecer al tenant.
+ *
+ * Efectos (BITÁCORA ANTES del efecto, con `actorUsuarioId` — RNF-04):
+ * - Registra `dinero.pago_atribuido_manual` en bitácora.
+ * - Fija `seller_id`, `atribuido_por_usuario_id`, `atribuido_en` en el pago.
+ * - Corre la conciliación (paso 3 del job de matching) con el seller forzado.
+ *   Si calza un período, lo imputa (esa proyección la escribe el job).
+ *
+ * @param periodoCobroId opcional. Si se da, se valida que pertenezca al tenant
+ *   y al seller; la conciliación igualmente decide el calce sobre los períodos
+ *   candidatos (no se fuerza una imputación que no cuadre — no adivinar).
+ */
+export async function atribuirPagoManualmente(
+  tenantId: string,
+  pagoId: string,
+  sellerId: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+  periodoCobroId?: string,
+): Promise<void> {
+  if (!puedeVerConciliacion(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede atribuir pagos manualmente.',
+    );
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  // Leer el pago acotado por tenant (aislamiento). Traemos también la imputación
+  // previa (periodo_cobro_id + monto) para poder REVERSARLA antes de re-conciliar
+  // — sin esto, re-atribuir un pago ya `parcial` duplicaría `monto_pagado_clp`.
+  const { data: pago, error: errPago } = await supabase
+    .schema('dinero')
+    .from('pagos_recibidos')
+    .select('id, tenant_id, estado_match, periodo_cobro_id, monto_clp')
+    .eq('id', pagoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errPago) throw new Error(`Error al leer pago: ${errPago.message}`);
+  if (!pago) throw new ErrorValidacion(`Pago ${pagoId} no encontrado en el tenant.`);
+  if (esEstadoTerminal(pago.estado_match as string)) {
+    throw new ErrorValidacion(
+      `El pago ya está en estado '${pago.estado_match}' — no se puede re-atribuir.`,
+    );
+  }
+
+  // Validar que el seller pertenece al tenant.
+  const { data: seller, error: errSeller } = await supabase
+    .schema('identidad')
+    .from('sellers')
+    .select('id')
+    .eq('id', sellerId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (errSeller) throw new Error(`Error al leer seller: ${errSeller.message}`);
+  if (!seller) throw new ErrorValidacion('El seller indicado no pertenece al tenant.');
+
+  // Si se indicó período, validar tenant + seller (no imputar a período ajeno).
+  if (periodoCobroId) {
+    const { data: periodo, error: errPeriodo } = await supabase
+      .schema('dinero')
+      .from('periodos_cobro')
+      .select('id, seller_id')
+      .eq('id', periodoCobroId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (errPeriodo) throw new Error(`Error al leer período: ${errPeriodo.message}`);
+    if (!periodo) throw new ErrorValidacion('El período indicado no pertenece al tenant.');
+    if (periodo.seller_id !== sellerId) {
+      throw new ErrorValidacion('El período indicado no corresponde al seller atribuido.');
+    }
+  }
+
+  // BITÁCORA ANTES del efecto (acción financiera con autor — RNF-04).
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.pago_atribuido_manual',
+    entidadTipo: 'pago_recibido',
+    entidadId: pagoId,
+    detalle: {
+      seller_id: sellerId,
+      periodo_cobro_id: periodoCobroId ?? null,
+    },
+  });
+
+  // REVERSAR la imputación previa (si el pago ya estaba imputado a un período):
+  // restar su monto del `monto_pagado_clp` de ese período y volver su
+  // `estado_cobro` a 'pendiente'/'parcial' según el saldo restante. Sin esto, la
+  // nueva conciliación sumaría el monto OTRA vez (cobro doble) o lo imputaría a
+  // un seller distinto dejando inflado el período anterior.
+  const periodoPrevioId = pago.periodo_cobro_id as string | null;
+  if (periodoPrevioId) {
+    const { data: periodoPrevio, error: errPrevio } = await supabase
+      .schema('dinero')
+      .from('periodos_cobro')
+      .select('id, monto_total_clp, monto_pagado_clp')
+      .eq('id', periodoPrevioId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (errPrevio) throw new Error(`Error al leer período previo: ${errPrevio.message}`);
+    if (periodoPrevio) {
+      const montoPago = Math.round(Number(pago.monto_clp ?? 0));
+      const pagadoPrevio = Math.round(Number(periodoPrevio.monto_pagado_clp ?? 0));
+      const totalPrevio = Math.round(Number(periodoPrevio.monto_total_clp ?? 0));
+      const nuevoPagado = Math.max(0, pagadoPrevio - montoPago);
+      const { error: errRev } = await supabase
+        .schema('dinero')
+        .from('periodos_cobro')
+        .update({
+          monto_pagado_clp: nuevoPagado,
+          estado_cobro: nuevoPagado >= totalPrevio && totalPrevio > 0 ? 'pagado' : nuevoPagado > 0 ? 'parcial' : 'pendiente',
+          pagado_en: nuevoPagado >= totalPrevio && totalPrevio > 0 ? new Date().toISOString() : null,
+          actualizado_en: new Date().toISOString(),
+        })
+        .eq('id', periodoPrevioId)
+        .eq('tenant_id', tenantId);
+      if (errRev) throw new Error(`Error al reversar imputación previa: ${errRev.message}`);
+    }
+  }
+
+  // Fijar la atribución manual (quién y cuándo) en el pago. Se limpia la
+  // imputación previa (`periodo_cobro_id`) para que la cascada parta limpia.
+  const { error: errUpdate } = await supabase
+    .schema('dinero')
+    .from('pagos_recibidos')
+    .update({
+      seller_id: sellerId,
+      periodo_cobro_id: null,
+      estado_match: 'atribuido',
+      atribuido_por_usuario_id: actorUsuarioId,
+      atribuido_en: new Date().toISOString(),
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', pagoId)
+    .eq('tenant_id', tenantId);
+  if (errUpdate) throw new Error(`Error al atribuir pago: ${errUpdate.message}`);
+
+  // Correr la conciliación con el seller forzado (cascada del job de matching).
+  // La imputación al período (si calza) la escribe el propio job (service_role).
+  await conciliarPagoPersistido(pagoId, tenantId, { sellerIdForzado: sellerId });
+}
+
+// =============================================================================
+// descartarPago — marca un pago como no-cobranza (resolución manual)
+// =============================================================================
+
+/**
+ * Descarta un pago recibido (`estado_match='descartado'`): no corresponde a
+ * cobranza (devolución, transferencia ajena, error). Estado terminal — no se
+ * re-procesa.
+ *
+ * Precondiciones:
+ * - Capacidad `ver_conciliacion` (dueño o administración).
+ * - El pago debe pertenecer al tenant y no estar ya en estado terminal.
+ *
+ * Efectos (BITÁCORA ANTES del efecto, con `actorUsuarioId`):
+ * - Registra `dinero.pago_descartado` (con el motivo) en bitácora.
+ * - Setea `estado_match='descartado'`. NO toca ningún período.
+ */
+export async function descartarPago(
+  tenantId: string,
+  pagoId: string,
+  motivo: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeVerConciliacion(usuario)) {
+    throw new ErrorValidacion('Solo el dueño o administración puede descartar pagos.');
+  }
+
+  const motivoLimpio = (motivo ?? '').trim();
+  if (motivoLimpio.length === 0) {
+    throw new ErrorValidacion('Indica un motivo para descartar el pago.');
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: pago, error: errPago } = await supabase
+    .schema('dinero')
+    .from('pagos_recibidos')
+    .select('id, tenant_id, estado_match')
+    .eq('id', pagoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errPago) throw new Error(`Error al leer pago: ${errPago.message}`);
+  if (!pago) throw new ErrorValidacion(`Pago ${pagoId} no encontrado en el tenant.`);
+  if (esEstadoTerminal(pago.estado_match as string)) {
+    throw new ErrorValidacion(
+      `El pago ya está en estado '${pago.estado_match}' — no se puede descartar.`,
+    );
+  }
+
+  // BITÁCORA ANTES del efecto.
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.pago_descartado',
+    entidadTipo: 'pago_recibido',
+    entidadId: pagoId,
+    detalle: {
+      motivo: motivoLimpio,
+      estado_anterior: pago.estado_match,
+    },
+  });
+
+  const { error: errUpdate } = await supabase
+    .schema('dinero')
+    .from('pagos_recibidos')
+    .update({
+      estado_match: 'descartado',
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', pagoId)
+    .eq('tenant_id', tenantId);
+  if (errUpdate) throw new Error(`Error al descartar pago: ${errUpdate.message}`);
 }

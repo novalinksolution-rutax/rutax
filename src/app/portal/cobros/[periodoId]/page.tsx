@@ -18,6 +18,8 @@ import {
   COLOR_ESTADO_PERIODO,
   traducirEstadoSii,
   colorBadgeEstadoSii,
+  traducirEstadoCobroPeriodo,
+  COLOR_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { BotonDescargaFacturaPdf } from "./boton-descarga-factura-pdf";
@@ -106,14 +108,34 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             {formatearFechaCorta(periodo.fechaInicio)} –{" "}
             {formatearFechaCorta(periodo.fechaFin)}
           </p>
-          <span
-            className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-          >
-            {textoBadge}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
+            >
+              {textoBadge}
+            </span>
+            {periodo.estadoCobro !== "no_aplica" && (
+              <span
+                className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
+              >
+                {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
+              </span>
+            )}
+          </div>
           <p className="text-3xl font-bold tabular-nums">
             {formatearCLPOGuion(periodo.montoTotalClp)}
           </p>
+          {periodo.estadoCobro === "parcial" && (
+            <p className="text-sm text-muted-foreground">
+              Pagado: <span className="font-medium tabular-nums">{formatearCLP(periodo.montoPagadoClp)}</span> · Saldo:{" "}
+              <span className="font-medium tabular-nums">
+                {formatearCLP(Math.max(0, (periodo.montoTotalClp ?? 0) - periodo.montoPagadoClp))}
+              </span>
+            </p>
+          )}
+          {periodo.estadoCobro === "pagado" && (
+            <p className="text-sm text-green-700">Pago recibido. Gracias.</p>
+          )}
         </div>
       </section>
 

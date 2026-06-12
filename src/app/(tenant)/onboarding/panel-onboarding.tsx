@@ -20,6 +20,7 @@ import {
   CircleDashed,
   Clock,
   FileText,
+  Landmark,
   Receipt,
   ShieldAlert,
   Sparkles,
@@ -36,9 +37,15 @@ interface Props {
   estado: EstadoOnboardingCourier;
   puedeGestionarDte: boolean;
   puedeGestionarTarifas: boolean;
+  puedeGestionarCobranza: boolean;
 }
 
-export function PanelOnboarding({ estado, puedeGestionarDte, puedeGestionarTarifas }: Props) {
+export function PanelOnboarding({
+  estado,
+  puedeGestionarDte,
+  puedeGestionarTarifas,
+  puedeGestionarCobranza,
+}: Props) {
   const porcentaje = Math.round((estado.pasosCompletados / estado.totalPasos) * 100);
 
   return (
@@ -88,6 +95,7 @@ export function PanelOnboarding({ estado, puedeGestionarDte, puedeGestionarTarif
         <TarjetaPasoDte estado={estado} puedeGestionar={puedeGestionarDte} />
         <TarjetaPasoFolios estado={estado} puedeGestionar={puedeGestionarDte} />
         <TarjetaPasoTarifas estado={estado} puedeGestionar={puedeGestionarTarifas} />
+        <TarjetaPasoCobranza estado={estado} puedeGestionar={puedeGestionarCobranza} />
       </div>
     </div>
   );
@@ -327,6 +335,76 @@ function TarjetaPasoTarifas({ estado, puedeGestionar }: { estado: EstadoOnboardi
         ) : (
           <p className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">
             Solo el dueño o administración pueden gestionar tarifas.
+          </p>
+        )
+      }
+    />
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Paso 4 — Conectar banco para cobranza (informativo / no bloqueante)
+// -----------------------------------------------------------------------------
+
+function TarjetaPasoCobranza({
+  estado,
+  puedeGestionar,
+}: {
+  estado: EstadoOnboardingCourier;
+  puedeGestionar: boolean;
+}) {
+  const { cobranza } = estado;
+
+  const config: Record<
+    EstadoOnboardingCourier["cobranza"]["estado"],
+    { icono: React.ReactNode; badge: React.ReactNode; descripcion: string; destacado: boolean }
+  > = {
+    pendiente: {
+      icono: <Landmark className="size-5" aria-hidden="true" />,
+      badge: <Badge variant="outline">Sin conectar</Badge>,
+      descripcion:
+        "Conecta tu banco para reconocer, solos, los pagos que te hacen tus sellers y cruzarlos con sus facturas.",
+      destacado: false,
+    },
+    conectado: {
+      icono: <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />,
+      badge: (
+        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          Conectado
+        </Badge>
+      ),
+      descripcion: cobranza.cuentaBancoAlias
+        ? `Banco conectado: ${cobranza.cuentaBancoAlias}. Leemos sus movimientos para conciliar tus cobranzas.`
+        : "Tu banco está conectado. Leemos sus movimientos para conciliar tus cobranzas automáticamente.",
+      destacado: false,
+    },
+    con_problemas: {
+      icono: <ShieldAlert className="size-5 text-destructive" aria-hidden="true" />,
+      badge: <Badge variant="destructive">Necesita tu atención</Badge>,
+      descripcion: "La conexión con tu banco dejó de funcionar. Reconéctala para seguir conciliando tus pagos.",
+      destacado: true,
+    },
+  };
+
+  const { icono, badge, descripcion, destacado } = config[cobranza.estado];
+
+  return (
+    <TarjetaPaso
+      icono={icono}
+      titulo="Cobranza (conectar banco)"
+      descripcion={descripcion}
+      badge={badge}
+      destacado={destacado}
+      accion={
+        puedeGestionar ? (
+          <Button asChild variant={cobranza.estado === "pendiente" ? "default" : "outline"}>
+            <Link href="/onboarding/cobranza">
+              {cobranza.estado === "pendiente" ? "Conectar banco" : "Ver conexión"}
+            </Link>
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">
+            Solo el dueño o administración pueden conectar el banco.
           </p>
         )
       }

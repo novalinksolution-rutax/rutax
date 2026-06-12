@@ -330,6 +330,38 @@ Tras una auditoría estratégica integral se ejecutó el **Bloque 1** (mejoras a
 
 ---
 
+## Cobranza courier→seller con Fintoc (capa "pagado") — QA de aislamiento, idempotencia y reglas de dinero
+
+Pase de QA sobre el frente de cobranza recién construido (migración `0008`, matching, job, acciones manuales y webhook). Resultado: `tsc` limpio, **607/607 Vitest** (+26 nuevos de cobranza), **168/168 pgTAP** (+8 nuevos en `rls_aislamiento_pagos.test.sql`).
+
+**Aislamiento (RLS, pgTAP contra Postgres real) — `[x]` PROBADO**
+- `[x]` P1 cross-tenant: seller/interno de A no ve pagos del tenant B.
+- `[x]` P2: seller A no ve pagos del seller A2 (mismo tenant).
+- `[x]` **Caso central:** pago `seller_id IS NULL` (sin atribuir) invisible al seller; sí visible al interno.
+- `[x]` Conductor: `is_empty` sobre `public.pagos_recibidos`.
+- `[x]` INSERT **y ahora UPDATE/DELETE** desde `authenticated` (seller) → 42501 (escritura solo service_role). *(UPDATE/DELETE eran un hueco — agregados.)*
+- `[x]` `identidad.courier_config_cobranza`: invisible a seller y conductor; cross-tenant aislada para internos; `with check` impide sembrar config de otro tenant; guard `solo_interno_edita` convierte el UPDATE del seller en 42501. *(No estaba cubierta — agregada.)*
+
+**Idempotencia y reglas de dinero (Vitest, Supabase fake en memoria) — `[x]` PROBADO**
+- `[x]` Pago terminal (`conciliado`/`descartado`) no se re-procesa ni toca el período.
+- `[x]` Calce total → período `pagado` + `monto_pagado_clp` correcto; parcial → `parcial`; sobrepago → `sobrante` sin imputar; sin RUT → `sin_atribuir` sin imputar; seller sin período facturado → `atribuido`.
+- `[x]` Reprocesar el MISMO pago tras un calce total no re-imputa (idempotente vía estado terminal).
+- `[x]` Aislamiento de seller en el matching: un período de OTRO seller del tenant no se concilia.
+- `[x]` Acciones manuales `atribuirPagoManualmente`/`descartarPago`: gate `ver_conciliacion`, bitácora ANTES del efecto con `actorUsuarioId`, rechazo de pago/seller/período de otro tenant.
+
+**Bugs encontrados y corregidos en este pase**
+1. **Doble imputación al reprocesar un pago `parcial`** (Severidad ALTA — cobro doble / período marcado pagado de más). `parcial` no es estado terminal; `conciliarPagoPersistido` re-leía el período (ya con el abono) y volvía a sumar el monto (40.000 → 80.000). Reproducido con un test que fallaba (`expected 80000 to be 40000`). **Fix:** guard de idempotencia de imputación en `aplicar-pago.ts` (un pago `parcial` con `periodo_cobro_id` fijado no re-imputa en el flujo automático). Test de regresión incluido.
+2. **Doble imputación / imputación huérfana en re-atribución manual de un pago `parcial`** (Severidad MEDIA — human-initiated). `atribuirPagoManualmente` re-conciliaba con `sellerIdForzado` (que salta el guard anterior) sin reversar la imputación previa → el período anterior quedaba inflado y/o se sumaba dos veces. **Fix:** la acción ahora REVERSA la imputación previa (resta `monto_pagado_clp`, recalcula `estado_cobro`/`pagado_en`) y limpia `periodo_cobro_id` antes de re-conciliar. Test de regresión incluido.
+
+**Verificado sin hallazgos**
+- Webhook Fintoc por-tenant: firma se valida con el secreto del tenant del path; bitácora ANTES de emitir el evento; `linkTokenRef` opaco (nunca el token); RUT/nombre no se loguean. Idempotencia del `inngest.send` por `id = pago-recibido-{tenant}-{movimiento}`.
+- UNIQUE `(tenant_id, movimiento_externo_id)` + UPSERT del job: un webhook reentregado no duplica fila.
+
+**Pendiente (fuera de este pase, requiere ambiente de integración Fintoc):**
+- Forma y firma del webhook real `transfer.inbound.succeeded` (sandbox no lo dispara trivialmente; ver §5b del doc).
+
+---
+
 ## Fuera del alcance del MVP (no probar todavía)
 
 Estos requerimientos son de **Crecimiento (V2)** o **Futura (V3)**; no deberían bloquear el avance a frontend/UX:

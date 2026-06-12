@@ -28,6 +28,9 @@ export type {
   OrigenGeneracion,
   TipoDiferenciaConciliacion,
   EstadoEventoConciliacion,
+  PagoRecibido,
+  EstadoMatchPago,
+  EstadoCobroPeriodo,
 } from './tipos';
 
 // Consultas de lectura (para Server Components)
@@ -39,6 +42,7 @@ export {
   listarLiquidaciones,
   obtenerLiquidacion,
   listarEventosConciliacion,
+  listarPagosRecibidos,
 } from './consultas';
 
 // Server Actions (para formularios y operaciones desde el frontend)
@@ -46,4 +50,6 @@ export {
   cerrarPeriodoManualmente,
   marcarLiquidacionPagada,
   resolverEventoConciliacion,
+  atribuirPagoManualmente,
+  descartarPago,
 } from './acciones';

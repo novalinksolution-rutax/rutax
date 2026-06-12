@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { puedeGestionarConfiguracionDte, puedeGestionarTarifas } from "@/modules/identidad/capacidades";
+import {
+  puedeGestionarConfiguracionDte,
+  puedeGestionarTarifas,
+  puedeVerConciliacion,
+} from "@/modules/identidad/capacidades";
 import { resolverEstadoOnboarding } from "./estado";
 import { PanelOnboarding } from "./panel-onboarding";
 
@@ -31,6 +35,7 @@ export default async function PaginaOnboarding() {
         estado={estado}
         puedeGestionarDte={puedeGestionarConfiguracionDte(sesion.usuario)}
         puedeGestionarTarifas={puedeGestionarTarifas(sesion.usuario)}
+        puedeGestionarCobranza={puedeVerConciliacion(sesion.usuario)}
       />
     </div>
   );

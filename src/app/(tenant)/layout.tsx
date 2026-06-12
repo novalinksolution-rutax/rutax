@@ -80,6 +80,7 @@ export default async function LayoutTenant({ children }: { children: React.React
   }
   if (puedeVerConciliacion(sesion.usuario)) {
     enlaces.push({ href: "/dinero/conciliacion", etiqueta: "Conciliación" });
+    enlaces.push({ href: "/dinero/cobranza", etiqueta: "Pagos" });
   }
 
   enlaces.push({ href: "/onboarding", etiqueta: "Onboarding" });
