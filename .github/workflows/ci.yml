@@ -1,0 +1,38 @@
+# CI mínima: typecheck + lint + suite unitaria en cada push/PR.
+#
+# Alcance deliberado (quick win):
+# - Las pruebas Vitest son autocontenidas (stubean su env, no tocan Supabase
+#   real) → no se necesitan secretos en CI.
+# - Las pruebas de aislamiento RLS (pgTAP, `npx supabase test db`) requieren
+#   levantar Supabase local (Docker) — quedan FUERA de este workflow por ahora;
+#   correrlas localmente antes de tocar esquema/políticas. Candidata a job
+#   aparte cuando se monte el pipeline de despliegue.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pruebas unitarias
+        run: npm test
