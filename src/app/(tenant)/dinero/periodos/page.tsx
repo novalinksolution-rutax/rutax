@@ -164,11 +164,11 @@ export default async function PaginaPeriodosCobro({
   }
 
   const chips = [
-    { key: "abierto", label: "Abiertos", count: contAbiertos, color: "bg-blue-50 border-blue-200 text-blue-800" },
-    { key: "cerrado", label: "Cerrados", count: contCerrados, color: "bg-gray-50 border-gray-200 text-gray-700" },
-    { key: "facturado", label: "Facturados", count: contFacturados, color: "bg-green-50 border-green-200 text-green-800" },
-    { key: "anulado", label: "Anulados", count: contAnulados, color: "bg-red-50 border-red-200 text-red-800" },
-    { key: "", label: "Con problemas", count: contConProblemas, color: "bg-red-50 border-red-200 text-red-800" },
+    { key: "abierto", label: "Abiertos", count: contAbiertos, color: "bg-info-subtle text-info-subtle-foreground" },
+    { key: "cerrado", label: "Cerrados", count: contCerrados, color: "bg-muted text-muted-foreground" },
+    { key: "facturado", label: "Facturados", count: contFacturados, color: "bg-success-subtle text-success-subtle-foreground" },
+    { key: "anulado", label: "Anulados", count: contAnulados, color: "bg-destructive-subtle text-destructive-subtle-foreground" },
+    { key: "", label: "Con problemas", count: contConProblemas, color: "bg-destructive-subtle text-destructive-subtle-foreground" },
   ];
 
   return (
@@ -191,8 +191,8 @@ export default async function PaginaPeriodosCobro({
                     : urlConFiltros({ estado: chip.key, pagina: "" })
                 }
                 role="listitem"
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-all ${chip.color} ${
-                  estaActivo ? "ring-2 ring-offset-1 ring-current" : "hover:opacity-80"
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-all ${chip.color} ${
+                  estaActivo ? "ring-2 ring-current ring-offset-1" : "hover:opacity-80"
                 }`}
               >
                 {chip.label}: <span className="font-bold">{chip.count}</span>
@@ -263,7 +263,7 @@ export default async function PaginaPeriodosCobro({
       {errorCarga && (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
           No se pudo cargar la lista de períodos. Intenta recargar la página.
         </div>

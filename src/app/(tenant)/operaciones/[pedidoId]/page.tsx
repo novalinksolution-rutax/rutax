@@ -16,7 +16,12 @@ import {
   puedeAsignarYReasignarPedidos,
   puedeGestionarIncidencias,
   puedeAjustarOperacionDiaria,
+  puedeVerConciliacion,
+  puedeEmitirFacturas,
+  puedeVerReportesEjecutivos,
 } from "@/modules/identidad/capacidades";
+import { obtenerTrazaDineroPorPedido, type TrazaDineroPedido } from "@/modules/dinero";
+import { TrazadorLazo } from "@/components/dinero/trazador-lazo";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
@@ -101,6 +106,23 @@ export default async function PaginaDetallePedido({ params }: Props) {
   const puedeAjustar = puedeAjustarOperacionDiaria(sesion.usuario);
   const esTerminal = ESTADOS_TERMINALES.includes(pedido.estado);
 
+  // Trazabilidad del dinero (UX-1): solo roles financieros/dueño ven montos.
+  const puedeVerDinero =
+    puedeVerConciliacion(sesion.usuario) ||
+    puedeEmitirFacturas(sesion.usuario) ||
+    puedeVerReportesEjecutivos(sesion.usuario);
+  const pedidoEntregado =
+    pedido.estado === "entregado" || pedido.estado === "entregado_manual";
+
+  let traza: TrazaDineroPedido | null = null;
+  if (puedeVerDinero) {
+    try {
+      traza = await obtenerTrazaDineroPorPedido(crearClienteServiceRole(), tenantId, pedidoId);
+    } catch {
+      traza = null;
+    }
+  }
+
   const incidenciasAbiertas = incidencias.filter(
     (i) => i.estado === "abierta" || i.estado === "en_gestion",
   );
@@ -157,6 +179,16 @@ export default async function PaginaDetallePedido({ params }: Props) {
           )}
         </dl>
       </div>
+
+      {/* Sección A.5 — Trazabilidad del lazo entrega→dinero (solo roles financieros) */}
+      {puedeVerDinero && traza && (
+        <section aria-labelledby="traza-titulo">
+          <h2 id="traza-titulo" className="mb-3 text-base font-semibold">
+            Trazabilidad del dinero
+          </h2>
+          <TrazadorLazo traza={traza} pedidoEntregado={pedidoEntregado} />
+        </section>
+      )}
 
       {/* Sección B — Historial de estados */}
       <section aria-labelledby="historial-titulo">
@@ -274,7 +306,7 @@ function TargetaIncidencia({ incidencia }: { incidencia: Incidencia }) {
 
   return (
     <li
-      className={`rounded-xl border p-4 ${incidencia.estado === "abierta" ? "border-red-200 bg-red-50" : "border-yellow-200 bg-yellow-50"}`}
+      className={`rounded-xl border p-4 ${incidencia.estado === "abierta" ? "border-destructive-subtle bg-destructive-subtle/50" : "border-warning-subtle bg-warning-subtle/50"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -286,7 +318,7 @@ function TargetaIncidencia({ incidencia }: { incidencia: Incidencia }) {
         </div>
         <div className="flex items-center gap-2">
           {sinGestion && (
-            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+            <span className="rounded-full bg-destructive-subtle px-2 py-0.5 text-xs font-semibold text-destructive-subtle-foreground">
               Sin gestión: {horas}h
             </span>
           )}

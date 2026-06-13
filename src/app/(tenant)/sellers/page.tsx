@@ -17,9 +17,9 @@ const TEXTO_ESTADO_SELLER: Record<string, string> = {
 };
 
 const COLOR_ESTADO_SELLER: Record<string, string> = {
-  invitado: "border-yellow-200 bg-yellow-50 text-yellow-800",
-  activo: "border-green-200 bg-green-50 text-green-800",
-  suspendido: "border-red-200 bg-red-50 text-red-800",
+  invitado: "border-transparent bg-warning-subtle text-warning-subtle-foreground",
+  activo: "border-transparent bg-success-subtle text-success-subtle-foreground",
+  suspendido: "border-transparent bg-destructive-subtle text-destructive-subtle-foreground",
 };
 
 const TEXTO_SALUD_CONEXION: Record<string, string> = {
@@ -30,10 +30,10 @@ const TEXTO_SALUD_CONEXION: Record<string, string> = {
 };
 
 const COLOR_SALUD_CONEXION: Record<string, string> = {
-  sana: "border-green-200 bg-green-50 text-green-800",
-  atencion: "border-yellow-200 bg-yellow-50 text-yellow-800",
-  desvinculada: "border-red-200 bg-red-50 text-red-800",
-  pendiente: "border-muted bg-muted/40 text-muted-foreground",
+  sana: "border-transparent bg-success-subtle text-success-subtle-foreground",
+  atencion: "border-transparent bg-warning-subtle text-warning-subtle-foreground",
+  desvinculada: "border-transparent bg-destructive-subtle text-destructive-subtle-foreground",
+  pendiente: "border-transparent bg-muted text-muted-foreground",
 };
 
 interface SellerFila {

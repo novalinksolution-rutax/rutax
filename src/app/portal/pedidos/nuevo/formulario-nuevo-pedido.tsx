@@ -23,7 +23,7 @@ export function FormularioNuevoPedido() {
     <form action={accion} className="space-y-5">
       {/* Error general (sin campo) */}
       {estado && !estado.ok && !estado.campo && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
           {estado.mensaje}
         </div>
       )}
@@ -165,7 +165,7 @@ export function FormularioNuevoPedido() {
 
 function inputClass(conError: boolean) {
   return `w-full rounded-md border px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring ${
-    conError ? "border-red-400 focus:ring-red-400" : "border-input"
+    conError ? "border-destructive focus:ring-destructive/40" : "border-input"
   }`;
 }
 
@@ -188,12 +188,12 @@ function Campo({
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm font-medium text-foreground">
         {label}
-        {requerido && <span className="ml-0.5 text-red-500" aria-hidden="true">*</span>}
+        {requerido && <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>}
       </label>
       {descripcion && <p className="text-xs text-muted-foreground">{descripcion}</p>}
       {children}
       {error && (
-        <p role="alert" className="text-xs text-red-600">{error}</p>
+        <p role="alert" className="text-xs text-destructive">{error}</p>
       )}
     </div>
   );

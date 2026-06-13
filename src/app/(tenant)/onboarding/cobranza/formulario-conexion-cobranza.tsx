@@ -257,9 +257,9 @@ function SeccionConexion({
         </CardHeader>
         <CardContent className="space-y-4">
           {exito ? (
-            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-              <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" />
-              <AlertDescription className="text-emerald-800 dark:text-emerald-300">
+            <Alert className="bg-success-subtle text-success-subtle-foreground">
+              <CheckCircle2 className="text-success" />
+              <AlertDescription className="text-success-subtle-foreground">
                 Banco conectado de forma segura.
               </AlertDescription>
             </Alert>
@@ -267,7 +267,7 @@ function SeccionConexion({
 
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-subtle text-success-subtle-foreground">
                 <Landmark className="size-5" aria-hidden="true" />
               </div>
               <div className="space-y-1">
@@ -369,7 +369,7 @@ function BadgeEstadoConexion({ estado }: { estado: EstadoConfiguracionCobranza["
   switch (estado) {
     case "conectado":
       return (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           <CheckCircle2 className="size-3" aria-hidden="true" /> Conectado
         </Badge>
       );

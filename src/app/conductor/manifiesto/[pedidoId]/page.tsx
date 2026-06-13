@@ -172,7 +172,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
           href={urlGoogleMaps}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-info px-4 text-sm font-semibold text-info-foreground transition-colors hover:bg-info/90"
         >
           <MapPin className="size-4" aria-hidden="true" />
           Abrir en Google Maps
@@ -199,24 +199,24 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Instrucciones de entrega (si existen) */}
       {pedido.instruccionesEntrega && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+        <div className="space-y-1 rounded-xl bg-info-subtle p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-info-subtle-foreground">
             Instrucciones de entrega
           </p>
-          <p className="text-sm text-blue-900">{pedido.instruccionesEntrega}</p>
+          <p className="text-sm text-info-subtle-foreground">{pedido.instruccionesEntrega}</p>
         </div>
       )}
 
       {/* Incidencia abierta — solo informativo (B-2) */}
       {incidenciaAbierta && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1">
+        <div className="space-y-1 rounded-xl bg-warning-subtle p-4 text-warning-subtle-foreground">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="size-4 text-amber-600 flex-shrink-0" aria-hidden="true" />
-            <p className="text-sm font-semibold text-amber-800">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+            <p className="text-sm font-semibold">
               Hay una incidencia abierta: {traducirTipoIncidencia(incidenciaAbierta.tipo)}
             </p>
           </div>
-          <p className="text-xs text-amber-700">
+          <p className="text-xs opacity-80">
             Si tienes información nueva, comenta con tu coordinador.
           </p>
         </div>

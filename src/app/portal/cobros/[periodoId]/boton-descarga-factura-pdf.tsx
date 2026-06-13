@@ -53,7 +53,7 @@ export function BotonDescargaFacturaPdf({
         {isPending ? "Generando enlace..." : etiqueta}
       </button>
       {error && (
-        <p className="text-xs text-red-700" role="alert">
+        <p className="text-xs text-destructive" role="alert">
           {error}
         </p>
       )}

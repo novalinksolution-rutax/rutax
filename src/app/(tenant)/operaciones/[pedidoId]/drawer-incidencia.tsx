@@ -5,10 +5,24 @@
  */
 
 import { useState, useTransition } from "react";
-import { X } from "lucide-react";
+import { X, Info } from "lucide-react";
 import { TIPOS_INCIDENCIA } from "@/modules/operacion/tipos";
+import type { TipoIncidencia } from "@/modules/operacion/tipos";
+import { afectacionDeIncidencia } from "@/modules/operacion/afectacion-incidencia";
 import { traducirTipoIncidencia } from "@/lib/ui/traduccion-estados";
 import { actionAbrirIncidencia } from "../actions";
+
+/** Consecuencia financiera de un tipo de incidencia, en lenguaje del usuario (UX-9). */
+function textoConsecuencia(tipo: TipoIncidencia): string {
+  const { afectaCobro, afectaLiquidacion } = afectacionDeIncidencia(tipo);
+  if (afectaCobro && !afectaLiquidacion)
+    return "Afecta el cobro al seller, pero no la liquidación del conductor (igual salió a intentar la entrega).";
+  if (!afectaCobro && afectaLiquidacion)
+    return "Afecta la liquidación del conductor, pero no el cobro al seller.";
+  if (afectaCobro && afectaLiquidacion)
+    return "Afecta el cobro al seller y la liquidación del conductor.";
+  return "No afecta el cobro ni la liquidación.";
+}
 
 interface Props {
   pedidoId: string;
@@ -17,6 +31,7 @@ interface Props {
 
 export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
   const [abierto, setAbierto] = useState(false);
+  const [tipo, setTipo] = useState<TipoIncidencia | "">("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -39,7 +54,11 @@ export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
     <>
       <button
         type="button"
-        onClick={() => setAbierto(true)}
+        onClick={() => {
+          setTipo("");
+          setError(null);
+          setAbierto(true);
+        }}
         className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
       >
         Abrir incidencia
@@ -88,15 +107,28 @@ export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
                     name="tipo"
                     required
                     disabled={pending}
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value as TipoIncidencia | "")}
                     className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   >
                     <option value="">Seleccionar tipo...</option>
-                    {TIPOS_INCIDENCIA.map((tipo) => (
-                      <option key={tipo} value={tipo}>
-                        {traducirTipoIncidencia(tipo)}
+                    {TIPOS_INCIDENCIA.map((t) => (
+                      <option key={t} value={t}>
+                        {traducirTipoIncidencia(t)}
                       </option>
                     ))}
                   </select>
+
+                  {/* Consecuencia financiera del tipo elegido (UX-9) */}
+                  {tipo && (
+                    <div className="mt-2 flex gap-2 rounded-md bg-info-subtle px-3 py-2 text-xs text-info-subtle-foreground">
+                      <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                      <span>
+                        <span className="font-medium">Consecuencia en el dinero:</span>{" "}
+                        {textoConsecuencia(tipo)}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -114,7 +146,10 @@ export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
                 </div>
 
                 {error && (
-                  <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <p
+                    role="alert"
+                    className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground"
+                  >
                     {error}
                   </p>
                 )}

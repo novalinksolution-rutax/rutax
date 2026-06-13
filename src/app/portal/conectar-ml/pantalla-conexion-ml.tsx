@@ -96,12 +96,12 @@ function PantallaConectar({ modo }: { modo: ModoConexionMl }) {
         className={`flex gap-3 rounded-lg border-2 px-4 py-4 text-left ${
           modo === "reconexion"
             ? "border-destructive/50 bg-destructive/5"
-            : "border-amber-500/50 bg-amber-500/10"
+            : "border-warning/50 bg-warning/10"
         }`}
         role="alert"
       >
         <TriangleAlert
-          className={`size-6 shrink-0 ${modo === "reconexion" ? "text-destructive" : "text-amber-600"}`}
+          className={`size-6 shrink-0 ${modo === "reconexion" ? "text-destructive" : "text-warning"}`}
           aria-hidden="true"
         />
         <div className="space-y-1">
@@ -162,8 +162,8 @@ function PantallaResultado({ modo, resultado }: { modo: ModoConexionMl; resultad
   const contenido = construirContenido(modo, resultado);
 
   const estilosPorTono: Record<ContenidoResultado["tono"], string> = {
-    exito: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
-    advertencia: "border-amber-500/40 bg-amber-500/10 text-amber-700",
+    exito: "border-success/40 bg-success/10 text-success",
+    advertencia: "border-warning/40 bg-warning/10 text-warning",
     error: "border-destructive/40 bg-destructive/10 text-destructive",
     neutro: "border-border bg-muted/40 text-muted-foreground",
   };

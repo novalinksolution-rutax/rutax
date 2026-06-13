@@ -77,7 +77,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       <div className="mx-auto max-w-4xl">
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
           No se pudo cargar el período. Intenta recargar la página.
         </div>
@@ -137,7 +137,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             </p>
           )}
           {periodo.estadoCobro === "pagado" && (
-            <p className="text-sm text-green-700">Pago recibido. Gracias.</p>
+            <p className="text-sm font-medium text-success">Pago recibido. Gracias.</p>
           )}
         </div>
       </section>
@@ -146,25 +146,25 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       {periodo.estado === "anulado" && (
         <section
           aria-labelledby="anulacion-titulo"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-5"
+          className="rounded-xl bg-warning-subtle p-5 text-warning-subtle-foreground"
         >
-          <h2 id="anulacion-titulo" className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
-            <AlertTriangle className="size-4 flex-shrink-0" aria-hidden="true" />
+          <h2 id="anulacion-titulo" className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
             Factura anulada con nota de crédito
           </h2>
-          <p className="text-sm text-amber-800">
+          <p className="text-sm">
             Esta factura fue anulada por tu empresa de despacho. No tienes saldo por pagar de este
             período; las entregas se vuelven a facturar en el período en curso.
             {periodo.anuladoEn ? ` Anulada el ${formatearFechaCorta(periodo.anuladoEn)}.` : ""}
           </p>
           {periodo.motivoAnulacion && (
-            <p className="mt-2 text-sm text-amber-800">
+            <p className="mt-2 text-sm">
               <span className="font-medium">Motivo:</span> {periodo.motivoAnulacion}
             </p>
           )}
           {notaCredito ? (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-amber-900">
+              <p className="text-sm">
                 Nota de crédito{" "}
                 <span className="font-semibold tabular-nums">Folio {notaCredito.folio}</span>
                 {" · "}
@@ -180,7 +180,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
               )}
             </div>
           ) : (
-            <p className="mt-2 text-sm text-amber-700">
+            <p className="mt-2 text-sm opacity-80">
               La nota de crédito se está emitiendo. Recarga la página en unos segundos.
             </p>
           )}
@@ -215,13 +215,13 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
 
               {/* Mensajes contextuales (sin detalles técnicos para el seller) */}
               {dte.estadoSii === "aceptado_con_discrepancias" && (
-                <p className="mt-2 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+                <p className="mt-2 rounded-lg bg-warning-subtle px-3 py-2 text-sm text-warning-subtle-foreground">
                   Esta factura fue aceptada por el SII con observaciones. Si tienes dudas,
                   contacta a tu empresa de despacho.
                 </p>
               )}
               {dte.estadoSii === "rechazado" && (
-                <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                <p className="mt-2 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
                   Esta factura fue rechazada por el SII. Tu empresa de despacho está
                   trabajando en resolverlo.
                 </p>

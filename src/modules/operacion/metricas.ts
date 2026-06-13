@@ -182,3 +182,71 @@ export async function obtenerMetricasDelDia(
     rezagadosAyer: rezagadosAyer ?? 0,
   };
 }
+
+// =============================================================================
+// Resumen financiero del mes (dashboard del dueño — UX-2)
+// =============================================================================
+
+/**
+ * Agregado financiero de los períodos de cobro del mes en curso. Solo lectura,
+ * sin datos personales: montos consolidados que ya viven en `periodos_cobro`.
+ * Excluye períodos anulados. "Por cobrar" = comprometido − cobrado (nunca < 0).
+ */
+export interface ResumenFinancieroMes {
+  /** Suma de los montos de los períodos no anulados del mes (lo comprometido). */
+  montoPeriodoClp: number;
+  /** Suma de lo efectivamente pagado por los sellers. */
+  cobradoClp: number;
+  /** Saldo por cobrar (comprometido − cobrado, acotado a ≥ 0). */
+  porCobrarClp: number;
+  /** Períodos ya facturados (DTE emitido) / total del mes. */
+  periodosFacturados: number;
+  periodosTotal: number;
+}
+
+export async function obtenerResumenFinancieroDelMes(
+  cliente: SupabaseClient,
+  tenantId: string,
+  fecha: Date,
+): Promise<ResumenFinancieroMes> {
+  const fechaStr = fecha.toISOString().split("T")[0]; // 'YYYY-MM-DD'
+  const [anioStr, mesStr] = fechaStr.split("-");
+  const anio = Number(anioStr);
+  const mes = Number(mesStr);
+  const primerDia = `${anioStr}-${mesStr}-01`;
+  const sigMes = mes === 12 ? 1 : mes + 1;
+  const sigAnio = mes === 12 ? anio + 1 : anio;
+  const primerDiaSiguiente = `${sigAnio}-${String(sigMes).padStart(2, "0")}-01`;
+
+  const { data, error } = await cliente
+    .schema("dinero")
+    .from("periodos_cobro")
+    .select("estado, monto_total_clp, monto_pagado_clp")
+    .eq("tenant_id", tenantId)
+    .neq("estado", "anulado")
+    .gte("fecha_inicio", primerDia)
+    .lt("fecha_inicio", primerDiaSiguiente);
+
+  if (error) {
+    throw new Error(`Error al obtener resumen financiero del mes: ${error.message}`);
+  }
+
+  let montoPeriodoClp = 0;
+  let cobradoClp = 0;
+  let periodosFacturados = 0;
+  const filas = data ?? [];
+
+  for (const p of filas) {
+    montoPeriodoClp += Number(p.monto_total_clp ?? 0);
+    cobradoClp += Number(p.monto_pagado_clp ?? 0);
+    if (p.estado === "facturado") periodosFacturados += 1;
+  }
+
+  return {
+    montoPeriodoClp,
+    cobradoClp,
+    porCobrarClp: Math.max(0, montoPeriodoClp - cobradoClp),
+    periodosFacturados,
+    periodosTotal: filas.length,
+  };
+}

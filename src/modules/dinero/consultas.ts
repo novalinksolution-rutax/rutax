@@ -21,6 +21,9 @@ import type {
   EstadoEventoConciliacion,
   PagoRecibido,
   EstadoMatchPago,
+  EstadoCobroPeriodo,
+  EstadoSii,
+  EstadoLiquidacion,
 } from './tipos';
 
 // =============================================================================
@@ -408,4 +411,105 @@ export async function listarPagosRecibidos(
 
   if (error) throw new Error(`Error al listar pagos recibidos: ${error.message}`);
   return (data ?? []).map(filaToPagoRecibido);
+}
+
+// =============================================================================
+// Traza del lazo entrega→dinero (para el detalle de pedido — UX-1)
+// =============================================================================
+
+/**
+ * Estado del lazo entrega→dinero de un pedido: su línea de cobro al seller, el
+ * período/factura donde aterrizó y su estado de pago, más su línea de
+ * liquidación al conductor. Cada nodo puede no existir aún (lazo en curso).
+ * Solo lectura; pensado para que un rol financiero/dueño *vea* la trazabilidad.
+ */
+export interface TrazaDineroPedido {
+  cobro: { montoFinalClp: number } | null;
+  periodo: { id: string; estado: EstadoPeriodo; estadoCobro: EstadoCobroPeriodo } | null;
+  factura: { folio: number; estadoSii: EstadoSii } | null;
+  liquidacion: { id: string; estado: EstadoLiquidacion; montoFinalClp: number } | null;
+}
+
+export async function obtenerTrazaDineroPorPedido(
+  cliente: SupabaseClient,
+  tenantId: string,
+  pedidoId: string,
+): Promise<TrazaDineroPedido> {
+  // Línea de cobro y línea de liquidación del pedido (una por pedido, a lo sumo).
+  const [cobroRes, liqLineaRes] = await Promise.all([
+    cliente
+      .schema('dinero')
+      .from('lineas_cobro')
+      .select('monto_final_clp, periodo_cobro_id')
+      .eq('tenant_id', tenantId)
+      .eq('pedido_id', pedidoId)
+      .maybeSingle(),
+    cliente
+      .schema('dinero')
+      .from('lineas_liquidacion')
+      .select('monto_final_clp, liquidacion_id')
+      .eq('tenant_id', tenantId)
+      .eq('pedido_id', pedidoId)
+      .maybeSingle(),
+  ]);
+
+  const cobroFila = cobroRes.data;
+  const liqLineaFila = liqLineaRes.data;
+
+  let periodo: TrazaDineroPedido['periodo'] = null;
+  let factura: TrazaDineroPedido['factura'] = null;
+
+  if (cobroFila?.periodo_cobro_id) {
+    const { data: pf } = await cliente
+      .schema('dinero')
+      .from('periodos_cobro')
+      .select('id, estado, estado_cobro, documento_dte_id')
+      .eq('tenant_id', tenantId)
+      .eq('id', cobroFila.periodo_cobro_id)
+      .maybeSingle();
+
+    if (pf) {
+      periodo = { id: pf.id, estado: pf.estado, estadoCobro: pf.estado_cobro };
+
+      if (pf.documento_dte_id) {
+        const { data: df } = await cliente
+          .schema('dinero')
+          .from('documentos_dte')
+          .select('folio, estado_sii, tipo_documento')
+          .eq('tenant_id', tenantId)
+          .eq('id', pf.documento_dte_id)
+          .maybeSingle();
+
+        if (df && df.tipo_documento === 33) {
+          factura = { folio: df.folio, estadoSii: df.estado_sii };
+        }
+      }
+    }
+  }
+
+  let liquidacion: TrazaDineroPedido['liquidacion'] = null;
+  if (liqLineaFila?.liquidacion_id) {
+    const { data: lf } = await cliente
+      .schema('dinero')
+      .from('liquidaciones')
+      .select('id, estado')
+      .eq('tenant_id', tenantId)
+      .eq('id', liqLineaFila.liquidacion_id)
+      .maybeSingle();
+
+    if (lf) {
+      liquidacion = {
+        id: lf.id,
+        estado: lf.estado,
+        montoFinalClp: Number(liqLineaFila.monto_final_clp),
+      };
+    }
+  }
+
+  return {
+    cobro: cobroFila ? { montoFinalClp: Number(cobroFila.monto_final_clp) } : null,
+    periodo,
+    factura,
+    liquidacion,
+  };
 }

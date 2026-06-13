@@ -13,47 +13,15 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Incidencia, AbrirIncidenciaEntrada, ActualizarIncidenciaEntrada, TipoIncidencia } from "./tipos";
+import type { Incidencia, AbrirIncidenciaEntrada, ActualizarIncidenciaEntrada } from "./tipos";
 import { ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import { puedeGestionarIncidencias } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
-
-// =============================================================================
-// Reglas de afectación por tipo de incidencia
-// =============================================================================
-// Fuente: §2.5 nota de dominio + §3 invariante 4 del doc de arquitectura.
-
-interface ReglaAfectacion {
-  afectaCobro: boolean;
-  afectaLiquidacion: boolean;
-}
-
-function resolverAfectacion(tipo: TipoIncidencia): ReglaAfectacion {
-  switch (tipo) {
-    case "reagendado":
-      // El pedido se reagenda → afecta cobro (timing/descuento) pero NO la
-      // liquidación del conductor (que igual salió a intentar la entrega).
-      return { afectaCobro: true, afectaLiquidacion: false };
-
-    case "destinatario_ausente":
-    case "rechazo_destinatario":
-      // No se completó la entrega por causas del destinatario → tanto cobro
-      // como liquidación se ven afectados (puede aplicar tarifa reducida).
-      return { afectaCobro: true, afectaLiquidacion: true };
-
-    case "paquete_danado":
-      // El paquete llegó dañado → afecta ambos (responsabilidad y costos).
-      return { afectaCobro: true, afectaLiquidacion: true };
-
-    // Todos los demás tipos (direccion_erronea, problema_acceso, otro):
-    // por defecto ambos = true (el caso más conservador, Fase C puede
-    // refinar si necesita excepciones).
-    default:
-      return { afectaCobro: true, afectaLiquidacion: true };
-  }
-}
+// Regla de afectación (cobro/liquidación) por tipo — única fuente de verdad,
+// compartida con la UI (UX-9). Ver afectacion-incidencia.ts.
+import { afectacionDeIncidencia } from "./afectacion-incidencia";
 
 // =============================================================================
 // Mapper de fila de BD → interfaz Incidencia
@@ -147,7 +115,7 @@ export async function abrirIncidencia(
     throw new ErrorPedidoNoEncontrado(entrada.pedidoId);
   }
 
-  const { afectaCobro, afectaLiquidacion } = resolverAfectacion(entrada.tipo);
+  const { afectaCobro, afectaLiquidacion } = afectacionDeIncidencia(entrada.tipo);
 
   const { data: nueva, error: errorInsert } = await cliente
     .from("incidencias")

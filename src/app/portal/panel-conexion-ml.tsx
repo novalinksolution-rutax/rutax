@@ -182,8 +182,8 @@ function traducirEstadoSalud(conexion: ConexionMlSeller): PresentacionEstado {
         detalle: conexion.ultimaSyncExitosaEn
           ? `Última sincronización: ${formatearTiempoRelativo(conexion.ultimaSyncExitosaEn)}`
           : null,
-        fondoIcono: "bg-emerald-500/15 text-emerald-600",
-        bordeTarjeta: "border-emerald-500/30",
+        fondoIcono: "bg-success/15 text-success",
+        bordeTarjeta: "border-success/30",
         tono: "ok",
         mostrarBotonReconectar: false,
       };
@@ -204,8 +204,8 @@ function traducirEstadoSalud(conexion: ConexionMlSeller): PresentacionEstado {
         icono: <TriangleAlert className="size-5" aria-hidden="true" />,
         titulo: "Tu conexión necesita atención — estamos trabajando en resolverlo",
         detalle: "Es un problema operativo de nuestro lado o de Mercado Libre, no algo que tengas que resolver tú.",
-        fondoIcono: "bg-amber-500/15 text-amber-600",
-        bordeTarjeta: "border-amber-500/30",
+        fondoIcono: "bg-warning/15 text-warning",
+        bordeTarjeta: "border-warning/30",
         tono: "atencion",
         // Aunque la tabla §3.2 marca "Ver más" como opcional para `atencion`
         // y reserva "Reconectar" como prominente para `desvinculada`, ofrecer

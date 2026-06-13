@@ -137,7 +137,7 @@ export function MenuAccionesConciliacion({ eventoId, estadoActual }: Props) {
                     onClick={accion.accion}
                     disabled={isPending}
                     className={`w-full px-4 py-2 text-left text-sm hover:bg-muted transition-colors disabled:opacity-50 ${
-                      accion.destructivo ? "text-red-700 hover:bg-red-50" : "text-foreground"
+                      accion.destructivo ? "text-destructive hover:bg-destructive-subtle" : "text-foreground"
                     }`}
                   >
                     {accion.etiqueta}
@@ -146,7 +146,7 @@ export function MenuAccionesConciliacion({ eventoId, estadoActual }: Props) {
               ))}
               {error && (
                 <li className="px-4 py-2">
-                  <p className="text-xs text-red-700" role="alert">
+                  <p className="text-xs text-destructive" role="alert">
                     {error}
                   </p>
                 </li>
@@ -160,7 +160,7 @@ export function MenuAccionesConciliacion({ eventoId, estadoActual }: Props) {
                 Quedará registrado en la bitácora.
               </p>
               {error && (
-                <p className="text-xs text-red-700" role="alert">
+                <p className="text-xs text-destructive" role="alert">
                   {error}
                 </p>
               )}
@@ -182,11 +182,11 @@ export function MenuAccionesConciliacion({ eventoId, estadoActual }: Props) {
                     ejecutarAccion(() => accionResolverEvento(eventoId, "ignorado"))
                   }
                   disabled={isPending}
-                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1"
+                  className="flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
                 >
                   {isPending && (
                     <span
-                      className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"
+                      className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-destructive-foreground border-t-transparent"
                       aria-hidden="true"
                     />
                   )}

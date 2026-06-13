@@ -108,7 +108,7 @@ export function DialogMarcarPagada({
             {error && (
               <p
                 role="alert"
-                className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                className="mt-3 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground"
               >
                 {error}
               </p>

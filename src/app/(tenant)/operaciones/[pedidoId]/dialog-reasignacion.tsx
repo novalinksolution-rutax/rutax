@@ -51,7 +51,7 @@ export function DialogReasignacion({
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className="rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm font-medium text-yellow-800 hover:bg-yellow-100 transition-colors"
+        className="rounded-lg border border-warning bg-warning-subtle px-4 py-2 text-sm font-medium text-warning-subtle-foreground transition-colors hover:bg-warning-subtle/70"
       >
         Reasignar conductor
       </button>
@@ -71,7 +71,7 @@ export function DialogReasignacion({
           />
           <div className="relative z-10 w-full max-w-sm rounded-xl bg-background p-6 shadow-2xl">
             <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 size-5 flex-shrink-0 text-yellow-600" aria-hidden="true" />
+              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden="true" />
               <div>
                 <h2 id="dialog-reasig-titulo" className="font-semibold">
                   Reasignar pedido
@@ -88,7 +88,7 @@ export function DialogReasignacion({
                 </p>
 
                 {error && (
-                  <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <p role="alert" className="mt-3 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
                     {error}
                   </p>
                 )}
@@ -108,7 +108,7 @@ export function DialogReasignacion({
                 type="button"
                 onClick={confirmar}
                 disabled={pending}
-                className="rounded-lg bg-yellow-600 px-4 py-2 text-sm font-semibold text-white hover:bg-yellow-700 transition-colors disabled:opacity-50"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
                 {pending ? "Procesando..." : "Confirmar reasignación"}
               </button>

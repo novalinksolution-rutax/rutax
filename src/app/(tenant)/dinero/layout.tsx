@@ -88,7 +88,7 @@ export default async function LayoutDinero({
               {item.badge !== undefined && (
                 <span
                   aria-label={`${item.badge} pendiente${item.badge !== 1 ? "s" : ""}`}
-                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-xs font-bold text-white"
+                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-warning-foreground"
                 >
                   {item.badge}
                 </span>

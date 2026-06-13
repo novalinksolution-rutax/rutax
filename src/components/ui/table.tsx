@@ -4,7 +4,24 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+/**
+ * Densidades de tabla (DESIGN_SYSTEM §5): `compact` para backoffice denso,
+ * `comfortable` por defecto, `relaxed` para el portal del seller. La densidad
+ * ajusta el alto de fila vía padding vertical de celdas y alto de encabezado.
+ */
+type DensidadTabla = "compact" | "comfortable" | "relaxed"
+
+const DENSIDAD: Record<DensidadTabla, string> = {
+  compact: "[&_td]:py-1.5 [&_th]:h-9",
+  comfortable: "[&_td]:py-2.5 [&_th]:h-10",
+  relaxed: "[&_td]:py-3.5 [&_th]:h-12",
+}
+
+function Table({
+  className,
+  densidad = "comfortable",
+  ...props
+}: React.ComponentProps<"table"> & { densidad?: DensidadTabla }) {
   return (
     <div
       data-slot="table-container"
@@ -12,7 +29,8 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-sm", className)}
+        data-densidad={densidad}
+        className={cn("w-full caption-bottom text-sm", DENSIDAD[densidad], className)}
         {...props}
       />
     </div>
@@ -70,7 +88,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-2 text-left align-middle text-xs font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

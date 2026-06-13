@@ -109,7 +109,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
             </p>
 
             {errorServidor && (
-              <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p role="alert" className="mb-4 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
                 {errorServidor}
               </p>
             )}
@@ -134,7 +134,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     {errores.destinatarioNombre && (
-                      <p id="err-nombre" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-nombre" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.destinatarioNombre}
                       </p>
                     )}
@@ -155,7 +155,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     {errores.destinatarioDireccion && (
-                      <p id="err-dir" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-dir" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.destinatarioDireccion}
                       </p>
                     )}
@@ -176,7 +176,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     {errores.destinatarioComuna && (
-                      <p id="err-comuna" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-comuna" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.destinatarioComuna}
                       </p>
                     )}
@@ -259,7 +259,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       ))}
                     </select>
                     {errores.sellerId && (
-                      <p id="err-seller" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-seller" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.sellerId}
                       </p>
                     )}

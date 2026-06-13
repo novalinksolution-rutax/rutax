@@ -96,7 +96,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
     return (
       <div
         role="alert"
-        className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
       >
         No se pudo cargar el período. Intenta recargar la página.
       </div>
@@ -167,7 +167,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               </p>
             )}
             {periodo.estadoCobro === "pagado" && (
-              <p className="text-sm text-green-700">
+              <p className="text-sm font-medium text-success">
                 Pagado en su totalidad{periodo.pagadoEn ? ` el ${formatearFechaCorta(periodo.pagadoEn)}` : ""}.
               </p>
             )}
@@ -220,11 +220,11 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       {periodo.estado === "anulado" && (
         <section
           aria-labelledby="anulacion-titulo"
-          className="rounded-xl border border-red-200 bg-red-50/50 p-5 shadow-sm"
+          className="rounded-xl bg-destructive-subtle/50 p-5"
         >
           <h2
             id="anulacion-titulo"
-            className="mb-4 text-sm font-semibold uppercase tracking-wide text-red-800"
+            className="mb-4 text-sm font-semibold uppercase tracking-wide text-destructive-subtle-foreground"
           >
             Período anulado con nota de crédito
           </h2>
@@ -232,19 +232,19 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
               {periodo.anuladoEn && (
-                <p className="text-sm text-red-800">
+                <p className="text-sm text-destructive-subtle-foreground">
                   Anulado el {formatearFechaCorta(periodo.anuladoEn)}.
                 </p>
               )}
               <div>
-                <p className="text-xs font-semibold text-red-800">Motivo:</p>
-                <p className="mt-1 text-sm text-red-900">
+                <p className="text-xs font-semibold text-destructive-subtle-foreground">Motivo:</p>
+                <p className="mt-1 text-sm text-destructive-subtle-foreground">
                   {periodo.motivoAnulacion ?? "—"}
                 </p>
               </div>
 
               {notaCredito ? (
-                <p className="text-sm text-red-800">
+                <p className="text-sm text-destructive-subtle-foreground">
                   Nota de crédito{" "}
                   <span className="font-bold tabular-nums">
                     Folio {notaCredito.folio}
@@ -256,13 +256,13 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                   .
                 </p>
               ) : (
-                <p className="text-sm text-red-800">
+                <p className="text-sm text-destructive-subtle-foreground">
                   La nota de crédito se está emitiendo. Recarga la página en unos
                   segundos para ver el folio y descargar el documento.
                 </p>
               )}
 
-              <p className="text-sm text-red-800">
+              <p className="text-sm text-destructive-subtle-foreground">
                 Las entregas de este período volvieron al período de facturación en
                 curso del seller.
               </p>
@@ -518,9 +518,9 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
         <span
           className={
             ajuste.esNegativo
-              ? "text-red-700"
+              ? "text-destructive"
               : ajuste.esPositivo
-              ? "text-green-700"
+              ? "text-success"
               : "text-muted-foreground"
           }
         >

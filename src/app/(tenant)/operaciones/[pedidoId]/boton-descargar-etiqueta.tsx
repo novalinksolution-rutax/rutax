@@ -53,7 +53,7 @@ export function BotonDescargarEtiqueta({ pedidoId }: Props) {
       </button>
 
       {error && (
-        <p role="alert" className="text-xs text-red-700">
+        <p role="alert" className="text-xs text-destructive">
           {error}
         </p>
       )}

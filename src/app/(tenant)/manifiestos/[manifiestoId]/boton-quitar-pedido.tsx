@@ -47,7 +47,7 @@ export function BotonQuitarPedido({ asignacionId, manifiestoId, nombreDestinatar
         <X className="size-4" aria-hidden="true" />
       </button>
       {error && (
-        <p role="alert" className="mt-1 text-xs text-red-600">{error}</p>
+        <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>
       )}
     </div>
   );

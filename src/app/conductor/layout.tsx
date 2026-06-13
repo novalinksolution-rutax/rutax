@@ -8,6 +8,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { RegistrarSW } from "@/components/pwa/registrar-sw";
+import { SkipLink } from "@/components/app-shell/skip-link";
 
 export default async function LayoutConductor({
   children,
@@ -38,20 +40,22 @@ export default async function LayoutConductor({
 
   return (
     <div className="min-h-svh bg-background">
+      <RegistrarSW />
+      <SkipLink />
       {/* Cabecera mínima de la PWA con navegación */}
-      <header className="sticky top-0 z-30 border-b bg-card shadow-sm">
-        <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3">
-          <p className="text-sm font-semibold text-foreground">Mis entregas</p>
-          <nav aria-label="Navegación del conductor" className="flex items-center gap-3">
+      <header className="sticky top-0 z-30 border-b border-border bg-card shadow-sm">
+        <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-2">
+          <p className="font-heading text-sm font-semibold text-foreground">Mis entregas</p>
+          <nav aria-label="Navegación del conductor" className="flex items-center gap-1">
             <Link
               href="/conductor/manifiesto"
-              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               Manifiesto
             </Link>
             <Link
               href="/conductor/liquidaciones"
-              className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               Liquidaciones
             </Link>
@@ -60,7 +64,9 @@ export default async function LayoutConductor({
       </header>
 
       {/* Contenido mobile-first */}
-      <main className="mx-auto max-w-lg px-4 py-4">{children}</main>
+      <main id="contenido" tabIndex={-1} className="mx-auto max-w-lg px-4 py-4 outline-none">
+        {children}
+      </main>
     </div>
   );
 }

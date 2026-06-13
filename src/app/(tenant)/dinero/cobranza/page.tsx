@@ -104,7 +104,10 @@ export default async function PaginaBandejaCobranza() {
       </div>
 
       {errorCarga && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div
+          role="alert"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
+        >
           No se pudo cargar la bandeja de pagos. Intenta recargar la página.
         </div>
       )}
@@ -114,12 +117,14 @@ export default async function PaginaBandejaCobranza() {
         <div
           role="status"
           aria-live="polite"
-          className="flex flex-col items-center justify-center gap-4 rounded-xl border border-green-200 bg-green-50 px-6 py-16 text-center"
+          className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center"
         >
-          <CheckCircle2 className="size-12 text-green-500" aria-hidden="true" />
+          <div className="flex size-11 items-center justify-center rounded-full bg-success-subtle">
+            <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
+          </div>
           <div>
-            <p className="text-lg font-semibold text-green-800">No hay pagos por revisar.</p>
-            <p className="mt-1 text-sm text-green-700">
+            <p className="font-heading text-sm font-medium text-foreground">No hay pagos por revisar</p>
+            <p className="mt-1 text-sm text-muted-foreground">
               Todos los pagos recibidos se atribuyeron y conciliaron solos.
             </p>
           </div>

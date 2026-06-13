@@ -43,7 +43,10 @@ export {
   obtenerLiquidacion,
   listarEventosConciliacion,
   listarPagosRecibidos,
+  obtenerTrazaDineroPorPedido,
 } from './consultas';
+
+export type { TrazaDineroPedido } from './consultas';
 
 // Server Actions (para formularios y operaciones desde el frontend)
 export {

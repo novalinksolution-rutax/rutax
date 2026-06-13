@@ -8,12 +8,14 @@ import {
   puedeGenerarManifiestos,
   puedeGestionarUsuariosYRoles,
   puedeGestionarConfiguracionDte,
+  puedeGestionarIncidencias,
   puedeEmitirFacturas,
   puedeGestionarLiquidacionesConductores,
+  puedeGestionarCobranza,
   puedeVerConciliacion,
   puedeVerBitacoraAuditoria,
 } from "@/modules/identidad/capacidades";
-import { BarraSuperior } from "@/components/app-shell/barra-superior";
+import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
 import { resolverEstadoOnboarding } from "@/app/(tenant)/onboarding/estado";
 
@@ -56,41 +58,56 @@ export default async function LayoutTenant({ children }: { children: React.React
     .eq("id", sesion.usuario.tenantId)
     .maybeSingle();
 
+  const u = sesion.usuario;
   const esOperativo =
-    puedeAsignarYReasignarPedidos(sesion.usuario) ||
-    puedeGenerarManifiestos(sesion.usuario) ||
-    puedeAjustarOperacionDiaria(sesion.usuario);
+    puedeAsignarYReasignarPedidos(u) ||
+    puedeGenerarManifiestos(u) ||
+    puedeAjustarOperacionDiaria(u);
 
-  const enlaces: { href: string; etiqueta: string }[] = [];
-
-  if (puedeVerReportesEjecutivos(sesion.usuario)) {
-    enlaces.push({ href: "/dashboard", etiqueta: "Dashboard" });
+  // Navegación AGRUPADA por objetivo y filtrada por capacidad (UX_STRATEGY §5.2).
+  // Lo que un rol no puede hacer, no se incluye como ítem — no se muestra
+  // deshabilitado. Un grupo sin ítems no se agrega.
+  const grupoPrincipal: GrupoNav = { titulo: null, items: [] };
+  if (puedeVerReportesEjecutivos(u)) {
+    grupoPrincipal.items.push({ href: "/dashboard", etiqueta: "Dashboard", icono: "dashboard" });
   }
+
+  const grupoOperacion: GrupoNav = { titulo: "Operación", items: [] };
   if (esOperativo) {
-    enlaces.push({ href: "/operaciones", etiqueta: "Pedidos" });
-    enlaces.push({ href: "/manifiestos", etiqueta: "Manifiestos" });
+    grupoOperacion.items.push({ href: "/operaciones", etiqueta: "Pedidos", icono: "pedidos" });
+    grupoOperacion.items.push({ href: "/manifiestos", etiqueta: "Manifiestos", icono: "manifiestos" });
+  }
+  if (puedeGestionarIncidencias(u)) {
+    grupoOperacion.items.push({ href: "/operaciones/incidencias", etiqueta: "Incidencias", icono: "incidencias" });
   }
 
-  // Dinero — para roles financieros (Fase C)
-  if (puedeEmitirFacturas(sesion.usuario)) {
-    enlaces.push({ href: "/dinero/periodos", etiqueta: "Períodos" });
+  const grupoDinero: GrupoNav = { titulo: "Dinero", items: [] };
+  if (puedeEmitirFacturas(u)) {
+    grupoDinero.items.push({ href: "/dinero/periodos", etiqueta: "Períodos", icono: "periodos" });
   }
-  if (puedeGestionarLiquidacionesConductores(sesion.usuario)) {
-    enlaces.push({ href: "/dinero/liquidaciones", etiqueta: "Liquidaciones" });
+  if (puedeGestionarLiquidacionesConductores(u)) {
+    grupoDinero.items.push({ href: "/dinero/liquidaciones", etiqueta: "Liquidaciones", icono: "liquidaciones" });
   }
-  if (puedeVerConciliacion(sesion.usuario)) {
-    enlaces.push({ href: "/dinero/conciliacion", etiqueta: "Conciliación" });
-    enlaces.push({ href: "/dinero/cobranza", etiqueta: "Pagos" });
+  if (puedeVerConciliacion(u)) {
+    grupoDinero.items.push({ href: "/dinero/conciliacion", etiqueta: "Conciliación", icono: "conciliacion" });
+  }
+  if (puedeVerConciliacion(u) || puedeGestionarCobranza(u)) {
+    grupoDinero.items.push({ href: "/dinero/cobranza", etiqueta: "Pagos", icono: "pagos" });
   }
 
-  enlaces.push({ href: "/onboarding", etiqueta: "Onboarding" });
-  if (puedeGestionarUsuariosYRoles(sesion.usuario)) {
-    enlaces.push({ href: "/equipo", etiqueta: "Equipo" });
+  const grupoConfig: GrupoNav = { titulo: "Configuración", items: [] };
+  grupoConfig.items.push({ href: "/onboarding", etiqueta: "Configuración", icono: "configuracion" });
+  if (puedeGestionarUsuariosYRoles(u)) {
+    grupoConfig.items.push({ href: "/equipo", etiqueta: "Equipo", icono: "equipo" });
   }
-  enlaces.push({ href: "/sellers", etiqueta: "Sellers" });
-  if (puedeVerBitacoraAuditoria(sesion.usuario)) {
-    enlaces.push({ href: "/configuracion/exportar-datos", etiqueta: "Exportar datos" });
+  grupoConfig.items.push({ href: "/sellers", etiqueta: "Sellers", icono: "sellers" });
+  if (puedeVerBitacoraAuditoria(u)) {
+    grupoConfig.items.push({ href: "/configuracion/exportar-datos", etiqueta: "Exportar datos", icono: "exportar" });
   }
+
+  const grupos: GrupoNav[] = [grupoPrincipal, grupoOperacion, grupoDinero, grupoConfig].filter(
+    (g) => g.items.length > 0,
+  );
 
   const puedeActuarSobreOnboarding = puedeGestionarConfiguracionDte(sesion.usuario);
   const estadoOnboarding =
@@ -99,19 +116,20 @@ export default async function LayoutTenant({ children }: { children: React.React
       : null;
 
   return (
-    <div className="flex min-h-svh flex-col bg-muted/20">
-      <BarraSuperior
-        nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
-        nombreCompleto={sesion.nombreCompleto}
-        enlaces={enlaces}
-      />
-      {estadoOnboarding && !estadoOnboarding.completo ? (
-        <BannerOnboarding
-          pasosCompletados={estadoOnboarding.pasosCompletados}
-          totalPasos={estadoOnboarding.totalPasos}
-        />
-      ) : null}
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
-    </div>
+    <AppShell
+      nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
+      nombreCompleto={sesion.nombreCompleto}
+      grupos={grupos}
+      banner={
+        estadoOnboarding && !estadoOnboarding.completo ? (
+          <BannerOnboarding
+            pasosCompletados={estadoOnboarding.pasosCompletados}
+            totalPasos={estadoOnboarding.totalPasos}
+          />
+        ) : null
+      }
+    >
+      {children}
+    </AppShell>
   );
 }

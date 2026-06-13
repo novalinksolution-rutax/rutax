@@ -111,7 +111,7 @@ export function DialogCerrarPeriodo({
               </p>
             </div>
 
-            <p className="mt-4 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+            <p className="mt-4 rounded-lg bg-info-subtle px-4 py-3 text-sm text-info-subtle-foreground">
               Cerrar el período consolida sus líneas y lo deja listo para revisar.
               <strong> No emite la factura todavía:</strong> después podrás revisar el
               detalle y emitir el DTE con el botón “Emitir factura”. El cierre no se puede
@@ -121,7 +121,7 @@ export function DialogCerrarPeriodo({
             {error && (
               <p
                 role="alert"
-                className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                className="mt-3 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground"
               >
                 {error}
               </p>
@@ -140,11 +140,11 @@ export function DialogCerrarPeriodo({
                 type="button"
                 onClick={handleConfirmar}
                 disabled={isPending}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
                 {isPending && (
                   <span
-                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
                     aria-hidden="true"
                   />
                 )}

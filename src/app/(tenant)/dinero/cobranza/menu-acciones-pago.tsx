@@ -174,7 +174,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
                     setVista("descartar");
                     setError(null);
                   }}
-                  className="w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50 transition-colors"
+                  className="w-full px-4 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive-subtle"
                 >
                   Descartar
                 </button>
@@ -238,7 +238,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
               </div>
 
               {error && (
-                <p className="text-xs text-red-700" role="alert">
+                <p className="text-xs text-destructive" role="alert">
                   {error}
                 </p>
               )}
@@ -290,7 +290,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
               </div>
 
               {error && (
-                <p className="text-xs text-red-700" role="alert">
+                <p className="text-xs text-destructive" role="alert">
                   {error}
                 </p>
               )}
@@ -311,7 +311,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
                   type="button"
                   onClick={confirmarDescartar}
                   disabled={isPending}
-                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                  className="rounded-md bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
                 >
                   Descartar
                 </button>

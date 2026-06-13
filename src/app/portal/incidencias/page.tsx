@@ -176,7 +176,7 @@ export default async function PaginaIncidenciasSeller({
 
       {/* Error */}
       {errorCarga && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
           No se pudo cargar la lista de incidencias. Intenta recargar la página.
         </div>
       )}
@@ -217,7 +217,7 @@ export default async function PaginaIncidenciasSeller({
                           {traducirEstadoIncidencia(inc.estado)}
                         </span>
                         {sinGestion && (
-                          <span className="ml-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                          <span className="ml-1 inline-flex rounded-full bg-destructive-subtle px-2 py-0.5 text-xs font-semibold text-destructive-subtle-foreground">
                             Sin gestión: {horas}h
                           </span>
                         )}
@@ -234,7 +234,7 @@ export default async function PaginaIncidenciasSeller({
                         <span className="font-mono text-xs text-muted-foreground">{inc.pedidoId.slice(0, 8)}…</span>
                       </td>
                       <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                        <span className={sinGestion ? "font-semibold text-red-700" : ""}>
+                        <span className={sinGestion ? "font-semibold text-destructive" : ""}>
                           {horas}h
                         </span>
                       </td>

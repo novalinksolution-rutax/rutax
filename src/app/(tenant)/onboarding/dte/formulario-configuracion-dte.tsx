@@ -372,9 +372,9 @@ function TarjetaCertificadoGuardado({
   return (
     <div className="space-y-3">
       {exito ? (
-        <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-          <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" />
-          <AlertDescription className="text-emerald-800 dark:text-emerald-300">
+        <Alert className="bg-success-subtle text-success-subtle-foreground">
+          <CheckCircle2 className="text-success" />
+          <AlertDescription className="text-success-subtle-foreground">
             Certificado guardado de forma segura.
           </AlertDescription>
         </Alert>
@@ -383,7 +383,7 @@ function TarjetaCertificadoGuardado({
       <div
         className={`flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between ${
           proximoAVencer
-            ? "border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/10"
+            ? "border-warning bg-warning-subtle/40"
             : "border-border bg-muted/30"
         }`}
       >
@@ -391,8 +391,8 @@ function TarjetaCertificadoGuardado({
           <div
             className={`flex size-10 shrink-0 items-center justify-center rounded-full ${
               proximoAVencer
-                ? "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
-                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
+                ? "bg-warning-subtle text-warning-subtle-foreground"
+                : "bg-success-subtle text-success-subtle-foreground"
             }`}
           >
             {proximoAVencer ? <TriangleAlert className="size-5" aria-hidden="true" /> : <FileLock2 className="size-5" aria-hidden="true" />}
@@ -430,13 +430,13 @@ function BadgeEstadoCertificacion({ estado }: { estado: EstadoConfiguracionDte["
   switch (estado) {
     case "activo":
       return (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           <ShieldCheck className="size-3" aria-hidden="true" /> Activo
         </Badge>
       );
     case "en_proceso":
       return (
-        <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
+        <Badge variant="outline" className="border-warning text-warning">
           En proceso
         </Badge>
       );
@@ -512,16 +512,16 @@ function SeccionCredenciales({
         {!mostrarFormulario ? (
           <div className="space-y-3">
             {exito ? (
-              <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-                <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" />
-                <AlertDescription className="text-emerald-800 dark:text-emerald-300">
+              <Alert className="bg-success-subtle text-success-subtle-foreground">
+                <CheckCircle2 className="text-success" />
+                <AlertDescription className="text-success-subtle-foreground">
                   Credenciales guardadas de forma segura.
                 </AlertDescription>
               </Alert>
             ) : null}
             <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-subtle text-success-subtle-foreground">
                   <Lock className="size-5" aria-hidden="true" />
                 </div>
                 <div className="space-y-1">

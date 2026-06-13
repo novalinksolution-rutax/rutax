@@ -191,7 +191,7 @@ export default async function PaginaIncidencias({
       </form>
 
       {errorCarga && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
           No se pudo cargar la lista de incidencias.
         </div>
       )}
@@ -233,7 +233,7 @@ export default async function PaginaIncidencias({
                       </td>
                       <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{inc.sellerId}</td>
                       <td className="hidden px-4 py-3 lg:table-cell">
-                        <span className={sinGestion ? "font-semibold text-red-600" : "text-muted-foreground"}>
+                        <span className={sinGestion ? "font-semibold text-destructive" : "text-muted-foreground"}>
                           {horas}h
                           {sinGestion && <span className="ml-1 text-xs">(sin gestión)</span>}
                         </span>

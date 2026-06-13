@@ -10,6 +10,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { BotonCerrarSesion } from "./boton-cerrar-sesion";
+import { SkipLink } from "@/components/app-shell/skip-link";
 
 export default async function LayoutPortal({
   children,
@@ -37,10 +38,11 @@ export default async function LayoutPortal({
 
   return (
     <div className="min-h-svh bg-muted/20">
+      <SkipLink />
       {/* Cabecera del portal */}
-      <header className="sticky top-0 z-30 border-b bg-card shadow-sm">
+      <header className="sticky top-0 z-30 border-b border-border bg-card shadow-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <p className="text-sm font-semibold text-foreground">Portal del seller</p>
+          <p className="font-heading text-sm font-semibold text-foreground">Portal del seller</p>
           <div className="flex items-center gap-1">
             <nav
               aria-label="Navegación del portal"
@@ -78,7 +80,9 @@ export default async function LayoutPortal({
         </nav>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main id="contenido" tabIndex={-1} className="mx-auto max-w-5xl px-4 py-8 outline-none">
+        {children}
+      </main>
     </div>
   );
 }

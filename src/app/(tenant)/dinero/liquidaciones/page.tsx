@@ -126,19 +126,19 @@ export default async function PaginaLiquidaciones({
       key: "borrador",
       label: "Borrador",
       count: contBorrador,
-      color: "bg-gray-50 border-gray-200 text-gray-700",
+      color: "bg-muted text-muted-foreground",
     },
     {
       key: "emitida",
       label: "Emitidas",
       count: contEmitidas,
-      color: "bg-blue-50 border-blue-200 text-blue-800",
+      color: "bg-info-subtle text-info-subtle-foreground",
     },
     {
       key: "pagada",
       label: "Pagadas",
       count: contPagadas,
-      color: "bg-green-50 border-green-200 text-green-800",
+      color: "bg-success-subtle text-success-subtle-foreground",
     },
   ];
 
@@ -153,9 +153,9 @@ export default async function PaginaLiquidaciones({
             <div
               key={chip.key}
               role="listitem"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${chip.color}`}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${chip.color}`}
             >
-              {chip.label}: <span className="font-bold">{chip.count}</span>
+              {chip.label}: <span className="font-bold tabular-nums">{chip.count}</span>
             </div>
           ))}
         </div>
@@ -222,7 +222,7 @@ export default async function PaginaLiquidaciones({
       {errorCarga && (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
           No se pudo cargar la lista de liquidaciones. Intenta recargar la página.
         </div>

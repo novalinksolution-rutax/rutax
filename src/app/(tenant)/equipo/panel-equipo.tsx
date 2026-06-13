@@ -255,7 +255,7 @@ function FilaUsuario({ usuario }: { usuario: UsuarioEquipo }) {
       </TableCell>
       <TableCell>
         {usuario.estado === "activo" ? (
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Activo
           </Badge>
         ) : (
@@ -347,7 +347,7 @@ function FilaInvitacion({
         <div className="space-y-0.5">
           <p className="font-medium text-foreground">{invitacion.email}</p>
           {mensaje ? (
-            <p className={mensaje.tipo === "error" ? "text-xs text-destructive" : "text-xs text-emerald-700 dark:text-emerald-400"}>
+            <p className={mensaje.tipo === "error" ? "text-xs text-destructive" : "text-xs text-success"}>
               {mensaje.texto}
             </p>
           ) : null}
@@ -391,13 +391,13 @@ function BadgeEstadoInvitacion({ estado }: { estado: EstadoInvitacion }) {
   switch (estado) {
     case "pendiente":
       return (
-        <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
+        <Badge variant="warning">
           Pendiente
         </Badge>
       );
     case "aceptada":
       return (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           Aceptada
         </Badge>
       );

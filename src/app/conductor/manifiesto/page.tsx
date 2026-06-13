@@ -250,7 +250,7 @@ export default async function PaginaManifiestoActivo() {
       <div
         role="note"
         aria-label="Instrucción de uso de la app de Flex"
-        className="rounded-xl bg-blue-600 px-4 py-3 text-sm text-white"
+        className="rounded-xl bg-info px-4 py-3 text-sm text-info-foreground"
       >
         <div className="flex items-start gap-2">
           <Info className="size-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
@@ -263,7 +263,7 @@ export default async function PaginaManifiestoActivo() {
 
       {/* Estado: manifiesto completado */}
       {esCompletado && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <div className="rounded-xl bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
           Ruta completada.
         </div>
       )}
@@ -275,7 +275,7 @@ export default async function PaginaManifiestoActivo() {
             <li key={pedido.id}>
               <Link
                 href={`/conductor/manifiesto/${pedido.id}`}
-                className={`block rounded-xl border bg-card p-4 hover:bg-muted/30 transition-colors active:scale-[0.99] ${incidenciaAbierta ? "border-amber-300" : ""}`}
+                className={`block rounded-xl border bg-card p-4 transition-colors hover:bg-muted/30 active:scale-[0.99] ${incidenciaAbierta ? "border-warning" : "border-border"}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   {/* Numero de orden — grande, esquina superior izquierda */}
@@ -313,9 +313,9 @@ export default async function PaginaManifiestoActivo() {
 
                   {/* Incidencia abierta — solo informativo */}
                   {incidenciaAbierta && (
-                    <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5">
-                      <AlertTriangle className="size-3.5 text-amber-600 flex-shrink-0" aria-hidden="true" />
-                      <p className="text-xs font-medium text-amber-800">
+                    <div className="mt-2 flex items-center gap-1.5 rounded-md bg-warning-subtle px-2.5 py-1.5">
+                      <AlertTriangle className="size-3.5 shrink-0 text-warning-subtle-foreground" aria-hidden="true" />
+                      <p className="text-xs font-medium text-warning-subtle-foreground">
                         Incidencia: {traducirTipoIncidencia(incidenciaAbierta.tipo)}
                       </p>
                     </div>

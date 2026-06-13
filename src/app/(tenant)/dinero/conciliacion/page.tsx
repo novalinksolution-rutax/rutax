@@ -2,13 +2,14 @@
  * Pantalla D-4 — Conciliación.
  *
  * Server Component. Criterio C-6: descripción viene del backend, truncar a 120 chars con Tooltip.
- * Si pendienteCount === 0: banner verde celebratorio. Filtro default: pendiente.
+ * Si pendienteCount === 0: estado de "todo cuadra" como mensaje de tranquilidad
+ * (UX-10 / §M7), no como ausencia. Filtro default: pendiente.
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, SearchX } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeVerConciliacion } from "@/modules/identidad/capacidades";
@@ -25,6 +26,17 @@ import {
   traducirTipoDiferencia,
   TEXTO_TIPO_DIFERENCIA,
 } from "@/lib/ui/traduccion-estados";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { MenuAccionesConciliacion } from "./menu-acciones-conciliacion";
 
 export const metadata: Metadata = {
@@ -46,6 +58,13 @@ const TIPOS_DIFERENCIA: TipoDiferenciaConciliacion[] = [
   "periodo_cerrado_con_lineas_sueltas",
   "monto_dte_difiere_de_lineas",
 ];
+
+const COLOR_CHIP: Record<EstadoEventoConciliacion, string> = {
+  pendiente: "bg-warning-subtle text-warning-subtle-foreground",
+  revisado: "bg-info-subtle text-info-subtle-foreground",
+  resuelto: "bg-success-subtle text-success-subtle-foreground",
+  ignorado: "bg-muted text-muted-foreground",
+};
 
 interface SearchParams {
   estado?: string;
@@ -84,7 +103,6 @@ export default async function PaginaConciliacion({
   let errorCarga = false;
 
   try {
-    // Sellers para el filtro
     const { data: sellersData } = await cliente
       .from("sellers")
       .select("id, razon_social")
@@ -96,7 +114,6 @@ export default async function PaginaConciliacion({
     }));
     const sellersMap = new Map(sellersDisponibles.map((s) => [s.id, s.nombre]));
 
-    // Todos los eventos para contadores
     const todosEventos = await listarEventosConciliacion(cliente, tenantId);
     for (const e of todosEventos) {
       if (e.estado === "pendiente") contPendientes++;
@@ -105,7 +122,6 @@ export default async function PaginaConciliacion({
       else if (e.estado === "ignorado") contIgnorados++;
     }
 
-    // Filtrar para la tabla
     let filtrados = filtroEstado
       ? todosEventos.filter((e) => e.estado === filtroEstado)
       : todosEventos;
@@ -117,7 +133,6 @@ export default async function PaginaConciliacion({
       filtrados = filtrados.filter((e) => e.sellerId === filtroSeller);
     }
 
-    // Ordenar: pendiente primero, luego más reciente
     const ORDEN: Record<EstadoEventoConciliacion, number> = {
       pendiente: 0,
       revisado: 1,
@@ -153,64 +168,39 @@ export default async function PaginaConciliacion({
     return `/dinero/conciliacion${s ? `?${s}` : ""}`;
   }
 
-  // Banner verde si no hay pendientes
+  // Estado de tranquilidad: 0 pendientes = "todo cuadra" (confianza, no ausencia).
   if (!errorCarga && contPendientes === 0) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Conciliación</h1>
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex flex-col items-center justify-center gap-4 rounded-xl border border-green-200 bg-green-50 px-6 py-16 text-center"
-        >
-          <CheckCircle2 className="size-12 text-green-500" aria-hidden="true" />
-          <div>
-            <p className="text-lg font-semibold text-green-800">
-              Sin diferencias — todo cuadra.
-            </p>
-            <p className="mt-1 text-sm text-green-700">
-              Los últimos períodos cerrados no presentaron diferencias.
-            </p>
-          </div>
-        </div>
+        <h1 className="font-heading text-2xl font-bold">Conciliación</h1>
+        <EmptyState
+          icon={CheckCircle2}
+          tono="buen-estado"
+          titulo="Sin diferencias — todo cuadra"
+          descripcion="Los últimos períodos cerrados no presentaron descuadres entre lo entregado y lo facturado. No necesitas hacer nada."
+        />
       </div>
     );
   }
 
   const chips = [
-    {
-      key: "pendiente",
-      label: "Pendientes",
-      count: contPendientes,
-      color: "bg-orange-50 border-orange-200 text-orange-800",
-    },
-    {
-      key: "revisado",
-      label: "Revisados",
-      count: contRevisados,
-      color: "bg-blue-50 border-blue-200 text-blue-800",
-    },
-    {
-      key: "resuelto",
-      label: "Resueltos",
-      count: contResueltos,
-      color: "bg-green-50 border-green-200 text-green-800",
-    },
-    {
-      key: "ignorado",
-      label: "Ignorados",
-      count: contIgnorados,
-      color: "bg-gray-50 border-gray-200 text-gray-700",
-    },
+    { key: "pendiente" as const, label: "Pendientes", count: contPendientes },
+    { key: "revisado" as const, label: "Revisados", count: contRevisados },
+    { key: "resuelto" as const, label: "Resueltos", count: contResueltos },
+    { key: "ignorado" as const, label: "Ignorados", count: contIgnorados },
   ];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Conciliación</h1>
+      <h1 className="font-heading text-2xl font-bold">Conciliación</h1>
 
       {/* Chips de resumen */}
       {!errorCarga && (
-        <div className="flex flex-wrap gap-2" role="list" aria-label="Resumen de eventos de conciliación">
+        <div
+          className="flex flex-wrap gap-2"
+          role="list"
+          aria-label="Resumen de eventos de conciliación"
+        >
           {chips.map((chip) => {
             const estaActivo = filtroEstado === chip.key;
             return (
@@ -218,11 +208,12 @@ export default async function PaginaConciliacion({
                 key={chip.key}
                 href={estaActivo ? "/dinero/conciliacion" : urlConFiltros({ estado: chip.key })}
                 role="listitem"
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-all ${chip.color} ${
-                  estaActivo ? "ring-2 ring-offset-1 ring-current" : "hover:opacity-80"
+                aria-current={estaActivo ? "true" : undefined}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-all ${COLOR_CHIP[chip.key]} ${
+                  estaActivo ? "ring-2 ring-current ring-offset-1" : "hover:opacity-80"
                 }`}
               >
-                {chip.label}: <span className="font-bold">{chip.count}</span>
+                {chip.label}: <span className="font-bold tabular-nums">{chip.count}</span>
               </Link>
             );
           })}
@@ -239,7 +230,7 @@ export default async function PaginaConciliacion({
             id="f-estado-c"
             name="estado"
             defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <option value="">Todos</option>
             {ESTADOS_CONCIL.map((e) => (
@@ -258,7 +249,7 @@ export default async function PaginaConciliacion({
             id="f-tipo-c"
             name="tipo"
             defaultValue={filtroTipo}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <option value="">Todos los tipos</option>
             {TIPOS_DIFERENCIA.map((t) => (
@@ -277,7 +268,7 @@ export default async function PaginaConciliacion({
             id="f-seller-c"
             name="seller"
             defaultValue={filtroSeller}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <option value="">Todos</option>
             {sellersDisponibles.map((s) => (
@@ -288,20 +279,14 @@ export default async function PaginaConciliacion({
           </select>
         </div>
 
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
+        <Button type="submit" size="sm">
           Filtrar
-        </button>
+        </Button>
 
         {hayFiltroActivo && (
-          <Link
-            href="/dinero/conciliacion"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar filtros
-          </Link>
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/dinero/conciliacion">Limpiar filtros</Link>
+          </Button>
         )}
       </form>
 
@@ -309,52 +294,60 @@ export default async function PaginaConciliacion({
       {errorCarga && (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
           No se pudo cargar la lista de eventos. Intenta recargar la página.
         </div>
       )}
 
-      {/* Tabla / vacío */}
+      {/* Tabla / vacío de filtro */}
       {!errorCarga && eventos.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          <p className="text-muted-foreground">
-            No hay eventos que coincidan con los filtros aplicados.
-          </p>
-          {hayFiltroActivo && (
-            <Link
-              href="/dinero/conciliacion"
-              className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-            >
-              Limpiar filtros
-            </Link>
-          )}
-        </div>
+        <EmptyState
+          icon={SearchX}
+          tono="filtro"
+          titulo="Ningún evento coincide"
+          descripcion="No hay eventos de conciliación con los filtros aplicados."
+          accion={
+            hayFiltroActivo ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href="/dinero/conciliacion">Limpiar filtros</Link>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         !errorCarga && (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Eventos de conciliación">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2" style={{ width: "28%" }}>Tipo diferencia</th>
-                    <th className="hidden px-4 py-2 sm:table-cell" style={{ width: "14%" }}>Seller</th>
-                    <th className="hidden px-4 py-2 md:table-cell" style={{ width: "12%" }}>Pedido</th>
-                    <th className="px-4 py-2" style={{ width: "28%" }}>Descripción</th>
-                    <th className="hidden px-4 py-2 lg:table-cell" style={{ width: "8%" }}>Estado</th>
-                    <th className="px-4 py-2 text-right" style={{ width: "10%" }}>
-                      <span className="sr-only">Acciones</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {eventos.map((evento) => (
-                    <FilaEvento key={evento.id} evento={evento} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <DataTable>
+            <Table densidad="compact" aria-label="Eventos de conciliación">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4" style={{ width: "28%" }}>
+                    Tipo diferencia
+                  </TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell" style={{ width: "14%" }}>
+                    Seller
+                  </TableHead>
+                  <TableHead className="hidden px-4 md:table-cell" style={{ width: "12%" }}>
+                    Pedido
+                  </TableHead>
+                  <TableHead className="px-4" style={{ width: "28%" }}>
+                    Descripción
+                  </TableHead>
+                  <TableHead className="hidden px-4 lg:table-cell" style={{ width: "8%" }}>
+                    Estado
+                  </TableHead>
+                  <TableHead className="px-4 text-right" style={{ width: "10%" }}>
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {eventos.map((evento) => (
+                  <FilaEvento key={evento.id} evento={evento} />
+                ))}
+              </TableBody>
+            </Table>
+          </DataTable>
         )
       )}
     </div>
@@ -371,7 +364,6 @@ function FilaEvento({ evento }: { evento: EventoConNombre }) {
   const badgeClases = COLOR_ESTADO_CONCILIACION[evento.estado];
   const textoEstado = traducirEstadoConciliacion(evento.estado);
 
-  // Criterio C-6: truncar descripción a 120 chars
   const descripcionCorta =
     evento.descripcion.length > MAX_DESC_CHARS
       ? `${evento.descripcion.slice(0, MAX_DESC_CHARS)}...`
@@ -380,21 +372,18 @@ function FilaEvento({ evento }: { evento: EventoConNombre }) {
     evento.descripcion.length > MAX_DESC_CHARS ? evento.descripcion : null;
 
   return (
-    <tr className="group hover:bg-muted/30 transition-colors">
-      {/* Tipo diferencia */}
-      <td className="px-4 py-3">
-        <p className="text-sm font-medium">
+    <TableRow className="group">
+      <TableCell className="px-4">
+        <p className="text-sm font-medium whitespace-normal">
           {traducirTipoDiferencia(evento.tipoDiferencia)}
         </p>
-      </td>
+      </TableCell>
 
-      {/* Seller */}
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+      <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
         {evento.sellerNombre ?? "—"}
-      </td>
+      </TableCell>
 
-      {/* Pedido */}
-      <td className="hidden px-4 py-3 md:table-cell">
+      <TableCell className="hidden px-4 md:table-cell">
         {evento.pedidoId ? (
           <Link
             href={`/operaciones/${evento.pedidoId}`}
@@ -405,38 +394,28 @@ function FilaEvento({ evento }: { evento: EventoConNombre }) {
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </td>
+      </TableCell>
 
-      {/* Descripción — criterio C-6 */}
-      <td className="px-4 py-3">
-        {descripcionCompleta ? (
-          <span
-            title={descripcionCompleta}
-            className="cursor-help text-sm text-muted-foreground"
-          >
-            {descripcionCorta}
-          </span>
-        ) : (
-          <span className="text-sm text-muted-foreground">{descripcionCorta}</span>
-        )}
-      </td>
-
-      {/* Estado */}
-      <td className="hidden px-4 py-3 lg:table-cell">
+      <TableCell className="px-4">
         <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
+          title={descripcionCompleta ?? undefined}
+          className={`text-sm whitespace-normal text-muted-foreground ${descripcionCompleta ? "cursor-help" : ""}`}
+        >
+          {descripcionCorta}
+        </span>
+      </TableCell>
+
+      <TableCell className="hidden px-4 lg:table-cell">
+        <span
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${badgeClases}`}
         >
           {textoEstado}
         </span>
-      </td>
+      </TableCell>
 
-      {/* Acciones — menú 3 puntos */}
-      <td className="px-4 py-3 text-right">
-        <MenuAccionesConciliacion
-          eventoId={evento.id}
-          estadoActual={evento.estado}
-        />
-      </td>
-    </tr>
+      <TableCell className="px-4 text-right">
+        <MenuAccionesConciliacion eventoId={evento.id} estadoActual={evento.estado} />
+      </TableCell>
+    </TableRow>
   );
 }

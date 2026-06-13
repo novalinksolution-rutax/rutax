@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -15,8 +15,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Courier — gestión operativo-financiera",
+  title: "Rutax — gestión operativo-financiera",
   description: "Plataforma para couriers de última milla: operación Flex + same-day y trastienda de dinero.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Rutax",
+  },
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1e3a8a",
 };
 
 export default function RootLayout({

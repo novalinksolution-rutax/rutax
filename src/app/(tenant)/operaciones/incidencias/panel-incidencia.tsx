@@ -123,7 +123,7 @@ export function PanelIncidencia({ incidencia }: Props) {
               </div>
 
               {error && (
-                <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+                <p role="alert" className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">{error}</p>
               )}
 
               {/* Acciones según estado */}
@@ -139,7 +139,7 @@ export function PanelIncidencia({ incidencia }: Props) {
                 {incidencia.estado === "en_gestion" && (
                   <button type="button" onClick={() => actualizarEstado("resuelta")}
                     disabled={pending || !notas.trim()}
-                    className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors disabled:opacity-50">
+                    className="w-full rounded-lg bg-success px-4 py-2 text-sm font-semibold text-success-foreground transition-colors hover:bg-success/90 disabled:opacity-50">
                     {pending ? "Procesando..." : "Marcar como Resuelta"}
                   </button>
                 )}

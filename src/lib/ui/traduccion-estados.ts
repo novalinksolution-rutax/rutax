@@ -52,17 +52,50 @@ export type ColorBadge =
   | "success"
   | "info";
 
-export const COLOR_ESTADO_PEDIDO: Record<EstadoPedido, string> = {
-  pendiente_asignacion: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  asignado: "bg-blue-100 text-blue-800 border-blue-200",
-  en_ruta: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  entregado: "bg-green-100 text-green-800 border-green-200",
-  entregado_manual: "bg-green-100 text-green-800 border-green-200",
-  fallido: "bg-red-100 text-red-800 border-red-200",
-  fallido_manual: "bg-red-100 text-red-800 border-red-200",
-  cancelado: "bg-gray-100 text-gray-600 border-gray-200",
-  devuelto: "bg-orange-100 text-orange-800 border-orange-200",
+/**
+ * Variante semántica de un estado. ÚNICA fuente de color de estado de la app:
+ * estos nombres mapean a los tokens de marca (DESIGN_SYSTEM §9), no a la paleta
+ * cruda de Tailwind. El color comunica estado; el texto traducido lo desambigua
+ * (accesibilidad: el color nunca es el único portador de significado).
+ */
+export type VarianteEstado = "neutral" | "info" | "exito" | "advertencia" | "error" | "marca";
+
+/**
+ * Clases de badge por variante, sobre tokens semánticos (bg subtle + texto).
+ * Coincide con las variantes del componente Badge; `border-transparent` neutraliza
+ * el `border-border` por defecto que aplican los consumidores con la utilidad `border`.
+ */
+export const CLASES_BADGE_VARIANTE: Record<VarianteEstado, string> = {
+  neutral: "bg-muted text-muted-foreground border-transparent",
+  info: "bg-info-subtle text-info-subtle-foreground border-transparent",
+  exito: "bg-success-subtle text-success-subtle-foreground border-transparent",
+  advertencia: "bg-warning-subtle text-warning-subtle-foreground border-transparent",
+  error: "bg-destructive-subtle text-destructive-subtle-foreground border-transparent",
+  marca: "bg-primary/10 text-primary border-transparent",
 };
+
+/** Construye el mapa estado→clases a partir de un mapa estado→variante. */
+function clasesPorEstado<E extends string>(
+  variantes: Record<E, VarianteEstado>
+): Record<E, string> {
+  const salida = {} as Record<E, string>;
+  for (const estado of Object.keys(variantes) as E[]) {
+    salida[estado] = CLASES_BADGE_VARIANTE[variantes[estado]];
+  }
+  return salida;
+}
+
+export const COLOR_ESTADO_PEDIDO: Record<EstadoPedido, string> = clasesPorEstado<EstadoPedido>({
+  pendiente_asignacion: "advertencia",
+  asignado: "info",
+  en_ruta: "info",
+  entregado: "exito",
+  entregado_manual: "exito",
+  fallido: "error",
+  fallido_manual: "error",
+  cancelado: "neutral",
+  devuelto: "advertencia",
+});
 
 // =============================================================================
 // TipoIncidencia
@@ -97,12 +130,12 @@ export function traducirEstadoIncidencia(estado: EstadoIncidencia): string {
   return TEXTO_ESTADO_INCIDENCIA[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_INCIDENCIA: Record<EstadoIncidencia, string> = {
-  abierta: "bg-red-100 text-red-800 border-red-200",
-  en_gestion: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  resuelta: "bg-green-100 text-green-800 border-green-200",
-  cerrada: "bg-gray-100 text-gray-600 border-gray-200",
-};
+export const COLOR_ESTADO_INCIDENCIA: Record<EstadoIncidencia, string> = clasesPorEstado<EstadoIncidencia>({
+  abierta: "error",
+  en_gestion: "advertencia",
+  resuelta: "exito",
+  cerrada: "neutral",
+});
 
 // =============================================================================
 // EstadoManifiesto
@@ -120,13 +153,13 @@ export function traducirEstadoManifiesto(estado: EstadoManifiesto): string {
   return TEXTO_ESTADO_MANIFIESTO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_MANIFIESTO: Record<EstadoManifiesto, string> = {
-  borrador: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  confirmado: "bg-blue-100 text-blue-800 border-blue-200",
-  en_ruta: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  completado: "bg-green-100 text-green-800 border-green-200",
-  cancelado: "bg-gray-100 text-gray-600 border-gray-200",
-};
+export const COLOR_ESTADO_MANIFIESTO: Record<EstadoManifiesto, string> = clasesPorEstado<EstadoManifiesto>({
+  borrador: "advertencia",
+  confirmado: "info",
+  en_ruta: "info",
+  completado: "exito",
+  cancelado: "neutral",
+});
 
 // =============================================================================
 // Utilidades comunes
@@ -156,12 +189,12 @@ export function traducirEstadoPeriodoCobro(estado: EstadoPeriodo, folio?: number
   return textos[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_PERIODO: Record<EstadoPeriodo, string> = {
-  abierto: "bg-blue-100 text-blue-800 border-blue-200",
-  cerrado: "bg-gray-100 text-gray-600 border-gray-200",
-  facturado: "bg-green-100 text-green-800 border-green-200",
-  anulado: "bg-red-100 text-red-800 border-red-200",
-};
+export const COLOR_ESTADO_PERIODO: Record<EstadoPeriodo, string> = clasesPorEstado<EstadoPeriodo>({
+  abierto: "info",
+  cerrado: "neutral",
+  facturado: "exito",
+  anulado: "error",
+});
 
 // =============================================================================
 // EstadoSii — Fase C (criterio C-5)
@@ -196,14 +229,14 @@ export function traducirEstadoSii(estado: EstadoSii): TraduccionEstadoSii {
 export function colorBadgeEstadoSii(variante: TraduccionEstadoSii["variante"]): string {
   switch (variante) {
     case "exito":
-      return "bg-green-100 text-green-800 border-green-200";
+      return CLASES_BADGE_VARIANTE.exito;
     case "advertencia":
-      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      return CLASES_BADGE_VARIANTE.advertencia;
     case "error":
-      return "bg-red-100 text-red-800 border-red-200";
+      return CLASES_BADGE_VARIANTE.error;
     case "neutro":
     default:
-      return "bg-gray-100 text-gray-600 border-gray-200";
+      return CLASES_BADGE_VARIANTE.neutral;
   }
 }
 
@@ -221,11 +254,11 @@ export function traducirEstadoLiquidacion(estado: EstadoLiquidacion): string {
   return TEXTO_ESTADO_LIQUIDACION[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_LIQUIDACION: Record<EstadoLiquidacion, string> = {
-  borrador: "bg-gray-100 text-gray-600 border-gray-200",
-  emitida: "bg-blue-100 text-blue-800 border-blue-200",
-  pagada: "bg-green-100 text-green-800 border-green-200",
-};
+export const COLOR_ESTADO_LIQUIDACION: Record<EstadoLiquidacion, string> = clasesPorEstado<EstadoLiquidacion>({
+  borrador: "neutral",
+  emitida: "info",
+  pagada: "exito",
+});
 
 // =============================================================================
 // EstadoEventoConciliacion — Fase C
@@ -242,12 +275,12 @@ export function traducirEstadoConciliacion(estado: EstadoEventoConciliacion): st
   return TEXTO_ESTADO_CONCILIACION[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, string> = {
-  pendiente: "bg-orange-100 text-orange-800 border-orange-200",
-  revisado: "bg-blue-100 text-blue-800 border-blue-200",
-  resuelto: "bg-green-100 text-green-800 border-green-200",
-  ignorado: "bg-gray-100 text-gray-600 border-gray-200",
-};
+export const COLOR_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, string> = clasesPorEstado<EstadoEventoConciliacion>({
+  pendiente: "advertencia",
+  revisado: "info",
+  resuelto: "exito",
+  ignorado: "neutral",
+});
 
 // =============================================================================
 // TipoDiferenciaConciliacion — Fase C
@@ -283,14 +316,14 @@ export function traducirEstadoMatchPago(estado: EstadoMatchPago): string {
   return TEXTO_ESTADO_MATCH_PAGO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, string> = {
-  sin_atribuir: "bg-orange-100 text-orange-800 border-orange-200",
-  atribuido: "bg-blue-100 text-blue-800 border-blue-200",
-  conciliado: "bg-green-100 text-green-800 border-green-200",
-  parcial: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  sobrante: "bg-purple-100 text-purple-800 border-purple-200",
-  descartado: "bg-gray-100 text-gray-600 border-gray-200",
-};
+export const COLOR_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, string> = clasesPorEstado<EstadoMatchPago>({
+  sin_atribuir: "advertencia",
+  atribuido: "info",
+  conciliado: "exito",
+  parcial: "advertencia",
+  sobrante: "advertencia",
+  descartado: "neutral",
+});
 
 // =============================================================================
 // EstadoCobroPeriodo — cobranza Fintoc (proyección del período)
@@ -307,12 +340,12 @@ export function traducirEstadoCobroPeriodo(estado: EstadoCobroPeriodo): string {
   return TEXTO_ESTADO_COBRO_PERIODO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, string> = {
-  no_aplica: "bg-gray-100 text-gray-500 border-gray-200",
-  pendiente: "bg-amber-100 text-amber-800 border-amber-200",
-  parcial: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  pagado: "bg-green-100 text-green-800 border-green-200",
-};
+export const COLOR_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, string> = clasesPorEstado<EstadoCobroPeriodo>({
+  no_aplica: "neutral",
+  pendiente: "advertencia",
+  parcial: "advertencia",
+  pagado: "exito",
+});
 
 // =============================================================================
 // Utilidades comunes

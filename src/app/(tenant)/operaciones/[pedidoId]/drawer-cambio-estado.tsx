@@ -79,7 +79,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className="rounded-lg border border-orange-300 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-800 hover:bg-orange-100 transition-colors"
+        className="rounded-lg border border-warning bg-warning-subtle px-4 py-2 text-sm font-medium text-warning-subtle-foreground transition-colors hover:bg-warning-subtle/70"
       >
         Cambiar estado
       </button>
@@ -164,14 +164,14 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                   <p id="motivo-ayuda" className="mt-1 text-xs text-muted-foreground">
                     {motivo.trim().length}/{MOTIVO_MIN} caracteres mínimos
                     {motivo.trim().length >= MOTIVO_MIN && (
-                      <span className="ml-1 text-green-600">&#10003;</span>
+                      <span className="ml-1 text-success">&#10003;</span>
                     )}
                   </p>
                 </div>
 
                 {/* Advertencia de bitácora */}
                 <div
-                  className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800"
+                  className="flex items-start gap-2 rounded-lg bg-warning-subtle px-3 py-3 text-sm text-warning-subtle-foreground"
                   role="note"
                 >
                   <AlertTriangle className="mt-0.5 size-4 flex-shrink-0" aria-hidden="true" />
@@ -179,7 +179,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                 </div>
 
                 {error && (
-                  <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <p role="alert" className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
                     {error}
                   </p>
                 )}
@@ -191,7 +191,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                 type="submit"
                 form="form-cambio-estado"
                 disabled={!puedeConfirmar}
-                className="w-full rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {pending ? "Guardando..." : "Confirmar cambio de estado"}
               </button>

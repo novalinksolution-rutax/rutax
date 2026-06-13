@@ -135,7 +135,7 @@ export default async function PaginaPedidosSeller({
 
       {/* Confirmación de envío creado */}
       {pedidoNuevoId && (
-        <div role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <div role="status" className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
           ¡Envío same-day solicitado con éxito! Quedará pendiente de asignación hasta que el courier lo asigne a un conductor.
         </div>
       )}
@@ -190,7 +190,7 @@ export default async function PaginaPedidosSeller({
 
       {/* Error */}
       {errorCarga && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
           No se pudo cargar la lista de pedidos. Intenta recargar la página.
         </div>
       )}

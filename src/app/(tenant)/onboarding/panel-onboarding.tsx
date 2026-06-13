@@ -75,9 +75,9 @@ export function PanelOnboarding({
       </div>
 
       {estado.completo ? (
-        <Card className="border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20">
+        <Card className="border-success-subtle bg-success-subtle/40">
           <CardHeader className="flex-row items-start gap-3 space-y-0">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-subtle text-success-subtle-foreground">
               <Sparkles className="size-5" aria-hidden="true" />
             </div>
             <div className="space-y-1">
@@ -121,7 +121,7 @@ function TarjetaPaso({
   destacado?: boolean;
 }) {
   return (
-    <Card className={destacado ? "border-amber-300 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/10" : undefined}>
+    <Card className={destacado ? "border-warning-subtle bg-warning-subtle/40" : undefined}>
       <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -158,18 +158,16 @@ function TarjetaPasoDte({ estado, puedeGestionar }: { estado: EstadoOnboardingCo
       descripcion: "Elige tu proveedor de facturación electrónica y carga tu certificado digital.",
     },
     en_proceso: {
-      icono: <Clock className="size-5 text-amber-600" aria-hidden="true" />,
+      icono: <Clock className="size-5 text-warning" aria-hidden="true" />,
       badge: (
-        <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
-          En revisión
-        </Badge>
+        <Badge variant="warning">En revisión</Badge>
       ),
       descripcion: "Tu proveedor está validando tu certificado con el SII — puede tardar algunos días.",
     },
     activo: {
-      icono: <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />,
+      icono: <CheckCircle2 className="size-5 text-success" aria-hidden="true" />,
       badge: (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           Activo
         </Badge>
       ),
@@ -238,11 +236,11 @@ function TarjetaPasoFolios({ estado, puedeGestionar }: { estado: EstadoOnboardin
   if (folios.gestionadoPorProveedor) {
     return (
       <TarjetaPaso
-        icono={<CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />}
+        icono={<CheckCircle2 className="size-5 text-success" aria-hidden="true" />}
         titulo="Folios CAF"
         descripcion="Tu proveedor DTE gestiona tus folios directamente con el SII — no necesitas hacer nada aquí."
         badge={
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Lo gestiona tu proveedor
           </Badge>
         }
@@ -261,7 +259,7 @@ function TarjetaPasoFolios({ estado, puedeGestionar }: { estado: EstadoOnboardin
     <TarjetaPaso
       icono={
         vigentes ? (
-          <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />
+          <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
         ) : (
           <FileText className="size-5" aria-hidden="true" />
         )
@@ -274,7 +272,7 @@ function TarjetaPasoFolios({ estado, puedeGestionar }: { estado: EstadoOnboardin
       }
       badge={
         vigentes ? (
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Vigentes
           </Badge>
         ) : (
@@ -304,7 +302,7 @@ function TarjetaPasoTarifas({ estado, puedeGestionar }: { estado: EstadoOnboardi
     <TarjetaPaso
       icono={
         configuradas ? (
-          <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />
+          <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
         ) : (
           <Wallet className="size-5" aria-hidden="true" />
         )
@@ -317,7 +315,7 @@ function TarjetaPasoTarifas({ estado, puedeGestionar }: { estado: EstadoOnboardi
       }
       badge={
         configuradas ? (
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Configuradas
           </Badge>
         ) : (
@@ -367,9 +365,9 @@ function TarjetaPasoCobranza({
       destacado: false,
     },
     conectado: {
-      icono: <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />,
+      icono: <CheckCircle2 className="size-5 text-success" aria-hidden="true" />,
       badge: (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           Conectado
         </Badge>
       ),

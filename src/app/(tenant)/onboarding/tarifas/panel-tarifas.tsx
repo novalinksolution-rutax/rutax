@@ -255,9 +255,9 @@ function FormularioTarifaPorDefecto({
             </Alert>
           ) : null}
           {exito ? (
-            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-              <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" />
-              <AlertDescription className="text-emerald-800 dark:text-emerald-300">{exito}</AlertDescription>
+            <Alert className="bg-success-subtle text-success-subtle-foreground">
+              <CheckCircle2 className="text-success" />
+              <AlertDescription className="text-success-subtle-foreground">{exito}</AlertDescription>
             </Alert>
           ) : null}
 
@@ -567,7 +567,7 @@ function FilaTarifa({
       </TableCell>
       <TableCell>
         {tarifa.estado === "activa" ? (
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Activa
           </Badge>
         ) : (

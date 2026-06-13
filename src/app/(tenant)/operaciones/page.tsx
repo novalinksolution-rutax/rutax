@@ -4,10 +4,15 @@
  *
  * Server Component. Los filtros (seller, estado, fecha) llegan como searchParams.
  * El objetivo: en menos de 10 segundos saber cuántos pedidos hay pendientes y cuáles.
+ *
+ * Pulido Fase 4 (UX-7 / UI-6): sistema DataTable + Table (densidad compacta,
+ * numéricos tabulares), estados de vista con EmptyState, paginación del sistema
+ * y color por tokens semánticos.
  */
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Inbox, SearchX } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarPedidos } from "@/modules/operacion/pedidos";
@@ -16,13 +21,21 @@ import {
   puedeGestionarIncidencias,
   puedeAjustarOperacionDiaria,
 } from "@/modules/identidad/capacidades";
-import {
-  traducirEstadoPedido,
-  COLOR_ESTADO_PEDIDO,
-  TEXTO_ESTADO_PEDIDO,
-} from "@/lib/ui/traduccion-estados";
-import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
+import { traducirEstadoPedido, COLOR_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { FormularioPedidoSameDay } from "./formulario-same-day";
 import { FiltrosPedidosForm } from "./filtros-pedidos";
 
@@ -51,6 +64,14 @@ function calcularContadores(pedidos: Pedido[]): Record<string, number> {
   return contadores;
 }
 
+const CONTADORES = [
+  { key: "pendiente_asignacion", label: "Pendiente asig.", clases: "bg-warning-subtle text-warning-subtle-foreground" },
+  { key: "asignado", label: "Asignados", clases: "bg-info-subtle text-info-subtle-foreground" },
+  { key: "en_ruta", label: "En ruta", clases: "bg-info-subtle text-info-subtle-foreground" },
+  { key: "entregado", label: "Entregados", clases: "bg-success-subtle text-success-subtle-foreground" },
+  { key: "con_problemas", label: "Con problemas", clases: "bg-destructive-subtle text-destructive-subtle-foreground" },
+] as const;
+
 // =============================================================================
 // Página principal
 // =============================================================================
@@ -74,21 +95,23 @@ export default async function PaginaOperaciones({
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;
 
-  // Filtros desde URL
+  const hoyIso = new Date().toISOString().split("T")[0];
   const filtroSeller = params.seller || "";
   const filtroEstado = (params.estado as EstadoPedido | "") || "";
-  const filtroFecha = params.fecha || new Date().toISOString().split("T")[0];
+  const filtroFecha = params.fecha || hoyIso;
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
   const LIMITE = 25;
 
-  const hayFiltroActivo = !!(filtroSeller || filtroEstado || (params.fecha && params.fecha !== new Date().toISOString().split("T")[0]));
+  const hayFiltroActivo = !!(
+    filtroSeller ||
+    filtroEstado ||
+    (params.fecha && params.fecha !== hoyIso)
+  );
 
-  // Capacidades del usuario
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeIncidencias = puedeGestionarIncidencias(sesion.usuario);
   const puedeAjustar = puedeAjustarOperacionDiaria(sesion.usuario);
 
-  // Cargar pedidos
   const cliente = crearClienteServiceRole();
   let resultado;
   let errorCarga = false;
@@ -111,8 +134,8 @@ export default async function PaginaOperaciones({
   const totalPedidos = resultado.total;
   const totalPaginas = Math.ceil(totalPedidos / LIMITE);
   const contadores = calcularContadores(pedidos);
+  const tieneAcciones = puedeAsignar || puedeIncidencias || puedeAjustar;
 
-  // Sellers disponibles para el filtro
   let sellersDisponibles: { id: string; nombre: string }[] = [];
   try {
     const { data } = await cliente
@@ -128,19 +151,26 @@ export default async function PaginaOperaciones({
     // sin bloquear si falla — el filtro quedará vacío
   }
 
+  function hrefPagina(p: number): string {
+    const sp = new URLSearchParams();
+    if (filtroSeller) sp.set("seller", filtroSeller);
+    if (filtroEstado) sp.set("estado", filtroEstado);
+    if (filtroFecha) sp.set("fecha", filtroFecha);
+    if (p > 1) sp.set("pagina", String(p));
+    const qs = sp.toString();
+    return qs ? `/operaciones?${qs}` : "/operaciones";
+  }
+
   return (
     <div className="space-y-6">
       {/* Encabezado */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Pedidos</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-heading text-2xl font-bold">Pedidos</h1>
         <div className="flex items-center gap-2">
           {puedeIncidencias && (
-            <Link
-              href="/operaciones/incidencias"
-              className="rounded-lg border px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
-            >
-              Ver incidencias
-            </Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/operaciones/incidencias">Ver incidencias</Link>
+            </Button>
           )}
           {puedeAjustar && (
             <FormularioPedidoSameDay sellers={sellersDisponibles} tenantId={tenantId} />
@@ -152,26 +182,20 @@ export default async function PaginaOperaciones({
       {errorCarga && (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
           No se pudo cargar la lista — intenta recargar la página.
         </div>
       )}
 
       {/* Bloque 1 — Contadores de estado */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="list" aria-label="Contadores por estado">
-        {[
-          { key: "pendiente_asignacion", label: "Pendiente asig.", color: "bg-yellow-50 border-yellow-200 text-yellow-800" },
-          { key: "asignado", label: "Asignados", color: "bg-blue-50 border-blue-200 text-blue-800" },
-          { key: "en_ruta", label: "En ruta", color: "bg-indigo-50 border-indigo-200 text-indigo-800" },
-          { key: "entregado", label: "Entregados", color: "bg-green-50 border-green-200 text-green-800" },
-          { key: "con_problemas", label: "Con problemas", color: "bg-red-50 border-red-200 text-red-800" },
-        ].map(({ key, label, color }) => (
-          <div
-            key={key}
-            role="listitem"
-            className={`rounded-lg border px-3 py-2 ${color}`}
-          >
+      <div
+        className="grid grid-cols-2 gap-2 sm:grid-cols-5"
+        role="list"
+        aria-label="Contadores por estado"
+      >
+        {CONTADORES.map(({ key, label, clases }) => (
+          <div key={key} role="listitem" className={`rounded-lg px-3 py-2 ${clases}`}>
             <p className="text-lg font-bold tabular-nums">
               {errorCarga ? "—" : (contadores[key] ?? 0)}
             </p>
@@ -189,107 +213,73 @@ export default async function PaginaOperaciones({
         hayFiltroActivo={hayFiltroActivo}
       />
 
-      {/* Bloque 3 — Tabla */}
+      {/* Bloque 3 — Tabla / estados de vista */}
       {pedidos.length === 0 && !errorCarga ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          {hayFiltroActivo ? (
-            <>
-              <p className="text-muted-foreground">
-                No hay pedidos que coincidan. Prueba cambiando el seller o la fecha.
-              </p>
-              <Link
-                href="/operaciones"
-                className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-              >
-                Limpiar filtros
-              </Link>
-            </>
-          ) : (
-            <>
-              <p className="text-muted-foreground">No hay pedidos para esta fecha.</p>
-              {puedeAjustar && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Puedes crear un pedido same-day usando el botón de arriba.
-                </p>
-              )}
-            </>
-          )}
-        </div>
+        hayFiltroActivo ? (
+          <EmptyState
+            icon={SearchX}
+            tono="filtro"
+            titulo="Ningún pedido coincide"
+            descripcion="No hay pedidos con estos filtros. Prueba cambiando el seller, el estado o la fecha."
+            accion={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/operaciones">Limpiar filtros</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Inbox}
+            titulo="No hay pedidos para esta fecha"
+            descripcion={
+              puedeAjustar
+                ? "Llegan solos cuando tus sellers conectan Mercado Libre. También puedes crear un pedido same-day desde el botón de arriba."
+                : "Llegan solos cuando tus sellers conectan Mercado Libre."
+            }
+          />
+        )
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="flex items-center justify-between border-b px-4 py-2">
-            <span className="text-sm text-muted-foreground">
+        <DataTable
+          toolbar={
+            <span className="text-sm text-muted-foreground tabular-nums">
               {errorCarga ? "—" : `${totalPedidos} pedidos`}
             </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Lista de pedidos">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="px-4 py-2">Destinatario</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Seller</th>
-                  <th className="hidden px-4 py-2 md:table-cell">Fecha comprometida</th>
-                  <th className="hidden px-4 py-2 lg:table-cell">Conductor</th>
-                  <th className="px-4 py-2">Tipo</th>
-                  {(puedeAsignar || puedeIncidencias || puedeAjustar) && (
-                    <th className="px-4 py-2">
-                      <span className="sr-only">Acciones</span>
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {pedidos.map((pedido) => (
-                  <FilaPedido
-                    key={pedido.id}
-                    pedido={pedido}
-                    puedeAsignar={puedeAsignar}
-                    puedeIncidencias={puedeIncidencias}
-                    puedeAjustar={puedeAjustar}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginación */}
-          {totalPaginas > 1 && (
-            <div className="flex items-center justify-between border-t px-4 py-3">
-              <span className="text-xs text-muted-foreground">
-                Página {pagina} de {totalPaginas}
-              </span>
-              <div className="flex gap-2">
-                {pagina > 1 && (
-                  <Link
-                    href={`/operaciones?${new URLSearchParams({
-                      ...(filtroSeller && { seller: filtroSeller }),
-                      ...(filtroEstado && { estado: filtroEstado }),
-                      ...(filtroFecha && { fecha: filtroFecha }),
-                      pagina: String(pagina - 1),
-                    })}`}
-                    className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
-                  >
-                    Anterior
-                  </Link>
+          }
+          footer={
+            totalPaginas > 1 ? (
+              <Pagination
+                pagina={pagina}
+                totalPaginas={totalPaginas}
+                hrefPagina={hrefPagina}
+              />
+            ) : undefined
+          }
+        >
+          <Table densidad="compact" aria-label="Lista de pedidos">
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead className="px-4">Estado</TableHead>
+                <TableHead className="px-4">Destinatario</TableHead>
+                <TableHead className="hidden px-4 sm:table-cell">Seller</TableHead>
+                <TableHead className="hidden px-4 text-right md:table-cell">
+                  Fecha comprometida
+                </TableHead>
+                <TableHead className="hidden px-4 lg:table-cell">Conductor</TableHead>
+                <TableHead className="px-4">Tipo</TableHead>
+                {tieneAcciones && (
+                  <TableHead className="px-4 text-right">
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
                 )}
-                {pagina < totalPaginas && (
-                  <Link
-                    href={`/operaciones?${new URLSearchParams({
-                      ...(filtroSeller && { seller: filtroSeller }),
-                      ...(filtroEstado && { estado: filtroEstado }),
-                      ...(filtroFecha && { fecha: filtroFecha }),
-                      pagina: String(pagina + 1),
-                    })}`}
-                    className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
-                  >
-                    Siguiente
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pedidos.map((pedido) => (
+                <FilaPedido key={pedido.id} pedido={pedido} tieneAcciones={tieneAcciones} />
+              ))}
+            </TableBody>
+          </Table>
+        </DataTable>
       )}
     </div>
   );
@@ -299,61 +289,48 @@ export default async function PaginaOperaciones({
 // Fila de pedido en la tabla
 // =============================================================================
 
-function FilaPedido({
-  pedido,
-  puedeAsignar,
-  puedeIncidencias,
-  puedeAjustar,
-}: {
-  pedido: Pedido;
-  puedeAsignar: boolean;
-  puedeIncidencias: boolean;
-  puedeAjustar: boolean;
-}) {
-  const tieneAcciones = puedeAsignar || puedeIncidencias || puedeAjustar;
-  const estadoClases = COLOR_ESTADO_PEDIDO[pedido.estado];
-
+function FilaPedido({ pedido, tieneAcciones }: { pedido: Pedido; tieneAcciones: boolean }) {
   return (
-    <tr className="group hover:bg-muted/30 transition-colors">
-      <td className="px-4 py-3">
+    <TableRow className="group">
+      <TableCell className="px-4">
         <span
-          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${estadoClases}`}
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
         >
           {traducirEstadoPedido(pedido.estado)}
         </span>
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+      <TableCell className="px-4">
         <Link href={`/operaciones/${pedido.id}`} className="font-medium hover:underline">
           {pedido.destinatarioNombre}
         </Link>
         <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
-      </td>
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+      </TableCell>
+      <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
         {pedido.sellerId}
-      </td>
-      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+      </TableCell>
+      <TableCell className="hidden px-4 text-right font-mono text-muted-foreground tabular-nums md:table-cell">
         {pedido.fechaCompromiso ?? "Sin fecha"}
-      </td>
-      <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-        {pedido.driverIdAsignado ? pedido.driverIdAsignado : (
-          <span className="text-yellow-600">Sin asignar</span>
+      </TableCell>
+      <TableCell className="hidden px-4 text-muted-foreground lg:table-cell">
+        {pedido.driverIdAsignado ? (
+          pedido.driverIdAsignado
+        ) : (
+          <span className="text-warning-subtle-foreground">Sin asignar</span>
         )}
-      </td>
-      <td className="px-4 py-3">
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize">
-          {pedido.tipoPedido === "flex" ? "Flex" : "Same-day"}
-        </span>
-      </td>
+      </TableCell>
+      <TableCell className="px-4">
+        <Badge variant="neutral">{pedido.tipoPedido === "flex" ? "Flex" : "Same-day"}</Badge>
+      </TableCell>
       {tieneAcciones && (
-        <td className="px-4 py-3 text-right">
+        <TableCell className="px-4 text-right">
           <Link
             href={`/operaciones/${pedido.id}`}
             className="text-xs font-medium text-primary hover:underline"
           >
             Ver detalle
           </Link>
-        </td>
+        </TableCell>
       )}
-    </tr>
+    </TableRow>
   );
 }
