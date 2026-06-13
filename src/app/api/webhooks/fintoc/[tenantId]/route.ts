@@ -36,6 +36,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { inngest } from '@/lib/inngest/cliente';
+import { consumirRateLimit } from '@/lib/rate-limit';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import {
@@ -48,6 +49,15 @@ interface Params {
   params: Promise<{ tenantId: string }>;
 }
 
+/**
+ * Límite por tenant (ítem #7): los movimientos bancarios reales de un courier
+ * son decenas por DÍA; 30/min cubre con holgura las reentregas en ráfaga de
+ * Fintoc. El rate limit corre ANTES de resolver/descifrar el secreto del
+ * webhook, para que un flood no pague crypto ni acceso a secretos.
+ */
+const LIMITE_POR_TENANT = 30;
+const VENTANA_SEGUNDOS = 60;
+
 /** UUID v4-ish: defensa para no pegarle a la BD con basura del path. */
 function esUuid(valor: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(valor);
@@ -58,6 +68,24 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
 
   if (!tenantId || !esUuid(tenantId)) {
     return NextResponse.json({ error: 'tenant_invalido' }, { status: 404 });
+  }
+
+  // RATE LIMIT por tenant — inmediatamente tras el check de UUID y ANTES de
+  // resolver/descifrar el secreto del webhook (el flood no paga crypto).
+  const limite = await consumirRateLimit(
+    `fintoc:${tenantId}`,
+    LIMITE_POR_TENANT,
+    VENTANA_SEGUNDOS,
+  );
+  if (!limite.permitido) {
+    console.warn(
+      `[webhook fintoc] rate limit excedido para llave=fintoc:${tenantId} ` +
+        `(límite ${LIMITE_POR_TENANT}/${VENTANA_SEGUNDOS}s).`,
+    );
+    return NextResponse.json(
+      { error: 'rate_limited' },
+      { status: 429, headers: { 'Retry-After': String(limite.reintentarEnSegundos) } },
+    );
   }
 
   // 1. RAW body — necesario para validar la firma sobre los bytes exactos.

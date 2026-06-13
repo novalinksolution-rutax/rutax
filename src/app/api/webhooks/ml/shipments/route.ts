@@ -23,19 +23,32 @@
  * Body de ML (verificado): { _id, topic, resource: "/shipments/{id}", user_id,
  *   application_id, sent, received, attempts, actions }.
  *
- * NOTA DE SEGURIDAD (para revisión de `seguridad-cumplimiento` antes de prod):
- * al no haber firma criptográfica (limitación de ML marketplace, no nuestra),
- * conviene evaluar rate-limiting del endpoint y/o verificar que `user_id`
- * corresponde a un seller conectado antes de encolar, para acotar abuso por
- * disparos falsos. La integridad de los DATOS ya está protegida por el modelo
- * de "consultar el recurso con nuestro token".
+ * DEFENSAS ANTI-ABUSO (ítem #7 de la auditoría — al no haber firma de ML):
+ * 1. RATE LIMIT por `user_id` (`ml:{user_id}`, 120/60s — ~60-100x el volumen
+ *    normal de un seller grande, absorbe ráfagas legítimas de backfill). NO se
+ *    limita por IP: las notificaciones legítimas vienen de pocas IPs
+ *    compartidas de ML y un límite por IP estrangularía a TODOS los sellers.
+ *    Al exceder → 429 + Retry-After; ML reintenta, y el polling C5 (cada 15
+ *    min) es la red de seguridad final — ninguna entrega se pierde.
+ * 2. CHECK de seller conectado: si el `user_id` no corresponde a una conexión
+ *    ML registrada, se responde 200 SIN encolar (cero evento Inngest, cero
+ *    fetch a ML). Cierra el vector "user_id aleatorio" que el rate limit por
+ *    user_id no acota.
+ * La integridad de los DATOS ya está protegida por el modelo de "consultar el
+ * recurso con nuestro token".
  *
  * Fuente del esquema correcto: documentación de notificaciones de ML marketplace
  * + verificación en vivo (junio 2026).
  */
 
 import { inngest } from "@/lib/inngest/cliente";
+import { consumirRateLimit } from "@/lib/rate-limit";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { NextRequest, NextResponse } from "next/server";
+
+/** Límite de notificaciones por seller (user_id de ML) por ventana. */
+const LIMITE_POR_USER_ID = 120;
+const VENTANA_SEGUNDOS = 60;
 
 /** Cuerpo que ML envía en cada notificación de shipment. */
 interface NotificacionMl {
@@ -97,6 +110,49 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const shipmentId = extraerShipmentId(body.resource);
   if (!shipmentId) {
     // Body válido pero recurso mal formado — 200 para que ML no reintente.
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  // RATE LIMIT por user_id — antes de tocar BD de negocio o encolar. Fail-open
+  // si el limitador falla (ver src/lib/rate-limit). Log sin body.
+  const userId = String(body.user_id);
+  const limite = await consumirRateLimit(
+    `ml:${userId}`,
+    LIMITE_POR_USER_ID,
+    VENTANA_SEGUNDOS,
+  );
+  if (!limite.permitido) {
+    console.warn(
+      `[webhook ml/shipments] rate limit excedido para llave=ml:${userId} ` +
+        `(límite ${LIMITE_POR_USER_ID}/${VENTANA_SEGUNDOS}s).`,
+    );
+    return NextResponse.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(limite.reintentarEnSegundos) } },
+    );
+  }
+
+  // CHECK de seller conectado: un user_id que no corresponde a ninguna conexión
+  // ML registrada no encola nada (200 para que ML no reintente; si fuera un
+  // seller legítimo recién conectado, el backfill/polling lo cubre después).
+  const supabase = crearClienteServiceRole();
+  // NOTA QA: `ml_user_id` NO tiene UNIQUE en BD (solo `seller_id` lo es), así que
+  // un mismo user_id de ML podría aparecer en >1 conexión (p. ej. la misma cuenta
+  // de ML conectada por dos couriers, o una fila vieja + una nueva). Con
+  // `.maybeSingle()` PostgREST DEVOLVERÍA ERROR ante 2+ filas y, como aquí solo
+  // miramos `data`, la notificación se perdería en silencio pese a existir
+  // conexiones válidas. Usamos una lista acotada y miramos si hay AL MENOS UNA:
+  // basta una conexión conocida para encolar (el job consulta el recurso con el
+  // token del seller correcto y descarta lo que no corresponda).
+  const { data: conexiones } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .select("id")
+    .eq("ml_user_id", userId)
+    .limit(1);
+
+  if (!conexiones || conexiones.length === 0) {
+    // Sin conexión conocida → ignorar silenciosamente (sin evento, sin fetch).
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
