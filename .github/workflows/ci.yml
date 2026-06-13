@@ -34,5 +34,5 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Pruebas unitarias
-        run: npm test
+      - name: Pruebas unitarias + cobertura (con piso/trinquete)
+        run: npm run coverage

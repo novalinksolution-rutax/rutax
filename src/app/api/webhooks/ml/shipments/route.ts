@@ -41,6 +41,7 @@
  * + verificación en vivo (junio 2026).
  */
 
+import { z } from "zod";
 import { inngest } from "@/lib/inngest/cliente";
 import { consumirRateLimit } from "@/lib/rate-limit";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -50,17 +51,20 @@ import { NextRequest, NextResponse } from "next/server";
 const LIMITE_POR_USER_ID = 120;
 const VENTANA_SEGUNDOS = 60;
 
-/** Cuerpo que ML envía en cada notificación de shipment. */
-interface NotificacionMl {
-  _id?: string;
-  resource: string; // "/shipments/{id}"
-  user_id: number | string;
-  topic: string;
-  application_id?: number | string;
-  attempts?: number;
-  sent?: string;
-  received?: string;
-}
+/**
+ * Cuerpo que ML envía en cada notificación de shipment, validado con zod en el
+ * borde (#10): el body es JSON EXTERNO no confiable — se valida de verdad en vez
+ * de un `as` que solo le promete la forma al compilador. `user_id`/`application_id`
+ * llegan como número o string según el caso; el resto del body se ignora.
+ */
+const esquemaNotificacionMl = z.object({
+  resource: z.string(),
+  user_id: z.union([z.string(), z.number()]),
+  topic: z.string(),
+  application_id: z.union([z.string(), z.number()]).optional(),
+  sent: z.string().optional(),
+});
+type NotificacionMl = z.infer<typeof esquemaNotificacionMl>;
 
 /**
  * Extrae el shipment_id del campo `resource` de ML.
@@ -86,10 +90,15 @@ export function esParaNuestraApp(
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // Leer y parsear el body.
+  // Leer y validar el body (JSON externo no confiable → zod, no un cast).
   let body: NotificacionMl;
   try {
-    body = (await request.json()) as NotificacionMl;
+    const crudo = await request.json();
+    const parsed = esquemaNotificacionMl.safeParse(crudo);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "body_malformado" }, { status: 400 });
+    }
+    body = parsed.data;
   } catch {
     return NextResponse.json({ error: "body_malformado" }, { status: 400 });
   }

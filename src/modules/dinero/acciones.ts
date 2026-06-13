@@ -22,10 +22,24 @@ import {
 } from '@/modules/identidad/capacidades';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { ErrorValidacion } from '@/modules/identidad/errores';
+import { esquemaMotivo } from '@/lib/validacion/esquemas';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import type { EstadoEventoConciliacion } from './tipos';
 import { conciliarPagoPersistido } from './aplicar-pago';
 import { esEstadoTerminal } from './matching-pago';
+
+/**
+ * Valida y normaliza (trim) un motivo de texto libre del usuario con zod (#10).
+ * Lanza `ErrorValidacion` con el mensaje del esquema si está vacío o excede el
+ * largo. Devuelve el motivo ya saneado.
+ */
+function validarMotivo(motivo: string): string {
+  const r = esquemaMotivo.safeParse(motivo);
+  if (!r.success) {
+    throw new ErrorValidacion(r.error.issues[0]?.message ?? 'El motivo es obligatorio.');
+  }
+  return r.data;
+}
 
 // =============================================================================
 // cerrarPeriodoManualmente
@@ -296,12 +310,7 @@ export async function emitirNotaCreditoPeriodo(
     );
   }
 
-  const motivoLimpio = motivo?.trim() ?? '';
-  if (!motivoLimpio) {
-    throw new ErrorValidacion(
-      'El motivo de la anulación es obligatorio — queda en la auditoría y en la nota de crédito.',
-    );
-  }
+  const motivoLimpio = validarMotivo(motivo);
 
   const supabase = crearClienteServiceRole();
 
@@ -749,10 +758,7 @@ export async function descartarPago(
     throw new ErrorValidacion('Solo el dueño o administración puede descartar pagos.');
   }
 
-  const motivoLimpio = (motivo ?? '').trim();
-  if (motivoLimpio.length === 0) {
-    throw new ErrorValidacion('Indica un motivo para descartar el pago.');
-  }
+  const motivoLimpio = validarMotivo(motivo);
 
   const supabase = crearClienteServiceRole();
 

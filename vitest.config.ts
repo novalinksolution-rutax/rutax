@@ -12,6 +12,22 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     exclude: ["**/node_modules/**"],
     globals: false,
+    // Cobertura con piso (trinquete): el CI corre `npm run coverage` y falla si
+    // un cambio baja la cobertura bajo estos umbrales. Fijados unos puntos bajo
+    // la base medida (junio 2026: ~67% stmts / 60% branch / 75% fn / 70% lines)
+    // para no fallar por ruido, pero sí bloquear erosión real. Solo deben SUBIR.
+    // Sin `all`/`include`: medimos los archivos que los tests realmente ejercen
+    // (lógica de servidor) — no las páginas .tsx de UI, que no tienen tests unit.
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+      thresholds: {
+        statements: 65,
+        branches: 58,
+        functions: 72,
+        lines: 67,
+      },
+    },
   },
   resolve: {
     alias: {
