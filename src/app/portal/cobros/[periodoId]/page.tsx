@@ -50,6 +50,8 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
   const cliente = crearClienteServiceRole();
   let periodo;
   let dte: DocumentoDte | null = null;
+  // Si el período fue anulado, la nota de crédito (61) que referencia al 33.
+  let notaCredito: DocumentoDte | null = null;
   let errorCarga = false;
 
   try {
@@ -61,10 +63,11 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       redirect("/portal/cobros");
     }
 
-    if (periodo.documentoDteId) {
-      const dtes = await listarDocumentosDte(cliente, tenantId, sellerId);
-      dte = dtes.find((d) => d.periodoCobroidId === periodoId) ?? null;
-    }
+    // El seller debe poder cuadrar AMBOS documentos del SII: la factura (33) y,
+    // si la hubo, su nota de crédito (61). Por eso se buscan los dos por tipo.
+    const dtes = await listarDocumentosDte(cliente, tenantId, sellerId);
+    dte = dtes.find((d) => d.periodoCobroidId === periodoId && d.tipoDocumento === 33) ?? null;
+    notaCredito = dtes.find((d) => d.periodoCobroidId === periodoId && d.tipoDocumento === 61) ?? null;
   } catch {
     errorCarga = true;
   }
@@ -138,6 +141,51 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
           )}
         </div>
       </section>
+
+      {/* Sección A.1 — Anulación con nota de crédito (RF-038) */}
+      {periodo.estado === "anulado" && (
+        <section
+          aria-labelledby="anulacion-titulo"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-5"
+        >
+          <h2 id="anulacion-titulo" className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <AlertTriangle className="size-4 flex-shrink-0" aria-hidden="true" />
+            Factura anulada con nota de crédito
+          </h2>
+          <p className="text-sm text-amber-800">
+            Esta factura fue anulada por tu empresa de despacho. No tienes saldo por pagar de este
+            período; las entregas se vuelven a facturar en el período en curso.
+            {periodo.anuladoEn ? ` Anulada el ${formatearFechaCorta(periodo.anuladoEn)}.` : ""}
+          </p>
+          {periodo.motivoAnulacion && (
+            <p className="mt-2 text-sm text-amber-800">
+              <span className="font-medium">Motivo:</span> {periodo.motivoAnulacion}
+            </p>
+          )}
+          {notaCredito ? (
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-amber-900">
+                Nota de crédito{" "}
+                <span className="font-semibold tabular-nums">Folio {notaCredito.folio}</span>
+                {" · "}
+                <span className="tabular-nums">{formatearCLP(notaCredito.montoTotalClp)}</span>
+              </p>
+              {notaCredito.pdfRef && (
+                <div className="shrink-0">
+                  <BotonDescargaFacturaPdf
+                    pdfRef={notaCredito.pdfRef}
+                    etiqueta="Descargar nota de crédito (PDF)"
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-amber-700">
+              La nota de crédito se está emitiendo. Recarga la página en unos segundos.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* Sección B — Bloque "Factura" (solo si hay DTE) */}
       {dte && (

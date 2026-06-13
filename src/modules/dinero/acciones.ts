@@ -264,6 +264,164 @@ export async function emitirFacturaPeriodo(
 }
 
 // =============================================================================
+// emitirNotaCreditoPeriodo — anulación TOTAL de la factura (RF-038)
+// =============================================================================
+
+/**
+ * Solicita la emisión de una NOTA DE CRÉDITO (DTE tipo 61, CodRef=1) que anula
+ * TOTALMENTE la factura de un período `facturado`. Compuerta humana idéntica a
+ * la de emisión: solo una persona con `puedeEmitirFacturas` puede solicitarla,
+ * con motivo obligatorio.
+ *
+ * Efectos (los aplica el job C-NC, `dinero/jobs/emitir-nota-credito.ts`):
+ * - Emite el 61 referenciando el 33 (montos COPIADOS del 33, no recalculados).
+ * - Período → `anulado` (terminal; no se re-factura el mismo rango).
+ * - Las líneas de cobro se liberan y se reimputan al período abierto vigente.
+ * - Los pagos imputados se desimputan a `sobrante` (vuelven a la bandeja).
+ *
+ * Alcance MVP: SOLO anulación total (CodRef=1). Quedan fuera: NC parcial por
+ * montos (CodRef=3), corrección de texto (CodRef=2), nota de débito (56) y
+ * anulación de la propia NC.
+ */
+export async function emitirNotaCreditoPeriodo(
+  tenantId: string,
+  periodoId: string,
+  motivo: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeEmitirFacturas(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede emitir notas de crédito.',
+    );
+  }
+
+  const motivoLimpio = motivo?.trim() ?? '';
+  if (!motivoLimpio) {
+    throw new ErrorValidacion(
+      'El motivo de la anulación es obligatorio — queda en la auditoría y en la nota de crédito.',
+    );
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  // Leer el período y verificar tenant + estado facturado con DTE asociado.
+  const { data: periodo, error: errorLectura } = await supabase
+    .schema('dinero')
+    .from('periodos_cobro')
+    .select('id, tenant_id, seller_id, estado, documento_dte_id, monto_pagado_clp')
+    .eq('id', periodoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errorLectura) throw new Error(`Error al leer período: ${errorLectura.message}`);
+  if (!periodo) throw new ErrorValidacion(`Período ${periodoId} no encontrado en el tenant.`);
+
+  if (periodo.estado !== 'facturado' || !periodo.documento_dte_id) {
+    throw new ErrorValidacion(
+      `Solo se puede anular un período 'facturado' con su DTE emitido. Estado actual: '${periodo.estado}'.`,
+    );
+  }
+
+  // Leer el documento 33 a anular (montos COPIADOS de aquí, fuente tributaria).
+  const { data: dte, error: errorDte } = await supabase
+    .schema('dinero')
+    .from('documentos_dte')
+    .select('id, tipo_documento, folio, estado_sii, monto_neto_clp, monto_iva_clp, monto_total_clp')
+    .eq('id', periodo.documento_dte_id as string)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errorDte) throw new Error(`Error al leer DTE: ${errorDte.message}`);
+  if (!dte || dte.tipo_documento !== 33) {
+    throw new ErrorValidacion('El documento a anular no existe o no es una factura (tipo 33).');
+  }
+  if (dte.estado_sii === 'rechazado') {
+    // Un 33 rechazado nunca entró al SII — no se anula con NC (su flujo de
+    // re-emisión es otro ítem, fuera de este alcance).
+    throw new ErrorValidacion(
+      'La factura fue rechazada por el SII — no requiere nota de crédito.',
+    );
+  }
+
+  // ¿Ya existe una NC vigente para este 33? (el índice único parcial de la
+  // migración lo impone en BD; aquí damos error claro antes).
+  const { data: ncExistente } = await supabase
+    .schema('dinero')
+    .from('documentos_dte')
+    .select('id, folio')
+    .eq('tenant_id', tenantId)
+    .eq('tipo_documento', 61)
+    .eq('dte_referencia_id', dte.id as string)
+    .maybeSingle();
+
+  if (ncExistente) {
+    throw new ErrorValidacion(
+      `Esta factura ya fue anulada con la nota de crédito folio ${ncExistente.folio}.`,
+    );
+  }
+
+  // Resolver el modo de emisión — mismo mecanismo y opt-in que la factura.
+  const sandbox = process.env.DTE_SANDBOX_MODE !== 'false';
+  const modo: 'sandbox' | 'real' = sandbox ? 'sandbox' : 'real';
+
+  if (modo === 'real') {
+    const { data: config } = await supabase
+      .schema('identidad')
+      .from('courier_config_dte')
+      .select('emision_dte_real_habilitada')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (!config?.emision_dte_real_habilitada) {
+      throw new ErrorValidacion(
+        'La emisión real de DTE no está habilitada para este courier. ' +
+          'Actívala explícitamente en la configuración antes de emitir al SII.',
+      );
+    }
+  }
+
+  // Bitácora ANTES de publicar el evento (acción financiera auditada aunque
+  // `inngest.send` falle). El motivo queda en la auditoría.
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.nc_emision_solicitada',
+    entidadTipo: 'periodo_cobro',
+    entidadId: periodoId,
+    detalle: {
+      seller_id: periodo.seller_id,
+      documento_dte_id: dte.id,
+      folio_original: dte.folio,
+      monto_total_clp: Math.round(Number(dte.monto_total_clp)),
+      monto_pagado_clp: Math.round(Number(periodo.monto_pagado_clp ?? 0)),
+      motivo: motivoLimpio,
+      modo,
+    },
+  });
+
+  await inngest.send({
+    name: 'dinero/nc.emision-solicitada',
+    id: `nc-emision-solicitada-${periodoId}`,
+    data: {
+      periodoCobroidId: periodoId,
+      tenantId,
+      sellerId: periodo.seller_id as string,
+      documentoDteId: dte.id as string,
+      folioReferencia: dte.folio as number,
+      tipoDocumentoReferencia: 33,
+      montoNetoClp: Math.round(Number(dte.monto_neto_clp)),
+      montoIvaClp: Math.round(Number(dte.monto_iva_clp)),
+      montoTotalClp: Math.round(Number(dte.monto_total_clp)),
+      motivo: motivoLimpio,
+      solicitadoPorUsuarioId: actorUsuarioId,
+      modo,
+    },
+  });
+}
+
+// =============================================================================
 // marcarLiquidacionPagada
 // =============================================================================
 

@@ -246,7 +246,7 @@ export async function obtenerOCrearPeriodoCobroAbierto(
   const { data: periodo, error } = await cliente
     .schema('dinero')
     .from('periodos_cobro')
-    .select('id')
+    .select('id, estado')
     .eq('tenant_id', tenantId)
     .eq('seller_id', sellerId)
     .eq('fecha_inicio', fechaInicio)
@@ -261,6 +261,23 @@ export async function obtenerOCrearPeriodoCobroAbierto(
     throw new Error(
       `No se pudo crear ni encontrar el período de cobro para ` +
       `seller=${sellerId} rango=${fechaInicio}/${fechaFin}`,
+    );
+  }
+
+  // GUARDA (QA): el UNIQUE (tenant, seller, fecha_inicio, fecha_fin) permite UNA
+  // sola fila por rango, sin discriminar `estado`. Si el período de ese rango ya
+  // existe pero NO está `abierto` (cerrado/facturado/anulado), el upsert con
+  // ignoreDuplicates NO lo reabre y este SELECT devolvería un período cerrado.
+  // Reimputar/asignar líneas a un período facturado las dejaría fuera de toda
+  // facturación (nunca se vuelven a emitir) — corrupción silenciosa. El nombre y
+  // contrato de esta función prometen un período ABIERTO: si no lo es, fallamos
+  // con un error claro y RETRYABLE (Inngest reintenta; un humano abre el período
+  // o ajusta el rango) en vez de misfilar las líneas en silencio.
+  if ((periodo.estado as string) !== 'abierto') {
+    throw new Error(
+      `El período de cobro del rango ${fechaInicio}/${fechaFin} para seller=` +
+        `${sellerId} existe pero está en estado '${periodo.estado}', no 'abierto'. ` +
+        'No se asignan líneas a un período no abierto (evita facturación perdida).',
     );
   }
 

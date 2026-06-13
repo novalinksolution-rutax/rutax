@@ -59,14 +59,18 @@ export class ErrorDteProveedor extends ErrorDte {
  */
 export class ErrorFolioAgotado extends ErrorDte {
   readonly tenantId: string;
+  /** Tipo de documento cuyo CAF se agotó (33 factura, 61 nota de crédito). */
+  readonly tipoDocumento?: 33 | 61;
 
-  constructor(tenantId: string) {
+  constructor(tenantId: string, tipoDocumento?: 33 | 61) {
     super(
-      `Folios CAF agotados para el tenant ${tenantId}. ` +
+      `Folios CAF${tipoDocumento ? ` del tipo ${tipoDocumento}` : ''} agotados ` +
+      `para el tenant ${tenantId}. ` +
       'Solicita un nuevo CAF al proveedor DTE antes de emitir más documentos.',
     );
     this.name = 'ErrorFolioAgotado';
     this.tenantId = tenantId;
+    if (tipoDocumento !== undefined) this.tipoDocumento = tipoDocumento;
   }
 }
 

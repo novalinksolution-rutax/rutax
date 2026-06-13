@@ -75,6 +75,7 @@ export default async function PaginaPeriodosCobro({
   let contAbiertos = 0;
   let contCerrados = 0;
   let contFacturados = 0;
+  let contAnulados = 0;
   let contConProblemas = 0;
 
   try {
@@ -104,8 +105,12 @@ export default async function PaginaPeriodosCobro({
       tenantId,
       filtroSeller || undefined,
     );
+    // Solo facturas (33): la nota de crédito (61) comparte periodo_cobro_id
+    // con la factura que anula y no debe pisarla en este mapa.
     const dteMap = new Map<string, DocumentoDte>(
-      todosDte.map((d) => [d.periodoCobroidId, d]),
+      todosDte
+        .filter((d) => d.tipoDocumento === 33)
+        .map((d) => [d.periodoCobroidId, d]),
     );
 
     // Calcular contadores
@@ -113,6 +118,7 @@ export default async function PaginaPeriodosCobro({
       if (p.estado === "abierto") contAbiertos++;
       else if (p.estado === "cerrado") contCerrados++;
       else if (p.estado === "facturado") contFacturados++;
+      else if (p.estado === "anulado") contAnulados++;
 
       // "Con problemas" = DTE rechazado o aceptado_con_discrepancias
       const dte = p.documentoDteId ? dteMap.get(p.id) : null;
@@ -161,6 +167,7 @@ export default async function PaginaPeriodosCobro({
     { key: "abierto", label: "Abiertos", count: contAbiertos, color: "bg-blue-50 border-blue-200 text-blue-800" },
     { key: "cerrado", label: "Cerrados", count: contCerrados, color: "bg-gray-50 border-gray-200 text-gray-700" },
     { key: "facturado", label: "Facturados", count: contFacturados, color: "bg-green-50 border-green-200 text-green-800" },
+    { key: "anulado", label: "Anulados", count: contAnulados, color: "bg-red-50 border-red-200 text-red-800" },
     { key: "", label: "Con problemas", count: contConProblemas, color: "bg-red-50 border-red-200 text-red-800" },
   ];
 

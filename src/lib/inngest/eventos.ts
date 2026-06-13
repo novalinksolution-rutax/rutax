@@ -154,3 +154,40 @@ export interface EventoPagoConciliado {
     resultado: 'pagado_total' | 'pagado_parcial';
   };
 }
+
+/**
+ * Nota de crédito (RF-038) — anulación TOTAL de la factura de un período.
+ *
+ * Publicado EXCLUSIVAMENTE por la acción humana `emitirNotaCreditoPeriodo`
+ * (`dinero/acciones.ts`, gate `puedeEmitirFacturas`, motivo obligatorio,
+ * bitácora ANTES del evento). Consumido por el job C-NC
+ * (`dinero/jobs/emitir-nota-credito.ts`).
+ *
+ * Misma compuerta humana que la emisión de facturas: una NC es un documento
+ * tributario irreversible — nada la emite automáticamente.
+ *
+ * Los montos viajan COPIADOS de la fila del 33 en `documentos_dte` (no se
+ * recalculan desde las líneas, que pueden haber sido editadas después).
+ */
+export interface EventoNcEmisionSolicitada {
+  name: 'dinero/nc.emision-solicitada';
+  data: {
+    periodoCobroidId: string;
+    tenantId: string;
+    sellerId: string;
+    /** UUID del documento 33 (en `documentos_dte`) que la NC anula. */
+    documentoDteId: string;
+    /** Folio del 33 original — va en la Referencia del 61 (FolioRef). */
+    folioReferencia: number;
+    tipoDocumentoReferencia: 33;
+    montoNetoClp: number;
+    montoIvaClp: number;
+    montoTotalClp: number;
+    /** Motivo de la anulación (obligatorio; el adaptador trunca a 90 chars). */
+    motivo: string;
+    /** UUID de auth del usuario que solicitó la NC (trazabilidad RNF-04). */
+    solicitadoPorUsuarioId: string;
+    /** 'sandbox' (stub, sin SII real) | 'real' (exige opt-in del courier). */
+    modo: 'sandbox' | 'real';
+  };
+}

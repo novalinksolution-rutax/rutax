@@ -42,6 +42,7 @@ import type {
   EmitirFacturaEntrada,
   EmitirFacturaResultado,
   LineaDetalleDte,
+  TipoDocumentoDte,
 } from '../tipos';
 
 // ---------------------------------------------------------------------------
@@ -132,12 +133,24 @@ export class SimplefacturaAdapter implements PuertoDte {
 
     const { neto, iva, total } = calcularMontos(entrada.lineas);
 
+    // Tipo de documento: misma derivación que el adaptador real (Openfactura).
+    // Si la entrada trae referencia a otro documento, es una nota de crédito
+    // (tipo 61); si no, factura (tipo 33). Los campos `codigoReferencia` y
+    // `razonReferencia` (decisión B5b) se aceptan sin efecto en el stub: no
+    // hay API real que reciba `CodRef`/`RazonRef`, pero el resultado simulado
+    // sí refleja el tipo correcto para que el job C3 persista coherente.
+    const tipoDocumento: TipoDocumentoDte =
+      entrada.tipoDocumentoReferencia !== undefined ||
+      entrada.folioDocumentoReferencia !== undefined
+        ? 61
+        : 33;
+
     // STUB: retorna resultado simulado.
     // En producción, este bloque se reemplaza por la llamada HTTP real.
     return {
       idExternoProveedor: `STUB-${entrada.folio}`,
       folio: entrada.folio,
-      tipoDocumento: 33,
+      tipoDocumento,
       montoNetoCLP: neto,
       montoIvaCLP: iva,
       montoTotalCLP: total,

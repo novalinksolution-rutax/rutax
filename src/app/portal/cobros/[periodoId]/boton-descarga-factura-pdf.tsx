@@ -10,7 +10,14 @@ import { useState, useTransition } from "react";
 import { Download } from "lucide-react";
 import { accionDescargarFacturaPdf } from "../actions";
 
-export function BotonDescargaFacturaPdf({ pdfRef }: { pdfRef: string }) {
+export function BotonDescargaFacturaPdf({
+  pdfRef,
+  etiqueta = "Descargar factura (PDF)",
+}: {
+  pdfRef: string;
+  /** Texto del botón (p. ej. "Descargar nota de crédito (PDF)"). */
+  etiqueta?: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -43,7 +50,7 @@ export function BotonDescargaFacturaPdf({ pdfRef }: { pdfRef: string }) {
         ) : (
           <Download className="size-4" aria-hidden="true" />
         )}
-        {isPending ? "Generando enlace..." : "Descargar factura (PDF)"}
+        {isPending ? "Generando enlace..." : etiqueta}
       </button>
       {error && (
         <p className="text-xs text-red-700" role="alert">

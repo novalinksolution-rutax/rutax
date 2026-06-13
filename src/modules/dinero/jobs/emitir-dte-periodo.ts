@@ -35,7 +35,7 @@ import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { obtenerPuertoDte } from '@/modules/integraciones/dte';
-import { ErrorFolioAgotado } from '@/modules/integraciones/dte';
+import { reservarFolio } from '../folios';
 
 const TZ = 'America/Santiago';
 
@@ -123,48 +123,11 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
       };
     });
 
-    // Step 3: Reservar folio CAF (transaccional — FOR UPDATE).
+    // Step 3: Reservar folio CAF tipo 33 (helper compartido `../folios`, que
+    // discrimina por tipo_documento — FIX: antes podía consumir folios 61).
     // Si ErrorFolioAgotado: no reintentar — el job termina con error claro.
     const folioReservado = await step.run('reservar-folio', async () => {
-      const supabase = crearClienteServiceRole();
-
-      // Leer folio_caf del tenant con bloqueo (emulado: leer y actualizar atómicamente).
-      const { data: caf, error: cafError } = await supabase
-        .schema('identidad')
-        .from('folios_caf')
-        .select('id, folio_actual, folio_hasta')
-        .eq('tenant_id', tenantId)
-        .eq('estado', 'vigente')
-        .order('folio_actual', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (cafError) throw new Error(`Error al leer CAF: ${cafError.message}`);
-
-      if (!caf) {
-        throw new ErrorFolioAgotado(tenantId);
-      }
-
-      const folioActual = caf.folio_actual as number;
-      const folioHasta = caf.folio_hasta as number;
-
-      if (folioActual > folioHasta) {
-        throw new ErrorFolioAgotado(tenantId);
-      }
-
-      // Incrementar folio_actual (UPDATE atómico).
-      const { error: updateError } = await supabase
-        .schema('identidad')
-        .from('folios_caf')
-        .update({ folio_actual: folioActual + 1, actualizado_en: new Date().toISOString() })
-        .eq('id', caf.id as string)
-        .eq('folio_actual', folioActual); // guarda optimista: si otro job lo cambió, falla
-
-      if (updateError) {
-        throw new Error(`Error al reservar folio: ${updateError.message}`);
-      }
-
-      return { folio: folioActual, cafId: caf.id as string };
+      return reservarFolio(tenantId, 33);
     });
 
     // Step 4: Llamar al proveedor DTE.

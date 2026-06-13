@@ -25,6 +25,7 @@ import {
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
+import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
 import { BotonDescargaDocumento } from "./boton-descarga-documento";
 
 export const metadata: Metadata = {
@@ -59,6 +60,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
   let periodo;
   let dte: DocumentoDte | null = null;
+  let notaCredito: DocumentoDte | null = null;
   let sellerNombre = "—";
   let errorCarga = false;
 
@@ -75,10 +77,16 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       .maybeSingle();
     sellerNombre = (sellerData?.razon_social as string) ?? periodo.sellerId;
 
-    // Obtener DTE si existe
+    // Obtener documentos del período: la factura (33) y, si el período fue
+    // anulado, la nota de crédito (61) que la referencia.
     if (periodo.documentoDteId) {
       const dtes = await listarDocumentosDte(cliente, tenantId, periodo.sellerId);
-      dte = dtes.find((d) => d.periodoCobroidId === periodoId) ?? null;
+      dte =
+        dtes.find((d) => d.periodoCobroidId === periodoId && d.tipoDocumento === 33) ??
+        null;
+      notaCredito =
+        dtes.find((d) => d.periodoCobroidId === periodoId && d.tipoDocumento === 61) ??
+        null;
     }
   } catch {
     errorCarga = true;
@@ -190,8 +198,98 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               />
             </div>
           )}
+
+          {/* Anulación total por nota de crédito (RF-038, B7): solo sobre un
+              período facturado con su DTE emitido. El gate `emitir_facturas`
+              lo valida la acción de dominio; la página ya filtra por capacidad. */}
+          {periodo.estado === "facturado" && dte && (
+            <div className="shrink-0">
+              <DialogEmitirNotaCredito
+                periodoId={periodo.id}
+                sellerNombre={sellerNombre}
+                folioFactura={dte.folio}
+                montoTotalClp={periodo.montoTotalClp}
+                montoPagadoClp={periodo.montoPagadoClp}
+              />
+            </div>
+          )}
         </div>
       </section>
+
+      {/* Sección A.1 — Bloque de anulación (solo si el período fue anulado) */}
+      {periodo.estado === "anulado" && (
+        <section
+          aria-labelledby="anulacion-titulo"
+          className="rounded-xl border border-red-200 bg-red-50/50 p-5 shadow-sm"
+        >
+          <h2
+            id="anulacion-titulo"
+            className="mb-4 text-sm font-semibold uppercase tracking-wide text-red-800"
+          >
+            Período anulado con nota de crédito
+          </h2>
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-2">
+              {periodo.anuladoEn && (
+                <p className="text-sm text-red-800">
+                  Anulado el {formatearFechaCorta(periodo.anuladoEn)}.
+                </p>
+              )}
+              <div>
+                <p className="text-xs font-semibold text-red-800">Motivo:</p>
+                <p className="mt-1 text-sm text-red-900">
+                  {periodo.motivoAnulacion ?? "—"}
+                </p>
+              </div>
+
+              {notaCredito ? (
+                <p className="text-sm text-red-800">
+                  Nota de crédito{" "}
+                  <span className="font-bold tabular-nums">
+                    Folio {notaCredito.folio}
+                  </span>
+                  , emitida el {formatearFechaCorta(notaCredito.fechaEmision)} por{" "}
+                  <span className="font-semibold tabular-nums">
+                    {formatearCLP(notaCredito.montoTotalClp)}
+                  </span>
+                  .
+                </p>
+              ) : (
+                <p className="text-sm text-red-800">
+                  La nota de crédito se está emitiendo. Recarga la página en unos
+                  segundos para ver el folio y descargar el documento.
+                </p>
+              )}
+
+              <p className="text-sm text-red-800">
+                Las entregas de este período volvieron al período de facturación en
+                curso del seller.
+              </p>
+            </div>
+
+            {/* Descargas de la nota de crédito (mismo criterio C-3) */}
+            {notaCredito && (
+              <div className="flex flex-col gap-2 shrink-0">
+                {notaCredito.pdfRef && (
+                  <BotonDescargaDocumento
+                    tipo="pdf-dte"
+                    referencia={notaCredito.pdfRef}
+                    etiqueta="Ver PDF de la NC"
+                  />
+                )}
+                {notaCredito.xmlDteRef && (
+                  <BotonDescargaDocumento
+                    tipo="xml-dte"
+                    referencia={notaCredito.xmlDteRef}
+                    etiqueta="Ver XML de la NC"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Sección B — Bloque DTE (solo si hay DTE) */}
       {dte && (
@@ -203,7 +301,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
             id="dte-titulo"
             className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            Factura emitida
+            {periodo.estado === "anulado" ? "Factura anulada" : "Factura emitida"}
           </h2>
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

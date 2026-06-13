@@ -154,6 +154,10 @@ export interface PeriodoCobro {
   montoPagadoClp: number;
   /** Marca de tiempo del cierre del cobro (cuando pasa a `pagado`), o null. */
   pagadoEn: string | null;
+  /** Motivo de la anulación por nota de crédito (RF-038) — null si no fue anulado. */
+  motivoAnulacion: string | null;
+  /** Marca de tiempo de la anulación (período → `anulado`), o null. */
+  anuladoEn: string | null;
   creadoEn: string;
   actualizadoEn: string;
 }

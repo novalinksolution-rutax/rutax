@@ -45,6 +45,8 @@ function filaToPeriodoCobro(f: Record<string, any>): PeriodoCobro {
     estadoCobro: f.estado_cobro ?? 'no_aplica',
     montoPagadoClp: f.monto_pagado_clp !== null && f.monto_pagado_clp !== undefined ? Number(f.monto_pagado_clp) : 0,
     pagadoEn: f.pagado_en ?? null,
+    motivoAnulacion: f.motivo_anulacion ?? null,
+    anuladoEn: f.anulado_en ?? null,
     creadoEn: f.creado_en,
     actualizadoEn: f.actualizado_en,
   };

@@ -105,6 +105,13 @@ export const OPENFACTURA_BASE_URL_PROD = 'https://api.haulmer.com';
  */
 const FORMATOS_RESPUESTA = ['FOLIO', 'PDF', 'XML', 'TIMBRE'] as const;
 
+/**
+ * Largo máximo de `RazonRef` según el formato DTE vigente del SII (v2.5,
+ * 2026-02): 90 caracteres (subió de 30 a 90). El SII rechaza glosas más
+ * largas, así que el adaptador TRUNCA antes de enviar.
+ */
+export const RAZON_REF_MAX_CARACTERES = 90;
+
 // ---------------------------------------------------------------------------
 // Error HTTP del proveedor — clasifica reintentables (429/5xx) igual que ML.
 // ---------------------------------------------------------------------------
@@ -220,8 +227,10 @@ interface OpenfacturaDocumentRequest {
       NroLinRef: number;
       TpoDocRef: string;
       FolioRef: number;
-      // Código 1 = anula documento referenciado (uso típico de NC).
+      // Código SII: 1 = anula documento, 2 = corrige texto, 3 = corrige montos.
       CodRef?: number;
+      // Glosa de la referencia — máx. 90 caracteres según formato SII vigente.
+      RazonRef?: string;
     }>;
   };
 }
@@ -472,11 +481,18 @@ export class OpenfacturaAdapter implements PuertoDte {
       entrada.folioDocumentoReferencia !== undefined &&
       entrada.tipoDocumentoReferencia !== undefined
     ) {
+      // Glosa truncada al máximo del SII (90 chars) — el SII rechaza más.
+      const razonRef = entrada.razonReferencia
+        ?.slice(0, RAZON_REF_MAX_CARACTERES);
       payload.dte.Referencia = [
         {
           NroLinRef: 1,
           TpoDocRef: String(entrada.tipoDocumentoReferencia),
           FolioRef: entrada.folioDocumentoReferencia,
+          // Default 1 (anula documento): si llega una referencia sin código,
+          // la semántica del MVP es siempre anulación (decisión B5b).
+          CodRef: entrada.codigoReferencia ?? 1,
+          ...(razonRef ? { RazonRef: razonRef } : {}),
         },
       ];
     }

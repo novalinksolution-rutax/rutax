@@ -66,6 +66,23 @@ export interface EmitirFacturaEntrada {
   folioDocumentoReferencia?: number;
   /** Solo para notas de crédito (tipo 61): tipo del documento referenciado. */
   tipoDocumentoReferencia?: TipoDocumentoDte;
+  /**
+   * Solo para notas de crédito (tipo 61): código de referencia SII (`CodRef`).
+   * - 1 = anula documento referenciado (único uso en el MVP).
+   * - 2 = corrige texto del documento referenciado.
+   * - 3 = corrige montos del documento referenciado.
+   * Si viene una referencia sin código, los adaptadores asumen 1 (anulación).
+   * Fuente: SII, "Formato Documentos Tributarios Electrónicos" v2.5 (2026-02).
+   */
+  codigoReferencia?: 1 | 2 | 3;
+  /**
+   * Solo para notas de crédito (tipo 61): glosa de la referencia (`RazonRef`
+   * del SII). LÍMITE SII: máximo 90 caracteres (el largo subió de 30 a 90 en
+   * el formato vigente) — los adaptadores TRUNCAN a 90 antes de enviar porque
+   * el SII rechaza glosas más largas.
+   * Fuente: SII, "Formato Documentos Tributarios Electrónicos" v2.5 (2026-02).
+   */
+  razonReferencia?: string;
 }
 
 /**

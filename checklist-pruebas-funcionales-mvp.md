@@ -362,6 +362,38 @@ Pase de QA sobre el frente de cobranza recién construido (migración `0008`, ma
 
 ---
 
+## Rate limiting de webhooks (#7) y notas de crédito DTE (#8) — QA de idempotencia y reglas de dinero
+
+Pase de QA sobre las dos features (migraciones `0010` infra rate-limit y `0011` notas de crédito). Resultado: `tsc` limpio, **645/645 Vitest** (+13 nuevos: 9 del job C-NC, 4 de la guarda de período), **195/195 pgTAP** (sin cambios — las suites `rls_infra_rate_limit` y `dinero_notas_credito` ya cubrían BD).
+
+**#7 Rate limiting — `[x]` PROBADO**
+- `[x]` Helper fail-open: error de RPC / respuesta no numérica / excepción del cliente → `permitido: true` (nunca tumba tráfico legítimo). Un 429 SOLO ocurre con `permitido === false` (contador > límite), nunca por excepción. *(Cubierto en `src/lib/rate-limit/index.test.ts`.)*
+- `[x]` pgTAP: `authenticated`/`anon` NO tienen SELECT sobre `infra.rate_limit_contadores` ni EXECUTE sobre la RPC (42501 real, no solo catálogo); `service_role` sí. Tabla UNLOGGED + RLS force sin políticas (deny-by-default). Ventana `<= 0` → 22023.
+- `[x]` Las dos rutas que lo usan retornan 429 solo cuando `permitido === false`, con `Retry-After`; la RPC corre ANTES de descifrar el secreto (Fintoc) y de tocar BD de negocio (ML).
+
+**#7 — Riesgo documentado (aceptado por diseño, no es bug)**
+- CHECK de seller conectado en el route de ML: un seller recién conectado cuyo `ml_user_id` aún no está poblado (la columna es `nullable`, sin UNIQUE) da un FALSO NEGATIVO → la notificación se ignora con 200 sin encolar. **Red de seguridad: el polling C5** (cada 15 min) recupera el shipment. Pérdida temporal, no permanente. Aceptable.
+
+**#7 — Bug encontrado y corregido (bajo riesgo)**
+1. **Notificación legítima perdida si `ml_user_id` aparece en >1 conexión** (Severidad BAJA-MEDIA — sin UNIQUE en `ml_user_id`, dos couriers podrían conectar la misma cuenta ML, o quedar una fila vieja + una nueva). El route usaba `.eq("ml_user_id", userId).maybeSingle()`: ante 2+ filas PostgREST devuelve ERROR y `data: null`, y como el código solo mira `data`, la notificación se descartaba (200 sin encolar) pese a existir conexiones válidas. **Fix:** se cambió a `.limit(1)` sin `.maybeSingle()` y se evalúa "hay al menos una conexión" sobre la lista — basta una para encolar (el job consulta el recurso con el token correcto). `src/app/api/webhooks/ml/shipments/route.ts`.
+
+**#8 Notas de crédito (C-NC) — `[x]` PROBADO**
+- `[x]` **Idempotencia del job:** re-ejecutar con un 61 ya existente → `ya_emitida` sin reservar folio, sin llamar al proveedor, sin re-anular/desimputar/reimputar. Re-ejecución completa del job → un solo 61, sin doble efecto. *(`jobs/emitir-nota-credito.test.ts`, handler REAL ejecutado con `step.run` falso + Supabase fake.)*
+- `[x]` **Desimputación de pagos:** pagos `conciliado`/`parcial` del período → `sobrante` conservando `seller_id`, `periodo_cobro_id = null`; la fila NO se pierde; el monto del período vuelve a 0. Caso borde confirmado: un pago `conciliado` (terminal) SÍ vuelve a `sobrante` por UPDATE directo — no lo bloquea `esEstadoTerminal` (esa guarda solo aplica a la cascada de matching, no al job de NC). Pagos de OTRO período del mismo seller no se tocan.
+- `[x]` **Reimputación de líneas:** todas las líneas del período anulado se reasignan al período abierto vigente; ninguna queda huérfana apuntando al anulado; líneas de otro período no se mueven.
+- `[x]` **Gate y compuerta:** `emitirNotaCreditoPeriodo` exige `puedeEmitirFacturas` + motivo no vacío; solo períodos `facturado` con DTE 33; 33 rechazado por SII no requiere NC; segundo 61 sobre el mismo 33 rechazado con error claro ANTES de la BD; bitácora ANTES del evento con autor; montos COPIADOS del 33. No auto-emite nada. *(`acciones-nc.test.ts`.)*
+- `[x]` **Aislamiento/coherencia (pgTAP):** CHECK `documentos_dte_referencia_coherente` (un 61 siempre referencia, un 33 nunca) e índice único parcial (segundo 61 sobre el mismo 33 → 23505); seller dueño VE su NC, otro seller del tenant y otro tenant NO; seller no puede insertar 61 (42501). *(`dinero_notas_credito.test.sql`.)*
+- `[x]` **Folios por tipo:** `reservarFolio(tenant, 61)` no consume un CAF tipo 33 y viceversa (regresión del fix). *(`folios.test.ts`.)*
+
+**#8 — Bug encontrado y corregido (alcance compartido — convierte corrupción silenciosa en error visible)**
+2. **`obtenerOCrearPeriodoCobroAbierto` podía devolver un período NO abierto** (Severidad MEDIA). El UNIQUE de `periodos_cobro` es `(tenant, seller, fecha_inicio, fecha_fin)` sin `estado`: solo hay UNA fila por rango. La función hacía upsert con `ignoreDuplicates` y luego un SELECT por rango SIN filtrar `estado`, así que si el período de "hoy" del seller ya estaba `cerrado`/`facturado`/`anulado`, devolvía ESE id. El job de NC reimputa al período de hoy: las líneas corregidas habrían quedado pegadas a un período facturado y nunca se volverían a emitir (facturación perdida, en silencio). También afecta a C1 (genera-líneas) en el borde equivalente. **Fix:** la función ahora valida que el período encontrado esté `abierto`; si no, lanza un error claro y RETRYABLE (Inngest reintenta; una persona abre el período) en vez de misfilar líneas. `src/modules/dinero/periodos.ts` + 4 tests nuevos en `periodos.test.ts` (happy path, reutiliza abierto, falla con facturado, falla con cerrado).
+
+**Verificado sin hallazgos**
+- Webhook Fintoc: rate limit `fintoc:{tenantId}` 30/60s ANTES de resolver/descifrar el secreto (un flood no paga crypto); 429 con `Retry-After` solo si `permitido === false`; orden firma → parseo → bitácora → evento intacto.
+- Montos del 61 COPIADOS del 33 vía el evento (no recalculados desde líneas que pudieron cambiar); semántica de crédito por tipo 61, montos positivos.
+
+---
+
 ## Fuera del alcance del MVP (no probar todavía)
 
 Estos requerimientos son de **Crecimiento (V2)** o **Futura (V3)**; no deberían bloquear el avance a frontend/UX:

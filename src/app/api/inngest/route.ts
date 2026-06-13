@@ -45,6 +45,7 @@ import { jobConciliarPeriodo } from "@/modules/dinero/jobs/conciliar-periodo";
 import { jobAlertaFoliosProximos } from "@/modules/dinero/jobs/alerta-folios-proximos";
 import { jobConciliarPago } from "@/modules/dinero/jobs/conciliar-pago";
 import { jobAlertaMorosidad } from "@/modules/dinero/jobs/alerta-morosidad";
+import { jobEmitirNotaCredito } from "@/modules/dinero/jobs/emitir-nota-credito";
 
 /**
  * Array de todas las funciones de Inngest del sistema.
@@ -71,6 +72,8 @@ const funciones = [
   // Jobs de cobranza (capa "pagado" — Fintoc)
   jobConciliarPago,
   jobAlertaMorosidad,
+  // Notas de crédito (RF-038 — anulación total)
+  jobEmitirNotaCredito,
 ];
 
 export const { GET, POST, PUT } = serve({

@@ -164,8 +164,39 @@ describe('SimplefacturaAdapter.emitirFactura (stub)', () => {
     expect(resultado.montoTotalCLP).toBe(41_650);
   });
 
-  it('tipoDocumento siempre es 33 (factura electrónica)', async () => {
+  it('sin referencia → tipoDocumento 33 (factura electrónica)', async () => {
     const resultado = await adapter.emitirFactura(TENANT_ID, entradaValida(99));
     expect(resultado.tipoDocumento).toBe(33);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Notas de crédito (tipo 61) — referencia completa (decisión B5b)
+  // ---------------------------------------------------------------------------
+
+  it('con referencia a otro documento → tipoDocumento 61 (nota de crédito), sin regresión', async () => {
+    const entrada: EmitirFacturaEntrada = {
+      ...entradaValida(100),
+      folioDocumentoReferencia: 42,
+      tipoDocumentoReferencia: 33,
+    };
+    const resultado = await adapter.emitirFactura(TENANT_ID, entrada);
+    expect(resultado.tipoDocumento).toBe(61);
+    expect(resultado.idExternoProveedor).toBe('STUB-100');
+    expect(resultado.estadoSii).toBe('pendiente');
+    // El monto del stub sigue saliendo de calcularMontos, igual que antes.
+    expect(resultado.montoTotalCLP).toBe(resultado.montoNetoCLP + resultado.montoIvaCLP);
+  });
+
+  it('los campos nuevos codigoReferencia/razonReferencia no causan error en el stub', async () => {
+    const entrada: EmitirFacturaEntrada = {
+      ...entradaValida(101),
+      folioDocumentoReferencia: 42,
+      tipoDocumentoReferencia: 33,
+      codigoReferencia: 1,
+      razonReferencia: 'Anula factura por entregas no realizadas en el período',
+    };
+    const resultado = await adapter.emitirFactura(TENANT_ID, entrada);
+    expect(resultado.tipoDocumento).toBe(61);
+    expect(resultado.folio).toBe(101);
   });
 });
