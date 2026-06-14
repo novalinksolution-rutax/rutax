@@ -8,6 +8,7 @@
 
 import { useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { actionConductorListoParaSalir } from "./actions";
 
 interface Props {
@@ -67,14 +68,14 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
               {error}
             </p>
           )}
-          <button
+          <Button
             type="button"
             onClick={() => setAbierto(true)}
             disabled={pending}
-            className="w-full min-h-[56px] rounded-xl bg-primary text-base font-bold text-primary-foreground hover:bg-primary/90 active:scale-[0.99] transition-all disabled:opacity-50"
+            className="min-h-14 w-full rounded-xl text-base font-bold"
           >
             Listo para salir
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -105,22 +106,23 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
             </p>
 
             <div className="flex flex-col gap-2 pt-2">
-              <button
+              <Button
                 type="button"
-                disabled={pending}
+                loading={pending}
                 onClick={handleConfirmar}
-                className="w-full min-h-[52px] rounded-xl bg-primary text-base font-bold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                className="min-h-13 w-full rounded-xl text-base font-bold"
               >
                 {pending ? "Registrando..." : "Sí, estoy listo para salir"}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
                 disabled={pending}
                 onClick={() => setAbierto(false)}
-                className="w-full min-h-[48px] rounded-xl border text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+                className="min-h-12 w-full rounded-xl"
               >
                 Cancelar
-              </button>
+              </Button>
             </div>
           </div>
         </div>

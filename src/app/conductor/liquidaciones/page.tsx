@@ -9,6 +9,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { AlertTriangle, Wallet } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarLiquidaciones } from "@/modules/dinero/index";
@@ -19,6 +20,8 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { BotonDescargaLiquidacion } from "./boton-descarga-liquidacion";
 
 export const metadata: Metadata = {
@@ -55,20 +58,18 @@ export default async function PaginaLiquidacionesConductor() {
   // Estado: error de red
   if (errorCarga) {
     return (
-      <div className="py-12 text-center space-y-4">
-        <p className="text-base font-medium text-foreground">
-          No se pudieron cargar tus liquidaciones.
-        </p>
-        <p className="text-sm text-muted-foreground">Verifica tu conexión.</p>
-        <form action="/conductor/liquidaciones">
-          <button
-            type="submit"
-            className="w-full min-h-[48px] rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Reintentar
-          </button>
-        </form>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        titulo="No se pudieron cargar tus liquidaciones"
+        descripcion="Revisa tu conexión e inténtalo de nuevo."
+        accion={
+          <form action="/conductor/liquidaciones">
+            <Button type="submit" size="lg">
+              Reintentar
+            </Button>
+          </form>
+        }
+      />
     );
   }
 
@@ -88,12 +89,11 @@ export default async function PaginaLiquidacionesConductor() {
 
       {/* Estado: sin liquidaciones */}
       {liquidaciones.length === 0 ? (
-        <div className="rounded-xl border bg-card px-4 py-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            Aún no tienes liquidaciones. Aparecerán aquí cuando tu empresa registre tus
-            primeras entregas.
-          </p>
-        </div>
+        <EmptyState
+          icon={Wallet}
+          titulo="Aún no tienes liquidaciones"
+          descripcion="Aparecerán aquí cuando tu empresa registre tus primeras entregas."
+        />
       ) : (
         <ul className="space-y-3" aria-label="Lista de liquidaciones">
           {liquidaciones.map((liq) => (
