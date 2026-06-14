@@ -6,8 +6,17 @@
  */
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { actionCrearManifiesto } from "../actions";
 
 interface Props {
@@ -17,7 +26,6 @@ interface Props {
 }
 
 export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
-  const router = useRouter();
   const [conductorSeleccionado, setConductorSeleccionado] = useState("");
   const [fecha, setFecha] = useState(fechaHoy);
   const [nombre, setNombre] = useState("");
@@ -70,22 +78,24 @@ export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
             No hay conductores activos. Agrega uno primero en Equipo.
           </p>
         ) : (
-          <select
-            id="driverId"
+          <Select
             name="driverId"
             required
-            disabled={pending}
             value={conductorSeleccionado}
-            onChange={(e) => handleConductorChange(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            onValueChange={handleConductorChange}
+            disabled={pending}
           >
-            <option value="">Seleccionar conductor...</option>
-            {conductores.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="driverId" className="mt-1 h-9 w-full">
+              <SelectValue placeholder="Seleccionar conductor..." />
+            </SelectTrigger>
+            <SelectContent>
+              {conductores.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
@@ -94,7 +104,7 @@ export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
         <label htmlFor="fechaOperacion" className="block text-sm font-medium">
           Fecha de operación <span aria-hidden="true">*</span>
         </label>
-        <input
+        <Input
           id="fechaOperacion"
           name="fechaOperacion"
           type="date"
@@ -102,7 +112,7 @@ export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
           disabled={pending}
           value={fecha}
           onChange={(e) => handleFechaChange(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="mt-1 h-9"
         />
       </div>
 
@@ -111,7 +121,7 @@ export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
         <label htmlFor="nombre" className="block text-sm font-medium">
           Nombre <span aria-hidden="true">*</span>
         </label>
-        <input
+        <Input
           id="nombre"
           name="nombre"
           type="text"
@@ -120,7 +130,7 @@ export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
           value={nombre}
           onChange={(e) => setNombre(e.target.value)}
           placeholder="Ruta Conductor — Fecha"
-          className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="mt-1 h-9"
         />
       </div>
 
@@ -129,12 +139,12 @@ export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
         <label htmlFor="notas" className="block text-sm font-medium">
           Notas <span className="text-muted-foreground">(opcional)</span>
         </label>
-        <textarea
+        <Textarea
           id="notas"
           name="notas"
           rows={2}
           disabled={pending}
-          className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="mt-1"
         />
       </div>
 
@@ -145,19 +155,16 @@ export function FormularioNuevoManifiesto({ conductores, fechaHoy }: Props) {
       )}
 
       <div className="flex justify-end gap-3">
-        <Link
-          href="/manifiestos"
-          className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-        >
-          Cancelar
-        </Link>
-        <button
+        <Button asChild variant="outline">
+          <Link href="/manifiestos">Cancelar</Link>
+        </Button>
+        <Button
           type="submit"
-          disabled={pending || conductores.length === 0}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          loading={pending}
+          disabled={conductores.length === 0}
         >
           {pending ? "Creando..." : "Crear manifiesto"}
-        </button>
+        </Button>
       </div>
     </form>
   );

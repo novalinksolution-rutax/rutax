@@ -14,6 +14,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
 import type { Manifiesto, EstadoManifiesto, Pedido, EstadoPedido } from "@/modules/operacion/tipos";
 import { SelectorPedidosManifiesto } from "./selector-pedidos-manifiesto";
+import { FiltrosAsignar } from "./filtros-asignar";
 
 // =============================================================================
 // Tipos auxiliares
@@ -206,53 +207,12 @@ export default async function PaginaAsignarPedidos({ params, searchParams }: Pro
       </div>
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-seller" className="text-xs font-medium text-muted-foreground">
-            Seller
-          </label>
-          <select
-            id="f-seller"
-            name="seller"
-            defaultValue={sp.seller ?? ""}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos los sellers</option>
-            {sellers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-comuna" className="text-xs font-medium text-muted-foreground">
-            Comuna
-          </label>
-          <input
-            id="f-comuna"
-            name="comuna"
-            type="text"
-            defaultValue={sp.comuna ?? ""}
-            placeholder="Ej: Providencia"
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Filtrar
-        </button>
-        {(sp.seller || sp.comuna) && (
-          <Link
-            href={`/manifiestos/${manifiestoId}/asignar`}
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar
-          </Link>
-        )}
-      </form>
+      <FiltrosAsignar
+        manifiestoId={manifiestoId}
+        sellers={sellers}
+        seller={sp.seller ?? ""}
+        comuna={sp.comuna ?? ""}
+      />
 
       {/* Lista de pedidos con selector interactivo */}
       <SelectorPedidosManifiesto

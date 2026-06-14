@@ -8,7 +8,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Plus } from "lucide-react";
+import { ChevronLeft, Plus, Package } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
@@ -19,6 +19,17 @@ import {
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { Manifiesto, EstadoManifiesto, Pedido, EstadoPedido } from "@/modules/operacion/tipos";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { BotonConfirmarManifiesto } from "./boton-confirmar-manifiesto";
@@ -207,89 +218,95 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
             <span className="text-muted-foreground font-normal">({pedidosAsignados.length})</span>
           </h2>
           {esBorrador && puedeAsignar && (
-            <Link
-              href={`/manifiestos/${manifiestoId}/asignar`}
-              className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              Agregar pedidos
-            </Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/manifiestos/${manifiestoId}/asignar`}>
+                <Plus className="size-4" aria-hidden="true" />
+                Agregar pedidos
+              </Link>
+            </Button>
           )}
         </div>
 
         {hayPedidos ? (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Pedidos asignados al manifiesto">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2 text-center" title="Orden de la ruta (por comuna y dirección)">#</th>
-                    <th className="px-4 py-2">Estado</th>
-                    <th className="px-4 py-2">Destinatario</th>
-                    <th className="hidden px-4 py-2 sm:table-cell">Dirección</th>
-                    <th className="hidden px-4 py-2 md:table-cell">F. compromiso</th>
+          <DataTable
+            toolbar={
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {pedidosAsignados.length} pedido{pedidosAsignados.length !== 1 ? "s" : ""}
+              </span>
+            }
+          >
+            <Table densidad="comfortable" aria-label="Pedidos asignados al manifiesto">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4 text-center" title="Orden de la ruta (por comuna y dirección)">
+                    #
+                  </TableHead>
+                  <TableHead className="px-4">Estado</TableHead>
+                  <TableHead className="px-4">Destinatario</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
+                  {esBorrador && puedeAsignar && (
+                    <TableHead className="px-4 text-right">
+                      <span className="sr-only">Acciones</span>
+                    </TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pedidosAsignados.map(({ asignacionId, pedido }, idx) => (
+                  <TableRow key={pedido.id}>
+                    <TableCell className="px-4 text-center font-semibold tabular-nums text-muted-foreground">
+                      {idx + 1}
+                    </TableCell>
+                    <TableCell className="px-4">
+                      <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
+                        {traducirEstadoPedido(pedido.estado)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="px-4">
+                      <Link
+                        href={`/operaciones/${pedido.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {pedido.destinatarioNombre}
+                      </Link>
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        — {pedido.destinatarioComuna}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
+                      {pedido.destinatarioDireccion}
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
+                      {pedido.fechaCompromiso ?? "—"}
+                    </TableCell>
                     {esBorrador && puedeAsignar && (
-                      <th className="px-4 py-2 sr-only">Acciones</th>
+                      <TableCell className="px-4 text-right">
+                        <BotonQuitarPedido
+                          asignacionId={asignacionId}
+                          manifiestoId={manifiestoId}
+                          nombreDestinatario={pedido.destinatarioNombre}
+                        />
+                      </TableCell>
                     )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {pedidosAsignados.map(({ asignacionId, pedido }, idx) => (
-                    <tr key={pedido.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 text-center font-semibold tabular-nums text-muted-foreground">
-                        {idx + 1}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
-                          {traducirEstadoPedido(pedido.estado)}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/operaciones/${pedido.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {pedido.destinatarioNombre}
-                        </Link>
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          — {pedido.destinatarioComuna}
-                        </span>
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                        {pedido.destinatarioDireccion}
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                        {pedido.fechaCompromiso ?? "—"}
-                      </td>
-                      {esBorrador && puedeAsignar && (
-                        <td className="px-4 py-3">
-                          <BotonQuitarPedido
-                            asignacionId={asignacionId}
-                            manifiestoId={manifiestoId}
-                            nombreDestinatario={pedido.destinatarioNombre}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DataTable>
         ) : (
-          <div className="rounded-xl border bg-card px-6 py-10 text-center">
-            <p className="text-muted-foreground">
-              Este manifiesto no tiene pedidos todavía.
-            </p>
-            {esBorrador && puedeAsignar && (
-              <Link
-                href={`/manifiestos/${manifiestoId}/asignar`}
-                className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-              >
-                Agregar pedidos
-              </Link>
-            )}
-          </div>
+          <EmptyState
+            icon={Package}
+            titulo="Este manifiesto no tiene pedidos todavía"
+            descripcion="Agrega pedidos pendientes para armar la ruta del conductor."
+            accion={
+              esBorrador && puedeAsignar ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/manifiestos/${manifiestoId}/asignar`}>Agregar pedidos</Link>
+                </Button>
+              ) : undefined
+            }
+          />
         )}
       </section>
 
