@@ -860,6 +860,22 @@ insert into dinero.lineas_liquidacion (
 on conflict (pedido_id) do nothing;
 
 -- =============================================================================
+-- Anclar el demo operativo a "hoy"
+-- =============================================================================
+-- El seed se construye con fechas fijas de junio 2026 (para mantener su
+-- consistencia interna), pero el dashboard "HOY" filtra pedidos por
+-- fecha_compromiso = current_date. Sin este ajuste, el panel del dueño aparece
+-- vacío cualquier día distinto al de construcción del seed. Desplazamos las
+-- fechas operativas a la fecha actual para que el demo siempre muestre datos.
+-- Idempotente: re-ejecutable sin efectos secundarios.
+update operacion.pedidos
+  set fecha_compromiso = current_date
+  where fecha_compromiso is not null;
+
+update operacion.manifiestos
+  set fecha_operacion = current_date;
+
+-- =============================================================================
 -- Fin del seed
 -- =============================================================================
 do $$
