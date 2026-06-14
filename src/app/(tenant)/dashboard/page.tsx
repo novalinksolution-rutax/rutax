@@ -24,6 +24,8 @@ import {
   Clock,
   Users,
   MapPin,
+  Store,
+  Inbox,
 } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -36,6 +38,7 @@ import { puedeVerReportesEjecutivos } from "@/modules/identidad/capacidades";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
@@ -84,6 +87,7 @@ const FILL_ESTADO: Record<EstadoPedido, string> = {
 async function cargarAlertaFolios(tenantId: string): Promise<AlertaFolios | null> {
   const supabase = crearClienteServiceRole();
   const { data: folios } = await supabase
+    .schema("identidad")
     .from("folios_caf")
     .select("folio_actual, folio_hasta, estado")
     .eq("tenant_id", tenantId)
@@ -108,6 +112,7 @@ async function cargarDatosDashboard(tenantId: string) {
   const [metricas, incidenciasRaw, sellersRaw] = await Promise.all([
     obtenerMetricasDelDia(cliente, tenantId, hoy),
     cliente
+      .schema("operacion")
       .from("incidencias")
       .select("id, tipo, estado, abierta_en, pedido_id, seller_id")
       .eq("tenant_id", tenantId)
@@ -115,6 +120,7 @@ async function cargarDatosDashboard(tenantId: string) {
       .order("abierta_en", { ascending: true })
       .limit(10),
     cliente
+      .schema("identidad")
       .from("conexiones_seller_ml")
       .select("id, seller_id, sellers!conexiones_seller_ml_seller_id_fkey(razon_social)")
       .eq("tenant_id", tenantId)
@@ -228,17 +234,27 @@ export default async function PaginaDashboard() {
   let alertaFolios: AlertaFolios | null = null;
   let resumenFinanciero: ResumenFinancieroMes | null = null;
 
+  // El resumen financiero se carga aparte: si fallara, no debe tumbar las
+  // métricas operativas (ni viceversa).
   try {
-    const [datos, alertaFoliosDatos, resumenFin] = await Promise.all([
+    resumenFinanciero = await obtenerResumenFinancieroDelMes(
+      crearClienteServiceRole(),
+      tenantId,
+      new Date(),
+    );
+  } catch {
+    resumenFinanciero = null;
+  }
+
+  try {
+    const [datos, alertaFoliosDatos] = await Promise.all([
       cargarDatosDashboard(tenantId),
       cargarAlertaFolios(tenantId),
-      obtenerResumenFinancieroDelMes(crearClienteServiceRole(), tenantId, new Date()),
     ]);
     metricas = datos.metricas;
     incidenciasSinGestion = datos.incidenciasSinGestion;
     sellersCaidos = datos.sellersCaidos;
     alertaFolios = alertaFoliosDatos;
-    resumenFinanciero = resumenFin;
   } catch {
     errorMetricas = true;
     metricas = {
@@ -362,6 +378,13 @@ export default async function PaginaDashboard() {
         >
           Hoy
         </h2>
+        {!errorMetricas && !hayPedidos ? (
+          <EmptyState
+            icon={Inbox}
+            titulo="Aún no hay operación registrada para hoy"
+            descripcion="Los pedidos del día aparecerán aquí en cuanto lleguen de tus sellers o crees un envío same-day."
+          />
+        ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <TarjetaKpi
             icon={Users}
@@ -403,6 +426,7 @@ export default async function PaginaDashboard() {
             )}
           </TarjetaKpi>
         </div>
+        )}
       </section>
 
       {/* Bloque 1.2 — Dinero del mes (UX-2: el estado financiero, prominente) */}
@@ -559,14 +583,29 @@ export default async function PaginaDashboard() {
           Accesos rápidos
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Button asChild variant="outline" className="h-auto justify-start px-4 py-3">
-            <Link href="/operaciones">Ver todos los pedidos</Link>
+          <Button asChild variant="outline" className="h-auto justify-start gap-3 px-4 py-3">
+            <Link href="/operaciones">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Package className="size-4.5 text-muted-foreground" aria-hidden="true" />
+              </span>
+              Ver todos los pedidos
+            </Link>
           </Button>
-          <Button asChild variant="outline" className="h-auto justify-start px-4 py-3">
-            <Link href="/sellers">Gestionar sellers</Link>
+          <Button asChild variant="outline" className="h-auto justify-start gap-3 px-4 py-3">
+            <Link href="/sellers">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Store className="size-4.5 text-muted-foreground" aria-hidden="true" />
+              </span>
+              Gestionar sellers
+            </Link>
           </Button>
-          <Button asChild variant="outline" className="h-auto justify-start px-4 py-3">
-            <Link href="/equipo">Gestionar equipo</Link>
+          <Button asChild variant="outline" className="h-auto justify-start gap-3 px-4 py-3">
+            <Link href="/equipo">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Users className="size-4.5 text-muted-foreground" aria-hidden="true" />
+              </span>
+              Gestionar equipo
+            </Link>
           </Button>
         </div>
       </section>
