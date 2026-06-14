@@ -8,6 +8,7 @@
 
 import { useState, useTransition } from "react";
 import { Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { accionDescargarFacturaPdf } from "../actions";
 
 export function BotonDescargaFacturaPdf({
@@ -36,22 +37,10 @@ export function BotonDescargaFacturaPdf({
 
   return (
     <div className="flex flex-col gap-1">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={isPending}
-        className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-      >
-        {isPending ? (
-          <span
-            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
-            aria-hidden="true"
-          />
-        ) : (
-          <Download className="size-4" aria-hidden="true" />
-        )}
+      <Button type="button" onClick={handleClick} loading={isPending}>
+        {!isPending && <Download className="size-4" aria-hidden="true" />}
         {isPending ? "Generando enlace..." : etiqueta}
-      </button>
+      </Button>
       {error && (
         <p className="text-xs text-destructive" role="alert">
           {error}

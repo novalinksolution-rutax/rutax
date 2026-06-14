@@ -8,20 +8,31 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { CheckCircle2, SearchX } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   traducirTipoIncidencia,
   traducirEstadoIncidencia,
   BADGE_ESTADO_INCIDENCIA,
-  TEXTO_TIPO_INCIDENCIA,
-  TEXTO_ESTADO_INCIDENCIA,
   esIncidenciaSinGestion,
   horasDesde,
 } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
-import { TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA } from "@/modules/operacion/tipos";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { Incidencia, TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
+import { FiltrosIncidenciasSeller } from "./filtros-incidencias-seller";
 
 export const metadata: Metadata = {
   title: "Mis incidencias",
@@ -122,58 +133,11 @@ export default async function PaginaIncidenciasSeller({
       </div>
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-tipo-i" className="text-xs font-medium text-muted-foreground">
-            Tipo
-          </label>
-          <select
-            id="f-tipo-i"
-            name="tipo"
-            defaultValue={filtroTipo}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos los tipos</option>
-            {TIPOS_INCIDENCIA.map((t) => (
-              <option key={t} value={t}>
-                {TEXTO_TIPO_INCIDENCIA[t]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-i" className="text-xs font-medium text-muted-foreground">
-            Estado
-          </label>
-          <select
-            id="f-estado-i"
-            name="estado"
-            defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos los estados</option>
-            {ESTADOS_INCIDENCIA.map((e) => (
-              <option key={e} value={e}>
-                {TEXTO_ESTADO_INCIDENCIA[e]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Filtrar
-        </button>
-        {hayFiltros && (
-          <Link
-            href="/portal/incidencias"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar filtros
-          </Link>
-        )}
-      </form>
+      <FiltrosIncidenciasSeller
+        filtroTipo={filtroTipo}
+        filtroEstado={filtroEstado}
+        hayFiltros={hayFiltros}
+      />
 
       {/* Error */}
       {errorCarga && (
@@ -182,112 +146,97 @@ export default async function PaginaIncidenciasSeller({
         </div>
       )}
 
-      {/* Contador */}
-      {!errorCarga && (
-        <p className="text-sm text-muted-foreground">
-          {total === 0
-            ? "Sin incidencias"
-            : `${total} incidencia${total !== 1 ? "s" : ""}`}
-          {hayFiltros ? " con los filtros aplicados" : ""}
-        </p>
-      )}
-
-      {/* Tabla */}
-      {!errorCarga && incidencias.length > 0 && (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Mis incidencias">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="px-4 py-2">Tipo</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Pedido</th>
-                  <th className="hidden px-4 py-2 md:table-cell">Abierta hace</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+      {/* Tabla / estados de vista */}
+      {!errorCarga && incidencias.length === 0 ? (
+        hayFiltros ? (
+          <EmptyState
+            icon={SearchX}
+            tono="filtro"
+            titulo="Ninguna incidencia coincide"
+            descripcion="No hay incidencias con estos filtros. Prueba cambiando el tipo o el estado."
+            accion={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/portal/incidencias">Limpiar filtros</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={CheckCircle2}
+            tono="buen-estado"
+            titulo="Sin incidencias — todo va bien"
+            descripcion="No hay incidencias registradas en tus pedidos."
+          />
+        )
+      ) : (
+        !errorCarga && (
+          <DataTable
+            toolbar={
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {total} incidencia{total !== 1 ? "s" : ""}
+                {hayFiltros ? " con filtros" : ""}
+              </span>
+            }
+            footer={
+              totalPaginas > 1 ? (
+                <Pagination
+                  pagina={pagina}
+                  totalPaginas={totalPaginas}
+                  hrefPagina={(p) => urlConFiltros({ pagina: String(p) })}
+                />
+              ) : undefined
+            }
+          >
+            <Table densidad="relaxed" aria-label="Mis incidencias">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Estado</TableHead>
+                  <TableHead className="px-4">Tipo</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Pedido</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell">Abierta hace</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {incidencias.map((inc) => {
                   const horas = Math.floor(horasDesde(inc.abiertaEn));
                   const sinGestion = esIncidenciaSinGestion(inc.estado, inc.abiertaEn);
                   return (
-                    <tr key={inc.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <Badge variant={BADGE_ESTADO_INCIDENCIA[inc.estado]}>
-                          {traducirEstadoIncidencia(inc.estado)}
-                        </Badge>
-                        {sinGestion && (
-                          <span className="ml-1 inline-flex rounded-full bg-destructive-subtle px-2 py-0.5 text-xs font-semibold text-destructive-subtle-foreground">
-                            Sin gestión: {horas}h
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 font-medium">
+                    <TableRow key={inc.id}>
+                      <TableCell className="px-4">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge variant={BADGE_ESTADO_INCIDENCIA[inc.estado]}>
+                            {traducirEstadoIncidencia(inc.estado)}
+                          </Badge>
+                          {sinGestion && (
+                            <Badge variant="error">Sin gestión: {horas}h</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-4 font-medium">
                         {traducirTipoIncidencia(inc.tipo)}
                         {inc.descripcion && (
-                          <p className="mt-0.5 text-xs text-muted-foreground font-normal line-clamp-1">
+                          <p className="mt-0.5 text-xs font-normal text-muted-foreground line-clamp-1">
                             {inc.descripcion}
                           </p>
                         )}
-                      </td>
-                      <td className="hidden px-4 py-3 sm:table-cell">
-                        <span className="font-mono text-xs text-muted-foreground">{inc.pedidoId.slice(0, 8)}…</span>
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+                      </TableCell>
+                      <TableCell className="hidden px-4 sm:table-cell">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {inc.pedidoId.slice(0, 8)}…
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
                         <span className={sinGestion ? "font-semibold text-destructive" : ""}>
                           {horas}h
                         </span>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Vacío */}
-      {!errorCarga && incidencias.length === 0 && (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          <p className="text-muted-foreground">
-            {hayFiltros
-              ? "No hay incidencias que coincidan con los filtros."
-              : "No tienes incidencias registradas. Todo va bien."}
-          </p>
-          {hayFiltros && (
-            <Link
-              href="/portal/incidencias"
-              className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-            >
-              Limpiar filtros
-            </Link>
-          )}
-        </div>
-      )}
-
-      {/* Paginación */}
-      {!errorCarga && totalPaginas > 1 && (
-        <nav aria-label="Paginación" className="flex items-center justify-center gap-2">
-          {pagina > 1 && (
-            <Link
-              href={urlConFiltros({ pagina: String(pagina - 1) })}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-            >
-              Anterior
-            </Link>
-          )}
-          <span className="text-sm text-muted-foreground">
-            Página {pagina} de {totalPaginas}
-          </span>
-          {pagina < totalPaginas && (
-            <Link
-              href={urlConFiltros({ pagina: String(pagina + 1) })}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-            >
-              Siguiente
-            </Link>
-          )}
-        </nav>
+              </TableBody>
+            </Table>
+          </DataTable>
+        )
       )}
     </div>
   );

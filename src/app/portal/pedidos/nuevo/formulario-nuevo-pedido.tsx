@@ -3,6 +3,16 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { crearSameDayAction, type ResultadoCrearSameDay } from "./actions";
 
 function campoError(estado: ResultadoCrearSameDay | null, campo: string) {
@@ -36,15 +46,16 @@ export function FormularioNuevoPedido() {
           requerido
           error={campoError(estado, "nombre")}
         >
-          <input
+          <Input
             id="nombre"
             name="nombre"
             type="text"
             required
             maxLength={120}
             placeholder="Ej: Juan Pérez González"
-            className={inputClass(!!campoError(estado, "nombre"))}
+            aria-invalid={!!campoError(estado, "nombre") || undefined}
             autoComplete="off"
+            className="h-9"
           />
         </Campo>
 
@@ -54,14 +65,15 @@ export function FormularioNuevoPedido() {
           error={campoError(estado, "telefono")}
           descripcion="Opcional — útil para el conductor"
         >
-          <input
+          <Input
             id="telefono"
             name="telefono"
             type="tel"
             maxLength={20}
             placeholder="+56 9 1234 5678"
-            className={inputClass(!!campoError(estado, "telefono"))}
+            aria-invalid={!!campoError(estado, "telefono") || undefined}
             autoComplete="off"
+            className="h-9"
           />
         </Campo>
       </div>
@@ -74,15 +86,16 @@ export function FormularioNuevoPedido() {
         error={campoError(estado, "direccion")}
         descripcion="Calle, número, depto/casa si aplica"
       >
-        <input
+        <Input
           id="direccion"
           name="direccion"
           type="text"
           required
           maxLength={200}
           placeholder="Ej: Av. Providencia 1234, Dpto 52"
-          className={inputClass(!!campoError(estado, "direccion"))}
+          aria-invalid={!!campoError(estado, "direccion") || undefined}
           autoComplete="off"
+          className="h-9"
         />
       </Campo>
 
@@ -94,18 +107,22 @@ export function FormularioNuevoPedido() {
           requerido
           error={campoError(estado, "comuna")}
         >
-          <select
-            id="comuna"
-            name="comuna"
-            required
-            className={inputClass(!!campoError(estado, "comuna"))}
-            defaultValue=""
-          >
-            <option value="" disabled>Selecciona una comuna</option>
-            {COMUNAS_RM.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <Select name="comuna" required>
+            <SelectTrigger
+              id="comuna"
+              aria-invalid={!!campoError(estado, "comuna") || undefined}
+              className="h-9 w-full"
+            >
+              <SelectValue placeholder="Selecciona una comuna" />
+            </SelectTrigger>
+            <SelectContent>
+              {COMUNAS_RM.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </Campo>
 
         <Campo
@@ -114,12 +131,12 @@ export function FormularioNuevoPedido() {
           error={campoError(estado, "fecha_compromiso")}
           descripcion="Opcional — hoy si no se especifica"
         >
-          <input
+          <Input
             id="fecha_compromiso"
             name="fecha_compromiso"
             type="date"
             min={hoy}
-            className={inputClass(false)}
+            className="h-9"
           />
         </Campo>
       </div>
@@ -131,43 +148,30 @@ export function FormularioNuevoPedido() {
         error={campoError(estado, "instrucciones")}
         descripcion="Opcional — piso, timbre, referencias de la dirección, etc."
       >
-        <textarea
+        <Textarea
           id="instrucciones"
           name="instrucciones"
           rows={3}
           maxLength={400}
           placeholder="Ej: Tocar timbre 3 veces, edificio sin ascensor, dejar con el conserje si no hay respuesta"
-          className={`${inputClass(false)} resize-none`}
+          className="resize-none"
         />
       </Campo>
 
       {/* Acciones */}
       <div className="flex items-center justify-end gap-3 border-t pt-5">
-        <Link
-          href="/portal/pedidos"
-          className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
-        >
-          Cancelar
-        </Link>
-        <button
-          type="submit"
-          disabled={pendiente}
-          className="rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
-        >
+        <Button asChild variant="ghost">
+          <Link href="/portal/pedidos">Cancelar</Link>
+        </Button>
+        <Button type="submit" loading={pendiente}>
           {pendiente ? "Solicitando…" : "Solicitar envío"}
-        </button>
+        </Button>
       </div>
     </form>
   );
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-function inputClass(conError: boolean) {
-  return `w-full rounded-md border px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring ${
-    conError ? "border-destructive focus:ring-destructive/40" : "border-input"
-  }`;
-}
 
 function Campo({
   id,

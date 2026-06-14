@@ -23,6 +23,16 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { BotonDescargaFacturaPdf } from "./boton-descarga-factura-pdf";
 
 export const metadata: Metadata = {
@@ -248,50 +258,48 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Detalle de líneas del período">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2">Pedido</th>
-                    <th className="hidden px-4 py-2 sm:table-cell">Fecha entrega</th>
-                    <th className="px-4 py-2">Concepto</th>
-                    <th className="px-4 py-2 text-right">Monto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {lineas.map((linea) => (
-                    <tr key={linea.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          #{linea.pedidoId.slice(0, 8)}
-                        </span>
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                        {formatearFechaCorta(linea.fechaEntrega)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">
-                        {linea.concepto}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-semibold">
-                        {formatearCLP(linea.montoFinalClp)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t bg-muted/40">
-                  <tr>
-                    <td colSpan={3} className="px-4 py-3 text-sm font-semibold">
-                      Total
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm font-bold tabular-nums">
-                      {formatearCLPOGuion(periodo.montoTotalClp)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
+          <DataTable>
+            <Table densidad="relaxed" aria-label="Detalle de líneas del período">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Pedido</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Fecha entrega</TableHead>
+                  <TableHead className="px-4">Concepto</TableHead>
+                  <TableHead className="px-4 text-right">Monto</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lineas.map((linea) => (
+                  <TableRow key={linea.id}>
+                    <TableCell className="px-4">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        #{linea.pedidoId.slice(0, 8)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
+                      {formatearFechaCorta(linea.fechaEntrega)}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate px-4 text-muted-foreground">
+                      {linea.concepto}
+                    </TableCell>
+                    <TableCell className="px-4 text-right font-semibold tabular-nums">
+                      {formatearCLP(linea.montoFinalClp)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell colSpan={3} className="px-4 text-sm font-semibold">
+                    Total
+                  </TableCell>
+                  <TableCell className="px-4 text-right text-sm font-bold tabular-nums">
+                    {formatearCLPOGuion(periodo.montoTotalClp)}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </DataTable>
         )}
       </section>
     </div>

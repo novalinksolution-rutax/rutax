@@ -8,16 +8,28 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Inbox, SearchX, Plus } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   traducirEstadoPedido,
   BADGE_ESTADO_PEDIDO,
-  TEXTO_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
-import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
+import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
@@ -126,12 +138,12 @@ export default async function PaginaPedidosSeller({
             Seguimiento de tus entregas. Los estados se actualizan automáticamente.
           </p>
         </div>
-        <Link
-          href="/portal/pedidos/nuevo"
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors whitespace-nowrap"
-        >
-          + Solicitar envío same-day
-        </Link>
+        <Button asChild className="whitespace-nowrap">
+          <Link href="/portal/pedidos/nuevo">
+            <Plus className="size-4" aria-hidden="true" />
+            Solicitar envío same-day
+          </Link>
+        </Button>
       </div>
 
       {/* Confirmación de envío creado */}
@@ -142,52 +154,11 @@ export default async function PaginaPedidosSeller({
       )}
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-p" className="text-xs font-medium text-muted-foreground">
-            Estado
-          </label>
-          <select
-            id="f-estado-p"
-            name="estado"
-            defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos los estados</option>
-            {ESTADOS_PEDIDO.map((e) => (
-              <option key={e} value={e}>
-                {TEXTO_ESTADO_PEDIDO[e]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-fecha-p" className="text-xs font-medium text-muted-foreground">
-            Fecha de compromiso
-          </label>
-          <input
-            id="f-fecha-p"
-            name="fecha"
-            type="date"
-            defaultValue={filtroFecha}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Filtrar
-        </button>
-        {hayFiltros && (
-          <Link
-            href="/portal/pedidos"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar filtros
-          </Link>
-        )}
-      </form>
+      <FiltrosPedidosSeller
+        filtroEstado={filtroEstado}
+        filtroFecha={filtroFecha}
+        hayFiltros={hayFiltros}
+      />
 
       {/* Error */}
       {errorCarga && (
@@ -196,92 +167,79 @@ export default async function PaginaPedidosSeller({
         </div>
       )}
 
-      {/* Contador */}
-      {!errorCarga && (
-        <p className="text-sm text-muted-foreground">
-          {total === 0 ? "Sin pedidos" : `${total} pedido${total !== 1 ? "s" : ""}`}
-          {hayFiltros ? " con los filtros aplicados" : ""}
-        </p>
-      )}
-
-      {/* Tabla */}
-      {!errorCarga && pedidos.length > 0 && (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Mis pedidos">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="px-4 py-2">Destinatario</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Dirección</th>
-                  <th className="hidden px-4 py-2 md:table-cell">F. compromiso</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+      {/* Tabla / estados de vista */}
+      {!errorCarga && pedidos.length === 0 ? (
+        hayFiltros ? (
+          <EmptyState
+            icon={SearchX}
+            tono="filtro"
+            titulo="Ningún pedido coincide"
+            descripcion="No hay pedidos con estos filtros. Prueba cambiando el estado o la fecha."
+            accion={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/portal/pedidos">Limpiar filtros</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Inbox}
+            titulo="Todavía no tienes pedidos"
+            descripcion="Aquí verás tus envíos cuando tu empresa de despacho los registre."
+          />
+        )
+      ) : (
+        !errorCarga && (
+          <DataTable
+            toolbar={
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {total} pedido{total !== 1 ? "s" : ""}
+                {hayFiltros ? " con filtros" : ""}
+              </span>
+            }
+            footer={
+              totalPaginas > 1 ? (
+                <Pagination
+                  pagina={pagina}
+                  totalPaginas={totalPaginas}
+                  hrefPagina={(p) => urlConFiltros({ pagina: String(p) })}
+                />
+              ) : undefined
+            }
+          >
+            <Table densidad="relaxed" aria-label="Mis pedidos">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Estado</TableHead>
+                  <TableHead className="px-4">Destinatario</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {pedidos.map((pedido) => (
-                  <tr key={pedido.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
+                  <TableRow key={pedido.id}>
+                    <TableCell className="px-4">
                       <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
                         {traducirEstadoPedido(pedido.estado)}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4">
                       <p className="font-medium">{pedido.destinatarioNombre}</p>
                       <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
                       {pedido.destinatarioDireccion}
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
                       {pedido.fechaCompromiso ?? "—"}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Vacío */}
-      {!errorCarga && pedidos.length === 0 && (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          <p className="text-muted-foreground">
-            {hayFiltros
-              ? "No hay pedidos que coincidan. Prueba cambiando el estado o la fecha."
-              : "Todavía no tienes pedidos registrados."}
-          </p>
-          {hayFiltros && (
-            <Link href="/portal/pedidos" className="mt-3 inline-block text-sm font-medium text-primary hover:underline">
-              Limpiar filtros
-            </Link>
-          )}
-        </div>
-      )}
-
-      {/* Paginación */}
-      {!errorCarga && totalPaginas > 1 && (
-        <nav aria-label="Paginación" className="flex items-center justify-center gap-2">
-          {pagina > 1 && (
-            <Link
-              href={urlConFiltros({ pagina: String(pagina - 1) })}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-            >
-              Anterior
-            </Link>
-          )}
-          <span className="text-sm text-muted-foreground">
-            Página {pagina} de {totalPaginas}
-          </span>
-          {pagina < totalPaginas && (
-            <Link
-              href={urlConFiltros({ pagina: String(pagina + 1) })}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-            >
-              Siguiente
-            </Link>
-          )}
-        </nav>
+              </TableBody>
+            </Table>
+          </DataTable>
+        )
       )}
     </div>
   );
