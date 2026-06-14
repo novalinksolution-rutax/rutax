@@ -6,6 +6,11 @@ import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 
+/**
+ * Botón de cierre de sesión — compartido por el portal del seller y la PWA del
+ * conductor (el backoffice tiene su propia variante full-width en el AppShell).
+ * Cierra la sesión de Supabase y vuelve a /login. Presentación pura.
+ */
 export function BotonCerrarSesion() {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -24,11 +29,11 @@ export function BotonCerrarSesion() {
       variant="ghost"
       size="sm"
       onClick={cerrarSesion}
-      disabled={pending}
+      loading={pending}
       className="text-muted-foreground hover:text-foreground"
     >
       <LogOut className="size-4" aria-hidden="true" />
-      <span className="hidden sm:inline ml-1">Cerrar sesión</span>
+      <span className="ml-1 hidden sm:inline">Cerrar sesión</span>
     </Button>
   );
 }

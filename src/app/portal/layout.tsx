@@ -9,7 +9,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { BotonCerrarSesion } from "./boton-cerrar-sesion";
+import { BotonCerrarSesion } from "@/components/app-shell/boton-cerrar-sesion";
 import { SkipLink } from "@/components/app-shell/skip-link";
 
 export default async function LayoutPortal({
