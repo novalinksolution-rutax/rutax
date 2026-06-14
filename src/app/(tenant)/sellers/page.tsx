@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Store } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { BadgeVariante } from "@/lib/ui/traduccion-estados";
 
 export const metadata: Metadata = {
@@ -105,50 +116,57 @@ export default async function PaginaSellers() {
       </div>
 
       {sellers.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          <p className="text-muted-foreground">Todavía no tienes sellers registrados.</p>
-          {puedeInvitar && (
-            <Link
-              href="/sellers/invitar"
-              className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-            >
-              Invitar a tu primer seller
-            </Link>
-          )}
-        </div>
+        <EmptyState
+          icon={Store}
+          titulo="Todavía no tienes sellers"
+          descripcion="Invita a tus clientes para que conecten Mercado Libre y sus pedidos lleguen solos."
+          accion={
+            puedeInvitar ? (
+              <Button asChild size="sm">
+                <Link href="/sellers/invitar">Invitar a tu primer seller</Link>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Lista de sellers">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Seller</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">RUT</th>
-                  <th className="px-4 py-2">Cuenta</th>
-                  <th className="px-4 py-2">Conexión ML</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {sellers.map((seller) => (
-                  <tr key={seller.id} className="hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3 font-medium">{seller.razonSocial}</td>
-                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{seller.rut}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={BADGE_ESTADO_SELLER[seller.estado] ?? "warning"}>
-                        {TEXTO_ESTADO_SELLER[seller.estado] ?? seller.estado}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={BADGE_SALUD_CONEXION[seller.estadoSalud] ?? "neutral"}>
-                        {TEXTO_SALUD_CONEXION[seller.estadoSalud] ?? seller.estadoSalud}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable
+          toolbar={
+            <span className="text-sm text-muted-foreground tabular-nums">
+              {sellers.length} seller{sellers.length !== 1 ? "s" : ""}
+            </span>
+          }
+        >
+          <Table densidad="comfortable" aria-label="Lista de sellers">
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead className="px-4">Seller</TableHead>
+                <TableHead className="hidden px-4 sm:table-cell">RUT</TableHead>
+                <TableHead className="px-4">Cuenta</TableHead>
+                <TableHead className="px-4">Conexión ML</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sellers.map((seller) => (
+                <TableRow key={seller.id}>
+                  <TableCell className="px-4 font-medium">{seller.razonSocial}</TableCell>
+                  <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums sm:table-cell">
+                    {seller.rut}
+                  </TableCell>
+                  <TableCell className="px-4">
+                    <Badge variant={BADGE_ESTADO_SELLER[seller.estado] ?? "warning"}>
+                      {TEXTO_ESTADO_SELLER[seller.estado] ?? seller.estado}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="px-4">
+                    <Badge variant={BADGE_SALUD_CONEXION[seller.estadoSalud] ?? "neutral"}>
+                      {TEXTO_SALUD_CONEXION[seller.estadoSalud] ?? seller.estadoSalud}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DataTable>
       )}
     </div>
   );
