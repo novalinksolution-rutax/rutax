@@ -22,12 +22,13 @@ import {
 } from "@/modules/identidad/capacidades";
 import { obtenerTrazaDineroPorPedido, type TrazaDineroPedido } from "@/modules/dinero";
 import { TrazadorLazo } from "@/components/dinero/trazador-lazo";
+import { Badge } from "@/components/ui/badge";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
   traducirEstadoIncidencia,
-  COLOR_ESTADO_PEDIDO,
-  COLOR_ESTADO_INCIDENCIA,
+  BADGE_ESTADO_PEDIDO,
+  BADGE_ESTADO_INCIDENCIA,
   UMBRAL_INCIDENCIA_SIN_GESTION_HORAS,
   esIncidenciaSinGestion,
   horasDesde,
@@ -147,11 +148,9 @@ export default async function PaginaDetallePedido({ params }: Props) {
               {pedido.destinatarioDireccion}, {pedido.destinatarioComuna}
             </p>
           </div>
-          <span
-            className={`rounded-full border px-3 py-1 text-sm font-medium ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-          >
+          <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]} className="px-3 py-1 text-sm">
             {traducirEstadoPedido(pedido.estado)}
-          </span>
+          </Badge>
         </div>
 
         <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -322,11 +321,9 @@ function TargetaIncidencia({ incidencia }: { incidencia: Incidencia }) {
               Sin gestión: {horas}h
             </span>
           )}
-          <span
-            className={`rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_INCIDENCIA[incidencia.estado]}`}
-          >
+          <Badge variant={BADGE_ESTADO_INCIDENCIA[incidencia.estado]}>
             {traducirEstadoIncidencia(incidencia.estado)}
-          </span>
+          </Badge>
         </div>
       </div>
     </li>

@@ -19,9 +19,10 @@ import { listarPagosRecibidos } from "@/modules/dinero/index";
 import type { PagoRecibido, EstadoMatchPago } from "@/modules/dinero/tipos";
 import {
   traducirEstadoMatchPago,
-  COLOR_ESTADO_MATCH_PAGO,
+  BADGE_ESTADO_MATCH_PAGO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
 import { MenuAccionesPago } from "./menu-acciones-pago";
 
 export const metadata: Metadata = {
@@ -252,10 +253,8 @@ function FilaPago({ pago, sellers }: { pago: PagoConSeller; sellers: { id: strin
 
 function BadgeEstadoMatch({ estado }: { estado: EstadoMatchPago }) {
   return (
-    <span
-      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_MATCH_PAGO[estado]}`}
-    >
+    <Badge variant={BADGE_ESTADO_MATCH_PAGO[estado]}>
       {traducirEstadoMatchPago(estado)}
-    </span>
+    </Badge>
   );
 }

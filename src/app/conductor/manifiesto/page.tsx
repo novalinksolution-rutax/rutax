@@ -8,13 +8,16 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, Inbox, Clock } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
-  COLOR_ESTADO_PEDIDO,
+  BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
@@ -184,18 +187,18 @@ export default async function PaginaManifiestoActivo() {
   // ==========================================================================
   if (errorCarga) {
     return (
-      <div className="py-12 text-center space-y-4">
-        <p className="text-base font-medium">No se pudo cargar tu manifiesto.</p>
-        <p className="text-sm text-muted-foreground">Verifica tu conexión.</p>
-        <form action="/conductor/manifiesto">
-          <button
-            type="submit"
-            className="rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Reintentar
-          </button>
-        </form>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        titulo="No se pudo cargar tu manifiesto"
+        descripcion="Revisa tu conexión e inténtalo de nuevo."
+        accion={
+          <form action="/conductor/manifiesto">
+            <Button type="submit" size="lg">
+              Reintentar
+            </Button>
+          </form>
+        }
+      />
     );
   }
 
@@ -204,12 +207,11 @@ export default async function PaginaManifiestoActivo() {
   // ==========================================================================
   if (!manifiesto) {
     return (
-      <div className="py-12 text-center space-y-3">
-        <p className="text-base font-medium">No tienes un manifiesto asignado para hoy.</p>
-        <p className="text-sm text-muted-foreground">
-          Si crees que es un error, contacta a tu coordinador.
-        </p>
-      </div>
+      <EmptyState
+        icon={Inbox}
+        titulo="No tienes una ruta asignada para hoy"
+        descripcion="Si crees que es un error, contacta a tu coordinador."
+      />
     );
   }
 
@@ -223,12 +225,11 @@ export default async function PaginaManifiestoActivo() {
   // ==========================================================================
   if (esBorrador) {
     return (
-      <div className="py-12 text-center space-y-3">
-        <p className="text-base font-medium">Tu manifiesto para hoy todavía no está listo.</p>
-        <p className="text-sm text-muted-foreground">
-          Vuelve a revisar cuando tu coordinador lo confirme.
-        </p>
-      </div>
+      <EmptyState
+        icon={Clock}
+        titulo="Tu ruta de hoy todavía no está lista"
+        descripcion="Vuelve a revisar cuando tu coordinador la confirme."
+      />
     );
   }
 
@@ -287,11 +288,9 @@ export default async function PaginaManifiestoActivo() {
                   </span>
 
                   {/* Estado — badge esquina superior derecha */}
-                  <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium flex-shrink-0 ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-                  >
+                  <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]} className="shrink-0">
                     {traducirEstadoPedido(pedido.estado)}
-                  </span>
+                  </Badge>
                 </div>
 
                 <div className="mt-2 space-y-1">

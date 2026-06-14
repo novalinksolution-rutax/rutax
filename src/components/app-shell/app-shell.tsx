@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/sheet"
 import { CentroAvisos } from "./centro-avisos"
 import { SkipLink } from "./skip-link"
+import type { Aviso } from "@/lib/avisos/obtener-avisos"
 
 /** Catálogo de íconos referenciables por nombre desde el servidor. */
 const ICONOS: Record<string, LucideIcon> = {
@@ -75,6 +76,7 @@ interface AppShellProps {
   nombreFantasia: string
   nombreCompleto: string | null
   grupos: GrupoNav[]
+  avisos?: Aviso[]
   banner?: React.ReactNode
   children: React.ReactNode
 }
@@ -143,6 +145,7 @@ export function AppShell({
   nombreFantasia,
   nombreCompleto,
   grupos,
+  avisos,
   banner,
   children,
 }: AppShellProps) {
@@ -225,7 +228,7 @@ export function AppShell({
           <div className="lg:hidden">{marca}</div>
 
           <div className="flex flex-1 items-center justify-end gap-2">
-            <CentroAvisos />
+            <CentroAvisos avisos={avisos} />
             {nombreCompleto ? (
               <span className="hidden truncate text-sm text-muted-foreground sm:inline">
                 {nombreCompleto}

@@ -15,9 +15,10 @@ import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/module
 import {
   traducirEstadoManifiesto,
   traducirEstadoPedido,
-  COLOR_ESTADO_MANIFIESTO,
-  COLOR_ESTADO_PEDIDO,
+  BADGE_ESTADO_MANIFIESTO,
+  BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
+import { Badge } from "@/components/ui/badge";
 import type { Manifiesto, EstadoManifiesto, Pedido, EstadoPedido } from "@/modules/operacion/tipos";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { BotonConfirmarManifiesto } from "./boton-confirmar-manifiesto";
@@ -189,12 +190,13 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
             <p className="mt-1 text-sm text-muted-foreground italic">{manifiesto.notas}</p>
           )}
         </div>
-        <span
-          className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${COLOR_ESTADO_MANIFIESTO[manifiesto.estado]}`}
+        <Badge
+          variant={BADGE_ESTADO_MANIFIESTO[manifiesto.estado]}
+          className="px-3 py-1 text-sm"
           aria-label={`Estado: ${traducirEstadoManifiesto(manifiesto.estado)}`}
         >
           {traducirEstadoManifiesto(manifiesto.estado)}
-        </span>
+        </Badge>
       </div>
 
       {/* Lista de pedidos */}
@@ -238,11 +240,9 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
                         {idx + 1}
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-                        >
+                        <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
                           {traducirEstadoPedido(pedido.estado)}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3">
                         <Link

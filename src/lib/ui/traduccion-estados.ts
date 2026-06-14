@@ -85,7 +85,51 @@ function clasesPorEstado<E extends string>(
   return salida;
 }
 
-export const COLOR_ESTADO_PEDIDO: Record<EstadoPedido, string> = clasesPorEstado<EstadoPedido>({
+// =============================================================================
+// Puente a las variantes del componente <Badge> (fuente ÚNICA de render de
+// estado). En vez de pintar `<span>` a mano con clases sueltas, la UI usa
+// `<Badge variant={badgeDeVariante(...)}>`. Mantiene una sola altura, radio,
+// borde y foco en las 41 pantallas (DESIGN_SYSTEM §4/§9, consistencia extrema).
+// =============================================================================
+
+/** Variantes admitidas por el componente Badge usadas para estados. */
+export type BadgeVariante =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "success"
+  | "warning"
+  | "info"
+  | "error"
+  | "neutral"
+  | "outline";
+
+const VARIANTE_A_BADGE: Record<VarianteEstado, BadgeVariante> = {
+  neutral: "neutral",
+  info: "info",
+  exito: "success",
+  advertencia: "warning",
+  error: "error",
+  marca: "default",
+};
+
+/** Convierte una VarianteEstado (vocabulario interno) a variante de <Badge>. */
+export function badgeDeVariante(variante: VarianteEstado): BadgeVariante {
+  return VARIANTE_A_BADGE[variante];
+}
+
+/** Construye el mapa estado→variante-de-Badge a partir de un mapa estado→variante. */
+function badgePorEstado<E extends string>(
+  variantes: Record<E, VarianteEstado>
+): Record<E, BadgeVariante> {
+  const salida = {} as Record<E, BadgeVariante>;
+  for (const estado of Object.keys(variantes) as E[]) {
+    salida[estado] = VARIANTE_A_BADGE[variantes[estado]];
+  }
+  return salida;
+}
+
+const VARIANTE_ESTADO_PEDIDO: Record<EstadoPedido, VarianteEstado> = {
   pendiente_asignacion: "advertencia",
   asignado: "info",
   en_ruta: "info",
@@ -95,7 +139,9 @@ export const COLOR_ESTADO_PEDIDO: Record<EstadoPedido, string> = clasesPorEstado
   fallido_manual: "error",
   cancelado: "neutral",
   devuelto: "advertencia",
-});
+};
+export const COLOR_ESTADO_PEDIDO = clasesPorEstado(VARIANTE_ESTADO_PEDIDO);
+export const BADGE_ESTADO_PEDIDO = badgePorEstado(VARIANTE_ESTADO_PEDIDO);
 
 // =============================================================================
 // TipoIncidencia
@@ -130,12 +176,14 @@ export function traducirEstadoIncidencia(estado: EstadoIncidencia): string {
   return TEXTO_ESTADO_INCIDENCIA[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_INCIDENCIA: Record<EstadoIncidencia, string> = clasesPorEstado<EstadoIncidencia>({
+const VARIANTE_ESTADO_INCIDENCIA: Record<EstadoIncidencia, VarianteEstado> = {
   abierta: "error",
   en_gestion: "advertencia",
   resuelta: "exito",
   cerrada: "neutral",
-});
+};
+export const COLOR_ESTADO_INCIDENCIA = clasesPorEstado(VARIANTE_ESTADO_INCIDENCIA);
+export const BADGE_ESTADO_INCIDENCIA = badgePorEstado(VARIANTE_ESTADO_INCIDENCIA);
 
 // =============================================================================
 // EstadoManifiesto
@@ -153,13 +201,15 @@ export function traducirEstadoManifiesto(estado: EstadoManifiesto): string {
   return TEXTO_ESTADO_MANIFIESTO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_MANIFIESTO: Record<EstadoManifiesto, string> = clasesPorEstado<EstadoManifiesto>({
+const VARIANTE_ESTADO_MANIFIESTO: Record<EstadoManifiesto, VarianteEstado> = {
   borrador: "advertencia",
   confirmado: "info",
   en_ruta: "info",
   completado: "exito",
   cancelado: "neutral",
-});
+};
+export const COLOR_ESTADO_MANIFIESTO = clasesPorEstado(VARIANTE_ESTADO_MANIFIESTO);
+export const BADGE_ESTADO_MANIFIESTO = badgePorEstado(VARIANTE_ESTADO_MANIFIESTO);
 
 // =============================================================================
 // Utilidades comunes
@@ -189,12 +239,14 @@ export function traducirEstadoPeriodoCobro(estado: EstadoPeriodo, folio?: number
   return textos[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_PERIODO: Record<EstadoPeriodo, string> = clasesPorEstado<EstadoPeriodo>({
+const VARIANTE_ESTADO_PERIODO: Record<EstadoPeriodo, VarianteEstado> = {
   abierto: "info",
   cerrado: "neutral",
   facturado: "exito",
   anulado: "error",
-});
+};
+export const COLOR_ESTADO_PERIODO = clasesPorEstado(VARIANTE_ESTADO_PERIODO);
+export const BADGE_ESTADO_PERIODO = badgePorEstado(VARIANTE_ESTADO_PERIODO);
 
 // =============================================================================
 // EstadoSii — Fase C (criterio C-5)
@@ -240,6 +292,21 @@ export function colorBadgeEstadoSii(variante: TraduccionEstadoSii["variante"]): 
   }
 }
 
+/** Variante del componente <Badge> para el estado SII. */
+export function badgeEstadoSii(variante: TraduccionEstadoSii["variante"]): BadgeVariante {
+  switch (variante) {
+    case "exito":
+      return "success";
+    case "advertencia":
+      return "warning";
+    case "error":
+      return "error";
+    case "neutro":
+    default:
+      return "neutral";
+  }
+}
+
 // =============================================================================
 // EstadoLiquidacion — Fase C
 // =============================================================================
@@ -254,11 +321,13 @@ export function traducirEstadoLiquidacion(estado: EstadoLiquidacion): string {
   return TEXTO_ESTADO_LIQUIDACION[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_LIQUIDACION: Record<EstadoLiquidacion, string> = clasesPorEstado<EstadoLiquidacion>({
+const VARIANTE_ESTADO_LIQUIDACION: Record<EstadoLiquidacion, VarianteEstado> = {
   borrador: "neutral",
   emitida: "info",
   pagada: "exito",
-});
+};
+export const COLOR_ESTADO_LIQUIDACION = clasesPorEstado(VARIANTE_ESTADO_LIQUIDACION);
+export const BADGE_ESTADO_LIQUIDACION = badgePorEstado(VARIANTE_ESTADO_LIQUIDACION);
 
 // =============================================================================
 // EstadoEventoConciliacion — Fase C
@@ -275,12 +344,14 @@ export function traducirEstadoConciliacion(estado: EstadoEventoConciliacion): st
   return TEXTO_ESTADO_CONCILIACION[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, string> = clasesPorEstado<EstadoEventoConciliacion>({
+const VARIANTE_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, VarianteEstado> = {
   pendiente: "advertencia",
   revisado: "info",
   resuelto: "exito",
   ignorado: "neutral",
-});
+};
+export const COLOR_ESTADO_CONCILIACION = clasesPorEstado(VARIANTE_ESTADO_CONCILIACION);
+export const BADGE_ESTADO_CONCILIACION = badgePorEstado(VARIANTE_ESTADO_CONCILIACION);
 
 // =============================================================================
 // TipoDiferenciaConciliacion — Fase C
@@ -316,14 +387,16 @@ export function traducirEstadoMatchPago(estado: EstadoMatchPago): string {
   return TEXTO_ESTADO_MATCH_PAGO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, string> = clasesPorEstado<EstadoMatchPago>({
+const VARIANTE_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, VarianteEstado> = {
   sin_atribuir: "advertencia",
   atribuido: "info",
   conciliado: "exito",
   parcial: "advertencia",
   sobrante: "advertencia",
   descartado: "neutral",
-});
+};
+export const COLOR_ESTADO_MATCH_PAGO = clasesPorEstado(VARIANTE_ESTADO_MATCH_PAGO);
+export const BADGE_ESTADO_MATCH_PAGO = badgePorEstado(VARIANTE_ESTADO_MATCH_PAGO);
 
 // =============================================================================
 // EstadoCobroPeriodo — cobranza Fintoc (proyección del período)
@@ -340,12 +413,14 @@ export function traducirEstadoCobroPeriodo(estado: EstadoCobroPeriodo): string {
   return TEXTO_ESTADO_COBRO_PERIODO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, string> = clasesPorEstado<EstadoCobroPeriodo>({
+const VARIANTE_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, VarianteEstado> = {
   no_aplica: "neutral",
   pendiente: "advertencia",
   parcial: "advertencia",
   pagado: "exito",
-});
+};
+export const COLOR_ESTADO_COBRO_PERIODO = clasesPorEstado(VARIANTE_ESTADO_COBRO_PERIODO);
+export const BADGE_ESTADO_COBRO_PERIODO = badgePorEstado(VARIANTE_ESTADO_COBRO_PERIODO);
 
 // =============================================================================
 // Utilidades comunes

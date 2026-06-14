@@ -18,6 +18,7 @@ import {
 import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
 import { resolverEstadoOnboarding } from "@/app/(tenant)/onboarding/estado";
+import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
 
 /**
  * Layout del área autenticada para roles internos del courier (dueño, supervisor,
@@ -110,16 +111,19 @@ export default async function LayoutTenant({ children }: { children: React.React
   );
 
   const puedeActuarSobreOnboarding = puedeGestionarConfiguracionDte(sesion.usuario);
-  const estadoOnboarding =
+  const [estadoOnboarding, avisos] = await Promise.all([
     puedeActuarSobreOnboarding && sesion.usuario.tenantId
-      ? await resolverEstadoOnboarding(sesion.usuario.tenantId)
-      : null;
+      ? resolverEstadoOnboarding(sesion.usuario.tenantId)
+      : Promise.resolve(null),
+    obtenerAvisos(sesion.usuario.tenantId, sesion.usuario),
+  ]);
 
   return (
     <AppShell
       nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
       nombreCompleto={sesion.nombreCompleto}
       grupos={grupos}
+      avisos={avisos}
       banner={
         estadoOnboarding && !estadoOnboarding.completo ? (
           <BannerOnboarding

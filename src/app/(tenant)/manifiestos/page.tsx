@@ -10,9 +10,10 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
 import {
   traducirEstadoManifiesto,
-  COLOR_ESTADO_MANIFIESTO,
+  BADGE_ESTADO_MANIFIESTO,
   TEXTO_ESTADO_MANIFIESTO,
 } from "@/lib/ui/traduccion-estados";
+import { Badge } from "@/components/ui/badge";
 import { ESTADOS_MANIFIESTO } from "@/modules/operacion/tipos";
 import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
 
@@ -149,9 +150,9 @@ export default async function PaginaManifiestos({
                 {manifiestos.map((m) => (
                   <tr key={m.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_MANIFIESTO[m.estado]}`}>
+                      <Badge variant={BADGE_ESTADO_MANIFIESTO[m.estado]}>
                         {traducirEstadoManifiesto(m.estado)}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-4 py-3">
                       <Link href={`/manifiestos/${m.id}`} className="font-medium hover:underline">

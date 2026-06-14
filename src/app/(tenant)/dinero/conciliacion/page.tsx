@@ -21,11 +21,10 @@ import type {
 } from "@/modules/dinero/tipos";
 import {
   traducirEstadoConciliacion,
-  COLOR_ESTADO_CONCILIACION,
-  TEXTO_ESTADO_CONCILIACION,
+  BADGE_ESTADO_CONCILIACION,
   traducirTipoDiferencia,
-  TEXTO_TIPO_DIFERENCIA,
 } from "@/lib/ui/traduccion-estados";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -38,6 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { MenuAccionesConciliacion } from "./menu-acciones-conciliacion";
+import { FiltrosConciliacion } from "./filtros-conciliacion";
 
 export const metadata: Metadata = {
   title: "Conciliación",
@@ -221,74 +221,15 @@ export default async function PaginaConciliacion({
       )}
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-c" className="text-xs font-medium text-muted-foreground">
-            Estado
-          </label>
-          <select
-            id="f-estado-c"
-            name="estado"
-            defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <option value="">Todos</option>
-            {ESTADOS_CONCIL.map((e) => (
-              <option key={e} value={e}>
-                {TEXTO_ESTADO_CONCILIACION[e]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-tipo-c" className="text-xs font-medium text-muted-foreground">
-            Tipo de diferencia
-          </label>
-          <select
-            id="f-tipo-c"
-            name="tipo"
-            defaultValue={filtroTipo}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <option value="">Todos los tipos</option>
-            {TIPOS_DIFERENCIA.map((t) => (
-              <option key={t} value={t}>
-                {TEXTO_TIPO_DIFERENCIA[t]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-seller-c" className="text-xs font-medium text-muted-foreground">
-            Seller
-          </label>
-          <select
-            id="f-seller-c"
-            name="seller"
-            defaultValue={filtroSeller}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <option value="">Todos</option>
-            {sellersDisponibles.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <Button type="submit" size="sm">
-          Filtrar
-        </Button>
-
-        {hayFiltroActivo && (
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/dinero/conciliacion">Limpiar filtros</Link>
-          </Button>
-        )}
-      </form>
+      <FiltrosConciliacion
+        estados={ESTADOS_CONCIL}
+        tipos={TIPOS_DIFERENCIA}
+        sellers={sellersDisponibles}
+        filtroEstado={filtroEstado}
+        filtroTipo={filtroTipo}
+        filtroSeller={filtroSeller}
+        hayFiltroActivo={hayFiltroActivo}
+      />
 
       {/* Error */}
       {errorCarga && (
@@ -361,7 +302,6 @@ export default async function PaginaConciliacion({
 const MAX_DESC_CHARS = 120;
 
 function FilaEvento({ evento }: { evento: EventoConNombre }) {
-  const badgeClases = COLOR_ESTADO_CONCILIACION[evento.estado];
   const textoEstado = traducirEstadoConciliacion(evento.estado);
 
   const descripcionCorta =
@@ -406,11 +346,7 @@ function FilaEvento({ evento }: { evento: EventoConNombre }) {
       </TableCell>
 
       <TableCell className="hidden px-4 lg:table-cell">
-        <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-        >
-          {textoEstado}
-        </span>
+        <Badge variant={BADGE_ESTADO_CONCILIACION[evento.estado]}>{textoEstado}</Badge>
       </TableCell>
 
       <TableCell className="px-4 text-right">

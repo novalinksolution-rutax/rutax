@@ -15,12 +15,13 @@ import { filaAIncidencia } from "@/modules/operacion/incidencias";
 import {
   traducirTipoIncidencia,
   traducirEstadoIncidencia,
-  COLOR_ESTADO_INCIDENCIA,
+  BADGE_ESTADO_INCIDENCIA,
   TEXTO_TIPO_INCIDENCIA,
   TEXTO_ESTADO_INCIDENCIA,
   horasDesde,
   esIncidenciaSinGestion,
 } from "@/lib/ui/traduccion-estados";
+import { Badge } from "@/components/ui/badge";
 import { TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA } from "@/modules/operacion/tipos";
 import type { Incidencia, TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
 import { PanelIncidencia } from "./panel-incidencia";
@@ -221,9 +222,9 @@ export default async function PaginaIncidencias({
                   return (
                     <tr key={inc.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_INCIDENCIA[inc.estado]}`}>
+                        <Badge variant={BADGE_ESTADO_INCIDENCIA[inc.estado]}>
                           {traducirEstadoIncidencia(inc.estado)}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3 font-medium">{traducirTipoIncidencia(inc.tipo)}</td>
                       <td className="hidden px-4 py-3 sm:table-cell">

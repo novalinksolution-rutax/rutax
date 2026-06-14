@@ -21,7 +21,7 @@ import {
   puedeGestionarIncidencias,
   puedeAjustarOperacionDiaria,
 } from "@/modules/identidad/capacidades";
-import { traducirEstadoPedido, COLOR_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
+import { traducirEstadoPedido, BADGE_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -293,11 +293,9 @@ function FilaPedido({ pedido, tieneAcciones }: { pedido: Pedido; tieneAcciones: 
   return (
     <TableRow className="group">
       <TableCell className="px-4">
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-        >
+        <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
           {traducirEstadoPedido(pedido.estado)}
-        </span>
+        </Badge>
       </TableCell>
       <TableCell className="px-4">
         <Link href={`/operaciones/${pedido.id}`} className="font-medium hover:underline">

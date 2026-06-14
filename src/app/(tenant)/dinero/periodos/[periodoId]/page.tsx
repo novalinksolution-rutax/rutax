@@ -16,13 +16,14 @@ import { obtenerPeriodoCobro, listarDocumentosDte } from "@/modules/dinero/index
 import type { DocumentoDte, LineaCobro } from "@/modules/dinero/tipos";
 import {
   traducirEstadoPeriodoCobro,
-  COLOR_ESTADO_PERIODO,
+  BADGE_ESTADO_PERIODO,
   traducirEstadoSii,
-  colorBadgeEstadoSii,
+  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
-  COLOR_ESTADO_COBRO_PERIODO,
+  BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
 import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
@@ -108,7 +109,6 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   const offset = (pagina - 1) * LIMITE_LINEAS;
   const lineasPaginadas = lineas.slice(offset, offset + LIMITE_LINEAS);
 
-  const badgeClases = COLOR_ESTADO_PERIODO[periodo.estado];
   const textoBadge = traducirEstadoPeriodoCobro(
     periodo.estado,
     periodo.estado === "facturado" && dte ? dte.folio : undefined,
@@ -141,17 +141,11 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               {formatearFechaCorta(periodo.fechaInicio)} – {formatearFechaCorta(periodo.fechaFin)}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-              >
-                {textoBadge}
-              </span>
+              <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>{textoBadge}</Badge>
               {periodo.estadoCobro !== "no_aplica" && (
-                <span
-                  className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
-                >
+                <Badge variant={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
                   {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-                </span>
+                </Badge>
               )}
             </div>
             <p className="text-3xl font-bold tabular-nums">
@@ -467,12 +461,9 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
 function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
   const trad = traducirEstadoSii(estadoSii);
-  const colorClases = colorBadgeEstadoSii(trad.variante);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorClases}`}
-    >
+    <Badge variant={badgeEstadoSii(trad.variante)} className="gap-1.5 px-2.5">
       {trad.variante === "advertencia" && (
         <AlertTriangle className="size-3.5 flex-shrink-0" aria-hidden="true" />
       )}
@@ -486,7 +477,7 @@ function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] })
         <Clock className="size-3.5 flex-shrink-0" aria-hidden="true" />
       )}
       {trad.texto}
-    </span>
+    </Badge>
   );
 }
 

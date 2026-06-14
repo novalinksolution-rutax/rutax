@@ -5,6 +5,8 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import type { BadgeVariante } from "@/lib/ui/traduccion-estados";
 
 export const metadata: Metadata = {
   title: "Sellers",
@@ -16,10 +18,10 @@ const TEXTO_ESTADO_SELLER: Record<string, string> = {
   suspendido: "Suspendido",
 };
 
-const COLOR_ESTADO_SELLER: Record<string, string> = {
-  invitado: "border-transparent bg-warning-subtle text-warning-subtle-foreground",
-  activo: "border-transparent bg-success-subtle text-success-subtle-foreground",
-  suspendido: "border-transparent bg-destructive-subtle text-destructive-subtle-foreground",
+const BADGE_ESTADO_SELLER: Record<string, BadgeVariante> = {
+  invitado: "warning",
+  activo: "success",
+  suspendido: "error",
 };
 
 const TEXTO_SALUD_CONEXION: Record<string, string> = {
@@ -29,11 +31,11 @@ const TEXTO_SALUD_CONEXION: Record<string, string> = {
   pendiente: "Sin conectar",
 };
 
-const COLOR_SALUD_CONEXION: Record<string, string> = {
-  sana: "border-transparent bg-success-subtle text-success-subtle-foreground",
-  atencion: "border-transparent bg-warning-subtle text-warning-subtle-foreground",
-  desvinculada: "border-transparent bg-destructive-subtle text-destructive-subtle-foreground",
-  pendiente: "border-transparent bg-muted text-muted-foreground",
+const BADGE_SALUD_CONEXION: Record<string, BadgeVariante> = {
+  sana: "success",
+  atencion: "warning",
+  desvinculada: "error",
+  pendiente: "neutral",
 };
 
 interface SellerFila {
@@ -132,18 +134,14 @@ export default async function PaginaSellers() {
                     <td className="px-4 py-3 font-medium">{seller.razonSocial}</td>
                     <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">{seller.rut}</td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_SELLER[seller.estado] ?? COLOR_ESTADO_SELLER.invitado}`}
-                      >
+                      <Badge variant={BADGE_ESTADO_SELLER[seller.estado] ?? "warning"}>
                         {TEXTO_ESTADO_SELLER[seller.estado] ?? seller.estado}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_SALUD_CONEXION[seller.estadoSalud] ?? COLOR_SALUD_CONEXION.pendiente}`}
-                      >
+                      <Badge variant={BADGE_SALUD_CONEXION[seller.estadoSalud] ?? "neutral"}>
                         {TEXTO_SALUD_CONEXION[seller.estadoSalud] ?? seller.estadoSalud}
-                      </span>
+                      </Badge>
                     </td>
                   </tr>
                 ))}

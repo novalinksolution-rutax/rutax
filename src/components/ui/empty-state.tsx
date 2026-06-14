@@ -46,6 +46,7 @@ function EmptyState({
       data-tono={tono}
       className={cn(
         "flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border px-6 py-12 text-center",
+        "animate-in fade-in-0 slide-in-from-bottom-1 ease-out [animation-duration:var(--motion-base)] motion-reduce:animate-none",
         className
       )}
       {...props}

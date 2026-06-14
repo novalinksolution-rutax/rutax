@@ -15,9 +15,10 @@ import { listarLiquidaciones } from "@/modules/dinero/index";
 import type { Liquidacion } from "@/modules/dinero/tipos";
 import {
   traducirEstadoLiquidacion,
-  COLOR_ESTADO_LIQUIDACION,
+  BADGE_ESTADO_LIQUIDACION,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
 import { BotonDescargaLiquidacion } from "./boton-descarga-liquidacion";
 
 export const metadata: Metadata = {
@@ -111,7 +112,6 @@ export default async function PaginaLiquidacionesConductor() {
 // =============================================================================
 
 function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
-  const badgeClases = COLOR_ESTADO_LIQUIDACION[liquidacion.estado];
   const textoEstado = traducirEstadoLiquidacion(liquidacion.estado);
 
   return (
@@ -122,11 +122,9 @@ function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
           {formatearFechaCorta(liquidacion.fechaInicio)} –{" "}
           {formatearFechaCorta(liquidacion.fechaFin)}
         </p>
-        <span
-          className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-        >
+        <Badge variant={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} className="shrink-0">
           {textoEstado}
-        </span>
+        </Badge>
       </div>
 
       {/* Línea media: entregas + monto en tipografía grande */}

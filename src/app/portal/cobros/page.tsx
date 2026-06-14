@@ -15,13 +15,14 @@ import { listarPeriodosCobro, listarDocumentosDte } from "@/modules/dinero/index
 import type { PeriodoCobro, DocumentoDte } from "@/modules/dinero/tipos";
 import {
   traducirEstadoPeriodoCobro,
-  COLOR_ESTADO_PERIODO,
+  BADGE_ESTADO_PERIODO,
   traducirEstadoSii,
-  colorBadgeEstadoSii,
+  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
-  COLOR_ESTADO_COBRO_PERIODO,
+  BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
 import {
@@ -168,7 +169,6 @@ export default async function PaginaCobrosPortal() {
 // =============================================================================
 
 function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
-  const badgeClases = COLOR_ESTADO_PERIODO[periodo.estado];
   const textoBadge = traducirEstadoPeriodoCobro(
     periodo.estado,
     periodo.estado === "facturado" && periodo.dte ? periodo.dte.folio : undefined,
@@ -186,9 +186,7 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
         </Link>
       </TableCell>
       <TableCell className="px-4">
-        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${badgeClases}`}>
-          {textoBadge}
-        </span>
+        <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>{textoBadge}</Badge>
       </TableCell>
       <TableCell className="hidden px-4 text-right text-muted-foreground tabular-nums sm:table-cell">
         {periodo.totalLineas}
@@ -207,11 +205,9 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
         {periodo.estadoCobro === "no_aplica" ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : (
-          <span
-            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
-          >
+          <Badge variant={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
             {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-          </span>
+          </Badge>
         )}
       </TableCell>
     </TableRow>
@@ -224,12 +220,9 @@ function BadgeEstadoSiiCompacto({
   estadoSii: DocumentoDte["estadoSii"];
 }) {
   const trad = traducirEstadoSii(estadoSii);
-  const colorClases = colorBadgeEstadoSii(trad.variante);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${colorClases}`}
-    >
+    <Badge variant={badgeEstadoSii(trad.variante)}>
       {trad.variante === "advertencia" && (
         <AlertTriangle className="size-3 flex-shrink-0" aria-hidden="true" />
       )}
@@ -243,6 +236,6 @@ function BadgeEstadoSiiCompacto({
         <Clock className="size-3 flex-shrink-0" aria-hidden="true" />
       )}
       {trad.texto}
-    </span>
+    </Badge>
   );
 }

@@ -12,15 +12,17 @@ import {
 import { cn } from "@/lib/utils";
 import type { TrazaDineroPedido } from "@/modules/dinero";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
 import {
   traducirEstadoPeriodoCobro,
-  COLOR_ESTADO_PERIODO,
+  BADGE_ESTADO_PERIODO,
   traducirEstadoSii,
-  colorBadgeEstadoSii,
+  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
-  COLOR_ESTADO_COBRO_PERIODO,
+  BADGE_ESTADO_COBRO_PERIODO,
   traducirEstadoLiquidacion,
-  COLOR_ESTADO_LIQUIDACION,
+  BADGE_ESTADO_LIQUIDACION,
+  type BadgeVariante,
 } from "@/lib/ui/traduccion-estados";
 
 /**
@@ -34,17 +36,14 @@ import {
  * Contiene montos: mostrarlo solo a roles financieros/dueño (gating en la página).
  */
 
-function EtiquetaEstado({ clases, children }: { clases: string; children: React.ReactNode }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        clases
-      )}
-    >
-      {children}
-    </span>
-  );
+function EtiquetaEstado({
+  variante,
+  children,
+}: {
+  variante: BadgeVariante;
+  children: React.ReactNode;
+}) {
+  return <Badge variant={variante}>{children}</Badge>;
 }
 
 interface NodoProps {
@@ -120,7 +119,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
         <Nodo icono={CalendarRange} titulo="Período de cobro" hecho={!!periodo} ultimo={false}>
           {periodo ? (
             <div className="flex flex-wrap items-center gap-2">
-              <EtiquetaEstado clases={COLOR_ESTADO_PERIODO[periodo.estado]}>
+              <EtiquetaEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]}>
                 {traducirEstadoPeriodoCobro(periodo.estado, factura?.folio)}
               </EtiquetaEstado>
               <Link
@@ -144,7 +143,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
               <span className="font-mono text-sm font-medium tabular-nums">
                 Folio {factura.folio}
               </span>
-              <EtiquetaEstado clases={colorBadgeEstadoSii(traducirEstadoSii(factura.estadoSii).variante)}>
+              <EtiquetaEstado variante={badgeEstadoSii(traducirEstadoSii(factura.estadoSii).variante)}>
                 {traducirEstadoSii(factura.estadoSii).texto}
               </EtiquetaEstado>
             </div>
@@ -158,7 +157,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
         {/* 5 — Pago del seller */}
         <Nodo icono={Banknote} titulo="Pago del seller" hecho={pagado} ultimo={false}>
           {periodo ? (
-            <EtiquetaEstado clases={COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
+            <EtiquetaEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
               {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
             </EtiquetaEstado>
           ) : (
@@ -173,7 +172,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
               <span className="font-mono text-sm font-semibold tabular-nums">
                 {formatearCLP(liquidacion.montoFinalClp)}
               </span>
-              <EtiquetaEstado clases={COLOR_ESTADO_LIQUIDACION[liquidacion.estado]}>
+              <EtiquetaEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}>
                 {traducirEstadoLiquidacion(liquidacion.estado)}
               </EtiquetaEstado>
               <Link

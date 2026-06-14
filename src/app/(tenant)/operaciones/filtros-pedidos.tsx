@@ -10,6 +10,18 @@ import { useCallback } from "react";
 import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
 import { TEXTO_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+/** Sentinela para "sin filtro": Radix Select no admite items con value="". */
+const TODOS = "__todos__";
 
 interface Props {
   sellers: { id: string; nombre: string }[];
@@ -49,19 +61,22 @@ export function FiltrosPedidosForm({
         <label htmlFor="filtro-seller" className="text-xs font-medium text-muted-foreground">
           Seller
         </label>
-        <select
-          id="filtro-seller"
-          value={filtroSeller}
-          onChange={(e) => actualizar("seller", e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        <Select
+          value={filtroSeller || TODOS}
+          onValueChange={(v) => actualizar("seller", v === TODOS ? "" : v)}
         >
-          <option value="">Todos los sellers</option>
-          {sellers.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nombre}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id="filtro-seller" size="default" className="h-9 w-48">
+            <SelectValue placeholder="Todos los sellers" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TODOS}>Todos los sellers</SelectItem>
+            {sellers.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.nombre}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Estado */}
@@ -69,19 +84,22 @@ export function FiltrosPedidosForm({
         <label htmlFor="filtro-estado" className="text-xs font-medium text-muted-foreground">
           Estado
         </label>
-        <select
-          id="filtro-estado"
-          value={filtroEstado}
-          onChange={(e) => actualizar("estado", e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        <Select
+          value={filtroEstado || TODOS}
+          onValueChange={(v) => actualizar("estado", v === TODOS ? "" : v)}
         >
-          <option value="">Todos los estados</option>
-          {ESTADOS_PEDIDO.map((estado) => (
-            <option key={estado} value={estado}>
-              {TEXTO_ESTADO_PEDIDO[estado as EstadoPedido]}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id="filtro-estado" size="default" className="h-9 w-48">
+            <SelectValue placeholder="Todos los estados" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TODOS}>Todos los estados</SelectItem>
+            {ESTADOS_PEDIDO.map((estado) => (
+              <SelectItem key={estado} value={estado}>
+                {TEXTO_ESTADO_PEDIDO[estado as EstadoPedido]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Fecha */}
@@ -89,24 +107,26 @@ export function FiltrosPedidosForm({
         <label htmlFor="filtro-fecha" className="text-xs font-medium text-muted-foreground">
           Fecha comprometida
         </label>
-        <input
+        <Input
           id="filtro-fecha"
           type="date"
           value={filtroFecha}
           onChange={(e) => actualizar("fecha", e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="h-9 w-44"
         />
       </div>
 
       {/* Limpiar filtros — solo visible cuando hay filtros activos */}
       {hayFiltroActivo && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => router.push(pathname)}
-          className="h-9 rounded-md px-3 text-sm font-medium text-muted-foreground underline-offset-2 hover:underline"
+          className="h-9 text-muted-foreground"
         >
           Limpiar filtros
-        </button>
+        </Button>
       )}
     </div>
   );

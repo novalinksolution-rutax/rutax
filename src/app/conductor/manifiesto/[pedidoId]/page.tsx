@@ -10,10 +10,11 @@ import Link from "next/link";
 import { ChevronLeft, MapPin, Phone, AlertTriangle } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { Badge } from "@/components/ui/badge";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
-  COLOR_ESTADO_PEDIDO,
+  BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
 
@@ -150,11 +151,12 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
       {/* Estado actual — badge grande */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">{pedido.destinatarioNombre}</h1>
-        <span
-          className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium flex-shrink-0 ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
+        <Badge
+          variant={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          className="shrink-0 px-3 py-1 text-sm"
         >
           {traducirEstadoPedido(pedido.estado)}
-        </span>
+        </Badge>
       </div>
 
       {/* Dirección con enlace a Google Maps */}

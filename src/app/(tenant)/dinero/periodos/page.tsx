@@ -19,13 +19,14 @@ import {
 import type { PeriodoCobro, DocumentoDte, EstadoPeriodo } from "@/modules/dinero/tipos";
 import {
   traducirEstadoPeriodoCobro,
-  COLOR_ESTADO_PERIODO,
+  BADGE_ESTADO_PERIODO,
   traducirEstadoSii,
-  colorBadgeEstadoSii,
+  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
-  COLOR_ESTADO_COBRO_PERIODO,
+  BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
 import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
 
 export const metadata: Metadata = {
@@ -359,12 +360,9 @@ export default async function PaginaPeriodosCobro({
 
 function BadgeEstadoSiiInline({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
   const trad = traducirEstadoSii(estadoSii);
-  const colorClases = colorBadgeEstadoSii(trad.variante);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${colorClases}`}
-    >
+    <Badge variant={badgeEstadoSii(trad.variante)}>
       {trad.variante === "advertencia" && (
         <AlertTriangle className="size-3 flex-shrink-0" aria-hidden="true" />
       )}
@@ -378,7 +376,7 @@ function BadgeEstadoSiiInline({ estadoSii }: { estadoSii: DocumentoDte["estadoSi
         <Clock className="size-3 flex-shrink-0" aria-hidden="true" />
       )}
       {trad.texto}
-    </span>
+    </Badge>
   );
 }
 
@@ -389,8 +387,8 @@ function BadgeEstadoCobro({ periodo }: { periodo: PeriodoConDte }) {
     return <span className="text-muted-foreground">—</span>;
   }
   return (
-    <span
-      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
+    <Badge
+      variant={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
       title={
         periodo.estadoCobro === "parcial"
           ? `Pagado: ${formatearCLPOGuion(periodo.montoPagadoClp)}`
@@ -398,12 +396,11 @@ function BadgeEstadoCobro({ periodo }: { periodo: PeriodoConDte }) {
       }
     >
       {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-    </span>
+    </Badge>
   );
 }
 
 function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
-  const badgeClases = COLOR_ESTADO_PERIODO[periodo.estado];
   const textoBadge = traducirEstadoPeriodoCobro(
     periodo.estado,
     periodo.estado === "facturado" && periodo.dte ? periodo.dte.folio : undefined,
@@ -428,11 +425,7 @@ function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
 
       {/* Estado */}
       <td className="px-4 py-3">
-        <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-        >
-          {textoBadge}
-        </span>
+        <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>{textoBadge}</Badge>
       </td>
 
       {/* Líneas */}

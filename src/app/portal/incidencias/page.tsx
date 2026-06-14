@@ -13,12 +13,13 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   traducirTipoIncidencia,
   traducirEstadoIncidencia,
-  COLOR_ESTADO_INCIDENCIA,
+  BADGE_ESTADO_INCIDENCIA,
   TEXTO_TIPO_INCIDENCIA,
   TEXTO_ESTADO_INCIDENCIA,
   esIncidenciaSinGestion,
   horasDesde,
 } from "@/lib/ui/traduccion-estados";
+import { Badge } from "@/components/ui/badge";
 import { TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA } from "@/modules/operacion/tipos";
 import type { Incidencia, TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
 
@@ -211,11 +212,9 @@ export default async function PaginaIncidenciasSeller({
                   return (
                     <tr key={inc.id} className="hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_INCIDENCIA[inc.estado]}`}
-                        >
+                        <Badge variant={BADGE_ESTADO_INCIDENCIA[inc.estado]}>
                           {traducirEstadoIncidencia(inc.estado)}
-                        </span>
+                        </Badge>
                         {sinGestion && (
                           <span className="ml-1 inline-flex rounded-full bg-destructive-subtle px-2 py-0.5 text-xs font-semibold text-destructive-subtle-foreground">
                             Sin gestión: {horas}h

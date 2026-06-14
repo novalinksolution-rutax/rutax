@@ -15,10 +15,11 @@ import { listarLiquidaciones } from "@/modules/dinero/index";
 import type { Liquidacion, EstadoLiquidacion } from "@/modules/dinero/tipos";
 import {
   traducirEstadoLiquidacion,
-  COLOR_ESTADO_LIQUIDACION,
+  BADGE_ESTADO_LIQUIDACION,
   TEXTO_ESTADO_LIQUIDACION,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
 import { DialogMarcarPagada } from "./dialog-marcar-pagada";
 import { BotonDescargaPdfLiquidacion } from "./boton-descarga-pdf-liquidacion";
 
@@ -284,7 +285,6 @@ function FilaLiquidacion({
 }: {
   liquidacion: LiquidacionConNombre;
 }) {
-  const badgeClases = COLOR_ESTADO_LIQUIDACION[liquidacion.estado];
   const textoEstado = traducirEstadoLiquidacion(liquidacion.estado);
 
   return (
@@ -299,11 +299,9 @@ function FilaLiquidacion({
         </span>
       </td>
       <td className="px-4 py-3">
-        <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-        >
+        <Badge variant={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}>
           {textoEstado}
-        </span>
+        </Badge>
       </td>
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
         {liquidacion.totalEntregas}

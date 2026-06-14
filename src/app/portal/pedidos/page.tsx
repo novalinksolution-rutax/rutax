@@ -12,9 +12,10 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   traducirEstadoPedido,
-  COLOR_ESTADO_PEDIDO,
+  BADGE_ESTADO_PEDIDO,
   TEXTO_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
+import { Badge } from "@/components/ui/badge";
 import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
 
@@ -220,11 +221,9 @@ export default async function PaginaPedidosSeller({
                 {pedidos.map((pedido) => (
                   <tr key={pedido.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-                      >
+                      <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
                         {traducirEstadoPedido(pedido.estado)}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium">{pedido.destinatarioNombre}</p>
