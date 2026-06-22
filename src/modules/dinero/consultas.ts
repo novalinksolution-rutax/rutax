@@ -74,6 +74,9 @@ function filaToLineaCobro(f: Record<string, any>): LineaCobro {
     origenGeneracion: f.origen_generacion,
     generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
     notas: f.notas ?? null,
+    anulada: f.anulada ?? false,
+    anuladaEn: f.anulada_en ?? null,
+    motivoAnulacion: f.motivo_anulacion ?? null,
     creadoEn: f.creado_en,
     actualizadoEn: f.actualizado_en,
   };
@@ -139,6 +142,9 @@ function filaToLiquidacion(f: Record<string, any>): Liquidacion {
     estado: f.estado,
     totalEntregas: f.total_entregas ?? 0,
     montoTotalClp: f.monto_total_clp !== null ? Number(f.monto_total_clp) : null,
+    bonoClp: Number(f.bono_clp ?? 0),
+    penalizacionClp: Number(f.penalizacion_clp ?? 0),
+    notaAjuste: f.nota_ajuste ?? null,
     tipoRelacionConductor: f.tipo_relacion_conductor,
     pdfRef: f.pdf_ref ?? null,
     notas: f.notas ?? null,
@@ -164,6 +170,9 @@ function filaToEventoConciliacion(f: Record<string, any>): EventoConciliacion {
     resueltoPorUsuarioId: f.resuelto_por_usuario_id ?? null,
     resueltaEn: f.resuelto_en ?? null,
     jobRunId: f.job_run_id ?? null,
+    // F17: campos del detector C7 para eventos de pago a conductor.
+    driverId: f.driver_id ?? null,
+    liquidacionId: f.liquidacion_id ?? null,
     creadoEn: f.creado_en,
   };
 }
@@ -224,7 +233,13 @@ export async function obtenerPeriodoCobro(
 }
 
 /**
- * Lista las líneas de cobro de un período específico.
+ * Lista las líneas de cobro VIGENTES (no anuladas) de un período específico.
+ * Las líneas anuladas (`anulada = true`) corresponden a pedidos devueltos tras
+ * haber fallado; se excluyen de los totales y de la vista del período para que
+ * el monto mostrado al usuario coincida con lo que se facturará al seller.
+ *
+ * Para ver las anuladas con fines de auditoría, usar la consulta directa a BD
+ * con service_role (fuera del portal del seller y del módulo de facturación).
  */
 export async function listarLineasCobroPorPeriodo(
   cliente: SupabaseClient,
@@ -237,6 +252,7 @@ export async function listarLineasCobroPorPeriodo(
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('periodo_cobro_id', periodoId)
+    .eq('anulada', false)
     .order('fecha_entrega', { ascending: true });
 
   if (error) throw new Error(`Error al listar líneas de cobro: ${error.message}`);
@@ -318,12 +334,15 @@ export async function obtenerLiquidacion(
   if (liqError) throw new Error(`Error al obtener liquidación: ${liqError.message}`);
   if (!liqData) return null;
 
+  // Filtrar anuladas: líneas de pedidos devueltos tras fallido no deben mostrarse
+  // ni sumarse al total de la liquidación del conductor.
   const { data: lineasData, error: lineasError } = await cliente
     .schema('dinero')
     .from('lineas_liquidacion')
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('liquidacion_id', liquidacionId)
+    .eq('anulada', false)
     .order('fecha_entrega', { ascending: true });
 
   if (lineasError) throw new Error(`Error al listar líneas de liquidación: ${lineasError.message}`);

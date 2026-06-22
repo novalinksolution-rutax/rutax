@@ -143,12 +143,14 @@ Todos los módulos leídos directamente (sin ❓):
 ## Pendientes / sugeridos
 
 ### Funcionales (sin bloqueante)
-- **A2 follow-up**: mostrar desglose neto+IVA en portal del seller. Confirmar tasa 19%
-  con contador antes de producción.
-- **B1 (evolución)**: reclasificar `tipo` de incidencia + re-correr C1 automáticamente,
-  si se quiere que el dinero siga a la clasificación operativa (vs. corrección manual B2).
-- **PDF de liquidación** (C4): stub `generarPdfLiquidacionStub` retorna Buffer vacío.
-  Implementar con `@react-pdf/renderer` cuando se instale el paquete.
+- **A2 follow-up** ✅: portal del seller muestra desglose neto + IVA 19% + Total (con IVA).
+  Confirmar tasa 19% con contador antes de producción.
+- **B1 (evolución)** ✅: `reclasificarIncidencia` en `incidencias.ts` + server action
+  `accionReclasificarIncidencia` + `DialogReclasificarIncidencia` en detalle de pedido.
+  C1 modificado para reactivar líneas anuladas en conflicto de `pedido_id`.
+- **PDF de liquidación** (C4) ✅: `@react-pdf/renderer` instalado. `liquidacion-pdf.tsx`
+  implementado con conductor, período, tabla de líneas y total.
+  `generar-liquidacion-conductor.ts` reemplaza el stub con la implementación real.
 
 ### Seguridad (no bloqueante para MVP)
 - **Admin evolution**: migrar a sesión Supabase `super_admin` por usuario (requiere

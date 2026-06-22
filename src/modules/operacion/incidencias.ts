@@ -13,7 +13,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Incidencia, AbrirIncidenciaEntrada, ActualizarIncidenciaEntrada } from "./tipos";
+import type { Incidencia, AbrirIncidenciaEntrada, ActualizarIncidenciaEntrada, TipoIncidencia } from "./tipos";
 import { ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import { puedeGestionarIncidencias } from "@/modules/identidad/capacidades";
@@ -223,6 +223,176 @@ export async function actualizarIncidencia(
 
   if (errorUpdate || !actualizada) {
     throw new Error(`Error al actualizar la incidencia: ${errorUpdate?.message ?? "sin datos"}`);
+  }
+
+  return filaAIncidencia(actualizada);
+}
+
+/**
+ * Reclasifica una incidencia abierta a otro tipo.
+ *
+ * Cuándo se usa (B1): el clasificador identificó que la incidencia tiene el tipo
+ * equivocado. Cambiar el tipo recalcula `afecta_cobro` / `afecta_liquidacion` y,
+ * al re-disparar C1, el motor genera líneas con el ajuste correcto.
+ *
+ * Efectos:
+ * 1. Actualiza `tipo`, `afecta_cobro`, `afecta_liquidacion` en la incidencia.
+ * 2. Anula las líneas de cobro/liquidación existentes del pedido (si están en
+ *    período `abierto` / liquidación `borrador` — igual que B2).
+ * 3. Retorna la incidencia actualizada; el evento para re-disparar C1 lo publica
+ *    el caller (server action) tras esta llamada.
+ *
+ * Guarda: solo aplica a incidencias `abierta` o `en_gestion`.
+ * Si el tipo nuevo == tipo actual, es un no-op (devuelve la incidencia tal cual).
+ */
+export async function reclasificarIncidencia(
+  cliente: SupabaseClient,
+  entrada: {
+    incidenciaId: string;
+    tenantId: string;
+    pedidoId: string;
+    nuevoTipo: TipoIncidencia;
+    actorUsuarioId: string;
+  },
+  actor: UsuarioActual,
+): Promise<Incidencia> {
+  if (!puedeGestionarIncidencias(actor)) {
+    throw new ErrorValidacion(
+      "El usuario no tiene capacidad para gestionar incidencias (se requiere supervisor o dueño)",
+    );
+  }
+
+  const { data: actual, error: errorBusqueda } = await cliente
+    .from("incidencias")
+    .select("*")
+    .eq("id", entrada.incidenciaId)
+    .eq("tenant_id", entrada.tenantId)
+    .maybeSingle();
+
+  if (errorBusqueda) {
+    throw new Error(`Error al obtener la incidencia: ${errorBusqueda.message}`);
+  }
+
+  if (!actual) {
+    throw new ErrorConflicto(
+      `La incidencia '${entrada.incidenciaId}' no existe o no pertenece al tenant`,
+    );
+  }
+
+  if (actual.estado === "cerrada" || actual.estado === "resuelta") {
+    throw new ErrorConflicto(
+      `La incidencia '${entrada.incidenciaId}' está '${actual.estado}' y no puede reclasificarse`,
+    );
+  }
+
+  // No-op si el tipo ya es el que se pide.
+  if (actual.tipo === entrada.nuevoTipo) {
+    return filaAIncidencia(actual);
+  }
+
+  const { afectaCobro, afectaLiquidacion } = afectacionDeIncidencia(entrada.nuevoTipo);
+
+  // Bitácora ANTES de cualquier efecto (invariante financiero CLAUDE.md).
+  await registrarEnBitacora(cliente, {
+    tenantId: entrada.tenantId,
+    actorUsuarioId: entrada.actorUsuarioId,
+    actorTipo: "usuario",
+    accion: "incidencia.reclasificada",
+    entidadTipo: "incidencia",
+    entidadId: entrada.incidenciaId,
+    detalle: {
+      pedido_id: entrada.pedidoId,
+      tipo_anterior: actual.tipo,
+      tipo_nuevo: entrada.nuevoTipo,
+      afecta_cobro_anterior: actual.afecta_cobro,
+      afecta_cobro_nuevo: afectaCobro,
+      afecta_liquidacion_anterior: actual.afecta_liquidacion,
+      afecta_liquidacion_nuevo: afectaLiquidacion,
+    },
+  });
+
+  // Actualizar incidencia.
+  const { data: actualizada, error: errorUpdate } = await cliente
+    .from("incidencias")
+    .update({
+      tipo: entrada.nuevoTipo,
+      afecta_cobro: afectaCobro,
+      afecta_liquidacion: afectaLiquidacion,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq("id", entrada.incidenciaId)
+    .eq("tenant_id", entrada.tenantId)
+    .select()
+    .single();
+
+  if (errorUpdate || !actualizada) {
+    throw new Error(`Error al reclasificar la incidencia: ${errorUpdate?.message ?? "sin datos"}`);
+  }
+
+  // Anular líneas existentes mutable (período abierto / liquidación borrador).
+  // C1 las reactivará con los montos correctos al recibir el evento re-disparado.
+  const ahora = new Date().toISOString();
+
+  const { data: lineaCobro } = await cliente
+    .schema("dinero")
+    .from("lineas_cobro")
+    .select("id, anulada, periodo_cobro_id")
+    .eq("pedido_id", entrada.pedidoId)
+    .eq("tenant_id", entrada.tenantId)
+    .maybeSingle();
+
+  if (lineaCobro && !lineaCobro.anulada) {
+    let puedeAnular = !lineaCobro.periodo_cobro_id;
+    if (lineaCobro.periodo_cobro_id) {
+      const { data: periodo } = await cliente
+        .schema("dinero")
+        .from("periodos_cobro")
+        .select("estado")
+        .eq("id", lineaCobro.periodo_cobro_id as string)
+        .eq("tenant_id", entrada.tenantId)
+        .maybeSingle();
+      puedeAnular = periodo?.estado === "abierto";
+    }
+    if (puedeAnular) {
+      await cliente
+        .schema("dinero")
+        .from("lineas_cobro")
+        .update({ anulada: true, anulada_en: ahora, motivo_anulacion: "reclasificacion", actualizado_en: ahora })
+        .eq("id", lineaCobro.id as string)
+        .eq("tenant_id", entrada.tenantId)
+        .eq("anulada", false);
+    }
+  }
+
+  const { data: lineaLiq } = await cliente
+    .schema("dinero")
+    .from("lineas_liquidacion")
+    .select("id, anulada, liquidacion_id")
+    .eq("pedido_id", entrada.pedidoId)
+    .eq("tenant_id", entrada.tenantId)
+    .maybeSingle();
+
+  if (lineaLiq && !lineaLiq.anulada) {
+    let puedeAnular = !lineaLiq.liquidacion_id;
+    if (lineaLiq.liquidacion_id) {
+      const { data: liq } = await cliente
+        .schema("dinero")
+        .from("liquidaciones")
+        .select("estado")
+        .eq("id", lineaLiq.liquidacion_id as string)
+        .eq("tenant_id", entrada.tenantId)
+        .maybeSingle();
+      puedeAnular = liq?.estado === "borrador";
+    }
+    if (puedeAnular) {
+      await cliente
+        .schema("dinero")
+        .from("lineas_liquidacion")
+        .update({ anulada: true, anulada_en: ahora, motivo_anulacion: "reclasificacion", actualizado_en: ahora })
+        .eq("id", lineaLiq.id as string)
+        .eq("tenant_id", entrada.tenantId)
+        .eq("anulada", false);
+    }
   }
 
   return filaAIncidencia(actualizada);

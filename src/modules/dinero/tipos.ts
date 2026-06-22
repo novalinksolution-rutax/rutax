@@ -36,12 +36,20 @@ export type OrigenGeneracion = 'motor_automatico' | 'ajuste_manual';
 
 /** Tipos de diferencia en la conciliación. */
 export type TipoDiferenciaConciliacion =
+  // Tipos originales (C6 — 6 detectores de 2 fuentes)
   | 'pedido_entregado_sin_linea_cobro'
   | 'pedido_entregado_sin_linea_liquidacion'
   | 'linea_cobro_sin_pedido_entregado'
   | 'folio_consumido_sin_dte_persistido'
   | 'periodo_cerrado_con_lineas_sueltas'
-  | 'monto_dte_difiere_de_lineas';
+  | 'monto_dte_difiere_de_lineas'
+  // Tipos nuevos (C7 / F17 — 6 detectores de 3 fuentes, Bloque 3)
+  | 'pagado_conductor_sin_cobro_seller'
+  | 'cobrado_seller_no_pagado_conductor'
+  | 'reprogramacion_no_cobrada'
+  | 'minimo_omitido'
+  | 'pago_seller_faltante'
+  | 'pago_conductor_faltante';
 
 /** Estado de un evento de conciliación. */
 export type EstadoEventoConciliacion =
@@ -98,6 +106,10 @@ export interface LineaCobro {
   origenGeneracion: OrigenGeneracion;
   generadoPorUsuarioId: string | null;
   notas: string | null;
+  /** Soft-anulación: true si la línea fue anulada (pedido fallido → devuelto). */
+  anulada: boolean;
+  anuladaEn: string | null;
+  motivoAnulacion: string | null;
   creadoEn: string;
   actualizadoEn: string;
 }
@@ -240,6 +252,12 @@ export interface Liquidacion {
   estado: EstadoLiquidacion;
   totalEntregas: number;
   montoTotalClp: number | null;
+  /** F16: bono manual por on-time u otro concepto positivo. CLP entero ≥ 0. */
+  bonoClp: number;
+  /** F16: penalización manual por fallo evitable u otro descuento. CLP entero ≥ 0. */
+  penalizacionClp: number;
+  /** F16: contexto del ajuste (por qué se aplicó bono o penalización). */
+  notaAjuste: string | null;
   /** 'dependiente' | 'independiente' — copiado de conductores.tipo_relacion al generar. */
   tipoRelacionConductor: 'dependiente' | 'independiente';
   /** Referencia opaca al PDF en Storage. */
@@ -254,6 +272,11 @@ export interface Liquidacion {
 /**
  * Una fila de `dinero.eventos_conciliacion`.
  * Log append-only de diferencias detectadas. No es una tabla de estado mutable.
+ *
+ * F17 (Bloque 3): los detectores C7 añaden `driver_id` y `liquidacion_id`
+ * para los eventos de tipo `pagado_conductor_sin_cobro_seller`,
+ * `cobrado_seller_no_pagado_conductor` y `pago_conductor_faltante`, en los que
+ * la discrepancia apunta a una liquidación o conductor específico.
  */
 export interface EventoConciliacion {
   id: string;
@@ -269,6 +292,10 @@ export interface EventoConciliacion {
   resueltaEn: string | null;
   /** ID del run de Inngest para trazabilidad. */
   jobRunId: string | null;
+  /** F17: ID del conductor involucrado (solo eventos de pago a conductor). */
+  driverId: string | null;
+  /** F17: ID de la liquidación involucrada (solo eventos de pago a conductor). */
+  liquidacionId: string | null;
   creadoEn: string;
 }
 

@@ -48,6 +48,7 @@ import { DialogReasignacion } from "./dialog-reasignacion";
 import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
 import { VisorPod } from "./visor-pod";
 import { AccionesCorregirDinero } from "./acciones-corregir-dinero";
+import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
 
 // =============================================================================
 // Carga de datos
@@ -288,7 +289,12 @@ export default async function PaginaDetallePedido({ params }: Props) {
           </h2>
           <ul className="space-y-2">
             {incidenciasAbiertas.map((inc) => (
-              <TargetaIncidencia key={inc.id} incidencia={inc} />
+              <TargetaIncidencia
+                key={inc.id}
+                incidencia={inc}
+                pedidoId={pedidoId}
+                puedeReclasificar={puedeIncidencias}
+              />
             ))}
           </ul>
         </section>
@@ -443,7 +449,15 @@ function SeccionGeocoding({ pedido }: { pedido: Pedido }) {
 // Tarjeta de incidencia
 // =============================================================================
 
-function TargetaIncidencia({ incidencia }: { incidencia: Incidencia }) {
+function TargetaIncidencia({
+  incidencia,
+  pedidoId,
+  puedeReclasificar,
+}: {
+  incidencia: Incidencia;
+  pedidoId: string;
+  puedeReclasificar: boolean;
+}) {
   const sinGestion = esIncidenciaSinGestion(incidencia.estado, incidencia.abiertaEn);
   const horas = Math.floor(horasDesde(incidencia.abiertaEn));
 
@@ -464,6 +478,13 @@ function TargetaIncidencia({ incidencia }: { incidencia: Incidencia }) {
             <span className="rounded-full bg-destructive-subtle px-2 py-0.5 text-xs font-semibold text-destructive-subtle-foreground">
               Sin gestión: {horas}h
             </span>
+          )}
+          {puedeReclasificar && (
+            <DialogReclasificarIncidencia
+              pedidoId={pedidoId}
+              incidenciaId={incidencia.id}
+              tipoActual={incidencia.tipo}
+            />
           )}
           <Badge variant={BADGE_ESTADO_INCIDENCIA[incidencia.estado]}>
             {traducirEstadoIncidencia(incidencia.estado)}

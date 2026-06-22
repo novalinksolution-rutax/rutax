@@ -289,14 +289,40 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
                 ))}
               </TableBody>
               <TableFooter>
-                <TableRow>
-                  <TableCell colSpan={3} className="px-4 text-sm font-semibold">
-                    Total
-                  </TableCell>
-                  <TableCell className="px-4 text-right text-sm font-bold tabular-nums">
-                    {formatearCLPOGuion(periodo.montoTotalClp)}
-                  </TableCell>
-                </TableRow>
+                {(() => {
+                  const netoClp = lineas
+                    .filter((l) => !l.anulada)
+                    .reduce((s, l) => s + (l.montoFinalClp ?? 0), 0);
+                  const ivaClp = (periodo.montoTotalClp ?? 0) - netoClp;
+                  return (
+                    <>
+                      <TableRow className="text-muted-foreground">
+                        <TableCell colSpan={3} className="px-4 text-xs">
+                          Subtotal neto
+                        </TableCell>
+                        <TableCell className="px-4 text-right text-xs tabular-nums">
+                          {formatearCLP(netoClp)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className="text-muted-foreground">
+                        <TableCell colSpan={3} className="px-4 text-xs">
+                          IVA 19%
+                        </TableCell>
+                        <TableCell className="px-4 text-right text-xs tabular-nums">
+                          {formatearCLP(ivaClp)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="px-4 text-sm font-semibold">
+                          Total (con IVA)
+                        </TableCell>
+                        <TableCell className="px-4 text-right text-sm font-bold tabular-nums">
+                          {formatearCLPOGuion(periodo.montoTotalClp)}
+                        </TableCell>
+                      </TableRow>
+                    </>
+                  );
+                })()}
               </TableFooter>
             </Table>
           </DataTable>
