@@ -1,0 +1,262 @@
+/**
+ * Consultas de lectura del módulo `plataforma`.
+ *
+ * Todas usan `crearClienteServiceRole()` porque el schema `plataforma` tiene
+ * RLS deny-all para `authenticated` — solo `service_role` puede leer.
+ *
+ * Para los joins cross-schema (plataforma + identidad), PostgREST no soporta
+ * joins entre schemas distintos en un solo query. Se usan dos queries separadas
+ * y se combinan en TypeScript.
+ *
+ * Ninguna función aquí escribe en BD ni tiene side effects.
+ */
+
+import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import type { Plan, Suscripcion, SuscripcionConPlan, PeriodoSuscripcion } from './tipos';
+
+// =============================================================================
+// Mappers fila BD → interfaz
+// =============================================================================
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToPlan(f: Record<string, any>): Plan {
+  return {
+    id: f.id,
+    nombre: f.nombre,
+    descripcion: f.descripcion ?? null,
+    precioMensualClp: Number(f.precio_mensual_clp),
+    precioAnualClp: Number(f.precio_anual_clp),
+    limitePedidosMes: f.limite_pedidos_mes !== null && f.limite_pedidos_mes !== undefined
+      ? Number(f.limite_pedidos_mes)
+      : null,
+    caracteristicas: (f.caracteristicas ?? {}) as Record<string, unknown>,
+    activo: Boolean(f.activo),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToSuscripcion(f: Record<string, any>): Suscripcion {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    planId: f.plan_id,
+    estado: f.estado,
+    trialHasta: f.trial_hasta ?? null,
+    activaDesde: f.activa_desde ?? null,
+    canceladaEn: f.cancelada_en ?? null,
+    notas: f.notas ?? null,
+    creadaEn: f.creada_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToPeriodoSuscripcion(f: Record<string, any>): PeriodoSuscripcion {
+  return {
+    id: f.id,
+    suscripcionId: f.suscripcion_id,
+    tenantId: f.tenant_id,
+    periodoInicio: f.periodo_inicio,
+    periodoFin: f.periodo_fin,
+    montoClp: Number(f.monto_clp),
+    estado: f.estado,
+    venceEn: f.vence_en ?? null,
+    generadoEn: f.generado_en,
+  };
+}
+
+// =============================================================================
+// Planes
+// =============================================================================
+
+/**
+ * Lista todos los planes activos ordenados por precio mensual ascendente.
+ */
+export async function obtenerPlanesActivos(): Promise<Plan[]> {
+  const supabase = crearClienteServiceRole();
+
+  const { data, error } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .select('*')
+    .eq('activo', true)
+    .order('precio_mensual_clp', { ascending: true });
+
+  if (error) throw new Error(`Error al obtener planes activos: ${error.message}`);
+  return (data ?? []).map(filaToPlan);
+}
+
+// =============================================================================
+// Suscripciones
+// =============================================================================
+
+/**
+ * Lista todas las suscripciones con su plan y el nombre del tenant.
+ *
+ * Hace dos queries separadas (plataforma + identidad) y combina en TypeScript
+ * porque PostgREST no soporta joins cross-schema en un solo query.
+ */
+export async function obtenerTodasSuscripciones(): Promise<SuscripcionConPlan[]> {
+  const supabase = crearClienteServiceRole();
+
+  // Query 1: suscripciones
+  const { data: suscData, error: suscError } = await supabase
+    .schema('plataforma')
+    .from('suscripciones')
+    .select('*')
+    .order('estado', { ascending: true })
+    .order('creada_en', { ascending: false });
+
+  if (suscError) throw new Error(`Error al listar suscripciones: ${suscError.message}`);
+  const suscripciones = suscData ?? [];
+  if (suscripciones.length === 0) return [];
+
+  // Query 2: planes (catálogo completo — suele ser pequeño)
+  const { data: planesData, error: planesError } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .select('*');
+
+  if (planesError) throw new Error(`Error al leer planes: ${planesError.message}`);
+  const planesMap = new Map((planesData ?? []).map((p) => [p.id as string, filaToPlan(p)]));
+
+  // Query 3: tenants (solo los que están en las suscripciones)
+  const tenantIds = [...new Set(suscripciones.map((s) => s.tenant_id as string))];
+  const { data: tenantsData, error: tenantsError } = await supabase
+    .schema('identidad')
+    .from('tenants')
+    .select('id, nombre_fantasia')
+    .in('id', tenantIds);
+
+  if (tenantsError) throw new Error(`Error al leer tenants: ${tenantsError.message}`);
+  const tenantsMap = new Map(
+    (tenantsData ?? []).map((t) => [t.id as string, (t.nombre_fantasia ?? null) as string | null]),
+  );
+
+  // Combinar
+  return suscripciones.map((s) => {
+    const suscripcion = filaToSuscripcion(s);
+    const plan = planesMap.get(s.plan_id as string);
+    if (!plan) {
+      throw new Error(`Plan ${s.plan_id} no encontrado para suscripción ${s.id}`);
+    }
+    return {
+      ...suscripcion,
+      plan,
+      nombreFantasiaTenant: tenantsMap.get(s.tenant_id as string) ?? null,
+    };
+  });
+}
+
+/**
+ * Obtiene la suscripción de un tenant específico con su plan y nombre de tenant.
+ * Devuelve null si el tenant no tiene suscripción.
+ */
+export async function obtenerSuscripcionPorTenant(tenantId: string): Promise<SuscripcionConPlan | null> {
+  const supabase = crearClienteServiceRole();
+
+  const { data: suscData, error: suscError } = await supabase
+    .schema('plataforma')
+    .from('suscripciones')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (suscError) throw new Error(`Error al obtener suscripción del tenant: ${suscError.message}`);
+  if (!suscData) return null;
+
+  // Leer plan
+  const { data: planData, error: planError } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .select('*')
+    .eq('id', suscData.plan_id as string)
+    .single();
+
+  if (planError) throw new Error(`Error al leer plan de la suscripción: ${planError.message}`);
+
+  // Leer nombre del tenant
+  const { data: tenantData, error: tenantError } = await supabase
+    .schema('identidad')
+    .from('tenants')
+    .select('nombre_fantasia')
+    .eq('id', tenantId)
+    .maybeSingle();
+
+  if (tenantError) throw new Error(`Error al leer tenant: ${tenantError.message}`);
+
+  return {
+    ...filaToSuscripcion(suscData),
+    plan: filaToPlan(planData),
+    nombreFantasiaTenant: tenantData?.nombre_fantasia ?? null,
+  };
+}
+
+// =============================================================================
+// Períodos
+// =============================================================================
+
+/**
+ * Lista los períodos de suscripción de una suscripción, ordenados por fecha
+ * de inicio descendente. Por defecto devuelve los últimos 12.
+ */
+export async function obtenerPeriodosDeSuscripcion(
+  suscripcionId: string,
+  limite = 12,
+): Promise<PeriodoSuscripcion[]> {
+  const supabase = crearClienteServiceRole();
+
+  const { data, error } = await supabase
+    .schema('plataforma')
+    .from('periodos_suscripcion')
+    .select('*')
+    .eq('suscripcion_id', suscripcionId)
+    .order('periodo_inicio', { ascending: false })
+    .limit(limite);
+
+  if (error) throw new Error(`Error al obtener períodos de suscripción: ${error.message}`);
+  return (data ?? []).map(filaToPeriodoSuscripcion);
+}
+
+// =============================================================================
+// Tenants sin suscripción
+// =============================================================================
+
+/**
+ * Lista los tenants que aún no tienen suscripción asignada.
+ * Útil para el super-admin al asignar planes a couriers nuevos.
+ */
+export async function obtenerTodosLosTenantsSinSuscripcion(): Promise<
+  { id: string; nombreFantasia: string | null }[]
+> {
+  const supabase = crearClienteServiceRole();
+
+  // Tenant IDs que YA tienen suscripción
+  const { data: suscData, error: suscError } = await supabase
+    .schema('plataforma')
+    .from('suscripciones')
+    .select('tenant_id');
+
+  if (suscError) throw new Error(`Error al leer suscripciones existentes: ${suscError.message}`);
+  const tenantIdsConSusc = (suscData ?? []).map((s) => s.tenant_id as string);
+
+  // Todos los tenants.
+  // Excluir los que ya tienen suscripción (filtro en app si la lista es pequeña)
+  // PostgREST no soporta NOT IN con subquery, así que filtramos en TypeScript.
+  const { data: tenantsData, error: tenantsError } = await supabase
+    .schema('identidad')
+    .from('tenants')
+    .select('id, nombre_fantasia')
+    .order('nombre_fantasia', { ascending: true });
+
+  if (tenantsError) throw new Error(`Error al leer tenants: ${tenantsError.message}`);
+
+  const sinSusc = (tenantsData ?? []).filter(
+    (t) => !tenantIdsConSusc.includes(t.id as string),
+  );
+
+  return sinSusc.map((t) => ({
+    id: t.id as string,
+    nombreFantasia: (t.nombre_fantasia ?? null) as string | null,
+  }));
+}

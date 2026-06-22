@@ -20,6 +20,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { montosDesdeNeto } from '../montos';
 
 const TZ = 'America/Santiago';
 
@@ -76,20 +77,27 @@ export const jobCerrarPeriodo = inngest.createFunction(
 
         try {
           // Calcular totales desde líneas de cobro del período.
+          // IMPORTANTE: excluir líneas anuladas (anulada = false) para que los
+          // pedidos devueltos tras fallido no inflen el total de la factura.
           const { data: lineas, error: errorLineas } = await supabase
             .schema('dinero')
             .from('lineas_cobro')
             .select('monto_final_clp')
             .eq('tenant_id', tenantId)
-            .eq('periodo_cobro_id', pid);
+            .eq('periodo_cobro_id', pid)
+            .eq('anulada', false);
 
           if (errorLineas) throw new Error(`Error al leer líneas: ${errorLineas.message}`);
 
           const totalLineas = (lineas ?? []).length;
-          const montoTotal = (lineas ?? []).reduce(
+          // Las líneas guardan montos NETOS (tarifa = neto, decisión A2). El
+          // total del período es BRUTO (lo que el seller paga y contra lo que
+          // concilia la cobranza): neto + IVA, calculado UNA vez sobre la suma.
+          const netoTotal = (lineas ?? []).reduce(
             (acc, l) => acc + Math.round(Number(l.monto_final_clp)),
             0,
           );
+          const montoTotal = montosDesdeNeto(netoTotal).totalClp;
 
           // UPDATE a cerrado (idempotente: WHERE estado='abierto').
           const { error: errorUpdate } = await supabase

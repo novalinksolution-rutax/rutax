@@ -8,15 +8,17 @@
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, MapPinOff, Loader2 } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerPedido, listarIncidenciasDePedido } from "@/modules/operacion/index";
+import { obtenerPruebaEntregaPorPedido } from "@/modules/operacion/pruebas-entrega";
 import {
   puedeAsignarYReasignarPedidos,
   puedeGestionarIncidencias,
   puedeAjustarOperacionDiaria,
   puedeVerConciliacion,
+  puedeGestionarLiquidacionesConductores,
   puedeEmitirFacturas,
   puedeVerReportesEjecutivos,
 } from "@/modules/identidad/capacidades";
@@ -32,6 +34,11 @@ import {
   UMBRAL_INCIDENCIA_SIN_GESTION_HORAS,
   esIncidenciaSinGestion,
   horasDesde,
+  traducirGeoEstado,
+  traducirCoberturaEstado,
+  BADGE_GEO_ESTADO,
+  BADGE_COBERTURA_ESTADO,
+  requiereRevisionGeo,
 } from "@/lib/ui/traduccion-estados";
 import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { Pedido, Incidencia } from "@/modules/operacion/tipos";
@@ -39,6 +46,8 @@ import { DrawerCambioEstado } from "./drawer-cambio-estado";
 import { DrawerIncidencia } from "./drawer-incidencia";
 import { DialogReasignacion } from "./dialog-reasignacion";
 import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
+import { VisorPod } from "./visor-pod";
+import { AccionesCorregirDinero } from "./acciones-corregir-dinero";
 
 // =============================================================================
 // Carga de datos
@@ -97,9 +106,10 @@ export default async function PaginaDetallePedido({ params }: Props) {
   const { pedido, incidencias } = await cargarDatos(pedidoId, tenantId);
   if (!pedido) notFound();
 
-  const [historial, asignacion] = await Promise.all([
+  const [historial, asignacion, pod] = await Promise.all([
     cargarHistorialEstados(pedidoId, tenantId),
     cargarAsignacion(pedidoId, tenantId),
+    obtenerPruebaEntregaPorPedido(crearClienteServiceRole(), pedidoId, tenantId),
   ]);
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
@@ -147,6 +157,20 @@ export default async function PaginaDetallePedido({ params }: Props) {
             <p className="mt-1 text-muted-foreground">
               {pedido.destinatarioDireccion}, {pedido.destinatarioComuna}
             </p>
+            {/* Badge discreto en el encabezado cuando la dirección requiere revisión */}
+            {requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado) && (
+              <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-destructive-subtle px-2.5 py-1 text-xs font-medium text-destructive-subtle-foreground">
+                <MapPinOff className="size-3.5" aria-hidden="true" />
+                Dirección requiere revisión antes de rutear
+              </div>
+            )}
+            {/* Indicador sutil si el geocoding está en curso */}
+            {pedido.geoEstado === "pendiente" && !requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado) && (
+              <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                Ubicando dirección…
+              </div>
+            )}
           </div>
           <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]} className="px-3 py-1 text-sm">
             {traducirEstadoPedido(pedido.estado)}
@@ -179,6 +203,12 @@ export default async function PaginaDetallePedido({ params }: Props) {
         </dl>
       </div>
 
+      {/* Sección A.2 — Estado de geocoding (solo cuando es relevante) */}
+      <SeccionGeocoding pedido={pedido} />
+
+      {/* Sección A.3 — Prueba de entrega (POD) del ciclo same-day propio */}
+      {pod && <VisorPod pod={pod} />}
+
       {/* Sección A.5 — Trazabilidad del lazo entrega→dinero (solo roles financieros) */}
       {puedeVerDinero && traza && (
         <section aria-labelledby="traza-titulo">
@@ -186,6 +216,22 @@ export default async function PaginaDetallePedido({ params }: Props) {
             Trazabilidad del dinero
           </h2>
           <TrazadorLazo traza={traza} pedidoEntregado={pedidoEntregado} />
+          {/* Corrección manual (B2): anular cobro/liquidación cuando el motor los
+              generó por defecto pero no corresponden, si el período/liquidación
+              siguen mutables. El RBAC fino y las guardas las impone el dominio. */}
+          <AccionesCorregirDinero
+            pedidoId={pedido.id}
+            puedeAnularCobro={
+              puedeVerConciliacion(sesion.usuario) &&
+              !!traza.cobro &&
+              (!traza.periodo || traza.periodo.estado === "abierto")
+            }
+            puedeAnularLiquidacion={
+              puedeGestionarLiquidacionesConductores(sesion.usuario) &&
+              !!traza.liquidacion &&
+              traza.liquidacion.estado === "borrador"
+            }
+          />
         </section>
       )}
 
@@ -292,6 +338,104 @@ export default async function PaginaDetallePedido({ params }: Props) {
         usuarioId={sesion.usuarioId}
       />
     </div>
+  );
+}
+
+// =============================================================================
+// Sección de geocoding — visible solo cuando hay información relevante
+// (pendiente, no_resuelto, fuera_cobertura, sin_tarifa_zona, requiere_revision)
+// "resuelto"+"tarifada" no muestran nada para no ensuciar la pantalla.
+// =============================================================================
+
+function SeccionGeocoding({ pedido }: { pedido: Pedido }) {
+  const geoOk = pedido.geoEstado === "resuelto";
+  const coberturaOk = pedido.coberturaEstado === "tarifada";
+
+  // Si todo está bien, no mostrar nada
+  if (geoOk && coberturaOk) return null;
+
+  const esPendiente = pedido.geoEstado === "pendiente";
+  const requiereRevision = requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado);
+
+  return (
+    <section aria-labelledby="geo-titulo">
+      <h2 id="geo-titulo" className="mb-3 text-base font-semibold">
+        Verificación de dirección
+      </h2>
+      <div
+        className={[
+          "rounded-xl border p-4 text-sm",
+          requiereRevision
+            ? "border-destructive-subtle bg-destructive-subtle/40"
+            : "border-border bg-muted/30",
+        ].join(" ")}
+      >
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* Estado geocoding */}
+          <div>
+            <dt className="text-xs text-muted-foreground">Ubicación</dt>
+            <dd className="mt-0.5 flex items-center gap-2">
+              {esPendiente ? (
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  {traducirGeoEstado(pedido.geoEstado)}
+                </span>
+              ) : (
+                <Badge variant={BADGE_GEO_ESTADO[pedido.geoEstado]}>
+                  {traducirGeoEstado(pedido.geoEstado)}
+                </Badge>
+              )}
+            </dd>
+          </div>
+
+          {/* Estado cobertura */}
+          {!esPendiente && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Cobertura / tarifa</dt>
+              <dd className="mt-0.5">
+                <Badge variant={BADGE_COBERTURA_ESTADO[pedido.coberturaEstado]}>
+                  {traducirCoberturaEstado(pedido.coberturaEstado)}
+                </Badge>
+              </dd>
+            </div>
+          )}
+
+          {/* Coordenadas — solo si resuelto */}
+          {geoOk && pedido.lat !== null && pedido.long !== null && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Coordenadas</dt>
+              <dd className="font-mono text-xs text-muted-foreground tabular-nums">
+                {pedido.lat.toFixed(6)}, {pedido.long.toFixed(6)}
+              </dd>
+            </div>
+          )}
+
+          {/* Fecha geocodificación */}
+          {pedido.geocodificadoEn && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Geocodificado</dt>
+              <dd className="text-xs text-muted-foreground">
+                {new Date(pedido.geocodificadoEn).toLocaleString("es-CL")}
+              </dd>
+            </div>
+          )}
+        </dl>
+
+        {/* Confianza — solo si hay valor */}
+        {pedido.geoConfianza !== null && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Confianza del proveedor: {Math.round(pedido.geoConfianza * 100)}%
+          </p>
+        )}
+
+        {/* Guía de acción cuando requiere revisión */}
+        {requiereRevision && (
+          <p className="mt-3 text-xs font-medium text-destructive-subtle-foreground">
+            Verifica la dirección con el seller antes de asignar este pedido a un manifiesto.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 

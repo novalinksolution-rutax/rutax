@@ -223,7 +223,7 @@ function FormularioTarifaPorDefecto({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tarifa-defecto-monto">Monto por entrega (CLP)</Label>
+              <Label htmlFor="tarifa-defecto-monto">Monto neto por entrega (CLP)</Label>
               <div className="relative">
                 <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">$</span>
                 <Input
@@ -235,6 +235,7 @@ function FormularioTarifaPorDefecto({
                   onChange={(evento) => setMontoTexto(soloDigitos(evento.target.value))}
                 />
               </div>
+              <p className="text-xs text-muted-foreground">Sin IVA — el 19% se agrega al emitir la factura.</p>
             </div>
           </div>
 
@@ -435,7 +436,7 @@ function FormularioTarifaEspecifica({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="tarifa-especifica-monto">Monto por entrega (CLP)</Label>
+          <Label htmlFor="tarifa-especifica-monto">Monto neto por entrega (CLP)</Label>
           <div className="relative">
             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">$</span>
             <Input

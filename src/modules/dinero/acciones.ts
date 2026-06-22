@@ -27,6 +27,7 @@ import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import type { EstadoEventoConciliacion } from './tipos';
 import { conciliarPagoPersistido } from './aplicar-pago';
 import { esEstadoTerminal } from './matching-pago';
+import { montosDesdeNeto } from './montos';
 
 /**
  * Valida y normaliza (trim) un motivo de texto libre del usuario con zod (#10).
@@ -93,18 +94,25 @@ export async function cerrarPeriodoManualmente(
   }
 
   // Calcular totales desde las líneas de cobro.
+  // IMPORTANTE: excluir líneas anuladas (anulada = false) — las líneas de
+  // pedidos devueltos tras fallido se anulan antes del cierre; incluirlas
+  // inflaría el monto del DTE y lo haría incorrecto ante el SII.
   const { data: totalesData, error: errorTotales } = await supabase
     .schema('dinero')
     .from('lineas_cobro')
     .select('monto_final_clp')
     .eq('tenant_id', tenantId)
-    .eq('periodo_cobro_id', periodoId);
+    .eq('periodo_cobro_id', periodoId)
+    .eq('anulada', false);
 
   if (errorTotales) throw new Error(`Error al calcular totales: ${errorTotales.message}`);
 
   const lineas = totalesData ?? [];
   const totalLineas = lineas.length;
-  const montoTotal = lineas.reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0);
+  // Líneas en NETO (tarifa = neto, A2). El total del período es BRUTO (neto +
+  // IVA), calculado una sola vez sobre la suma — igual que el cron C2.
+  const netoTotal = lineas.reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0);
+  const montoTotal = montosDesdeNeto(netoTotal).totalClp;
 
   // Actualizar período a cerrado.
   const { error: errorUpdate } = await supabase
@@ -431,6 +439,104 @@ export async function emitirNotaCreditoPeriodo(
 }
 
 // =============================================================================
+// emitirPagoLiquidacion — COMPUERTA DE PAGO A CONDUCTOR (F19)
+// =============================================================================
+
+/**
+ * Solicita el pago de una liquidación de conductor YA emitida. Es la compuerta
+ * de aprobación humana del dinero SALIENTE del motor entrega→dinero: ningún
+ * proceso automático emite un payout; solo esta acción, disparada por una
+ * persona con permiso de gestión de liquidaciones, publica el evento que activa
+ * el job `jobEjecutarPayout`.
+ *
+ * Por qué existe la compuerta: una transferencia bancaria real es irreversible.
+ * El levantamiento exige "aprobación humana antes de pagar" (RF-F19). La
+ * auto-emisión en un cron convertiría un error de monto en un pago incorrecto
+ * sin posibilidad de retención.
+ *
+ * Precondiciones:
+ * - Capacidad `gestionar_liquidaciones_conductores` (dueño o administración).
+ * - La liquidación debe estar en estado `emitida` (ya revisada y aprobada).
+ * - `monto_total_clp > 0`.
+ *
+ * Efectos:
+ * - Registra en bitácora (`dinero.pago_liquidacion_solicitado`, con autor).
+ * - Publica `dinero/liquidacion.pago-solicitado` → dispara jobEjecutarPayout.
+ *
+ * @param actorUsuarioId UUID de auth del usuario que ejecuta la acción
+ *   (`sesion.usuarioId`). Queda en la bitácora — RNF-04 exige el "quién".
+ */
+export async function emitirPagoLiquidacion(
+  tenantId: string,
+  liquidacionId: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeGestionarLiquidacionesConductores(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede solicitar el pago de liquidaciones a conductores.',
+    );
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  // Leer la liquidación y verificar que pertenece al tenant.
+  const { data: liq, error: errorLectura } = await supabase
+    .schema('dinero')
+    .from('liquidaciones')
+    .select('id, tenant_id, driver_id, estado, monto_total_clp')
+    .eq('id', liquidacionId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errorLectura) throw new Error(`Error al leer liquidación: ${errorLectura.message}`);
+  if (!liq) throw new ErrorValidacion(`Liquidación ${liquidacionId} no encontrada en el tenant.`);
+
+  if (liq.estado !== 'emitida') {
+    throw new ErrorValidacion(
+      `La liquidación está en estado '${liq.estado}' — solo se pueden pagar liquidaciones en estado 'emitida'.`,
+    );
+  }
+
+  const montoTotal = Math.round(Number(liq.monto_total_clp ?? 0));
+  if (montoTotal <= 0) {
+    throw new ErrorValidacion('La liquidación no tiene monto a pagar.');
+  }
+
+  // Bitácora ANTES de publicar el evento (acción financiera auditada aunque
+  // `inngest.send` falle — invariante del proyecto, RNF-04).
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.pago_liquidacion_solicitado',
+    entidadTipo: 'liquidacion',
+    entidadId: liquidacionId,
+    detalle: {
+      driver_id: liq.driver_id,
+      monto_total_clp: montoTotal,
+      estado_anterior: 'emitida',
+    },
+  });
+
+  // Publicar evento — después de la bitácora. El job jobEjecutarPayout consume
+  // este evento y ejecuta la transferencia de forma idempotente. El id del evento
+  // garantiza deduplicación de Inngest: un solo envío aunque la acción se llame
+  // dos veces para la misma liquidación.
+  await inngest.send({
+    name: 'dinero/liquidacion.pago-solicitado',
+    id: `pago-solicitado-${liquidacionId}`,
+    data: {
+      liquidacionId,
+      tenantId,
+      driverId: liq.driver_id as string,
+      montoTotalClp: montoTotal,
+      solicitadoPorUsuarioId: actorUsuarioId,
+    },
+  });
+}
+
+// =============================================================================
 // marcarLiquidacionPagada
 // =============================================================================
 
@@ -497,6 +603,92 @@ export async function marcarLiquidacionPagada(
       monto_total_clp: liq.monto_total_clp,
     },
   });
+}
+
+// =============================================================================
+// ajustarLiquidacion (F16 — bono/penalización manual)
+// =============================================================================
+
+/**
+ * Aplica un ajuste manual (bono y/o penalización) a una liquidación en borrador.
+ *
+ * Precondiciones:
+ * - El usuario debe tener capacidad `gestionar_liquidaciones_conductores`.
+ * - La liquidación debe estar en estado `borrador` (no emitida ni pagada).
+ *
+ * El monto final a pagar al conductor =
+ *   monto_total_clp + bono_clp - penalizacion_clp
+ * Este cálculo es responsabilidad de la capa de presentación; aquí solo
+ * persistimos los componentes del ajuste.
+ */
+export async function ajustarLiquidacion(
+  tenantId: string,
+  liquidacionId: string,
+  bonoClp: number,
+  penalizacionClp: number,
+  notaAjuste: string | null,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeGestionarLiquidacionesConductores(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede ajustar liquidaciones.',
+    );
+  }
+  if (!Number.isInteger(bonoClp) || bonoClp < 0) {
+    throw new ErrorValidacion('El bono debe ser un entero CLP mayor o igual a cero.');
+  }
+  if (!Number.isInteger(penalizacionClp) || penalizacionClp < 0) {
+    throw new ErrorValidacion('La penalización debe ser un entero CLP mayor o igual a cero.');
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: liq, error: errorLectura } = await supabase
+    .schema('dinero')
+    .from('liquidaciones')
+    .select('id, tenant_id, driver_id, estado, monto_total_clp')
+    .eq('id', liquidacionId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errorLectura) throw new Error(`Error al leer liquidación: ${errorLectura.message}`);
+  if (!liq) throw new ErrorValidacion(`Liquidación ${liquidacionId} no encontrada.`);
+  if (liq.estado !== 'borrador') {
+    throw new ErrorValidacion(
+      `La liquidación está en estado '${liq.estado}' — solo se pueden ajustar las que están en borrador.`,
+    );
+  }
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.liquidacion_ajustada',
+    entidadTipo: 'liquidacion',
+    entidadId: liquidacionId,
+    detalle: {
+      driver_id: liq.driver_id,
+      bono_clp: bonoClp,
+      penalizacion_clp: penalizacionClp,
+      nota_ajuste: notaAjuste,
+    },
+  });
+
+  const { error: errorUpdate } = await supabase
+    .schema('dinero')
+    .from('liquidaciones')
+    .update({
+      bono_clp: bonoClp,
+      penalizacion_clp: penalizacionClp,
+      nota_ajuste: notaAjuste ?? null,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', liquidacionId)
+    .eq('tenant_id', tenantId)
+    .eq('estado', 'borrador');
+
+  if (errorUpdate) throw new Error(`Error al ajustar liquidación: ${errorUpdate.message}`);
 }
 
 // =============================================================================
@@ -802,4 +994,207 @@ export async function descartarPago(
     .eq('id', pagoId)
     .eq('tenant_id', tenantId);
   if (errUpdate) throw new Error(`Error al descartar pago: ${errUpdate.message}`);
+}
+
+// =============================================================================
+// anularLineaCobroPedido — corrección manual del cobro (B2)
+// =============================================================================
+
+/**
+ * Anula manualmente la línea de cobro de un pedido cuando el cobro al seller no
+ * corresponde — p. ej. un fallido que el motor cargó por defecto (incidencia
+ * `tipo='otro'` ⇒ afecta_cobro=true) pero que, revisado, no debe facturarse.
+ *
+ * Es la palanca que faltaba: la afectación de la incidencia se fija al abrir y
+ * no se puede reclasificar, así que esta acción permite a dueño/administración
+ * corregir el dinero directamente, SIN depender del `tipo` de la incidencia.
+ *
+ * Precondiciones:
+ * - Capacidad `ver_conciliacion` (dueño o administración) — es una acción
+ *   financiera; el supervisor gestiona la incidencia, no el cobro.
+ * - La línea debe existir, no estar ya anulada, y su período debe seguir
+ *   `abierto` (mutable). Si el período está cerrado/facturado, la corrección va
+ *   por nota de crédito (RF-038), no por anulación.
+ *
+ * Efectos (BITÁCORA ANTES del efecto, con `actorUsuarioId` — RNF-04):
+ * - Registra `dinero.linea_cobro_anulada_manual` (con motivo) en bitácora.
+ * - Marca la línea `anulada=true` (los totales del período la excluyen).
+ * - Resetea `operacion.pedidos.cobro_generado=false`.
+ */
+export async function anularLineaCobroPedido(
+  tenantId: string,
+  pedidoId: string,
+  motivo: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeVerConciliacion(usuario)) {
+    throw new ErrorValidacion('Solo el dueño o administración puede anular líneas de cobro.');
+  }
+
+  const motivoLimpio = validarMotivo(motivo);
+  const supabase = crearClienteServiceRole();
+
+  const { data: linea, error: errLinea } = await supabase
+    .schema('dinero')
+    .from('lineas_cobro')
+    .select('id, anulada, periodo_cobro_id, monto_final_clp')
+    .eq('pedido_id', pedidoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errLinea) throw new Error(`Error al leer línea de cobro: ${errLinea.message}`);
+  if (!linea) throw new ErrorValidacion('No hay línea de cobro para este pedido.');
+  if (linea.anulada) throw new ErrorValidacion('La línea de cobro ya está anulada.');
+
+  if (linea.periodo_cobro_id) {
+    const { data: periodo, error: errPeriodo } = await supabase
+      .schema('dinero')
+      .from('periodos_cobro')
+      .select('estado')
+      .eq('id', linea.periodo_cobro_id as string)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (errPeriodo) throw new Error(`Error al leer período: ${errPeriodo.message}`);
+    if (periodo && periodo.estado !== 'abierto') {
+      throw new ErrorValidacion(
+        `No se puede anular: el período está '${periodo.estado}'. Para revertir un cobro ya facturado, emite una nota de crédito.`,
+      );
+    }
+  }
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.linea_cobro_anulada_manual',
+    entidadTipo: 'pedido',
+    entidadId: pedidoId,
+    detalle: {
+      linea_id: linea.id,
+      periodo_cobro_id: linea.periodo_cobro_id ?? null,
+      monto_final_clp: Math.round(Number(linea.monto_final_clp ?? 0)),
+      motivo: motivoLimpio,
+    },
+  });
+
+  const { error: errUpdate } = await supabase
+    .schema('dinero')
+    .from('lineas_cobro')
+    .update({
+      anulada: true,
+      anulada_en: new Date().toISOString(),
+      motivo_anulacion: 'ajuste_manual',
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', linea.id as string)
+    .eq('tenant_id', tenantId)
+    .eq('anulada', false); // idempotente
+  if (errUpdate) throw new Error(`Error al anular línea de cobro: ${errUpdate.message}`);
+
+  await supabase
+    .schema('operacion')
+    .from('pedidos')
+    .update({ cobro_generado: false, actualizado_en: new Date().toISOString() })
+    .eq('id', pedidoId)
+    .eq('tenant_id', tenantId);
+}
+
+// =============================================================================
+// anularLineaLiquidacionPedido — corrección manual de la liquidación (B2)
+// =============================================================================
+
+/**
+ * Anula manualmente la línea de liquidación de un pedido cuando no corresponde
+ * pagar al conductor por ese pedido. Análoga a `anularLineaCobroPedido` para el
+ * lado del dinero saliente.
+ *
+ * Precondiciones:
+ * - Capacidad `gestionar_liquidaciones_conductores` (dueño o administración).
+ * - La línea debe existir, no estar anulada, y su liquidación debe seguir en
+ *   `borrador` (las `emitida`/`pagada` son inmutables).
+ *
+ * Efectos (BITÁCORA ANTES del efecto, con `actorUsuarioId`):
+ * - Registra `dinero.linea_liquidacion_anulada_manual` en bitácora.
+ * - Marca la línea `anulada=true` y resetea `pedidos.liquidacion_generada=false`.
+ */
+export async function anularLineaLiquidacionPedido(
+  tenantId: string,
+  pedidoId: string,
+  motivo: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeGestionarLiquidacionesConductores(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede anular líneas de liquidación.',
+    );
+  }
+
+  const motivoLimpio = validarMotivo(motivo);
+  const supabase = crearClienteServiceRole();
+
+  const { data: linea, error: errLinea } = await supabase
+    .schema('dinero')
+    .from('lineas_liquidacion')
+    .select('id, anulada, liquidacion_id, monto_final_clp')
+    .eq('pedido_id', pedidoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errLinea) throw new Error(`Error al leer línea de liquidación: ${errLinea.message}`);
+  if (!linea) throw new ErrorValidacion('No hay línea de liquidación para este pedido.');
+  if (linea.anulada) throw new ErrorValidacion('La línea de liquidación ya está anulada.');
+
+  if (linea.liquidacion_id) {
+    const { data: liq, error: errLiq } = await supabase
+      .schema('dinero')
+      .from('liquidaciones')
+      .select('estado')
+      .eq('id', linea.liquidacion_id as string)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (errLiq) throw new Error(`Error al leer liquidación: ${errLiq.message}`);
+    if (liq && liq.estado !== 'borrador') {
+      throw new ErrorValidacion(
+        `No se puede anular: la liquidación está '${liq.estado}'. Solo se anulan líneas de liquidaciones en borrador.`,
+      );
+    }
+  }
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.linea_liquidacion_anulada_manual',
+    entidadTipo: 'pedido',
+    entidadId: pedidoId,
+    detalle: {
+      linea_id: linea.id,
+      liquidacion_id: linea.liquidacion_id ?? null,
+      monto_final_clp: Math.round(Number(linea.monto_final_clp ?? 0)),
+      motivo: motivoLimpio,
+    },
+  });
+
+  const { error: errUpdate } = await supabase
+    .schema('dinero')
+    .from('lineas_liquidacion')
+    .update({
+      anulada: true,
+      anulada_en: new Date().toISOString(),
+      motivo_anulacion: 'ajuste_manual',
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', linea.id as string)
+    .eq('tenant_id', tenantId)
+    .eq('anulada', false);
+  if (errUpdate) throw new Error(`Error al anular línea de liquidación: ${errUpdate.message}`);
+
+  await supabase
+    .schema('operacion')
+    .from('pedidos')
+    .update({ liquidacion_generada: false, actualizado_en: new Date().toISOString() })
+    .eq('id', pedidoId)
+    .eq('tenant_id', tenantId);
 }

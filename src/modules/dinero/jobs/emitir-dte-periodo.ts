@@ -56,7 +56,7 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
     retries: 4,
   },
   async ({ event, step, logger, runId }) => {
-    const { periodoCobroidId, tenantId, sellerId, montoTotalClp } = event.data as {
+    const { periodoCobroidId, tenantId, sellerId } = event.data as {
       periodoCobroidId: string;
       tenantId: string;
       sellerId: string;
@@ -130,15 +130,31 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
       return reservarFolio(tenantId, 33);
     });
 
+    // Step 3b: Sumar el NETO autoritativo del período desde sus líneas.
+    // Decisión A2: las tarifas/líneas están en NETO; el DTE se factura
+    // neto + IVA(19%) + total. Se suma directo de las líneas (no se invierte el
+    // total bruto del período) para que el neto del DTE sea EXACTAMENTE la suma
+    // de líneas — el `total` resultante coincide con `periodos_cobro.monto_total_clp`
+    // (ambos usan el mismo cálculo `montosDesdeNeto`), sin deriva de ±1 CLP.
+    const netoTotal = await step.run('sumar-neto-periodo', async () => {
+      const supabase = crearClienteServiceRole();
+      const { data, error } = await supabase
+        .schema('dinero')
+        .from('lineas_cobro')
+        .select('monto_final_clp')
+        .eq('tenant_id', tenantId)
+        .eq('periodo_cobro_id', periodoCobroidId)
+        .eq('anulada', false);
+
+      if (error) throw new Error(`Error al sumar neto del período: ${error.message}`);
+      return (data ?? []).reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0);
+    });
+
     // Step 4: Llamar al proveedor DTE.
     // Si falla por red → Inngest reintenta este step.
     // Las credenciales NO se loguean.
     const resultadoDte = await step.run('llamar-proveedor-dte', async () => {
       const puerto = await obtenerPuertoDte(tenantId);
-
-      // Calcular montos (IVA 19% en Chile).
-      const montoNeto = Math.round(montoTotalClp / 1.19);
-      const montoIva = montoTotalClp - montoNeto;
 
       const resultado = await puerto.emitirFactura(tenantId, {
         rutEmisor: datosSeller.rutEmisor,
@@ -152,7 +168,7 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
           {
             nombre: `Servicios de delivery período ${periodoCobroidId}`,
             cantidad: 1,
-            precioUnitarioNetoCLP: montoNeto,
+            precioUnitarioNetoCLP: netoTotal,
           },
         ],
       });
