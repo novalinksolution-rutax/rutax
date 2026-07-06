@@ -23,7 +23,9 @@ import {
   traducirEstadoConciliacion,
   BADGE_ESTADO_CONCILIACION,
   traducirTipoDiferencia,
+  badgeTipoDiferencia,
 } from "@/lib/ui/traduccion-estados";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -51,12 +53,20 @@ const ESTADOS_CONCIL: EstadoEventoConciliacion[] = [
 ];
 
 const TIPOS_DIFERENCIA: TipoDiferenciaConciliacion[] = [
+  // Tipos originales (C6)
   "pedido_entregado_sin_linea_cobro",
   "pedido_entregado_sin_linea_liquidacion",
   "linea_cobro_sin_pedido_entregado",
   "folio_consumido_sin_dte_persistido",
   "periodo_cerrado_con_lineas_sueltas",
   "monto_dte_difiere_de_lineas",
+  // Tipos nuevos (C7 / F17)
+  "pagado_conductor_sin_cobro_seller",
+  "cobrado_seller_no_pagado_conductor",
+  "reprogramacion_no_cobrada",
+  "minimo_omitido",
+  "pago_seller_faltante",
+  "pago_conductor_faltante",
 ];
 
 const COLOR_CHIP: Record<EstadoEventoConciliacion, string> = {
@@ -262,16 +272,19 @@ export default async function PaginaConciliacion({
             <Table densidad="compact" aria-label="Eventos de conciliación">
               <TableHeader>
                 <TableRow className="bg-muted/40">
-                  <TableHead className="px-4" style={{ width: "28%" }}>
+                  <TableHead className="px-4" style={{ width: "24%" }}>
                     Tipo diferencia
                   </TableHead>
-                  <TableHead className="hidden px-4 sm:table-cell" style={{ width: "14%" }}>
+                  <TableHead className="hidden px-4 sm:table-cell" style={{ width: "12%" }}>
                     Seller
                   </TableHead>
-                  <TableHead className="hidden px-4 md:table-cell" style={{ width: "12%" }}>
+                  <TableHead className="hidden px-4 md:table-cell" style={{ width: "10%" }}>
                     Pedido
                   </TableHead>
-                  <TableHead className="px-4" style={{ width: "28%" }}>
+                  <TableHead className="hidden px-4 lg:table-cell text-right" style={{ width: "10%" }}>
+                    Diferencia
+                  </TableHead>
+                  <TableHead className="px-4" style={{ width: "26%" }}>
                     Descripción
                   </TableHead>
                   <TableHead className="hidden px-4 lg:table-cell" style={{ width: "8%" }}>
@@ -303,6 +316,7 @@ const MAX_DESC_CHARS = 120;
 
 function FilaEvento({ evento }: { evento: EventoConNombre }) {
   const textoEstado = traducirEstadoConciliacion(evento.estado);
+  const varianteTipo = badgeTipoDiferencia(evento.tipoDiferencia);
 
   const descripcionCorta =
     evento.descripcion.length > MAX_DESC_CHARS
@@ -311,12 +325,25 @@ function FilaEvento({ evento }: { evento: EventoConNombre }) {
   const descripcionCompleta =
     evento.descripcion.length > MAX_DESC_CHARS ? evento.descripcion : null;
 
+  // F17: indica si la discrepancia involucra una liquidación de conductor.
+  const tieneReferenciaConductor = !!(evento.driverId || evento.liquidacionId);
+
   return (
     <TableRow className="group">
       <TableCell className="px-4">
-        <p className="text-sm font-medium whitespace-normal">
-          {traducirTipoDiferencia(evento.tipoDiferencia)}
-        </p>
+        <div className="flex flex-col gap-1">
+          <Badge variant={varianteTipo} className="w-fit text-xs">
+            {traducirTipoDiferencia(evento.tipoDiferencia)}
+          </Badge>
+          {tieneReferenciaConductor && (
+            <span className="text-xs text-muted-foreground">
+              Conductor
+              {evento.liquidacionId && (
+                <> · Liq. <span className="font-mono">#{evento.liquidacionId.slice(0, 8)}</span></>
+              )}
+            </span>
+          )}
+        </div>
       </TableCell>
 
       <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
@@ -331,6 +358,16 @@ function FilaEvento({ evento }: { evento: EventoConNombre }) {
           >
             #{evento.pedidoId.slice(0, 8)}
           </Link>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+
+      <TableCell className="hidden px-4 lg:table-cell text-right">
+        {evento.montoDiferenciaClp !== null ? (
+          <span className="font-mono text-sm font-semibold tabular-nums text-destructive">
+            {formatearCLP(evento.montoDiferenciaClp)}
+          </span>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}

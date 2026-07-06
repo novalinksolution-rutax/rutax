@@ -8,7 +8,7 @@
  * Fuente: tablas de traducción del documento docs/ux/fase-b-operacion.md (§B-1)
  */
 
-import type { EstadoPedido, TipoIncidencia, EstadoManifiesto, EstadoIncidencia } from "@/modules/operacion/tipos";
+import type { EstadoPedido, TipoIncidencia, EstadoManifiesto, EstadoIncidencia, EstadoGeocoding, CoberturaEstado } from "@/modules/operacion/tipos";
 import type {
   EstadoPeriodo,
   EstadoSii,
@@ -212,6 +212,68 @@ export const COLOR_ESTADO_MANIFIESTO = clasesPorEstado(VARIANTE_ESTADO_MANIFIEST
 export const BADGE_ESTADO_MANIFIESTO = badgePorEstado(VARIANTE_ESTADO_MANIFIESTO);
 
 // =============================================================================
+// EstadoGeocoding — F4, ítem 1.1 (migración 0013)
+// =============================================================================
+
+export const TEXTO_GEO_ESTADO: Record<EstadoGeocoding, string> = {
+  pendiente: "Ubicando dirección…",
+  resuelto: "Dirección ubicada",
+  no_resuelto: "Dirección no ubicada",
+  fuera_cobertura: "Fuera de cobertura",
+};
+
+export function traducirGeoEstado(estado: EstadoGeocoding): string {
+  return TEXTO_GEO_ESTADO[estado] ?? estado;
+}
+
+const VARIANTE_GEO_ESTADO: Record<EstadoGeocoding, VarianteEstado> = {
+  pendiente: "neutral",
+  resuelto: "exito",
+  no_resuelto: "error",
+  fuera_cobertura: "error",
+};
+export const BADGE_GEO_ESTADO = badgePorEstado(VARIANTE_GEO_ESTADO);
+
+// =============================================================================
+// CoberturaEstado — F4, ítem 1.1 (migración 0013)
+// =============================================================================
+
+export const TEXTO_COBERTURA_ESTADO: Record<CoberturaEstado, string> = {
+  pendiente: "Verificando cobertura…",
+  tarifada: "Comuna tarifada",
+  sin_tarifa_zona: "Comuna sin tarifa",
+  requiere_revision: "Revisar dirección",
+};
+
+export function traducirCoberturaEstado(estado: CoberturaEstado): string {
+  return TEXTO_COBERTURA_ESTADO[estado] ?? estado;
+}
+
+const VARIANTE_COBERTURA_ESTADO: Record<CoberturaEstado, VarianteEstado> = {
+  pendiente: "neutral",
+  tarifada: "exito",
+  sin_tarifa_zona: "advertencia",
+  requiere_revision: "advertencia",
+};
+export const BADGE_COBERTURA_ESTADO = badgePorEstado(VARIANTE_COBERTURA_ESTADO);
+
+/**
+ * Verdadero si el pedido requiere revisión manual de dirección/cobertura.
+ * Usado para mostrar la bandeja "Direcciones por revisar" y los badges de alerta.
+ */
+export function requiereRevisionGeo(
+  geoEstado: EstadoGeocoding,
+  coberturaEstado: CoberturaEstado,
+): boolean {
+  return (
+    geoEstado === "no_resuelto" ||
+    geoEstado === "fuera_cobertura" ||
+    coberturaEstado === "requiere_revision" ||
+    coberturaEstado === "sin_tarifa_zona"
+  );
+}
+
+// =============================================================================
 // Utilidades comunes
 // =============================================================================
 
@@ -358,16 +420,46 @@ export const BADGE_ESTADO_CONCILIACION = badgePorEstado(VARIANTE_ESTADO_CONCILIA
 // =============================================================================
 
 export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> = {
+  // Tipos originales (C6)
   pedido_entregado_sin_linea_cobro: "Pedido entregado sin línea de cobro",
   pedido_entregado_sin_linea_liquidacion: "Pedido entregado sin línea de liquidación",
   linea_cobro_sin_pedido_entregado: "Línea de cobro sin pedido entregado",
   folio_consumido_sin_dte_persistido: "Folio consumido sin DTE registrado",
   periodo_cerrado_con_lineas_sueltas: "Período cerrado con líneas sin asignar",
   monto_dte_difiere_de_lineas: "Monto del DTE no coincide con líneas",
+  // Tipos nuevos (C7 / F17 — detectores de 3 fuentes)
+  pagado_conductor_sin_cobro_seller: "Pagado al conductor sin cobro al seller (fuga)",
+  cobrado_seller_no_pagado_conductor: "Cobrado al seller sin liquidar al conductor",
+  reprogramacion_no_cobrada: "Reprogramación no cobrada",
+  minimo_omitido: "Mínimo de facturación no aplicado",
+  pago_seller_faltante: "Pago del seller pendiente de recibir",
+  pago_conductor_faltante: "Pago al conductor pendiente de emitir",
 };
 
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {
   return TEXTO_TIPO_DIFERENCIA[tipo] ?? tipo;
+}
+
+/**
+ * Verdadero si el tipo de diferencia corresponde a fuga directa de revenue.
+ * Estos tipos se muestran con variante "error" (alarma) en la bandeja.
+ *
+ * D1: `pagado_conductor_sin_cobro_seller` — se pagó sin cobrar (pérdida directa).
+ * D3: `reprogramacion_no_cobrada` — recargo omitido.
+ * D4: `minimo_omitido` — mínimo de facturación no aplicado.
+ */
+export function esFugaDirecta(tipo: TipoDiferenciaConciliacion): boolean {
+  return (
+    tipo === "pagado_conductor_sin_cobro_seller" ||
+    tipo === "reprogramacion_no_cobrada" ||
+    tipo === "minimo_omitido"
+  );
+}
+
+/** Variante de badge para el tipo de diferencia. Fuga directa → error; resto → advertencia. */
+export function badgeTipoDiferencia(tipo: TipoDiferenciaConciliacion): BadgeVariante {
+  if (esFugaDirecta(tipo)) return "error";
+  return "warning";
 }
 
 // =============================================================================

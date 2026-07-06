@@ -32,9 +32,25 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   obtenerMetricasDelDia,
   obtenerResumenFinancieroDelMes,
+  obtenerSlaPorSeller,
+  obtenerResumenCortePorSeller,
   type ResumenFinancieroMes,
+  type SlaPorSeller,
+  type ResumenCorteSeller,
 } from "@/modules/operacion/metricas";
-import { puedeVerReportesEjecutivos } from "@/modules/identidad/capacidades";
+import {
+  puedeVerReportesEjecutivos,
+  puedeVerConciliacion,
+} from "@/modules/identidad/capacidades";
+import { WidgetSlaPorSeller, TiraCortesSeller } from "./widget-sla";
+import {
+  FranjaAnaliticaFinanciera,
+  type DatosAnaliticaFinanciera,
+} from "./widget-analitica-financiera";
+import {
+  obtenerResumenFinanciero,
+  obtenerCostoPorConductor,
+} from "@/modules/dinero/analitica";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -122,7 +138,7 @@ async function cargarDatosDashboard(tenantId: string) {
     cliente
       .schema("identidad")
       .from("conexiones_seller_ml")
-      .select("id, seller_id, sellers!conexiones_seller_ml_seller_id_fkey(razon_social)")
+      .select("id, seller_id, alias, ml_nickname, sellers!conexiones_seller_ml_seller_id_fkey(razon_social)")
       .eq("tenant_id", tenantId)
       .eq("estado_salud", "desvinculada"),
   ]);
@@ -138,11 +154,18 @@ async function cargarDatosDashboard(tenantId: string) {
       horasAbierta: Math.floor(horasDesde(inc.abierta_en)),
     }));
 
+  // Modelo 1:N — puede haber varias conexiones caídas por seller. La clave es
+  // el id de la CONEXIÓN y el nombre incluye la cuenta (alias/nickname) cuando
+  // el seller tiene más de una, para que el courier sepa cuál está caída.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sellersCaidos: SellerCaido[] = (sellersRaw.data ?? []).map((row: any) => ({
-    id: row.seller_id,
-    nombre: row.sellers?.razon_social ?? row.seller_id,
-  }));
+  const sellersCaidos: SellerCaido[] = (sellersRaw.data ?? []).map((row: any) => {
+    const cuenta: string | null = row.alias?.trim() || row.ml_nickname?.trim() || null;
+    const nombreSeller: string = row.sellers?.razon_social ?? row.seller_id;
+    return {
+      id: row.id,
+      nombre: cuenta ? `${nombreSeller} · ${cuenta}` : nombreSeller,
+    };
+  });
 
   return { metricas, incidenciasSinGestion, sellersCaidos };
 }
@@ -233,6 +256,9 @@ export default async function PaginaDashboard() {
   let errorMetricas = false;
   let alertaFolios: AlertaFolios | null = null;
   let resumenFinanciero: ResumenFinancieroMes | null = null;
+  let slaPorSeller: SlaPorSeller[] = [];
+  let cortesPorSeller: ResumenCorteSeller[] = [];
+  let datosAnalitica: DatosAnaliticaFinanciera | null = null;
 
   // El resumen financiero se carga aparte: si fallara, no debe tumbar las
   // métricas operativas (ni viceversa).
@@ -246,15 +272,55 @@ export default async function PaginaDashboard() {
     resumenFinanciero = null;
   }
 
+  // F22 — Analítica financiera (solo para roles con ver_reportes_ejecutivos
+  // o ver_conciliacion). Si falla no tumba el resto del dashboard.
+  const puedeVerAnalitica =
+    puedeVerReportesEjecutivos(sesion.usuario) ||
+    puedeVerConciliacion(sesion.usuario);
+
+  if (puedeVerAnalitica) {
+    try {
+      const hoy = new Date();
+      const primeroDeMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
+      const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+      const ventana = { desde: primeroDeMes, hasta: hoyStr };
+      const clienteAnalitica = crearClienteServiceRole();
+
+      const [resumenAnalitica, topConductoresRaw] = await Promise.all([
+        obtenerResumenFinanciero(clienteAnalitica, tenantId, ventana),
+        obtenerCostoPorConductor(clienteAnalitica, tenantId, ventana).catch(() => []),
+      ]);
+
+      const meses = [
+        "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+      ];
+      const etiquetaPeriodo = `${meses[hoy.getMonth()]} ${hoy.getFullYear()}`;
+
+      datosAnalitica = {
+        resumen: resumenAnalitica,
+        topConductores: topConductoresRaw.slice(0, 5),
+        etiquetaPeriodo,
+      };
+    } catch {
+      datosAnalitica = null;
+    }
+  }
+
   try {
-    const [datos, alertaFoliosDatos] = await Promise.all([
+    const cliente = crearClienteServiceRole();
+    const [datos, alertaFoliosDatos, slaRaw, cortesRaw] = await Promise.all([
       cargarDatosDashboard(tenantId),
       cargarAlertaFolios(tenantId),
+      obtenerSlaPorSeller(cliente, tenantId, new Date(), "semana").catch(() => []),
+      obtenerResumenCortePorSeller(cliente, tenantId).catch(() => []),
     ]);
     metricas = datos.metricas;
     incidenciasSinGestion = datos.incidenciasSinGestion;
     sellersCaidos = datos.sellersCaidos;
     alertaFolios = alertaFoliosDatos;
+    slaPorSeller = slaRaw;
+    cortesPorSeller = cortesRaw;
   } catch {
     errorMetricas = true;
     metricas = {
@@ -339,13 +405,9 @@ export default async function PaginaDashboard() {
             {sellersCaidos.slice(0, 3).map((seller) => (
               <li key={seller.id} className="flex items-center justify-between gap-4">
                 <span className="font-medium">{seller.nombre}</span>
-                <Button
-                  asChild
-                  size="sm"
-                  className="border-transparent bg-white/15 text-current hover:bg-white/25"
-                >
-                  <Link href={`/portal/conectar-ml?sellerId=${seller.id}`}>Reconectar</Link>
-                </Button>
+                {/* El courier NO puede rehacer el OAuth por el seller — solo el
+                    seller reconecta desde su portal. Aquí es informativo. */}
+                <span className="shrink-0 text-sm opacity-90">El seller debe reconectarla</span>
               </li>
             ))}
           </ul>
@@ -358,6 +420,34 @@ export default async function PaginaDashboard() {
             </Link>
           )}
         </div>
+      )}
+
+      {/* Bloque 0.8 — Semáforo SLA por seller (F7, ítem 1.2) — PRIMER indicador de calidad */}
+      {slaPorSeller.length > 0 && (
+        <section aria-labelledby="sla-titulo">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2
+              id="sla-titulo"
+              className="text-sm font-semibold tracking-wide text-muted-foreground uppercase"
+            >
+              SLA por seller — últimos 7 días
+            </h2>
+          </div>
+          <WidgetSlaPorSeller datos={slaPorSeller} />
+        </section>
+      )}
+
+      {/* Bloque 0.9 — Tira de cortes próximos (solo si hay sellers con pedidos pendientes) */}
+      {cortesPorSeller.some((c) => c.pedidosPendientesHoy > 0 && c.horaCorte !== null) && (
+        <section aria-labelledby="cortes-titulo">
+          <h2
+            id="cortes-titulo"
+            className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase"
+          >
+            Cortes próximos
+          </h2>
+          <TiraCortesSeller datos={cortesPorSeller} />
+        </section>
       )}
 
       {/* Error al cargar métricas — no bloqueante */}
@@ -472,6 +562,11 @@ export default async function PaginaDashboard() {
             </article>
           </div>
         </section>
+      )}
+
+      {/* Bloque F22 — Analítica financiera (solo roles con reportes ejecutivos o conciliación) */}
+      {datosAnalitica && (
+        <FranjaAnaliticaFinanciera datos={datosAnalitica} />
       )}
 
       {/* Bloque 1.5 — Rezagados de ayer (solo si > 0) */}

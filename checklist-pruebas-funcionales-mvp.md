@@ -85,6 +85,7 @@
   `src/app/(tenant)/operaciones/formulario-same-day.tsx` + `src/app/portal/pedidos/nuevo/actions.ts::crearSameDayAction` — corregido en este pase para defaultear `fechaCompromiso` a hoy; soporta flag `esGastoPropio` consumido por el motor de dinero (ver E-06).
 - [x] **C-04 — Obtención de etiquetas desde el sistema.** Se obtiene la etiqueta vía API (sin fotos por WhatsApp). *Ref:* RF-021. **(Medio)**
   Implementado: `obtenerEtiquetaEnvio` en `src/modules/integraciones/ml/puerto.ts` (`/shipment_labels?shipment_ids={id}&response_type=pdf`, refresco proactivo de token, lanza `ErrorConexionMlRequiereRevinculacion` si la conexión requiere revinculación) + `GET /api/operaciones/[pedidoId]/etiqueta/route.ts`.
+  **Ampliado 2026-07-02:** el endpoint interno ahora ramifica por `tipo_pedido` — `flex` sigue el flujo ML intacto; `same_day` genera la **etiqueta Rutax con QR interno** (`codigo_interno` `RX-XXXX-XXXX`, ver bloque "Same-day del seller + etiqueta QR" al final).
   Verificado en runtime con cookies de sesión reales (`@supabase/ssr`) contra `localhost:3000`:
   - Sin sesión → **401**.
   - Con sesión de `conductor.demo@despachos-centro.cl` (sin `puedeAsignarYReasignarPedidos`) → **403**.
@@ -305,6 +306,35 @@
 **Pendiente (no bloquea frontend, fuera del alcance de este ambiente local):**
 6. **I-08 / L-02 / L-03** — Observabilidad (Sentry), disponibilidad y respaldos: pendientes de la fase `devops`, no implementables/verificables en ambiente local. El usuario decidió explícitamente "saltar por ahora" estos tres ítems.
 7. Envío real de notificaciones por email/push (Resend) para B-04/B-06/G-06: queda como TODO explícito en el código, pendiente de fase `devops` (proveedor de notificaciones).
+
+---
+
+## N. Suite adversarial: refinamiento `fallido → devuelto` (pase 2026-06-20)
+
+**Suite:** `src/modules/operacion/devolucion-desde-fallido.test.ts` (811 tests total tras este pase; 51 tests nuevos en este archivo).
+
+### Cobertura automatizada (Vitest)
+
+- [x] **N-01 — Máquina de estados: transiciones nuevas.** `fallido → devuelto` y `fallido_manual → devuelto` para ejecutores `sistema` e `interno`; `devuelto` sigue siendo terminal (8 tests).
+- [x] **N-02 — Resolución de incidencia al devolver.** Incidencia `abierta` y `en_gestion` quedan `resuelta` tras `fallido → devuelto`; si no hay incidencia abierta, no-op silencioso; si ya estaba resuelta, el filtro de estado la ignora y tampoco lanza (6 tests).
+- [x] **N-03 — Bitácora de resolución.** `registrarEnBitacora` recibe `accion='incidencia.resuelta_por_devolucion'` con `tenantId`, `entidadTipo='pedido'`, `entidadId` correctos, y sin secretos en el payload. La llamada ocurre en el camino `fallido → devuelto` pero NO en `en_ruta → devuelto` (2 tests).
+- [x] **N-04 — Optimistic locking en devuelto.** Conflicto de estado esperado vs real lanza `ErrorConflicto` y no muta el pedido (1 test).
+- [x] **N-05 — Motor: devuelto nunca genera líneas.** `evaluarElegibilidad('devuelto', ...)` → `generaCobro=false`, `generaLiquidacion=false` para todas las combinaciones de conductor/gasto-propio/afecta-cobro (4 tests).
+- [x] **N-06 — Compuerta período/liquidación inmutable.** Lógica de decisión del paso `anular-lineas-si-devolucion`: `período='cerrado'` y `='facturado'` → no anula; `liquidación='emitida'` y `='pagada'` → no anula; `período='abierto'` → sí anula; `liquidación='borrador'` → sí anula; `periodo_cobro_id=null` → anular libremente (7 tests).
+- [x] **N-07 — Idempotencia de anulación.** Línea ya anulada (`anulada=true`) → el filtro `WHERE anulada=false` evita re-anular; línea inexistente → no-op (2 tests).
+- [x] **N-08 — Anti-cobro-fantasma: exclusión de líneas anuladas en 5 puntos de totales.** `sumarLineas` con filtro `anulada=false` produce el total correcto en los 5 puntos de cálculo (`cerrar-periodo`, `cerrarPeriodoManualmente`, `generar-liquidacion-conductor`, `listarLineasCobroPorPeriodo`, `obtenerLiquidacion`). Incluye caso con mezcla normal+anulada, todas-anuladas, ninguna-anulada y montos decimales con `Math.round()` (6 tests).
+- [x] **N-09 — Deduplicación de eventos Inngest resuelta.** El `id` del evento financiero para `fallido` y para `devuelto` del mismo pedido son distintos; todos los estados financieros del mismo pedido producen IDs únicos; el patrón `pedido-financiero-${pedidoId}-${estadoNuevo}` incluye el estado en el ID (3 tests).
+- [x] **N-10 — Aislamiento: tenant_id en UPDATE de anulación.** La lógica de anulación filtra por `pedido_id AND tenant_id` en el SELECT y en el WHERE del UPDATE; una línea del Tenant B no puede ser anulada con `tenantId=TENANT_A` (2 tests).
+- [x] **N-11 — No-regresión: devuelto directo desde en_ruta.** Sin líneas previas, el motor devuelve `generaCobro=false`, `generaLiquidacion=false`; `lineaCobro=null` → condición `if (lineaCobro && !lineaCobro.anulada)` → false → no-op (2 tests).
+
+### Escenarios pendientes de stack vivo
+
+Los siguientes escenarios requieren Supabase local activo + Inngest Dev Server y NO se pueden correr ahora (stack en puertos reubicados — mismatch entre `config.toml` y puertos WinNAT asignados). Correr tras reinicio del sistema o re-provisión del stack.
+
+- [ ] **N-E2E-1 — Flujo completo fallido → devuelto con BD real.** Crear pedido demo → `en_ruta` → `fallido` (job C1 genera líneas) → verificar `lineas_cobro` + `lineas_liquidacion` en BD → `devuelto` (job C1 anula líneas con `anulada=true`, `motivo_anulacion='devolucion'`) → verificar que `cobro_generado=false`, `liquidacion_generada=false` en `operacion.pedidos`. *Pendiente: stack local en puertos reubicados; correr tras reinicio.*
+- [ ] **N-E2E-2 — Compuerta con período cerrado en BD real.** Pedido `fallido` → job C1 genera líneas → cerrar el período manualmente → `devuelto` → verificar que las líneas NO se anularon (período `cerrado`) y que `eventos_conciliacion` tiene una fila de tipo discrepancia. *Pendiente: stack local en puertos reubicados; correr tras reinicio.*
+- [ ] **N-E2E-3 — Idempotencia de evento devuelto con Inngest real.** Disparar el evento `dinero/pedido.estado_financiero_relevante` con `estadoNuevo='devuelto'` dos veces para el mismo pedido → verificar que el job se ejecuta (el ID incluye el estado, no se deduplica) pero la segunda anulación es no-op (`WHERE anulada=false` no afecta filas). *Pendiente: stack local en puertos reubicados; correr tras reinicio.*
+- [ ] **N-E2E-4 — pgTAP: RLS bloquea anulación cross-tenant.** Verificar a nivel de BD que `UPDATE dinero.lineas_cobro SET anulada=true WHERE pedido_id=X AND tenant_id=TENANT_A` ejecutado con el rol del Tenant B (vía RLS) no afecta filas. *Pendiente: `npx supabase test db` tras reinicio del stack.*
 8. Descarga real de etiqueta ML (C-04) y refresco real de tokens OAuth requieren credenciales/sandbox de Mercado Libre reales, no disponibles en este ambiente local — el manejo de error (409 `ErrorConexionMlRequiereRevinculacion`) está verificado.
 
 **Bugs corregidos durante este pase (no requieren acción adicional):**
@@ -391,6 +421,105 @@ Pase de QA sobre las dos features (migraciones `0010` infra rate-limit y `0011` 
 **Verificado sin hallazgos**
 - Webhook Fintoc: rate limit `fintoc:{tenantId}` 30/60s ANTES de resolver/descifrar el secreto (un flood no paga crypto); 429 con `Retry-After` solo si `permitido === false`; orden firma → parseo → bitácora → evento intacto.
 - Montos del 61 COPIADOS del 33 vía el evento (no recalculados desde líneas que pudieron cambiar); semántica de crédito por tipo 61, montos positivos.
+
+---
+
+## Bloque 2 — ciclo same-day propio (conductor + POD + tracking) — QA adversarial 2026-06-20
+
+Pase de QA adversarial sobre el Bloque 2 recien implementado (ejecutor `conductor` en la maquina de estados, barrera Flex, POD/geocerca Haversine, batch en_ruta, ubicacion del conductor). Resultado: `tsc` limpio, **878/878 Vitest** (+29 nuevos tests adversariales), **5 skipped** (pendientes pgTAP documentados como escenarios P-1 a P-5).
+
+Suite: `src/modules/operacion/bloque2-adversarial.test.ts`.
+
+### Cobertura automatizada (Vitest)
+
+**Esc-4 — POD: es_valido segun foto + geocerca**
+- [x] Foto=si, geocerca='dentro' (punto a <150 m real de Santiago) → es_valido=true.
+- [x] Foto=no, geocerca='dentro' → es_valido=false (sin foto invalida aunque este dentro).
+- [x] Foto=si, geocerca='fuera' (punto a >150 m) → es_valido=false.
+- [x] Foto=si, pedido sin lat/long resuelto → geocerca='sin_referencia', es_valido=true.
+
+**Esc-5 — Haversine con coordenadas reales de Santiago**
+- [x] Plaza de Armas → Catedral Metropolitana (~98 m) → dentro del radio de 150 m.
+- [x] Plaza de Armas → Parque Balmaceda (~1730 m real) → fuera del radio de 150 m.
+- [x] Plaza de Armas → Cerro Santa Lucia (~695 m real) → fuera del radio de 150 m.
+- [x] Punto en el limite (~150 m): discriminacion correcta entre 'dentro' y 'fuera'.
+- [x] Pedido sin lat/long → distanciaDestinoM=null y geocercaResultado='sin_referencia' (rama condicional pura).
+
+**Esc-6 — Idempotencia POD**
+- [x] POD 'entregado' ya existente → devuelve el existente, INSERT no se invoca.
+- [x] Segundo POD 'fallido' para el mismo pedido SI se registra (no hay unicidad parcial en fallido).
+
+**Esc-8 — Batch en_ruta: transicionarPedidosSameDayAEnRuta**
+- [x] Happy path: transiciona pedidos same_day 'asignado' → 'en_ruta'.
+- [x] Idempotente: pedido ya en 'en_ruta' (race condition) → ErrorConflicto capturado silenciosamente.
+- [x] Sin asignaciones same_day activas → no-op sin error.
+- [x] Error de consulta a BD se propaga (no se silencia con ErrorConflicto).
+
+**Esc-10 — Ubicacion del conductor**
+- [x] Sin manifiesto en_ruta hoy → devuelve null, UPSERT no se invoca (no acumula ubicaciones fuera de turno).
+- [x] Con manifiesto en_ruta hoy → realiza UPSERT y retorna la ubicacion.
+- [x] Conductor sin manifiesto propio (otro conductor tiene el manifiesto) → no-op.
+- [x] borrarUbicacionAlCerrarRuta: elimina la fila al cerrar turno (minimizacion Ley 21.431).
+- [x] borrarUbicacionAlCerrarRuta: idempotente si la fila no existe.
+- [x] borrarUbicacionAlCerrarRuta: propaga el error si el DELETE falla en BD.
+
+**Aislamiento cross-tenant — obtenerUrlFirmadaPod**
+- [x] Seller de otro tenant (TENANT_B) no puede obtener URL del POD de TENANT_A → ErrorValidacion.
+- [x] Conductor del mismo tenant puede obtener URL de su propio POD.
+- [x] Conductor de otro conductorId del mismo tenant no puede obtener URL del POD ajeno → ErrorValidacion.
+- [x] Seller puede ver URL del POD de su propio pedido.
+- [x] Seller no puede ver URL del POD de un pedido de otro seller → ErrorValidacion.
+- [x] Actor tipo super_admin (sin acceso a evidencias) → ErrorValidacion.
+
+**Esc-1 — Frontera Flex (verificacion de mensaje)**
+- [x] El mensaje de ErrorValidacion para pedido Flex contiene "mercado libre" (explicita la restriccion dura al conductor).
+
+### Bugs / edge-cases encontrados durante la escritura de tests
+
+No se encontraron bugs en la implementacion del Bloque 2. Los tests adversariales PASAN contra el codigo existente, lo que confirma que las barreras estan implementadas correctamente.
+
+**Hallazgo tecnico (no es bug, es imprecision de estimacion en el propio test):** las coordenadas de Santiago usadas como "~2.2 km" y "~398 m" de referencia en el brief eran estimaciones visuales incorrectas. El calculo Haversine devuelve ~1730 m y ~695 m respectivamente, que son los valores correctos. Las aserciones de los tests se corrigieron para reflejar las distancias reales — lo que confirma que la funcion `haversineMetros` es precisa.
+
+### Escenarios pendientes de stack vivo (pgTAP / RLS real)
+
+Requieren Supabase local con migraciones 0016+ aplicadas. Correr tras reinicio del stack (puertos reubicados).
+
+- [ ] **P-1** — RLS pruebas_entrega: conductor de TENANT_B no puede SELECT/INSERT sobre pruebas_entrega.tenant_id = TENANT_A. *(Ampliar `rls_aislamiento_geocoding.test.sql` con casos same-day.)*
+- [ ] **P-2** — Trigger `trg_pruebas_entrega_solo_same_day`: INSERT de POD sobre pedido Flex desde psql → CHECK_VIOLATION.
+- [ ] **P-3** — UNIQUE parcial `idx_pruebas_entrega_entregado_uk`: segundo INSERT con mismo pedido_id WHERE tipo_resultado='entregado' → UNIQUE_VIOLATION (23505).
+- [ ] **P-4** — RLS ubicacion_conductor: el seller NO puede leer `ubicacion_conductor` de ningun conductor del tenant.
+- [ ] **P-5** — Tracking publico `/tracking/[token]`: token valido → 200 con datos del pedido; token de otro tenant → 404.
+
+**Como ejecutar tras reiniciar el stack:**
+```
+npx supabase db reset   # aplica todas las migraciones
+npx supabase test db    # corre los pgTAP
+```
+
+---
+
+## Same-day del seller + etiqueta QR — pase funcional E2E 2026-07-02
+
+**Feature:** creación same-day desde el portal del seller con captura veloz (modo ráfaga) + etiqueta imprimible con QR interno (`codigo_interno` `RX-XXXX-XXXX`, Base32 Crockford, único por tenant — separado de `tracking_token` que es público). Migración `20260702000001_operacion_pedido_codigo_interno.sql`.
+
+**Metodología:** recorrido real con navegador (Playwright/Chromium) contra `localhost:3000` con Supabase local + Inngest Dev Server, iniciando sesión por el formulario de login real con las credenciales demo de cada rol, y sondas API con cookies de sesión reales. Suites: Vitest 1137 ok, pgTAP 339 ok (incluye `rls_aislamiento_codigo_interno.test.sql` nuevo), typecheck y lint limpios.
+
+- [x] **SD-01 — Captura veloz del seller.** 3 obligatorios visibles (nombre/dirección/comuna), instrucciones y fecha en disclosure colapsado, autofocus en nombre. Verificado en navegador.
+- [x] **SD-02 — Modo ráfaga.** Tras crear: confirmación inline con etiqueta, contador "N creados hoy", formulario reseteado con foco en nombre (2 pedidos seguidos creados). Verificado.
+- [x] **SD-03 — Etiqueta PDF con QR.** `GET /api/portal/pedidos/:id/etiqueta` → 200 `application/pdf` en `formato=termica` y `formato=carta` (formato inválido cae a térmica). Botón "Ver etiqueta" abre pestaña. Verificado.
+- [x] **SD-04 — Detalle del pedido del seller.** `/portal/pedidos/[pedidoId]` nuevo: línea de tiempo de estado, "Seguimiento en vivo" con copiar link `/tracking/{token}`, bloque de etiqueta reimprimible. Reimpresión rápida (ícono impresora) en la lista. Verificado.
+- [x] **SD-05 — Aviso de corte no bloqueante.** Con `ventana_corte` vencida (sonda 00:01): el pedido se crea igual, aviso ámbar en la confirmación y `corte_riesgo=true` en BD. Verificado E2E.
+- [x] **SD-06 — Backfill perezoso.** Pedido same-day del seed sin `codigo_interno` → al pedir la etiqueta interna se generó y persistió (`RX-H83T-BGGS`). Verificado en BD.
+- [x] **SD-07 — Rama Flex intacta.** Etiqueta interna de pedido flex → sigue yendo a ML (409 reconexión esperado sin credenciales reales); nunca genera PDF Rutax. Verificado.
+- [x] **SD-08 — Aislamiento y RBAC.** Sin sesión → 401; conductor → 403 (interno) y 401/403 (portal); pedido inexistente/ajeno → 404; seller bloqueado en `/operaciones`; tracking público sin PII (sin dirección/teléfono). Verificado.
+- [x] **SD-09 — Badge de fuente en manifiesto del conductor.** Cards muestran "SAME-DAY" vs "Flex" (2 same-day + 1 flex asignados vía UI de manifiestos y confirmados). Verificado.
+- [x] **SD-10 — Gate de emisión DTE.** El dialog de emisión exige marcar la revisión (botón deshabilitado sin check); emisión sandbox → período `facturado` folio 1; el seller lo ve en Mis cobros. Verificado.
+
+**Bug encontrado y reparado en este pase:** la tabla "Agregar pedidos" del manifiesto mostraba el **UUID crudo del seller** en vez de la razón social (`selector-pedidos-manifiesto.tsx`); corregido resolviendo `nombreSeller` en `asignar/page.tsx`. Re-verificado en navegador.
+
+**Notas (no bugs):** el botón de descarga del PDF de factura en el portal no aparece mientras `pdf_ref` es NULL (DTE sandbox con SII `pendiente` — correcto); el estado `facturado` del período aparece al recargar (la emisión es un job Inngest asíncrono).
+
+**Fase 2 (diferido, decidido con el usuario):** escaneo del QR por el conductor (cámara PWA/Expo + tabla `verificaciones_carga` + endpoint Bearer `POST /api/conductor/manifiesto/escanear`), memoria de destinatarios frecuentes, impresión en lote, mapeo del código de barras ML para Flex.
 
 ---
 

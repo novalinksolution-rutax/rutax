@@ -168,7 +168,7 @@ begin
     (t_a, s_a,  'ML-A-1', 'sana'),
     (t_a, s_a2, 'ML-A-2', 'pendiente'),
     (t_b, s_b,  'ML-B-1', 'sana')
-  on conflict (seller_id) do nothing;
+  on conflict (seller_id, ml_user_id) where ml_user_id is not null do nothing;
 
   -- tarifas (interna — el seller jamás debe verlas, ni la suya propia)
   insert into identidad.tarifas (tenant_id, seller_id, tipo_entrega, modo_calculo, monto_clp, vigente_desde, estado)

@@ -9,7 +9,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, Wallet } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Wallet } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarLiquidaciones } from "@/modules/dinero/index";
@@ -139,6 +139,19 @@ function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
           {formatearCLPOGuion(liquidacion.montoTotalClp)}
         </p>
       </div>
+
+      {/* Confirmación visual de pago procesado */}
+      {liquidacion.estado === "pagada" && (
+        <div className="mt-3 flex items-center gap-1.5">
+          <CheckCircle2
+            className="h-4 w-4 shrink-0 text-success"
+            aria-hidden="true"
+          />
+          <p className="text-sm font-medium text-success">
+            Tu pago fue procesado
+          </p>
+        </div>
+      )}
 
       {/* Botón de descarga o mensaje si no hay PDF */}
       <div className="mt-3">

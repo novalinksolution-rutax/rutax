@@ -1,7 +1,7 @@
 /**
  * Pruebas de GET /api/operaciones/:pedidoId/etiqueta (RF-021, item C-04).
  *
- * Cubre:
+ * Cubre (rama flex, comportamiento preexistente sin cambios):
  * 1. 401 sin sesión.
  * 2. 403 sin la capacidad `asignar_y_reasignar_pedidos`.
  * 3. 404 si el pedido no existe en el tenant del usuario (incl. otro tenant).
@@ -11,8 +11,16 @@
  * 7. 502 ante cualquier otro error del adaptador (p. ej. `ErrorHttpMl`), sin
  *    exponer detalles internos.
  *
- * Mocks: sesión actual, cliente service_role, adaptador ML y bitácora —
- * sin red real ni Supabase real.
+ * Cubre (rama same_day, nueva):
+ * 8. 200 con la etiqueta Rutax (QR) + backfill de codigo_interno + bitácora
+ *    con accion='operacion.etiqueta_same_day_descargada'.
+ * 9. Respeta ?formato=.
+ * 10. La rama flex NUNCA se ejecuta para pedidos same_day (no llama a
+ *     obtenerEtiquetaEnvio).
+ *
+ * Mocks: sesión actual, cliente service_role, adaptador ML, generador de
+ * etiqueta same-day, backfill de código y bitácora — sin red real ni Supabase
+ * real.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,6 +36,14 @@ vi.mock("@/modules/identidad/auditoria", () => ({
   registrarEnBitacora: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/modules/operacion/pedidos", () => ({
+  asegurarCodigoInterno: vi.fn(),
+}));
+
+vi.mock("@/modules/operacion/etiqueta-same-day-pdf", () => ({
+  generarEtiquetaSameDayPdf: vi.fn(),
+}));
+
 vi.mock("@/modules/integraciones/ml", async () => {
   const actual = await vi.importActual<object>("@/modules/integraciones/ml");
   return {
@@ -39,6 +55,8 @@ vi.mock("@/modules/integraciones/ml", async () => {
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
+import { asegurarCodigoInterno } from "@/modules/operacion/pedidos";
+import { generarEtiquetaSameDayPdf } from "@/modules/operacion/etiqueta-same-day-pdf";
 import {
   obtenerEtiquetaEnvio,
   ErrorConexionMlRequiereRevinculacion,
@@ -157,7 +175,12 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
     vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
 
     const mockSupabase = crearMockSupabase({
-      data: { id: PEDIDO_ID, seller_id: SELLER_ID, ml_shipment_id: ML_SHIPMENT_ID },
+      data: {
+        id: PEDIDO_ID,
+        seller_id: SELLER_ID,
+        ml_shipment_id: ML_SHIPMENT_ID,
+        ml_user_id: "999",
+      },
       error: null,
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
@@ -181,6 +204,7 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
     expect(obtenerEtiquetaEnvio).toHaveBeenCalledWith({
       sellerId: SELLER_ID,
       mlShipmentId: ML_SHIPMENT_ID,
+      mlUserId: "999",
     });
 
     expect(registrarEnBitacora).toHaveBeenCalledWith(
@@ -201,7 +225,12 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
     vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
 
     const mockSupabase = crearMockSupabase({
-      data: { id: PEDIDO_ID, seller_id: SELLER_ID, ml_shipment_id: ML_SHIPMENT_ID },
+      data: {
+        id: PEDIDO_ID,
+        seller_id: SELLER_ID,
+        ml_shipment_id: ML_SHIPMENT_ID,
+        ml_user_id: "999",
+      },
       error: null,
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
@@ -225,7 +254,12 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
     vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
 
     const mockSupabase = crearMockSupabase({
-      data: { id: PEDIDO_ID, seller_id: SELLER_ID, ml_shipment_id: ML_SHIPMENT_ID },
+      data: {
+        id: PEDIDO_ID,
+        seller_id: SELLER_ID,
+        ml_shipment_id: ML_SHIPMENT_ID,
+        ml_user_id: "999",
+      },
       error: null,
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
@@ -244,5 +278,166 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
       error: "No se pudo obtener la etiqueta desde Mercado Libre. Intenta nuevamente más tarde.",
     });
     expect(registrarEnBitacora).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// Rama same_day: etiqueta interna Rutax con QR
+// =============================================================================
+
+const CODIGO_INTERNO = "RX-7K2M-9QP4";
+
+function pedidoSameDayFila(overrides: Record<string, unknown> = {}) {
+  return {
+    id: PEDIDO_ID,
+    tenant_id: TENANT_ID,
+    seller_id: SELLER_ID,
+    tipo_pedido: "same_day",
+    ml_shipment_id: null,
+    ml_user_id: null,
+    codigo_interno: null,
+    destinatario_nombre: "Juan Pérez",
+    destinatario_direccion: "Av. Providencia 123",
+    destinatario_comuna: "Providencia",
+    destinatario_telefono: null,
+    instrucciones_entrega: null,
+    fecha_compromiso: "2026-07-02",
+    ...overrides,
+  };
+}
+
+/** Mock multi-tabla: distingue `pedidos` de `sellers`. */
+function crearMockSupabaseMultiTabla(opts: {
+  pedido?: { data: unknown; error: unknown };
+  seller?: { data: unknown; error: unknown };
+}) {
+  const pedidoResp = opts.pedido ?? { data: pedidoSameDayFila(), error: null };
+  const sellerResp = opts.seller ?? { data: { razon_social: "Tienda Demo" }, error: null };
+
+  return {
+    from: vi.fn((tabla: string) => {
+      if (tabla === "pedidos") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue(pedidoResp),
+        };
+      }
+      if (tabla === "sellers") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue(sellerResp),
+        };
+      }
+      throw new Error(`Tabla no mockeada: ${tabla}`);
+    }),
+  };
+}
+
+function requestConFormato(formato?: string) {
+  const url = formato
+    ? `http://localhost/api/operaciones/x/etiqueta?formato=${formato}`
+    : "http://localhost/api/operaciones/x/etiqueta";
+  return { nextUrl: new URL(url) } as never;
+}
+
+describe("GET /api/operaciones/:pedidoId/etiqueta — rama same_day (etiqueta Rutax)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("200: genera la etiqueta Rutax con backfill de codigo_interno y bitácora propia", async () => {
+    vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
+    const mockSupabase = crearMockSupabaseMultiTabla({});
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
+    vi.mocked(asegurarCodigoInterno).mockResolvedValue(CODIGO_INTERNO);
+    vi.mocked(generarEtiquetaSameDayPdf).mockResolvedValue(Buffer.from("pdf-rutax"));
+
+    const respuesta = await GET(requestConFormato(), contexto());
+    const arrayBuffer = await respuesta.arrayBuffer();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.headers.get("Content-Type")).toBe("application/pdf");
+    expect(respuesta.headers.get("Content-Disposition")).toBe(
+      `inline; filename="etiqueta-${CODIGO_INTERNO}.pdf"`,
+    );
+    expect(Buffer.from(arrayBuffer).toString()).toBe("pdf-rutax");
+
+    expect(asegurarCodigoInterno).toHaveBeenCalledWith(
+      mockSupabase,
+      expect.objectContaining({ id: PEDIDO_ID }),
+    );
+
+    expect(registrarEnBitacora).toHaveBeenCalledWith(
+      mockSupabase,
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        actorUsuarioId: USUARIO_ID,
+        accion: "operacion.etiqueta_same_day_descargada",
+        entidadTipo: "pedido",
+        entidadId: PEDIDO_ID,
+      }),
+    );
+
+    // La rama flex NUNCA se ejecuta para pedidos same_day.
+    expect(obtenerEtiquetaEnvio).not.toHaveBeenCalled();
+  });
+
+  it("respeta ?formato=carta", async () => {
+    vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
+    const mockSupabase = crearMockSupabaseMultiTabla({});
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
+    vi.mocked(asegurarCodigoInterno).mockResolvedValue(CODIGO_INTERNO);
+    vi.mocked(generarEtiquetaSameDayPdf).mockResolvedValue(Buffer.from("pdf"));
+
+    await GET(requestConFormato("carta"), contexto());
+
+    expect(generarEtiquetaSameDayPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ formato: "carta" }),
+    );
+  });
+
+  it("default a formato termica si no se especifica", async () => {
+    vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
+    const mockSupabase = crearMockSupabaseMultiTabla({});
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
+    vi.mocked(asegurarCodigoInterno).mockResolvedValue(CODIGO_INTERNO);
+    vi.mocked(generarEtiquetaSameDayPdf).mockResolvedValue(Buffer.from("pdf"));
+
+    await GET(requestConFormato(), contexto());
+
+    expect(generarEtiquetaSameDayPdf).toHaveBeenCalledWith(
+      expect.objectContaining({ formato: "termica" }),
+    );
+  });
+
+  it("403 si el usuario interno no tiene la capacidad de asignar/reasignar (mismo gate que flex)", async () => {
+    vi.mocked(obtenerSesionActual).mockResolvedValue(
+      crearSesion({ tipoUsuario: "seller", rol: "seller", sellerId: SELLER_ID }),
+    );
+
+    const respuesta = await GET(requestConFormato(), contexto());
+
+    expect(respuesta.status).toBe(403);
+    expect(crearClienteServiceRole).not.toHaveBeenCalled();
+  });
+
+  it("502 si la generación de la etiqueta same-day falla, sin exponer detalles internos", async () => {
+    vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
+    const mockSupabase = crearMockSupabaseMultiTabla({});
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
+    vi.mocked(asegurarCodigoInterno).mockRejectedValue(new Error("fallo interno de BD"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const respuesta = await GET(requestConFormato(), contexto());
+    const cuerpo = await respuesta.json();
+
+    expect(respuesta.status).toBe(502);
+    expect(JSON.stringify(cuerpo)).not.toContain("fallo interno de BD");
   });
 });

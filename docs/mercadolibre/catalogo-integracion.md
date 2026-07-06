@@ -19,7 +19,7 @@
 ---
 
 ## 1. Aplicación, autenticación y multi-cuenta — 🟢 Core
-> Verificado 2026-06-11 → [docs/mercadolibre/01-autenticacion-multicuenta.md](../../docs/mercadolibre/01-autenticacion-multicuenta.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/01-autenticacion-multicuenta.md](./01-autenticacion-multicuenta.md)
 
 **Qué expone la API**
 - ✅ OAuth 2.0 por seller: authorization code → access_token + refresh_token; refresco de tokens; flujo server-to-server. **MLC:** autorización por `https://auth.mercadolibre.cl/authorization`, token por `POST https://api.mercadolibre.com/oauth/token`. access_token dura **6 h**; refresh_token dura **6 meses**, es de **un solo uso** y exige scope `offline_access`.
@@ -32,7 +32,7 @@
 - **Onboarding guiado** que fuerza la autorización con la cuenta principal (evita el error de colaborador).
 
 ## 2. Usuarios y cuentas — 🟡 Apoyo
-> Verificado 2026-06-11 → [docs/mercadolibre/02-usuarios-cuentas.md](../../docs/mercadolibre/02-usuarios-cuentas.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/02-usuarios-cuentas.md](./02-usuarios-cuentas.md)
 
 **Qué expone la API**
 - ✅ Datos del usuario/seller (`GET /users/{id}`, `/users/me`): `seller_reputation`, `address`, `user_type`, `tags`, `status`. Sin diferencias MLC vs MLA. ✅ `GET /users/{id}?attributes=status` para detectar restricciones (`rejected_by_regulations`, etc.) — útil para onboarding.
@@ -52,7 +52,7 @@
 - *No es tu negocio* gestionar publicaciones; útil solo como contexto del envío.
 
 ## 4. Órdenes / Ventas — 🟢 Core
-> Verificado 2026-06-11 → [docs/mercadolibre/04-ordenes-ventas.md](../../docs/mercadolibre/04-ordenes-ventas.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/04-ordenes-ventas.md](./04-ordenes-ventas.md)
 
 **Qué expone la API**
 - ✅ Lectura de órdenes: `GET /orders/{id}` y búsqueda `GET /orders/search?seller={id}` (filtros `order.status`, `order.date_created.from/.to`, paginado `offset`/`limit`, `sort`). Comprador, ítems, montos, `payments[].status`, y el **shipment_id** en `order.shipping.id`. **Ojo:** buscando como `seller`, las canceladas no aparecen; el backfill histórico está acotado a ~12 meses.
@@ -65,7 +65,7 @@
 - Reportes de **volumen por seller** basados en órdenes reales.
 
 ## 5. Mercado Envíos / Shipments — 🟢 Core (el corazón para ti)
-> Verificado 2026-06-11 → [docs/mercadolibre/05-mercado-envios-shipments.md](../../docs/mercadolibre/05-mercado-envios-shipments.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/05-mercado-envios-shipments.md](./05-mercado-envios-shipments.md)
 
 **Qué expone la API**
 - ✅ Detalle del envío: `GET /shipments/{id}` con header `x-format-new: true`; estado, subestado, dirección del receptor (teléfono **ofuscado**). ⚠️ `/marketplace/shipments/{id}` **NO es equivalente**: es el recurso de Global Selling/CBT (cross-border), no aplica al seller MLC nativo — usar siempre `/shipments/{id}`.
@@ -84,7 +84,7 @@
 - Tablero de **estados/subestados** en tiempo casi real como fuente del motor de dinero (ya en tu MVP).
 
 ## 6. Preguntas y mensajería post-venta — 🟡 Apoyo (protege reputación)
-> Verificado 2026-06-11 → [docs/mercadolibre/06-preguntas-mensajeria.md](../../docs/mercadolibre/06-preguntas-mensajeria.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/06-preguntas-mensajeria.md](./06-preguntas-mensajeria.md)
 
 **Qué expone la API**
 - ✅ Preguntas: `GET /questions/search?seller_id={id}` (filtros `item_id`, `from_id`, `sort_fields`/`sort_types`; ❓ lista exacta de valores de `status` no confirmada), `POST /answers` (`{question_id, text}`, máx. 2.000 caracteres), `DELETE /questions/{id}`. ❓ vencimiento de 7 meses sin responder, no confirmado para MLC.
@@ -96,7 +96,7 @@
 - ⚠️ Auto-respuestas de **estado de entrega**: viable pero de mayor complejidad — son recursos distintos (preguntas pre-venta vs mensajería post-venta) y requiere encadenar `messages/packs/{pack_id}/sellers/{seller_id}` → `orders/{order_id}` → `shipments/{shipment_id}`. Pendiente validación E2E con datos MLC reales.
 
 ## 7. Reclamos / Claims y mediaciones — 🟡 Apoyo
-> Verificado 2026-06-11 → [docs/mercadolibre/07-reclamos-claims.md](../../docs/mercadolibre/07-reclamos-claims.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/07-reclamos-claims.md](./07-reclamos-claims.md)
 
 **Qué expone la API**
 - ⚠️ El recurso correcto es `/post-purchase/v1/claims` (sucesor de `/v1/claims`, deprecado desde 2024-05-06). `/post-purchase/v1/claims/search` con filtros `stage`, `status`, `order_id`, `players.user_id` — reportado por fuentes que citan la doc oficial, no confirmado con fetch directo (403 en .ar/.cl). Existe contraparte `.cl` de la página de claims, sugiriendo recurso transversal a sites.
@@ -110,7 +110,7 @@
 - ⚠️ Vincular reclamos a **liquidación/cobro**: viable **solo como señal de "retener para revisión humana"**, no como anulación automática (consistente con la compuerta de aprobación de facturación). Falta confirmar si la respuesta del claim trae un campo estructurado de resultado (reembolso total/parcial) para automatizar el ajuste.
 
 ## 8. Notificaciones / Webhooks — 🟢 Core (tiempo real)
-> Verificado 2026-06-11 → [docs/mercadolibre/08-notificaciones-webhooks.md](../../docs/mercadolibre/08-notificaciones-webhooks.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/08-notificaciones-webhooks.md](./08-notificaciones-webhooks.md)
 
 **Qué expone la API**
 - ✅ Feed en tiempo real vía POST a tu callback URL (payload = solo `resource` + metadatos `_id, user_id, topic, application_id, attempts, sent`, **no** el dato real). ⚠️ **NO hay firma HMAC en el marketplace** — ese `x-signature` es de Mercado Pago; la decisión de producción de quitar el HMAC es **correcta**. La verdad se valida re-consultando el `resource` a la API con el token del seller. ✅ **ACK HTTP 200 dentro de ≤500 ms** o ML desactiva los tópicos; reintentos exponenciales hasta el 8º (~1 h) y luego `GET /missed_feeds`. ❓ Simulador: existe pero no se pudo citar su ubicación oficial al pie.
@@ -144,7 +144,7 @@
 - Es seller-side de venta; poco alineado con un SaaS de couriers. Útil solo si algún día ofreces analítica comercial al seller.
 
 ## 12. Reputación y métricas del vendedor — 🟡 Apoyo
-> Verificado 2026-06-11 → [docs/mercadolibre/12-reputacion-metricas.md](../../docs/mercadolibre/12-reputacion-metricas.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/12-reputacion-metricas.md](./12-reputacion-metricas.md)
 
 **Qué expone la API**
 - ⚠️ `GET /users/{user_id}` → `seller_reputation` (`level_id`, `power_seller_status`, `transactions`) y `metrics.{claims, delayed_handling_time, cancellations}` con `period`/`rate`/`value`/`excluded` — estructura consistente entre fuentes secundarias que citan la doc .ar, no confirmada abriendo la página directamente para MLC.
@@ -164,7 +164,7 @@
 - Catálogos de referencia (monedas, geografía) para localización.
 
 ## 14. Reportes y métricas de ventas — 🟡 Apoyo
-> Verificado 2026-06-11 → [docs/mercadolibre/14-reportes-metricas-ventas.md](../../docs/mercadolibre/14-reportes-metricas-ventas.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/14-reportes-metricas-ventas.md](./14-reportes-metricas-ventas.md)
 
 **Qué expone la API**
 - ⚠️ Billing Reports (`/billing/integration/...`: `/monthly/periods`, `/documents`, `/summary`, `/details`) — existen y MLC está entre los sites soportados, pero su propósito es **conciliación fiscal/facturación**, no analítica de ventas/operación.
@@ -184,7 +184,7 @@
 - Solo relevante si atiendes sellers que combinan Full + Flex; permite distinguir qué se opera por cada vía.
 
 ## 16. Transversal: sandbox, límites y versionado — 🟢 Core (operación sana)
-> Verificado 2026-06-11 → [docs/mercadolibre/16-sandbox-limites-versionado.md](../../docs/mercadolibre/16-sandbox-limites-versionado.md)
+> Verificado 2026-06-11 → [docs/mercadolibre/16-sandbox-limites-versionado.md](./16-sandbox-limites-versionado.md)
 
 **Qué expone la API**
 - ✅ Usuarios de prueba: `POST /users/test_user` (`{"site_id":"MLC"}`), máx. 10, **sin sandbox separado** (se prueba en producción). ❓ **Rate limits: NO hay número público** por país para shipments/orders/webhooks (el único valor oficial, "1500 req/min por seller", es de Global Selling y solo para actualización de ítems). Diseñar backoff ante **429** + idempotencia, no un cupo fijo. ✅ Códigos de error en `api-docs-es/errores` (400/401/403/429/500). ✅/⚠️ Versionado **por header** (`x-format-new`) y sufijo de recurso (`orders_v2`), **no** `/v1/` uniforme. ✅ Changelog/novedades oficial con fechas.
@@ -200,14 +200,14 @@
 
 Priorizadas por encaje con tu producto y por diferenciación:
 
-1. 🟢 **Tracking white-label unificado** (shipments + notificaciones) para seller y consumidor final, dentro de tu plataforma. — ⚠️ **Viable solo de lectura**: `GET /shipments/{id}` (`x-format-new: true`) + webhook `shipments`. ML **no** ofrece endpoint para que el courier "reporte" tracking en Flex/ME2 — el catálogo original lo planteaba como bidireccional; corregido. Ver [05](../../docs/mercadolibre/05-mercado-envios-shipments.md).
-2. 🟢 **Etiquetas ZPL a impresora Zebra** integradas a la operación del courier. — ✅ **Viable**: `GET /shipment_labels?shipment_ids=...&response_type=zpl2` confirmado y disponible en MLC (devuelve un ZIP con PDF+PLP y TXT Zebra). Límite ~50 `shipment_ids` por llamada. Ver [05](../../docs/mercadolibre/05-mercado-envios-shipments.md).
-3. 🟢 **Multi-modo de envío** (me2 / custom además de Flex): abre el SaaS a couriers que mueven más que Flex. — ✅ **Viable**: los 4 modos (me1/me2/custom/not_specified) y los `logistic_type` (incluye `xd_drop_off`, antes faltante) están confirmados en `/shipments/{id}`. Falta solo confirmar al pie la ruta `/sites/{site}/shipping_methods` (❓). Ver [05](../../docs/mercadolibre/05-mercado-envios-shipments.md).
-4. 🟡 **Bandeja semi-automática de preguntas/mensajes** con respuestas de estado de entrega (protege reputación del seller). — ✅/⚠️ **Viable en dos partes**: (a) bandeja de preguntas pre-venta (`/questions/search` + `POST /answers`) es de baja complejidad y la doc oficial recomienda automatizarla; (b) auto-respuesta de estado de entrega vía mensajería post-venta requiere encadenar `messages/packs/{pack_id}/sellers/{seller_id}` → `orders/{order_id}` → `shipments/{shipment_id}`, mayor complejidad y pendiente validación E2E con datos MLC. Ver [06](../../docs/mercadolibre/06-preguntas-mensajeria.md).
-5. 🟡 **Alertas de reputación y de reclamos** ligadas a incidencias de envío (refuerza la promesa Flex). — Desglosado: **reclamos ✅ viable** (`/post-purchase/v1/claims/search?order_id=...` + webhook `post_purchase`, mismo patrón que shipments); **reputación ⚠️ parcial** — datos base (`seller_reputation.metrics`) disponibles por polling, pero **sin thresholds oficiales expuestos** que disparen pérdida de "Mercado Líder"/"Llega gratis hoy"; viable solo como score interno propio del SaaS, no como semáforo directo de ML. Ver [07](../../docs/mercadolibre/07-reclamos-claims.md) y [12](../../docs/mercadolibre/12-reputacion-metricas.md).
-6. 🟡 **Conexión multi-cuenta** por seller (varias cuentas/razones sociales ML bajo un courier). — ⚠️ **Viable, pero no es un recurso nativo**: el token OAuth está atado a 1 `user_id` (1:1). Se modela como N autorizaciones independientes (un par access/refresh token por `user_id` ML) bajo el mismo seller del courier — más trabajo de modelado de datos del esperado, pero sin bloqueo técnico. Ver [01](../../docs/mercadolibre/01-autenticacion-multicuenta.md).
-7. 🟢 **Operación event-driven** completa (webhooks para todo, con sondeo de respaldo y backfill). — ✅ **Viable y reforzada**: confirmado que el marketplace de ML **no firma** los webhooks (correcto haber quitado el HMAC); el payload es solo un "ping" (`resource` + metadatos) — el patrón obligado es ACK 200 en ≤500 ms → re-consultar el `resource` con el token del seller. `GET /missed_feeds` cubre lo perdido tras 8 reintentos (~1 h). Tópico `created_orders` del catálogo no existe; usar `orders_v2`. Ver [08](../../docs/mercadolibre/08-notificaciones-webhooks.md).
-8. 🟡 **Analítica de costos de envío** (shipping_options) para rentabilidad por ruta/seller. — ✅ **Viable**: `shipping_options`/costos están disponibles como campos del envío en `/shipments/{id}`. **No** existe un "reporte de ventas/desempeño" descargable de ML (descartado explícitamente por la doc); la analítica debe construirse agregando internamente sobre `/orders/search` + `/shipments/{id}` ya ingeridos. Ver [05](../../docs/mercadolibre/05-mercado-envios-shipments.md) y [14](../../docs/mercadolibre/14-reportes-metricas-ventas.md).
+1. 🟢 **Tracking white-label unificado** (shipments + notificaciones) para seller y consumidor final, dentro de tu plataforma. — ⚠️ **Viable solo de lectura**: `GET /shipments/{id}` (`x-format-new: true`) + webhook `shipments`. ML **no** ofrece endpoint para que el courier "reporte" tracking en Flex/ME2 — el catálogo original lo planteaba como bidireccional; corregido. Ver [05](./05-mercado-envios-shipments.md).
+2. 🟢 **Etiquetas ZPL a impresora Zebra** integradas a la operación del courier. — ✅ **Viable**: `GET /shipment_labels?shipment_ids=...&response_type=zpl2` confirmado y disponible en MLC (devuelve un ZIP con PDF+PLP y TXT Zebra). Límite ~50 `shipment_ids` por llamada. Ver [05](./05-mercado-envios-shipments.md).
+3. 🟢 **Multi-modo de envío** (me2 / custom además de Flex): abre el SaaS a couriers que mueven más que Flex. — ✅ **Viable**: los 4 modos (me1/me2/custom/not_specified) y los `logistic_type` (incluye `xd_drop_off`, antes faltante) están confirmados en `/shipments/{id}`. Falta solo confirmar al pie la ruta `/sites/{site}/shipping_methods` (❓). Ver [05](./05-mercado-envios-shipments.md).
+4. 🟡 **Bandeja semi-automática de preguntas/mensajes** con respuestas de estado de entrega (protege reputación del seller). — ✅/⚠️ **Viable en dos partes**: (a) bandeja de preguntas pre-venta (`/questions/search` + `POST /answers`) es de baja complejidad y la doc oficial recomienda automatizarla; (b) auto-respuesta de estado de entrega vía mensajería post-venta requiere encadenar `messages/packs/{pack_id}/sellers/{seller_id}` → `orders/{order_id}` → `shipments/{shipment_id}`, mayor complejidad y pendiente validación E2E con datos MLC. Ver [06](./06-preguntas-mensajeria.md).
+5. 🟡 **Alertas de reputación y de reclamos** ligadas a incidencias de envío (refuerza la promesa Flex). — Desglosado: **reclamos ✅ viable** (`/post-purchase/v1/claims/search?order_id=...` + webhook `post_purchase`, mismo patrón que shipments); **reputación ⚠️ parcial** — datos base (`seller_reputation.metrics`) disponibles por polling, pero **sin thresholds oficiales expuestos** que disparen pérdida de "Mercado Líder"/"Llega gratis hoy"; viable solo como score interno propio del SaaS, no como semáforo directo de ML. Ver [07](./07-reclamos-claims.md) y [12](./12-reputacion-metricas.md).
+6. 🟡 **Conexión multi-cuenta** por seller (varias cuentas/razones sociales ML bajo un courier). — ⚠️ **Viable, pero no es un recurso nativo**: el token OAuth está atado a 1 `user_id` (1:1). Se modela como N autorizaciones independientes (un par access/refresh token por `user_id` ML) bajo el mismo seller del courier — más trabajo de modelado de datos del esperado, pero sin bloqueo técnico. Ver [01](./01-autenticacion-multicuenta.md).
+7. 🟢 **Operación event-driven** completa (webhooks para todo, con sondeo de respaldo y backfill). — ✅ **Viable y reforzada**: confirmado que el marketplace de ML **no firma** los webhooks (correcto haber quitado el HMAC); el payload es solo un "ping" (`resource` + metadatos) — el patrón obligado es ACK 200 en ≤500 ms → re-consultar el `resource` con el token del seller. `GET /missed_feeds` cubre lo perdido tras 8 reintentos (~1 h). Tópico `created_orders` del catálogo no existe; usar `orders_v2`. Ver [08](./08-notificaciones-webhooks.md).
+8. 🟡 **Analítica de costos de envío** (shipping_options) para rentabilidad por ruta/seller. — ✅ **Viable**: `shipping_options`/costos están disponibles como campos del envío en `/shipments/{id}`. **No** existe un "reporte de ventas/desempeño" descargable de ML (descartado explícitamente por la doc); la analítica debe construirse agregando internamente sobre `/orders/search` + `/shipments/{id}` ya ingeridos. Ver [05](./05-mercado-envios-shipments.md) y [14](./14-reportes-metricas-ventas.md).
 
 ## Qué de esto ya está en tu roadmap (para no duplicar)
 - Ingesta de pedidos, estados/subestados, etiquetas, asignación, incidencias, salud de conexiones → **MVP** (Fases A–B).

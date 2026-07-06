@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Inbox, SearchX, Plus } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { obtenerConexionesPorSeller } from "@/modules/integraciones/ml";
 import {
   traducirEstadoPedido,
   BADGE_ESTADO_PEDIDO,
@@ -28,14 +29,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
 import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
+import { BloqueEtiqueta } from "./bloque-etiqueta";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
 };
 
 const LIMITE = 25;
+
+/** Nombre visible de la cuenta de origen: alias → nickname de ML → últimos 4. */
+function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, mlUserId: string | null): string {
+  if (alias && alias.trim()) return alias;
+  if (mlNickname && mlNickname.trim()) return mlNickname;
+  if (mlUserId && mlUserId.length >= 4) return `···${mlUserId.slice(-4)}`;
+  return "Otra cuenta";
+}
 
 interface SearchParams {
   estado?: string;
@@ -63,8 +74,25 @@ export default async function PaginaPedidosSeller({
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
   const offset = (pagina - 1) * LIMITE;
 
+  // Badge de origen: solo si el seller tiene MÁS DE UNA cuenta ML conectada.
+  // Con una sola cuenta no se muestra nada (cero ruido).
+  let mostrarOrigen = false;
+  const etiquetaPorCuenta: Record<string, string> = {};
+  try {
+    const conexiones = await obtenerConexionesPorSeller(sellerId);
+    mostrarOrigen = conexiones.length > 1;
+    if (mostrarOrigen) {
+      for (const c of conexiones) {
+        if (c.mlUserId) etiquetaPorCuenta[c.mlUserId] = etiquetaCuentaOrigen(c.alias, c.mlNickname, c.mlUserId);
+      }
+    }
+  } catch {
+    // best-effort — sin badge si falla la lectura de conexiones.
+  }
+
   const cliente = crearClienteServiceRole();
   let pedidos: Pedido[] = [];
+  const mlUserPorPedido: Record<string, string | null> = {};
   let total = 0;
   let errorCarga = false;
 
@@ -85,7 +113,9 @@ export default async function PaginaPedidosSeller({
     if (error) throw error;
 
     total = count ?? 0;
-    pedidos = (data ?? []).map((p: Record<string, unknown>) => ({
+    pedidos = (data ?? []).map((p: Record<string, unknown>) => {
+      mlUserPorPedido[p.id as string] = (p.ml_user_id as string | null) ?? null;
+      return {
       id: p.id as string,
       tenantId: p.tenant_id as string,
       sellerId: p.seller_id as string,
@@ -108,7 +138,15 @@ export default async function PaginaPedidosSeller({
       notasInternas: (p.notas_internas as string | null) ?? null,
       creadoEn: p.creado_en as string,
       actualizadoEn: p.actualizado_en as string,
-    }));
+      // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+      lat: (p.lat as number | null) ?? null,
+      long: (p.long as number | null) ?? null,
+      geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+      geoConfianza: (p.geo_confianza as number | null) ?? null,
+      geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+      coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
+      };
+    });
   } catch {
     errorCarga = true;
   }
@@ -214,6 +252,9 @@ export default async function PaginaPedidosSeller({
                   <TableHead className="px-4">Destinatario</TableHead>
                   <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
                   <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
+                  <TableHead className="px-4 text-right">
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -226,13 +267,35 @@ export default async function PaginaPedidosSeller({
                     </TableCell>
                     <TableCell className="px-4">
                       <p className="font-medium">{pedido.destinatarioNombre}</p>
-                      <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pedido.destinatarioComuna}
+                        {mostrarOrigen && etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] ? (
+                          <span className="text-muted-foreground/80">
+                            {" · "}
+                            {etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""]}
+                          </span>
+                        ) : null}
+                      </p>
                     </TableCell>
                     <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
                       {pedido.destinatarioDireccion}
                     </TableCell>
                     <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
                       {pedido.fechaCompromiso ?? "—"}
+                    </TableCell>
+                    <TableCell className="px-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {pedido.tipoPedido === "same_day" &&
+                          !ESTADOS_TERMINALES.includes(pedido.estado) && (
+                            <BloqueEtiqueta pedidoId={pedido.id} compacto />
+                          )}
+                        <Link
+                          href={`/portal/pedidos/${pedido.id}`}
+                          className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
+                        >
+                          Ver detalle
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

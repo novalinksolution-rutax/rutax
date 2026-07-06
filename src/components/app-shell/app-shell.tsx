@@ -19,6 +19,7 @@ import {
   LogOut,
   Menu,
   LayoutDashboard,
+  Home,
   Package,
   Truck,
   TriangleAlert,
@@ -30,6 +31,8 @@ import {
   Users,
   Store,
   Download,
+  UserCheck,
+  Tag,
   type LucideIcon,
 } from "lucide-react"
 
@@ -48,6 +51,8 @@ import type { Aviso } from "@/lib/avisos/obtener-avisos"
 /** Catálogo de íconos referenciables por nombre desde el servidor. */
 const ICONOS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard,
+  inicio: Home,
+  cobros: Wallet,
   pedidos: Package,
   manifiestos: Truck,
   incidencias: TriangleAlert,
@@ -59,6 +64,8 @@ const ICONOS: Record<string, LucideIcon> = {
   equipo: Users,
   sellers: Store,
   exportar: Download,
+  conductores: UserCheck,
+  tarifas: Tag,
 }
 
 export interface ItemNav {

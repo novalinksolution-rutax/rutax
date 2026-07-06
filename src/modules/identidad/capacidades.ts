@@ -97,6 +97,10 @@ export const CAPACIDADES = [
   "solicitar_same_day",
   "ver_documentos_propios", // DTE propios (seller) o liquidación propia (conductor) — ver nota en la matriz.
   "ver_incidencias_propias",
+  // Etiqueta imprimible con QR interno para pedidos same-day propios. Misma
+  // fila del levantamiento que "solicitar same-day" (RF-020/021) — el seller
+  // que crea el envío es quien necesita imprimir su etiqueta.
+  "descargar_etiqueta_same_day",
 
   // "Conductor: ver ruta, marcar evidencias internas, confirmar manifiesto ·
   // Solo sus propios datos". RF-042: visibilidad de su liquidación.
@@ -213,6 +217,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "solicitar_same_day",
     "ver_documentos_propios",
     "ver_incidencias_propias",
+    "descargar_etiqueta_same_day",
   ],
 
   // Plataforma, no tenant — ver nota arriba de la matriz. La capacidad
@@ -349,6 +354,10 @@ export function puedeGestionarConexionMlPropia(usuario: UsuarioActual): boolean 
 
 export function puedeSolicitarSameDay(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "solicitar_same_day");
+}
+
+export function puedeDescargarEtiquetaSameDay(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "descargar_etiqueta_same_day");
 }
 
 export function puedeVerDocumentosPropios(usuario: UsuarioActual): boolean {

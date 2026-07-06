@@ -19,6 +19,7 @@ import {
   puedeInvitarUsuarios,
   puedeMarcarEvidenciasPropias,
   puedeRevocarInvitaciones,
+  puedeDescargarEtiquetaSameDay,
   puedeSolicitarSameDay,
   puedeVerBitacoraAuditoria,
   puedeVerConciliacion,
@@ -230,6 +231,7 @@ describe("rol conductor — solo sus propios datos (§4 levantamiento, P3 RLS)",
   it("NO tiene capacidades de seller", () => {
     expect(puedeGestionarConexionMlPropia(conductor)).toBe(false);
     expect(puedeSolicitarSameDay(conductor)).toBe(false);
+    expect(puedeDescargarEtiquetaSameDay(conductor)).toBe(false);
   });
 });
 
@@ -241,6 +243,7 @@ describe("rol seller — estrictamente acotado a sus datos (§4 levantamiento, P
     expect(puedeSolicitarSameDay(seller)).toBe(true);
     expect(puedeVerDocumentosPropios(seller)).toBe(true);
     expect(puedeVerIncidenciasPropias(seller)).toBe(true);
+    expect(puedeDescargarEtiquetaSameDay(seller)).toBe(true);
   });
 
   it("NO tiene ninguna capacidad interna del tenant", () => {

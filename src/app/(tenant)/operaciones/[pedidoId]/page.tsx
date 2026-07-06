@@ -13,17 +13,12 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerPedido, listarIncidenciasDePedido } from "@/modules/operacion/index";
 import { obtenerPruebaEntregaPorPedido } from "@/modules/operacion/pruebas-entrega";
+import { listarEvidenciasPorPedido } from "@/modules/operacion/evidencias-entrega";
 import {
   puedeAsignarYReasignarPedidos,
   puedeGestionarIncidencias,
   puedeAjustarOperacionDiaria,
-  puedeVerConciliacion,
-  puedeGestionarLiquidacionesConductores,
-  puedeEmitirFacturas,
-  puedeVerReportesEjecutivos,
 } from "@/modules/identidad/capacidades";
-import { obtenerTrazaDineroPorPedido, type TrazaDineroPedido } from "@/modules/dinero";
-import { TrazadorLazo } from "@/components/dinero/trazador-lazo";
 import { Badge } from "@/components/ui/badge";
 import {
   traducirEstadoPedido,
@@ -47,7 +42,7 @@ import { DrawerIncidencia } from "./drawer-incidencia";
 import { DialogReasignacion } from "./dialog-reasignacion";
 import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
 import { VisorPod } from "./visor-pod";
-import { AccionesCorregirDinero } from "./acciones-corregir-dinero";
+import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
 
 // =============================================================================
@@ -107,10 +102,11 @@ export default async function PaginaDetallePedido({ params }: Props) {
   const { pedido, incidencias } = await cargarDatos(pedidoId, tenantId);
   if (!pedido) notFound();
 
-  const [historial, asignacion, pod] = await Promise.all([
+  const [historial, asignacion, pod, evidencias] = await Promise.all([
     cargarHistorialEstados(pedidoId, tenantId),
     cargarAsignacion(pedidoId, tenantId),
     obtenerPruebaEntregaPorPedido(crearClienteServiceRole(), pedidoId, tenantId),
+    listarEvidenciasPorPedido(crearClienteServiceRole(), pedidoId, tenantId),
   ]);
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
@@ -118,22 +114,11 @@ export default async function PaginaDetallePedido({ params }: Props) {
   const puedeAjustar = puedeAjustarOperacionDiaria(sesion.usuario);
   const esTerminal = ESTADOS_TERMINALES.includes(pedido.estado);
 
-  // Trazabilidad del dinero (UX-1): solo roles financieros/dueño ven montos.
-  const puedeVerDinero =
-    puedeVerConciliacion(sesion.usuario) ||
-    puedeEmitirFacturas(sesion.usuario) ||
-    puedeVerReportesEjecutivos(sesion.usuario);
-  const pedidoEntregado =
-    pedido.estado === "entregado" || pedido.estado === "entregado_manual";
-
-  let traza: TrazaDineroPedido | null = null;
-  if (puedeVerDinero) {
-    try {
-      traza = await obtenerTrazaDineroPorPedido(crearClienteServiceRole(), tenantId, pedidoId);
-    } catch {
-      traza = null;
-    }
-  }
+  // El dinero por pedido (cobro/período/factura/liquidación/pago) ya NO se
+  // muestra en el detalle operativo: se consolida a nivel conductor en
+  // Liquidaciones (dinero/liquidaciones) y a nivel seller en Conciliación /
+  // Estado de cuenta. El motor entrega→dinero sigue registrando cada línea; solo
+  // cambia dónde se presenta (consolidado, no por pedido).
 
   const incidenciasAbiertas = incidencias.filter(
     (i) => i.estado === "abierta" || i.estado === "en_gestion",
@@ -210,31 +195,8 @@ export default async function PaginaDetallePedido({ params }: Props) {
       {/* Sección A.3 — Prueba de entrega (POD) del ciclo same-day propio */}
       {pod && <VisorPod pod={pod} />}
 
-      {/* Sección A.5 — Trazabilidad del lazo entrega→dinero (solo roles financieros) */}
-      {puedeVerDinero && traza && (
-        <section aria-labelledby="traza-titulo">
-          <h2 id="traza-titulo" className="mb-3 text-base font-semibold">
-            Trazabilidad del dinero
-          </h2>
-          <TrazadorLazo traza={traza} pedidoEntregado={pedidoEntregado} />
-          {/* Corrección manual (B2): anular cobro/liquidación cuando el motor los
-              generó por defecto pero no corresponden, si el período/liquidación
-              siguen mutables. El RBAC fino y las guardas las impone el dominio. */}
-          <AccionesCorregirDinero
-            pedidoId={pedido.id}
-            puedeAnularCobro={
-              puedeVerConciliacion(sesion.usuario) &&
-              !!traza.cobro &&
-              (!traza.periodo || traza.periodo.estado === "abierto")
-            }
-            puedeAnularLiquidacion={
-              puedeGestionarLiquidacionesConductores(sesion.usuario) &&
-              !!traza.liquidacion &&
-              traza.liquidacion.estado === "borrador"
-            }
-          />
-        </section>
-      )}
+      {/* Sección A.4 — Evidencias informativas (capa paralela a ML Flex) */}
+      <VisorEvidencias evidencias={evidencias} />
 
       {/* Sección B — Historial de estados */}
       <section aria-labelledby="historial-titulo">
@@ -521,7 +483,10 @@ function AccionesPedido({
 }) {
   const tieneAsignacion = !!asignacion;
   const esPendiente = pedido.estado === "pendiente_asignacion";
-  const puedeDescargarEtiqueta = puedeAsignar && !!pedido.mlShipmentId;
+  // Flex requiere ml_shipment_id (etiqueta de ML); same-day genera su propia
+  // etiqueta interna con QR y no depende de ningún campo de Mercado Libre.
+  const puedeDescargarEtiqueta =
+    puedeAsignar && (!!pedido.mlShipmentId || pedido.tipoPedido === "same_day");
 
   // Sin ninguna acción visible: no renderizar nada
   const hayAcciones =
@@ -570,7 +535,9 @@ function AccionesPedido({
           />
         )}
 
-        {puedeDescargarEtiqueta && <BotonDescargarEtiqueta pedidoId={pedido.id} />}
+        {puedeDescargarEtiqueta && (
+          <BotonDescargarEtiqueta pedidoId={pedido.id} esSameDay={pedido.tipoPedido === "same_day"} />
+        )}
       </div>
     </section>
   );

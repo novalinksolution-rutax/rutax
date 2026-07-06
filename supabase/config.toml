@@ -124,6 +124,15 @@ file_size_limit = "50MiB"
 # allowed_mime_types = ["image/png", "image/jpeg"]
 # objects_path = "./images"
 
+# Bucket privado para evidencias del POD same-day (fotos/firmas). Migración
+# 20260613000008_operacion_pod_tracking.sql. Acceso solo vía URL firmada desde el
+# backend (service_role); sin políticas públicas de storage. Convención de path:
+# {tenant_id}/{pedido_id}/{pod_id}/{foto|firma}.<ext>
+[storage.buckets.pod-evidencias]
+public = false
+file_size_limit = "50MiB"
+allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]
+
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
 enabled = true

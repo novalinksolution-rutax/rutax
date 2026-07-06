@@ -39,8 +39,10 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
   [
     "asignado",
     [
-      // ML reporta "shipped" o equivalente.
-      { destino: "en_ruta", ejecutores: ["sistema"] },
+      // ML reporta "shipped" o equivalente (Flex) o conductor sale a ruta (same-day).
+      // 'conductor' puede hacer asignado→en_ruta SOLO para same_day (la barrera de
+      // tipo_pedido la impone actualizarEstadoPedido, no esta función pura).
+      { destino: "en_ruta", ejecutores: ["sistema", "conductor"] },
       // Reasignación: coordinador/supervisor devuelve a cola para asignarlo a otro.
       { destino: "pendiente_asignacion", ejecutores: ["interno"] },
       // Cancelación antes de salir a ruta (ML lo reporta).
@@ -53,10 +55,13 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
   [
     "en_ruta",
     [
-      // ML reporta delivered.
-      { destino: "entregado", ejecutores: ["sistema"] },
-      // ML reporta not_delivered o equivalente.
-      { destino: "fallido", ejecutores: ["sistema"] },
+      // ML reporta delivered (Flex) o conductor registra entrega con POD válido (same-day).
+      // 'conductor' puede hacer en_ruta→entregado SOLO para same_day + POD válido
+      // (la barrera la impone actualizarEstadoPedido, no esta función pura).
+      { destino: "entregado", ejecutores: ["sistema", "conductor"] },
+      // ML reporta not_delivered (Flex) o conductor registra fallo (same-day).
+      // 'conductor' puede hacer en_ruta→fallido SOLO para same_day con tipo_incidencia.
+      { destino: "fallido", ejecutores: ["sistema", "conductor"] },
       // Cancelación tardía (ML la reporta ya estando en ruta).
       { destino: "cancelado", ejecutores: ["sistema"] },
       // ML reporta devolución al origen.
@@ -73,6 +78,10 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
       { destino: "asignado", ejecutores: ["interno"] },
       // Sin reintento posible: cierre definitivo.
       { destino: "cancelado", ejecutores: ["interno"] },
+      // ML evoluciona el subestado: receiver_absent → returning_to_sender.
+      // El sistema (job de webhook/polling) y un usuario interno pueden marcar
+      // el devuelto. Las líneas ya generadas se anulan en el job C1 (pre-cierre).
+      { destino: "devuelto", ejecutores: ["sistema", "interno"] },
     ],
   ],
   [
@@ -80,6 +89,8 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
     [
       // Igual que fallido: reintento con nueva asignación.
       { destino: "asignado", ejecutores: ["interno"] },
+      // Devolución física desde fallo manual: mismo tratamiento que fallido.
+      { destino: "devuelto", ejecutores: ["sistema", "interno"] },
     ],
   ],
   // Estados terminales: sin transiciones válidas de salida.

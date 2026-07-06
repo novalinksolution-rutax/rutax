@@ -1,13 +1,16 @@
 /**
  * Detalle del pedido para conductor — Pantalla 3-B (Flujo 3, PWA)
  *
- * Solo lectura. Sin ninguna acción de cambio de estado (B-2).
- * Texto grande, legible en movimiento. Enlace Google Maps + tel:.
+ * Solo lectura para Flex. Para same-day en estado 'en_ruta': acciones de
+ * entrega/fallo con captura de foto y GPS (Bloque 2).
+ *
+ * FRONTERA DURA: las acciones de entrega aparecen SOLO si tipoPedido==='same_day'
+ * Y estado==='en_ruta'. Para Flex, banner permanente de solo lectura.
  */
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, MapPin, Phone, AlertTriangle } from "lucide-react";
+import { ChevronLeft, MapPin, Phone, AlertTriangle, Clock } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +20,8 @@ import {
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
+import { obtenerEtaSameDay, formatearEtaSameDay } from "@/modules/operacion/eta-same-day";
+import { AccionesSameDay, BannerFlexSoloLectura } from "./acciones-same-day";
 
 // =============================================================================
 // Carga de datos
@@ -73,6 +78,13 @@ async function cargarPedidoConductor(
     notasInternas: (p.notas_internas as string | null) ?? null,
     creadoEn: p.creado_en as string,
     actualizadoEn: p.actualizado_en as string,
+    // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+    lat: (p.lat as number | null) ?? null,
+    long: (p.long as number | null) ?? null,
+    geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+    geoConfianza: (p.geo_confianza as number | null) ?? null,
+    geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+    coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
   };
 
   // Buscar incidencia abierta
@@ -137,8 +149,17 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
     .join(", ");
   const urlGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccionCompleta)}`;
 
+  // ETA (solo same-day)
+  const esSameDay = pedido.tipoPedido === "same_day";
+  const estaEnRuta = pedido.estado === "en_ruta";
+  const esFlex = pedido.tipoPedido === "flex";
+
+  const etaStr = esSameDay
+    ? formatearEtaSameDay(obtenerEtaSameDay(pedido))
+    : null;
+
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-5 pb-28">
       {/* Volver */}
       <Link
         href="/conductor/manifiesto"
@@ -158,6 +179,19 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
           {traducirEstadoPedido(pedido.estado)}
         </Badge>
       </div>
+
+      {/* ETA same-day (si existe) */}
+      {etaStr && estaEnRuta && (
+        <div className="flex items-center gap-2 rounded-xl bg-info-subtle px-4 py-3 text-info-subtle-foreground">
+          <Clock className="size-4 flex-shrink-0" aria-hidden="true" />
+          <p className="text-sm">
+            Entrega prometida para las <span className="font-semibold">{etaStr}</span>
+          </p>
+        </div>
+      )}
+
+      {/* Banner Flex — solo lectura */}
+      {esFlex && <BannerFlexSoloLectura />}
 
       {/* Dirección con enlace a Google Maps */}
       <div className="rounded-xl border bg-card p-4 space-y-3">
@@ -190,7 +224,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
               <p className="text-xs text-muted-foreground">Teléfono del destinatario</p>
               <a
                 href={`tel:${pedido.destinatarioTelefono}`}
-                className="block min-h-[48px] flex items-center text-lg font-semibold text-primary hover:underline"
+                className="flex min-h-[48px] items-center text-lg font-semibold text-primary hover:underline"
               >
                 {pedido.destinatarioTelefono}
               </a>
@@ -209,7 +243,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
         </div>
       )}
 
-      {/* Incidencia abierta — solo informativo (B-2) */}
+      {/* Incidencia abierta — solo informativo */}
       {incidenciaAbierta && (
         <div className="space-y-1 rounded-xl bg-warning-subtle p-4 text-warning-subtle-foreground">
           <div className="flex items-center gap-2">
@@ -221,6 +255,28 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
           <p className="text-xs opacity-80">
             Si tienes información nueva, comenta con tu coordinador.
           </p>
+        </div>
+      )}
+
+      {/* ====================================================================
+          FRONTERA DURA: acciones de entrega SOLO para same-day en_ruta.
+          Para Flex → el banner superior ya indica que deben usar la app Flex.
+          ==================================================================== */}
+      {esSameDay && estaEnRuta && (
+        <section aria-labelledby="acciones-entrega-titulo">
+          <h2 id="acciones-entrega-titulo" className="sr-only">
+            Acciones de entrega
+          </h2>
+          <AccionesSameDay pedidoId={pedido.id} />
+        </section>
+      )}
+
+      {/* Estado terminal — pedido ya resuelto */}
+      {(pedido.estado === "entregado" || pedido.estado === "fallido") && (
+        <div className="rounded-xl bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
+          {pedido.estado === "entregado"
+            ? "Este pedido fue marcado como entregado."
+            : "Este pedido fue marcado como no entregado."}
         </div>
       )}
     </div>

@@ -67,6 +67,45 @@ import type {
 } from "./tipos";
 
 /**
+ * Errores de integridad al persistir una conexión bajo el modelo 1:N (un seller
+ * puede conectar hasta N cuentas ML). Se traducen desde los SQLSTATE que
+ * imponen las reglas del esquema (migración
+ * `20260630000002_identidad_conexiones_seller_ml_multicuenta.sql`):
+ *
+ * - `23514` (check_violation) → el trigger de tope disparó: el seller ya tiene
+ *   el máximo de cuentas permitidas.
+ * - `23505` (unique_violation) → el índice único parcial `(seller_id,
+ *   ml_user_id)` disparó: esa misma cuenta ML ya está conectada a este seller.
+ *
+ * El llamador (route del callback OAuth) los distingue para dar un mensaje
+ * accionable en vez de un error genérico.
+ */
+export class ErrorTopeCuentasMlAlcanzado extends Error {
+  readonly sellerId: string;
+  constructor(sellerId: string) {
+    super(
+      `El seller ${sellerId} alcanzó el tope de cuentas de Mercado Libre permitidas. ` +
+        "Desconecta una cuenta existente antes de conectar otra.",
+    );
+    this.name = "ErrorTopeCuentasMlAlcanzado";
+    this.sellerId = sellerId;
+  }
+}
+
+export class ErrorCuentaMlYaConectada extends Error {
+  readonly sellerId: string;
+  readonly mlUserId: string;
+  constructor(sellerId: string, mlUserId: string) {
+    super(
+      `La cuenta de Mercado Libre ${mlUserId} ya está conectada al seller ${sellerId}.`,
+    );
+    this.name = "ErrorCuentaMlYaConectada";
+    this.sellerId = sellerId;
+    this.mlUserId = mlUserId;
+  }
+}
+
+/**
  * El seller debe re-vincular su cuenta de Mercado Libre (cuenta PRINCIPAL/
  * manager — skill `flex-ml`) antes de poder usar este puerto. Se lanza cuando
  * `refrescarToken` devuelve `requiere_revinculacion` al intentar obtener un
@@ -121,6 +160,26 @@ function leerCredencialesApp(): { clientId: string; clientSecret: string } {
  */
 const codigosEnProceso = new CacheIdempotencia(2 * 60_000);
 
+/**
+ * Resultado ya persistido de un intercambio de `code`, cacheado por su clave de
+ * idempotencia. Bajo el modelo 1:N ya NO se puede resolver "la conexión del
+ * seller" en un doble callback (el seller puede tener varias cuentas y el
+ * `code` es de un solo uso — no podemos re-canjearlo ni conocer el `user_id`
+ * sin re-golpear ML). Por eso memorizamos la conexión que dejó la primera
+ * ejecución y la devolvemos tal cual en la segunda. TTL corto (mismo que el
+ * marcador anti-doble-canje). Se limpia por edad de forma perezosa.
+ */
+const resultadosIntercambio = new Map<string, { conexion: ConexionSellerMl; en: number }>();
+const TTL_RESULTADO_INTERCAMBIO_MS = 2 * 60_000;
+
+function recordarResultadoIntercambio(clave: string, conexion: ConexionSellerMl): void {
+  const ahora = Date.now();
+  for (const [k, v] of resultadosIntercambio) {
+    if (ahora - v.en > TTL_RESULTADO_INTERCAMBIO_MS) resultadosIntercambio.delete(k);
+  }
+  resultadosIntercambio.set(clave, { conexion, en: ahora });
+}
+
 // ---------------------------------------------------------------------------
 // 1. Iniciar autorización
 // ---------------------------------------------------------------------------
@@ -166,10 +225,16 @@ export function iniciarAutorizacion(
  *
  * Idempotente: si el mismo `code` llega dos veces (doble submit del
  * callback), la segunda llamada no vuelve a golpear la API de ML — devuelve
- * la conexión que la primera ya dejó persistida. Esto NO sustituye la
- * idempotencia "dura" a nivel de fila (la unicidad de `seller_id` en
- * `conexiones_seller_ml` ya la garantiza el esquema); es una defensa
- * adicional contra gastar el `code` (de un solo uso en ML) dos veces.
+ * la conexión que la primera ya dejó persistida (memorizada en
+ * `resultadosIntercambio`). Esto NO sustituye la idempotencia "dura" a nivel
+ * de fila: bajo el modelo 1:N la unicidad la garantizan el índice único
+ * parcial `(seller_id, ml_user_id)` y el trigger de tope del esquema; es una
+ * defensa adicional contra gastar el `code` (de un solo uso en ML) dos veces.
+ *
+ * Modelo 1:N (hasta N cuentas por seller): re-hacer el OAuth con OTRA cuenta
+ * inserta una fila nueva (sujeta al tope). Re-hacerlo con la MISMA cuenta hace
+ * UPDATE de su fila. La resolución fina la hace
+ * `persistirTokensYActualizarConexion` por `(seller_id, ml_user_id)`.
  */
 export async function intercambiarCodigoPorTokens(
   entrada: IntercambiarCodigoEntrada,
@@ -177,11 +242,13 @@ export async function intercambiarCodigoPorTokens(
   const claveIdempotencia = `ml:intercambio:${entrada.tenantId}:${entrada.sellerId}:${entrada.codigo}`;
 
   if (!codigosEnProceso.marcarSiEsNuevo(claveIdempotencia)) {
-    const existente = await buscarConexionPorSeller(entrada.sellerId);
-    if (existente) return existente;
-    // Si por algún motivo no quedó persistida (p. ej. la primera llamada
-    // sigue en curso), dejamos que el flujo normal continúe — el upsert de
-    // abajo es seguro de reintentar.
+    const memorizado = resultadosIntercambio.get(claveIdempotencia);
+    if (memorizado) return memorizado.conexion;
+    // Si por algún motivo no quedó memorizada (p. ej. la primera llamada
+    // sigue en curso o el TTL expiró), dejamos que el flujo normal continúe.
+    // Re-canjear un `code` ya gastado fallará en ML (error no reintentable que
+    // el route del callback traduce a "estado_invalido"/"error_sistema") — es
+    // el desenlace correcto: no podemos resolver la cuenta a ciegas.
   }
 
   const { clientId, clientSecret } = leerCredencialesApp();
@@ -198,6 +265,21 @@ export async function intercambiarCodigoPorTokens(
     },
   });
 
+  // Best-effort: capturar el nickname de la cuenta (para mostrarla legible en el
+  // portal cuando el seller tiene varias). Si falla, la conexión igual se crea
+  // (el seller puede ponerle un alias). NUNCA bloquea la conexión ni loguea el token.
+  let mlNickname: string | null = null;
+  try {
+    const me = await peticionMl<{ nickname?: string | null }>({
+      metodo: "GET",
+      ruta: "/users/me",
+      accessToken: respuestaToken.access_token,
+    });
+    mlNickname = me.nickname ?? null;
+  } catch {
+    mlNickname = null;
+  }
+
   const conexion = await persistirTokensYActualizarConexion({
     tenantId: entrada.tenantId,
     sellerId: entrada.sellerId,
@@ -205,7 +287,11 @@ export async function intercambiarCodigoPorTokens(
     estadoSaludResultante: "sana",
     ultimoError: null,
     marcarComoSincronizada: true,
+    mlNickname,
   });
+
+  // Memorizar el resultado para un eventual doble callback con el mismo `code`.
+  recordarResultadoIntercambio(claveIdempotencia, conexion);
 
   // Publicar evento de reconexión para que el job de backfill recupere los
   // pedidos del período desconectado (RF-017). Solo si la conexión tiene fecha
@@ -387,8 +473,86 @@ export function clasificarRazonFallo(error: ErrorHttpMl): RazonFalloRefresco {
 //    seller / dashboard del courier — pero siempre a través de este puerto).
 // ---------------------------------------------------------------------------
 
-export async function obtenerConexionPorSeller(sellerId: string): Promise<ConexionSellerMl | null> {
-  return buscarConexionPorSeller(sellerId);
+/**
+ * Todas las conexiones ML de un seller (modelo 1:N — hasta N cuentas). Es la
+ * forma que portal/dashboard deben consumir para listar cuentas y su salud.
+ * Orden estable por fecha de creación implícita del `id` no garantizada — se
+ * ordena por `ml_user_id` para una lista determinista en la UI.
+ */
+export async function obtenerConexionesPorSeller(
+  sellerId: string,
+): Promise<ConexionSellerMl[]> {
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .select(COLUMNAS_CONEXION)
+    .eq("seller_id", sellerId)
+    .order("ml_user_id", { ascending: true, nullsFirst: false });
+
+  if (error) throw new Error(`No se pudieron leer las conexiones ML: ${error.message}`);
+  return ((data ?? []) as unknown as FilaConexionInterna[]).map(aConexionPublica);
+}
+
+/**
+ * Renombra (alias) una conexión del seller. Escritura vía service_role — el
+ * seller NO puede escribir directo en `conexiones_seller_ml` (RLS + trigger
+ * `solo_interno_edita`). La propiedad se IMPONE en el WHERE: solo actualiza si
+ * la fila pertenece al seller (id + seller_id juntos). Devuelve `true` si tocó
+ * una fila (existe y es suya), `false` si no. El `alias` ya viene saneado por
+ * la capa de acción (server action del portal).
+ */
+export async function renombrarConexion(entrada: {
+  conexionId: string;
+  sellerId: string;
+  alias: string | null;
+}): Promise<boolean> {
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .update({ alias: entrada.alias })
+    .eq("id", entrada.conexionId)
+    .eq("seller_id", entrada.sellerId)
+    .select("id");
+
+  if (error) throw new Error(`No se pudo renombrar la conexión ML: ${error.message}`);
+  return ((data ?? []) as unknown[]).length > 0;
+}
+
+/**
+ * Estado agregado de la conexión ML de un seller, tolerante a 1:N. Devuelve la
+ * conexión "más saludable" (una sana antes que una que requiere atención antes
+ * que una desvinculada) para el resumen simple del portal/dashboard que aún no
+ * distingue cuentas. Cuando la UI multicuenta exista, debe migrar a
+ * `obtenerConexionesPorSeller` (plural) y mostrar cada una.
+ *
+ * Consciente de cuenta en el sentido mínimo exigido: NO lanza con 2+ filas.
+ */
+export async function obtenerConexionPorSeller(
+  sellerId: string,
+): Promise<ConexionSellerMl | null> {
+  const conexiones = await obtenerConexionesPorSeller(sellerId);
+  if (conexiones.length === 0) return null;
+  return conexiones.reduce((mejor, actual) =>
+    prioridadSalud(actual.estadoSalud) < prioridadSalud(mejor.estadoSalud) ? actual : mejor,
+  );
+}
+
+/** Menor número = "más saludable". Orden para elegir la conexión representativa. */
+function prioridadSalud(estado: EstadoSaludConexionMl): number {
+  switch (estado) {
+    case "sana":
+      return 0;
+    case "pendiente":
+      return 1;
+    case "atencion":
+      return 2;
+    case "desvinculada":
+      return 3;
+    default:
+      return 4;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -430,11 +594,25 @@ const MARGEN_REFRESCO_PROACTIVO_MS = 5 * 60_000;
  * Lanza `ErrorConexionMlRequiereRevinculacion` si el refresco determina que
  * el seller debe reconectar su cuenta — el llamador debe distinguir este caso
  * (skill flex-ml: "lo resolví con refresco" vs. "requiere re-vinculación").
+ *
+ * Consciente de cuenta (modelo 1:N): si se pasa `mlUserId`, resuelve la
+ * conexión por `(seller_id, ml_user_id)` — el token correcto para un envío de
+ * ESA cuenta. Sin `mlUserId` (pedido legacy o seller de una sola cuenta) cae a
+ * la conexión representativa del seller.
  */
-export async function obtenerAccessTokenValido(sellerId: string): Promise<string> {
-  let conexion = await leerFilaConexionPorSeller(sellerId);
+export async function obtenerAccessTokenValido(
+  sellerId: string,
+  mlUserId?: string | null,
+): Promise<string> {
+  let conexion = mlUserId
+    ? await leerFilaConexionPorSellerYCuenta(sellerId, mlUserId)
+    : await leerFilaConexionRepresentativaPorSeller(sellerId);
   if (!conexion) {
-    throw new Error(`No existe conexión ML para el seller ${sellerId}.`);
+    throw new Error(
+      mlUserId
+        ? `No existe conexión ML para el seller ${sellerId} y cuenta ${mlUserId}.`
+        : `No existe conexión ML para el seller ${sellerId}.`,
+    );
   }
 
   if (conexion.estado_salud === "desvinculada") {
@@ -492,7 +670,7 @@ export async function obtenerAccessTokenValido(sellerId: string): Promise<string
 export async function obtenerEtiquetaEnvio(
   entrada: ObtenerEtiquetaEnvioEntrada,
 ): Promise<ObtenerEtiquetaEnvioResultado> {
-  const accessToken = await obtenerAccessTokenValido(entrada.sellerId);
+  const accessToken = await obtenerAccessTokenValido(entrada.sellerId, entrada.mlUserId ?? null);
 
   const parametros = new URLSearchParams({
     shipment_ids: entrada.mlShipmentId,
@@ -528,11 +706,14 @@ interface FilaConexionInterna {
   ultima_sync_exitosa_en: string | null;
   desconectada_desde: string | null;
   ultimo_error: string | null;
+  alias: string | null;
+  ml_nickname: string | null;
 }
 
 const COLUMNAS_CONEXION =
   "id, tenant_id, seller_id, ml_user_id, access_token_ref, refresh_token_ref, " +
-  "token_expira_en, estado_salud, ultima_sync_exitosa_en, desconectada_desde, ultimo_error";
+  "token_expira_en, estado_salud, ultima_sync_exitosa_en, desconectada_desde, ultimo_error, " +
+  "alias, ml_nickname";
 
 function aConexionPublica(fila: FilaConexionInterna): ConexionSellerMl {
   return {
@@ -545,6 +726,8 @@ function aConexionPublica(fila: FilaConexionInterna): ConexionSellerMl {
     ultimaSyncExitosaEn: fila.ultima_sync_exitosa_en ? new Date(fila.ultima_sync_exitosa_en) : null,
     desconectadaDesde: fila.desconectada_desde ? new Date(fila.desconectada_desde) : null,
     ultimoError: fila.ultimo_error,
+    alias: fila.alias,
+    mlNickname: fila.ml_nickname,
   };
 }
 
@@ -562,34 +745,52 @@ async function leerFilaConexionPorId(conexionId: string): Promise<FilaConexionIn
 }
 
 /**
- * Variante de `leerFilaConexionPorId` que busca por `seller_id` y devuelve la
- * forma cruda (con `*_ref`) — usada por `obtenerAccessTokenValido`, que
- * necesita `access_token_ref`/`token_expira_en` además de `estado_salud`.
+ * Lee la fila cruda (con `*_ref`) de una conexión por `(seller_id, ml_user_id)`
+ * — la clave de resolución del modelo 1:N. `maybeSingle()` es seguro aquí: el
+ * índice único parcial `(seller_id, ml_user_id) where ml_user_id is not null`
+ * garantiza a lo sumo una fila.
  */
-async function leerFilaConexionPorSeller(sellerId: string): Promise<FilaConexionInterna | null> {
+async function leerFilaConexionPorSellerYCuenta(
+  sellerId: string,
+  mlUserId: string,
+): Promise<FilaConexionInterna | null> {
   const supabase = crearClienteServiceRole();
   const { data, error } = await supabase
     .schema("identidad")
     .from("conexiones_seller_ml")
     .select(COLUMNAS_CONEXION)
     .eq("seller_id", sellerId)
+    .eq("ml_user_id", mlUserId)
     .maybeSingle();
 
   if (error) throw new Error(`No se pudo leer la conexión ML: ${error.message}`);
   return (data as unknown as FilaConexionInterna | null) ?? null;
 }
 
-async function buscarConexionPorSeller(sellerId: string): Promise<ConexionSellerMl | null> {
+/**
+ * Fila cruda de la conexión "representativa" del seller cuando NO se conoce la
+ * cuenta (pedido legacy sin `ml_user_id`, o seller de una sola cuenta). Bajo
+ * 1:N puede haber varias filas → NUNCA `.maybeSingle()` (erraría con 2+).
+ * Se leen todas y se elige la más saludable (misma prioridad que la vista
+ * pública), de modo determinista.
+ */
+async function leerFilaConexionRepresentativaPorSeller(
+  sellerId: string,
+): Promise<FilaConexionInterna | null> {
   const supabase = crearClienteServiceRole();
   const { data, error } = await supabase
     .schema("identidad")
     .from("conexiones_seller_ml")
     .select(COLUMNAS_CONEXION)
-    .eq("seller_id", sellerId)
-    .maybeSingle();
+    .eq("seller_id", sellerId);
 
   if (error) throw new Error(`No se pudo leer la conexión ML: ${error.message}`);
-  return data ? aConexionPublica(data as unknown as FilaConexionInterna) : null;
+
+  const filas = (data ?? []) as unknown as FilaConexionInterna[];
+  if (filas.length === 0) return null;
+  return filas.reduce((mejor, actual) =>
+    prioridadSalud(actual.estado_salud) < prioridadSalud(mejor.estado_salud) ? actual : mejor,
+  );
 }
 
 interface PersistirTokensEntrada {
@@ -600,14 +801,29 @@ interface PersistirTokensEntrada {
   ultimoError: string | null;
   /** `true` en el intercambio inicial (primera sync exitosa); `false` en refrescos. */
   marcarComoSincronizada: boolean;
+  /**
+   * Nickname de la cuenta en ML (de `/users/me`). Solo se pasa en el intercambio
+   * inicial; en refrescos se omite (`undefined`) para NO re-consultar ML ni pisar
+   * el valor existente. `null` = se intentó y no vino; `undefined` = no tocar.
+   */
+  mlNickname?: string | null;
 }
 
 /**
- * Cifra ambos tokens y hace upsert de la fila por `seller_id` (que es UNIQUE
- * — el esquema garantiza 1:1). Usar `upsert` con `onConflict: 'seller_id'` es
- * lo que hace esta operación segura de reintentar: una segunda ejecución con
- * la misma respuesta de ML (o una posterior con tokens rotados) sobreescribe
- * de forma consistente, nunca duplica filas.
+ * Persiste los tokens (cifrados) de UNA cuenta ML del seller. Modelo 1:N: la
+ * fila se resuelve por `(seller_id, ml_user_id)` — `ml_user_id` SIEMPRE se
+ * conoce aquí (viene de `respuestaToken.user_id`, sea intercambio inicial o
+ * refresco).
+ *
+ * Por qué NO `upsert(..., { onConflict })`: supabase-js/PostgREST no puede
+ * inferir un árbitro ON CONFLICT sobre un índice único PARCIAL (el índice
+ * `(seller_id, ml_user_id) where ml_user_id is not null`), así que se usa
+ * lógica explícita:
+ *   1. SELECT por `(seller_id, ml_user_id)`.
+ *   2. Si existe → UPDATE por `id` (idempotente, rota tokens sin duplicar).
+ *   3. Si no → INSERT. El trigger de tope (SQLSTATE 23514) y la unicidad
+ *      parcial (23505) del esquema garantizan la integridad; se traducen a
+ *      errores de dominio claros.
  *
  * Nunca persiste el token en claro en ninguna columna de negocio — solo las
  * referencias opacas que `cifrarSecreto` devuelve.
@@ -616,6 +832,7 @@ async function persistirTokensYActualizarConexion(
   entrada: PersistirTokensEntrada,
 ): Promise<ConexionSellerMl> {
   const ahora = new Date();
+  const mlUserId = String(entrada.respuestaToken.user_id);
   const tokenExpiraEn = new Date(ahora.getTime() + entrada.respuestaToken.expires_in * 1000);
 
   const accessTokenRef = await cifrarSecreto({
@@ -642,41 +859,78 @@ async function persistirTokensYActualizarConexion(
 
   const supabase = crearClienteServiceRole();
 
-  const filaUpsert: Record<string, unknown> = {
-    tenant_id: entrada.tenantId,
-    seller_id: entrada.sellerId,
-    ml_user_id: String(entrada.respuestaToken.user_id),
+  // Campos comunes a INSERT y UPDATE. `desconectada_desde` solo se toca si la
+  // conexión queda 'sana' (limpiar la marca de caída); en otro caso se omite
+  // para no pisar la marca original.
+  const campos: Record<string, unknown> = {
     access_token_ref: accessTokenRef.referenciaExternaId,
     token_expira_en: tokenExpiraEn.toISOString(),
     estado_salud: entrada.estadoSaludResultante,
     ultimo_error: entrada.ultimoError,
-    // Al recuperar la salud, limpiamos `desconectada_desde` — útil para que
-    // el futuro backfill (RF-017) sepa "desde cuándo" recuperar exactamente
-    // hasta este instante de reconexión, y no quede una marca obsoleta.
-    desconectada_desde: entrada.estadoSaludResultante === "sana" ? null : undefined,
   };
-
   if (refreshTokenRef) {
-    filaUpsert.refresh_token_ref = refreshTokenRef;
+    campos.refresh_token_ref = refreshTokenRef;
+  }
+  if (entrada.estadoSaludResultante === "sana") {
+    campos.desconectada_desde = null;
   }
   if (entrada.marcarComoSincronizada) {
-    filaUpsert.ultima_sync_exitosa_en = ahora.toISOString();
+    campos.ultima_sync_exitosa_en = ahora.toISOString();
+  }
+  // Solo si se pasó explícitamente (intercambio inicial). En refrescos queda
+  // `undefined` → no se toca el nickname ya guardado.
+  if (entrada.mlNickname !== undefined) {
+    campos.ml_nickname = entrada.mlNickname;
   }
 
-  // `undefined` no debe serializarse como columna — Postgres lo tomaría como
-  // "no tocar" solo si se omite la clave; lo limpiamos explícitamente.
-  for (const clave of Object.keys(filaUpsert)) {
-    if (filaUpsert[clave] === undefined) delete filaUpsert[clave];
+  // 1. ¿Ya existe la fila de esta cuenta para este seller?
+  const existente = await leerFilaConexionPorSellerYCuenta(entrada.sellerId, mlUserId);
+
+  if (existente) {
+    // 2. UPDATE por id — rota tokens/actualiza salud sin duplicar fila.
+    const { data, error } = await supabase
+      .schema("identidad")
+      .from("conexiones_seller_ml")
+      .update(campos)
+      .eq("id", existente.id)
+      .select(COLUMNAS_CONEXION)
+      .single();
+
+    if (error) {
+      throw new Error(`No se pudo actualizar la conexión ML: ${error.message}`);
+    }
+    return aConexionPublica(data as unknown as FilaConexionInterna);
   }
+
+  // 3. INSERT — nueva cuenta. El trigger de tope y la unicidad parcial son la
+  //    barrera dura; traducimos sus SQLSTATE a errores de dominio.
+  const filaInsert: Record<string, unknown> = {
+    ...campos,
+    tenant_id: entrada.tenantId,
+    seller_id: entrada.sellerId,
+    ml_user_id: mlUserId,
+  };
 
   const { data, error } = await supabase
     .schema("identidad")
     .from("conexiones_seller_ml")
-    .upsert(filaUpsert, { onConflict: "seller_id" })
+    .insert(filaInsert)
     .select(COLUMNAS_CONEXION)
     .single();
 
   if (error) {
+    // 23514 (check_violation): trigger de tope → el seller ya tiene el máximo.
+    if (error.code === "23514") {
+      throw new ErrorTopeCuentasMlAlcanzado(entrada.sellerId);
+    }
+    // 23505 (unique_violation): dos altas concurrentes de la MISMA cuenta
+    // (carrera contra el paso 1) — el índice parcial la rechazó. Es idempotente
+    // en la práctica: leemos y devolvemos la fila ganadora.
+    if (error.code === "23505") {
+      const ganadora = await leerFilaConexionPorSellerYCuenta(entrada.sellerId, mlUserId);
+      if (ganadora) return aConexionPublica(ganadora);
+      throw new ErrorCuentaMlYaConectada(entrada.sellerId, mlUserId);
+    }
     throw new Error(`No se pudo persistir la conexión ML: ${error.message}`);
   }
 

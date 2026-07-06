@@ -17,7 +17,9 @@ import {
   puedeGestionarConfiguracionDte,
   puedeGestionarIncidencias,
   puedeAsignarYReasignarPedidos,
+  puedeVerReportesEjecutivos,
 } from "@/modules/identidad/capacidades";
+import { ahoraEnSantiago, horaAMinutos } from "@/lib/fecha-santiago";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import {
   esIncidenciaSinGestion,
@@ -107,6 +109,84 @@ async function avisosFoliosBajos(tenantId: string): Promise<Aviso[]> {
   }
 }
 
+/** Minutos antes del corte en que se activa el aviso. */
+const UMBRAL_CORTE_MINUTOS = 45;
+
+async function avisosCorteProximo(tenantId: string): Promise<Aviso[]> {
+  try {
+    const cliente = crearClienteServiceRole();
+    const { fecha: fechaHoy, hora: horaActual } = ahoraEnSantiago();
+    const minutosActual = horaAMinutos(horaActual);
+
+    const [ventanasRes, pedidosRes, sellersRes] = await Promise.all([
+      cliente
+        .schema("identidad")
+        .from("ventanas_corte")
+        .select("seller_id, hora_corte")
+        .eq("tenant_id", tenantId)
+        .is("zona_id", null)
+        .eq("activa", true),
+      cliente
+        .schema("operacion")
+        .from("pedidos")
+        .select("seller_id")
+        .eq("tenant_id", tenantId)
+        .eq("tipo_pedido", "same_day")
+        .eq("fecha_compromiso", fechaHoy)
+        .in("estado", ["pendiente_asignacion", "asignado", "en_ruta"]),
+      cliente
+        .schema("identidad")
+        .from("sellers")
+        .select("id, nombre_empresa")
+        .eq("tenant_id", tenantId),
+    ]);
+
+    const ventanas = ventanasRes.data ?? [];
+    const pedidos = pedidosRes.data ?? [];
+    const sellers = sellersRes.data ?? [];
+
+    if (ventanas.length === 0 || pedidos.length === 0) return [];
+
+    const mapaNombre = new Map<string, string>();
+    for (const s of sellers) {
+      mapaNombre.set(s.id as string, (s.nombre_empresa as string) ?? "Seller");
+    }
+
+    const mapaPendientes = new Map<string, number>();
+    for (const p of pedidos) {
+      const sid = p.seller_id as string;
+      mapaPendientes.set(sid, (mapaPendientes.get(sid) ?? 0) + 1);
+    }
+
+    const avisos: Aviso[] = [];
+    for (const v of ventanas) {
+      const sid = v.seller_id as string;
+      const pendientes = mapaPendientes.get(sid) ?? 0;
+      if (pendientes === 0) continue;
+
+      const horaCorte = ((v.hora_corte as string) ?? "").slice(0, 5);
+      const minutosCorte = horaAMinutos(horaCorte);
+      const minutosRestantes = minutosCorte - minutosActual;
+
+      if (minutosRestantes <= 0 || minutosRestantes > UMBRAL_CORTE_MINUTOS) continue;
+
+      const nombre = mapaNombre.get(sid) ?? "un seller";
+      avisos.push({
+        id: `corte-proximo-${sid}`,
+        urgencia: minutosRestantes <= 15 ? "urgente" : "importante",
+        titulo: `Corte de ${nombre} en ${minutosRestantes} min`,
+        descripcion: `${pendientes} pedido${pendientes !== 1 ? "s" : ""} pendiente${pendientes !== 1 ? "s" : ""} de entregar.`,
+        href: `/operaciones?sellerId=${sid}&estado=pendiente_asignacion`,
+        accion: "Ver pedidos",
+      });
+    }
+
+    return avisos;
+  } catch {
+    return [];
+  }
+}
+
 async function avisosIncidenciasSinGestion(tenantId: string): Promise<Aviso[]> {
   try {
     const cliente = crearClienteServiceRole();
@@ -153,6 +233,9 @@ export async function obtenerAvisos(
 
   if (puedeAsignarYReasignarPedidos(usuario) || puedeGestionarConfiguracionDte(usuario)) {
     tareas.push(avisosConexionesCaidas(tenantId));
+  }
+  if (puedeAsignarYReasignarPedidos(usuario) || puedeVerReportesEjecutivos(usuario)) {
+    tareas.push(avisosCorteProximo(tenantId));
   }
   if (puedeGestionarConfiguracionDte(usuario)) {
     tareas.push(avisosFoliosBajos(tenantId));

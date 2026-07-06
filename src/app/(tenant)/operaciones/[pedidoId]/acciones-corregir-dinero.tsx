@@ -19,7 +19,7 @@ import { accionAnularCobroPedido, accionAnularLiquidacionPedido } from "./accion
 
 type Accion = (pedidoId: string, motivo: string) => Promise<{ ok: boolean; mensaje?: string }>;
 
-function DialogAnular({
+export function DialogAnular({
   pedidoId,
   titulo,
   descripcion,

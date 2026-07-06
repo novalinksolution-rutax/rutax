@@ -124,6 +124,13 @@ async function cargarPedidosAsignados(
           notasInternas: (p.notas_internas as string | null) ?? null,
           creadoEn: p.creado_en as string,
           actualizadoEn: p.actualizado_en as string,
+          // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+          lat: (p.lat as number | null) ?? null,
+          long: (p.long as number | null) ?? null,
+          geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+          geoConfianza: (p.geo_confianza as number | null) ?? null,
+          geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+          coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
         } satisfies Pedido,
       };
     })

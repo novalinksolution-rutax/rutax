@@ -1,232 +1,314 @@
 "use client";
 
 /**
- * Pantalla O — Panel de estado de conexión (§3.2, RF-048).
+ * Panel de cuentas de Mercado Libre del seller — modelo 1:N (hasta 3 cuentas).
  *
- * Traduce `estado_salud` a lenguaje humano — "el seller no debe ver jamás los
- * strings internos (sana/atencion/desvinculada/pendiente) ni términos
- * técnicos (token, OAuth, refresh, callback)" (§3.3). El ÚNICO control es el
- * botón "Reconectar" (acción de servidor que reinicia el flujo OAuth,
- * reutilizando Pantallas M→N) — coherente con "el seller nunca edita tokens".
+ * Reemplaza la tarjeta única 1:1 por una LISTA de tarjetas, una por conexión.
+ * Traduce `estado_salud` a lenguaje humano (nunca expone strings internos ni
+ * jerga: token/OAuth/refresh). Controles por tarjeta: "Reconectar" (solo si la
+ * cuenta necesita atención/está desvinculada) y "Editar nombre" (alias). Bajo
+ * la lista: "Agregar otra cuenta" mientras haya menos de 3; al llegar a 3, una
+ * nota informativa en vez del botón.
  *
- * Estados de la pantalla en su conjunto (no solo de la conexión):
- *   - Sin conexión todavía → tarjeta neutra + CTA "Conectar mi cuenta"
- *   - sana / pendiente / atencion / desvinculada → tabla de traducción §3.2
- *   - Backfill en curso → mensaje informativo transitorio (solo si hay datos
- *     reales que lo respalden — `desconectada_desde`; el sistema NO expone
- *     todavía progreso de backfill (RF-017 es de Fase B), así que no se
- *     inventa una barra de progreso, solo el contexto de fecha)
- *   - Error al cargar → reintento simple (criterio: "no debe quedar en
- *     blanco silenciosamente")
+ * Reglas de seguridad respetadas por diseño: el seller NUNCA escribe directo en
+ * `conexiones_seller_ml`. Reconexión y alias van por server actions con
+ * service_role + verificación de propiedad (ver conectar-ml/actions y actions).
  */
 
 import { useState } from "react";
-import { CheckCircle2, Clock, Loader2, ShieldAlert, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EstadoError } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { iniciarConexionMl } from "./conectar-ml/actions";
-import { obtenerEstadoConexionPropia, type ConexionMlSeller } from "./actions";
+import { obtenerConexionesPropia, renombrarConexionMl, type ConexionMlSellerItem } from "./actions";
+
+const MAX_CUENTAS = 3;
 
 interface Props {
-  estadoInicial: ConexionMlSeller | null;
+  conexionesIniciales: ConexionMlSellerItem[];
   errorInicial: string | null;
 }
 
-export function PanelConexionMl({ estadoInicial, errorInicial }: Props) {
-  const [conexion, setConexion] = useState<ConexionMlSeller | null>(estadoInicial);
+export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) {
+  const [conexiones, setConexiones] = useState<ConexionMlSellerItem[]>(conexionesIniciales);
   const [error, setError] = useState<string | null>(errorInicial);
   const [cargando, setCargando] = useState(false);
-  const [reconectando, setReconectando] = useState(false);
-  const [errorReconexion, setErrorReconexion] = useState<string | null>(null);
+  const [accionandoId, setAccionandoId] = useState<string | null>(null); // "nueva" para alta
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [valorEdit, setValorEdit] = useState("");
+  const [errorEdit, setErrorEdit] = useState<string | null>(null);
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
 
   async function recargar() {
     setCargando(true);
     setError(null);
-    const resultado = await obtenerEstadoConexionPropia();
+    const resultado = await obtenerConexionesPropia();
     setCargando(false);
-
     if (!resultado.ok) {
       setError(resultado.mensaje);
       return;
     }
-    setConexion(resultado.conexion);
+    setConexiones(resultado.conexiones);
   }
 
-  async function manejarReconectar() {
-    if (reconectando) return;
-    setErrorReconexion(null);
-    setReconectando(true);
+  async function iniciar(modo: "conexion_inicial" | "reconexion" | "agregar_cuenta", conexionId?: string) {
+    const clave = conexionId ?? "nueva";
+    if (accionandoId) return;
+    setErrorAccion(null);
+    setAccionandoId(clave);
 
-    const resultado = await iniciarConexionMl(conexion ? "reconexion" : "conexion_inicial");
+    const resultado = await iniciarConexionMl(modo, conexionId);
     if (!resultado.ok || !resultado.urlAutorizacion) {
-      setReconectando(false);
-      setErrorReconexion(
-        resultado.mensaje ?? "No pudimos iniciar la reconexión por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+      setAccionandoId(null);
+      setErrorAccion(
+        resultado.mensaje ??
+          "No pudimos iniciar la conexión con Mercado Libre por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
       );
       return;
     }
-
     window.location.assign(resultado.urlAutorizacion);
   }
 
-  if (error) {
+  function empezarEdicion(c: ConexionMlSellerItem) {
+    setEditandoId(c.id);
+    setValorEdit(c.alias ?? "");
+    setErrorEdit(null);
+  }
+
+  async function guardarAlias(id: string) {
+    if (guardandoEdit) return;
+    setGuardandoEdit(true);
+    setErrorEdit(null);
+    const resultado = await renombrarConexionMl(id, valorEdit);
+    setGuardandoEdit(false);
+    if (!resultado.ok) {
+      setErrorEdit(resultado.mensaje);
+      return;
+    }
+    setConexiones((prev) => prev.map((c) => (c.id === id ? { ...c, alias: resultado.alias } : c)));
+    setEditandoId(null);
+  }
+
+  if (error && conexiones.length === 0) {
     return <EstadoError descripcion={error} onReintentar={recargar} reintentando={cargando} />;
   }
 
-  // -----------------------------------------------------------------------
-  // Sin conexión todavía — el seller aceptó la invitación pero no completó
-  // OAuth (no hay fila en `conexiones_seller_ml`). Mismo flujo que el
-  // onboarding inicial: "conectar y reconectar son la misma acción con
-  // distinto punto de entrada" (§3.2).
-  // -----------------------------------------------------------------------
-  if (!conexion) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-4 px-6 py-10 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <Clock className="size-6" aria-hidden="true" />
-          </div>
-          <div className="space-y-1">
-            <p className="font-medium text-foreground">Todavía no conectaste tu cuenta de Mercado Libre</p>
-            <p className="text-sm text-muted-foreground">
-              Conéctala para que tus pedidos empiecen a sincronizarse automáticamente en este portal.
-            </p>
-          </div>
-          <Button onClick={manejarReconectar} disabled={reconectando} size="lg">
-            {reconectando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-            {reconectando ? "Te llevamos a Mercado Libre…" : "Conectar mi cuenta de Mercado Libre"}
-          </Button>
-          {errorReconexion ? (
-            <Alert variant="destructive" className="text-left">
-              <ShieldAlert />
-              <AlertDescription>{errorReconexion}</AlertDescription>
-            </Alert>
-          ) : null}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const presentacion = traducirEstadoSalud(conexion);
+  const ordenadas = [...conexiones].sort((a, b) => prioridad(a.estadoSalud) - prioridad(b.estadoSalud));
 
   return (
-    <div className="space-y-4">
-      <Card className={presentacion.bordeTarjeta}>
-        <CardContent className="flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3 text-left">
-            <div className={`flex size-10 shrink-0 items-center justify-center rounded-full ${presentacion.fondoIcono}`}>
-              {presentacion.icono}
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">Mis cuentas de Mercado Libre</h2>
+        <p className="text-sm text-muted-foreground">
+          Tus pedidos se sincronizan automáticamente desde estas cuentas.
+        </p>
+      </div>
+
+      {conexiones.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-4 px-6 py-10 text-center">
+            <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <Clock className="size-6" aria-hidden="true" />
             </div>
             <div className="space-y-1">
-              <p className="font-medium text-foreground">{presentacion.titulo}</p>
-              {presentacion.detalle ? <p className="text-sm text-muted-foreground">{presentacion.detalle}</p> : null}
+              <p className="font-medium text-foreground">Todavía no conectaste ninguna cuenta de Mercado Libre</p>
+              <p className="text-sm text-muted-foreground">
+                Conéctala para que tus pedidos empiecen a sincronizarse automáticamente en este portal.
+              </p>
             </div>
-          </div>
-
-          {presentacion.mostrarBotonReconectar ? (
-            <Button onClick={manejarReconectar} disabled={reconectando} variant={presentacion.tono === "critico" ? "default" : "outline"}>
-              {reconectando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {reconectando ? "Te llevamos a Mercado Libre…" : "Reconectar"}
+            <Button onClick={() => iniciar("conexion_inicial")} disabled={accionandoId !== null} size="lg">
+              {accionandoId === "nueva" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+              {accionandoId === "nueva" ? "Te llevamos a Mercado Libre…" : "Conectar mi cuenta de Mercado Libre"}
             </Button>
-          ) : null}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        <ul className="space-y-3" role="list">
+          {ordenadas.map((c) => {
+            const p = presentacion(c);
+            const enEdicion = editandoId === c.id;
+            return (
+              <li key={c.id} role="listitem">
+                <Card className={p.bordeTarjeta} aria-label={`Conexión: ${etiquetaCuenta(c)}`}>
+                  <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-3 text-left">
+                      <div className={`flex size-10 shrink-0 items-center justify-center rounded-full ${p.fondoIcono}`}>
+                        {p.icono}
+                      </div>
+                      <div className="space-y-1">
+                        {enEdicion ? (
+                          <div className="space-y-1.5">
+                            <input
+                              autoFocus
+                              value={valorEdit}
+                              maxLength={40}
+                              onChange={(e) => setValorEdit(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void guardarAlias(c.id);
+                                if (e.key === "Escape") setEditandoId(null);
+                              }}
+                              className="w-full max-w-64 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                              placeholder="Nombre de la cuenta"
+                              aria-label={`Editar nombre de ${etiquetaCuenta(c)}`}
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" onClick={() => void guardarAlias(c.id)} disabled={guardandoEdit}>
+                                {guardandoEdit ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : null}
+                                Guardar
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditandoId(null)} disabled={guardandoEdit}>
+                                Cancelar
+                              </Button>
+                            </div>
+                            {errorEdit ? <p className="text-xs text-destructive">{errorEdit}</p> : null}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <p className="font-medium text-foreground">{etiquetaCuenta(c)}</p>
+                            <button
+                              type="button"
+                              onClick={() => empezarEdicion(c)}
+                              className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                            >
+                              Editar nombre
+                            </button>
+                          </div>
+                        )}
+                        <p className="text-sm text-muted-foreground">{p.titulo}</p>
+                        {p.detalle ? <p className="text-xs text-muted-foreground">{p.detalle}</p> : null}
+                      </div>
+                    </div>
 
-      {errorReconexion ? (
+                    {p.mostrarReconectar ? (
+                      <Button
+                        onClick={() => iniciar("reconexion", c.id)}
+                        disabled={accionandoId !== null}
+                        variant={p.tono === "critico" ? "default" : "outline"}
+                        className="shrink-0"
+                      >
+                        {accionandoId === c.id ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+                        {accionandoId === c.id ? "Te llevamos a Mercado Libre…" : "Reconectar"}
+                      </Button>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {conexiones.length > 0 && conexiones.length < MAX_CUENTAS ? (
+        <Button
+          variant="outline"
+          onClick={() => iniciar("agregar_cuenta")}
+          disabled={accionandoId !== null}
+          className="w-full sm:w-auto"
+        >
+          {accionandoId === "nueva" ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Plus className="size-4" aria-hidden="true" />
+          )}
+          {accionandoId === "nueva" ? "Te llevamos a Mercado Libre…" : "Agregar otra cuenta de Mercado Libre"}
+        </Button>
+      ) : null}
+
+      {conexiones.length >= MAX_CUENTAS ? (
+        <p className="text-sm text-muted-foreground">Ya tienes {MAX_CUENTAS} cuentas conectadas (límite máximo).</p>
+      ) : null}
+
+      {errorAccion ? (
         <Alert variant="destructive">
           <ShieldAlert />
-          <AlertDescription>{errorReconexion}</AlertDescription>
+          <AlertDescription>{errorAccion}</AlertDescription>
         </Alert>
       ) : null}
-
-      {/* Backfill en curso — solo se muestra si hay un dato real que lo
-          respalde (`desconectada_desde`). El sistema no expone todavía
-          progreso de backfill (RF-017, Fase B) — no se inventa una barra de
-          progreso; solo se gestiona la expectativa con la fecha real. */}
-      {conexion.estadoSalud === "sana" && conexion.desconectadaDesde ? (
-        <Alert>
-          <Clock />
-          <AlertDescription>
-            Estamos recuperando los pedidos del período en que tu cuenta estuvo desconectada (desde el{" "}
-            {formatearFecha(conexion.desconectadaDesde)}). Esto puede tomar un momento — no necesitas hacer nada.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-    </div>
+    </section>
   );
 }
 
-interface PresentacionEstado {
+/** Prioridad de orden: lo que requiere acción primero. */
+function prioridad(estado: ConexionMlSellerItem["estadoSalud"]): number {
+  switch (estado) {
+    case "desvinculada":
+      return 0;
+    case "atencion":
+      return 1;
+    case "pendiente":
+      return 2;
+    case "sana":
+    default:
+      return 3;
+  }
+}
+
+/** Nombre visible de la cuenta: alias → nickname de ML → últimos 4 del user_id. */
+function etiquetaCuenta(c: ConexionMlSellerItem): string {
+  if (c.alias && c.alias.trim().length > 0) return c.alias;
+  if (c.mlNickname && c.mlNickname.trim().length > 0) return c.mlNickname;
+  if (c.mlUserId && c.mlUserId.length >= 4) return `Cuenta ···${c.mlUserId.slice(-4)}`;
+  return "Cuenta de Mercado Libre";
+}
+
+interface Presentacion {
   icono: React.ReactNode;
   titulo: string;
   detalle: string | null;
   fondoIcono: string;
   bordeTarjeta: string;
   tono: "ok" | "neutro" | "atencion" | "critico";
-  mostrarBotonReconectar: boolean;
+  mostrarReconectar: boolean;
 }
 
-/**
- * Tabla de traducción §3.2 — "un solo indicador de estado, traducido a
- * lenguaje humano". Jamás expone `estado_salud` ni jerga técnica.
- */
-function traducirEstadoSalud(conexion: ConexionMlSeller): PresentacionEstado {
-  switch (conexion.estadoSalud) {
+/** Traduce `estado_salud` a lenguaje humano — nunca expone jerga técnica. */
+function presentacion(c: ConexionMlSellerItem): Presentacion {
+  switch (c.estadoSalud) {
     case "sana":
       return {
         icono: <CheckCircle2 className="size-5" aria-hidden="true" />,
-        titulo: "Tu cuenta está conectada y sincronizando con normalidad",
-        detalle: conexion.ultimaSyncExitosaEn
-          ? `Última sincronización: ${formatearTiempoRelativo(conexion.ultimaSyncExitosaEn)}`
-          : null,
+        titulo: "Conectada y sincronizando",
+        detalle: c.ultimaSyncExitosaEn ? `Última sincronización: ${formatearTiempoRelativo(c.ultimaSyncExitosaEn)}` : null,
         fondoIcono: "bg-success/15 text-success",
         bordeTarjeta: "border-success/30",
         tono: "ok",
-        mostrarBotonReconectar: false,
+        mostrarReconectar: false,
       };
-
     case "pendiente":
       return {
         icono: <Clock className="size-5" aria-hidden="true" />,
-        titulo: "Estamos terminando de configurar tu conexión",
+        titulo: "Configurando…",
         detalle: "Esto es transitorio — no necesitas hacer nada por ahora.",
         fondoIcono: "bg-muted text-muted-foreground",
         bordeTarjeta: "border-border",
         tono: "neutro",
-        mostrarBotonReconectar: false,
+        mostrarReconectar: false,
       };
-
     case "atencion":
       return {
         icono: <TriangleAlert className="size-5" aria-hidden="true" />,
-        titulo: "Tu conexión necesita atención — estamos trabajando en resolverlo",
-        detalle: "Es un problema operativo de nuestro lado o de Mercado Libre, no algo que tengas que resolver tú.",
+        titulo: "Necesita atención",
+        detalle: "Es un problema operativo de nuestro lado o de Mercado Libre. Si persiste, reconéctala.",
         fondoIcono: "bg-warning/15 text-warning",
         bordeTarjeta: "border-warning/30",
         tono: "atencion",
-        // Aunque la tabla §3.2 marca "Ver más" como opcional para `atencion`
-        // y reserva "Reconectar" como prominente para `desvinculada`, ofrecer
-        // el mismo botón aquí (en tono secundario) es coherente con "el único
-        // control disponible es Reconectar" — no se inventa una acción
-        // distinta ("Ver más") que no tiene contenido propio definido.
-        mostrarBotonReconectar: true,
+        mostrarReconectar: true,
       };
-
     case "desvinculada":
     default:
       return {
         icono: <ShieldAlert className="size-5" aria-hidden="true" />,
-        titulo: "Tu cuenta de Mercado Libre se desconectó",
-        detalle: conexion.desconectadaDesde
-          ? `Desde el ${formatearFecha(conexion.desconectadaDesde)}. Reconéctala para seguir recibiendo tus pedidos.`
-          : "Reconéctala para seguir recibiendo tus pedidos.",
+        titulo: "Desconectada — reconéctala para seguir recibiendo tus pedidos",
+        detalle: c.desconectadaDesde ? `Desde el ${formatearFecha(c.desconectadaDesde)}.` : null,
         fondoIcono: "bg-destructive/15 text-destructive",
         bordeTarjeta: "border-destructive/30",
         tono: "critico",
-        mostrarBotonReconectar: true,
+        mostrarReconectar: true,
       };
   }
 }

@@ -33,8 +33,9 @@ export default async function PaginaNuevoPedido() {
           Solicitar envío same-day
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          El envío quedará en estado <em>pendiente de asignación</em> y el courier lo
-          asignará a un conductor durante el día.
+          El envío quedará en estado <em>pendiente de asignación</em> hasta que el courier lo
+          asigne a un conductor. Puedes cargar varios envíos seguidos: el formulario
+          queda listo para el siguiente apenas confirmas uno.
         </p>
       </div>
 

@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { crearPedidoSameDay } from "@/modules/operacion/pedidos";
@@ -8,7 +7,14 @@ import { ErrorValidacion } from "@/modules/identidad/errores";
 import { puedeSolicitarSameDay } from "@/modules/identidad/capacidades";
 
 export type ResultadoCrearSameDay =
-  | { ok: true; pedidoId: string }
+  | {
+      ok: true;
+      pedidoId: string;
+      destinatarioNombre: string;
+      destinatarioComuna: string;
+      /** Presente solo cuando el pedido se creó pasado el horario de corte. */
+      avisoCorte?: { mensaje: string; sugerencia: string };
+    }
   | { ok: false; campo?: string; mensaje: string };
 
 export async function crearSameDayAction(
@@ -44,7 +50,7 @@ export async function crearSameDayAction(
 
   try {
     const cliente = crearClienteServiceRole();
-    const pedido = await crearPedidoSameDay(cliente, {
+    const { pedido, avisoCorte } = await crearPedidoSameDay(cliente, {
       tenantId: sesion.usuario.tenantId,
       sellerId: sesion.usuario.sellerId,
       destinatarioNombre: nombre,
@@ -55,12 +61,34 @@ export async function crearSameDayAction(
       fechaCompromiso,
     });
 
-    redirect(`/portal/pedidos?nuevo=${pedido.id}`);
+    // Modo ráfaga (captura veloz): en vez de redirigir, se devuelve el pedido
+    // creado para que el cliente muestre una confirmación inline (con la
+    // etiqueta lista para imprimir) y deje el formulario listo para el
+    // siguiente envío, sin recargar la página.
+    return {
+      ok: true,
+      pedidoId: pedido.id,
+      destinatarioNombre: pedido.destinatarioNombre,
+      destinatarioComuna: pedido.destinatarioComuna,
+      avisoCorte: avisoCorte
+        ? { mensaje: avisoCorte.mensaje, sugerencia: avisoCorte.sugerencia }
+        : undefined,
+    };
   } catch (err) {
     if (err instanceof ErrorValidacion) {
+      // El mensaje de `crearPedidoSameDay` para "sin tarifa configurada" referencia
+      // /onboarding/tarifas — una pantalla interna del courier a la que el seller no
+      // tiene acceso. Se reemplaza por un mensaje neutral orientado al seller; el
+      // mensaje original (con la ruta interna) sigue intacto para el flujo interno.
+      if (err.message.includes("no tiene una tarifa configurada")) {
+        return {
+          ok: false,
+          mensaje:
+            "El courier aún no configuró tarifas para envíos same-day. Contáctalo para habilitarlas.",
+        };
+      }
       return { ok: false, mensaje: err.message };
     }
-    if ((err as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw err;
     return { ok: false, mensaje: "No se pudo crear el envío. Intenta nuevamente." };
   }
 }

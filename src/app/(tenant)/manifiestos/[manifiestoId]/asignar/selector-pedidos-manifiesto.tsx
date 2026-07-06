@@ -41,6 +41,7 @@ interface PedidoDisponible {
   pedido: Pedido;
   nombreConductorActual: string | null;
   nombreManifiestoActual: string | null;
+  nombreSeller: string | null;
 }
 
 interface Props {
@@ -146,7 +147,7 @@ export function SelectorPedidosManifiesto({ manifiestoId, pedidosDisponibles }: 
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pedidosDisponibles.map(({ pedido, nombreConductorActual }) => {
+            {pedidosDisponibles.map(({ pedido, nombreConductorActual, nombreSeller }) => {
               const yaAsignado = pedido.estado === "asignado";
               const marcado = seleccionados.has(pedido.id);
               return (
@@ -179,7 +180,7 @@ export function SelectorPedidosManifiesto({ manifiestoId, pedidosDisponibles }: 
                     </span>
                   </TableCell>
                   <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
-                    {pedido.sellerId}
+                    {nombreSeller ?? "—"}
                   </TableCell>
                   <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums lg:table-cell">
                     {pedido.fechaCompromiso ?? "—"}

@@ -6,8 +6,9 @@
  */
 
 import { useState, useTransition } from "react";
-import { Plus, X } from "lucide-react";
+import { AlertTriangle, Plus, X } from "lucide-react";
 import { actionCrearPedidoSameDay } from "./actions";
+import type { AvisoCorte } from "@/modules/operacion/tipos";
 
 interface Props {
   sellers: { id: string; nombre: string }[];
@@ -20,7 +21,18 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
   const [abierto, setAbierto] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  const [avisoCorte, setAvisoCorte] = useState<AvisoCorte | null>(null);
   const [pending, startTransition] = useTransition();
+
+  /** Cierra el diálogo y limpia el estado transitorio (errores + aviso de corte).
+   *  Resetear el aviso es clave: si no, al reabrir el modal el formulario
+   *  seguiría oculto por un aviso de una creación anterior. */
+  function cerrar() {
+    setAbierto(false);
+    setErrores({});
+    setErrorServidor(null);
+    setAvisoCorte(null);
+  }
 
   function validar(data: FormData): Record<string, string> {
     const errs: Record<string, string> = {};
@@ -51,6 +63,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
     }
     setErrores({});
     setErrorServidor(null);
+    setAvisoCorte(null);
 
     startTransition(async () => {
       const resultado = await actionCrearPedidoSameDay(formData);
@@ -58,7 +71,14 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
         setErrorServidor(resultado.error);
         return;
       }
-      setAbierto(false);
+      if (resultado.avisoCorte) {
+        // El pedido YA se creó — el aviso es informativo, no bloqueante. Se deja
+        // el modal abierto para que el operador lo vea, pero se oculta el
+        // formulario (abajo) para que no pueda reenviarse y crear un duplicado.
+        setAvisoCorte(resultado.avisoCorte);
+        return;
+      }
+      cerrar();
     });
   }
 
@@ -83,7 +103,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
           {/* Fondo */}
           <div
             className="absolute inset-0 bg-black/40"
-            onClick={() => !pending && setAbierto(false)}
+            onClick={() => !pending && cerrar()}
             aria-hidden="true"
           />
 
@@ -95,7 +115,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
               </h2>
               <button
                 type="button"
-                onClick={() => setAbierto(false)}
+                onClick={cerrar}
                 disabled={pending}
                 className="rounded-md p-1 hover:bg-muted"
                 aria-label="Cerrar"
@@ -114,6 +134,37 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
               </p>
             )}
 
+            {/* Banner "pasaste el corte" — no bloqueante, el pedido ya se creó */}
+            {avisoCorte && (
+              <div
+                role="alert"
+                className="mb-4 rounded-lg border border-warning-subtle bg-warning-subtle px-4 py-3"
+              >
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-warning-subtle-foreground">
+                      Pedido creado fuera del horario de corte ({avisoCorte.horaCorte})
+                    </p>
+                    <p className="text-sm text-warning-subtle-foreground">
+                      Este pedido no alcanzará a ser entregado hoy.{" "}
+                      {avisoCorte.sugerencia}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={cerrar}
+                  className="mt-3 rounded-md border border-warning/40 bg-background/60 px-3 py-1.5 text-xs font-medium text-warning-subtle-foreground hover:bg-background/80"
+                >
+                  Entendido, cerrar
+                </button>
+              </div>
+            )}
+
+            {/* El formulario se oculta una vez creado el pedido fuera de corte:
+                el pedido ya existe, reenviarlo crearía un duplicado. */}
+            {!avisoCorte && (
             <form onSubmit={handleSubmit} noValidate className="space-y-4">
               {/* Bloque Destinatario */}
               <fieldset>
@@ -270,7 +321,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setAbierto(false)}
+                  onClick={cerrar}
                   disabled={pending}
                   className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                 >
@@ -285,6 +336,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

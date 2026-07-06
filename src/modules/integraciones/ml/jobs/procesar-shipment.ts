@@ -5,15 +5,22 @@
  * (publicado por el webhook handler y por el job de polling de respaldo)
  *
  * Lógica:
- * 1. Resolver qué seller tiene este shipment_id (consulta operacion.pedidos).
- * 2. Obtener el token del seller y llamar GET /shipments/{id} via el puerto ML.
- * 3. Traducir el status de ML al estado interno.
- * 4. Llamar `actualizarEstadoPedido` del módulo `operacion`.
+ * 1. Resolver qué pedido tiene este shipment_id (consulta operacion.pedidos).
+ *    El UNIQUE es (tenant_id, ml_shipment_id), NO (ml_shipment_id) — un mismo
+ *    shipment puede existir en >1 tenant; se desambigua por el `userId`
+ *    (ml_user_id) del evento. Por eso NO se usa `.maybeSingle()`.
+ * 2. Obtener el token del seller y leer GET /shipments/{id} (fuente de verdad)
+ *    vía `peticionMl` (backoff/Retry-After) con header `x-format-new: true`.
+ * 3. Traducir status + substatus de ML al estado interno.
+ * 4. Delegar en `actualizarEstadoPedido` del módulo `operacion`.
  *
- * Idempotencia:
+ * Idempotencia y no-reintento:
  * - Si el pedido ya está en el estado traducido → no-op.
- * - Si `actualizarEstadoPedido` lanza `ErrorConflicto` (optimistic locking
- *   perdido ante otra ejecución concurrente) → loguear y terminar sin reintento.
+ * - `ErrorConflicto` (optimistic locking perdido ante otra ejecución
+ *   concurrente) → loguear y terminar sin reintento.
+ * - `ErrorTransicionInvalida` (ML reporta un estado al que la máquina de estados
+ *   no permite transicionar) → loguear y terminar sin reintento (reintentar 4×
+ *   sería inútil; la conciliación C6 detecta la discrepancia).
  *
  * SEGURIDAD: el access token nunca aparece en logs ni en el payload del evento.
  */
@@ -21,11 +28,11 @@
 import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { descifrarSecreto } from "../../secretos";
-import { ML_API_BASE_URL } from "../cliente-http";
+import { peticionMl, ErrorHttpMl } from "../cliente-http";
 import { traducirEstadoMl } from "../traduccion-estados";
+import { actualizarEstadoPedido } from "@/modules/operacion";
 import type {
   ActualizarEstadoEntrada,
-  ErrorConflicto,
   EstadoPedidoInterno,
   PedidoResumen,
 } from "../tipos-operacion";
@@ -46,28 +53,47 @@ interface FilaConexionToken {
 
 /**
  * Inyectable para tests: la función real de `actualizarEstadoPedido` del módulo
- * `operacion`. En producción se importa; en tests se provee un mock.
- * El módulo `operacion` aún está siendo construido por el agente `backend`
- * en paralelo — este patrón de inyección desacopla los dos módulos.
+ * `operacion`. En producción usa el adaptador real por defecto (abajo); en
+ * tests se sustituye con un mock vía `setFnActualizarEstado`.
  */
 export type FnActualizarEstado = (entrada: ActualizarEstadoEntrada) => Promise<void>;
 
 /**
- * Función real de actualización de estado — apunta al módulo `operacion`.
- * Sobrescribible en tests con `setFnActualizarEstado`.
+ * Adaptador REAL por defecto: traduce la entrada del job (forma `sistema_ml`)
+ * a la entrada del módulo `operacion` y delega en `actualizarEstadoPedido`.
  *
- * Por defecto lanza un error descriptivo hasta que el agente `backend`
- * complete el módulo `operacion` y se conecte la importación real.
+ * Detalles del puente:
+ * - `ejecutor: 'sistema'` → NO requiere RBAC, NO requiere actor, NO exige
+ *   `motivo` (eso es solo para correcciones `'interno'`). Por eso no se pasa
+ *   `actuadoPorUsuarioId` ni `actor`.
+ * - `tenantId` viaja en la entrada del job (resuelto en el paso `resolver-pedido`),
+ *   y se usa para el aislamiento de tenant en la lectura/UPDATE de `operacion`.
+ * - `actualizarEstadoPedido` YA se encarga de: optimistic locking
+ *   (`ErrorConflicto`), validación de la máquina de estados
+ *   (`ErrorTransicionInvalida`), apertura idempotente de incidencia en
+ *   fallidos y publicación post-commit del evento financiero. NO se duplica
+ *   nada de eso aquí.
+ * - Se pasa el cliente service_role CRUDO (sin `.schema(...)`), igual que el
+ *   resto de llamadores de `actualizarEstadoPedido` (p. ej. la Server Action de
+ *   `(tenant)/operaciones`): `operacion` está en el `extra_search_path` de cada
+ *   request (ver `supabase/config.toml`), por lo que `cliente.from("pedidos")`
+ *   resuelve a `operacion.pedidos`.
+ *
+ * Devuelve `Promise<void>` (la firma del puerto): el `Pedido` que retorna
+ * `actualizarEstadoPedido` no lo necesita el job, que solo actualiza metadatos
+ * de ML después.
  */
-async function actualizarEstadoPedidoReal(entrada: ActualizarEstadoEntrada): Promise<void> {
-  // Al completarse el módulo `operacion`, reemplazar este cuerpo con:
-  // import { actualizarEstadoPedido } from "@/modules/operacion";
-  // return actualizarEstadoPedido(entrada);
-  void entrada; // evitar "unused variable" mientras es stub
-  throw new Error(
-    "actualizarEstadoPedido aún no implementado en el módulo `operacion`. " +
-      "El agente `backend` debe completar ese módulo.",
-  );
+export async function actualizarEstadoPedidoReal(
+  entrada: ActualizarEstadoEntrada,
+): Promise<void> {
+  const supabase = crearClienteServiceRole();
+  await actualizarEstadoPedido(supabase, {
+    pedidoId: entrada.pedidoId,
+    tenantId: entrada.tenantId,
+    estadoNuevo: entrada.estadoNuevo,
+    estadoEsperado: entrada.estadoEsperado,
+    ejecutor: "sistema",
+  });
 }
 
 /** Referencia mutable para inyección de dependencia en tests. */
@@ -94,10 +120,22 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
     retries: 4,
   },
   async ({ event, step, logger }) => {
-    const { shipmentId } = event.data as { shipmentId: string; userId: string; timestamp: string };
+    const { shipmentId, userId } = event.data as {
+      shipmentId: string;
+      userId: string;
+      timestamp: string;
+    };
     const fnActualizar = fnActualizarEstadoActual;
 
-    // Paso 1: resolver qué seller tiene este shipment en BD.
+    // Paso 1: resolver qué pedido corresponde a este shipment en BD.
+    //
+    // COLISIÓN MULTI-TENANT: el UNIQUE de `operacion.pedidos` es
+    // (tenant_id, ml_shipment_id), NO (ml_shipment_id) solo. Un mismo
+    // shipment_id de ML puede existir en pedidos de >1 tenant (p. ej. la misma
+    // cuenta de ML conectada por dos couriers). Por eso NO se usa
+    // `.maybeSingle()` (que ERRORearía con 2+ filas y perdería la transición):
+    // se leen TODAS las filas y se desambigua por el `userId` (ml_user_id) que
+    // viene en el evento — el shipment pertenece a la cuenta ML que lo notificó.
     const pedido = await step.run("resolver-pedido", async () => {
       const supabase = crearClienteServiceRole();
 
@@ -105,14 +143,22 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
         .schema("operacion")
         .from("pedidos")
         .select("id, tenant_id, seller_id, ml_shipment_id, estado, estado_ml")
-        .eq("ml_shipment_id", shipmentId)
-        .maybeSingle();
+        .eq("ml_shipment_id", shipmentId);
 
       if (error) {
         throw new Error(`Error al buscar pedido por shipment_id: ${error.message}`);
       }
 
-      if (!data) {
+      const filas = (data ?? []) as Array<{
+        id: string;
+        tenant_id: string;
+        seller_id: string;
+        ml_shipment_id: string;
+        estado: EstadoPedidoInterno;
+        estado_ml: string | null;
+      }>;
+
+      if (filas.length === 0) {
         // El shipment no existe en nuestro sistema — ignorar silenciosamente.
         // Puede ocurrir si ML notifica un envío de un seller no conectado.
         logger.info(
@@ -121,13 +167,52 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
         return null;
       }
 
+      let fila = filas[0];
+
+      // Desambiguar por la cuenta ML que notificó (userId = ml_user_id). Solo
+      // se consulta el cruce si hay colisión real (>1 fila) — el caso normal
+      // (1 fila) no paga el join.
+      if (filas.length > 1) {
+        const sellerIds = filas.map((f) => f.seller_id);
+        const { data: conexiones, error: errConex } = await supabase
+          .schema("identidad")
+          .from("conexiones_seller_ml")
+          .select("seller_id, ml_user_id")
+          .in("seller_id", sellerIds)
+          .eq("ml_user_id", String(userId));
+
+        if (errConex) {
+          throw new Error(
+            `Error al desambiguar shipment ${shipmentId} por ml_user_id: ${errConex.message}`,
+          );
+        }
+
+        const sellersDelUser = new Set(
+          ((conexiones ?? []) as Array<{ seller_id: string }>).map((c) => c.seller_id),
+        );
+        const filaDelUser = filas.find((f) => sellersDelUser.has(f.seller_id));
+
+        if (!filaDelUser) {
+          // Colisión sin coincidencia por ml_user_id: no podemos saber a qué
+          // tenant pertenece. NO actualizamos a ciegas (riesgo de transición
+          // cruzada). El polling de respaldo lo reintentará con su propia
+          // resolución por seller; aquí terminamos sin error.
+          logger.warn(
+            `Shipment ${shipmentId} colisiona en ${filas.length} tenants y ninguno ` +
+              `coincide con ml_user_id del evento. Se omite para evitar transición cruzada.`,
+          );
+          return null;
+        }
+        fila = filaDelUser;
+      }
+
       return {
-        id: data.id as string,
-        tenantId: data.tenant_id as string,
-        sellerId: data.seller_id as string,
-        mlShipmentId: data.ml_shipment_id as string,
-        estado: data.estado as EstadoPedidoInterno,
-        estadoMl: data.estado_ml as string | null,
+        id: fila.id,
+        tenantId: fila.tenant_id,
+        sellerId: fila.seller_id,
+        mlShipmentId: fila.ml_shipment_id,
+        estado: fila.estado,
+        estadoMl: fila.estado_ml,
       } satisfies PedidoResumen;
     });
 
@@ -137,12 +222,22 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
     const estadoMl = await step.run("consultar-ml", async () => {
       const supabase = crearClienteServiceRole();
 
-      // Obtener el access_token_ref de la conexión del seller
-      const { data: conexionData, error: conexionError } = await supabase
+      // Obtener el access_token_ref de la conexión de la CUENTA que originó el
+      // envío (modelo 1:N — un seller puede tener varias cuentas ML). Se
+      // resuelve por `(seller_id, ml_user_id)` usando el `userId` del evento;
+      // el índice único parcial garantiza a lo sumo una fila → `maybeSingle`
+      // es seguro. Si el evento no trae `userId` (no debería), se cae a la
+      // conexión del seller sin filtrar por cuenta.
+      let consulta = supabase
         .schema("identidad")
         .from("conexiones_seller_ml")
         .select("id, access_token_ref, estado_salud")
-        .eq("seller_id", pedido.sellerId)
+        .eq("seller_id", pedido.sellerId);
+      if (userId) {
+        consulta = consulta.eq("ml_user_id", String(userId));
+      }
+      const { data: conexionData, error: conexionError } = await consulta
+        .limit(1)
         .maybeSingle();
 
       if (conexionError) {
@@ -153,8 +248,8 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
 
       if (!conexion?.access_token_ref) {
         throw new Error(
-          `No hay conexión ML activa para el seller ${pedido.sellerId}. ` +
-            "No se puede consultar el shipment.",
+          `No hay conexión ML activa para el seller ${pedido.sellerId} ` +
+            `(cuenta ${userId ?? "?"}). No se puede consultar el shipment.`,
         );
       }
 
@@ -171,38 +266,43 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
         throw new Error("access_token descifrado no es texto");
       }
 
-      const respuesta = await fetch(`${ML_API_BASE_URL}/shipments/${shipmentId}`, {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${descifrado.valor}`,
-          accept: "application/json",
-        },
-      });
-
-      if (!respuesta.ok) {
-        if (respuesta.status === 404) {
-          return null; // Shipment no existe en ML — ignorar
+      // FUENTE DE VERDAD: GET /shipments/{id} con el token del seller.
+      // - `x-format-new: true` es OBLIGATORIO según la doc oficial de ML
+      //   (ver docs/mercadolibre/05-mercado-envios-shipments.md). Sin él la
+      //   respuesta puede venir en el formato legacy con otra forma.
+      // - Se usa `peticionMl` (cliente-http) en vez de `fetch` crudo para
+      //   heredar backoff/reintentos ante 429/5xx y respeto de `Retry-After`
+      //   (skill flex-ml: respetar límites de tasa con backoff). El token nunca
+      //   se asigna a variable de vida larga ni entra en logs.
+      try {
+        const datos = await peticionMl<RespuestaShipmentMl>({
+          metodo: "GET",
+          ruta: `/shipments/${shipmentId}`,
+          accessToken: descifrado.valor,
+          encabezadosExtra: { "x-format-new": "true" },
+        });
+        // El token en claro sale de scope aquí.
+        return { status: datos.status, substatus: datos.substatus ?? null };
+      } catch (error) {
+        // 404 → el shipment no existe en ML; ignorar sin reintentar.
+        if (error instanceof ErrorHttpMl && error.status === 404) {
+          return null;
         }
-        throw new Error(
-          `ML respondió ${respuesta.status} para /shipments/${shipmentId}`,
-        );
+        throw error; // 429/5xx ya vienen con backoff aplicado; el resto se propaga.
       }
-
-      const datos = (await respuesta.json()) as RespuestaShipmentMl;
-      // El token en claro sale de scope aquí.
-      return datos.status;
     });
 
     if (!estadoMl) return { resultado: "shipment_no_existe_en_ml" };
 
-    // Paso 3: traducir estado y verificar idempotencia.
-    const estadoInterno = traducirEstadoMl(estadoMl);
+    // Paso 3: traducir estado (status + substatus) y verificar idempotencia.
+    const estadoInterno = traducirEstadoMl(estadoMl.status, estadoMl.substatus);
 
     if (!estadoInterno) {
       logger.info(
-        `Estado ML '${estadoMl}' para shipment ${shipmentId} no tiene traducción. Ignorando.`,
+        `Estado ML '${estadoMl.status}'/'${estadoMl.substatus ?? "-"}' para shipment ` +
+          `${shipmentId} no tiene traducción. Ignorando.`,
       );
-      return { resultado: "estado_sin_traduccion", estadoMl };
+      return { resultado: "estado_sin_traduccion", estadoMl: estadoMl.status };
     }
 
     // Idempotencia: si el pedido ya está en ese estado, no hacer nada.
@@ -213,41 +313,77 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
       return { resultado: "ya_en_estado", estado: estadoInterno };
     }
 
+    // Helper: actualiza solo los METADATOS de ML del pedido (estado_ml,
+    // subestado_ml, ultima_sync_ml_en). NO toca `estado` — así no pisa la
+    // transición ni interfiere con el optimistic locking de
+    // `actualizarEstadoPedido`. Es seguro ejecutarlo incluso si la transición
+    // de estado no se aplicó (conflicto/transición inválida): registrar lo que
+    // ML reportó por última vez es información útil para diagnóstico.
+    const sincronizarMetadatosMl = async () => {
+      const supabase = crearClienteServiceRole();
+      await supabase
+        .schema("operacion")
+        .from("pedidos")
+        .update({
+          estado_ml: estadoMl.status,
+          subestado_ml: estadoMl.substatus,
+          ultima_sync_ml_en: new Date().toISOString(),
+        })
+        .eq("id", pedido.id);
+    };
+
     // Paso 4: actualizar el estado del pedido en el módulo `operacion`.
-    await step.run("actualizar-estado-pedido", async () => {
+    const resultadoPaso = await step.run("actualizar-estado-pedido", async () => {
       try {
         await fnActualizar({
           pedidoId: pedido.id,
+          tenantId: pedido.tenantId,
           estadoNuevo: estadoInterno,
           estadoEsperado: pedido.estado,
           actuadoPor: "sistema_ml",
-          motivo: `Actualización desde ML: status=${estadoMl}`,
+          motivo: `Actualización desde ML: status=${estadoMl.status}`,
         });
 
-        // También actualizar estado_ml / ultima_sync_ml_en en la fila del pedido
-        const supabase = crearClienteServiceRole();
-        await supabase
-          .schema("operacion")
-          .from("pedidos")
-          .update({
-            estado_ml: estadoMl,
-            ultima_sync_ml_en: new Date().toISOString(),
-          })
-          .eq("id", pedido.id);
+        await sincronizarMetadatosMl();
+        return { resultado: "actualizado" as const };
       } catch (error) {
-        // ErrorConflicto: otra ejecución ya ganó la carrera — no reintentar.
-        if ((error as ErrorConflicto).name === "ErrorConflicto") {
+        const nombre = error instanceof Error ? error.name : "";
+
+        // ErrorConflicto: otra ejecución ganó la carrera (optimistic locking).
+        // El estado ya quedó donde debía — NO reintentar.
+        if (nombre === "ErrorConflicto") {
           logger.warn(
             `Pedido ${pedido.id}: condición de carrera resuelta por otra ejecución. ` +
               "Terminando sin reintento.",
           );
-          // Retornar un valor para no lanzar (Inngest no reintentará)
-          return { conflicto: true };
+          await sincronizarMetadatosMl();
+          return { resultado: "conflicto_resuelto" as const };
         }
-        throw error; // Otros errores → Inngest reintenta
+
+        // ErrorTransicionInvalida: ML reporta un estado al que la máquina de
+        // estados NO permite transicionar desde el estado actual (p. ej. un
+        // pedido ya 'entregado' que recibe un 'shipped' tardío, o un terminal).
+        // Reintentar 4× es inútil: la transición NUNCA será válida. Se loguea,
+        // se guarda el metadato de ML y se termina sin reintento (igual que el
+        // conflicto). La discrepancia real la detecta la conciliación (C6).
+        if (nombre === "ErrorTransicionInvalida") {
+          logger.warn(
+            `Pedido ${pedido.id}: ML reporta '${estadoMl.status}' → estado interno ` +
+              `'${estadoInterno}', transición inválida desde '${pedido.estado}'. ` +
+              "Se ignora la transición (no reintentable) y se registra el estado ML.",
+          );
+          await sincronizarMetadatosMl();
+          return { resultado: "transicion_invalida" as const };
+        }
+
+        throw error; // Otros errores (infra, 5xx ya con backoff) → Inngest reintenta.
       }
     });
 
-    return { resultado: "actualizado", pedidoId: pedido.id, estadoNuevo: estadoInterno };
+    return {
+      resultado: resultadoPaso.resultado,
+      pedidoId: pedido.id,
+      estadoNuevo: estadoInterno,
+    };
   },
 );

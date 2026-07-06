@@ -11,6 +11,16 @@
 
 export const COOKIE_STATE_ML = "ml_oauth_state";
 export const COOKIE_MODO_ML = "ml_oauth_modo";
+/**
+ * Id de la conexión objetivo de una RECONEXIÓN (modelo 1:N — el seller puede
+ * tener varias cuentas). Viaja junto al `state` anti-CSRF para que el callback
+ * sepa QUÉ fila reconectar. La resolución dura del UPDATE ya la hace el puerto
+ * por `(seller_id, ml_user_id)` de la respuesta de ML (la cuenta con la que el
+ * seller volvió a autorizar); este id es la pista del contexto de origen y se
+ * verifica contra el seller de la sesión antes de confiar en él (nunca se
+ * escribe una fila que no sea del seller). Ausente en alta/conexión inicial.
+ */
+export const COOKIE_CONEXION_ML = "ml_oauth_conexion";
 
 /**
  * URL base pública canónica de la app, para construir el `redirect_uri` de
@@ -33,7 +43,30 @@ export function obtenerUrlBasePublica(fallbackOrigin: string): string {
   return fallbackOrigin.replace(/\/+$/, "");
 }
 
-export type ModoConexionMl = "conexion_inicial" | "reconexion";
+/**
+ * Punto de entrada al flujo OAuth. Tres variantes bajo el modelo 1:N:
+ *   - `conexion_inicial` — el seller conecta su PRIMERA cuenta (aún no tiene
+ *     ninguna fila en `conexiones_seller_ml`).
+ *   - `reconexion` — vuelve a autorizar una cuenta EXISTENTE que se desvinculó
+ *     o necesita atención (lleva el `conexion_id` objetivo en el `state`/cookie).
+ *   - `agregar_cuenta` — conecta una cuenta ADICIONAL (ya tiene 1 o 2). El alta
+ *     está sujeta al tope de 3 y a la unicidad `(seller_id, ml_user_id)`; el
+ *     callback traduce esos rechazos a `tope_alcanzado`/`cuenta_ya_conectada`.
+ */
+export type ModoConexionMl = "conexion_inicial" | "reconexion" | "agregar_cuenta";
+
+export const MODOS_CONEXION_ML: ModoConexionMl[] = [
+  "conexion_inicial",
+  "reconexion",
+  "agregar_cuenta",
+];
+
+/** Normaliza el valor crudo (cookie/query) a un `ModoConexionMl` seguro. */
+export function leerModoConexionMl(valor: string | null | undefined): ModoConexionMl {
+  return (MODOS_CONEXION_ML as string[]).includes(valor ?? "")
+    ? (valor as ModoConexionMl)
+    : "conexion_inicial";
+}
 
 /**
  * Ramificaciones de la Pantalla N (tabla §3.2) que el route handler de
@@ -41,6 +74,12 @@ export type ModoConexionMl = "conexion_inicial" | "reconexion";
  * tabla no nombra explícitamente pero que el callback real puede producir
  * (`estado_invalido`: problema de continuidad de sesión/CSRF;
  * `error_sistema`: cualquier fallo no clasificado, nunca un mensaje genérico).
+ *
+ * Modelo 1:N (seller con hasta N cuentas ML): al conectar una cuenta ADICIONAL
+ * el backend puede rechazar por dos reglas del esquema — `tope_alcanzado` (el
+ * seller ya tiene el máximo de cuentas) y `cuenta_ya_conectada` (esa misma
+ * cuenta ML ya está vinculada a este seller). La UI de "agregar cuenta"
+ * (frontend) debe rotular ambos con un mensaje accionable.
  */
 export type ResultadoCallbackMl =
   | "exito"
@@ -49,7 +88,9 @@ export type ResultadoCallbackMl =
   | "cuenta_colaborador"
   | "error_transitorio"
   | "error_sistema"
-  | "estado_invalido";
+  | "estado_invalido"
+  | "tope_alcanzado"
+  | "cuenta_ya_conectada";
 
 export const RESULTADOS_CALLBACK_ML: ResultadoCallbackMl[] = [
   "exito",
@@ -59,4 +100,6 @@ export const RESULTADOS_CALLBACK_ML: ResultadoCallbackMl[] = [
   "error_transitorio",
   "error_sistema",
   "estado_invalido",
+  "tope_alcanzado",
+  "cuenta_ya_conectada",
 ];

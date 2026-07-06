@@ -10,8 +10,12 @@ export {
   intercambiarCodigoPorTokens,
   refrescarToken,
   obtenerConexionPorSeller,
+  obtenerConexionesPorSeller,
+  renombrarConexion,
   obtenerEtiquetaEnvio,
   ErrorConexionMlRequiereRevinculacion,
+  ErrorTopeCuentasMlAlcanzado,
+  ErrorCuentaMlYaConectada,
 } from "./puerto";
 
 export type {

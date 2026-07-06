@@ -26,6 +26,8 @@ interface PedidoDisponible {
   nombreConductorActual: string | null;
   /** Nombre del manifiesto actual si ya está asignado */
   nombreManifiestoActual: string | null;
+  /** Razón social del seller — para no mostrar el UUID crudo en la tabla */
+  nombreSeller: string | null;
 }
 
 // =============================================================================
@@ -105,6 +107,13 @@ async function cargarPedidosDisponibles(
     notasInternas: (p.notas_internas as string | null) ?? null,
     creadoEn: p.creado_en as string,
     actualizadoEn: p.actualizado_en as string,
+    // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+    lat: (p.lat as number | null) ?? null,
+    long: (p.long as number | null) ?? null,
+    geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+    geoConfianza: (p.geo_confianza as number | null) ?? null,
+    geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+    coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
   }));
 
   // Para los pedidos ya asignados, buscar el conductor y manifiesto actuales
@@ -136,6 +145,7 @@ async function cargarPedidosDisponibles(
     pedido,
     nombreConductorActual: nombresMap.get(pedido.id)?.conductor ?? null,
     nombreManifiestoActual: nombresMap.get(pedido.id)?.manifiesto ?? null,
+    nombreSeller: null,
   }));
 }
 
@@ -182,10 +192,18 @@ export default async function PaginaAsignarPedidos({ params, searchParams }: Pro
     redirect(`/manifiestos/${manifiestoId}`);
   }
 
-  const [pedidosDisponibles, sellers] = await Promise.all([
+  const [pedidosSinNombreSeller, sellers] = await Promise.all([
     cargarPedidosDisponibles(tenantId, sp.seller, sp.comuna),
     cargarSellers(tenantId),
   ]);
+
+  // Resolver la razón social del seller de cada pedido (la tabla no debe
+  // mostrar el UUID crudo).
+  const nombrePorSeller = new Map(sellers.map((s) => [s.id, s.nombre]));
+  const pedidosDisponibles = pedidosSinNombreSeller.map((pd) => ({
+    ...pd,
+    nombreSeller: nombrePorSeller.get(pd.pedido.sellerId) ?? null,
+  }));
 
   return (
     <div className="space-y-6 pb-28">

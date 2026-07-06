@@ -2,11 +2,12 @@
  * Pantalla D-3 — Liquidaciones de conductores.
  *
  * Server Component. Ordenamiento: emitida primero, luego borrador, luego pagada.
- * Filtros por conductor y estado. Acción "Marcar como pagada".
+ * Filtros por conductor y estado. Acciones: "Emitir pago" (F19) y "Marcar como pagada".
  * Criterios C-1 (montos CLP), C-3 (signed URL PDF).
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -21,7 +22,9 @@ import {
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
 import { DialogMarcarPagada } from "./dialog-marcar-pagada";
+import { DialogEmitirPago } from "./dialog-emitir-pago";
 import { BotonDescargaPdfLiquidacion } from "./boton-descarga-pdf-liquidacion";
+import { DialogAjustarLiquidacion } from "./dialog-ajustar";
 
 export const metadata: Metadata = {
   title: "Liquidaciones",
@@ -33,6 +36,23 @@ const ORDEN_ESTADO: Record<EstadoLiquidacion, number> = {
   borrador: 1,
   pagada: 2,
 };
+
+// Estados activos de payout (en tránsito o terminal negativo)
+const ESTADOS_PAYOUT_ACTIVOS = [
+  "pendiente",
+  "procesando",
+  "enviado",
+  "confirmado",
+  "rechazado",
+  "fallido",
+] as const;
+
+type EstadoPayout = (typeof ESTADOS_PAYOUT_ACTIVOS)[number];
+
+interface PayoutResumen {
+  estado: EstadoPayout;
+  errorDescripcion: string | null;
+}
 
 interface SearchParams {
   conductor?: string;
@@ -68,6 +88,7 @@ export default async function PaginaLiquidaciones({
   const cliente = crearClienteServiceRole();
   let liquidaciones: LiquidacionConNombre[] = [];
   let conductoresDisponibles: { id: string; nombre: string }[] = [];
+  const payoutPorLiquidacion = new Map<string, PayoutResumen>();
   let errorCarga = false;
 
   // Contadores para chips
@@ -99,6 +120,30 @@ export default async function PaginaLiquidaciones({
       if (l.estado === "borrador") contBorrador++;
       else if (l.estado === "emitida") contEmitidas++;
       else if (l.estado === "pagada") contPagadas++;
+    }
+
+    // Payout más reciente por liquidación (F19)
+    const liquidacionIds = todasLiquidaciones.map((l) => l.id);
+    if (liquidacionIds.length > 0) {
+      const { data: payoutsData } = await cliente
+        .schema("dinero")
+        .from("payouts_conductor")
+        .select("liquidacion_id, estado, error_descripcion, created_at")
+        .eq("tenant_id", tenantId)
+        .in("liquidacion_id", liquidacionIds)
+        .in("estado", [...ESTADOS_PAYOUT_ACTIVOS])
+        .order("created_at", { ascending: false });
+
+      // Solo el primer payout por liquidación (ya viene ordenado DESC)
+      for (const p of payoutsData ?? []) {
+        const liqId = p.liquidacion_id as string;
+        if (!payoutPorLiquidacion.has(liqId)) {
+          payoutPorLiquidacion.set(liqId, {
+            estado: p.estado as EstadoPayout,
+            errorDescripcion: (p.error_descripcion as string | null) ?? null,
+          });
+        }
+      }
     }
 
     // Filtrar y ordenar
@@ -265,7 +310,11 @@ export default async function PaginaLiquidaciones({
               </thead>
               <tbody className="divide-y divide-border">
                 {liquidaciones.map((liq) => (
-                  <FilaLiquidacion key={liq.id} liquidacion={liq} />
+                  <FilaLiquidacion
+                    key={liq.id}
+                    liquidacion={liq}
+                    payout={payoutPorLiquidacion.get(liq.id)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -282,15 +331,35 @@ export default async function PaginaLiquidaciones({
 
 function FilaLiquidacion({
   liquidacion,
+  payout,
 }: {
   liquidacion: LiquidacionConNombre;
+  payout?: PayoutResumen;
 }) {
   const textoEstado = traducirEstadoLiquidacion(liquidacion.estado);
+
+  // Determina qué mostrar en la celda de acciones según estado de payout
+  const payoutEnProceso =
+    payout &&
+    (payout.estado === "pendiente" ||
+      payout.estado === "procesando" ||
+      payout.estado === "enviado");
+
+  const payoutConfirmado = payout?.estado === "confirmado";
+
+  const payoutFallido =
+    payout &&
+    (payout.estado === "fallido" || payout.estado === "rechazado");
 
   return (
     <tr className="group hover:bg-muted/30 transition-colors">
       <td className="px-4 py-3">
-        <p className="font-medium truncate max-w-[160px]">{liquidacion.conductorNombre}</p>
+        <Link
+          href={`/conductores/${liquidacion.driverId}`}
+          className="font-medium truncate max-w-[160px] inline-block hover:underline"
+        >
+          {liquidacion.conductorNombre}
+        </Link>
       </td>
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
         <span className="tabular-nums">
@@ -306,8 +375,25 @@ function FilaLiquidacion({
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
         {liquidacion.totalEntregas}
       </td>
-      <td className="hidden px-4 py-3 text-right tabular-nums font-medium lg:table-cell">
-        {formatearCLPOGuion(liquidacion.montoTotalClp)}
+      <td className="hidden px-4 py-3 text-right lg:table-cell">
+        {liquidacion.montoTotalClp !== null ? (
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="tabular-nums font-medium">
+              {formatearCLPOGuion(
+                liquidacion.montoTotalClp + liquidacion.bonoClp - liquidacion.penalizacionClp,
+              )}
+            </span>
+            {(liquidacion.bonoClp > 0 || liquidacion.penalizacionClp > 0) && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                base {formatearCLPOGuion(liquidacion.montoTotalClp)}
+                {liquidacion.bonoClp > 0 && ` +${formatearCLPOGuion(liquidacion.bonoClp)}`}
+                {liquidacion.penalizacionClp > 0 && ` −${formatearCLPOGuion(liquidacion.penalizacionClp)}`}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </td>
       <td className="hidden px-4 py-3 text-center xl:table-cell">
         {liquidacion.pdfRef ? (
@@ -317,14 +403,53 @@ function FilaLiquidacion({
         )}
       </td>
       <td className="px-4 py-3 text-right">
-        {liquidacion.estado === "emitida" ? (
-          <DialogMarcarPagada
+        {liquidacion.estado === "borrador" ? (
+          <DialogAjustarLiquidacion
             liquidacionId={liquidacion.id}
-            conductorNombre={liquidacion.conductorNombre}
-            fechaInicio={liquidacion.fechaInicio}
-            fechaFin={liquidacion.fechaFin}
-            montoTotalClp={liquidacion.montoTotalClp}
+            montoBaseClp={liquidacion.montoTotalClp ?? 0}
+            bonoActual={liquidacion.bonoClp}
+            penalizacionActual={liquidacion.penalizacionClp}
+            notaActual={liquidacion.notaAjuste}
           />
+        ) : liquidacion.estado === "emitida" ? (
+          <div className="flex flex-col items-end gap-1.5">
+            {payoutEnProceso ? (
+              /* Payout en tránsito: solo badge informativo, sin botones */
+              <span className="inline-flex items-center rounded-full bg-info-subtle px-2.5 py-0.5 text-xs font-medium text-info-subtle-foreground">
+                Pago en proceso
+              </span>
+            ) : payoutConfirmado ? (
+              /* Payout confirmado pero liquidación todavía figura emitida (edge case) */
+              <span className="inline-flex items-center rounded-full bg-success-subtle px-2.5 py-0.5 text-xs font-medium text-success-subtle-foreground">
+                Pago confirmado
+              </span>
+            ) : (
+              /* Sin payout, o payout fallido/rechazado → mostrar ambos botones */
+              <>
+                <DialogEmitirPago
+                  liquidacionId={liquidacion.id}
+                  conductorNombre={liquidacion.conductorNombre}
+                  fechaInicio={liquidacion.fechaInicio}
+                  fechaFin={liquidacion.fechaFin}
+                  montoTotalClp={liquidacion.montoTotalClp}
+                />
+                <DialogMarcarPagada
+                  liquidacionId={liquidacion.id}
+                  conductorNombre={liquidacion.conductorNombre}
+                  fechaInicio={liquidacion.fechaInicio}
+                  fechaFin={liquidacion.fechaFin}
+                  montoTotalClp={liquidacion.montoTotalClp}
+                />
+              </>
+            )}
+
+            {/* Indicador de error del payout si fue rechazado */}
+            {payoutFallido && payout.errorDescripcion && (
+              <p className="text-xs text-destructive leading-tight max-w-[180px] text-right">
+                Rechazado: {payout.errorDescripcion}
+              </p>
+            )}
+          </div>
         ) : null}
       </td>
     </tr>

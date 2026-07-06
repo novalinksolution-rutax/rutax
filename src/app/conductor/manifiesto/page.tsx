@@ -22,6 +22,7 @@ import {
 import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
+import { PingUbicacion } from "./ping-ubicacion";
 
 // =============================================================================
 // Tipos auxiliares
@@ -105,6 +106,13 @@ async function cargarManifiestoActivo(
         notasInternas: (p.notas_internas as string | null) ?? null,
         creadoEn: p.creado_en as string,
         actualizadoEn: p.actualizado_en as string,
+        // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+        lat: (p.lat as number | null) ?? null,
+        long: (p.long as number | null) ?? null,
+        geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+        geoConfianza: (p.geo_confianza as number | null) ?? null,
+        geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+        coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
       } satisfies Pedido;
     })
     .filter((p): p is Pedido => p !== null);
@@ -287,10 +295,15 @@ export default async function PaginaManifiestoActivo() {
                     {orden}
                   </span>
 
-                  {/* Estado — badge esquina superior derecha */}
-                  <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]} className="shrink-0">
-                    {traducirEstadoPedido(pedido.estado)}
-                  </Badge>
+                  {/* Estado + fuente — badges esquina superior derecha */}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Badge variant={pedido.tipoPedido === "same_day" ? "info" : "neutral"}>
+                      {pedido.tipoPedido === "same_day" ? "SAME-DAY" : "Flex"}
+                    </Badge>
+                    <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
+                      {traducirEstadoPedido(pedido.estado)}
+                    </Badge>
+                  </div>
                 </div>
 
                 <div className="mt-2 space-y-1">
@@ -338,6 +351,9 @@ export default async function PaginaManifiestoActivo() {
           estaEnRuta={esEnRuta}
         />
       )}
+
+      {/* Ping de ubicación + consentimiento — solo cuando el manifiesto está en_ruta */}
+      <PingUbicacion manifiestoEnRuta={esEnRuta} />
     </div>
   );
 }

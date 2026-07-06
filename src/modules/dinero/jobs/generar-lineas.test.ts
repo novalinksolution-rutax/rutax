@@ -324,3 +324,116 @@ describe('Job C1 — generar-lineas', () => {
     });
   });
 });
+
+// =============================================================================
+// Reglas de anulación pre-cierre (flujo fallido → devuelto)
+//
+// El job C1 anula líneas existentes cuando estadoNuevo='devuelto' y ya existe
+// línea generada. Las reglas de elegibilidad del MOTOR son la base de esta
+// lógica: si generaCobro=false y generaLiquidacion=false → el job busca líneas
+// existentes y las anula (si el período/liquidación está en estado mutable).
+//
+// Los tests de BD (idempotencia de anulación, guarda de período cerrado) viven
+// en pgTAP (supabase/tests/database/). Aquí probamos la función pura del motor.
+// =============================================================================
+
+describe('Flujo fallido → devuelto — reglas de elegibilidad que disparan anulación', () => {
+  describe('devuelto siempre tiene generaCobro=false y generaLiquidacion=false', () => {
+    it('devuelto con conductor asignado → no genera líneas nuevas', () => {
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      // El motor indica "no generar" → el job procederá a buscar/anular líneas previas.
+      expect(resultado.generaCobro).toBe(false);
+      expect(resultado.generaLiquidacion).toBe(false);
+    });
+
+    it('devuelto sin conductor → tampoco genera', () => {
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: false,
+      });
+      expect(resultado.generaCobro).toBe(false);
+      expect(resultado.generaLiquidacion).toBe(false);
+    });
+
+    it('devuelto con esGastoPropio=true → tampoco genera cobro ni liquidación', () => {
+      // El gasto propio nunca cobra al seller, pero devuelto tampoco genera liquidación.
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: true,
+        tieneDriverAsignado: true,
+      });
+      expect(resultado.generaCobro).toBe(false);
+      expect(resultado.generaLiquidacion).toBe(false);
+    });
+  });
+
+  describe('contraste: fallido SÍ puede generar líneas (las que luego se anulan)', () => {
+    it('fallido con afecta_cobro=true y afecta_liquidacion=true → genera cobro Y liquidación', () => {
+      // Este es el evento ANTERIOR (fallido) que crea las líneas.
+      // El evento POSTERIOR (devuelto) las anulará si el período sigue abierto.
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'fallido',
+        afectaCobro: true,
+        afectaLiquidacion: true,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      expect(resultado.generaCobro).toBe(true);
+      expect(resultado.generaLiquidacion).toBe(true);
+    });
+
+    it('fallido_manual con afecta_cobro=true → genera cobro; devuelto posterior los anulará', () => {
+      const resultadoFallido = evaluarElegibilidad({
+        estadoPedido: 'fallido_manual',
+        afectaCobro: true,
+        afectaLiquidacion: false,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      expect(resultadoFallido.generaCobro).toBe(true);
+      expect(resultadoFallido.generaLiquidacion).toBe(false);
+
+      // Cuando llega el devuelto, el motor dice "no generar nada" → job anula lo de arriba.
+      const resultadoDevuelto = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      expect(resultadoDevuelto.generaCobro).toBe(false);
+      expect(resultadoDevuelto.generaLiquidacion).toBe(false);
+    });
+  });
+
+  describe('idempotencia del motor para el evento devuelto (reintentos del job)', () => {
+    it('devuelto ejecutado N veces produce siempre generaCobro=false (anulación no se re-aplica si ya anulada)', () => {
+      const entrada: EntradaMotor = {
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      };
+      // Función pura — mismos resultados en todos los intentos.
+      // En BD el UPDATE con WHERE anulada=false es idempotente: el segundo intento
+      // no afecta filas (ya está anulada=true) → no-op correcto.
+      const resultados = Array.from({ length: 4 }, () => evaluarElegibilidad(entrada));
+      for (const r of resultados) {
+        expect(r.generaCobro).toBe(false);
+        expect(r.generaLiquidacion).toBe(false);
+      }
+    });
+  });
+});

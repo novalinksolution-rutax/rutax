@@ -138,44 +138,59 @@ on conflict (id) do nothing;
 -- =============================================================================
 -- 4. Conductores (12)
 -- =============================================================================
-insert into identidad.conductores (id, tenant_id, nombre_completo, rut, tipo_relacion, estado)
+-- Conductores 001-005 llevan datos bancarios (tienen liquidaciones y entran al
+-- flujo de payout F19). 006-012 quedan con banco/tipo_cuenta/numero_cuenta NULL.
+insert into identidad.conductores (id, tenant_id, nombre_completo, rut, tipo_relacion, estado,
+                                   banco, tipo_cuenta, numero_cuenta)
 values
   ('40000000-0000-0000-0000-000000000001',
    '10000000-0000-0000-0000-000000000001',
-   'Juan Pablo Pérez Rojas','12345678-9','independiente','activo'),
+   'Juan Pablo Pérez Rojas','12345678-9','independiente','activo',
+   'Banco de Chile','corriente','00123456789'),
   ('40000000-0000-0000-0000-000000000002',
    '10000000-0000-0000-0000-000000000001',
-   'Carlos Andrés González Muñoz','13456789-0','independiente','activo'),
+   'Carlos Andrés González Muñoz','13456789-0','independiente','activo',
+   'BCI','corriente','00987654321'),
   ('40000000-0000-0000-0000-000000000003',
    '10000000-0000-0000-0000-000000000001',
-   'Pedro José Soto Vargas','14567890-k','dependiente','activo'),
+   'Pedro José Soto Vargas','14567890-k','dependiente','activo',
+   'Banco Estado','vista','12345678'),
   ('40000000-0000-0000-0000-000000000004',
    '10000000-0000-0000-0000-000000000001',
-   'Rodrigo Alejandro Martínez','15678901-2','independiente','activo'),
+   'Rodrigo Alejandro Martínez','15678901-2','independiente','activo',
+   'Santander Chile','corriente','00456789012'),
   ('40000000-0000-0000-0000-000000000005',
    '10000000-0000-0000-0000-000000000001',
-   'Francisco Javier Castro López','16789012-3','independiente','activo'),
+   'Francisco Javier Castro López','16789012-3','independiente','activo',
+   'BCI','ahorro','00345678901'),
   ('40000000-0000-0000-0000-000000000006',
    '10000000-0000-0000-0000-000000000001',
-   'Matías Ignacio Díaz Herrera','17890123-4','dependiente','activo'),
+   'Matías Ignacio Díaz Herrera','17890123-4','dependiente','activo',
+   null,null,null),
   ('40000000-0000-0000-0000-000000000007',
    '10000000-0000-0000-0000-000000000001',
-   'Diego Alonso Flores Contreras','18901234-5','independiente','activo'),
+   'Diego Alonso Flores Contreras','18901234-5','independiente','activo',
+   null,null,null),
   ('40000000-0000-0000-0000-000000000008',
    '10000000-0000-0000-0000-000000000001',
-   'Andrés Felipe Romero Silva','19012345-6','independiente','activo'),
+   'Andrés Felipe Romero Silva','19012345-6','independiente','activo',
+   null,null,null),
   ('40000000-0000-0000-0000-000000000009',
    '10000000-0000-0000-0000-000000000001',
-   'José Miguel Vega Morales','20123456-7','dependiente','activo'),
+   'José Miguel Vega Morales','20123456-7','dependiente','activo',
+   null,null,null),
   ('40000000-0000-0000-0000-000000000010',
    '10000000-0000-0000-0000-000000000001',
-   'Pablo Sebastián Torres Reyes','21234567-8','independiente','activo'),
+   'Pablo Sebastián Torres Reyes','21234567-8','independiente','activo',
+   null,null,null),
   ('40000000-0000-0000-0000-000000000011',
    '10000000-0000-0000-0000-000000000001',
-   'Cristián Eduardo Navarro','22345678-9','independiente','activo'),
+   'Cristián Eduardo Navarro','22345678-9','independiente','activo',
+   null,null,null),
   ('40000000-0000-0000-0000-000000000012',
    '10000000-0000-0000-0000-000000000001',
-   'Nicolás Matías Araya Cabrera','23456789-k','independiente','activo')
+   'Nicolás Matías Araya Cabrera','23456789-k','independiente','activo',
+   null,null,null)
 on conflict (id) do nothing;
 
 -- =============================================================================
@@ -277,7 +292,7 @@ insert into identidad.conexiones_seller_ml (
    now() - interval '26 hours',
    now() - interval '2 hours',
    'Token expirado — requiere reconexión OAuth')
-on conflict (seller_id) do nothing;
+on conflict (id) do nothing;
 
 -- =============================================================================
 -- 9. Config períodos — mensual para el tenant

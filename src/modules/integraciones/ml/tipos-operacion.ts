@@ -31,6 +31,8 @@ export type EstadoPedidoInterno =
  */
 export interface ActualizarEstadoEntrada {
   pedidoId: string;
+  /** Aislamiento de tenant: la actualización solo afecta filas de este tenant. */
+  tenantId: string;
   estadoNuevo: EstadoPedidoInterno;
   /** Optimistic locking: rechaza si el estado actual difiere. */
   estadoEsperado: EstadoPedidoInterno;

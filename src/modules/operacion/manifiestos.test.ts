@@ -26,6 +26,8 @@ const MANIFIESTO_A = "mmmm0000-0000-0000-0000-000000000030";
 const MANIFIESTO_B = "mmmm0000-0000-0000-0000-000000000031";
 const PEDIDO_1 = "pppp0000-0000-0000-0000-000000000040";
 const PEDIDO_2 = "pppp0000-0000-0000-0000-000000000041";
+// UUID de auth del usuario que dispara las acciones (RNF-04 — el "quién").
+const USUARIO_ID = "uuuu0000-0000-0000-0000-000000000001";
 
 function actorCoordinador(tenantId: string = TENANT_A): UsuarioActual {
   return {
@@ -443,12 +445,31 @@ describe("asignarPedidosAManifiesto — control de acceso", () => {
   it("un coordinador con capacidad puede asignar", async () => {
     const { cliente, estado } = crearClienteFalso();
 
-    await asignarPedidosAManifiesto(cliente, MANIFIESTO_A, [PEDIDO_1], actorCoordinador());
+    await asignarPedidosAManifiesto(cliente, MANIFIESTO_A, [PEDIDO_1], actorCoordinador(), USUARIO_ID);
 
     const nuevaAsignacion = estado.asignaciones.find(
       (a) => a.pedido_id === PEDIDO_1 && a.manifiesto_id === MANIFIESTO_A && a.activa,
     );
     expect(nuevaAsignacion).toBeDefined();
+  });
+
+  it("la bitácora de asignación lleva actor_usuario_id no nulo (RNF-04 / H-1)", async () => {
+    // Regresión: antes se registraba actorUsuarioId: null incluso con actor real.
+    const { cliente, estado } = crearClienteFalso();
+
+    await asignarPedidosAManifiesto(
+      cliente,
+      MANIFIESTO_A,
+      [PEDIDO_1],
+      actorCoordinador(),
+      USUARIO_ID,
+    );
+
+    const entrada = estado.bitacora.find(
+      (e) => e.accion === "manifiesto.pedidos_asignados",
+    );
+    expect(entrada).toBeDefined();
+    expect(entrada!.actor_usuario_id).toBe(USUARIO_ID);
   });
 });
 
@@ -552,10 +573,9 @@ describe("asignarPedidosAManifiesto — manifiesto en estado no-borrador (BUG)",
 // =============================================================================
 
 describe("confirmarManifiesto", () => {
-  it("confirma un manifiesto 'borrador' → 'confirmado'", async () => {
-    // Con al menos una asignación activa (necesario después del fix de validación).
+  function conAsignacionActiva() {
     const ahora = new Date().toISOString();
-    const { cliente } = crearClienteFalso({
+    return crearClienteFalso({
       asignaciones: [
         {
           id: "asig-para-confirmar",
@@ -571,11 +591,32 @@ describe("confirmarManifiesto", () => {
         },
       ],
     });
+  }
+
+  it("confirma un manifiesto 'borrador' → 'confirmado'", async () => {
+    const { cliente } = conAsignacionActiva();
 
     const confirmado = await confirmarManifiesto(cliente, MANIFIESTO_A, TENANT_A);
 
     expect(confirmado.estado).toBe("confirmado");
     expect(confirmado.confirmadoEn).not.toBeNull();
+  });
+
+  it("la bitácora de confirmación lleva actor_usuario_id no nulo (RNF-04 / H-1)", async () => {
+    // Regresión: antes se registraba actorUsuarioId: null incluso con actor real.
+    const { cliente, estado } = conAsignacionActiva();
+
+    await confirmarManifiesto(
+      cliente,
+      MANIFIESTO_A,
+      TENANT_A,
+      actorCoordinador(),
+      USUARIO_ID,
+    );
+
+    const entrada = estado.bitacora.find((e) => e.accion === "manifiesto.confirmado");
+    expect(entrada).toBeDefined();
+    expect(entrada!.actor_usuario_id).toBe(USUARIO_ID);
   });
 
   it("BUG: confirmar un manifiesto sin pedidos asignados debería lanzar ErrorConflicto", async () => {

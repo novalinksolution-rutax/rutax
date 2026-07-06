@@ -24,6 +24,7 @@ import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { borrarUbicacionAlCerrarRuta } from "./ubicacion-conductor";
 
 // =============================================================================
 // Mapper de fila de BD → interfaz Manifiesto
@@ -102,12 +103,17 @@ export async function crearManifiesto(
  * - Si no tiene asignación activa: inserta directamente.
  *
  * Requiere que el actor tenga puedeAsignarYReasignarPedidos.
+ *
+ * @param actorUsuarioId UUID de auth del usuario que dispara la acción (RNF-04).
+ *   Pásalo siempre desde server actions (`sesion.usuarioId`). Si se llama desde
+ *   un job sin sesión humana, pasa null explícitamente.
  */
 export async function asignarPedidosAManifiesto(
   cliente: SupabaseClient,
   manifiestoId: string,
   pedidoIds: string[],
   actor?: UsuarioActual,
+  actorUsuarioId?: string | null,
 ): Promise<void> {
   if (actor && !puedeAsignarYReasignarPedidos(actor)) {
     throw new ErrorValidacion(
@@ -255,11 +261,11 @@ export async function asignarPedidosAManifiesto(
     }
   }
 
-  // Bitácora de asignación si hay actor.
+  // Bitácora de asignación si hay actor (RNF-04: siempre registra el "quién").
   if (actor) {
     await registrarEnBitacora(cliente, {
       tenantId,
-      actorUsuarioId: actor.tenantId ? null : null, // sin usuario_id directo, se registra a nivel de actor
+      actorUsuarioId: actorUsuarioId ?? null,
       actorTipo: "usuario",
       accion: "manifiesto.pedidos_asignados",
       entidadTipo: "manifiesto",
@@ -279,12 +285,16 @@ export async function asignarPedidosAManifiesto(
 /**
  * Confirma un manifiesto (pasa de 'borrador' a 'confirmado').
  * Registra en bitácora.
+ *
+ * @param actorUsuarioId UUID de auth del usuario que dispara la acción (RNF-04).
+ *   Pásalo siempre desde server actions (`sesion.usuarioId`).
  */
 export async function confirmarManifiesto(
   cliente: SupabaseClient,
   manifiestoId: string,
   tenantId: string,
   actor?: UsuarioActual,
+  actorUsuarioId?: string | null,
 ): Promise<Manifiesto> {
   if (actor && !puedeAsignarYReasignarPedidos(actor)) {
     throw new ErrorValidacion(
@@ -352,7 +362,7 @@ export async function confirmarManifiesto(
   if (actor) {
     await registrarEnBitacora(cliente, {
       tenantId,
-      actorUsuarioId: null,
+      actorUsuarioId: actorUsuarioId ?? null,
       actorTipo: "usuario",
       accion: "manifiesto.confirmado",
       entidadTipo: "manifiesto",
@@ -362,6 +372,105 @@ export async function confirmarManifiesto(
   }
 
   return filaAManifiesto(confirmado);
+}
+
+// =============================================================================
+// completarManifiesto
+// =============================================================================
+
+/**
+ * Marca un manifiesto como 'completado' (desde 'en_ruta') y borra server-side
+ * la ubicación GPS del conductor (minimización de datos — Ley 21.431).
+ *
+ * ALTO-1: el borrado de ubicación se hace aquí, en el servidor, como garantía
+ * de minimización independiente del ciclo de vida del componente React cliente.
+ * La función `borrarUbicacionAlCerrarRuta` es idempotente: si ya no hay fila,
+ * el DELETE es un no-op.
+ *
+ * Bitácora ANTES del UPDATE de estado (CLAUDE.md: "bitácora antes que efectos externos").
+ *
+ * @param actorUsuarioId UUID de auth del usuario que dispara la acción (RNF-04).
+ */
+export async function completarManifiesto(
+  cliente: SupabaseClient,
+  manifiestoId: string,
+  tenantId: string,
+  driverId: string,
+  actor?: UsuarioActual,
+  actorUsuarioId?: string | null,
+): Promise<Manifiesto> {
+  const { data: actual, error: errorLeer } = await cliente
+    .from("manifiestos")
+    .select("*")
+    .eq("id", manifiestoId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (errorLeer) {
+    throw new Error(`Error al leer el manifiesto: ${errorLeer.message}`);
+  }
+
+  if (!actual) {
+    throw new ErrorConflicto(`El manifiesto '${manifiestoId}' no existe o no pertenece al tenant`);
+  }
+
+  if (actual.estado !== "en_ruta") {
+    throw new ErrorConflicto(
+      `No se puede completar el manifiesto: estado actual '${actual.estado}' (se requiere 'en_ruta')`,
+    );
+  }
+
+  // Bitácora ANTES del UPDATE (CLAUDE.md).
+  await registrarEnBitacora(cliente, {
+    tenantId,
+    actorUsuarioId: actorUsuarioId ?? null,
+    actorTipo: "usuario",
+    accion: "manifiesto.completado",
+    entidadTipo: "manifiesto",
+    entidadId: manifiestoId,
+    detalle: {
+      driver_id: driverId,
+      fecha_operacion: actual.fecha_operacion,
+    },
+  });
+
+  const ahora = new Date().toISOString();
+
+  const { data: completado, error: errorUpdate } = await cliente
+    .from("manifiestos")
+    .update({
+      estado: "completado",
+      completado_en: ahora,
+    })
+    .eq("id", manifiestoId)
+    .eq("tenant_id", tenantId)
+    .select()
+    .single();
+
+  if (errorUpdate || !completado) {
+    throw new Error(`Error al completar el manifiesto: ${errorUpdate?.message ?? "sin datos"}`);
+  }
+
+  // Borrado server-side de la ubicación del conductor (ALTO-1 — Ley 21.431).
+  // Idempotente: si ya no hay fila de ubicación, el DELETE es un no-op.
+  // Se hace best-effort después del UPDATE: el manifiesto ya está 'completado'
+  // aunque el borrado de ubicación falle (el job de purga lo limpiaría).
+  // TODO: implementar job de purga de filas huérfanas (conductor sin manifiesto
+  // en_ruta hoy) como respaldo de este borrado, en caso de que esta llamada
+  // falle en un reintento parcial de la Server Action.
+  try {
+    await borrarUbicacionAlCerrarRuta(cliente, driverId, tenantId);
+  } catch (errBorrado) {
+    // No re-lanzar: el manifiesto ya está en 'completado'. El borrado fallido
+    // es un problema de minimización de datos, no de consistencia de negocio.
+    console.error(
+      `[completarManifiesto] No se pudo borrar la ubicación del conductor '${driverId}' ` +
+        `al completar el manifiesto '${manifiestoId}'. ` +
+        `Error: ${errBorrado instanceof Error ? errBorrado.message : "desconocido"}`,
+    );
+  }
+
+  return filaAManifiesto(completado);
 }
 
 // =============================================================================

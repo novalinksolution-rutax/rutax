@@ -20,6 +20,8 @@
  *   contra un período `facturado`, consumido por la proyección de `estado_cobro`
  *   (en el MVP, la escribe el mismo job de matching antes de emitir el evento;
  *   el evento queda como punto de extensión para notificaciones al seller).
+ * - `EventoConciliacionTresFuentes`: cron diario a las 02:30, consumido por C7
+ *   (`dinero/jobs/conciliar-tres-fuentes.ts`). Detective puro, solo lectura.
  *
  * Regla de importación: solo tipos — ningún lado importa lógica del otro.
  * El publisher solo necesita el `name` + `data`; el consumer idem.
@@ -31,6 +33,16 @@
  *
  * Se publica SOLO para estados financieramente relevantes:
  * 'entregado' | 'entregado_manual' | 'fallido' | 'fallido_manual' | 'devuelto' | 'cancelado'
+ *
+ * NOTA BLOQUE 3 (motor entrega→dinero same-day):
+ * Al implementar el Bloque 3, agregar el campo `podValido: boolean | null` al
+ * `data` de este evento. El job C1 (generar-lineas) debe retener la liquidación
+ * del conductor para entregas same-day sin POD válido (`podValido=false`):
+ * la línea de cobro al seller SÍ se genera (el seller paga igual), pero la
+ * línea de liquidación al conductor queda en estado 'retenida' hasta que el
+ * supervisor valide o rechace la entrega. No agregar este campo hasta que el
+ * job C1 esté listo para consumirlo, para no romper la deduplicación de Inngest
+ * con IDs existentes.
  */
 export interface EventoPedidoEstadoFinanciero {
   name: 'dinero/pedido.estado_financiero_relevante';
@@ -96,6 +108,34 @@ export interface EventoEmisionSolicitada {
 }
 
 /**
+ * Pedido recién ingestado — gatillo de la geocodificación (F4, ítem 1.1).
+ *
+ * Publicado por `operacion` (lo cableará `backend`) cada vez que se crea un
+ * pedido (ingesta Flex o same-day ad-hoc), DESPUÉS de persistirlo con
+ * `geo_estado = 'pendiente'`. Consumido por el job
+ * `integraciones/geocoding/jobs/geocodificar-pedido.ts` (idempotente).
+ *
+ * MINIMIZACIÓN DE DATOS PERSONALES: el payload SOLO lleva datos de dirección.
+ * NUNCA incluye nombre ni teléfono del destinatario — el geocoding no los
+ * necesita y no deben viajar a un proveedor externo ni quedar en el log de
+ * eventos de Inngest. El job lee lo que falte directo de la fila vía
+ * service_role.
+ */
+export interface EventoPedidoIngestado {
+  name: 'operacion/pedido.ingestado';
+  data: {
+    pedidoId: string;
+    tenantId: string;
+    sellerId: string;
+    /** Dirección de calle del destinatario (sin normalizar). */
+    direccion: string;
+    /** Comuna declarada del destinatario. */
+    comuna: string;
+    tipoPedido: 'flex' | 'same_day';
+  };
+}
+
+/**
  * Capa "pagado" del motor entrega→dinero — cobranza courier→seller (Fintoc).
  *
  * Publicado por el endpoint de webhook `api/webhooks/fintoc/route.ts` DESPUÉS de:
@@ -156,6 +196,36 @@ export interface EventoPagoConciliado {
 }
 
 /**
+ * Punto de extensión para notificaciones de corte próximo (F7, ítem 1.2).
+ *
+ * NO se publica en F7: el dashboard hace el cómputo en vivo
+ * (`obtenerResumenCortePorSeller` en metricas.ts). Este evento queda declarado
+ * para cuando se implemente una notificación push/email a coordinadores cuando
+ * el corte está próximo (p. ej. 30 minutos antes).
+ *
+ * Para emitirlo en el futuro: crear un cron que corra cada N minutos y evalúe
+ * las ventanas activas del día, usando la utilidad de Santiago para TZ.
+ * NUNCA emitirlo en el request del usuario.
+ */
+export interface EventoCorteProximo {
+  name: 'operacion/corte.proximo';
+  data: {
+    tenantId: string;
+    sellerId: string;
+    /** UUID de la zona aplicable. null = ventana por defecto del seller. */
+    zonaId: string | null;
+    /** Hora de corte 'HH:MM' local Santiago. */
+    horaCorte: string;
+    /** Minutos restantes hasta el corte en el momento de emisión. */
+    minutosRestantes: number;
+    /** Pedidos same-day no terminales del día en el momento de emisión. */
+    pedidosPendientes: number;
+    /** Fecha del día de operación 'YYYY-MM-DD' local Santiago. */
+    fecha: string;
+  };
+}
+
+/**
  * Nota de crédito (RF-038) — anulación TOTAL de la factura de un período.
  *
  * Publicado EXCLUSIVAMENTE por la acción humana `emitirNotaCreditoPeriodo`
@@ -189,5 +259,53 @@ export interface EventoNcEmisionSolicitada {
     solicitadoPorUsuarioId: string;
     /** 'sandbox' (stub, sin SII real) | 'real' (exige opt-in del courier). */
     modo: 'sandbox' | 'real';
+  };
+}
+
+/**
+ * Trigger interno del job C7 — conciliación de 3 fuentes (F17, Bloque 3).
+ *
+ * El cron `30 2 * * *` (02:30 Santiago, diario) emite este evento por cada
+ * tenant activo. El job C7 lo consume y ejecuta los 6 detectores de fugas
+ * cruzando: (1) líneas de cobro al seller, (2) líneas de liquidación al
+ * conductor, y (3) rate card (mínimos y recargos).
+ *
+ * Detective puro, solo lectura. Nunca muta líneas ni emite documentos.
+ * El campo `fecha` permite idempotencia: eventId = `conciliar-3f-${tenantId}-${fecha}`.
+ */
+export interface EventoConciliacionTresFuentes {
+  name: 'dinero/conciliacion.tres_fuentes';
+  data: {
+    tenantId: string;
+    /** Fecha de ejecución 'YYYY-MM-DD' en zona Santiago — llave de idempotencia. */
+    fecha: string;
+  };
+}
+
+/**
+ * Compuerta de pago a conductor (F19, Bloque 3).
+ *
+ * Publicado EXCLUSIVAMENTE por la acción humana `emitirPagoLiquidacion`
+ * (gate `puedeGestionarLiquidacionesConductores`, bitácora ANTES del evento).
+ * Consumido por el job `jobEjecutarPayout` (`dinero/jobs/ejecutar-payout.ts`).
+ *
+ * Al igual que `dinero/periodo.emision-solicitada` para DTE, este evento es la
+ * compuerta de aprobación humana del dinero SALIENTE: ningún proceso automático
+ * (cron) emite un payout; solo esta acción, disparada por una persona con
+ * permiso de gestión de liquidaciones, publica el evento que activa el job.
+ *
+ * `montoTotalClp` es el monto BRUTO devengado. El job calcula el monto líquido
+ * restando la retención configurada en `courier_config_payout.porcentaje_retencion`.
+ * El puerto `PuertoPayout` recibe el neto — nunca el bruto.
+ */
+export interface EventoLiquidacionPagoSolicitado {
+  name: 'dinero/liquidacion.pago-solicitado';
+  data: {
+    liquidacionId: string;
+    tenantId: string;
+    driverId: string;
+    /** Monto BRUTO en CLP. El job calcula el neto tras retención. */
+    montoTotalClp: number;
+    solicitadoPorUsuarioId: string;
   };
 }

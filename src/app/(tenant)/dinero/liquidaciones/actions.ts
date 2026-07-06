@@ -9,7 +9,7 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { marcarLiquidacionPagada } from "@/modules/dinero/acciones";
+import { marcarLiquidacionPagada, emitirPagoLiquidacion, ajustarLiquidacion } from "@/modules/dinero/acciones";
 
 // =============================================================================
 // Marcar liquidación como pagada
@@ -34,6 +34,66 @@ export async function accionMarcarLiquidacionPagada(
   } catch (err) {
     const mensaje =
       err instanceof Error ? err.message : "Error desconocido al marcar la liquidación como pagada.";
+    return { ok: false, mensaje };
+  }
+}
+
+// =============================================================================
+// Emitir pago electrónico de liquidación — compuerta F19
+// =============================================================================
+
+export async function accionEmitirPagoLiquidacion(
+  liquidacionId: string,
+): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+
+  try {
+    await emitirPagoLiquidacion(
+      sesion.usuario.tenantId,
+      liquidacionId,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error al emitir el pago.";
+    return { ok: false, mensaje };
+  }
+}
+
+// =============================================================================
+// Ajustar liquidación — bono / penalización manual (F16)
+// =============================================================================
+
+export async function accionAjustarLiquidacion(
+  liquidacionId: string,
+  bonoClp: number,
+  penalizacionClp: number,
+  notaAjuste: string | null,
+): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+
+  try {
+    await ajustarLiquidacion(
+      sesion.usuario.tenantId,
+      liquidacionId,
+      bonoClp,
+      penalizacionClp,
+      notaAjuste,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error desconocido al ajustar la liquidación.";
     return { ok: false, mensaje };
   }
 }

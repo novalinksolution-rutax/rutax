@@ -4,8 +4,22 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { crearManifiesto, confirmarManifiesto, asignarPedidosAManifiesto } from "@/modules/operacion/manifiestos";
+import { crearManifiesto, confirmarManifiesto, asignarPedidosAManifiesto, completarManifiesto } from "@/modules/operacion/manifiestos";
 import { puedeGenerarManifiestos, puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
+import {
+  autoAsignarPendientesDelDia,
+  marcarConductorNoDisponibleYRedistribuir,
+} from "@/modules/operacion/auto-asignacion";
+import type { ResultadoAutoAsignacion, ResultadoRedistribucion } from "@/modules/operacion/tipos";
+import { ahoraEnSantiago } from "@/lib/fecha-santiago";
+
+// =============================================================================
+// Tipos de respuesta compartidos
+// =============================================================================
+
+type RespuestaOk<T> = { ok: true; datos: T };
+type RespuestaError = { ok: false; mensaje: string };
+type Respuesta<T> = RespuestaOk<T> | RespuestaError;
 
 // =============================================================================
 // Crear manifiesto
@@ -67,7 +81,7 @@ export async function actionConfirmarManifiesto(formData: FormData) {
 
   try {
     const cliente = crearClienteServiceRole();
-    await confirmarManifiesto(cliente, manifiestoId, sesion.usuario.tenantId, sesion.usuario);
+    await confirmarManifiesto(cliente, manifiestoId, sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId);
     revalidatePath(`/manifiestos/${manifiestoId}`);
     return { exito: true };
   } catch (err) {
@@ -101,7 +115,7 @@ export async function actionAsignarPedidos(formData: FormData) {
 
   try {
     const cliente = crearClienteServiceRole();
-    await asignarPedidosAManifiesto(cliente, manifiestoId, pedidoIds, sesion.usuario);
+    await asignarPedidosAManifiesto(cliente, manifiestoId, pedidoIds, sesion.usuario, sesion.usuarioId);
     revalidatePath(`/manifiestos/${manifiestoId}`);
     revalidatePath(`/manifiestos/${manifiestoId}/asignar`);
     return { exito: true };
@@ -135,5 +149,142 @@ export async function actionCancelarManifiesto(formData: FormData) {
   } catch (err) {
     if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
     return { error: err instanceof Error ? err.message : "Error al cancelar." };
+  }
+}
+
+// =============================================================================
+// Completar manifiesto (coordinador / supervisor)
+// =============================================================================
+
+/**
+ * El coordinador o supervisor marca un manifiesto como 'completado'.
+ *
+ * ALTO-1: llama a `completarManifiesto` que, además de la transición de estado,
+ * borra server-side la ubicación GPS del conductor (minimización — Ley 21.431).
+ * Esto garantiza el borrado independientemente de si el conductor cierra o no
+ * su sesión en la PWA.
+ */
+export async function actionCompletarManifiesto(formData: FormData) {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) return { error: "Sin sesión." };
+
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return { error: "No tienes permiso para completar manifiestos." };
+  }
+
+  const manifiestoId = formData.get("manifiestoId") as string;
+  const driverId = formData.get("driverId") as string;
+
+  if (!manifiestoId || !driverId) return { error: "Faltan datos requeridos." };
+
+  try {
+    const cliente = crearClienteServiceRole();
+    await completarManifiesto(
+      cliente,
+      manifiestoId,
+      sesion.usuario.tenantId,
+      driverId,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+
+    revalidatePath(`/manifiestos/${manifiestoId}`);
+    revalidatePath("/manifiestos");
+    return { exito: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Error al completar el manifiesto." };
+  }
+}
+
+// =============================================================================
+// Auto-asignación heurística (F6, ítem 1.3)
+// =============================================================================
+
+/**
+ * Dispara el motor heurístico para asignar los pedidos pendientes del día.
+ * La fecha se obtiene del día actual en zona America/Santiago si no se pasa.
+ */
+export async function actionAutoAsignarPendientes(
+  fecha?: string,
+): Promise<Respuesta<ResultadoAutoAsignacion>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay sesión activa." };
+  }
+
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return { ok: false, mensaje: "No tienes permiso para asignar pedidos." };
+  }
+
+  const fechaOperacion = fecha ?? ahoraEnSantiago().fecha;
+
+  try {
+    const cliente = crearClienteServiceRole();
+    const resultado = await autoAsignarPendientesDelDia(
+      cliente,
+      sesion.usuario.tenantId,
+      fechaOperacion,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+
+    revalidatePath("/manifiestos");
+
+    return { ok: true, datos: resultado };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error al ejecutar la auto-asignación.";
+    return { ok: false, mensaje };
+  }
+}
+
+// =============================================================================
+// Marcar conductor no disponible y redistribuir (F6, ítem 1.3)
+// =============================================================================
+
+/**
+ * Marca un conductor como no disponible y redistribuye sus paradas abiertas.
+ * Devuelve el resultado con impacto SLA por seller afectado.
+ */
+export async function actionMarcarConductorNoDisponible(
+  conductorId: string,
+  fecha?: string,
+): Promise<Respuesta<ResultadoRedistribucion>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay sesión activa." };
+  }
+
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return {
+      ok: false,
+      mensaje: "No tienes permiso para modificar la disponibilidad de conductores.",
+    };
+  }
+
+  if (!conductorId) {
+    return { ok: false, mensaje: "ID de conductor requerido." };
+  }
+
+  const fechaOperacion = fecha ?? ahoraEnSantiago().fecha;
+
+  try {
+    const cliente = crearClienteServiceRole();
+    const resultado = await marcarConductorNoDisponibleYRedistribuir(
+      cliente,
+      sesion.usuario.tenantId,
+      conductorId,
+      fechaOperacion,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+
+    revalidatePath("/manifiestos");
+
+    return { ok: true, datos: resultado };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error al procesar la redistribución.";
+    return { ok: false, mensaje };
   }
 }

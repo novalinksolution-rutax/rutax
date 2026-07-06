@@ -3,27 +3,38 @@
  * =====================================================================
  * Cadencia: cada 15 minutos (cron "0 *\/15 * * * *").
  *
- * Cierra el hueco de eventos perdidos del webhook. Para cada seller con pedidos
- * activos ('asignado' | 'en_ruta'), consulta el estado actual en ML vía
- * `GET /shipments?ids={batch}` y publica el evento `ml/shipment.actualizado`
- * si el estado difiere. El Job 3 reutiliza el mismo handler para procesar
- * tanto webhooks como polling — garantiza consistencia de paths.
+ * Cierra el hueco de eventos perdidos del webhook. Para cada CONEXIÓN con
+ * pedidos activos ('asignado' | 'en_ruta') — agrupando por (seller_id,
+ * ml_user_id), porque un seller puede tener varias cuentas ML (modelo 1:N) —,
+ * consulta el estado actual en ML con EL token de ESA cuenta y publica el
+ * evento `ml/shipment.actualizado` si el estado difiere. El Job 3 reutiliza el
+ * mismo handler para procesar tanto webhooks como polling — garantiza
+ * consistencia de paths.
  *
- * Batches: hasta 50 shipment_ids por llamada (límite documentado de ML para
- * el endpoint de consulta múltiple — reverificar antes de producción).
+ * CONSULTA POR SHIPMENT INDIVIDUAL (no batch):
+ * La documentación oficial de ML (docs/mercadolibre/05-mercado-envios-shipments.md)
+ * NO confirma un endpoint batch `GET /shipments?ids=...` ni `?shipment_ids=...`
+ * para el RECURSO de shipments (el único multi-id confirmado es
+ * `GET /shipment_labels?shipment_ids=...`, que devuelve etiquetas, no estados).
+ * El parámetro `?ids=` previo era una SUPOSICIÓN sin verificar; si fuese
+ * incorrecto, ML respondería 400/4xx y el polling de respaldo —único backstop
+ * ante webhooks perdidos— NO detectaría nada y fallaría en silencio.
+ * Por eso se usa el endpoint VERIFICADO `GET /shipments/{id}` (con
+ * `x-format-new: true`) por cada shipment activo. El volumen es acotado: solo
+ * pedidos en estado 'asignado'|'en_ruta' del seller, una vez cada 15 min, con
+ * backoff/Retry-After heredados de `peticionMl`.
+ *
+ * PENDIENTE (delegar a `mercadolibre-docs`): confirmar si existe un endpoint
+ * batch oficial para estados de shipments y, de existir, el parámetro exacto;
+ * si aparece, optimizar este job. Mientras no esté verificado, NO se usa batch.
  *
  * SEGURIDAD: tokens nunca en logs ni en payloads de Inngest.
- *
- * Fuente batch endpoint: developers.mercadolibre.com.ar — "Shipments" /
- * "Get multiple shipments" — verificado en esta iteración.
  */
 
 import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { descifrarSecreto } from "../../secretos";
-import { ML_API_BASE_URL } from "../cliente-http";
-
-const BATCH_SIZE = 50;
+import { peticionMl, ErrorHttpMl } from "../cliente-http";
 
 interface PedidoActivo {
   id: string;
@@ -32,17 +43,31 @@ interface PedidoActivo {
   ml_shipment_id: string;
   estado: string;
   estado_ml: string | null;
+  ml_user_id: string | null;
 }
 
 interface ConexionConToken {
   access_token_ref: string | null;
   estado_salud: string;
+  ml_user_id: string | null;
 }
 
-/** Respuesta del endpoint batch de shipments de ML */
-interface ShipmentMlBatch {
+/**
+ * Clave de agrupación por conexión (modelo 1:N). Los pedidos legacy sin
+ * `ml_user_id` estampado caen a un grupo especial que resuelve la conexión
+ * representativa del seller (tras el backfill deberían estar poblados).
+ */
+const CUENTA_SIN_ESTAMPAR = "__sin_cuenta__";
+
+function claveGrupo(sellerId: string, mlUserId: string | null): string {
+  return `${sellerId}::${mlUserId ?? CUENTA_SIN_ESTAMPAR}`;
+}
+
+/** Respuesta de `GET /shipments/{id}` (campos que usamos para comparar estado). */
+interface ShipmentMlDetalle {
   id: number | string;
   status: string;
+  substatus?: string | null;
 }
 
 export const jobPollingEstadosPedidos = inngest.createFunction(
@@ -53,14 +78,16 @@ export const jobPollingEstadosPedidos = inngest.createFunction(
     retries: 2,
   },
   async ({ step, logger }) => {
-    // Paso 1: leer pedidos activos agrupados por seller.
-    const pedidosPorSeller = await step.run("leer-pedidos-activos", async () => {
+    // Paso 1: leer pedidos activos agrupados por CONEXIÓN (seller_id + cuenta
+    // ml_user_id). Modelo 1:N — un seller puede tener varias cuentas ML y cada
+    // una se pollea con SU token.
+    const pedidosPorConexion = await step.run("leer-pedidos-activos", async () => {
       const supabase = crearClienteServiceRole();
 
       const { data, error } = await supabase
         .schema("operacion")
         .from("pedidos")
-        .select("id, tenant_id, seller_id, ml_shipment_id, estado, estado_ml")
+        .select("id, tenant_id, seller_id, ml_shipment_id, estado, estado_ml, ml_user_id")
         .in("estado", ["asignado", "en_ruta"])
         .not("ml_shipment_id", "is", null);
 
@@ -68,40 +95,53 @@ export const jobPollingEstadosPedidos = inngest.createFunction(
         throw new Error(`Error al leer pedidos activos: ${error.message}`);
       }
 
-      // Agrupar por seller_id
+      // Agrupar por (seller_id, ml_user_id) — clave estable de la cuenta origen.
       const agrupados: Record<string, PedidoActivo[]> = {};
       for (const pedido of (data as PedidoActivo[]) ?? []) {
-        if (!agrupados[pedido.seller_id]) agrupados[pedido.seller_id] = [];
-        agrupados[pedido.seller_id].push(pedido);
+        const clave = claveGrupo(pedido.seller_id, pedido.ml_user_id);
+        if (!agrupados[clave]) agrupados[clave] = [];
+        agrupados[clave].push(pedido);
       }
 
       return agrupados;
     });
 
-    const sellers = Object.keys(pedidosPorSeller);
-    logger.info(`Sellers con pedidos activos: ${sellers.length}`);
+    const grupos = Object.keys(pedidosPorConexion);
+    logger.info(`Conexiones con pedidos activos: ${grupos.length}`);
 
     let totalEventosPublicados = 0;
 
-    // Procesar cada seller en pasos independientes — el fallo de uno no afecta al resto.
+    // Procesar cada conexión en pasos independientes — el fallo de una no afecta
+    // al resto (aislamiento por cuenta, no por seller).
     await Promise.allSettled(
-      sellers.map((sellerId) =>
-        step.run(`polling:seller:${sellerId}`, async () => {
-          const pedidos = pedidosPorSeller[sellerId];
+      grupos.map((clave) =>
+        step.run(`polling:conexion:${clave}`, async () => {
+          const pedidos = pedidosPorConexion[clave];
           if (!pedidos?.length) return;
 
-          // Obtener token del seller
+          const sellerId = pedidos[0].seller_id;
+          // La cuenta de origen de este grupo (misma para todos sus pedidos).
+          // `null` = pedidos legacy sin estampar → conexión representativa.
+          const mlUserIdPedido = pedidos[0].ml_user_id;
+
+          // Obtener el token de la conexión de ESTA cuenta.
           const supabase = crearClienteServiceRole();
-          const { data: conexionData, error: conexionError } = await supabase
+          let consulta = supabase
             .schema("identidad")
             .from("conexiones_seller_ml")
-            .select("access_token_ref, estado_salud")
-            .eq("seller_id", sellerId)
+            .select("access_token_ref, estado_salud, ml_user_id")
+            .eq("seller_id", sellerId);
+          if (mlUserIdPedido) {
+            consulta = consulta.eq("ml_user_id", mlUserIdPedido);
+          }
+          const { data: conexionData, error: conexionError } = await consulta
+            .limit(1)
             .maybeSingle();
 
           if (conexionError || !conexionData) {
             logger.warn(
-              `No se encontró conexión ML para seller ${sellerId}. Saltando.`,
+              `No se encontró conexión ML para seller ${sellerId} ` +
+                `(cuenta ${mlUserIdPedido ?? "sin estampar"}). Saltando.`,
             );
             return;
           }
@@ -110,7 +150,8 @@ export const jobPollingEstadosPedidos = inngest.createFunction(
 
           if (conexion.estado_salud === "desvinculada" || !conexion.access_token_ref) {
             logger.warn(
-              `Conexión ML del seller ${sellerId} está desvinculada o sin token. Saltando.`,
+              `Conexión ML del seller ${sellerId} (cuenta ${mlUserIdPedido ?? "sin estampar"}) ` +
+                "está desvinculada o sin token. Saltando.",
             );
             return;
           }
@@ -124,89 +165,81 @@ export const jobPollingEstadosPedidos = inngest.createFunction(
             accessToken = descifrado.valor;
           } catch {
             logger.warn(
-              `No se pudo obtener el token del seller ${sellerId}. Saltando.`,
+              `No se pudo obtener el token del seller ${sellerId} ` +
+                `(cuenta ${mlUserIdPedido ?? "sin estampar"}). Saltando.`,
             );
             return;
           }
 
-          // Procesar en batches de 50
-          const shipmentIds = pedidos.map((p) => p.ml_shipment_id);
-          let eventosEnSeller = 0;
+          // userId de ML para desambiguar colisiones de shipment_id en el Job 3.
+          // Preferir el ml_user_id de la conexión resuelta; si falta (caso
+          // degradado), el del pedido; y en último término el sellerId.
+          const mlUserId = conexion.ml_user_id ?? mlUserIdPedido ?? sellerId;
 
-          for (let i = 0; i < shipmentIds.length; i += BATCH_SIZE) {
-            const batch = shipmentIds.slice(i, i + BATCH_SIZE);
-            const idsParam = batch.join(",");
+          // Consultar cada shipment activo individualmente (endpoint verificado
+          // GET /shipments/{id}). Publicar evento solo si el estado_ml difiere.
+          let eventosEnConexion = 0;
 
-            let shipmentsMl: ShipmentMlBatch[] = [];
+          for (const pedidoLocal of pedidos) {
+            const shipmentIdStr = String(pedidoLocal.ml_shipment_id);
+
+            let shipmentMl: ShipmentMlDetalle;
             try {
-              // NOTA: el endpoint batch de ML es `GET /shipments?shipment_ids={ids}`
-              // Verificar el parámetro exacto contra la documentación oficial
-              // antes de producción — puede ser `ids` o `shipment_ids` según versión.
-              const respuesta = await fetch(
-                `${ML_API_BASE_URL}/shipments?ids=${encodeURIComponent(idsParam)}`,
-                {
-                  method: "GET",
-                  headers: {
-                    authorization: `Bearer ${accessToken}`,
-                    accept: "application/json",
-                  },
-                },
-              );
-
-              if (!respuesta.ok) {
-                if (respuesta.status === 401 || respuesta.status === 403) {
-                  // Token caído — registrar y pasar al siguiente seller completo
+              shipmentMl = await peticionMl<ShipmentMlDetalle>({
+                metodo: "GET",
+                ruta: `/shipments/${shipmentIdStr}`,
+                accessToken,
+                encabezadosExtra: { "x-format-new": "true" },
+              });
+            } catch (error) {
+              if (error instanceof ErrorHttpMl) {
+                // Token caído (401/403) → abortar el seller entero; el sondeo de
+                // salud gestionará la desvinculación.
+                if (error.status === 401 || error.status === 403) {
                   logger.warn(
-                    `Token del seller ${sellerId} rechazado por ML (${respuesta.status}). ` +
+                    `Token del seller ${sellerId} rechazado por ML (${error.status}). ` +
                       "El sondeo de salud gestionará la desvinculación.",
                   );
-                  return; // Salir del seller entero
+                  return;
                 }
-                throw new Error(`ML respondió ${respuesta.status} para batch de shipments`);
+                // 404 → el shipment no existe en ML; saltar este pedido.
+                if (error.status === 404) continue;
               }
-
-              shipmentsMl = (await respuesta.json()) as ShipmentMlBatch[];
-            } catch (error) {
+              // Otros errores (ya con backoff agotado): registrar SIN exponer
+              // token y continuar con el siguiente shipment — no perder el resto.
               const msg = error instanceof Error ? error.message : String(error);
-              logger.error(`Error en batch de polling para seller ${sellerId}: ${msg}`);
-              continue; // Continuar con el siguiente batch si hay error
+              logger.error(
+                `Error al consultar shipment ${shipmentIdStr} del seller ${sellerId}: ${msg}`,
+              );
+              continue;
             }
 
-            // Comparar con estado local y publicar eventos solo si difieren
-            const pedidosPorShipmentId: Record<string, PedidoActivo> = {};
-            for (const p of pedidos) {
-              pedidosPorShipmentId[p.ml_shipment_id] = p;
-            }
-
-            for (const shipmentMl of shipmentsMl) {
-              const shipmentIdStr = String(shipmentMl.id);
-              const pedidoLocal = pedidosPorShipmentId[shipmentIdStr];
-
-              if (!pedidoLocal) continue;
-
-              // Solo publicar si el estado_ml reportado difiere del registrado
-              if (pedidoLocal.estado_ml !== shipmentMl.status) {
-                await inngest.send({
-                  name: "ml/shipment.actualizado",
-                  data: {
-                    shipmentId: shipmentIdStr,
-                    userId: sellerId, // El userId de ML se resuelve en el Job 3
-                    timestamp: new Date().toISOString(),
-                  },
-                });
-                eventosEnSeller++;
-              }
+            // Solo publicar si el estado_ml reportado difiere del registrado.
+            // El Job 3 vuelve a leer el recurso (fuente de verdad) y aplica la
+            // transición con optimistic locking → idempotente ante duplicados.
+            if (pedidoLocal.estado_ml !== shipmentMl.status) {
+              await inngest.send({
+                name: "ml/shipment.actualizado",
+                data: {
+                  shipmentId: shipmentIdStr,
+                  userId: String(mlUserId),
+                  timestamp: new Date().toISOString(),
+                },
+              });
+              eventosEnConexion++;
             }
           }
 
           // El token en claro sale de scope aquí.
-          totalEventosPublicados += eventosEnSeller;
-          logger.info(`Seller ${sellerId}: ${eventosEnSeller} eventos publicados.`);
+          totalEventosPublicados += eventosEnConexion;
+          logger.info(
+            `Seller ${sellerId} (cuenta ${mlUserId}): ${eventosEnConexion} eventos publicados.`,
+          );
         }),
       ),
     );
 
     logger.info(`Polling completado. Total eventos publicados: ${totalEventosPublicados}`);
-    return { sellers: sellers.length, eventosPublicados: totalEventosPublicados };
+    return { conexiones: grupos.length, eventosPublicados: totalEventosPublicados };
   },
 );

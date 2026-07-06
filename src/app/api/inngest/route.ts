@@ -29,6 +29,9 @@ import { jobProcesarShipmentActualizado } from "@/modules/integraciones/ml/jobs/
 import { jobPollingEstadosPedidos } from "@/modules/integraciones/ml/jobs/polling-estados";
 import { jobEjecutarBackfill } from "@/modules/integraciones/ml/jobs/ejecutar-backfill";
 
+// Jobs de geocoding (F4 — ingesta → coordenadas + cobertura)
+import { jobGeocodificarPedido } from "@/modules/integraciones/geocoding/jobs/geocodificar-pedido";
+
 // Jobs de notificaciones
 import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaciones/conexion-caida";
 
@@ -46,6 +49,16 @@ import { jobAlertaFoliosProximos } from "@/modules/dinero/jobs/alerta-folios-pro
 import { jobConciliarPago } from "@/modules/dinero/jobs/conciliar-pago";
 import { jobAlertaMorosidad } from "@/modules/dinero/jobs/alerta-morosidad";
 import { jobEmitirNotaCredito } from "@/modules/dinero/jobs/emitir-nota-credito";
+import { jobConciliarTresFuentes } from "@/modules/dinero/jobs/conciliar-tres-fuentes";
+// Jobs de payouts a conductores (F19, Bloque 3 — dinero saliente)
+import { jobEjecutarPayout } from "@/modules/dinero/jobs/ejecutar-payout";
+import { jobConsultarEstadoPayout } from "@/modules/dinero/jobs/consultar-estado-payout";
+
+// Jobs de Plataforma (backstage Rutax — suscripciones de couriers)
+import { jobGenerarPeriodosSuscripcion } from "@/modules/plataforma/jobs/generar-periodos";
+
+// Jobs F23 — API pública y webhooks salientes
+import { jobEntregarWebhook } from "@/modules/integraciones/api-publica/jobs/entregar-webhook";
 
 /**
  * Array de todas las funciones de Inngest del sistema.
@@ -58,6 +71,8 @@ const funciones = [
   jobProcesarShipmentActualizado,
   jobPollingEstadosPedidos,
   jobEjecutarBackfill,
+  // Jobs de geocoding (F4)
+  jobGeocodificarPedido,
   jobNotificacionConexionCaida,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
@@ -74,6 +89,15 @@ const funciones = [
   jobAlertaMorosidad,
   // Notas de crédito (RF-038 — anulación total)
   jobEmitirNotaCredito,
+  // Job C7: conciliación de 3 fuentes (F17, Bloque 3) — cron 02:30
+  jobConciliarTresFuentes,
+  // Jobs F19: payouts a conductores (Bloque 3 — dinero saliente)
+  jobEjecutarPayout,
+  jobConsultarEstadoPayout,
+  // Jobs Plataforma — suscripciones de couriers a Rutax (backstage financiero)
+  jobGenerarPeriodosSuscripcion,
+  // Jobs F23 — entrega de webhooks salientes (cron cada 2 min)
+  jobEntregarWebhook,
 ];
 
 export const { GET, POST, PUT } = serve({

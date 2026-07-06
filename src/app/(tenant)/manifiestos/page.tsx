@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Plus, Truck } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
+import { puedeGenerarManifiestos, puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
 import {
   traducirEstadoManifiesto,
   BADGE_ESTADO_MANIFIESTO,
@@ -25,7 +25,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
+import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 import { FiltrosManifiestos } from "./filtros-manifiestos";
+import { BotonAutoAsignar } from "./boton-auto-asignar";
 
 interface SearchParams {
   estado?: string;
@@ -45,6 +47,8 @@ export default async function PaginaManifiestos({
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;
   const puedeCrear = puedeGenerarManifiestos(sesion.usuario);
+  const puedeAutoAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
+  const fechaHoy = ahoraEnSantiago().fecha;
 
   const filtroEstado = (params.estado as EstadoManifiesto | "") ?? "";
   const filtroFecha = params.fecha ?? "";
@@ -86,16 +90,19 @@ export default async function PaginaManifiestos({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-heading text-2xl font-bold">Manifiestos</h1>
-        {puedeCrear && (
-          <Button asChild>
-            <Link href="/manifiestos/nuevo">
-              <Plus className="size-4" aria-hidden="true" />
-              Nuevo manifiesto
-            </Link>
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {puedeAutoAsignar && <BotonAutoAsignar fechaHoy={fechaHoy} />}
+          {puedeCrear && (
+            <Button asChild>
+              <Link href="/manifiestos/nuevo">
+                <Plus className="size-4" aria-hidden="true" />
+                Nuevo manifiesto
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filtros */}

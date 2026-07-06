@@ -8,6 +8,7 @@ import {
   puedeGenerarManifiestos,
   puedeGestionarUsuariosYRoles,
   puedeGestionarConfiguracionDte,
+  puedeGestionarTarifas,
   puedeGestionarIncidencias,
   puedeEmitirFacturas,
   puedeGestionarLiquidacionesConductores,
@@ -78,6 +79,9 @@ export default async function LayoutTenant({ children }: { children: React.React
     grupoOperacion.items.push({ href: "/operaciones", etiqueta: "Pedidos", icono: "pedidos" });
     grupoOperacion.items.push({ href: "/manifiestos", etiqueta: "Manifiestos", icono: "manifiestos" });
   }
+  if (puedeAsignarYReasignarPedidos(u)) {
+    grupoOperacion.items.push({ href: "/conductores", etiqueta: "Conductores", icono: "conductores" });
+  }
   if (puedeGestionarIncidencias(u)) {
     grupoOperacion.items.push({ href: "/operaciones/incidencias", etiqueta: "Incidencias", icono: "incidencias" });
   }
@@ -98,6 +102,10 @@ export default async function LayoutTenant({ children }: { children: React.React
 
   const grupoConfig: GrupoNav = { titulo: "Configuración", items: [] };
   grupoConfig.items.push({ href: "/onboarding", etiqueta: "Configuración", icono: "configuracion" });
+  if (puedeGestionarTarifas(u)) {
+    grupoConfig.items.push({ href: "/configuracion/tarifas", etiqueta: "Tarifas", icono: "tarifas" });
+    grupoConfig.items.push({ href: "/configuracion/api", etiqueta: "API e integraciones", icono: "configuracion" });
+  }
   if (puedeGestionarUsuariosYRoles(u)) {
     grupoConfig.items.push({ href: "/equipo", etiqueta: "Equipo", icono: "equipo" });
   }

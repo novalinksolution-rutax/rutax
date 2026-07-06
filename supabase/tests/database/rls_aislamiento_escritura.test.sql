@@ -141,7 +141,7 @@ begin
 
   insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, estado_salud)
   values (t_a, s_a, 'ML-A-1', 'sana')
-  on conflict (seller_id) do nothing;
+  on conflict (seller_id, ml_user_id) where ml_user_id is not null do nothing;
 
   insert into identidad.tarifas (tenant_id, seller_id, tipo_entrega, modo_calculo, monto_clp, vigente_desde, estado)
   values

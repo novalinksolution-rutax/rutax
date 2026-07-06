@@ -25,8 +25,14 @@ import { cookies, headers } from "next/headers";
 import { randomBytes } from "node:crypto";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarConexionMlPropia } from "@/modules/identidad/capacidades";
-import { iniciarAutorizacion } from "@/modules/integraciones/ml";
-import { COOKIE_MODO_ML, COOKIE_STATE_ML, obtenerUrlBasePublica, type ModoConexionMl } from "./compartido";
+import { iniciarAutorizacion, obtenerConexionesPorSeller } from "@/modules/integraciones/ml";
+import {
+  COOKIE_CONEXION_ML,
+  COOKIE_MODO_ML,
+  COOKIE_STATE_ML,
+  obtenerUrlBasePublica,
+  type ModoConexionMl,
+} from "./compartido";
 
 const VIGENCIA_STATE_SEGUNDOS = 10 * 60;
 
@@ -50,19 +56,48 @@ async function construirRedirectUri(): Promise<string> {
 }
 
 /**
- * Dispara el flujo OAuth — usado tanto desde la Pantalla M (conexión inicial,
- * tras la bienvenida) como desde el botón "Reconectar" de la Pantalla O
- * (RF-015, "self-service de un clic"). Misma acción, distinto punto de
- * entrada — exactamente lo que pide §3.2: "no hay una variante 'distinta' de
- * conectar".
+ * Dispara el flujo OAuth — usado desde la Pantalla M (conexión inicial, tras la
+ * bienvenida), desde "Reconectar" de una tarjeta del panel (RF-015,
+ * "self-service de un clic") y desde "Agregar otra cuenta" (modelo 1:N). Misma
+ * acción, distinto punto de entrada — exactamente lo que pide §3.2: "no hay una
+ * variante 'distinta' de conectar".
+ *
+ * `conexionId` (SOLO en reconexión): identifica la fila objetivo. SEGURIDAD —
+ * antes de aceptarlo se verifica que esa conexión pertenece al seller de la
+ * sesión (se busca entre `obtenerConexionesPorSeller`, que ya filtra por
+ * seller); si no calza, se ignora en silencio (no se filtra la existencia de
+ * filas ajenas). Viaja en una cookie httpOnly junto al `state`, no en la URL.
  */
-export async function iniciarConexionMl(modo: ModoConexionMl): Promise<IniciarConexionMlResultado> {
+export async function iniciarConexionMl(
+  modo: ModoConexionMl,
+  conexionId?: string,
+): Promise<IniciarConexionMlResultado> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId || sesion.usuario.tipoUsuario !== "seller" || !sesion.usuario.sellerId) {
     return { ok: false, mensaje: "No hay una sesión de seller activa." };
   }
   if (!puedeGestionarConexionMlPropia(sesion.usuario)) {
     return { ok: false, mensaje: "Tu cuenta no tiene permiso para gestionar esta conexión." };
+  }
+
+  const sellerId = sesion.usuario.sellerId;
+
+  // Verificación de propiedad de `conexionId` (reconexión). El seller NO puede
+  // reconectar una fila que no es suya: la única fuente confiable es la lista
+  // filtrada por su propio seller. Si el id no está entre las suyas, se descarta.
+  let conexionIdVerificada: string | null = null;
+  if (modo === "reconexion" && conexionId) {
+    try {
+      const propias = await obtenerConexionesPorSeller(sellerId);
+      if (propias.some((c) => c.id === conexionId)) {
+        conexionIdVerificada = conexionId;
+      }
+    } catch {
+      // No bloqueamos el reintento por un fallo de esta verificación de contexto:
+      // aunque no se transporte el id, el UPDATE del callback resuelve la fila
+      // por `(seller_id, ml_user_id)` de la cuenta con que el seller reautoriza.
+      conexionIdVerificada = null;
+    }
   }
 
   const state = randomBytes(32).toString("base64url");
@@ -72,7 +107,7 @@ export async function iniciarConexionMl(modo: ModoConexionMl): Promise<IniciarCo
   try {
     ({ urlAutorizacion } = iniciarAutorizacion({
       tenantId: sesion.usuario.tenantId,
-      sellerId: sesion.usuario.sellerId,
+      sellerId,
       redirectUri,
       state,
     }));
@@ -95,6 +130,12 @@ export async function iniciarConexionMl(modo: ModoConexionMl): Promise<IniciarCo
   };
   almacenCookies.set(COOKIE_STATE_ML, state, opcionesCookie);
   almacenCookies.set(COOKIE_MODO_ML, modo, opcionesCookie);
+  if (conexionIdVerificada) {
+    almacenCookies.set(COOKIE_CONEXION_ML, conexionIdVerificada, opcionesCookie);
+  } else {
+    // Higiene: limpiar un id de un flujo anterior para que no se filtre a este.
+    almacenCookies.delete(COOKIE_CONEXION_ML);
+  }
 
   return { ok: true, urlAutorizacion };
 }
