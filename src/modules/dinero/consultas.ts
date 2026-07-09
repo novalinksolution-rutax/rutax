@@ -17,13 +17,16 @@ import type {
   DocumentoDte,
   Liquidacion,
   EventoConciliacion,
+  EventoConciliacionHistorial,
   EstadoPeriodo,
   EstadoEventoConciliacion,
+  CategoriaNegocioConciliacion,
   PagoRecibido,
   EstadoMatchPago,
   EstadoCobroPeriodo,
   EstadoSii,
   EstadoLiquidacion,
+  PayoutConductor,
 } from './tipos';
 
 // =============================================================================
@@ -74,6 +77,7 @@ function filaToLineaCobro(f: Record<string, any>): LineaCobro {
     origenGeneracion: f.origen_generacion,
     generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
     notas: f.notas ?? null,
+    snapshotRegla: f.snapshot_regla ?? null,
     anulada: f.anulada ?? false,
     anuladaEn: f.anulada_en ?? null,
     motivoAnulacion: f.motivo_anulacion ?? null,
@@ -99,6 +103,7 @@ function filaToLineaLiquidacion(f: Record<string, any>): LineaLiquidacion {
     origenGeneracion: f.origen_generacion,
     generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
     notas: f.notas ?? null,
+    snapshotRegla: f.snapshot_regla ?? null,
     creadoEn: f.creado_en,
     actualizadoEn: f.actualizado_en,
   };
@@ -156,6 +161,30 @@ function filaToLiquidacion(f: Record<string, any>): Liquidacion {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToPayoutConductor(f: Record<string, any>): PayoutConductor {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    driverId: f.driver_id,
+    liquidacionId: f.liquidacion_id,
+    montoBrutoClp: Number(f.monto_bruto_clp),
+    montoRetencionClp: Number(f.monto_retencion_clp ?? 0),
+    montoLiquidoClp: Number(f.monto_liquido_clp),
+    tipoRelacionConductor: f.tipo_relacion_conductor,
+    metodo: f.metodo,
+    estado: f.estado,
+    payoutExternoId: f.payout_externo_id ?? null,
+    comprobanteRef: f.comprobante_ref ?? null,
+    errorDescripcion: f.error_descripcion ?? null,
+    solicitadoPorUsuarioId: f.solicitado_por_usuario_id ?? null,
+    solicitadoEn: f.solicitado_en,
+    confirmadoEn: f.confirmado_en ?? null,
+    creadoEn: f.creado_en,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function filaToEventoConciliacion(f: Record<string, any>): EventoConciliacion {
   return {
     id: f.id,
@@ -173,6 +202,35 @@ function filaToEventoConciliacion(f: Record<string, any>): EventoConciliacion {
     // F17: campos del detector C7 para eventos de pago a conductor.
     driverId: f.driver_id ?? null,
     liquidacionId: f.liquidacion_id ?? null,
+    creadoEn: f.creado_en,
+    // §1.1 P1 — bandeja de excepciones gestionable.
+    categoriaNegocio: f.categoria_negocio,
+    accionSugerida: f.accion_sugerida,
+    asignadoAUsuarioId: f.asignado_a_usuario_id ?? null,
+    asignadoEn: f.asignado_en ?? null,
+    asignadoPorUsuarioId: f.asignado_por_usuario_id ?? null,
+    fechaLimite: f.fecha_limite ?? null,
+    bloqueaFacturacion: f.bloquea_facturacion ?? false,
+    bloqueaPago: f.bloquea_pago ?? false,
+    motivoBloqueo: f.motivo_bloqueo ?? null,
+    fuentesComparadas: f.fuentes_comparadas ?? null,
+    actualizadoEn: f.actualizado_en,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function filaToEventoConciliacionHistorial(f: Record<string, any>): EventoConciliacionHistorial {
+  return {
+    id: f.id,
+    tenantId: f.tenant_id,
+    eventoId: f.evento_id,
+    tipoCambio: f.tipo_cambio,
+    estadoAnterior: f.estado_anterior ?? null,
+    estadoNuevo: f.estado_nuevo ?? null,
+    comentario: f.comentario ?? null,
+    datos: f.datos ?? {},
+    actorUsuarioId: f.actor_usuario_id ?? null,
+    actorTipo: f.actor_tipo,
     creadoEn: f.creado_en,
   };
 }
@@ -355,14 +413,36 @@ export async function obtenerLiquidacion(
 // Conciliación
 // =============================================================================
 
+/** Filtros opcionales adicionales de `listarEventosConciliacion` (§1.1 P1 — bandeja de excepciones). */
+export interface FiltrosEventosConciliacion {
+  categoria?: CategoriaNegocioConciliacion;
+  /** UUID del usuario asignado (`asignado_a_usuario_id`). */
+  asignadoA?: string;
+  /** `true` = solo eventos con `bloquea_facturacion` o `bloquea_pago` en true; `false` = solo sin bloqueo. */
+  bloqueado?: boolean;
+  /** Lista de estados (OR) — complementa (no reemplaza) el parámetro posicional `estado`. */
+  estados?: EstadoEventoConciliacion[];
+}
+
 /**
  * Lista eventos de conciliación del tenant.
  * Solo para roles internos (dueño/administración) — RLS lo refuerza en BD.
+ *
+ * `pedidoId` (opcional, al final para no romper callers existentes) filtra
+ * a los eventos que apuntan a un pedido específico — usado por la traza
+ * pedido→dinero (`obtenerTrazaDineroPorPedido`) y por el filtro `?pedido=`
+ * de la pantalla de conciliación.
+ *
+ * `filtros` (§1.1 P1, opcional al final para no romper callers existentes)
+ * agrega los filtros propios de la bandeja de excepciones: categoría de
+ * negocio, asignado a, bloqueo activo, o una lista de estados.
  */
 export async function listarEventosConciliacion(
   cliente: SupabaseClient,
   tenantId: string,
   estado?: EstadoEventoConciliacion,
+  pedidoId?: string,
+  filtros?: FiltrosEventosConciliacion,
 ): Promise<EventoConciliacion[]> {
   let query = cliente
     .schema('dinero')
@@ -372,11 +452,39 @@ export async function listarEventosConciliacion(
     .order('creado_en', { ascending: false });
 
   if (estado) query = query.eq('estado', estado);
+  if (pedidoId) query = query.eq('pedido_id', pedidoId);
+  if (filtros?.categoria) query = query.eq('categoria_negocio', filtros.categoria);
+  if (filtros?.asignadoA) query = query.eq('asignado_a_usuario_id', filtros.asignadoA);
+  if (filtros?.bloqueado === true) query = query.or('bloquea_facturacion.eq.true,bloquea_pago.eq.true');
+  if (filtros?.bloqueado === false) query = query.eq('bloquea_facturacion', false).eq('bloquea_pago', false);
+  if (filtros?.estados && filtros.estados.length > 0) query = query.in('estado', filtros.estados);
 
   const { data, error } = await query;
 
   if (error) throw new Error(`Error al listar eventos de conciliación: ${error.message}`);
   return (data ?? []).map(filaToEventoConciliacion);
+}
+
+/**
+ * Lista el historial (append-only) de una excepción de conciliación, ordenado
+ * cronológicamente (`creado_en asc`) — para la vista de detalle/timeline de la
+ * bandeja. Solo para roles internos (dueño/administración) — RLS lo refuerza.
+ */
+export async function listarHistorialEventoConciliacion(
+  cliente: SupabaseClient,
+  tenantId: string,
+  eventoId: string,
+): Promise<EventoConciliacionHistorial[]> {
+  const { data, error } = await cliente
+    .schema('dinero')
+    .from('eventos_conciliacion_historial')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('evento_id', eventoId)
+    .order('creado_en', { ascending: true });
+
+  if (error) throw new Error(`Error al listar historial del evento de conciliación: ${error.message}`);
+  return (data ?? []).map(filaToEventoConciliacionHistorial);
 }
 
 // =============================================================================
@@ -410,11 +518,16 @@ function filaToPagoRecibido(f: Record<string, any>): PagoRecibido {
  * Solo para roles internos (la RLS de `pagos_recibidos` lo refuerza en BD; el
  * filtro `tenant_id` es defensa en profundidad). Ordena por fecha de movimiento
  * descendente (lo más reciente primero).
+ *
+ * `periodoId` (opcional, al final para no romper callers existentes) filtra a
+ * los pagos imputados a un período de cobro específico — usado por la traza
+ * pedido→dinero (`obtenerTrazaDineroPorPedido`).
  */
 export async function listarPagosRecibidos(
   cliente: SupabaseClient,
   tenantId: string,
   estados?: EstadoMatchPago[],
+  periodoId?: string,
 ): Promise<PagoRecibido[]> {
   let query = cliente
     .schema('dinero')
@@ -425,6 +538,7 @@ export async function listarPagosRecibidos(
     .order('creado_en', { ascending: false });
 
   if (estados && estados.length > 0) query = query.in('estado_match', estados);
+  if (periodoId) query = query.eq('periodo_cobro_id', periodoId);
 
   const { data, error } = await query;
 
@@ -439,14 +553,45 @@ export async function listarPagosRecibidos(
 /**
  * Estado del lazo entrega→dinero de un pedido: su línea de cobro al seller, el
  * período/factura donde aterrizó y su estado de pago, más su línea de
- * liquidación al conductor. Cada nodo puede no existir aún (lazo en curso).
- * Solo lectura; pensado para que un rol financiero/dueño *vea* la trazabilidad.
+ * liquidación al conductor y el payout que la salda. Cada nodo puede no
+ * existir aún (lazo en curso). Solo lectura; pensado para que un rol
+ * financiero/dueño *vea* la trazabilidad completa (RF, ítem 1.1 P1 del audit).
  */
 export interface TrazaDineroPedido {
-  cobro: { montoFinalClp: number } | null;
+  cobro: {
+    montoFinalClp: number;
+    /** Copia congelada de la tarifa/regla aplicada — ver `LineaCobro.snapshotRegla`. */
+    snapshotRegla: unknown;
+    anulada: boolean;
+    motivoAnulacion: string | null;
+  } | null;
   periodo: { id: string; estado: EstadoPeriodo; estadoCobro: EstadoCobroPeriodo } | null;
   factura: { folio: number; estadoSii: EstadoSii } | null;
-  liquidacion: { id: string; estado: EstadoLiquidacion; montoFinalClp: number } | null;
+  liquidacion: {
+    id: string;
+    estado: EstadoLiquidacion;
+    montoFinalClp: number;
+    snapshotRegla: unknown;
+    anulada: boolean;
+    motivoAnulacion: string | null;
+  } | null;
+  /** Pagos (Fintoc) imputados al período de cobro de este pedido. Vacío si el pedido aún no tiene período o no hay pagos. */
+  pagosRecibidos: PagoRecibido[];
+  conciliacion: {
+    /**
+     * true si el motor de conciliación ya tuvo oportunidad de evaluar este
+     * pedido: hay al menos un evento propio, o su período ya salió de
+     * `abierto` (lo que dispara C6 al cerrar, y dentro del alcance del cron
+     * diario C7). Si es false, "sin discrepancias" todavía no es una garantía
+     * — simplemente no se ha evaluado. Decisión de diseño: no existe una
+     * tabla de "corridas de conciliación" separada del log de diferencias,
+     * así que se infiere de estas dos señales.
+     */
+    evaluada: boolean;
+    eventos: EventoConciliacion[];
+  };
+  /** Payout (transferencia saliente) que salda la liquidación de este pedido, si existe. */
+  payout: PayoutConductor | null;
 }
 
 export async function obtenerTrazaDineroPorPedido(
@@ -454,22 +599,25 @@ export async function obtenerTrazaDineroPorPedido(
   tenantId: string,
   pedidoId: string,
 ): Promise<TrazaDineroPedido> {
-  // Línea de cobro y línea de liquidación del pedido (una por pedido, a lo sumo).
-  const [cobroRes, liqLineaRes] = await Promise.all([
+  // Línea de cobro y línea de liquidación del pedido (una por pedido, a lo sumo),
+  // más los eventos de conciliación que apuntan directamente a este pedido —
+  // estos tres no dependen entre sí, se piden en paralelo.
+  const [cobroRes, liqLineaRes, eventosConciliacion] = await Promise.all([
     cliente
       .schema('dinero')
       .from('lineas_cobro')
-      .select('monto_final_clp, periodo_cobro_id')
+      .select('monto_final_clp, periodo_cobro_id, snapshot_regla, anulada, motivo_anulacion')
       .eq('tenant_id', tenantId)
       .eq('pedido_id', pedidoId)
       .maybeSingle(),
     cliente
       .schema('dinero')
       .from('lineas_liquidacion')
-      .select('monto_final_clp, liquidacion_id')
+      .select('monto_final_clp, liquidacion_id, snapshot_regla, anulada, motivo_anulacion')
       .eq('tenant_id', tenantId)
       .eq('pedido_id', pedidoId)
       .maybeSingle(),
+    listarEventosConciliacion(cliente, tenantId, undefined, pedidoId),
   ]);
 
   const cobroFila = cobroRes.data;
@@ -477,6 +625,7 @@ export async function obtenerTrazaDineroPorPedido(
 
   let periodo: TrazaDineroPedido['periodo'] = null;
   let factura: TrazaDineroPedido['factura'] = null;
+  let pagosRecibidos: PagoRecibido[] = [];
 
   if (cobroFila?.periodo_cobro_id) {
     const { data: pf } = await cliente
@@ -504,9 +653,13 @@ export async function obtenerTrazaDineroPorPedido(
         }
       }
     }
+
+    pagosRecibidos = await listarPagosRecibidos(cliente, tenantId, undefined, cobroFila.periodo_cobro_id);
   }
 
   let liquidacion: TrazaDineroPedido['liquidacion'] = null;
+  let payout: PayoutConductor | null = null;
+
   if (liqLineaFila?.liquidacion_id) {
     const { data: lf } = await cliente
       .schema('dinero')
@@ -521,14 +674,57 @@ export async function obtenerTrazaDineroPorPedido(
         id: lf.id,
         estado: lf.estado,
         montoFinalClp: Number(liqLineaFila.monto_final_clp),
+        snapshotRegla: liqLineaFila.snapshot_regla ?? null,
+        anulada: liqLineaFila.anulada ?? false,
+        motivoAnulacion: liqLineaFila.motivo_anulacion ?? null,
       };
     }
+
+    payout = await obtenerPayoutPorLiquidacion(cliente, tenantId, liqLineaFila.liquidacion_id);
   }
 
+  // Ver el comentario de diseño en `TrazaDineroPedido['conciliacion']`.
+  const conciliacionEvaluada =
+    eventosConciliacion.length > 0 || (periodo !== null && periodo.estado !== 'abierto');
+
   return {
-    cobro: cobroFila ? { montoFinalClp: Number(cobroFila.monto_final_clp) } : null,
+    cobro: cobroFila
+      ? {
+          montoFinalClp: Number(cobroFila.monto_final_clp),
+          snapshotRegla: cobroFila.snapshot_regla ?? null,
+          anulada: cobroFila.anulada ?? false,
+          motivoAnulacion: cobroFila.motivo_anulacion ?? null,
+        }
+      : null,
     periodo,
     factura,
     liquidacion,
+    pagosRecibidos,
+    conciliacion: { evaluada: conciliacionEvaluada, eventos: eventosConciliacion },
+    payout,
   };
+}
+
+/**
+ * Obtiene el payout (transferencia saliente) que salda una liquidación, si
+ * ya existe uno. `UNIQUE (tenant_id, liquidacion_id)` en `dinero.payouts_conductor`
+ * (migración 20260613000011) garantiza a lo sumo una fila — es la barrera de
+ * doble-pago del motor de payouts (F19).
+ */
+export async function obtenerPayoutPorLiquidacion(
+  cliente: SupabaseClient,
+  tenantId: string,
+  liquidacionId: string,
+): Promise<PayoutConductor | null> {
+  const { data, error } = await cliente
+    .schema('dinero')
+    .from('payouts_conductor')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('liquidacion_id', liquidacionId)
+    .maybeSingle();
+
+  if (error) throw new Error(`Error al obtener el payout de la liquidación: ${error.message}`);
+  if (!data) return null;
+  return filaToPayoutConductor(data);
 }

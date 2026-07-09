@@ -14,9 +14,15 @@
  * NUNCA loguear el valor de estas variables.
  */
 import { Inngest } from "inngest";
+import { MiddlewareObservabilidad } from "./middleware-observabilidad";
 
 export const inngest = new Inngest({
   id: "saas-courier",
   // El event key se lee de la variable de entorno automáticamente por el SDK
   // cuando se llama a inngest.send(). No se hardcodea aquí.
+  //
+  // Middleware de observabilidad: captura el error final de cualquier job que
+  // falla y lo envía a la observabilidad central (Sentry/logs). Único punto,
+  // no invade cada job. Ver middleware-observabilidad.ts.
+  middleware: [MiddlewareObservabilidad],
 });

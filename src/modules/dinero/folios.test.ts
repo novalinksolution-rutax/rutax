@@ -13,7 +13,7 @@ vi.mock('@/lib/supabase/service-role', () => ({
 }));
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
-import { reservarFolio } from './folios';
+import { reservarFolio, hayFolioDisponible } from './folios';
 
 interface FilaCaf {
   id: string;
@@ -143,5 +143,66 @@ describe('reservarFolio', () => {
       expect((e as ErrorFolioAgotado).tipoDocumento).toBe(61);
       expect((e as Error).message).toContain('tipo 61');
     }
+  });
+
+  it('límite: folio_actual === folio_hasta SÍ se reserva (es el último folio válido, no está agotado)', async () => {
+    const cafs: FilaCaf[] = [
+      { id: 'caf33', tenant_id: TENANT, tipo_documento: 33, estado: 'vigente', folio_actual: 200, folio_hasta: 200 },
+    ];
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearFakeSupabase(cafs) as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+
+    const r = await reservarFolio(TENANT, 33);
+    expect(r.folio).toBe(200);
+    expect(cafs[0].folio_actual).toBe(201); // el rango queda agotado RECIÉN ahora
+  });
+});
+
+// =============================================================================
+// hayFolioDisponible — verificación de SOLO LECTURA (no reserva nada)
+// =============================================================================
+
+describe('hayFolioDisponible', () => {
+  it('true cuando hay un CAF vigente con folios restantes', async () => {
+    const cafs: FilaCaf[] = [
+      { id: 'caf33', tenant_id: TENANT, tipo_documento: 33, estado: 'vigente', folio_actual: 10, folio_hasta: 100 },
+    ];
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearFakeSupabase(cafs) as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+    await expect(hayFolioDisponible(TENANT, 33)).resolves.toBe(true);
+    // NO reserva: folio_actual queda intacto.
+    expect(cafs[0].folio_actual).toBe(10);
+  });
+
+  it('true en el límite exacto (folio_actual === folio_hasta) — mismo criterio que reservarFolio', async () => {
+    const cafs: FilaCaf[] = [
+      { id: 'caf33', tenant_id: TENANT, tipo_documento: 33, estado: 'vigente', folio_actual: 200, folio_hasta: 200 },
+    ];
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearFakeSupabase(cafs) as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+    await expect(hayFolioDisponible(TENANT, 33)).resolves.toBe(true);
+  });
+
+  it('false cuando el rango está agotado (folio_actual > folio_hasta)', async () => {
+    const cafs: FilaCaf[] = [
+      { id: 'caf33', tenant_id: TENANT, tipo_documento: 33, estado: 'vigente', folio_actual: 201, folio_hasta: 200 },
+    ];
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearFakeSupabase(cafs) as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+    await expect(hayFolioDisponible(TENANT, 33)).resolves.toBe(false);
+  });
+
+  it('false cuando no hay CAF vigente del tipo pedido', async () => {
+    const cafs: FilaCaf[] = [
+      { id: 'caf61', tenant_id: TENANT, tipo_documento: 61, estado: 'vigente', folio_actual: 1, folio_hasta: 50 },
+    ];
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearFakeSupabase(cafs) as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+    await expect(hayFolioDisponible(TENANT, 33)).resolves.toBe(false);
   });
 });

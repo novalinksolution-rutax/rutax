@@ -20,8 +20,6 @@
  *   contra un período `facturado`, consumido por la proyección de `estado_cobro`
  *   (en el MVP, la escribe el mismo job de matching antes de emitir el evento;
  *   el evento queda como punto de extensión para notificaciones al seller).
- * - `EventoConciliacionTresFuentes`: cron diario a las 02:30, consumido por C7
- *   (`dinero/jobs/conciliar-tres-fuentes.ts`). Detective puro, solo lectura.
  *
  * Regla de importación: solo tipos — ningún lado importa lógica del otro.
  * El publisher solo necesita el `name` + `data`; el consumer idem.
@@ -196,36 +194,6 @@ export interface EventoPagoConciliado {
 }
 
 /**
- * Punto de extensión para notificaciones de corte próximo (F7, ítem 1.2).
- *
- * NO se publica en F7: el dashboard hace el cómputo en vivo
- * (`obtenerResumenCortePorSeller` en metricas.ts). Este evento queda declarado
- * para cuando se implemente una notificación push/email a coordinadores cuando
- * el corte está próximo (p. ej. 30 minutos antes).
- *
- * Para emitirlo en el futuro: crear un cron que corra cada N minutos y evalúe
- * las ventanas activas del día, usando la utilidad de Santiago para TZ.
- * NUNCA emitirlo en el request del usuario.
- */
-export interface EventoCorteProximo {
-  name: 'operacion/corte.proximo';
-  data: {
-    tenantId: string;
-    sellerId: string;
-    /** UUID de la zona aplicable. null = ventana por defecto del seller. */
-    zonaId: string | null;
-    /** Hora de corte 'HH:MM' local Santiago. */
-    horaCorte: string;
-    /** Minutos restantes hasta el corte en el momento de emisión. */
-    minutosRestantes: number;
-    /** Pedidos same-day no terminales del día en el momento de emisión. */
-    pedidosPendientes: number;
-    /** Fecha del día de operación 'YYYY-MM-DD' local Santiago. */
-    fecha: string;
-  };
-}
-
-/**
  * Nota de crédito (RF-038) — anulación TOTAL de la factura de un período.
  *
  * Publicado EXCLUSIVAMENTE por la acción humana `emitirNotaCreditoPeriodo`
@@ -263,26 +231,6 @@ export interface EventoNcEmisionSolicitada {
 }
 
 /**
- * Trigger interno del job C7 — conciliación de 3 fuentes (F17, Bloque 3).
- *
- * El cron `30 2 * * *` (02:30 Santiago, diario) emite este evento por cada
- * tenant activo. El job C7 lo consume y ejecuta los 6 detectores de fugas
- * cruzando: (1) líneas de cobro al seller, (2) líneas de liquidación al
- * conductor, y (3) rate card (mínimos y recargos).
- *
- * Detective puro, solo lectura. Nunca muta líneas ni emite documentos.
- * El campo `fecha` permite idempotencia: eventId = `conciliar-3f-${tenantId}-${fecha}`.
- */
-export interface EventoConciliacionTresFuentes {
-  name: 'dinero/conciliacion.tres_fuentes';
-  data: {
-    tenantId: string;
-    /** Fecha de ejecución 'YYYY-MM-DD' en zona Santiago — llave de idempotencia. */
-    fecha: string;
-  };
-}
-
-/**
  * Compuerta de pago a conductor (F19, Bloque 3).
  *
  * Publicado EXCLUSIVAMENTE por la acción humana `emitirPagoLiquidacion`
@@ -307,5 +255,68 @@ export interface EventoLiquidacionPagoSolicitado {
     /** Monto BRUTO en CLP. El job calcula el neto tras retención. */
     montoTotalClp: number;
     solicitadoPorUsuarioId: string;
+  };
+}
+
+/**
+ * Confirmación instantánea de payout saliente (F19/Fase 3 — webhook Fintoc
+ * `transfer.outbound.*`).
+ *
+ * Publicado EXCLUSIVAMENTE por `api/webhooks/fintoc-payout/route.ts`, DESPUÉS
+ * de: (1) validar la firma `Fintoc-Signature` con el secreto de ORGANIZACIÓN
+ * (`FINTOC_PAYOUT_WEBHOOK_SECRET` — a diferencia de `dinero/pago.recibido`,
+ * que es por-tenant), (2) resolver el payout/tenant/liquidación por
+ * `transferExternoId`, (3) insertar en `dinero.eventos_payout_externos`
+ * (barrera de idempotencia dura por `evento_externo_id`), y (4) registrar en
+ * `bitacora_auditoria`. Consumido por `jobAplicarActualizacionPayout`
+ * (`dinero/jobs/transicion-payout.ts`), que aplica la MISMA tabla de
+ * transición que usa el polling (`jobConsultarEstadoPayout`) — una sola
+ * fuente de verdad para webhook y polling.
+ *
+ * El `id` del evento Inngest (`payout-webhook-${eventoExternoId}`) es
+ * idempotencia ADICIONAL sobre la barrera dura de BD: un reintento de Inngest
+ * no re-ejecuta el job dos veces para el mismo evento externo.
+ */
+export interface EventoActualizacionExternaPayout {
+  name: 'dinero/payout.actualizacion-externa';
+  data: {
+    tenantId: string;
+    payoutId: string;
+    liquidacionId: string;
+    /** Id del transfer en Fintoc (`tr_...`) — correlaciona con `payouts_conductor.payout_externo_id`. */
+    transferExternoId: string;
+    /** Id del evento en Fintoc (`evt_...`) — la barrera de idempotencia dura. */
+    eventoExternoId: string;
+    estadoExterno: 'confirmado' | 'pendiente' | 'fallido' | 'rechazado' | 'desconocido';
+    /** Motivo de rechazo/reversión saneado (Fintoc `return_reason`), o `null`. */
+    motivo: string | null;
+    /** Referencia al comprobante (Fintoc `receipt_url`), o `null`. */
+    comprobanteRef: string | null;
+  };
+}
+
+/**
+ * Un payout a conductor quedó `confirmado` (dinero efectivamente movido).
+ *
+ * Publicado por `jobAplicarActualizacionPayout` cuando `aplicarTransicionPayout`
+ * resuelve el evento como `confirmado` (webhook) — y también podría publicarse
+ * desde el polling en el futuro si se decide dar el mismo tratamiento; hoy el
+ * polling (`jobConsultarEstadoPayout`) NO lo emite (motor de re-chequeo, no
+ * gatillo de conciliación inmediata). Consumido por
+ * `jobConciliarPayoutConfirmado`, que corre una conciliación ACOTADA a esa
+ * liquidación (detector D1 restringido, ver `conciliacion-insercion.ts`) sin
+ * esperar el cron diario C7.
+ *
+ * El `id` determinístico (`payout-confirmado-${payoutId}`) evita que una
+ * re-confirmación (replay del webhook ya deduplicado en la barrera de BD, o
+ * un reintento del job) dispare la conciliación inmediata dos veces.
+ */
+export interface EventoPayoutConfirmado {
+  name: 'dinero/payout.confirmado';
+  data: {
+    tenantId: string;
+    payoutId: string;
+    liquidacionId: string;
+    driverId: string;
   };
 }

@@ -51,6 +51,8 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { capturarMensaje } from '@/lib/observabilidad';
+import { existeEventoConciliacion, insertarEventoConciliacion } from '../conciliacion-insercion';
 
 const TZ = 'America/Santiago';
 
@@ -129,6 +131,27 @@ export const jobConciliarTresFuentes = inngest.createFunction(
         },
       );
       totalEventos += eventosDelTenant;
+
+      // Alerta a la observabilidad cuando aparecen discrepancias NUEVAS para
+      // este tenant: el cruce de integridad deja de ser silencioso (auditoría
+      // §2.7/QW6). In-app ya lo ve el dueño en el centro de avisos; esto lleva
+      // la señal al equipo (Sentry/logs), con el tenant para saber a quién.
+      // En su propio step → idempotente: un reintento no re-alerta.
+      if (eventosDelTenant > 0) {
+        await step.run(`alerta-integridad-${tenantId}`, async () => {
+          await capturarMensaje(
+            `Conciliación C7: ${eventosDelTenant} discrepancia(s) de integridad nueva(s).`,
+            'warning',
+            {
+              origen: 'job:dinero/conciliarTresFuentes',
+              tenantId,
+              correlacionId: runId,
+              etiquetas: { fecha, nuevas: String(eventosDelTenant) },
+            },
+          );
+          return { alertado: true, nuevas: eventosDelTenant };
+        });
+      }
     }
 
     logger.info(`C7 completado · fecha=${fecha} · eventos_insertados=${totalEventos}`);
@@ -164,73 +187,10 @@ async function ejecutarDetectoresTenant(
 }
 
 // =============================================================================
-// Helpers de inserción idempotente
+// Helpers de inserción idempotente — ver `../conciliacion-insercion.ts`
+// (extraídos de aquí para que el motor de payout — webhook + polling + la
+// conciliación inmediata post-confirmación — reuse la MISMA lógica).
 // =============================================================================
-
-/**
- * Verifica si ya existe un evento de conciliación del mismo tipo y entidad
- * para este tenant. Devuelve true si ya existe (no insertar).
- */
-async function existeEventoConciliacion(
-  supabase: ReturnType<typeof crearClienteServiceRole>,
-  tenantId: string,
-  tipoDiferencia: string,
-  filtro: {
-    pedidoId?: string;
-    periodoCobroidId?: string;
-    liquidacionId?: string;
-  },
-): Promise<boolean> {
-  let query = supabase
-    .schema('dinero')
-    .from('eventos_conciliacion')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('tipo_diferencia', tipoDiferencia);
-
-  if (filtro.pedidoId) {
-    query = query.eq('pedido_id', filtro.pedidoId);
-  }
-  if (filtro.periodoCobroidId) {
-    query = query.eq('periodo_cobro_id', filtro.periodoCobroidId);
-  }
-  if (filtro.liquidacionId) {
-    query = query.eq('liquidacion_id', filtro.liquidacionId);
-  }
-
-  const { data } = await query.maybeSingle();
-  return data !== null;
-}
-
-interface EventoConciliacionPayload {
-  tenant_id: string;
-  seller_id?: string | null;
-  periodo_cobro_id?: string | null;
-  pedido_id?: string | null;
-  driver_id?: string | null;
-  liquidacion_id?: string | null;
-  tipo_diferencia: string;
-  descripcion: string;
-  monto_diferencia_clp?: number | null;
-  estado: string;
-  job_run_id: string;
-}
-
-async function insertarEventoConciliacion(
-  supabase: ReturnType<typeof crearClienteServiceRole>,
-  payload: EventoConciliacionPayload,
-): Promise<void> {
-  const { error } = await supabase
-    .schema('dinero')
-    .from('eventos_conciliacion')
-    .insert(payload);
-
-  if (error) {
-    throw new Error(
-      `Error al insertar evento de conciliación [${payload.tipo_diferencia}]: ${error.message}`,
-    );
-  }
-}
 
 // =============================================================================
 // D1 · pagado_conductor_sin_cobro_seller (FUGA DIRECTA)
@@ -292,7 +252,9 @@ async function detectorD1_PagadoConductorSinCobroSeller(
   const { data: lineasLiq, error: errLiq } = await supabase
     .schema('dinero')
     .from('lineas_liquidacion')
-    .select('pedido_id, driver_id, monto_final_clp')
+    // liquidacion_id (§1.1 P1): permite que el hook `bloqueaPago` enlace este
+    // tipo de evento a una liquidación concreta (antes solo poblaba driver_id).
+    .select('pedido_id, driver_id, liquidacion_id, monto_final_clp')
     .eq('tenant_id', tenantId)
     .eq('anulada', false);
 
@@ -331,6 +293,7 @@ async function detectorD1_PagadoConductorSinCobroSeller(
 
     // Sí: hay liquidación pero no cobro → FUGA DIRECTA.
     const driverId = linea.driver_id as string;
+    const liquidacionId = (linea.liquidacion_id as string | null) ?? null;
     const montoFinalClp = Math.round(Number(linea.monto_final_clp ?? 0));
 
     // Obtener seller_id desde la linea_cobro (aunque anulada, tiene seller_id).
@@ -355,6 +318,7 @@ async function detectorD1_PagadoConductorSinCobroSeller(
       periodo_cobro_id: periodoDelPedido,
       pedido_id: pedidoId,
       driver_id: driverId,
+      liquidacion_id: liquidacionId,
       tipo_diferencia: 'pagado_conductor_sin_cobro_seller',
       descripcion:
         `Pedido ${pedidoId}: existe línea de liquidación al conductor (${montoFinalClp} CLP) ` +

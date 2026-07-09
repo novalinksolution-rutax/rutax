@@ -20,6 +20,7 @@ export type {
   DocumentoDte,
   Liquidacion,
   EventoConciliacion,
+  EventoConciliacionHistorial,
   ConfigPeriodo,
   EstadoPeriodo,
   TipoPeriodoFacturacion,
@@ -28,10 +29,29 @@ export type {
   OrigenGeneracion,
   TipoDiferenciaConciliacion,
   EstadoEventoConciliacion,
+  CategoriaNegocioConciliacion,
+  AccionSugeridaConciliacion,
+  TipoCambioConciliacion,
+  ActorTipoHistorial,
   PagoRecibido,
   EstadoMatchPago,
   EstadoCobroPeriodo,
+  PayoutConductor,
+  EstadoPayout,
+  MetodoPayout,
 } from './tipos';
+
+// Clasificación y máquina de estados de la bandeja de excepciones (§1.1 P1) —
+// funciones puras, útiles para `frontend`/`qa` sin duplicar la lógica.
+export {
+  categoriaNegocioPorTipo,
+  accionSugeridaPorTipo,
+  fechaLimiteDefaultPorCategoria,
+  TRANSICIONES_VALIDAS,
+  esTransicionValida,
+  esEstadoTerminal,
+  ESTADOS_NO_TERMINALES_CONCILIACION,
+} from './conciliacion-clasificacion';
 
 // Consultas de lectura (para Server Components)
 export {
@@ -42,17 +62,25 @@ export {
   listarLiquidaciones,
   obtenerLiquidacion,
   listarEventosConciliacion,
+  listarHistorialEventoConciliacion,
   listarPagosRecibidos,
   obtenerTrazaDineroPorPedido,
+  obtenerPayoutPorLiquidacion,
 } from './consultas';
 
-export type { TrazaDineroPedido } from './consultas';
+export type { TrazaDineroPedido, FiltrosEventosConciliacion } from './consultas';
 
 // Server Actions (para formularios y operaciones desde el frontend)
 export {
   cerrarPeriodoManualmente,
   marcarLiquidacionPagada,
-  resolverEventoConciliacion,
+  transicionarEventoConciliacion,
+  reabrirEventoConciliacion,
+  asignarEventoConciliacion,
+  fijarFechaLimiteConciliacion,
+  fijarBloqueosConciliacion,
+  cambiarAccionSugeridaConciliacion,
+  agregarComentarioConciliacion,
   atribuirPagoManualmente,
   descartarPago,
 } from './acciones';

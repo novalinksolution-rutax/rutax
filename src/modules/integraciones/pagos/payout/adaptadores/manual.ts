@@ -26,6 +26,7 @@ import type {
   ConsultarPayoutArgs,
   CrearPayoutArgs,
   EstadoPayoutExterno,
+  EventoWebhookPayout,
   PuertoPayout,
   ResultadoPayout,
   ValidarFirmaWebhookPayoutArgs,
@@ -64,5 +65,10 @@ export class ManualPayoutAdapter implements PuertoPayout {
   /** El método manual no recibe webhooks de proveedor: nunca valida firma. */
   validarFirmaWebhook(_args: ValidarFirmaWebhookPayoutArgs): boolean {
     return false;
+  }
+
+  /** El método manual no recibe webhooks de proveedor: nada que normalizar. */
+  normalizarEventoWebhookPayout(_payloadCrudo: unknown): EventoWebhookPayout | null {
+    return null;
   }
 }

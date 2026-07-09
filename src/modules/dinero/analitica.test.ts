@@ -3,7 +3,9 @@
  *
  * Cubre:
  * - Exclusión de líneas anuladas (invariante anti-cobro-fantasma).
- * - Distinción detectada (pendiente/revisado) vs recuperada (resuelto) en la fuga.
+ * - Distinción detectada (no-terminal: pendiente/en_analisis/esperando_info/
+ *   requiere_ajuste) vs recuperada (resuelta_manual/resuelta_auto) en la fuga
+ *   (§1.1 P1 — bandeja de excepciones de 8 estados).
  * - Aislamiento: cada función recibe tenant_id y lo filtra (probado con mocks
  *   que fallan si la query no incluye el filtro).
  * - Cálculos de promedio, margen y totales.
@@ -106,13 +108,13 @@ const eventosConciliacionTenantA = [
   // Fuga detectada (pendiente).
   { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "500", estado: "pendiente", tenant_id: TENANT_A, creado_en: "2026-06-12T10:00:00Z" },
   { tipo_diferencia: "reprogramacion_no_cobrada", monto_diferencia_clp: "300", estado: "pendiente", tenant_id: TENANT_A, creado_en: "2026-06-14T10:00:00Z" },
-  // Fuga detectada (revisado) — también es "detectada".
-  { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "200", estado: "revisado", tenant_id: TENANT_A, creado_en: "2026-06-16T10:00:00Z" },
-  // Fuga recuperada (resuelto).
-  { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "400", estado: "resuelto", tenant_id: TENANT_A, creado_en: "2026-06-18T10:00:00Z" },
-  { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "150", estado: "resuelto", tenant_id: TENANT_A, creado_en: "2026-06-20T10:00:00Z" },
-  // Ignorado — no suma a nada.
-  { tipo_diferencia: "cobrado_seller_no_pagado_conductor", monto_diferencia_clp: "1000", estado: "ignorado", tenant_id: TENANT_A, creado_en: "2026-06-22T10:00:00Z" },
+  // Fuga detectada (en_analisis) — sigue no-terminal, también es "detectada".
+  { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "200", estado: "en_analisis", tenant_id: TENANT_A, creado_en: "2026-06-16T10:00:00Z" },
+  // Fuga recuperada (resuelta_manual).
+  { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "400", estado: "resuelta_manual", tenant_id: TENANT_A, creado_en: "2026-06-18T10:00:00Z" },
+  { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "150", estado: "resuelta_manual", tenant_id: TENANT_A, creado_en: "2026-06-20T10:00:00Z" },
+  // Ignorada — no suma a nada.
+  { tipo_diferencia: "cobrado_seller_no_pagado_conductor", monto_diferencia_clp: "1000", estado: "ignorada", tenant_id: TENANT_A, creado_en: "2026-06-22T10:00:00Z" },
   // D5/D6 no se consultan porque el mock filtra por TIPOS_FUGA_REVENUE.
 ];
 
@@ -351,27 +353,61 @@ describe("F22-3 obtenerCostoPorConductor", () => {
 // =============================================================================
 
 describe("F22-4 obtenerFuga", () => {
-  it("separa correctamente detectada (pendiente+revisado) vs recuperada (resuelto)", async () => {
+  it("separa correctamente detectada (pendiente+en_analisis) vs recuperada (resuelta_manual)", async () => {
     const cliente = crearClienteMock({
       "dinero.eventos_conciliacion": eventosConciliacionTenantA,
     });
     const resultado = await obtenerFuga(cliente, TENANT_A, VENTANA);
 
-    // Detectada: pendiente 500 + pendiente 300 + revisado 200 = 1000
+    // Detectada: pendiente 500 + pendiente 300 + en_analisis 200 = 1000
     expect(resultado.fugaDetectadaClp).toBe(1000);
 
-    // Recuperada: resuelto 400 + resuelto 150 = 550
+    // Recuperada: resuelta_manual 400 + resuelta_manual 150 = 550
     expect(resultado.fugaRecuperadaClp).toBe(550);
   });
 
   it("los eventos ignorados no cuentan en detectada ni recuperada", async () => {
     const eventos = [
-      { tipo_diferencia: "cobrado_seller_no_pagado_conductor", monto_diferencia_clp: "1000", estado: "ignorado", tenant_id: TENANT_A, creado_en: "2026-06-10T10:00:00Z" },
+      { tipo_diferencia: "cobrado_seller_no_pagado_conductor", monto_diferencia_clp: "1000", estado: "ignorada", tenant_id: TENANT_A, creado_en: "2026-06-10T10:00:00Z" },
     ];
     const cliente = crearClienteMock({ "dinero.eventos_conciliacion": eventos });
     const resultado = await obtenerFuga(cliente, TENANT_A, VENTANA);
 
     expect(resultado.fugaDetectadaClp).toBe(0);
+    expect(resultado.fugaRecuperadaClp).toBe(0);
+  });
+
+  it("§1.1 P1: aceptada_justificada tampoco cuenta en detectada ni recuperada (cierre sin recuperar el dinero)", async () => {
+    const eventos = [
+      { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "800", estado: "aceptada_justificada", tenant_id: TENANT_A, creado_en: "2026-06-10T10:00:00Z" },
+    ];
+    const cliente = crearClienteMock({ "dinero.eventos_conciliacion": eventos });
+    const resultado = await obtenerFuga(cliente, TENANT_A, VENTANA);
+
+    expect(resultado.fugaDetectadaClp).toBe(0);
+    expect(resultado.fugaRecuperadaClp).toBe(0);
+  });
+
+  it("§1.1 P1: resuelta_auto cuenta como recuperada, igual que resuelta_manual", async () => {
+    const eventos = [
+      { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "700", estado: "resuelta_auto", tenant_id: TENANT_A, creado_en: "2026-06-10T10:00:00Z" },
+    ];
+    const cliente = crearClienteMock({ "dinero.eventos_conciliacion": eventos });
+    const resultado = await obtenerFuga(cliente, TENANT_A, VENTANA);
+
+    expect(resultado.fugaDetectadaClp).toBe(0);
+    expect(resultado.fugaRecuperadaClp).toBe(700);
+  });
+
+  it("§1.1 P1: esperando_info y requiere_ajuste (no-terminales) siguen contando como detectada", async () => {
+    const eventos = [
+      { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "100", estado: "esperando_info", tenant_id: TENANT_A, creado_en: "2026-06-10T10:00:00Z" },
+      { tipo_diferencia: "reprogramacion_no_cobrada", monto_diferencia_clp: "250", estado: "requiere_ajuste", tenant_id: TENANT_A, creado_en: "2026-06-11T10:00:00Z" },
+    ];
+    const cliente = crearClienteMock({ "dinero.eventos_conciliacion": eventos });
+    const resultado = await obtenerFuga(cliente, TENANT_A, VENTANA);
+
+    expect(resultado.fugaDetectadaClp).toBe(350);
     expect(resultado.fugaRecuperadaClp).toBe(0);
   });
 
@@ -387,8 +423,8 @@ describe("F22-4 obtenerFuga", () => {
   it("desglosa por tipo correctamente", async () => {
     const eventos = [
       { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "500", estado: "pendiente", tenant_id: TENANT_A, creado_en: "2026-06-10T10:00:00Z" },
-      { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "400", estado: "resuelto", tenant_id: TENANT_A, creado_en: "2026-06-11T10:00:00Z" },
-      { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "200", estado: "revisado", tenant_id: TENANT_A, creado_en: "2026-06-12T10:00:00Z" },
+      { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "400", estado: "resuelta_manual", tenant_id: TENANT_A, creado_en: "2026-06-11T10:00:00Z" },
+      { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "200", estado: "en_analisis", tenant_id: TENANT_A, creado_en: "2026-06-12T10:00:00Z" },
     ];
     const cliente = crearClienteMock({ "dinero.eventos_conciliacion": eventos });
     const resultado = await obtenerFuga(cliente, TENANT_A, VENTANA);
@@ -456,7 +492,7 @@ describe("F22-5 obtenerResumenFinanciero", () => {
       ],
       "dinero.eventos_conciliacion": [
         { tipo_diferencia: "pagado_conductor_sin_cobro_seller", monto_diferencia_clp: "500", estado: "pendiente", tenant_id: TENANT_A, creado_en: "2026-06-10T10:00:00Z" },
-        { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "200", estado: "resuelto", tenant_id: TENANT_A, creado_en: "2026-06-12T10:00:00Z" },
+        { tipo_diferencia: "minimo_omitido", monto_diferencia_clp: "200", estado: "resuelta_manual", tenant_id: TENANT_A, creado_en: "2026-06-12T10:00:00Z" },
       ],
       "identidad.conductores": conductoresTenantA,
     });
@@ -481,7 +517,7 @@ describe("F22-5 obtenerResumenFinanciero", () => {
     // Fuga detectada: 500 (pendiente)
     expect(resultado.fugaDetectadaClp).toBe(500);
 
-    // Fuga recuperada: 200 (resuelto)
+    // Fuga recuperada: 200 (resuelta_manual)
     expect(resultado.fugaRecuperadaClp).toBe(200);
   });
 

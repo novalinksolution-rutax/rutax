@@ -255,12 +255,12 @@ export default async function PaginaLiquidaciones({
         </button>
 
         {hayFiltroActivo && (
-          <a
+          <Link
             href="/dinero/liquidaciones"
             className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
           >
             Limpiar filtros
-          </a>
+          </Link>
         )}
       </form>
 
@@ -283,12 +283,12 @@ export default async function PaginaLiquidaciones({
               : "Aún no hay liquidaciones. Se generan automáticamente cuando el motor registra la primera entrega de un conductor."}
           </p>
           {hayFiltroActivo && (
-            <a
+            <Link
               href="/dinero/liquidaciones"
               className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
             >
               Limpiar filtros
-            </a>
+            </Link>
           )}
         </div>
       ) : (
@@ -361,11 +361,14 @@ function FilaLiquidacion({
           {liquidacion.conductorNombre}
         </Link>
       </td>
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        <span className="tabular-nums">
+      <td className="hidden px-4 py-3 sm:table-cell">
+        <Link
+          href={`/dinero/liquidaciones/${liquidacion.id}`}
+          className="tabular-nums text-primary hover:underline"
+        >
           {formatearFechaCorta(liquidacion.fechaInicio)} –{" "}
           {formatearFechaCorta(liquidacion.fechaFin)}
-        </span>
+        </Link>
       </td>
       <td className="px-4 py-3">
         <Badge variant={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}>

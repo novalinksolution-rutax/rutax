@@ -9,7 +9,17 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { marcarLiquidacionPagada, emitirPagoLiquidacion, ajustarLiquidacion } from "@/modules/dinero/acciones";
+import {
+  marcarLiquidacionPagada,
+  emitirPagoLiquidacion,
+  ajustarLiquidacion,
+  registrarPreflightOmitido,
+} from "@/modules/dinero/acciones";
+import {
+  preflightEmitirPago,
+  type ResultadoPreflight,
+  type TipoAccionDinero,
+} from "@/modules/dinero/preflight";
 
 // =============================================================================
 // Marcar liquidación como pagada
@@ -116,4 +126,56 @@ export async function accionDescargarPdfLiquidacion(pdfRef: string): Promise<voi
   }
 
   redirect(data.signedUrl);
+}
+
+// =============================================================================
+// Preflight del pago — hallazgo P0 de la auditoría (jul 2026)
+// =============================================================================
+// PREPARA/VERIFICA el estado antes de solicitar el pago (F19). 100% de
+// lectura — la única escritura de esta sección es la bitácora del override
+// "continuar bajo mi responsabilidad" (`accionRegistrarPreflightOmitido`),
+// para el escenario degradado en que el preflight mismo falla al ejecutarse.
+
+export type RespuestaPreflight =
+  | { ok: true; preflight: ResultadoPreflight }
+  | { ok: false; mensaje: string };
+
+/** PREFLIGHT de `accionEmitirPagoLiquidacion` — mismo gate RBAC, sin escribir nada. */
+export async function accionPreflightEmitirPago(liquidacionId: string): Promise<RespuestaPreflight> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+  try {
+    const preflight = await preflightEmitirPago(sesion.usuario.tenantId, liquidacionId, sesion.usuario);
+    return { ok: true, preflight };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error desconocido al verificar el pago de la liquidación.";
+    return { ok: false, mensaje };
+  }
+}
+
+/**
+ * Registra en bitácora que el usuario decidió CONTINUAR sin un preflight
+ * válido (el preflight mismo falló — error de red/lectura, escenario
+ * degradado). Se llama ANTES de permitir el click en "Confirmar" en ese caso.
+ * Ver el detalle completo del contrato en `dinero/periodos/[periodoId]/actions.ts`
+ * (misma función de dominio, `registrarPreflightOmitido` en `acciones.ts`).
+ */
+export async function accionRegistrarPreflightOmitido(
+  tipoAccion: TipoAccionDinero,
+  entidadId: string,
+): Promise<void> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    throw new Error("No autenticado.");
+  }
+  await registrarPreflightOmitido(
+    sesion.usuario.tenantId,
+    tipoAccion,
+    entidadId,
+    sesion.usuario,
+    sesion.usuarioId,
+  );
 }

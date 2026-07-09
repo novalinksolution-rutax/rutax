@@ -6,6 +6,7 @@ import {
   FileText,
   Banknote,
   Wallet,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,13 +31,18 @@ import {
  *
  * Hace *sentir* el diferenciador: desde una entrega se ve su línea de cobro al
  * seller, el período y la factura donde aterrizó, su pago, y su liquidación al
- * conductor — de punta a punta. Cada nodo está "hecho" o "pendiente" (lazo en
- * curso). Solo presentación; los datos llegan ya cargados (consulta de dominio).
+ * conductor — de punta a punta. Cada nodo está "hecho", "pendiente" o
+ * "atención" (lazo en curso, o con algo que requiere revisión). Solo
+ * presentación; los datos llegan ya cargados (consulta de dominio).
+ *
+ * `Nodo`/`NodoTono`/`EtiquetaEstado` se exportan para que
+ * `panel-trazabilidad-financiera.tsx` (§1.1 P1 del audit) reutilice la misma
+ * primitiva visual en su timeline bidireccional de dos pistas.
  *
  * Contiene montos: mostrarlo solo a roles financieros/dueño (gating en la página).
  */
 
-function EtiquetaEstado({
+export function EtiquetaEstado({
   variante,
   children,
 }: {
@@ -46,15 +52,24 @@ function EtiquetaEstado({
   return <Badge variant={variante}>{children}</Badge>;
 }
 
-interface NodoProps {
+/**
+ * Tono visual de un nodo del timeline:
+ * - `hecho`: el paso ya ocurrió, sin problemas.
+ * - `pendiente`: el paso todavía no ocurre (lazo en curso).
+ * - `atencion`: el paso ocurrió pero algo requiere revisión (discrepancia de
+ *   conciliación sin resolver, payout rechazado/fallido, línea anulada).
+ */
+export type NodoTono = "hecho" | "pendiente" | "atencion";
+
+export interface NodoProps {
   icono: LucideIcon;
   titulo: string;
-  hecho: boolean;
+  tono: NodoTono;
   ultimo: boolean;
   children?: React.ReactNode;
 }
 
-function Nodo({ icono: Icono, titulo, hecho, ultimo, children }: NodoProps) {
+export function Nodo({ icono: Icono, titulo, tono, ultimo, children }: NodoProps) {
   return (
     <li className="relative flex gap-3 pb-5 last:pb-0">
       {!ultimo && (
@@ -66,15 +81,29 @@ function Nodo({ icono: Icono, titulo, hecho, ultimo, children }: NodoProps) {
       <span
         className={cn(
           "z-10 flex size-6 shrink-0 items-center justify-center rounded-full",
-          hecho
-            ? "bg-primary text-primary-foreground"
-            : "border border-dashed border-border bg-background text-muted-foreground"
+          tono === "hecho" && "bg-primary text-primary-foreground",
+          tono === "pendiente" &&
+            "border border-dashed border-border bg-background text-muted-foreground",
+          tono === "atencion" &&
+            "border border-destructive-subtle bg-destructive-subtle text-destructive-subtle-foreground"
         )}
       >
-        <Icono className="size-3.5" aria-hidden="true" />
+        {tono === "atencion" ? (
+          <AlertTriangle className="size-3.5" aria-hidden="true" />
+        ) : (
+          <Icono className="size-3.5" aria-hidden="true" />
+        )}
       </span>
       <div className="flex flex-1 flex-col gap-1 pt-0.5">
-        <p className={cn("text-sm font-medium", !hecho && "text-muted-foreground")}>{titulo}</p>
+        <p
+          className={cn(
+            "text-sm font-medium",
+            tono === "pendiente" && "text-muted-foreground",
+            tono === "atencion" && "text-destructive-subtle-foreground"
+          )}
+        >
+          {titulo}
+        </p>
         {children}
       </div>
     </li>
@@ -94,7 +123,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
     <div className="rounded-xl border border-border bg-card p-4">
       <ol>
         {/* 1 — Entrega */}
-        <Nodo icono={Package} titulo="Entrega" hecho={pedidoEntregado} ultimo={false}>
+        <Nodo icono={Package} titulo="Entrega" tono={pedidoEntregado ? "hecho" : "pendiente"} ultimo={false}>
           <p className="text-xs text-muted-foreground">
             {pedidoEntregado
               ? "Entrega registrada — origen del cobro y la liquidación."
@@ -103,7 +132,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
         </Nodo>
 
         {/* 2 — Cobro al seller */}
-        <Nodo icono={Receipt} titulo="Cobro al seller" hecho={!!cobro} ultimo={false}>
+        <Nodo icono={Receipt} titulo="Cobro al seller" tono={cobro ? "hecho" : "pendiente"} ultimo={false}>
           {cobro ? (
             <p className="font-mono text-sm font-semibold tabular-nums">
               {formatearCLP(cobro.montoFinalClp)}
@@ -116,7 +145,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
         </Nodo>
 
         {/* 3 — Período de cobro */}
-        <Nodo icono={CalendarRange} titulo="Período de cobro" hecho={!!periodo} ultimo={false}>
+        <Nodo icono={CalendarRange} titulo="Período de cobro" tono={periodo ? "hecho" : "pendiente"} ultimo={false}>
           {periodo ? (
             <div className="flex flex-wrap items-center gap-2">
               <EtiquetaEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]}>
@@ -137,7 +166,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
         </Nodo>
 
         {/* 4 — Factura (DTE) */}
-        <Nodo icono={FileText} titulo="Factura (DTE)" hecho={!!factura} ultimo={false}>
+        <Nodo icono={FileText} titulo="Factura (DTE)" tono={factura ? "hecho" : "pendiente"} ultimo={false}>
           {factura ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm font-medium tabular-nums">
@@ -155,7 +184,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
         </Nodo>
 
         {/* 5 — Pago del seller */}
-        <Nodo icono={Banknote} titulo="Pago del seller" hecho={pagado} ultimo={false}>
+        <Nodo icono={Banknote} titulo="Pago del seller" tono={pagado ? "hecho" : "pendiente"} ultimo={false}>
           {periodo ? (
             <EtiquetaEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
               {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
@@ -166,7 +195,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
         </Nodo>
 
         {/* 6 — Liquidación al conductor */}
-        <Nodo icono={Wallet} titulo="Liquidación al conductor" hecho={!!liquidacion} ultimo>
+        <Nodo icono={Wallet} titulo="Liquidación al conductor" tono={liquidacion ? "hecho" : "pendiente"} ultimo>
           {liquidacion ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm font-semibold tabular-nums">

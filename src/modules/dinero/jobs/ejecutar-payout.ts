@@ -40,6 +40,7 @@ import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { obtenerPuertoPayout } from '@/modules/integraciones/pagos/payout/fabrica-payout';
 import { ErrorPayoutConfig } from '@/modules/integraciones/pagos/payout/errores';
+import { calcularMontoPayout } from './calculo-payout';
 
 export const jobEjecutarPayout = inngest.createFunction(
   {
@@ -198,14 +199,17 @@ export const jobEjecutarPayout = inngest.createFunction(
       // montoTotalClp del evento = solo suma de líneas (sin bono/penalización).
       // Usamos los valores frescos de BD leídos en el step 1.
       const liqData = liquidacion as Record<string, unknown>;
-      const montoBruto =
-        (liqData.monto_total_clp as number) +
-        ((liqData.bono_clp as number) ?? 0) -
-        ((liqData.penalizacion_clp as number) ?? 0);
 
-      // Retención solo para independientes (boleta de terceros); dependiente: deducción por nómina, no aquí.
-      const porcentajeEfectivo = datosConductor.tipoRelacion === 'independiente' ? porcentajeRetencion : 0;
-      const monto = Math.round(montoBruto * (1 - porcentajeEfectivo / 100));
+      // Fórmula compartida con `preflightEmitirPago` (`../calculo-payout.ts`) —
+      // ambos DEBEN usar la misma función para que el preflight y el job nunca
+      // diverjan en el monto que muestran/transfieren.
+      const { montoBrutoClp, montoRetencionClp, montoLiquidoClp: monto } = calcularMontoPayout({
+        montoTotalClp: (liqData.monto_total_clp as number) ?? 0,
+        bonoClp: (liqData.bono_clp as number) ?? 0,
+        penalizacionClp: (liqData.penalizacion_clp as number) ?? 0,
+        tipoRelacion: datosConductor.tipoRelacion as 'dependiente' | 'independiente',
+        porcentajeRetencion,
+      });
 
       if (monto <= 0) {
         throw new NonRetriableError(
@@ -220,8 +224,8 @@ export const jobEjecutarPayout = inngest.createFunction(
         );
       }
 
-      const montoRetencionClp = montoBruto - monto;
-      return { montoLiquidoClp: monto, montoBrutoClp: montoBruto, montoRetencionClp, porcentajeRetencion: porcentajeEfectivo, tipoRelacion: datosConductor.tipoRelacion };
+      const porcentajeEfectivo = datosConductor.tipoRelacion === 'independiente' ? porcentajeRetencion : 0;
+      return { montoLiquidoClp: monto, montoBrutoClp, montoRetencionClp, porcentajeRetencion: porcentajeEfectivo, tipoRelacion: datosConductor.tipoRelacion };
     });
 
     const { montoLiquidoClp: montoLiquido, montoBrutoClp, montoRetencionClp } = montoLiquidoClp;

@@ -20,9 +20,56 @@
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { ErrorFolioAgotado } from '@/modules/integraciones/dte';
 
+/**
+ * Umbral de folios CAF restantes bajo el cual se advierte que quedan pocos.
+ * Fuente ÚNICA de este número — antes vivía repetido como literal `50` en
+ * `lib/avisos/obtener-avisos.ts` y como constante local en
+ * `jobs/alerta-folios-proximos.ts`; ambos ahora importan de aquí para que
+ * cambiarlo (p. ej. subirlo a 100) no exija tocar dos archivos a la vez.
+ */
+export const UMBRAL_FOLIOS = 50;
+
 export interface FolioReservado {
   folio: number;
   cafId: string;
+}
+
+/**
+ * Verificación de SOLO LECTURA: ¿hay un folio disponible para este tenant y
+ * tipo de documento? NO reserva nada (no incrementa `folio_actual`) — a
+ * diferencia de `reservarFolio`, es segura de llamar desde una compuerta
+ * humana (`emitirFacturaPeriodo`/`emitirNotaCreditoPeriodo` en `./acciones.ts`)
+ * antes de publicar el evento que dispara el job de emisión (C3/C-NC).
+ *
+ * Por qué existe (fix QA jul 2026): sin este chequeo, la acción publicaba el
+ * evento y el usuario veía "Factura emitida" de inmediato (la emisión real es
+ * asíncrona) aunque no hubiera folios — el job fallaba minutos después sin que
+ * nadie se enterara salvo revisando los logs de Inngest. Mismo criterio que
+ * `evaluarFolios` de `./preflight.ts` (discrimina por `tipo_documento`, mismo
+ * fix que `reservarFolio`), pero sin construir `ItemPreflight` — solo un
+ * booleano para la compuerta de escritura.
+ */
+export async function hayFolioDisponible(
+  tenantId: string,
+  tipoDocumento: 33 | 61,
+): Promise<boolean> {
+  const supabase = crearClienteServiceRole();
+
+  const { data: caf, error } = await supabase
+    .schema('identidad')
+    .from('folios_caf')
+    .select('folio_actual, folio_hasta')
+    .eq('tenant_id', tenantId)
+    .eq('tipo_documento', tipoDocumento)
+    .eq('estado', 'vigente')
+    .order('folio_actual', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(`Error al leer folios CAF: ${error.message}`);
+  if (!caf) return false;
+
+  return Number(caf.folio_actual) <= Number(caf.folio_hasta);
 }
 
 /**

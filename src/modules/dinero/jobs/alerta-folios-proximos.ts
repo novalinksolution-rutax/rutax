@@ -19,9 +19,9 @@
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { UMBRAL_FOLIOS } from '../folios';
 
 const TZ = 'America/Santiago';
-const UMBRAL_FOLIOS = 50;
 
 function hoyEnSantiago(): string {
   return new Intl.DateTimeFormat('en-CA', {

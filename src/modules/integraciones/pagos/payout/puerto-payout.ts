@@ -139,6 +139,68 @@ export interface ValidarFirmaWebhookPayoutArgs {
   secreto: string;
 }
 
+// ---------------------------------------------------------------------------
+// Evento de webhook de payout SALIENTE (confirmación instantánea, Fintoc
+// `transfer.outbound.*`). El núcleo NUNCA ve la forma cruda de Fintoc: el
+// adaptador la traduce a este tipo de dominio.
+// ---------------------------------------------------------------------------
+
+/**
+ * Estado interno del payout tras un evento de webhook. Es un SUPERCONJUNTO de
+ * `EstadoExternoPayout` (el de `consultarPayout`, que solo distingue
+ * confirmado/pendiente/rechazado en el sondeo): el webhook además diferencia
+ * `fallido` (nunca llegó a destino) de `rechazado` (declinado/revertido) y
+ * `desconocido` (status no mapeado — se registra para auditoría, no actúa).
+ *
+ * Los cinco valores calzan EXACTAMENTE con el CHECK de
+ * `dinero.eventos_payout_externos.estado_externo` (migración 0037), para que el
+ * backend (fase 3) persista el valor sin re-mapear.
+ */
+export type EstadoExternoEventoPayout =
+  /** El proveedor confirmó la transferencia (`succeeded`). Dinero movido. */
+  | "confirmado"
+  /** Aún en proceso / reversión en curso (`pending` | `return_pending`). */
+  | "pendiente"
+  /** No llegó al destino (`failed`). Técnicamente no se completó. */
+  | "fallido"
+  /** Declinado por la institución o revertido (`rejected` | `returned`). */
+  | "rechazado"
+  /** Status no reconocido (p. ej. `reject_failed`): se registra, no dispara acción. */
+  | "desconocido";
+
+/**
+ * Evento de webhook de payout saliente ya NORMALIZADO. El adaptador es el único
+ * que conoce la forma cruda de Fintoc; el núcleo trabaja solo con este tipo.
+ */
+export interface EventoWebhookPayout {
+  /**
+   * ID del EVENTO en el proveedor (Fintoc `evt_...`). Es la BARRERA DE
+   * IDEMPOTENCIA (UNIQUE en `dinero.eventos_payout_externos.evento_externo_id`):
+   * el mismo evento reentregado por el proveedor no se procesa dos veces.
+   */
+  eventoExternoId: string;
+  /**
+   * ID del TRANSFER en el proveedor (Fintoc `tr_...`). Correlaciona con
+   * `dinero.payouts_conductor.payout_externo_id` para hallar el payout que este
+   * evento confirma/rechaza/revierte.
+   */
+  transferExternoId: string;
+  /** Estado interno traducido del `status` del transfer (no del `type` del evento). */
+  estadoExterno: EstadoExternoEventoPayout;
+  /** Motivo de rechazo/reversión SANEADO (Fintoc `return_reason`), o `null`. */
+  motivo: string | null;
+  /** Referencia al comprobante (Fintoc `receipt_url`), o `null`. */
+  comprobanteRef: string | null;
+  /**
+   * Subconjunto MÍNIMO y NO SENSIBLE del payload, listo para persistir en
+   * `dinero.eventos_payout_externos.payload_sanitizado`. SOLO campos de negocio
+   * (ids, status, currency, amount, return_reason, receipt_url) — NUNCA
+   * `counterparty` (datos bancarios del conductor) ni tokens/secretos. El backend
+   * lo guarda tal cual, sin volver a tocar la forma cruda de Fintoc.
+   */
+  payloadSanitizado: Record<string, unknown>;
+}
+
 /**
  * Contrato que todo adaptador de payout saliente concreto debe cumplir.
  */
@@ -164,4 +226,15 @@ export interface PuertoPayout {
    * (stub, manual) devuelven `false` siempre (no procesan webhooks).
    */
   validarFirmaWebhook(args: ValidarFirmaWebhookPayoutArgs): boolean;
+
+  /**
+   * Normaliza el payload CRUDO de un evento de webhook de payout saliente
+   * (`transfer.outbound.*`) al `EventoWebhookPayout` del dominio. Quien llama
+   * DEBE haber validado la firma antes; este método NO valida firma, solo traduce
+   * forma. Devuelve `null` si el payload no tiene la forma esperada de un evento
+   * de transferencia saliente (el caller decide: típicamente ignorar con 200).
+   *
+   * Los métodos sin webhook de proveedor (stub, manual) devuelven `null` siempre.
+   */
+  normalizarEventoWebhookPayout(payloadCrudo: unknown): EventoWebhookPayout | null;
 }

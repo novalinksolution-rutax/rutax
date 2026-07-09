@@ -37,6 +37,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# respaldos locales de base de datos / Storage (docs/ops/restauracion.md) —
+# nunca versionar dumps: pueden contener datos personales/financieros.
+/backups/
+.tmp-drill/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

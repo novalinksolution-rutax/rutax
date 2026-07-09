@@ -18,7 +18,11 @@ import {
   puedeGestionarIncidencias,
   puedeAsignarYReasignarPedidos,
   puedeVerReportesEjecutivos,
+  puedeVerConciliacion,
 } from "@/modules/identidad/capacidades";
+import { UMBRAL_FOLIOS } from "@/modules/dinero/folios";
+import { ESTADOS_NO_TERMINALES_CONCILIACION } from "@/modules/dinero/conciliacion-clasificacion";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { ahoraEnSantiago, horaAMinutos } from "@/lib/fecha-santiago";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import {
@@ -88,7 +92,7 @@ async function avisosFoliosBajos(tenantId: string): Promise<Aviso[]> {
 
     if (!folios) return [];
     const restantes = (folios.folio_hasta as number) - (folios.folio_actual as number);
-    if (restantes >= 50) return [];
+    if (restantes >= UMBRAL_FOLIOS) return [];
     const agotado = restantes <= 0;
     return [
       {
@@ -222,12 +226,119 @@ async function avisosIncidenciasSinGestion(tenantId: string): Promise<Aviso[]> {
 }
 
 /**
+ * Discrepancias de conciliación sin revisar — hallazgos del detective C7
+ * (`conciliar-tres-fuentes`). El motor los escribe en `eventos_conciliacion`;
+ * este aviso los saca a la superficie para que dueño/administración no tengan
+ * que entrar a la pantalla de Conciliación para enterarse (auditoría §2.7/QW6:
+ * exponer la verificación de integridad como alerta, no dejarla silenciosa).
+ */
+async function avisosDiscrepanciasConciliacion(tenantId: string): Promise<Aviso[]> {
+  try {
+    const cliente = crearClienteServiceRole();
+    const { data } = await cliente
+      .schema("dinero")
+      .from("eventos_conciliacion")
+      .select("id, monto_diferencia_clp")
+      .eq("tenant_id", tenantId)
+      .eq("estado", "pendiente")
+      .limit(200);
+
+    const pendientes = data ?? [];
+    if (pendientes.length === 0) return [];
+
+    const montoEnJuego = pendientes.reduce(
+      (acc, e) => acc + Math.abs(Number(e.monto_diferencia_clp ?? 0)),
+      0,
+    );
+
+    return [
+      {
+        id: "discrepancias-conciliacion",
+        urgencia: "importante",
+        titulo:
+          pendientes.length === 1
+            ? "1 discrepancia de conciliación sin revisar"
+            : `${pendientes.length} discrepancias de conciliación sin revisar`,
+        descripcion:
+          montoEnJuego > 0
+            ? `Diferencias por ${formatearCLP(montoEnJuego)} en el cruce cobro–liquidación.`
+            : "El cruce automático de cobro y liquidación detectó diferencias.",
+        href: "/dinero/conciliacion",
+        accion: "Revisar",
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
+/** Días de anticipación con que se avisa un SLA de excepción por vencer. */
+const UMBRAL_EXCEPCION_DIAS = 2;
+
+/** Suma `dias` días de calendario a una fecha 'YYYY-MM-DD' (date-only, sin problemas de DST). */
+function sumarDiasFecha(fechaIso: string, dias: number): string {
+  const fecha = new Date(`${fechaIso}T00:00:00Z`);
+  fecha.setUTCDate(fecha.getUTCDate() + dias);
+  return fecha.toISOString().slice(0, 10);
+}
+
+/**
+ * Excepciones de conciliación asignadas al usuario actual cuya `fecha_limite`
+ * (SLA — §1.1 P1) está vencida o a ≤2 días. El motor C7/C6 (`eventos_conciliacion`)
+ * las categoriza y les fija SLA por defecto al detectarlas; este aviso saca a
+ * la superficie las que el propio usuario tiene bajo su responsabilidad, sin
+ * que tenga que entrar a la bandeja de conciliación a revisarlas una por una.
+ */
+async function avisosExcepcionesVencidas(tenantId: string, usuarioId: string): Promise<Aviso[]> {
+  try {
+    const cliente = crearClienteServiceRole();
+    const { fecha: hoy } = ahoraEnSantiago();
+    const limite = sumarDiasFecha(hoy, UMBRAL_EXCEPCION_DIAS);
+
+    const { data } = await cliente
+      .schema("dinero")
+      .from("eventos_conciliacion")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("asignado_a_usuario_id", usuarioId)
+      .in("estado", ESTADOS_NO_TERMINALES_CONCILIACION)
+      .not("fecha_limite", "is", null)
+      .lte("fecha_limite", limite)
+      .limit(200);
+
+    const vencidas = data ?? [];
+    if (vencidas.length === 0) return [];
+
+    return [
+      {
+        id: "excepciones-vencidas",
+        urgencia: "urgente",
+        titulo:
+          vencidas.length === 1
+            ? "1 excepción asignada vence pronto"
+            : `${vencidas.length} excepciones asignadas vencen pronto`,
+        descripcion: "Tienen fecha límite vencida o a menos de 2 días.",
+        href: "/dinero/conciliacion",
+        accion: "Revisar",
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Reúne los avisos in-app pertinentes al usuario, ordenados por urgencia.
  * Defensivo: cualquier fuente que falle se omite, nunca tumba el layout.
+ *
+ * `usuarioId` (UUID de auth — `sesion.usuarioId`) es necesario para los avisos
+ * que dependen de "lo mío" (excepciones asignadas a este usuario), no solo de
+ * su rol/tenant — `UsuarioActual` no lleva su propio id.
  */
 export async function obtenerAvisos(
   tenantId: string,
   usuario: UsuarioActual,
+  usuarioId: string,
 ): Promise<Aviso[]> {
   const tareas: Promise<Aviso[]>[] = [];
 
@@ -242,6 +353,10 @@ export async function obtenerAvisos(
   }
   if (puedeGestionarIncidencias(usuario)) {
     tareas.push(avisosIncidenciasSinGestion(tenantId));
+  }
+  if (puedeVerConciliacion(usuario)) {
+    tareas.push(avisosDiscrepanciasConciliacion(tenantId));
+    tareas.push(avisosExcepcionesVencidas(tenantId, usuarioId));
   }
 
   const resultados = await Promise.all(tareas);

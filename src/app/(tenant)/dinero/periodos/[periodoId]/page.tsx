@@ -6,13 +6,14 @@
  */
 
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle, Clock, XCircle, Settings, PenLine } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
 import { obtenerPeriodoCobro, listarDocumentosDte } from "@/modules/dinero/index";
+import { resolverModoDteTenant, type ModoDte } from "@/modules/dinero/modo-dte";
 import type { DocumentoDte, LineaCobro } from "@/modules/dinero/tipos";
 import {
   traducirEstadoPeriodoCobro,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
 import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
@@ -57,6 +59,15 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   const pagina = Math.max(1, parseInt(sp.pagina ?? "1", 10));
   const tenantId = sesion.usuario.tenantId;
 
+  // Modo de emisión DTE efectivo: define el copy y el badge de los diálogos de
+  // emisión (que una simulación no parezca real). Defecto conservador: sandbox.
+  let modoDte: ModoDte = "sandbox";
+  try {
+    modoDte = await resolverModoDteTenant(tenantId);
+  } catch {
+    // Se mantiene el defecto 'sandbox' si la resolución falla.
+  }
+
   const cliente = crearClienteServiceRole();
 
   let periodo;
@@ -89,7 +100,12 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
         dtes.find((d) => d.periodoCobroidId === periodoId && d.tipoDocumento === 61) ??
         null;
     }
-  } catch {
+  } catch (error) {
+    // Ver el comentario equivalente en `dinero/liquidaciones/[liquidacionId]/page.tsx`:
+    // `redirect()` (arriba, cuando el período no existe o es de otro tenant)
+    // depende de una excepción interna de Next.js que este `catch` genérico
+    // atraparía y convertiría en el mensaje de error en vez de redirigir.
+    unstable_rethrow(error);
     errorCarga = true;
   }
 
@@ -189,6 +205,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                 sellerNombre={sellerNombre}
                 totalLineas={periodo.totalLineas}
                 montoTotalClp={periodo.montoTotalClp}
+                modoDte={modoDte}
               />
             </div>
           )}
@@ -204,6 +221,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                 folioFactura={dte.folio}
                 montoTotalClp={periodo.montoTotalClp}
                 montoPagadoClp={periodo.montoPagadoClp}
+                modoDte={modoDte}
               />
             </div>
           )}
@@ -395,6 +413,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                     <th className="hidden px-4 py-2 text-right lg:table-cell">Ajuste</th>
                     <th className="px-4 py-2 text-right">Monto final</th>
                     <th className="hidden px-4 py-2 text-center xl:table-cell">Origen</th>
+                    <th className="hidden px-4 py-2 text-center xl:table-cell">Por qué</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -416,6 +435,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                         lineas.reduce((acc, l) => acc + l.montoFinalClp, 0),
                       )}
                     </td>
+                    <td className="hidden xl:table-cell" />
                     <td className="hidden xl:table-cell" />
                   </tr>
                 </tfoot>
@@ -487,9 +507,13 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
   return (
     <tr className="hover:bg-muted/30 transition-colors">
       <td className="px-4 py-3">
-        <span className="font-mono text-xs text-muted-foreground">
+        <Link
+          href={`/operaciones/${linea.pedidoId}`}
+          title={linea.pedidoId}
+          className="font-mono text-xs text-primary hover:underline"
+        >
           {linea.pedidoId.slice(0, 8)}…
-        </span>
+        </Link>
       </td>
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
         {formatearFechaCorta(linea.fechaEntrega)}
@@ -531,6 +555,9 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
             <PenLine className="size-4 text-muted-foreground mx-auto" aria-label="Ajuste manual" />
           </span>
         )}
+      </td>
+      <td className="hidden px-4 py-3 text-center xl:table-cell">
+        <PopoverSnapshotRegla snapshotRegla={linea.snapshotRegla} iconoSolo />
       </td>
     </tr>
   );

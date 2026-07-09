@@ -53,6 +53,9 @@ import { jobConciliarTresFuentes } from "@/modules/dinero/jobs/conciliar-tres-fu
 // Jobs de payouts a conductores (F19, Bloque 3 — dinero saliente)
 import { jobEjecutarPayout } from "@/modules/dinero/jobs/ejecutar-payout";
 import { jobConsultarEstadoPayout } from "@/modules/dinero/jobs/consultar-estado-payout";
+// Jobs F19/Fase 3 — confirmación instantánea de payouts por webhook Fintoc
+import { jobAplicarActualizacionPayout } from "@/modules/dinero/jobs/aplicar-actualizacion-payout";
+import { jobConciliarPayoutConfirmado } from "@/modules/dinero/jobs/conciliar-payout-confirmado";
 
 // Jobs de Plataforma (backstage Rutax — suscripciones de couriers)
 import { jobGenerarPeriodosSuscripcion } from "@/modules/plataforma/jobs/generar-periodos";
@@ -94,6 +97,9 @@ const funciones = [
   // Jobs F19: payouts a conductores (Bloque 3 — dinero saliente)
   jobEjecutarPayout,
   jobConsultarEstadoPayout,
+  // Jobs F19/Fase 3: confirmación instantánea de payouts por webhook Fintoc
+  jobAplicarActualizacionPayout,
+  jobConciliarPayoutConfirmado,
   // Jobs Plataforma — suscripciones de couriers a Rutax (backstage financiero)
   jobGenerarPeriodosSuscripcion,
   // Jobs F23 — entrega de webhooks salientes (cron cada 2 min)

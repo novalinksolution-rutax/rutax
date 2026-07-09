@@ -28,6 +28,20 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { camposClasificacionParaInsert } from '../conciliacion-clasificacion';
+import type { TipoDiferenciaConciliacion } from '../tipos';
+
+/**
+ * Calcula los 3 campos de clasificación de la bandeja de excepciones
+ * (§1.1 P1: `categoria_negocio`, `accion_sugerida`, `fecha_limite`) para un
+ * `tipo_diferencia` dado — evita triplicar la llamada en los 4 checks de este
+ * job (ninguno comparte un helper de inserción como `conciliar-tres-fuentes.ts`).
+ * `categoria_negocio` es NOT NULL sin default desde la migración
+ * 20260708000001 — sin esto, cada INSERT de abajo fallaría con 23502.
+ */
+function clasificacion(tipoDiferencia: TipoDiferenciaConciliacion) {
+  return camposClasificacionParaInsert(tipoDiferencia, new Date().toISOString());
+}
 
 export const jobConciliarPeriodo = inngest.createFunction(
   {
@@ -103,6 +117,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
               descripcion: `Pedido ${pedidoId} entregado sin línea de cobro generada.`,
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('pedido_entregado_sin_linea_cobro'),
             });
         }
       }
@@ -166,6 +181,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
               descripcion: `Pedido ${pedidoId} entregado (con conductor) sin línea de liquidación.`,
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('pedido_entregado_sin_linea_liquidacion'),
             });
         }
       }
@@ -224,6 +240,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
               monto_diferencia_clp: Math.abs(montoDte - montoSumaLineas),
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('monto_dte_difiere_de_lineas'),
             });
 
           logger.warn(
@@ -274,6 +291,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
                 'sin período asignado (periodo_cobro_id IS NULL).',
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('periodo_cerrado_con_lineas_sueltas'),
             });
 
           logger.warn(

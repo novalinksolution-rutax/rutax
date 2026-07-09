@@ -21,6 +21,7 @@ import type {
   ConsultarPayoutArgs,
   CrearPayoutArgs,
   EstadoPayoutExterno,
+  EventoWebhookPayout,
   PuertoPayout,
   ResultadoPayout,
   ValidarFirmaWebhookPayoutArgs,
@@ -60,5 +61,10 @@ export class StubPayoutAdapter implements PuertoPayout {
   /** El stub no procesa webhooks de proveedor: nunca valida una firma. */
   validarFirmaWebhook(_args: ValidarFirmaWebhookPayoutArgs): boolean {
     return false;
+  }
+
+  /** El stub no recibe webhooks de proveedor: nunca hay evento que normalizar. */
+  normalizarEventoWebhookPayout(_payloadCrudo: unknown): EventoWebhookPayout | null {
+    return null;
   }
 }

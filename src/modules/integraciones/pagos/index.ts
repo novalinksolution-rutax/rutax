@@ -36,3 +36,25 @@ export {
   ErrorFirmaWebhookInvalida,
   ErrorConfigCobranzaAusente,
 } from "./errores";
+
+// ---------------------------------------------------------------------------
+// PAYOUTS SALIENTES — webhook de confirmación instantánea (Fintoc
+// `transfer.outbound.*`). Standalone: el backend (fase 3) valida la firma y
+// normaliza el evento SIN una instancia de tenant/config (el secreto del webhook
+// de payout es de ORG y la validación ocurre ANTES de resolver el tenant).
+// ---------------------------------------------------------------------------
+
+export {
+  validarFirmaWebhookPayout,
+  normalizarEventoWebhookPayoutFintoc,
+  sanitizarPayloadEventoPayout,
+  mapearStatusFintocPayout,
+} from "./payout/adaptadores/fintoc-webhook";
+
+export type { ValidarFirmaWebhookPayoutInput } from "./payout/adaptadores/fintoc-webhook";
+
+export type {
+  PuertoPayout,
+  EventoWebhookPayout,
+  EstadoExternoEventoPayout,
+} from "./payout/puerto-payout";

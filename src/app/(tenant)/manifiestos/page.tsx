@@ -8,6 +8,7 @@ import { Plus, Truck } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGenerarManifiestos, puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
+import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   traducirEstadoManifiesto,
   BADGE_ESTADO_MANIFIESTO,
@@ -86,6 +87,15 @@ export default async function PaginaManifiestos({
     }));
   } catch {
     errorCarga = true;
+  }
+
+  // Nombres legibles para la columna Conductor (en vez del UUID).
+  let nombreConductorPorId: Record<string, string> = {};
+  try {
+    const driverIds = Array.from(new Set(manifiestos.map((m) => m.driverId)));
+    nombreConductorPorId = await mapaNombresConductores(cliente, tenantId, driverIds);
+  } catch {
+    // best-effort — si falla, la celda cae al UUID.
   }
 
   return (
@@ -175,7 +185,7 @@ export default async function PaginaManifiestos({
                       {m.fechaOperacion}
                     </TableCell>
                     <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
-                      {m.driverId}
+                      {nombreConductorPorId[m.driverId] ?? m.driverId}
                     </TableCell>
                   </TableRow>
                 ))}

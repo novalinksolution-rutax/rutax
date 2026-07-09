@@ -162,25 +162,28 @@ begin
   on conflict (id) do nothing;
 
   -- Eventos de conciliación con los NUEVOS tipos.
+  -- categoria_negocio es NOT NULL desde la migración de bandeja de excepciones
+  -- (20260708000001). Los cuatro tipos usados aquí mapean a 'fuga_ingreso' según
+  -- el backfill de esa migración.
   insert into dinero.eventos_conciliacion (id, tenant_id, seller_id, driver_id, liquidacion_id,
-    tipo_diferencia, descripcion, monto_diferencia_clp, estado)
+    tipo_diferencia, descripcion, monto_diferencia_clp, estado, categoria_negocio)
   values
     -- Fuga directa: pagado al conductor sin cobro al seller (referencia driver + liq).
     (ev_a_fuga, t_a, s_a, d_a, liq_a,
      'pagado_conductor_sin_cobro_seller',
-     'Test: entrega pagada al conductor sin línea de cobro al seller', 1200, 'pendiente'),
+     'Test: entrega pagada al conductor sin línea de cobro al seller', 1200, 'pendiente', 'fuga_ingreso'),
     -- Mínimo omitido (a nivel seller, sin conductor).
     (ev_a_minimo, t_a, s_a, null, null,
      'minimo_omitido',
-     'Test: período bajo el mínimo de facturación pactado', 8000, 'pendiente'),
+     'Test: período bajo el mínimo de facturación pactado', 8000, 'pendiente', 'fuga_ingreso'),
     -- Reprogramación no cobrada (seller).
     (ev_a_reprog, t_a, s_a, null, null,
      'reprogramacion_no_cobrada',
-     'Test: reprogramación sin recargo cobrado', 800, 'pendiente'),
+     'Test: reprogramación sin recargo cobrado', 800, 'pendiente', 'fuga_ingreso'),
     -- Tenant B: para el cruce de tenant.
     (ev_b_fuga, t_b, s_b, d_b, liq_b,
      'pagado_conductor_sin_cobro_seller',
-     'Test B: fuga directa tenant B', 999, 'pendiente')
+     'Test B: fuga directa tenant B', 999, 'pendiente', 'fuga_ingreso')
   on conflict (id) do nothing;
 end $$;
 

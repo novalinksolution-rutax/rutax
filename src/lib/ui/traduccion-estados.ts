@@ -17,6 +17,9 @@ import type {
   TipoDiferenciaConciliacion,
   EstadoMatchPago,
   EstadoCobroPeriodo,
+  EstadoPayout,
+  CategoriaNegocioConciliacion,
+  AccionSugeridaConciliacion,
 } from "@/modules/dinero/tipos";
 
 // =============================================================================
@@ -392,14 +395,48 @@ export const COLOR_ESTADO_LIQUIDACION = clasesPorEstado(VARIANTE_ESTADO_LIQUIDAC
 export const BADGE_ESTADO_LIQUIDACION = badgePorEstado(VARIANTE_ESTADO_LIQUIDACION);
 
 // =============================================================================
-// EstadoEventoConciliacion — Fase C
+// EstadoPayout — payouts a conductores (F19, Bloque 3)
 // =============================================================================
+
+export const TEXTO_ESTADO_PAYOUT: Record<EstadoPayout, string> = {
+  pendiente: "Pendiente",
+  enviado: "Enviado",
+  confirmado: "Confirmado",
+  rechazado: "Rechazado",
+  fallido: "Fallido",
+};
+
+export function traducirEstadoPayout(estado: EstadoPayout): string {
+  return TEXTO_ESTADO_PAYOUT[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_PAYOUT: Record<EstadoPayout, VarianteEstado> = {
+  pendiente: "neutral",
+  enviado: "info",
+  confirmado: "exito",
+  rechazado: "error",
+  fallido: "error",
+};
+export const COLOR_ESTADO_PAYOUT = clasesPorEstado(VARIANTE_ESTADO_PAYOUT);
+export const BADGE_ESTADO_PAYOUT = badgePorEstado(VARIANTE_ESTADO_PAYOUT);
+
+// =============================================================================
+// EstadoEventoConciliacion — bandeja de excepciones (§1.1 P1, jul 2026)
+// =============================================================================
+// 8 estados (antes 4): no-terminales `pendiente`/`en_analisis`/`esperando_info`/
+// `requiere_ajuste`; terminales `resuelta_auto`/`resuelta_manual`/
+// `aceptada_justificada`/`ignorada`. Ver `TRANSICIONES_VALIDAS` en
+// `@/modules/dinero/conciliacion-clasificacion` para la máquina de estados.
 
 export const TEXTO_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, string> = {
   pendiente: "Pendiente",
-  revisado: "Revisado",
-  resuelto: "Resuelto",
-  ignorado: "Ignorado",
+  en_analisis: "En análisis",
+  esperando_info: "Esperando información",
+  requiere_ajuste: "Requiere ajuste",
+  resuelta_auto: "Resuelta por el sistema",
+  resuelta_manual: "Resuelta",
+  aceptada_justificada: "Revisada (sin cambios)",
+  ignorada: "Descartada",
 };
 
 export function traducirEstadoConciliacion(estado: EstadoEventoConciliacion): string {
@@ -408,12 +445,66 @@ export function traducirEstadoConciliacion(estado: EstadoEventoConciliacion): st
 
 const VARIANTE_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, VarianteEstado> = {
   pendiente: "advertencia",
-  revisado: "info",
-  resuelto: "exito",
-  ignorado: "neutral",
+  en_analisis: "info",
+  esperando_info: "advertencia",
+  requiere_ajuste: "advertencia",
+  resuelta_auto: "exito",
+  resuelta_manual: "exito",
+  aceptada_justificada: "neutral",
+  ignorada: "neutral",
 };
 export const COLOR_ESTADO_CONCILIACION = clasesPorEstado(VARIANTE_ESTADO_CONCILIACION);
 export const BADGE_ESTADO_CONCILIACION = badgePorEstado(VARIANTE_ESTADO_CONCILIACION);
+
+// =============================================================================
+// CategoriaNegocioConciliacion — §1.1 P1
+// =============================================================================
+
+export const TEXTO_CATEGORIA_NEGOCIO_CONCILIACION: Record<CategoriaNegocioConciliacion, string> = {
+  cumplimiento_dte: "Cumplimiento DTE",
+  fuga_ingreso: "Fuga de ingreso",
+  pagos_pendientes: "Pagos pendientes",
+  integridad_datos: "Integridad de datos",
+};
+
+export function traducirCategoriaNegocioConciliacion(categoria: CategoriaNegocioConciliacion): string {
+  return TEXTO_CATEGORIA_NEGOCIO_CONCILIACION[categoria] ?? categoria;
+}
+
+const VARIANTE_CATEGORIA_NEGOCIO_CONCILIACION: Record<CategoriaNegocioConciliacion, VarianteEstado> = {
+  // Fuga de ingreso y cumplimiento DTE son las categorías con mayor riesgo
+  // financiero/tributario directo — se resaltan en rojo (mismo criterio que
+  // `esFugaDirecta` más abajo).
+  cumplimiento_dte: "error",
+  fuga_ingreso: "error",
+  pagos_pendientes: "advertencia",
+  integridad_datos: "neutral",
+};
+export const COLOR_CATEGORIA_NEGOCIO_CONCILIACION = clasesPorEstado(VARIANTE_CATEGORIA_NEGOCIO_CONCILIACION);
+export const BADGE_CATEGORIA_NEGOCIO_CONCILIACION = badgePorEstado(VARIANTE_CATEGORIA_NEGOCIO_CONCILIACION);
+
+// =============================================================================
+// AccionSugeridaConciliacion — §1.1 P1
+// =============================================================================
+
+export const TEXTO_ACCION_SUGERIDA_CONCILIACION: Record<AccionSugeridaConciliacion, string> = {
+  revisar_tarifa_aplicada: "Revisar tarifa aplicada",
+  confirmar_con_seller: "Confirmar con el seller",
+  confirmar_con_conductor: "Confirmar con el conductor",
+  generar_cobro_manual: "Crear cobro manual",
+  generar_ajuste_liquidacion: "Crear ajuste de liquidación",
+  reasignar_lineas_a_periodo: "Reasignar líneas al período",
+  reenviar_o_verificar_dte: "Reenviar o verificar el DTE",
+  gestionar_cobranza_seller: "Cobrar al seller",
+  gestionar_pago_conductor: "Gestionar el pago al conductor",
+  marcar_error_del_motor: "Marcar como error del motor",
+  sin_accion_requerida: "Sin acción requerida",
+  revisar_estado_externo: "Revisar estado externo",
+};
+
+export function traducirAccionSugeridaConciliacion(accion: AccionSugeridaConciliacion): string {
+  return TEXTO_ACCION_SUGERIDA_CONCILIACION[accion] ?? accion;
+}
 
 // =============================================================================
 // TipoDiferenciaConciliacion — Fase C
@@ -434,6 +525,11 @@ export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> =
   minimo_omitido: "Mínimo de facturación no aplicado",
   pago_seller_faltante: "Pago del seller pendiente de recibir",
   pago_conductor_faltante: "Pago al conductor pendiente de emitir",
+  // Webhook de payout saliente (Fase 3, migración 20260708000002)
+  payout_revertido_post_confirmacion: "Payout revertido tras confirmarse",
+  // Webhook/polling de payout (migración 20260709000001) — separado de la
+  // reversión genuina de arriba por recomendación de QA.
+  payout_estado_no_reconocido: "Estado de pago no reconocido",
 };
 
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {

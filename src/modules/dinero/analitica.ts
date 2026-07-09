@@ -21,6 +21,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { EstadoEventoConciliacion } from "./tipos";
+import { esEstadoTerminal } from "./conciliacion-clasificacion";
 
 // =============================================================================
 // Tipos de resultado (contratos públicos hacia los Server Components)
@@ -367,7 +369,7 @@ export async function obtenerFuga(
   for (const ev of data ?? []) {
     const tipo = ev.tipo_diferencia as string;
     const monto = Math.round(Number(ev.monto_diferencia_clp ?? 0));
-    const estado = ev.estado as string;
+    const estado = ev.estado as EstadoEventoConciliacion;
 
     // Solo acumular tipos que sean "fuga de revenue" (D1–D4).
     // Si Postgres devolviera un tipo no esperado (D5/D6), lo ignoramos aquí
@@ -376,12 +378,19 @@ export async function obtenerFuga(
     const entrada = mapaTipo.get(tipo);
     if (!entrada) continue;
 
-    if (estado === "resuelto") {
+    // §1.1 P1 — bandeja de excepciones (8 estados, antes 4: pendiente/
+    // revisado/resuelto/ignorado). `resuelta_manual`/`resuelta_auto`
+    // significan que la fuga efectivamente se corrigió (dinero recuperado).
+    // `aceptada_justificada`/`ignorada` son cierres SIN recuperación (la
+    // discrepancia se dejó así a propósito) — no suman a ninguno de los dos
+    // totales, igual que el viejo "ignorado". Cualquier estado no-terminal
+    // (pendiente/en_analisis/esperando_info/requiere_ajuste) sigue siendo
+    // fuga abierta ("detectada").
+    if (estado === "resuelta_manual" || estado === "resuelta_auto") {
       entrada.recuperadaClp += monto;
-    } else if (estado === "pendiente" || estado === "revisado") {
+    } else if (!esEstadoTerminal(estado)) {
       entrada.detectadaClp += monto;
     }
-    // ignorado: no suma ni a detectada ni a recuperada.
     entrada.conteo += 1;
   }
 

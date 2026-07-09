@@ -41,7 +41,7 @@ function filaAConductor(fila: Record<string, any>): Conductor {
     estado: fila.estado as 'activo' | 'inactivo',
     disponible: Boolean(fila.disponible),
     capacidadParadas: Number(fila.capacidad_paradas),
-    nombre: fila.nombre ?? '',
+    nombre: fila.nombre_completo ?? '',
     banco: fila.banco ?? null,
     tipoCuenta: (fila.tipo_cuenta as 'corriente' | 'vista' | 'ahorro' | null) ?? null,
     numeroCuenta: fila.numero_cuenta ?? null,
@@ -74,9 +74,11 @@ export async function listarConductores(
   const { data, error } = await cliente
     .schema('identidad')
     .from('conductores')
-    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre, banco, tipo_cuenta, numero_cuenta')
+    .select(
+      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+    )
     .eq('tenant_id', tenantId)
-    .order('nombre');
+    .order('nombre_completo');
 
   if (error) {
     throw new Error(`Error al listar conductores: ${error.message}`);
@@ -151,7 +153,9 @@ export async function actualizarDisponibilidadConductor(
     .update({ disponible })
     .eq('id', conductorId)
     .eq('tenant_id', tenantId)
-    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre, banco, tipo_cuenta, numero_cuenta')
+    .select(
+      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+    )
     .maybeSingle();
 
   if (error) {
@@ -208,7 +212,9 @@ export async function actualizarCapacidadConductor(
     .update({ capacidad_paradas: capacidadParadas })
     .eq('id', conductorId)
     .eq('tenant_id', tenantId)
-    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre, banco, tipo_cuenta, numero_cuenta')
+    .select(
+      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+    )
     .maybeSingle();
 
   if (error) {
@@ -349,7 +355,9 @@ export async function actualizarDatosBancariosConductor(
     })
     .eq('id', conductorId)
     .eq('tenant_id', tenantId)
-    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre, banco, tipo_cuenta, numero_cuenta')
+    .select(
+      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+    )
     .maybeSingle();
 
   if (error) {

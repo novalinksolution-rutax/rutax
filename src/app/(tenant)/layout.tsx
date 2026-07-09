@@ -123,7 +123,7 @@ export default async function LayoutTenant({ children }: { children: React.React
     puedeActuarSobreOnboarding && sesion.usuario.tenantId
       ? resolverEstadoOnboarding(sesion.usuario.tenantId)
       : Promise.resolve(null),
-    obtenerAvisos(sesion.usuario.tenantId, sesion.usuario),
+    obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId),
   ]);
 
   return (

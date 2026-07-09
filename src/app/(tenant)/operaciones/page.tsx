@@ -16,6 +16,7 @@ import { Inbox, SearchX, MapPinOff } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarPedidos } from "@/modules/operacion/pedidos";
+import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   puedeAsignarYReasignarPedidos,
   puedeGestionarIncidencias,
@@ -215,6 +216,20 @@ export default async function PaginaOperaciones({
     // sin bloquear si falla — el filtro quedará vacío
   }
 
+  // Nombres legibles para las columnas Seller y Conductor (en vez del UUID).
+  const nombreSellerPorId = Object.fromEntries(
+    sellersDisponibles.map((s) => [s.id, s.nombre]),
+  );
+  let nombreConductorPorId: Record<string, string> = {};
+  try {
+    const driverIds = Array.from(
+      new Set(pedidos.flatMap((p) => (p.driverIdAsignado ? [p.driverIdAsignado] : []))),
+    );
+    nombreConductorPorId = await mapaNombresConductores(cliente, tenantId, driverIds);
+  } catch {
+    // best-effort — si falla, la celda cae al UUID.
+  }
+
   function hrefPagina(p: number): string {
     const sp = new URLSearchParams();
     if (filtroSeller) sp.set("seller", filtroSeller);
@@ -375,6 +390,12 @@ export default async function PaginaOperaciones({
                   tieneAcciones={tieneAcciones}
                   modoBandeja={filtroPorRevisar}
                   origen={origenPorPedido[pedido.id] ?? null}
+                  sellerNombre={nombreSellerPorId[pedido.sellerId] ?? null}
+                  conductorNombre={
+                    pedido.driverIdAsignado
+                      ? (nombreConductorPorId[pedido.driverIdAsignado] ?? null)
+                      : null
+                  }
                 />
               ))}
             </TableBody>
@@ -394,11 +415,15 @@ function FilaPedido({
   tieneAcciones,
   modoBandeja = false,
   origen = null,
+  sellerNombre = null,
+  conductorNombre = null,
 }: {
   pedido: Pedido;
   tieneAcciones: boolean;
   modoBandeja?: boolean;
   origen?: string | null;
+  sellerNombre?: string | null;
+  conductorNombre?: string | null;
 }) {
   // Determinar si requiere revisión para mostrar badge discreto en la lista normal
   const requiereRevision = requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado);
@@ -435,7 +460,7 @@ function FilaPedido({
         </div>
       </TableCell>
       <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
-        {pedido.sellerId}
+        {sellerNombre ?? pedido.sellerId}
       </TableCell>
       {/* Columna condicional: Motivo en bandeja / Fecha comprometida en lista normal */}
       {modoBandeja ? (
@@ -449,7 +474,7 @@ function FilaPedido({
       )}
       <TableCell className="hidden px-4 text-muted-foreground lg:table-cell">
         {pedido.driverIdAsignado ? (
-          pedido.driverIdAsignado
+          (conductorNombre ?? pedido.driverIdAsignado)
         ) : (
           <span className="text-warning-subtle-foreground">Sin asignar</span>
         )}

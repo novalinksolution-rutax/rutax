@@ -1,90 +1,229 @@
 "use server";
 
 /**
- * Server Actions para eventos de conciliación — Pantalla D-4.
+ * Server Actions para la bandeja de excepciones de conciliación (D-4, §1.1 P1).
+ *
+ * Capa delgada: cada función valida sesión y delega ÍNTEGRO en su función de
+ * dominio homónima de `@/modules/dinero/acciones` (que ya hace RBAC vía
+ * `exigirPermisoConciliacion`, bitácora y máquina de estados) — sin duplicar
+ * reglas aquí. Siempre `{ ok: true }` o `{ ok: false; mensaje }`, mismo
+ * contrato que el resto de `dinero` (ver `dialog-emitir-pago.tsx`).
+ *
+ * `accionTransicionarEvento` es GENÉRICA (recibe cualquier estado destino) a
+ * propósito: el Sheet de detalle deriva los botones válidos de
+ * `TRANSICIONES_VALIDAS`/`esTransicionValida` (nunca los hardcodea — esa fue
+ * la causa raíz de un bug real ya corregido en el menú de 3 puntos), así que
+ * necesita una sola acción capaz de aceptar cualquier destino legal; la
+ * validación real de legalidad la hace igual `transicionarEventoConciliacion`
+ * server-side.
  */
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { resolverEventoConciliacion } from "@/modules/dinero/acciones";
-import type { EstadoEventoConciliacion } from "@/modules/dinero/tipos";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { puedeVerConciliacion } from "@/modules/identidad/capacidades";
+import {
+  transicionarEventoConciliacion,
+  reabrirEventoConciliacion,
+  asignarEventoConciliacion,
+  fijarFechaLimiteConciliacion,
+  fijarBloqueosConciliacion,
+  cambiarAccionSugeridaConciliacion,
+  agregarComentarioConciliacion,
+  listarHistorialEventoConciliacion,
+} from "@/modules/dinero/index";
+import type {
+  EstadoEventoConciliacion,
+  AccionSugeridaConciliacion,
+  EventoConciliacionHistorial,
+} from "@/modules/dinero/tipos";
 
-type Resolucion = Extract<EstadoEventoConciliacion, "revisado" | "resuelto" | "ignorado">;
+export type ResultadoAccionConciliacion = { ok: true } | { ok: false; mensaje: string };
 
-export async function accionResolverEvento(
+function mensajeDeError(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+/**
+ * Transiciona una excepción a cualquier estado destino válido (el Sheet de
+ * detalle y el menú rápido ya filtran las opciones a las legales antes de
+ * llamar aquí). `comentario` es obligatorio server-side solo para ciertos
+ * destinos/orígenes — ver `transicionarEventoConciliacion`.
+ */
+export async function accionTransicionarEvento(
   eventoId: string,
-  resolucion: Resolucion,
-): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  nuevoEstado: EstadoEventoConciliacion,
+  comentario?: string,
+): Promise<ResultadoAccionConciliacion> {
   const sesion = await obtenerSesionActual();
-  if (!sesion?.usuario.tenantId) {
-    return { ok: false, mensaje: "No autenticado." };
-  }
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
 
   try {
-    await resolverEventoConciliacion(
+    await transicionarEventoConciliacion(
       sesion.usuario.tenantId,
       eventoId,
-      resolucion,
+      nuevoEstado,
+      sesion.usuario,
+      sesion.usuarioId,
+      { comentario },
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensaje: mensajeDeError(err, "Error al actualizar la excepción.") };
+  }
+}
+
+/**
+ * Reabre una excepción cerrada (estado terminal). Destino calculado por el
+ * backend: `en_analisis` si tiene responsable asignado, si no `pendiente` —
+ * un solo botón "Reabrir" en el Sheet, en vez de forzar a elegir entre dos
+ * destinos técnicos.
+ */
+export async function accionReabrirEvento(
+  eventoId: string,
+  comentario: string,
+): Promise<ResultadoAccionConciliacion> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
+
+  try {
+    await reabrirEventoConciliacion(
+      sesion.usuario.tenantId,
+      eventoId,
+      sesion.usuario,
+      sesion.usuarioId,
+      { comentario },
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensaje: mensajeDeError(err, "Error al reabrir la excepción.") };
+  }
+}
+
+/** Asigna (o desasigna, con `null`) una excepción a un usuario interno del tenant. */
+export async function accionAsignarEvento(
+  eventoId: string,
+  asignadoAUsuarioId: string | null,
+): Promise<ResultadoAccionConciliacion> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
+
+  try {
+    await asignarEventoConciliacion(
+      sesion.usuario.tenantId,
+      eventoId,
+      asignadoAUsuarioId,
       sesion.usuario,
       sesion.usuarioId,
     );
     return { ok: true };
   } catch (err) {
-    const mensaje =
-      err instanceof Error
-        ? err.message
-        : "Error al resolver el evento de conciliación.";
-    return { ok: false, mensaje };
+    return { ok: false, mensaje: mensajeDeError(err, "Error al asignar la excepción.") };
   }
 }
 
-// Restaurar a pendiente: llama a resolverEventoConciliacion con 'pendiente'
-// (en acciones.ts no existe 'pendiente' como resolucion, por lo que manejamos
-// el update directo desde aquí vía la función genérica)
-export async function accionRestaurarEventoPendiente(
+/** Fija (o limpia, con `null`) la fecha límite (SLA) de una excepción. */
+export async function accionFijarFechaLimite(
   eventoId: string,
-): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  fechaLimite: string | null,
+): Promise<ResultadoAccionConciliacion> {
   const sesion = await obtenerSesionActual();
-  if (!sesion?.usuario.tenantId) {
-    return { ok: false, mensaje: "No autenticado." };
-  }
-
-  // Usamos el cliente service_role directamente para este caso especial
-  // (restaurar a pendiente no es una de las resoluciones del módulo dinero)
-  const { crearClienteServiceRole } = await import("@/lib/supabase/service-role");
-  const { puedeVerConciliacion } = await import("@/modules/identidad/capacidades");
-  const { registrarEnBitacora } = await import("@/modules/identidad/auditoria");
-
-  if (!puedeVerConciliacion(sesion.usuario)) {
-    return { ok: false, mensaje: "Sin permisos para restaurar eventos de conciliación." };
-  }
-
-  const supabase = crearClienteServiceRole();
-  const tenantId = sesion.usuario.tenantId;
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
 
   try {
-    const { error } = await supabase
-      .schema("dinero")
-      .from("eventos_conciliacion")
-      .update({ estado: "pendiente" })
-      .eq("id", eventoId)
-      .eq("tenant_id", tenantId);
-
-    if (error) throw new Error(error.message);
-
-    await registrarEnBitacora(supabase, {
-      tenantId,
-      actorUsuarioId: sesion.usuarioId,
-      actorTipo: "usuario",
-      accion: "dinero.evento_conciliacion_restaurado",
-      entidadTipo: "evento_conciliacion",
-      entidadId: eventoId,
-      detalle: { resolucion: "pendiente" },
-    });
-
+    await fijarFechaLimiteConciliacion(
+      sesion.usuario.tenantId,
+      eventoId,
+      fechaLimite,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
     return { ok: true };
   } catch (err) {
-    const mensaje =
-      err instanceof Error ? err.message : "Error al restaurar el evento.";
-    return { ok: false, mensaje };
+    return { ok: false, mensaje: mensajeDeError(err, "Error al fijar la fecha límite.") };
+  }
+}
+
+/** Fija los flags de bloqueo de facturación/pago — exige `motivoBloqueo` si alguno queda en `true`. */
+export async function accionFijarBloqueos(
+  eventoId: string,
+  opciones: { bloqueaFacturacion: boolean; bloqueaPago: boolean; motivoBloqueo: string | null },
+): Promise<ResultadoAccionConciliacion> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
+
+  try {
+    await fijarBloqueosConciliacion(
+      sesion.usuario.tenantId,
+      eventoId,
+      opciones,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensaje: mensajeDeError(err, "Error al fijar el bloqueo.") };
+  }
+}
+
+/** Cambia la acción sugerida (una de las 11 opciones) de una excepción. */
+export async function accionCambiarAccionSugerida(
+  eventoId: string,
+  accionSugerida: AccionSugeridaConciliacion,
+): Promise<ResultadoAccionConciliacion> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
+
+  try {
+    await cambiarAccionSugeridaConciliacion(
+      sesion.usuario.tenantId,
+      eventoId,
+      accionSugerida,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensaje: mensajeDeError(err, "Error al cambiar la acción sugerida.") };
+  }
+}
+
+/** Agrega un comentario libre al historial, sin exigir cambio de estado. */
+export async function accionAgregarComentario(
+  eventoId: string,
+  comentario: string,
+): Promise<ResultadoAccionConciliacion> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
+
+  try {
+    await agregarComentarioConciliacion(
+      sesion.usuario.tenantId,
+      eventoId,
+      comentario,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, mensaje: mensajeDeError(err, "Error al agregar el comentario.") };
+  }
+}
+
+/** Lista el historial cronológico de una excepción — usado por el timeline del Sheet. */
+export async function accionListarHistorialEvento(
+  eventoId: string,
+): Promise<{ ok: true; historial: EventoConciliacionHistorial[] } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
+  if (!puedeVerConciliacion(sesion.usuario)) {
+    return { ok: false, mensaje: "No tienes permiso para ver este historial." };
+  }
+
+  try {
+    const cliente = crearClienteServiceRole();
+    const historial = await listarHistorialEventoConciliacion(cliente, sesion.usuario.tenantId, eventoId);
+    return { ok: true, historial };
+  } catch (err) {
+    return { ok: false, mensaje: mensajeDeError(err, "Error al cargar el historial de la excepción.") };
   }
 }

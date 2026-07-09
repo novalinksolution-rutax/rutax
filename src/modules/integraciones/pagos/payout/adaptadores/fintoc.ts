@@ -91,24 +91,24 @@
  * los errores del puerto, la utilidad de resiliencia y `node:crypto`.
  */
 
-import { createHmac, createSign, randomBytes, timingSafeEqual } from "node:crypto";
+import { createSign, randomBytes } from "node:crypto";
 import type {
   ConsultarPayoutArgs,
   CrearPayoutArgs,
   EstadoExternoPayout,
   EstadoPayoutExterno,
+  EventoWebhookPayout,
   PuertoPayout,
   ResultadoPayout,
   ValidarFirmaWebhookPayoutArgs,
 } from "../puerto-payout";
 import { ErrorPayoutConfig, ErrorPayoutOperativo } from "../errores";
 import { reintentarConBackoff, type ErrorReintentable } from "../../../resiliencia";
+import { verificarFirmaWebhookFintoc } from "../../firma-webhook-fintoc";
+import { normalizarEventoWebhookPayoutFintoc } from "./fintoc-webhook";
 
 /** Base de la API de transferencias de Fintoc — v2 (verificado en doc). */
 export const FINTOC_PAYOUT_BASE_URL = "https://api.fintoc.com/v2";
-
-/** Tolerancia anti-replay del timestamp del webhook, en segundos (default SDK). */
-const TOLERANCIA_FIRMA_SEGUNDOS = 300;
 
 // ---------------------------------------------------------------------------
 // Configuración del adaptador resuelta por la fábrica (nunca entra al núcleo).
@@ -322,20 +322,26 @@ export class FintocPayoutAdapter implements PuertoPayout {
   }
 
   // -------------------------------------------------------------------------
-  // 3. Validar firma del webhook (reusa el esquema verificado de cobranza).
+  // 3. Validar firma del webhook (reusa el core compartido de firma Fintoc).
+  //    Mismo esquema HMAC-SHA256 `t=,v1=` que cobranza; una sola implementación.
   // -------------------------------------------------------------------------
 
   validarFirmaWebhook(args: ValidarFirmaWebhookPayoutArgs): boolean {
-    const partes = this.parsearHeaderFirma(args.firma);
-    if (!partes) return false;
-    const { timestamp, firmaRecibida } = partes;
+    return verificarFirmaWebhookFintoc({
+      cuerpoCrudo: args.cuerpo,
+      firmaHeader: args.firma,
+      secreto: args.secreto,
+    });
+  }
 
-    const ahoraSeg = Math.floor(Date.now() / 1000);
-    if (Math.abs(ahoraSeg - timestamp) > TOLERANCIA_FIRMA_SEGUNDOS) return false;
+  // -------------------------------------------------------------------------
+  // 4. Normalizar el evento de webhook de payout saliente (`transfer.outbound.*`).
+  //    La forma cruda de Fintoc vive y muere en `./fintoc-webhook`; aquí solo se
+  //    delega. Quien llama DEBE haber validado la firma antes (no valida aquí).
+  // -------------------------------------------------------------------------
 
-    const mensaje = `${timestamp}.${args.cuerpo}`;
-    const firmaEsperada = createHmac("sha256", args.secreto).update(mensaje, "utf8").digest("hex");
-    return this.comparacionTiempoConstante(firmaEsperada, firmaRecibida);
+  normalizarEventoWebhookPayout(payloadCrudo: unknown): EventoWebhookPayout | null {
+    return normalizarEventoWebhookPayoutFintoc(payloadCrudo);
   }
 
   // -------------------------------------------------------------------------
@@ -352,35 +358,6 @@ export class FintocPayoutAdapter implements PuertoPayout {
     if (status === "succeeded") return "confirmado";
     if (status === "rejected" || status === "failed") return "rechazado";
     return "pendiente";
-  }
-
-  private parsearHeaderFirma(
-    header: string,
-  ): { timestamp: number; firmaRecibida: string } | null {
-    if (!header || typeof header !== "string") return null;
-    let timestamp: number | null = null;
-    let firmaRecibida: string | null = null;
-    for (const segmento of header.split(",")) {
-      const i = segmento.indexOf("=");
-      if (i === -1) continue;
-      const clave = segmento.slice(0, i).trim();
-      const valor = segmento.slice(i + 1).trim();
-      if (clave === "t") {
-        const n = Number(valor);
-        if (Number.isFinite(n)) timestamp = n;
-      } else if (clave === "v1") {
-        firmaRecibida = valor;
-      }
-    }
-    if (timestamp === null || !firmaRecibida) return null;
-    return { timestamp, firmaRecibida };
-  }
-
-  private comparacionTiempoConstante(esperada: string, recibida: string): boolean {
-    const a = Buffer.from(esperada, "utf8");
-    const b = Buffer.from(recibida, "utf8");
-    if (a.length !== b.length) return false;
-    return timingSafeEqual(a, b);
   }
 
   /** Lanza `ErrorPayoutConfig` (no reintentable) si falta la secret key. */

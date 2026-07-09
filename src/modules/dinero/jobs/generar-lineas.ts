@@ -34,7 +34,8 @@
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
-import { evaluarElegibilidad } from '../motor';
+import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
+import type { TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
 import { obtenerOCrearPeriodoCobroAbierto, obtenerOCrearLiquidacionAbierta } from '../periodos';
 import type { EstadoPedido } from '@/modules/operacion/tipos';
 
@@ -67,6 +68,7 @@ export const jobGenerarLineas = inngest.createFunction(
       sellerId,
       driverIdAsignado,
       estadoNuevo,
+      estadoAnterior,
       fechaTransicion,
       tipoPedido,
       tarifaAplicableId,
@@ -83,32 +85,67 @@ export const jobGenerarLineas = inngest.createFunction(
     };
 
     // Paso 1: Evaluar elegibilidad.
-    const { elegibilidad, tarifa, incidencia, esGastoPropio } = await step.run(
+    // Además de los flags de elegibilidad, este paso trae TODO lo que alimenta
+    // el snapshot inmutable de la regla económica (hallazgo P0 de auditoría —
+    // ver `snapshot_regla` en dinero.lineas_cobro/lineas_liquidacion, migración
+    // 20260707000001): la tarifa completa (no solo los montos), el tipo de la
+    // incidencia y la comuna del destinatario como contexto geográfico.
+    const { elegibilidad, motivos, tarifa, incidencia, esGastoPropio, comunaDestinatario } = await step.run(
       'evaluar-elegibilidad',
       async () => {
         const supabase = crearClienteServiceRole();
 
-        // Leer tarifa (monto_clp para cobro, monto_conductor_clp para liquidación).
+        // Leer tarifa completa: montos (cobro/conductor) + todo lo que explica
+        // el valor pactado (tipo de entrega, modo de cálculo, zona, vigencia,
+        // mínimos y recargo de reprogramación) para el snapshot.
         let montoCobroBase = 0;
         let montoConductorBase = 0;
+        let tipoEntrega: string | null = null;
+        let modoCalculo: string | null = null;
+        let zona: string | null = null;
+        let zonaId: string | null = null;
+        let vigenteDesde: string | null = null;
+        let vigenteHasta: string | null = null;
+        let estadoTarifa: string | null = null;
+        let minimoRetiroClp: number | null = null;
+        let minimoFacturacionClp: number | null = null;
+        let recargoReprogramacionClp: number | null = null;
+
         if (tarifaAplicableId) {
           const { data: tarifaData } = await supabase
             .schema('identidad')
             .from('tarifas')
-            .select('monto_clp, monto_conductor_clp')
+            .select(
+              'monto_clp, monto_conductor_clp, tipo_entrega, modo_calculo, zona, zona_id, vigente_desde, vigente_hasta, estado, minimo_retiro_clp, minimo_facturacion_clp, recargo_reprogramacion_clp',
+            )
             .eq('id', tarifaAplicableId)
             .eq('tenant_id', tenantId)
             .maybeSingle();
 
           montoCobroBase = tarifaData ? Math.round(Number(tarifaData.monto_clp)) : 0;
           montoConductorBase = tarifaData ? Math.round(Number(tarifaData.monto_conductor_clp ?? 0)) : 0;
+          tipoEntrega = (tarifaData?.tipo_entrega as string | null) ?? null;
+          modoCalculo = (tarifaData?.modo_calculo as string | null) ?? null;
+          zona = (tarifaData?.zona as string | null) ?? null;
+          zonaId = (tarifaData?.zona_id as string | null) ?? null;
+          vigenteDesde = (tarifaData?.vigente_desde as string | null) ?? null;
+          vigenteHasta = (tarifaData?.vigente_hasta as string | null) ?? null;
+          estadoTarifa = (tarifaData?.estado as string | null) ?? null;
+          minimoRetiroClp =
+            tarifaData?.minimo_retiro_clp != null ? Number(tarifaData.minimo_retiro_clp) : null;
+          minimoFacturacionClp =
+            tarifaData?.minimo_facturacion_clp != null ? Number(tarifaData.minimo_facturacion_clp) : null;
+          recargoReprogramacionClp =
+            tarifaData?.recargo_reprogramacion_clp != null
+              ? Number(tarifaData.recargo_reprogramacion_clp)
+              : null;
         }
 
-        // Leer incidencia abierta del pedido (afecta_cobro / afecta_liquidacion).
+        // Leer incidencia abierta del pedido (afecta_cobro / afecta_liquidacion / tipo).
         const { data: incidenciaData } = await supabase
           .schema('operacion')
           .from('incidencias')
-          .select('id, afecta_cobro, afecta_liquidacion')
+          .select('id, tipo, afecta_cobro, afecta_liquidacion')
           .eq('pedido_id', pedidoId)
           .eq('tenant_id', tenantId)
           .order('creado_en', { ascending: false })
@@ -130,19 +167,55 @@ export const jobGenerarLineas = inngest.createFunction(
           tenantData?.seller_id_gasto_propio != null &&
           tenantData.seller_id_gasto_propio === sellerId;
 
-        const resultado = evaluarElegibilidad({
+        // Leer comuna del destinatario — contexto geográfico del pedido para el
+        // snapshot (NO es lo que determina el precio; eso lo determina la zona
+        // de la tarifa). No viene en el evento, así que se lee puntualmente.
+        const { data: pedidoData } = await supabase
+          .schema('operacion')
+          .from('pedidos')
+          .select('destinatario_comuna')
+          .eq('id', pedidoId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        const entradaMotor = {
           estadoPedido: estadoNuevo as EstadoPedido,
           afectaCobro: afectaCobro as boolean | null,
           afectaLiquidacion: afectaLiquidacion as boolean | null,
           esGastoPropio: gastoPropio,
           tieneDriverAsignado: driverIdAsignado !== null,
-        });
+        };
+
+        const resultado = evaluarElegibilidad(entradaMotor);
+        const motivosResultado = evaluarMotivoElegibilidad(entradaMotor);
 
         return {
           elegibilidad: resultado,
-          tarifa: { montoCobroBase, montoConductorBase },
-          incidencia: incidenciaData ? { id: incidenciaData.id as string } : null,
+          motivos: motivosResultado,
+          tarifa: {
+            montoCobroBase,
+            montoConductorBase,
+            tipoEntrega,
+            modoCalculo,
+            zona,
+            zonaId,
+            vigenteDesde,
+            vigenteHasta,
+            estado: estadoTarifa,
+            minimoRetiroClp,
+            minimoFacturacionClp,
+            recargoReprogramacionClp,
+          },
+          incidencia: incidenciaData
+            ? {
+                id: incidenciaData.id as string,
+                tipo: (incidenciaData.tipo as string | null) ?? null,
+                afectaCobro: afectaCobro as boolean | null,
+                afectaLiquidacion: afectaLiquidacion as boolean | null,
+              }
+            : null,
           esGastoPropio: gastoPropio,
+          comunaDestinatario: (pedidoData?.destinatario_comuna as string | null) ?? null,
         };
       },
     );
@@ -368,6 +441,53 @@ export const jobGenerarLineas = inngest.createFunction(
       const ajuste = elegibilidad.ajusteCobroCLP;
       const concepto = `Servicio de entrega ${tipoPedido} — pedido ${pedidoId}`;
 
+      // Snapshot inmutable de la regla económica (hallazgo P0 de auditoría):
+      // se arma UNA vez y se escribe en el MISMO INSERT/UPDATE que determina
+      // monto_base_clp/ajuste_incidencia_clp — atomicidad, no una escritura
+      // separada. `genera` es siempre true aquí: este bloque solo se alcanza
+      // cuando elegibilidad.generaCobro === true.
+      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaAplicableId
+        ? {
+            tarifaId: tarifaAplicableId,
+            tipoEntrega: tarifa.tipoEntrega,
+            modoCalculo: tarifa.modoCalculo,
+            zona: tarifa.zona,
+            zonaId: tarifa.zonaId,
+            vigenteDesde: tarifa.vigenteDesde,
+            vigenteHasta: tarifa.vigenteHasta,
+            estado: tarifa.estado,
+            minimoRetiroClp: tarifa.minimoRetiroClp,
+            minimoFacturacionClp: tarifa.minimoFacturacionClp,
+            recargoReprogramacionClp: tarifa.recargoReprogramacionClp,
+          }
+        : null;
+      const incidenciaSnapshot: IncidenciaSnapshotInput | null = incidencia
+        ? {
+            id: incidencia.id,
+            tipo: incidencia.tipo,
+            afectaCobro: incidencia.afectaCobro,
+            afectaLiquidacion: incidencia.afectaLiquidacion,
+          }
+        : null;
+      const snapshotCobro = construirSnapshotRegla({
+        lado: 'cobro',
+        jobRunId: runId,
+        generadoEn: new Date().toISOString(),
+        tarifa: tarifaSnapshot,
+        valorBaseClp: montoBase,
+        ajusteIncidenciaClp: ajuste,
+        comunaDestinatario,
+        fechaTransicion,
+        fechaEntregaLocal: fechaEntrega,
+        estadoNuevo,
+        estadoAnterior,
+        tipoPedido,
+        esGastoPropio,
+        incidencia: incidenciaSnapshot,
+        motivo: motivos.cobro,
+        genera: true,
+      });
+
       // INSERT con ON CONFLICT (pedido_id) DO NOTHING para idempotencia.
       const { data: insertada, error } = await supabase
         .schema('dinero')
@@ -384,6 +504,7 @@ export const jobGenerarLineas = inngest.createFunction(
           fecha_entrega: fechaEntrega,
           incidencia_id: incidencia?.id ?? null,
           origen_generacion: 'motor_automatico',
+          snapshot_regla: snapshotCobro,
         })
         .select('id')
         .maybeSingle();
@@ -420,6 +541,7 @@ export const jobGenerarLineas = inngest.createFunction(
             fecha_entrega: fechaEntrega,
             incidencia_id: incidencia?.id ?? null,
             origen_generacion: 'motor_automatico',
+            snapshot_regla: snapshotCobro,
             actualizado_en: new Date().toISOString(),
           })
           .eq('id', existente.id as string)
@@ -463,6 +585,51 @@ export const jobGenerarLineas = inngest.createFunction(
       const ajuste = elegibilidad.ajusteLiquidacionCLP;
       const concepto = `Liquidación entrega ${tipoPedido} — pedido ${pedidoId}`;
 
+      // Snapshot inmutable de la regla económica (hallazgo P0 de auditoría) —
+      // ver comentario análogo en 'generar-linea-cobro'. El lado 'liquidacion'
+      // NO lleva mínimos ni recargo de reprogramación (economía de cobro).
+      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaAplicableId
+        ? {
+            tarifaId: tarifaAplicableId,
+            tipoEntrega: tarifa.tipoEntrega,
+            modoCalculo: tarifa.modoCalculo,
+            zona: tarifa.zona,
+            zonaId: tarifa.zonaId,
+            vigenteDesde: tarifa.vigenteDesde,
+            vigenteHasta: tarifa.vigenteHasta,
+            estado: tarifa.estado,
+            minimoRetiroClp: tarifa.minimoRetiroClp,
+            minimoFacturacionClp: tarifa.minimoFacturacionClp,
+            recargoReprogramacionClp: tarifa.recargoReprogramacionClp,
+          }
+        : null;
+      const incidenciaSnapshot: IncidenciaSnapshotInput | null = incidencia
+        ? {
+            id: incidencia.id,
+            tipo: incidencia.tipo,
+            afectaCobro: incidencia.afectaCobro,
+            afectaLiquidacion: incidencia.afectaLiquidacion,
+          }
+        : null;
+      const snapshotLiquidacion = construirSnapshotRegla({
+        lado: 'liquidacion',
+        jobRunId: runId,
+        generadoEn: new Date().toISOString(),
+        tarifa: tarifaSnapshot,
+        valorBaseClp: montoBase,
+        ajusteIncidenciaClp: ajuste,
+        comunaDestinatario,
+        fechaTransicion,
+        fechaEntregaLocal: fechaEntrega,
+        estadoNuevo,
+        estadoAnterior,
+        tipoPedido,
+        esGastoPropio,
+        incidencia: incidenciaSnapshot,
+        motivo: motivos.liquidacion,
+        genera: true,
+      });
+
       const { data: insertada, error } = await supabase
         .schema('dinero')
         .from('lineas_liquidacion')
@@ -476,6 +643,7 @@ export const jobGenerarLineas = inngest.createFunction(
           fecha_entrega: fechaEntrega,
           incidencia_id: incidencia?.id ?? null,
           origen_generacion: 'motor_automatico',
+          snapshot_regla: snapshotLiquidacion,
         })
         .select('id')
         .maybeSingle();
@@ -511,6 +679,7 @@ export const jobGenerarLineas = inngest.createFunction(
             fecha_entrega: fechaEntrega,
             incidencia_id: incidencia?.id ?? null,
             origen_generacion: 'motor_automatico',
+            snapshot_regla: snapshotLiquidacion,
             actualizado_en: new Date().toISOString(),
           })
           .eq('id', existente.id as string)

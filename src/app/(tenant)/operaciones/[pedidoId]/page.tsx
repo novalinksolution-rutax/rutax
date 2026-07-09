@@ -14,12 +14,19 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerPedido, listarIncidenciasDePedido } from "@/modules/operacion/index";
 import { obtenerPruebaEntregaPorPedido } from "@/modules/operacion/pruebas-entrega";
 import { listarEvidenciasPorPedido } from "@/modules/operacion/evidencias-entrega";
+import { obtenerTrazaDineroPorPedido } from "@/modules/dinero/index";
+import { mapaNombresSellers, mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   puedeAsignarYReasignarPedidos,
   puedeGestionarIncidencias,
   puedeAjustarOperacionDiaria,
+  puedeVerConciliacion,
+  puedeGestionarLiquidacionesConductores,
+  puedeEmitirFacturas,
+  puedeVerReportesEjecutivos,
 } from "@/modules/identidad/capacidades";
 import { Badge } from "@/components/ui/badge";
+import { PanelTrazabilidadFinanciera } from "@/components/dinero/panel-trazabilidad-financiera";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
@@ -37,6 +44,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { Pedido, Incidencia } from "@/modules/operacion/tipos";
+import { esTransicionValida } from "@/modules/operacion/maquina-estados";
 import { DrawerCambioEstado } from "./drawer-cambio-estado";
 import { DrawerIncidencia } from "./drawer-incidencia";
 import { DialogReasignacion } from "./dialog-reasignacion";
@@ -89,36 +97,63 @@ async function cargarAsignacion(pedidoId: string, tenantId: string) {
 
 interface Props {
   params: Promise<{ pedidoId: string }>;
+  searchParams: Promise<{ traza?: string }>;
 }
 
-export default async function PaginaDetallePedido({ params }: Props) {
+export default async function PaginaDetallePedido({ params, searchParams }: Props) {
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
 
   const { pedidoId } = await params;
+  const sp = await searchParams;
   const tenantId = sesion.usuario.tenantId;
 
   const { pedido, incidencias } = await cargarDatos(pedidoId, tenantId);
   if (!pedido) notFound();
 
-  const [historial, asignacion, pod, evidencias] = await Promise.all([
+  // Trazabilidad financiera (§1.1 P1 del audit): gateada a roles financieros —
+  // conciliación, liquidaciones de conductores, facturación o reportes
+  // ejecutivos. Solo se consulta si el gate pasa, para no gastar la query
+  // cuando la sección ni siquiera se va a renderizar.
+  const gateDinero =
+    puedeVerConciliacion(sesion.usuario) ||
+    puedeGestionarLiquidacionesConductores(sesion.usuario) ||
+    puedeEmitirFacturas(sesion.usuario) ||
+    puedeVerReportesEjecutivos(sesion.usuario);
+
+  const [historial, asignacion, pod, evidencias, traza] = await Promise.all([
     cargarHistorialEstados(pedidoId, tenantId),
     cargarAsignacion(pedidoId, tenantId),
     obtenerPruebaEntregaPorPedido(crearClienteServiceRole(), pedidoId, tenantId),
     listarEvidenciasPorPedido(crearClienteServiceRole(), pedidoId, tenantId),
+    gateDinero
+      ? obtenerTrazaDineroPorPedido(crearClienteServiceRole(), tenantId, pedidoId)
+      : Promise.resolve(null),
   ]);
+
+  // Nombres legibles (seller y conductor) en vez de UUIDs. Best-effort: si la
+  // resolución falla, la pantalla cae al UUID sin bloquear el render.
+  let sellerNombre: string | null = null;
+  let conductorNombre: string | null = null;
+  try {
+    const [sellers, conductores] = await Promise.all([
+      mapaNombresSellers(crearClienteServiceRole(), tenantId, [pedido.sellerId]),
+      asignacion?.driver_id
+        ? mapaNombresConductores(crearClienteServiceRole(), tenantId, [asignacion.driver_id])
+        : Promise.resolve({} as Record<string, string>),
+    ]);
+    sellerNombre = sellers[pedido.sellerId] ?? null;
+    conductorNombre = asignacion?.driver_id ? (conductores[asignacion.driver_id] ?? null) : null;
+  } catch {
+    // sin bloquear — quedan los UUIDs como fallback.
+  }
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeIncidencias = puedeGestionarIncidencias(sesion.usuario);
   const puedeAjustar = puedeAjustarOperacionDiaria(sesion.usuario);
   const esTerminal = ESTADOS_TERMINALES.includes(pedido.estado);
-
-  // El dinero por pedido (cobro/período/factura/liquidación/pago) ya NO se
-  // muestra en el detalle operativo: se consolida a nivel conductor en
-  // Liquidaciones (dinero/liquidaciones) y a nivel seller en Conciliación /
-  // Estado de cuenta. El motor entrega→dinero sigue registrando cada línea; solo
-  // cambia dónde se presenta (consolidado, no por pedido).
+  const pedidoEntregado = pedido.estado === "entregado" || pedido.estado === "entregado_manual";
 
   const incidenciasAbiertas = incidencias.filter(
     (i) => i.estado === "abierta" || i.estado === "en_gestion",
@@ -172,7 +207,7 @@ export default async function PaginaDetallePedido({ params }: Props) {
             <dt className="text-xs text-muted-foreground">Seller</dt>
             <dd className="font-medium">
               <Link href={`/sellers/${pedido.sellerId}`} className="hover:underline">
-                {pedido.sellerId}
+                {sellerNombre ?? pedido.sellerId}
               </Link>
             </dd>
           </div>
@@ -273,7 +308,7 @@ export default async function PaginaDetallePedido({ params }: Props) {
               <div>
                 <dt className="text-xs text-muted-foreground">Conductor</dt>
                 {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <dd className="font-medium">{asignacion.driver_id}</dd>
+                <dd className="font-medium">{conductorNombre ?? asignacion.driver_id}</dd>
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Manifiesto</dt>
@@ -294,10 +329,28 @@ export default async function PaginaDetallePedido({ params }: Props) {
         </div>
       </section>
 
+      {/* Sección D.1 — Dinero (trazabilidad financiera bidireccional, §1.1 P1
+          del audit). Gateada a roles financieros — no se renderiza en el DOM
+          para el resto de roles (no basta con ocultar vía CSS). */}
+      {gateDinero && traza && (
+        <section aria-labelledby="dinero-titulo">
+          <h2 id="dinero-titulo" className="mb-3 text-base font-semibold">
+            Dinero
+          </h2>
+          <PanelTrazabilidadFinanciera
+            traza={traza}
+            pedidoId={pedido.id}
+            pedidoEntregado={pedidoEntregado}
+            abrirPorDefecto={sp.traza === "1"}
+          />
+        </section>
+      )}
+
       {/* Sección E — Acciones disponibles según rol */}
       <AccionesPedido
         pedido={pedido}
         asignacion={asignacion}
+        conductorNombre={conductorNombre}
         puedeAsignar={puedeAsignar}
         puedeIncidencias={puedeIncidencias}
         puedeAjustar={puedeAjustar}
@@ -464,6 +517,7 @@ function TargetaIncidencia({
 function AccionesPedido({
   pedido,
   asignacion,
+  conductorNombre,
   puedeAsignar,
   puedeIncidencias,
   puedeAjustar,
@@ -474,6 +528,7 @@ function AccionesPedido({
   pedido: Pedido;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   asignacion: any;
+  conductorNombre: string | null;
   puedeAsignar: boolean;
   puedeIncidencias: boolean;
   puedeAjustar: boolean;
@@ -483,6 +538,11 @@ function AccionesPedido({
 }) {
   const tieneAsignacion = !!asignacion;
   const esPendiente = pedido.estado === "pendiente_asignacion";
+  // La reasignación solo es válida si la máquina de estados admite volver a
+  // 'pendiente_asignacion' desde el estado actual (hoy solo desde 'asignado' —
+  // una vez en_ruta, la vía es marcarlo 'fallido' y reasignar desde ahí).
+  const puedeReasignar =
+    tieneAsignacion && esTransicionValida(pedido.estado, "pendiente_asignacion", "interno");
   // Flex requiere ml_shipment_id (etiqueta de ML); same-day genera su propia
   // etiqueta interna con QR y no depende de ningún campo de Mercado Libre.
   const puedeDescargarEtiqueta =
@@ -490,7 +550,7 @@ function AccionesPedido({
 
   // Sin ninguna acción visible: no renderizar nada
   const hayAcciones =
-    (puedeAsignar && (esPendiente || tieneAsignacion)) ||
+    (puedeAsignar && (esPendiente || puedeReasignar)) ||
     (puedeIncidencias && !esTerminal) ||
     puedeAjustar ||
     puedeDescargarEtiqueta;
@@ -512,11 +572,11 @@ function AccionesPedido({
           </Link>
         )}
 
-        {puedeAsignar && tieneAsignacion && (
+        {puedeAsignar && puedeReasignar && (
           <DialogReasignacion
             pedidoId={pedido.id}
             estadoActual={pedido.estado}
-            conductorActual={asignacion.driver_id}
+            conductorActual={conductorNombre ?? asignacion.driver_id}
             manifiestoActual={asignacion.manifiestos?.nombre ?? asignacion.manifiesto_id}
           />
         )}

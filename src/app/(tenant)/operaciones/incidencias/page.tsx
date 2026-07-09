@@ -124,6 +124,9 @@ export default async function PaginaIncidencias({
     // Sin bloquear
   }
 
+  // Nombre legible del seller en la tabla (en vez del UUID).
+  const nombreSellerPorId = Object.fromEntries(sellers.map((s) => [s.id, s.nombre]));
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -232,7 +235,9 @@ export default async function PaginaIncidencias({
                           {inc.pedidoId.slice(0, 8)}…
                         </Link>
                       </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{inc.sellerId}</td>
+                      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+                        {nombreSellerPorId[inc.sellerId] ?? inc.sellerId}
+                      </td>
                       <td className="hidden px-4 py-3 lg:table-cell">
                         <span className={sinGestion ? "font-semibold text-destructive" : "text-muted-foreground"}>
                           {horas}h

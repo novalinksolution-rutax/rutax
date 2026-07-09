@@ -24,10 +24,19 @@ import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { ErrorValidacion } from '@/modules/identidad/errores';
 import { esquemaMotivo } from '@/lib/validacion/esquemas';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
-import type { EstadoEventoConciliacion } from './tipos';
+import type {
+  EstadoEventoConciliacion,
+  AccionSugeridaConciliacion,
+  TipoCambioConciliacion,
+} from './tipos';
+import { esTransicionValida, esEstadoTerminal as esEstadoTerminalConciliacion } from './conciliacion-clasificacion';
 import { conciliarPagoPersistido } from './aplicar-pago';
 import { esEstadoTerminal } from './matching-pago';
 import { montosDesdeNeto } from './montos';
+import { modoDtePlataforma } from './modo-dte';
+import type { TipoAccionDinero } from './preflight';
+import { calcularMontoPayout, type TipoRelacionConductor } from './jobs/calculo-payout';
+import { hayFolioDisponible } from './folios';
 
 /**
  * Valida y normaliza (trim) un motivo de texto libre del usuario con zod (#10).
@@ -232,8 +241,7 @@ export async function emitirFacturaPeriodo(
   // Resolver el modo de emisión. Por defecto SANDBOX (stub, sin SII real):
   // la emisión real exige opt-in explícito por courier — defensa en
   // profundidad sobre el switch de entorno `DTE_SANDBOX_MODE`.
-  const sandbox = process.env.DTE_SANDBOX_MODE !== 'false';
-  const modo: 'sandbox' | 'real' = sandbox ? 'sandbox' : 'real';
+  const modo = modoDtePlataforma();
 
   if (modo === 'real') {
     const { data: config } = await supabase
@@ -252,6 +260,18 @@ export async function emitirFacturaPeriodo(
   }
 
   const montoTotal = Math.round(Number(periodo.monto_total_clp ?? 0));
+
+  // Verificación de SOLO LECTURA (no reserva folio: eso lo hace el job C3 de
+  // forma transaccional). Misma precondición que ya evalúa `preflightEmitirFactura`
+  // (bloqueo `folios_agotados`) — se comprueba TAMBIÉN aquí para no publicar un
+  // evento condenado a fallar (fix QA jul 2026): sin este chequeo, el usuario
+  // veía "Factura emitida" de inmediato (la emisión real es asíncrona) aunque
+  // no hubiera folios — el job fallaba minutos después sin que nadie se enterara.
+  if (!(await hayFolioDisponible(tenantId, 33))) {
+    throw new ErrorValidacion(
+      'No hay folios CAF disponibles para facturas (tipo 33). Carga un nuevo CAF antes de emitir.',
+    );
+  }
 
   // Bitácora ANTES de publicar el evento (acción financiera auditada aunque
   // `inngest.send` falle).
@@ -379,8 +399,7 @@ export async function emitirNotaCreditoPeriodo(
   }
 
   // Resolver el modo de emisión — mismo mecanismo y opt-in que la factura.
-  const sandbox = process.env.DTE_SANDBOX_MODE !== 'false';
-  const modo: 'sandbox' | 'real' = sandbox ? 'sandbox' : 'real';
+  const modo = modoDtePlataforma();
 
   if (modo === 'real') {
     const { data: config } = await supabase
@@ -396,6 +415,17 @@ export async function emitirNotaCreditoPeriodo(
           'Actívala explícitamente en la configuración antes de emitir al SII.',
       );
     }
+  }
+
+  // Verificación de SOLO LECTURA — folio tipo 61, discriminado del 33 de la
+  // factura. Misma precondición que `preflightEmitirNotaCredito` (bloqueo
+  // `folios_agotados`); se comprueba TAMBIÉN aquí por la misma razón que en
+  // `emitirFacturaPeriodo` (fix QA jul 2026): no publicar un evento condenado
+  // a fallar sin que el usuario se entere.
+  if (!(await hayFolioDisponible(tenantId, 61))) {
+    throw new ErrorValidacion(
+      'No hay folios CAF disponibles para notas de crédito (tipo 61). Carga un nuevo CAF antes de emitir.',
+    );
   }
 
   // Bitácora ANTES de publicar el evento (acción financiera auditada aunque
@@ -484,7 +514,9 @@ export async function emitirPagoLiquidacion(
   const { data: liq, error: errorLectura } = await supabase
     .schema('dinero')
     .from('liquidaciones')
-    .select('id, tenant_id, driver_id, estado, monto_total_clp')
+    .select(
+      'id, tenant_id, driver_id, estado, monto_total_clp, bono_clp, penalizacion_clp, tipo_relacion_conductor',
+    )
     .eq('id', liquidacionId)
     .eq('tenant_id', tenantId)
     .maybeSingle();
@@ -499,8 +531,60 @@ export async function emitirPagoLiquidacion(
   }
 
   const montoTotal = Math.round(Number(liq.monto_total_clp ?? 0));
-  if (montoTotal <= 0) {
+
+  // Las mismas precondiciones que ya evalúa `preflightEmitirPago` (bloqueo) y
+  // que igualmente exige `jobEjecutarPayout` (NonRetriableError) — se
+  // verifican TAMBIÉN aquí, en la compuerta humana, para no publicar un
+  // evento condenado a fallar en el job si el usuario llega a esta acción sin
+  // haber pasado por (o habiendo salteado) el preflight. Misma fórmula
+  // compartida (`calcularMontoPayout`) — nunca puede divergir del monto que el
+  // job realmente transferiría.
+  const { data: conductorPago, error: errorConductorPago } = await supabase
+    .schema('identidad')
+    .from('conductores')
+    .select('banco, tipo_cuenta, numero_cuenta, tipo_relacion')
+    .eq('id', liq.driver_id as string)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (errorConductorPago) throw new Error(`Error al leer conductor: ${errorConductorPago.message}`);
+
+  if (!conductorPago?.banco || !conductorPago?.tipo_cuenta || !conductorPago?.numero_cuenta) {
+    throw new ErrorValidacion(
+      'El conductor no tiene datos bancarios completos (banco, tipo de cuenta, número de cuenta) — no se puede solicitar el pago.',
+    );
+  }
+
+  const { data: configPago, error: errorConfigPago } = await supabase
+    .schema('identidad')
+    .from('courier_config_payout')
+    .select('porcentaje_retencion, minimo_retiro_clp')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (errorConfigPago) throw new Error(`Error al leer configuración de payout: ${errorConfigPago.message}`);
+
+  const porcentajeRetencion =
+    typeof configPago?.porcentaje_retencion === 'number' ? configPago.porcentaje_retencion : 0;
+  const minimoRetiroClp =
+    typeof configPago?.minimo_retiro_clp === 'number' ? configPago.minimo_retiro_clp : 0;
+  const tipoRelacion: TipoRelacionConductor =
+    (conductorPago.tipo_relacion as TipoRelacionConductor | undefined) ??
+    (liq.tipo_relacion_conductor as TipoRelacionConductor);
+
+  const calculo = calcularMontoPayout({
+    montoTotalClp: montoTotal,
+    bonoClp: Math.round(Number(liq.bono_clp ?? 0)),
+    penalizacionClp: Math.round(Number(liq.penalizacion_clp ?? 0)),
+    tipoRelacion,
+    porcentajeRetencion,
+  });
+
+  if (calculo.montoLiquidoClp <= 0) {
     throw new ErrorValidacion('La liquidación no tiene monto a pagar.');
+  }
+  if (minimoRetiroClp > 0 && calculo.montoLiquidoClp < minimoRetiroClp) {
+    throw new ErrorValidacion(
+      `El monto líquido (${calculo.montoLiquidoClp} CLP) es menor al mínimo de retiro configurado (${minimoRetiroClp} CLP).`,
+    );
   }
 
   // Bitácora ANTES de publicar el evento (acción financiera auditada aunque
@@ -692,72 +776,558 @@ export async function ajustarLiquidacion(
 }
 
 // =============================================================================
-// resolverEventoConciliacion
+// Bandeja de excepciones de conciliación (§1.1 P1, jul 2026)
 // =============================================================================
+//
+// Reemplaza la vieja `resolverEventoConciliacion` (4 estados, log append-only,
+// que auditaba DESPUÉS del UPDATE) por las 7 funciones de abajo, sobre la
+// bandeja gestionable de 8 estados (migración 20260708000001). Gate único:
+// `puedeVerConciliacion(usuario)`. Orden invariante en TODAS:
+//   (1) RBAC + cargar fila actual con tenant_id + validar (incl. legalidad de
+//       la transición si aplica) ANTES de auditar;
+//   (2) `registrarEnBitacora(...)` con `actorUsuarioId` (bitácora ANTES del
+//       efecto — corrige el hallazgo de que la función vieja auditaba después);
+//   (3) UPDATE sobre `eventos_conciliacion`;
+//   (4) INSERT en `eventos_conciliacion_historial`.
 
-/**
- * Actualiza el estado de un evento de conciliación (resolución manual).
- *
- * Precondiciones:
- * - El usuario debe tener capacidad `ver_conciliacion` (dueño o administración).
- *
- * La resolución puede ser 'revisado' | 'resuelto' | 'ignorado'.
- */
-export async function resolverEventoConciliacion(
-  tenantId: string,
-  eventoId: string,
-  resolucion: Extract<EstadoEventoConciliacion, 'revisado' | 'resuelto' | 'ignorado'>,
-  usuario: UsuarioActual,
-  actorUsuarioId: string,
-): Promise<void> {
+function exigirPermisoConciliacion(usuario: UsuarioActual): void {
   if (!puedeVerConciliacion(usuario)) {
     throw new ErrorValidacion(
-      'Solo el dueño o administración puede resolver eventos de conciliación.',
+      'Solo el dueño o administración puede gestionar la bandeja de excepciones de conciliación.',
     );
   }
+}
 
-  const supabase = crearClienteServiceRole();
-
-  const { data: evento, error: errorLectura } = await supabase
+/** Carga la fila del evento acotada al tenant (aislamiento) o lanza `ErrorValidacion`. */
+async function cargarEventoConciliacionOrThrow(
+  supabase: ReturnType<typeof crearClienteServiceRole>,
+  tenantId: string,
+  eventoId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
+  const { data: evento, error } = await supabase
     .schema('dinero')
     .from('eventos_conciliacion')
-    .select('id, tenant_id, estado')
+    .select('*')
     .eq('id', eventoId)
     .eq('tenant_id', tenantId)
     .maybeSingle();
 
-  if (errorLectura) throw new Error(`Error al leer evento de conciliación: ${errorLectura.message}`);
-  if (!evento) throw new ErrorValidacion(`Evento de conciliación ${eventoId} no encontrado.`);
-  if (evento.estado === 'resuelto' || evento.estado === 'ignorado') {
-    throw new ErrorValidacion(`El evento ya está en estado '${evento.estado}'.`);
+  if (error) throw new Error(`Error al leer evento de conciliación: ${error.message}`);
+  if (!evento) throw new ErrorValidacion(`Evento de conciliación ${eventoId} no encontrado en el tenant.`);
+  return evento;
+}
+
+/** Registra una entrada en `eventos_conciliacion_historial` — helper compartido por las 7 funciones. */
+async function registrarHistorialConciliacion(
+  supabase: ReturnType<typeof crearClienteServiceRole>,
+  input: {
+    tenantId: string;
+    eventoId: string;
+    tipoCambio: TipoCambioConciliacion;
+    estadoAnterior?: string | null;
+    estadoNuevo?: string | null;
+    comentario?: string | null;
+    datos?: Record<string, unknown>;
+    actorUsuarioId: string;
+  },
+): Promise<void> {
+  const { error } = await supabase
+    .schema('dinero')
+    .from('eventos_conciliacion_historial')
+    .insert({
+      tenant_id: input.tenantId,
+      evento_id: input.eventoId,
+      tipo_cambio: input.tipoCambio,
+      estado_anterior: input.estadoAnterior ?? null,
+      estado_nuevo: input.estadoNuevo ?? null,
+      comentario: input.comentario ?? null,
+      datos: input.datos ?? {},
+      actor_usuario_id: input.actorUsuarioId,
+      actor_tipo: 'usuario',
+    });
+
+  if (error) {
+    throw new Error(`Error al registrar historial de conciliación: ${error.message}`);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 1. transicionarEventoConciliacion
+// -----------------------------------------------------------------------------
+
+/** Destinos que exigen un comentario obligatorio (cierre humano de la excepción). */
+const ESTADOS_QUE_EXIGEN_COMENTARIO: ReadonlySet<EstadoEventoConciliacion> = new Set([
+  'resuelta_manual',
+  'aceptada_justificada',
+  'ignorada',
+]);
+
+/**
+ * Transiciona el estado de una excepción de conciliación según la máquina de
+ * estados fija (`TRANSICIONES_VALIDAS` en `./conciliacion-clasificacion.ts`).
+ *
+ * Reglas de nota obligatoria (`opts.comentario`):
+ * - Exigido cuando el destino ∈ {resuelta_manual, aceptada_justificada, ignorada}.
+ * - Exigido cuando el origen es un estado terminal (motivo de la reapertura).
+ *
+ * Para destino `requiere_ajuste`: exige que el evento tenga
+ * `accion_sugerida != 'sin_accion_requerida'` (elegir una acción primero).
+ *
+ * Al ENTRAR a un estado terminal: `resuelto_en`/`resuelto_por_usuario_id` se
+ * fijan. Al REABRIR (salir de un terminal): se limpian a null. Los flags de
+ * bloqueo (`bloquea_facturacion`/`bloquea_pago`) NUNCA se tocan aquí — no se
+ * auto-limpian al resolver (decisión consciente, preserva el registro para
+ * auditoría; el preflight filtra por estado no-terminal).
+ *
+ * `resuelta_auto` no es alcanzable como destino desde esta función humana —
+ * la matriz de transiciones ya lo excluye salvo el propio caso `resuelta_auto`
+ * como origen (reapertura).
+ * // TODO(resuelta_auto): re-chequeo automático del job — Más adelante.
+ */
+export async function transicionarEventoConciliacion(
+  tenantId: string,
+  eventoId: string,
+  nuevoEstado: EstadoEventoConciliacion,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+  opts?: { comentario?: string },
+): Promise<void> {
+  exigirPermisoConciliacion(usuario);
+
+  const supabase = crearClienteServiceRole();
+  const evento = await cargarEventoConciliacionOrThrow(supabase, tenantId, eventoId);
+  const estadoAnterior = evento.estado as EstadoEventoConciliacion;
+
+  if (!esTransicionValida(estadoAnterior, nuevoEstado)) {
+    throw new ErrorValidacion(
+      `No se puede pasar de '${estadoAnterior}' a '${nuevoEstado}' — transición no permitida.`,
+    );
+  }
+
+  const origenEsTerminal = esEstadoTerminalConciliacion(estadoAnterior);
+  const requiereComentario = ESTADOS_QUE_EXIGEN_COMENTARIO.has(nuevoEstado) || origenEsTerminal;
+  const comentario = opts?.comentario?.trim() ?? '';
+
+  if (requiereComentario && comentario.length === 0) {
+    throw new ErrorValidacion(
+      origenEsTerminal
+        ? 'Indica el motivo de la reapertura antes de continuar.'
+        : 'Indica un comentario antes de marcar esta excepción como resuelta, aceptada o ignorada.',
+    );
+  }
+
+  if (nuevoEstado === 'requiere_ajuste' && evento.accion_sugerida === 'sin_accion_requerida') {
+    throw new ErrorValidacion(
+      'Elige una acción sugerida para esta excepción antes de marcarla como "requiere ajuste".',
+    );
+  }
+
+  // Bitácora ANTES del efecto (acción financiera/de gestión auditada aunque el
+  // UPDATE falle — RNF-04, con actorUsuarioId).
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.evento_conciliacion_transicionado',
+    entidadTipo: 'evento_conciliacion',
+    entidadId: eventoId,
+    detalle: {
+      estado_anterior: estadoAnterior,
+      estado_nuevo: nuevoEstado,
+      comentario: comentario || null,
+    },
+  });
+
+  const entrandoATerminal = esEstadoTerminalConciliacion(nuevoEstado);
+  const saliendoDeTerminal = origenEsTerminal && !entrandoATerminal;
+
+  const update: Record<string, unknown> = {
+    estado: nuevoEstado,
+    actualizado_en: new Date().toISOString(),
+  };
+  if (entrandoATerminal) {
+    update.resuelto_en = new Date().toISOString();
+    update.resuelto_por_usuario_id = actorUsuarioId;
+  } else if (saliendoDeTerminal) {
+    update.resuelto_en = null;
+    update.resuelto_por_usuario_id = null;
   }
 
   const { error: errorUpdate } = await supabase
     .schema('dinero')
     .from('eventos_conciliacion')
-    .update({
-      estado: resolucion,
-      resuelto_en: new Date().toISOString(),
-      resuelto_por_usuario_id: actorUsuarioId,
-    })
+    .update(update)
     .eq('id', eventoId)
     .eq('tenant_id', tenantId);
 
   if (errorUpdate) {
-    throw new Error(`Error al resolver evento de conciliación: ${errorUpdate.message}`);
+    throw new Error(`Error al transicionar el evento de conciliación: ${errorUpdate.message}`);
   }
+
+  await registrarHistorialConciliacion(supabase, {
+    tenantId,
+    eventoId,
+    tipoCambio: 'cambio_estado',
+    estadoAnterior,
+    estadoNuevo: nuevoEstado,
+    comentario: comentario || null,
+    actorUsuarioId,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 2. reabrirEventoConciliacion — wrapper delgado sobre transicionarEventoConciliacion
+// -----------------------------------------------------------------------------
+
+/**
+ * Reabre una excepción de conciliación cerrada (estado terminal). Destino:
+ * `en_analisis` si el evento tiene `asignado_a_usuario_id` no nulo, si no
+ * `pendiente`. Delega toda la validación/efectos en `transicionarEventoConciliacion`.
+ */
+export async function reabrirEventoConciliacion(
+  tenantId: string,
+  eventoId: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+  opts?: { comentario?: string },
+): Promise<void> {
+  exigirPermisoConciliacion(usuario);
+
+  const supabase = crearClienteServiceRole();
+  const evento = await cargarEventoConciliacionOrThrow(supabase, tenantId, eventoId);
+  const destino: EstadoEventoConciliacion = evento.asignado_a_usuario_id ? 'en_analisis' : 'pendiente';
+
+  await transicionarEventoConciliacion(tenantId, eventoId, destino, usuario, actorUsuarioId, opts);
+}
+
+// -----------------------------------------------------------------------------
+// 3. asignarEventoConciliacion
+// -----------------------------------------------------------------------------
+
+/**
+ * Asigna (o desasigna, con `null`) una excepción de conciliación a un usuario
+ * interno del mismo tenant. Si `asignadoAUsuarioId` no es null, valida que el
+ * usuario pertenezca al tenant, tenga rol `dueno`/`administracion` y no esté
+ * `suspendido` (vía `identidad.usuarios_perfil`).
+ */
+export async function asignarEventoConciliacion(
+  tenantId: string,
+  eventoId: string,
+  asignadoAUsuarioId: string | null,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  exigirPermisoConciliacion(usuario);
+
+  const supabase = crearClienteServiceRole();
+
+  if (asignadoAUsuarioId) {
+    const { data: perfil, error: errorPerfil } = await supabase
+      .schema('identidad')
+      .from('usuarios_perfil')
+      .select('id, tenant_id, rol, estado')
+      .eq('id', asignadoAUsuarioId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (errorPerfil) throw new Error(`Error al leer el usuario a asignar: ${errorPerfil.message}`);
+    if (!perfil) {
+      throw new ErrorValidacion('El usuario a asignar no pertenece a este tenant.');
+    }
+    if (perfil.rol !== 'dueno' && perfil.rol !== 'administracion') {
+      throw new ErrorValidacion('Solo se puede asignar la excepción a un usuario con rol dueño o administración.');
+    }
+    if (perfil.estado === 'suspendido') {
+      throw new ErrorValidacion('No se puede asignar la excepción a un usuario suspendido.');
+    }
+  }
+
+  const evento = await cargarEventoConciliacionOrThrow(supabase, tenantId, eventoId);
+  const asignadoAnterior = (evento.asignado_a_usuario_id as string | null) ?? null;
 
   await registrarEnBitacora(supabase, {
     tenantId,
     actorUsuarioId,
     actorTipo: 'usuario',
-    accion: 'dinero.evento_conciliacion_resuelto',
+    accion: 'dinero.evento_conciliacion_asignado',
     entidadTipo: 'evento_conciliacion',
     entidadId: eventoId,
     detalle: {
-      resolucion,
-      estado_anterior: evento.estado,
+      asignado_a: asignadoAUsuarioId,
+      asignado_a_anterior: asignadoAnterior,
     },
+  });
+
+  const { error: errorUpdate } = await supabase
+    .schema('dinero')
+    .from('eventos_conciliacion')
+    .update({
+      asignado_a_usuario_id: asignadoAUsuarioId,
+      asignado_en: asignadoAUsuarioId ? new Date().toISOString() : null,
+      asignado_por_usuario_id: asignadoAUsuarioId ? actorUsuarioId : null,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', eventoId)
+    .eq('tenant_id', tenantId);
+
+  if (errorUpdate) {
+    throw new Error(`Error al asignar el evento de conciliación: ${errorUpdate.message}`);
+  }
+
+  await registrarHistorialConciliacion(supabase, {
+    tenantId,
+    eventoId,
+    tipoCambio: 'asignacion',
+    datos: { asignado_a: asignadoAUsuarioId, asignado_a_anterior: asignadoAnterior },
+    actorUsuarioId,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 4. fijarFechaLimiteConciliacion
+// -----------------------------------------------------------------------------
+
+const REGEX_FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Fija (o limpia, con `null`) la fecha límite (SLA) de una excepción de conciliación. */
+export async function fijarFechaLimiteConciliacion(
+  tenantId: string,
+  eventoId: string,
+  fechaLimite: string | null,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  exigirPermisoConciliacion(usuario);
+
+  if (fechaLimite !== null && !REGEX_FECHA_ISO.test(fechaLimite)) {
+    throw new ErrorValidacion(`Fecha límite inválida: "${fechaLimite}". Formato esperado: YYYY-MM-DD.`);
+  }
+
+  const supabase = crearClienteServiceRole();
+  const evento = await cargarEventoConciliacionOrThrow(supabase, tenantId, eventoId);
+  const valorAnterior = (evento.fecha_limite as string | null) ?? null;
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.evento_conciliacion_fecha_limite_fijada',
+    entidadTipo: 'evento_conciliacion',
+    entidadId: eventoId,
+    detalle: { valor: fechaLimite, valor_anterior: valorAnterior },
+  });
+
+  const { error: errorUpdate } = await supabase
+    .schema('dinero')
+    .from('eventos_conciliacion')
+    .update({ fecha_limite: fechaLimite, actualizado_en: new Date().toISOString() })
+    .eq('id', eventoId)
+    .eq('tenant_id', tenantId);
+
+  if (errorUpdate) {
+    throw new Error(`Error al fijar la fecha límite del evento de conciliación: ${errorUpdate.message}`);
+  }
+
+  await registrarHistorialConciliacion(supabase, {
+    tenantId,
+    eventoId,
+    tipoCambio: 'fecha_limite',
+    datos: { valor: fechaLimite, valor_anterior: valorAnterior },
+    actorUsuarioId,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 5. fijarBloqueosConciliacion
+// -----------------------------------------------------------------------------
+
+/**
+ * Fija los flags de bloqueo de acciones financieras (`bloquea_facturacion` /
+ * `bloquea_pago`) de una excepción de conciliación. Espeja el CHECK SQL
+ * `eventos_conciliacion_bloqueo_motivo` (no confía solo en el CHECK — da un
+ * error de validación legible antes de golpear la BD): si alguno de los dos
+ * flags queda en `true`, `motivoBloqueo` es obligatorio (no vacío).
+ */
+export async function fijarBloqueosConciliacion(
+  tenantId: string,
+  eventoId: string,
+  opciones: { bloqueaFacturacion: boolean; bloqueaPago: boolean; motivoBloqueo: string | null },
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  exigirPermisoConciliacion(usuario);
+
+  const { bloqueaFacturacion, bloqueaPago } = opciones;
+  const motivo = opciones.motivoBloqueo?.trim() ?? '';
+
+  if ((bloqueaFacturacion || bloqueaPago) && motivo.length === 0) {
+    throw new ErrorValidacion('Indica el motivo del bloqueo antes de bloquear la facturación o el pago.');
+  }
+
+  const supabase = crearClienteServiceRole();
+  const evento = await cargarEventoConciliacionOrThrow(supabase, tenantId, eventoId);
+
+  const anteriores = {
+    bloqueaFacturacion: (evento.bloquea_facturacion as boolean | null) ?? false,
+    bloqueaPago: (evento.bloquea_pago as boolean | null) ?? false,
+    motivoBloqueo: (evento.motivo_bloqueo as string | null) ?? null,
+  };
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.evento_conciliacion_bloqueo_fijado',
+    entidadTipo: 'evento_conciliacion',
+    entidadId: eventoId,
+    detalle: {
+      bloquea_facturacion: bloqueaFacturacion,
+      bloquea_pago: bloqueaPago,
+      motivo_bloqueo: motivo || null,
+      bloquea_facturacion_anterior: anteriores.bloqueaFacturacion,
+      bloquea_pago_anterior: anteriores.bloqueaPago,
+    },
+  });
+
+  const { error: errorUpdate } = await supabase
+    .schema('dinero')
+    .from('eventos_conciliacion')
+    .update({
+      bloquea_facturacion: bloqueaFacturacion,
+      bloquea_pago: bloqueaPago,
+      motivo_bloqueo: motivo || null,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', eventoId)
+    .eq('tenant_id', tenantId);
+
+  if (errorUpdate) {
+    throw new Error(`Error al fijar el bloqueo del evento de conciliación: ${errorUpdate.message}`);
+  }
+
+  await registrarHistorialConciliacion(supabase, {
+    tenantId,
+    eventoId,
+    tipoCambio: 'bloqueo',
+    comentario: motivo || null,
+    datos: {
+      bloquea_facturacion: bloqueaFacturacion,
+      bloquea_pago: bloqueaPago,
+      bloquea_facturacion_anterior: anteriores.bloqueaFacturacion,
+      bloquea_pago_anterior: anteriores.bloqueaPago,
+      motivo_bloqueo_anterior: anteriores.motivoBloqueo,
+    },
+    actorUsuarioId,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 6. cambiarAccionSugeridaConciliacion
+// -----------------------------------------------------------------------------
+
+const ACCIONES_SUGERIDAS_VALIDAS: ReadonlySet<AccionSugeridaConciliacion> = new Set([
+  'revisar_tarifa_aplicada',
+  'confirmar_con_seller',
+  'confirmar_con_conductor',
+  'generar_cobro_manual',
+  'generar_ajuste_liquidacion',
+  'reasignar_lineas_a_periodo',
+  'reenviar_o_verificar_dte',
+  'gestionar_cobranza_seller',
+  'gestionar_pago_conductor',
+  'marcar_error_del_motor',
+  'sin_accion_requerida',
+  'revisar_estado_externo',
+]);
+
+/** Cambia la acción sugerida de una excepción de conciliación. */
+export async function cambiarAccionSugeridaConciliacion(
+  tenantId: string,
+  eventoId: string,
+  accionSugerida: AccionSugeridaConciliacion,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  exigirPermisoConciliacion(usuario);
+
+  if (!ACCIONES_SUGERIDAS_VALIDAS.has(accionSugerida)) {
+    throw new ErrorValidacion(`Acción sugerida inválida: "${accionSugerida}".`);
+  }
+
+  const supabase = crearClienteServiceRole();
+  const evento = await cargarEventoConciliacionOrThrow(supabase, tenantId, eventoId);
+  const valorAnterior = evento.accion_sugerida as AccionSugeridaConciliacion;
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.evento_conciliacion_accion_sugerida_cambiada',
+    entidadTipo: 'evento_conciliacion',
+    entidadId: eventoId,
+    detalle: { valor: accionSugerida, valor_anterior: valorAnterior },
+  });
+
+  const { error: errorUpdate } = await supabase
+    .schema('dinero')
+    .from('eventos_conciliacion')
+    .update({ accion_sugerida: accionSugerida, actualizado_en: new Date().toISOString() })
+    .eq('id', eventoId)
+    .eq('tenant_id', tenantId);
+
+  if (errorUpdate) {
+    throw new Error(`Error al cambiar la acción sugerida del evento de conciliación: ${errorUpdate.message}`);
+  }
+
+  await registrarHistorialConciliacion(supabase, {
+    tenantId,
+    eventoId,
+    tipoCambio: 'accion_sugerida',
+    datos: { valor: accionSugerida, valor_anterior: valorAnterior },
+    actorUsuarioId,
+  });
+}
+
+// -----------------------------------------------------------------------------
+// 7. agregarComentarioConciliacion
+// -----------------------------------------------------------------------------
+
+/**
+ * Agrega un comentario libre al historial de una excepción de conciliación,
+ * SIN mutar la fila padre (solo bitácora + INSERT en el historial).
+ */
+export async function agregarComentarioConciliacion(
+  tenantId: string,
+  eventoId: string,
+  comentario: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  exigirPermisoConciliacion(usuario);
+
+  const comentarioLimpio = validarMotivo(comentario);
+
+  const supabase = crearClienteServiceRole();
+  // Confirma existencia + tenant (aislamiento) aunque no se actualice la fila padre.
+  await cargarEventoConciliacionOrThrow(supabase, tenantId, eventoId);
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.evento_conciliacion_comentado',
+    entidadTipo: 'evento_conciliacion',
+    entidadId: eventoId,
+    detalle: { comentario: comentarioLimpio },
+  });
+
+  await registrarHistorialConciliacion(supabase, {
+    tenantId,
+    eventoId,
+    tipoCambio: 'comentario',
+    comentario: comentarioLimpio,
+    actorUsuarioId,
   });
 }
 
@@ -1197,4 +1767,60 @@ export async function anularLineaLiquidacionPedido(
     .update({ liquidacion_generada: false, actualizado_en: new Date().toISOString() })
     .eq('id', pedidoId)
     .eq('tenant_id', tenantId);
+}
+
+// =============================================================================
+// registrarPreflightOmitido — override del preflight P0 (auditoría jul 2026)
+// =============================================================================
+
+/**
+ * Registra en bitácora que el usuario decidió CONTINUAR con una acción
+ * financiera irreversible (`emitirFacturaPeriodo`, `emitirNotaCreditoPeriodo`,
+ * `emitirPagoLiquidacion`) sin un preflight válido — el preflight de
+ * `src/modules/dinero/preflight.ts` falló al ejecutarse (error de red/lectura,
+ * escenario degradado), y el usuario eligió "continuar bajo mi
+ * responsabilidad" en vez de reintentar.
+ *
+ * Esta función NUNCA reemplaza al preflight normal: cuando el preflight sí
+ * corre y solo muestra advertencias (categoría `advierte`/`informativo`), el
+ * usuario simplemente confirma la acción real — no hace falta este override.
+ * Solo existe para el caso en que el preflight mismo no pudo evaluarse.
+ *
+ * Exige la MISMA capacidad RBAC que la acción financiera que se está por
+ * ejecutar (factura/NC → `emitir_facturas`; pago → `gestionar_liquidaciones_
+ * conductores`) — el override no es una puerta trasera para saltarse permisos.
+ *
+ * @param actorUsuarioId UUID de auth del usuario que decide continuar
+ *   (`sesion.usuarioId`). Queda en la bitácora — RNF-04 exige el "quién".
+ */
+export async function registrarPreflightOmitido(
+  tenantId: string,
+  tipoAccion: TipoAccionDinero,
+  entidadId: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  const esAccionDeFacturacion = tipoAccion === 'emitir_factura' || tipoAccion === 'emitir_nota_credito';
+
+  const autorizado = esAccionDeFacturacion
+    ? puedeEmitirFacturas(usuario)
+    : puedeGestionarLiquidacionesConductores(usuario);
+
+  if (!autorizado) {
+    throw new ErrorValidacion('No tienes permiso para continuar sin verificación previa en esta acción.');
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.preflight_omitido',
+    entidadTipo: esAccionDeFacturacion ? 'periodo_cobro' : 'liquidacion',
+    entidadId,
+    detalle: {
+      tipo_accion: tipoAccion,
+    },
+  });
 }
