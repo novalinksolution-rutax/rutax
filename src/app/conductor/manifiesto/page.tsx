@@ -24,6 +24,7 @@ import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
 import { PingUbicacion } from "./ping-ubicacion";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 
 // =============================================================================
 // Tipos auxiliares
@@ -254,7 +255,16 @@ export default async function PaginaManifiestoActivo() {
     <div className="space-y-4 pb-24">
       {/* Encabezado fijo (se incluye en el layout sticky del layout) */}
       <div className="space-y-1">
-        <h1 className="text-xl font-bold">{manifiesto.nombre}</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-xl font-bold">{manifiesto.nombre}</h1>
+          <IndicadorEnVivo
+            tenantId={tenantId}
+            tablas={[
+              { schema: "operacion", tabla: "pedidos" },
+              { schema: "operacion", tabla: "manifiestos" },
+            ]}
+          />
+        </div>
         <p className="text-sm text-muted-foreground">
           {manifiesto.fechaOperacion}{" — "}
           <span className="font-medium text-foreground">

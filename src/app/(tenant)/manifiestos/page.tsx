@@ -29,6 +29,7 @@ import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
 import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 import { FiltrosManifiestos } from "./filtros-manifiestos";
 import { BotonAutoAsignar } from "./boton-auto-asignar";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 
 interface SearchParams {
   estado?: string;
@@ -101,7 +102,13 @@ export default async function PaginaManifiestos({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-heading text-2xl font-bold">Manifiestos</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="font-heading text-2xl font-bold">Manifiestos</h1>
+          <IndicadorEnVivo
+            tenantId={tenantId}
+            tablas={[{ schema: "operacion", tabla: "manifiestos" }]}
+          />
+        </div>
         <div className="flex items-center gap-2">
           {puedeAutoAsignar && <BotonAutoAsignar fechaHoy={fechaHoy} />}
           {puedeCrear && (
