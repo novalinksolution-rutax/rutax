@@ -8,9 +8,10 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Info, Inbox, Clock } from "lucide-react";
+import { AlertTriangle, Info, Inbox, Clock, Navigation } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { urlGoogleMapsRuta, MAX_PARADAS_RUTA } from "@/lib/ui/mapas";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -241,6 +242,14 @@ export default async function PaginaManifiestoActivo() {
     );
   }
 
+  // Ruta completa multi-parada para abrir en Google Maps (el orden ya viene
+  // calculado por ordenarParadasPorComunaYDireccion).
+  const direccionesRuta = manifiesto.pedidos.map(({ pedido }) =>
+    [pedido.destinatarioDireccion, pedido.destinatarioComuna, "Santiago"].filter(Boolean).join(", "),
+  );
+  const urlRuta = urlGoogleMapsRuta(direccionesRuta);
+  const rutaTruncada = manifiesto.pedidos.length > MAX_PARADAS_RUTA;
+
   return (
     <div className="space-y-4 pb-24">
       {/* Encabezado fijo (se incluye en el layout sticky del layout) */}
@@ -253,6 +262,26 @@ export default async function PaginaManifiestoActivo() {
           </span>
         </p>
       </div>
+
+      {/* Ruta completa — abrir todas las paradas ordenadas en Google Maps */}
+      {urlRuta && (
+        <div className="space-y-1">
+          <a
+            href={urlRuta}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Navigation className="size-4" aria-hidden="true" />
+            Abrir ruta en Google Maps
+          </a>
+          {rutaTruncada && (
+            <p className="text-center text-xs text-muted-foreground">
+              Abre las primeras {MAX_PARADAS_RUTA} paradas; el resto, parada por parada.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Banner permanente "usa la app de Flex" (B-3).
           NO tiene botón de cerrar. NO es colapsable. Es parte permanente de la UI. */}

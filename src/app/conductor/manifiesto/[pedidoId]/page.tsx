@@ -10,9 +10,10 @@
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, MapPin, Phone, AlertTriangle, Clock } from "lucide-react";
+import { ChevronLeft, MapPin, Navigation, Phone, AlertTriangle, Clock } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { urlGoogleMapsBusqueda, urlWazeBusqueda } from "@/lib/ui/mapas";
 import { Badge } from "@/components/ui/badge";
 import {
   traducirEstadoPedido,
@@ -143,11 +144,12 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
   const { pedido, incidenciaAbierta } = resultado;
 
-  // URL de Google Maps con la dirección completa
+  // Enlaces de navegación (Google Maps + Waze) a la dirección de la parada.
   const direccionCompleta = [pedido.destinatarioDireccion, pedido.destinatarioComuna, "Santiago"]
     .filter(Boolean)
     .join(", ");
-  const urlGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccionCompleta)}`;
+  const urlGoogleMaps = urlGoogleMapsBusqueda(direccionCompleta);
+  const urlWaze = urlWazeBusqueda(direccionCompleta);
 
   // ETA (solo same-day)
   const esSameDay = pedido.tipoPedido === "same_day";
@@ -204,15 +206,26 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
             <p className="text-sm text-muted-foreground">{pedido.destinatarioComuna}</p>
           </div>
         </div>
-        <a
-          href={urlGoogleMaps}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-info px-4 text-sm font-semibold text-info-foreground transition-colors hover:bg-info/90"
-        >
-          <MapPin className="size-4" aria-hidden="true" />
-          Abrir en Google Maps
-        </a>
+        <div className="grid grid-cols-2 gap-2">
+          <a
+            href={urlGoogleMaps}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg bg-info px-4 text-sm font-semibold text-info-foreground transition-colors hover:bg-info/90"
+          >
+            <MapPin className="size-4" aria-hidden="true" />
+            Google Maps
+          </a>
+          <a
+            href={urlWaze}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-info bg-card px-4 text-sm font-semibold text-info transition-colors hover:bg-info-subtle"
+          >
+            <Navigation className="size-4" aria-hidden="true" />
+            Waze
+          </a>
+        </div>
       </div>
 
       {/* Teléfono (si existe) — enlace tel: */}
