@@ -25,6 +25,8 @@ import { DialogMarcarPagada } from "./dialog-marcar-pagada";
 import { DialogEmitirPago } from "./dialog-emitir-pago";
 import { BotonDescargaPdfLiquidacion } from "./boton-descarga-pdf-liquidacion";
 import { DialogAjustarLiquidacion } from "./dialog-ajustar";
+import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
+import { accionPreflightLotePagos, accionEmitirPagosLote } from "./actions";
 
 export const metadata: Metadata = {
   title: "Liquidaciones",
@@ -89,6 +91,8 @@ export default async function PaginaLiquidaciones({
   let liquidaciones: LiquidacionConNombre[] = [];
   let conductoresDisponibles: { id: string; nombre: string }[] = [];
   const payoutPorLiquidacion = new Map<string, PayoutResumen>();
+  // Elegibles para pagar en lote: liquidaciones 'emitida' sin payout en tránsito.
+  let itemsLotePagos: ItemLoteUI[] = [];
   let errorCarga = false;
 
   // Contadores para chips
@@ -161,6 +165,27 @@ export default async function PaginaLiquidaciones({
       ...l,
       conductorNombre: conductoresMap.get(l.driverId) ?? l.driverId,
     }));
+
+    // Elegibles para pagar en lote: 'emitida' sin un payout en tránsito/confirmado
+    // (mismo criterio que el botón "Emitir pago" individual de la tabla).
+    itemsLotePagos = liquidaciones
+      .filter((l) => {
+        if (l.estado !== "emitida") return false;
+        const p = payoutPorLiquidacion.get(l.id);
+        return !(
+          p &&
+          (p.estado === "pendiente" ||
+            p.estado === "procesando" ||
+            p.estado === "enviado" ||
+            p.estado === "confirmado")
+        );
+      })
+      .map((l) => ({
+        id: l.id,
+        etiqueta: l.conductorNombre,
+        sub: `${formatearFechaCorta(l.fechaInicio)}–${formatearFechaCorta(l.fechaFin)}`,
+        montoClp: (l.montoTotalClp ?? 0) + l.bonoClp - l.penalizacionClp,
+      }));
   } catch {
     errorCarga = true;
   }
@@ -272,6 +297,16 @@ export default async function PaginaLiquidaciones({
         >
           No se pudo cargar la lista de liquidaciones. Intenta recargar la página.
         </div>
+      )}
+
+      {/* Aprobación por lotes — pagar varias liquidaciones emitidas de una vez */}
+      {!errorCarga && itemsLotePagos.length > 0 && (
+        <AprobacionLote
+          items={itemsLotePagos}
+          tipo="pago"
+          accionPreflight={accionPreflightLotePagos}
+          accionEmitir={accionEmitirPagosLote}
+        />
       )}
 
       {/* Tabla / vacío */}

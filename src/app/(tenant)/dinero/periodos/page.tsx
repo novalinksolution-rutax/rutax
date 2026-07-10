@@ -28,6 +28,8 @@ import {
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
 import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
+import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
+import { accionPreflightLoteFacturas, accionEmitirFacturasLote } from "./actions";
 
 export const metadata: Metadata = {
   title: "Períodos de cobro",
@@ -70,6 +72,9 @@ export default async function PaginaPeriodosCobro({
   let periodos: PeriodoCobro[] = [];
   let periodosConDte: PeriodoConDte[] = [];
   let sellersDisponibles: { id: string; nombre: string }[] = [];
+  // Elementos elegibles para la aprobación en lote: períodos 'cerrado' listos
+  // para facturar (de TODO el conjunto, no solo la página visible).
+  let itemsLoteFacturas: ItemLoteUI[] = [];
   let errorCarga = false;
 
   // Contadores para chips (siempre sin filtro de estado para mostrar totales reales)
@@ -146,6 +151,16 @@ export default async function PaginaPeriodosCobro({
       dte: dteMap.get(p.id) ?? null,
       sellerNombre: sellersMap.get(p.sellerId) ?? p.sellerId,
     }));
+
+    // Elegibles para facturar en lote: todos los 'cerrado' del conjunto filtrado.
+    itemsLoteFacturas = todosPeriodos
+      .filter((p) => p.estado === "cerrado")
+      .map((p) => ({
+        id: p.id,
+        etiqueta: sellersMap.get(p.sellerId) ?? p.sellerId,
+        sub: `${formatearFechaCorta(p.fechaInicio)}–${formatearFechaCorta(p.fechaFin)}`,
+        montoClp: p.montoTotalClp ?? 0,
+      }));
   } catch {
     errorCarga = true;
   }
@@ -268,6 +283,16 @@ export default async function PaginaPeriodosCobro({
         >
           No se pudo cargar la lista de períodos. Intenta recargar la página.
         </div>
+      )}
+
+      {/* Aprobación por lotes — facturar varios períodos cerrados de una vez */}
+      {!errorCarga && itemsLoteFacturas.length > 0 && (
+        <AprobacionLote
+          items={itemsLoteFacturas}
+          tipo="factura"
+          accionPreflight={accionPreflightLoteFacturas}
+          accionEmitir={accionEmitirFacturasLote}
+        />
       )}
 
       {/* Tabla */}

@@ -12,6 +12,8 @@ import { revalidatePath } from "next/cache";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cerrarPeriodoManualmente, emitirFacturaPeriodo } from "@/modules/dinero/acciones";
+import { preflightLoteFacturas, type ResultadoPreflightLote } from "@/modules/dinero/preflight-lote";
+import { emitirFacturasLote, type ResultadoLote } from "@/modules/dinero/acciones-lote";
 
 // =============================================================================
 // Cerrar período manualmente
@@ -73,6 +75,54 @@ export async function accionEmitirFactura(
   } catch (err) {
     const mensaje =
       err instanceof Error ? err.message : "Error desconocido al emitir la factura.";
+    return { ok: false, mensaje };
+  }
+}
+
+// =============================================================================
+// Aprobación por LOTES de facturas (§1.4 P1) — selección múltiple ≠ automático
+// =============================================================================
+
+/** Preflight consolidado de varios períodos antes de aprobar la emisión en lote. */
+export async function accionPreflightLoteFacturas(
+  periodoIds: string[],
+): Promise<{ ok: true; resultado: ResultadoPreflightLote } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+  try {
+    const resultado = await preflightLoteFacturas(sesion.usuario.tenantId, periodoIds, sesion.usuario);
+    return { ok: true, resultado };
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : "Error al verificar el lote.";
+    return { ok: false, mensaje };
+  }
+}
+
+/**
+ * Emite en lote las facturas de los períodos confirmados. Cada período pasa por
+ * `emitirFacturaPeriodo` (con su RBAC, bitácora y evento) — el lote no salta
+ * ningún control. Devuelve el resultado por elemento.
+ */
+export async function accionEmitirFacturasLote(
+  periodoIds: string[],
+): Promise<{ ok: true; resultado: ResultadoLote } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+  try {
+    const resultado = await emitirFacturasLote(
+      sesion.usuario.tenantId,
+      periodoIds,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    revalidatePath("/dinero/periodos");
+    return { ok: true, resultado };
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : "Error al emitir el lote de facturas.";
     return { ok: false, mensaje };
   }
 }
