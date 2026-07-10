@@ -218,6 +218,87 @@ export async function obtenerPeriodosDeSuscripcion(
   return (data ?? []).map(filaToPeriodoSuscripcion);
 }
 
+/** Período de suscripción con los datos de su último pago (para el tablero de cobros). */
+export interface PeriodoConPago extends PeriodoSuscripcion {
+  /** URL del link de cobro Fintoc del último pago pendiente (si se generó). */
+  linkPagoUrl: string | null;
+  /** Estado del último pago: 'pendiente' | 'confirmado' | 'fallido' (o null si no hay pago). */
+  pagoEstado: string | null;
+  /** Método del último pago: 'fintoc_link' | 'transferencia_manual' | 'cortesia'. */
+  metodoPago: string | null;
+  /** Momento de confirmación del pago (si confirmado). */
+  pagadoEn: string | null;
+}
+
+/**
+ * Lista los períodos de una suscripción junto con su último pago (link, estado,
+ * método). Combina dos queries (períodos + pagos) en TypeScript — PostgREST no
+ * hace joins intra-schema desnormalizados de forma trivial aquí.
+ */
+export async function obtenerPeriodosConPago(
+  suscripcionId: string,
+  limite = 12,
+): Promise<PeriodoConPago[]> {
+  const supabase = crearClienteServiceRole();
+
+  const { data: periodosData, error: errPeriodos } = await supabase
+    .schema('plataforma')
+    .from('periodos_suscripcion')
+    .select('*')
+    .eq('suscripcion_id', suscripcionId)
+    .order('periodo_inicio', { ascending: false })
+    .limit(limite);
+
+  if (errPeriodos) throw new Error(`Error al obtener períodos: ${errPeriodos.message}`);
+  const periodos = (periodosData ?? []).map(filaToPeriodoSuscripcion);
+  if (periodos.length === 0) return [];
+
+  // Último pago por período (el más reciente por registrado_en).
+  const periodoIds = periodos.map((p) => p.id);
+  const { data: pagosData, error: errPagos } = await supabase
+    .schema('plataforma')
+    .from('pagos_plataforma')
+    .select('periodo_id, estado, metodo, link_pago_url, pagado_en, registrado_en')
+    .in('periodo_id', periodoIds)
+    .order('registrado_en', { ascending: false });
+
+  if (errPagos) throw new Error(`Error al leer pagos: ${errPagos.message}`);
+
+  // Primer pago por período = el más reciente (ya vienen ordenados desc).
+  const ultimoPagoPorPeriodo = new Map<string, Record<string, unknown>>();
+  for (const pago of pagosData ?? []) {
+    const pid = pago.periodo_id as string;
+    if (!ultimoPagoPorPeriodo.has(pid)) ultimoPagoPorPeriodo.set(pid, pago);
+  }
+
+  return periodos.map((periodo) => {
+    const pago = ultimoPagoPorPeriodo.get(periodo.id);
+    return {
+      ...periodo,
+      linkPagoUrl: (pago?.link_pago_url as string | null) ?? null,
+      pagoEstado: (pago?.estado as string | null) ?? null,
+      metodoPago: (pago?.metodo as string | null) ?? null,
+      pagadoEn: (pago?.pagado_en as string | null) ?? null,
+    };
+  });
+}
+
+/**
+ * Obtiene la suscripción por su id (para la cabecera de la página de detalle).
+ */
+export async function obtenerSuscripcionPorId(suscripcionId: string): Promise<SuscripcionConPlan | null> {
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema('plataforma')
+    .from('suscripciones')
+    .select('tenant_id')
+    .eq('id', suscripcionId)
+    .maybeSingle();
+  if (error) throw new Error(`Error al leer suscripción: ${error.message}`);
+  if (!data) return null;
+  return obtenerSuscripcionPorTenant(data.tenant_id as string);
+}
+
 // =============================================================================
 // Tenants sin suscripción
 // =============================================================================

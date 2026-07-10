@@ -21,8 +21,11 @@ export const inngest = new Inngest({
   // El event key se lee de la variable de entorno automáticamente por el SDK
   // cuando se llama a inngest.send(). No se hardcodea aquí.
   //
-  // Middleware de observabilidad: captura el error final de cualquier job que
-  // falla y lo envía a la observabilidad central (Sentry/logs). Único punto,
-  // no invade cada job. Ver middleware-observabilidad.ts.
+  // UN solo middleware transversal a propósito: concentra observabilidad (envía
+  // el error final a Sentry/logs) Y telemetría (registra cada run en
+  // infra.ejecuciones_job para el tablero de salud — auditoría §2.7/§3.2/QW3).
+  // Registrar un segundo BaseMiddleware recompone los stepOutputTransform de
+  // Inngest v4 y rompe el tipado de step.run en jobs existentes. Ver
+  // middleware-observabilidad.ts y telemetria-jobs.ts.
   middleware: [MiddlewareObservabilidad],
 });

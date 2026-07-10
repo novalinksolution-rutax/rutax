@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -213,6 +214,9 @@ function AccionesSuscripcion({
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/admin/suscripciones/${suscripcion.id}`}>Cobros</Link>
+        </Button>
         {(suscripcion.estado === "trial" || suscripcion.estado === "suspendida") && (
           <Button
             variant="outline"

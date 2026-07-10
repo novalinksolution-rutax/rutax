@@ -1,30 +1,57 @@
 /**
- * Middleware de observabilidad para Inngest (API v4 basada en clases).
+ * Middleware de observabilidad + telemetría para Inngest (API v4, clases).
  * =====================================================================
- * Captura, en UN SOLO punto, el fallo FINAL de cualquier job (reintentos
- * agotados o error no reintentable) y lo envía a la observabilidad central
- * (Sentry/logs). Cubre "alertas por ejecuciones fallidas" de la auditoría para
- * TODOS los procesos automáticos (ingesta, cierre de períodos, liquidaciones,
- * facturación, conciliación, refresco de credenciales…) sin tocar cada job.
+ * ÚNICO middleware transversal del cliente Inngest. Dos responsabilidades, un
+ * solo punto (no invade cada job):
  *
- * Se engancha en `onRunError`, que Inngest llama SOLO cuando la función lanza
- * (no por cada step ni por cada reintento memoizado). Con `isFinalAttempt`
- * filtramos los reintentos transitorios —esos los maneja y muestra Inngest—
- * y reportamos únicamente el fallo real, con tenant y runId de correlación.
+ *  1. TELEMETRÍA de ejecución (auditoría §2.7/§3.2/QW3): una fila por run en
+ *     `infra.ejecuciones_job` (inicio, fin, duración, resumen) para el tablero
+ *     de salud del super-admin. La lógica vive en `telemetria-jobs.ts`.
+ *  2. ALERTA a la observabilidad central (Sentry/logs) del fallo FINAL de un
+ *     job — reintentos agotados o error no reintentable.
+ *
+ * Es UN solo middleware a propósito: registrar un segundo `BaseMiddleware` en el
+ * cliente recompone los `stepOutputTransform` de la v4 y colapsa el tipo de
+ * salida de `step.run` a `{}`, rompiendo el typecheck de jobs existentes. Al
+ * concentrar ambas responsabilidades aquí, la inferencia de tipos no cambia.
+ *
+ * Hooks (Inngest ejecuta un run a lo largo de varias requests; el middleware se
+ * instancia por request, así que el estado del run vive en la BD vía la RPC
+ * upsert, no en la instancia):
+ *  - onRunStart    → telemetría 'ejecutando'.
+ *  - onRunComplete → telemetría 'ok' + resumen (output del job).
+ *  - onRunError    → SOLO fallo final: telemetría 'error' + alerta a Sentry.
+ *
+ * Con `isFinalAttempt` filtramos los reintentos transitorios —esos los maneja y
+ * muestra Inngest— y solo reportamos el fallo real, con tenant y runId de
+ * correlación. Ninguna de las dos responsabilidades puede lanzar hacia el job.
  */
 
 import { Middleware } from 'inngest';
 import { capturarExcepcion } from '@/lib/observabilidad';
+import { registrarTelemetriaRun, leerIdJob } from './telemetria-jobs';
 
 export class MiddlewareObservabilidad extends Middleware.BaseMiddleware {
   readonly id = 'observabilidad';
 
-  async onRunError(arg: Middleware.OnRunErrorArgs): Promise<void> {
-    try {
-      // Solo el fallo definitivo: los reintentos transitorios los reintenta y
-      // muestra Inngest; no queremos ruido de un error que luego se recupera.
-      if (!arg.isFinalAttempt) return;
+  async onRunStart(arg: Middleware.OnRunStartArgs): Promise<void> {
+    await registrarTelemetriaRun('ejecutando', arg.ctx, arg.fn);
+  }
 
+  async onRunComplete(arg: Middleware.OnRunCompleteArgs): Promise<void> {
+    await registrarTelemetriaRun('ok', arg.ctx, arg.fn, { resumen: arg.output });
+  }
+
+  async onRunError(arg: Middleware.OnRunErrorArgs): Promise<void> {
+    // Solo el fallo definitivo: los reintentos transitorios los reintenta y
+    // muestra Inngest; no queremos ruido de un error que luego se recupera.
+    if (!arg.isFinalAttempt) return;
+
+    // 1) Telemetría durable: marca el run como 'error' (para el tablero).
+    await registrarTelemetriaRun('error', arg.ctx, arg.fn, { error: arg.error });
+
+    // 2) Alerta a la observabilidad central (Sentry/logs).
+    try {
       const ctx = arg.ctx as unknown as {
         runId?: string;
         attempt?: number;
@@ -34,7 +61,7 @@ export class MiddlewareObservabilidad extends Middleware.BaseMiddleware {
         typeof ctx.event?.data?.tenantId === 'string' ? ctx.event.data.tenantId : undefined;
 
       await capturarExcepcion(arg.error, {
-        origen: `job:${leerId(arg.fn)}`,
+        origen: `job:${leerIdJob(arg.fn)}`,
         tenantId,
         correlacionId: ctx.runId,
         etiquetas: {
@@ -46,14 +73,4 @@ export class MiddlewareObservabilidad extends Middleware.BaseMiddleware {
       // La observabilidad NUNCA interfiere con la ejecución del job.
     }
   }
-}
-
-/** Lee el id del job de forma defensiva (`fn.id()` o `fn.name`). */
-function leerId(fn: { id?: (prefix?: string) => string; name?: string }): string {
-  try {
-    if (typeof fn.id === 'function') return fn.id();
-  } catch {
-    // sigue al fallback
-  }
-  return typeof fn.name === 'string' && fn.name ? fn.name : 'desconocido';
 }

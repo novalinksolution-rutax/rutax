@@ -10,9 +10,15 @@ enabled = true
 port = 54321
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public", "operacion", "identidad", "dinero", "integraciones"]
+# NOTA: `plataforma` (backstage Rutax: suscripciones/cobros) se expone para que el
+# módulo lo alcance vía supabase-js (`.schema('plataforma')`, service_role). Es
+# SEGURO exponerlo: sus tablas tienen RLS enable+force SIN políticas + grants
+# revocados a authenticated/anon → esos roles no leen NADA; solo service_role
+# (que bypasea RLS) accede. `infra` NO se expone a propósito: se accede solo por
+# RPC SECURITY DEFINER en `public` (rate_limit, telemetría de jobs).
+schemas = ["public", "graphql_public", "operacion", "identidad", "dinero", "integraciones", "plataforma"]
 # Extra schemas to add to the search_path of every request.
-extra_search_path = ["public", "operacion", "identidad", "dinero", "integraciones", "extensions"]
+extra_search_path = ["public", "operacion", "identidad", "dinero", "integraciones", "plataforma", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
 max_rows = 1000

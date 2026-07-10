@@ -16,6 +16,7 @@ import {
   suspenderSuscripcion,
   cancelarSuscripcion,
   registrarPagoManual,
+  generarLinkCobroPeriodo,
 } from "@/modules/plataforma/acciones";
 import type { EstadoSuscripcion } from "@/modules/plataforma/tipos";
 import { exigirSecretoAdmin } from "../sesion-admin";
@@ -83,5 +84,17 @@ export async function accionRegistrarPagoManual(formData: FormData) {
     });
   } catch (err) {
     return { ok: false, mensaje: err instanceof Error ? err.message : "Error al registrar pago." };
+  }
+}
+
+export async function accionGenerarLinkCobro(formData: FormData) {
+  try {
+    const adminSecret = await exigirSecretoAdmin();
+    return await generarLinkCobroPeriodo({
+      adminSecret,
+      periodoId: formData.get("periodo_id") as string,
+    });
+  } catch (err) {
+    return { ok: false, mensaje: err instanceof Error ? err.message : "Error al generar el link de cobro." };
   }
 }

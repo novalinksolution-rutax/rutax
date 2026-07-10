@@ -18,6 +18,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { obtenerPuertoCheckout } from '@/modules/integraciones/pagos';
 import type { EstadoSuscripcion, MetodoPago } from './tipos';
 
 // =============================================================================
@@ -359,6 +360,85 @@ export async function registrarPagoManual(opts: {
   if (errUpdate) throw new Error(`Error al marcar período como pagado: ${errUpdate.message}`);
 
   return { ok: true };
+}
+
+// =============================================================================
+// generarLinkCobroPeriodo — cobro por link Fintoc (Payment Links)
+// =============================================================================
+
+/**
+ * Genera un link de pago Fintoc para cobrar un período de suscripción e inserta
+ * el pago en estado `pendiente`. El pago se CONFIRMA de forma asíncrona por el
+ * webhook (`/api/webhooks/fintoc-suscripcion`), que marca el período `pagado`.
+ *
+ * Gate sandbox/real (molde payout/DTE): con `SUSCRIPCION_SANDBOX_MODE` != "false"
+ * la fábrica devuelve el stub → un link ficticio de sandbox que NO cobra. Real
+ * solo con la bandera en "false" + `FINTOC_SECRET_KEY`.
+ *
+ * Bitácora ANTES del efecto externo (llamada a Fintoc) — RNF-04, actor super_admin.
+ */
+export async function generarLinkCobroPeriodo(opts: {
+  adminSecret: string;
+  periodoId: string;
+}): Promise<{ ok: boolean; url: string; linkExternoId: string; modo: 'test' | 'live' }> {
+  verificarAdminSecret(opts.adminSecret);
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: periodo, error: errPeriodo } = await supabase
+    .schema('plataforma')
+    .from('periodos_suscripcion')
+    .select('id, tenant_id, monto_clp, estado, periodo_inicio, periodo_fin')
+    .eq('id', opts.periodoId)
+    .maybeSingle();
+
+  if (errPeriodo) throw new Error(`Error al leer período: ${errPeriodo.message}`);
+  if (!periodo) throw new Error(`Período ${opts.periodoId} no encontrado.`);
+  if (periodo.estado === 'pagado') throw new Error(`El período ${opts.periodoId} ya está pagado.`);
+
+  const tenantId = periodo.tenant_id as string;
+  const montoClp = Number(periodo.monto_clp);
+  if (!Number.isFinite(montoClp) || montoClp <= 0) {
+    throw new Error('El período no tiene un monto cobrable (monto_clp <= 0).');
+  }
+
+  // Bitácora ANTES del efecto externo (crear el link en Fintoc) — RNF-04.
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId: null,
+    actorTipo: 'super_admin',
+    accion: 'plataforma.link_cobro_generado',
+    entidadTipo: 'periodo_suscripcion',
+    entidadId: opts.periodoId,
+    detalle: { monto_clp: montoClp, metodo: 'fintoc_link' },
+  });
+
+  // Crear el link (stub en sandbox; Fintoc real con el gate abierto).
+  const puerto = obtenerPuertoCheckout();
+  const link = await puerto.crearLinkPago({
+    montoClp,
+    descripcion: `Suscripción Rutax · período ${periodo.periodo_inicio} a ${periodo.periodo_fin}`,
+    // `metadata` viaja a Fintoc y vuelve en el webhook → correlación del pago.
+    metadata: { periodo_id: opts.periodoId, tenant_id: tenantId },
+  });
+
+  // Registrar el pago pendiente con la referencia externa del link.
+  const { error: errPago } = await supabase
+    .schema('plataforma')
+    .from('pagos_plataforma')
+    .insert({
+      periodo_id: opts.periodoId,
+      tenant_id: tenantId,
+      monto_clp: montoClp,
+      metodo: 'fintoc_link',
+      estado: 'pendiente',
+      pago_externo_id: link.linkExternoId,
+      link_pago_url: link.url,
+    });
+
+  if (errPago) throw new Error(`Error al registrar el pago pendiente: ${errPago.message}`);
+
+  return { ok: true, url: link.url, linkExternoId: link.linkExternoId, modo: link.modo };
 }
 
 // =============================================================================

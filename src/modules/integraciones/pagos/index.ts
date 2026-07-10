@@ -58,3 +58,26 @@ export type {
   EventoWebhookPayout,
   EstadoExternoEventoPayout,
 } from "./payout/puerto-payout";
+
+// ---------------------------------------------------------------------------
+// CHECKOUT DE SUSCRIPCIÓN — cobro Rutax→courier vía Fintoc Payment Links.
+// La secret key es de ORG (misma que el payout). El gate sandbox/real vive en
+// `checkout/fabrica-checkout.ts` (SUSCRIPCION_SANDBOX_MODE). El webhook de
+// confirmación es org-level y usa el helper de firma compartido.
+// ---------------------------------------------------------------------------
+
+export {
+  obtenerPuertoCheckout,
+  suscripcionSandboxActivo,
+  normalizarEventoPagoSuscripcion,
+  ErrorCheckoutConfig,
+  ErrorCheckoutOperativo,
+} from "./checkout";
+
+export type {
+  PuertoCheckoutSuscripcion,
+  CrearLinkPagoArgs,
+  ResultadoLinkPago,
+  EventoPagoSuscripcion,
+  EstadoPagoSuscripcion,
+} from "./checkout";

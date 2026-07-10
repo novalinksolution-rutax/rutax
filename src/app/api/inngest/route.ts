@@ -59,6 +59,10 @@ import { jobConciliarPayoutConfirmado } from "@/modules/dinero/jobs/conciliar-pa
 
 // Jobs de Plataforma (backstage Rutax — suscripciones de couriers)
 import { jobGenerarPeriodosSuscripcion } from "@/modules/plataforma/jobs/generar-periodos";
+// Watchdog de salud del sistema (telemetría de crons + backlog + integridad) — QW3/QW6
+import { jobVerificarSalud } from "@/modules/plataforma/jobs/verificar-salud";
+// Morosidad de suscripción — marca períodos vencidos + alerta (item 2)
+import { jobMarcarMorosidad } from "@/modules/plataforma/jobs/marcar-morosidad";
 
 // Jobs F23 — API pública y webhooks salientes
 import { jobEntregarWebhook } from "@/modules/integraciones/api-publica/jobs/entregar-webhook";
@@ -102,6 +106,10 @@ const funciones = [
   jobConciliarPayoutConfirmado,
   // Jobs Plataforma — suscripciones de couriers a Rutax (backstage financiero)
   jobGenerarPeriodosSuscripcion,
+  // Watchdog de salud del sistema — crons stale, backlog y líneas huérfanas (cron horario)
+  jobVerificarSalud,
+  // Morosidad de suscripción — marca períodos vencidos + alerta (cron diario 08:00)
+  jobMarcarMorosidad,
   // Jobs F23 — entrega de webhooks salientes (cron cada 2 min)
   jobEntregarWebhook,
 ];
