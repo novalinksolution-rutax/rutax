@@ -23,6 +23,16 @@ const nextConfig: NextConfig = {
   ...(origenesDevPermitidos.length > 0
     ? { allowedDevOrigins: origenesDevPermitidos }
     : {}),
+
+  // Tree-shaking dirigido de barriles grandes: en vez de cargar todo el paquete
+  // por un `import { X } from "radix-ui"`, Next reescribe el import al submódulo
+  // exacto. `radix-ui` (paquete unificado) es un barril grande y NO está en la
+  // lista por defecto de Next (esa cubre los `@radix-ui/react-*` sueltos).
+  // `lucide-react` suele estar cubierto por defecto; se deja explícito por
+  // claridad. Reduce el JS enviado al cliente y acelera el build en dev.
+  experimental: {
+    optimizePackageImports: ["radix-ui", "lucide-react"],
+  },
 };
 
 export default nextConfig;

@@ -13,6 +13,7 @@
  * coloreada por estado (UI-4) y componentes del sistema (Button/Badge).
  */
 
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
@@ -55,6 +56,8 @@ import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
@@ -249,79 +252,103 @@ export default async function PaginaDashboard() {
   }
 
   const tenantId = sesion.usuario.tenantId;
+  const puedeVerAnalitica =
+    puedeVerReportesEjecutivos(sesion.usuario) ||
+    puedeVerConciliacion(sesion.usuario);
+
+  // Streaming (UX-5): el shell (título) se pinta al instante y el cuerpo del
+  // dashboard llega por streaming dentro de <Suspense>. La analítica F22 (lo
+  // más pesado) tiene su PROPIO límite más abajo, para no retener los KPIs ni
+  // las alertas urgentes tras su agregación.
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <h1 className="font-heading text-2xl font-bold">Dashboard operativo</h1>
+        <IndicadorEnVivo
+          tenantId={tenantId}
+          tablas={[
+            { schema: "operacion", tabla: "pedidos" },
+            { schema: "operacion", tabla: "incidencias" },
+          ]}
+        />
+      </div>
+      <Suspense fallback={<EsqueletoOperativa />}>
+        <SeccionOperativa tenantId={tenantId} puedeVerAnalitica={puedeVerAnalitica} />
+      </Suspense>
+    </div>
+  );
+}
+
+// =============================================================================
+// Sección operativa (streamed): alertas, KPIs, dinero, distribución, comunas,
+// incidencias y accesos rápidos. Carga financiero-del-mes (A) + operativo (C).
+// =============================================================================
+
+async function SeccionOperativa({
+  tenantId,
+  puedeVerAnalitica,
+}: {
+  tenantId: string;
+  puedeVerAnalitica: boolean;
+}) {
+  // Bloques A (financiero del mes) y C (operativo) en paralelo. La analítica
+  // (B) ya no vive aquí: tiene su propio límite de streaming más abajo. Cada
+  // bloque conserva su try/catch para degradar por separado.
+  const [resumenFinanciero, resOperativo] = await Promise.all([
+    // Bloque A — resumen financiero del mes.
+    (async (): Promise<ResumenFinancieroMes | null> => {
+      try {
+        return await obtenerResumenFinancieroDelMes(
+          crearClienteServiceRole(),
+          tenantId,
+          new Date(),
+        );
+      } catch {
+        return null;
+      }
+    })(),
+
+    // Bloque C — métricas operativas + alertas + SLA + cortes.
+    (async () => {
+      try {
+        const cliente = crearClienteServiceRole();
+        const [datos, alertaFoliosDatos, slaRaw, cortesRaw] = await Promise.all([
+          cargarDatosDashboard(tenantId),
+          cargarAlertaFolios(tenantId),
+          obtenerSlaPorSeller(cliente, tenantId, new Date(), "semana").catch(() => []),
+          obtenerResumenCortePorSeller(cliente, tenantId).catch(() => []),
+        ]);
+        return {
+          ok: true as const,
+          metricas: datos.metricas,
+          incidenciasSinGestion: datos.incidenciasSinGestion,
+          sellersCaidos: datos.sellersCaidos,
+          alertaFolios: alertaFoliosDatos,
+          slaPorSeller: slaRaw,
+          cortesPorSeller: cortesRaw,
+        };
+      } catch {
+        return { ok: false as const };
+      }
+    })(),
+  ]);
 
   let metricas;
   let incidenciasSinGestion: IncidenciaSinGestion[] = [];
   let sellersCaidos: SellerCaido[] = [];
   let errorMetricas = false;
   let alertaFolios: AlertaFolios | null = null;
-  let resumenFinanciero: ResumenFinancieroMes | null = null;
   let slaPorSeller: SlaPorSeller[] = [];
   let cortesPorSeller: ResumenCorteSeller[] = [];
-  let datosAnalitica: DatosAnaliticaFinanciera | null = null;
 
-  // El resumen financiero se carga aparte: si fallara, no debe tumbar las
-  // métricas operativas (ni viceversa).
-  try {
-    resumenFinanciero = await obtenerResumenFinancieroDelMes(
-      crearClienteServiceRole(),
-      tenantId,
-      new Date(),
-    );
-  } catch {
-    resumenFinanciero = null;
-  }
-
-  // F22 — Analítica financiera (solo para roles con ver_reportes_ejecutivos
-  // o ver_conciliacion). Si falla no tumba el resto del dashboard.
-  const puedeVerAnalitica =
-    puedeVerReportesEjecutivos(sesion.usuario) ||
-    puedeVerConciliacion(sesion.usuario);
-
-  if (puedeVerAnalitica) {
-    try {
-      const hoy = new Date();
-      const primeroDeMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
-      const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
-      const ventana = { desde: primeroDeMes, hasta: hoyStr };
-      const clienteAnalitica = crearClienteServiceRole();
-
-      const [resumenAnalitica, topConductoresRaw] = await Promise.all([
-        obtenerResumenFinanciero(clienteAnalitica, tenantId, ventana),
-        obtenerCostoPorConductor(clienteAnalitica, tenantId, ventana).catch(() => []),
-      ]);
-
-      const meses = [
-        "enero", "febrero", "marzo", "abril", "mayo", "junio",
-        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-      ];
-      const etiquetaPeriodo = `${meses[hoy.getMonth()]} ${hoy.getFullYear()}`;
-
-      datosAnalitica = {
-        resumen: resumenAnalitica,
-        topConductores: topConductoresRaw.slice(0, 5),
-        etiquetaPeriodo,
-      };
-    } catch {
-      datosAnalitica = null;
-    }
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    const [datos, alertaFoliosDatos, slaRaw, cortesRaw] = await Promise.all([
-      cargarDatosDashboard(tenantId),
-      cargarAlertaFolios(tenantId),
-      obtenerSlaPorSeller(cliente, tenantId, new Date(), "semana").catch(() => []),
-      obtenerResumenCortePorSeller(cliente, tenantId).catch(() => []),
-    ]);
-    metricas = datos.metricas;
-    incidenciasSinGestion = datos.incidenciasSinGestion;
-    sellersCaidos = datos.sellersCaidos;
-    alertaFolios = alertaFoliosDatos;
-    slaPorSeller = slaRaw;
-    cortesPorSeller = cortesRaw;
-  } catch {
+  if (resOperativo.ok) {
+    metricas = resOperativo.metricas;
+    incidenciasSinGestion = resOperativo.incidenciasSinGestion;
+    sellersCaidos = resOperativo.sellersCaidos;
+    alertaFolios = resOperativo.alertaFolios;
+    slaPorSeller = resOperativo.slaPorSeller;
+    cortesPorSeller = resOperativo.cortesPorSeller;
+  } else {
     errorMetricas = true;
     metricas = {
       totalPedidos: 0,
@@ -348,8 +375,6 @@ export default async function PaginaDashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="font-heading text-2xl font-bold">Dashboard operativo</h1>
-
       {/* Bloque 0.5 — Alerta de folios CAF (D-5) */}
       {alertaFolios && (
         <div
@@ -564,9 +589,13 @@ export default async function PaginaDashboard() {
         </section>
       )}
 
-      {/* Bloque F22 — Analítica financiera (solo roles con reportes ejecutivos o conciliación) */}
-      {datosAnalitica && (
-        <FranjaAnaliticaFinanciera datos={datosAnalitica} />
+      {/* Bloque F22 — Analítica financiera. Tiene su PROPIO límite de streaming:
+          se resuelve aparte para no retener el resto del dashboard tras su
+          agregación (la consulta más pesada de la vista). */}
+      {puedeVerAnalitica && (
+        <Suspense fallback={<EsqueletoAnalitica />}>
+          <SeccionAnalitica tenantId={tenantId} />
+        </Suspense>
       )}
 
       {/* Bloque 1.5 — Rezagados de ayer (solo si > 0) */}
@@ -704,6 +733,94 @@ export default async function PaginaDashboard() {
           </Button>
         </div>
       </section>
+    </div>
+  );
+}
+
+// =============================================================================
+// Sección analítica F22 (streamed en su propio límite de Suspense)
+// =============================================================================
+
+async function SeccionAnalitica({ tenantId }: { tenantId: string }) {
+  const datos = await (async (): Promise<DatosAnaliticaFinanciera | null> => {
+    try {
+      const hoy = new Date();
+      const primeroDeMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`;
+      const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+      const ventana = { desde: primeroDeMes, hasta: hoyStr };
+      const cliente = crearClienteServiceRole();
+
+      const [resumenAnalitica, topConductoresRaw] = await Promise.all([
+        obtenerResumenFinanciero(cliente, tenantId, ventana),
+        obtenerCostoPorConductor(cliente, tenantId, ventana).catch(() => []),
+      ]);
+
+      const meses = [
+        "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+      ];
+      return {
+        resumen: resumenAnalitica,
+        topConductores: topConductoresRaw.slice(0, 5),
+        etiquetaPeriodo: `${meses[hoy.getMonth()]} ${hoy.getFullYear()}`,
+      };
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!datos) return null;
+  return <FranjaAnaliticaFinanciera datos={datos} />;
+}
+
+// =============================================================================
+// Skeletons de los límites de streaming
+// =============================================================================
+
+function EsqueletoOperativa() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
+      <div>
+        <Skeleton className="mb-3 h-4 w-16" />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+              <Skeleton className="size-9 rounded-lg" />
+              <Skeleton className="mt-3 h-7 w-20" />
+              <Skeleton className="mt-2 h-4 w-24" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <Skeleton className="mb-3 h-4 w-28" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-2 h-7 w-32" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EsqueletoAnalitica() {
+  return (
+    <div
+      className="grid grid-cols-1 gap-4 sm:grid-cols-3"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="mt-2 h-7 w-32" />
+          <Skeleton className="mt-3 h-3 w-full" />
+        </div>
+      ))}
     </div>
   );
 }

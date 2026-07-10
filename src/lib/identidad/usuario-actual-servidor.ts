@@ -20,6 +20,7 @@
  * compone sobre `capacidades.ts` (`puede*`, `tieneCapacidad`).
  */
 
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { esRolValido, type Rol } from "@/modules/identidad/roles";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
@@ -64,8 +65,14 @@ function leerRol(claims: Record<string, unknown>): Rol {
 /**
  * Lee la sesión del usuario autenticado y arma su `UsuarioActual`.
  * Devuelve `null` si no hay sesión (visitante anónimo).
+ *
+ * Memoizada por request con `cache()` de React: layouts y páginas la invocan
+ * varias veces por navegación (p. ej. el layout del tenant y la propia página),
+ * y sin esto cada llamada repetía `getUser()` + `getClaims()` contra Auth. La
+ * memoización es por-request (cero staleness): dentro de una misma petición las
+ * cookies/JWT no cambian.
  */
-export async function obtenerSesionActual(): Promise<SesionActual | null> {
+export const obtenerSesionActual = cache(async function obtenerSesionActual(): Promise<SesionActual | null> {
   const supabase = await createClient();
 
   const {
@@ -123,7 +130,7 @@ export async function obtenerSesionActual(): Promise<SesionActual | null> {
     nombreCompleto,
     usuario,
   };
-}
+});
 
 /** Azúcar: lanza si no hay sesión — útil para rutas que exigen autenticación. */
 export async function exigirSesionActual(): Promise<SesionActual> {

@@ -47,6 +47,8 @@ import {
 } from "@/components/ui/table";
 import { FormularioPedidoSameDay } from "./formulario-same-day";
 import { FiltrosPedidosForm } from "./filtros-pedidos";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
 
 // =============================================================================
 // Contadores de estado agrupados para los chips
@@ -133,11 +135,12 @@ export default async function PaginaOperaciones({
   const puedeAjustar = puedeAjustarOperacionDiaria(sesion.usuario);
 
   const cliente = crearClienteServiceRole();
-  let resultado;
-  let errorCarga = false;
 
-  try {
-    resultado = await listarPedidos(cliente, {
+  // listarPedidos y la lista de sellers para los filtros no dependen entre sí:
+  // se cargan en paralelo (antes la lista de sellers esperaba a que terminara
+  // la carga de pedidos sin necesidad).
+  const [resPedidos, sellersDisponibles] = await Promise.all([
+    listarPedidos(cliente, {
       tenantId,
       sellerId: filtroSeller || undefined,
       estado: filtroPorRevisar ? undefined : (filtroEstado as EstadoPedido) || undefined,
@@ -145,11 +148,18 @@ export default async function PaginaOperaciones({
       porRevisar: filtroPorRevisar || undefined,
       pagina,
       limite: LIMITE,
-    });
-  } catch {
-    errorCarga = true;
-    resultado = { datos: [], total: 0, pagina: 1, limite: LIMITE };
-  }
+    }).then(
+      (r) => ({ ok: true as const, datos: r }),
+      () => ({ ok: false as const }),
+    ),
+    // Lista de sellers para el filtro — cacheada por tenant (datos-tenant/sellers).
+    obtenerSellersDelTenant(tenantId).catch(() => [] as { id: string; nombre: string }[]),
+  ]);
+
+  const errorCarga = !resPedidos.ok;
+  const resultado = resPedidos.ok
+    ? resPedidos.datos
+    : { datos: [], total: 0, pagina: 1, limite: LIMITE };
 
   const pedidos = resultado.datos;
   const totalPedidos = resultado.total;
@@ -157,78 +167,75 @@ export default async function PaginaOperaciones({
   const contadores = calcularContadores(pedidos);
   const tieneAcciones = puedeAsignar || puedeIncidencias || puedeAjustar;
 
-  // Badge de origen: la cuenta ML de origen de cada pedido, SOLO si el seller de
-  // ese pedido tiene más de una cuenta conectada. Se resuelve aquí con dos
-  // consultas acotadas — sin tocar el tipo `Pedido` ni el módulo de operación.
-  const origenPorPedido: Record<string, string | null> = {};
-  try {
-    const sellerIds = Array.from(new Set(pedidos.map((p) => p.sellerId)));
-    const pedidoIds = pedidos.map((p) => p.id);
-    if (sellerIds.length > 0 && pedidoIds.length > 0) {
-      const [conexRes, pedRes] = await Promise.all([
-        cliente
-          .schema("identidad")
-          .from("conexiones_seller_ml")
-          .select("seller_id, ml_user_id, alias, ml_nickname")
-          .eq("tenant_id", tenantId)
-          .in("seller_id", sellerIds),
-        cliente
-          .schema("operacion")
-          .from("pedidos")
-          .select("id, seller_id, ml_user_id")
-          .in("id", pedidoIds),
-      ]);
-      const countBySeller: Record<string, number> = {};
-      const labelByKey: Record<string, string> = {};
-      for (const c of (conexRes.data ?? []) as Array<{
-        seller_id: string;
-        ml_user_id: string | null;
-        alias: string | null;
-        ml_nickname: string | null;
-      }>) {
-        countBySeller[c.seller_id] = (countBySeller[c.seller_id] ?? 0) + 1;
-        if (c.ml_user_id) {
-          labelByKey[`${c.seller_id}:${c.ml_user_id}`] = etiquetaCuentaOrigen(c.alias, c.ml_nickname, c.ml_user_id);
-        }
-      }
-      for (const p of (pedRes.data ?? []) as Array<{ id: string; seller_id: string; ml_user_id: string | null }>) {
-        if ((countBySeller[p.seller_id] ?? 0) > 1 && p.ml_user_id) {
-          origenPorPedido[p.id] = labelByKey[`${p.seller_id}:${p.ml_user_id}`] ?? null;
-        }
-      }
-    }
-  } catch {
-    // best-effort — sin badge si falla la resolución de origen.
-  }
-
-  let sellersDisponibles: { id: string; nombre: string }[] = [];
-  try {
-    const { data } = await cliente
-      .from("sellers")
-      .select("id, razon_social")
-      .eq("tenant_id", tenantId)
-      .order("razon_social");
-    sellersDisponibles = (data ?? []).map((s: { id: string; razon_social: string }) => ({
-      id: s.id,
-      nombre: s.razon_social,
-    }));
-  } catch {
-    // sin bloquear si falla — el filtro quedará vacío
-  }
-
-  // Nombres legibles para las columnas Seller y Conductor (en vez del UUID).
+  // Nombres legibles del seller para la columna (UUID → razón social).
   const nombreSellerPorId = Object.fromEntries(
     sellersDisponibles.map((s) => [s.id, s.nombre]),
   );
-  let nombreConductorPorId: Record<string, string> = {};
-  try {
-    const driverIds = Array.from(
-      new Set(pedidos.flatMap((p) => (p.driverIdAsignado ? [p.driverIdAsignado] : []))),
-    );
-    nombreConductorPorId = await mapaNombresConductores(cliente, tenantId, driverIds);
-  } catch {
-    // best-effort — si falla, la celda cae al UUID.
-  }
+
+  // El badge de origen (cuenta ML) y los nombres de conductor dependen ambos
+  // SOLO de `pedidos`, así que se resuelven en paralelo entre sí (antes eran
+  // dos esperas encadenadas). Cada bloque DEVUELVE su mapa — sin reasignar
+  // variables externas desde dentro de un closure async.
+  const [origenPorPedido, nombreConductorPorId] = await Promise.all([
+    // Badge de origen: la cuenta ML de cada pedido, SOLO si el seller tiene más
+    // de una cuenta conectada. Dos consultas acotadas — sin tocar el tipo
+    // `Pedido` ni el módulo de operación.
+    (async (): Promise<Record<string, string | null>> => {
+      const mapa: Record<string, string | null> = {};
+      try {
+        const sellerIds = Array.from(new Set(pedidos.map((p) => p.sellerId)));
+        const pedidoIds = pedidos.map((p) => p.id);
+        if (sellerIds.length === 0 || pedidoIds.length === 0) return mapa;
+        const [conexRes, pedRes] = await Promise.all([
+          cliente
+            .schema("identidad")
+            .from("conexiones_seller_ml")
+            .select("seller_id, ml_user_id, alias, ml_nickname")
+            .eq("tenant_id", tenantId)
+            .in("seller_id", sellerIds),
+          cliente
+            .schema("operacion")
+            .from("pedidos")
+            .select("id, seller_id, ml_user_id")
+            .in("id", pedidoIds),
+        ]);
+        const countBySeller: Record<string, number> = {};
+        const labelByKey: Record<string, string> = {};
+        for (const c of (conexRes.data ?? []) as Array<{
+          seller_id: string;
+          ml_user_id: string | null;
+          alias: string | null;
+          ml_nickname: string | null;
+        }>) {
+          countBySeller[c.seller_id] = (countBySeller[c.seller_id] ?? 0) + 1;
+          if (c.ml_user_id) {
+            labelByKey[`${c.seller_id}:${c.ml_user_id}`] = etiquetaCuentaOrigen(c.alias, c.ml_nickname, c.ml_user_id);
+          }
+        }
+        for (const p of (pedRes.data ?? []) as Array<{ id: string; seller_id: string; ml_user_id: string | null }>) {
+          if ((countBySeller[p.seller_id] ?? 0) > 1 && p.ml_user_id) {
+            mapa[p.id] = labelByKey[`${p.seller_id}:${p.ml_user_id}`] ?? null;
+          }
+        }
+      } catch {
+        // best-effort — sin badge si falla la resolución de origen.
+      }
+      return mapa;
+    })(),
+
+    // Nombres de conductor para la columna (UUID → nombre).
+    (async (): Promise<Record<string, string>> => {
+      try {
+        const driverIds = Array.from(
+          new Set(pedidos.flatMap((p) => (p.driverIdAsignado ? [p.driverIdAsignado] : []))),
+        );
+        return await mapaNombresConductores(cliente, tenantId, driverIds);
+      } catch {
+        // best-effort — si falla, la celda cae al UUID.
+        return {};
+      }
+    })(),
+  ]);
 
   function hrefPagina(p: number): string {
     const sp = new URLSearchParams();
@@ -249,9 +256,12 @@ export default async function PaginaOperaciones({
       {/* Encabezado */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="font-heading text-2xl font-bold">
-            {filtroPorRevisar ? "Direcciones por revisar" : "Pedidos"}
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-heading text-2xl font-bold">
+              {filtroPorRevisar ? "Direcciones por revisar" : "Pedidos"}
+            </h1>
+            <IndicadorEnVivo tenantId={tenantId} />
+          </div>
           {filtroPorRevisar && (
             <p className="mt-0.5 text-sm text-muted-foreground">
               Pedidos con dirección no ubicada, fuera de cobertura o sin tarifa de zona. Revísalos antes de rutear.
