@@ -18,6 +18,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LogOut,
   Menu,
+  Search,
   LayoutDashboard,
   Home,
   Package,
@@ -46,6 +47,7 @@ import {
 } from "@/components/ui/sheet"
 import { CentroAvisos } from "./centro-avisos"
 import { SkipLink } from "./skip-link"
+import { PaletaComando } from "./paleta-comando"
 import type { Aviso } from "@/lib/avisos/obtener-avisos"
 
 /** Catálogo de íconos referenciables por nombre desde el servidor. */
@@ -159,6 +161,7 @@ export function AppShell({
   const pathname = usePathname()
   const router = useRouter()
   const [menuAbierto, setMenuAbierto] = useState(false)
+  const [busquedaAbierta, setBusquedaAbierta] = useState(false)
   const [cerrandoSesion, startCerrarSesion] = useTransition()
   const activo = hrefActivo(pathname, grupos)
 
@@ -235,6 +238,29 @@ export function AppShell({
           <div className="lg:hidden">{marca}</div>
 
           <div className="flex flex-1 items-center justify-end gap-2">
+            {/* Disparador del buscador global (⌘K) */}
+            <button
+              type="button"
+              onClick={() => setBusquedaAbierta(true)}
+              className="hidden items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted sm:flex"
+              aria-label="Buscar"
+            >
+              <Search className="size-4" aria-hidden="true" />
+              <span>Buscar</span>
+              <kbd className="ml-1 rounded border border-border bg-background px-1.5 text-[10px] font-medium text-muted-foreground">
+                ⌘K
+              </kbd>
+            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setBusquedaAbierta(true)}
+              className="sm:hidden"
+              aria-label="Buscar"
+            >
+              <Search className="size-5" aria-hidden="true" />
+            </Button>
             <CentroAvisos avisos={avisos} />
             {nombreCompleto ? (
               <span className="hidden truncate text-sm text-muted-foreground sm:inline">
@@ -250,6 +276,9 @@ export function AppShell({
           {children}
         </main>
       </div>
+
+      {/* Buscador global (⌘K) — el atajo también lo abre desde cualquier pantalla */}
+      <PaletaComando abierta={busquedaAbierta} onAbrirCambio={setBusquedaAbierta} />
     </div>
   )
 }
