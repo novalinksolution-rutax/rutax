@@ -19,13 +19,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Package, Store, UserCheck, Loader2, CornerDownLeft } from "lucide-react";
+import { Search, Package, Store, UserCheck, Wallet, Loader2, CornerDownLeft } from "lucide-react";
 import type { GrupoResultado, RespuestaBusqueda, TipoResultado } from "@/lib/buscar/tipos";
 
 const ICONO_TIPO: Record<TipoResultado, typeof Package> = {
   pedido: Package,
   seller: Store,
   conductor: UserCheck,
+  liquidacion: Wallet,
 };
 
 export function PaletaComando({

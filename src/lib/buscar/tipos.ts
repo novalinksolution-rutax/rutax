@@ -3,7 +3,7 @@
  * Los usa el endpoint `/api/buscar` (servidor) y la paleta de comando (cliente).
  */
 
-export type TipoResultado = "pedido" | "seller" | "conductor";
+export type TipoResultado = "pedido" | "seller" | "conductor" | "liquidacion";
 
 export interface ItemResultado {
   id: string;

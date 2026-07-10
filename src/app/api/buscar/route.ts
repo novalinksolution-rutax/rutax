@@ -19,6 +19,7 @@ import {
   puedeAjustarOperacionDiaria,
   puedeGestionarIncidencias,
   puedeGenerarManifiestos,
+  puedeGestionarLiquidacionesConductores,
 } from "@/modules/identidad/capacidades";
 import { traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
@@ -64,6 +65,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     puedeGestionarIncidencias(u) ||
     puedeGenerarManifiestos(u);
   const puedeVerConductores = puedeAsignarYReasignarPedidos(u);
+  const puedeVerLiquidaciones = puedeGestionarLiquidacionesConductores(u);
 
   const grupos: GrupoResultado[] = [];
   const tareas: Promise<void>[] = [];
@@ -145,10 +147,60 @@ export async function GET(req: NextRequest): Promise<Response> {
     );
   }
 
+  if (puedeVerLiquidaciones) {
+    tareas.push(
+      (async () => {
+        // Las liquidaciones no tienen texto propio: se buscan por nombre del
+        // conductor en 2 pasos (sin embed cross-schema dinero↔identidad).
+        const { data: conds } = await cliente
+          .schema("identidad")
+          .from("conductores")
+          .select("id, nombre_completo")
+          .eq("tenant_id", tenantId)
+          .ilike("nombre_completo", patron)
+          .limit(LIMITE_POR_TIPO);
+
+        const nombrePorId = new Map<string, string>();
+        for (const c of (conds ?? []) as Array<{ id: string; nombre_completo: string }>) {
+          nombrePorId.set(c.id, c.nombre_completo);
+        }
+        if (nombrePorId.size === 0) return;
+
+        const { data } = await cliente
+          .schema("dinero")
+          .from("liquidaciones")
+          .select("id, driver_id, fecha_inicio, fecha_fin, estado")
+          .eq("tenant_id", tenantId)
+          .in("driver_id", Array.from(nombrePorId.keys()))
+          .order("fecha_fin", { ascending: false })
+          .limit(LIMITE_POR_TIPO);
+
+        const items = ((data ?? []) as Array<{
+          id: string;
+          driver_id: string;
+          fecha_inicio: string;
+          fecha_fin: string;
+          estado: string;
+        }>).map((l) => ({
+          id: l.id,
+          titulo: nombrePorId.get(l.driver_id) ?? "Conductor",
+          subtitulo: `${l.fecha_inicio} → ${l.fecha_fin} · ${l.estado}`,
+          href: `/dinero/liquidaciones/${l.id}`,
+        }));
+        if (items.length > 0) grupos.push({ tipo: "liquidacion", titulo: "Liquidaciones", items });
+      })(),
+    );
+  }
+
   await Promise.all(tareas);
 
-  // Orden estable de grupos: pedidos, sellers, conductores.
-  const orden: Record<GrupoResultado["tipo"], number> = { pedido: 0, seller: 1, conductor: 2 };
+  // Orden estable de grupos: pedidos, sellers, conductores, liquidaciones.
+  const orden: Record<GrupoResultado["tipo"], number> = {
+    pedido: 0,
+    seller: 1,
+    conductor: 2,
+    liquidacion: 3,
+  };
   grupos.sort((a, b) => orden[a.tipo] - orden[b.tipo]);
 
   return Response.json({ grupos } satisfies RespuestaBusqueda);
