@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/badge";
 import { TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA } from "@/modules/operacion/tipos";
 import type { Incidencia, TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
 import { PanelIncidencia } from "./panel-incidencia";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
 
 // =============================================================================
 // Carga de datos
@@ -107,19 +109,10 @@ export default async function PaginaIncidencias({
     errorCarga = true;
   }
 
-  // Sellers para el filtro
+  // Sellers para el filtro — lista cacheada por tenant (datos-tenant/sellers).
   let sellers: { id: string; nombre: string }[] = [];
   try {
-    const cliente = crearClienteServiceRole();
-    const { data } = await cliente
-      .from("sellers")
-      .select("id, razon_social")
-      .eq("tenant_id", tenantId)
-      .order("razon_social");
-    sellers = (data ?? []).map((s: { id: string; razon_social: string }) => ({
-      id: s.id,
-      nombre: s.razon_social,
-    }));
+    sellers = await obtenerSellersDelTenant(tenantId);
   } catch {
     // Sin bloquear
   }
@@ -139,6 +132,10 @@ export default async function PaginaIncidencias({
             Pedidos
           </Link>
           <h1 className="text-2xl font-bold">Incidencias</h1>
+          <IndicadorEnVivo
+            tenantId={tenantId}
+            tablas={[{ schema: "operacion", tabla: "incidencias" }]}
+          />
         </div>
       </div>
 
