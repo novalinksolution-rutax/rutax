@@ -30,8 +30,14 @@ import { ahoraEnSantiago, horaAMinutos } from "@/lib/fecha-santiago";
  * - `rezagadosAyer`: pedidos con fecha_compromiso = ayer y estado no terminal.
  */
 
-/** Estados de pedido considerados terminales para "rezagados de ayer". */
-const ESTADOS_TERMINALES_PEDIDO: readonly EstadoPedido[] = [
+/**
+ * Estados de pedido considerados terminales para "rezagados de ayer". Se
+ * exporta porque también la reusa `plataforma/observabilidad-tenant.ts`
+ * (backlog operativo por-tenant del drill-down del backstage, gap 9): "pedidos
+ * pendientes/en curso" = el complemento de este conjunto
+ * (pendiente_asignacion/asignado/en_ruta), sin re-derivar la lista.
+ */
+export const ESTADOS_TERMINALES_PEDIDO: readonly EstadoPedido[] = [
   "entregado",
   "entregado_manual",
   "fallido",

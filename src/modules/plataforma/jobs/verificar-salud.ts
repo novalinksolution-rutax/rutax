@@ -48,6 +48,8 @@ const CRONS_VIGILADOS: ReadonlyArray<{ jobId: string; maxHoras: number; descripc
   { jobId: 'ml/sondeoSaludConexiones', maxHoras: 2, descripcion: 'Sondeo de salud de conexiones ML (cada 15 min)' },
   { jobId: 'plataforma/generarPeriodos', maxHoras: 24 * 33, descripcion: 'Generación mensual de períodos de suscripción' },
   { jobId: 'plataforma/marcarMorosidad', maxHoras: 27, descripcion: 'Marcar morosidad de suscripción (08:00)' },
+  { jobId: 'plataforma/reintentarCobroVencido', maxHoras: 27, descripcion: 'Dunning: reintento de auto-cobro vencido (08:30)' },
+  { jobId: 'plataforma/vigilarTrials', maxHoras: 27, descripcion: 'Ciclo de vida de trials: por-vencer y vencidos sin pago (11:00)' },
 ];
 
 /** Umbral de excepciones de conciliación vencidas (fecha_limite pasada) que dispara alerta. */

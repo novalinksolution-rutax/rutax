@@ -78,6 +78,22 @@ export interface IntercambiarCodigoEntrada {
   redirectUri: string;
 }
 
+/**
+ * Resumen agregado de salud de TODAS las conexiones ML de un tenant (todos sus
+ * sellers, todas sus cuentas) — para el drill-down por-tenant del backstage
+ * `/admin` (`plataforma/observabilidad-tenant.ts`, gap 9). Solo conteos por
+ * `estado_salud`; no expone `seller_id`, alias ni nada identificable de la
+ * cuenta — el backstage ve salud técnica agregada, no el detalle operativo
+ * del courier.
+ */
+export interface ResumenSaludMlTenant {
+  sanas: number;
+  atencion: number;
+  desvinculadas: number;
+  pendientes: number;
+  total: number;
+}
+
 export interface RefrescarTokenEntrada {
   conexionId: string;
 }

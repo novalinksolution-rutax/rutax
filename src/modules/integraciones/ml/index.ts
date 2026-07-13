@@ -11,6 +11,7 @@ export {
   refrescarToken,
   obtenerConexionPorSeller,
   obtenerConexionesPorSeller,
+  obtenerResumenSaludMlPorTenant,
   renombrarConexion,
   obtenerEtiquetaEnvio,
   ErrorConexionMlRequiereRevinculacion,
@@ -29,4 +30,5 @@ export type {
   RazonFalloRefresco,
   RefrescarTokenEntrada,
   RefrescarTokenResultado,
+  ResumenSaludMlTenant,
 } from "./tipos";

@@ -59,10 +59,26 @@ import { jobConciliarPayoutConfirmado } from "@/modules/dinero/jobs/conciliar-pa
 
 // Jobs de Plataforma (backstage Rutax — suscripciones de couriers)
 import { jobGenerarPeriodosSuscripcion } from "@/modules/plataforma/jobs/generar-periodos";
+// Aplica downgrades de plan diferidos (F2, item I) — cron 05:00, antes de generar-periodos (06:00)
+import { jobAplicarCambiosPlan } from "@/modules/plataforma/jobs/aplicar-cambios-plan";
 // Watchdog de salud del sistema (telemetría de crons + backlog + integridad) — QW3/QW6
 import { jobVerificarSalud } from "@/modules/plataforma/jobs/verificar-salud";
 // Morosidad de suscripción — marca períodos vencidos + alerta (item 2)
 import { jobMarcarMorosidad } from "@/modules/plataforma/jobs/marcar-morosidad";
+// Auto-cobro de período por mandato Fintoc (F1-E)
+import { jobCobrarPeriodoAuto } from "@/modules/plataforma/jobs/cobrar-periodo-auto";
+// F2 "Ola 3" ítem F — dunning: reintento de auto-cobro de períodos vencidos + escalamiento
+import { jobReintentarCobroVencido } from "@/modules/plataforma/jobs/reintentar-cobro-vencido";
+// F2 "Ola 3" ítem E — ciclo de vida del trial: alerta por-vencer + trial vencido sin pago
+import { jobVigilarTrials } from "@/modules/plataforma/jobs/vigilar-trials";
+// F2 "Ola 3" ítem M — notificaciones de plataforma por email al courier
+import { jobNotificarPagoConfirmado } from "@/modules/plataforma/jobs/notificar-pago-confirmado";
+import { jobNotificarCobroFallido } from "@/modules/plataforma/jobs/notificar-cobro-fallido";
+import { jobNotificarTrialPorVencer } from "@/modules/plataforma/jobs/notificar-trial-por-vencer";
+import { jobNotificarSuscripcionCreada } from "@/modules/plataforma/jobs/notificar-suscripcion-creada";
+import { jobNotificarPlanCambiado } from "@/modules/plataforma/jobs/notificar-plan-cambiado";
+// F3 · Gap 7 — comunicaciones de Rutax a los couriers (banner in-app + broadcast email opcional)
+import { jobNotificarComunicacion } from "@/modules/plataforma/jobs/notificar-comunicacion";
 
 // Jobs F23 — API pública y webhooks salientes
 import { jobEntregarWebhook } from "@/modules/integraciones/api-publica/jobs/entregar-webhook";
@@ -106,10 +122,25 @@ const funciones = [
   jobConciliarPayoutConfirmado,
   // Jobs Plataforma — suscripciones de couriers a Rutax (backstage financiero)
   jobGenerarPeriodosSuscripcion,
+  jobAplicarCambiosPlan,
   // Watchdog de salud del sistema — crons stale, backlog y líneas huérfanas (cron horario)
   jobVerificarSalud,
   // Morosidad de suscripción — marca períodos vencidos + alerta (cron diario 08:00)
   jobMarcarMorosidad,
+  // Auto-cobro de período por mandato Fintoc (F1-E) — evento plataforma/suscripcion.periodo-generado
+  jobCobrarPeriodoAuto,
+  // F2 "Ola 3" ítem F — dunning: reintento de auto-cobro + escalamiento (cron diario 08:30)
+  jobReintentarCobroVencido,
+  // F2 "Ola 3" ítem E — ciclo de vida del trial (cron diario 11:00)
+  jobVigilarTrials,
+  // F2 "Ola 3" ítem M — notificaciones de plataforma por email al courier
+  jobNotificarPagoConfirmado,
+  jobNotificarCobroFallido,
+  jobNotificarTrialPorVencer,
+  jobNotificarSuscripcionCreada,
+  jobNotificarPlanCambiado,
+  // F3 · Gap 7 — broadcast por email de comunicaciones de Rutax a los couriers
+  jobNotificarComunicacion,
   // Jobs F23 — entrega de webhooks salientes (cron cada 2 min)
   jobEntregarWebhook,
 ];

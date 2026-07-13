@@ -63,6 +63,7 @@ import type {
   RazonFalloRefresco,
   RefrescarTokenEntrada,
   RefrescarTokenResultado,
+  ResumenSaludMlTenant,
   RespuestaTokenMl,
 } from "./tipos";
 
@@ -553,6 +554,59 @@ function prioridadSalud(estado: EstadoSaludConexionMl): number {
     default:
       return 4;
   }
+}
+
+/**
+ * Resumen agregado de salud de las conexiones ML de UN TENANT (todos sus
+ * sellers, todas sus cuentas 1:N) — lector MÍNIMO nuevo para el drill-down
+ * por-tenant del backstage `/admin` (gap 9, `plataforma/observabilidad-tenant.ts`).
+ * NO toca ni reimplementa el sondeo (`jobs/sondeo-salud.ts`, Job 2): ese sigue
+ * siendo la única fuente que ESCRIBE `estado_salud`; esto solo LEE y agrupa lo
+ * que el sondeo ya dejó persistido. Trae exclusivamente `estado_salud` (sin
+ * `seller_id`, alias, tokens ni nada identificable) — el backstage ve salud
+ * técnica agregada del tenant, nunca el detalle operativo de sus sellers.
+ */
+export async function obtenerResumenSaludMlPorTenant(
+  tenantId: string,
+): Promise<ResumenSaludMlTenant> {
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .select("estado_salud")
+    .eq("tenant_id", tenantId);
+
+  if (error) {
+    throw new Error(`No se pudo leer el resumen de salud ML del tenant: ${error.message}`);
+  }
+
+  const resumen: ResumenSaludMlTenant = {
+    sanas: 0,
+    atencion: 0,
+    desvinculadas: 0,
+    pendientes: 0,
+    total: 0,
+  };
+
+  for (const fila of (data ?? []) as { estado_salud: EstadoSaludConexionMl }[]) {
+    resumen.total += 1;
+    switch (fila.estado_salud) {
+      case "sana":
+        resumen.sanas += 1;
+        break;
+      case "atencion":
+        resumen.atencion += 1;
+        break;
+      case "desvinculada":
+        resumen.desvinculadas += 1;
+        break;
+      case "pendiente":
+        resumen.pendientes += 1;
+        break;
+    }
+  }
+
+  return resumen;
 }
 
 // ---------------------------------------------------------------------------
