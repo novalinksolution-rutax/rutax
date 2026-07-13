@@ -316,9 +316,12 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
+# Habilitado para F3-A: el super-admin del backstage (identidad Supabase real)
+# puede enrolar y verificar un segundo factor TOTP. No afecta a los roles de
+# courier/seller/conductor (el enrolamiento es opt-in por usuario).
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

@@ -2,94 +2,152 @@
  * Sesión del backstage de plataforma (super-admin de Rutax) — SOLO SERVIDOR.
  * =============================================================================
  *
- * Reemplaza el mecanismo previo de "secreto en la URL" (`?secret=...`), que
- * violaba la regla dura de CLAUDE.md ("credenciales NUNCA en URLs ni en logs"):
- * la URL quedaba en logs de Vercel, historial del navegador y header `Referer`,
- * y el secreto se incrustaba en el HTML entregado al cliente.
+ * F3-A: este módulo dejó de manejar cookies propias. La sesión del backstage
+ * ES la sesión Supabase Auth real del super-admin (misma cookie que usa
+ * `src/lib/supabase/server.ts` para cualquier otro usuario de la app) — el
+ * "dual-gate" (identidad + gobernanza + MFA) vive en
+ * `@/modules/plataforma/autorizacion-admin` (`exigirSuperAdmin` /
+ * `exigirSuperAdminEscritura`). Este archivo es ahora una fachada delgada
+ * sobre ese gate, para no tener que tocar cada Server Action / página que ya
+ * importa `tieneSesionAdmin` / `exigirActorAdmin` desde aquí.
  *
- * Modelo nuevo (sin cambios de esquema, sin nuevas variables de entorno):
- * - El fundador autentica con `SUPER_ADMIN_SECRET` vía un formulario POST
- *   (`acciones-sesion.ts`), nunca por query param.
- * - La sesión se mantiene en una cookie `httpOnly` + `Secure` + `SameSite=Strict`
- *   cuyo valor es un TOKEN DERIVADO `HMAC-SHA256(SUPER_ADMIN_SECRET, …)`, NO el
- *   secreto crudo: aunque la cookie se filtrara, no revela el secreto maestro.
- * - Toda validación es de tiempo constante (`timingSafeEqual`).
- * - El secreto crudo solo se lee server-side desde `process.env` para pasarlo a
- *   las funciones de `plataforma` que aún lo exigen — nunca viaja al cliente.
+ * HISTÓRICO (lo que este módulo hacía hasta F3-A, ya retirado):
+ * - Secreto compartido `SUPER_ADMIN_SECRET` validado por formulario POST.
+ * - Cookie `rutax_admin_session`: token derivado `HMAC-SHA256(secreto, …)`.
+ * - Cookie `rutax_admin_actor`: el super-admin AUTO-DECLARABA su identidad
+ *   (elegía su email de una lista), firmada con el mismo HMAC — "gap 3,
+ *   F2-mínimo": mejor que `actorUsuarioId: null`, pero NO era no-repudiación
+ *   real (cualquiera con el secreto podía declararse cualquier admin).
+ * F3-A cierra ese gap: la identidad ahora la certifica Supabase Auth (login
+ * con contraseña propia + MFA), no una auto-declaración.
  *
- * Evolución natural (fuera de alcance de este fix, requiere provisioning):
- * migrar a sesión Supabase real de un usuario `super_admin`
- * (`esSuperAdminDePlataforma`) en vez de un secreto compartido.
- *
- * Este módulo importa `next/headers` y `node:crypto` → es server-only por
- * construcción (importarlo desde un Client Component lanzaría en build).
+ * `SUPER_ADMIN_SECRET` NO desaparece todavía: las ~7 funciones de
+ * `modules/plataforma/acciones.ts` siguen validándolo internamente
+ * (`verificarAdminSecret`) — asunto del "Paso 2" (retirar ese secreto de esas
+ * funciones), deliberadamente FUERA de alcance de F3-A. Por eso
+ * `exigirActorAdmin()` sigue devolviendo `adminSecret`: es un DROP-IN, ningún
+ * caller existente (`suscripciones/acciones.ts`, `planes/acciones.ts`) necesita
+ * cambiar. Lo que cambió es CÓMO se autoriza el acceso a esa función, no su
+ * contrato de salida.
  */
 
-import { cookies } from "next/headers";
-import { createHmac, timingSafeEqual } from "node:crypto";
-
-/** Nombre de la cookie de sesión del backstage. */
-export const COOKIE_ADMIN = "rutax_admin_session";
-
-/** Vigencia de la sesión admin (8 horas). */
-export const MAX_AGE_ADMIN_SEGUNDOS = 60 * 60 * 8;
-
-/** Etiqueta versionada del token (permite invalidar todas las sesiones subiendo el sufijo). */
-const ETIQUETA_TOKEN = "rutax-admin-session-v1";
+import {
+  exigirSuperAdmin,
+  exigirSuperAdminEscritura,
+  type RolAdmin,
+  type NivelAal,
+} from "@/modules/plataforma/autorizacion-admin";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 
 /**
- * Token de sesión derivado del secreto maestro. `null` si `SUPER_ADMIN_SECRET`
- * no está configurado (fail-closed: sin secreto no hay forma de autenticar).
+ * `true` si la request trae una sesión de super-admin válida CON MFA
+ * verificado en esta sesión (AAL2) — la política de F3-A exige AAL2 para TODO
+ * `/admin/*` salvo la propia pantalla de enrolamiento/step-up de MFA (que usa
+ * `exigirSuperAdmin()` directo, sin esta exigencia). Nombre conservado para no
+ * tener que tocar las ~9 páginas de `/admin/*` que ya lo importan como guarda
+ * de "doble verificación" (defensa en profundidad detrás del gate real de
+ * `layout.tsx`).
  */
-export function tokenSesionAdmin(): string | null {
-  const secreto = process.env.SUPER_ADMIN_SECRET;
-  if (!secreto) return null;
-  return createHmac("sha256", secreto).update(ETIQUETA_TOKEN).digest("hex");
-}
-
-/** Comparación de tiempo constante de dos strings (false si difieren en largo). */
-function igualesTiempoConstante(a: string, b: string): boolean {
-  const ba = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ba.length !== bb.length) return false;
-  return timingSafeEqual(ba, bb);
-}
-
-/**
- * Valida el SECRETO CRUDO ingresado en el formulario de login contra
- * `SUPER_ADMIN_SECRET`. Tiempo constante. Fail-closed si el env falta.
- */
-export function validarSecretoAdmin(secretoIngresado: string | null | undefined): boolean {
-  const esperado = process.env.SUPER_ADMIN_SECRET;
-  if (!esperado || !secretoIngresado) return false;
-  return igualesTiempoConstante(secretoIngresado, esperado);
-}
-
-/** Valida el TOKEN de la cookie contra el token derivado esperado. */
-function validarTokenAdmin(token: string | null | undefined): boolean {
-  const esperado = tokenSesionAdmin();
-  if (!esperado || !token) return false;
-  return igualesTiempoConstante(token, esperado);
-}
-
-/** `true` si la request trae una cookie de sesión admin válida. */
 export async function tieneSesionAdmin(): Promise<boolean> {
-  const store = await cookies();
-  return validarTokenAdmin(store.get(COOKIE_ADMIN)?.value);
+  try {
+    const actor = await exigirSuperAdmin();
+    return actor.aal === "aal2";
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Exige sesión admin válida y devuelve el SECRETO CRUDO (leído de env, nunca de
- * la cookie) para pasarlo a las funciones de `plataforma` que aún lo requieren.
- * Lanza `Error('No autorizado')` si la sesión no es válida — el secreto crudo
- * nunca sale del servidor.
+ * `rolAdmin` de la sesión actual, o `null` si no hay sesión admin válida —
+ * insumo para que las pantallas `/admin/*` OCULTEN/DESHABILITEN controles de
+ * ESCRITURA cuando `rolAdmin !== 'admin_total'` (UX; el gate real que importa
+ * es `exigirSuperAdminEscritura`, que cada Server Action ya exige por su
+ * cuenta vía `exigirActorAdmin()` — esto es solo para no ofrecerle a un
+ * `soporte_lectura` un botón que el servidor va a rechazar igual).
+ *
+ * Memoizada por request (misma `cache()` de `exigirSuperAdmin`): llamarla
+ * junto a `tieneSesionAdmin()` en la misma página no repite ninguna consulta.
  */
-export async function exigirSecretoAdmin(): Promise<string> {
-  const store = await cookies();
-  if (!validarTokenAdmin(store.get(COOKIE_ADMIN)?.value)) {
-    throw new Error("No autorizado");
+export async function obtenerRolAdminActual(): Promise<RolAdmin | null> {
+  try {
+    const actor = await exigirSuperAdmin();
+    return actor.rolAdmin;
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Exige sesión admin válida CON actor real y devuelve el `adminSecret` (leído
+ * de env, para las ~7 funciones de `plataforma` que aún lo piden — Paso 2
+ * pendiente, ver cabecera) junto al `actorUsuarioId` REAL (uuid de
+ * `auth.users`) para la bitácora, y `rolAdmin`/`aal` por si el caller quiere
+ * usarlos (los callers actuales solo desestructuran `adminSecret` y
+ * `actorUsuarioId` — DROP-IN).
+ *
+ * Exige permiso de ESCRITURA (`exigirSuperAdminEscritura`): rol `admin_total`
+ * Y MFA verificado (AAL2) en esta sesión — un `soporte_lectura` o una sesión
+ * sin step-up lanzan (`RequierePermisoEscritura` / `RequiereAal2`,
+ * respectivamente) antes de tocar ninguna acción financiera.
+ */
+export async function exigirActorAdmin(): Promise<{
+  adminSecret: string;
+  actorUsuarioId: string;
+  rolAdmin: RolAdmin;
+  aal: NivelAal;
+}> {
+  const actor = await exigirSuperAdminEscritura();
+
   const secreto = process.env.SUPER_ADMIN_SECRET;
-  if (!secreto) throw new Error("No autorizado");
-  return secreto;
+  if (!secreto) {
+    throw new Error("El backstage no está configurado en este entorno (falta SUPER_ADMIN_SECRET).");
+  }
+
+  return {
+    adminSecret: secreto,
+    actorUsuarioId: actor.usuarioId,
+    rolAdmin: actor.rolAdmin,
+    aal: actor.aal,
+  };
+}
+
+// =============================================================================
+// Listado de super-admins — usado por el filtro de actor de `/admin/bitacora`
+// =============================================================================
+// Sin relación con el gate de arriba: es una lectura de catálogo (para mostrar
+// nombres legibles en el filtro), no una verificación de autorización.
+
+/**
+ * Super-admin activo, forma reducida para listados (sin `rolAdmin`). Nombrado
+ * distinto de `SuperAdminActivo` (`@/modules/plataforma/autorizacion-admin`)
+ * a propósito — ese otro tipo es el resultado de la lectura de GOBERNANZA del
+ * gate (con `rolAdmin`, usado para autorizar); este es solo un DTO de catálogo
+ * para poblar un `<select>`.
+ */
+export interface SuperAdminListado {
+  usuarioId: string;
+  email: string;
+  nombre: string;
+}
+
+/**
+ * Lista los super-admins ACTIVOS — insumo del filtro "actor" de
+ * `/admin/bitacora` (lo consume `frontend`). Solo `usuario_id`/`email`/`nombre`.
+ */
+export async function obtenerSuperAdminsActivos(): Promise<SuperAdminListado[]> {
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema("plataforma")
+    .from("super_admins")
+    .select("usuario_id, email, nombre")
+    .eq("activo", true)
+    .order("nombre", { ascending: true });
+
+  if (error) throw new Error(`Error al listar super-admins activos: ${error.message}`);
+
+  return (data ?? []).map((f) => ({
+    usuarioId: f.usuario_id as string,
+    email: f.email as string,
+    nombre: f.nombre as string,
+  }));
 }
