@@ -17,6 +17,8 @@ import {
   combinarFechaHoraSantiago,
   fechaLocalEnSantiago,
   horaAMinutos,
+  sumarDiasCalendario,
+  diferenciaEnDiasCalendario,
 } from './fecha-santiago';
 
 // ---------------------------------------------------------------------------
@@ -224,5 +226,61 @@ describe('horaAMinutos', () => {
 
   it('convierte "23:59" a 1439', () => {
     expect(horaAMinutos('23:59')).toBe(1439);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sumarDiasCalendario
+// ---------------------------------------------------------------------------
+
+describe('sumarDiasCalendario', () => {
+  it('suma días dentro del mismo mes', () => {
+    expect(sumarDiasCalendario('2026-07-10', 5)).toBe('2026-07-15');
+  });
+
+  it('cruza el fin de mes (día 31 + 5 → 5 del mes siguiente)', () => {
+    expect(sumarDiasCalendario('2026-07-31', 5)).toBe('2026-08-05');
+  });
+
+  it('cruza fin de mes de febrero en año no bisiesto', () => {
+    expect(sumarDiasCalendario('2026-02-28', 5)).toBe('2026-03-05');
+  });
+
+  it('cruza el fin de año', () => {
+    expect(sumarDiasCalendario('2026-12-30', 5)).toBe('2027-01-04');
+  });
+
+  it('resta días con `dias` negativo', () => {
+    expect(sumarDiasCalendario('2026-07-01', -1)).toBe('2026-06-30');
+  });
+
+  it('lanza RangeError con formato inválido', () => {
+    expect(() => sumarDiasCalendario('2026/07/01', 1)).toThrow(RangeError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// diferenciaEnDiasCalendario
+// ---------------------------------------------------------------------------
+
+describe('diferenciaEnDiasCalendario', () => {
+  it('calcula la diferencia dentro del mismo mes', () => {
+    expect(diferenciaEnDiasCalendario('2026-07-01', '2026-07-31')).toBe(30);
+  });
+
+  it('devuelve 0 para la misma fecha', () => {
+    expect(diferenciaEnDiasCalendario('2026-07-15', '2026-07-15')).toBe(0);
+  });
+
+  it('devuelve negativo si `hasta` es anterior a `desde`', () => {
+    expect(diferenciaEnDiasCalendario('2026-07-15', '2026-07-10')).toBe(-5);
+  });
+
+  it('cruza meses y años correctamente', () => {
+    expect(diferenciaEnDiasCalendario('2026-12-15', '2027-01-15')).toBe(31);
+  });
+
+  it('lanza RangeError con formato inválido', () => {
+    expect(() => diferenciaEnDiasCalendario('15-07-2026', '2026-07-20')).toThrow(RangeError);
   });
 });

@@ -161,3 +161,41 @@ export function horaAMinutos(hora: string): number {
   const [hStr, mStr] = hora.split(':');
   return Number(hStr) * 60 + Number(mStr);
 }
+
+function validarFechaCivil(fecha: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    throw new RangeError(`fecha inválida: "${fecha}". Formato esperado: YYYY-MM-DD`);
+  }
+}
+
+/**
+ * Suma (o resta, con `dias` negativo) días CALENDARIO a una fecha
+ * 'YYYY-MM-DD'. Aritmética de fecha CIVIL (sin hora): usa `Date.UTC`
+ * internamente como truco para evitar cualquier drift de DST — una fecha
+ * 'YYYY-MM-DD' representa un día calendario, no un instante, así que no hay
+ * zona horaria que resolver aquí. Útil para sumar plazos a fechas YA
+ * expresadas en el calendario de Santiago (p. ej. `periodo_fin + 5 días` para
+ * `vence_en`, o `periodo_fin + 1 día` para la fecha efectiva de un downgrade).
+ */
+export function sumarDiasCalendario(fecha: string, dias: number): string {
+  validarFechaCivil(fecha);
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  const resultado = new Date(Date.UTC(anio, mes - 1, dia + dias));
+  return resultado.toISOString().slice(0, 10);
+}
+
+/**
+ * Diferencia en días CALENDARIO entre dos fechas 'YYYY-MM-DD' (`hasta - desde`).
+ * Mismo truco de `Date.UTC` que `sumarDiasCalendario` — comparación de fechas
+ * civiles, no de instantes. Devuelve un entero (puede ser negativo si `hasta`
+ * es anterior a `desde`).
+ */
+export function diferenciaEnDiasCalendario(desde: string, hasta: string): number {
+  validarFechaCivil(desde);
+  validarFechaCivil(hasta);
+  const [y1, m1, d1] = desde.split('-').map(Number);
+  const [y2, m2, d2] = hasta.split('-').map(Number);
+  const t1 = Date.UTC(y1, m1 - 1, d1);
+  const t2 = Date.UTC(y2, m2 - 1, d2);
+  return Math.round((t2 - t1) / 86_400_000);
+}
