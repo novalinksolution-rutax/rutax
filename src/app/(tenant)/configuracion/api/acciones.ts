@@ -11,6 +11,21 @@
  *
  * `accionCrearApiKey` devuelve la clave en claro UNA SOLA VEZ — nunca se
  * puede recuperar después porque solo el hash SHA-256 se persiste en BD.
+ *
+ * PUNTO DE GATE de entitlements (F2 "Ola 1", pendiente de decisión de
+ * producto — NO implementado aquí a propósito): `obtenerEntitlementsTenant`
+ * (`@/modules/plataforma/superficie-courier`) YA expone `apiPublica`/
+ * `webhooks` (con el merge de `caracteristicas_override`), y este archivo
+ * (`accionCrearApiKey`/`accionCrearWebhookEndpoint`) sería el chokepoint
+ * barato para condicionar el alta a que el plan del tenant incluya la
+ * feature. NO se activa en esta iteración porque un tenant SIN suscripción
+ * (`estadoSuscripcion: null`, p. ej. el tenant de demo/seed, que no tiene fila
+ * en `plataforma.suscripciones`) resuelve `apiPublica: false`/`webhooks:
+ * false` por el fail-open BLANDO de `obtenerEntitlementsTenant` — bloquear
+ * aquí con ese valor rompería el flujo de demo/QA sin que exista todavía una
+ * suscripción real para probarlo. Activarlo requiere decidir el trato para
+ * `sin_suscripcion` (¿acceso total mientras no haya plan asignado, o
+ * bloqueo?) — decisión de producto, no de esta iteración de backend.
  */
 
 import crypto from 'node:crypto';

@@ -21,6 +21,7 @@ import { Building2 } from "lucide-react";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { SuscripcionConPlan } from "@/modules/plataforma/tipos";
 import type { Plan } from "@/modules/plataforma/tipos";
+import { TooltipSoloLectura } from "../tooltip-solo-lectura";
 import {
   accionAsignarPlan,
   accionActivarSuscripcion,
@@ -37,6 +38,8 @@ interface Props {
   suscripciones: SuscripcionConPlan[];
   planes: Plan[];
   tenantsSinSuscripcion: TenantSinSuscripcion[];
+  /** `false` para `soporte_lectura` — oculta los controles de escritura (el gate real vive en el servidor). */
+  puedeEscribir: boolean;
 }
 
 const COLORES_ESTADO: Record<string, string> = {
@@ -190,8 +193,10 @@ function DialogNuevaSuscripcion({
 
 function AccionesSuscripcion({
   suscripcion,
+  puedeEscribir,
 }: {
   suscripcion: SuscripcionConPlan;
+  puedeEscribir: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -217,50 +222,94 @@ function AccionesSuscripcion({
         <Button variant="outline" size="sm" asChild>
           <Link href={`/admin/suscripciones/${suscripcion.id}`}>Cobros</Link>
         </Button>
-        {(suscripcion.estado === "trial" || suscripcion.estado === "suspendida") && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isPending}
-            onClick={() => ejecutar(accionActivarSuscripcion)}
-          >
-            Activar
-          </Button>
-        )}
-        {(suscripcion.estado === "activa" || suscripcion.estado === "trial") && (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isPending}
-            onClick={() => {
-              if (!window.confirm(`¿Suspender la suscripción de ${suscripcion.nombreFantasiaTenant ?? "este courier"}?`)) return;
-              ejecutar(accionSuspenderSuscripcion);
-            }}
-          >
-            Suspender
-          </Button>
-        )}
-        {suscripcion.estado !== "cancelada" && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            disabled={isPending}
-            onClick={() => {
-              if (!window.confirm(`¿Cancelar definitivamente la suscripción de ${suscripcion.nombreFantasiaTenant ?? "este courier"}? Esta acción no se puede deshacer.`)) return;
-              ejecutar(accionCancelarSuscripcion);
-            }}
-          >
-            Cancelar
-          </Button>
-        )}
+        {(suscripcion.estado === "trial" || suscripcion.estado === "suspendida") &&
+          (puedeEscribir ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isPending}
+              onClick={() => ejecutar(accionActivarSuscripcion)}
+            >
+              Activar
+            </Button>
+          ) : (
+            <TooltipSoloLectura>
+              <Button variant="outline" size="sm" disabled>
+                Activar
+              </Button>
+            </TooltipSoloLectura>
+          ))}
+        {(suscripcion.estado === "activa" || suscripcion.estado === "trial") &&
+          (puedeEscribir ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isPending}
+              onClick={() => {
+                if (!window.confirm(`¿Suspender la suscripción de ${suscripcion.nombreFantasiaTenant ?? "este courier"}?`)) return;
+                ejecutar(accionSuspenderSuscripcion);
+              }}
+            >
+              Suspender
+            </Button>
+          ) : (
+            <TooltipSoloLectura>
+              <Button variant="outline" size="sm" disabled>
+                Suspender
+              </Button>
+            </TooltipSoloLectura>
+          ))}
+        {suscripcion.estado !== "cancelada" &&
+          (puedeEscribir ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              disabled={isPending}
+              onClick={() => {
+                if (!window.confirm(`¿Cancelar definitivamente la suscripción de ${suscripcion.nombreFantasiaTenant ?? "este courier"}? Esta acción no se puede deshacer.`)) return;
+                ejecutar(accionCancelarSuscripcion);
+              }}
+            >
+              Cancelar
+            </Button>
+          ) : (
+            <TooltipSoloLectura>
+              <Button variant="ghost" size="sm" className="text-destructive" disabled>
+                Cancelar
+              </Button>
+            </TooltipSoloLectura>
+          ))}
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
 
-export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcion }: Props) {
+function BotonNuevaSuscripcion({
+  puedeEscribir,
+  planes,
+  tenants,
+  onCreada,
+}: {
+  puedeEscribir: boolean;
+  planes: Plan[];
+  tenants: TenantSinSuscripcion[];
+  onCreada: () => void;
+}) {
+  if (!puedeEscribir) {
+    return (
+      <TooltipSoloLectura>
+        <Button size="sm" disabled>
+          Nueva suscripción
+        </Button>
+      </TooltipSoloLectura>
+    );
+  }
+  return <DialogNuevaSuscripcion planes={planes} tenants={tenants} onCreada={onCreada} />;
+}
+
+export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcion, puedeEscribir }: Props) {
   const router = useRouter();
 
   const activas = suscripciones.filter((s) => s.estado === "activa").length;
@@ -293,7 +342,8 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
             )}
           </div>
         </div>
-        <DialogNuevaSuscripcion
+        <BotonNuevaSuscripcion
+          puedeEscribir={puedeEscribir}
           planes={planes}
           tenants={tenantsSinSuscripcion}
           onCreada={() => router.refresh()}
@@ -307,7 +357,8 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
           titulo="Sin suscripciones registradas"
           descripcion="Asigna el primer plan a un courier para comenzar."
           accion={
-            <DialogNuevaSuscripcion
+            <BotonNuevaSuscripcion
+              puedeEscribir={puedeEscribir}
               planes={planes}
               tenants={tenantsSinSuscripcion}
               onCreada={() => router.refresh()}
@@ -358,7 +409,7 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
                       {formatearCLP(s.plan.precioMensualClp)}
                     </td>
                     <td className="px-4 py-3">
-                      <AccionesSuscripcion suscripcion={s} />
+                      <AccionesSuscripcion suscripcion={s} puedeEscribir={puedeEscribir} />
                     </td>
                   </tr>
                 ))}

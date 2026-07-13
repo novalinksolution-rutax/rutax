@@ -19,7 +19,10 @@ import {
   puedeAsignarYReasignarPedidos,
   puedeVerReportesEjecutivos,
   puedeVerConciliacion,
+  puedeGestionarSuscripcion,
 } from "@/modules/identidad/capacidades";
+import { verificarLimite } from "@/modules/plataforma/enforcement";
+import { obtenerComunicacionesActivasParaCourier } from "@/modules/plataforma/comunicaciones";
 import { UMBRAL_FOLIOS } from "@/modules/dinero/folios";
 import { ESTADOS_NO_TERMINALES_CONCILIACION } from "@/modules/dinero/conciliacion-clasificacion";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
@@ -327,6 +330,76 @@ async function avisosExcepcionesVencidas(tenantId: string, usuarioId: string): P
   }
 }
 
+/** Umbrales de consumo del plan (% del límite) que disparan el banner. */
+const UMBRAL_CONSUMO_MEDIO_PCT = 80;
+const UMBRAL_CONSUMO_ALTO_PCT = 100;
+
+/**
+ * Consumo del plan de Rutax (backstage `plataforma`, F2 "Ola 1", ítem banner
+ * G) — DISTINTO de los avisos operativos de arriba: esto es Rutax avisándole
+ * al DUEÑO del courier que se está acercando al límite de SU PROPIO plan
+ * (pedidos/mes, y opcionalmente conductores), no algo sobre sus sellers.
+ * Gateado en `puedeGestionarSuscripcion` (dueño) — la relación comercial con
+ * Rutax es del dueño, mismo gate que el resto de `configuracion/plan`.
+ *
+ * Reusa `verificarLimite` (enforcement.ts) — que es SIEMPRE informativo para
+ * `pedidos_mes` (nunca bloquea la operación en marcha, CLAUDE.md); este aviso
+ * es justamente el mecanismo "avisa" de esa política blanda.
+ */
+async function avisosConsumoPlan(tenantId: string): Promise<Aviso[]> {
+  try {
+    const [pedidos, conductores] = await Promise.all([
+      verificarLimite(tenantId, "pedidos_mes"),
+      verificarLimite(tenantId, "conductores"),
+    ]);
+
+    const avisos: Aviso[] = [];
+
+    if (pedidos.limite !== null && pedidos.porcentaje !== null) {
+      if (pedidos.porcentaje >= UMBRAL_CONSUMO_ALTO_PCT) {
+        avisos.push({
+          id: "consumo-plan-pedidos-100",
+          urgencia: "urgente",
+          titulo: "Superaste el límite de pedidos de tu plan",
+          descripcion: `Llevas ${pedidos.usoActual} de ${pedidos.limite} pedidos este mes.`,
+          href: "/configuracion/plan",
+          accion: "Ver plan",
+        });
+      } else if (pedidos.porcentaje >= UMBRAL_CONSUMO_MEDIO_PCT) {
+        avisos.push({
+          id: "consumo-plan-pedidos-80",
+          urgencia: "importante",
+          titulo: `Vas en el ${pedidos.porcentaje}% de los pedidos de tu plan este mes`,
+          descripcion: `Llevas ${pedidos.usoActual} de ${pedidos.limite} pedidos este mes.`,
+          href: "/configuracion/plan",
+          accion: "Ver plan",
+        });
+      }
+    }
+
+    // Conductores: solo al 100% (el alta ya se topa en `crearConductor` — este
+    // aviso es el eco informativo para quien no pasó por ese flujo todavía).
+    if (
+      conductores.limite !== null &&
+      conductores.porcentaje !== null &&
+      conductores.porcentaje >= UMBRAL_CONSUMO_ALTO_PCT
+    ) {
+      avisos.push({
+        id: "consumo-plan-conductores-100",
+        urgencia: "urgente",
+        titulo: "Alcanzaste el máximo de conductores de tu plan",
+        descripcion: `Tienes ${conductores.usoActual} de ${conductores.limite} conductores activos.`,
+        href: "/configuracion/plan",
+        accion: "Ver plan",
+      });
+    }
+
+    return avisos;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Reúne los avisos in-app pertinentes al usuario, ordenados por urgencia.
  * Defensivo: cualquier fuente que falle se omite, nunca tumba el layout.
@@ -341,6 +414,14 @@ export async function obtenerAvisos(
   usuarioId: string,
 ): Promise<Aviso[]> {
   const tareas: Promise<Aviso[]>[] = [];
+
+  // Comunicaciones de Rutax al courier (F3, Gap 7 — mantención/novedad/alerta,
+  // banner in-app GLOBAL a todos los couriers). Sin gate de capacidad: es un
+  // anuncio de la PLATAFORMA, no de una función de negocio del tenant — todo
+  // rol interno que llega a `(tenant)/layout.tsx` (dueño, supervisor,
+  // coordinador, administración) lo ve. `obtenerComunicacionesActivasParaCourier`
+  // ya es defensiva (nunca lanza) — se empuja directo, sin envolver de nuevo.
+  tareas.push(obtenerComunicacionesActivasParaCourier());
 
   if (puedeAsignarYReasignarPedidos(usuario) || puedeGestionarConfiguracionDte(usuario)) {
     tareas.push(avisosConexionesCaidas(tenantId));
@@ -357,6 +438,9 @@ export async function obtenerAvisos(
   if (puedeVerConciliacion(usuario)) {
     tareas.push(avisosDiscrepanciasConciliacion(tenantId));
     tareas.push(avisosExcepcionesVencidas(tenantId, usuarioId));
+  }
+  if (puedeGestionarSuscripcion(usuario)) {
+    tareas.push(avisosConsumoPlan(tenantId));
   }
 
   const resultados = await Promise.all(tareas);

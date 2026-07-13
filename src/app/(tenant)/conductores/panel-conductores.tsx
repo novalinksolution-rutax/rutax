@@ -27,12 +27,22 @@ import {
   ToggleLeft,
   ToggleRight,
   Truck,
+  UserPlus,
   Users,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -43,12 +53,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { semaforoSla } from "@/lib/ui/semaforo-sla";
+import { esRutValido } from "@/modules/identidad/rut";
 import type { Conductor, ConductorZona, Zona, ImpactoSla } from "@/modules/operacion/tipos";
 import {
   actionToggleDisponibilidadConductor,
   actionActualizarCapacidadConductor,
   actionActualizarZonasConductor,
   actionActualizarDatosBancarios,
+  actionCrearConductor,
   obtenerZonasConductor,
   type EstadoConductores,
 } from "./actions";
@@ -75,8 +87,19 @@ export function PanelConductores({ estadoInicial, fechaHoy, puedeEditarBanco }: 
     setConductores((prev) => prev.map((x) => (x.id === c.id ? c : x)));
   }
 
+  function onConductorCreado(c: Conductor) {
+    setConductores((prev) =>
+      [...prev, c].sort((a, b) => a.nombre.localeCompare(b.nombre, "es-CL")),
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Nuevo conductor */}
+      <div className="flex justify-end">
+        <DialogNuevoConductor onCreado={onConductorCreado} />
+      </div>
+
       {/* Botón auto-asignar — acción rápida del día */}
       <BotonAutoAsignar fechaHoy={fechaHoy} />
 
@@ -85,9 +108,13 @@ export function PanelConductores({ estadoInicial, fechaHoy, puedeEditarBanco }: 
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
             <Users className="size-10 text-muted-foreground" aria-hidden="true" />
-            <p className="text-sm text-muted-foreground">
-              No hay conductores activos en el tenant.
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">Todavía no tienes conductores</p>
+              <p className="text-sm text-muted-foreground">
+                Crea el primero con &ldquo;Nuevo conductor&rdquo; arriba para empezar a armar tu
+                pool del día.
+              </p>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -105,6 +132,199 @@ export function PanelConductores({ estadoInicial, fechaHoy, puedeEditarBanco }: 
         </div>
       )}
     </div>
+  );
+}
+
+// =============================================================================
+// Dialog — Nuevo conductor (F2 "Ola 1", ítem G)
+// =============================================================================
+
+function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }) {
+  const [open, setOpen] = useState(false);
+  const [nombreCompleto, setNombreCompleto] = useState("");
+  const [rut, setRut] = useState("");
+  const [tipoRelacion, setTipoRelacion] = useState<"dependiente" | "independiente">("dependiente");
+  const [errorRut, setErrorRut] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [avisoLimite, setAvisoLimite] = useState<{
+    mensaje: string;
+    usoActual: number;
+    limite: number;
+  } | null>(null);
+  const [pendiente, iniciarTransicion] = useTransition();
+
+  function resetear() {
+    setNombreCompleto("");
+    setRut("");
+    setTipoRelacion("dependiente");
+    setErrorRut(null);
+    setError(null);
+    setAvisoLimite(null);
+  }
+
+  function validarRutInline(valor: string) {
+    if (!valor.trim()) {
+      setErrorRut(null);
+      return;
+    }
+    setErrorRut(esRutValido(valor) ? null : "RUT inválido. Verifica el número y el dígito verificador.");
+  }
+
+  function guardar(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setAvisoLimite(null);
+
+    const nombreLimpio = nombreCompleto.trim();
+    if (nombreLimpio.length < 2) {
+      setError("El nombre completo debe tener al menos 2 caracteres.");
+      return;
+    }
+    if (!esRutValido(rut)) {
+      setErrorRut("RUT inválido. Verifica el número y el dígito verificador.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("nombre_completo", nombreLimpio);
+    formData.set("rut", rut);
+    formData.set("tipo_relacion", tipoRelacion);
+
+    iniciarTransicion(async () => {
+      const resp = await actionCrearConductor(formData);
+      if (!resp.ok) {
+        if (resp.motivo === "limite_alcanzado") {
+          setAvisoLimite({ mensaje: resp.mensaje, usoActual: resp.usoActual, limite: resp.limite });
+        } else {
+          setError(resp.mensaje);
+        }
+        return;
+      }
+      onCreado(resp.conductor);
+      setOpen(false);
+      resetear();
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) resetear();
+        setOpen(v);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <UserPlus className="size-4" aria-hidden="true" />
+          Nuevo conductor
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Nuevo conductor</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={guardar} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="nuevo-conductor-nombre">Nombre completo</Label>
+            <Input
+              id="nuevo-conductor-nombre"
+              value={nombreCompleto}
+              onChange={(e) => {
+                setNombreCompleto(e.target.value);
+                setError(null);
+              }}
+              placeholder="Ej: Juan Pérez Soto"
+              disabled={pendiente}
+              autoComplete="off"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="nuevo-conductor-rut">RUT</Label>
+            <Input
+              id="nuevo-conductor-rut"
+              value={rut}
+              onChange={(e) => {
+                setRut(e.target.value);
+                validarRutInline(e.target.value);
+                setError(null);
+              }}
+              placeholder="12345678-9"
+              disabled={pendiente}
+              autoComplete="off"
+              aria-invalid={Boolean(errorRut)}
+              aria-describedby={errorRut ? "nuevo-conductor-rut-error" : undefined}
+              required
+            />
+            {errorRut && (
+              <p id="nuevo-conductor-rut-error" className="text-xs text-destructive">
+                {errorRut}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="nuevo-conductor-relacion">Tipo de relación</Label>
+            <Select
+              value={tipoRelacion}
+              onValueChange={(v) => setTipoRelacion(v as "dependiente" | "independiente")}
+              disabled={pendiente}
+            >
+              <SelectTrigger id="nuevo-conductor-relacion">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="dependiente">Dependiente (contrato de trabajo)</SelectItem>
+                <SelectItem value="independiente">Independiente (boleta de honorarios)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {avisoLimite && (
+            <Alert className="border-warning bg-warning-subtle text-warning-subtle-foreground">
+              <AlertTriangle className="text-warning" />
+              <AlertDescription>
+                <p>{avisoLimite.mensaje}</p>
+                <p className="mt-1 text-xs tabular-nums opacity-80">
+                  {avisoLimite.usoActual} de {avisoLimite.limite} conductores en tu plan actual.
+                </p>
+                <Button asChild size="sm" variant="outline" className="mt-2">
+                  <Link href="/configuracion/plan">Ver mi plan</Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {error && (
+            <Alert variant="destructive">
+              <ShieldAlert />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={pendiente}>
+                Cancelar
+              </Button>
+            </DialogClose>
+            <Button type="submit" disabled={pendiente || Boolean(errorRut)}>
+              {pendiente ? (
+                <>
+                  <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
+                  Creando…
+                </>
+              ) : (
+                "Crear conductor"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

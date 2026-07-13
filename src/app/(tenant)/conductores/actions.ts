@@ -15,6 +15,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
@@ -28,6 +29,8 @@ import {
   actualizarCapacidadConductor,
   actualizarZonasConductor,
   actualizarDatosBancariosConductor,
+  crearConductor,
+  type DatosAltaConductor,
 } from "@/modules/operacion/conductores";
 import { listarZonas } from "@/modules/operacion/zonas";
 import type { Conductor, ConductorZona, Zona } from "@/modules/operacion/tipos";
@@ -293,5 +296,77 @@ export async function actionActualizarDatosBancarios(
     const mensaje =
       err instanceof Error ? err.message : "Error al actualizar los datos bancarios.";
     return { ok: false, mensaje };
+  }
+}
+
+// =============================================================================
+// Alta de conductor (F2 "Ola 1", ítem G) — chokepoint del gate `conductores_max`
+// =============================================================================
+
+/**
+ * Resultado tipado del alta — distingue el bloqueo BLANDO de límite de plan
+ * (accionable: CTA a `/configuracion/plan`) de cualquier otro error (RBAC,
+ * formato, RUT duplicado). El dominio (`crearConductor`, `operacion/conductores.ts`)
+ * ya hace esta distinción devolviendo `{ok:false, motivo:'limite_alcanzado'}` en
+ * vez de lanzar — aquí solo se propaga tal cual y se homogeniza el resto de
+ * errores (que SÍ llegan como excepción, p. ej. `ErrorValidacion`) al mismo shape.
+ */
+export type RespuestaCrearConductor =
+  | { ok: true; conductor: Conductor }
+  | { ok: false; motivo: "limite_alcanzado"; mensaje: string; usoActual: number; limite: number }
+  | { ok: false; motivo: "error"; mensaje: string };
+
+/**
+ * Da de alta un conductor nuevo en el tenant. Usa el cliente RLS de la sesión
+ * (NO service_role): `crearConductor` (operacion/conductores.ts) documenta que
+ * el aislamiento de tenant en el INSERT lo impone la policy
+ * `conductores_insert_interno` de la base de datos, no esta capa — coherente
+ * con el resto de altas de `(tenant)` que pasan por RLS.
+ */
+export async function actionCrearConductor(formData: FormData): Promise<RespuestaCrearConductor> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, motivo: "error", mensaje: "No hay sesión activa." };
+  }
+
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return {
+      ok: false,
+      motivo: "error",
+      mensaje: "No tienes permiso para dar de alta conductores.",
+    };
+  }
+
+  const nombreCompleto = String(formData.get("nombre_completo") ?? "").trim();
+  const rut = String(formData.get("rut") ?? "").trim();
+  const tipoRelacionRaw = String(formData.get("tipo_relacion") ?? "");
+  const tipoRelacion: DatosAltaConductor["tipoRelacion"] =
+    tipoRelacionRaw === "independiente" ? "independiente" : "dependiente";
+
+  try {
+    const cliente = await createClient();
+    const resultado = await crearConductor(
+      cliente,
+      sesion.usuario.tenantId,
+      { nombreCompleto, rut, tipoRelacion },
+      sesion.usuarioId,
+      sesion.usuario,
+    );
+
+    if (!resultado.ok) {
+      return {
+        ok: false,
+        motivo: "limite_alcanzado",
+        mensaje: resultado.mensaje,
+        usoActual: resultado.usoActual,
+        limite: resultado.limite,
+      };
+    }
+
+    revalidatePath("/conductores");
+    return { ok: true, conductor: resultado.conductor };
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : "Error al crear el conductor.";
+    return { ok: false, motivo: "error", mensaje };
   }
 }

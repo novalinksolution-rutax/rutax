@@ -8,11 +8,16 @@
  *   tiene deny-all para `authenticated`).
  * - Registran en `bitacora_auditoria` con `actorTipo: 'super_admin'` antes de
  *   cualquier efecto externo (invariante del proyecto, RNF-04).
+ * - Aceptan `opts.actorUsuarioId?: string | null` (default `null`,
+ *   RETROCOMPATIBLE) — el uuid REAL del super-admin resuelto por
+ *   `exigirActorAdmin()` (`app/admin/sesion-admin.ts`, gap 3 F2-mínimo). Los
+ *   callers que no lo pasen conservan el comportamiento previo
+ *   (`actorUsuarioId: null` en la bitácora).
  *
  * NO son `'use server'` — son funciones puras del módulo que el llamador
  * (route handler o action del área super-admin) importa y llama.
  *
- * NUNCA loguear `adminSecret`.
+ * NUNCA loguear `adminSecret` ni `actorUsuarioId`.
  */
 
 import { timingSafeEqual } from 'node:crypto';
@@ -40,6 +45,64 @@ function verificarAdminSecret(adminSecret: string): void {
 }
 
 // =============================================================================
+// Validadores compartidos del CRUD de planes / overrides
+// =============================================================================
+
+/** CLP entero (sin decimales) y no negativo — invariante de moneda de CLAUDE.md. */
+function validarPrecioClp(valor: number, campo: string): void {
+  if (!Number.isInteger(valor) || valor < 0) {
+    throw new Error(`${campo} debe ser un monto CLP entero y no negativo.`);
+  }
+}
+
+/** Entero no negativo genérico (p. ej. `limitePedidosMes`). */
+function validarEnteroNoNegativo(valor: number, campo: string): void {
+  if (!Number.isInteger(valor) || valor < 0) {
+    throw new Error(`${campo} debe ser un número entero no negativo.`);
+  }
+}
+
+/**
+ * Llaves de características conocidas por el dominio — únicas que
+ * `sanearJsonbPlano` deja pasar, tanto en `planes.caracteristicas` como en
+ * `suscripciones.caracteristicas_override`. Espejo de lo que
+ * `obtenerEntitlementsTenant` (`superficie-courier.ts`) efectivamente lee de
+ * `caracteristicasEfectivas` (`conductores_max`, `api_publica`, `webhooks`) —
+ * más `limite_pedidos_mes`, que esa misma función especialcasa SOLO desde el
+ * override (pisa la columna dedicada `planes.limite_pedidos_mes` si la llave
+ * está presente ahí explícitamente; en `caracteristicas` de plan no tiene
+ * efecto, pero se whitelistea igual por consistencia y para no romper un
+ * override que la traiga junto a otras llaves). Cualquier llave fuera de
+ * esta lista se descarta en silencio antes de persistir — higiene: evita que
+ * el catálogo/overrides acumulen "features" fantasma que ningún consumidor
+ * del dominio interpreta.
+ */
+const LLAVES_CARACTERISTICAS_VALIDAS = new Set([
+  'conductores_max',
+  'api_publica',
+  'webhooks',
+  'limite_pedidos_mes',
+]);
+
+/**
+ * `caracteristicas`/`override` deben ser un objeto jsonb plano (no array, no
+ * null) — y se whitelistea a `LLAVES_CARACTERISTICAS_VALIDAS`: cualquier
+ * llave desconocida se descarta antes de persistir.
+ */
+function sanearJsonbPlano(valor: Record<string, unknown>, campo: string): Record<string, unknown> {
+  if (valor === null || typeof valor !== 'object' || Array.isArray(valor)) {
+    throw new Error(`${campo} debe ser un objeto jsonb plano (p. ej. { "conductores_max": 10 }).`);
+  }
+  const saneado: Record<string, unknown> = {};
+  for (const [clave, val] of Object.entries(valor)) {
+    if (LLAVES_CARACTERISTICAS_VALIDAS.has(clave)) {
+      saneado[clave] = val;
+    }
+  }
+  return saneado;
+}
+
+// =============================================================================
 // asignarPlan
 // =============================================================================
 
@@ -58,6 +121,9 @@ export async function asignarPlan(opts: {
   estado?: EstadoSuscripcion;
   trialHasta?: string;
   notas?: string;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
 }): Promise<{ ok: boolean; suscripcionId: string }> {
   verificarAdminSecret(opts.adminSecret);
 
@@ -68,7 +134,7 @@ export async function asignarPlan(opts: {
   // Bitácora ANTES del upsert (acción financiera — RNF-04)
   await registrarEnBitacora(supabase, {
     tenantId: opts.tenantId,
-    actorUsuarioId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
     actorTipo: 'super_admin',
     accion: 'plataforma.plan_asignado',
     entidadTipo: 'suscripcion',
@@ -115,6 +181,9 @@ export async function activarSuscripcion(opts: {
   adminSecret: string;
   suscripcionId: string;
   notas?: string;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
 }): Promise<{ ok: boolean }> {
   verificarAdminSecret(opts.adminSecret);
 
@@ -136,7 +205,7 @@ export async function activarSuscripcion(opts: {
   // Bitácora ANTES del efecto
   await registrarEnBitacora(supabase, {
     tenantId: susc.tenant_id as string,
-    actorUsuarioId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
     actorTipo: 'super_admin',
     accion: 'plataforma.suscripcion_activada',
     entidadTipo: 'suscripcion',
@@ -175,6 +244,9 @@ export async function suspenderSuscripcion(opts: {
   adminSecret: string;
   suscripcionId: string;
   notas?: string;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
 }): Promise<{ ok: boolean }> {
   verificarAdminSecret(opts.adminSecret);
 
@@ -194,7 +266,7 @@ export async function suspenderSuscripcion(opts: {
   // Bitácora ANTES del efecto
   await registrarEnBitacora(supabase, {
     tenantId: susc.tenant_id as string,
-    actorUsuarioId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
     actorTipo: 'super_admin',
     accion: 'plataforma.suscripcion_suspendida',
     entidadTipo: 'suscripcion',
@@ -232,6 +304,9 @@ export async function cancelarSuscripcion(opts: {
   adminSecret: string;
   suscripcionId: string;
   notas?: string;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
 }): Promise<{ ok: boolean }> {
   verificarAdminSecret(opts.adminSecret);
 
@@ -251,7 +326,7 @@ export async function cancelarSuscripcion(opts: {
   // Bitácora ANTES del efecto
   await registrarEnBitacora(supabase, {
     tenantId: susc.tenant_id as string,
-    actorUsuarioId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
     actorTipo: 'super_admin',
     accion: 'plataforma.suscripcion_cancelada',
     entidadTipo: 'suscripcion',
@@ -297,6 +372,9 @@ export async function registrarPagoManual(opts: {
   periodoId: string;
   metodo: Extract<MetodoPago, 'transferencia_manual' | 'cortesia'>;
   notas?: string;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
 }): Promise<{ ok: boolean }> {
   verificarAdminSecret(opts.adminSecret);
 
@@ -323,7 +401,7 @@ export async function registrarPagoManual(opts: {
   // Bitácora ANTES del INSERT (acción financiera — RNF-04)
   await registrarEnBitacora(supabase, {
     tenantId,
-    actorUsuarioId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
     actorTipo: 'super_admin',
     accion: 'plataforma.pago_manual_registrado',
     entidadTipo: 'periodo_suscripcion',
@@ -380,6 +458,9 @@ export async function registrarPagoManual(opts: {
 export async function generarLinkCobroPeriodo(opts: {
   adminSecret: string;
   periodoId: string;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
 }): Promise<{ ok: boolean; url: string; linkExternoId: string; modo: 'test' | 'live' }> {
   verificarAdminSecret(opts.adminSecret);
 
@@ -405,7 +486,7 @@ export async function generarLinkCobroPeriodo(opts: {
   // Bitácora ANTES del efecto externo (crear el link en Fintoc) — RNF-04.
   await registrarEnBitacora(supabase, {
     tenantId,
-    actorUsuarioId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
     actorTipo: 'super_admin',
     accion: 'plataforma.link_cobro_generado',
     entidadTipo: 'periodo_suscripcion',
@@ -457,6 +538,9 @@ export async function generarPeriodoManual(opts: {
   periodoInicio: string;
   periodoFin: string;
   montoClp: number;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
 }): Promise<{ ok: boolean; periodoId: string }> {
   verificarAdminSecret(opts.adminSecret);
 
@@ -494,7 +578,7 @@ export async function generarPeriodoManual(opts: {
   // Bitácora ANTES del INSERT
   await registrarEnBitacora(supabase, {
     tenantId,
-    actorUsuarioId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
     actorTipo: 'super_admin',
     accion: 'plataforma.periodo_generado_manual',
     entidadTipo: 'periodo_suscripcion',
@@ -524,4 +608,362 @@ export async function generarPeriodoManual(opts: {
   if (!nuevo) throw new Error('El INSERT de período no devolvió datos.');
 
   return { ok: true, periodoId: nuevo.id as string };
+}
+
+// =============================================================================
+// crearPlan / actualizarPlan / activarDesactivarPlan — CRUD del catálogo
+// =============================================================================
+// "Ola 1" (monetización base) del backstage de plataforma, F2, ítem D.
+// `plataforma.planes` no tiene RLS para `authenticated` (deny-all, migración
+// 0015) — el catálogo lo edita EXCLUSIVAMENTE el super-admin, vía estas
+// funciones. `obtenerCatalogoPlanesPublico` (superficie-courier.ts) es la
+// ÚNICA proyección que el courier ve, y solo de planes `activo=true`.
+
+/**
+ * Da de alta un plan nuevo en el catálogo. `activo:true` por defecto — un
+ * plan recién creado entra de inmediato al catálogo público salvo que se
+ * desactive explícitamente después.
+ */
+export async function crearPlan(opts: {
+  adminSecret: string;
+  nombre: string;
+  descripcion?: string | null;
+  precioMensualClp: number;
+  precioAnualClp: number;
+  limitePedidosMes?: number | null;
+  caracteristicas?: Record<string, unknown>;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
+}): Promise<{ ok: boolean; planId: string }> {
+  verificarAdminSecret(opts.adminSecret);
+
+  const nombre = opts.nombre.trim();
+  if (!nombre) throw new Error('El nombre del plan no puede estar vacío.');
+
+  validarPrecioClp(opts.precioMensualClp, 'precioMensualClp');
+  validarPrecioClp(opts.precioAnualClp, 'precioAnualClp');
+  if (opts.limitePedidosMes !== undefined && opts.limitePedidosMes !== null) {
+    validarEnteroNoNegativo(opts.limitePedidosMes, 'limitePedidosMes');
+  }
+  const caracteristicas = sanearJsonbPlano(opts.caracteristicas ?? {}, 'caracteristicas');
+
+  const supabase = crearClienteServiceRole();
+
+  // Bitácora ANTES del INSERT (RNF-04). El plan aún no tiene id definitivo —
+  // no es una acción de un tenant específico (`tenantId: null`, igual que el
+  // resto de acciones de catálogo/plataforma sin tenant asociado).
+  await registrarEnBitacora(supabase, {
+    tenantId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
+    actorTipo: 'super_admin',
+    accion: 'plataforma.plan_creado',
+    entidadTipo: 'plan',
+    entidadId: null,
+    detalle: {
+      nombre,
+      precio_mensual_clp: opts.precioMensualClp,
+      precio_anual_clp: opts.precioAnualClp,
+      limite_pedidos_mes: opts.limitePedidosMes ?? null,
+    },
+  });
+
+  const { data, error } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .insert({
+      nombre,
+      descripcion: opts.descripcion ?? null,
+      precio_mensual_clp: opts.precioMensualClp,
+      precio_anual_clp: opts.precioAnualClp,
+      limite_pedidos_mes: opts.limitePedidosMes ?? null,
+      caracteristicas,
+      activo: true,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Error al crear el plan: ${error.message}`);
+  if (!data) throw new Error('El INSERT del plan no devolvió datos.');
+
+  return { ok: true, planId: data.id as string };
+}
+
+/**
+ * Edita campos del plan (parcial — solo se tocan los campos presentes en
+ * `opts`). NO permite tocar `activo` (usar `activarDesactivarPlan`, que deja
+ * su propio rastro de auditoría distinguible del resto de ediciones).
+ */
+export async function actualizarPlan(opts: {
+  adminSecret: string;
+  planId: string;
+  nombre?: string;
+  descripcion?: string | null;
+  precioMensualClp?: number;
+  precioAnualClp?: number;
+  limitePedidosMes?: number | null;
+  caracteristicas?: Record<string, unknown>;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
+}): Promise<{ ok: boolean }> {
+  verificarAdminSecret(opts.adminSecret);
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: plan, error: errLectura } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .select('id')
+    .eq('id', opts.planId)
+    .maybeSingle();
+  if (errLectura) throw new Error(`Error al leer el plan: ${errLectura.message}`);
+  if (!plan) throw new Error(`Plan ${opts.planId} no encontrado.`);
+
+  const cambios: Record<string, unknown> = {};
+
+  if (opts.nombre !== undefined) {
+    const nombre = opts.nombre.trim();
+    if (!nombre) throw new Error('El nombre del plan no puede estar vacío.');
+    cambios.nombre = nombre;
+  }
+  if (opts.descripcion !== undefined) cambios.descripcion = opts.descripcion;
+  if (opts.precioMensualClp !== undefined) {
+    validarPrecioClp(opts.precioMensualClp, 'precioMensualClp');
+    cambios.precio_mensual_clp = opts.precioMensualClp;
+  }
+  if (opts.precioAnualClp !== undefined) {
+    validarPrecioClp(opts.precioAnualClp, 'precioAnualClp');
+    cambios.precio_anual_clp = opts.precioAnualClp;
+  }
+  if (opts.limitePedidosMes !== undefined) {
+    if (opts.limitePedidosMes !== null) validarEnteroNoNegativo(opts.limitePedidosMes, 'limitePedidosMes');
+    cambios.limite_pedidos_mes = opts.limitePedidosMes;
+  }
+  if (opts.caracteristicas !== undefined) {
+    cambios.caracteristicas = sanearJsonbPlano(opts.caracteristicas, 'caracteristicas');
+  }
+
+  if (Object.keys(cambios).length === 0) {
+    // Nada que editar — no-op, sin bitácora (no hubo efecto real).
+    return { ok: true };
+  }
+
+  // Bitácora ANTES del UPDATE (RNF-04).
+  await registrarEnBitacora(supabase, {
+    tenantId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
+    actorTipo: 'super_admin',
+    accion: 'plataforma.plan_actualizado',
+    entidadTipo: 'plan',
+    entidadId: opts.planId,
+    detalle: { campos_editados: Object.keys(cambios) },
+  });
+
+  const { error } = await supabase.schema('plataforma').from('planes').update(cambios).eq('id', opts.planId);
+  if (error) throw new Error(`Error al actualizar el plan: ${error.message}`);
+
+  return { ok: true };
+}
+
+/**
+ * Activa o desactiva un plan del catálogo PÚBLICO — NO lo borra (no hay
+ * `delete` en este módulo para `planes`). DESACTIVAR (`activo:false`) solo lo
+ * saca de `obtenerCatalogoPlanesPublico` (que filtra `activo=true`): las
+ * suscripciones EXISTENTES que ya referencian este plan siguen operando sin
+ * cambios — su `plan_id` sigue siendo válido, `obtenerSuscripcionPorTenant`
+ * lo resuelve igual (no filtra por `activo`). Esta garantía es la razón por
+ * la que NO existe un `eliminarPlan`: borrar violaría la FK de
+ * `suscripciones.plan_id` y rompería la trazabilidad histórica de cobros ya
+ * generados con ese plan.
+ */
+export async function activarDesactivarPlan(opts: {
+  adminSecret: string;
+  planId: string;
+  activo: boolean;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
+}): Promise<{ ok: boolean }> {
+  verificarAdminSecret(opts.adminSecret);
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: plan, error: errLectura } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .select('id, activo')
+    .eq('id', opts.planId)
+    .maybeSingle();
+  if (errLectura) throw new Error(`Error al leer el plan: ${errLectura.message}`);
+  if (!plan) throw new Error(`Plan ${opts.planId} no encontrado.`);
+
+  // Bitácora ANTES del UPDATE (RNF-04).
+  await registrarEnBitacora(supabase, {
+    tenantId: null,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
+    actorTipo: 'super_admin',
+    accion: opts.activo ? 'plataforma.plan_reactivado' : 'plataforma.plan_desactivado',
+    entidadTipo: 'plan',
+    entidadId: opts.planId,
+    detalle: { activo_anterior: plan.activo, activo_nuevo: opts.activo },
+  });
+
+  const { error } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .update({ activo: opts.activo })
+    .eq('id', opts.planId);
+  if (error) throw new Error(`Error al actualizar el estado del plan: ${error.message}`);
+
+  return { ok: true };
+}
+
+// =============================================================================
+// establecerCaracteristicasOverride — override de entitlements por courier
+// =============================================================================
+// "Ola 1", gap 6. Permite forzar/habilitar features puntuales para UN courier
+// sin cambiar su plan (p. ej. subirle el tope de conductores a un cliente
+// puntual). El merge con `plan.caracteristicas` (override GANA) lo hace
+// `obtenerEntitlementsTenant` (superficie-courier.ts) — esta función solo
+// PERSISTE el override.
+
+/**
+ * Actualiza `caracteristicas_override` de la suscripción del tenant.
+ *
+ * Semántica de "merge/set" (documentada aquí porque no es obvia del nombre):
+ * el `override` recibido se MEZCLA superficialmente sobre el override YA
+ * guardado — no lo reemplaza entero. Esto evita que un admin que solo quiere
+ * tocar una llave (p. ej. subir `conductores_max`) tenga que releer y reenviar
+ * TODO el override existente (y arriesgarse a pisar por accidente algo que
+ * otro admin fijó antes). Para BORRAR una llave del override (volver a que
+ * ese entitlement lo resuelva el plan) se envía esa llave con valor `null`
+ * explícito — un `null` en el `override` de entrada elimina la llave en vez
+ * de guardarla como `null` literal.
+ */
+export async function establecerCaracteristicasOverride(opts: {
+  adminSecret: string;
+  tenantId: string;
+  override: Record<string, unknown>;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
+}): Promise<{ ok: boolean }> {
+  verificarAdminSecret(opts.adminSecret);
+
+  const overrideEntrante = sanearJsonbPlano(opts.override, 'override');
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: susc, error: errLectura } = await supabase
+    .schema('plataforma')
+    .from('suscripciones')
+    .select('id, caracteristicas_override')
+    .eq('tenant_id', opts.tenantId)
+    .maybeSingle();
+  if (errLectura) throw new Error(`Error al leer la suscripción: ${errLectura.message}`);
+  if (!susc) throw new Error(`El tenant ${opts.tenantId} no tiene una suscripción.`);
+
+  const overrideAnterior = (susc.caracteristicas_override ?? {}) as Record<string, unknown>;
+  const overrideNuevo: Record<string, unknown> = { ...overrideAnterior };
+  for (const [clave, valor] of Object.entries(overrideEntrante)) {
+    if (valor === null) {
+      delete overrideNuevo[clave];
+    } else {
+      overrideNuevo[clave] = valor;
+    }
+  }
+
+  // Bitácora ANTES del UPDATE (RNF-04) — deja constancia del antes/después
+  // completo (no solo del delta) para poder auditar qué feature se forzó.
+  await registrarEnBitacora(supabase, {
+    tenantId: opts.tenantId,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
+    actorTipo: 'super_admin',
+    accion: 'plataforma.override_caracteristicas_actualizado',
+    entidadTipo: 'suscripcion',
+    entidadId: susc.id as string,
+    detalle: { override_anterior: overrideAnterior, override_nuevo: overrideNuevo },
+  });
+
+  const { error } = await supabase
+    .schema('plataforma')
+    .from('suscripciones')
+    .update({ caracteristicas_override: overrideNuevo, actualizado_en: new Date().toISOString() })
+    .eq('id', susc.id as string);
+  if (error) throw new Error(`Error al actualizar el override de características: ${error.message}`);
+
+  return { ok: true };
+}
+
+// =============================================================================
+// establecerEmisionDteReal — opt-in/opt-out de DTE real por courier (auditado)
+// =============================================================================
+// "Ola 1", ítem 8.
+
+/**
+ * Habilita o deshabilita `identidad.courier_config_dte.emision_dte_real_habilitada`
+ * para UN courier — vía `service_role` (el schema `identidad` no es deny-all
+ * como `plataforma`, pero esta escritura específica es exclusiva del
+ * super-admin, no del courier).
+ *
+ * CLAVE — invariante NO-NEGOCIABLE de CLAUDE.md, no debilitarlo nunca: esta
+ * función SOLO habilita la CAPACIDAD del courier de emitir DTE real. NO emite
+ * ningún DTE por sí misma (la emisión sigue exigiendo la acción humana
+ * `emitirFacturaPeriodo` con capacidad `emitir_facturas`, `dinero/acciones.ts`)
+ * NI cambia el modo sandbox/real de la PLATAFORMA (`DTE_SANDBOX_MODE`,
+ * `modules/dinero/modo-dte.ts`). El modo EFECTIVO de un courier
+ * (`resolverModoDteTenant`) es `'real'` SOLO si AMBAS condiciones se cumplen:
+ * la plataforma entera está en modo real Y este flag está en `true` — este
+ * toggle es UNA de las dos, nunca las reemplaza. Activar `DTE_SANDBOX_MODE=false`
+ * en el entorno exige, por su cuenta, revisión de `seguridad-cumplimiento`
+ * ANTES — este opt-in por courier es una capa ADICIONAL, no un atajo.
+ */
+export async function establecerEmisionDteReal(opts: {
+  adminSecret: string;
+  tenantId: string;
+  habilitada: boolean;
+  /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
+   *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
+  actorUsuarioId?: string | null;
+}): Promise<{ ok: boolean }> {
+  verificarAdminSecret(opts.adminSecret);
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: config, error: errLectura } = await supabase
+    .schema('identidad')
+    .from('courier_config_dte')
+    .select('tenant_id, emision_dte_real_habilitada')
+    .eq('tenant_id', opts.tenantId)
+    .maybeSingle();
+  if (errLectura) throw new Error(`Error al leer la configuración DTE: ${errLectura.message}`);
+  if (!config) {
+    throw new Error(
+      `El tenant ${opts.tenantId} aún no tiene configuración DTE (no eligió proveedor) — no se puede habilitar la emisión real.`,
+    );
+  }
+
+  // Bitácora ANTES del UPDATE (RNF-04) — actor super_admin real.
+  await registrarEnBitacora(supabase, {
+    tenantId: opts.tenantId,
+    actorUsuarioId: opts.actorUsuarioId ?? null,
+    actorTipo: 'super_admin',
+    accion: opts.habilitada ? 'plataforma.dte_real_opt_in' : 'plataforma.dte_real_opt_out',
+    entidadTipo: 'courier_config_dte',
+    entidadId: opts.tenantId,
+    detalle: {
+      habilitada_anterior: Boolean(config.emision_dte_real_habilitada),
+      habilitada_nueva: opts.habilitada,
+    },
+  });
+
+  const { error } = await supabase
+    .schema('identidad')
+    .from('courier_config_dte')
+    .update({ emision_dte_real_habilitada: opts.habilitada })
+    .eq('tenant_id', opts.tenantId);
+  if (error) throw new Error(`Error al actualizar el opt-in de emisión DTE real: ${error.message}`);
+
+  return { ok: true };
 }

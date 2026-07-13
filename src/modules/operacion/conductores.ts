@@ -27,6 +27,8 @@ import {
 } from '@/modules/identidad/capacidades';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { ErrorValidacion } from '@/modules/identidad/errores';
+import { normalizarYValidarRut } from '@/modules/identidad/rut';
+import { verificarLimite } from '@/modules/plataforma/enforcement';
 import type { Conductor, ConductorZona } from './tipos';
 
 // =============================================================================
@@ -369,4 +371,193 @@ export async function actualizarDatosBancariosConductor(
   }
 
   return filaAConductor(data);
+}
+
+// =============================================================================
+// crearConductor — alta de conductor (F2 "Ola 1", ítem G2)
+// =============================================================================
+
+const TIPOS_RELACION_VALIDOS = ['dependiente', 'independiente'] as const;
+type TipoRelacionValido = (typeof TIPOS_RELACION_VALIDOS)[number];
+
+export interface DatosAltaConductor {
+  nombreCompleto: string;
+  rut: string;
+  tipoRelacion: TipoRelacionValido;
+}
+
+/**
+ * Resultado tipado del gate de límite del plan — NO se lanza como excepción.
+ * "Enforcement blando" (CLAUDE.md) significa que el bloqueo llega como un
+ * resultado accionable para la UI ("actualiza tu plan"), no como un error
+ * genérico/500; el bloqueo en sí (no dejar crear MÁS conductores por sobre el
+ * cap del plan) es real y deliberado — distinto de `pedidos_mes`, que jamás
+ * bloquea nada (ver `enforcement.ts`).
+ */
+export interface ResultadoAltaConductorLimiteAlcanzado {
+  ok: false;
+  motivo: 'limite_alcanzado';
+  mensaje: string;
+  usoActual: number;
+  limite: number;
+}
+
+export type ResultadoAltaConductor =
+  | { ok: true; conductor: Conductor }
+  | ResultadoAltaConductorLimiteAlcanzado;
+
+/**
+ * Iniciales del nombre completo — lo único del nombre que llega a
+ * `bitacora_auditoria` (minimización de PII, Ley 21.431). El nombre completo
+ * SÍ se persiste en `conductores` (dato de negocio); esto solo acota el
+ * rastro de auditoría, visible al super-admin de Rutax cross-tenant.
+ * `"Juan Pérez Soto"` → `"J.P.S."`.
+ */
+function obtenerInicialesNombre(nombreCompleto: string): string {
+  return nombreCompleto
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((palabra) => `${palabra[0]?.toUpperCase() ?? ''}.`)
+    .join('');
+}
+
+/**
+ * Enmascara un RUT normalizado (`NNNNNNNN-DV`) para la bitácora: conserva
+ * solo los últimos 4 dígitos antes del DV y el propio DV, oculta el resto
+ * con `****`. Mismo criterio que `numero_cuenta_mascara` en
+ * `actualizarDatosBancariosConductor`. `"12345678-5"` → `"****5678-5"`.
+ */
+function enmascararRutBitacora(rutNormalizado: string): string {
+  const [cuerpo, dv] = rutNormalizado.split('-');
+  return `****${cuerpo.slice(-4)}-${dv}`;
+}
+
+/**
+ * Alta de un conductor nuevo — chokepoint del gate `conductores_max` del plan.
+ * Distinto del resto de este archivo (que EDITA conductores existentes): aquí
+ * se CREA la fila.
+ *
+ * RBAC — decisión: se reutiliza `asignar_y_reasignar_pedidos`, la MISMA
+ * capacidad que gatea el resto de este módulo (disponibilidad/capacidad/
+ * zonas en `actions.ts`, del coordinador/supervisor que arma el pool). El
+ * levantamiento (`docs/levantamiento.md` §4) no define una capacidad
+ * específica de "alta de conductor" distinta de "configurar el pool" — dar de
+ * alta es la primera preparación de ese mismo pool, así que se prefiere
+ * reusar el gate operativo ya existente en vez de inventar una capacidad sin
+ * respaldo textual.
+ *
+ * Gate de límite (BLANDO, CLAUDE.md: "avisa, no corta la operación en
+ * marcha"): `verificarLimite(tenantId, 'conductores')`. Si el plan ya está en
+ * su tope, esta función NO lanza — devuelve `{ ok:false,
+ * motivo:'limite_alcanzado', ... }` para que el frontend lo muestre como
+ * aviso accionable. No interrumpe NADA que ya esté en marcha (el pool
+ * existente sigue operando igual); solo topa el alta de un conductor NUEVO
+ * por sobre el cap contratado.
+ *
+ * Bitácora ANTES del INSERT (RNF-04, actor usuario) — el `id` del conductor
+ * se genera acá mismo (client-side, `crypto.randomUUID()`) y se pasa explícito
+ * en el INSERT, así el `entidadId` de la bitácora es el id real de la fila sin
+ * tener que esperar a que la BD lo devuelva (evita usar el RUT como
+ * identificador de entidad — minimización de PII, Ley 21.431: la bitácora es
+ * visible al super-admin de Rutax cross-tenant en `/admin/bitacora`, y ni el
+ * RUT completo ni el nombre completo del conductor pertenecen ahí; ambos SÍ
+ * se persisten en `conductores`, que es la tabla de negocio). El `detalle`
+ * solo lleva un RUT enmascarado e iniciales del nombre — ver
+ * `enmascararRutBitacora`/`obtenerInicialesNombre` más abajo, mismo criterio
+ * que `numero_cuenta_mascara` en `actualizarDatosBancariosConductor`.
+ *
+ * Usa el cliente RLS recibido (NO service_role): la policy
+ * `conductores_insert_interno` (migración 0002) ya exige
+ * `tenant_id = claim_tenant_id() AND tipo_usuario = 'interno'` — el
+ * aislamiento de tenant lo impone la base de datos, no esta función.
+ */
+export async function crearConductor(
+  cliente: SupabaseClient,
+  tenantId: string,
+  datos: DatosAltaConductor,
+  actorUsuarioId: string,
+  actor: UsuarioActual,
+): Promise<ResultadoAltaConductor> {
+  if (!puedeAsignarYReasignarPedidos(actor)) {
+    throw new ErrorValidacion('El usuario no tiene capacidad para dar de alta conductores');
+  }
+
+  const nombreCompleto = datos.nombreCompleto.trim();
+  if (nombreCompleto.length < 2) {
+    throw new ErrorValidacion('El nombre completo debe tener al menos 2 caracteres');
+  }
+
+  const rutNormalizado = normalizarYValidarRut(datos.rut);
+  if (!rutNormalizado) {
+    throw new ErrorValidacion(
+      'El RUT ingresado no es válido (formato o dígito verificador incorrectos)',
+    );
+  }
+
+  if (!TIPOS_RELACION_VALIDOS.includes(datos.tipoRelacion)) {
+    throw new ErrorValidacion('El tipo de relación debe ser "dependiente" o "independiente"');
+  }
+
+  // Gate de límite — chokepoint del cap `conductores_max` del plan.
+  const limite = await verificarLimite(tenantId, 'conductores');
+  if (!limite.permitido && limite.motivo === 'limite_alcanzado') {
+    return {
+      ok: false,
+      motivo: 'limite_alcanzado',
+      mensaje: `Alcanzaste el máximo de conductores de tu plan (${limite.limite}). Actualiza tu plan para agregar más.`,
+      usoActual: limite.usoActual,
+      limite: limite.limite as number,
+    };
+  }
+
+  // Id generado acá (no lo asigna la BD) para poder loguear la bitácora ANTES
+  // del INSERT (CLAUDE.md invariante — RNF-04) con el id real como entidadId,
+  // en vez del RUT completo (minimización de PII, Ley 21.431).
+  const conductorId = crypto.randomUUID();
+
+  // Bitácora ANTES del INSERT. `detalle` minimizado: sin RUT completo ni
+  // nombre completo — ver `enmascararRutBitacora`/`obtenerInicialesNombre`.
+  await registrarEnBitacora(cliente, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'conductor.alta',
+    entidadTipo: 'conductor',
+    entidadId: conductorId,
+    detalle: {
+      conductor_id: conductorId,
+      tipo_relacion: datos.tipoRelacion,
+      nombre_iniciales: obtenerInicialesNombre(nombreCompleto),
+      rut_mascara: enmascararRutBitacora(rutNormalizado),
+    },
+  });
+
+  const { data, error } = await cliente
+    .schema('identidad')
+    .from('conductores')
+    .insert({
+      id: conductorId,
+      tenant_id: tenantId,
+      nombre_completo: nombreCompleto,
+      rut: rutNormalizado,
+      tipo_relacion: datos.tipoRelacion,
+    })
+    .select(
+      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+    )
+    .maybeSingle();
+
+  if (error) {
+    // Unique (tenant_id, rut) — migración 0002 (`conductores_tenant_rut_uk`).
+    if ((error as { code?: string }).code === '23505') {
+      throw new ErrorValidacion('Ya existe un conductor con ese RUT en tu equipo.');
+    }
+    throw new Error(`Error al crear el conductor: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error('El INSERT del conductor no devolvió datos.');
+  }
+
+  return { ok: true, conductor: filaAConductor(data) };
 }

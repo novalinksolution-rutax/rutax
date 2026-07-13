@@ -5,7 +5,7 @@ import {
   obtenerPlanesActivos,
   obtenerTodosLosTenantsSinSuscripcion,
 } from "@/modules/plataforma/consultas";
-import { tieneSesionAdmin } from "../sesion-admin";
+import { tieneSesionAdmin, obtenerRolAdminActual } from "../sesion-admin";
 import { TablaSuscripciones } from "./tabla-suscripciones";
 
 export const metadata: Metadata = {
@@ -20,10 +20,11 @@ export default async function PaginaSuscripciones() {
     redirect("/admin/login");
   }
 
-  const [suscripciones, planes, tenantsSinSuscripcion] = await Promise.all([
+  const [suscripciones, planes, tenantsSinSuscripcion, rolAdmin] = await Promise.all([
     obtenerTodasSuscripciones(),
     obtenerPlanesActivos(),
     obtenerTodosLosTenantsSinSuscripcion(),
+    obtenerRolAdminActual(),
   ]);
 
   return (
@@ -34,6 +35,7 @@ export default async function PaginaSuscripciones() {
         id: t.id,
         nombreFantasia: t.nombreFantasia ?? null,
       }))}
+      puedeEscribir={rolAdmin === "admin_total"}
     />
   );
 }

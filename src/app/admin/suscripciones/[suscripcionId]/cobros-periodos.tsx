@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Receipt, ExternalLink } from "lucide-react";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { PeriodoConPago } from "@/modules/plataforma/consultas";
+import { TooltipSoloLectura } from "../../tooltip-solo-lectura";
 import { accionGenerarLinkCobro, accionRegistrarPagoManual } from "../acciones";
 
 const COLORES_ESTADO: Record<string, string> = {
@@ -34,7 +35,7 @@ function formatearFecha(iso: string | null): string {
   });
 }
 
-function FilaPeriodo({ periodo }: { periodo: PeriodoConPago }) {
+function FilaPeriodo({ periodo, puedeEscribir }: { periodo: PeriodoConPago; puedeEscribir: boolean }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -110,16 +111,28 @@ function FilaPeriodo({ periodo }: { periodo: PeriodoConPago }) {
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col items-end gap-1">
-          {cobrable && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={isPending} onClick={generarLink}>
-                {linkUrl ? "Regenerar link" : "Generar link"}
-              </Button>
-              <Button variant="ghost" size="sm" disabled={isPending} onClick={marcarPagado}>
-                Marcar pagado
-              </Button>
-            </div>
-          )}
+          {cobrable &&
+            (puedeEscribir ? (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={isPending} onClick={generarLink}>
+                  {linkUrl ? "Regenerar link" : "Generar link"}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={isPending} onClick={marcarPagado}>
+                  Marcar pagado
+                </Button>
+              </div>
+            ) : (
+              <TooltipSoloLectura>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled>
+                    {linkUrl ? "Regenerar link" : "Generar link"}
+                  </Button>
+                  <Button variant="ghost" size="sm" disabled>
+                    Marcar pagado
+                  </Button>
+                </div>
+              </TooltipSoloLectura>
+            ))}
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
       </td>
@@ -127,7 +140,14 @@ function FilaPeriodo({ periodo }: { periodo: PeriodoConPago }) {
   );
 }
 
-export function CobrosPeriodos({ periodos }: { periodos: PeriodoConPago[] }) {
+export function CobrosPeriodos({
+  periodos,
+  puedeEscribir,
+}: {
+  periodos: PeriodoConPago[];
+  /** `false` para `soporte_lectura` — oculta los controles de escritura (el gate real vive en el servidor). */
+  puedeEscribir: boolean;
+}) {
   if (periodos.length === 0) {
     return (
       <EmptyState
@@ -156,7 +176,7 @@ export function CobrosPeriodos({ periodos }: { periodos: PeriodoConPago[] }) {
           </thead>
           <tbody>
             {periodos.map((p) => (
-              <FilaPeriodo key={p.id} periodo={p} />
+              <FilaPeriodo key={p.id} periodo={p} puedeEscribir={puedeEscribir} />
             ))}
           </tbody>
         </table>
