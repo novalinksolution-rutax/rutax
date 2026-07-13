@@ -99,6 +99,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    if (resultado === 'monto_discrepante') {
+      // Defensa en profundidad (H-4): el monto informado por Fintoc no calza
+      // con el período — queda pendiente para revisión manual, no reintentos.
+      await capturarMensaje(
+        `Webhook de suscripción: monto discrepante en el período ${periodoId} (evento ${evento.eventoExternoId}).`,
+        'warning',
+        {
+          origen: 'webhook:fintoc-suscripcion',
+          etiquetas: { evento_externo_id: evento.eventoExternoId, periodo_id: periodoId ?? 'null' },
+        },
+      );
+    }
+
     return NextResponse.json({ ok: true, resultado, periodoId }, { status: 200 });
   } catch (err) {
     console.error(`[webhook fintoc-suscripcion] error al confirmar: ${(err as Error).message}`);

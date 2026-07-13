@@ -90,6 +90,15 @@ export const CAPACIDADES = [
   // levantamiento, que solo dice "Sistema/dueño". Se documenta aquí esa fuente.
   "ver_bitacora_auditoria",
 
+  // --- Suscripción de la plataforma Rutax (backstage `plataforma`) -----------
+  // Distinto del motor entrega→dinero (`aprobar_facturacion`/`emitir_facturas`,
+  // courier→seller): esto es Rutax cobrándole al courier por usar el software.
+  // Decisión (Fase 1 "completar suscripciones"): SOLO el dueño — la relación
+  // comercial/de facturación con Rutax es del dueño, no de administración
+  // operativa (que sí gestiona la facturación courier→seller). Cubre el alta
+  // self-serve del plan y, a futuro (F2), el cambio de plan.
+  "gestionar_suscripcion",
+
   // --- Acciones propias de seller/conductor (RF-010, RF-011, RF-020, RF-042) -
   // "Seller: conectar OAuth, solicitar same-day, ver/descargar DTE, seguir
   // incidencias · Estrictamente acotado a sus datos".
@@ -165,6 +174,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "ajustar_operacion_diaria",
     "ver_reportes_ejecutivos",
     "ver_bitacora_auditoria",
+    "gestionar_suscripcion",
   ],
 
   // "Operativos; sin config financiera ni usuarios" — confirma/ajusta
@@ -345,6 +355,11 @@ export function puedeVerReportesEjecutivos(usuario: UsuarioActual): boolean {
 
 export function puedeVerBitacoraAuditoria(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ver_bitacora_auditoria");
+}
+
+// --- Suscripción de la plataforma Rutax (backstage `plataforma`) -------------
+export function puedeGestionarSuscripcion(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "gestionar_suscripcion");
 }
 
 // --- Seller (RF-010, 011, 020, 037, 048) --------------------------------------

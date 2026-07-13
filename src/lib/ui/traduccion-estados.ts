@@ -21,6 +21,15 @@ import type {
   CategoriaNegocioConciliacion,
   AccionSugeridaConciliacion,
 } from "@/modules/dinero/tipos";
+import type {
+  EstadoSuscripcion,
+  // `EstadoPeriodo` de `plataforma` colisiona de nombre con el de `dinero` (ya
+  // importado arriba) — alias obligatorio.
+  EstadoPeriodo as EstadoPeriodoSuscripcion,
+  EstadoPago as EstadoPagoSuscripcion,
+  EstadoMandato,
+  MetodoPago,
+} from "@/modules/plataforma/tipos";
 
 // =============================================================================
 // EstadoPedido
@@ -274,6 +283,31 @@ export function requiereRevisionGeo(
     coberturaEstado === "requiere_revision" ||
     coberturaEstado === "sin_tarifa_zona"
   );
+}
+
+/**
+ * Minutos tras los cuales un pedido en `geo_estado='pendiente'` se considera
+ * "rancio". El geocoding corre en segundos tras la ingesta, así que un pedido
+ * que sigue pendiente pasado este umbral no está "en curso": su job nunca
+ * corrió (Inngest caído, o data insertada fuera de la tubería de ingesta que
+ * publica `operacion/pedido.ingestado`). Pasado el umbral, la UI deja de
+ * mostrar el spinner infinito y ofrece reintentar la ubicación.
+ */
+export const UMBRAL_GEOCODING_RANCIO_MINUTOS = 15;
+
+/**
+ * Verdadero si un pedido lleva demasiado tiempo en `geo_estado='pendiente'` sin
+ * geocodificarse — señal de que el geocoding está atascado, no en curso. Evita
+ * el spinner "Ubicando dirección…" eterno cuando el job jamás va a resolver.
+ */
+export function geocodingPendienteRancio(
+  geoEstado: EstadoGeocoding,
+  geocodificadoEn: string | null,
+  creadoEn: string,
+): boolean {
+  if (geoEstado !== "pendiente") return false;
+  if (geocodificadoEn !== null) return false;
+  return horasDesde(creadoEn) * 60 > UMBRAL_GEOCODING_RANCIO_MINUTOS;
 }
 
 // =============================================================================
@@ -628,4 +662,116 @@ export function horasDesde(fechaIso: string): number {
 export function esIncidenciaSinGestion(estado: EstadoIncidencia, abiertaEn: string): boolean {
   if (estado !== "abierta") return false;
   return horasDesde(abiertaEn) > UMBRAL_INCIDENCIA_SIN_GESTION_HORAS;
+}
+
+// =============================================================================
+// EstadoSuscripcion — suscripción SaaS del courier a Rutax (backstage `plataforma`)
+// =============================================================================
+// Mismos colores que `src/app/admin/suscripciones/tabla-suscripciones.tsx`
+// (vista del super-admin): trial=azul/info, activa=verde/éxito,
+// suspendida=ámbar/advertencia, cancelada=neutral.
+
+export const TEXTO_ESTADO_SUSCRIPCION: Record<EstadoSuscripcion, string> = {
+  trial: "Prueba",
+  activa: "Activa",
+  suspendida: "Suspendida",
+  cancelada: "Cancelada",
+};
+
+export function traducirEstadoSuscripcion(estado: EstadoSuscripcion): string {
+  return TEXTO_ESTADO_SUSCRIPCION[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_SUSCRIPCION: Record<EstadoSuscripcion, VarianteEstado> = {
+  trial: "info",
+  activa: "exito",
+  suspendida: "advertencia",
+  cancelada: "neutral",
+};
+export const COLOR_ESTADO_SUSCRIPCION = clasesPorEstado(VARIANTE_ESTADO_SUSCRIPCION);
+export const BADGE_ESTADO_SUSCRIPCION = badgePorEstado(VARIANTE_ESTADO_SUSCRIPCION);
+
+// =============================================================================
+// EstadoPeriodoSuscripcion — período de cobro de la suscripción del courier
+// =============================================================================
+
+export const TEXTO_ESTADO_PERIODO_SUSCRIPCION: Record<EstadoPeriodoSuscripcion, string> = {
+  pendiente: "Pendiente",
+  pagado: "Pagado",
+  vencido: "Vencido",
+};
+
+export function traducirEstadoPeriodoSuscripcion(estado: EstadoPeriodoSuscripcion): string {
+  return TEXTO_ESTADO_PERIODO_SUSCRIPCION[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_PERIODO_SUSCRIPCION: Record<EstadoPeriodoSuscripcion, VarianteEstado> = {
+  pendiente: "advertencia",
+  pagado: "exito",
+  vencido: "error",
+};
+export const COLOR_ESTADO_PERIODO_SUSCRIPCION = clasesPorEstado(VARIANTE_ESTADO_PERIODO_SUSCRIPCION);
+export const BADGE_ESTADO_PERIODO_SUSCRIPCION = badgePorEstado(VARIANTE_ESTADO_PERIODO_SUSCRIPCION);
+
+// =============================================================================
+// EstadoPagoSuscripcion — un pago del historial de la suscripción del courier
+// =============================================================================
+
+export const TEXTO_ESTADO_PAGO_SUSCRIPCION: Record<EstadoPagoSuscripcion, string> = {
+  pendiente: "Pendiente",
+  confirmado: "Confirmado",
+  fallido: "Fallido",
+};
+
+export function traducirEstadoPagoSuscripcion(estado: EstadoPagoSuscripcion): string {
+  return TEXTO_ESTADO_PAGO_SUSCRIPCION[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_PAGO_SUSCRIPCION: Record<EstadoPagoSuscripcion, VarianteEstado> = {
+  pendiente: "advertencia",
+  confirmado: "exito",
+  fallido: "error",
+};
+export const COLOR_ESTADO_PAGO_SUSCRIPCION = clasesPorEstado(VARIANTE_ESTADO_PAGO_SUSCRIPCION);
+export const BADGE_ESTADO_PAGO_SUSCRIPCION = badgePorEstado(VARIANTE_ESTADO_PAGO_SUSCRIPCION);
+
+// =============================================================================
+// EstadoMandato — mandato de auto-cobro Fintoc de la suscripción del courier
+// =============================================================================
+
+export const TEXTO_ESTADO_MANDATO: Record<EstadoMandato, string> = {
+  sin_mandato: "Sin activar",
+  pendiente: "Confirmando con tu banco",
+  activo: "Activo",
+  cancelado: "Desactivado",
+  fallido: "Con problemas",
+};
+
+export function traducirEstadoMandato(estado: EstadoMandato): string {
+  return TEXTO_ESTADO_MANDATO[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_MANDATO: Record<EstadoMandato, VarianteEstado> = {
+  sin_mandato: "neutral",
+  pendiente: "info",
+  activo: "exito",
+  cancelado: "neutral",
+  fallido: "error",
+};
+export const COLOR_ESTADO_MANDATO = clasesPorEstado(VARIANTE_ESTADO_MANDATO);
+export const BADGE_ESTADO_MANDATO = badgePorEstado(VARIANTE_ESTADO_MANDATO);
+
+// =============================================================================
+// MetodoPago — método de un pago de la suscripción del courier a Rutax
+// =============================================================================
+
+const TEXTO_METODO_PAGO: Record<MetodoPago, string> = {
+  fintoc_link: "Cobro automático",
+  fintoc_recurrente: "Cobro automático",
+  transferencia_manual: "Transferencia",
+  cortesia: "Cortesía",
+};
+
+export function traducirMetodoPago(metodo: MetodoPago): string {
+  return TEXTO_METODO_PAGO[metodo] ?? metodo;
 }

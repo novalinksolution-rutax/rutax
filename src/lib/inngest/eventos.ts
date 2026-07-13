@@ -320,3 +320,190 @@ export interface EventoPayoutConfirmado {
     driverId: string;
   };
 }
+
+// =============================================================================
+// `plataforma` — backstage financiero de Rutax (Rutax cobra al courier).
+// DISTINTO del motor entrega→dinero de arriba (courier cobra al seller). Fase 1
+// de "completar suscripciones": superficie self-serve del courier
+// (`src/modules/plataforma/superficie-courier.ts`) + ciclo de cobro automático.
+// =============================================================================
+
+/**
+ * Alta de una suscripción — self-serve (courier) o asignada por super-admin.
+ *
+ * Publicado por `crearSuscripcionInicial` (`plataforma/superficie-courier.ts`,
+ * origen `self_serve`) DESPUÉS del INSERT, con la bitácora ya registrada ANTES
+ * (RNF-04). El alta super-admin (`asignarPlan`, `plataforma/acciones.ts`) hoy
+ * NO publica este evento (fuera de alcance de esta fase); el campo `origen` ya
+ * distingue el caso para cuando se conecte.
+ *
+ * Sin consumidor todavía — punto de extensión (p. ej. notificación de
+ * bienvenida, analítica de activación).
+ */
+export interface EventoSuscripcionCreada {
+  name: 'plataforma/suscripcion.creada';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    planId: string;
+    estado: 'trial' | 'activa';
+    trialHasta: string | null;
+    origen: 'self_serve' | 'super_admin';
+  };
+}
+
+/**
+ * Se generó un período de suscripción COBRABLE (`monto_clp > 0`) para una
+ * suscripción `activa`. Publicado por el cron `plataforma/generarPeriodos`
+ * (`jobs/generar-periodos.ts`) tras insertar el período — NO se publica para
+ * trials (`monto_clp = 0`): no hay nada que cobrar.
+ *
+ * Consumido por el futuro job de auto-cobro recurrente (mandato Fintoc,
+ * `integraciones`, encadenado a continuación de esta fase) — hoy sin
+ * consumidor registrado en el repo. El cron NUNCA cobra directamente (mismo
+ * principio que `dinero/periodo.cerrado`: generar ≠ cobrar); el `id` de evento
+ * es determinístico por `periodoId` para que un reintento del cron no dispare
+ * un segundo intento de cobro.
+ */
+export interface EventoSuscripcionPeriodoGenerado {
+  name: 'plataforma/suscripcion.periodo-generado';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    periodoId: string;
+    montoClp: number;
+    periodoInicio: string;
+    periodoFin: string;
+    periodicidad: 'mensual' | 'anual';
+  };
+}
+
+/**
+ * Un pago de suscripción quedó confirmado (período `pagado`).
+ *
+ * Publicado por `confirmarPagoSuscripcion` (`plataforma/cobro.ts`) tras marcar
+ * el período pagado — bitácora (actor `sistema`, el webhook) ya registrada
+ * ANTES de este evento. `metodo` incluye `fintoc_recurrente` para cuando el
+ * auto-cobro por mandato quede activo (hoy solo se produce `fintoc_link` y
+ * `transferencia_manual`/`cortesia` vía las acciones de super-admin).
+ *
+ * Sin consumidor todavía — punto de extensión (p. ej. recibo por correo al
+ * courier, analítica de cobranza).
+ */
+export interface EventoPagoSuscripcionConfirmado {
+  name: 'plataforma/pago.confirmado';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    periodoId: string;
+    montoClp: number;
+    metodo: 'fintoc_link' | 'fintoc_recurrente' | 'transferencia_manual' | 'cortesia';
+    confirmadoEn: string;
+  };
+}
+
+/**
+ * Un intento de cobro de suscripción falló (link expirado/rechazado, o —
+ * cuando exista— un cargo de mandato recurrente rechazado).
+ *
+ * Contrato tipado para el futuro job de auto-cobro recurrente (`integraciones`,
+ * continuación de esta fase): ese job es el PRODUCTOR real. Se define aquí
+ * ahora (regla del proyecto: "todo evento nuevo se define en `eventos.ts` antes
+ * de emitirse o consumirse") para que el siguiente agente implemente contra un
+ * contrato ya acordado, sin re-negociar la forma del payload. `motivoSaneado`
+ * es el motivo de rechazo YA saneado por el llamador — nunca el payload crudo
+ * del proveedor (puede traer datos sensibles del medio de pago).
+ */
+export interface EventoCobroSuscripcionFallido {
+  name: 'plataforma/cobro.fallido';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    periodoId: string;
+    montoClp: number;
+    motivoSaneado: string | null;
+    reintentable: boolean;
+  };
+}
+
+/**
+ * Un trial está por vencer.
+ *
+ * Contrato tipado para el futuro monitor de trials (cron, continuación de esta
+ * fase) — mismo razonamiento que `plataforma/cobro.fallido`: se define el
+ * contrato ahora, el productor llega con ese job.
+ */
+export interface EventoTrialPorVencer {
+  name: 'plataforma/trial.por-vencer';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    trialHasta: string;
+    diasRestantes: number;
+  };
+}
+
+/**
+ * El plan (o la periodicidad) de la suscripción de un courier CAMBIÓ de forma
+ * EFECTIVA (F2 "Ola 3", ítem M — ciclo de vida y comunicaciones).
+ *
+ * Publicado en el momento en que el cambio realmente toma efecto — no en el
+ * momento en que se SOLICITA un cambio diferido (ver el modelo de downgrade
+ * diferido documentado en `plataforma/superficie-courier.ts`, sobre
+ * `cambiarPlanCourier`):
+ *  - `upgrade` (efecto inmediato): lo publica `cambiarPlanCourier`
+ *    (`plataforma/superficie-courier.ts`) justo después de aplicar el swap de
+ *    `plan_id`, con o sin cargo de proración.
+ *  - `downgrade` / `periodicidad` (efecto diferido al próximo ciclo): NO se
+ *    publica al solicitarlo (nada cambió todavía) — lo publica
+ *    `plataforma/aplicarCambiosPlan` (`jobs/aplicar-cambios-plan.ts`) el día
+ *    en que el cron efectivamente aplica el swap.
+ * Un solo evento por cambio real evita duplicar el correo de confirmación.
+ *
+ * Consumido por `jobs/notificar-plan-cambiado.ts` (correo de confirmación al
+ * courier, vía el puerto de email).
+ */
+export interface EventoPlanCambiado {
+  name: 'plataforma/plan.cambiado';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    planDesdeId: string;
+    planHaciaId: string;
+    tipo: 'upgrade' | 'downgrade' | 'periodicidad';
+    periodicidadDesde: 'mensual' | 'anual';
+    periodicidadHacia: 'mensual' | 'anual';
+    /** Cargo de proración inmediato (CLP), o `null` si no aplicó ninguno. */
+    montoAjusteClp: number | null;
+    /** Fecha ('YYYY-MM-DD', Santiago) en que el cambio es efectivo (hoy, siempre). */
+    efectivoDesde: string;
+    /** UUID de auth de quien solicitó el cambio, o `null` si lo aplicó el cron (cambio diferido). */
+    actorUsuarioId: string | null;
+  };
+}
+
+/**
+ * Comunicación de Rutax a los couriers publicada CON envío de email (F3 · Gap
+ * 7 — `plataforma.comunicaciones`, migración 20260713000001).
+ *
+ * Publicado EXCLUSIVAMENTE por `crearComunicacion` (`plataforma/comunicaciones.ts`)
+ * cuando `enviarEmail=true`, DESPUÉS del INSERT (bitácora ya registrada ANTES
+ * del INSERT — RNF-04). El banner in-app NO depende de este evento (lo resuelve
+ * `obtenerComunicacionesActivasParaCourier`, leído directo por el agregador de
+ * avisos en cada render) — este evento es SOLO el disparador del broadcast por
+ * correo a los couriers, consumido por `jobs/notificar-comunicacion.ts`.
+ *
+ * `id` de evento determinístico (`comunicacion-publicada-${comunicacionId}`):
+ * una comunicación se publica una sola vez, nunca se re-emite al desactivarla/
+ * reactivarla.
+ */
+export interface EventoComunicacionPublicada {
+  name: 'plataforma/comunicacion.publicada';
+  data: {
+    comunicacionId: string;
+    titulo: string;
+    cuerpo: string;
+    tipo: 'info' | 'mantencion' | 'novedad' | 'alerta';
+    nivel: 'informativo' | 'importante' | 'urgente';
+  };
+}

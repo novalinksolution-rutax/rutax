@@ -45,6 +45,18 @@ function filaToSuscripcion(f: Record<string, any>): Suscripcion {
     activaDesde: f.activa_desde ?? null,
     canceladaEn: f.cancelada_en ?? null,
     notas: f.notas ?? null,
+    // Columnas de la migración 20260710000001 (periodicidad/auto-cobro/mandato).
+    // Defaults defensivos por si la fila viene de un mock de prueba incompleto.
+    periodicidad: (f.periodicidad ?? 'mensual') as Suscripcion['periodicidad'],
+    autoCobroHabilitado: Boolean(f.auto_cobro_habilitado ?? false),
+    mandatoEstado: (f.mandato_estado ?? 'sin_mandato') as Suscripcion['mandatoEstado'],
+    mandatoRef: f.mandato_ref ?? null,
+    planAnteriorId: f.plan_anterior_id ?? null,
+    cambioEfectivoDesde: f.cambio_efectivo_desde ?? null,
+    // Columna de la migración 20260712000001 (overrides de entitlements por
+    // courier, gap 6). Default defensivo `{}` por si la fila viene de un mock
+    // de prueba incompleto o de antes de la migración.
+    caracteristicasOverride: (f.caracteristicas_override ?? {}) as Record<string, unknown>,
     creadaEn: f.creada_en,
     actualizadoEn: f.actualizado_en,
   };
@@ -62,6 +74,9 @@ function filaToPeriodoSuscripcion(f: Record<string, any>): PeriodoSuscripcion {
     estado: f.estado,
     venceEn: f.vence_en ?? null,
     generadoEn: f.generado_en,
+    // Columna de la migración 20260712000004 (Ola 2 F2, item I). Default
+    // defensivo 'periodo' por si la fila viene de un mock de prueba incompleto.
+    concepto: (f.concepto ?? 'periodo') as PeriodoSuscripcion['concepto'],
   };
 }
 
@@ -83,6 +98,25 @@ export async function obtenerPlanesActivos(): Promise<Plan[]> {
     .order('precio_mensual_clp', { ascending: true });
 
   if (error) throw new Error(`Error al obtener planes activos: ${error.message}`);
+  return (data ?? []).map(filaToPlan);
+}
+
+/**
+ * Lista TODOS los planes del catálogo (activos e inactivos), para el CRUD del
+ * super-admin (`/admin/planes`, F2 "Ola 1", ítem D) — distinta de
+ * `obtenerPlanesActivos`, que es la proyección pública que consume el courier
+ * (`obtenerCatalogoPlanesPublico`) y solo debe ver `activo=true`.
+ */
+export async function obtenerTodosLosPlanes(): Promise<Plan[]> {
+  const supabase = crearClienteServiceRole();
+
+  const { data, error } = await supabase
+    .schema('plataforma')
+    .from('planes')
+    .select('*')
+    .order('precio_mensual_clp', { ascending: true });
+
+  if (error) throw new Error(`Error al obtener el catálogo de planes: ${error.message}`);
   return (data ?? []).map(filaToPlan);
 }
 
@@ -340,4 +374,39 @@ export async function obtenerTodosLosTenantsSinSuscripcion(): Promise<
     id: t.id as string,
     nombreFantasia: (t.nombre_fantasia ?? null) as string | null,
   }));
+}
+
+// =============================================================================
+// Configuración DTE del courier (lectura para el panel admin de overrides)
+// =============================================================================
+
+/**
+ * Estado actual del opt-in de emisión DTE real del tenant — lector para la
+ * sección "Entitlements / overrides" de `/admin/suscripciones/[id]` (F2 "Ola
+ * 1", ítem 8). Distinto de `resolverModoDteTenant` (`modules/dinero/modo-dte.ts`):
+ * ese resuelve el modo EFECTIVO (mezclando el switch global
+ * `DTE_SANDBOX_MODE`), mientras que esto expone el valor CRUDO del flag por
+ * courier tal como lo dejó `establecerEmisionDteReal` — lo que el admin
+ * necesita ver/editar independientemente del modo global de la plataforma.
+ *
+ * `tieneConfig:false` = el courier aún no completó el onboarding DTE (no
+ * existe fila en `identidad.courier_config_dte`) — `establecerEmisionDteReal`
+ * rechaza el opt-in en ese caso; la UI debe reflejar esa imposibilidad.
+ */
+export async function obtenerConfigDteTenant(
+  tenantId: string,
+): Promise<{ tieneConfig: boolean; emisionDteRealHabilitada: boolean }> {
+  const supabase = crearClienteServiceRole();
+
+  const { data, error } = await supabase
+    .schema('identidad')
+    .from('courier_config_dte')
+    .select('emision_dte_real_habilitada')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(`Error al leer la configuración DTE del courier: ${error.message}`);
+  if (!data) return { tieneConfig: false, emisionDteRealHabilitada: false };
+
+  return { tieneConfig: true, emisionDteRealHabilitada: Boolean(data.emision_dte_real_habilitada) };
 }

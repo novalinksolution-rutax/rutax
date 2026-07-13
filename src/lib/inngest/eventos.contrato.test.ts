@@ -30,9 +30,16 @@ const RUTA_EVENTOS = join(DIR_INNGEST, 'eventos.ts');
 
 /**
  * Puntos de extensión conocidos: eventos definidos a propósito para una futura
- * ampliación, que HOY sí se publican pero pueden no tener consumidor. Mantener
- * esta lista vacía o mínima — es una excepción documentada, no un cajón de
- * sastre. (No confundir con "sin productor": eso nunca se permite.)
+ * ampliación. Mantener esta lista vacía o mínima — es una excepción
+ * documentada, no un cajón de sastre.
+ *
+ * Motivo válido para estar aquí (ver el filtro de la prueba B más abajo): el
+ * evento HOY sí se publica pero puede no tener consumidor todavía. NOTA F2
+ * "Ola 3": `plataforma/cobro.fallido` y `plataforma/trial.por-vencer` YA
+ * tienen productor Y consumidor real (`jobs/cobrar-periodo-auto.ts` /
+ * `jobs/vigilar-trials.ts` como productores, `jobs/notificar-cobro-fallido.ts`
+ * / `jobs/notificar-trial-por-vencer.ts` como consumidores) — se retiraron de
+ * esta lista.
  */
 const PUNTOS_EXTENSION_SIN_CONSUMIDOR = new Set<string>([
   // `dinero/pago.conciliado`: lo publica conciliar-pago.ts; el consumidor

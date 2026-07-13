@@ -14,6 +14,7 @@ import {
   puedeGestionarConfiguracionDte,
   puedeGestionarIncidencias,
   puedeGestionarLiquidacionesConductores,
+  puedeGestionarSuscripcion,
   puedeGestionarTarifas,
   puedeGestionarUsuariosYRoles,
   puedeInvitarUsuarios,
@@ -116,6 +117,10 @@ describe("rol dueno — permisos totales dentro de su tenant (§4 levantamiento)
     expect(puedeVerBitacoraAuditoria(dueno)).toBe(true);
   });
 
+  it("puede gestionar la suscripción de la plataforma Rutax (backstage `plataforma`)", () => {
+    expect(puedeGestionarSuscripcion(dueno)).toBe(true);
+  });
+
   it("puede ejercer también capacidades operativas (asignación, manifiestos, incidencias)", () => {
     expect(puedeAsignarYReasignarPedidos(dueno)).toBe(true);
     expect(puedeGenerarManifiestos(dueno)).toBe(true);
@@ -148,6 +153,10 @@ describe("rol supervisor — operativos; SIN config financiera ni usuarios (§4 
     expect(puedeGestionarLiquidacionesConductores(supervisor)).toBe(false);
     expect(puedeGestionarCobranza(supervisor)).toBe(false);
   });
+
+  it("NO puede gestionar la suscripción de la plataforma (privativo del dueño)", () => {
+    expect(puedeGestionarSuscripcion(supervisor)).toBe(false);
+  });
 });
 
 describe("rol coordinador — solo asignación operativa (§4 levantamiento)", () => {
@@ -169,6 +178,7 @@ describe("rol coordinador — solo asignación operativa (§4 levantamiento)", (
     expect(puedeAprobarFacturacion(coordinador)).toBe(false);
     expect(puedeEmitirFacturas(coordinador)).toBe(false);
     expect(puedeGestionarLiquidacionesConductores(coordinador)).toBe(false);
+    expect(puedeGestionarSuscripcion(coordinador)).toBe(false);
   });
 });
 
@@ -206,6 +216,10 @@ describe("rol administracion — capa de dinero; SIN reasignación operativa (§
     expect(puedeGestionarUsuariosYRoles(admin)).toBe(false);
     expect(puedeInvitarUsuarios(admin)).toBe(false);
   });
+
+  it("NO puede gestionar la suscripción de la plataforma (privativo del dueño, aunque SÍ emite facturas courier→seller)", () => {
+    expect(puedeGestionarSuscripcion(admin)).toBe(false);
+  });
 });
 
 describe("rol conductor — solo sus propios datos (§4 levantamiento, P3 RLS)", () => {
@@ -226,6 +240,7 @@ describe("rol conductor — solo sus propios datos (§4 levantamiento, P3 RLS)",
     expect(puedeGestionarIncidencias(conductor)).toBe(false);
     expect(puedeGestionarLiquidacionesConductores(conductor)).toBe(false);
     expect(puedeVerBitacoraAuditoria(conductor)).toBe(false);
+    expect(puedeGestionarSuscripcion(conductor)).toBe(false);
   });
 
   it("NO tiene capacidades de seller", () => {
@@ -254,6 +269,7 @@ describe("rol seller — estrictamente acotado a sus datos (§4 levantamiento, P
     expect(puedeAsignarYReasignarPedidos(seller)).toBe(false);
     expect(puedeGestionarLiquidacionesConductores(seller)).toBe(false);
     expect(puedeVerBitacoraAuditoria(seller)).toBe(false);
+    expect(puedeGestionarSuscripcion(seller)).toBe(false);
   });
 
   it("NO tiene capacidades de conductor", () => {
@@ -275,6 +291,7 @@ describe("rol super_admin — plataforma, no tenant (§8.3 doc. arquitectura)", 
     expect(puedeAprobarFacturacion(superAdmin)).toBe(false);
     expect(puedeAsignarYReasignarPedidos(superAdmin)).toBe(false);
     expect(puedeVerBitacoraAuditoria(superAdmin)).toBe(false);
+    expect(puedeGestionarSuscripcion(superAdmin)).toBe(false);
   });
 
   it("un usuario que NO es super_admin nunca es identificado como tal", () => {

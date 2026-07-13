@@ -240,7 +240,12 @@ export async function descifrarSecreto(
   const esTexto =
     tipoSecreto === "token_oauth_ml_access" ||
     tipoSecreto === "token_oauth_ml_refresh" ||
-    tipoSecreto === "credenciales_proveedor_dte";
+    tipoSecreto === "credenciales_proveedor_dte" ||
+    // Mandato de auto-cobro de suscripción (Fintoc): el id/token del mandato
+    // (payment_method / subscription id, o un JSON compacto con ambos) es texto.
+    // Sin esto se descifraría como binario (Uint8Array) y el adaptador no podría
+    // usarlo como string en el header/cuerpo de la petición a Fintoc.
+    tipoSecreto === "mandato_suscripcion_fintoc";
 
   return {
     valor: esTexto ? textoPlano.toString("utf8") : new Uint8Array(textoPlano),
