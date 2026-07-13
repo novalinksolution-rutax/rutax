@@ -105,6 +105,82 @@ values
 on conflict (provider, provider_id) do nothing;
 
 -- =============================================================================
+-- 1b. Super-admin de plataforma (fundador Rutax) — FUERA DE TODO TENANT
+-- =============================================================================
+-- Identidad REAL del backstage `/admin`. Da un actor con nombre y UUID FIJO para
+-- que la bitácora de plataforma pueda registrar actor_usuario_id real (cierra la
+-- deuda de gobernanza #1). NO pertenece a ningún tenant (tenant_id = null), pero
+-- SÍ tiene fila en identidad.usuarios_perfil desde F3-A (ver más abajo). Mismo
+-- patrón GoTrue v2 que la sección 1 (instance_id cero + auth.identities con
+-- provider_id = email).
+--
+-- UUID FIJO del fundador: ad000000-0000-0000-0000-000000000001  ("ad" = admin;
+-- prefijo distinto del rango de demo del tenant). Lo referencia el backend/tests.
+--
+-- F3-A — POR QUÉ AHORA SÍ hay usuarios_perfil (revierte la decisión de "Ola 0"):
+-- en Ola 0 el super-admin NO tenía perfil porque el gate del backstage era un
+-- secreto compartido (SUPER_ADMIN_SECRET) y no hacía falta sesión Supabase real.
+-- F3 pasa a sesión Supabase REAL: el custom_access_token_hook inyecta el claim
+-- top-level `tipo_usuario='super_admin'` (que activa esSuperAdminDePlataforma)
+-- SOLO si existe fila en usuarios_perfil. Por eso se aprovisiona más abajo, con
+-- tenant_id=null. (raw_app_meta_data.tipo_usuario/rol quedan como metadato
+-- informativo; el claim autoritativo del hook viene de usuarios_perfil.)
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at,
+  confirmation_token, email_change, email_change_token_new, recovery_token,
+  is_sso_user, is_anonymous
+) values
+  ('ad000000-0000-0000-0000-000000000001',
+   '00000000-0000-0000-0000-000000000000',
+   'authenticated','authenticated',
+   'admin@rutax.cl',
+   crypt('Demo2026!', gen_salt('bf')),
+   now(),
+   '{"provider":"email","providers":["email"],"tipo_usuario":"super_admin","rol":"super_admin"}',
+   '{"nombre_completo":"Fundador Rutax"}',
+   now(),now(),'','','','',false,false)
+on conflict (id) do nothing;
+
+insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+values
+  ('admin@rutax.cl',
+   'ad000000-0000-0000-0000-000000000001',
+   '{"sub":"ad000000-0000-0000-0000-000000000001","email":"admin@rutax.cl","email_verified":true,"phone_verified":false}',
+   'email', now(), now(), now())
+on conflict (provider, provider_id) do nothing;
+
+-- Mapeo del auth.users real → identidad de backstage (gobernanza).
+insert into plataforma.super_admins (usuario_id, email, nombre, rol_admin, activo)
+values
+  ('ad000000-0000-0000-0000-000000000001',
+   'admin@rutax.cl',
+   'Fundador Rutax',
+   'admin_total',
+   true)
+on conflict (usuario_id) do nothing;
+
+-- Perfil de dominio del fundador (F3-A). tenant_id=null: fuera de todo tenant.
+-- Constraints OK: usuarios_perfil_tenant_excepto_super_admin (super_admin +
+-- tenant_id null) y usuarios_perfil_rol_coherente_con_tipo (super_admin/rol
+-- super_admin); seller_id/driver_id null cumplen sus checks de coherencia.
+-- Sin esta fila, una sesión Supabase real del super-admin NO trae el claim
+-- top-level tipo_usuario='super_admin' (el hook lo deriva de usuarios_perfil).
+-- Se inserta aquí — y no en la migración — porque usuarios_perfil.id referencia
+-- auth.users(id): el uuid del fundador solo existe si corrió este seed (la
+-- migración 20260712000007 hace el backfill genérico para entornos reales).
+insert into identidad.usuarios_perfil (id, tenant_id, nombre_completo, tipo_usuario, rol, estado)
+values
+  ('ad000000-0000-0000-0000-000000000001',
+   null,
+   'Fundador Rutax',
+   'super_admin',
+   'super_admin',
+   'activo')
+on conflict (id) do nothing;
+
+-- =============================================================================
 -- 2. Tenant — Despachos del Centro SpA
 -- =============================================================================
 insert into identidad.tenants (id, nombre_fantasia, razon_social, rut, estado, plan_id, zona_horaria)
@@ -543,6 +619,40 @@ insert into operacion.pedidos (
    true,3500,true,2200,
    '2026-06-08 09:00:00-03')
 on conflict (id) do nothing;
+
+-- ── Geocoding de demo ─────────────────────────────────────────────────────
+-- Los pedidos se insertan directo por SQL, así que NUNCA pasan por la tubería
+-- de ingesta (crearPedidoSameDay / ML) que publica `operacion/pedido.ingestado`
+-- y dispara el job de geocoding. Sin esto quedan en geo_estado='pendiente' para
+-- siempre → spinner "Ubicando dirección…" eterno en la UI. Reproducimos aquí lo
+-- que haría el StubGeocodingAdapter (dev/demo): centroide de la comuna, confianza
+-- 0.5, geo_estado='resuelto', cobertura_estado='tarifada' (todos los pedidos de
+-- demo están en comunas RM con tarifa vigente). Idempotente: solo toca filas del
+-- tenant de demo que sigan 'pendiente'.
+update operacion.pedidos p
+set lat              = c.lat,
+    long             = c.long,
+    geo_estado       = 'resuelto',
+    geo_confianza    = 0.5,
+    geocodificado_en = p.creado_en,
+    cobertura_estado = 'tarifada'
+from (values
+  ('Providencia', -33.4314, -70.6111),
+  ('Ñuñoa',       -33.4564, -70.5969),
+  ('Las Condes',  -33.4089, -70.5683),
+  ('San Miguel',  -33.4972, -70.6500),
+  ('La Cisterna', -33.5333, -70.6625),
+  ('Pudahuel',    -33.4417, -70.7583),
+  ('La Florida',  -33.5500, -70.5833),
+  ('Peñalolén',   -33.4889, -70.5417),
+  ('Quilicura',   -33.3667, -70.7333),
+  ('Recoleta',    -33.4000, -70.6417),
+  ('Santiago',    -33.4489, -70.6693),
+  ('La Reina',    -33.4444, -70.5375)
+) as c(comuna, lat, long)
+where p.tenant_id = '10000000-0000-0000-0000-000000000001'
+  and p.destinatario_comuna = c.comuna
+  and p.geo_estado = 'pendiente';
 
 -- =============================================================================
 -- 11. Manifiestos + asignaciones
