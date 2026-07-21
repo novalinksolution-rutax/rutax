@@ -14,7 +14,6 @@
  *  5. Cobro automático.
  *  6. Nota de contacto.
  *
- * TODO copy: textos pendientes de pulido por `copywriter` (marcados `// COPY`).
  */
 
 import { CalendarClock, Download, Receipt, TriangleAlert } from "lucide-react";
@@ -70,10 +69,8 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
             </span>
             {miPlan.estado === "trial" && miPlan.trialHasta ? (
               <span className="text-muted-foreground">
-                {/* COPY */}
-                {diasRestantesHasta(miPlan.trialHasta)} día
-                {diasRestantesHasta(miPlan.trialHasta) === 1 ? "" : "s"} restantes de prueba (hasta{" "}
-                {formatearFecha(miPlan.trialHasta)})
+                {diasRestantesHasta(miPlan.trialHasta)} día{diasRestantesHasta(miPlan.trialHasta) === 1 ? "" : "s"}{" "}
+                de prueba (hasta {formatearFecha(miPlan.trialHasta)})
               </span>
             ) : null}
           </div>
@@ -119,9 +116,8 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           ) : (
             <EmptyState
               icon={CalendarClock}
-              titulo="Aún no se generó tu primer período"
-              // COPY
-              descripcion="Tu primer período de cobro se genera automáticamente al empezar el ciclo."
+              titulo="Aún no hay período de cobro"
+              descripcion="Tu primer período se genera automáticamente cuando comience el ciclo."
             />
           )}
         </section>
@@ -172,8 +168,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           <EmptyState
             icon={Receipt}
             titulo="Aún no hay pagos registrados"
-            // COPY
-            descripcion="Cuando se genere y se pague tu primer período, aparecerá aquí."
+            descripcion="Aquí verás cada pago confirmado cuando se procese tu primer período."
           />
         ) : (
           <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -233,8 +228,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
 
       {/* 6. Nota de contacto */}
       <p className="text-center text-xs text-muted-foreground">
-        {/* COPY */}
-        ¿Necesitas otro ajuste de facturación (folios, datos de la factura, un plan a medida)? Escríbenos a{" "}
+        ¿Necesitas ajustes de facturación, folios, datos de la factura, o un plan a medida? Escríbenos a{" "}
         <a href="mailto:soporte@plataforma.cl" className="underline underline-offset-2">
           soporte@plataforma.cl
         </a>
@@ -258,14 +252,12 @@ function BannerEstadoNoActivo({ estado }: { estado: "suspendida" | "cancelada" }
         <TriangleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <div className="space-y-2">
           <p className="text-sm font-medium">
-            {/* COPY */}
-            {esSuspendida ? "Tu suscripción está suspendida." : "Tu suscripción está cancelada."}
+            {esSuspendida ? "Tu suscripción está suspendida." : "Tu suscripción fue cancelada."}
           </p>
           <p className="text-sm">
-            {/* COPY */}
             {esSuspendida
-              ? "Usualmente se debe a un pago pendiente — escríbenos y lo resolvemos juntos."
-              : "Si quieres reactivarla, contáctanos y te ayudamos."}
+              ? "Normalmente es por un pago pendiente. Escríbenos y lo resolvemos."
+              : "Si quieres reactivarla, contáctanos y te ayudamos a hacerlo."}
           </p>
           <Button asChild variant="outline" size="sm" className="w-fit bg-transparent">
             <a href="mailto:soporte@plataforma.cl">Contactar a Rutax</a>
@@ -316,9 +308,8 @@ function BloqueConsumo({
           el texto debajo cambia de tono. <80% sin texto extra. */}
       <Progress value={porcentajeBarra} />
       {porcentaje >= 100 ? (
-        // COPY: nunca "corte/bloqueo/suspensión" como amenaza.
         <p className="text-xs text-warning">
-          Superaste el límite del plan. No pasa nada por ahora — conversa con Rutax para subir de plan.
+          Superaste el límite del plan. Cuéntanos: podemos ayudarte a encontrar el plan que necesitas.
         </p>
       ) : porcentaje >= 80 ? (
         <p className="text-xs text-warning">Te acercas al límite del plan.</p>

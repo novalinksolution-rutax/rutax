@@ -10,8 +10,7 @@
  * SEGURIDAD/AISLAMIENTO:
  * - El destinatario se resuelve SIEMPRE filtrado por `tenant_id` — nunca se
  *   expone el email de un usuario de otro courier.
- * - Los textos son PLACEHOLDERS FUNCIONALES en español de Chile — marcados
- *   `// TODO(copywriter)` para revisión de tono/redacción final.
+ * - Los textos están en español de Chile, tono profesional-cercano.
  * - Los montos van en CLP entero vía `formatearCLP` (criterio C-1, único
  *   formateador de moneda del proyecto).
  *
@@ -205,15 +204,15 @@ export function construirEmailPagoConfirmado(args: {
   const monto = formatearCLP(args.montoClp);
   const periodo = `${formatearFechaCorta(args.periodoInicio)} al ${formatearFechaCorta(args.periodoFin)}`;
   return {
-    asunto: 'Pago confirmado — Rutax',
+    asunto: 'Pago recibido — Rutax',
     html:
       `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>Recibimos tu pago de <strong>${monto}</strong> correspondiente al período <strong>${periodo}</strong>.</p>` +
-      `<p>Puedes descargar el comprobante en tu panel, sección Configuración &gt; Plan y facturación.</p>` +
+      `<p>Confirmamos el pago de <strong>${monto}</strong> correspondiente al período <strong>${periodo}</strong>.</p>` +
+      `<p>Descarga tu comprobante en tu panel: Configuración &gt; Plan y facturación.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
     texto:
-      `Recibimos tu pago de ${monto} correspondiente al período ${periodo}. ` +
-      `Descarga el comprobante en tu panel, sección Configuración > Plan y facturación.`,
+      `Confirmamos el pago de ${monto} correspondiente al período ${periodo}. ` +
+      `Descarga tu comprobante en tu panel: Configuración > Plan y facturación.`,
   };
 }
 
@@ -228,19 +227,19 @@ export function construirEmailCobroFallido(args: {
   const monto = formatearCLP(args.montoClp);
   const periodo = `${formatearFechaCorta(args.periodoInicio)} al ${formatearFechaCorta(args.periodoFin)}`;
   const accion = args.reintentable
-    ? 'Reintentaremos el cobro automáticamente en los próximos días.'
-    : 'Revisa tu método de pago en tu panel: puede que necesites re-vincularlo en Configuración &gt; Plan y facturación.';
+    ? 'Reintentaremos cobrar automáticamente en los próximos días. Si quieres anticiparte, puedes pagar ahora.'
+    : 'Verifica tu método de pago en tu panel: puede que necesites vincularlo nuevamente en Configuración &gt; Plan y facturación.';
   return {
-    asunto: 'No pudimos procesar tu pago — Rutax',
+    asunto: 'Problema al procesar tu pago — Rutax',
     html:
       `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>No pudimos procesar el cobro de <strong>${monto}</strong> para el período <strong>${periodo}</strong> de tu suscripción.</p>` +
+      `<p>Tuvimos un problema al procesar el pago de <strong>${monto}</strong> para el período <strong>${periodo}</strong> de tu suscripción.</p>` +
       `<p>${accion}</p>` +
-      `<p>Si lo prefieres, puedes pagar manualmente desde tu panel en Configuración &gt; Plan y facturación.</p>` +
+      `<p>También puedes pagar manualmente desde tu panel: Configuración &gt; Plan y facturación.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
     texto:
-      `No pudimos procesar el cobro de ${monto} para el período ${periodo} de tu suscripción. ${accion} ` +
-      `Si lo prefieres, paga manualmente desde tu panel en Configuración > Plan y facturación.`,
+      `Tuvimos un problema al procesar el pago de ${monto} para el período ${periodo} de tu suscripción. ${accion} ` +
+      `También puedes pagar manualmente: Configuración > Plan y facturación.`,
   };
 }
 
@@ -252,16 +251,17 @@ export function construirEmailTrialPorVencer(args: {
 }): ContenidoEmail {
   const fecha = formatearFechaCorta(args.trialHasta);
   return {
-    asunto: `Tu prueba termina en ${args.diasRestantes} días — Rutax`,
+    asunto: `Tu prueba de Rutax termina en ${args.diasRestantes} días`,
     html:
       `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>Tu período de prueba de Rutax vence el <strong>${fecha}</strong> (en ${args.diasRestantes} días).</p>` +
-      `<p>Para seguir usando Rutax sin interrupciones, activa un método de pago en tu panel: ` +
+      `<p>Tu período de prueba termina el <strong>${fecha}</strong> (faltan ${args.diasRestantes} días).</p>` +
+      `<p>Para seguir operando sin interrupciones, vincula un método de pago en tu panel: ` +
       `Configuración &gt; Plan y facturación.</p>` +
+      `<p>¿Dudas? Responde este correo o escríbenos a soporte@plataforma.cl.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
     texto:
-      `Tu período de prueba de Rutax vence el ${fecha} (en ${args.diasRestantes} días). ` +
-      `Activa un método de pago en tu panel, sección Configuración > Plan y facturación, para continuar sin interrupciones.`,
+      `Tu período de prueba termina el ${fecha} (faltan ${args.diasRestantes} días). ` +
+      `Vincula un método de pago en tu panel (Configuración > Plan y facturación) para continuar sin interrupciones.`,
   };
 }
 
@@ -271,17 +271,17 @@ export function construirEmailSuscripcionCreada(args: {
   trialHasta: string | null;
 }): ContenidoEmail {
   const bloqueTrial = args.trialHasta
-    ? `<p>Tienes hasta el <strong>${formatearFechaCorta(args.trialHasta)}</strong> para probar Rutax sin costo.</p>`
+    ? `<p>Tienes hasta el <strong>${formatearFechaCorta(args.trialHasta)}</strong> para usar Rutax sin costo.</p>`
     : '';
-  const bloqueTrialTexto = args.trialHasta ? ` Tienes hasta el ${formatearFechaCorta(args.trialHasta)} para probar sin costo.` : '';
+  const bloqueTrialTexto = args.trialHasta ? ` Tienes hasta el ${formatearFechaCorta(args.trialHasta)} para usar sin costo.` : '';
   return {
     asunto: 'Bienvenido a Rutax',
     html:
       `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>Tu cuenta de Rutax ya está operativa.</p>${bloqueTrial}` +
-      `<p>Entra a tu panel para empezar. Si tienes dudas, responde este correo.</p>` +
+      `<p>Tu cuenta ya está lista. Entra a tu panel para empezar a operar.</p>${bloqueTrial}` +
+      `<p>¿Dudas? Responde este correo o escríbenos a soporte@plataforma.cl.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
-    texto: `Tu cuenta de Rutax ya está operativa.${bloqueTrialTexto} Entra a tu panel para empezar. Si tienes dudas, responde este correo.`,
+    texto: `Tu cuenta ya está lista.${bloqueTrialTexto} Entra a tu panel para empezar a operar. ¿Dudas? Responde este correo o escríbenos a soporte@plataforma.cl.`,
   };
 }
 
@@ -294,25 +294,25 @@ export function construirEmailPlanCambiado(args: {
 }): ContenidoEmail {
   const fecha = formatearFechaCorta(args.efectivoDesde);
   const etiquetaTipo =
-    args.tipo === 'upgrade' ? 'Tu plan se actualizó' : args.tipo === 'downgrade' ? 'Tu plan cambió' : 'La periodicidad de tu plan cambió';
+    args.tipo === 'upgrade' ? 'Tu plan se actualizó' : args.tipo === 'downgrade' ? 'Tu plan bajará' : 'Tu facturación cambiará';
   const bloqueAjuste =
     args.montoAjusteClp && args.montoAjusteClp > 0
-      ? `<p>Se aplicó un ajuste prorrateado de <strong>${formatearCLP(args.montoAjusteClp)}</strong> por el resto del ciclo actual.</p>`
+      ? `<p>Se aplicó un cargo prorrateado de <strong>${formatearCLP(args.montoAjusteClp)}</strong> por los días restantes del ciclo actual.</p>`
       : '';
   const bloqueAjusteTexto =
     args.montoAjusteClp && args.montoAjusteClp > 0
-      ? ` Se aplicó un ajuste prorrateado de ${formatearCLP(args.montoAjusteClp)} por el resto del ciclo actual.`
+      ? ` Se aplicó un cargo prorrateado de ${formatearCLP(args.montoAjusteClp)}.`
       : '';
   return {
     asunto: 'Tu plan cambió — Rutax',
     html:
       `<p>Hola ${args.nombreTenant},</p>` +
       `<p>${etiquetaTipo}, efectivo desde el <strong>${fecha}</strong>.</p>${bloqueAjuste}` +
-      `<p>Revisa los detalles en tu panel, sección Configuración &gt; Plan y facturación.</p>` +
+      `<p>Revisa los detalles en tu panel: Configuración &gt; Plan y facturación.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
     texto:
       `${etiquetaTipo}, efectivo desde el ${fecha}.${bloqueAjusteTexto} ` +
-      `Revisa los detalles en tu panel, sección Configuración > Plan y facturación.`,
+      `Revisa los detalles en tu panel: Configuración > Plan y facturación.`,
   };
 }
 
@@ -352,14 +352,15 @@ export function construirEmailPeriodoVencido(args: {
   const monto = formatearCLP(args.montoClp);
   const periodo = `${formatearFechaCorta(args.periodoInicio)} al ${formatearFechaCorta(args.periodoFin)}`;
   return {
-    asunto: 'Pago vencido — Regulariza ahora — Rutax',
+    asunto: 'Pago pendiente — Rutax',
     html:
       `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>El período <strong>${periodo}</strong> de tu suscripción a Rutax, por <strong>${monto}</strong>, venció sin pago registrado.</p>` +
-      `<p>Regulariza tu pago ahora en tu panel, sección Configuración &gt; Plan y facturación, para evitar la suspensión del servicio.</p>` +
+      `<p>El período <strong>${periodo}</strong> de tu suscripción a Rutax, por <strong>${monto}</strong>, está vencido.</p>` +
+      `<p>Regulariza tu pago ahora en tu panel (Configuración &gt; Plan y facturación) para mantener tu servicio activo.</p>` +
+      `<p>¿Problemas? Escríbenos a soporte@plataforma.cl.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
     texto:
-      `El período ${periodo} de tu suscripción a Rutax, por ${monto}, venció sin pago registrado. ` +
-      `Regulariza tu pago ahora en tu panel, sección Configuración > Plan y facturación, para evitar la suspensión del servicio.`,
+      `El período ${periodo} de tu suscripción a Rutax, por ${monto}, está vencido. ` +
+      `Regulariza tu pago en tu panel (Configuración > Plan y facturación). ¿Problemas? Escríbenos a soporte@plataforma.cl.`,
   };
 }

@@ -231,7 +231,7 @@ describe('constructores de contenido — placeholders funcionales', () => {
       periodoFin: '2026-07-31',
       reintentable: true,
     });
-    expect(c.html).toContain('Reintentaremos el cobro automáticamente');
+    expect(c.html).toContain('Reintentaremos');
   });
 
   it('construirEmailCobroFallido: reintentable=false pide revisar el mandato', () => {
@@ -242,7 +242,7 @@ describe('constructores de contenido — placeholders funcionales', () => {
       periodoFin: '2026-07-31',
       reintentable: false,
     });
-    expect(c.html).toContain('Revisa tu método de pago');
+    expect(c.html).toContain('método de pago');
   });
 
   it('construirEmailTrialPorVencer incluye los días restantes en el asunto', () => {
@@ -287,7 +287,7 @@ describe('constructores de contenido — placeholders funcionales', () => {
       periodoFin: '2026-06-30',
     });
     expect(c.html).toContain('$49.000');
-    expect(c.html).toContain('suspensión del servicio');
+    expect(c.html).toContain('vencido');
   });
 
   it('construirEmailComunicacion arma el asunto con el título y el cuerpo en el HTML/texto', () => {

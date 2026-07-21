@@ -6,7 +6,6 @@
  * `crearSuscripcionInicialAction` da de alta la suscripción en `trial` y esta
  * misma ruta se re-renderiza como "Mi plan" (ver `page.tsx`).
  *
- * TODO copy: textos pendientes de pulido por `copywriter` (marcados `// COPY`).
  */
 
 import { useState, useTransition } from "react";
@@ -78,8 +77,7 @@ export function SelectorDePlanes({ planes }: Props) {
     <div className="space-y-6">
       <div className="space-y-2 text-center">
         <h1 className="text-2xl font-bold">Elige el plan de Rutax para tu courier</h1>
-        {/* COPY */}
-        <p className="text-sm text-muted-foreground">Prueba gratis 14 días — sin tarjeta de crédito.</p>
+        <p className="text-sm text-muted-foreground">Prueba sin costo — 14 días, sin tarjeta de crédito.</p>
       </div>
 
       {planesOrdenados.length === 0 ? (

@@ -18,8 +18,6 @@
  * ese módulo aquí: carga `service_role` y no debe llegar al bundle del
  * cliente). El monto EXACTO lo calcula el servidor al aplicar el cambio y es
  * el que se muestra en el mensaje de éxito.
- *
- * TODO copy: textos pendientes de pulido por `copywriter` (marcados `// COPY`).
  */
 
 import { useMemo, useState, useTransition } from "react";
@@ -118,7 +116,7 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
     periodicidadActual === "mensual" ? planActual.precioMensualClp : planActual.precioAnualClp;
 
   const nombrePlanPendiente = cambioPendiente
-    ? (planesOrdenados.find((p) => p.id === cambioPendiente.planId)?.nombre ?? "otro plan") // COPY: fallback si el plan destino ya no está activo
+    ? (planesOrdenados.find((p) => p.id === cambioPendiente.planId)?.nombre ?? "el plan elegido")
     : null;
 
   const estimacion: Estimacion | null = planSeleccionado
@@ -171,9 +169,8 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
           <h2 id="cambiar-plan-titulo" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Cambiar de plan
           </h2>
-          {/* COPY */}
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Compara con tu plan actual ({planActual.nombre}) y cambia cuando quieras.
+            Compara con tu plan actual ({planActual.nombre}). Los cambios pueden ser inmediatos o diferidos según el tipo.
           </p>
         </div>
         {planesOrdenados.length > 0 ? (
@@ -190,13 +187,11 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
         <Alert className="bg-info-subtle text-info-subtle-foreground">
           <Clock className="size-4" aria-hidden="true" />
           <AlertDescription className="text-info-subtle-foreground">
-            {/* COPY */}
-            Tienes un cambio de plan programado: bajarás a <strong>{nombrePlanPendiente}</strong> el{" "}
-            {formatearFecha(cambioPendiente.efectivoDesde)}. Hasta entonces sigues en tu plan {planActual.nombre},
-            sin cargo adicional. Si quieres cancelarlo, elige un plan de igual o mayor valor al actual (eso cancela
-            el cambio programado); para otros ajustes, escríbenos a{" "}
+            Tienes un cambio programado: el <strong>{formatearFecha(cambioPendiente.efectivoDesde)}</strong> bajarás a{" "}
+            <strong>{nombrePlanPendiente}</strong>. Hasta entonces sigues en tu plan {planActual.nombre}, sin cargo.
+            Si quieres cancelarlo, elige un plan de igual o mayor valor. Para otros ajustes,{" "}
             <a href="mailto:soporte@plataforma.cl" className="underline underline-offset-2">
-              soporte@plataforma.cl
+              escríbenos
             </a>
             .
           </AlertDescription>
@@ -212,14 +207,13 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
       {exito ? (
         <Alert className="bg-success-subtle text-success-subtle-foreground">
           <AlertDescription className="text-success-subtle-foreground">
-            {/* COPY */}
             {exito.tipo === "upgrade"
               ? exito.montoAjuste && exito.montoAjuste > 0
-                ? `Tu plan se actualizó a ${exito.planNombre}. Se generó un cobro prorrateado de ${formatearCLP(exito.montoAjuste)}.`
-                : `Tu plan se actualizó a ${exito.planNombre}. No se generó cargo adicional este período.`
+                ? `Tu plan se actualizó a ${exito.planNombre}. Cargamos ${formatearCLP(exito.montoAjuste)} prorrateado.`
+                : `Tu plan se actualizó a ${exito.planNombre}. Sin cargo adicional este período.`
               : exito.tipo === "periodicidad"
-                ? `Tu facturación pasará a ${exito.periodicidadNueva === "anual" ? "anual" : "mensual"}${exito.planNombre ? ` (plan ${exito.planNombre})` : ""} el ${exito.efectivoDesde ? formatearFecha(exito.efectivoDesde) : ""}. Hasta entonces se mantiene tu ciclo actual, sin cargo ahora.`
-                : `Tu plan bajará a ${exito.planNombre} el ${exito.efectivoDesde ? formatearFecha(exito.efectivoDesde) : ""}. Hasta entonces mantienes tu plan actual.`}
+                ? `Tu facturación pasará a ${exito.periodicidadNueva === "anual" ? "anual" : "mensual"}${exito.planNombre ? ` (plan ${exito.planNombre})` : ""} el ${exito.efectivoDesde ? formatearFecha(exito.efectivoDesde) : ""}. Hasta entonces sigues pagando ${exito.periodicidadNueva === "anual" ? "mensualmente" : "anualmente"}.`
+                : `Tu plan bajará a ${exito.planNombre} el ${exito.efectivoDesde ? formatearFecha(exito.efectivoDesde) : ""}. Hasta entonces sigues con tu plan actual.`}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -228,8 +222,7 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
         <EmptyState
           icon={ArrowUpCircle}
           titulo="No hay otros planes disponibles"
-          // COPY
-          descripcion="Por ahora no hay planes activos para cambiar. Escríbenos si necesitas ajustar tu suscripción."
+          descripcion="No hay más planes activos en este momento. Si necesitas un plan diferente, escríbenos a soporte@plataforma.cl."
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -252,27 +245,26 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
           onOpenChange={cerrarDialogo}
           titulo={
             estimacion.tipo === "upgrade"
-              ? `Cambiar a ${planSeleccionado.nombre}` // COPY
+              ? `Actualizar a ${planSeleccionado.nombre}`
               : estimacion.tipo === "periodicidad"
-                ? `Cambiar a facturación ${periodicidad === "anual" ? "anual" : "mensual"}` // COPY
-                : `Bajar a ${planSeleccionado.nombre}` // COPY
+                ? `Cambiar a facturación ${periodicidad === "anual" ? "anual" : "mensual"}`
+                : `Bajar a ${planSeleccionado.nombre}`
           }
           consecuencia={
             estimacion.tipo === "upgrade" ? (
               <span className="flex items-start gap-2">
                 <ArrowUpCircle className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
                 <span>
-                  {/* COPY */}
-                  Este cambio es <strong>inmediato</strong>. Se generará un cargo prorrateado por los días que
-                  quedan de tu período actual
+                  Este cambio es <strong>inmediato</strong>. Te cobraremos el diferencial prorrateado por los días
+                  restantes de tu ciclo actual
                   {periodoActual ? ` (hasta el ${formatearFecha(periodoActual.periodoFin)})` : ""}.{" "}
                   {estimacion.montoEstimado !== null && estimacion.montoEstimado > 0 ? (
                     <>
-                      Estimado: <strong>{formatearCLP(estimacion.montoEstimado)}</strong> (el monto final se
+                      Estimado: <strong>{formatearCLP(estimacion.montoEstimado)}</strong> (el monto exacto se
                       calcula al confirmar).
                     </>
                   ) : (
-                    "No debería generar cargo adicional este período."
+                    "Sin cargo adicional este período."
                   )}
                 </span>
               </span>
@@ -280,22 +272,18 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
               <span className="flex items-start gap-2">
                 <Clock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span>
-                  {/* COPY */}
-                  Este cambio de periodicidad <strong>no es inmediato</strong>: se aplica al{" "}
-                  <strong>próximo ciclo</strong>
+                  Este cambio <strong>toma efecto en el próximo ciclo</strong>
                   {periodoActual ? ` (desde el ${formatearFecha(periodoActual.periodoFin)})` : ""}, sin cargo ahora.
-                  Hasta entonces mantienes tu facturación {periodicidadActual === "anual" ? "anual" : "mensual"}{" "}
-                  actual.
+                  Hasta entonces sigues pagando en {periodicidadActual === "anual" ? "forma anual" : "forma mensual"}.
                 </span>
               </span>
             ) : (
               <span className="flex items-start gap-2">
                 <ArrowDownCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span>
-                  {/* COPY */}
-                  Este cambio <strong>no es inmediato</strong>: sigues con tu plan {planActual.nombre} hasta el{" "}
-                  {periodoActual ? formatearFecha(periodoActual.periodoFin) : "fin de tu período actual"}. Desde el
-                  día siguiente pasas a {planSeleccionado.nombre}, sin cargo ahora.
+                  Este cambio <strong>toma efecto en el próximo ciclo</strong>. Sigues con tu plan {planActual.nombre}
+                  hasta el {periodoActual ? formatearFecha(periodoActual.periodoFin) : "fin de tu período actual"},
+                  sin cargo. Desde el día siguiente pasas a {planSeleccionado.nombre}.
                 </span>
               </span>
             )
@@ -303,7 +291,7 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
           onConfirmar={confirmar}
           cargando={isPending}
           textoConfirmar={
-            estimacion.tipo === "upgrade" ? "Cambiar y pagar diferencia" : "Programar cambio" // COPY
+            estimacion.tipo === "upgrade" ? "Actualizar y pagar" : "Programar cambio"
           }
         >
           {error ? <p className="text-destructive">{error}</p> : undefined}
@@ -384,8 +372,7 @@ function TarjetaPlanCambio({
           variant={esActual ? "outline" : "default"}
           className="w-full"
         >
-          {/* COPY */}
-          {esActual ? "Tu plan actual" : "Elegir este plan"}
+          {esActual ? "Tu plan actual" : "Cambiar a este plan"}
         </Button>
       </CardContent>
     </Card>

@@ -10,7 +10,6 @@
  *  - `pendiente` → informativo, sin acción (esperando confirmación del banco).
  *  - `activo` → botón "Desactivar" con diálogo de confirmación.
  *
- * TODO copy: textos pendientes de pulido por `copywriter` (marcados `// COPY`).
  */
 
 import { useState, useTransition } from "react";
@@ -27,14 +26,13 @@ interface Props {
   mandatoEstado: EstadoMandato;
 }
 
-// COPY: un mensaje por estado del mandato — nunca alarmante.
 const MENSAJE_POR_ESTADO: Record<EstadoMandato, string> = {
   sin_mandato:
-    "Activa el cobro automático para que Rutax cobre tu plan cada período, sin que tengas que pagar a mano.",
-  pendiente: "Estamos confirmando el mandato con tu banco. Puede tardar unos minutos.",
-  activo: "Rutax cobra tu plan automáticamente cada período — no necesitas hacer nada.",
-  cancelado: "El cobro automático está desactivado. Actívalo de nuevo cuando quieras.",
-  fallido: "Hubo un problema al activar el cobro automático. Puedes intentarlo de nuevo.",
+    "Activa el cobro automático para que Rutax cobre tu plan cada período sin que tengas que hacerlo a mano.",
+  pendiente: "Estamos confirmando tu autorización con el banco. Puede tardar unos minutos.",
+  activo: "Rutax cobra tu plan cada período automáticamente.",
+  cancelado: "El cobro automático está desactivado. Puedes activarlo nuevamente cuando quieras.",
+  fallido: "Hubo un problema al activar el cobro automático. Intenta nuevamente.",
 };
 
 export function BloqueCobroAutomatico({ mandatoEstado }: Props) {
@@ -99,7 +97,6 @@ export function BloqueCobroAutomatico({ mandatoEstado }: Props) {
         <div className="shrink-0">
           {puedeActivar ? (
             <Button onClick={activar} loading={pendingActivar}>
-              {/* COPY */}
               Activar cobro automático
             </Button>
           ) : null}
@@ -121,9 +118,8 @@ export function BloqueCobroAutomatico({ mandatoEstado }: Props) {
       <DialogConfirmacionDinero
         open={dialogoAbierto}
         onOpenChange={setDialogoAbierto}
-        titulo="Desactivar el cobro automático"
-        // COPY
-        consecuencia="Si desactivas el cobro automático, deberás pagar tu plan manualmente cada período para seguir usando Rutax."
+        titulo="Desactivar cobro automático"
+        consecuencia="Sin el cobro automático, deberás pagar tu plan manualmente cada período."
         onConfirmar={desactivar}
         cargando={pendingDesactivar}
         textoConfirmar="Desactivar"

@@ -85,8 +85,7 @@ export default async function PaginaMetricas() {
         <EmptyState
           icon={BarChart3}
           titulo="Aún no hay couriers con suscripción"
-          // COPY
-          descripcion="Cuando se den de alta las primeras suscripciones, el MRR, los ingresos, la morosidad y el churn van a aparecer aquí."
+          descripcion="Cuando se activen las primeras suscripciones, el MRR, ingresos, morosidad y churn aparecerán aquí."
         />
       ) : (
         <>
@@ -130,9 +129,8 @@ export default async function PaginaMetricas() {
                 {(metricas.churnMes.tasa * 100).toLocaleString("es-CL", { maximumFractionDigits: 1 })}%
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {/* COPY */}
                 {metricas.churnMes.canceladas} cancelación{metricas.churnMes.canceladas === 1 ? "" : "es"} este mes
-                de ~{metricas.churnMes.activasAlInicioAprox} suscripciones activas al inicio (aproximado).
+                de ~{metricas.churnMes.activasAlInicioAprox} suscripciones activas al inicio (aprox).
               </p>
             </div>
 
@@ -177,9 +175,8 @@ function SeccionUsoPlataforma({
           Uso de la plataforma
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {/* COPY */}
-          Volumen agregado de todos los couriers en Rutax: cuánto se está moviendo en la operación, no cuánto le
-          pagan a Rutax (eso es el negocio de arriba).
+          Volumen agregado de operación en Rutax: cuánto se mueve en entregas y dinero por todos los couriers
+          (independiente de cuánto pagan de suscripción).
         </p>
       </div>
 
@@ -193,11 +190,9 @@ function SeccionUsoPlataforma({
       ) : (
         <div className="space-y-6">
           <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-            {/* COPY */}
-            <strong className="font-medium text-foreground">GMV</strong> = valor que el motor entrega→dinero ya
-            procesó al cerrar períodos de cobro, sumado entre todos los couriers. Es el negocio{" "}
-            <em>de los couriers</em>, no el ingreso de Rutax — el ingreso de Rutax es el MRR de la sección de
-            arriba.
+            <strong className="font-medium text-foreground">GMV</strong> = valor de entregas que el motor
+            procesó al cerrar períodos de cobro, sumado entre todos los couriers. Es el negocio <em>de los couriers</em>,
+            no el ingreso de Rutax (el ingreso de Rutax es el MRR arriba).
           </div>
 
           <div>
