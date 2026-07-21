@@ -116,7 +116,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           ) : (
             <EmptyState
               icon={CalendarClock}
-              titulo="Aún no hay período de cobro"
+              titulo="Aún no tienes período de cobro"
               descripcion="Tu primer período se genera automáticamente cuando comience el ciclo."
             />
           )}

@@ -70,7 +70,7 @@ export default async function PaginaBienvenidaSeller() {
           </div>
           <div className="flex gap-3">
             <Receipt className="size-5 shrink-0 text-primary" aria-hidden="true" />
-            <p className="text-sm text-foreground">Revisa tu estado de cuenta y tus documentos cuando los necesites.</p>
+            <p className="text-sm text-foreground">Revisa tu estado de cuenta y tus facturas cuando las necesites.</p>
           </div>
           <div className="flex gap-3">
             <TriangleAlert className="size-5 shrink-0 text-primary" aria-hidden="true" />
@@ -87,7 +87,7 @@ export default async function PaginaBienvenidaSeller() {
       </div>
 
       <Button asChild size="lg" className="w-full sm:w-auto">
-        <Link href="/portal/conectar-ml">Continuar</Link>
+        <Link href="/portal/conectar-ml">Conectar Mercado Libre</Link>
       </Button>
     </div>
   );

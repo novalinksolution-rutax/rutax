@@ -281,7 +281,7 @@ export default async function PaginaPeriodosCobro({
           role="alert"
           className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
-          No se pudo cargar la lista de períodos. Intenta recargar la página.
+          No pudimos cargar los períodos. Intenta recargar la página.
         </div>
       )}
 
@@ -312,8 +312,7 @@ export default async function PaginaPeriodosCobro({
             </>
           ) : (
             <p className="text-muted-foreground">
-              Aún no hay períodos de cobro. Se crean automáticamente cuando el motor registra
-              la primera entrega de un seller.
+              Aún no tienes períodos de cobro. Se generan automáticamente cuando tus sellers registran entregas.
             </p>
           )}
         </div>

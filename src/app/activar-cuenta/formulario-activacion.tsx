@@ -44,7 +44,7 @@ export function FormularioActivacion({ enlaceInvalido, nombreFantasia, nombreSug
           </div>
           <CardTitle className="text-xl">Este enlace ya no es válido</CardTitle>
           <CardDescription>
-            Si ya activaste tu cuenta, inicia sesión; si no, solicita uno nuevo a quien gestiona tu cuenta.
+            Si ya activaste tu cuenta, inicia sesión con el correo que usaste; si no, solicita un nuevo enlace a quien te invitó.
           </CardDescription>
         </CardHeader>
         <CardContent>

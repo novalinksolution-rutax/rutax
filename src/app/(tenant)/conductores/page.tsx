@@ -76,7 +76,7 @@ export default async function PaginaConductores() {
 
       {errorCarga && (
         <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
-          No se pudo cargar la lista de conductores. Recarga la página para reintentar.
+          No pudimos cargar los conductores. Intenta recargar la página.
         </div>
       )}
 

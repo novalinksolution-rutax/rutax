@@ -89,7 +89,7 @@ export default async function PaginaMiPlan() {
 
   if (resultado.tipo === "error") {
     return (
-      <EstadoError descripcion="No pudimos cargar la información de tu plan. Recarga la página para intentarlo de nuevo." />
+      <EstadoError descripcion="No pudimos cargar la información de tu plan. Intenta recargar la página." />
     );
   }
 

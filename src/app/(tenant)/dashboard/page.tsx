@@ -496,7 +496,7 @@ async function SeccionOperativa({
         {!errorMetricas && !hayPedidos ? (
           <EmptyState
             icon={Inbox}
-            titulo="Aún no hay operación registrada para hoy"
+            titulo="Aún no tienes operación para hoy"
             descripcion="Los pedidos del día aparecerán aquí en cuanto lleguen de tus sellers o crees un envío same-day."
           />
         ) : (

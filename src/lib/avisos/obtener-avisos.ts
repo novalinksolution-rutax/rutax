@@ -71,7 +71,7 @@ async function avisosConexionesCaidas(tenantId: string): Promise<Aviso[]> {
           caidas.length === 1
             ? "Una conexión de Mercado Libre está caída"
             : `${caidas.length} conexiones de Mercado Libre caídas`,
-        descripcion: "Sus pedidos dejaron de llegar automáticamente.",
+        descripcion: "Tus pedidos dejaron de llegar automáticamente.",
         href: "/sellers",
         accion: "Reconectar",
       },

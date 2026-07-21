@@ -33,7 +33,7 @@ export function BotonCopiarTracking({ trackingToken }: { trackingToken: string }
         {copiado ? (
           <>
             <Check className="size-3.5" aria-hidden="true" />
-            Link copiado
+            Enlace copiado
           </>
         ) : (
           <>

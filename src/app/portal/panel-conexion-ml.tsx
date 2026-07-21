@@ -220,7 +220,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
       ) : null}
 
       {conexiones.length >= MAX_CUENTAS ? (
-        <p className="text-sm text-muted-foreground">Ya tienes {MAX_CUENTAS} cuentas conectadas (límite máximo).</p>
+        <p className="text-sm text-muted-foreground">Ya tienes {MAX_CUENTAS} cuentas conectadas — ese es el límite máximo.</p>
       ) : null}
 
       {errorAccion ? (

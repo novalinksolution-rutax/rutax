@@ -238,7 +238,7 @@ function SeccionConexion({
       widget.open();
     } catch {
       setAbriendoWidget(false);
-      setError("No pudimos abrir el conector del banco. Recarga la página e intenta de nuevo.");
+      setError("No pudimos abrir el conector del banco. Intenta recargar la página.");
     }
   }, [publicKey, webhookUrl, holderType, procesarExchangeToken]);
 

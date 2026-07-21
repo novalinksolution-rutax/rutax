@@ -295,7 +295,7 @@ export default async function PaginaLiquidaciones({
           role="alert"
           className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
-          No se pudo cargar la lista de liquidaciones. Intenta recargar la página.
+          No pudimos cargar las liquidaciones. Intenta recargar la página.
         </div>
       )}
 
@@ -314,8 +314,8 @@ export default async function PaginaLiquidaciones({
         <div className="rounded-xl border bg-card px-6 py-12 text-center">
           <p className="text-muted-foreground">
             {hayFiltroActivo
-              ? "No hay liquidaciones que coincidan con los filtros aplicados."
-              : "Aún no hay liquidaciones. Se generan automáticamente cuando el motor registra la primera entrega de un conductor."}
+              ? "No hay liquidaciones que coincidan con los filtros."
+              : "Aún no tienes liquidaciones. Se generan automáticamente cuando tus conductores registran entregas."}
           </p>
           {hayFiltroActivo && (
             <Link

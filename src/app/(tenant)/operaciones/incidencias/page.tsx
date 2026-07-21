@@ -193,7 +193,7 @@ export default async function PaginaIncidencias({
 
       {errorCarga && (
         <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
-          No se pudo cargar la lista de incidencias.
+          No pudimos cargar las incidencias. Intenta recargar la página.
         </div>
       )}
 

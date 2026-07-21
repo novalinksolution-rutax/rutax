@@ -76,7 +76,7 @@ function calcularContadores(pedidos: Pedido[]): Record<string, number> {
 }
 
 const CONTADORES = [
-  { key: "pendiente_asignacion", label: "Pendiente asig.", clases: "bg-warning-subtle text-warning-subtle-foreground" },
+  { key: "pendiente_asignacion", label: "Pendiente asignación", clases: "bg-warning-subtle text-warning-subtle-foreground" },
   { key: "asignado", label: "Asignados", clases: "bg-info-subtle text-info-subtle-foreground" },
   { key: "en_ruta", label: "En ruta", clases: "bg-info-subtle text-info-subtle-foreground" },
   { key: "entregado", label: "Entregados", clases: "bg-success-subtle text-success-subtle-foreground" },
@@ -286,7 +286,7 @@ export default async function PaginaOperaciones({
           role="alert"
           className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
-          No se pudo cargar la lista — intenta recargar la página.
+          No pudimos cargar los pedidos. Intenta recargar la página.
         </div>
       )}
 
@@ -345,11 +345,11 @@ export default async function PaginaOperaciones({
         ) : (
           <EmptyState
             icon={Inbox}
-            titulo="No hay pedidos para esta fecha"
+            titulo="Aún no hay pedidos para esta fecha"
             descripcion={
               puedeAjustar
-                ? "Llegan solos cuando tus sellers conectan Mercado Libre. También puedes crear un pedido same-day desde el botón de arriba."
-                : "Llegan solos cuando tus sellers conectan Mercado Libre."
+                ? "Se sincronizan automáticamente desde Mercado Libre. También puedes crear un pedido same-day desde el botón de arriba."
+                : "Se sincronizan automáticamente desde Mercado Libre."
             }
           />
         )

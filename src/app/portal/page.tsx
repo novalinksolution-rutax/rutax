@@ -33,7 +33,7 @@ export default async function PaginaPortalSeller() {
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-1.5">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Mi portal</h1>
-        <p className="text-sm text-muted-foreground">El estado de tu cuenta y cumplimiento de servicio, de un vistazo.</p>
+        <p className="text-sm text-muted-foreground">El estado de tu cuenta y cómo van tus entregas, de un vistazo.</p>
       </div>
 
       {/* Semáforo SLA — el seller ve solo su propio % (F7, ítem 1.2) */}

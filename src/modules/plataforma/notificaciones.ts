@@ -228,7 +228,7 @@ export function construirEmailCobroFallido(args: {
   const periodo = `${formatearFechaCorta(args.periodoInicio)} al ${formatearFechaCorta(args.periodoFin)}`;
   const accion = args.reintentable
     ? 'Reintentaremos cobrar automáticamente en los próximos días. Si quieres anticiparte, puedes pagar ahora.'
-    : 'Verifica tu método de pago en tu panel: puede que necesites vincularlo nuevamente en Configuración &gt; Plan y facturación.';
+    : 'Verifica tu método de pago en tu panel. Puede que necesites vincularlo nuevamente en Configuración &gt; Plan y facturación.';
   return {
     asunto: 'Problema al procesar tu pago — Rutax',
     html:

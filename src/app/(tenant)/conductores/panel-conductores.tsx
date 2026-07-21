@@ -831,7 +831,7 @@ function EditorZonasConductor({
       <div>
         <p className="text-sm font-medium text-foreground mb-1">Zonas preferentes</p>
         <p className="text-sm text-muted-foreground">
-          Aún no hay zonas configuradas en el tenant.{" "}
+          Aún no tienes zonas configuradas.{" "}
           <a href="/configuracion/zonas" className="underline hover:text-foreground">
             Configúralas aquí.
           </a>
