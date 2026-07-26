@@ -77,6 +77,22 @@ export const CAPACIDADES = [
   "gestionar_incidencias",
   "ajustar_operacion_diaria",
 
+  // --- Torre de control: anticipación operativa ------------------------------
+  // Módulo `contexto` (ver `docs/arquitectura/torre-de-control.md` §8). Cruza
+  // señal externa (clima, aire, eventos, prensa) con la carga interna y la
+  // traduce a impacto en dinero. Es LECTURA: la capacidad no habilita ninguna
+  // acción irreversible — las acciones que la Torre sugiere (adelantar un corte,
+  // reasignar conductores) se ejecutan a través de las capacidades operativas
+  // que ya existen, y quien no las tenga ve la Torre sin poder actuar sobre ella.
+  //
+  // Decisión: dueño, supervisor y coordinador. NO `administracion`, que es el
+  // rol financiero "sin reasignación operativa" — la Torre responde "¿qué va a
+  // pasar hoy en la calle?", que no es su pregunta. Si administración necesitara
+  // el monto comprometido, va por `ver_reportes_ejecutivos`/`ver_conciliacion`,
+  // no por aquí. (Ojo: el monto de la Torre es el EXPUESTO, no una cifra
+  // financiera conciliable — ver §7 del documento de arquitectura.)
+  "ver_torre_control",
+
   // --- Reportes / dashboard (RF-046, RF-049) ---------------------------------
   // "Dueño/Gerente: ver reportes · Permisos totales dentro de su tenant".
   // Decisión: el levantamiento no listada explícitamente "ver reportes" para
@@ -172,6 +188,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "ver_torre_control",
     "ver_reportes_ejecutivos",
     "ver_bitacora_auditoria",
     "gestionar_suscripcion",
@@ -186,10 +203,18 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "ver_torre_control",
   ],
 
-  // "Solo asignación operativa" — el más acotado de los internos.
-  coordinador: ["asignar_y_reasignar_pedidos", "generar_manifiestos"],
+  // "Solo asignación operativa" — el más acotado de los internos. Recibe
+  // `ver_torre_control` pese a ser el más acotado porque es el rol que MÁS vive
+  // en esa pantalla: la Torre existe para que quien asigna vea venir el problema
+  // antes de asignar. Es lectura; no le concede ninguna acción que no tuviera.
+  coordinador: [
+    "asignar_y_reasignar_pedidos",
+    "generar_manifiestos",
+    "ver_torre_control",
+  ],
 
   // "Financieros; sin reasignación operativa" — la capa de dinero: factura,
   // liquida, cobra, concilia. Explícitamente SIN asignar/reasignar/manifiestos.
@@ -346,6 +371,16 @@ export function puedeGestionarIncidencias(usuario: UsuarioActual): boolean {
 
 export function puedeAjustarOperacionDiaria(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ajustar_operacion_diaria");
+}
+
+// --- Torre de control (módulo `contexto`) -------------------------------------
+/**
+ * Acceso a la Torre de control. Es LECTURA: no habilita ninguna acción
+ * irreversible. Las acciones que la Torre sugiere se ejercen con las
+ * capacidades operativas que el usuario ya tenga.
+ */
+export function puedeVerTorreControl(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "ver_torre_control");
 }
 
 // --- Reportes / auditoría (RF-046, 049, 004) ----------------------------------

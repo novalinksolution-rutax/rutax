@@ -72,6 +72,41 @@ export function ahoraEnSantiago(): { fecha: string; hora: string; instante: Date
 }
 
 /**
+ * La fecha civil de HOY en Santiago, 'YYYY-MM-DD'.
+ *
+ * Existe porque medio repo la re-implementaba por su cuenta —unos con
+ * `Intl.DateTimeFormat('en-CA')`, otros con `new Date().toISOString().slice(0,10)`,
+ * que es directamente incorrecto: `toISOString()` da UTC, y desde las 20:00 de
+ * Santiago (21:00 en verano) UTC ya está en el día siguiente. Una pantalla que
+ * pregunta "¿qué pasó hoy?" a las 20:30 se vacía.
+ *
+ * Si necesitas además la hora, usa `ahoraEnSantiago()` y no llames a las dos.
+ */
+export function hoyEnSantiago(): string {
+  return ahoraEnSantiago().fecha;
+}
+
+/**
+ * Los límites absolutos del día civil `fecha` en Santiago: `[desde, hasta)`.
+ *
+ * Para filtrar una columna `timestamptz` por "el día X en Santiago". El error
+ * clásico es escribir `` `${fecha}T00:00:00.000Z` ``, que interpreta una fecha
+ * civil chilena como instante UTC y corre la ventana 3–4 horas. El otro error es
+ * hardcodear el offset (`-03:00`): Santiago es −04:00 en invierno y −03:00 en
+ * verano, así que un offset fijo está mal la mitad del año. Aquí el DST lo
+ * resuelve IANA vía `Intl`.
+ *
+ * Es semiabierto a propósito: `hasta` es el inicio del día siguiente, así que se
+ * usa con `>= desde` y `< hasta` y no se pierde el último segundo del día.
+ */
+export function limitesDelDiaSantiago(fecha: string): { desde: Date; hasta: Date } {
+  return {
+    desde: combinarFechaHoraSantiago(fecha, '00:00:00'),
+    hasta: combinarFechaHoraSantiago(sumarDiasCalendario(fecha, 1), '00:00:00'),
+  };
+}
+
+/**
  * Interpreta `fecha` ('YYYY-MM-DD') y `horaLocal` ('HH:MM' o 'HH:MM:SS')
  * como hora local America/Santiago y devuelve el instante absoluto (Date / timestamptz).
  *
@@ -160,6 +195,20 @@ export function fechaLocalEnSantiago(instante: Date): string {
 export function horaAMinutos(hora: string): number {
   const [hStr, mStr] = hora.split(':');
   return Number(hStr) * 60 + Number(mStr);
+}
+
+/**
+ * Devuelve la hora local 'HH:MM' de Santiago para un instante ARBITRARIO
+ * (no necesariamente "ahora"). Hermana de `fechaLocalEnSantiago`: mismo truco
+ * (`descomponerInstante`, vía `Intl.DateTimeFormat`), pero para la hora en vez
+ * de la fecha. Útil para derivar la franja (`contexto.franja`) de un instante
+ * ya guardado (p. ej. `fecha_compromiso_hora` de un pedido) sin recurrir a
+ * `instante.toISOString()` / `instante.getHours()`, que devuelven la hora UTC
+ * y no la de Santiago.
+ */
+export function horaLocalEnSantiago(instante: Date): string {
+  const p = descomponerInstante(instante);
+  return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
 }
 
 function validarFechaCivil(fecha: string): void {

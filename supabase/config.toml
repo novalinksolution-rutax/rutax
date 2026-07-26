@@ -139,6 +139,27 @@ public = false
 file_size_limit = "50MiB"
 allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]
 
+# Bucket PÚBLICO con la cartografía de Torre de control: PMTiles del basemap
+# recortado a la RM, glyph PBFs y sprites (incluidas las tramas de riesgo).
+# Migración 20260725000001_contexto_torre_de_control.sql.
+#
+# Público a diferencia de pod-evidencias, y con razón: es cartografía OSM/DPA,
+# sin un solo dato de courier, seller, conductor ni destinatario. Además PMTiles
+# se sirve por HTTP Range desde el CDN y una URL firmada por rango no funciona —
+# firmar cada request de tile mataría el rendimiento del mapa.
+# `public = true` habilita solo LECTURA anónima; la escritura sigue siendo de
+# service_role (no hay políticas sobre storage.objects).
+#
+# Sin allowed_mime_types: el bucket sirve al menos cuatro tipos distintos
+# (.pmtiles como octet-stream, .pbf, .png, .json) y una allowlist frágil rompería
+# la publicación sin ganar seguridad en un bucket de solo lectura pública.
+#
+# Convención de path:
+#   basemap/<version>/rm.pmtiles · glyphs/<fuente>/<rango>.pbf · sprites/<nombre>.{png,json}
+[storage.buckets.contexto-mapas]
+public = true
+file_size_limit = "50MiB"
+
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
 enabled = true

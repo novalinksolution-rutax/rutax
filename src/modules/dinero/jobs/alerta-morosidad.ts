@@ -28,6 +28,7 @@
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
 
 const TZ = 'America/Santiago';
 
@@ -111,8 +112,10 @@ export const jobAlertaMorosidad = inngest.createFunction(
           .eq('tenant_id', periodo.tenantId)
           .eq('accion', 'dinero.alerta_morosidad')
           .eq('entidad_id', periodo.id)
-          .gte('creado_en', `${hoy}T00:00:00`)
-          .lte('creado_en', `${hoy}T23:59:59`)
+          // Día civil de Santiago — ver la nota equivalente en
+          // alerta-folios-proximos.ts.
+          .gte('creado_en', limitesDelDiaSantiago(hoy).desde.toISOString())
+          .lt('creado_en', limitesDelDiaSantiago(hoy).hasta.toISOString())
           .limit(1)
           .maybeSingle();
 

@@ -82,6 +82,14 @@ import { jobNotificarComunicacion } from "@/modules/plataforma/jobs/notificar-co
 
 // Jobs F23 — API pública y webhooks salientes
 import { jobEntregarWebhook } from "@/modules/integraciones/api-publica/jobs/entregar-webhook";
+// Jobs de contexto — Torre de control (anticipación operativa)
+import { jobRefrescarClima } from "@/modules/contexto/jobs/refrescar-clima";
+import { jobRefrescarAire } from "@/modules/contexto/jobs/refrescar-aire";
+import { jobSincronizarCalendario } from "@/modules/contexto/jobs/sincronizar-calendario";
+import {
+  jobRiesgoBarrido,
+  jobRiesgoRecalcularTenant,
+} from "@/modules/contexto/jobs/recalcular-riesgo";
 
 /**
  * Array de todas las funciones de Inngest del sistema.
@@ -143,6 +151,17 @@ const funciones = [
   jobNotificarComunicacion,
   // Jobs F23 — entrega de webhooks salientes (cron cada 2 min)
   jobEntregarWebhook,
+  // Torre de control — ingesta de contexto externo. Crones desplazados fuera de
+  // la hora en punto: el repo ya tiene un cluster en 02:00–02:30 y 05:00–06:00.
+  // La pantalla NUNCA llama a una API externa en el render; todo lo precalculan
+  // estos jobs, y eso es lo que la hace sentirse instantánea (§8.4).
+  jobRefrescarClima,
+  jobRefrescarAire,
+  jobSincronizarCalendario,
+  // Motor de riesgo: fan-out real por tenant (primer uso de step.sendEvent +
+  // concurrency en el repo). El barrido solo enumera y despacha.
+  jobRiesgoBarrido,
+  jobRiesgoRecalcularTenant,
 ];
 
 export const { GET, POST, PUT } = serve({

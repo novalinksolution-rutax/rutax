@@ -30,6 +30,7 @@ import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { camposClasificacionParaInsert } from '../conciliacion-clasificacion';
 import type { TipoDiferenciaConciliacion } from '../tipos';
+import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
 
 /**
  * Calcula los 3 campos de clasificación de la bandeja de excepciones
@@ -76,8 +77,12 @@ export const jobConciliarPeriodo = inngest.createFunction(
         .eq('tenant_id', tenantId)
         .eq('seller_id', sellerId)
         .in('estado', ['entregado', 'entregado_manual'])
-        .gte('actualizado_en', `${fechaInicio}T00:00:00`)
-        .lte('actualizado_en', `${fechaFin}T23:59:59`);
+        // Ventana del período en calendario de SANTIAGO. Sin esto, un
+        // timestamp sin offset se interpreta en la zona del servidor (UTC) y
+        // el período se corre 3–4 horas: entregas de la noche del último día
+        // quedaban fuera de la conciliación de su propio período.
+        .gte('actualizado_en', limitesDelDiaSantiago(fechaInicio).desde.toISOString())
+        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString());
 
       const pedidoIds = (pedidosEntregados ?? []).map((p) => p.id as string);
       if (pedidoIds.length === 0) return;
@@ -142,8 +147,12 @@ export const jobConciliarPeriodo = inngest.createFunction(
         .eq('seller_id', sellerId)
         .in('estado', ['entregado', 'entregado_manual'])
         .not('driver_id_asignado', 'is', null)
-        .gte('actualizado_en', `${fechaInicio}T00:00:00`)
-        .lte('actualizado_en', `${fechaFin}T23:59:59`);
+        // Ventana del período en calendario de SANTIAGO. Sin esto, un
+        // timestamp sin offset se interpreta en la zona del servidor (UTC) y
+        // el período se corre 3–4 horas: entregas de la noche del último día
+        // quedaban fuera de la conciliación de su propio período.
+        .gte('actualizado_en', limitesDelDiaSantiago(fechaInicio).desde.toISOString())
+        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString());
 
       const pedidoIds = (pedidosConDriver ?? []).map((p) => p.id as string);
       if (pedidoIds.length === 0) return;

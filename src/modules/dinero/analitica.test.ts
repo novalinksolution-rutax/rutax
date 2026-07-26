@@ -44,6 +44,7 @@ function crearClienteMock(tablas: Record<string, unknown[]>): SupabaseClient {
       },
       gte: () => cadena,
       lte: () => cadena,
+      lt: () => cadena,
       in: () => cadena,
       // Resuelve la query: devuelve las filas de la tabla mapeada.
       // Si no se filtró tenant_id, lanza para detectar aislamiento roto.
@@ -566,6 +567,7 @@ describe("Aislamiento de tenant (filtro tenant_id)", () => {
             },
             gte: () => cadena,
             lte: () => cadena,
+            lt: () => cadena,
             in: () => cadena,
             then: (resolve: (v: { data: unknown[]; error: null }) => void) => {
               resolve({ data: [], error: null });
@@ -598,6 +600,7 @@ describe("Aislamiento de tenant (filtro tenant_id)", () => {
             },
             gte: () => cadena,
             lte: () => cadena,
+            lt: () => cadena,
             in: () => cadena,
             then: (resolve: (v: { data: unknown[]; error: null }) => void) => {
               resolve({ data: [], error: null });
@@ -630,6 +633,7 @@ describe("Aislamiento de tenant (filtro tenant_id)", () => {
             },
             gte: () => cadena,
             lte: () => cadena,
+            lt: () => cadena,
             in: () => cadena,
             then: (resolve: (v: { data: unknown[]; error: null }) => void) => {
               resolve({ data: [], error: null });

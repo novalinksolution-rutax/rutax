@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { StubGeocodingAdapter } from './stub';
-import { CENTROIDES_RM } from '../centroides-rm';
+import { CENTROIDES_RM } from '@/lib/geo/centroides-rm';
 import type { ComunaRM } from '@/lib/ui/comunas-rm';
 
 const adapter = new StubGeocodingAdapter();

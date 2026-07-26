@@ -23,6 +23,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EstadoEventoConciliacion } from "./tipos";
 import { esEstadoTerminal } from "./conciliacion-clasificacion";
+import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Tipos de resultado (contratos públicos hacia los Server Components)
@@ -347,8 +348,12 @@ export async function obtenerFuga(
     .eq("tenant_id", tenantId)
     .in("tipo_diferencia", [...TIPOS_FUGA_REVENUE])
     // Filtra por fecha de creación del evento (cuando C7 lo detectó).
-    .gte("creado_en", `${ventana.desde}T00:00:00.000Z`)
-    .lte("creado_en", `${ventana.hasta}T23:59:59.999Z`);
+    // Límites en calendario de SANTIAGO. Antes esto pegaba `T00:00:00.000Z` a
+    // una fecha civil chilena, o sea la interpretaba como instante UTC: la
+    // ventana quedaba corrida 3–4 horas y se colaban (o se perdían) eventos de
+    // la madrugada. Rango semiabierto para no perder el último milisegundo.
+    .gte("creado_en", limitesDelDiaSantiago(ventana.desde).desde.toISOString())
+    .lt("creado_en", limitesDelDiaSantiago(ventana.hasta).hasta.toISOString());
 
   if (error) {
     throw new Error(

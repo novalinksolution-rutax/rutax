@@ -11,9 +11,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans-src), "Inter", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  --font-heading: var(--font-sans-src), "Inter", system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -30,6 +30,8 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive-subtle: var(--destructive-subtle);
@@ -78,9 +80,13 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-emphasis: cubic-bezier(0.34, 1.3, 0.64, 1);
 
-  --shadow-xs: 0 1px 2px 0 oklch(0 0 0 / 0.04);
-  --shadow-sm: 0 1px 3px 0 oklch(0 0 0 / 0.06), 0 1px 2px -1px oklch(0 0 0 / 0.05);
-  --shadow-md: 0 4px 8px -2px oklch(0 0 0 / 0.08), 0 2px 4px -2px oklch(0 0 0 / 0.05);
+  /* Sombras del ADN de Retell (§2.3): muy suaves, neutras, baja opacidad. */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 0 2px 0 rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-dropdown: 0 4px 8px 0 rgba(31, 35, 41, 0.06), 0 6px 12px 0 rgba(31, 35, 41, 0.04),
+    0 8px 24px 0 rgba(31, 35, 41, 0.04);
 }
 
 :root {
@@ -91,130 +97,119 @@
   --motion-slow: 320ms;
   --motion-page: 400ms;
 
-  /* --- Lienzo y superficies (neutro, el dato manda) --- */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  /* === ADN de Retell (neutro cool que respira) — valores hex de referencia
+     exacta del §2.4. Se conservan en hex (no OKLCH) para fidelidad 1:1 con el
+     DOM extraído; el andamiaje @theme/@theme inline es el mismo de antes. === */
 
-  /* --- Marca Rutax: navy profundo (no brillante). Recurso escaso (DESIGN principio 2). --- */
-  --primary: oklch(0.38 0.13 264);
-  --primary-foreground: oklch(0.985 0 0);
+  /* --- Lienzo y superficies (neutro cool; el contenido es blanco) --- */
+  --background: #ffffff;
+  --foreground: #172131;            /* texto principal: azul-gris frío */
+  --card: #ffffff;
+  --card-foreground: #172131;
+  --popover: #ffffff;
+  --popover-foreground: #172131;
 
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* --- Acción primaria = NEUTRO oscuro (firma de Retell), NO el azul --- */
+  --primary: #2f3a4b;               /* neutral-800 */
+  --primary-foreground: #f6f8fb;
 
-  /* --- Color semántico de estado (solo estado, jamás marca — DESIGN principio 2) --- */
-  /* Cada familia: solid (fill/ícono) + foreground (texto sobre solid)
-     + subtle (fondo de badge) + subtle-foreground (texto del badge). */
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --destructive-subtle: oklch(0.95 0.04 25);
-  --destructive-subtle-foreground: oklch(0.45 0.16 27);
+  --secondary: #f5f5fa;             /* lavender-gray-100 */
+  --secondary-foreground: #172131;
+  --muted: #f5f5fa;
+  --muted-foreground: #606a78;      /* neutral-650 */
+  --accent: #eef0f6;                /* hover neutro sutil */
+  --accent-foreground: #172131;
 
-  --success: oklch(0.58 0.14 150);
-  --success-foreground: oklch(0.985 0 0);
-  --success-subtle: oklch(0.95 0.04 150);
-  --success-subtle-foreground: oklch(0.42 0.10 150);
+  /* --- Marca / acento = NAVY propio de Rutax (decisión 2026-07-22): más
+     profundo que el azul de Retell, para transmitir confianza financiera.
+     Recurso ESCASO: activo, enlaces, foco. Navy profundo (ajuste 2026-07-22, "confianza
+     financiera"): blanco/#2a3ca0 ≈ 9.3:1 (AAA). --- */
+  --brand: #2a3ca0;
+  --brand-foreground: #ffffff;
 
-  --warning: oklch(0.74 0.15 80);
-  --warning-foreground: oklch(0.27 0.05 75);
-  --warning-subtle: oklch(0.96 0.06 90);
-  --warning-subtle-foreground: oklch(0.47 0.09 70);
+  /* --- Bordes y foco (el anillo de foco usa el navy de marca) --- */
+  --border: #e6e6f3;                /* lavender-gray-300 */
+  --input: #e6e6f3;
+  --ring: #2a3ca0;
 
-  --info: oklch(0.58 0.14 245);
-  --info-foreground: oklch(0.985 0 0);
-  --info-subtle: oklch(0.95 0.04 240);
-  --info-subtle-foreground: oklch(0.45 0.13 250);
+  /* --- Color semántico de estado: solid + foreground + subtle + subtle-foreground.
+     `--info` PERMANECE azul brillante de estado (#335cff), distinto del navy de marca. --- */
+  /* Rutax-wins (a11y): `--warning-foreground` va OSCURO, no blanco: white/#ff8447
+     rinde 2.4:1 (falla AA). Café oscuro sobre naranjo ≈ 5.4:1 (pasa). Ver §7 del prompt. */
+  --destructive: #fb3748;  --destructive-foreground: #ffffff;  --destructive-subtle: #ffebec;  --destructive-subtle-foreground: #681219;
+  --success:     #1fc16b;  --success-foreground: #ffffff;      --success-subtle: #e0faec;      --success-subtle-foreground: #0b4627;
+  --warning:     #ff8447;  --warning-foreground: #4d2600;      --warning-subtle: #fff3eb;      --warning-subtle-foreground: #683412;
+  --info:        #335cff;  --info-foreground: #ffffff;         --info-subtle: #ebf1ff;         --info-subtle-foreground: #122368;
 
-  /* --- Bordes y foco (anillo de foco con la marca) --- */
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.45 0.12 264);
+  /* --- Charts (paleta Retell) --- */
+  --chart-1: #3370ff;
+  --chart-2: #14c0ff;
+  --chart-3: #7f3bf5;
+  --chart-4: #ffc60a;
+  --chart-5: #1fc16b;
 
-  /* --- Charts con color semántico (DESIGN §9): navy · verde · ámbar · info · violeta --- */
-  --chart-1: oklch(0.48 0.15 264);
-  --chart-2: oklch(0.58 0.14 150);
-  --chart-3: oklch(0.74 0.15 80);
-  --chart-4: oklch(0.58 0.14 245);
-  --chart-5: oklch(0.55 0.12 300);
+  --radius: 0.625rem;               /* 10px = radio de botón; cards derivan a 8px */
 
-  --radius: 0.625rem;
-
-  /* --- Sidebar (Fase 3): alineado a la marca navy --- */
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.38 0.13 264);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.45 0.12 264);
+  /* --- Sidebar (composición Retell): lavanda, ítem activo = pill blanca --- */
+  --sidebar: #f5f5fa;
+  --sidebar-foreground: #172131;
+  --sidebar-primary: #2f3a4b;
+  --sidebar-primary-foreground: #f6f8fb;
+  --sidebar-accent: #ffffff;        /* pill del ítem activo = blanca */
+  --sidebar-accent-foreground: #172131;
+  --sidebar-border: #e5e5f2;
+  --sidebar-ring: #2a3ca0;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
+  /* Dark validado en vivo contra el render real de Retell (§2.4). */
+  --background: #161718;
+  --foreground: #f7f8fa;
+  --card: #24272e;
+  --card-foreground: #f7f8fa;
+  --popover: #24272e;
+  --popover-foreground: #f7f8fa;
 
-  /* Marca navy un punto más luminosa para destacar sobre fondo oscuro. */
-  --primary: oklch(0.58 0.15 264);
-  --primary-foreground: oklch(0.985 0 0);
+  /* En dark, el primary de acción se invierte a casi-blanco (firma Retell). */
+  --primary: #fcfcfe;
+  --primary-foreground: #0a0d16;
 
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --secondary: #1f1f24;
+  --secondary-foreground: #f7f8fa;
+  --muted: #1f1f24;
+  --muted-foreground: #9d9fa2;
+  --accent: #222331;
+  --accent-foreground: #f7f8fa;
 
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --destructive-subtle: oklch(0.28 0.06 25);
-  --destructive-subtle-foreground: oklch(0.82 0.12 25);
+  /* Navy de marca aclarado a periwinkle para legibilidad sobre oscuro
+     (#7080f5 sobre #161718 ≈ 5.3:1 — pasa AA). */
+  --brand: #7080f5;
+  --brand-foreground: #0a0d16;
 
-  --success: oklch(0.65 0.15 150);
-  --success-foreground: oklch(0.16 0.02 150);
-  --success-subtle: oklch(0.28 0.05 150);
-  --success-subtle-foreground: oklch(0.82 0.12 150);
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #7080f5;
 
-  --warning: oklch(0.78 0.15 80);
-  --warning-foreground: oklch(0.22 0.04 75);
-  --warning-subtle: oklch(0.30 0.05 75);
-  --warning-subtle-foreground: oklch(0.86 0.10 85);
+  /* Rutax-wins (a11y): warning-foreground oscuro también en dark (white/#e97135 ≈ 3.1:1). */
+  --destructive: #e93544;  --destructive-foreground: #ffffff;  --destructive-subtle: #3a1d1f;  --destructive-subtle-foreground: #ff9c99;
+  --success:     #1daf61;  --success-foreground: #ffffff;      --success-subtle: #12241a;      --success-subtle-foreground: #3ee089;
+  --warning:     #e97135;  --warning-foreground: #221200;      --warning-subtle: #2a1f16;      --warning-subtle-foreground: #ffdc68;
+  --info:        #5f69ed;  --info-foreground: #ffffff;         --info-subtle: #1a1f45;         --info-subtle-foreground: #8fb4ff;
 
-  --info: oklch(0.65 0.15 245);
-  --info-foreground: oklch(0.16 0.02 245);
-  --info-subtle: oklch(0.28 0.05 245);
-  --info-subtle-foreground: oklch(0.82 0.10 245);
+  --chart-1: #4c88ff;
+  --chart-2: #42bdeb;
+  --chart-3: #9762f5;
+  --chart-4: #fac823;
+  --chart-5: #54c248;
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.58 0.15 264);
-
-  --chart-1: oklch(0.60 0.16 264);
-  --chart-2: oklch(0.65 0.15 150);
-  --chart-3: oklch(0.78 0.15 80);
-  --chart-4: oklch(0.65 0.15 245);
-  --chart-5: oklch(0.62 0.13 300);
-
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.58 0.15 264);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.58 0.15 264);
+  --sidebar: #16191f;
+  --sidebar-foreground: #f7f8fa;
+  --sidebar-primary: #fcfcfe;
+  --sidebar-primary-foreground: #0a0d16;
+  --sidebar-accent: #24272e;
+  --sidebar-accent-foreground: #f7f8fa;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #7080f5;
 }
 
 @layer base {
@@ -226,7 +221,196 @@
   }
   html {
     @apply font-sans;
+    /* Controles nativos (picker de <input type="date">, checkbox, radio, range)
+       toman el navy de marca en vez del azul por defecto del navegador. El popup
+       del date picker ya hereda light/dark vía `color-scheme` (next-themes). ADN
+       §3: el acento navy es el recurso escaso para foco/selección. */
+    accent-color: var(--brand);
   }
+  /* El indicador del calendario y los spin buttons del date/number heredan el
+     esquema light/dark (color-scheme) — se dejan al navegador para no romper la
+     accesibilidad nativa; solo forzamos el acento de marca (arriba). */
+
+  /* Scrollbar sutil y coherente con el tema (Firefox + WebKit/Blink): pulgar
+     delgado en tono `muted-foreground` translúcido, sin flechas ni track. Da un
+     acabado premium en modales y áreas con overflow sin sacrificar visibilidad. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  }
+}
+
+/* =============================================================================
+ * TORRE DE CONTROL — lenguaje visual propio del módulo.
+ * -----------------------------------------------------------------------------
+ * Fuente: design_handoff_torre_de_control/tokens.css.
+ *
+ * ⚠️ Este módulo NO sigue DESIGN_SYSTEM.md, a propósito y por instrucción
+ * explícita del diseño aprobado. Papel/grafito, radio 0 en absolutamente todo,
+ * riesgo por trama de 45° en vez de rampa cromática, y `--color-tc-senal`
+ * (#ec3013) RESERVADO para lo crítico y accionable — nunca decorativo.
+ *
+ * Aislamiento en dos capas:
+ *   1. Prefijo `--tc-` en todos los tokens → cero colisión con los globales,
+ *      y Tailwind genera utilidades propias (bg-tc-papel, text-tc-senal…).
+ *   2. Las reglas base van bajo `.torre` → no se filtran a ninguna otra
+ *      pantalla. El módulo tampoco hereda el tema claro/oscuro del producto:
+ *      es una consola de papel, y lo es en los dos temas.
+ * ========================================================================== */
+@theme {
+  /* Roles */
+  --color-tc-papel: #f3f2f2; /* fondo de toda placa — ~92 % de la pantalla */
+  --color-tc-chasis: #2d2b2b; /* las reglas de 2px: es el fondo asomándose */
+  --color-tc-tinta: #201e1d; /* texto, trazo, rellenos sólidos */
+  --color-tc-inserto: #eae7e7; /* barras vacías, paneles hundidos */
+  --color-tc-senal: #ec3013; /* RESERVADO: crítico y accionable */
+  --color-tc-senal-text: #ae1800; /* el mismo rojo a tamaño de texto (4.5:1) */
+
+  /* Rampa de tinta 100→900 */
+  --color-tc-ink-100: #f8f4f4;
+  --color-tc-ink-200: #eae7e7;
+  --color-tc-ink-300: #d7d3d3;
+  --color-tc-ink-400: #bab6b6;
+  --color-tc-ink-500: #9b9797;
+  --color-tc-ink-600: #7d7979;
+  --color-tc-ink-700: #605d5d;
+  --color-tc-ink-800: #444141;
+  --color-tc-ink-900: #2d2b2b;
+
+  /* Rampa de señal 100→900 — en uso solo 100, 500 y 700 */
+  --color-tc-sig-100: #fff2ef;
+  --color-tc-sig-200: #ffe0d9;
+  --color-tc-sig-300: #ffc4b8;
+  --color-tc-sig-400: #ff9783;
+  --color-tc-sig-500: #ec3013;
+  --color-tc-sig-600: #dd2b0f;
+  --color-tc-sig-700: #ae1800;
+  --color-tc-sig-800: #7c1405;
+  --color-tc-sig-900: #4d170e;
+
+  /* Espaciado — múltiplos de 4, sin valores intermedios */
+  --spacing-tc-1: 4px;
+  --spacing-tc-2: 8px;
+  --spacing-tc-3: 12px;
+  --spacing-tc-4: 16px;
+  --spacing-tc-6: 24px;
+  --spacing-tc-8: 32px;
+
+  /* Radio: 0 en absolutamente todo. Es una decisión, no un descuido —
+   * la esquina viva es lo que hace que el conjunto lea como plano técnico. */
+  --radius-tc: 0px;
+
+  /* Elevación — definidas tres, en uso UNA (la paleta ⌘K).
+   * La separación la hacen las reglas, no las sombras. */
+  --shadow-tc-sm: 0 1px 2px rgba(45, 43, 43, 0.14);
+  --shadow-tc-md: 0 3px 10px rgba(45, 43, 43, 0.16);
+  --shadow-tc-lg: 0 12px 32px rgba(45, 43, 43, 0.22);
+
+  /* Archivo, cargada con next/font en el layout del módulo (no en el raíz:
+   * no debe costarle bytes al resto del producto). */
+  --font-tc: var(--font-tc-src), Archivo, system-ui, sans-serif;
+}
+
+.torre {
+  /* Retícula de la consola */
+  --tc-h-barra: 52px;
+  --tc-h-ola: 132px;
+  --tc-h-tiempo: 98px;
+  --tc-w-riel: 404px;
+  --tc-regla-may: 2px;
+  --tc-regla-men: 1px;
+
+  /* Escala de riesgo — pitch de la trama por paso */
+  --tc-trama-1: 13px; /* calmo    0–20  */
+  --tc-trama-2: 9px; /* bajo    21–40  */
+  --tc-trama-3: 6px; /* medio   41–60  */
+  --tc-trama-4: 4px; /* alto    61–75  */
+  --tc-trama-5: 3px; /* crítico 76–100 */
+
+  /* Se compone el font-stack aquí en vez de usar `var(--font-tc)`.
+   *
+   * Tailwind 4 hace TREE-SHAKING de las variables de `@theme`: solo emite las
+   * que alguna utilidad generada referencia. `--color-tc-papel` sobrevive
+   * porque el módulo usa `bg-tc-papel`/`text-tc-*`, pero `--font-tc` no lo usa
+   * ninguna clase —solo esta regla de CSS crudo— así que Tailwind la eliminaba
+   * y `font-family` quedaba inválida. El módulo caía a Inter en silencio, sin
+   * error en consola y sin fallar el build: se detectó mirando la pantalla.
+   *
+   * `--font-tc-src` lo define `next/font` en el className del propio div, así
+   * que está garantizada donde se usa. El token `--font-tc` se conserva en
+   * `@theme` para quien prefiera la utilidad `font-tc`. */
+  font-family: var(--font-tc-src), Archivo, system-ui, sans-serif;
+  background-color: var(--color-tc-chasis);
+  color: var(--color-tc-tinta);
+}
+
+/* Radio 0 en TODO lo que viva dentro del módulo, incluidos los componentes
+ * shadcn que traen su propio radius. Es la regla que más fácil se rompe por
+ * descuido al reutilizar un Button o un Dialog. */
+.torre :is(button, input, select, textarea, [role="dialog"], [data-slot]) {
+  border-radius: var(--radius-tc);
+}
+
+/* Cifras tabulares — regla de producto 6. Aplica a toda hora, dinero, puntaje
+ * y conteo: es un tablero que se refresca solo, y los dígitos que cambian de
+ * ancho al actualizarse delatan software barato. */
+.tc-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* Esqueleto de carga por región. Nombrar la región que falta es parte del
+ * diseño: no hay spinner de página. */
+@keyframes tc-barrido {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 56px 0;
+  }
+}
+.tc-cargando {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--color-tc-inserto) 0 14px,
+    var(--color-tc-papel) 14px 28px
+  );
+  animation: tc-barrido 1.6s linear infinite;
+}
+
+/* El riel es el único elemento con scroll de toda la consola. */
+.tc-rail::-webkit-scrollbar {
+  width: 10px;
+}
+.tc-rail::-webkit-scrollbar-track {
+  background: #eae9e9;
+}
+.tc-rail::-webkit-scrollbar-thumb {
+  background: var(--color-tc-ink-400);
+  border: 3px solid #eae9e9;
+  border-radius: 0;
+}
+.tc-rail::-webkit-scrollbar-thumb:hover {
+  background: var(--color-tc-ink-600);
 }
 
 /* =============================================================================
@@ -242,3 +426,4 @@
     transition-duration: 0.01ms !important;
   }
 }
+

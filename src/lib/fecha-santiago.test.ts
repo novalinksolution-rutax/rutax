@@ -17,6 +17,7 @@ import {
   combinarFechaHoraSantiago,
   fechaLocalEnSantiago,
   horaAMinutos,
+  horaLocalEnSantiago,
   sumarDiasCalendario,
   diferenciaEnDiasCalendario,
 } from './fecha-santiago';
@@ -226,6 +227,33 @@ describe('horaAMinutos', () => {
 
   it('convierte "23:59" a 1439', () => {
     expect(horaAMinutos('23:59')).toBe(1439);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// horaLocalEnSantiago
+// ---------------------------------------------------------------------------
+
+describe('horaLocalEnSantiago', () => {
+  it('invierno chileno (CLT, UTC-4): 22:00 UTC del 25-jul da 18:00 local', () => {
+    const instante = new Date('2026-07-25T22:00:00.000Z');
+    expect(horaLocalEnSantiago(instante)).toBe('18:00');
+  });
+
+  it('verano chileno (CLST, UTC-3): 22:00 UTC del 15-ene da 19:00 local', () => {
+    const instante = new Date('2026-01-15T22:00:00.000Z');
+    expect(horaLocalEnSantiago(instante)).toBe('19:00');
+  });
+
+  it('las 22:00 de Santiago (invierno) caen el mismo día calendario, 02:00 UTC del día siguiente', () => {
+    const instante = new Date('2026-07-26T02:00:00.000Z');
+    expect(horaLocalEnSantiago(instante)).toBe('22:00');
+    expect(fechaLocalEnSantiago(instante)).toBe('2026-07-25');
+  });
+
+  it('round-trip con combinarFechaHoraSantiago', () => {
+    const instante = combinarFechaHoraSantiago('2026-07-25', '17:00');
+    expect(horaLocalEnSantiago(instante)).toBe('17:00');
   });
 });
 

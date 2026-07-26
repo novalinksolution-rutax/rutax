@@ -11,7 +11,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MetricasOperativas, EstadoPedido, ImpactoSla } from "./tipos";
-import { ahoraEnSantiago, horaAMinutos } from "@/lib/fecha-santiago";
+import { ahoraEnSantiago, horaAMinutos, fechaLocalEnSantiago, hoyEnSantiago } from "@/lib/fecha-santiago";
 
 /**
  * Devuelve las métricas operativas del tenant para la fecha indicada.
@@ -64,7 +64,7 @@ export async function obtenerMetricasDelDia(
   tenantId: string,
   fecha: Date,
 ): Promise<MetricasOperativas> {
-  const fechaStr = fecha.toISOString().split("T")[0]; // 'YYYY-MM-DD'
+  const fechaStr = fechaLocalEnSantiago(fecha);
 
   // Pedidos del día (por fecha_compromiso o creados ese día).
   // service_role accede al esquema directo (las vistas `public` son para el
@@ -237,7 +237,7 @@ export async function obtenerResumenFinancieroDelMes(
   tenantId: string,
   fecha: Date,
 ): Promise<ResumenFinancieroMes> {
-  const fechaStr = fecha.toISOString().split("T")[0]; // 'YYYY-MM-DD'
+  const fechaStr = fechaLocalEnSantiago(fecha);
   const [anioStr, mesStr] = fechaStr.split("-");
   const anio = Number(anioStr);
   const mes = Number(mesStr);
@@ -308,7 +308,7 @@ export async function obtenerSlaPorSeller(
   fecha: Date,
   ventana: 'dia' | 'semana',
 ): Promise<SlaPorSeller[]> {
-  const fechaStr = fecha.toISOString().split("T")[0]; // 'YYYY-MM-DD'
+  const fechaStr = fechaLocalEnSantiago(fecha);
 
   // Calcular ventana de fechas.
   let fechaDesde: string;
@@ -428,8 +428,11 @@ export async function obtenerHistorialSlaSemanas(
   sellerId: string,
   semanas: number = 4,
 ): Promise<SemanaSlaSeller[]> {
-  // Calcular el lunes de la semana actual (zona Santiago, naive).
-  const hoyStr = new Date().toISOString().split("T")[0];
+  // Calcular el lunes de la semana actual en calendario de Santiago.
+  // Antes esto usaba `new Date().toISOString().split("T")[0]`, que es UTC: desde
+  // las 20:00 de Santiago devolvía el día siguiente, y un domingo por la noche
+  // el "lunes de la semana actual" saltaba a la semana que viene.
+  const hoyStr = hoyEnSantiago();
   const [a, m, d] = hoyStr.split("-").map(Number);
   const hoyUtc = new Date(Date.UTC(a, m - 1, d));
   const diaSemana = hoyUtc.getUTCDay(); // 0=dom, 1=lun..6=sab

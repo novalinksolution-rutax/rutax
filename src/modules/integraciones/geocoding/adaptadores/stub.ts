@@ -23,7 +23,7 @@
 import type { PuertoGeocoding } from '../puerto';
 import type { ParametrosGeocoding, ResultadoGeocoding } from '../tipos';
 import { resolverComunaCanonica } from '../normalizacion';
-import { CENTROIDES_RM } from '../centroides-rm';
+import { CENTROIDES_RM } from '@/lib/geo/centroides-rm';
 import type { ComunaRM } from '@/lib/ui/comunas-rm';
 
 export class StubGeocodingAdapter implements PuertoGeocoding {

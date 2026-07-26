@@ -19,6 +19,7 @@ import crypto from 'node:crypto';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { autenticarApiKey } from '@/lib/api-v1/autenticar-api-key';
 import { verificarPermiso } from '@/lib/api-v1/verificar-permiso';
+import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
 
 export async function GET(request: Request): Promise<Response> {
   const requestId = crypto.randomUUID();
@@ -63,8 +64,12 @@ export async function GET(request: Request): Promise<Response> {
       query = query.gte('creado_en', fechaDesde);
     }
     if (fechaHasta) {
-      // Incluir el día completo: hasta el final del día indicado.
-      query = query.lte('creado_en', `${fechaHasta}T23:59:59.999Z`);
+      // Incluir el día completo EN CALENDARIO DE SANTIAGO. Antes se pegaba
+      // `T23:59:59.999Z` a la fecha recibida, o sea se interpretaba como
+      // instante UTC: el "día completo" terminaba a las 20:59 de Santiago y la
+      // API dejaba fuera los pedidos de la noche. Rango semiabierto contra el
+      // inicio del día siguiente.
+      query = query.lt('creado_en', limitesDelDiaSantiago(fechaHasta).hasta.toISOString());
     }
 
     // Paginación offset-based.

@@ -14,7 +14,7 @@ Rutax es una **capa de operación unificada** para couriers: centraliza pedidos 
 Para pedidos **Flex**, la app de escaneo/POD de Mercado Envíos es obligatoria y NO es integrable: Rutax orquesta alrededor de ella y nunca la reemplaza; el POD de Flex es la verdad y la evidencia capturada en Rutax es informativa. Para las demás fuentes (same-day hoy; otras "Más adelante") NO hay app externa obligatoria, así que el POD capturado en Rutax es el **autoritativo** y es el que dispara la línea entrega→dinero. En consecuencia, el gatillo de "entregado" difiere por fuente. Para Flex el conductor usa dos apps; para el resto, solo Rutax.
 
 ## Reglas no-negociables (el contrato)
-- El aislamiento entre couriers (tenants) y del seller SE IMPONE EN LA BASE DE DATOS vía RLS, no solo en la app. Toda tabla de negocio lleva tenant_id.
+- El aislamiento entre couriers (tenants) y del seller SE IMPONE EN LA BASE DE DATOS vía RLS, no solo en la app. Toda tabla **de negocio** lleva tenant_id. Existe un carve-out acotado para **datos de referencia** — esquemas `infra` y `contexto` — que deben cumplir las TRES condiciones: (a) su contenido es público o de infraestructura, sin un solo dato de courier, seller, conductor o destinatario; (b) su cardinalidad no cambia al dar de alta un tenant; (c) solo `service_role` las escribe. Esas tablas son **deny-all para sesiones de usuario**: RLS forzada sin políticas, sin vista espejo en `public`, `GRANT` solo a `service_role`. **Test mecánico para revisión: si dar de alta un courier agrega filas, la tabla es de negocio y lleva tenant_id. Sin discusión.** Ojo con el caso mixto: un tipo que mezcla un hecho público con cifras del courier (p. ej. una noticia y "cuántos pedidos tuyos toca") se desdobla en dos tablas, porque dejar la cifra en la fila global la filtra a todos los demás tenants.
 - El seller solo ve sus propios datos; el conductor solo los suyos.
 - Certificados digitales y tokens (ML, etc.) cifrados; NUNCA en logs, en texto plano ni en URLs.
 - Toda acción financiera y de acceso queda en bitácora de auditoría.
@@ -35,7 +35,9 @@ Módulos del monolito (límites claros, no mezclar):
 - `identidad` — auth, tenants, RBAC, onboarding del courier y del seller.
 - `operacion` — pedidos (con su fuente de origen — hoy Flex + same-day; más fuentes "Más adelante"), ingesta, asignación, manifiestos, estados, incidencias.
 - `dinero` — motor entrega→dinero, facturación DTE, liquidaciones, conciliación, cobranza.
-- `integraciones` — adaptadores aislados (un "puerto" por servicio). Hoy: ML/Flex, DTE, pagos; el diseño admite más fuentes de pedidos "Más adelante" (incluida escritura de vuelta de estado/tracking cuando la fuente lo requiera). El núcleo NO llama APIs externas directo.
+- `integraciones` — adaptadores aislados (un "puerto" por servicio). Hoy: ML/Flex, DTE, pagos, geocoding y contexto externo (clima, aire, calendario); el diseño admite más fuentes de pedidos "Más adelante" (incluida escritura de vuelta de estado/tracking cuando la fuente lo requiera). El núcleo NO llama APIs externas directo.
+- `plataforma` — backstage de Rutax: suscripción del courier al SaaS, planes, cobro, dunning, impersonation auditada. Es Rutax cobrándole al courier, distinto del motor entrega→dinero (courier→seller).
+- `contexto` — Torre de control: anticipación operativa. Motor de riesgo por zona, composer de la pantalla, calendario comercial y señales. **Límite duro: `operacion` y `dinero` NO pueden llamar a `contexto`, nunca al revés.** La capa de anticipación depende del núcleo operativo; si algún día un puntaje de riesgo quisiera alterar cómo se genera una línea de dinero, eso es una decisión nueva, no un atajo.
 
 Convenciones de rutas en `src/app/` (Next.js App Router, App Router groups):
 - `(tenant)/` — área autenticada de roles internos del courier (dueño, supervisor, coordinador, administración). Layout único `(tenant)/layout.tsx` con navegación condicionada por capacidad RBAC. Todas las pantallas nuevas del courier (operación, manifiestos, dinero, configuración, onboarding, equipo, sellers) van aquí.
@@ -132,3 +134,29 @@ Convierte estos documentos a Markdown en `docs/` para que el `@`-referencing fun
 - `@docs/ux/fase-a-onboarding.md`, `@docs/ux/fase-b-operacion.md`, `@docs/ux/fase-c-dinero.md` — flujos y wireframes conceptuales por fase.
 - `@docs/PRUEBA.md` — guía de arranque del entorno local/staging y datos de demo (un solo tenant).
 - `@checklist-pruebas-funcionales-mvp.md` — checklist de pruebas funcionales del MVP; mantenerlo al día.
+
+## Torre de control — el diseño ya existe, úsalo
+
+El módulo **Torre de control** tiene una propuesta de interfaz completa y aprobada en `design_handoff_torre_de_control/`. **Antes de escribir una línea de UI de este módulo, lee `design_handoff_torre_de_control/README.md`.** No diseñes desde cero y no infieras el layout desde los tipos.
+
+Qué hay ahí:
+- `README.md` — especificación completa: tokens exactos, las 7 reglas de producto, layout de las 6 regiones, geometría del mapa con su proyección, los 6 estados de `EstadoPantalla` con sus copys literales, atajos de teclado, forma del estado y estados de los controles.
+- `tokens.css` — los tokens listos para pegar como capa `@theme` de Tailwind 4.
+- `capturas/` — cómo se ve cada pantalla. Referencia visual rápida.
+- `Torre de control.dc.html` — el prototipo **interactivo**. Ábrelo en el navegador para ver el comportamiento real (selección de zona, tope de capas, ⌘K, teclas). Los HTML son **referencias de diseño**, no código para copiar: hay que recrearlos en Next + Tailwind + shadcn.
+
+Tres cosas que no se negocian y que se rompen fácil por descuido:
+1. **Este módulo tiene lenguaje visual propio.** Fue diseñado con instrucción explícita de **no** usar `DESIGN_SYSTEM.md` ni `docs/torre-de-control/lenguaje-visual.md`. Los tokens que manda son los de `tokens.css`. Radio 0 en todo. El rojo `#ec3013` está **reservado** para lo crítico y accionable — nunca decorativo.
+2. **Los datos salen solo de `docs/torre-de-control/estructura.md` y `datos-dummy.ts`.** Sus tipos son el contrato del endpoint. No inventes campos ni datos de relleno.
+3. **Las 7 reglas de producto del README** (jerarquía de tres niveles, tope de 2 capas, silencio por defecto, el color nunca solo, contador de sin ubicar, cifras tabulares, equivalente sin mapa) son de producto, no estéticas. Están en §2 del README.
+
+Diseño técnico del módulo (esquema `contexto`, adaptadores, jobs, motor de riesgo, calendario comercial y señales de prensa): `@docs/arquitectura/torre-de-control.md`.
+
+### Decisiones de implementación que se apartan de los documentos (2026-07-26)
+Los documentos siguen mandando salvo en estos puntos, donde el usuario decidió otra cosa o la realidad los desmintió. Si un documento te dice lo contrario de lo que sigue, esto gana:
+
+- **Mapa: MapLibre + PMTiles**, no el SVG geométrico del handoff (§8.8 del diseño técnico planteaba ambas; el usuario eligió MapLibre por orientación urbana). Geometría comunal **DPA 2023 real**, no el placeholder Voronoi. **Basemap acromático mínimo**: agua, áreas verdes y ejes principales en gris de contraste muy bajo, sin etiquetas de lugar ni relieve. Consecuencia: R3 no es pixel-perfect al handoff, y las tramas de riesgo de 45° van como **sprites a DPR 2** — las capas `fill` de MapLibre no aceptan `<pattern>` SVG.
+- **§4 del diseño técnico se equivocaba con las fuentes.** Open-Meteo **no sirve**: su tier libre prohíbe uso comercial y define como comercial "apps con suscripciones". Se reemplazó por **MMA/SINCA para aire** (es quien decreta los episodios) y **OpenWeather para clima** (permite SaaS comercial a cambio de **atribución visible en pantalla**, que el handoff no previó). La DMC se evaluó y no sirve: publica observaciones, no pronóstico. Muestrear las 52 comunas es sobre-muestrear: van ~10 puntos de grilla y cada comuna toma el más cercano.
+- **Umbrales PM2.5 reales** (Plan Operacional GEC 2026 del MMA): Alerta 80 · Preemergencia 110 · Emergencia 170, sobre la **media móvil de 24 h**, no sobre la hora suelta. Los del `datos-dummy.ts` están mal — **el dummy es contrato de tipos, no de valores.**
+- **`EstadoTorre` se envuelve** en `TorreRespuesta { horizonteInicial, horizontes: Record<'hoy'|'manana'|'72h', EstadoTorre> }` (aditivo, el tipo congelado queda intacto). `olas` no va ahí. **A 72 h se cuentan solo pedidos ya ingestados, nunca una proyección**: se verá casi vacío, y es correcto.
+- **RBAC**: capacidad `ver_torre_control` (dueño, supervisor, coordinador — no administración). Es de lectura: no habilita ninguna acción irreversible.

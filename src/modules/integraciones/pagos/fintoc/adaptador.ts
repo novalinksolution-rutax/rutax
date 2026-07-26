@@ -69,6 +69,7 @@ import type {
 import { ErrorPagosProveedor } from "../errores";
 import { normalizarRut, type MovimientoPago, type TipoMovimientoPago } from "../tipos";
 import { reintentarConBackoff, type ErrorReintentable } from "../../resiliencia";
+import { hoyEnSantiago, fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 /** Base de la API de Fintoc (verificada en vivo). */
 export const FINTOC_BASE_URL = "https://api.fintoc.com/v1";
@@ -363,14 +364,21 @@ export class FintocAdapter implements PuertoConciliacionPagos {
     return timingSafeEqual(a, b);
   }
 
-  /** Normaliza una fecha (Date o string ISO/fecha de Fintoc) a `YYYY-MM-DD`. */
+  /**
+   * Normaliza una fecha (Date o string ISO/fecha de Fintoc) a `YYYY-MM-DD` en
+   * calendario de Santiago.
+   *
+   * Antes usaba `toISOString().slice(0,10)`, que es UTC: un movimiento bancario
+   * de las 21:30 de un martes quedaba fechado el miércoles, y el matching contra
+   * el cobro esperado fallaba por un día. El banco opera en hora de Chile.
+   */
   private aFechaIso(valor: Date | string): string {
     const d = valor instanceof Date ? valor : new Date(valor);
     if (Number.isNaN(d.getTime())) {
       // Entrada no parseable → hoy (defensivo; el matching no depende de la hora).
-      return new Date().toISOString().slice(0, 10);
+      return hoyEnSantiago();
     }
-    return d.toISOString().slice(0, 10);
+    return fechaLocalEnSantiago(d);
   }
 
   /** Lanza si no hay secret key de org configurada (falla rápido, sin exponerla). */
