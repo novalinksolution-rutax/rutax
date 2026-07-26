@@ -25,6 +25,7 @@ import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/module
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import { borrarUbicacionAlCerrarRuta } from "./ubicacion-conductor";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Mapper de fila de BD → interfaz Manifiesto
@@ -488,7 +489,7 @@ export async function obtenerManifiestoActivo(
   conductorId: string,
   fecha: Date,
 ): Promise<Manifiesto | null> {
-  const fechaStr = fecha.toISOString().split("T")[0];
+  const fechaStr = fechaLocalEnSantiago(fecha);
 
   const { data, error } = await cliente
     .from("manifiestos")

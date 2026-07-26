@@ -22,8 +22,15 @@
  */
 
 import { useState, useRef, useTransition, useCallback } from "react";
-import { Camera, MapPin, CheckCircle2, AlertTriangle, X, ChevronDown, Loader2, Info } from "lucide-react";
+import { Camera, MapPin, CheckCircle2, AlertTriangle, X, Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TIPOS_INCIDENCIA, type TipoIncidencia } from "@/modules/operacion/tipos";
 import { traducirTipoIncidencia } from "@/lib/ui/traduccion-estados";
 import {
@@ -236,7 +243,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
       <div
         role="status"
         aria-live="polite"
-        className="rounded-xl bg-success p-4 text-center text-success-foreground"
+        className="rounded-lg bg-success p-4 text-center text-success-foreground"
       >
         <CheckCircle2 className="mx-auto mb-2 size-8" aria-hidden="true" />
         <p className="font-semibold text-base">
@@ -255,7 +262,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
       <div
         role="status"
         aria-live="polite"
-        className="rounded-xl bg-warning-subtle p-4 text-warning-subtle-foreground"
+        className="rounded-lg bg-warning-subtle p-4 text-warning-subtle-foreground"
       >
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 size-5 flex-shrink-0" aria-hidden="true" />
@@ -277,7 +284,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
         <Button
           type="button"
           onClick={() => setVista("entregar")}
-          className="min-h-[56px] w-full rounded-xl text-base font-bold"
+          className="min-h-[56px] w-full rounded-lg text-base font-bold"
           aria-haspopup="dialog"
         >
           <CheckCircle2 className="mr-2 size-5" aria-hidden="true" />
@@ -287,7 +294,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
           type="button"
           variant="outline"
           onClick={() => setVista("no_entregar")}
-          className="min-h-[56px] w-full rounded-xl text-base font-semibold border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+          className="min-h-[56px] w-full rounded-lg text-base font-semibold border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
           aria-haspopup="dialog"
         >
           <X className="mr-2 size-5" aria-hidden="true" />
@@ -324,7 +331,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
                   <img
                     src={fotoPreview}
                     alt="Vista previa de la foto capturada"
-                    className="h-40 w-full rounded-xl object-cover"
+                    className="h-40 w-full rounded-lg object-cover"
                   />
                   <button
                     type="button"
@@ -343,7 +350,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
                 <button
                   type="button"
                   onClick={() => inputFotoEntregaRef.current?.click()}
-                  className="flex min-h-[48px] w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border bg-muted/30 py-6 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  className="flex min-h-[48px] w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border bg-muted/30 py-6 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 >
                   <Camera className="size-6" aria-hidden="true" />
                   Toca para sacar una foto
@@ -369,7 +376,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
               type="button"
               onClick={handleConfirmarEntrega}
               disabled={!fotoBlobEntrega || estado === "enviando" || estado === "capturando_gps"}
-              className="min-h-[56px] w-full rounded-xl text-base font-bold"
+              className="min-h-[56px] w-full rounded-lg text-base font-bold"
             >
               {estado === "capturando_gps" && (
                 <><Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />Obteniendo ubicación…</>
@@ -397,24 +404,27 @@ export function AccionesSameDay({ pedidoId }: Props) {
                 Motivo
                 <span className="text-destructive" aria-hidden="true"> *</span>
               </label>
-              <div className="relative">
-                <select
+              {/* Select del sistema (no <select> nativo) — mismo componente que
+                  el resto del producto. Se conserva el alto táctil de 48px y el
+                  texto base porque esto lo usa el conductor en la calle. */}
+              <Select
+                value={tipoIncidencia}
+                onValueChange={(v) => setTipoIncidencia(v as TipoIncidencia)}
+              >
+                <SelectTrigger
                   id="motivo-fallo"
-                  value={tipoIncidencia}
-                  onChange={(e) => setTipoIncidencia(e.target.value as TipoIncidencia)}
-                  className="min-h-[48px] w-full appearance-none rounded-xl border border-input bg-background px-4 pr-10 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="min-h-12 w-full px-4 text-base data-[size=default]:h-12"
                 >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
                   {TIPOS_INCIDENCIA.map((tipo) => (
-                    <option key={tipo} value={tipo}>
+                    <SelectItem key={tipo} value={tipo} className="min-h-11 text-base">
                       {traducirTipoIncidencia(tipo)}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              </div>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Foto opcional */}
@@ -435,7 +445,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
                   <img
                     src={fotoPreview}
                     alt="Vista previa de la foto de evidencia"
-                    className="h-32 w-full rounded-xl object-cover"
+                    className="h-32 w-full rounded-lg object-cover"
                   />
                   <button
                     type="button"
@@ -454,7 +464,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
                 <button
                   type="button"
                   onClick={() => inputFotoFalloRef.current?.click()}
-                  className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 py-4 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/30 py-4 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 >
                   <Camera className="size-5" aria-hidden="true" />
                   Agregar foto (opcional)
@@ -481,7 +491,7 @@ export function AccionesSameDay({ pedidoId }: Props) {
               onClick={handleConfirmarFallo}
               disabled={estado === "enviando" || estado === "capturando_gps"}
               variant="destructive"
-              className="min-h-[56px] w-full rounded-xl text-base font-bold"
+              className="min-h-[56px] w-full rounded-lg text-base font-bold"
             >
               {estado === "capturando_gps" && (
                 <><Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />Obteniendo ubicación…</>
@@ -524,36 +534,38 @@ function BottomSheet({
     >
       {/* Overlay */}
       <div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
         onClick={() => !deshabilitarCierre && onCerrar()}
         aria-hidden="true"
       />
 
-      {/* Panel */}
-      <div className="relative z-10 w-full max-w-lg rounded-t-2xl bg-card shadow-xl border border-border pb-safe">
+      {/* Panel — se acota a la altura del viewport; solo el cuerpo scrollea
+          (header y handle fijos) para no perder el CTA en viewport bajo. */}
+      <div className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-xl border border-border bg-popover shadow-lg pb-safe">
         {/* Handle bar */}
-        <div className="flex justify-center pt-3 pb-1" aria-hidden="true">
+        <div className="flex shrink-0 justify-center pt-3 pb-1" aria-hidden="true">
           <div className="h-1 w-10 rounded-full bg-muted-foreground/30" />
         </div>
 
-        <div className="px-5 pb-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 id={tituloId} className="text-lg font-semibold">
-              {titulo}
-            </h2>
-            {!deshabilitarCierre && (
-              <button
-                type="button"
-                onClick={onCerrar}
-                className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Cerrar"
-              >
-                <X className="size-5" aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          {children}
+        {/* Header fijo */}
+        <div className="flex shrink-0 items-center justify-between px-5 pb-3">
+          <h2 id={tituloId} className="text-lg font-semibold">
+            {titulo}
+          </h2>
+          {!deshabilitarCierre && (
+            <button
+              type="button"
+              onClick={onCerrar}
+              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Cerrar"
+            >
+              <X className="size-5" aria-hidden="true" />
+            </button>
+          )}
         </div>
+
+        {/* Cuerpo scrolleable */}
+        <div className="overflow-y-auto px-5 pb-6">{children}</div>
       </div>
     </div>
   );
@@ -572,7 +584,7 @@ export function BannerFlexSoloLectura() {
     <div
       role="note"
       aria-label="Instrucción obligatoria para pedidos Flex"
-      className="rounded-xl bg-info px-4 py-4 text-info-foreground"
+      className="rounded-lg bg-info px-4 py-4 text-info-foreground"
     >
       <div className="flex items-start gap-3">
         <Info className="mt-0.5 size-5 flex-shrink-0" aria-hidden="true" />

@@ -82,7 +82,7 @@ export function FiltrosPedidosForm({
           onClick={togglePorRevisar}
           aria-pressed={filtroPorRevisar}
           className={[
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+            "inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold transition-colors",
             filtroPorRevisar
               ? "border-destructive bg-destructive-subtle text-destructive-subtle-foreground"
               : "border-border bg-muted/50 text-muted-foreground hover:border-destructive/60 hover:text-destructive-subtle-foreground",

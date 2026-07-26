@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -164,9 +165,10 @@ export function FilaEventoConciliacion({
         </TableCell>
 
         <TableCell className="hidden px-4 sm:table-cell">
-          <Badge variant={BADGE_ESTADO_CONCILIACION[evento.estado]}>
-            {traducirEstadoConciliacion(evento.estado)}
-          </Badge>
+          <BadgeEstado
+            variante={BADGE_ESTADO_CONCILIACION[evento.estado]}
+            texto={traducirEstadoConciliacion(evento.estado)}
+          />
         </TableCell>
 
         <TableCell className="hidden px-4 md:table-cell">

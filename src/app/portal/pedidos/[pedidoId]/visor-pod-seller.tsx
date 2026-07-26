@@ -77,7 +77,7 @@ export function VisorPodSeller({ pod }: { pod: PodSeller }) {
   const esEntregado = pod.tipoResultado === "entregado";
 
   return (
-    <div className="rounded-xl border bg-card p-4 space-y-4">
+    <div className="rounded-lg border bg-card p-4 space-y-4">
       {/* Encabezado con resultado */}
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Prueba de entrega</h3>
@@ -126,7 +126,7 @@ export function VisorPodSeller({ pod }: { pod: PodSeller }) {
       {/* Foto */}
       {pod.tieneFoto ? (
         <div className="space-y-2">
-          <div className="rounded-xl overflow-hidden bg-muted min-h-[120px] flex items-center justify-center">
+          <div className="rounded-lg overflow-hidden bg-muted min-h-[120px] flex items-center justify-center">
             {cargandoFoto && (
               <div className="flex h-48 items-center justify-center">
                 <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -162,7 +162,7 @@ export function VisorPodSeller({ pod }: { pod: PodSeller }) {
           )}
         </div>
       ) : (
-        <div className="flex h-20 items-center justify-center gap-2 rounded-xl bg-muted/40 text-sm text-muted-foreground">
+        <div className="flex h-20 items-center justify-center gap-2 rounded-lg bg-muted/40 text-sm text-muted-foreground">
           <ImageOff className="size-4" aria-hidden="true" />
           No se capturó foto en esta entrega
         </div>

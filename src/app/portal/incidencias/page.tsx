@@ -19,6 +19,7 @@ import {
   horasDesde,
 } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -204,15 +205,16 @@ export default async function PaginaIncidenciasSeller({
                     <TableRow key={inc.id}>
                       <TableCell className="px-4">
                         <div className="flex flex-wrap items-center gap-1">
-                          <Badge variant={BADGE_ESTADO_INCIDENCIA[inc.estado]}>
-                            {traducirEstadoIncidencia(inc.estado)}
-                          </Badge>
+                          <BadgeEstado
+                            variante={BADGE_ESTADO_INCIDENCIA[inc.estado]}
+                            texto={traducirEstadoIncidencia(inc.estado)}
+                          />
                           {sinGestion && (
                             <Badge variant="error">Sin gestión: {horas}h</Badge>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="px-4 font-medium">
+                      <TableCell className="px-4 font-medium whitespace-normal">
                         {traducirTipoIncidencia(inc.tipo)}
                         {inc.descripcion && (
                           <p className="mt-0.5 text-xs font-normal text-muted-foreground line-clamp-1">

@@ -5,6 +5,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { crearPedidoSameDay } from "@/modules/operacion/pedidos";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import { puedeSolicitarSameDay } from "@/modules/identidad/capacidades";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 export type ResultadoCrearSameDay =
   | {
@@ -37,7 +38,7 @@ export async function crearSameDayAction(
   // Same-day = entrega hoy por definición. Si el seller no especifica fecha, se fija a hoy
   // para que el pedido aparezca en la vista operaciones del courier (filtrada por fecha_compromiso).
   const fechaCompromisoForm = (formData.get("fecha_compromiso") as string | null)?.trim();
-  const fechaCompromiso = fechaCompromisoForm || new Date().toISOString().split("T")[0];
+  const fechaCompromiso = fechaCompromisoForm || fechaLocalEnSantiago(new Date());
 
   if (!nombre) return { ok: false, campo: "nombre", mensaje: "El nombre del destinatario es obligatorio." };
   if (!direccion) return { ok: false, campo: "direccion", mensaje: "La dirección de entrega es obligatoria." };

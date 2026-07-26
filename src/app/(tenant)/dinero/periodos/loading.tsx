@@ -37,7 +37,7 @@ export default function CargandoPeriodos() {
                   <Skeleton className="h-4 w-28" />
                 </TableCell>
                 <TableCell className="px-4">
-                  <Skeleton className="h-5 w-20 rounded-full" />
+                  <Skeleton className="h-5 w-20 rounded-md" />
                 </TableCell>
                 <TableCell className="hidden px-4 text-right md:table-cell">
                   <Skeleton className="ml-auto h-4 w-20" />

@@ -157,10 +157,10 @@ export function PingUbicacion({ manifiestoEnRuta }: Props) {
       className="fixed inset-0 z-50 flex items-end justify-center"
     >
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/50" aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs" aria-hidden="true" />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-lg rounded-t-2xl bg-card border border-border shadow-xl pb-safe">
+      <div className="relative z-10 w-full max-w-lg rounded-t-xl border-t border-border bg-popover shadow-lg pb-safe">
         {/* Handle bar */}
         <div className="flex justify-center pt-3 pb-1" aria-hidden="true">
           <div className="h-1 w-10 rounded-full bg-muted-foreground/30" />
@@ -203,7 +203,7 @@ export function PingUbicacion({ manifiestoEnRuta }: Props) {
             <Button
               type="button"
               onClick={handleAceptar}
-              className="min-h-[52px] w-full rounded-xl text-base font-bold"
+              className="min-h-[52px] w-full rounded-lg text-base font-bold"
             >
               Compartir mi ubicación
             </Button>
@@ -211,7 +211,7 @@ export function PingUbicacion({ manifiestoEnRuta }: Props) {
               type="button"
               variant="ghost"
               onClick={handleRechazar}
-              className="min-h-[48px] w-full rounded-xl text-sm text-muted-foreground"
+              className="min-h-[48px] w-full rounded-lg text-sm text-muted-foreground"
             >
               <X className="mr-2 size-4" aria-hidden="true" />
               Rechazar por ahora

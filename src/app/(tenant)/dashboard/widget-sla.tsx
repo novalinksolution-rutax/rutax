@@ -84,7 +84,7 @@ export function WidgetSlaPorSeller({ datos }: { datos: SlaPorSeller[] }) {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-lg font-bold tabular-nums text-foreground">
+              <span className="text-lg font-semibold tabular-nums text-foreground">
                 {pctMostrado}
               </span>
               <Badge variant={semaforo.variant}>{semaforo.etiqueta}</Badge>
@@ -167,7 +167,7 @@ export function TiraCortesSeller({ datos }: { datos: ItemCorte[] }) {
 
             <div className="flex items-center gap-2 shrink-0 tabular-nums">
               <TrendingUp className="size-3.5 text-muted-foreground" aria-hidden="true" />
-              <span className={urgente ? "font-bold text-warning" : ""}>
+              <span className={urgente ? "font-semibold text-warning" : ""}>
                 {seller.horaCorte} ·{" "}
                 {minutosLocal !== null
                   ? formatearCountdown(minutosLocal)

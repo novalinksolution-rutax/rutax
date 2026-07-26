@@ -90,11 +90,11 @@ export function BotonAutoAsignar({ fechaHoy }: Props) {
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
         >
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={() => !pendiente && setDialogAbierto(false)}
             aria-hidden="true"
           />
-          <div className="relative z-10 w-full max-w-md rounded-xl bg-background p-6 shadow-2xl">
+          <div className="relative z-10 w-full max-w-md rounded-xl bg-card p-6 ring-1 ring-foreground/10">
             <h2 id="dialog-autoasig-titulo" className="font-semibold text-lg">
               Auto-asignar pedidos pendientes
             </h2>

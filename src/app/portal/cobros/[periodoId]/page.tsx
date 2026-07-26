@@ -23,6 +23,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Table,
@@ -122,14 +123,15 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             {formatearFechaCorta(periodo.fechaFin)}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>{textoBadge}</Badge>
+            <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
             {periodo.estadoCobro !== "no_aplica" && (
-              <Badge variant={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
-                {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-              </Badge>
+              <BadgeEstado
+                variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
+                texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)}
+              />
             )}
           </div>
-          <p className="text-3xl font-bold tabular-nums">
+          <p className="text-3xl font-semibold tabular-nums">
             {formatearCLPOGuion(periodo.montoTotalClp)}
           </p>
           {periodo.estadoCobro === "parcial" && (
@@ -150,7 +152,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       {periodo.estado === "anulado" && (
         <section
           aria-labelledby="anulacion-titulo"
-          className="rounded-xl bg-warning-subtle p-5 text-warning-subtle-foreground"
+          className="rounded-lg bg-warning-subtle p-5 text-warning-subtle-foreground"
         >
           <h2 id="anulacion-titulo" className="mb-2 flex items-center gap-2 text-sm font-semibold">
             <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
@@ -195,7 +197,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       {dte && (
         <section
           aria-labelledby="factura-titulo"
-          className="rounded-xl border bg-card p-5 shadow-sm"
+          className="rounded-lg border bg-card p-5 shadow-xs"
         >
           <h2
             id="factura-titulo"
@@ -206,11 +208,11 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
-              <p className="text-2xl font-bold tabular-nums">Folio {dte.folio}</p>
+              <p className="text-2xl font-semibold tabular-nums">Folio {dte.folio}</p>
               <p className="text-sm text-muted-foreground">
                 Emitida el {formatearFechaCorta(dte.fechaEmision)}
               </p>
-              <p className="text-xl font-bold tabular-nums">
+              <p className="text-xl font-semibold tabular-nums">
                 {formatearCLP(dte.montoTotalClp)}
               </p>
 
@@ -252,7 +254,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
         </h2>
 
         {lineas.length === 0 ? (
-          <div className="rounded-xl border bg-card px-6 py-10 text-center">
+          <div className="rounded-lg border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">
               Este período aún no tiene líneas registradas.
             </p>

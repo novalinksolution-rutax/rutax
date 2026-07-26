@@ -18,6 +18,7 @@
 
 import { CalendarClock, Download, Receipt, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -59,11 +60,9 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
       {/* 1. Cabecera */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{plan.nombre}</h1>
+          <h1 className="text-2xl font-semibold">{plan.nombre}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <Badge variant={BADGE_ESTADO_SUSCRIPCION[miPlan.estado]}>
-              {TEXTO_ESTADO_SUSCRIPCION[miPlan.estado]}
-            </Badge>
+            <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[miPlan.estado]} texto={TEXTO_ESTADO_SUSCRIPCION[miPlan.estado]} />
             <span className="text-muted-foreground">
               {miPlan.periodicidad === "mensual" ? "Facturación mensual" : "Facturación anual"}
             </span>
@@ -76,7 +75,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           </div>
         </div>
         <div className="text-left sm:text-right">
-          <p className="text-2xl font-bold tabular-nums">
+          <p className="text-2xl font-semibold tabular-nums">
             {formatearCLP(miPlan.periodicidad === "mensual" ? plan.precioMensualClp : plan.precioAnualClp)}
           </p>
           <p className="text-xs text-muted-foreground">{miPlan.periodicidad === "mensual" ? "por mes" : "por año"}</p>
@@ -89,7 +88,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
 
       {/* 2. Período vigente + Consumo del plan */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <section aria-labelledby="periodo-vigente-titulo" className="rounded-xl border bg-card p-5 shadow-sm">
+        <section aria-labelledby="periodo-vigente-titulo" className="rounded-lg border bg-card p-5 shadow-sm">
           <h2
             id="periodo-vigente-titulo"
             className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
@@ -101,11 +100,9 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
               <p className="text-sm text-foreground">
                 {formatearFecha(periodoActual.periodoInicio)} – {formatearFecha(periodoActual.periodoFin)}
               </p>
-              <p className="text-2xl font-bold tabular-nums">{formatearCLPOGuion(periodoActual.montoClp)}</p>
+              <p className="text-2xl font-semibold tabular-nums">{formatearCLPOGuion(periodoActual.montoClp)}</p>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]}>
-                  {TEXTO_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]}
-                </Badge>
+                <BadgeEstado variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} texto={TEXTO_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} />
                 {periodoActual.estado === "pendiente" && periodoActual.venceEn ? (
                   <span className="text-xs text-muted-foreground">
                     Vence el {formatearFecha(periodoActual.venceEn)}
@@ -122,7 +119,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           )}
         </section>
 
-        <section aria-labelledby="consumo-titulo" className="rounded-xl border bg-card p-5 shadow-sm">
+        <section aria-labelledby="consumo-titulo" className="rounded-lg border bg-card p-5 shadow-sm">
           <h2 id="consumo-titulo" className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Consumo del plan
           </h2>
@@ -171,7 +168,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
             descripcion="Aquí verás cada pago confirmado cuando se procese tu primer período."
           />
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Historial de pagos de la suscripción">
                 <thead>
@@ -244,8 +241,8 @@ function BannerEstadoNoActivo({ estado }: { estado: "suspendida" | "cancelada" }
     <div
       className={
         esSuspendida
-          ? "rounded-xl bg-warning-subtle p-4 text-warning-subtle-foreground"
-          : "rounded-xl border border-border bg-muted/40 p-4 text-muted-foreground"
+          ? "rounded-lg bg-warning-subtle p-4 text-warning-subtle-foreground"
+          : "rounded-lg border border-border bg-muted/40 p-4 text-muted-foreground"
       }
     >
       <div className="flex items-start gap-3">
@@ -272,7 +269,7 @@ function EstadoPagoBadge({ estado }: { estado: EstadoPago | null }) {
   if (estado === null) {
     return <Badge variant="neutral">Sin pago registrado</Badge>;
   }
-  return <Badge variant={BADGE_ESTADO_PAGO_SUSCRIPCION[estado]}>{TEXTO_ESTADO_PAGO_SUSCRIPCION[estado]}</Badge>;
+  return <BadgeEstado variante={BADGE_ESTADO_PAGO_SUSCRIPCION[estado]} texto={TEXTO_ESTADO_PAGO_SUSCRIPCION[estado]} />;
 }
 
 function BloqueConsumo({

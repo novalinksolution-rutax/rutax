@@ -24,7 +24,7 @@ import {
   traducirEstadoPedido,
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
-import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { VisorPodSeller, type PodSeller } from "./visor-pod-seller";
 import { BotonCopiarTracking } from "./boton-copiar-tracking";
 import { BloqueEtiqueta } from "../bloque-etiqueta";
@@ -287,9 +287,11 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
             {pedido.tipoPedido === "flex" ? "Flex (Mercado Libre)" : "Same-day"}
           </p>
         </div>
-        <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]} className="px-3 py-1 text-sm">
-          {traducirEstadoPedido(pedido.estado)}
-        </Badge>
+        <BadgeEstado
+          variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          texto={traducirEstadoPedido(pedido.estado)}
+          className="px-3 py-1 text-sm"
+        />
       </div>
 
       {/* Línea de tiempo del estado */}
@@ -297,7 +299,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
 
       {/* Seguimiento en vivo (solo same-day — Flex usa el seguimiento de ML) */}
       {pedido.tipoPedido === "same_day" && pedido.trackingToken && (
-        <section aria-labelledby="tracking-titulo" className="rounded-xl border bg-card p-4 sm:p-5">
+        <section aria-labelledby="tracking-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
           <h2
             id="tracking-titulo"
             className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -313,7 +315,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
 
       {/* Etiqueta imprimible con QR (solo same-day) */}
       {pedido.tipoPedido === "same_day" && (
-        <section aria-labelledby="etiqueta-titulo" className="rounded-xl border bg-card p-4 sm:p-5">
+        <section aria-labelledby="etiqueta-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
           <h2
             id="etiqueta-titulo"
             className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -325,7 +327,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
       )}
 
       {/* Detalle del pedido */}
-      <section aria-labelledby="detalle-titulo" className="rounded-xl border bg-card p-4 sm:p-5">
+      <section aria-labelledby="detalle-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
         <h2
           id="detalle-titulo"
           className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -421,7 +423,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
           {pod ? (
             <VisorPodSeller pod={pod} />
           ) : (
-            <div className="rounded-xl border bg-card px-4 py-8 text-center">
+            <div className="rounded-lg border bg-card px-4 py-8 text-center">
               <p className="text-sm text-muted-foreground">
                 No se ha registrado la prueba de entrega para este pedido todavía.
               </p>
@@ -449,7 +451,7 @@ function SeccionTimeline({ estado }: { estado: EstadoPedido }) {
       >
         Estado actual
       </h2>
-      <div className="rounded-xl border bg-card p-4 sm:p-5">
+      <div className="rounded-lg border bg-card p-4 sm:p-5">
         <ol className="flex flex-col gap-0 sm:flex-row sm:items-start sm:gap-0">
           {pasos.map((paso, i) => (
             <li key={paso.estado} className="flex flex-1 items-start gap-3 sm:flex-col sm:items-center sm:gap-2 sm:text-center">

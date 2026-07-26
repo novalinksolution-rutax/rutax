@@ -25,6 +25,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
@@ -157,14 +158,12 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               {formatearFechaCorta(periodo.fechaInicio)} – {formatearFechaCorta(periodo.fechaFin)}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>{textoBadge}</Badge>
+              <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
               {periodo.estadoCobro !== "no_aplica" && (
-                <Badge variant={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
-                  {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-                </Badge>
+                <BadgeEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)} />
               )}
             </div>
-            <p className="text-3xl font-bold tabular-nums">
+            <p className="text-3xl font-semibold tabular-nums">
               {formatearCLPOGuion(periodo.montoTotalClp)}
             </p>
             {periodo.estadoCobro === "parcial" && (
@@ -232,7 +231,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       {periodo.estado === "anulado" && (
         <section
           aria-labelledby="anulacion-titulo"
-          className="rounded-xl bg-destructive-subtle/50 p-5"
+          className="rounded-lg bg-destructive-subtle/50 p-5"
         >
           <h2
             id="anulacion-titulo"
@@ -307,7 +306,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       {dte && (
         <section
           aria-labelledby="dte-titulo"
-          className="rounded-xl border bg-card p-5 shadow-sm"
+          className="rounded-lg border bg-card p-5 shadow-sm"
         >
           <h2
             id="dte-titulo"
@@ -318,7 +317,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
-              <p className="text-2xl font-bold tabular-nums">
+              <p className="text-2xl font-semibold tabular-nums">
                 Folio {dte.folio}
               </p>
               <p className="text-sm text-muted-foreground">
@@ -393,14 +392,14 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
         </h2>
 
         {lineas.length === 0 ? (
-          <div className="rounded-xl border bg-card px-6 py-10 text-center">
+          <div className="rounded-lg border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">
               Este período no tiene líneas todavía. Se agregarán automáticamente a medida que
               se registren entregas.
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Líneas de cobro del período">
                 <thead>
@@ -519,9 +518,9 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
         {formatearFechaCorta(linea.fechaEntrega)}
       </td>
       <td className="hidden px-4 py-3 md:table-cell">
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize">
+        <Badge variant="neutral" className="capitalize">
           {linea.tipoPedido === "flex" ? "Flex" : "Same-day"}
-        </span>
+        </Badge>
       </td>
       <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">
         {linea.concepto}

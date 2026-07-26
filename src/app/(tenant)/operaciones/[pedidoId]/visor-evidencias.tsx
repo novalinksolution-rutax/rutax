@@ -85,9 +85,9 @@ function TarjetaEvidencia({ evidencia }: { evidencia: EvidenciaEntrega }) {
   });
 
   return (
-    <div className="space-y-3 rounded-xl border bg-card p-4">
+    <div className="space-y-3 rounded-lg border bg-card p-4">
       {/* Foto */}
-      <div className="overflow-hidden rounded-xl bg-muted">
+      <div className="overflow-hidden rounded-lg bg-muted">
         {cargando && (
           <div className="flex h-48 items-center justify-center">
             <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />

@@ -27,7 +27,9 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
+import { FiltrosPeriodosForm } from "./filtros-periodos";
 import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
 import { accionPreflightLoteFacturas, accionEmitirFacturasLote } from "./actions";
 
@@ -189,7 +191,7 @@ export default async function PaginaPeriodosCobro({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Períodos de cobro</h1>
+      <h1 className="text-2xl font-semibold">Períodos de cobro</h1>
 
       {/* Chips de resumen */}
       {!errorCarga && (
@@ -207,11 +209,11 @@ export default async function PaginaPeriodosCobro({
                     : urlConFiltros({ estado: chip.key, pagina: "" })
                 }
                 role="listitem"
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-all ${chip.color} ${
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-all ${chip.color} ${
                   estaActivo ? "ring-2 ring-current ring-offset-1" : "hover:opacity-80"
                 }`}
               >
-                {chip.label}: <span className="font-bold">{chip.count}</span>
+                {chip.label}: <span className="font-semibold tabular-nums">{chip.count}</span>
               </Link>
             );
           })}
@@ -219,61 +221,13 @@ export default async function PaginaPeriodosCobro({
       )}
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-seller-pc" className="text-xs font-medium text-muted-foreground">
-            Seller
-          </label>
-          <select
-            id="f-seller-pc"
-            name="seller"
-            defaultValue={filtroSeller}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos los sellers</option>
-            {sellersDisponibles.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-pc" className="text-xs font-medium text-muted-foreground">
-            Estado
-          </label>
-          <select
-            id="f-estado-pc"
-            name="estado"
-            defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos los estados</option>
-            {ESTADOS_PERIODO.map((e) => (
-              <option key={e} value={e}>
-                {traducirEstadoPeriodoCobro(e)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Filtrar
-        </button>
-
-        {hayFiltroActivo && (
-          <Link
-            href="/dinero/periodos"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar filtros
-          </Link>
-        )}
-      </form>
+      <FiltrosPeriodosForm
+        sellers={sellersDisponibles}
+        estados={ESTADOS_PERIODO}
+        filtroSeller={filtroSeller}
+        filtroEstado={filtroEstado}
+        hayFiltroActivo={hayFiltroActivo}
+      />
 
       {/* Error de carga */}
       {errorCarga && (
@@ -297,7 +251,7 @@ export default async function PaginaPeriodosCobro({
 
       {/* Tabla */}
       {!errorCarga && periodosConDte.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
+        <div className="rounded-lg border bg-card px-6 py-12 text-center">
           {hayFiltroActivo ? (
             <>
               <p className="text-muted-foreground">
@@ -317,7 +271,7 @@ export default async function PaginaPeriodosCobro({
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Períodos de cobro">
               <thead>
@@ -449,7 +403,7 @@ function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
 
       {/* Estado */}
       <td className="px-4 py-3">
-        <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>{textoBadge}</Badge>
+        <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
       </td>
 
       {/* Líneas */}

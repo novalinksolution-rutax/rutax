@@ -25,7 +25,17 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
 
   // Si ya está en ruta, mostrar el estado sin botón de acción
   if (estaEnRuta || horaPartida) {
-    const hora = horaPartida ?? new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+    // `hour12: false` explícito: sin él, es-CL en Chrome devuelve "01:12 p. m."
+    // y en Chile la hora se lee en formato 24h (13:12). Zona horaria fijada a
+    // Santiago para no depender del reloj del dispositivo.
+    const hora =
+      horaPartida ??
+      new Date().toLocaleTimeString("es-CL", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "America/Santiago",
+      });
     return (
       <div
         role="status"
@@ -72,7 +82,7 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
             type="button"
             onClick={() => setAbierto(true)}
             disabled={pending}
-            className="min-h-14 w-full rounded-xl text-base font-bold"
+            className="min-h-14 w-full rounded-lg text-base font-bold"
           >
             Listo para salir
           </Button>
@@ -89,13 +99,13 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
         >
           {/* Overlay */}
           <div
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={() => !pending && setAbierto(false)}
             aria-hidden="true"
           />
 
           {/* Panel — bottom sheet en móvil */}
-          <div className="relative z-10 w-full max-w-md rounded-t-2xl sm:rounded-xl bg-card shadow-xl border p-6 space-y-4">
+          <div className="relative z-10 w-full max-w-md rounded-t-xl sm:rounded-xl bg-popover shadow-lg border p-6 space-y-4">
             <h2 id="dialog-salir-titulo" className="text-lg font-semibold">
               Confirmar recepción de paquetes
             </h2>
@@ -110,7 +120,7 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
                 type="button"
                 loading={pending}
                 onClick={handleConfirmar}
-                className="min-h-13 w-full rounded-xl text-base font-bold"
+                className="min-h-13 w-full rounded-lg text-base font-bold"
               >
                 {pending ? "Registrando..." : "Sí, estoy listo para salir"}
               </Button>
@@ -119,7 +129,7 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
                 variant="outline"
                 disabled={pending}
                 onClick={() => setAbierto(false)}
-                className="min-h-12 w-full rounded-xl"
+                className="min-h-12 w-full rounded-lg"
               >
                 Cancelar
               </Button>

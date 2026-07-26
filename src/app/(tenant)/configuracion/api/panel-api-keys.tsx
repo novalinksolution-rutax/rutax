@@ -107,9 +107,9 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
 
         {alerta ? (
           <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+            <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-subtle p-4">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+              <p className="text-sm font-medium text-warning-subtle-foreground">
                 Copia esta clave ahora — no se mostrará de nuevo.
               </p>
             </div>
@@ -128,7 +128,7 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
                 aria-label="Copiar clave"
               >
                 {alerta.copiado ? (
-                  <Check className="size-4 text-green-600" />
+                  <Check className="size-4 text-success" />
                 ) : (
                   <Copy className="size-4" />
                 )}
@@ -282,7 +282,7 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
         <div className="space-y-4">
           {activas.length > 0 && (
             <section aria-label="API keys activas">
-              <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+              <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm" aria-label="API keys activas">
                     {encabezadoTabla}
@@ -307,7 +307,7 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
                 {mostrarRevocadas ? "Ocultar" : "Mostrar"} revocadas ({revocadas.length})
               </button>
               {mostrarRevocadas && (
-                <div className="mt-2 overflow-hidden rounded-xl border bg-card opacity-60 shadow-sm">
+                <div className="mt-2 overflow-hidden rounded-lg border bg-card opacity-60 shadow-sm">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm" aria-label="API keys revocadas">
                       {encabezadoTabla}

@@ -1,11 +1,38 @@
-import Link from "next/link";
-import { Shield, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { exigirSuperAdmin, type ActorSuperAdmin } from "@/modules/plataforma/autorizacion-admin";
 import { Badge } from "@/components/ui/badge";
+import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
 import { cerrarSesionAdmin } from "./acciones-sesion";
 import { FormularioLoginAdmin } from "./formulario-login-admin";
 import { PanelEnrolamientoTotp } from "./seguridad/panel-enrolamiento-totp";
 import { PanelStepUpTotp } from "./seguridad/panel-step-up-totp";
+
+/**
+ * Navegación del backstage (Fase 3 · IA Blueprint §2): consola densa en sidebar
+ * — Overview raíz + grupos NEGOCIO / PLATAFORMA + Seguridad al pie. El gating
+ * fino por `rolAdmin` (soporte = solo lectura) vive en cada página; el nav es
+ * visible para ambos roles porque ver está permitido a los dos.
+ */
+const GRUPOS_ADMIN: GrupoNav[] = [
+  { titulo: null, items: [{ href: "/admin", etiqueta: "Overview", icono: "dashboard" }] },
+  {
+    titulo: "Negocio",
+    items: [
+      { href: "/admin/couriers", etiqueta: "Couriers", icono: "couriers" },
+      { href: "/admin/suscripciones", etiqueta: "Suscripciones", icono: "plan" },
+      { href: "/admin/planes", etiqueta: "Planes", icono: "tarifas" },
+    ],
+  },
+  {
+    titulo: "Plataforma",
+    items: [
+      { href: "/admin/metricas", etiqueta: "Métricas", icono: "metricas" },
+      { href: "/admin/salud", etiqueta: "Salud", icono: "salud" },
+      { href: "/admin/bitacora", etiqueta: "Bitácora", icono: "bitacora" },
+      { href: "/admin/comunicaciones", etiqueta: "Comunicaciones", icono: "comunicaciones" },
+    ],
+  },
+];
 
 /**
  * Layout del backstage de plataforma (super-admin de Rutax) — F3-A.
@@ -68,51 +95,24 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return <PromptMfa actor={actor} />;
   }
 
+  const esAdminTotal = actor.rolAdmin === "admin_total";
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card px-6 py-3 flex items-center gap-4">
-        <Shield className="size-4 text-primary" aria-hidden="true" />
-        <span className="font-semibold text-sm">Rutax · Admin</span>
-        <nav className="flex items-center gap-3 text-sm">
-          <Link href="/admin/suscripciones" className="text-muted-foreground hover:text-foreground transition-colors">
-            Suscripciones
-          </Link>
-          <Link href="/admin/metricas" className="text-muted-foreground hover:text-foreground transition-colors">
-            Métricas
-          </Link>
-          <Link href="/admin/planes" className="text-muted-foreground hover:text-foreground transition-colors">
-            Planes
-          </Link>
-          <Link href="/admin/couriers" className="text-muted-foreground hover:text-foreground transition-colors">
-            Couriers
-          </Link>
-          <Link href="/admin/salud" className="text-muted-foreground hover:text-foreground transition-colors">
-            Salud
-          </Link>
-          <Link href="/admin/comunicaciones" className="text-muted-foreground hover:text-foreground transition-colors">
-            Comunicaciones
-          </Link>
-          <Link href="/admin/bitacora" className="text-muted-foreground hover:text-foreground transition-colors">
-            Bitácora
-          </Link>
-          <Link href="/admin/seguridad" className="text-muted-foreground hover:text-foreground transition-colors">
-            Seguridad
-          </Link>
-        </nav>
-        <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
-          <span>{actor.email}</span>
-          <Badge variant={actor.rolAdmin === "admin_total" ? "outline" : "neutral"}>
-            {actor.rolAdmin === "admin_total" ? "Administrador" : "Soporte (solo lectura)"}
-          </Badge>
-          <form action={cerrarSesionAdmin}>
-            <button type="submit" className="text-muted-foreground hover:text-foreground transition-colors">
-              Cerrar sesión
-            </button>
-          </form>
-        </div>
-      </header>
-      <main className="container mx-auto px-6 py-8 max-w-5xl">{children}</main>
-    </div>
+    <AppShell
+      nombreFantasia="Rutax"
+      etiquetaMarca="Plataforma"
+      nombreCompleto={actor.email}
+      subtituloCuenta={esAdminTotal ? "Administrador" : "Soporte (solo lectura)"}
+      grupos={GRUPOS_ADMIN}
+      itemsInferiores={[{ href: "/admin/seguridad", etiqueta: "Seguridad", icono: "seguridad" }]}
+      adornoCuenta={
+        <Badge variant={esAdminTotal ? "outline" : "neutral"}>{esAdminTotal ? "Total" : "Soporte"}</Badge>
+      }
+      accionSalir={cerrarSesionAdmin}
+      mostrarAvisos={false}
+      mostrarBusqueda={false}
+    >
+      {children}
+    </AppShell>
   );
 }
 
@@ -130,7 +130,7 @@ function PromptMfa({ actor }: { actor: ActorSuperAdmin }) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
-      <div className="w-full max-w-sm space-y-5 rounded-xl border bg-card p-8 shadow-sm">
+      <div className="w-full max-w-sm space-y-5 rounded-lg border bg-card p-8 shadow-sm">
         <div className="space-y-2 text-center">
           <ShieldAlert className="mx-auto size-9 text-primary" aria-hidden="true" />
           <h1 className="font-semibold">Verificación en dos pasos requerida</h1>

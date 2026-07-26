@@ -18,6 +18,13 @@ import { esTransicionValida } from "@/modules/operacion/maquina-estados";
 import { traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
 import { actionCambiarEstadoPedido } from "../actions";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const MOTIVO_MIN = 10;
 
@@ -93,13 +100,13 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
         >
           {/* Fondo */}
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={cerrar}
             aria-hidden="true"
           />
 
           {/* Drawer */}
-          <div className="relative z-10 flex h-full w-full max-w-md flex-col bg-background shadow-2xl sm:w-96">
+          <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-popover shadow-lg sm:w-96">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 id="drawer-estado-titulo" className="text-base font-semibold">
                 Corrección manual de estado
@@ -128,21 +135,23 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                   <label htmlFor="selector-estado-nuevo" className="block text-sm font-medium">
                     Nuevo estado <span aria-hidden="true">*</span>
                   </label>
-                  <select
-                    id="selector-estado-nuevo"
+                  <Select
                     value={estadoNuevo}
-                    onChange={(e) => setEstadoNuevo(e.target.value as EstadoPedido)}
+                    onValueChange={(v) => setEstadoNuevo(v as EstadoPedido)}
                     disabled={pending}
                     required
-                    className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   >
-                    <option value="">Seleccionar nuevo estado...</option>
-                    {estadosValidos.map((estado) => (
-                      <option key={estado} value={estado}>
-                        {traducirEstadoPedido(estado)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="selector-estado-nuevo" className="mt-1 w-full">
+                      <SelectValue placeholder="Seleccionar nuevo estado..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {estadosValidos.map((estado) => (
+                        <SelectItem key={estado} value={estado}>
+                          {traducirEstadoPedido(estado)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Motivo obligatorio (mínimo 10 caracteres) */}

@@ -167,13 +167,13 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
   }
 
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm space-y-3">
+    <div className="rounded-lg border bg-card p-4 shadow-sm space-y-3">
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-sm break-all">{endpoint.url}</p>
         <Badge
           variant="outline"
           className={endpoint.activo
-            ? "shrink-0 border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/30 dark:text-green-400"
+            ? "shrink-0 border-success/30 bg-success-subtle text-success-subtle-foreground"
             : "shrink-0 text-muted-foreground"
           }
         >

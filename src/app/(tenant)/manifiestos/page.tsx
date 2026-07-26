@@ -14,6 +14,7 @@ import {
   BADGE_ESTADO_MANIFIESTO,
 } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -103,7 +104,7 @@ export default async function PaginaManifiestos({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="font-heading text-2xl font-bold">Manifiestos</h1>
+          <h1 className="font-heading text-2xl font-semibold">Manifiestos</h1>
           <IndicadorEnVivo
             tenantId={tenantId}
             tablas={[{ schema: "operacion", tabla: "manifiestos" }]}
@@ -179,9 +180,7 @@ export default async function PaginaManifiestos({
                 {manifiestos.map((m) => (
                   <TableRow key={m.id}>
                     <TableCell className="px-4">
-                      <Badge variant={BADGE_ESTADO_MANIFIESTO[m.estado]}>
-                        {traducirEstadoManifiesto(m.estado)}
-                      </Badge>
+                      <BadgeEstado variante={BADGE_ESTADO_MANIFIESTO[m.estado]} texto={traducirEstadoManifiesto(m.estado)} />
                     </TableCell>
                     <TableCell className="px-4">
                       <Link href={`/manifiestos/${m.id}`} className="font-medium hover:underline">

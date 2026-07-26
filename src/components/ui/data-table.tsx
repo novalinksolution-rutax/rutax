@@ -26,7 +26,7 @@ export function DataTable({ toolbar, footer, children, className }: DataTablePro
     <div
       data-slot="data-table"
       className={cn(
-        "overflow-hidden rounded-xl border border-border bg-card shadow-xs",
+        "overflow-hidden rounded-lg border border-border bg-card shadow-xs",
         className
       )}
     >

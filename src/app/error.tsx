@@ -43,7 +43,7 @@ export default function ErrorApp({
 
   return (
     <div className="flex min-h-[60svh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-xs">
+      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 text-center shadow-xs">
         <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-destructive-subtle">
           <AlertTriangle
             className="size-5 text-destructive-subtle-foreground"

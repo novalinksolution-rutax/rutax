@@ -9,13 +9,13 @@ export default function CargandoPortalCobros() {
       <Skeleton className="h-8 w-40" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+          <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-xs">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="mt-2 h-7 w-32" />
           </div>
         ))}
       </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-xs">
         <ul className="divide-y divide-border">
           {Array.from({ length: 6 }).map((_, i) => (
             <li key={i} className="flex items-center justify-between gap-4 px-4 py-3">

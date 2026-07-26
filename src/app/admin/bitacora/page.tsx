@@ -122,7 +122,7 @@ export default async function PaginaBitacora({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Bitácora</h1>
+        <h1 className="text-2xl font-semibold">Bitácora</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Auditoría de acciones de plataforma: quién hizo qué, cuándo y sobre
           qué courier. El detalle ya viene sin secretos ni tokens.

@@ -19,7 +19,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { accionCrearTarifa, accionEditarTarifa } from "./actions";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+
+/** Sentinela visual para "tarifa por defecto del tenant" (seller_id = "" real). */
+const SELLER_DEFECTO = "__defecto__";
 
 interface TarifaExistente {
   id: string;
@@ -52,6 +63,9 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+  // seller_id se envía por un input hidden para conservar el contrato del
+  // servidor ("" = tarifa por defecto del tenant); el Select solo es presentación.
+  const [sellerId, setSellerId] = useState("");
 
   const esEdicion = !!tarifa;
 
@@ -90,35 +104,38 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
             {!esEdicion && (
               <div className="space-y-1.5">
                 <Label htmlFor="seller_id">Seller</Label>
-                <select
-                  id="seller_id"
-                  name="seller_id"
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  defaultValue=""
+                <input type="hidden" name="seller_id" value={sellerId} />
+                <Select
+                  value={sellerId || SELLER_DEFECTO}
+                  onValueChange={(v) => setSellerId(v === SELLER_DEFECTO ? "" : v)}
                 >
-                  <option value="">Tarifa por defecto del tenant</option>
-                  {sellers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="seller_id" className="h-9 w-full">
+                    <SelectValue placeholder="Tarifa por defecto del tenant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SELLER_DEFECTO}>Tarifa por defecto del tenant</SelectItem>
+                    {sellers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
             {!esEdicion && (
               <div className="space-y-1.5">
                 <Label htmlFor="tipo_entrega">Tipo de entrega</Label>
-                <select
-                  id="tipo_entrega"
-                  name="tipo_entrega"
-                  required
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  defaultValue="flex"
-                >
-                  <option value="flex">Flex (Mercado Libre)</option>
-                  <option value="same_day">Same-day propio</option>
-                </select>
+                <Select name="tipo_entrega" required defaultValue="flex">
+                  <SelectTrigger id="tipo_entrega" className="h-9 w-full">
+                    <SelectValue placeholder="Elige el tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="flex">Flex (Mercado Libre)</SelectItem>
+                    <SelectItem value="same_day">Same-day propio</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>
@@ -127,16 +144,15 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="modo_calculo">Modo de cálculo</Label>
-              <select
-                id="modo_calculo"
-                name="modo_calculo"
-                required
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                defaultValue={tarifa?.modoCalculo ?? "monto_fijo"}
-              >
-                <option value="monto_fijo">Monto fijo</option>
-                <option value="por_zona">Por zona</option>
-              </select>
+              <Select name="modo_calculo" required defaultValue={tarifa?.modoCalculo ?? "monto_fijo"}>
+                <SelectTrigger id="modo_calculo" className="h-9 w-full">
+                  <SelectValue placeholder="Elige el modo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monto_fijo">Monto fijo</SelectItem>
+                  <SelectItem value="por_zona">Por zona</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="zona">Zona (opcional)</Label>
@@ -172,7 +188,7 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
                 name="vigente_desde"
                 type="date"
                 required
-                defaultValue={tarifa?.vigenteDesdeFecha ?? new Date().toISOString().slice(0, 10)}
+                defaultValue={tarifa?.vigenteDesdeFecha ?? fechaLocalEnSantiago(new Date())}
               />
             </div>
             <div className="space-y-1.5">

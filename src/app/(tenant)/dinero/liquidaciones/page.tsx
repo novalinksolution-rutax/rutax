@@ -17,14 +17,15 @@ import type { Liquidacion, EstadoLiquidacion } from "@/modules/dinero/tipos";
 import {
   traducirEstadoLiquidacion,
   BADGE_ESTADO_LIQUIDACION,
-  TEXTO_ESTADO_LIQUIDACION,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { DialogMarcarPagada } from "./dialog-marcar-pagada";
 import { DialogEmitirPago } from "./dialog-emitir-pago";
 import { BotonDescargaPdfLiquidacion } from "./boton-descarga-pdf-liquidacion";
 import { DialogAjustarLiquidacion } from "./dialog-ajustar";
+import { FiltrosLiquidacionesForm } from "./filtros-liquidaciones";
 import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
 import { accionPreflightLotePagos, accionEmitirPagosLote } from "./actions";
 
@@ -215,7 +216,7 @@ export default async function PaginaLiquidaciones({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Liquidaciones de conductores</h1>
+      <h1 className="text-2xl font-semibold">Liquidaciones de conductores</h1>
 
       {/* Chips de resumen */}
       {!errorCarga && (
@@ -224,70 +225,22 @@ export default async function PaginaLiquidaciones({
             <div
               key={chip.key}
               role="listitem"
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${chip.color}`}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium ${chip.color}`}
             >
-              {chip.label}: <span className="font-bold tabular-nums">{chip.count}</span>
+              {chip.label}: <span className="font-semibold tabular-nums">{chip.count}</span>
             </div>
           ))}
         </div>
       )}
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-conductor-l" className="text-xs font-medium text-muted-foreground">
-            Conductor
-          </label>
-          <select
-            id="f-conductor-l"
-            name="conductor"
-            defaultValue={filtroConductor}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos</option>
-            {conductoresDisponibles.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-l" className="text-xs font-medium text-muted-foreground">
-            Estado
-          </label>
-          <select
-            id="f-estado-l"
-            name="estado"
-            defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos</option>
-            {ESTADOS_LIQ.map((e) => (
-              <option key={e} value={e}>
-                {TEXTO_ESTADO_LIQUIDACION[e]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Filtrar
-        </button>
-
-        {hayFiltroActivo && (
-          <Link
-            href="/dinero/liquidaciones"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar filtros
-          </Link>
-        )}
-      </form>
+      <FiltrosLiquidacionesForm
+        conductores={conductoresDisponibles}
+        estados={ESTADOS_LIQ}
+        filtroConductor={filtroConductor}
+        filtroEstado={filtroEstado}
+        hayFiltroActivo={hayFiltroActivo}
+      />
 
       {/* Error */}
       {errorCarga && (
@@ -311,7 +264,7 @@ export default async function PaginaLiquidaciones({
 
       {/* Tabla / vacío */}
       {!errorCarga && liquidaciones.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
+        <div className="rounded-lg border bg-card px-6 py-12 text-center">
           <p className="text-muted-foreground">
             {hayFiltroActivo
               ? "No hay liquidaciones que coincidan con los filtros."
@@ -327,7 +280,7 @@ export default async function PaginaLiquidaciones({
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Liquidaciones de conductores">
               <thead>
@@ -406,9 +359,7 @@ function FilaLiquidacion({
         </Link>
       </td>
       <td className="px-4 py-3">
-        <Badge variant={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}>
-          {textoEstado}
-        </Badge>
+        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} texto={textoEstado} />
       </td>
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
         {liquidacion.totalEntregas}
@@ -453,14 +404,10 @@ function FilaLiquidacion({
           <div className="flex flex-col items-end gap-1.5">
             {payoutEnProceso ? (
               /* Payout en tránsito: solo badge informativo, sin botones */
-              <span className="inline-flex items-center rounded-full bg-info-subtle px-2.5 py-0.5 text-xs font-medium text-info-subtle-foreground">
-                Pago en proceso
-              </span>
+              <Badge variant="info">Pago en proceso</Badge>
             ) : payoutConfirmado ? (
               /* Payout confirmado pero liquidación todavía figura emitida (edge case) */
-              <span className="inline-flex items-center rounded-full bg-success-subtle px-2.5 py-0.5 text-xs font-medium text-success-subtle-foreground">
-                Pago confirmado
-              </span>
+              <Badge variant="success">Pago confirmado</Badge>
             ) : (
               /* Sin payout, o payout fallido/rechazado → mostrar ambos botones */
               <>

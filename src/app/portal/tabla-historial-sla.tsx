@@ -36,7 +36,7 @@ export async function TablaHistorialSla({ tenantId, sellerId }: Props) {
   if (semanas.every((s) => s.totalTerminales === 0)) return null;
 
   return (
-    <article className="rounded-xl border border-border bg-card shadow-xs">
+    <article className="rounded-lg border border-border bg-card shadow-xs">
       <div className="border-b border-border px-5 py-3">
         <h2 className="text-sm font-semibold text-muted-foreground">
           Historial de cumplimiento — últimas 4 semanas

@@ -65,11 +65,11 @@ export function DialogReasignacion({
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
         >
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={() => !pending && setAbierto(false)}
             aria-hidden="true"
           />
-          <div className="relative z-10 w-full max-w-sm rounded-xl bg-background p-6 shadow-2xl">
+          <div className="relative z-10 w-full max-w-sm rounded-xl bg-card p-6 ring-1 ring-foreground/10">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden="true" />
               <div>

@@ -135,7 +135,7 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
   }
 
   return (
-    <div className="rounded-xl border bg-card p-4 shadow-sm">
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">{t.panel}</h2>
@@ -204,7 +204,7 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
           {resultado ? (
             <div className="space-y-3">
               <p className="text-sm">
-                <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="font-semibold text-success">
                   {resultado.exitosos} emitido{resultado.exitosos !== 1 ? "s" : ""}
                 </span>
                 {resultado.fallidos > 0 && (
@@ -218,7 +218,7 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
                 {resultado.resultados.map((r) => (
                   <li key={r.id} className="flex items-start gap-2 rounded-md px-2 py-1">
                     {r.ok ? (
-                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
                     ) : (
                       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
                     )}
@@ -259,14 +259,14 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
                   return (
                     <li key={it.id} className="flex items-start gap-2 rounded-md px-2 py-1">
                       {it.emitible ? (
-                        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
                       ) : (
                         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="truncate">{meta?.etiqueta ?? it.id}</span>
                         {it.emitible && advertencias > 0 && (
-                          <span className="block text-xs text-amber-600 dark:text-amber-400">
+                          <span className="block text-xs text-warning">
                             {advertencias} advertencia{advertencias !== 1 ? "s" : ""} — revisa antes de confirmar
                           </span>
                         )}

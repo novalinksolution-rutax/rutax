@@ -69,7 +69,7 @@ export function VisorPod({ pod }: Props) {
   });
 
   return (
-    <div className="rounded-xl border bg-card p-4 space-y-4">
+    <div className="rounded-lg border bg-card p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Prueba de entrega (POD)</h3>
         <BadgeResultadoPod
@@ -87,7 +87,7 @@ export function VisorPod({ pod }: Props) {
 
       {/* Foto */}
       {pod.tieneFoto ? (
-        <div className="rounded-xl overflow-hidden bg-muted">
+        <div className="rounded-lg overflow-hidden bg-muted">
           {cargando && (
             <div className="flex h-48 items-center justify-center">
               <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
@@ -109,7 +109,7 @@ export function VisorPod({ pod }: Props) {
           )}
         </div>
       ) : (
-        <div className="flex h-24 items-center justify-center gap-2 rounded-xl bg-muted/40 text-sm text-muted-foreground">
+        <div className="flex h-24 items-center justify-center gap-2 rounded-lg bg-muted/40 text-sm text-muted-foreground">
           <ImageOff className="size-4" aria-hidden="true" />
           Sin foto adjunta
         </div>

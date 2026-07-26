@@ -143,7 +143,7 @@ export function FormularioAltaEmpresa() {
   return (
     <Card className="w-full max-w-2xl">
       <CardHeader>
-        <CardTitle className="text-2xl">Crea tu cuenta de courier</CardTitle>
+        <CardTitle className="text-2xl font-semibold">Crea tu cuenta de courier</CardTitle>
         <CardDescription>
           Registra tu empresa en un solo paso. Te enviaremos un correo para activar tu cuenta y crear tu contraseña.
         </CardDescription>

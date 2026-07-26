@@ -14,7 +14,7 @@ import { ChevronLeft, MapPin, Navigation, Phone, AlertTriangle, Clock } from "lu
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { urlGoogleMapsBusqueda, urlWazeBusqueda } from "@/lib/ui/mapas";
-import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
@@ -173,18 +173,17 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Estado actual — badge grande */}
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">{pedido.destinatarioNombre}</h1>
-        <Badge
-          variant={BADGE_ESTADO_PEDIDO[pedido.estado]}
-          className="shrink-0 px-3 py-1 text-sm"
-        >
-          {traducirEstadoPedido(pedido.estado)}
-        </Badge>
+        <h1 className="text-2xl font-semibold">{pedido.destinatarioNombre}</h1>
+        <BadgeEstado
+          variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          texto={traducirEstadoPedido(pedido.estado)}
+          className="shrink-0"
+        />
       </div>
 
       {/* ETA same-day (si existe) */}
       {etaStr && estaEnRuta && (
-        <div className="flex items-center gap-2 rounded-xl bg-info-subtle px-4 py-3 text-info-subtle-foreground">
+        <div className="flex items-center gap-2 rounded-lg bg-info-subtle px-4 py-3 text-info-subtle-foreground">
           <Clock className="size-4 flex-shrink-0" aria-hidden="true" />
           <p className="text-sm">
             Entrega prometida para las <span className="font-semibold">{etaStr}</span>
@@ -196,7 +195,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
       {esFlex && <BannerFlexSoloLectura />}
 
       {/* Dirección con enlace a Google Maps */}
-      <div className="rounded-xl border bg-card p-4 space-y-3">
+      <div className="rounded-lg border bg-card p-4 space-y-3">
         <div className="flex items-start gap-3">
           <MapPin className="size-5 text-muted-foreground mt-0.5 flex-shrink-0" aria-hidden="true" />
           <div className="space-y-1">
@@ -230,7 +229,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Teléfono (si existe) — enlace tel: */}
       {pedido.destinatarioTelefono && (
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-lg border bg-card p-4">
           <div className="flex items-center gap-3">
             <Phone className="size-5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
             <div className="flex-1 space-y-1">
@@ -248,7 +247,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Instrucciones de entrega (si existen) */}
       {pedido.instruccionesEntrega && (
-        <div className="space-y-1 rounded-xl bg-info-subtle p-4">
+        <div className="space-y-1 rounded-lg bg-info-subtle p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-info-subtle-foreground">
             Instrucciones de entrega
           </p>
@@ -258,7 +257,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Incidencia abierta — solo informativo */}
       {incidenciaAbierta && (
-        <div className="space-y-1 rounded-xl bg-warning-subtle p-4 text-warning-subtle-foreground">
+        <div className="space-y-1 rounded-lg bg-warning-subtle p-4 text-warning-subtle-foreground">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
             <p className="text-sm font-semibold">
@@ -286,7 +285,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Estado terminal — pedido ya resuelto */}
       {(pedido.estado === "entregado" || pedido.estado === "fallido") && (
-        <div className="rounded-xl bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
+        <div className="rounded-lg bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
           {pedido.estado === "entregado"
             ? "Este pedido fue marcado como entregado."
             : "Este pedido fue marcado como no entregado."}

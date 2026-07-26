@@ -19,7 +19,7 @@ import {
   BADGE_ESTADO_LIQUIDACION,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BotonDescargaLiquidacion } from "./boton-descarga-liquidacion";
@@ -84,7 +84,7 @@ export default async function PaginaLiquidacionesConductor() {
         >
           ← Manifiesto
         </Link>
-        <h1 className="text-xl font-bold">Mis liquidaciones</h1>
+        <h1 className="text-xl font-semibold">Mis liquidaciones</h1>
       </div>
 
       {/* Estado: sin liquidaciones */}
@@ -115,16 +115,18 @@ function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
   const textoEstado = traducirEstadoLiquidacion(liquidacion.estado);
 
   return (
-    <article className="rounded-xl border bg-card p-4 shadow-sm">
+    <article className="rounded-lg border bg-card p-4 shadow-xs">
       {/* Línea superior: fechas + badge estado */}
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-foreground tabular-nums">
           {formatearFechaCorta(liquidacion.fechaInicio)} –{" "}
           {formatearFechaCorta(liquidacion.fechaFin)}
         </p>
-        <Badge variant={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} className="shrink-0">
-          {textoEstado}
-        </Badge>
+        <BadgeEstado
+          variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}
+          texto={textoEstado}
+          className="shrink-0"
+        />
       </div>
 
       {/* Línea media: entregas + monto en tipografía grande */}
@@ -135,7 +137,7 @@ function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
             entrega{liquidacion.totalEntregas !== 1 ? "s" : ""}
           </p>
         </div>
-        <p className="text-2xl font-bold tabular-nums text-foreground">
+        <p className="text-2xl font-semibold tabular-nums text-foreground">
           {formatearCLPOGuion(liquidacion.montoTotalClp)}
         </p>
       </div>
@@ -158,8 +160,12 @@ function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
         {liquidacion.pdfRef ? (
           <BotonDescargaLiquidacion pdfRef={liquidacion.pdfRef} />
         ) : (
+          // El texto depende del estado: en una liquidación ya emitida o pagada,
+          // "cuando sea emitida" se contradice con el badge de al lado.
           <p className="text-xs text-muted-foreground">
-            PDF disponible cuando la liquidación sea emitida.
+            {liquidacion.estado === "borrador"
+              ? "El PDF estará disponible cuando tu liquidación sea emitida."
+              : "El PDF todavía no está disponible. Pídeselo a tu coordinador si lo necesitas."}
           </p>
         )}
       </div>

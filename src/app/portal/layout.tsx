@@ -65,6 +65,9 @@ export default async function LayoutPortal({
     <AppShell
       nombreFantasia={(seller?.razon_social as string | undefined) ?? "Portal del seller"}
       nombreCompleto={sesion.nombreCompleto}
+      subtituloCuenta="Seller"
+      etiquetaMarca="Tienda"
+      densidad="relajada"
       grupos={grupos}
       avisos={avisos}
     >

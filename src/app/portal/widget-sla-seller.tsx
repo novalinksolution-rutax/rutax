@@ -52,7 +52,7 @@ export async function WidgetSlaSeller({ tenantId, sellerId }: Props) {
 
   if (!slaDatos) {
     return (
-      <article className="rounded-xl border border-border bg-card p-5 shadow-xs">
+      <article className="rounded-lg border border-border bg-card p-5 shadow-xs">
         <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
           <TrendingUp className="size-4" aria-hidden="true" />
           Cumplimiento de SLA — últimos 7 días
@@ -70,7 +70,7 @@ export async function WidgetSlaSeller({ tenantId, sellerId }: Props) {
 
   return (
     <article
-      className="rounded-xl border border-border bg-card p-5 shadow-xs"
+      className="rounded-lg border border-border bg-card p-5 shadow-xs"
       aria-label="Tu nivel de cumplimiento de SLA"
     >
       <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
@@ -84,7 +84,7 @@ export async function WidgetSlaSeller({ tenantId, sellerId }: Props) {
           className={`size-4 rounded-full ${semaforo.clasesColor}`}
           aria-hidden="true"
         />
-        <p className="text-3xl font-bold tabular-nums text-foreground">
+        <p className="text-3xl font-semibold tabular-nums text-foreground">
           {pctMostrado}
         </p>
         <Badge variant={semaforo.variant}>{semaforo.etiqueta}</Badge>

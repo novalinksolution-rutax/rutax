@@ -15,6 +15,7 @@
 import { useState, useTransition } from "react";
 import { Landmark, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DialogConfirmacionDinero } from "@/components/ui/dialog-confirmacion-dinero";
@@ -72,7 +73,7 @@ export function BloqueCobroAutomatico({ mandatoEstado }: Props) {
   const puedeActivar = estado === "sin_mandato" || estado === "cancelado" || estado === "fallido";
 
   return (
-    <section aria-labelledby="cobro-automatico-titulo" className="rounded-xl border bg-card p-5 shadow-sm">
+    <section aria-labelledby="cobro-automatico-titulo" className="rounded-lg border bg-card p-5 shadow-sm">
       <h2
         id="cobro-automatico-titulo"
         className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
@@ -88,7 +89,7 @@ export function BloqueCobroAutomatico({ mandatoEstado }: Props) {
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-medium text-foreground">Cobro automático</p>
-              <Badge variant={BADGE_ESTADO_MANDATO[estado]}>{TEXTO_ESTADO_MANDATO[estado]}</Badge>
+              <BadgeEstado variante={BADGE_ESTADO_MANDATO[estado]} texto={TEXTO_ESTADO_MANDATO[estado]} />
             </div>
             <p className="max-w-md text-sm text-muted-foreground">{MENSAJE_POR_ESTADO[estado]}</p>
           </div>

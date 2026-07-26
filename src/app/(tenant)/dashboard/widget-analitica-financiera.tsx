@@ -12,7 +12,7 @@
  */
 
 import Link from "next/link";
-import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Users } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Users, Scale, Divide } from "lucide-react";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { ResumenFinancieroAnalitica, CostoConductor } from "@/modules/dinero/analitica";
 
@@ -45,7 +45,7 @@ function TarjetaFinanciera({
   icon?: React.ElementType;
 }) {
   return (
-    <article className="flex flex-col rounded-xl border border-border bg-card p-4 shadow-xs">
+    <article className="flex flex-col rounded-lg border border-border bg-card p-4 shadow-xs">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{etiqueta}</p>
         {Icon && (
@@ -53,7 +53,7 @@ function TarjetaFinanciera({
         )}
       </div>
       <p
-        className={`mt-2 font-mono text-2xl font-bold tabular-nums ${colorValor ?? "text-foreground"}`}
+        className={`mt-2 font-mono text-2xl font-semibold tabular-nums ${colorValor ?? "text-foreground"}`}
       >
         {valor}
       </p>
@@ -89,7 +89,7 @@ export function FranjaAnaliticaFinanciera({ datos }: { datos: DatosAnaliticaFina
       </div>
 
       {/* Tarjetas de resumen */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <TarjetaFinanciera
           etiqueta="Ingreso"
           valor={formatearCLP(resumen.ingresoTotalClp)}
@@ -107,11 +107,13 @@ export function FranjaAnaliticaFinanciera({ datos }: { datos: DatosAnaliticaFina
           valor={formatearCLP(resumen.margenClp)}
           subtexto="Ingreso − Costo"
           colorValor={margenPositivo ? "text-success" : "text-destructive"}
+          icon={Scale}
         />
         <TarjetaFinanciera
           etiqueta="Costo por entrega"
           valor={formatearCLP(resumen.costoPromedioEntregaClp)}
           subtexto="Promedio conductores"
+          icon={Divide}
         />
         {/* Fuga recuperada — la métrica de venta del producto */}
         <TarjetaFinanciera
@@ -141,7 +143,7 @@ export function FranjaAnaliticaFinanciera({ datos }: { datos: DatosAnaliticaFina
 
       {/* Mini-tabla top-5 conductores por costo */}
       {topConductores.length > 0 && (
-        <div className="mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+        <div className="mt-4 overflow-hidden rounded-lg border border-border bg-card shadow-xs">
           <div className="flex items-center gap-2 border-b border-border px-4 py-3">
             <Users className="size-4 text-muted-foreground" aria-hidden="true" />
             <h3 className="text-sm font-semibold">

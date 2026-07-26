@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
   Select,
   SelectContent,
@@ -419,7 +420,7 @@ export function TablaComunicaciones({ comunicaciones, puedeEscribir }: Props) {
           accion={<BotonNuevaComunicacion puedeEscribir={puedeEscribir} onPublicada={() => router.refresh()} />}
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Comunicaciones publicadas a los couriers">
               <thead>
@@ -459,9 +460,10 @@ export function TablaComunicaciones({ comunicaciones, puedeEscribir }: Props) {
                       <Badge variant={VARIANTE_BADGE_NIVEL[c.nivel]}>{ETIQUETA_NIVEL[c.nivel]}</Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={c.activa ? "success" : "neutral"}>
-                        {c.activa ? "Activa" : "Inactiva"}
-                      </Badge>
+                      <BadgeEstado
+                        variante={c.activa ? "success" : "neutral"}
+                        texto={c.activa ? "Activa" : "Inactiva"}
+                      />
                     </td>
                     <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
                       {c.vigenteHasta ? `Hasta ${formatearFecha(c.vigenteHasta)}` : "Sin expiración"}

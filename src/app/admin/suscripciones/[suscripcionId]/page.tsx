@@ -49,7 +49,7 @@ export default async function PaginaCobrosSuscripcion({
           <ArrowLeft className="size-4" aria-hidden="true" />
           Suscripciones
         </Link>
-        <h1 className="mt-2 text-2xl font-bold">
+        <h1 className="mt-2 text-2xl font-semibold">
           {suscripcion.nombreFantasiaTenant ?? suscripcion.tenantId.slice(0, 8)}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">

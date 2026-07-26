@@ -72,12 +72,12 @@ export function PanelIncidencia({ incidencia }: Props) {
           className="fixed inset-0 z-50 flex items-end justify-end"
         >
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={() => !pending && setAbierto(false)}
             aria-hidden="true"
           />
 
-          <div className="relative z-10 flex h-full w-full max-w-md flex-col bg-background shadow-2xl sm:w-96">
+          <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-popover shadow-lg sm:w-96">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 id="panel-inc-titulo" className="text-base font-semibold">Gestionar incidencia</h2>
               <button type="button" onClick={() => setAbierto(false)} disabled={pending}

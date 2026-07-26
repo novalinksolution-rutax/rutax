@@ -3,6 +3,7 @@ import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { listarCierresPorPedidos } from "@/modules/operacion/cierre-conductor";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 /**
  * GET /api/conductor/manifiesto
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   const driverId = usuario.driverId;
   const tenantId = usuario.tenantId;
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = fechaLocalEnSantiago(new Date());
 
   try {
     const cliente = crearClienteServiceRole();

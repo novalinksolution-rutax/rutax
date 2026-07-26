@@ -34,6 +34,7 @@ import {
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
 import { Pagination } from "@/components/ui/pagination";
@@ -49,6 +50,7 @@ import { FormularioPedidoSameDay } from "./formulario-same-day";
 import { FiltrosPedidosForm } from "./filtros-pedidos";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Contadores de estado agrupados para los chips
@@ -115,7 +117,7 @@ export default async function PaginaOperaciones({
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;
 
-  const hoyIso = new Date().toISOString().split("T")[0];
+  const hoyIso = fechaLocalEnSantiago(new Date());
   const filtroSeller = params.seller || "";
   const filtroEstado = (params.estado as EstadoPedido | "") || "";
   const filtroFecha = params.fecha || hoyIso;
@@ -257,7 +259,7 @@ export default async function PaginaOperaciones({
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-heading text-2xl font-bold">
+            <h1 className="font-heading text-2xl font-semibold">
               {filtroPorRevisar ? "Direcciones por revisar" : "Pedidos"}
             </h1>
             <IndicadorEnVivo tenantId={tenantId} />
@@ -298,7 +300,7 @@ export default async function PaginaOperaciones({
       >
         {CONTADORES.map(({ key, label, clases }) => (
           <div key={key} role="listitem" className={`rounded-lg px-3 py-2 ${clases}`}>
-            <p className="text-lg font-bold tabular-nums">
+            <p className="text-lg font-semibold tabular-nums">
               {errorCarga ? "—" : (contadores[key] ?? 0)}
             </p>
             <p className="text-xs font-medium">{label}</p>
@@ -442,9 +444,10 @@ function FilaPedido({
   return (
     <TableRow className="group">
       <TableCell className="px-4">
-        <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
-          {traducirEstadoPedido(pedido.estado)}
-        </Badge>
+        <BadgeEstado
+          variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          texto={traducirEstadoPedido(pedido.estado)}
+        />
       </TableCell>
       <TableCell className="px-4">
         <Link href={`/operaciones/${pedido.id}`} className="font-medium hover:underline">
@@ -458,7 +461,7 @@ function FilaPedido({
           )}
           {/* Badge discreto de geocoding: solo cuando hay problema, no en modo bandeja (ya tiene columna) */}
           {!modoBandeja && requiereRevision && (
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-destructive-subtle px-1.5 py-px text-[10px] font-medium text-destructive-subtle-foreground">
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-destructive-subtle px-1.5 py-px text-[10px] font-medium text-destructive-subtle-foreground">
               <MapPinOff className="size-2.5" aria-hidden="true" />
               Por revisar
             </span>
@@ -524,14 +527,16 @@ function BadgesMotivoGeo({ pedido }: { pedido: Pedido }) {
   return (
     <div className="flex flex-wrap gap-1">
       {tieneGeoProblema && (
-        <Badge variant={BADGE_GEO_ESTADO[pedido.geoEstado]}>
-          {traducirGeoEstado(pedido.geoEstado)}
-        </Badge>
+        <BadgeEstado
+          variante={BADGE_GEO_ESTADO[pedido.geoEstado]}
+          texto={traducirGeoEstado(pedido.geoEstado)}
+        />
       )}
       {tieneCoberturaProblema && (
-        <Badge variant={BADGE_COBERTURA_ESTADO[pedido.coberturaEstado]}>
-          {traducirCoberturaEstado(pedido.coberturaEstado)}
-        </Badge>
+        <BadgeEstado
+          variante={BADGE_COBERTURA_ESTADO[pedido.coberturaEstado]}
+          texto={traducirCoberturaEstado(pedido.coberturaEstado)}
+        />
       )}
     </div>
   );

@@ -163,7 +163,7 @@ function FilaJob({ job }: { job: SaludJob }) {
 
 function BadgeEstado({ estado }: { estado: SaludJob["estado"] }) {
   const config = {
-    ok: { Icon: CheckCircle2, clase: "text-emerald-600 dark:text-emerald-400", texto: "OK" },
+    ok: { Icon: CheckCircle2, clase: "text-success", texto: "OK" },
     error: { Icon: AlertTriangle, clase: "text-destructive", texto: "Error" },
     ejecutando: { Icon: Clock, clase: "text-muted-foreground", texto: "En curso" },
   }[estado];

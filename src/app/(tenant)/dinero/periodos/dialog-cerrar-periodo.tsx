@@ -11,6 +11,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { accionCerrarPeriodo } from "./actions";
 
 interface Props {
@@ -60,100 +69,83 @@ export function DialogCerrarPeriodo({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-      >
-        Cerrar período
-      </button>
-
-      {abierto && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dialog-cerrar-titulo"
-          className="fixed inset-0 z-50 flex items-center justify-center"
+    <Dialog
+      open={abierto}
+      onOpenChange={(o) => {
+        if (isPending) return;
+        setAbierto(o);
+        if (!o) setError(null);
+      }}
+    >
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
-          {/* Overlay */}
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => !isPending && setAbierto(false)}
-            aria-hidden="true"
-          />
+          Cerrar período
+        </button>
+      </DialogTrigger>
 
-          {/* Panel */}
-          <div className="relative z-10 w-full max-w-md rounded-xl border bg-card p-6 shadow-xl">
-            <h2
-              id="dialog-cerrar-titulo"
-              className="text-lg font-semibold text-foreground"
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cerrar período de {sellerNombre}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Período:{" "}
+            <span className="font-medium tabular-nums text-foreground">
+              {formatearFechaCorta(fechaInicio)} – {formatearFechaCorta(fechaFin)}
+            </span>
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Total de líneas:{" "}
+            <span className="font-medium tabular-nums text-foreground">{totalLineas}</span>
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Monto total:{" "}
+            <span className="text-2xl font-semibold tabular-nums text-foreground">
+              {formatearCLPOGuion(montoTotalClp)}
+            </span>
+          </p>
+
+          <p className="rounded-lg bg-info-subtle px-4 py-3 text-sm text-info-subtle-foreground">
+            Cerrar el período consolida sus líneas y lo deja listo para revisar.
+            <strong> No emite la factura todavía:</strong> después podrás revisar el
+            detalle y emitir el DTE con el botón “Emitir factura”. El cierre no se puede
+            deshacer.
+          </p>
+
+          {error && (
+            <p
+              role="alert"
+              className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground"
             >
-              Cerrar período de {sellerNombre}
-            </h2>
-
-            <div className="mt-4 space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Período:{" "}
-                <span className="font-medium text-foreground">
-                  {formatearFechaCorta(fechaInicio)} – {formatearFechaCorta(fechaFin)}
-                </span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Total de líneas:{" "}
-                <span className="font-medium text-foreground">{totalLineas}</span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Monto total:{" "}
-                <span className="text-2xl font-bold text-foreground">
-                  {formatearCLPOGuion(montoTotalClp)}
-                </span>
-              </p>
-            </div>
-
-            <p className="mt-4 rounded-lg bg-info-subtle px-4 py-3 text-sm text-info-subtle-foreground">
-              Cerrar el período consolida sus líneas y lo deja listo para revisar.
-              <strong> No emite la factura todavía:</strong> después podrás revisar el
-              detalle y emitir el DTE con el botón “Emitir factura”. El cierre no se puede
-              deshacer.
+              {error}
             </p>
-
-            {error && (
-              <p
-                role="alert"
-                className="mt-3 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground"
-              >
-                {error}
-              </p>
-            )}
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setAbierto(false)}
-                disabled={isPending}
-                className="rounded-md border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmar}
-                disabled={isPending}
-                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {isPending && (
-                  <span
-                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-                    aria-hidden="true"
-                  />
-                )}
-                {isPending ? "Cerrando..." : "Confirmar cierre"}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
-    </>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setAbierto(false)}
+            disabled={isPending}
+          >
+            Cancelar
+          </Button>
+          <Button type="button" onClick={handleConfirmar} disabled={isPending}>
+            {isPending && (
+              <span
+                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
+                aria-hidden="true"
+              />
+            )}
+            {isPending ? "Cerrando..." : "Confirmar cierre"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

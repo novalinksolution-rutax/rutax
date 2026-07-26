@@ -26,6 +26,7 @@ import {
   puedeVerReportesEjecutivos,
 } from "@/modules/identidad/capacidades";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PanelTrazabilidadFinanciera } from "@/components/dinero/panel-trazabilidad-financiera";
 import {
   traducirEstadoPedido,
@@ -41,6 +42,7 @@ import {
   BADGE_GEO_ESTADO,
   BADGE_COBERTURA_ESTADO,
   requiereRevisionGeo,
+  geocodingPendienteRancio,
 } from "@/lib/ui/traduccion-estados";
 import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { Pedido, Incidencia } from "@/modules/operacion/tipos";
@@ -49,6 +51,7 @@ import { DrawerCambioEstado } from "./drawer-cambio-estado";
 import { DrawerIncidencia } from "./drawer-incidencia";
 import { DialogReasignacion } from "./dialog-reasignacion";
 import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
+import { BotonReubicar } from "./boton-reubicar";
 import { VisorPod } from "./visor-pod";
 import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
@@ -152,6 +155,13 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeIncidencias = puedeGestionarIncidencias(sesion.usuario);
   const puedeAjustar = puedeAjustarOperacionDiaria(sesion.usuario);
+  // El geocoding corre en segundos tras la ingesta; si sigue pendiente pasado
+  // el umbral, está atascado (no en curso) y no debe mostrarse un spinner eterno.
+  const geoRancio = geocodingPendienteRancio(
+    pedido.geoEstado,
+    pedido.geocodificadoEn,
+    pedido.creadoEn,
+  );
   const esTerminal = ESTADOS_TERMINALES.includes(pedido.estado);
   const pedidoEntregado = pedido.estado === "entregado" || pedido.estado === "entregado_manual";
 
@@ -174,7 +184,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">{pedido.destinatarioNombre}</h1>
+            <h1 className="text-2xl font-semibold">{pedido.destinatarioNombre}</h1>
             <p className="mt-1 text-muted-foreground">
               {pedido.destinatarioDireccion}, {pedido.destinatarioComuna}
             </p>
@@ -185,17 +195,26 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
                 Dirección requiere revisión antes de rutear
               </div>
             )}
-            {/* Indicador sutil si el geocoding está en curso */}
+            {/* Geocoding en curso (spinner) vs. atascado (estado estático). */}
             {pedido.geoEstado === "pendiente" && !requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado) && (
-              <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-                Ubicando dirección…
-              </div>
+              geoRancio ? (
+                <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-warning-subtle-foreground">
+                  <MapPinOff className="size-3.5" aria-hidden="true" />
+                  Ubicación pendiente
+                </div>
+              ) : (
+                <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  Ubicando dirección…
+                </div>
+              )
             )}
           </div>
-          <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]} className="px-3 py-1 text-sm">
-            {traducirEstadoPedido(pedido.estado)}
-          </Badge>
+          <BadgeEstado
+            variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+            className="px-3 py-1 text-sm"
+            texto={traducirEstadoPedido(pedido.estado)}
+          />
         </div>
 
         <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
@@ -225,7 +244,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
       </div>
 
       {/* Sección A.2 — Estado de geocoding (solo cuando es relevante) */}
-      <SeccionGeocoding pedido={pedido} />
+      <SeccionGeocoding pedido={pedido} pendienteRancio={geoRancio} puedeReubicar={puedeAjustar} />
 
       {/* Sección A.3 — Prueba de entrega (POD) del ciclo same-day propio */}
       {pod && <VisorPod pod={pod} />}
@@ -238,7 +257,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
         <h2 id="historial-titulo" className="mb-3 text-base font-semibold">
           Historial de estados
         </h2>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-lg border bg-card p-4">
           {historial.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Estado actual:{" "}
@@ -302,7 +321,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
         <h2 id="asignacion-titulo" className="mb-3 text-base font-semibold">
           Asignación
         </h2>
-        <div className="rounded-xl border bg-card p-4 text-sm">
+        <div className="rounded-lg border bg-card p-4 text-sm">
           {asignacion ? (
             <dl className="grid grid-cols-2 gap-2">
               <div>
@@ -368,7 +387,15 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
 // "resuelto"+"tarifada" no muestran nada para no ensuciar la pantalla.
 // =============================================================================
 
-function SeccionGeocoding({ pedido }: { pedido: Pedido }) {
+function SeccionGeocoding({
+  pedido,
+  pendienteRancio,
+  puedeReubicar,
+}: {
+  pedido: Pedido;
+  pendienteRancio: boolean;
+  puedeReubicar: boolean;
+}) {
   const geoOk = pedido.geoEstado === "resuelto";
   const coberturaOk = pedido.coberturaEstado === "tarifada";
 
@@ -376,7 +403,15 @@ function SeccionGeocoding({ pedido }: { pedido: Pedido }) {
   if (geoOk && coberturaOk) return null;
 
   const esPendiente = pedido.geoEstado === "pendiente";
+  // Pendiente pero en curso (job recién disparado) → spinner legítimo.
+  const enCurso = esPendiente && !pendienteRancio;
   const requiereRevision = requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado);
+  // El geocoding es el problema (no la cobertura/tarifa): reintentar ubicación
+  // tiene sentido solo aquí. `sin_tarifa_zona` es un vacío de tarifa, no de geo.
+  const geoAtascado =
+    (esPendiente && pendienteRancio) ||
+    pedido.geoEstado === "no_resuelto" ||
+    pedido.geoEstado === "fuera_cobertura";
 
   return (
     <section aria-labelledby="geo-titulo">
@@ -385,7 +420,7 @@ function SeccionGeocoding({ pedido }: { pedido: Pedido }) {
       </h2>
       <div
         className={[
-          "rounded-xl border p-4 text-sm",
+          "rounded-lg border p-4 text-sm",
           requiereRevision
             ? "border-destructive-subtle bg-destructive-subtle/40"
             : "border-border bg-muted/30",
@@ -396,11 +431,13 @@ function SeccionGeocoding({ pedido }: { pedido: Pedido }) {
           <div>
             <dt className="text-xs text-muted-foreground">Ubicación</dt>
             <dd className="mt-0.5 flex items-center gap-2">
-              {esPendiente ? (
+              {enCurso ? (
                 <span className="inline-flex items-center gap-1 text-muted-foreground">
                   <Loader2 className="size-3 animate-spin" aria-hidden="true" />
                   {traducirGeoEstado(pedido.geoEstado)}
                 </span>
+              ) : esPendiente ? (
+                <Badge variant={BADGE_GEO_ESTADO[pedido.geoEstado]}>Ubicación pendiente</Badge>
               ) : (
                 <Badge variant={BADGE_GEO_ESTADO[pedido.geoEstado]}>
                   {traducirGeoEstado(pedido.geoEstado)}
@@ -455,6 +492,17 @@ function SeccionGeocoding({ pedido }: { pedido: Pedido }) {
             Verifica la dirección con el seller antes de asignar este pedido a un manifiesto.
           </p>
         )}
+
+        {/* Explicación cuando la ubicación quedó pendiente y no se resolvió sola */}
+        {esPendiente && pendienteRancio && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            La ubicación quedó pendiente y no se resolvió automáticamente. Reintenta para
+            geocodificar la dirección.
+          </p>
+        )}
+
+        {/* Reintentar ubicación — solo si el geocoding es lo que está atascado */}
+        {geoAtascado && puedeReubicar && <BotonReubicar pedidoId={pedido.id} />}
       </div>
     </section>
   );
@@ -478,7 +526,7 @@ function TargetaIncidencia({
 
   return (
     <li
-      className={`rounded-xl border p-4 ${incidencia.estado === "abierta" ? "border-destructive-subtle bg-destructive-subtle/50" : "border-warning-subtle bg-warning-subtle/50"}`}
+      className={`rounded-lg border p-4 ${incidencia.estado === "abierta" ? "border-destructive-subtle bg-destructive-subtle/50" : "border-warning-subtle bg-warning-subtle/50"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -490,7 +538,7 @@ function TargetaIncidencia({
         </div>
         <div className="flex items-center gap-2">
           {sinGestion && (
-            <span className="rounded-full bg-destructive-subtle px-2 py-0.5 text-xs font-semibold text-destructive-subtle-foreground">
+            <span className="rounded-md bg-destructive-subtle px-2 py-0.5 text-xs font-semibold text-destructive-subtle-foreground">
               Sin gestión: {horas}h
             </span>
           )}
@@ -501,9 +549,7 @@ function TargetaIncidencia({
               tipoActual={incidencia.tipo}
             />
           )}
-          <Badge variant={BADGE_ESTADO_INCIDENCIA[incidencia.estado]}>
-            {traducirEstadoIncidencia(incidencia.estado)}
-          </Badge>
+          <BadgeEstado variante={BADGE_ESTADO_INCIDENCIA[incidencia.estado]} texto={traducirEstadoIncidencia(incidencia.estado)} />
         </div>
       </div>
     </li>

@@ -5,6 +5,7 @@ import {
   puedeGestionarConfiguracionDte,
   puedeGestionarTarifas,
   puedeVerConciliacion,
+  puedeGestionarSuscripcion,
 } from "@/modules/identidad/capacidades";
 import { resolverEstadoOnboarding } from "./estado";
 import { PanelOnboarding } from "./panel-onboarding";
@@ -36,6 +37,7 @@ export default async function PaginaOnboarding() {
         puedeGestionarDte={puedeGestionarConfiguracionDte(sesion.usuario)}
         puedeGestionarTarifas={puedeGestionarTarifas(sesion.usuario)}
         puedeGestionarCobranza={puedeVerConciliacion(sesion.usuario)}
+        puedeGestionarPlan={puedeGestionarSuscripcion(sesion.usuario)}
       />
     </div>
   );

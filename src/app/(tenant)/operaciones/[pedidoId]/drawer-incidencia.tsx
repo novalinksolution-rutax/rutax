@@ -11,6 +11,13 @@ import type { TipoIncidencia } from "@/modules/operacion/tipos";
 import { afectacionDeIncidencia } from "@/modules/operacion/afectacion-incidencia";
 import { traducirTipoIncidencia } from "@/lib/ui/traduccion-estados";
 import { actionAbrirIncidencia } from "../actions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 /** Consecuencia financiera de un tipo de incidencia, en lenguaje del usuario (UX-9). */
 function textoConsecuencia(tipo: TipoIncidencia): string {
@@ -72,12 +79,12 @@ export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
           className="fixed inset-0 z-50 flex items-end justify-end"
         >
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={() => !pending && setAbierto(false)}
             aria-hidden="true"
           />
 
-          <div className="relative z-10 flex h-full w-full max-w-md flex-col bg-background shadow-2xl sm:w-96">
+          <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-popover shadow-lg sm:w-96">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 id="drawer-incidencia-titulo" className="text-base font-semibold">
                 Abrir incidencia
@@ -102,22 +109,24 @@ export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
                   <label htmlFor="tipo-incidencia" className="block text-sm font-medium">
                     Tipo de incidencia <span aria-hidden="true">*</span>
                   </label>
-                  <select
-                    id="tipo-incidencia"
+                  <Select
                     name="tipo"
                     required
                     disabled={pending}
                     value={tipo}
-                    onChange={(e) => setTipo(e.target.value as TipoIncidencia | "")}
-                    className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    onValueChange={(v) => setTipo(v as TipoIncidencia)}
                   >
-                    <option value="">Seleccionar tipo...</option>
-                    {TIPOS_INCIDENCIA.map((t) => (
-                      <option key={t} value={t}>
-                        {traducirTipoIncidencia(t)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="tipo-incidencia" className="mt-1 w-full">
+                      <SelectValue placeholder="Seleccionar tipo..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIPOS_INCIDENCIA.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {traducirTipoIncidencia(t)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
                   {/* Consecuencia financiera del tipo elegido (UX-9) */}
                   {tipo && (

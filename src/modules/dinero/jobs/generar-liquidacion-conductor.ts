@@ -20,6 +20,7 @@ import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { generarPdfLiquidacion } from '../liquidacion-pdf';
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 const TZ = 'America/Santiago';
 
@@ -118,7 +119,7 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
             const conductorNombre = conductorData?.nombre_completo ?? 'Conductor';
             const fechaInicio = (liq.fecha_inicio as string) ?? '';
             const fechaFin = (liq.fecha_fin as string) ?? '';
-            const emitidaEn = new Date().toISOString().slice(0, 10);
+            const emitidaEn = fechaLocalEnSantiago(new Date());
 
             // Generar PDF con @react-pdf/renderer.
             const pdfBuffer = await generarPdfLiquidacion({

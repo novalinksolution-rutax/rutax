@@ -14,6 +14,8 @@
 import { useMemo, useState } from "react";
 import { UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import type { BadgeVariante } from "@/lib/ui/traduccion-estados";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -254,15 +256,13 @@ function FilaUsuario({ usuario }: { usuario: UsuarioEquipo }) {
         <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
       </TableCell>
       <TableCell>
-        {usuario.estado === "activo" ? (
-          <Badge variant="outline" className="border-success-subtle text-success">
-            Activo
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
-            Suspendido
-          </Badge>
-        )}
+        {/* Mismo render que las invitaciones de la columna de al lado: con
+            `outline` + colores a mano, "Activo" salía como texto suelto junto a
+            chips ("Pendiente", "Expirada"), dos lenguajes en una misma columna. */}
+        <BadgeEstado
+          variante={usuario.estado === "activo" ? "success" : "neutral"}
+          texto={usuario.estado === "activo" ? "Activo" : "Suspendido"}
+        />
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">Miembro desde el {formatearFecha(usuario.creadoEn)}</TableCell>
       <TableCell className="text-right text-xs text-muted-foreground">
@@ -387,35 +387,28 @@ function FilaInvitacion({
   );
 }
 
+/** Variante semántica por estado de invitación — una sola fuente, sin colores a mano. */
+const VARIANTE_INVITACION: Record<EstadoInvitacion, BadgeVariante> = {
+  pendiente: "warning",
+  aceptada: "success",
+  expirada: "neutral",
+  revocada: "neutral",
+};
+
+const TEXTO_INVITACION: Record<EstadoInvitacion, string> = {
+  pendiente: "Pendiente",
+  aceptada: "Aceptada",
+  expirada: "Expirada",
+  revocada: "Revocada",
+};
+
 function BadgeEstadoInvitacion({ estado }: { estado: EstadoInvitacion }) {
-  switch (estado) {
-    case "pendiente":
-      return (
-        <Badge variant="warning">
-          Pendiente
-        </Badge>
-      );
-    case "aceptada":
-      return (
-        <Badge variant="outline" className="border-success-subtle text-success">
-          Aceptada
-        </Badge>
-      );
-    case "expirada":
-      return (
-        <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
-          Expirada
-        </Badge>
-      );
-    case "revocada":
-      return (
-        <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
-          Revocada
-        </Badge>
-      );
-    default:
-      return <Badge variant="outline">{estado}</Badge>;
-  }
+  return (
+    <BadgeEstado
+      variante={VARIANTE_INVITACION[estado] ?? "neutral"}
+      texto={TEXTO_INVITACION[estado] ?? estado}
+    />
+  );
 }
 
 /** Copy de apoyo por estado — exactamente lo que pide la tabla de §2.2. */

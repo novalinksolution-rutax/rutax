@@ -16,11 +16,18 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { obtenerMiPlan } from "@/modules/plataforma/superficie-courier";
 
 export type EstadoPasoDte = "pendiente" | "en_proceso" | "activo" | "con_problemas";
 export type EstadoPasoFolios = "no_aplica" | "pendiente" | "vigente";
 export type EstadoPasoTarifas = "sin_tarifas" | "configuradas";
 export type EstadoPasoCobranza = "pendiente" | "conectado" | "con_problemas";
+/**
+ * Estado de la 5ª tarjeta (suscripción SaaS de Rutax) — informativa, NUNCA
+ * bloqueante (mismo trato que Folios/Cobranza: no cuenta para `totalPasos`).
+ * `sin_suscripcion` = el tenant aún no dio de alta su plan (self-serve).
+ */
+export type EstadoPasoPlan = "sin_suscripcion" | "trial" | "activa" | "suspendida" | "cancelada";
 
 export interface EstadoOnboardingCourier {
   nombreFantasia: string;
@@ -50,6 +57,12 @@ export interface EstadoOnboardingCourier {
     /** Alias legible de la cuenta conectada, o null. */
     cuentaBancoAlias: string | null;
   };
+  /** Suscripción SaaS del courier a Rutax (backstage `plataforma`) — informativa. */
+  plan: {
+    estado: EstadoPasoPlan;
+    nombrePlan: string | null;
+    trialHasta: string | null;
+  };
 }
 
 /**
@@ -76,7 +89,7 @@ export function proveedorGestionaFolios(proveedorDte: string | null): boolean {
 export async function resolverEstadoOnboarding(tenantId: string): Promise<EstadoOnboardingCourier> {
   const supabase = await createClient();
 
-  const [tenantRes, dteRes, foliosRes, tarifasRes, cobranzaRes] = await Promise.all([
+  const [tenantRes, dteRes, foliosRes, tarifasRes, cobranzaRes, miPlan] = await Promise.all([
     supabase.from("tenants").select("nombre_fantasia").eq("id", tenantId).maybeSingle(),
     supabase
       .from("courier_config_dte")
@@ -90,6 +103,10 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
       .select("estado_conexion, cuenta_banco_alias, link_token_ref")
       .eq("tenant_id", tenantId)
       .maybeSingle(),
+    // Suscripción SaaS del courier — courier-safe vía `superficie-courier.ts`
+    // (NUNCA se lee `plataforma` directo). No crítica: un fallo aquí no debe
+    // tumbar el resto del checklist de onboarding.
+    obtenerMiPlan(tenantId).catch(() => null),
   ]);
 
   const nombreFantasia = (tenantRes.data?.nombre_fantasia as string | undefined) ?? "tu courier";
@@ -139,6 +156,11 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
 
   const pasosCompletados = [dteListo, tarifasListas].filter(Boolean).length;
 
+  // Plan (paso informativo/no bloqueante, como Folios/Cobranza): NO cuenta
+  // para `totalPasos`/"completo" — la suscripción de Rutax es independiente
+  // de si el courier ya puede operar/facturar.
+  const estadoPlan: EstadoPasoPlan = miPlan ? miPlan.estado : "sin_suscripcion";
+
   return {
     nombreFantasia,
     completo,
@@ -162,6 +184,11 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
       estado: estadoCobranza,
       bancoConectado,
       cuentaBancoAlias,
+    },
+    plan: {
+      estado: estadoPlan,
+      nombrePlan: miPlan ? miPlan.plan.nombre : null,
+      trialHasta: miPlan ? miPlan.trialHasta : null,
     },
   };
 }

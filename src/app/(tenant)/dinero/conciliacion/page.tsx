@@ -279,7 +279,7 @@ export default async function PaginaConciliacion({
   if (!errorCarga && !filtroPedido && !filtroEventoId && totalNoTerminales === 0) {
     return (
       <div className="space-y-6">
-        <h1 className="font-heading text-2xl font-bold">Conciliación</h1>
+        <h1 className="font-heading text-2xl font-semibold">Conciliación</h1>
         <EmptyState
           icon={CheckCircle2}
           tono="buen-estado"
@@ -292,7 +292,7 @@ export default async function PaginaConciliacion({
 
   return (
     <div className="space-y-6">
-      <h1 className="font-heading text-2xl font-bold">Conciliación</h1>
+      <h1 className="font-heading text-2xl font-semibold">Conciliación</h1>
 
       {/* Chips de resumen */}
       {!errorCarga && (
@@ -309,7 +309,7 @@ export default async function PaginaConciliacion({
                 href={estaActivo ? "/dinero/conciliacion" : urlConFiltros({ vista: v.key, estado: "" })}
                 role="listitem"
                 aria-current={estaActivo ? "true" : undefined}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-all ${CLASES_BADGE_VARIANTE[v.tono]} ${
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-all ${CLASES_BADGE_VARIANTE[v.tono]} ${
                   estaActivo ? "ring-2 ring-current ring-offset-1" : "hover:opacity-80"
                 }`}
               >

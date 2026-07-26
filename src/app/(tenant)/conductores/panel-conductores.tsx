@@ -386,7 +386,7 @@ function BotonAutoAsignar({ fechaHoy }: { fechaHoy: string }) {
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 rounded-xl border bg-card px-5 py-4">
+      <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-5 py-4">
         <div>
           <p className="font-semibold">Auto-asignar pendientes del día</p>
           <p className="text-sm text-muted-foreground">
@@ -448,11 +448,11 @@ function DialogAutoAsignar({
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
     >
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
         onClick={() => !pendiente && onCerrar()}
         aria-hidden="true"
       />
-      <div className="relative z-10 w-full max-w-md rounded-xl bg-background p-6 shadow-2xl">
+      <div className="relative z-10 w-full max-w-md rounded-xl bg-card p-6 ring-1 ring-foreground/10">
         <h2 id="dialog-autoasig-titulo" className="font-semibold text-lg">
           Auto-asignar pedidos pendientes
         </h2>
@@ -1282,11 +1282,11 @@ function DialogRedistribucion({
       className="fixed inset-0 z-50 flex items-center justify-center px-4"
     >
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
         onClick={() => !pendiente && onCerrar()}
         aria-hidden="true"
       />
-      <div className="relative z-10 w-full max-w-lg rounded-xl bg-background p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-card p-6 ring-1 ring-foreground/10">
         <div className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden="true" />
           <div className="flex-1">
@@ -1354,7 +1354,7 @@ function DialogRedistribucion({
                                 obj. {item.objetivoPct}%
                               </span>
                               <span
-                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${semaforo.color === "verde" ? "bg-success/10 text-success" : semaforo.color === "amarillo" ? "bg-warning/10 text-warning-foreground" : "bg-destructive/10 text-destructive"}`}
+                                className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${semaforo.color === "verde" ? "bg-success-subtle text-success-subtle-foreground" : semaforo.color === "amarillo" ? "bg-warning-subtle text-warning-subtle-foreground" : "bg-destructive-subtle text-destructive-subtle-foreground"}`}
                                 aria-label={semaforo.etiqueta}
                               >
                                 {semaforo.etiqueta}

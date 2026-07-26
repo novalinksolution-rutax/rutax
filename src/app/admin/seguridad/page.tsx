@@ -37,7 +37,7 @@ export default async function PaginaSeguridad() {
   return (
     <div className="mx-auto max-w-md space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Seguridad</h1>
+        <h1 className="text-2xl font-semibold">Seguridad</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Verificación en dos pasos (MFA) de tu cuenta de administrador — {actor.email}.
         </p>
@@ -46,7 +46,7 @@ export default async function PaginaSeguridad() {
       {actor.aal === "aal2" ? (
         <EstadoVerificado />
       ) : actor.aalSiguiente === "aal2" ? (
-        <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">
+        <div className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
           <div className="text-center">
             <h2 className="font-semibold">Verifica tu identidad</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -56,7 +56,7 @@ export default async function PaginaSeguridad() {
           <PanelStepUpTotp />
         </div>
       ) : (
-        <div className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">
+        <div className="space-y-4 rounded-lg border bg-card p-6 shadow-sm">
           <div className="text-center">
             <h2 className="font-semibold">Configura tu segundo factor</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -74,7 +74,7 @@ export default async function PaginaSeguridad() {
 function EstadoVerificado() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 rounded-xl border bg-card p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-4 rounded-lg border bg-card p-5 shadow-sm">
         <div className="flex items-center gap-3">
           <ShieldCheck className="size-8 text-success" aria-hidden="true" />
           <div>
@@ -85,7 +85,7 @@ function EstadoVerificado() {
         <Badge variant="success">Verificado</Badge>
       </div>
 
-      <div className="space-y-3 rounded-xl border bg-card p-5 shadow-sm">
+      <div className="space-y-3 rounded-lg border bg-card p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <ShieldQuestion className="size-4 text-muted-foreground" aria-hidden="true" />
           <h2 className="font-semibold">¿Perdiste tu teléfono o cambiaste de app?</h2>

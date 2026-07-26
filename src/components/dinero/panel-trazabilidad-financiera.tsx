@@ -35,6 +35,7 @@ import type { TrazaDineroPedido } from "@/modules/dinero";
 import { esEstadoTerminal } from "@/modules/dinero/conciliacion-clasificacion";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -240,15 +241,16 @@ export function PanelTrazabilidadFinanciera({
   }
 
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-lg border bg-card p-4 shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
           <span className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Cobro:</span>
             {periodo ? (
-              <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>
-                {traducirEstadoPeriodoCobro(periodo.estado, factura?.folio)}
-              </Badge>
+              <BadgeEstado
+                variante={BADGE_ESTADO_PERIODO[periodo.estado]}
+                texto={traducirEstadoPeriodoCobro(periodo.estado, factura?.folio)}
+              />
             ) : (
               <Badge variant="neutral">—</Badge>
             )}
@@ -256,9 +258,7 @@ export function PanelTrazabilidadFinanciera({
           <span className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Liquidación:</span>
             {liquidacion ? (
-              <Badge variant={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}>
-                {traducirEstadoLiquidacion(liquidacion.estado)}
-              </Badge>
+              <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} texto={traducirEstadoLiquidacion(liquidacion.estado)} />
             ) : (
               <Badge variant="neutral">—</Badge>
             )}
@@ -389,9 +389,7 @@ export function PanelTrazabilidadFinanciera({
                                 <span className="font-mono tabular-nums">
                                   {formatearCLP(p.montoClp)}
                                 </span>
-                                <Badge variant={BADGE_ESTADO_MATCH_PAGO[p.estadoMatch]}>
-                                  {traducirEstadoMatchPago(p.estadoMatch)}
-                                </Badge>
+                                <BadgeEstado variante={BADGE_ESTADO_MATCH_PAGO[p.estadoMatch]} texto={traducirEstadoMatchPago(p.estadoMatch)} />
                               </li>
                             ))}
                           </ul>

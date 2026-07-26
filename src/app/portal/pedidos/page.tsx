@@ -16,7 +16,7 @@ import {
   traducirEstadoPedido,
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
-import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -261,11 +261,12 @@ export default async function PaginaPedidosSeller({
                 {pedidos.map((pedido) => (
                   <TableRow key={pedido.id}>
                     <TableCell className="px-4">
-                      <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
-                        {traducirEstadoPedido(pedido.estado)}
-                      </Badge>
+                      <BadgeEstado
+                        variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+                        texto={traducirEstadoPedido(pedido.estado)}
+                      />
                     </TableCell>
-                    <TableCell className="px-4">
+                    <TableCell className="px-4 whitespace-normal">
                       <p className="font-medium">{pedido.destinatarioNombre}</p>
                       <p className="text-xs text-muted-foreground">
                         {pedido.destinatarioComuna}

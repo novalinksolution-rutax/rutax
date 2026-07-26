@@ -23,6 +23,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
 import {
@@ -108,9 +109,9 @@ export default async function PaginaCobrosPortal() {
             <div
               key={chip.label}
               role="listitem"
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${chip.clases}`}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium ${chip.clases}`}
             >
-              {chip.label}: <span className="font-bold tabular-nums">{chip.count}</span>
+              {chip.label}: <span className="font-semibold tabular-nums">{chip.count}</span>
             </div>
           ))}
         </div>
@@ -186,7 +187,7 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
         </Link>
       </TableCell>
       <TableCell className="px-4">
-        <Badge variant={BADGE_ESTADO_PERIODO[periodo.estado]}>{textoBadge}</Badge>
+        <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
       </TableCell>
       <TableCell className="hidden px-4 text-right text-muted-foreground tabular-nums sm:table-cell">
         {periodo.totalLineas}
@@ -205,9 +206,10 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
         {periodo.estadoCobro === "no_aplica" ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : (
-          <Badge variant={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
-            {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-          </Badge>
+          <BadgeEstado
+            variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
+            texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)}
+          />
         )}
       </TableCell>
     </TableRow>

@@ -1,14 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// ADN de Retell (§2.2): Inter self-hosted vía next/font, como fuente sans de
+// toda la UI. Es un archivo variable → cubre los pesos 400/500/600/700 que usa
+// la escala tipográfica sin cargar caras extra.
+const inter = Inter({
+  variable: "--font-sans-src",
   subsets: ["latin"],
+  display: "swap",
 });
 
+// Se conserva un mono para números y dinero (regla de Rutax: `tabular-nums`).
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
@@ -29,7 +35,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1e3a8a",
+  themeColor: "#2a3ca0",
 };
 
 export default function RootLayout({
@@ -40,13 +46,16 @@ export default function RootLayout({
   return (
     <html
       lang="es-CL"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <TooltipProvider delayDuration={200}>
-          {children}
-          <Toaster position="top-right" richColors />
-        </TooltipProvider>
+        <ThemeProvider>
+          <TooltipProvider delayDuration={200}>
+            {children}
+            <Toaster position="top-right" richColors />
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

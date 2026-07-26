@@ -25,6 +25,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { BotonDescargaPdfLiquidacion } from "../boton-descarga-pdf-liquidacion";
 
@@ -148,10 +149,8 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
             <p className="text-base text-muted-foreground">
               {formatearFechaCorta(liquidacion.fechaInicio)} – {formatearFechaCorta(liquidacion.fechaFin)}
             </p>
-            <Badge variant={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}>
-              {traducirEstadoLiquidacion(liquidacion.estado)}
-            </Badge>
-            <p className="text-3xl font-bold tabular-nums">{formatearCLPOGuion(montoConAjustes)}</p>
+            <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} texto={traducirEstadoLiquidacion(liquidacion.estado)} />
+            <p className="text-3xl font-semibold tabular-nums">{formatearCLPOGuion(montoConAjustes)}</p>
             {(liquidacion.bonoClp > 0 || liquidacion.penalizacionClp > 0) && (
               <p className="text-sm text-muted-foreground">
                 Base: <span className="font-medium tabular-nums">{formatearCLPOGuion(liquidacion.montoTotalClp)}</span>
@@ -187,7 +186,7 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
 
       {/* Sección B — Bloque de payout (si existe) */}
       {payout && (
-        <section aria-labelledby="payout-titulo" className="rounded-xl border bg-card p-5 shadow-sm">
+        <section aria-labelledby="payout-titulo" className="rounded-lg border bg-card p-5 shadow-sm">
           <h2
             id="payout-titulo"
             className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
@@ -197,7 +196,7 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
-              <Badge variant={BADGE_ESTADO_PAYOUT[payout.estado]}>{traducirEstadoPayout(payout.estado)}</Badge>
+              <BadgeEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]} texto={traducirEstadoPayout(payout.estado)} />
 
               <div className="flex flex-wrap gap-6 pt-1">
                 <div>
@@ -246,14 +245,14 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
         </h2>
 
         {lineas.length === 0 ? (
-          <div className="rounded-xl border bg-card px-6 py-10 text-center">
+          <div className="rounded-lg border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">
               Esta liquidación no tiene líneas todavía. Se agregarán automáticamente a medida que
               se registren entregas del conductor.
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Líneas de liquidación">
                 <thead>

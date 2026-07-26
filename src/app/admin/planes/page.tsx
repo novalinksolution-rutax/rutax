@@ -35,7 +35,7 @@ export default async function PaginaPlanes() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Planes</h1>
+        <h1 className="text-2xl font-semibold">Planes</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Catálogo de planes de Rutax. Los planes inactivos no aparecen en el alta self-serve del
           courier, pero las suscripciones que ya los usan siguen operando sin cambios.

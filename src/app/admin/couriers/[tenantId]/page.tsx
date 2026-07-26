@@ -161,7 +161,7 @@ export function ContenidoDrillDown({ datos }: { datos: ObservabilidadTenant }) {
       {/* Cabecera */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">
+          <h1 className="text-2xl font-semibold">
             {datos.nombreFantasia ?? (
               <span className="font-mono text-lg text-muted-foreground">{datos.tenantId.slice(0, 8)}…</span>
             )}
@@ -315,7 +315,7 @@ export function ContenidoDrillDown({ datos }: { datos: ObservabilidadTenant }) {
             descripcion="Este courier no tiene eventos que requieran revisión entre los registros más recientes de su bitácora."
           />
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Alertas recientes del courier">
                 <thead>

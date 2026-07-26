@@ -49,7 +49,7 @@ export function FormularioLoginAdmin() {
       <form
         onSubmit={handleSubmit}
         aria-busy={isPending}
-        className="w-full max-w-sm space-y-4 rounded-xl border bg-card p-8 shadow-sm"
+        className="w-full max-w-sm space-y-4 rounded-lg border bg-card p-8 shadow-sm"
       >
         <div className="space-y-2 text-center">
           <Shield className="mx-auto size-9 text-primary" aria-hidden="true" />

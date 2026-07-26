@@ -32,7 +32,7 @@ export default async function PaginaCouriers() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Couriers</h1>
+        <h1 className="text-2xl font-semibold">Couriers</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Un vistazo por courier: estado de su suscripción, plan, morosidad y
           salud. Las acciones de suspender/cancelar viven en el detalle de la

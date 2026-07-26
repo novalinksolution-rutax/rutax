@@ -57,7 +57,7 @@ export default async function PaginaConductores() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-bold">Conductores</h1>
+          <h1 className="font-heading text-2xl font-semibold">Conductores</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Gestiona la disponibilidad, cupo y zonas preferentes del pool del día.
           </p>

@@ -25,6 +25,7 @@ import { obtenerMetricasUsoPlataforma, type MetricasUsoPlataforma } from "@/modu
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { BADGE_ESTADO_SUSCRIPCION, TEXTO_ESTADO_SUSCRIPCION } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import type { EstadoSuscripcion } from "@/modules/plataforma/tipos";
@@ -67,7 +68,7 @@ export default async function PaginaMetricas() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">Métricas de negocio</h1>
+        <h1 className="text-2xl font-semibold">Métricas de negocio</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Salud financiera de Rutax como negocio: ingreso recurrente, cobros del mes, morosidad, churn y couriers
           por estado de suscripción.
@@ -125,7 +126,7 @@ export default async function PaginaMetricas() {
                 <TrendingDown className="size-4" aria-hidden="true" />
                 Churn del mes
               </h2>
-              <p className="mt-2 text-3xl font-bold tabular-nums">
+              <p className="mt-2 text-3xl font-semibold tabular-nums">
                 {(metricas.churnMes.tasa * 100).toLocaleString("es-CL", { maximumFractionDigits: 1 })}%
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -351,7 +352,7 @@ function BarrasCouriersPorEstado({
         return (
           <div key={estado} className="space-y-1">
             <div className="flex items-center justify-between text-sm">
-              <Badge variant={BADGE_ESTADO_SUSCRIPCION[estado]}>{TEXTO_ESTADO_SUSCRIPCION[estado]}</Badge>
+              <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[estado]} texto={TEXTO_ESTADO_SUSCRIPCION[estado]} />
               <span className="tabular-nums text-muted-foreground">
                 {valor.toLocaleString("es-CL")} · {pct}%
               </span>

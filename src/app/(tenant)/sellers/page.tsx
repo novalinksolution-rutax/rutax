@@ -6,7 +6,7 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
 import {
@@ -153,14 +153,16 @@ export default async function PaginaSellers() {
                     {seller.rut}
                   </TableCell>
                   <TableCell className="px-4">
-                    <Badge variant={BADGE_ESTADO_SELLER[seller.estado] ?? "warning"}>
-                      {TEXTO_ESTADO_SELLER[seller.estado] ?? seller.estado}
-                    </Badge>
+                    <BadgeEstado
+                      variante={BADGE_ESTADO_SELLER[seller.estado] ?? "warning"}
+                      texto={TEXTO_ESTADO_SELLER[seller.estado] ?? seller.estado}
+                    />
                   </TableCell>
                   <TableCell className="px-4">
-                    <Badge variant={BADGE_SALUD_CONEXION[seller.estadoSalud] ?? "neutral"}>
-                      {TEXTO_SALUD_CONEXION[seller.estadoSalud] ?? seller.estadoSalud}
-                    </Badge>
+                    <BadgeEstado
+                      variante={BADGE_SALUD_CONEXION[seller.estadoSalud] ?? "neutral"}
+                      texto={TEXTO_SALUD_CONEXION[seller.estadoSalud] ?? seller.estadoSalud}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

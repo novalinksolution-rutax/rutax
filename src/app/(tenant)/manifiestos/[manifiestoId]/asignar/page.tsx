@@ -218,7 +218,7 @@ export default async function PaginaAsignarPedidos({ params, searchParams }: Pro
 
       {/* Encabezado */}
       <div>
-        <h1 className="text-2xl font-bold">Agregar pedidos</h1>
+        <h1 className="text-2xl font-semibold">Agregar pedidos</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Manifiesto: <span className="font-medium text-foreground">{manifiesto.nombre}</span>
         </p>

@@ -156,11 +156,11 @@ export default async function PaginaSeguimiento({ params }: Props) {
       {/* Marca del seller */}
       <header className="text-center">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Seguimiento de tu pedido</p>
-        <h1 className="mt-1 text-xl font-bold">{datos.sellerNombre}</h1>
+        <h1 className="mt-1 text-xl font-semibold">{datos.sellerNombre}</h1>
       </header>
 
       {/* Estado actual */}
-      <section className="rounded-2xl border bg-card p-6 text-center shadow-sm">
+      <section className="rounded-lg border bg-card p-6 text-center shadow-xs">
         <Icono className={`mx-auto size-12 ${clase}`} aria-hidden="true" />
         <h2 className="mt-3 text-lg font-semibold">{etiqueta}</h2>
         {descripcion && <p className="mt-1 text-sm text-muted-foreground">{descripcion}</p>}
@@ -168,7 +168,7 @@ export default async function PaginaSeguimiento({ params }: Props) {
 
       {/* ETA (solo si aún no se entregó y hay estimación) */}
       {eta && !esTerminalEntregado && (
-        <section className="flex items-center justify-center gap-2 rounded-xl bg-info-subtle px-4 py-3 text-sm text-info-subtle-foreground">
+        <section className="flex items-center justify-center gap-2 rounded-lg bg-info-subtle px-4 py-3 text-sm text-info-subtle-foreground">
           <Clock className="size-4 shrink-0" aria-hidden="true" />
           <span>
             Entrega estimada hoy alrededor de las <span className="font-semibold">{eta}</span>

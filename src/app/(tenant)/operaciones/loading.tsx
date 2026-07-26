@@ -45,7 +45,7 @@ export default function CargandoOperaciones() {
             {Array.from({ length: 8 }).map((_, i) => (
               <TableRow key={i}>
                 <TableCell className="px-4">
-                  <Skeleton className="h-5 w-20 rounded-full" />
+                  <Skeleton className="h-5 w-20 rounded-md" />
                 </TableCell>
                 <TableCell className="px-4">
                   <Skeleton className="h-4 w-32" />
@@ -57,7 +57,7 @@ export default function CargandoOperaciones() {
                   <Skeleton className="h-4 w-20" />
                 </TableCell>
                 <TableCell className="px-4">
-                  <Skeleton className="h-5 w-14 rounded-full" />
+                  <Skeleton className="h-5 w-14 rounded-md" />
                 </TableCell>
               </TableRow>
             ))}

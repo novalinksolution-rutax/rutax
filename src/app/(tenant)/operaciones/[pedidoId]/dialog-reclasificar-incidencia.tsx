@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { TIPOS_INCIDENCIA } from "@/modules/operacion/tipos";
 import type { TipoIncidencia } from "@/modules/operacion/tipos";
 import { traducirTipoIncidencia } from "@/lib/ui/traduccion-estados";
@@ -76,19 +83,22 @@ export function DialogReclasificarIncidencia({ pedidoId, incidenciaId, tipoActua
 
           <div className="space-y-1.5">
             <Label htmlFor="nuevo_tipo">Nuevo tipo</Label>
-            <select
-              id="nuevo_tipo"
+            <Select
               value={nuevoTipo}
-              onChange={(e) => setNuevoTipo(e.target.value as TipoIncidencia)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              onValueChange={(v) => setNuevoTipo(v as TipoIncidencia)}
               disabled={isPending}
             >
-              {TIPOS_INCIDENCIA.map((t) => (
-                <option key={t} value={t}>
-                  {traducirTipoIncidencia(t)}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="nuevo_tipo" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIPOS_INCIDENCIA.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {traducirTipoIncidencia(t)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {nuevoTipo !== tipoActual && (

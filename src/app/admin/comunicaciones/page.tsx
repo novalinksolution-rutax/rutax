@@ -43,7 +43,7 @@ export default async function PaginaComunicaciones() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Comunicaciones</h1>
+        <h1 className="text-2xl font-semibold">Comunicaciones</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Avisos de Rutax a los couriers: mantención, novedades y alertas. Se
           publican de inmediato como banner en el área interna de{" "}

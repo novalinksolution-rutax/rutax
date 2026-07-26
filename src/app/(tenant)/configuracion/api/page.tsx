@@ -70,7 +70,7 @@ export default async function PaginaApiIntegraciones() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">API e Integraciones</h1>
+        <h1 className="text-2xl font-semibold">API e Integraciones</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Gestiona las credenciales y notificaciones para conectar sistemas externos a Rutax.
         </p>

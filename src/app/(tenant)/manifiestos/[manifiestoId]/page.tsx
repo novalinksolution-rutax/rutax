@@ -12,6 +12,7 @@ import { ChevronLeft, Plus, Package } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
+import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   traducirEstadoManifiesto,
   traducirEstadoPedido,
@@ -19,6 +20,7 @@ import {
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -137,14 +139,15 @@ async function cargarPedidosAsignados(
     .filter((x): x is PedidoAsignado => x !== null);
 }
 
-async function cargarNombreConductor(driverId: string): Promise<string> {
-  const cliente = crearClienteServiceRole();
-  const { data } = await cliente
-    .from("perfiles_usuario")
-    .select("nombre_completo")
-    .eq("usuario_id", driverId)
-    .maybeSingle();
-  return (data?.nombre_completo as string | null) ?? driverId;
+async function cargarNombreConductor(driverId: string, tenantId: string): Promise<string> {
+  // Mismo origen que la lista de manifiestos: `identidad.conductores` por tenant.
+  try {
+    const cliente = crearClienteServiceRole();
+    const mapa = await mapaNombresConductores(cliente, tenantId, [driverId]);
+    return mapa[driverId] ?? driverId;
+  } catch {
+    return driverId;
+  }
 }
 
 // =============================================================================
@@ -176,7 +179,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
     pedidosAsignadosSinOrden.map((pa) => pa.pedido),
   ).map((pedido) => pedidosAsignadosSinOrden.find((pa) => pa.pedido.id === pedido.id)!);
 
-  const nombreConductor = await cargarNombreConductor(manifiesto.driverId);
+  const nombreConductor = await cargarNombreConductor(manifiesto.driverId, tenantId);
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeCrearManifiesto = puedeGenerarManifiestos(sesion.usuario);
@@ -198,7 +201,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
       {/* Encabezado */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{manifiesto.nombre}</h1>
+          <h1 className="text-2xl font-semibold">{manifiesto.nombre}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Conductor: <span className="font-medium text-foreground">{nombreConductor}</span>
             {" — "}
@@ -266,9 +269,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
                       {idx + 1}
                     </TableCell>
                     <TableCell className="px-4">
-                      <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
-                        {traducirEstadoPedido(pedido.estado)}
-                      </Badge>
+                      <BadgeEstado variante={BADGE_ESTADO_PEDIDO[pedido.estado]} texto={traducirEstadoPedido(pedido.estado)} />
                     </TableCell>
                     <TableCell className="px-4">
                       <Link
@@ -350,7 +351,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
       )}
 
       {esConfirmado && (
-        <div className="rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
           Manifiesto confirmado.{" "}
           <Link
             href={`/conductor/manifiesto`}

@@ -16,15 +16,13 @@ import {
   traducirTipoIncidencia,
   traducirEstadoIncidencia,
   BADGE_ESTADO_INCIDENCIA,
-  TEXTO_TIPO_INCIDENCIA,
-  TEXTO_ESTADO_INCIDENCIA,
   horasDesde,
   esIncidenciaSinGestion,
 } from "@/lib/ui/traduccion-estados";
-import { Badge } from "@/components/ui/badge";
-import { TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA } from "@/modules/operacion/tipos";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import type { Incidencia, TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
 import { PanelIncidencia } from "./panel-incidencia";
+import { FiltrosIncidencias } from "./filtros-incidencias";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
 
@@ -63,6 +61,42 @@ async function cargarIncidencias(tenantId: string, filtros: FiltrosIncidencias) 
   const { data, error } = await query;
   if (error) throw new Error(`Error al cargar incidencias: ${error.message}`);
   return (data ?? []).map(filaAIncidencia);
+}
+
+/**
+ * Referencia LEGIBLE de cada pedido citado por las incidencias.
+ *
+ * La tabla mostraba el UUID recortado (`6d000000…`), que no le dice nada a nadie:
+ * el coordinador identifica un pedido por su código same-day o por su envío de
+ * Flex. Se resuelve en una sola consulta y se mapea id → referencia, igual que
+ * ya se hace con el nombre del seller.
+ */
+async function cargarReferenciasPedido(
+  tenantId: string,
+  pedidoIds: string[],
+): Promise<Record<string, string>> {
+  if (pedidoIds.length === 0) return {};
+  try {
+    const cliente = crearClienteServiceRole();
+    const { data } = await cliente
+      .schema("operacion")
+      .from("pedidos")
+      .select("id, codigo_interno, ml_shipment_id, destinatario_nombre")
+      .eq("tenant_id", tenantId)
+      .in("id", pedidoIds);
+
+    return Object.fromEntries(
+      (data ?? []).map((p) => [
+        p.id as string,
+        (p.codigo_interno as string | null) ??
+          (p.ml_shipment_id as string | null) ??
+          (p.destinatario_nombre as string | null) ??
+          (p.id as string).slice(0, 8),
+      ]),
+    );
+  } catch {
+    return {};
+  }
 }
 
 // =============================================================================
@@ -120,6 +154,12 @@ export default async function PaginaIncidencias({
   // Nombre legible del seller en la tabla (en vez del UUID).
   const nombreSellerPorId = Object.fromEntries(sellers.map((s) => [s.id, s.nombre]));
 
+  // Referencia legible del pedido (código same-day o envío Flex) en vez del UUID.
+  const referenciaPedidoPorId = await cargarReferenciasPedido(
+    tenantId,
+    [...new Set(incidencias.map((i) => i.pedidoId))],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -131,7 +171,7 @@ export default async function PaginaIncidencias({
             <ChevronLeft className="size-4" aria-hidden="true" />
             Pedidos
           </Link>
-          <h1 className="text-2xl font-bold">Incidencias</h1>
+          <h1 className="text-2xl font-semibold">Incidencias</h1>
           <IndicadorEnVivo
             tenantId={tenantId}
             tablas={[{ schema: "operacion", tabla: "incidencias" }]}
@@ -140,56 +180,14 @@ export default async function PaginaIncidencias({
       </div>
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-seller" className="text-xs font-medium text-muted-foreground">Seller</label>
-          <select id="f-seller" name="seller" defaultValue={filtroSeller}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">Todos los sellers</option>
-            {sellers.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-tipo" className="text-xs font-medium text-muted-foreground">Tipo</label>
-          <select id="f-tipo" name="tipo" defaultValue={filtroTipo}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">Todos los tipos</option>
-            {TIPOS_INCIDENCIA.map((t) => (
-              <option key={t} value={t}>{TEXTO_TIPO_INCIDENCIA[t as TipoIncidencia]}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado" className="text-xs font-medium text-muted-foreground">Estado</label>
-          <select id="f-estado" name="estado" defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">Abiertas + en gestión</option>
-            {ESTADOS_INCIDENCIA.map((e) => (
-              <option key={e} value={e}>{TEXTO_ESTADO_INCIDENCIA[e as EstadoIncidencia]}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-fecha" className="text-xs font-medium text-muted-foreground">Desde fecha</label>
-          <input id="f-fecha" name="fecha" type="date" defaultValue={filtroFecha}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-        </div>
-
-        <button type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-          Filtrar
-        </button>
-
-        {hayFiltro && (
-          <Link href="/operaciones/incidencias"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline">
-            Limpiar
-          </Link>
-        )}
-      </form>
+      <FiltrosIncidencias
+        sellers={sellers}
+        filtroSeller={filtroSeller}
+        filtroTipo={filtroTipo}
+        filtroEstado={filtroEstado}
+        filtroFecha={filtroFecha}
+        hayFiltro={hayFiltro}
+      />
 
       {errorCarga && (
         <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
@@ -198,11 +196,11 @@ export default async function PaginaIncidencias({
       )}
 
       {!errorCarga && incidencias.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
+        <div className="rounded-lg border bg-card px-6 py-12 text-center">
           <p className="text-muted-foreground">No hay incidencias para los filtros seleccionados.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Lista de incidencias">
               <thead>
@@ -222,14 +220,15 @@ export default async function PaginaIncidencias({
                   return (
                     <tr key={inc.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3">
-                        <Badge variant={BADGE_ESTADO_INCIDENCIA[inc.estado]}>
-                          {traducirEstadoIncidencia(inc.estado)}
-                        </Badge>
+                        <BadgeEstado
+                          variante={BADGE_ESTADO_INCIDENCIA[inc.estado]}
+                          texto={traducirEstadoIncidencia(inc.estado)}
+                        />
                       </td>
                       <td className="px-4 py-3 font-medium">{traducirTipoIncidencia(inc.tipo)}</td>
                       <td className="hidden px-4 py-3 sm:table-cell">
                         <Link href={`/operaciones/${inc.pedidoId}`} className="font-mono text-xs text-primary hover:underline">
-                          {inc.pedidoId.slice(0, 8)}…
+                          {referenciaPedidoPorId[inc.pedidoId] ?? `${inc.pedidoId.slice(0, 8)}…`}
                         </Link>
                       </td>
                       <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">

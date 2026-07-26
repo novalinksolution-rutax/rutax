@@ -17,7 +17,7 @@ export default function CargandoPlan() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="space-y-3 rounded-xl border bg-card p-5 shadow-sm">
+          <div key={i} className="space-y-3 rounded-lg border bg-card p-5 shadow-sm">
             <Skeleton className="h-5 w-24" />
             <Skeleton className="h-8 w-32" />
             <Skeleton className="h-4 w-full" />
@@ -27,7 +27,7 @@ export default function CargandoPlan() {
         ))}
       </div>
 
-      <div className="space-y-3 rounded-xl border bg-card p-5 shadow-sm">
+      <div className="space-y-3 rounded-lg border bg-card p-5 shadow-sm">
         <Skeleton className="h-4 w-40" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-5/6" />

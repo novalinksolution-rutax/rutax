@@ -39,7 +39,7 @@ export default async function PaginaNuevoPedido() {
         </p>
       </div>
 
-      <div className="rounded-xl border bg-card p-6 shadow-sm">
+      <div className="rounded-lg border bg-card p-6 shadow-sm">
         <FormularioNuevoPedido />
       </div>
     </div>

@@ -38,6 +38,7 @@ import type {
   ProveedorGeocoding,
   ResultadoGeocoding,
 } from '../tipos';
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // ---------------------------------------------------------------------------
 // Inyección de dependencia del puerto (para tests sin red).
@@ -278,7 +279,7 @@ export const jobGeocodificarPedido = inngest.createFunction(
       // Las tarifas viven en `identidad.tarifas`; se consultan vía la vista
       // `public.tarifas` (schema por defecto del cliente), igual que en
       // `crearPedidoSameDay`.
-      const hoy = new Date().toISOString().split('T')[0];
+      const hoy = fechaLocalEnSantiago(new Date());
       const { data: tarifas, error: errorTarifa } = await supabase
         .from('tarifas')
         .select('id')

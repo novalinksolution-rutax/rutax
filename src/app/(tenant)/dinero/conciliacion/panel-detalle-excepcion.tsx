@@ -44,6 +44,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -369,9 +370,7 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
               Estado
             </h3>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={BADGE_ESTADO_CONCILIACION[evento.estado]}>
-                {traducirEstadoConciliacion(evento.estado)}
-              </Badge>
+              <BadgeEstado variante={BADGE_ESTADO_CONCILIACION[evento.estado]} texto={traducirEstadoConciliacion(evento.estado)} />
               {evento.resueltaEn && (
                 <span className="text-xs text-muted-foreground">
                   Cerrada {formatearTiempoRelativo(evento.resueltaEn)}

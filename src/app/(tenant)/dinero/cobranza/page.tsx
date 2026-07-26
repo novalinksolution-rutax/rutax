@@ -22,7 +22,7 @@ import {
   BADGE_ESTADO_MATCH_PAGO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
-import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { MenuAccionesPago } from "./menu-acciones-pago";
 
 export const metadata: Metadata = {
@@ -97,7 +97,7 @@ export default async function PaginaBandejaCobranza() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Revisión de pagos</h1>
+        <h1 className="text-2xl font-semibold">Revisión de pagos</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Pagos recibidos de tus sellers que aún no calzan solos con una factura. Atribúyelos al seller y período
           correctos, o descártalos si no son cobranzas.
@@ -118,7 +118,7 @@ export default async function PaginaBandejaCobranza() {
         <div
           role="status"
           aria-live="polite"
-          className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center"
+          className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-card px-6 py-16 text-center"
         >
           <div className="flex size-11 items-center justify-center rounded-full bg-success-subtle">
             <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
@@ -132,7 +132,7 @@ export default async function PaginaBandejaCobranza() {
         </div>
       ) : (
         !errorCarga && (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Pagos por revisar">
                 <thead>
@@ -167,7 +167,7 @@ export default async function PaginaBandejaCobranza() {
           >
             Conciliados recientemente
           </h2>
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Pagos conciliados recientes">
                 <thead>
@@ -253,8 +253,6 @@ function FilaPago({ pago, sellers }: { pago: PagoConSeller; sellers: { id: strin
 
 function BadgeEstadoMatch({ estado }: { estado: EstadoMatchPago }) {
   return (
-    <Badge variant={BADGE_ESTADO_MATCH_PAGO[estado]}>
-      {traducirEstadoMatchPago(estado)}
-    </Badge>
+    <BadgeEstado variante={BADGE_ESTADO_MATCH_PAGO[estado]} texto={traducirEstadoMatchPago(estado)} />
   );
 }

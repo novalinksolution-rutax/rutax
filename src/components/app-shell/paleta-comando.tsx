@@ -136,8 +136,8 @@ function PaletaContenido({ onCerrar }: { onCerrar: () => void }) {
       aria-modal="true"
       aria-label="Buscar"
     >
-      <div className="absolute inset-0 bg-black/50" onClick={onCerrar} aria-hidden="true" />
-      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+      <div className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs" onClick={onCerrar} aria-hidden="true" />
+      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-xl bg-popover ring-1 ring-foreground/10">
         {/* Campo de búsqueda */}
         <div className="flex items-center gap-2 border-b border-border px-4">
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

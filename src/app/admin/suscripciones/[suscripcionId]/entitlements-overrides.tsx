@@ -23,7 +23,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Plan } from "@/modules/plataforma/tipos";
+
+/**
+ * Centinela para la opción "Usar el plan" (el shadcn/Radix Select no admite un
+ * `value=""`). Se normaliza de vuelta a `""` antes de enviar, así la acción de
+ * servidor sigue recibiendo el mismo contrato de antes (vacío = borrar override).
+ */
+const USAR_PLAN = "__plan__";
 import { TooltipSoloLectura } from "../../tooltip-solo-lectura";
 import { accionEstablecerOverride, accionEstablecerEmisionDteReal } from "../acciones";
 
@@ -64,6 +78,11 @@ function PanelOverrides({ tenantId, plan, overrideActual, puedeEscribir }: Props
     setExito(false);
     const formData = new FormData(e.currentTarget);
     formData.set("tenant_id", tenantId);
+    // El centinela "usar el plan" del Select se traduce al "" que la acción
+    // espera para borrar el override (mismo contrato que los <select> nativos).
+    for (const llave of ["api_publica", "webhooks"]) {
+      if (formData.get(llave) === USAR_PLAN) formData.set(llave, "");
+    }
 
     startTransition(async () => {
       const resultado = await accionEstablecerOverride(formData);
@@ -77,7 +96,7 @@ function PanelOverrides({ tenantId, plan, overrideActual, puedeEscribir }: Props
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border bg-card p-5 shadow-sm">
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-lg border bg-card p-5 shadow-sm">
       <div>
         <h2 className="font-semibold">Entitlements / overrides</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -103,29 +122,37 @@ function PanelOverrides({ tenantId, plan, overrideActual, puedeEscribir }: Props
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="api_publica">API pública</Label>
-            <select
-              id="api_publica"
+            <Select
               name="api_publica"
-              defaultValue={valorBoolOverride(overrideActual, "api_publica")}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              defaultValue={valorBoolOverride(overrideActual, "api_publica") || USAR_PLAN}
+              disabled={!puedeEscribir}
             >
-              <option value="">Usar el plan (actualmente: {valorPlanBool(plan, "api_publica")})</option>
-              <option value="true">Forzar: Sí</option>
-              <option value="false">Forzar: No</option>
-            </select>
+              <SelectTrigger id="api_publica" className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={USAR_PLAN}>Usar el plan (actualmente: {valorPlanBool(plan, "api_publica")})</SelectItem>
+                <SelectItem value="true">Forzar: Sí</SelectItem>
+                <SelectItem value="false">Forzar: No</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="webhooks">Webhooks</Label>
-            <select
-              id="webhooks"
+            <Select
               name="webhooks"
-              defaultValue={valorBoolOverride(overrideActual, "webhooks")}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              defaultValue={valorBoolOverride(overrideActual, "webhooks") || USAR_PLAN}
+              disabled={!puedeEscribir}
             >
-              <option value="">Usar el plan (actualmente: {valorPlanBool(plan, "webhooks")})</option>
-              <option value="true">Forzar: Sí</option>
-              <option value="false">Forzar: No</option>
-            </select>
+              <SelectTrigger id="webhooks" className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={USAR_PLAN}>Usar el plan (actualmente: {valorPlanBool(plan, "webhooks")})</SelectItem>
+                <SelectItem value="true">Forzar: Sí</SelectItem>
+                <SelectItem value="false">Forzar: No</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </fieldset>
@@ -191,7 +218,7 @@ function PanelDteReal({ tenantId, tieneConfig, emisionDteRealHabilitada, puedeEs
   }
 
   return (
-    <div className="space-y-4 rounded-xl border bg-card p-5 shadow-sm">
+    <div className="space-y-4 rounded-lg border bg-card p-5 shadow-sm">
       <div>
         <h2 className="font-semibold">Emisión DTE real</h2>
         <p className="mt-1 text-sm text-muted-foreground">

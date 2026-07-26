@@ -76,7 +76,7 @@ export function SelectorDePlanes({ planes }: Props) {
   return (
     <div className="space-y-6">
       <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-bold">Elige el plan de Rutax para tu courier</h1>
+        <h1 className="text-2xl font-semibold">Elige el plan de Rutax para tu courier</h1>
         <p className="text-sm text-muted-foreground">Prueba sin costo — 14 días, sin tarjeta de crédito.</p>
       </div>
 
@@ -166,7 +166,7 @@ function TarjetaPlan({
     <Card
       className={cn(
         "flex h-full flex-col",
-        recomendado && "border-primary shadow-md ring-1 ring-primary/20",
+        recomendado && "border-primary shadow-sm ring-1 ring-primary/20",
       )}
     >
       <CardHeader>
@@ -179,7 +179,7 @@ function TarjetaPlan({
 
       <CardContent className="flex flex-1 flex-col gap-4">
         <div>
-          <p className="text-3xl font-bold tabular-nums">{formatearCLP(precio)}</p>
+          <p className="text-3xl font-semibold tabular-nums">{formatearCLP(precio)}</p>
           <p className="text-xs text-muted-foreground">{periodicidad === "mensual" ? "por mes" : "por año"}</p>
           {periodicidad === "anual" && ahorroAnual > 0 ? (
             <p className="mt-1 text-xs text-success">Ahorras {formatearCLP(ahorroAnual)} al año</p>

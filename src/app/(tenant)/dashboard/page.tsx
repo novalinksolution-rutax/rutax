@@ -52,11 +52,12 @@ import {
   obtenerResumenFinanciero,
   obtenerCostoPorConductor,
 } from "@/modules/dinero/analitica";
-import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { KpiCard } from "@/components/ui/kpi-card";
+import { MontoCLP } from "@/components/ui/monto-clp";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import {
   traducirEstadoPedido,
@@ -197,11 +198,11 @@ function TarjetaKpi({
   children?: React.ReactNode;
 }) {
   return (
-    <article className="flex flex-col rounded-xl border border-border bg-card p-4 shadow-xs">
+    <article className="flex flex-col rounded-lg border border-border bg-card p-4 shadow-xs">
       <div className="flex size-9 items-center justify-center rounded-lg bg-muted">
         <Icon className="size-4.5 text-muted-foreground" aria-hidden="true" />
       </div>
-      <p className={`mt-3 text-2xl font-bold tabular-nums ${valorClassName ?? ""}`}>{valor}</p>
+      <p className={`mt-3 text-2xl font-semibold tabular-nums ${valorClassName ?? ""}`}>{valor}</p>
       <p className="text-sm text-muted-foreground">{etiqueta}</p>
       {children}
     </article>
@@ -263,7 +264,7 @@ export default async function PaginaDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <h1 className="font-heading text-2xl font-bold">Dashboard operativo</h1>
+        <h1 className="font-heading text-2xl font-semibold">Dashboard operativo</h1>
         <IndicadorEnVivo
           tenantId={tenantId}
           tablas={[
@@ -395,7 +396,7 @@ async function SeccionOperativa({
             ) : (
               <>
                 Folios CAF por agotarse — quedan{" "}
-                <span className="font-bold tabular-nums">{alertaFolios.foliosRestantes}</span>{" "}
+                <span className="font-semibold tabular-nums">{alertaFolios.foliosRestantes}</span>{" "}
                 folio{alertaFolios.foliosRestantes !== 1 ? "s" : ""}
               </>
             )}
@@ -560,31 +561,30 @@ async function SeccionOperativa({
             </span>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <article className="rounded-xl border border-border bg-card p-4 shadow-xs">
-              <p className="text-sm text-muted-foreground">Comprometido</p>
-              <p className="mt-1 font-mono text-2xl font-bold tabular-nums">
-                {formatearCLP(resumenFinanciero.montoPeriodoClp)}
-              </p>
-              <p className="text-xs text-muted-foreground">Suma de los períodos del mes</p>
-            </article>
-            <article className="rounded-xl border border-border bg-card p-4 shadow-xs">
-              <p className="text-sm text-muted-foreground">Cobrado</p>
-              <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-success">
-                {formatearCLP(resumenFinanciero.cobradoClp)}
-              </p>
-              <p className="text-xs text-muted-foreground">Pagos recibidos y conciliados</p>
-            </article>
-            <article className="rounded-xl border border-border bg-card p-4 shadow-xs">
-              <p className="text-sm text-muted-foreground">Por cobrar</p>
-              <p
-                className={`mt-1 font-mono text-2xl font-bold tabular-nums ${
-                  resumenFinanciero.porCobrarClp > 0 ? "text-warning" : "text-muted-foreground"
-                }`}
-              >
-                {formatearCLP(resumenFinanciero.porCobrarClp)}
-              </p>
-              <p className="text-xs text-muted-foreground">Saldo pendiente de los sellers</p>
-            </article>
+            <KpiCard
+              label="Comprometido"
+              valor={<MontoCLP monto={resumenFinanciero.montoPeriodoClp} />}
+              hint="Suma de los períodos del mes"
+            />
+            <KpiCard
+              label="Cobrado"
+              valor={
+                <span className="text-success">
+                  <MontoCLP monto={resumenFinanciero.cobradoClp} />
+                </span>
+              }
+              hint="Pagos recibidos y conciliados"
+              tendencia="sube"
+            />
+            <KpiCard
+              label="Por cobrar"
+              valor={
+                <span className={resumenFinanciero.porCobrarClp > 0 ? "text-warning" : "text-muted-foreground"}>
+                  <MontoCLP monto={resumenFinanciero.porCobrarClp} />
+                </span>
+              }
+              hint="Saldo pendiente de los sellers"
+            />
           </div>
         </section>
       )}
@@ -625,7 +625,7 @@ async function SeccionOperativa({
           >
             Distribución por estado
           </h2>
-          <div className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-xs">
+          <div className="space-y-3 rounded-lg border border-border bg-card p-4 shadow-xs">
             {estadosConPedidos.map(([estado, cantidad]) => (
               <BarraEstado key={estado} estado={estado} cantidad={cantidad} total={totalPedidos} />
             ))}
@@ -642,7 +642,7 @@ async function SeccionOperativa({
           >
             Paquetes por comuna
           </h2>
-          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+          <div className="overflow-hidden rounded-lg border border-border bg-card shadow-xs">
             <ul className="divide-y divide-border">
               {metricas.paquetesPorComuna.map(({ comuna, cantidad }) => (
                 <li
@@ -672,7 +672,7 @@ async function SeccionOperativa({
           >
             Incidencias sin gestión (más de {UMBRAL_INCIDENCIA_SIN_GESTION_HORAS} horas)
           </h2>
-          <div className="overflow-hidden rounded-xl border border-destructive-subtle bg-card shadow-xs">
+          <div className="overflow-hidden rounded-lg border border-destructive-subtle bg-card shadow-xs">
             <ul className="divide-y divide-border">
               {incidenciasSinGestion.map((inc) => (
                 <li key={inc.id} className="flex items-center justify-between gap-4 px-4 py-3">
@@ -784,7 +784,7 @@ function EsqueletoOperativa() {
         <Skeleton className="mb-3 h-4 w-16" />
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+            <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-xs">
               <Skeleton className="size-9 rounded-lg" />
               <Skeleton className="mt-3 h-7 w-20" />
               <Skeleton className="mt-2 h-4 w-24" />
@@ -796,7 +796,7 @@ function EsqueletoOperativa() {
         <Skeleton className="mb-3 h-4 w-28" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+            <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-xs">
               <Skeleton className="h-4 w-24" />
               <Skeleton className="mt-2 h-7 w-32" />
             </div>
@@ -815,7 +815,7 @@ function EsqueletoAnalitica() {
       aria-live="polite"
     >
       {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+        <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-xs">
           <Skeleton className="h-4 w-24" />
           <Skeleton className="mt-2 h-7 w-32" />
           <Skeleton className="mt-3 h-3 w-full" />

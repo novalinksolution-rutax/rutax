@@ -13,6 +13,7 @@ import {
 import { NoHaySesionSoporte } from "@/modules/plataforma/soporte";
 import type { EstadoPeriodo, EstadoLiquidacion } from "@/modules/dinero/tipos";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatearFecha } from "@/lib/formato-cl";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
@@ -146,7 +147,7 @@ function SeccionUltimosPedidos({ pedidos }: { pedidos: PedidoOperativoSoporte[] 
           descripcion="Este courier todavía no tiene pedidos en su operación."
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Últimos pedidos del courier">
               <thead>
@@ -172,7 +173,7 @@ function SeccionUltimosPedidos({ pedidos }: { pedidos: PedidoOperativoSoporte[] 
                       {p.codigoInterno ?? `${p.id.slice(0, 12)}…`}
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={BADGE_ESTADO_PEDIDO[p.estado]}>{traducirEstadoPedido(p.estado)}</Badge>
+                      <BadgeEstado variante={BADGE_ESTADO_PEDIDO[p.estado]} texto={traducirEstadoPedido(p.estado)} />
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant="neutral">{p.fuente === "flex" ? "Flex" : "Same-day"}</Badge>
@@ -218,7 +219,7 @@ function SeccionResumenDinero({
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Períodos de cobro */}
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="border-b bg-muted/40 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Períodos de cobro
           </div>
@@ -243,9 +244,7 @@ function SeccionResumenDinero({
                   return (
                     <tr key={estado}>
                       <td className="px-4 py-2.5">
-                        <Badge variant={BADGE_ESTADO_PERIODO[estado]}>
-                          {traducirEstadoPeriodoCobro(estado)}
-                        </Badge>
+                        <BadgeEstado variante={BADGE_ESTADO_PERIODO[estado]} texto={traducirEstadoPeriodoCobro(estado)} />
                       </td>
                       <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                         {fila.cantidad} período{fila.cantidad !== 1 ? "s" : ""}
@@ -265,7 +264,7 @@ function SeccionResumenDinero({
         </div>
 
         {/* Liquidaciones */}
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="border-b bg-muted/40 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Liquidaciones
           </div>
@@ -289,9 +288,7 @@ function SeccionResumenDinero({
                   return (
                     <tr key={estado}>
                       <td className="px-4 py-2.5">
-                        <Badge variant={BADGE_ESTADO_LIQUIDACION[estado]}>
-                          {traducirEstadoLiquidacion(estado)}
-                        </Badge>
+                        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[estado]} texto={traducirEstadoLiquidacion(estado)} />
                       </td>
                       <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                         {fila.cantidad} liquidación{fila.cantidad !== 1 ? "es" : ""}

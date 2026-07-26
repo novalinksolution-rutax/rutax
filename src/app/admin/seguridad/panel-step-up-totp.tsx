@@ -89,19 +89,15 @@ export function PanelStepUpTotp() {
     );
   }
 
+  // Sin botón propio de "Cerrar sesión": `layout.tsx` ya renderiza uno fijo
+  // debajo de este panel en TODOS los estados, así que ponerlo aquí mostraba
+  // dos salidas apiladas. El texto apunta a esa única salida.
   if (factor.estado === "no_encontrado") {
     return (
-      <div className="space-y-3 text-center">
-        <p role="alert" className="flex items-center justify-center gap-1.5 text-sm text-destructive">
-          <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
-          No pudimos encontrar tu segundo factor. Cierra sesión y vuelve a entrar.
-        </p>
-        <form action={cerrarSesionAdmin}>
-          <Button type="submit" variant="outline" size="sm">
-            Cerrar sesión
-          </Button>
-        </form>
-      </div>
+      <p role="alert" className="flex items-center justify-center gap-1.5 text-center text-sm text-destructive">
+        <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
+        No pudimos encontrar tu segundo factor. Cierra sesión y vuelve a entrar.
+      </p>
     );
   }
 

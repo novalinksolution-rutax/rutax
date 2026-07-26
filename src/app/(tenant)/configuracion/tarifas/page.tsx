@@ -101,7 +101,7 @@ export default async function PaginaTarifas() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Tarifas</h1>
+          <h1 className="text-2xl font-semibold">Tarifas</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Rate cards por seller. Define base, mínimos y recargos que usa el motor de cobro.
           </p>
@@ -125,7 +125,7 @@ export default async function PaginaTarifas() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Activas ({activas.length})
               </h2>
-              <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+              <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm" aria-label="Tarifas activas">
                     <thead>
@@ -160,7 +160,7 @@ export default async function PaginaTarifas() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 Inactivas ({inactivas.length})
               </h2>
-              <div className="overflow-hidden rounded-xl border bg-card opacity-60 shadow-sm">
+              <div className="overflow-hidden rounded-lg border bg-card opacity-60 shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm" aria-label="Tarifas inactivas">
                     <thead>
@@ -237,10 +237,14 @@ function FilaTarifa({ tarifa, sellers }: { tarifa: TarifaFila; sellers: { id: st
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground lg:table-cell">
         {tarifa.recargoReprogramacionClp != null ? formatearCLP(tarifa.recargoReprogramacionClp) : "—"}
       </td>
+      {/* Una tarifa sin término mostraba "01/01/2026 →" con la flecha colgando
+          sola en la línea siguiente y sin decir nada. "Desde <fecha>" se lee
+          igual de rápido y no se parte. */}
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        <span className="tabular-nums text-xs">
-          {formatearFecha(tarifa.vigenteDesdeFecha)}
-          {tarifa.vigenteHasta ? ` → ${formatearFecha(tarifa.vigenteHasta)}` : " →"}
+        <span className="text-xs whitespace-nowrap tabular-nums">
+          {tarifa.vigenteHasta
+            ? `${formatearFecha(tarifa.vigenteDesdeFecha)} → ${formatearFecha(tarifa.vigenteHasta)}`
+            : `Desde ${formatearFecha(tarifa.vigenteDesdeFecha)}`}
         </span>
       </td>
       <td className="px-4 py-3 text-right">
@@ -274,9 +278,10 @@ function FilaTarifaInactiva({ tarifa }: { tarifa: TarifaFila }) {
       <td className="px-4 py-2.5 text-right tabular-nums font-mono">
         {formatearCLP(tarifa.montoClp)}
       </td>
-      <td className="hidden px-4 py-2.5 sm:table-cell text-xs tabular-nums">
-        {formatearFecha(tarifa.vigenteDesdeFecha)}
-        {tarifa.vigenteHasta ? ` → ${formatearFecha(tarifa.vigenteHasta)}` : ""}
+      <td className="hidden px-4 py-2.5 text-xs whitespace-nowrap tabular-nums sm:table-cell">
+        {tarifa.vigenteHasta
+          ? `${formatearFecha(tarifa.vigenteDesdeFecha)} → ${formatearFecha(tarifa.vigenteHasta)}`
+          : `Desde ${formatearFecha(tarifa.vigenteDesdeFecha)}`}
       </td>
       <td className="px-4 py-2.5" />
     </tr>

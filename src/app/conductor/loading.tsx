@@ -14,7 +14,7 @@ export default function CargandoConductor() {
       <Skeleton className="h-6 w-40" />
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card p-4">
+          <div key={i} className="rounded-lg border border-border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <Skeleton className="h-5 w-40" />
               <Skeleton className="h-5 w-20 rounded-full" />

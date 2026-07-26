@@ -12,7 +12,7 @@ export default function CargandoDashboard() {
         <Skeleton className="mb-3 h-4 w-16" />
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+            <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-xs">
               <Skeleton className="size-9 rounded-lg" />
               <Skeleton className="mt-3 h-7 w-20" />
               <Skeleton className="mt-2 h-4 w-24" />
@@ -24,7 +24,7 @@ export default function CargandoDashboard() {
         <Skeleton className="mb-3 h-4 w-28" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-4 shadow-xs">
+            <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-xs">
               <Skeleton className="h-4 w-24" />
               <Skeleton className="mt-2 h-7 w-32" />
             </div>

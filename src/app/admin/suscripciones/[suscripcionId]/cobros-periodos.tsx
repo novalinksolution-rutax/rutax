@@ -3,28 +3,17 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Receipt, ExternalLink } from "lucide-react";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import {
+  BADGE_ESTADO_PERIODO_SUSCRIPCION,
+  traducirEstadoPeriodoSuscripcion,
+} from "@/lib/ui/traduccion-estados";
 import type { PeriodoConPago } from "@/modules/plataforma/consultas";
 import { TooltipSoloLectura } from "../../tooltip-solo-lectura";
 import { accionGenerarLinkCobro, accionRegistrarPagoManual } from "../acciones";
-
-const COLORES_ESTADO: Record<string, string> = {
-  pagado:
-    "border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/30 dark:text-green-400",
-  vencido:
-    "border-red-300 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/30 dark:text-red-400",
-  pendiente:
-    "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
-};
-
-const ETIQUETAS_ESTADO: Record<string, string> = {
-  pagado: "Pagado",
-  vencido: "Vencido",
-  pendiente: "Pendiente",
-};
 
 function formatearFecha(iso: string | null): string {
   if (!iso) return "—";
@@ -82,9 +71,10 @@ function FilaPeriodo({ periodo, puedeEscribir }: { periodo: PeriodoConPago; pued
       </td>
       <td className="px-4 py-3 tabular-nums font-mono">{formatearCLP(periodo.montoClp)}</td>
       <td className="px-4 py-3">
-        <Badge variant="outline" className={COLORES_ESTADO[periodo.estado] ?? "text-muted-foreground"}>
-          {ETIQUETAS_ESTADO[periodo.estado] ?? periodo.estado}
-        </Badge>
+        <BadgeEstado
+          variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodo.estado]}
+          texto={traducirEstadoPeriodoSuscripcion(periodo.estado)}
+        />
       </td>
       <td className="px-4 py-3 text-muted-foreground">
         {periodo.estado === "pagado" ? (
@@ -160,7 +150,7 @@ export function CobrosPeriodos({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+    <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
       <div className="overflow-x-auto">
         <table className="w-full text-sm" aria-label="Períodos de cobro de la suscripción">
           <thead>

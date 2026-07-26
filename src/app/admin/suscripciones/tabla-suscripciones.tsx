@@ -15,10 +15,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Building2 } from "lucide-react";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { BADGE_ESTADO_SUSCRIPCION, traducirEstadoSuscripcion } from "@/lib/ui/traduccion-estados";
 import type { SuscripcionConPlan } from "@/modules/plataforma/tipos";
 import type { Plan } from "@/modules/plataforma/tipos";
 import { TooltipSoloLectura } from "../tooltip-solo-lectura";
@@ -41,20 +50,6 @@ interface Props {
   /** `false` para `soporte_lectura` — oculta los controles de escritura (el gate real vive en el servidor). */
   puedeEscribir: boolean;
 }
-
-const COLORES_ESTADO: Record<string, string> = {
-  activa: "border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/30 dark:text-green-400",
-  trial: "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-400",
-  suspendida: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
-  cancelada: "text-muted-foreground",
-};
-
-const ETIQUETAS_ESTADO: Record<string, string> = {
-  activa: "Activa",
-  trial: "Trial",
-  suspendida: "Suspendida",
-  cancelada: "Cancelada",
-};
 
 function formatearFecha(iso: string | null): string {
   if (!iso) return "—";
@@ -112,51 +107,49 @@ function DialogNuevaSuscripcion({
                 Todos los couriers ya tienen suscripción asignada.
               </p>
             ) : (
-              <select
-                id="tenant_id"
-                name="tenant_id"
-                required
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">Seleccionar courier…</option>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nombreFantasia ?? t.id}
-                  </option>
-                ))}
-              </select>
+              <Select name="tenant_id" required>
+                <SelectTrigger id="tenant_id" className="w-full">
+                  <SelectValue placeholder="Seleccionar courier…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenants.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.nombreFantasia ?? t.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="plan_id">Plan</Label>
-            <select
-              id="plan_id"
-              name="plan_id"
-              required
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Seleccionar plan…</option>
-              {planes.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre} — {formatearCLP(p.precioMensualClp)}/mes
-                </option>
-              ))}
-            </select>
+            <Select name="plan_id" required>
+              <SelectTrigger id="plan_id" className="w-full">
+                <SelectValue placeholder="Seleccionar plan…" />
+              </SelectTrigger>
+              <SelectContent>
+                {planes.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.nombre} — {formatearCLP(p.precioMensualClp)}/mes
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="estado">Estado inicial</Label>
-              <select
-                id="estado"
-                name="estado"
-                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                defaultValue="trial"
-              >
-                <option value="trial">Trial</option>
-                <option value="activa">Activa</option>
-              </select>
+              <Select name="estado" defaultValue="trial">
+                <SelectTrigger id="estado" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="trial">Prueba</SelectItem>
+                  <SelectItem value="activa">Activa</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="trial_hasta">Trial hasta</Label>
@@ -320,20 +313,20 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Suscripciones</h1>
+          <h1 className="text-2xl font-semibold">Suscripciones</h1>
           <div className="mt-2 flex flex-wrap gap-2">
             {activas > 0 && (
-              <Badge variant="outline" className={COLORES_ESTADO.activa}>
+              <Badge variant="success">
                 {activas} activa{activas !== 1 ? "s" : ""}
               </Badge>
             )}
             {trial > 0 && (
-              <Badge variant="outline" className={COLORES_ESTADO.trial}>
-                {trial} trial
+              <Badge variant="info">
+                {trial} en prueba
               </Badge>
             )}
             {suspendidas > 0 && (
-              <Badge variant="outline" className={COLORES_ESTADO.suspendida}>
+              <Badge variant="warning">
                 {suspendidas} suspendida{suspendidas !== 1 ? "s" : ""}
               </Badge>
             )}
@@ -366,7 +359,7 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Suscripciones de couriers">
               <thead>
@@ -392,12 +385,10 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
                     </td>
                     <td className="px-4 py-3">{s.plan.nombre}</td>
                     <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={COLORES_ESTADO[s.estado] ?? "text-muted-foreground"}
-                      >
-                        {ETIQUETAS_ESTADO[s.estado] ?? s.estado}
-                      </Badge>
+                      <BadgeEstado
+                        variante={BADGE_ESTADO_SUSCRIPCION[s.estado]}
+                        texto={traducirEstadoSuscripcion(s.estado)}
+                      />
                     </td>
                     <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
                       {formatearFecha(s.activaDesde)}

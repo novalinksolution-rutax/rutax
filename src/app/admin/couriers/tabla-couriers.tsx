@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Building2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -94,7 +95,7 @@ export function TablaCouriers({ couriers }: Props) {
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Panel de couriers">
               <thead>
@@ -125,9 +126,10 @@ export function TablaCouriers({ couriers }: Props) {
                         </Link>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant={BADGE_ESTADO_SUSCRIPCION[c.estadoSuscripcion]}>
-                          {traducirEstadoSuscripcion(c.estadoSuscripcion)}
-                        </Badge>
+                        <BadgeEstado
+                          variante={BADGE_ESTADO_SUSCRIPCION[c.estadoSuscripcion]}
+                          texto={traducirEstadoSuscripcion(c.estadoSuscripcion)}
+                        />
                       </td>
                       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
                         {c.planNombre} · {TEXTO_PERIODICIDAD[c.periodicidad]}

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { BloqueEtiqueta } from "../bloque-etiqueta";
 import { crearSameDayAction, type ResultadoCrearSameDay } from "./actions";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 function campoError(estado: ResultadoCrearSameDay | null, campo: string) {
   if (!estado || estado.ok) return null;
@@ -44,7 +45,7 @@ export function FormularioNuevoPedido() {
   const formRef = useRef<HTMLFormElement>(null);
   const nombreRef = useRef<HTMLInputElement>(null);
 
-  const hoy = new Date().toISOString().split("T")[0];
+  const hoy = fechaLocalEnSantiago(new Date());
 
   if (estado?.ok && estadoProcesado !== estado) {
     setEstadoProcesado(estado);
@@ -74,7 +75,7 @@ export function FormularioNuevoPedido() {
       {ultimoCreado && (
         <div
           role="status"
-          className="space-y-3 rounded-xl border border-success-subtle bg-success-subtle/60 p-4"
+          className="space-y-3 rounded-lg border border-success-subtle bg-success-subtle/60 p-4"
         >
           <div className="flex items-start gap-2.5">
             <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />

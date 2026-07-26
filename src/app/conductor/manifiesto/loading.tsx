@@ -18,12 +18,12 @@ export default function CargandoManifiesto() {
       </div>
 
       {/* Banner permanente "usa la app de Flex" */}
-      <Skeleton className="h-14 w-full rounded-xl" />
+      <Skeleton className="h-14 w-full rounded-lg" />
 
       {/* Lista de cards de parada */}
       <div className="space-y-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card p-4">
+          <div key={i} className="rounded-lg border border-border bg-card p-4">
             <div className="flex items-start justify-between gap-3">
               <Skeleton className="h-7 w-6" />
               <div className="flex items-center gap-1.5">

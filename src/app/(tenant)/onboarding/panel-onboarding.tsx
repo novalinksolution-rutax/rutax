@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   CircleDashed,
   Clock,
+  CreditCard,
   FileText,
   Landmark,
   Receipt,
@@ -27,17 +28,20 @@ import {
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { formatearFecha } from "@/lib/formato-cl";
-import type { EstadoOnboardingCourier } from "./estado";
+import { BADGE_ESTADO_SUSCRIPCION, TEXTO_ESTADO_SUSCRIPCION } from "@/lib/ui/traduccion-estados";
+import type { EstadoOnboardingCourier, EstadoPasoPlan } from "./estado";
 
 interface Props {
   estado: EstadoOnboardingCourier;
   puedeGestionarDte: boolean;
   puedeGestionarTarifas: boolean;
   puedeGestionarCobranza: boolean;
+  puedeGestionarPlan: boolean;
 }
 
 export function PanelOnboarding({
@@ -45,6 +49,7 @@ export function PanelOnboarding({
   puedeGestionarDte,
   puedeGestionarTarifas,
   puedeGestionarCobranza,
+  puedeGestionarPlan,
 }: Props) {
   const porcentaje = Math.round((estado.pasosCompletados / estado.totalPasos) * 100);
 
@@ -96,6 +101,7 @@ export function PanelOnboarding({
         <TarjetaPasoFolios estado={estado} puedeGestionar={puedeGestionarDte} />
         <TarjetaPasoTarifas estado={estado} puedeGestionar={puedeGestionarTarifas} />
         <TarjetaPasoCobranza estado={estado} puedeGestionar={puedeGestionarCobranza} />
+        <TarjetaPasoPlan estado={estado} puedeGestionar={puedeGestionarPlan} />
       </div>
     </div>
   );
@@ -361,7 +367,7 @@ function TarjetaPasoCobranza({
       icono: <Landmark className="size-5" aria-hidden="true" />,
       badge: <Badge variant="outline">Sin conectar</Badge>,
       descripcion:
-        "Conecta tu banco para reconocer, solos, los pagos que te hacen tus sellers y cruzarlos con sus facturas.",
+        "Conecta tu banco para que Rutax reconozca y concilie automáticamente los pagos de tus sellers con sus facturas.",
       destacado: false,
     },
     conectado: {
@@ -379,7 +385,7 @@ function TarjetaPasoCobranza({
     con_problemas: {
       icono: <ShieldAlert className="size-5 text-destructive" aria-hidden="true" />,
       badge: <Badge variant="destructive">Necesita tu atención</Badge>,
-      descripcion: "La conexión con tu banco dejó de funcionar. Reconéctala para seguir conciliando tus pagos.",
+      descripcion: "Tu conexión bancaria se desconectó. Reconéctala para seguir conciliando tus pagos automáticamente.",
       destacado: true,
     },
   };
@@ -403,6 +409,64 @@ function TarjetaPasoCobranza({
         ) : (
           <p className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">
             Solo el dueño o administración pueden conectar el banco.
+          </p>
+        )
+      }
+    />
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Paso 5 — Plan de Rutax (suscripción SaaS, informativo / NO bloqueante)
+// -----------------------------------------------------------------------------
+// Nunca cuenta para `totalPasos`/"completo" — mismo trato que Folios/Cobranza
+// (§ estado.ts: "plan" es informativo). Enlaza a `/configuracion/plan`, nunca
+// embebe el selector de planes aquí.
+
+function descripcionPlan(plan: EstadoOnboardingCourier["plan"]): string {
+  switch (plan.estado) {
+    case "trial":
+      return plan.trialHasta
+        ? `Estás en período de prueba de ${plan.nombrePlan ?? "tu plan"} — vence el ${formatearFecha(plan.trialHasta)}.`
+        : `Estás en período de prueba de ${plan.nombrePlan ?? "tu plan"}.`;
+    case "activa":
+      return `Tu plan ${plan.nombrePlan ?? ""} está activo — todo en orden.`;
+    case "suspendida":
+      return "Tu plan está suspendido. Usualmente se debe a un pago pendiente — escríbenos y lo resolvemos juntos.";
+    case "cancelada":
+      return "Tu plan está cancelado. Si quieres reactivarlo, contáctanos y te ayudamos.";
+    case "sin_suscripcion":
+    default:
+      return "Activa tu prueba gratuita de 14 días para seguir usando Rutax.";
+  }
+}
+
+function badgePlan(estadoPlan: EstadoPasoPlan) {
+  if (estadoPlan === "sin_suscripcion") {
+    return <Badge variant="outline">Sin activar</Badge>;
+  }
+  return <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[estadoPlan]} texto={TEXTO_ESTADO_SUSCRIPCION[estadoPlan]} />;
+}
+
+function TarjetaPasoPlan({ estado, puedeGestionar }: { estado: EstadoOnboardingCourier; puedeGestionar: boolean }) {
+  const { plan } = estado;
+  const sinActivar = plan.estado === "sin_suscripcion";
+
+  return (
+    <TarjetaPaso
+      icono={<CreditCard className="size-5" aria-hidden="true" />}
+      titulo="Tu plan de Rutax"
+      descripcion={descripcionPlan(plan)}
+      badge={badgePlan(plan.estado)}
+      destacado={plan.estado === "suspendida"}
+      accion={
+        puedeGestionar ? (
+          <Button asChild variant={sinActivar ? "default" : "outline"}>
+            <Link href="/configuracion/plan">{sinActivar ? "Activar plan" : "Ver mi plan"}</Link>
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">
+            Solo el dueño puede gestionar el plan de Rutax.
           </p>
         )
       }

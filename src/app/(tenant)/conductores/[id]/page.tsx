@@ -23,6 +23,7 @@ import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { traducirEstadoLiquidacion, BADGE_ESTADO_LIQUIDACION } from "@/lib/ui/traduccion-estados";
 import type { EstadoLiquidacion } from "@/modules/dinero/tipos";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
   Table,
   TableBody,
@@ -169,7 +170,7 @@ export default async function PaginaDetalleConductor({ params }: Props) {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-heading text-2xl font-bold">{conductor.nombre_completo as string}</h1>
+          <h1 className="font-heading text-2xl font-semibold">{conductor.nombre_completo as string}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Dinero consolidado de sus entregas. El detalle por pedido ya no vive en cada pedido:
             se acumula aquí y se cierra en las liquidaciones.
@@ -187,9 +188,9 @@ export default async function PaginaDetalleConductor({ params }: Props) {
       {/* Resumen por estado de pago */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="list" aria-label="Resumen de dinero por estado">
         {tarjetas.map(({ bucket, label, clases }) => (
-          <div key={bucket} role="listitem" className={`rounded-xl px-4 py-3 ${clases}`}>
+          <div key={bucket} role="listitem" className={`rounded-lg px-4 py-3 ${clases}`}>
             <p className="text-xs font-medium">{label}</p>
-            <p className="mt-1 text-xl font-bold tabular-nums">{formatearCLP(resumen[bucket].totalClp)}</p>
+            <p className="mt-1 text-xl font-semibold tabular-nums">{formatearCLP(resumen[bucket].totalClp)}</p>
             <p className="text-xs opacity-80 tabular-nums">
               {resumen[bucket].cantidad} entrega{resumen[bucket].cantidad !== 1 ? "s" : ""}
             </p>
@@ -199,14 +200,14 @@ export default async function PaginaDetalleConductor({ params }: Props) {
 
       {/* Detalle de entregas */}
       {entregas.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
+        <div className="rounded-lg border bg-card px-6 py-12 text-center">
           <p className="text-muted-foreground">
             Este conductor todavía no tiene entregas que generen liquidación. Aparecerán aquí a
             medida que el motor registre sus entregas.
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <Table aria-label={`Entregas liquidables de ${conductor.nombre_completo as string}`}>
               <TableHeader>
@@ -234,9 +235,7 @@ export default async function PaginaDetalleConductor({ params }: Props) {
                     </TableCell>
                     <TableCell className="px-4">
                       {e.liqEstado ? (
-                        <Badge variant={BADGE_ESTADO_LIQUIDACION[e.liqEstado]}>
-                          {traducirEstadoLiquidacion(e.liqEstado)}
-                        </Badge>
+                        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[e.liqEstado]} texto={traducirEstadoLiquidacion(e.liqEstado)} />
                       ) : (
                         <Badge variant="neutral">Acumulando</Badge>
                       )}

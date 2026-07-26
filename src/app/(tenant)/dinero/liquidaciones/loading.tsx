@@ -10,7 +10,7 @@ export default function CargandoLiquidaciones() {
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-9 w-36" />
       </div>
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
+      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-xs">
         <div className="border-b border-border bg-muted/40 px-4 py-3">
           <Skeleton className="h-4 w-28" />
         </div>
@@ -23,7 +23,7 @@ export default function CargandoLiquidaciones() {
               </div>
               <div className="flex items-center gap-3">
                 <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-5 w-24 rounded-full" />
+                <Skeleton className="h-5 w-24 rounded-md" />
               </div>
             </li>
           ))}

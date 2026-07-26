@@ -82,7 +82,7 @@ export function TablaBitacora({ filas, total, limite, offset, queryStringSinOffs
 
   return (
     <div className="space-y-3">
-      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+      <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm" aria-label="Bitácora de auditoría de plataforma">
             <thead>

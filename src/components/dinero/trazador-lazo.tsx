@@ -120,7 +120,7 @@ export function TrazadorLazo({ traza, pedidoEntregado }: Props) {
   const pagado = periodo?.estadoCobro === "pagado";
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="rounded-lg border border-border bg-card p-4 shadow-xs">
       <ol>
         {/* 1 — Entrega */}
         <Nodo icono={Package} titulo="Entrega" tono={pedidoEntregado ? "hecho" : "pendiente"} ultimo={false}>

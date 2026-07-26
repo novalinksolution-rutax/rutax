@@ -281,7 +281,7 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
               <span className="flex items-start gap-2">
                 <ArrowDownCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <span>
-                  Este cambio <strong>toma efecto en el próximo ciclo</strong>. Sigues con tu plan {planActual.nombre}
+                  Este cambio <strong>toma efecto en el próximo ciclo</strong>. Sigues con tu plan {planActual.nombre}{" "}
                   hasta el {periodoActual ? formatearFecha(periodoActual.periodoFin) : "fin de tu período actual"},
                   sin cargo. Desde el día siguiente pasas a {planSeleccionado.nombre}.
                 </span>
@@ -333,7 +333,7 @@ function TarjetaPlanCambio({
 
       <CardContent className="flex flex-1 flex-col gap-3">
         <div>
-          <p className="text-2xl font-bold tabular-nums">{formatearCLP(precio)}</p>
+          <p className="text-2xl font-semibold tabular-nums">{formatearCLP(precio)}</p>
           <p className="text-xs text-muted-foreground">{periodicidad === "mensual" ? "por mes" : "por año"}</p>
         </div>
 

@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { Plan } from "@/modules/plataforma/tipos";
@@ -301,15 +302,12 @@ export function TablaPlanes({ planes, puedeEscribir }: Props) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
           {activos > 0 && (
-            <Badge
-              variant="outline"
-              className="border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/30 dark:text-green-400"
-            >
+            <Badge variant="success">
               {activos} activo{activos !== 1 ? "s" : ""}
             </Badge>
           )}
           {inactivos > 0 && (
-            <Badge variant="outline" className="text-muted-foreground">
+            <Badge variant="neutral">
               {inactivos} inactivo{inactivos !== 1 ? "s" : ""}
             </Badge>
           )}
@@ -329,7 +327,7 @@ export function TablaPlanes({ planes, puedeEscribir }: Props) {
           accion={<BotonNuevoPlan puedeEscribir={puedeEscribir} onGuardado={() => router.refresh()} />}
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Catálogo de planes">
               <thead>
@@ -355,16 +353,10 @@ export function TablaPlanes({ planes, puedeEscribir }: Props) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <Badge
-                        variant="outline"
-                        className={
-                          p.activo
-                            ? "border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-950/30 dark:text-green-400"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {p.activo ? "Activo" : "Inactivo"}
-                      </Badge>
+                      <BadgeEstado
+                        variante={p.activo ? "success" : "neutral"}
+                        texto={p.activo ? "Activo" : "Inactivo"}
+                      />
                     </td>
                     <td className="hidden px-4 py-3 tabular-nums font-mono sm:table-cell">
                       {formatearCLP(p.precioMensualClp)}

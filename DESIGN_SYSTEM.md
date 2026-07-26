@@ -4,10 +4,25 @@
 >
 > **Qué NO es.** No es una copia de Linear, Stripe, Duolingo ni Notion. De esas referencias se extraen *principios* (densidad, calidad, movimiento con propósito, escalabilidad); la identidad de Rutax es propia.
 >
-> **De dónde sale.** Decisión de marca cerrada en [BRIEF_DECISIONES_UX.md](BRIEF_DECISIONES_UX.md) (Decisión 2: Rutax · serio · versátil · confianza · azul navy provisional) y la base técnica auditada en [UX_READINESS_REPORT.md](UX_READINESS_REPORT.md) (Fase 4).
+> **De dónde sale.** Decisión de marca en [BRIEF_DECISIONES_UX.md](BRIEF_DECISIONES_UX.md) (Rutax · serio · versátil · confianza · navy) y, desde 2026-07, la **migración al ADN visual de Retell AI** documentada en [docs/rediseno-retell/](docs/rediseno-retell/) (MASTER_PROMPT + design-system + IA Blueprint).
 >
-> **Estado:** v1 — provisional sobre tokens shadcn. El primario es **una sola variable CSS**; refinarlo más adelante es trivial.
-> **Fecha:** 2026-06-13 · **Base técnica:** Next.js 16 · React 19 · Tailwind 4 · shadcn/ui sobre Radix · tokens OKLCH + dark mode.
+> **Estado:** v2 — **ADN de Retell** aplicado (neutro cool + Inter + acento navy). Los tokens viven en [globals.css](src/app/globals.css) como valores hex de referencia del ADN, sobre el mismo andamiaje `@theme`/`@theme inline` de shadcn.
+> **Fecha:** 2026-07-23 · **Base técnica:** Next.js 16 · React 19 · Tailwind 4 · shadcn/ui sobre Radix · Inter (next/font) · Recharts · next-themes.
+
+---
+
+## SECCIÓN 0 — ADN VISUAL (fuente de verdad, v2 · Retell)
+
+> Esta sección **supersede** cualquier referencia más abajo al "navy en `--primary`", a Geist o a tokens "pendientes": esas describían el v1 provisional. Lo vigente es:
+
+- **Neutro cool que respira.** Superficie de contenido blanca (`#ffffff`), shells/sidebars en lavanda (`#f5f5fa`), texto principal azul-gris frío (`#172131`). Mucho aire, líneas divisorias mínimas, sombras casi imperceptibles.
+- **La acción primaria es NEUTRO oscuro, no el azul.** `--primary` = `#2f3a4b` (casi-negro); en dark se invierte a casi-blanco. Es la firma de Retell.
+- **El acento es un NAVY propio de Rutax, recurso escaso.** `--brand` = **`#2a3ca0`** (light) / `#7080f5` (dark), solo en enlaces, estado activo y anillo de foco. Contraste blanco/navy ≈ 9.3:1 (AAA). Distinto del `--info` de estado (azul brillante `#335cff`).
+- **Tipografía: Inter** (self-hosted vía `next/font`, pesos 400/500/600/700). Números y dinero en `--font-mono` con `tabular-nums`. Reemplaza a Geist.
+- **Estados semánticos** con la cuaterna `solid + foreground + subtle + subtle-foreground` (success/warning/error/info). Rutax-gana en a11y: el `warning-foreground` va **oscuro**, no blanco (blanco sobre naranjo falla AA).
+- **Radios suaves** (botón 10px, card/input 8–10px). **Badges = chip `rounded-md`, nunca pill** (salvo avatares/switches). Sombras portadas del ADN de Retell (`xs/sm/md/lg/dropdown`).
+- **Charts:** Recharts sobre los tokens `--chart-*`, con orden categórico de alto contraste primero y codificación secundaria siempre (leyenda + tooltip + label), validado con la skill `dataviz`.
+- **Shell (patrón A de Retell):** sidebar lavanda sin borde, ítem activo = **pill blanca** con `shadow-xs` e ícono en `--brand`, bloque de cuenta abajo con conmutador de tema (light/dark/system). Variantes por superficie: `(tenant)`/`admin` densos, `portal` relajado, `conductor` nav inferior táctil.
 
 ---
 
@@ -417,14 +432,13 @@ Toda vista de datos debe resolver explícitamente sus cuatro estados:
 
 ## Cierre
 
-Este sistema es **v1 provisional**: la identidad (navy de marca, tipografía, charts con color) se aplica sobre una base técnica ya tokenizada, así que refinarla más adelante cuesta poco (el primario es **una variable CSS**). El valor del documento no está en los valores exactos de hoy, sino en las **reglas y principios** que mantienen coherentes 41 pantallas y tres audiencias mientras el producto crece.
+Este sistema es **v2 — ADN de Retell aplicado** (ver SECCIÓN 0). La mayoría de los "próximos pasos" del v1 ya están hechos: tokens del ADN + tema (light/dark con `next-themes`), Inter, shell/nav de las 4 superficies con conmutador de tema, primitivas reestilizadas, y los compuestos de dominio (KpiCard, BadgeEstado, MontoCLP, TableSkeleton, DataTable, Charts con Recharts). El valor del documento está en las **reglas y principios** que mantienen coherentes las pantallas y las cuatro audiencias mientras el producto crece.
 
-**Próximos pasos de implementación (UI Lead / Frontend):**
-1. Aplicar el navy de marca a `--primary` en [globals.css](src/app/globals.css) y validar contraste AA en light/dark.
-2. Definir tokens semánticos (`success`/`warning`/`info`) y motion (`--motion-*`, `--ease-*`).
-3. Incorporar los componentes faltantes de alta prioridad (Form, Data Table, Empty State, Stepper, Pagination).
-4. Estandarizar los patrones de dominio y consolidar `BotonDescarga`.
-5. Levantar el catálogo de estados de vista como primer entregable del UX.
+**Pendientes de implementación (UI Lead / Frontend):**
+1. Settings anidado (Patrón H) para el grupo Configuración del courier.
+2. Barrido QA de la Fase 7: AA en todos los estados de badge/subtle, responsive `sm→2xl`, `prefers-reduced-motion`, foco de teclado.
+3. Consolidar `BotonDescarga` (deuda menor del audit) y el selector de comuna como componentes únicos.
+4. (Fuera del rediseño visual, para `seguridad-cumplimiento`): cerrar el gating de Sellers/invitar (PII) y separar API/Zonas de la capacidad `tarifas`.
 
 ---
 

@@ -13,6 +13,7 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { urlGoogleMapsRuta, MAX_PARADAS_RUTA } from "@/lib/ui/mapas";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -25,6 +26,7 @@ import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-par
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
 import { PingUbicacion } from "./ping-ubicacion";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Tipos auxiliares
@@ -53,7 +55,7 @@ async function cargarManifiestoActivo(
   tenantId: string,
 ): Promise<ManifiestoConPedidos | null> {
   const cliente = crearClienteServiceRole();
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = fechaLocalEnSantiago(new Date());
 
   // Buscar manifiesto del conductor para hoy, preferir confirmado/en_ruta sobre borrador
   const { data: manifiestos } = await cliente
@@ -256,7 +258,7 @@ export default async function PaginaManifiestoActivo() {
       {/* Encabezado fijo (se incluye en el layout sticky del layout) */}
       <div className="space-y-1">
         <div className="flex items-center gap-2.5">
-          <h1 className="text-xl font-bold">{manifiesto.nombre}</h1>
+          <h1 className="text-xl font-semibold">{manifiesto.nombre}</h1>
           <IndicadorEnVivo
             tenantId={tenantId}
             tablas={[
@@ -280,7 +282,7 @@ export default async function PaginaManifiestoActivo() {
             href={urlRuta}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+            className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <Navigation className="size-4" aria-hidden="true" />
             Abrir ruta en Google Maps
@@ -298,7 +300,7 @@ export default async function PaginaManifiestoActivo() {
       <div
         role="note"
         aria-label="Instrucción de uso de la app de Flex"
-        className="rounded-xl bg-info px-4 py-3 text-sm text-info-foreground"
+        className="rounded-lg bg-info px-4 py-3 text-sm text-info-foreground"
       >
         <div className="flex items-start gap-2">
           <Info className="size-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
@@ -311,7 +313,7 @@ export default async function PaginaManifiestoActivo() {
 
       {/* Estado: manifiesto completado */}
       {esCompletado && (
-        <div className="rounded-xl bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
+        <div className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
           Ruta completada.
         </div>
       )}
@@ -323,12 +325,12 @@ export default async function PaginaManifiestoActivo() {
             <li key={pedido.id}>
               <Link
                 href={`/conductor/manifiesto/${pedido.id}`}
-                className={`block rounded-xl border bg-card p-4 transition-colors hover:bg-muted/30 active:scale-[0.99] ${incidenciaAbierta ? "border-warning" : "border-border"}`}
+                className={`block rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30 active:scale-[0.99] ${incidenciaAbierta ? "border-warning" : "border-border"}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   {/* Numero de orden — grande, esquina superior izquierda */}
                   <span
-                    className="text-2xl font-black leading-none text-muted-foreground/60 tabular-nums flex-shrink-0"
+                    className="text-2xl font-semibold leading-none text-muted-foreground/60 tabular-nums flex-shrink-0"
                     aria-label={`Orden ${orden}`}
                   >
                     {orden}
@@ -337,11 +339,15 @@ export default async function PaginaManifiestoActivo() {
                   {/* Estado + fuente — badges esquina superior derecha */}
                   <div className="flex shrink-0 items-center gap-1.5">
                     <Badge variant={pedido.tipoPedido === "same_day" ? "info" : "neutral"}>
-                      {pedido.tipoPedido === "same_day" ? "SAME-DAY" : "Flex"}
+                      {/* "Same-day", no "SAME-DAY": iba en versalitas junto a
+                          "Flex" en capitalización normal, dos estilos para la
+                          misma etiqueta y en la misma esquina de la tarjeta. */}
+                      {pedido.tipoPedido === "same_day" ? "Same-day" : "Flex"}
                     </Badge>
-                    <Badge variant={BADGE_ESTADO_PEDIDO[pedido.estado]}>
-                      {traducirEstadoPedido(pedido.estado)}
-                    </Badge>
+                    <BadgeEstado
+                      variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+                      texto={traducirEstadoPedido(pedido.estado)}
+                    />
                   </div>
                 </div>
 
@@ -377,7 +383,7 @@ export default async function PaginaManifiestoActivo() {
           ))}
         </ol>
       ) : (
-        <div className="rounded-xl border bg-card px-4 py-8 text-center">
+        <div className="rounded-lg border bg-card px-4 py-8 text-center">
           <p className="text-sm text-muted-foreground">No hay pedidos en este manifiesto.</p>
         </div>
       )}
