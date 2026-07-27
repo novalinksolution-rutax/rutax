@@ -46,18 +46,29 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
-import { ahoraEnSantiago, horaAMinutos, sumarDiasCalendario } from '@/lib/fecha-santiago';
+import {
+  ahoraEnSantiago,
+  horaAMinutos,
+  limitesDelDiaSantiago,
+  sumarDiasCalendario,
+} from '@/lib/fecha-santiago';
 import { normalizarComuna } from '@/modules/integraciones/geocoding/normalizacion';
 import { calcularRiesgoZona, colapsarRiesgoPorFranjas } from '../motor-riesgo';
 import type { ResultadoRiesgoZona } from '../motor-riesgo';
+import {
+  aireDeZonaFranja,
+  capacidadPorZona,
+  cargaPorZona,
+  climaDeZonaFranja,
+  eventosDeZonaFranja,
+  indexarPorComunaFechaFranja,
+  minutosHastaCorte,
+  tasaFallidosPorZona,
+  type FilaAire,
+  type FilaClima,
+  type FilaEvento,
+} from '../agregacion';
 import { FRANJAS, type Franja, type HorizonteRiesgo } from '../tipos';
-
-/** Ventana horaria local de cada franja, para acotar clima y aire. */
-const RANGO_FRANJA: Readonly<Record<Franja, { desde: string; hasta: string }>> = {
-  manana: { desde: '08:00', hasta: '12:00' },
-  tarde: { desde: '12:00', hasta: '17:00' },
-  punta: { desde: '17:00', hasta: '21:00' },
-};
 
 /** Estados de pedido que cuentan como carga pendiente de la zona. */
 const ESTADOS_PENDIENTES = [
@@ -65,6 +76,17 @@ const ESTADOS_PENDIENTES = [
   'asignado',
   'en_ruta',
 ] as const;
+
+/** Estados cerrados que alimentan la tasa de fallidos histórica. */
+const ESTADOS_CERRADOS = [
+  'entregado',
+  'entregado_manual',
+  'fallido',
+  'fallido_manual',
+] as const;
+
+/** Ventana de historia propia para el factor `historico`, en días. */
+const DIAS_HISTORICO = 30;
 
 const HORIZONTES: readonly HorizonteRiesgo[] = ['hoy', 'manana', '72h'];
 
@@ -167,7 +189,7 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
 
       if (errMapeo) throw new Error(`Error al leer zona_comunas: ${errMapeo.message}`);
 
-      // --- Carga pendiente ---------------------------------------------------
+      // --- Carga pendiente y su valor ---------------------------------------
       // `operacion.pedidos` NO tiene `zona_id`: la agregación comuna→zona la
       // hace la aplicación, con el MISMO helper de normalización que se usó al
       // escribir `zona_comunas` (que guarda la forma sin acentos y minúscula).
@@ -175,13 +197,25 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
       const { data: pedidos, error: errPedidos } = await supabase
         .schema('operacion')
         .from('pedidos')
-        .select('destinatario_comuna, fecha_compromiso, estado')
+        .select('destinatario_comuna, fecha_compromiso, tarifa_aplicable_id')
         .eq('tenant_id', tenantId)
         .in('estado', ESTADOS_PENDIENTES)
         .gte('fecha_compromiso', fechaBase)
         .lte('fecha_compromiso', hasta);
 
       if (errPedidos) throw new Error(`Error al leer pedidos: ${errPedidos.message}`);
+
+      // Tarifas del courier, para valorizar lo pendiente. NO se usan
+      // `dinero.lineas_cobro`: esas nacen con la ENTREGA, así que para los
+      // pedidos que aún no se entregan darían siempre cero — y el dinero en
+      // riesgo es justamente el de lo no entregado.
+      const { data: tarifas, error: errTarifas } = await supabase
+        .schema('identidad')
+        .from('tarifas')
+        .select('id, monto_clp')
+        .eq('tenant_id', tenantId);
+
+      if (errTarifas) throw new Error(`Error al leer tarifas: ${errTarifas.message}`);
 
       // --- Capacidad ---------------------------------------------------------
       const { data: conductores, error: errCond } = await supabase
@@ -194,14 +228,123 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
 
       if (errCond) throw new Error(`Error al leer conductores: ${errCond.message}`);
 
+      const { data: asignaciones, error: errAsig } = await supabase
+        .schema('identidad')
+        .from('conductor_zonas')
+        .select('conductor_id, zona_id')
+        .eq('tenant_id', tenantId);
+
+      if (errAsig) throw new Error(`Error al leer conductor_zonas: ${errAsig.message}`);
+
+      // --- Ventanas de corte -------------------------------------------------
+      const { data: ventanas, error: errVentanas } = await supabase
+        .schema('identidad')
+        .from('ventanas_corte')
+        .select('zona_id, hora_corte, activa')
+        .eq('tenant_id', tenantId)
+        .eq('activa', true);
+
+      if (errVentanas) throw new Error(`Error al leer ventanas_corte: ${errVentanas.message}`);
+
+      // --- Contexto externo (tablas GLOBALES del carve-out) ------------------
+      // Se leen con service_role: son deny-all para sesiones de usuario. El
+      // filtro por comuna acota a las que el courier realmente opera, y el de
+      // instante a la ventana de los tres horizontes. `limitesDelDiaSantiago`
+      // y NO un literal UTC: Santiago es −04:00 en invierno y −03:00 en verano.
+      const comunasDelTenant = [...new Set((mapeo ?? []).map((m) => m.comuna as string))];
+      const desdeInstante = limitesDelDiaSantiago(fechaBase).desde.toISOString();
+      const hastaInstante = limitesDelDiaSantiago(hasta).hasta.toISOString();
+
+      const [clima, aire, eventos] = await Promise.all([
+        supabase
+          .schema('contexto')
+          .from('clima_horario')
+          .select('comuna, hora, precipitacion_mm, viento_kmh')
+          .in('comuna', comunasDelTenant)
+          .gte('hora', desdeInstante)
+          .lte('hora', hastaInstante),
+        supabase
+          .schema('contexto')
+          .from('aire_horario')
+          .select('comuna, hora, nivel_estimado')
+          .in('comuna', comunasDelTenant)
+          .gte('hora', desdeInstante)
+          .lte('hora', hastaInstante),
+        supabase
+          .schema('contexto')
+          .from('eventos_ciudad')
+          .select('nombre, comuna, ventana_inicio, ventana_fin, asistencia_estimada')
+          .in('comuna', comunasDelTenant)
+          .lte('ventana_inicio', hastaInstante)
+          .or(`ventana_fin.is.null,ventana_fin.gte.${desdeInstante}`),
+      ]);
+
+      if (clima.error) throw new Error(`Error al leer clima_horario: ${clima.error.message}`);
+      if (aire.error) throw new Error(`Error al leer aire_horario: ${aire.error.message}`);
+      if (eventos.error) throw new Error(`Error al leer eventos_ciudad: ${eventos.error.message}`);
+
+      // --- Restricción vehicular vigente ------------------------------------
+      const { data: restricciones, error: errRestric } = await supabase
+        .schema('contexto')
+        .from('restriccion_vehicular')
+        .select('fecha, tipo')
+        .gte('fecha', fechaBase)
+        .lte('fecha', hasta);
+
+      if (errRestric) {
+        throw new Error(`Error al leer restriccion_vehicular: ${errRestric.message}`);
+      }
+
+      // --- Histórico propio --------------------------------------------------
+      // El factor que ninguna API entrega: cuánto le cuesta a ESTE courier
+      // repartir en ESA zona. Ventana móvil de 30 días sobre pedidos cerrados.
+      const { data: cerrados, error: errCerrados } = await supabase
+        .schema('operacion')
+        .from('pedidos')
+        .select('destinatario_comuna, estado')
+        .eq('tenant_id', tenantId)
+        .in('estado', ESTADOS_CERRADOS)
+        .gte('fecha_compromiso', sumarDiasCalendario(fechaBase, -DIAS_HISTORICO))
+        .lt('fecha_compromiso', fechaBase);
+
+      if (errCerrados) throw new Error(`Error al leer histórico: ${errCerrados.message}`);
+
       return {
         zonas: zonas as { id: string; nombre: string }[],
         mapeo: (mapeo ?? []) as { zona_id: string; comuna: string }[],
         pedidos: (pedidos ?? []) as {
           destinatario_comuna: string;
           fecha_compromiso: string | null;
+          tarifa_aplicable_id: string | null;
         }[],
+        tarifas: (tarifas ?? []) as { id: string; monto_clp: number }[],
         conductores: (conductores ?? []) as { id: string; capacidad_paradas: number }[],
+        asignaciones: (asignaciones ?? []) as { conductor_id: string; zona_id: string }[],
+        ventanas: (ventanas ?? []) as {
+          zona_id: string | null;
+          hora_corte: string;
+          activa: boolean;
+        }[],
+        clima: (clima.data ?? []) as {
+          comuna: string;
+          hora: string;
+          precipitacion_mm: number | null;
+          viento_kmh: number | null;
+        }[],
+        aire: (aire.data ?? []) as {
+          comuna: string;
+          hora: string;
+          nivel_estimado: FilaAire['nivelEstimado'];
+        }[],
+        eventos: (eventos.data ?? []) as {
+          nombre: string;
+          comuna: string;
+          ventana_inicio: string;
+          ventana_fin: string | null;
+          asistencia_estimada: number | null;
+        }[],
+        restricciones: (restricciones ?? []) as { fecha: string; tipo: string }[],
+        cerrados: (cerrados ?? []) as { destinatario_comuna: string; estado: string }[],
       };
     });
 
@@ -215,22 +358,69 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
     for (const fila of insumos.mapeo) {
       comunaAZona.set(normalizarComuna(fila.comuna), fila.zona_id);
     }
+    /** Comunas de cada zona, para colapsar el contexto externo por zona. */
+    const comunasDeZona = new Map<string, string[]>();
+    for (const fila of insumos.mapeo) {
+      const lista = comunasDeZona.get(fila.zona_id);
+      if (lista) lista.push(fila.comuna);
+      else comunasDeZona.set(fila.zona_id, [fila.comuna]);
+    }
 
-    /**
-     * Capacidad por zona. Sin `conductor_zonas` cargado aquí, se reparte la
-     * capacidad total del pool entre las zonas activas. Es una aproximación
-     * declarada, no un dato fino: el reparto real por zona preferente entra
-     * junto con el composer, que ya necesita esa consulta para el nivel 2.
-     */
-    const capacidadTotal = insumos.conductores.reduce(
-      (acc, c) => acc + (c.capacidad_paradas ?? 0),
-      0,
+    const zonaIds = insumos.zonas.map((z) => z.id);
+
+    // Capacidad REAL por zona, usando las zonas preferentes del conductor. Antes
+    // se dividía el pool completo a partes iguales, con lo que una zona sin un
+    // solo conductor propio mostraba holgura como si los tuviera.
+    const capacidad = capacidadPorZona(
+      insumos.conductores.map((c) => ({ id: c.id, capacidadParadas: c.capacidad_paradas ?? 0 })),
+      insumos.asignaciones.map((a) => ({ conductorId: a.conductor_id, zonaId: a.zona_id })),
+      zonaIds,
     );
-    const capacidadPorZona = Math.max(
-      1,
-      Math.floor(capacidadTotal / Math.max(1, insumos.zonas.length)),
+
+    const ventanas = insumos.ventanas.map((v) => ({
+      zonaId: v.zona_id,
+      horaCorte: v.hora_corte,
+      activa: v.activa,
+    }));
+
+    const tarifas = new Map(insumos.tarifas.map((t) => [t.id, t.monto_clp]));
+
+    // Índices del contexto externo. Se arman UNA vez y los comparten las tres
+    // franjas × N zonas × tres horizontes.
+    const indiceClima = indexarPorComunaFechaFranja<FilaClima>(
+      insumos.clima.map((c) => ({
+        comuna: c.comuna,
+        hora: c.hora,
+        precipitacionMm: c.precipitacion_mm,
+        vientoKmh: c.viento_kmh,
+      })),
     );
+    const indiceAire = indexarPorComunaFechaFranja<FilaAire>(
+      insumos.aire.map((a) => ({
+        comuna: a.comuna,
+        hora: a.hora,
+        nivelEstimado: a.nivel_estimado,
+      })),
+    );
+    const eventos: FilaEvento[] = insumos.eventos.map((e) => ({
+      nombre: e.nombre,
+      comuna: e.comuna,
+      ventanaInicio: e.ventana_inicio,
+      ventanaFin: e.ventana_fin,
+      asistenciaEstimada: e.asistencia_estimada,
+    }));
+    const fechasConRestriccion = new Set(insumos.restricciones.map((r) => r.fecha));
+
+    const tasasFallidos = tasaFallidosPorZona(
+      insumos.cerrados.map((p) => ({
+        destinatarioComuna: p.destinatario_comuna,
+        estado: p.estado,
+      })),
+      comunaAZona,
+    );
+
     const ahora = ahoraEnSantiago();
+    const ahoraMinutos = horaAMinutos(ahora.hora);
     const filas: Record<string, unknown>[] = [];
 
     for (const horizonte of horizontes as HorizonteRiesgo[]) {
@@ -241,45 +431,47 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
       // proyección. Consecuencia aceptada y correcta: a 72 h se verá casi
       // vacío. La proyección de volumen vive en el horizonte 'olas', donde va
       // etiquetada como tal.
-      const pendientesPorZona = new Map<string, number>();
-      for (const p of insumos.pedidos) {
-        if (p.fecha_compromiso !== fecha) continue;
-        const zonaId = comunaAZona.get(normalizarComuna(p.destinatario_comuna));
-        if (!zonaId) continue;
-        pendientesPorZona.set(zonaId, (pendientesPorZona.get(zonaId) ?? 0) + 1);
-      }
+      const carga = cargaPorZona(
+        insumos.pedidos.map((p) => ({
+          destinatarioComuna: p.destinatario_comuna,
+          fechaCompromiso: p.fecha_compromiso,
+          tarifaAplicableId: p.tarifa_aplicable_id,
+        })),
+        comunaAZona,
+        tarifas,
+        fecha,
+      );
+      const hayRestriccion = fechasConRestriccion.has(fecha);
 
       for (const zona of insumos.zonas) {
-        const pendientes = pendientesPorZona.get(zona.id) ?? 0;
+        const { pendientes, montoClp } = carga.get(zona.id) ?? { pendientes: 0, montoClp: 0 };
+        const comunas = comunasDeZona.get(zona.id) ?? [];
+        const minutosCorte = minutosHastaCorte(ventanas, zona.id, fecha, {
+          fecha: ahora.fecha,
+          horaMinutos: ahoraMinutos,
+        });
         const porFranja: Partial<Record<Franja, ResultadoRiesgoZona>> = {};
 
         for (const franja of FRANJAS) {
-          const rango = RANGO_FRANJA[franja];
           porFranja[franja] = calcularRiesgoZona({
             presionOperativa: {
               pedidosPendientes: pendientes,
-              capacidadEstimada: capacidadPorZona,
-              minutosHastaCorte: null,
+              capacidadEstimada: capacidad.get(zona.id) ?? 0,
+              minutosHastaCorte: minutosCorte,
             },
-            // Clima y aire entran con valores neutros hasta que el composer
-            // cruce `contexto.clima_horario` / `aire_horario` por comuna de la
-            // zona. Se deja explícito en vez de inventar un valor: un factor
-            // en 0 con su explicación es honesto; uno estimado a ojo, no.
-            clima: {
-              precipitacionMaximaMmHora: 0,
-              vientoMaximoKmh: 0,
-              ventanaInicioLocal: rango.desde,
-              ventanaFinLocal: rango.hasta,
+            clima: climaDeZonaFranja(indiceClima, comunas, fecha, franja),
+            aire: {
+              nivelPeorEnVentana: aireDeZonaFranja(indiceAire, comunas, fecha, franja),
+              restriccionVigenteHoy: hayRestriccion,
             },
-            aire: { nivelPeorEnVentana: 'bueno', restriccionVigenteHoy: false },
-            eventos: { eventos: [] },
-            historico: { tasaFallidosPct: null },
+            eventos: eventosDeZonaFranja(eventos, comunas, fecha, franja),
+            historico: { tasaFallidosPct: tasasFallidos.get(zona.id) ?? null },
           });
         }
 
         const colapsado = colapsarRiesgoPorFranjas(porFranja, {
           horizonte,
-          ahora: { fecha: ahora.fecha, horaMinutos: horaAMinutos(ahora.hora) },
+          ahora: { fecha: ahora.fecha, horaMinutos: ahoraMinutos },
         });
 
         // Se persiste una fila por franja con el desglose de esa franja, y la
@@ -303,7 +495,7 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
               horizonte,
             },
             pedidos_pendientes: pendientes,
-            monto_comprometido_clp: 0,
+            monto_comprometido_clp: montoClp,
             calculado_en: new Date(),
           });
         }

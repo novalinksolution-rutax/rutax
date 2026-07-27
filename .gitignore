@@ -45,3 +45,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cartografía generada de la Torre de control: el basemap PMTiles de la RM
+# (~19 MB) y el CLI que lo recorta. Se regenera con
+# `node scripts/mapa/construir-basemap.mjs` y se publica al bucket
+# `contexto-mapas`. La geometría comunal DPA 2023, en cambio, SÍ se versiona
+# (public/mapas/comunas-rm.topojson.json — 113 KB).
+/.artefactos

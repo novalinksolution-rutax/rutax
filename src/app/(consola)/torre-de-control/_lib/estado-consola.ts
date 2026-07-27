@@ -5,11 +5,17 @@
  * `useReducer`". Se mantiene el nombre y la forma de cada campo exactamente
  * como en la especificación para que sea trazable contra el diseño aprobado.
  *
- * Nota de alcance (paso B3): `zoom` y `capas` viven aquí porque son parte del
- * contrato de estado documentado, pero hoy no tienen un control visual propio
- * — son del mapa de R3, que este paso no construye (ver README del repo,
- * "NO construyas el mapa de R3"). `alternarCapa` ya implementa la regla del
- * tope de 2 para que, cuando el mapa exista, el reductor no cambie.
+ * Dos campos se apartan del handoff, y en los dos casos porque la realidad que
+ * describían dejó de existir al construir R3:
+ *
+ * - `marcaProv` era `{x, y}`: coordenadas del `viewBox` del SVG que el
+ *   prototipo usaba como mapa. Con MapLibre no hay `viewBox` — hay terreno —,
+ *   así que la marca guarda `{long, lat}`. Una marca en píxeles se despegaría
+ *   del sitio que anota en cuanto el usuario hiciera zoom, que es exactamente
+ *   lo que una anotación operativa no puede hacer.
+ * - `lista` arrancaba en `true` porque el mapa no existía y era la única vista
+ *   disponible. Ahora arranca en `false`: la vista por defecto de R3 es el
+ *   mapa, y `L` conmuta. La lista sigue existiendo siempre (regla 7).
  */
 
 import type { CapaMapa, Horizonte, NivelZoom } from "../_fixture/estado-torre";
@@ -24,8 +30,7 @@ export interface EstadoConsola {
   /** máx. `MAX_CAPAS_ACTIVAS`. */
   capas: CapaMapa[];
   zoom: NivelZoom;
-  /** equivalente sin mapa (regla de producto 7). Sin mapa construido todavía,
-   * arranca en `true`: es la única vista disponible hasta que R3 exista. */
+  /** equivalente sin mapa (regla de producto 7); `L` lo conmuta con el mapa. */
   lista: boolean;
   paleta: boolean;
   filtro: string;
@@ -34,7 +39,8 @@ export interface EstadoConsola {
   /** ids de excepción ocultas (optimista; el POST de descarte va detrás). */
   descartadas: string[];
   marcando: boolean;
-  marcaProv: { x: number; y: number } | null;
+  /** Coordenadas geográficas, no de pantalla — ver cabecera. */
+  marcaProv: { long: number; lat: number } | null;
   /** desplegables del bloque de prensa: "ver fuentes" de la señal principal. */
   senal: boolean;
   /** desplegable de "señales sin impacto" (secundarias). */
@@ -47,7 +53,7 @@ export const ESTADO_CONSOLA_INICIAL: EstadoConsola = {
   factor: null,
   capas: ["riesgo", "clima"],
   zoom: "zonas",
-  lista: true,
+  lista: false,
   paleta: false,
   filtro: "",
   confirmando: null,
@@ -65,6 +71,7 @@ export type AccionConsola =
   | { tipo: "abrir-factor"; factorId: string }
   | { tipo: "cerrar-desglose" }
   | { tipo: "alternar-capa"; capa: CapaMapa }
+  | { tipo: "cambiar-zoom"; zoom: NivelZoom }
   | { tipo: "alternar-lista" }
   | { tipo: "abrir-paleta" }
   | { tipo: "cerrar-paleta" }
@@ -75,7 +82,7 @@ export type AccionConsola =
   | { tipo: "descartar-excepcion"; excepcionId: string }
   | { tipo: "activar-modo-marca" }
   | { tipo: "cancelar-modo-marca" }
-  | { tipo: "colocar-marca-provisional"; x: number; y: number }
+  | { tipo: "colocar-marca-provisional"; long: number; lat: number }
   | { tipo: "alternar-fuentes-senal" }
   | { tipo: "alternar-otras-senales" }
   | { tipo: "escape" };
@@ -113,6 +120,9 @@ export function reducirConsola(estado: EstadoConsola, accion: AccionConsola): Es
       return { ...estado, capas: [...estado.capas, accion.capa] };
     }
 
+    case "cambiar-zoom":
+      return { ...estado, zoom: accion.zoom };
+
     case "alternar-lista":
       return { ...estado, lista: !estado.lista };
 
@@ -144,7 +154,7 @@ export function reducirConsola(estado: EstadoConsola, accion: AccionConsola): Es
       return { ...estado, marcando: false, marcaProv: null };
 
     case "colocar-marca-provisional":
-      return { ...estado, marcaProv: { x: accion.x, y: accion.y } };
+      return { ...estado, marcaProv: { long: accion.long, lat: accion.lat } };
 
     case "alternar-fuentes-senal":
       return { ...estado, senal: !estado.senal };

@@ -53,11 +53,14 @@ export function EsqueletoConsola() {
   return (
     <div
       aria-label="Torre de control — cargando"
-      className="flex flex-col gap-[var(--tc-regla-may)] bg-tc-chasis"
+      /* Misma retícula de viewport fijo que la consola cargada: el esqueleto
+         debe ocupar el mismo sitio que va a ocupar el contenido, o al llegar
+         el dato la pantalla salta. */
+      className="flex h-full flex-col gap-[var(--tc-regla-may)] overflow-hidden bg-tc-chasis"
     >
       <EsqueletoRegion region="R1 · barra superior" alto="var(--tc-h-barra)" />
       <EsqueletoRegion region="R2 · ola entrante" alto="var(--tc-h-ola)" />
-      <div className="flex h-[70dvh] min-h-[480px] gap-[var(--tc-regla-may)]">
+      <div className="flex min-h-0 flex-1 gap-[var(--tc-regla-may)]">
         <EsqueletoRegion region="R3 · mapa" className="flex-1" />
         <EsqueletoRegion region="R4 · riel" className="w-[var(--tc-w-riel)] shrink-0" />
       </div>

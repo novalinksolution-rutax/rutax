@@ -16,7 +16,24 @@ port = 54321
 # revocados a authenticated/anon → esos roles no leen NADA; solo service_role
 # (que bypasea RLS) accede. `infra` NO se expone a propósito: se accede solo por
 # RPC SECURITY DEFINER en `public` (rate_limit, telemetría de jobs).
-schemas = ["public", "graphql_public", "operacion", "identidad", "dinero", "integraciones", "plataforma"]
+#
+# NOTA: `contexto` (Torre de control) se expone por la MISMA razón y con las
+# MISMAS garantías que `plataforma`. Sin esto, `supabase.schema('contexto')`
+# responde «Invalid schema: contexto» y los cinco jobs del módulo fallan enteros
+# —clima, aire, calendario, salud de fuentes y recálculo de riesgo—, porque
+# PostgREST solo atiende el header `Accept-Profile` de los esquemas listados
+# aquí. Es SEGURO: sus 8 tablas globales son deny-all (RLS enable+force SIN
+# políticas, grants revocados a anon/authenticated, sin vista espejo en
+# `public`) y las 3 por tenant filtran por `tenant_id`; exponer el esquema no
+# concede ni una fila —lo verifican 28 pruebas pgTAP, incluida la que comprueba
+# que un usuario INTERNO recibe 42501—. Solo service_role, que bypasea RLS,
+# alcanza el contenido.
+#
+# NO se agrega a `extra_search_path` a propósito, a diferencia de `plataforma`:
+# ahí no hace falta (el acceso siempre es calificado con `.schema('contexto')`)
+# y el esquema tiene nombres genéricos —`calendario`, `senales`— que en el
+# search_path de CADA request podrían sombrear otra tabla por accidente.
+schemas = ["public", "graphql_public", "operacion", "identidad", "dinero", "integraciones", "plataforma", "contexto"]
 # Extra schemas to add to the search_path of every request.
 extra_search_path = ["public", "operacion", "identidad", "dinero", "integraciones", "plataforma", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size

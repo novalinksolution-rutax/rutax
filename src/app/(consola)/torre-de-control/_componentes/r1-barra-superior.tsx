@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { FrescuraFuente, Horizonte } from "../_fixture/estado-torre";
 import { minutosPrimeTorre } from "../_lib/formato";
 import { FOCO_ANILLO } from "../_lib/estilos";
@@ -9,6 +10,8 @@ interface Props {
   courierNombre: string;
   horizonte: Horizonte;
   frescura: FrescuraFuente[];
+  /** Destino del control de salida: la consola vive fuera del shell de `(tenant)`. */
+  hrefSalida: string;
   onCambiarHorizonte: (h: Horizonte) => void;
   onAbrirPaleta: () => void;
 }
@@ -22,6 +25,7 @@ export function R1BarraSuperior({
   courierNombre,
   horizonte,
   frescura,
+  hrefSalida,
   onCambiarHorizonte,
   onAbrirPaleta,
 }: Props) {
@@ -91,6 +95,20 @@ export function R1BarraSuperior({
         >
           Comandos <kbd className="text-[9px] font-semibold">⌘K</kbd>
         </button>
+      </div>
+
+      {/* Salida.
+          La consola vive fuera del shell de `(tenant)`: no hay sidebar que la
+          devuelva al resto del producto, así que la vuelta la ofrece ella misma.
+          Va al final de la barra y en peso normal — es una salida, no una acción
+          del tablero, y no debe competir con el horizonte ni con los comandos. */}
+      <div className="flex items-center border-l border-tc-ink-300 px-4">
+        <Link
+          href={hrefSalida}
+          className={`flex items-center gap-1.5 px-1 py-1.5 text-[11px] text-tc-ink-700 transition-colors hover:text-tc-tinta ${FOCO_ANILLO}`}
+        >
+          <span aria-hidden="true">←</span> Salir de la consola
+        </Link>
       </div>
     </header>
   );

@@ -8,16 +8,14 @@ interface Props {
   zonaSeleccionada: string | null;
   pedidosSinGeocodificar: number;
   onSeleccionarZona: (zonaId: string) => void;
-  /** `false` = el usuario pidió el mapa (tecla L) — R3 aún no existe, ver nota. */
-  mostrarLista: boolean;
 }
 
 /**
- * Equivalente sin mapa de R3 (regla de producto 7 + README §5). Ocupa el
- * espacio de R3 en este paso, porque el mapa (MapLibre + PMTiles + DPA 2023)
- * es una tarea de infraestructura aparte que este paso explícitamente no
- * construye. No es un placeholder: es accesibilidad, es la vista móvil, y
- * debe existir siempre — así que sigue viva incluso cuando el mapa llegue.
+ * Equivalente sin mapa de R3 (regla de producto 7 + README §5).
+ *
+ * NO es el respaldo del mapa ni desaparece ahora que el mapa existe: es la ruta
+ * accesible al mismo dato —recorrible con tabulador, `Enter` selecciona— y es
+ * la vista móvil. La tecla `L` conmuta entre las dos dentro de R3.
  *
  * Zonas ordenadas por riesgo descendente, como pide la regla 7.
  */
@@ -26,30 +24,11 @@ export function ListaZonas({
   zonaSeleccionada,
   pedidosSinGeocodificar,
   onSeleccionarZona,
-  mostrarLista,
 }: Props) {
   const ordenadas = [...zonas].sort((a, b) => b.riesgo - a.riesgo);
 
-  if (!mostrarLista) {
-    return (
-      <div
-        id="r3-mapa"
-        className="tc-cargando flex flex-1 flex-col items-center justify-center gap-2 border border-dashed border-tc-ink-400 p-8 text-center"
-      >
-        <p className="text-[11px] font-extrabold tracking-[0.12em] text-tc-ink-700 uppercase">
-          R3 · mapa — pendiente
-        </p>
-        <p className="max-w-sm text-[12.5px] text-tc-ink-700">
-          El mapa requiere MapLibre, un basemap PMTiles y la geometría comunal DPA 2023 — es
-          trabajo de infraestructura aparte. Mientras tanto, esta pantalla usa siempre la vista de
-          lista.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div id="r3-mapa" className="flex flex-1 flex-col gap-3 overflow-hidden bg-tc-papel p-3">
+    <div className="flex flex-1 flex-col gap-3 overflow-hidden bg-tc-papel p-3">
       <div className="flex items-center justify-between">
         <p className="text-[9px] font-extrabold tracking-[0.14em] text-tc-ink-600 uppercase">
           Zonas por riesgo

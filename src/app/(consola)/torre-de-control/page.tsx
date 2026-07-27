@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { puedeVerTorreControl } from "@/modules/identidad/capacidades";
+import {
+  puedeVerReportesEjecutivos,
+  puedeVerTorreControl,
+} from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
 import { ESTADO_TORRE, type EstadoTorre } from "./_fixture/estado-torre";
 import { VARIANTES, esEstadoPantalla } from "./_fixture/variantes";
@@ -31,15 +34,14 @@ export const metadata: Metadata = {
  * (adelantar un corte, reasignar conductores) se ejercen con las capacidades
  * operativas que el usuario ya tenga.
  *
- * Paso B3 (este commit): regiones R1, R2, R4/R6, R5 y el equivalente en lista
- * de zonas construidas contra `_fixture/estado-torre.ts` (copia tipada del
- * contrato congelado `docs/torre-de-control/datos-dummy.ts`). R3 (el mapa)
- * queda fuera a propósito — requiere MapLibre + PMTiles + DPA 2023, tarea de
- * infraestructura aparte — y su espacio lo ocupa la lista de zonas, que no es
- * un placeholder: es la regla de producto 7 (equivalente sin mapa) y debe
- * seguir existiendo cuando el mapa llegue. Cuando exista el endpoint real,
- * solo cambia la fuente de `estado` — ningún componente de región debería
- * necesitar tocarse.
+ * Las seis regiones se construyen contra `_fixture/estado-torre.ts` (copia
+ * tipada del contrato congelado `docs/torre-de-control/datos-dummy.ts`).
+ * Cuando exista el endpoint real solo cambia la fuente de `estado` — ningún
+ * componente de región debería necesitar tocarse.
+ *
+ * La ruta vive en el grupo `(consola)` y NO en `(tenant)`: es una consola de
+ * viewport fijo, no una pantalla de backoffice. Ver `(consola)/layout.tsx`
+ * para el porqué y para los guards de acceso, que son los mismos.
  *
  * Paso B4: previsualización de los seis `EstadoPantalla` vía `?estado=…`,
  * ACTIVA SOLO EN DESARROLLO (ver `resolverEstado`).
@@ -74,9 +76,16 @@ export default async function PaginaTorreDeControl({
     redirect("/login");
   }
 
+  // Destino del control de salida de R1. La consola vive fuera del `AppShell`,
+  // así que no hay sidebar que devuelva al usuario al resto del producto: se lo
+  // devuelve ella. Se elige el mismo primer destino que el sidebar le habría
+  // dado según su rol — el dueño entra por el dashboard, el coordinador (que no
+  // tiene reportes) por la pantalla de pedidos.
+  const hrefSalida = puedeVerReportesEjecutivos(sesion.usuario) ? "/dashboard" : "/operaciones";
+
   if (!puedeVerTorreControl(sesion.usuario)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-3 border border-dashed border-tc-ink-300 bg-tc-papel px-6 py-14 text-center">
+      <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-3 bg-tc-papel px-6 py-14 text-center">
         <ShieldAlert className="size-8 text-tc-ink-600" aria-hidden="true" />
         <div className="space-y-1">
           <p className="font-medium text-tc-tinta">
@@ -101,5 +110,5 @@ export default async function PaginaTorreDeControl({
   // `<Suspense>` de cada región.
   if (estado.estado === "cargando") return <EsqueletoConsola />;
 
-  return <TorreConsola estado={estado} />;
+  return <TorreConsola estado={estado} hrefSalida={hrefSalida} />;
 }

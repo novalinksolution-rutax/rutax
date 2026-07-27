@@ -27,9 +27,15 @@ Guía paso a paso para dejar **un courier real** operando en producción, manten
 ### 1.2 ⚠️ Exponer los esquemas (crítico — si no, la app falla con PGRST106)
 En **Settings → API → Exposed schemas**, agrega TODOS los esquemas del proyecto además de `public`:
 ```
-public, graphql_public, operacion, identidad, dinero, integraciones, plataforma
+public, graphql_public, operacion, identidad, dinero, integraciones, plataforma, contexto
 ```
-> Esto es lo que en local vive en `supabase/config.toml` (`[api] schemas`). En el hosted se configura en el dashboard. **Sin esto, el backstage `/admin` y todo lo de `plataforma` fallan** (fue el bug del entorno local: "Invalid schema: plataforma").
+> Esto es lo que en local vive en `supabase/config.toml` (`[api] schemas`). En el hosted se configura en el dashboard. **Sin esto, el backstage `/admin` y todo lo de `plataforma` fallan** (fue el bug del entorno local: "Invalid schema: plataforma"), y **los cinco jobs de la Torre de control fallan enteros** con "Invalid schema: contexto" — clima, aire, calendario, salud de fuentes y recálculo de riesgo.
+>
+> Exponer un esquema NO concede acceso: `plataforma` y `contexto` tienen RLS
+> `enable`+`force` sin políticas y los grants revocados a `anon`/`authenticated`,
+> así que solo `service_role` —que bypasea RLS— alcanza su contenido. Lo que el
+> header `Accept-Profile` necesita es que el esquema esté en la lista; el
+> aislamiento lo siguen imponiendo los grants y las políticas.
 
 ### 1.3 Habilitar MFA (TOTP)
 En **Authentication → Providers / MFA**, habilita **TOTP** (enroll + verify). El login del backstage `/admin` lo exige. (En Supabase hosted, MFA puede requerir plan Pro.)

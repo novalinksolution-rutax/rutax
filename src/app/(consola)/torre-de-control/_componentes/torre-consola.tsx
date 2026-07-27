@@ -9,7 +9,7 @@ import { DefsPatronesRiesgo } from "./trama-riesgo";
 import { R1BarraSuperior } from "./r1-barra-superior";
 import { BandaMensajeEstado } from "./banda-mensaje-estado";
 import { R2OlaEntrante } from "./r2-ola-entrante";
-import { ListaZonas } from "./lista-zonas";
+import { R3Mapa } from "./r3-mapa";
 import { Riel } from "./riel/riel";
 import { R5LineaDeTiempo } from "./r5-linea-tiempo";
 import { PaletaComandos } from "./paleta-comandos";
@@ -23,6 +23,8 @@ import { DesgloseZona } from "./riel/desglose-zona";
 
 interface Props {
   estado: EstadoTorre;
+  /** Destino del control de salida de R1 (la consola vive fuera del shell). */
+  hrefSalida: string;
 }
 
 /**
@@ -37,12 +39,16 @@ interface Props {
  * pero solo uno es visible (y por lo tanto solo uno entra al árbol de
  * accesibilidad, gracias a `display:none`).
  */
-export function TorreConsola({ estado }: Props) {
+export function TorreConsola({ estado, hrefSalida }: Props) {
   const [consola, dispatch] = useReducer(reducirConsola, ESTADO_CONSOLA_INICIAL);
 
   const seleccionarZona = useCallback((zonaId: string) => {
     dispatch({ tipo: "seleccionar-zona", zonaId });
-    document.getElementById("zonas-riesgo-escritorio")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Solo en móvil: ahí la página sí se desplaza y el desglose que se abre
+    // queda fuera de pantalla. En escritorio la consola es de viewport fijo y
+    // no hay nada que desplazar — llamar a `scrollIntoView` ahí solo podría
+    // mover contenedores con `overflow` por dentro, que es justo lo que el
+    // handoff prohíbe (nunca hacer saltar la posición del riel).
     document.getElementById("zonas-riesgo-movil")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
@@ -94,43 +100,58 @@ export function TorreConsola({ estado }: Props) {
     <div
       tabIndex={0}
       aria-label="Torre de control — consola de anticipación operativa"
-      className="flex flex-col outline-none"
+      className="flex h-full flex-col outline-none"
     >
       <DefsPatronesRiesgo />
 
       {/* ================= Escritorio ================= */}
       {/*
-        Nota de integración (paso B3): el handoff diseña esta consola como una
-        app de viewport fijo (1512×982, "el riel es el único con scroll de toda
-        la pantalla"). El resto del producto —incluida esta ruta, que vive
-        dentro de `(tenant)` y de `AppShell`— usa el modelo contrario: la
-        página entera hace scroll normal (`min-h-svh` en la raíz del shell, sin
-        contenedor de altura fija). No se fuerza aquí un viewport fijo peleando
-        con ese shell compartido: la fila lista/riel recibe una altura acotada
-        a la ventana (`h-[70dvh]`) para que el riel SÍ pueda scrollear
-        internamente como pide el diseño, pero si el contenido de una región
-        fija (R1/R2/R5) empujara más allá, la página se desplaza entera en vez
-        de romper el layout. Full-bleed real (sin sidebar ni padding del
-        shell) es una decisión de `ux-ui`/`arquitecto`, no de este paso.
+        Viewport fijo, como manda el handoff: la consola ocupa exactamente el
+        alto de la ventana y NADA de ella scrollea salvo el riel. Es posible
+        porque la ruta vive en el grupo `(consola)` y no dentro del `AppShell`
+        de `(tenant)` — ver `src/app/(consola)/layout.tsx`.
+
+        `min-h-0` en la fila del medio no es decorativo: sin él, un hijo flex
+        con contenido desbordante reclama su alto intrínseco (`min-height:auto`)
+        y empuja R5 fuera de la pantalla en vez de scrollear por dentro. Es el
+        detalle que hace que "solo el riel scrollea" sea verdad.
       */}
-      <div className="hidden flex-col gap-[var(--tc-regla-may)] bg-tc-chasis lg:flex">
+      <div className="hidden h-full flex-col gap-[var(--tc-regla-may)] overflow-hidden bg-tc-chasis lg:flex">
         <R1BarraSuperior
           courierNombre={estado.courier.nombre}
           horizonte={consola.horizonte}
           frescura={estado.frescura}
+          hrefSalida={hrefSalida}
           onCambiarHorizonte={(horizonte) => dispatch({ tipo: "cambiar-horizonte", horizonte })}
           onAbrirPaleta={() => dispatch({ tipo: "abrir-paleta" })}
         />
         <BandaMensajeEstado estado={estado.estado} mensajes={MENSAJES_ESTADO} />
         <R2OlaEntrante ola={estado.olaEntrante} />
-        <div className="flex h-[70dvh] min-h-[480px] gap-[var(--tc-regla-may)]">
+        <div className="flex min-h-0 flex-1 gap-[var(--tc-regla-may)]">
           <div id="zonas-riesgo-escritorio" className="flex flex-1 overflow-hidden">
-            <ListaZonas
+            <R3Mapa
+              estadoPantalla={estado.estado}
               zonas={estado.zonas}
               zonaSeleccionada={consola.zona}
+              capas={estado.capas}
+              capasActivas={consola.capas}
+              zoom={consola.zoom}
               pedidosSinGeocodificar={estado.pedidosSinGeocodificar}
-              onSeleccionarZona={seleccionarZona}
+              celdasClima={estado.celdasClima}
+              eventosCiudad={estado.eventosCiudad}
+              conductores={estado.conductores}
+              incidentesTransito={estado.incidentesTransito}
+              marcasOperativas={estado.marcasOperativas}
+              marcando={consola.marcando}
+              marcaProvisional={consola.marcaProv}
               mostrarLista={consola.lista}
+              onSeleccionarZona={seleccionarZona}
+              onAlternarCapa={(capa) => dispatch({ tipo: "alternar-capa", capa })}
+              onCambiarZoom={(zoom) => dispatch({ tipo: "cambiar-zoom", zoom })}
+              onAlternarLista={() => dispatch({ tipo: "alternar-lista" })}
+              onColocarMarca={(long, lat) =>
+                dispatch({ tipo: "colocar-marca-provisional", long, lat })
+              }
             />
           </div>
           <Riel
@@ -162,7 +183,10 @@ export function TorreConsola({ estado }: Props) {
       </div>
 
       {/* ================= Móvil ================= */}
-      <div className="flex flex-col lg:hidden">
+      {/* Aquí SÍ scrollea la página: no hay mapa que proteger (README §5) y el
+          orden es una lista de arriba abajo. El scroll vive en este contenedor
+          porque el layout de la ruta fija el alto de la ventana. */}
+      <div className="flex h-full flex-col overflow-y-auto lg:hidden">
         <CabeceraSticky
           ahoraIso={estado.ahora}
           frescura={estado.frescura}
@@ -252,8 +276,9 @@ export function TorreConsola({ estado }: Props) {
           role="status"
           className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 border-2 border-tc-tinta bg-tc-tinta px-4 py-2.5 text-[12px] font-semibold text-tc-papel shadow-tc-lg"
         >
-          Modo marca: el mapa todavía no está disponible en este paso, así que no hay dónde hacer clic
-          todavía. Esc cancela.
+          {consola.lista
+            ? "Modo marca: estás en la vista de lista. Pulsa L para volver al mapa y dejar la marca. Esc cancela."
+            : "Haz clic en el mapa para dejar una marca operativa. Esc cancela."}
         </div>
       ) : null}
     </div>
