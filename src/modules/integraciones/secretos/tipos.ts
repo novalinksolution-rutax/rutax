@@ -15,7 +15,13 @@ export type TipoSecreto =
   // firma `Fintoc-Signature`. Ambos son POR-TENANT y se cifran como los tokens
   // de ML. Espejo del enum SQL `identidad.tipo_secreto`.
   | "token_link_fintoc"
-  | "secreto_webhook_fintoc";
+  | "secreto_webhook_fintoc"
+  // Auto-cobro de la suscripción de plataforma (Rutax → courier), migración
+  // 20260710000001. `plataforma.suscripciones.mandato_ref` guarda la
+  // `referencia_externa_id` opaca de este secreto; el id/token del mandato
+  // Fintoc vive cifrado en secretos_cifrados, NUNCA en claro. Espejo del enum
+  // SQL `identidad.tipo_secreto`.
+  | "mandato_suscripcion_fintoc";
 
 /**
  * Referencia opaca devuelta tras cifrar: lo único que las tablas de negocio

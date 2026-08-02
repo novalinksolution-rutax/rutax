@@ -8,10 +8,22 @@
  * en estado financieramente relevante. Asignarlas al período/liquidación abiertos.
  * Actualizar los flags en `operacion.pedidos`.
  *
+ * Flujo `fallido → devuelto` (anulación pre-cierre):
+ * Cuando llega `estadoNuevo = 'devuelto'` y YA EXISTE una línea para ese pedido,
+ * el job anula la línea (soft-delete: `anulada = true`) SOLO si el período / la
+ * liquidación todavía están en estado mutable:
+ *   - cobro   : período `abierto`  → anular. cerrado/facturado → NO tocar; C6 detecta.
+ *   - liquidac: liquidación `borrador` → anular. emitida/pagada → NO tocar; C6 detecta.
+ * El `monto_final_clp` es GENERATED — no se puede setear. Para neutralizar el efecto
+ * en los totales todos los cálculos de período / liquidación filtran `anulada = false`.
+ *
  * Idempotencia:
- * - EventId = `dinero-lineas-${pedidoId}` — Inngest deduplica si el evento llega dos veces.
+ * - EventId = `dinero-lineas-${pedidoId}-${estadoNuevo}` — Inngest no deduplica
+ *   eventos de estados distintos del mismo pedido (fix del bug original donde el
+ *   EventId fijo hacía que el segundo evento financiero se deduplicase).
  * - INSERT ON CONFLICT (pedido_id) DO NOTHING — la BD absorbe el segundo intento.
  * - UPDATE con WHERE periodo_cobro_id IS NULL / liquidacion_id IS NULL — idempotente.
+ * - Anular dos veces = no-op (la línea ya tiene `anulada = true`).
  *
  * SEGURIDAD:
  * - Nunca se loguean tokens, certificados ni credenciales.
@@ -22,7 +34,8 @@
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
-import { evaluarElegibilidad } from '../motor';
+import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
+import type { TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
 import { obtenerOCrearPeriodoCobroAbierto, obtenerOCrearLiquidacionAbierta } from '../periodos';
 import type { EstadoPedido } from '@/modules/operacion/tipos';
 
@@ -55,6 +68,7 @@ export const jobGenerarLineas = inngest.createFunction(
       sellerId,
       driverIdAsignado,
       estadoNuevo,
+      estadoAnterior,
       fechaTransicion,
       tipoPedido,
       tarifaAplicableId,
@@ -71,32 +85,67 @@ export const jobGenerarLineas = inngest.createFunction(
     };
 
     // Paso 1: Evaluar elegibilidad.
-    const { elegibilidad, tarifa, incidencia, esGastoPropio } = await step.run(
+    // Además de los flags de elegibilidad, este paso trae TODO lo que alimenta
+    // el snapshot inmutable de la regla económica (hallazgo P0 de auditoría —
+    // ver `snapshot_regla` en dinero.lineas_cobro/lineas_liquidacion, migración
+    // 20260707000001): la tarifa completa (no solo los montos), el tipo de la
+    // incidencia y la comuna del destinatario como contexto geográfico.
+    const { elegibilidad, motivos, tarifa, incidencia, esGastoPropio, comunaDestinatario } = await step.run(
       'evaluar-elegibilidad',
       async () => {
         const supabase = crearClienteServiceRole();
 
-        // Leer tarifa (monto_clp para cobro, monto_conductor_clp para liquidación).
+        // Leer tarifa completa: montos (cobro/conductor) + todo lo que explica
+        // el valor pactado (tipo de entrega, modo de cálculo, zona, vigencia,
+        // mínimos y recargo de reprogramación) para el snapshot.
         let montoCobroBase = 0;
         let montoConductorBase = 0;
+        let tipoEntrega: string | null = null;
+        let modoCalculo: string | null = null;
+        let zona: string | null = null;
+        let zonaId: string | null = null;
+        let vigenteDesde: string | null = null;
+        let vigenteHasta: string | null = null;
+        let estadoTarifa: string | null = null;
+        let minimoRetiroClp: number | null = null;
+        let minimoFacturacionClp: number | null = null;
+        let recargoReprogramacionClp: number | null = null;
+
         if (tarifaAplicableId) {
           const { data: tarifaData } = await supabase
             .schema('identidad')
             .from('tarifas')
-            .select('monto_clp, monto_conductor_clp')
+            .select(
+              'monto_clp, monto_conductor_clp, tipo_entrega, modo_calculo, zona, zona_id, vigente_desde, vigente_hasta, estado, minimo_retiro_clp, minimo_facturacion_clp, recargo_reprogramacion_clp',
+            )
             .eq('id', tarifaAplicableId)
             .eq('tenant_id', tenantId)
             .maybeSingle();
 
           montoCobroBase = tarifaData ? Math.round(Number(tarifaData.monto_clp)) : 0;
           montoConductorBase = tarifaData ? Math.round(Number(tarifaData.monto_conductor_clp ?? 0)) : 0;
+          tipoEntrega = (tarifaData?.tipo_entrega as string | null) ?? null;
+          modoCalculo = (tarifaData?.modo_calculo as string | null) ?? null;
+          zona = (tarifaData?.zona as string | null) ?? null;
+          zonaId = (tarifaData?.zona_id as string | null) ?? null;
+          vigenteDesde = (tarifaData?.vigente_desde as string | null) ?? null;
+          vigenteHasta = (tarifaData?.vigente_hasta as string | null) ?? null;
+          estadoTarifa = (tarifaData?.estado as string | null) ?? null;
+          minimoRetiroClp =
+            tarifaData?.minimo_retiro_clp != null ? Number(tarifaData.minimo_retiro_clp) : null;
+          minimoFacturacionClp =
+            tarifaData?.minimo_facturacion_clp != null ? Number(tarifaData.minimo_facturacion_clp) : null;
+          recargoReprogramacionClp =
+            tarifaData?.recargo_reprogramacion_clp != null
+              ? Number(tarifaData.recargo_reprogramacion_clp)
+              : null;
         }
 
-        // Leer incidencia abierta del pedido (afecta_cobro / afecta_liquidacion).
+        // Leer incidencia abierta del pedido (afecta_cobro / afecta_liquidacion / tipo).
         const { data: incidenciaData } = await supabase
           .schema('operacion')
           .from('incidencias')
-          .select('id, afecta_cobro, afecta_liquidacion')
+          .select('id, tipo, afecta_cobro, afecta_liquidacion')
           .eq('pedido_id', pedidoId)
           .eq('tenant_id', tenantId)
           .order('creado_en', { ascending: false })
@@ -118,24 +167,267 @@ export const jobGenerarLineas = inngest.createFunction(
           tenantData?.seller_id_gasto_propio != null &&
           tenantData.seller_id_gasto_propio === sellerId;
 
-        const resultado = evaluarElegibilidad({
+        // Leer comuna del destinatario — contexto geográfico del pedido para el
+        // snapshot (NO es lo que determina el precio; eso lo determina la zona
+        // de la tarifa). No viene en el evento, así que se lee puntualmente.
+        const { data: pedidoData } = await supabase
+          .schema('operacion')
+          .from('pedidos')
+          .select('destinatario_comuna')
+          .eq('id', pedidoId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        const entradaMotor = {
           estadoPedido: estadoNuevo as EstadoPedido,
           afectaCobro: afectaCobro as boolean | null,
           afectaLiquidacion: afectaLiquidacion as boolean | null,
           esGastoPropio: gastoPropio,
           tieneDriverAsignado: driverIdAsignado !== null,
-        });
+        };
+
+        const resultado = evaluarElegibilidad(entradaMotor);
+        const motivosResultado = evaluarMotivoElegibilidad(entradaMotor);
 
         return {
           elegibilidad: resultado,
-          tarifa: { montoCobroBase, montoConductorBase },
-          incidencia: incidenciaData ? { id: incidenciaData.id as string } : null,
+          motivos: motivosResultado,
+          tarifa: {
+            montoCobroBase,
+            montoConductorBase,
+            tipoEntrega,
+            modoCalculo,
+            zona,
+            zonaId,
+            vigenteDesde,
+            vigenteHasta,
+            estado: estadoTarifa,
+            minimoRetiroClp,
+            minimoFacturacionClp,
+            recargoReprogramacionClp,
+          },
+          incidencia: incidenciaData
+            ? {
+                id: incidenciaData.id as string,
+                tipo: (incidenciaData.tipo as string | null) ?? null,
+                afectaCobro: afectaCobro as boolean | null,
+                afectaLiquidacion: afectaLiquidacion as boolean | null,
+              }
+            : null,
           esGastoPropio: gastoPropio,
+          comunaDestinatario: (pedidoData?.destinatario_comuna as string | null) ?? null,
         };
       },
     );
 
     const fechaEntrega = fechaLocalSantiago(fechaTransicion);
+
+    // Paso 1b: Anulación pre-cierre (flujo fallido → devuelto).
+    //
+    // Si el estado nuevo NO genera cobro/liquidación Y ya existe una línea para
+    // este pedido, hay que anularla — pero SOLO si el período / liquidación
+    // todavía están en estado mutable (abierto / borrador). Si ya están cerrados /
+    // facturados / emitidos / pagados, la compuerta humana manda: no tocar nada y
+    // dejar que C6 (conciliación) detecte la discrepancia.
+    //
+    // Bitácora ANTES del efecto: se registra con accion 'dinero.lineas_anuladas_por_devolucion'
+    // ANTES de hacer cualquier UPDATE (invariante CLAUDE.md).
+    const anulacionRealizada = await step.run('anular-lineas-si-devolucion', async () => {
+      // Solo aplica cuando el estado nuevo no genera cobro NI liquidación
+      // (devuelto, cancelado, y el caso defensivo de estado no reconocido).
+      if (elegibilidad.generaCobro || elegibilidad.generaLiquidacion) {
+        return { anuloCobro: false, anuloLiquidacion: false };
+      }
+
+      const supabase = crearClienteServiceRole();
+      let anuloCobro = false;
+      let anuloLiquidacion = false;
+
+      // --- Línea de cobro ---
+      const { data: lineaCobro } = await supabase
+        .schema('dinero')
+        .from('lineas_cobro')
+        .select('id, anulada, periodo_cobro_id')
+        .eq('pedido_id', pedidoId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (lineaCobro && !lineaCobro.anulada) {
+        // Verificar estado del período antes de anular.
+        let puedeAnularCobro = false;
+        let estadoPeriodo: string | null = null;
+
+        if (lineaCobro.periodo_cobro_id) {
+          const { data: periodo } = await supabase
+            .schema('dinero')
+            .from('periodos_cobro')
+            .select('estado')
+            .eq('id', lineaCobro.periodo_cobro_id as string)
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+          estadoPeriodo = periodo?.estado ?? null;
+          puedeAnularCobro = estadoPeriodo === 'abierto';
+        } else {
+          // Línea sin período asignado aún — se puede anular libremente.
+          puedeAnularCobro = true;
+        }
+
+        if (puedeAnularCobro) {
+          // Bitácora ANTES del UPDATE (invariante financiero CLAUDE.md).
+          await registrarEnBitacora(supabase, {
+            tenantId,
+            actorUsuarioId: null,
+            actorTipo: 'sistema',
+            accion: 'dinero.lineas_anuladas_por_devolucion',
+            entidadTipo: 'pedido',
+            entidadId: pedidoId,
+            detalle: {
+              tipo_linea: 'cobro',
+              linea_id: lineaCobro.id,
+              estado_pedido: estadoNuevo,
+              periodo_cobro_id: lineaCobro.periodo_cobro_id ?? null,
+              estado_periodo: estadoPeriodo,
+              motivo: 'devolucion',
+              job_run_id: runId,
+            },
+          });
+
+          await supabase
+            .schema('dinero')
+            .from('lineas_cobro')
+            .update({
+              anulada: true,
+              anulada_en: new Date().toISOString(),
+              motivo_anulacion: 'devolucion',
+              actualizado_en: new Date().toISOString(),
+            })
+            .eq('id', lineaCobro.id as string)
+            .eq('tenant_id', tenantId)
+            .eq('anulada', false); // idempotente: no re-anular si ya está anulada
+
+          anuloCobro = true;
+
+          // Resetear flag del pedido para reflejar que ya no tiene cobro activo.
+          await supabase
+            .schema('operacion')
+            .from('pedidos')
+            .update({
+              cobro_generado: false,
+              actualizado_en: new Date().toISOString(),
+            })
+            .eq('id', pedidoId)
+            .eq('tenant_id', tenantId);
+        } else {
+          // Período ya cerrado/facturado — no tocar. C6 detectará la discrepancia.
+          logger.info(
+            `Pedido ${pedidoId}: línea de cobro no anulada — período en estado '${estadoPeriodo}' ` +
+            `(solo se anulan en período 'abierto'). C6 (conciliación) detectará la discrepancia.`,
+          );
+        }
+      }
+
+      // --- Línea de liquidación ---
+      const { data: lineaLiq } = await supabase
+        .schema('dinero')
+        .from('lineas_liquidacion')
+        .select('id, anulada, liquidacion_id')
+        .eq('pedido_id', pedidoId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (lineaLiq && !lineaLiq.anulada) {
+        let puedeAnularLiq = false;
+        let estadoLiquidacion: string | null = null;
+
+        if (lineaLiq.liquidacion_id) {
+          const { data: liq } = await supabase
+            .schema('dinero')
+            .from('liquidaciones')
+            .select('estado')
+            .eq('id', lineaLiq.liquidacion_id as string)
+            .eq('tenant_id', tenantId)
+            .maybeSingle();
+          estadoLiquidacion = liq?.estado ?? null;
+          // Solo anular en borrador. 'emitida' y 'pagada' son inmutables.
+          puedeAnularLiq = estadoLiquidacion === 'borrador';
+        } else {
+          // Línea sin liquidación asignada aún — se puede anular libremente.
+          puedeAnularLiq = true;
+        }
+
+        if (puedeAnularLiq) {
+          // Bitácora ANTES del UPDATE.
+          await registrarEnBitacora(supabase, {
+            tenantId,
+            actorUsuarioId: null,
+            actorTipo: 'sistema',
+            accion: 'dinero.lineas_anuladas_por_devolucion',
+            entidadTipo: 'pedido',
+            entidadId: pedidoId,
+            detalle: {
+              tipo_linea: 'liquidacion',
+              linea_id: lineaLiq.id,
+              estado_pedido: estadoNuevo,
+              liquidacion_id: lineaLiq.liquidacion_id ?? null,
+              estado_liquidacion: estadoLiquidacion,
+              motivo: 'devolucion',
+              job_run_id: runId,
+            },
+          });
+
+          await supabase
+            .schema('dinero')
+            .from('lineas_liquidacion')
+            .update({
+              anulada: true,
+              anulada_en: new Date().toISOString(),
+              motivo_anulacion: 'devolucion',
+              actualizado_en: new Date().toISOString(),
+            })
+            .eq('id', lineaLiq.id as string)
+            .eq('tenant_id', tenantId)
+            .eq('anulada', false); // idempotente
+
+          anuloLiquidacion = true;
+
+          // Resetear flag del pedido.
+          await supabase
+            .schema('operacion')
+            .from('pedidos')
+            .update({
+              liquidacion_generada: false,
+              actualizado_en: new Date().toISOString(),
+            })
+            .eq('id', pedidoId)
+            .eq('tenant_id', tenantId);
+        } else {
+          logger.info(
+            `Pedido ${pedidoId}: línea de liquidación no anulada — liquidación en estado ` +
+            `'${estadoLiquidacion}' (solo se anulan en 'borrador'). C6 detectará la discrepancia.`,
+          );
+        }
+      }
+
+      return { anuloCobro, anuloLiquidacion };
+    });
+
+    // Si ya anulamos líneas y el estado no genera nada nuevo, terminamos aquí.
+    // No hace falta continuar con los pasos 2–6 (no hay líneas que insertar).
+    if (!elegibilidad.generaCobro && !elegibilidad.generaLiquidacion) {
+      logger.info(
+        `Pedido ${pedidoId}: estado=${estadoNuevo} — no genera líneas nuevas. ` +
+        `anuloCobro=${anulacionRealizada.anuloCobro}, anuloLiquidacion=${anulacionRealizada.anuloLiquidacion}.`,
+      );
+      return {
+        pedidoId,
+        generaCobro: false,
+        lineaCobroId: null,
+        generaLiquidacion: false,
+        lineaLiquidacionId: null,
+        anuloCobro: anulacionRealizada.anuloCobro,
+        anuloLiquidacion: anulacionRealizada.anuloLiquidacion,
+      };
+    }
 
     // Paso 2: Generar línea de cobro (idempotente con ON CONFLICT DO NOTHING).
     const lineaCobroId = await step.run('generar-linea-cobro', async () => {
@@ -148,6 +440,53 @@ export const jobGenerarLineas = inngest.createFunction(
       const montoBase = tarifa.montoCobroBase;
       const ajuste = elegibilidad.ajusteCobroCLP;
       const concepto = `Servicio de entrega ${tipoPedido} — pedido ${pedidoId}`;
+
+      // Snapshot inmutable de la regla económica (hallazgo P0 de auditoría):
+      // se arma UNA vez y se escribe en el MISMO INSERT/UPDATE que determina
+      // monto_base_clp/ajuste_incidencia_clp — atomicidad, no una escritura
+      // separada. `genera` es siempre true aquí: este bloque solo se alcanza
+      // cuando elegibilidad.generaCobro === true.
+      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaAplicableId
+        ? {
+            tarifaId: tarifaAplicableId,
+            tipoEntrega: tarifa.tipoEntrega,
+            modoCalculo: tarifa.modoCalculo,
+            zona: tarifa.zona,
+            zonaId: tarifa.zonaId,
+            vigenteDesde: tarifa.vigenteDesde,
+            vigenteHasta: tarifa.vigenteHasta,
+            estado: tarifa.estado,
+            minimoRetiroClp: tarifa.minimoRetiroClp,
+            minimoFacturacionClp: tarifa.minimoFacturacionClp,
+            recargoReprogramacionClp: tarifa.recargoReprogramacionClp,
+          }
+        : null;
+      const incidenciaSnapshot: IncidenciaSnapshotInput | null = incidencia
+        ? {
+            id: incidencia.id,
+            tipo: incidencia.tipo,
+            afectaCobro: incidencia.afectaCobro,
+            afectaLiquidacion: incidencia.afectaLiquidacion,
+          }
+        : null;
+      const snapshotCobro = construirSnapshotRegla({
+        lado: 'cobro',
+        jobRunId: runId,
+        generadoEn: new Date().toISOString(),
+        tarifa: tarifaSnapshot,
+        valorBaseClp: montoBase,
+        ajusteIncidenciaClp: ajuste,
+        comunaDestinatario,
+        fechaTransicion,
+        fechaEntregaLocal: fechaEntrega,
+        estadoNuevo,
+        estadoAnterior,
+        tipoPedido,
+        esGastoPropio,
+        incidencia: incidenciaSnapshot,
+        motivo: motivos.cobro,
+        genera: true,
+      });
 
       // INSERT con ON CONFLICT (pedido_id) DO NOTHING para idempotencia.
       const { data: insertada, error } = await supabase
@@ -165,6 +504,7 @@ export const jobGenerarLineas = inngest.createFunction(
           fecha_entrega: fechaEntrega,
           incidencia_id: incidencia?.id ?? null,
           origen_generacion: 'motor_automatico',
+          snapshot_regla: snapshotCobro,
         })
         .select('id')
         .maybeSingle();
@@ -175,16 +515,41 @@ export const jobGenerarLineas = inngest.createFunction(
 
       if (insertada) return insertada.id as string;
 
-      // Si hubo conflicto (ya existía), leer el ID existente.
+      // Conflicto: existe una línea con este pedido_id.
+      // Si está anulada (reclasificación B1), reactivarla con los nuevos montos.
       const { data: existente } = await supabase
         .schema('dinero')
         .from('lineas_cobro')
-        .select('id')
+        .select('id, anulada')
         .eq('pedido_id', pedidoId)
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
-      return existente?.id as string ?? null;
+      if (!existente) return null;
+
+      if (existente.anulada) {
+        await supabase
+          .schema('dinero')
+          .from('lineas_cobro')
+          .update({
+            anulada: false,
+            anulada_en: null,
+            motivo_anulacion: null,
+            monto_base_clp: montoBase,
+            ajuste_incidencia_clp: ajuste,
+            concepto,
+            fecha_entrega: fechaEntrega,
+            incidencia_id: incidencia?.id ?? null,
+            origen_generacion: 'motor_automatico',
+            snapshot_regla: snapshotCobro,
+            actualizado_en: new Date().toISOString(),
+          })
+          .eq('id', existente.id as string)
+          .eq('tenant_id', tenantId)
+          .eq('anulada', true); // idempotente
+      }
+
+      return existente.id as string;
     });
 
     // Paso 3: Asignar línea de cobro a su período.
@@ -220,6 +585,51 @@ export const jobGenerarLineas = inngest.createFunction(
       const ajuste = elegibilidad.ajusteLiquidacionCLP;
       const concepto = `Liquidación entrega ${tipoPedido} — pedido ${pedidoId}`;
 
+      // Snapshot inmutable de la regla económica (hallazgo P0 de auditoría) —
+      // ver comentario análogo en 'generar-linea-cobro'. El lado 'liquidacion'
+      // NO lleva mínimos ni recargo de reprogramación (economía de cobro).
+      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaAplicableId
+        ? {
+            tarifaId: tarifaAplicableId,
+            tipoEntrega: tarifa.tipoEntrega,
+            modoCalculo: tarifa.modoCalculo,
+            zona: tarifa.zona,
+            zonaId: tarifa.zonaId,
+            vigenteDesde: tarifa.vigenteDesde,
+            vigenteHasta: tarifa.vigenteHasta,
+            estado: tarifa.estado,
+            minimoRetiroClp: tarifa.minimoRetiroClp,
+            minimoFacturacionClp: tarifa.minimoFacturacionClp,
+            recargoReprogramacionClp: tarifa.recargoReprogramacionClp,
+          }
+        : null;
+      const incidenciaSnapshot: IncidenciaSnapshotInput | null = incidencia
+        ? {
+            id: incidencia.id,
+            tipo: incidencia.tipo,
+            afectaCobro: incidencia.afectaCobro,
+            afectaLiquidacion: incidencia.afectaLiquidacion,
+          }
+        : null;
+      const snapshotLiquidacion = construirSnapshotRegla({
+        lado: 'liquidacion',
+        jobRunId: runId,
+        generadoEn: new Date().toISOString(),
+        tarifa: tarifaSnapshot,
+        valorBaseClp: montoBase,
+        ajusteIncidenciaClp: ajuste,
+        comunaDestinatario,
+        fechaTransicion,
+        fechaEntregaLocal: fechaEntrega,
+        estadoNuevo,
+        estadoAnterior,
+        tipoPedido,
+        esGastoPropio,
+        incidencia: incidenciaSnapshot,
+        motivo: motivos.liquidacion,
+        genera: true,
+      });
+
       const { data: insertada, error } = await supabase
         .schema('dinero')
         .from('lineas_liquidacion')
@@ -233,6 +643,7 @@ export const jobGenerarLineas = inngest.createFunction(
           fecha_entrega: fechaEntrega,
           incidencia_id: incidencia?.id ?? null,
           origen_generacion: 'motor_automatico',
+          snapshot_regla: snapshotLiquidacion,
         })
         .select('id')
         .maybeSingle();
@@ -243,15 +654,40 @@ export const jobGenerarLineas = inngest.createFunction(
 
       if (insertada) return insertada.id as string;
 
+      // Conflicto: si la línea existente está anulada (reclasificación B1), reactivarla.
       const { data: existente } = await supabase
         .schema('dinero')
         .from('lineas_liquidacion')
-        .select('id')
+        .select('id, anulada')
         .eq('pedido_id', pedidoId)
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
-      return existente?.id as string ?? null;
+      if (!existente) return null;
+
+      if (existente.anulada) {
+        await supabase
+          .schema('dinero')
+          .from('lineas_liquidacion')
+          .update({
+            anulada: false,
+            anulada_en: null,
+            motivo_anulacion: null,
+            monto_base_clp: montoBase,
+            ajuste_incidencia_clp: ajuste,
+            concepto,
+            fecha_entrega: fechaEntrega,
+            incidencia_id: incidencia?.id ?? null,
+            origen_generacion: 'motor_automatico',
+            snapshot_regla: snapshotLiquidacion,
+            actualizado_en: new Date().toISOString(),
+          })
+          .eq('id', existente.id as string)
+          .eq('tenant_id', tenantId)
+          .eq('anulada', true); // idempotente
+      }
+
+      return existente.id as string;
     });
 
     // Paso 5: Asignar línea de liquidación a su liquidación abierta.

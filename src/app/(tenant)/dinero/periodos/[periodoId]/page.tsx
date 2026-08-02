@@ -6,23 +6,27 @@
  */
 
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle, Clock, XCircle, Settings, PenLine } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
 import { obtenerPeriodoCobro, listarDocumentosDte } from "@/modules/dinero/index";
+import { resolverModoDteTenant, type ModoDte } from "@/modules/dinero/modo-dte";
 import type { DocumentoDte, LineaCobro } from "@/modules/dinero/tipos";
 import {
   traducirEstadoPeriodoCobro,
-  COLOR_ESTADO_PERIODO,
+  BADGE_ESTADO_PERIODO,
   traducirEstadoSii,
-  colorBadgeEstadoSii,
+  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
-  COLOR_ESTADO_COBRO_PERIODO,
+  BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
 import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
@@ -56,6 +60,15 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   const pagina = Math.max(1, parseInt(sp.pagina ?? "1", 10));
   const tenantId = sesion.usuario.tenantId;
 
+  // Modo de emisión DTE efectivo: define el copy y el badge de los diálogos de
+  // emisión (que una simulación no parezca real). Defecto conservador: sandbox.
+  let modoDte: ModoDte = "sandbox";
+  try {
+    modoDte = await resolverModoDteTenant(tenantId);
+  } catch {
+    // Se mantiene el defecto 'sandbox' si la resolución falla.
+  }
+
   const cliente = crearClienteServiceRole();
 
   let periodo;
@@ -88,7 +101,12 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
         dtes.find((d) => d.periodoCobroidId === periodoId && d.tipoDocumento === 61) ??
         null;
     }
-  } catch {
+  } catch (error) {
+    // Ver el comentario equivalente en `dinero/liquidaciones/[liquidacionId]/page.tsx`:
+    // `redirect()` (arriba, cuando el período no existe o es de otro tenant)
+    // depende de una excepción interna de Next.js que este `catch` genérico
+    // atraparía y convertiría en el mensaje de error en vez de redirigir.
+    unstable_rethrow(error);
     errorCarga = true;
   }
 
@@ -96,7 +114,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
     return (
       <div
         role="alert"
-        className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+        className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
       >
         No se pudo cargar el período. Intenta recargar la página.
       </div>
@@ -108,7 +126,6 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   const offset = (pagina - 1) * LIMITE_LINEAS;
   const lineasPaginadas = lineas.slice(offset, offset + LIMITE_LINEAS);
 
-  const badgeClases = COLOR_ESTADO_PERIODO[periodo.estado];
   const textoBadge = traducirEstadoPeriodoCobro(
     periodo.estado,
     periodo.estado === "facturado" && dte ? dte.folio : undefined,
@@ -141,20 +158,12 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               {formatearFechaCorta(periodo.fechaInicio)} – {formatearFechaCorta(periodo.fechaFin)}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-              >
-                {textoBadge}
-              </span>
+              <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
               {periodo.estadoCobro !== "no_aplica" && (
-                <span
-                  className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
-                >
-                  {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-                </span>
+                <BadgeEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)} />
               )}
             </div>
-            <p className="text-3xl font-bold tabular-nums">
+            <p className="text-3xl font-semibold tabular-nums">
               {formatearCLPOGuion(periodo.montoTotalClp)}
             </p>
             {periodo.estadoCobro === "parcial" && (
@@ -167,7 +176,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               </p>
             )}
             {periodo.estadoCobro === "pagado" && (
-              <p className="text-sm text-green-700">
+              <p className="text-sm font-medium text-success">
                 Pagado en su totalidad{periodo.pagadoEn ? ` el ${formatearFechaCorta(periodo.pagadoEn)}` : ""}.
               </p>
             )}
@@ -195,6 +204,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                 sellerNombre={sellerNombre}
                 totalLineas={periodo.totalLineas}
                 montoTotalClp={periodo.montoTotalClp}
+                modoDte={modoDte}
               />
             </div>
           )}
@@ -210,6 +220,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                 folioFactura={dte.folio}
                 montoTotalClp={periodo.montoTotalClp}
                 montoPagadoClp={periodo.montoPagadoClp}
+                modoDte={modoDte}
               />
             </div>
           )}
@@ -220,11 +231,11 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       {periodo.estado === "anulado" && (
         <section
           aria-labelledby="anulacion-titulo"
-          className="rounded-xl border border-red-200 bg-red-50/50 p-5 shadow-sm"
+          className="rounded-lg bg-destructive-subtle/50 p-5"
         >
           <h2
             id="anulacion-titulo"
-            className="mb-4 text-sm font-semibold uppercase tracking-wide text-red-800"
+            className="mb-4 text-sm font-semibold uppercase tracking-wide text-destructive-subtle-foreground"
           >
             Período anulado con nota de crédito
           </h2>
@@ -232,19 +243,19 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
               {periodo.anuladoEn && (
-                <p className="text-sm text-red-800">
+                <p className="text-sm text-destructive-subtle-foreground">
                   Anulado el {formatearFechaCorta(periodo.anuladoEn)}.
                 </p>
               )}
               <div>
-                <p className="text-xs font-semibold text-red-800">Motivo:</p>
-                <p className="mt-1 text-sm text-red-900">
+                <p className="text-xs font-semibold text-destructive-subtle-foreground">Motivo:</p>
+                <p className="mt-1 text-sm text-destructive-subtle-foreground">
                   {periodo.motivoAnulacion ?? "—"}
                 </p>
               </div>
 
               {notaCredito ? (
-                <p className="text-sm text-red-800">
+                <p className="text-sm text-destructive-subtle-foreground">
                   Nota de crédito{" "}
                   <span className="font-bold tabular-nums">
                     Folio {notaCredito.folio}
@@ -256,13 +267,13 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                   .
                 </p>
               ) : (
-                <p className="text-sm text-red-800">
+                <p className="text-sm text-destructive-subtle-foreground">
                   La nota de crédito se está emitiendo. Recarga la página en unos
                   segundos para ver el folio y descargar el documento.
                 </p>
               )}
 
-              <p className="text-sm text-red-800">
+              <p className="text-sm text-destructive-subtle-foreground">
                 Las entregas de este período volvieron al período de facturación en
                 curso del seller.
               </p>
@@ -295,7 +306,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       {dte && (
         <section
           aria-labelledby="dte-titulo"
-          className="rounded-xl border bg-card p-5 shadow-sm"
+          className="rounded-lg border bg-card p-5 shadow-sm"
         >
           <h2
             id="dte-titulo"
@@ -306,7 +317,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
-              <p className="text-2xl font-bold tabular-nums">
+              <p className="text-2xl font-semibold tabular-nums">
                 Folio {dte.folio}
               </p>
               <p className="text-sm text-muted-foreground">
@@ -381,14 +392,14 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
         </h2>
 
         {lineas.length === 0 ? (
-          <div className="rounded-xl border bg-card px-6 py-10 text-center">
+          <div className="rounded-lg border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">
               Este período no tiene líneas todavía. Se agregarán automáticamente a medida que
               se registren entregas.
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Líneas de cobro del período">
                 <thead>
@@ -401,6 +412,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                     <th className="hidden px-4 py-2 text-right lg:table-cell">Ajuste</th>
                     <th className="px-4 py-2 text-right">Monto final</th>
                     <th className="hidden px-4 py-2 text-center xl:table-cell">Origen</th>
+                    <th className="hidden px-4 py-2 text-center xl:table-cell">Por qué</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -422,6 +434,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                         lineas.reduce((acc, l) => acc + l.montoFinalClp, 0),
                       )}
                     </td>
+                    <td className="hidden xl:table-cell" />
                     <td className="hidden xl:table-cell" />
                   </tr>
                 </tfoot>
@@ -467,12 +480,9 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
 function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
   const trad = traducirEstadoSii(estadoSii);
-  const colorClases = colorBadgeEstadoSii(trad.variante);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorClases}`}
-    >
+    <Badge variant={badgeEstadoSii(trad.variante)} className="gap-1.5 px-2.5">
       {trad.variante === "advertencia" && (
         <AlertTriangle className="size-3.5 flex-shrink-0" aria-hidden="true" />
       )}
@@ -486,7 +496,7 @@ function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] })
         <Clock className="size-3.5 flex-shrink-0" aria-hidden="true" />
       )}
       {trad.texto}
-    </span>
+    </Badge>
   );
 }
 
@@ -496,17 +506,21 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
   return (
     <tr className="hover:bg-muted/30 transition-colors">
       <td className="px-4 py-3">
-        <span className="font-mono text-xs text-muted-foreground">
+        <Link
+          href={`/operaciones/${linea.pedidoId}`}
+          title={linea.pedidoId}
+          className="font-mono text-xs text-primary hover:underline"
+        >
           {linea.pedidoId.slice(0, 8)}…
-        </span>
+        </Link>
       </td>
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
         {formatearFechaCorta(linea.fechaEntrega)}
       </td>
       <td className="hidden px-4 py-3 md:table-cell">
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize">
+        <Badge variant="neutral" className="capitalize">
           {linea.tipoPedido === "flex" ? "Flex" : "Same-day"}
-        </span>
+        </Badge>
       </td>
       <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">
         {linea.concepto}
@@ -518,9 +532,9 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
         <span
           className={
             ajuste.esNegativo
-              ? "text-red-700"
+              ? "text-destructive"
               : ajuste.esPositivo
-              ? "text-green-700"
+              ? "text-success"
               : "text-muted-foreground"
           }
         >
@@ -540,6 +554,9 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
             <PenLine className="size-4 text-muted-foreground mx-auto" aria-label="Ajuste manual" />
           </span>
         )}
+      </td>
+      <td className="hidden px-4 py-3 text-center xl:table-cell">
+        <PopoverSnapshotRegla snapshotRegla={linea.snapshotRegla} iconoSolo />
       </td>
     </tr>
   );

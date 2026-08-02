@@ -263,14 +263,16 @@ begin
      'Liquidacion entrega flex B1', '2026-06-05', 'motor_automatico')
   on conflict (id) do nothing;
 
-  -- Evento de conciliacion (tenant A)
+  -- Evento de conciliacion (tenant A). categoria_negocio es NOT NULL desde la
+  -- migración de bandeja de excepciones (20260708000001); 'pedido_entregado_sin_
+  -- linea_cobro' mapea a 'integridad_datos' según el backfill de esa migración.
   insert into dinero.eventos_conciliacion (id, tenant_id, seller_id, periodo_cobro_id,
-    tipo_diferencia, descripcion, estado)
+    tipo_diferencia, descripcion, estado, categoria_negocio)
   values
     (concil_a1, t_a, s_a, periodo_a1,
      'pedido_entregado_sin_linea_cobro',
      'Test: pedido sin linea de cobro detectado',
-     'pendiente')
+     'pendiente', 'integridad_datos')
   on conflict (id) do nothing;
 end $$;
 

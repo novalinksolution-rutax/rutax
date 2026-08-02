@@ -48,17 +48,19 @@ export const jobRefrescarTokens = inngest.createFunction(
     const conexiones = await step.run("leer-conexiones-candidatas", async () => {
       const supabase = crearClienteServiceRole();
 
-      // Candidatas: token expira en < 2 horas O estado requiere revisión activa.
-      // La condición `estado_salud IN ('atencion', 'sana')` asegura que también
-      // verificamos conexiones cuyo token aún no expiró pero cuyo último sondeo
-      // ya reportó señales de alerta.
+      // Candidatas: token próximo a vencer (< 2 h) O conexión marcada para
+      // revisión activa ('atencion'). NO incluir 'sana': hacerlo refrescaba
+      // TODAS las conexiones sanas en cada corrida (cada 30 min), rotando sin
+      // necesidad el `refresh_token` de un solo uso de ML — churn y ventana de
+      // carrera de doble-uso. Una conexión 'sana' cuyo token esté por vencer ya
+      // queda cubierta por la primera condición (token_expira_en).
       const { data, error } = await supabase
         .schema("identidad")
         .from("conexiones_seller_ml")
         .select("id, seller_id, tenant_id, estado_salud")
         .or(
           "token_expira_en.lt.now() + interval '2 hours'," +
-            "estado_salud.in.(atencion,sana)",
+            "estado_salud.eq.atencion",
         );
 
       if (error) {

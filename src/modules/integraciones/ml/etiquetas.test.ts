@@ -76,9 +76,14 @@ function filaBase(overrides: Partial<FilaConexion> = {}): FilaConexion {
 }
 
 /**
- * Mock mínimo del cliente Supabase: cada llamada a
- * `.schema(...).from(...).select(...).eq(...).maybeSingle()` o `.single()`
- * devuelve el siguiente valor de `respuestas` (en orden de invocación).
+ * Mock mínimo del cliente Supabase: cada llamada terminal
+ * (`.maybeSingle()`, `.single()`, o el `await` de la cadena cuando NO termina
+ * en single — p. ej. `leerFilaConexionRepresentativaPorSeller`, que espera un
+ * array) devuelve el siguiente valor de `respuestas` (en orden de invocación).
+ *
+ * Para el caso "array": la respuesta debe traer `data` como arreglo (la fila o
+ * filas de la conexión). El builder es `thenable`, así que `await builder`
+ * resuelve al siguiente valor sin llamar `.single()`.
  */
 function crearMockSupabase(respuestas: Array<{ data: unknown; error: unknown }>) {
   let indice = 0;
@@ -89,10 +94,15 @@ function crearMockSupabase(respuestas: Array<{ data: unknown; error: unknown }>)
     from: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
     upsert: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn(() => Promise.resolve(siguiente())),
     single: vi.fn(() => Promise.resolve(siguiente())),
+    // Thenable: `await builder` (cadena que NO termina en single) resuelve aquí.
+    then: (resolver: (v: unknown) => unknown) => resolver(siguiente()),
   };
 
   return builder;
@@ -133,7 +143,11 @@ describe("obtenerAccessTokenValido / obtenerEtiquetaEnvio (RF-021)", () => {
     );
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const resultado = await obtenerEtiquetaEnvio({ sellerId: SELLER_ID, mlShipmentId: "555" });
+    const resultado = await obtenerEtiquetaEnvio({
+      sellerId: SELLER_ID,
+      mlShipmentId: "555",
+      mlUserId: "999",
+    });
 
     expect(resultado.contentType).toBe("application/pdf");
     expect(resultado.contenido.byteLength).toBe(8);
@@ -210,7 +224,11 @@ describe("obtenerAccessTokenValido / obtenerEtiquetaEnvio (RF-021)", () => {
     );
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const resultado = await obtenerEtiquetaEnvio({ sellerId: SELLER_ID, mlShipmentId: "777" });
+    const resultado = await obtenerEtiquetaEnvio({
+      sellerId: SELLER_ID,
+      mlShipmentId: "777",
+      mlUserId: "999",
+    });
 
     expect(resultado.contenido.byteLength).toBe(16);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -258,7 +276,7 @@ describe("obtenerAccessTokenValido / obtenerEtiquetaEnvio (RF-021)", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(
-      obtenerEtiquetaEnvio({ sellerId: SELLER_ID, mlShipmentId: "888" }),
+      obtenerEtiquetaEnvio({ sellerId: SELLER_ID, mlShipmentId: "888", mlUserId: "999" }),
     ).rejects.toBeInstanceOf(ErrorConexionMlRequiereRevinculacion);
 
     // Solo la llamada de refresco — nunca llegó a pedir shipment_labels.
@@ -284,9 +302,11 @@ describe("obtenerAccessTokenValido / obtenerEtiquetaEnvio (RF-021)", () => {
     );
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    const error = await obtenerEtiquetaEnvio({ sellerId: SELLER_ID, mlShipmentId: "999" }).catch(
-      (e) => e,
-    );
+    const error = await obtenerEtiquetaEnvio({
+      sellerId: SELLER_ID,
+      mlShipmentId: "999",
+      mlUserId: "999",
+    }).catch((e) => e);
 
     expect(error).toBeInstanceOf(ErrorHttpMl);
     expect((error as ErrorHttpMl).status).toBe(404);
@@ -294,11 +314,47 @@ describe("obtenerAccessTokenValido / obtenerEtiquetaEnvio (RF-021)", () => {
   });
 
   it("obtenerAccessTokenValido lanza error claro si no existe conexión para el seller", async () => {
-    const mockSupabase = crearMockSupabase([{ data: null, error: null }]);
+    const mockSupabase = crearMockSupabase([{ data: [], error: null }]);
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
 
     await expect(obtenerAccessTokenValido("seller-sin-conexion")).rejects.toThrow(
       /No existe conexión ML/,
     );
+  });
+
+  it("sin mlUserId (pedido legacy / seller de una sola cuenta): cae a la conexión representativa más saludable", async () => {
+    // Dos conexiones del mismo seller: una desvinculada y una sana. Sin
+    // mlUserId, el puerto debe elegir la SANA (prioridad de salud) — el path
+    // representativo NO debe errar con 2+ filas (modelo 1:N).
+    const desvinculada = filaBase({
+      id: "conexion-desvinculada",
+      ml_user_id: "111",
+      estado_salud: "desvinculada",
+    });
+    const sana = filaBase({ id: "conexion-sana", ml_user_id: "222", estado_salud: "sana" });
+
+    const mockSupabase = crearMockSupabase([
+      { data: [desvinculada, sana], error: null }, // leerFilaConexionRepresentativaPorSeller (array)
+    ]);
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
+    vi.mocked(descifrarSecreto).mockResolvedValue({
+      valor: "access-token-vigente",
+      tipoSecreto: "token_oauth_ml_access",
+      venceEn: null,
+      metadata: {},
+    });
+
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new ArrayBuffer(8), {
+        status: 200,
+        headers: { "content-type": "application/pdf" },
+      }),
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    // No lanza (elige la conexión sana) y descarga la etiqueta.
+    const resultado = await obtenerEtiquetaEnvio({ sellerId: SELLER_ID, mlShipmentId: "555" });
+    expect(resultado.contentType).toBe("application/pdf");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

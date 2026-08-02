@@ -39,6 +39,28 @@ export type TipoPedido = (typeof TIPOS_PEDIDO)[number];
 export const ORIGENES_PEDIDO = ["ml_ingesta", "same_day_manual", "backfill"] as const;
 export type OrigenPedido = (typeof ORIGENES_PEDIDO)[number];
 
+// =============================================================================
+// Enums de geocoding — espejan operacion.geo_estado y operacion.cobertura_estado
+// (migración 0013). Se declaran localmente para que operacion NO dependa de
+// integraciones. Los valores coinciden exactamente con los enums de Postgres.
+// =============================================================================
+
+export const ESTADOS_GEOCODING = [
+  "pendiente",
+  "resuelto",
+  "no_resuelto",
+  "fuera_cobertura",
+] as const;
+export type EstadoGeocoding = (typeof ESTADOS_GEOCODING)[number];
+
+export const ESTADOS_COBERTURA = [
+  "pendiente",
+  "tarifada",
+  "sin_tarifa_zona",
+  "requiere_revision",
+] as const;
+export type CoberturaEstado = (typeof ESTADOS_COBERTURA)[number];
+
 export const TIPOS_INCIDENCIA = [
   "destinatario_ausente",
   "direccion_erronea",
@@ -61,6 +83,51 @@ export const ESTADOS_MANIFIESTO = [
   "cancelado",
 ] as const;
 export type EstadoManifiesto = (typeof ESTADOS_MANIFIESTO)[number];
+
+// =============================================================================
+// Entidades de dominio — Zonas y ventanas de corte (migración 0014 — F7, ítem 1.2)
+// =============================================================================
+
+/** Agrupación operativa de comunas por tenant (espejo de identidad.zonas). */
+export interface Zona {
+  id: string;
+  tenantId: string;
+  nombre: string;
+  activa: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
+
+/** Mapeo comuna→zona por tenant (espejo de identidad.zona_comunas). */
+export interface ZonaComuna {
+  id: string;
+  tenantId: string;
+  zonaId: string;
+  comuna: string;
+  creadoEn: string;
+}
+
+/**
+ * SLA + hora de corte por seller (espejo de identidad.ventanas_corte).
+ * `zonaId = null` = ventana por defecto del seller.
+ * `horaCorte` es 'HH:MM' — hora LOCAL America/Santiago sin TZ.
+ */
+export interface VentanaCorte {
+  id: string;
+  tenantId: string;
+  sellerId: string;
+  zonaId: string | null;
+  tipoEntrega: TipoPedido;
+  /** Hora de corte en formato 'HH:MM', local America/Santiago. */
+  horaCorte: string;
+  minutosPreparacion: number;
+  minutosRutaEstimado: number;
+  /** Objetivo de SLA 0–100 (%, default 97). */
+  slaObjetivoPct: number;
+  activa: boolean;
+  creadoEn: string;
+  actualizadoEn: string;
+}
 
 // =============================================================================
 // Entidades de dominio
@@ -94,6 +161,35 @@ export interface Pedido {
   notasInternas: string | null;
   creadoEn: string;
   actualizadoEn: string;
+  // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+  lat: number | null;
+  long: number | null;
+  /** Estado de geocodificación: pendiente|resuelto|no_resuelto|fuera_cobertura */
+  geoEstado: EstadoGeocoding;
+  /** Confianza del proveedor (0.000–1.000). null si aún no geocodificado. */
+  geoConfianza: number | null;
+  /** Momento en que el pedido fue geocodificado. null mientras pendiente. */
+  geocodificadoEn: string | null;
+  /** Estado de cobertura/tarificación: pendiente|tarifada|sin_tarifa_zona|requiere_revision */
+  coberturaEstado: CoberturaEstado;
+  // Columnas de SLA/corte (migración 0014 — F7, ítem 1.2)
+  // Opcionales para compatibilidad con objetos literales de frontend que aún
+  // no incluyen estas columnas (se garantizan en BD con DEFAULT).
+  /** Instante prometido de entrega (timestamptz). null si no hay ventana configurada. */
+  fechaCompromisoHora?: string | null;
+  /** true = el pedido ingresó cerca/después de la hora de corte (riesgo). Default false. */
+  corteRiesgo?: boolean;
+  /** null hasta llegar a estado terminal; true/false según la entrega vs. fecha_compromiso_hora. */
+  slaCumplido?: boolean | null;
+  // Columnas de tracking same-day (migración 0016 — Bloque 2)
+  /** Token opaco para el enlace de tracking en vivo. Presente SOLO en same_day. */
+  trackingToken?: string | null;
+  /**
+   * Código interno operativo `RX-XXXX-XXXX` (Base32 Crockford) para la etiqueta
+   * imprimible con QR. Único por tenant. `null` hasta que se genera — para
+   * pedidos same-day antiguos, `asegurarCodigoInterno` hace backfill perezoso.
+   */
+  codigoInterno?: string | null;
 }
 
 export interface Manifiesto {
@@ -144,6 +240,126 @@ export interface Incidencia {
 }
 
 // =============================================================================
+// Entidades de dominio — Conductor con disponibilidad y zonas (F6, ítem 1.3)
+// =============================================================================
+
+/**
+ * Conductor tal como lo consume el auto-assign: campos de identidad + los dos
+ * nuevos de disponibilidad (migración 0015). NO contiene datos personales
+ * sensibles — solo lo necesario para la heurística de asignación.
+ */
+export interface Conductor {
+  id: string;
+  tenantId: string;
+  /** Alta/baja en nómina: 'activo' | 'inactivo'. Solo 'activo' entra al pool. */
+  estado: 'activo' | 'inactivo';
+  /**
+   * Disponibilidad operativa del día. DISTINTA de `estado`:
+   * un conductor activo con disponible=false (día libre, licencia) no recibe
+   * auto-asignación pero sigue de alta en la nómina.
+   */
+  disponible: boolean;
+  /** Cupo máximo de paradas en el turno (> 0). Constraint en BD. */
+  capacidadParadas: number;
+  /** Nombre para logs/bitácora — no se usa en la heurística. */
+  nombre: string;
+  // Datos bancarios para liquidación (migración 20260621000012 — F19).
+  // Nullables: el flujo F19 lanza NonRetriableError si son null.
+  /** Nombre del banco (ej. "Banco de Chile", "BCI"). */
+  banco?: string | null;
+  /** Tipo de cuenta bancaria: 'corriente' | 'vista' | 'ahorro'. */
+  tipoCuenta?: 'corriente' | 'vista' | 'ahorro' | null;
+  /** Número de cuenta (texto para preservar ceros iniciales). */
+  numeroCuenta?: string | null;
+}
+
+/**
+ * Zona preferente asignada a un conductor (espejo de identidad.conductor_zonas).
+ * N:M conductor↔zona, acotado por tenant.
+ */
+export interface ConductorZona {
+  id: string;
+  tenantId: string;
+  conductorId: string;
+  zonaId: string;
+  creadoEn: string;
+}
+
+// =============================================================================
+// Tipos del motor de auto-asignación (F6, ítem 1.3)
+// =============================================================================
+
+/**
+ * Motivo por el que un pedido no pudo ser auto-asignado.
+ * - 'sin_conductor_disponible' : no existe ningún conductor activo+disponible en el pool.
+ * - 'sin_cupo'                 : hay conductores disponibles pero todos superaron su capacidad.
+ * - 'sin_conductor_en_zona'    : NO SE USA como discriminador primario (la heurística
+ *                                 degrada zona→ocupación, no rechaza). Se emite solo
+ *                                 cuando TODOS los candidatos sin cupo eran de otra zona.
+ */
+export type MotivoSinAsignar =
+  | 'sin_conductor_disponible'
+  | 'sin_cupo'
+  | 'sin_conductor_en_zona';
+
+/** Pedido que no pudo asignarse, con el motivo estructurado. */
+export interface PedidoSinAsignar {
+  pedidoId: string;
+  sellerId: string;
+  /** Comuna del pedido (para cálculo de impacto SLA por seller). */
+  comunaDestino: string;
+  motivo: MotivoSinAsignar;
+}
+
+/** Resumen de pedidos asignados a un conductor en esta ejecución. */
+export interface AsignacionPorConductor {
+  conductorId: string;
+  manifiestoId: string;
+  pedidosAsignados: string[];
+}
+
+/**
+ * Resultado de `autoAsignarPendientesDelDia`.
+ * Permite al frontend mostrar un resumen antes de confirmar manifiestos.
+ */
+export interface ResultadoAutoAsignacion {
+  /** Pedidos asignados, agrupados por conductor. */
+  asignados: AsignacionPorConductor[];
+  /** Pedidos que no pudieron asignarse, con motivo estructurado. */
+  sinAsignar: PedidoSinAsignar[];
+  /** IDs de conductores que recibieron al menos un pedido en esta ejecución. */
+  conductoresAfectados: string[];
+}
+
+/** SLA impactado por conductor caído o pedidos sin asignar, por seller. */
+export interface ImpactoSla {
+  sellerId: string;
+  sellerNombre: string;
+  /** SLA actual del seller (% de pedidos a tiempo sobre evaluados). null si sin datos. */
+  slaPctActual: number | null;
+  /** Objetivo pactado (de ventanas_corte, default 97). */
+  objetivoPct: number;
+  /** Paradas del seller que quedaron sin conductor en la redistribución. */
+  paradasSinConductor: number;
+}
+
+/**
+ * Resultado de `marcarConductorNoDisponibleYRedistribuir`.
+ * Incluye el impacto en SLA de los sellers afectados.
+ */
+export interface ResultadoRedistribucion {
+  conductorId: string;
+  /** Paradas que tenía el conductor y se redistribuyeron exitosamente. */
+  paradasReasignadas: string[];
+  /** Paradas que no encontraron receptor. */
+  paradasSinConductor: PedidoSinAsignar[];
+  /** Impacto en SLA por seller. */
+  impactoSla: ImpactoSla[];
+  /** true si el conductor ya estaba disponible=false al ejecutar (no-op). */
+  idempotente: boolean;
+}
+
+// =============================================================================
 // Entradas de las operaciones de módulo
 // =============================================================================
 
@@ -153,6 +369,13 @@ export interface FiltrosPedidos {
   conductorId?: string;
   estado?: EstadoPedido;
   fecha?: string; // fecha_compromiso (ISO date)
+  /**
+   * Si `true`, filtra pedidos que requieren revisión de dirección/cobertura:
+   * geo_estado IN ('no_resuelto','fuera_cobertura') OR
+   * cobertura_estado IN ('requiere_revision','sin_tarifa_zona').
+   * Ignora `estado` y `fecha` cuando está activo (la bandeja no filtra por día).
+   */
+  porRevisar?: boolean;
   pagina?: number;
   limite?: number;
 }
@@ -164,8 +387,15 @@ export interface PaginadoPedidos {
   limite: number;
 }
 
-/** Quién ejecuta la transición: 'sistema' = job/webhook; 'interno' = usuario humano */
-export type EjecutorTransicion = "sistema" | "interno";
+/**
+ * Quién ejecuta la transición:
+ *   'sistema'   = job/webhook (ML, polling, cron)
+ *   'interno'   = usuario humano con rol interno del courier
+ *   'conductor' = conductor autenticado (SOLO pedidos same_day; la acotación
+ *                 se impone en actualizarEstadoPedido, no aquí — la función pura
+ *                 es agnóstica de tipo_pedido).
+ */
+export type EjecutorTransicion = "sistema" | "interno" | "conductor";
 
 export interface ActualizarEstadoEntrada {
   pedidoId: string;
@@ -181,6 +411,11 @@ export interface ActualizarEstadoEntrada {
   actuadoPorUsuarioId?: string;
   /** Requerido para correcciones manuales (ejecutor='interno'). */
   motivo?: string;
+  /**
+   * Solo para ejecutor='conductor': tipo de incidencia que declara el conductor
+   * al registrar un fallo (requerido cuando estadoNuevo='fallido').
+   */
+  tipoIncidenciaConductor?: TipoIncidencia;
 }
 
 export interface CrearPedidoSameDayEntrada {
@@ -193,6 +428,62 @@ export interface CrearPedidoSameDayEntrada {
   instruccionesEntrega?: string;
   fechaCompromiso?: string;
   notasInternas?: string;
+  /** UUID del actor interno que dispara la creación (requerido para bitácora si corte_riesgo). */
+  actorUsuarioId?: string;
+}
+
+// =============================================================================
+// Entradas CRUD Zonas / Ventanas de Corte (F7, ítem 1.2)
+// =============================================================================
+
+export interface CrearZonaEntrada {
+  tenantId: string;
+  nombre: string;
+  actorUsuarioId: string;
+}
+
+export interface AsignarComunasZonaEntrada {
+  tenantId: string;
+  zonaId: string;
+  /** Lista COMPLETA de comunas de la zona. La operación borra las existentes e inserta estas. */
+  comunas: string[];
+  actorUsuarioId: string;
+}
+
+export interface GuardarVentanaCorteEntrada {
+  tenantId: string;
+  sellerId: string;
+  /** null = ventana por defecto del seller; UUID = override por zona. */
+  zonaId: string | null;
+  tipoEntrega: TipoPedido;
+  /** Hora de corte en formato 'HH:MM', hora local America/Santiago. */
+  horaCorte: string;
+  minutosPreparacion: number;
+  minutosRutaEstimado: number;
+  /** Objetivo SLA 0–100. Default 97. */
+  slaObjetivoPct?: number;
+  actorUsuarioId: string;
+}
+
+/**
+ * Aviso que se devuelve cuando se crea un pedido fuera del horario de corte.
+ * No es un error — el pedido SE CREA igual, pero el coordinador/supervisor
+ * debe saber que el compromiso de hora está comprometido.
+ */
+export interface AvisoCorte {
+  /** 'fuera_corte' = hora actual > hora_corte configurada. */
+  tipo: 'fuera_corte';
+  mensaje: string;
+  horaCorte: string;
+  /** Sugerencia para el usuario: reagendar o confirmar de igual forma. */
+  sugerencia: string;
+}
+
+/** Resultado de crearPedidoSameDay cuando hay ventana de corte configurada. */
+export interface ResultadoCrearPedidoSameDay {
+  pedido: Pedido;
+  /** Presente solo cuando el pedido se creó pasado el horario de corte. */
+  avisoCorte?: AvisoCorte;
 }
 
 export interface CrearManifiestoEntrada {
@@ -248,4 +539,10 @@ export interface MetricasOperativas {
    * entregado_manual, fallido, fallido_manual, cancelado, devuelto).
    */
   rezagadosAyer: number;
+  /**
+   * % de SLA cumplido sobre el total de pedidos evaluados (sla_cumplido IS NOT NULL)
+   * del tenant para la fecha. null si no hay pedidos evaluados.
+   * Calculado en metricas.ts (F7, ítem 1.2).
+   */
+  slaGlobalPct: number | null;
 }

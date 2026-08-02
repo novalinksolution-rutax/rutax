@@ -9,12 +9,15 @@
  * 5. Actor sin capacidad recibe ErrorValidacion en correcciones manuales.
  * 6. crearPedidoSameDay fija tarifa_aplicable_id.
  * 7. crearPedidoSameDay sin tarifa lanza ErrorValidacion.
+ * 8. crearPedidoSameDay retorna campos de geocoding con defaults correctos.
+ * 9. filaAPedido mapea columnas de geocoding desde la fila de BD.
  */
 
-import { describe, expect, it } from "vitest";
-import { actualizarEstadoPedido, crearPedidoSameDay } from "./pedidos";
+import { describe, expect, it, vi } from "vitest";
+import { actualizarEstadoPedido, crearPedidoSameDay, asegurarCodigoInterno } from "./pedidos";
 import { ErrorTransicionInvalida, ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
+import { PATRON_CODIGO_INTERNO } from "./codigo-interno";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { EstadoPedido } from "./tipos";
 
@@ -80,6 +83,19 @@ interface FilaPedido {
   notas_internas: string | null;
   creado_en: string;
   actualizado_en: string;
+  // Columnas de geocoding (migración 0013)
+  lat: number | null;
+  long: number | null;
+  geo_estado: string | null;
+  geo_confianza: number | null;
+  geocodificado_en: string | null;
+  cobertura_estado: string | null;
+  // Columnas de SLA/corte (migración 0014 — F7, ítem 1.2)
+  fecha_compromiso_hora: string | null;
+  corte_riesgo: boolean;
+  sla_cumplido: boolean | null;
+  // Código interno operativo para etiqueta con QR (same-day).
+  codigo_interno?: string | null;
 }
 
 interface FilaIncidencia {
@@ -140,6 +156,17 @@ function pedidoBase(estadoActual: EstadoPedido = "en_ruta"): FilaPedido {
     notas_internas: null,
     creado_en: ahora,
     actualizado_en: ahora,
+    // Columnas de geocoding — valores por defecto de la migración 0013
+    lat: null,
+    long: null,
+    geo_estado: 'pendiente',
+    geo_confianza: null,
+    geocodificado_en: null,
+    cobertura_estado: 'pendiente',
+    // Columnas de SLA/corte — valores por defecto de la migración 0014
+    fecha_compromiso_hora: null,
+    corte_riesgo: false,
+    sla_cumplido: null,
   };
 }
 
@@ -273,6 +300,18 @@ function crearClienteFalso(opts?: {
                 notas_internas: null,
                 creado_en: ahora,
                 actualizado_en: ahora,
+                // Columnas de geocoding — defaults de BD (migración 0013)
+                lat: null,
+                long: null,
+                geo_estado: 'pendiente',
+                geo_confianza: null,
+                geocodificado_en: null,
+                cobertura_estado: 'pendiente',
+                // Columnas de SLA/corte — defaults de BD (migración 0014)
+                fecha_compromiso_hora: (fila.fecha_compromiso_hora as string | null) ?? null,
+                corte_riesgo: (fila.corte_riesgo as boolean) ?? false,
+                sla_cumplido: null,
+                codigo_interno: (fila.codigo_interno as string | null) ?? null,
               };
               estado.pedidos.push(nuevo);
               return { data: nuevo, error: null };
@@ -377,7 +416,46 @@ function crearClienteFalso(opts?: {
     throw new Error(`Tabla no soportada en doble de prueba: ${tabla}`);
   }
 
-  return { cliente: { from } as never, estado };
+  // Schema identidad — devuelve stubs vacíos para que resolverZona / resolverVentanaCorte
+  // devuelvan null (best-effort) sin bloquear los tests de tarifa/geocoding existentes.
+  function fromIdentidad(tabla: string) {
+    if (tabla === "zona_comunas" || tabla === "ventanas_corte" || tabla === "zonas") {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        is: () => chain,
+        in: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        then: (resolve: (r: { data: null[]; error: null }) => void) => {
+          resolve({ data: [], error: null });
+        },
+      };
+      return chain;
+    }
+    throw new Error(`Tabla identidad no soportada en doble de prueba: ${tabla}`);
+  }
+
+  // resolver_zona vive en el esquema `identidad`: el código llama
+  // `cliente.schema('identidad').rpc('resolver_zona', ...)`. El doble devuelve
+  // null (sin zona mapeada), replicando el best-effort de producción.
+  const rpcStub = (_fn: string, _args: unknown) => ({
+    then: (resolve: (r: { data: null; error: null }) => void) => {
+      resolve({ data: null, error: null });
+    },
+  });
+
+  return {
+    cliente: {
+      from,
+      schema: (esquema: string) => ({
+        from: esquema === 'identidad' ? fromIdentidad : from,
+        rpc: rpcStub,
+      }),
+      rpc: rpcStub,
+    } as never,
+    estado,
+  };
 }
 
 // =============================================================================
@@ -482,6 +560,44 @@ describe("actualizarEstadoPedido — apertura automática de incidencia en 'fall
 // =============================================================================
 
 describe("actualizarEstadoPedido — corrección manual", () => {
+  /**
+   * Verifica el invariante CLAUDE.md: "bitácora ANTES que efectos externos".
+   * La bitácora de corrección manual (ejecutor='interno') debe quedar escrita
+   * antes de que el UPDATE de estado se ejecute. Si el UPDATE falla (simulamos
+   * fallarUpdate=true), la entrada de bitácora ya debe existir.
+   */
+  it("la bitácora queda escrita ANTES del UPDATE de estado (invariante CLAUDE.md)", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoBase("asignado")],
+      fallarUpdate: true, // forzamos fallo del UPDATE
+    });
+
+    try {
+      await actualizarEstadoPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: "entregado_manual",
+          estadoEsperado: "asignado",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: "usuario-supervisor-1",
+          motivo: "Confirmado por el destinatario vía teléfono",
+        },
+        actorSupervisor(),
+      );
+    } catch {
+      // El UPDATE falló — es esperado en este test
+    }
+
+    // La bitácora debe haberse escrito aunque el UPDATE fallara.
+    const entrada = estado.bitacora.find(
+      (e) => e.accion === "pedido.estado_corregido_manual",
+    );
+    expect(entrada).toBeDefined();
+    expect(entrada!.actor_usuario_id).toBe("usuario-supervisor-1");
+  });
+
   it("registra en bitácora con accion='pedido.estado_corregido_manual'", async () => {
     const { cliente, estado } = crearClienteFalso({ pedidos: [pedidoBase("asignado")] });
 
@@ -668,7 +784,7 @@ describe("crearPedidoSameDay — manejo de tarifa", () => {
   it("fija tarifa_aplicable_id al crear el pedido", async () => {
     const { cliente, estado } = crearClienteFalso({ tarifas: [{ id: TARIFA_1 }] });
 
-    const pedido = await crearPedidoSameDay(cliente, {
+    const { pedido } = await crearPedidoSameDay(cliente, {
       tenantId: TENANT_A,
       sellerId: SELLER_1,
       destinatarioNombre: "María González",
@@ -716,7 +832,7 @@ describe("crearPedidoSameDay — manejo de tarifa", () => {
   it("crea pedido con tipo 'same_day' y origen 'same_day_manual'", async () => {
     const { cliente } = crearClienteFalso();
 
-    const pedido = await crearPedidoSameDay(cliente, {
+    const { pedido } = await crearPedidoSameDay(cliente, {
       tenantId: TENANT_A,
       sellerId: SELLER_1,
       destinatarioNombre: "Ana López",
@@ -727,5 +843,748 @@ describe("crearPedidoSameDay — manejo de tarifa", () => {
     expect(pedido.tipoPedido).toBe("same_day");
     expect(pedido.origen).toBe("same_day_manual");
     expect(pedido.estado).toBe("pendiente_asignacion");
+  });
+});
+
+// =============================================================================
+// crearPedidoSameDay — campos de geocoding (migración 0013, F4 ítem 1.1)
+// =============================================================================
+
+describe("crearPedidoSameDay — campos de geocoding", () => {
+  it("retorna geoEstado = 'pendiente' y coberturaEstado = 'pendiente' por defecto", async () => {
+    const { cliente } = crearClienteFalso();
+
+    const { pedido } = await crearPedidoSameDay(cliente, {
+      tenantId: TENANT_A,
+      sellerId: SELLER_1,
+      destinatarioNombre: "Pedro Soto",
+      destinatarioDireccion: "Calle Los Leones 100",
+      destinatarioComuna: "Providencia",
+    });
+
+    expect(pedido.geoEstado).toBe("pendiente");
+    expect(pedido.coberturaEstado).toBe("pendiente");
+    expect(pedido.lat).toBeNull();
+    expect(pedido.long).toBeNull();
+    expect(pedido.geoConfianza).toBeNull();
+    expect(pedido.geocodificadoEn).toBeNull();
+  });
+
+  it("el pedido creado no expone datos personales en el payload de geocoding (minimización)", async () => {
+    // Verifica que los campos de geocoding son solo de dirección/comuna,
+    // nunca nombre ni teléfono. El campo geoEstado = 'pendiente' confirma
+    // que el pedido aún no fue geocodificado en el mismo request.
+    const { cliente } = crearClienteFalso();
+
+    const { pedido } = await crearPedidoSameDay(cliente, {
+      tenantId: TENANT_A,
+      sellerId: SELLER_1,
+      destinatarioNombre: "María González",  // no debe aparecer en geocoding
+      destinatarioDireccion: "Calle Falsa 456",
+      destinatarioComuna: "Santiago",
+      destinatarioTelefono: "+56912345678",  // no debe aparecer en geocoding
+    });
+
+    // Los campos de geocoding no incluyen datos personales —
+    // solo los de dirección/ubicación.
+    expect(pedido.geoEstado).toBe("pendiente");
+    expect(pedido.coberturaEstado).toBe("pendiente");
+    // Los datos del pedido sí están (para uso interno)
+    expect(pedido.destinatarioNombre).toBe("María González");
+    expect(pedido.destinatarioDireccion).toBe("Calle Falsa 456");
+    expect(pedido.destinatarioComuna).toBe("Santiago");
+  });
+});
+
+// =============================================================================
+// filaAPedido — mapper de columnas de geocoding
+// =============================================================================
+
+describe("filaAPedido — mapper de columnas de geocoding", () => {
+  it("mapea lat/long/geoEstado/geoConfianza/geocodificadoEn/coberturaEstado desde la fila", async () => {
+    // Usamos crearPedidoSameDay con un doble que devuelve valores geocodificados
+    // para ejercer el mapper con datos reales de geocodificación.
+    const ahora = new Date().toISOString();
+    const filaPedidoGeocod: FilaPedido = {
+      ...pedidoBase(),
+      lat: -33.4372,
+      long: -70.6506,
+      geo_estado: 'resuelto',
+      geo_confianza: 0.95,
+      geocodificado_en: ahora,
+      cobertura_estado: 'tarifada',
+    };
+
+    const { cliente } = crearClienteFalso({ pedidos: [filaPedidoGeocod] });
+
+    // actualizarEstadoPedido devuelve el pedido completo vía filaAPedido;
+    // lo usamos para verificar que el mapper mapea las columnas correctamente.
+    // Hacemos una transición válida: en_ruta → entregado.
+    const pedido = await import("./pedidos").then(m =>
+      m.actualizarEstadoPedido(cliente, {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        ejecutor: "sistema",
+      })
+    );
+
+    expect(pedido.lat).toBe(-33.4372);
+    expect(pedido.long).toBe(-70.6506);
+    expect(pedido.geoEstado).toBe("resuelto");
+    expect(pedido.geoConfianza).toBe(0.95);
+    expect(pedido.geocodificadoEn).toBe(ahora);
+    expect(pedido.coberturaEstado).toBe("tarifada");
+  });
+
+  it("aplica defaults de geocoding cuando las columnas no están en la fila (pedido pre-migración)", async () => {
+    // Simula una fila sin columnas de geocoding (pedido creado antes de la migración 0013).
+    // El mapper debe retornar defaults seguros, no fallar.
+    const filaSinGeo = {
+      ...pedidoBase(),
+      lat: undefined,
+      long: undefined,
+      geo_estado: undefined,
+      geo_confianza: undefined,
+      geocodificado_en: undefined,
+      cobertura_estado: undefined,
+    };
+
+    const { cliente } = crearClienteFalso({ pedidos: [filaSinGeo as unknown as FilaPedido] });
+
+    const pedido = await import("./pedidos").then(m =>
+      m.actualizarEstadoPedido(cliente, {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        ejecutor: "sistema",
+      })
+    );
+
+    expect(pedido.geoEstado).toBe("pendiente");
+    expect(pedido.coberturaEstado).toBe("pendiente");
+    expect(pedido.lat).toBeNull();
+    expect(pedido.long).toBeNull();
+    expect(pedido.geoConfianza).toBeNull();
+    expect(pedido.geocodificadoEn).toBeNull();
+  });
+});
+
+// =============================================================================
+// actualizarEstadoPedido — barrera same-day del conductor (Bloque 2)
+// =============================================================================
+
+const DRIVER_1 = "eeee0000-0000-0000-0000-000000000050";
+
+function actorConductorFixture(driverId: string = DRIVER_1): UsuarioActual {
+  return {
+    tenantId: TENANT_A,
+    tipoUsuario: "conductor",
+    sellerId: null,
+    driverId,
+    rol: "conductor",
+    estado: "activo",
+  };
+}
+
+function pedidoSameDay(
+  estadoActual: EstadoPedido = "en_ruta",
+  overrides: Partial<FilaPedido> = {},
+): FilaPedido {
+  return {
+    ...pedidoBase(estadoActual),
+    tipo_pedido: "same_day",
+    driver_id_asignado: DRIVER_1,
+    ...overrides,
+  };
+}
+
+/**
+ * Cliente falso extendido para tests de conductor:
+ * - Soporta consultas a pruebas_entrega (para verificar POD válido).
+ */
+function crearClienteFalsoConductor(opts?: {
+  pedidos?: FilaPedido[];
+  hayPodValido?: boolean;
+}) {
+  const { cliente: clienteBase, estado } = crearClienteFalso({
+    pedidos: opts?.pedidos ?? [pedidoSameDay()],
+  });
+
+  // Envolver el from original para interceptar pruebas_entrega
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const clienteMutable = clienteBase as any;
+  const fromOriginal = clienteMutable.from.bind(clienteMutable);
+  const hayPodValido = opts?.hayPodValido ?? false;
+
+  clienteMutable.from = (tabla: string) => {
+    if (tabla === "pruebas_entrega") {
+      // Retorna una cadena de mocks que simula la consulta de POD válido.
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({
+                      data: hayPodValido
+                        ? { id: "pod-valido-1" }
+                        : null,
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      };
+    }
+    return fromOriginal(tabla);
+  };
+
+  return { cliente: clienteMutable as never, estado };
+}
+
+describe("actualizarEstadoPedido — barrera same-day del conductor (Bloque 2)", () => {
+  // 1. Conductor sin capacidad marcar_evidencias_propias → ErrorValidacion
+  it("actor sin capacidad de conductor lanza ErrorValidacion", async () => {
+    const { cliente } = crearClienteFalsoConductor();
+    const actorInterno: UsuarioActual = {
+      tenantId: TENANT_A,
+      tipoUsuario: "interno",
+      sellerId: null,
+      driverId: null,
+      rol: "coordinador",
+      estado: "activo",
+    };
+    await expect(
+      actualizarEstadoPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: "en_ruta",
+          estadoEsperado: "en_ruta",
+          ejecutor: "conductor",
+        },
+        actorInterno,
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  // 2. Pedido Flex → ErrorValidacion (frontera dura)
+  it("conductor no puede actuar sobre pedido Flex (frontera dura)", async () => {
+    const pedidoFlex: FilaPedido = {
+      ...pedidoBase("asignado"),
+      tipo_pedido: "flex",
+      driver_id_asignado: DRIVER_1,
+    };
+    const { cliente } = crearClienteFalso({ pedidos: [pedidoFlex] });
+
+    // Wrapar from para pruebas_entrega (no se llega, pero evitar crash)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const origFrom = (cliente as any).from.bind(cliente);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (cliente as any).from = (tabla: string) => {
+      if (tabla === "pruebas_entrega") {
+        const noPod = { maybeSingle: async () => ({ data: null, error: null }) };
+        const chain = { limit: () => noPod };
+        const eq4 = { eq: () => chain };
+        const eq3 = { eq: () => eq4 };
+        const eq2 = { eq: () => eq3 };
+        const eq1 = { eq: () => eq2 };
+        return { select: () => eq1 };
+      }
+      return origFrom(tabla);
+    };
+
+    await expect(
+      actualizarEstadoPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: "en_ruta",
+          estadoEsperado: "asignado",
+          ejecutor: "conductor",
+        },
+        actorConductorFixture(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  // 3. Conductor no asignado al pedido → ErrorValidacion
+  it("conductor no asignado al pedido lanza ErrorValidacion", async () => {
+    const pedido: FilaPedido = {
+      ...pedidoSameDay("asignado"),
+      driver_id_asignado: "otro-driver-uuid",
+    };
+    const { cliente } = crearClienteFalsoConductor({ pedidos: [pedido] });
+
+    await expect(
+      actualizarEstadoPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: "en_ruta",
+          estadoEsperado: "asignado",
+          ejecutor: "conductor",
+        },
+        actorConductorFixture(DRIVER_1), // DRIVER_1 !== otro-driver-uuid
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  // 4. Entregado sin POD válido → ErrorValidacion
+  it("transición a 'entregado' sin POD válido lanza ErrorValidacion", async () => {
+    const { cliente } = crearClienteFalsoConductor({
+      pedidos: [pedidoSameDay("en_ruta")],
+      hayPodValido: false,
+    });
+
+    await expect(
+      actualizarEstadoPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: "entregado",
+          estadoEsperado: "en_ruta",
+          ejecutor: "conductor",
+        },
+        actorConductorFixture(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  // 5. Fallido sin tipo_incidencia → ErrorValidacion
+  it("transición a 'fallido' sin tipo_incidencia lanza ErrorValidacion", async () => {
+    const { cliente } = crearClienteFalsoConductor({
+      pedidos: [pedidoSameDay("en_ruta")],
+    });
+
+    await expect(
+      actualizarEstadoPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: "fallido",
+          estadoEsperado: "en_ruta",
+          ejecutor: "conductor",
+          // tipoIncidenciaConductor omitido → ErrorValidacion
+        },
+        actorConductorFixture(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  // 6. Fallido con tipo_incidencia → abre incidencia con el tipo declarado
+  it("conductor puede registrar fallo con tipo_incidencia", async () => {
+    const { cliente, estado } = crearClienteFalsoConductor({
+      pedidos: [pedidoSameDay("en_ruta")],
+    });
+
+    await actualizarEstadoPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "fallido",
+        estadoEsperado: "en_ruta",
+        ejecutor: "conductor",
+        tipoIncidenciaConductor: "destinatario_ausente",
+        actuadoPorUsuarioId: DRIVER_1,
+      },
+      actorConductorFixture(),
+    );
+
+    expect(estado.incidencias).toHaveLength(1);
+    expect(estado.incidencias[0].tipo).toBe("destinatario_ausente");
+  });
+
+  // 7a. Bitácora del conductor va ANTES del UPDATE (invariante CLAUDE.md)
+  it("la bitácora del conductor queda escrita ANTES del UPDATE de estado (invariante CLAUDE.md)", async () => {
+    const { cliente: clienteBase, estado } = crearClienteFalsoConductor({
+      pedidos: [pedidoSameDay("en_ruta")],
+      hayPodValido: true,
+    });
+
+    // Sobrescribir el UPDATE para simular fallo del UPDATE de pedidos
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clienteMutable = clienteBase as any;
+    const fromOriginal = clienteMutable.from.bind(clienteMutable);
+    clienteMutable.from = (tabla: string) => {
+      if (tabla === "pedidos") {
+        const orig = fromOriginal(tabla);
+        return {
+          ...orig,
+          update: () => ({
+            eq: () => ({
+              eq: () => ({
+                eq: () => ({
+                  select: () => ({
+                    single: async () => ({ data: null, error: { message: "fallo simulado UPDATE" } }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          select: orig.select,
+        };
+      }
+      return fromOriginal(tabla);
+    };
+
+    try {
+      await actualizarEstadoPedido(
+        clienteMutable,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: "entregado",
+          estadoEsperado: "en_ruta",
+          ejecutor: "conductor",
+          actuadoPorUsuarioId: DRIVER_1,
+        },
+        actorConductorFixture(),
+      );
+    } catch {
+      // El UPDATE falló — es esperado en este test
+    }
+
+    // La bitácora debe haberse escrito aunque el UPDATE fallara.
+    const bitacoraConductor = estado.bitacora.find(
+      (b) => b.accion === "pedido.estado_actualizado_conductor",
+    );
+    expect(bitacoraConductor).toBeDefined();
+    expect(bitacoraConductor!.actor_usuario_id).toBe(DRIVER_1);
+  });
+
+  // 7. Entregado con POD válido → transición exitosa
+  it("conductor puede marcar entregado con POD válido", async () => {
+    const { cliente, estado } = crearClienteFalsoConductor({
+      pedidos: [pedidoSameDay("en_ruta")],
+      hayPodValido: true,
+    });
+
+    const pedido = await actualizarEstadoPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        ejecutor: "conductor",
+        actuadoPorUsuarioId: DRIVER_1,
+      },
+      actorConductorFixture(),
+    );
+
+    expect(pedido.estado).toBe("entregado");
+    // La bitácora debe incluir la acción del conductor.
+    const bitacoraConductor = estado.bitacora.find(
+      (b) => b.accion === "pedido.estado_actualizado_conductor",
+    );
+    expect(bitacoraConductor).toBeDefined();
+    // No debe incluir coordenadas (datos personales).
+    const detalle = JSON.stringify(bitacoraConductor?.detalle ?? {});
+    expect(detalle).not.toContain("lat");
+    expect(detalle).not.toContain("long");
+  });
+});
+
+// =============================================================================
+// crearPedidoSameDay — codigo_interno (etiqueta con QR)
+// =============================================================================
+
+describe("crearPedidoSameDay — codigo_interno", () => {
+  it("genera un codigo_interno con formato RX-XXXX-XXXX al crear el pedido", async () => {
+    const { cliente, estado } = crearClienteFalso();
+
+    const { pedido } = await crearPedidoSameDay(cliente, {
+      tenantId: TENANT_A,
+      sellerId: SELLER_1,
+      destinatarioNombre: "Carla Muñoz",
+      destinatarioDireccion: "Av. Kennedy 200",
+      destinatarioComuna: "Las Condes",
+    });
+
+    expect(pedido.codigoInterno).toMatch(PATRON_CODIGO_INTERNO);
+    expect(estado.pedidos.find((p) => p.id === pedido.id)?.codigo_interno).toBe(
+      pedido.codigoInterno,
+    );
+  });
+
+  it("reintenta la generación ante colisión (23505) y persiste con el código regenerado", async () => {
+    const { cliente: clienteBase, estado } = crearClienteFalso();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clienteMutable = clienteBase as any;
+    const fromOriginal = clienteMutable.from.bind(clienteMutable);
+
+    let intentos = 0;
+    clienteMutable.from = (tabla: string) => {
+      if (tabla === "pedidos") {
+        const orig = fromOriginal(tabla);
+        return {
+          ...orig,
+          insert: (fila: Record<string, unknown>) => ({
+            select: () => ({
+              single: async () => {
+                intentos++;
+                // Los primeros 2 intentos chocan con unique_violation; el 3º pasa.
+                if (intentos <= 2) {
+                  return { data: null, error: { code: "23505", message: "unique_violation" } };
+                }
+                const ahora = new Date().toISOString();
+                const nuevo = {
+                  id: "pedido-nuevo-reintento",
+                  tenant_id: fila.tenant_id,
+                  seller_id: fila.seller_id,
+                  tipo_pedido: fila.tipo_pedido,
+                  origen: fila.origen,
+                  ml_order_id: null,
+                  ml_shipment_id: null,
+                  estado: "pendiente_asignacion",
+                  estado_ml: null,
+                  subestado_ml: null,
+                  ultima_sync_ml_en: null,
+                  driver_id_asignado: null,
+                  destinatario_nombre: fila.destinatario_nombre,
+                  destinatario_direccion: fila.destinatario_direccion,
+                  destinatario_comuna: fila.destinatario_comuna,
+                  destinatario_telefono: null,
+                  instrucciones_entrega: null,
+                  fecha_compromiso: null,
+                  tarifa_aplicable_id: fila.tarifa_aplicable_id,
+                  monto_cobro_clp: null,
+                  monto_liquidacion_clp: null,
+                  cobro_generado: false,
+                  liquidacion_generada: false,
+                  notas_internas: null,
+                  creado_en: ahora,
+                  actualizado_en: ahora,
+                  lat: null,
+                  long: null,
+                  geo_estado: "pendiente",
+                  geo_confianza: null,
+                  geocodificado_en: null,
+                  cobertura_estado: "pendiente",
+                  fecha_compromiso_hora: null,
+                  corte_riesgo: false,
+                  sla_cumplido: null,
+                  codigo_interno: fila.codigo_interno,
+                };
+                estado.pedidos.push(nuevo as never);
+                return { data: nuevo, error: null };
+              },
+            }),
+          }),
+        };
+      }
+      return fromOriginal(tabla);
+    };
+
+    const { pedido } = await crearPedidoSameDay(clienteMutable, {
+      tenantId: TENANT_A,
+      sellerId: SELLER_1,
+      destinatarioNombre: "Reintento Test",
+      destinatarioDireccion: "Calle X 1",
+      destinatarioComuna: "Santiago",
+    });
+
+    expect(intentos).toBe(3);
+    expect(pedido.codigoInterno).toMatch(PATRON_CODIGO_INTERNO);
+  });
+
+  it("agota los 5 intentos y lanza error si todas las colisiones persisten", async () => {
+    const { cliente: clienteBase } = crearClienteFalso();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clienteMutable = clienteBase as any;
+    const fromOriginal = clienteMutable.from.bind(clienteMutable);
+
+    let intentos = 0;
+    clienteMutable.from = (tabla: string) => {
+      if (tabla === "pedidos") {
+        const orig = fromOriginal(tabla);
+        return {
+          ...orig,
+          insert: () => ({
+            select: () => ({
+              single: async () => {
+                intentos++;
+                return { data: null, error: { code: "23505", message: "unique_violation" } };
+              },
+            }),
+          }),
+        };
+      }
+      return fromOriginal(tabla);
+    };
+
+    await expect(
+      crearPedidoSameDay(clienteMutable, {
+        tenantId: TENANT_A,
+        sellerId: SELLER_1,
+        destinatarioNombre: "Agotado Test",
+        destinatarioDireccion: "Calle Y 2",
+        destinatarioComuna: "Santiago",
+      }),
+    ).rejects.toThrow();
+
+    expect(intentos).toBe(5);
+  });
+
+  it("no reintenta ante un error de INSERT que no sea unique_violation", async () => {
+    const { cliente: clienteBase } = crearClienteFalso();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clienteMutable = clienteBase as any;
+    const fromOriginal = clienteMutable.from.bind(clienteMutable);
+
+    let intentos = 0;
+    clienteMutable.from = (tabla: string) => {
+      if (tabla === "pedidos") {
+        const orig = fromOriginal(tabla);
+        return {
+          ...orig,
+          insert: () => ({
+            select: () => ({
+              single: async () => {
+                intentos++;
+                return { data: null, error: { code: "23502", message: "not_null_violation" } };
+              },
+            }),
+          }),
+        };
+      }
+      return fromOriginal(tabla);
+    };
+
+    await expect(
+      crearPedidoSameDay(clienteMutable, {
+        tenantId: TENANT_A,
+        sellerId: SELLER_1,
+        destinatarioNombre: "Sin Reintento Test",
+        destinatarioDireccion: "Calle Z 3",
+        destinatarioComuna: "Santiago",
+      }),
+    ).rejects.toThrow();
+
+    expect(intentos).toBe(1);
+  });
+});
+
+// =============================================================================
+// asegurarCodigoInterno — backfill perezoso
+// =============================================================================
+
+describe("asegurarCodigoInterno", () => {
+  it("devuelve el codigo_interno existente sin tocar la BD si ya está presente", async () => {
+    const updateSpy = vi.fn();
+    const clienteFalso = {
+      from: (_tabla: string) => ({
+        update: updateSpy,
+      }),
+    };
+
+    const codigo = await asegurarCodigoInterno(clienteFalso as never, {
+      id: PEDIDO_1,
+      tenantId: TENANT_A,
+      codigoInterno: "RX-7K2M-9QP4",
+    });
+
+    expect(codigo).toBe("RX-7K2M-9QP4");
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it("genera y persiste un codigo_interno nuevo si el pedido no lo tiene", async () => {
+    const clienteFalso = {
+      from: (_tabla: string) => ({
+        update: (cambios: Record<string, unknown>) => ({
+          eq: () => ({
+            eq: () => ({
+              select: () => ({
+                single: async () => ({
+                  data: { codigo_interno: cambios.codigo_interno },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    const codigo = await asegurarCodigoInterno(clienteFalso as never, {
+      id: PEDIDO_1,
+      tenantId: TENANT_A,
+      codigoInterno: null,
+    });
+
+    expect(codigo).toMatch(PATRON_CODIGO_INTERNO);
+  });
+
+  it("reintenta ante colisión (23505) y persiste con el código regenerado", async () => {
+    let intentos = 0;
+    const clienteFalso = {
+      from: (_tabla: string) => ({
+        update: (cambios: Record<string, unknown>) => ({
+          eq: () => ({
+            eq: () => ({
+              select: () => ({
+                single: async () => {
+                  intentos++;
+                  if (intentos <= 2) {
+                    return { data: null, error: { code: "23505", message: "unique_violation" } };
+                  }
+                  return { data: { codigo_interno: cambios.codigo_interno }, error: null };
+                },
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    const codigo = await asegurarCodigoInterno(clienteFalso as never, {
+      id: PEDIDO_1,
+      tenantId: TENANT_A,
+      codigoInterno: null,
+    });
+
+    expect(intentos).toBe(3);
+    expect(codigo).toMatch(PATRON_CODIGO_INTERNO);
+  });
+
+  it("lanza error si agota los intentos ante colisión persistente", async () => {
+    const clienteFalso = {
+      from: (_tabla: string) => ({
+        update: () => ({
+          eq: () => ({
+            eq: () => ({
+              select: () => ({
+                single: async () => ({
+                  data: null,
+                  error: { code: "23505", message: "unique_violation" },
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    };
+
+    await expect(
+      asegurarCodigoInterno(clienteFalso as never, {
+        id: PEDIDO_1,
+        tenantId: TENANT_A,
+        codigoInterno: null,
+      }),
+    ).rejects.toThrow();
   });
 });

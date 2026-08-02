@@ -1,0 +1,90 @@
+/* Torre de control — tokens.
+ * Lenguaje visual propio del módulo. NO sustituir por los tokens de DESIGN_SYSTEM.md.
+ * Tailwind 4: pega este bloque en el CSS global. El prefijo --tc- evita colisiones.
+ */
+@theme {
+  /* Roles */
+  --color-tc-papel:      #f3f2f2; /* fondo de toda placa */
+  --color-tc-chasis:     #2d2b2b; /* las reglas de 2px entre regiones */
+  --color-tc-tinta:      #201e1d; /* texto, trazo, rellenos sólidos */
+  --color-tc-inserto:    #eae7e7; /* barras vacías, paneles hundidos */
+  --color-tc-senal:      #ec3013; /* RESERVADO: crítico y accionable */
+  --color-tc-senal-text: #ae1800; /* el rojo a tamaño de texto */
+
+  /* Rampa de tinta */
+  --color-tc-ink-100: #f8f4f4;
+  --color-tc-ink-200: #eae7e7;
+  --color-tc-ink-300: #d7d3d3;
+  --color-tc-ink-400: #bab6b6;
+  --color-tc-ink-500: #9b9797;
+  --color-tc-ink-600: #7d7979;
+  --color-tc-ink-700: #605d5d;
+  --color-tc-ink-800: #444141;
+  --color-tc-ink-900: #2d2b2b;
+
+  /* Rampa de señal — en uso solo 100, 500 y 700 */
+  --color-tc-sig-100: #fff2ef;
+  --color-tc-sig-200: #ffe0d9;
+  --color-tc-sig-300: #ffc4b8;
+  --color-tc-sig-400: #ff9783;
+  --color-tc-sig-500: #ec3013;
+  --color-tc-sig-600: #dd2b0f;
+  --color-tc-sig-700: #ae1800;
+  --color-tc-sig-800: #7c1405;
+  --color-tc-sig-900: #4d170e;
+
+  /* Espaciado — múltiplos de 4, sin valores intermedios */
+  --spacing-tc-1:  4px;
+  --spacing-tc-2:  8px;
+  --spacing-tc-3: 12px;
+  --spacing-tc-4: 16px;
+  --spacing-tc-6: 24px;
+  --spacing-tc-8: 32px;
+
+  /* Radio — 0 en absolutamente todo. Es una decisión, no un descuido. */
+  --radius-tc: 0px;
+
+  /* Elevación — definidas tres, en uso una (la paleta ⌘K) */
+  --shadow-tc-sm: 0 1px 2px rgba(45, 43, 43, .14);
+  --shadow-tc-md: 0 3px 10px rgba(45, 43, 43, .16);
+  --shadow-tc-lg: 0 12px 32px rgba(45, 43, 43, .22);
+
+  /* Tipografía */
+  --font-tc: Archivo, system-ui, sans-serif;
+}
+
+:root {
+  /* Retícula de la consola */
+  --tc-h-barra:    52px;
+  --tc-h-ola:     132px;
+  --tc-h-tiempo:   98px;
+  --tc-w-riel:    404px;
+  --tc-regla-may:   2px;
+  --tc-regla-men:   1px;
+
+  /* Escala de riesgo — pitch de trama por paso */
+  --tc-trama-1: 13px; /* calmo    0–20  */
+  --tc-trama-2:  9px; /* bajo    21–40  */
+  --tc-trama-3:  6px; /* medio   41–60  */
+  --tc-trama-4:  4px; /* alto    61–75  */
+  --tc-trama-5:  3px; /* crítico 76–100 */
+}
+
+/* Cifras tabulares — regla de producto 6. Aplica a toda hora, dinero, puntaje y conteo. */
+.tc-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+/* Esqueleto de carga por región */
+@keyframes tc-barrido { from { background-position: 0 0 } to { background-position: 56px 0 } }
+.tc-cargando {
+  background-image: repeating-linear-gradient(135deg, #eae7e7 0 14px, #f3f2f2 14px 28px);
+  animation: tc-barrido 1.6s linear infinite;
+}
+
+/* Scrollbar del riel */
+.tc-rail::-webkit-scrollbar { width: 10px }
+.tc-rail::-webkit-scrollbar-track { background: #eae9e9 }
+.tc-rail::-webkit-scrollbar-thumb { background: #bab6b6; border: 3px solid #eae9e9 }
+.tc-rail::-webkit-scrollbar-thumb:hover { background: #7d7979 }

@@ -2,11 +2,12 @@
  * Pantalla D-3 — Liquidaciones de conductores.
  *
  * Server Component. Ordenamiento: emitida primero, luego borrador, luego pagada.
- * Filtros por conductor y estado. Acción "Marcar como pagada".
+ * Filtros por conductor y estado. Acciones: "Emitir pago" (F19) y "Marcar como pagada".
  * Criterios C-1 (montos CLP), C-3 (signed URL PDF).
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -15,12 +16,18 @@ import { listarLiquidaciones } from "@/modules/dinero/index";
 import type { Liquidacion, EstadoLiquidacion } from "@/modules/dinero/tipos";
 import {
   traducirEstadoLiquidacion,
-  COLOR_ESTADO_LIQUIDACION,
-  TEXTO_ESTADO_LIQUIDACION,
+  BADGE_ESTADO_LIQUIDACION,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { DialogMarcarPagada } from "./dialog-marcar-pagada";
+import { DialogEmitirPago } from "./dialog-emitir-pago";
 import { BotonDescargaPdfLiquidacion } from "./boton-descarga-pdf-liquidacion";
+import { DialogAjustarLiquidacion } from "./dialog-ajustar";
+import { FiltrosLiquidacionesForm } from "./filtros-liquidaciones";
+import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
+import { accionPreflightLotePagos, accionEmitirPagosLote } from "./actions";
 
 export const metadata: Metadata = {
   title: "Liquidaciones",
@@ -32,6 +39,23 @@ const ORDEN_ESTADO: Record<EstadoLiquidacion, number> = {
   borrador: 1,
   pagada: 2,
 };
+
+// Estados activos de payout (en tránsito o terminal negativo)
+const ESTADOS_PAYOUT_ACTIVOS = [
+  "pendiente",
+  "procesando",
+  "enviado",
+  "confirmado",
+  "rechazado",
+  "fallido",
+] as const;
+
+type EstadoPayout = (typeof ESTADOS_PAYOUT_ACTIVOS)[number];
+
+interface PayoutResumen {
+  estado: EstadoPayout;
+  errorDescripcion: string | null;
+}
 
 interface SearchParams {
   conductor?: string;
@@ -67,6 +91,9 @@ export default async function PaginaLiquidaciones({
   const cliente = crearClienteServiceRole();
   let liquidaciones: LiquidacionConNombre[] = [];
   let conductoresDisponibles: { id: string; nombre: string }[] = [];
+  const payoutPorLiquidacion = new Map<string, PayoutResumen>();
+  // Elegibles para pagar en lote: liquidaciones 'emitida' sin payout en tránsito.
+  let itemsLotePagos: ItemLoteUI[] = [];
   let errorCarga = false;
 
   // Contadores para chips
@@ -100,6 +127,30 @@ export default async function PaginaLiquidaciones({
       else if (l.estado === "pagada") contPagadas++;
     }
 
+    // Payout más reciente por liquidación (F19)
+    const liquidacionIds = todasLiquidaciones.map((l) => l.id);
+    if (liquidacionIds.length > 0) {
+      const { data: payoutsData } = await cliente
+        .schema("dinero")
+        .from("payouts_conductor")
+        .select("liquidacion_id, estado, error_descripcion, created_at")
+        .eq("tenant_id", tenantId)
+        .in("liquidacion_id", liquidacionIds)
+        .in("estado", [...ESTADOS_PAYOUT_ACTIVOS])
+        .order("created_at", { ascending: false });
+
+      // Solo el primer payout por liquidación (ya viene ordenado DESC)
+      for (const p of payoutsData ?? []) {
+        const liqId = p.liquidacion_id as string;
+        if (!payoutPorLiquidacion.has(liqId)) {
+          payoutPorLiquidacion.set(liqId, {
+            estado: p.estado as EstadoPayout,
+            errorDescripcion: (p.error_descripcion as string | null) ?? null,
+          });
+        }
+      }
+    }
+
     // Filtrar y ordenar
     const filtradas = filtroEstado
       ? todasLiquidaciones.filter((l) => l.estado === filtroEstado)
@@ -115,6 +166,27 @@ export default async function PaginaLiquidaciones({
       ...l,
       conductorNombre: conductoresMap.get(l.driverId) ?? l.driverId,
     }));
+
+    // Elegibles para pagar en lote: 'emitida' sin un payout en tránsito/confirmado
+    // (mismo criterio que el botón "Emitir pago" individual de la tabla).
+    itemsLotePagos = liquidaciones
+      .filter((l) => {
+        if (l.estado !== "emitida") return false;
+        const p = payoutPorLiquidacion.get(l.id);
+        return !(
+          p &&
+          (p.estado === "pendiente" ||
+            p.estado === "procesando" ||
+            p.estado === "enviado" ||
+            p.estado === "confirmado")
+        );
+      })
+      .map((l) => ({
+        id: l.id,
+        etiqueta: l.conductorNombre,
+        sub: `${formatearFechaCorta(l.fechaInicio)}–${formatearFechaCorta(l.fechaFin)}`,
+        montoClp: (l.montoTotalClp ?? 0) + l.bonoClp - l.penalizacionClp,
+      }));
   } catch {
     errorCarga = true;
   }
@@ -126,25 +198,25 @@ export default async function PaginaLiquidaciones({
       key: "borrador",
       label: "Borrador",
       count: contBorrador,
-      color: "bg-gray-50 border-gray-200 text-gray-700",
+      color: "bg-muted text-muted-foreground",
     },
     {
       key: "emitida",
       label: "Emitidas",
       count: contEmitidas,
-      color: "bg-blue-50 border-blue-200 text-blue-800",
+      color: "bg-info-subtle text-info-subtle-foreground",
     },
     {
       key: "pagada",
       label: "Pagadas",
       count: contPagadas,
-      color: "bg-green-50 border-green-200 text-green-800",
+      color: "bg-success-subtle text-success-subtle-foreground",
     },
   ];
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Liquidaciones de conductores</h1>
+      <h1 className="text-2xl font-semibold">Liquidaciones de conductores</h1>
 
       {/* Chips de resumen */}
       {!errorCarga && (
@@ -153,100 +225,62 @@ export default async function PaginaLiquidaciones({
             <div
               key={chip.key}
               role="listitem"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${chip.color}`}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium ${chip.color}`}
             >
-              {chip.label}: <span className="font-bold">{chip.count}</span>
+              {chip.label}: <span className="font-semibold tabular-nums">{chip.count}</span>
             </div>
           ))}
         </div>
       )}
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-conductor-l" className="text-xs font-medium text-muted-foreground">
-            Conductor
-          </label>
-          <select
-            id="f-conductor-l"
-            name="conductor"
-            defaultValue={filtroConductor}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos</option>
-            {conductoresDisponibles.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-l" className="text-xs font-medium text-muted-foreground">
-            Estado
-          </label>
-          <select
-            id="f-estado-l"
-            name="estado"
-            defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos</option>
-            {ESTADOS_LIQ.map((e) => (
-              <option key={e} value={e}>
-                {TEXTO_ESTADO_LIQUIDACION[e]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Filtrar
-        </button>
-
-        {hayFiltroActivo && (
-          <a
-            href="/dinero/liquidaciones"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar filtros
-          </a>
-        )}
-      </form>
+      <FiltrosLiquidacionesForm
+        conductores={conductoresDisponibles}
+        estados={ESTADOS_LIQ}
+        filtroConductor={filtroConductor}
+        filtroEstado={filtroEstado}
+        hayFiltroActivo={hayFiltroActivo}
+      />
 
       {/* Error */}
       {errorCarga && (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
-          No se pudo cargar la lista de liquidaciones. Intenta recargar la página.
+          No pudimos cargar las liquidaciones. Intenta recargar la página.
         </div>
+      )}
+
+      {/* Aprobación por lotes — pagar varias liquidaciones emitidas de una vez */}
+      {!errorCarga && itemsLotePagos.length > 0 && (
+        <AprobacionLote
+          items={itemsLotePagos}
+          tipo="pago"
+          accionPreflight={accionPreflightLotePagos}
+          accionEmitir={accionEmitirPagosLote}
+        />
       )}
 
       {/* Tabla / vacío */}
       {!errorCarga && liquidaciones.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
+        <div className="rounded-lg border bg-card px-6 py-12 text-center">
           <p className="text-muted-foreground">
             {hayFiltroActivo
-              ? "No hay liquidaciones que coincidan con los filtros aplicados."
-              : "Aún no hay liquidaciones. Se generan automáticamente cuando el motor registra la primera entrega de un conductor."}
+              ? "No hay liquidaciones que coincidan con los filtros."
+              : "Aún no tienes liquidaciones. Se generan automáticamente cuando tus conductores registran entregas."}
           </p>
           {hayFiltroActivo && (
-            <a
+            <Link
               href="/dinero/liquidaciones"
               className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
             >
               Limpiar filtros
-            </a>
+            </Link>
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Liquidaciones de conductores">
               <thead>
@@ -264,7 +298,11 @@ export default async function PaginaLiquidaciones({
               </thead>
               <tbody className="divide-y divide-border">
                 {liquidaciones.map((liq) => (
-                  <FilaLiquidacion key={liq.id} liquidacion={liq} />
+                  <FilaLiquidacion
+                    key={liq.id}
+                    liquidacion={liq}
+                    payout={payoutPorLiquidacion.get(liq.id)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -281,35 +319,70 @@ export default async function PaginaLiquidaciones({
 
 function FilaLiquidacion({
   liquidacion,
+  payout,
 }: {
   liquidacion: LiquidacionConNombre;
+  payout?: PayoutResumen;
 }) {
-  const badgeClases = COLOR_ESTADO_LIQUIDACION[liquidacion.estado];
   const textoEstado = traducirEstadoLiquidacion(liquidacion.estado);
+
+  // Determina qué mostrar en la celda de acciones según estado de payout
+  const payoutEnProceso =
+    payout &&
+    (payout.estado === "pendiente" ||
+      payout.estado === "procesando" ||
+      payout.estado === "enviado");
+
+  const payoutConfirmado = payout?.estado === "confirmado";
+
+  const payoutFallido =
+    payout &&
+    (payout.estado === "fallido" || payout.estado === "rechazado");
 
   return (
     <tr className="group hover:bg-muted/30 transition-colors">
       <td className="px-4 py-3">
-        <p className="font-medium truncate max-w-[160px]">{liquidacion.conductorNombre}</p>
+        <Link
+          href={`/conductores/${liquidacion.driverId}`}
+          className="font-medium truncate max-w-[160px] inline-block hover:underline"
+        >
+          {liquidacion.conductorNombre}
+        </Link>
       </td>
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        <span className="tabular-nums">
+      <td className="hidden px-4 py-3 sm:table-cell">
+        <Link
+          href={`/dinero/liquidaciones/${liquidacion.id}`}
+          className="tabular-nums text-primary hover:underline"
+        >
           {formatearFechaCorta(liquidacion.fechaInicio)} –{" "}
           {formatearFechaCorta(liquidacion.fechaFin)}
-        </span>
+        </Link>
       </td>
       <td className="px-4 py-3">
-        <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-        >
-          {textoEstado}
-        </span>
+        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} texto={textoEstado} />
       </td>
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
         {liquidacion.totalEntregas}
       </td>
-      <td className="hidden px-4 py-3 text-right tabular-nums font-medium lg:table-cell">
-        {formatearCLPOGuion(liquidacion.montoTotalClp)}
+      <td className="hidden px-4 py-3 text-right lg:table-cell">
+        {liquidacion.montoTotalClp !== null ? (
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="tabular-nums font-medium">
+              {formatearCLPOGuion(
+                liquidacion.montoTotalClp + liquidacion.bonoClp - liquidacion.penalizacionClp,
+              )}
+            </span>
+            {(liquidacion.bonoClp > 0 || liquidacion.penalizacionClp > 0) && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                base {formatearCLPOGuion(liquidacion.montoTotalClp)}
+                {liquidacion.bonoClp > 0 && ` +${formatearCLPOGuion(liquidacion.bonoClp)}`}
+                {liquidacion.penalizacionClp > 0 && ` −${formatearCLPOGuion(liquidacion.penalizacionClp)}`}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </td>
       <td className="hidden px-4 py-3 text-center xl:table-cell">
         {liquidacion.pdfRef ? (
@@ -319,14 +392,49 @@ function FilaLiquidacion({
         )}
       </td>
       <td className="px-4 py-3 text-right">
-        {liquidacion.estado === "emitida" ? (
-          <DialogMarcarPagada
+        {liquidacion.estado === "borrador" ? (
+          <DialogAjustarLiquidacion
             liquidacionId={liquidacion.id}
-            conductorNombre={liquidacion.conductorNombre}
-            fechaInicio={liquidacion.fechaInicio}
-            fechaFin={liquidacion.fechaFin}
-            montoTotalClp={liquidacion.montoTotalClp}
+            montoBaseClp={liquidacion.montoTotalClp ?? 0}
+            bonoActual={liquidacion.bonoClp}
+            penalizacionActual={liquidacion.penalizacionClp}
+            notaActual={liquidacion.notaAjuste}
           />
+        ) : liquidacion.estado === "emitida" ? (
+          <div className="flex flex-col items-end gap-1.5">
+            {payoutEnProceso ? (
+              /* Payout en tránsito: solo badge informativo, sin botones */
+              <Badge variant="info">Pago en proceso</Badge>
+            ) : payoutConfirmado ? (
+              /* Payout confirmado pero liquidación todavía figura emitida (edge case) */
+              <Badge variant="success">Pago confirmado</Badge>
+            ) : (
+              /* Sin payout, o payout fallido/rechazado → mostrar ambos botones */
+              <>
+                <DialogEmitirPago
+                  liquidacionId={liquidacion.id}
+                  conductorNombre={liquidacion.conductorNombre}
+                  fechaInicio={liquidacion.fechaInicio}
+                  fechaFin={liquidacion.fechaFin}
+                  montoTotalClp={liquidacion.montoTotalClp}
+                />
+                <DialogMarcarPagada
+                  liquidacionId={liquidacion.id}
+                  conductorNombre={liquidacion.conductorNombre}
+                  fechaInicio={liquidacion.fechaInicio}
+                  fechaFin={liquidacion.fechaFin}
+                  montoTotalClp={liquidacion.montoTotalClp}
+                />
+              </>
+            )}
+
+            {/* Indicador de error del payout si fue rechazado */}
+            {payoutFallido && payout.errorDescripcion && (
+              <p className="text-xs text-destructive leading-tight max-w-[180px] text-right">
+                Rechazado: {payout.errorDescripcion}
+              </p>
+            )}
+          </div>
         ) : null}
       </td>
     </tr>

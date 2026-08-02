@@ -36,3 +36,48 @@ export {
   ErrorFirmaWebhookInvalida,
   ErrorConfigCobranzaAusente,
 } from "./errores";
+
+// ---------------------------------------------------------------------------
+// PAYOUTS SALIENTES — webhook de confirmación instantánea (Fintoc
+// `transfer.outbound.*`). Standalone: el backend (fase 3) valida la firma y
+// normaliza el evento SIN una instancia de tenant/config (el secreto del webhook
+// de payout es de ORG y la validación ocurre ANTES de resolver el tenant).
+// ---------------------------------------------------------------------------
+
+export {
+  validarFirmaWebhookPayout,
+  normalizarEventoWebhookPayoutFintoc,
+  sanitizarPayloadEventoPayout,
+  mapearStatusFintocPayout,
+} from "./payout/adaptadores/fintoc-webhook";
+
+export type { ValidarFirmaWebhookPayoutInput } from "./payout/adaptadores/fintoc-webhook";
+
+export type {
+  PuertoPayout,
+  EventoWebhookPayout,
+  EstadoExternoEventoPayout,
+} from "./payout/puerto-payout";
+
+// ---------------------------------------------------------------------------
+// CHECKOUT DE SUSCRIPCIÓN — cobro Rutax→courier vía Fintoc Payment Links.
+// La secret key es de ORG (misma que el payout). El gate sandbox/real vive en
+// `checkout/fabrica-checkout.ts` (SUSCRIPCION_SANDBOX_MODE). El webhook de
+// confirmación es org-level y usa el helper de firma compartido.
+// ---------------------------------------------------------------------------
+
+export {
+  obtenerPuertoCheckout,
+  suscripcionSandboxActivo,
+  normalizarEventoPagoSuscripcion,
+  ErrorCheckoutConfig,
+  ErrorCheckoutOperativo,
+} from "./checkout";
+
+export type {
+  PuertoCheckoutSuscripcion,
+  CrearLinkPagoArgs,
+  ResultadoLinkPago,
+  EventoPagoSuscripcion,
+  EstadoPagoSuscripcion,
+} from "./checkout";

@@ -52,12 +52,20 @@ function fechaLocalSantiago(fecha: Date): string {
  * la(s) columna(s) de filtro de aislamiento. Cada entrada se consulta de forma
  * independiente — un fallo no debe afectar a las demás.
  *
- * Notas de columnas (ver migraciones 0001/0002/0005/0006):
+ * Notas de columnas (ver migraciones 0001/0002/0005/0006/0013/0014/0015):
  * - `tenants`: se filtra por `id` (es la fila del propio tenant), no por
  *   `tenant_id` (no tiene esa columna — es la tabla raíz).
  * - `sellers`/`conductores`/`pedidos`/`manifiestos`/`asignaciones_pedido`/
  *   `incidencias`/`periodos_cobro`/`lineas_cobro`/`liquidaciones`/
  *   `documentos_dte`/`eventos_conciliacion`: todas tienen `tenant_id`.
+ * - Bloque 1 (migraciones 0013-0015): `zonas`, `zona_comunas`, `ventanas_corte`,
+ *   `conductor_zonas` — todas con `tenant_id`. `pedidos` recibió 9 columnas nuevas
+ *   (geocoding + SLA).
+ * - Bloque 2 (migración 20260613000008): `pruebas_entrega` — metadato operativo
+ *   del POD same-day; excluye foto_object_path, firma_object_path y coordenadas GPS
+ *   en bruto (datos personales / materiales binarios — ver comentario en TABLAS_A_EXPORTAR).
+ *
+ * MANTENIMIENTO: al añadir tablas o columnas nuevas, actualizar también esta lista.
  */
 interface DefinicionTabla {
   /** Clave bajo la que aparece en `datos` y en los conteos de bitácora. */
@@ -104,12 +112,18 @@ const TABLAS_A_EXPORTAR: DefinicionTabla[] = [
     tabla: "pedidos",
     // Todas las columnas de negocio — sin datos de autenticación (no las hay
     // en esta tabla; driver_id_asignado y seller_id son referencias internas).
+    // Geocoding (migración 0013): lat, long, geo_estado, geo_confianza,
+    //   geocodificado_en, cobertura_estado.
+    // SLA / ventana de corte (migración 0014): fecha_compromiso_hora,
+    //   corte_riesgo, sla_cumplido.
     columnas:
       "id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, " +
       "subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, " +
       "destinatario_direccion, destinatario_comuna, destinatario_telefono, " +
       "instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, monto_cobro_clp, " +
       "monto_liquidacion_clp, cobro_generado, liquidacion_generada, notas_internas, " +
+      "lat, long, geo_estado, geo_confianza, geocodificado_en, cobertura_estado, " +
+      "fecha_compromiso_hora, corte_riesgo, sla_cumplido, " +
       "creado_en, actualizado_en",
     columnaFiltro: "tenant_id",
   },
@@ -185,6 +199,55 @@ const TABLAS_A_EXPORTAR: DefinicionTabla[] = [
       "id, seller_id, periodo_cobro_id, tipo_diferencia, pedido_id, descripcion, " +
       "monto_diferencia_clp, estado, resuelto_por_usuario_id, resuelto_en, " +
       "job_run_id, creado_en",
+    columnaFiltro: "tenant_id",
+  },
+  // --- Bloque 2: POD same-day (migración 20260613000008) ---
+  // EXCLUSIONES DELIBERADAS:
+  // - foto_object_path / firma_object_path: rutas en bucket privado (materiales binarios,
+  //   generan signed URLs desde el backend — NUNCA exponer el path directamente).
+  // - geo_lat / geo_long / geo_precision_m: coordenadas GPS del conductor en el momento
+  //   de la captura — dato personal sensible (Ley 21.431). Solo se exporta metadato
+  //   operativo (distancia_destino_m, geocerca_resultado) sin las coordenadas en bruto.
+  //
+  // MANTENIMIENTO: al añadir columnas a pruebas_entrega, revisar si son metadato
+  // exportable o dato personal/binario excluido.
+  {
+    clave: "pruebas_entrega",
+    tabla: "pruebas_entrega",
+    columnas:
+      "id, pedido_id, seller_id, conductor_id, tipo_resultado, tiene_foto, tiene_firma, " +
+      "otp_estado, distancia_destino_m, geocerca_resultado, es_valido, tipo_incidencia, " +
+      "capturado_en, creado_en",
+    columnaFiltro: "tenant_id",
+  },
+  // --- Bloque 1: zonas operativas, SLA y auto-asignación (migraciones 0014-0015) ---
+  {
+    clave: "zonas",
+    tabla: "zonas",
+    columnas: "id, nombre, activa, creado_en, actualizado_en",
+    columnaFiltro: "tenant_id",
+  },
+  {
+    clave: "zona_comunas",
+    tabla: "zona_comunas",
+    columnas: "id, zona_id, comuna, creado_en",
+    columnaFiltro: "tenant_id",
+  },
+  {
+    clave: "ventanas_corte",
+    tabla: "ventanas_corte",
+    // hora_corte es time local America/Santiago (sin offset TZ); el receptor
+    // debe interpretarla en esa zona. minutos_preparacion / minutos_ruta_estimado
+    // son buffers operativos; sla_objetivo_pct es el objetivo de cumplimiento (0..100).
+    columnas:
+      "id, seller_id, zona_id, tipo_entrega, hora_corte, minutos_preparacion, " +
+      "minutos_ruta_estimado, sla_objetivo_pct, activa, creado_en, actualizado_en",
+    columnaFiltro: "tenant_id",
+  },
+  {
+    clave: "conductor_zonas",
+    tabla: "conductor_zonas",
+    columnas: "id, conductor_id, zona_id, creado_en",
     columnaFiltro: "tenant_id",
   },
 ];

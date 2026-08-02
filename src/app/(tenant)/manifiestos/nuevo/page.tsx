@@ -9,6 +9,7 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
 import { FormularioNuevoManifiesto } from "./formulario";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 export default async function PaginaNuevoManifiesto() {
   const sesion = await obtenerSesionActual();
@@ -37,12 +38,12 @@ export default async function PaginaNuevoManifiesto() {
     }),
   );
 
-  const hoy = new Date().toISOString().split("T")[0];
+  const hoy = fechaLocalEnSantiago(new Date());
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Nuevo manifiesto</h1>
+        <h1 className="text-2xl font-semibold">Nuevo manifiesto</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           El manifiesto se crea en borrador. Podrás agregar pedidos antes de confirmarlo.
         </p>

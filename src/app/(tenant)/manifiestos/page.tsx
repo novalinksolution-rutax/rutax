@@ -4,17 +4,33 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Truck } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
+import { puedeGenerarManifiestos, puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
+import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   traducirEstadoManifiesto,
-  COLOR_ESTADO_MANIFIESTO,
-  TEXTO_ESTADO_MANIFIESTO,
+  BADGE_ESTADO_MANIFIESTO,
 } from "@/lib/ui/traduccion-estados";
-import { ESTADOS_MANIFIESTO } from "@/modules/operacion/tipos";
+import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
+import { ahoraEnSantiago } from "@/lib/fecha-santiago";
+import { FiltrosManifiestos } from "./filtros-manifiestos";
+import { BotonAutoAsignar } from "./boton-auto-asignar";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 
 interface SearchParams {
   estado?: string;
@@ -34,6 +50,8 @@ export default async function PaginaManifiestos({
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;
   const puedeCrear = puedeGenerarManifiestos(sesion.usuario);
+  const puedeAutoAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
+  const fechaHoy = ahoraEnSantiago().fecha;
 
   const filtroEstado = (params.estado as EstadoManifiesto | "") ?? "";
   const filtroFecha = params.fecha ?? "";
@@ -73,103 +91,114 @@ export default async function PaginaManifiestos({
     errorCarga = true;
   }
 
+  // Nombres legibles para la columna Conductor (en vez del UUID).
+  let nombreConductorPorId: Record<string, string> = {};
+  try {
+    const driverIds = Array.from(new Set(manifiestos.map((m) => m.driverId)));
+    nombreConductorPorId = await mapaNombresConductores(cliente, tenantId, driverIds);
+  } catch {
+    // best-effort — si falla, la celda cae al UUID.
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Manifiestos</h1>
-        {puedeCrear && (
-          <Link
-            href="/manifiestos/nuevo"
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            Nuevo manifiesto
-          </Link>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="font-heading text-2xl font-semibold">Manifiestos</h1>
+          <IndicadorEnVivo
+            tenantId={tenantId}
+            tablas={[{ schema: "operacion", tabla: "manifiestos" }]}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          {puedeAutoAsignar && <BotonAutoAsignar fechaHoy={fechaHoy} />}
+          {puedeCrear && (
+            <Button asChild>
+              <Link href="/manifiestos/nuevo">
+                <Plus className="size-4" aria-hidden="true" />
+                Nuevo manifiesto
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-m" className="text-xs font-medium text-muted-foreground">Estado</label>
-          <select id="f-estado-m" name="estado" defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">Todos</option>
-            {ESTADOS_MANIFIESTO.map((e) => (
-              <option key={e} value={e}>{TEXTO_ESTADO_MANIFIESTO[e as EstadoManifiesto]}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-fecha-m" className="text-xs font-medium text-muted-foreground">Fecha de operación</label>
-          <input id="f-fecha-m" name="fecha" type="date" defaultValue={filtroFecha}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm" />
-        </div>
-        <button type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-          Filtrar
-        </button>
-        {(filtroEstado || filtroFecha) && (
-          <Link href="/manifiestos"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline">
-            Limpiar
-          </Link>
-        )}
-      </form>
+      <FiltrosManifiestos
+        filtroEstado={filtroEstado}
+        filtroFecha={filtroFecha}
+        hayFiltros={!!(filtroEstado || filtroFecha)}
+      />
 
       {errorCarga && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          No se pudo cargar la lista de manifiestos.
+        <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
+          No pudimos cargar los manifiestos. Intenta recargar la página.
         </div>
       )}
 
       {!errorCarga && manifiestos.length === 0 ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          <p className="text-muted-foreground">No hay manifiestos para los filtros seleccionados.</p>
-          {puedeCrear && (
-            <Link href="/manifiestos/nuevo"
-              className="mt-3 inline-block text-sm font-medium text-primary hover:underline">
-              Crear el primero
-            </Link>
-          )}
-        </div>
+        <EmptyState
+          icon={Truck}
+          titulo={
+            filtroEstado || filtroFecha
+              ? "Ningún manifiesto coincide"
+              : "Aún no tienes manifiestos"
+          }
+          descripcion={
+            filtroEstado || filtroFecha
+              ? "Prueba cambiando el estado o la fecha."
+              : "Crea un manifiesto para organizar la ruta del día de un conductor."
+          }
+          tono={filtroEstado || filtroFecha ? "filtro" : "arranque"}
+          accion={
+            puedeCrear ? (
+              <Button asChild size="sm" variant={filtroEstado || filtroFecha ? "outline" : "default"}>
+                <Link href="/manifiestos/nuevo">Crear manifiesto</Link>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Lista de manifiestos">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="px-4 py-2">Nombre</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Fecha</th>
-                  <th className="hidden px-4 py-2 md:table-cell">Conductor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+        !errorCarga && (
+          <DataTable
+            toolbar={
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {manifiestos.length} manifiesto{manifiestos.length !== 1 ? "s" : ""}
+              </span>
+            }
+          >
+            <Table densidad="comfortable" aria-label="Lista de manifiestos">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Estado</TableHead>
+                  <TableHead className="px-4">Nombre</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Fecha</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell">Conductor</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {manifiestos.map((m) => (
-                  <tr key={m.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_MANIFIESTO[m.estado]}`}>
-                        {traducirEstadoManifiesto(m.estado)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
+                  <TableRow key={m.id}>
+                    <TableCell className="px-4">
+                      <BadgeEstado variante={BADGE_ESTADO_MANIFIESTO[m.estado]} texto={traducirEstadoManifiesto(m.estado)} />
+                    </TableCell>
+                    <TableCell className="px-4">
                       <Link href={`/manifiestos/${m.id}`} className="font-medium hover:underline">
                         {m.nombre}
                       </Link>
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
                       {m.fechaOperacion}
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                      {m.driverId}
-                    </td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
+                      {nombreConductorPorId[m.driverId] ?? m.driverId}
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </TableBody>
+            </Table>
+          </DataTable>
+        )
       )}
     </div>
   );

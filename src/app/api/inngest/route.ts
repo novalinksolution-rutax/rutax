@@ -29,6 +29,9 @@ import { jobProcesarShipmentActualizado } from "@/modules/integraciones/ml/jobs/
 import { jobPollingEstadosPedidos } from "@/modules/integraciones/ml/jobs/polling-estados";
 import { jobEjecutarBackfill } from "@/modules/integraciones/ml/jobs/ejecutar-backfill";
 
+// Jobs de geocoding (F4 — ingesta → coordenadas + cobertura)
+import { jobGeocodificarPedido } from "@/modules/integraciones/geocoding/jobs/geocodificar-pedido";
+
 // Jobs de notificaciones
 import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaciones/conexion-caida";
 
@@ -46,6 +49,47 @@ import { jobAlertaFoliosProximos } from "@/modules/dinero/jobs/alerta-folios-pro
 import { jobConciliarPago } from "@/modules/dinero/jobs/conciliar-pago";
 import { jobAlertaMorosidad } from "@/modules/dinero/jobs/alerta-morosidad";
 import { jobEmitirNotaCredito } from "@/modules/dinero/jobs/emitir-nota-credito";
+import { jobConciliarTresFuentes } from "@/modules/dinero/jobs/conciliar-tres-fuentes";
+// Jobs de payouts a conductores (F19, Bloque 3 — dinero saliente)
+import { jobEjecutarPayout } from "@/modules/dinero/jobs/ejecutar-payout";
+import { jobConsultarEstadoPayout } from "@/modules/dinero/jobs/consultar-estado-payout";
+// Jobs F19/Fase 3 — confirmación instantánea de payouts por webhook Fintoc
+import { jobAplicarActualizacionPayout } from "@/modules/dinero/jobs/aplicar-actualizacion-payout";
+import { jobConciliarPayoutConfirmado } from "@/modules/dinero/jobs/conciliar-payout-confirmado";
+
+// Jobs de Plataforma (backstage Rutax — suscripciones de couriers)
+import { jobGenerarPeriodosSuscripcion } from "@/modules/plataforma/jobs/generar-periodos";
+// Aplica downgrades de plan diferidos (F2, item I) — cron 05:00, antes de generar-periodos (06:00)
+import { jobAplicarCambiosPlan } from "@/modules/plataforma/jobs/aplicar-cambios-plan";
+// Watchdog de salud del sistema (telemetría de crons + backlog + integridad) — QW3/QW6
+import { jobVerificarSalud } from "@/modules/plataforma/jobs/verificar-salud";
+// Morosidad de suscripción — marca períodos vencidos + alerta (item 2)
+import { jobMarcarMorosidad } from "@/modules/plataforma/jobs/marcar-morosidad";
+// Auto-cobro de período por mandato Fintoc (F1-E)
+import { jobCobrarPeriodoAuto } from "@/modules/plataforma/jobs/cobrar-periodo-auto";
+// F2 "Ola 3" ítem F — dunning: reintento de auto-cobro de períodos vencidos + escalamiento
+import { jobReintentarCobroVencido } from "@/modules/plataforma/jobs/reintentar-cobro-vencido";
+// F2 "Ola 3" ítem E — ciclo de vida del trial: alerta por-vencer + trial vencido sin pago
+import { jobVigilarTrials } from "@/modules/plataforma/jobs/vigilar-trials";
+// F2 "Ola 3" ítem M — notificaciones de plataforma por email al courier
+import { jobNotificarPagoConfirmado } from "@/modules/plataforma/jobs/notificar-pago-confirmado";
+import { jobNotificarCobroFallido } from "@/modules/plataforma/jobs/notificar-cobro-fallido";
+import { jobNotificarTrialPorVencer } from "@/modules/plataforma/jobs/notificar-trial-por-vencer";
+import { jobNotificarSuscripcionCreada } from "@/modules/plataforma/jobs/notificar-suscripcion-creada";
+import { jobNotificarPlanCambiado } from "@/modules/plataforma/jobs/notificar-plan-cambiado";
+// F3 · Gap 7 — comunicaciones de Rutax a los couriers (banner in-app + broadcast email opcional)
+import { jobNotificarComunicacion } from "@/modules/plataforma/jobs/notificar-comunicacion";
+
+// Jobs F23 — API pública y webhooks salientes
+import { jobEntregarWebhook } from "@/modules/integraciones/api-publica/jobs/entregar-webhook";
+// Jobs de contexto — Torre de control (anticipación operativa)
+import { jobRefrescarClima } from "@/modules/contexto/jobs/refrescar-clima";
+import { jobRefrescarAire } from "@/modules/contexto/jobs/refrescar-aire";
+import { jobSincronizarCalendario } from "@/modules/contexto/jobs/sincronizar-calendario";
+import {
+  jobRiesgoBarrido,
+  jobRiesgoRecalcularTenant,
+} from "@/modules/contexto/jobs/recalcular-riesgo";
 
 /**
  * Array de todas las funciones de Inngest del sistema.
@@ -58,6 +102,8 @@ const funciones = [
   jobProcesarShipmentActualizado,
   jobPollingEstadosPedidos,
   jobEjecutarBackfill,
+  // Jobs de geocoding (F4)
+  jobGeocodificarPedido,
   jobNotificacionConexionCaida,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
@@ -74,6 +120,48 @@ const funciones = [
   jobAlertaMorosidad,
   // Notas de crédito (RF-038 — anulación total)
   jobEmitirNotaCredito,
+  // Job C7: conciliación de 3 fuentes (F17, Bloque 3) — cron 02:30
+  jobConciliarTresFuentes,
+  // Jobs F19: payouts a conductores (Bloque 3 — dinero saliente)
+  jobEjecutarPayout,
+  jobConsultarEstadoPayout,
+  // Jobs F19/Fase 3: confirmación instantánea de payouts por webhook Fintoc
+  jobAplicarActualizacionPayout,
+  jobConciliarPayoutConfirmado,
+  // Jobs Plataforma — suscripciones de couriers a Rutax (backstage financiero)
+  jobGenerarPeriodosSuscripcion,
+  jobAplicarCambiosPlan,
+  // Watchdog de salud del sistema — crons stale, backlog y líneas huérfanas (cron horario)
+  jobVerificarSalud,
+  // Morosidad de suscripción — marca períodos vencidos + alerta (cron diario 08:00)
+  jobMarcarMorosidad,
+  // Auto-cobro de período por mandato Fintoc (F1-E) — evento plataforma/suscripcion.periodo-generado
+  jobCobrarPeriodoAuto,
+  // F2 "Ola 3" ítem F — dunning: reintento de auto-cobro + escalamiento (cron diario 08:30)
+  jobReintentarCobroVencido,
+  // F2 "Ola 3" ítem E — ciclo de vida del trial (cron diario 11:00)
+  jobVigilarTrials,
+  // F2 "Ola 3" ítem M — notificaciones de plataforma por email al courier
+  jobNotificarPagoConfirmado,
+  jobNotificarCobroFallido,
+  jobNotificarTrialPorVencer,
+  jobNotificarSuscripcionCreada,
+  jobNotificarPlanCambiado,
+  // F3 · Gap 7 — broadcast por email de comunicaciones de Rutax a los couriers
+  jobNotificarComunicacion,
+  // Jobs F23 — entrega de webhooks salientes (cron cada 2 min)
+  jobEntregarWebhook,
+  // Torre de control — ingesta de contexto externo. Crones desplazados fuera de
+  // la hora en punto: el repo ya tiene un cluster en 02:00–02:30 y 05:00–06:00.
+  // La pantalla NUNCA llama a una API externa en el render; todo lo precalculan
+  // estos jobs, y eso es lo que la hace sentirse instantánea (§8.4).
+  jobRefrescarClima,
+  jobRefrescarAire,
+  jobSincronizarCalendario,
+  // Motor de riesgo: fan-out real por tenant (primer uso de step.sendEvent +
+  // concurrency en el repo). El barrido solo enumera y despacha.
+  jobRiesgoBarrido,
+  jobRiesgoRecalcularTenant,
 ];
 
 export const { GET, POST, PUT } = serve({

@@ -23,13 +23,19 @@
 --      `tenant_id` de OTRO tenant en su JWT no ve nada (ni su propio perfil) —
 --      RLS se evalúa contra el claim, no contra la "verdad" de la fila.
 --   E. `tenants`: ningún usuario autenticado puede insertar/editar/borrar.
+--   F. `conductores` (ALTA nueva, chokepoint del gate conductores_max): un interno
+--      SÍ puede INSERTAR un conductor en SU tenant (la acción crearConductor del
+--      backend inserta vía el cliente RLS del usuario), pero NO puede insertarlo
+--      con el tenant_id de OTRO courier (with_check RLS → 42501); y un seller NO
+--      puede dar de alta un conductor ni en su propio tenant (escritura solo
+--      interna). Cierra el aislamiento de la ruta de alta de conductor.
 --
 -- Ejecutar:  npx supabase test db
 -- =============================================================================
 
 begin;
 
-select plan(32);
+select plan(37);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (mismo mecanismo que rls_aislamiento.test.sql;
@@ -141,7 +147,7 @@ begin
 
   insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, estado_salud)
   values (t_a, s_a, 'ML-A-1', 'sana')
-  on conflict (seller_id) do nothing;
+  on conflict (seller_id, ml_user_id) where ml_user_id is not null do nothing;
 
   insert into identidad.tarifas (tenant_id, seller_id, tipo_entrega, modo_calculo, monto_clp, vigente_desde, estado)
   values
@@ -525,6 +531,82 @@ select throws_ok(
   '42501',
   null,
   'tenants: ningún usuario autenticado puede BORRAR un tenant (sin política DELETE -- ni el propio dueño)'
+);
+
+select test_cerrar_sesion();
+
+-- =============================================================================
+-- BLOQUE F · `conductores`: ALTA nueva (chokepoint del gate conductores_max)
+-- La acción `crearConductor` del backend inserta un conductor vía el cliente RLS
+-- del usuario (rol interno del courier). La policy `conductores_insert_interno`
+-- (migración 0002) exige `tenant_id = identidad.claim_tenant_id()` Y
+-- `claim_tipo_usuario() = 'interno'`. Aquí demostramos, contra Postgres real, que:
+--   (1) el constraint de formato de RUT ya existe (no lo agregamos);
+--   (2) un interno SÍ puede insertar un conductor en SU tenant y queda visible;
+--   (3) un interno NO puede insertar un conductor con el tenant_id de OTRO courier
+--       (with_check RLS → 42501) — aislamiento impuesto en la BD, no en la app;
+--   (4) un seller NO puede dar de alta un conductor ni en su propio tenant
+--       (escritura reservada a internos → 42501).
+-- =============================================================================
+
+-- (1) Contrato de esquema: el CHECK de formato de RUT ya está en la tabla.
+select ok(
+  exists(
+    select 1 from pg_constraint
+     where conrelid = 'identidad.conductores'::regclass
+       and conname = 'conductores_rut_formato'
+       and pg_get_constraintdef(oid) like '%~%'
+  ),
+  'conductores: existe el constraint conductores_rut_formato (formato de RUT ya cubierto, no se re-agrega)'
+);
+
+-- (2) Interno del tenant A da de alta un conductor en SU tenant: debe funcionar.
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000001'::uuid, -- u_interno_a
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'interno', 'coordinador'
+);
+
+select lives_ok(
+  $$ insert into public.conductores (tenant_id, nombre_completo, rut, tipo_relacion)
+     values ('aaaaaaaa-0000-0000-0000-000000000001', 'Conductor Nuevo A', '79111111-1', 'independiente') $$,
+  'conductores: el interno del tenant A PUEDE dar de alta un conductor en SU tenant (crearConductor vía cliente RLS, policy conductores_insert_interno)'
+);
+
+select isnt_empty(
+  $$ select 1 from public.conductores
+       where tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' and rut = '79111111-1' $$,
+  'conductores: el conductor recién dado de alta quedó persistido y visible para el interno de su tenant'
+);
+
+-- (3) El MISMO interno intenta insertar un conductor con el tenant_id del tenant B:
+-- el with_check de la policy exige tenant_id = claim_tenant_id() (A) → 42501.
+-- RUT válido a propósito, para que falle por AISLAMIENTO (RLS), no por el CHECK.
+select throws_ok(
+  $$ insert into public.conductores (tenant_id, nombre_completo, rut, tipo_relacion)
+     values ('bbbbbbbb-0000-0000-0000-000000000002', 'Conductor Infiltrado B', '79222222-2', 'independiente') $$,
+  '42501',
+  null,
+  'conductores: el interno del tenant A NO puede dar de alta un conductor con el tenant_id del tenant B (with_check RLS → 42501; aislamiento impuesto en la BD)'
+);
+
+select test_cerrar_sesion();
+
+-- (4) Un seller NO puede dar de alta un conductor ni en su propio tenant: la
+-- escritura de la nómina de conductores es exclusiva de roles internos.
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000003'::uuid, -- u_seller_a
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'seller', 'seller',
+  p_seller_id => 'aaaaaaaa-1111-0000-0000-000000000001'::uuid
+);
+
+select throws_ok(
+  $$ insert into public.conductores (tenant_id, nombre_completo, rut, tipo_relacion)
+     values ('aaaaaaaa-0000-0000-0000-000000000001', 'Conductor de Seller', '79333333-3', 'independiente') $$,
+  '42501',
+  null,
+  'conductores: un seller NO puede dar de alta un conductor ni en su propio tenant (escritura reservada a internos → 42501)'
 );
 
 select test_cerrar_sesion();

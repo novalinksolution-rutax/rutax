@@ -8,16 +8,30 @@
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Plus } from "lucide-react";
+import { ChevronLeft, Plus, Package } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
+import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   traducirEstadoManifiesto,
   traducirEstadoPedido,
-  COLOR_ESTADO_MANIFIESTO,
-  COLOR_ESTADO_PEDIDO,
+  BADGE_ESTADO_MANIFIESTO,
+  BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
+import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { Manifiesto, EstadoManifiesto, Pedido, EstadoPedido } from "@/modules/operacion/tipos";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { BotonConfirmarManifiesto } from "./boton-confirmar-manifiesto";
@@ -112,20 +126,28 @@ async function cargarPedidosAsignados(
           notasInternas: (p.notas_internas as string | null) ?? null,
           creadoEn: p.creado_en as string,
           actualizadoEn: p.actualizado_en as string,
+          // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+          lat: (p.lat as number | null) ?? null,
+          long: (p.long as number | null) ?? null,
+          geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+          geoConfianza: (p.geo_confianza as number | null) ?? null,
+          geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+          coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
         } satisfies Pedido,
       };
     })
     .filter((x): x is PedidoAsignado => x !== null);
 }
 
-async function cargarNombreConductor(driverId: string): Promise<string> {
-  const cliente = crearClienteServiceRole();
-  const { data } = await cliente
-    .from("perfiles_usuario")
-    .select("nombre_completo")
-    .eq("usuario_id", driverId)
-    .maybeSingle();
-  return (data?.nombre_completo as string | null) ?? driverId;
+async function cargarNombreConductor(driverId: string, tenantId: string): Promise<string> {
+  // Mismo origen que la lista de manifiestos: `identidad.conductores` por tenant.
+  try {
+    const cliente = crearClienteServiceRole();
+    const mapa = await mapaNombresConductores(cliente, tenantId, [driverId]);
+    return mapa[driverId] ?? driverId;
+  } catch {
+    return driverId;
+  }
 }
 
 // =============================================================================
@@ -157,7 +179,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
     pedidosAsignadosSinOrden.map((pa) => pa.pedido),
   ).map((pedido) => pedidosAsignadosSinOrden.find((pa) => pa.pedido.id === pedido.id)!);
 
-  const nombreConductor = await cargarNombreConductor(manifiesto.driverId);
+  const nombreConductor = await cargarNombreConductor(manifiesto.driverId, tenantId);
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeCrearManifiesto = puedeGenerarManifiestos(sesion.usuario);
@@ -179,7 +201,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
       {/* Encabezado */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{manifiesto.nombre}</h1>
+          <h1 className="text-2xl font-semibold">{manifiesto.nombre}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Conductor: <span className="font-medium text-foreground">{nombreConductor}</span>
             {" — "}
@@ -189,12 +211,13 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
             <p className="mt-1 text-sm text-muted-foreground italic">{manifiesto.notas}</p>
           )}
         </div>
-        <span
-          className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${COLOR_ESTADO_MANIFIESTO[manifiesto.estado]}`}
+        <Badge
+          variant={BADGE_ESTADO_MANIFIESTO[manifiesto.estado]}
+          className="px-3 py-1 text-sm"
           aria-label={`Estado: ${traducirEstadoManifiesto(manifiesto.estado)}`}
         >
           {traducirEstadoManifiesto(manifiesto.estado)}
-        </span>
+        </Badge>
       </div>
 
       {/* Lista de pedidos */}
@@ -205,91 +228,93 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
             <span className="text-muted-foreground font-normal">({pedidosAsignados.length})</span>
           </h2>
           {esBorrador && puedeAsignar && (
-            <Link
-              href={`/manifiestos/${manifiestoId}/asignar`}
-              className="inline-flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              Agregar pedidos
-            </Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/manifiestos/${manifiestoId}/asignar`}>
+                <Plus className="size-4" aria-hidden="true" />
+                Agregar pedidos
+              </Link>
+            </Button>
           )}
         </div>
 
         {hayPedidos ? (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Pedidos asignados al manifiesto">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2 text-center" title="Orden de la ruta (por comuna y dirección)">#</th>
-                    <th className="px-4 py-2">Estado</th>
-                    <th className="px-4 py-2">Destinatario</th>
-                    <th className="hidden px-4 py-2 sm:table-cell">Dirección</th>
-                    <th className="hidden px-4 py-2 md:table-cell">F. compromiso</th>
+          <DataTable
+            toolbar={
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {pedidosAsignados.length} pedido{pedidosAsignados.length !== 1 ? "s" : ""}
+              </span>
+            }
+          >
+            <Table densidad="comfortable" aria-label="Pedidos asignados al manifiesto">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4 text-center" title="Orden de la ruta (por comuna y dirección)">
+                    #
+                  </TableHead>
+                  <TableHead className="px-4">Estado</TableHead>
+                  <TableHead className="px-4">Destinatario</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
+                  {esBorrador && puedeAsignar && (
+                    <TableHead className="px-4 text-right">
+                      <span className="sr-only">Acciones</span>
+                    </TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pedidosAsignados.map(({ asignacionId, pedido }, idx) => (
+                  <TableRow key={pedido.id}>
+                    <TableCell className="px-4 text-center font-semibold tabular-nums text-muted-foreground">
+                      {idx + 1}
+                    </TableCell>
+                    <TableCell className="px-4">
+                      <BadgeEstado variante={BADGE_ESTADO_PEDIDO[pedido.estado]} texto={traducirEstadoPedido(pedido.estado)} />
+                    </TableCell>
+                    <TableCell className="px-4">
+                      <Link
+                        href={`/operaciones/${pedido.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {pedido.destinatarioNombre}
+                      </Link>
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        — {pedido.destinatarioComuna}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
+                      {pedido.destinatarioDireccion}
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
+                      {pedido.fechaCompromiso ?? "—"}
+                    </TableCell>
                     {esBorrador && puedeAsignar && (
-                      <th className="px-4 py-2 sr-only">Acciones</th>
+                      <TableCell className="px-4 text-right">
+                        <BotonQuitarPedido
+                          asignacionId={asignacionId}
+                          manifiestoId={manifiestoId}
+                          nombreDestinatario={pedido.destinatarioNombre}
+                        />
+                      </TableCell>
                     )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {pedidosAsignados.map(({ asignacionId, pedido }, idx) => (
-                    <tr key={pedido.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 text-center font-semibold tabular-nums text-muted-foreground">
-                        {idx + 1}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-                        >
-                          {traducirEstadoPedido(pedido.estado)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/operaciones/${pedido.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {pedido.destinatarioNombre}
-                        </Link>
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          — {pedido.destinatarioComuna}
-                        </span>
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                        {pedido.destinatarioDireccion}
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                        {pedido.fechaCompromiso ?? "—"}
-                      </td>
-                      {esBorrador && puedeAsignar && (
-                        <td className="px-4 py-3">
-                          <BotonQuitarPedido
-                            asignacionId={asignacionId}
-                            manifiestoId={manifiestoId}
-                            nombreDestinatario={pedido.destinatarioNombre}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DataTable>
         ) : (
-          <div className="rounded-xl border bg-card px-6 py-10 text-center">
-            <p className="text-muted-foreground">
-              Este manifiesto no tiene pedidos todavía.
-            </p>
-            {esBorrador && puedeAsignar && (
-              <Link
-                href={`/manifiestos/${manifiestoId}/asignar`}
-                className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-              >
-                Agregar pedidos
-              </Link>
-            )}
-          </div>
+          <EmptyState
+            icon={Package}
+            titulo="Este manifiesto no tiene pedidos todavía"
+            descripcion="Agrega pedidos pendientes para armar la ruta del conductor."
+            accion={
+              esBorrador && puedeAsignar ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/manifiestos/${manifiestoId}/asignar`}>Agregar pedidos</Link>
+                </Button>
+              ) : undefined
+            }
+          />
         )}
       </section>
 
@@ -326,7 +351,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
       )}
 
       {esConfirmado && (
-        <div className="rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
           Manifiesto confirmado.{" "}
           <Link
             href={`/conductor/manifiesto`}

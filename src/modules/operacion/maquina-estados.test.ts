@@ -91,6 +91,26 @@ describe("validarTransicion — transiciones válidas", () => {
   it("fallido_manual → asignado por interno (igual que fallido)", () => {
     expect(validarTransicion("fallido_manual", "asignado", "interno")).toBe(true);
   });
+
+  // fallido → devuelto (sistema — ML evoluciona subestado receiver_absent→returning_to_sender)
+  it("fallido → devuelto por sistema (ML reporta returning_to_sender)", () => {
+    expect(validarTransicion("fallido", "devuelto", "sistema")).toBe(true);
+  });
+
+  // fallido → devuelto (interno — usuario registra la devolución manual)
+  it("fallido → devuelto por interno (usuario registra devolución)", () => {
+    expect(validarTransicion("fallido", "devuelto", "interno")).toBe(true);
+  });
+
+  // fallido_manual → devuelto (sistema)
+  it("fallido_manual → devuelto por sistema (devolución desde fallo manual)", () => {
+    expect(validarTransicion("fallido_manual", "devuelto", "sistema")).toBe(true);
+  });
+
+  // fallido_manual → devuelto (interno)
+  it("fallido_manual → devuelto por interno (devolución desde fallo manual)", () => {
+    expect(validarTransicion("fallido_manual", "devuelto", "interno")).toBe(true);
+  });
 });
 
 // =============================================================================
@@ -251,6 +271,51 @@ describe("validarTransicion — transiciones inválidas lanza ErrorTransicionInv
 });
 
 // =============================================================================
+// Nuevas transiciones fallido/fallido_manual → devuelto — casos específicos
+// =============================================================================
+
+describe("validarTransicion — fallido → devuelto (nuevo en §3)", () => {
+  it("fallido → devuelto por sistema: válida", () => {
+    expect(validarTransicion("fallido", "devuelto", "sistema")).toBe(true);
+  });
+
+  it("fallido → devuelto por interno: válida", () => {
+    expect(validarTransicion("fallido", "devuelto", "interno")).toBe(true);
+  });
+
+  it("fallido_manual → devuelto por sistema: válida", () => {
+    expect(validarTransicion("fallido_manual", "devuelto", "sistema")).toBe(true);
+  });
+
+  it("fallido_manual → devuelto por interno: válida", () => {
+    expect(validarTransicion("fallido_manual", "devuelto", "interno")).toBe(true);
+  });
+
+  // devuelto sigue siendo un estado terminal — no admite transiciones de salida.
+  it("devuelto → asignado por sistema: rechazada (terminal)", () => {
+    expect(() => validarTransicion("devuelto", "asignado", "sistema")).toThrow(ErrorTransicionInvalida);
+  });
+
+  it("devuelto → fallido por sistema: rechazada (terminal)", () => {
+    expect(() => validarTransicion("devuelto", "fallido", "sistema")).toThrow(ErrorTransicionInvalida);
+  });
+
+  it("devuelto → cancelado por interno: rechazada (terminal)", () => {
+    expect(() => validarTransicion("devuelto", "cancelado", "interno")).toThrow(ErrorTransicionInvalida);
+  });
+
+  // esTransicionValida para los casos nuevos.
+  it("esTransicionValida: fallido → devuelto por sistema = true", () => {
+    expect(esTransicionValida("fallido", "devuelto", "sistema")).toBe(true);
+  });
+
+  it("esTransicionValida: devuelto → cualquier_cosa = false", () => {
+    expect(esTransicionValida("devuelto", "asignado", "sistema")).toBe(false);
+    expect(esTransicionValida("devuelto", "fallido", "interno")).toBe(false);
+  });
+});
+
+// =============================================================================
 // Propiedades del ErrorTransicionInvalida
 // =============================================================================
 
@@ -284,5 +349,87 @@ describe("esTransicionValida — variante booleana", () => {
 
   it("devuelve false para estado terminal", () => {
     expect(esTransicionValida("cancelado", "asignado", "interno")).toBe(false);
+  });
+});
+
+// =============================================================================
+// Ejecutor 'conductor' — Bloque 2 same-day
+// Nota: la función pura valida el par (origen, destino, ejecutor) pero NO
+// la restricción tipo_pedido='same_day'; esa barrera la impone actualizarEstadoPedido.
+// =============================================================================
+
+describe("validarTransicion — ejecutor 'conductor' (Bloque 2 same-day)", () => {
+  // Las 3 transiciones que el conductor puede ejecutar en same-day.
+  it("asignado → en_ruta por conductor: válida", () => {
+    expect(validarTransicion("asignado", "en_ruta", "conductor")).toBe(true);
+  });
+
+  it("en_ruta → entregado por conductor: válida", () => {
+    expect(validarTransicion("en_ruta", "entregado", "conductor")).toBe(true);
+  });
+
+  it("en_ruta → fallido por conductor: válida", () => {
+    expect(validarTransicion("en_ruta", "fallido", "conductor")).toBe(true);
+  });
+
+  // El conductor NO puede hacer correcciones manuales (eso es 'interno').
+  it("asignado → entregado_manual por conductor: rechazada", () => {
+    expect(() => validarTransicion("asignado", "entregado_manual", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("en_ruta → entregado_manual por conductor: rechazada", () => {
+    expect(() => validarTransicion("en_ruta", "entregado_manual", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("en_ruta → cancelado por conductor: rechazada", () => {
+    expect(() => validarTransicion("en_ruta", "cancelado", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("en_ruta → devuelto por conductor: rechazada", () => {
+    expect(() => validarTransicion("en_ruta", "devuelto", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("pendiente_asignacion → asignado por conductor: rechazada", () => {
+    expect(() => validarTransicion("pendiente_asignacion", "asignado", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  // Los estados terminales siguen siendo terminales para el conductor también.
+  it("entregado → en_ruta por conductor: rechazada (terminal)", () => {
+    expect(() => validarTransicion("entregado", "en_ruta", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("fallido → asignado por conductor: rechazada (no está en la tabla del conductor)", () => {
+    expect(() => validarTransicion("fallido", "asignado", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  // esTransicionValida para 'conductor'
+  it("esTransicionValida: asignado → en_ruta por conductor = true", () => {
+    expect(esTransicionValida("asignado", "en_ruta", "conductor")).toBe(true);
+  });
+
+  it("esTransicionValida: en_ruta → entregado por conductor = true", () => {
+    expect(esTransicionValida("en_ruta", "entregado", "conductor")).toBe(true);
+  });
+
+  it("esTransicionValida: en_ruta → fallido por conductor = true", () => {
+    expect(esTransicionValida("en_ruta", "fallido", "conductor")).toBe(true);
+  });
+
+  it("esTransicionValida: en_ruta → cancelado por conductor = false", () => {
+    expect(esTransicionValida("en_ruta", "cancelado", "conductor")).toBe(false);
   });
 });

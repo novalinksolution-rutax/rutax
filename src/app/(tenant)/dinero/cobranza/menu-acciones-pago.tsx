@@ -17,11 +17,22 @@
 import { useState, useRef, useEffect, useTransition } from "react";
 import { MoreHorizontal } from "lucide-react";
 import type { EstadoMatchPago } from "@/modules/dinero/tipos";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   accionAtribuirPago,
   accionDescartarPago,
   listarPeriodosImpagosDeSeller,
 } from "./actions";
+
+/** Sentinela para "sin período específico" (valor "" real): Radix no admite value="". */
+const SIN_PERIODO = "__sin_periodo__";
 
 interface SellerOpcion {
   id: string;
@@ -149,7 +160,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
       {menuAbierto && (
         <div
           role="menu"
-          className="absolute right-0 z-20 mt-1 w-72 rounded-xl border bg-card shadow-lg"
+          className="absolute right-0 z-20 mt-1 w-72 rounded-lg border bg-card shadow-md"
         >
           {vista === "menu" && (
             <ul className="py-1">
@@ -174,7 +185,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
                     setVista("descartar");
                     setError(null);
                   }}
-                  className="w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50 transition-colors"
+                  className="w-full px-4 py-2 text-left text-sm text-destructive transition-colors hover:bg-destructive-subtle"
                 >
                   Descartar
                 </button>
@@ -190,46 +201,53 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
                 <label htmlFor={`seller-${pagoId}`} className="text-xs font-medium text-muted-foreground">
                   Seller
                 </label>
-                <select
-                  id={`seller-${pagoId}`}
-                  value={sellerSel}
-                  onChange={(e) => alElegirSeller(e.target.value)}
+                <Select
+                  value={sellerSel || undefined}
+                  onValueChange={(v) => alElegirSeller(v)}
                   disabled={isPending}
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                 >
-                  <option value="">Elige un seller…</option>
-                  {sellers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id={`seller-${pagoId}`} size="default" className="h-9 w-full">
+                    <SelectValue placeholder="Elige un seller…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sellers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1">
                 <label htmlFor={`periodo-${pagoId}`} className="text-xs font-medium text-muted-foreground">
                   Período facturado impago (opcional)
                 </label>
-                <select
-                  id={`periodo-${pagoId}`}
-                  value={periodoSel}
-                  onChange={(e) => setPeriodoSel(e.target.value)}
+                <Select
+                  value={periodoSel || SIN_PERIODO}
+                  onValueChange={(v) => setPeriodoSel(v === SIN_PERIODO ? "" : v)}
                   disabled={isPending || !sellerSel || cargandoPeriodos}
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                 >
-                  <option value="">
-                    {cargandoPeriodos
-                      ? "Cargando períodos…"
-                      : sellerSel
-                      ? "Sin período específico"
-                      : "Elige primero el seller"}
-                  </option>
-                  {periodos.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.etiqueta}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id={`periodo-${pagoId}`} size="default" className="h-9 w-full">
+                    <SelectValue
+                      placeholder={
+                        cargandoPeriodos
+                          ? "Cargando períodos…"
+                          : sellerSel
+                          ? "Sin período específico"
+                          : "Elige primero el seller"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SIN_PERIODO}>Sin período específico</SelectItem>
+                    {periodos.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.etiqueta}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {sellerSel && !cargandoPeriodos && periodos.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Este seller no tiene períodos facturados impagos. Puedes atribuir el pago igualmente.
@@ -238,7 +256,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
               </div>
 
               {error && (
-                <p className="text-xs text-red-700" role="alert">
+                <p className="text-xs text-destructive" role="alert">
                   {error}
                 </p>
               )}
@@ -278,19 +296,18 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
                 <label htmlFor={`motivo-${pagoId}`} className="text-xs font-medium text-muted-foreground">
                   Motivo
                 </label>
-                <textarea
+                <Textarea
                   id={`motivo-${pagoId}`}
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
                   rows={2}
                   disabled={isPending}
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                   placeholder="Ej.: devolución de un seller, transferencia ajena…"
                 />
               </div>
 
               {error && (
-                <p className="text-xs text-red-700" role="alert">
+                <p className="text-xs text-destructive" role="alert">
                   {error}
                 </p>
               )}
@@ -311,7 +328,7 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
                   type="button"
                   onClick={confirmarDescartar}
                   disabled={isPending}
-                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                  className="rounded-md bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:opacity-50"
                 >
                   Descartar
                 </button>

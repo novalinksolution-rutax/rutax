@@ -100,13 +100,13 @@ export function PanelFoliosCaf({ estadoInicial, errorInicial }: Props) {
     return (
       <Card>
         <CardHeader className="flex-row items-start gap-3 space-y-0">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-subtle text-success-subtle-foreground">
             <ShieldCheck className="size-5" aria-hidden="true" />
           </div>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className="text-base">Tu proveedor gestiona tus folios</CardTitle>
-              <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+              <Badge variant="outline" className="border-success-subtle text-success">
                 Sin acción de tu parte
               </Badge>
             </div>
@@ -263,9 +263,9 @@ function FormularioCargaCaf({ onCargado }: { onCargado: (folio: FolioCaf) => voi
             </Alert>
           ) : null}
           {exito ? (
-            <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
-              <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" />
-              <AlertDescription className="text-emerald-800 dark:text-emerald-300">{exito}</AlertDescription>
+            <Alert className="bg-success-subtle text-success-subtle-foreground">
+              <CheckCircle2 className="text-success" />
+              <AlertDescription className="text-success-subtle-foreground">{exito}</AlertDescription>
             </Alert>
           ) : null}
           {pendiente ? (
@@ -344,13 +344,13 @@ function FilaFolio({ folio }: { folio: FolioCaf }) {
       </TableCell>
       <TableCell className="min-w-40">
         <div className="space-y-1">
-          <Progress value={porcentaje} className={porAgotarse ? "[&>div]:bg-amber-500" : undefined} />
+          <Progress value={porcentaje} className={porAgotarse ? "[&>div]:bg-warning" : undefined} />
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>
               {usados.toLocaleString("es-CL")} de {total.toLocaleString("es-CL")} usados ({porcentaje}%)
             </span>
             {porAgotarse ? (
-              <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+              <span className="inline-flex items-center gap-1 text-warning-subtle-foreground">
                 <TriangleAlert className="size-3" aria-hidden="true" /> por agotarse
               </span>
             ) : null}
@@ -368,7 +368,7 @@ function BadgeEstadoFolio({ estado }: { estado: FolioCaf["estado"] }) {
   switch (estado) {
     case "vigente":
       return (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           <Lock className="size-3" aria-hidden="true" /> Vigente
         </Badge>
       );

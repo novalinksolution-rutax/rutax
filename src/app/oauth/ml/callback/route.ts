@@ -25,13 +25,19 @@ import { type NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarConexionMlPropia } from "@/modules/identidad/capacidades";
-import { intercambiarCodigoPorTokens } from "@/modules/integraciones/ml";
+import {
+  intercambiarCodigoPorTokens,
+  ErrorTopeCuentasMlAlcanzado,
+  ErrorCuentaMlYaConectada,
+} from "@/modules/integraciones/ml";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { esErrorReintentable } from "@/modules/integraciones/resiliencia";
 import {
+  COOKIE_CONEXION_ML,
   COOKIE_MODO_ML,
   COOKIE_STATE_ML,
+  leerModoConexionMl,
   obtenerUrlBasePublica,
   type ModoConexionMl,
   type ResultadoCallbackMl,
@@ -62,7 +68,7 @@ export async function GET(request: NextRequest) {
   const almacenCookies = await cookies();
   const stateCookie = almacenCookies.get(COOKIE_STATE_ML)?.value ?? null;
   const modoCookie = almacenCookies.get(COOKIE_MODO_ML)?.value ?? null;
-  const modo: ModoConexionMl = modoCookie === "reconexion" ? "reconexion" : "conexion_inicial";
+  const modo: ModoConexionMl = leerModoConexionMl(modoCookie);
 
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId || sesion.usuario.tipoUsuario !== "seller" || !sesion.usuario.sellerId) {
@@ -119,12 +125,13 @@ export async function GET(request: NextRequest) {
     });
 
     // -------------------------------------------------------------------
-    // "Cuenta ya conectada a otro courier": la unicidad de
-    // `conexiones_seller_ml` es por `seller_id` (no por `ml_user_id`) — dos
-    // sellers (de tenants distintos) podrían terminar apuntando al mismo
-    // `ml_user_id`. Lo detectamos buscando OTRA fila con el mismo
-    // `ml_user_id` que no sea la de este seller — requiere `service_role`
+    // "Cuenta ya conectada a otro courier": bajo el modelo 1:N la unicidad de
+    // `conexiones_seller_ml` es por `(seller_id, ml_user_id)` — NO global —, de
+    // modo que la MISMA cuenta ML puede quedar vinculada a sellers de tenants
+    // distintos (decisión D2 del diseño). Lo detectamos buscando OTRA fila con
+    // el mismo `ml_user_id` que no sea de este seller — requiere `service_role`
     // porque cruza tenants (RLS jamás dejaría ver esa fila ajena, por diseño).
+    // Es una ADVERTENCIA (no un bloqueo del esquema): se audita e informa.
     // -------------------------------------------------------------------
     if (conexion.mlUserId) {
       const colision = await buscarColisionMlUserId(conexion.mlUserId, sellerId);
@@ -159,6 +166,19 @@ export async function GET(request: NextRequest) {
     limpiarCookiesFlujo(respuesta);
     return respuesta;
   } catch (error) {
+    // Reglas del esquema 1:N al conectar una cuenta adicional. No son fallos
+    // del sistema ni transitorios: son estados accionables para el seller.
+    if (error instanceof ErrorTopeCuentasMlAlcanzado) {
+      const respuesta = NextResponse.redirect(urlResultado(origin, "tope_alcanzado", modo));
+      limpiarCookiesFlujo(respuesta);
+      return respuesta;
+    }
+    if (error instanceof ErrorCuentaMlYaConectada) {
+      const respuesta = NextResponse.redirect(urlResultado(origin, "cuenta_ya_conectada", modo));
+      limpiarCookiesFlujo(respuesta);
+      return respuesta;
+    }
+
     if (esErrorReintentable(error)) {
       const respuesta = NextResponse.redirect(urlResultado(origin, "error_transitorio", modo));
       limpiarCookiesFlujo(respuesta);

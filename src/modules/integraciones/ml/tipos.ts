@@ -25,6 +25,10 @@ export interface ConexionSellerMl {
   ultimaSyncExitosaEn: Date | null;
   desconectadaDesde: Date | null;
   ultimoError: string | null;
+  /** Alias editable por el seller para distinguir la cuenta (modelo 1:N). */
+  alias: string | null;
+  /** Nickname de la cuenta en ML (capturado al conectar; puede ser null). */
+  mlNickname: string | null;
 }
 
 /**
@@ -74,6 +78,22 @@ export interface IntercambiarCodigoEntrada {
   redirectUri: string;
 }
 
+/**
+ * Resumen agregado de salud de TODAS las conexiones ML de un tenant (todos sus
+ * sellers, todas sus cuentas) — para el drill-down por-tenant del backstage
+ * `/admin` (`plataforma/observabilidad-tenant.ts`, gap 9). Solo conteos por
+ * `estado_salud`; no expone `seller_id`, alias ni nada identificable de la
+ * cuenta — el backstage ve salud técnica agregada, no el detalle operativo
+ * del courier.
+ */
+export interface ResumenSaludMlTenant {
+  sanas: number;
+  atencion: number;
+  desvinculadas: number;
+  pendientes: number;
+  total: number;
+}
+
 export interface RefrescarTokenEntrada {
   conexionId: string;
 }
@@ -112,6 +132,14 @@ export interface ObtenerEtiquetaEnvioEntrada {
   sellerId: string;
   /** `shipment_id` de Mercado Libre — identifica el envío Flex/same-day. */
   mlShipmentId: string;
+  /**
+   * Cuenta ML de origen del pedido (`operacion.pedidos.ml_user_id`). Bajo el
+   * modelo 1:N (un seller puede conectar varias cuentas), el token con el que
+   * se descarga la etiqueta debe ser el de la cuenta que generó ESE envío. Si
+   * es `null`/omitido (pedido legacy sin estampar, o seller con una sola
+   * cuenta) se cae a la conexión representativa del seller.
+   */
+  mlUserId?: string | null;
 }
 
 export interface ObtenerEtiquetaEnvioResultado {

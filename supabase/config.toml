@@ -10,9 +10,32 @@ enabled = true
 port = 54321
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public", "operacion", "identidad", "dinero"]
+# NOTA: `plataforma` (backstage Rutax: suscripciones/cobros) se expone para que el
+# módulo lo alcance vía supabase-js (`.schema('plataforma')`, service_role). Es
+# SEGURO exponerlo: sus tablas tienen RLS enable+force SIN políticas + grants
+# revocados a authenticated/anon → esos roles no leen NADA; solo service_role
+# (que bypasea RLS) accede. `infra` NO se expone a propósito: se accede solo por
+# RPC SECURITY DEFINER en `public` (rate_limit, telemetría de jobs).
+#
+# NOTA: `contexto` (Torre de control) se expone por la MISMA razón y con las
+# MISMAS garantías que `plataforma`. Sin esto, `supabase.schema('contexto')`
+# responde «Invalid schema: contexto» y los cinco jobs del módulo fallan enteros
+# —clima, aire, calendario, salud de fuentes y recálculo de riesgo—, porque
+# PostgREST solo atiende el header `Accept-Profile` de los esquemas listados
+# aquí. Es SEGURO: sus 8 tablas globales son deny-all (RLS enable+force SIN
+# políticas, grants revocados a anon/authenticated, sin vista espejo en
+# `public`) y las 3 por tenant filtran por `tenant_id`; exponer el esquema no
+# concede ni una fila —lo verifican 28 pruebas pgTAP, incluida la que comprueba
+# que un usuario INTERNO recibe 42501—. Solo service_role, que bypasea RLS,
+# alcanza el contenido.
+#
+# NO se agrega a `extra_search_path` a propósito, a diferencia de `plataforma`:
+# ahí no hace falta (el acceso siempre es calificado con `.schema('contexto')`)
+# y el esquema tiene nombres genéricos —`calendario`, `senales`— que en el
+# search_path de CADA request podrían sombrear otra tabla por accidente.
+schemas = ["public", "graphql_public", "operacion", "identidad", "dinero", "integraciones", "plataforma", "contexto"]
 # Extra schemas to add to the search_path of every request.
-extra_search_path = ["public", "operacion", "identidad", "dinero", "extensions"]
+extra_search_path = ["public", "operacion", "identidad", "dinero", "integraciones", "plataforma", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
 max_rows = 1000
@@ -123,6 +146,36 @@ file_size_limit = "50MiB"
 # file_size_limit = "50MiB"
 # allowed_mime_types = ["image/png", "image/jpeg"]
 # objects_path = "./images"
+
+# Bucket privado para evidencias del POD same-day (fotos/firmas). Migración
+# 20260613000008_operacion_pod_tracking.sql. Acceso solo vía URL firmada desde el
+# backend (service_role); sin políticas públicas de storage. Convención de path:
+# {tenant_id}/{pedido_id}/{pod_id}/{foto|firma}.<ext>
+[storage.buckets.pod-evidencias]
+public = false
+file_size_limit = "50MiB"
+allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]
+
+# Bucket PÚBLICO con la cartografía de Torre de control: PMTiles del basemap
+# recortado a la RM, glyph PBFs y sprites (incluidas las tramas de riesgo).
+# Migración 20260725000001_contexto_torre_de_control.sql.
+#
+# Público a diferencia de pod-evidencias, y con razón: es cartografía OSM/DPA,
+# sin un solo dato de courier, seller, conductor ni destinatario. Además PMTiles
+# se sirve por HTTP Range desde el CDN y una URL firmada por rango no funciona —
+# firmar cada request de tile mataría el rendimiento del mapa.
+# `public = true` habilita solo LECTURA anónima; la escritura sigue siendo de
+# service_role (no hay políticas sobre storage.objects).
+#
+# Sin allowed_mime_types: el bucket sirve al menos cuatro tipos distintos
+# (.pmtiles como octet-stream, .pbf, .png, .json) y una allowlist frágil rompería
+# la publicación sin ganar seguridad en un bucket de solo lectura pública.
+#
+# Convención de path:
+#   basemap/<version>/rm.pmtiles · glyphs/<fuente>/<rango>.pbf · sprites/<nombre>.{png,json}
+[storage.buckets.contexto-mapas]
+public = true
+file_size_limit = "50MiB"
 
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
@@ -301,9 +354,12 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
+# Habilitado para F3-A: el super-admin del backstage (identidad Supabase real)
+# puede enrolar y verificar un segundo factor TOTP. No afecta a los roles de
+# courier/seller/conductor (el enrolamiento es opt-in por usuario).
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

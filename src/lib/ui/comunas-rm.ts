@@ -31,6 +31,7 @@ export const COMUNAS_RM = [
   "Ñuñoa",
   "Padre Hurtado",
   "Paine",
+  "Pedro Aguirre Cerda",
   "Peñaflor",
   "Peñalolén",
   "Pirque",

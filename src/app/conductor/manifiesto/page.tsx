@@ -8,17 +8,25 @@
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, Inbox, Clock, Navigation } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { urlGoogleMapsRuta, MAX_PARADAS_RUTA } from "@/lib/ui/mapas";
+import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
-  COLOR_ESTADO_PEDIDO,
+  BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
+import { PingUbicacion } from "./ping-ubicacion";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Tipos auxiliares
@@ -47,7 +55,7 @@ async function cargarManifiestoActivo(
   tenantId: string,
 ): Promise<ManifiestoConPedidos | null> {
   const cliente = crearClienteServiceRole();
-  const hoy = new Date().toISOString().slice(0, 10);
+  const hoy = fechaLocalEnSantiago(new Date());
 
   // Buscar manifiesto del conductor para hoy, preferir confirmado/en_ruta sobre borrador
   const { data: manifiestos } = await cliente
@@ -102,6 +110,13 @@ async function cargarManifiestoActivo(
         notasInternas: (p.notas_internas as string | null) ?? null,
         creadoEn: p.creado_en as string,
         actualizadoEn: p.actualizado_en as string,
+        // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+        lat: (p.lat as number | null) ?? null,
+        long: (p.long as number | null) ?? null,
+        geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+        geoConfianza: (p.geo_confianza as number | null) ?? null,
+        geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+        coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
       } satisfies Pedido;
     })
     .filter((p): p is Pedido => p !== null);
@@ -184,18 +199,18 @@ export default async function PaginaManifiestoActivo() {
   // ==========================================================================
   if (errorCarga) {
     return (
-      <div className="py-12 text-center space-y-4">
-        <p className="text-base font-medium">No se pudo cargar tu manifiesto.</p>
-        <p className="text-sm text-muted-foreground">Verifica tu conexión.</p>
-        <form action="/conductor/manifiesto">
-          <button
-            type="submit"
-            className="rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Reintentar
-          </button>
-        </form>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        titulo="No se pudo cargar tu manifiesto"
+        descripcion="Revisa tu conexión e inténtalo de nuevo."
+        accion={
+          <form action="/conductor/manifiesto">
+            <Button type="submit" size="lg">
+              Reintentar
+            </Button>
+          </form>
+        }
+      />
     );
   }
 
@@ -204,12 +219,11 @@ export default async function PaginaManifiestoActivo() {
   // ==========================================================================
   if (!manifiesto) {
     return (
-      <div className="py-12 text-center space-y-3">
-        <p className="text-base font-medium">No tienes un manifiesto asignado para hoy.</p>
-        <p className="text-sm text-muted-foreground">
-          Si crees que es un error, contacta a tu coordinador.
-        </p>
-      </div>
+      <EmptyState
+        icon={Inbox}
+        titulo="No tienes una ruta asignada para hoy"
+        descripcion="Si crees que es un error, contacta a tu coordinador."
+      />
     );
   }
 
@@ -223,20 +237,36 @@ export default async function PaginaManifiestoActivo() {
   // ==========================================================================
   if (esBorrador) {
     return (
-      <div className="py-12 text-center space-y-3">
-        <p className="text-base font-medium">Tu manifiesto para hoy todavía no está listo.</p>
-        <p className="text-sm text-muted-foreground">
-          Vuelve a revisar cuando tu coordinador lo confirme.
-        </p>
-      </div>
+      <EmptyState
+        icon={Clock}
+        titulo="Tu ruta de hoy todavía no está lista"
+        descripcion="Vuelve a revisar cuando tu coordinador la confirme."
+      />
     );
   }
+
+  // Ruta completa multi-parada para abrir en Google Maps (el orden ya viene
+  // calculado por ordenarParadasPorComunaYDireccion).
+  const direccionesRuta = manifiesto.pedidos.map(({ pedido }) =>
+    [pedido.destinatarioDireccion, pedido.destinatarioComuna, "Santiago"].filter(Boolean).join(", "),
+  );
+  const urlRuta = urlGoogleMapsRuta(direccionesRuta);
+  const rutaTruncada = manifiesto.pedidos.length > MAX_PARADAS_RUTA;
 
   return (
     <div className="space-y-4 pb-24">
       {/* Encabezado fijo (se incluye en el layout sticky del layout) */}
       <div className="space-y-1">
-        <h1 className="text-xl font-bold">{manifiesto.nombre}</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-xl font-semibold">{manifiesto.nombre}</h1>
+          <IndicadorEnVivo
+            tenantId={tenantId}
+            tablas={[
+              { schema: "operacion", tabla: "pedidos" },
+              { schema: "operacion", tabla: "manifiestos" },
+            ]}
+          />
+        </div>
         <p className="text-sm text-muted-foreground">
           {manifiesto.fechaOperacion}{" — "}
           <span className="font-medium text-foreground">
@@ -245,12 +275,32 @@ export default async function PaginaManifiestoActivo() {
         </p>
       </div>
 
+      {/* Ruta completa — abrir todas las paradas ordenadas en Google Maps */}
+      {urlRuta && (
+        <div className="space-y-1">
+          <a
+            href={urlRuta}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Navigation className="size-4" aria-hidden="true" />
+            Abrir ruta en Google Maps
+          </a>
+          {rutaTruncada && (
+            <p className="text-center text-xs text-muted-foreground">
+              Abre las primeras {MAX_PARADAS_RUTA} paradas; el resto, parada por parada.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Banner permanente "usa la app de Flex" (B-3).
           NO tiene botón de cerrar. NO es colapsable. Es parte permanente de la UI. */}
       <div
         role="note"
         aria-label="Instrucción de uso de la app de Flex"
-        className="rounded-xl bg-blue-600 px-4 py-3 text-sm text-white"
+        className="rounded-lg bg-info px-4 py-3 text-sm text-info-foreground"
       >
         <div className="flex items-start gap-2">
           <Info className="size-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
@@ -263,7 +313,7 @@ export default async function PaginaManifiestoActivo() {
 
       {/* Estado: manifiesto completado */}
       {esCompletado && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <div className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
           Ruta completada.
         </div>
       )}
@@ -275,23 +325,30 @@ export default async function PaginaManifiestoActivo() {
             <li key={pedido.id}>
               <Link
                 href={`/conductor/manifiesto/${pedido.id}`}
-                className={`block rounded-xl border bg-card p-4 hover:bg-muted/30 transition-colors active:scale-[0.99] ${incidenciaAbierta ? "border-amber-300" : ""}`}
+                className={`block rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30 active:scale-[0.99] ${incidenciaAbierta ? "border-warning" : "border-border"}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   {/* Numero de orden — grande, esquina superior izquierda */}
                   <span
-                    className="text-2xl font-black leading-none text-muted-foreground/60 tabular-nums flex-shrink-0"
+                    className="text-2xl font-semibold leading-none text-muted-foreground/60 tabular-nums flex-shrink-0"
                     aria-label={`Orden ${orden}`}
                   >
                     {orden}
                   </span>
 
-                  {/* Estado — badge esquina superior derecha */}
-                  <span
-                    className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium flex-shrink-0 ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-                  >
-                    {traducirEstadoPedido(pedido.estado)}
-                  </span>
+                  {/* Estado + fuente — badges esquina superior derecha */}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Badge variant={pedido.tipoPedido === "same_day" ? "info" : "neutral"}>
+                      {/* "Same-day", no "SAME-DAY": iba en versalitas junto a
+                          "Flex" en capitalización normal, dos estilos para la
+                          misma etiqueta y en la misma esquina de la tarjeta. */}
+                      {pedido.tipoPedido === "same_day" ? "Same-day" : "Flex"}
+                    </Badge>
+                    <BadgeEstado
+                      variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+                      texto={traducirEstadoPedido(pedido.estado)}
+                    />
+                  </div>
                 </div>
 
                 <div className="mt-2 space-y-1">
@@ -313,9 +370,9 @@ export default async function PaginaManifiestoActivo() {
 
                   {/* Incidencia abierta — solo informativo */}
                   {incidenciaAbierta && (
-                    <div className="mt-2 flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5">
-                      <AlertTriangle className="size-3.5 text-amber-600 flex-shrink-0" aria-hidden="true" />
-                      <p className="text-xs font-medium text-amber-800">
+                    <div className="mt-2 flex items-center gap-1.5 rounded-md bg-warning-subtle px-2.5 py-1.5">
+                      <AlertTriangle className="size-3.5 shrink-0 text-warning-subtle-foreground" aria-hidden="true" />
+                      <p className="text-xs font-medium text-warning-subtle-foreground">
                         Incidencia: {traducirTipoIncidencia(incidenciaAbierta.tipo)}
                       </p>
                     </div>
@@ -326,7 +383,7 @@ export default async function PaginaManifiestoActivo() {
           ))}
         </ol>
       ) : (
-        <div className="rounded-xl border bg-card px-4 py-8 text-center">
+        <div className="rounded-lg border bg-card px-4 py-8 text-center">
           <p className="text-sm text-muted-foreground">No hay pedidos en este manifiesto.</p>
         </div>
       )}
@@ -339,6 +396,9 @@ export default async function PaginaManifiestoActivo() {
           estaEnRuta={esEnRuta}
         />
       )}
+
+      {/* Ping de ubicación + consentimiento — solo cuando el manifiesto está en_ruta */}
+      <PingUbicacion manifiestoEnRuta={esEnRuta} />
     </div>
   );
 }

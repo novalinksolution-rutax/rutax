@@ -6,8 +6,17 @@
  */
 
 import { useState, useTransition } from "react";
-import { Plus, X } from "lucide-react";
+import { AlertTriangle, Plus, X } from "lucide-react";
 import { actionCrearPedidoSameDay } from "./actions";
+import type { AvisoCorte } from "@/modules/operacion/tipos";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 interface Props {
   sellers: { id: string; nombre: string }[];
@@ -20,7 +29,19 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
   const [abierto, setAbierto] = useState(false);
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  const [avisoCorte, setAvisoCorte] = useState<AvisoCorte | null>(null);
+  const [sellerId, setSellerId] = useState("");
   const [pending, startTransition] = useTransition();
+
+  /** Cierra el diálogo y limpia el estado transitorio (errores + aviso de corte).
+   *  Resetear el aviso es clave: si no, al reabrir el modal el formulario
+   *  seguiría oculto por un aviso de una creación anterior. */
+  function cerrar() {
+    setAbierto(false);
+    setErrores({});
+    setErrorServidor(null);
+    setAvisoCorte(null);
+  }
 
   function validar(data: FormData): Record<string, string> {
     const errs: Record<string, string> = {};
@@ -51,6 +72,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
     }
     setErrores({});
     setErrorServidor(null);
+    setAvisoCorte(null);
 
     startTransition(async () => {
       const resultado = await actionCrearPedidoSameDay(formData);
@@ -58,7 +80,14 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
         setErrorServidor(resultado.error);
         return;
       }
-      setAbierto(false);
+      if (resultado.avisoCorte) {
+        // El pedido YA se creó — el aviso es informativo, no bloqueante. Se deja
+        // el modal abierto para que el operador lo vea, pero se oculta el
+        // formulario (abajo) para que no pueda reenviarse y crear un duplicado.
+        setAvisoCorte(resultado.avisoCorte);
+        return;
+      }
+      cerrar();
     });
   }
 
@@ -82,20 +111,22 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
         >
           {/* Fondo */}
           <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => !pending && setAbierto(false)}
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+            onClick={() => !pending && cerrar()}
             aria-hidden="true"
           />
 
-          {/* Panel */}
-          <div className="relative z-10 w-full max-w-lg rounded-t-2xl bg-background p-6 shadow-xl sm:rounded-2xl">
-            <div className="mb-4 flex items-center justify-between">
+          {/* Panel — altura acotada al viewport. El panel NO scrollea (esquinas
+              redondeadas limpias): solo el cuerpo interno hace overflow, con el
+              encabezado y el pie fijos para que título y botones nunca se corten. */}
+          <div className="relative z-10 flex max-h-[calc(100%-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-xl bg-background ring-1 ring-foreground/10 sm:rounded-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
               <h2 id="dialog-same-day-titulo" className="text-lg font-semibold">
                 Nuevo pedido same-day
               </h2>
               <button
                 type="button"
-                onClick={() => setAbierto(false)}
+                onClick={cerrar}
                 disabled={pending}
                 className="rounded-md p-1 hover:bg-muted"
                 aria-label="Cerrar"
@@ -104,17 +135,48 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
               </button>
             </div>
 
-            <p className="mb-4 rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
-              Este pedido se agrega al panel y queda disponible para asignarlo a un manifiesto.
-            </p>
+            {/* El formulario se oculta una vez creado el pedido fuera de corte:
+                el pedido ya existe, reenviarlo crearía un duplicado. */}
+            {avisoCorte ? (
+              /* Banner "pasaste el corte" — no bloqueante, el pedido ya se creó */
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                <div
+                  role="alert"
+                  className="rounded-lg border border-warning-subtle bg-warning-subtle px-4 py-3"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-warning-subtle-foreground">
+                        Pedido creado fuera del horario de corte ({avisoCorte.horaCorte})
+                      </p>
+                      <p className="text-sm text-warning-subtle-foreground">
+                        Este pedido no alcanzará a ser entregado hoy.{" "}
+                        {avisoCorte.sugerencia}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={cerrar}
+                    className="mt-3 rounded-md border border-warning/40 bg-background/60 px-3 py-1.5 text-xs font-medium text-warning-subtle-foreground hover:bg-background/80"
+                  >
+                    Entendido, cerrar
+                  </button>
+                </div>
+              </div>
+            ) : (
+            <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+                <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  Este pedido se agrega al panel y queda disponible para asignarlo a un manifiesto.
+                </p>
 
-            {errorServidor && (
-              <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                {errorServidor}
-              </p>
-            )}
-
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                {errorServidor && (
+                  <p role="alert" className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
+                    {errorServidor}
+                  </p>
+                )}
               {/* Bloque Destinatario */}
               <fieldset>
                 <legend className="mb-2 text-sm font-semibold">Destinatario</legend>
@@ -134,7 +196,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     {errores.destinatarioNombre && (
-                      <p id="err-nombre" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-nombre" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.destinatarioNombre}
                       </p>
                     )}
@@ -155,7 +217,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     {errores.destinatarioDireccion && (
-                      <p id="err-dir" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-dir" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.destinatarioDireccion}
                       </p>
                     )}
@@ -176,7 +238,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     {errores.destinatarioComuna && (
-                      <p id="err-comuna" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-comuna" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.destinatarioComuna}
                       </p>
                     )}
@@ -222,7 +284,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                       id="fechaCompromiso"
                       name="fechaCompromiso"
                       type="date"
-                      defaultValue={new Date().toISOString().split("T")[0]}
+                      defaultValue={fechaLocalEnSantiago(new Date())}
                       disabled={pending}
                       className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     />
@@ -242,35 +304,43 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                     <label htmlFor="sellerId" className="block text-sm font-medium">
                       Seller a facturar <span aria-hidden="true">*</span>
                     </label>
-                    <select
-                      id="sellerId"
+                    <Select
                       name="sellerId"
                       required
+                      value={sellerId}
+                      onValueChange={setSellerId}
                       disabled={pending}
-                      aria-describedby={errores.sellerId ? "err-seller" : undefined}
-                      aria-invalid={!!errores.sellerId}
-                      className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      <option value="">Seleccionar seller...</option>
-                      {sellers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.nombre}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        id="sellerId"
+                        className="mt-1 w-full"
+                        aria-describedby={errores.sellerId ? "err-seller" : undefined}
+                        aria-invalid={!!errores.sellerId}
+                      >
+                        <SelectValue placeholder="Seleccionar seller..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sellers.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {errores.sellerId && (
-                      <p id="err-seller" role="alert" className="mt-1 text-xs text-red-600">
+                      <p id="err-seller" role="alert" className="mt-1 text-xs text-destructive">
                         {errores.sellerId}
                       </p>
                     )}
                   </div>
                 )}
               </fieldset>
+              </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex shrink-0 justify-end gap-3 border-t border-border px-6 py-3">
                 <button
                   type="button"
-                  onClick={() => setAbierto(false)}
+                  onClick={cerrar}
                   disabled={pending}
                   className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
                 >
@@ -285,6 +355,7 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

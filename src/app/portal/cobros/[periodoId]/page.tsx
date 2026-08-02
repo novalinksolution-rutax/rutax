@@ -15,13 +15,25 @@ import { obtenerPeriodoCobro, listarDocumentosDte } from "@/modules/dinero/index
 import type { DocumentoDte, LineaCobro } from "@/modules/dinero/tipos";
 import {
   traducirEstadoPeriodoCobro,
-  COLOR_ESTADO_PERIODO,
+  BADGE_ESTADO_PERIODO,
   traducirEstadoSii,
-  colorBadgeEstadoSii,
+  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
-  COLOR_ESTADO_COBRO_PERIODO,
+  BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { DataTable } from "@/components/ui/data-table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { BotonDescargaFacturaPdf } from "./boton-descarga-factura-pdf";
 
 export const metadata: Metadata = {
@@ -77,7 +89,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       <div className="mx-auto max-w-4xl">
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
           No se pudo cargar el período. Intenta recargar la página.
         </div>
@@ -85,7 +97,6 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
     );
   }
 
-  const badgeClases = COLOR_ESTADO_PERIODO[periodo.estado];
   const textoBadge = traducirEstadoPeriodoCobro(
     periodo.estado,
     periodo.estado === "facturado" && dte ? dte.folio : undefined,
@@ -112,20 +123,15 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             {formatearFechaCorta(periodo.fechaFin)}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-            >
-              {textoBadge}
-            </span>
+            <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
             {periodo.estadoCobro !== "no_aplica" && (
-              <span
-                className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}`}
-              >
-                {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-              </span>
+              <BadgeEstado
+                variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
+                texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)}
+              />
             )}
           </div>
-          <p className="text-3xl font-bold tabular-nums">
+          <p className="text-3xl font-semibold tabular-nums">
             {formatearCLPOGuion(periodo.montoTotalClp)}
           </p>
           {periodo.estadoCobro === "parcial" && (
@@ -137,7 +143,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             </p>
           )}
           {periodo.estadoCobro === "pagado" && (
-            <p className="text-sm text-green-700">Pago recibido. Gracias.</p>
+            <p className="text-sm font-medium text-success">Pago recibido. Gracias.</p>
           )}
         </div>
       </section>
@@ -146,25 +152,25 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       {periodo.estado === "anulado" && (
         <section
           aria-labelledby="anulacion-titulo"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-5"
+          className="rounded-lg bg-warning-subtle p-5 text-warning-subtle-foreground"
         >
-          <h2 id="anulacion-titulo" className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
-            <AlertTriangle className="size-4 flex-shrink-0" aria-hidden="true" />
+          <h2 id="anulacion-titulo" className="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
             Factura anulada con nota de crédito
           </h2>
-          <p className="text-sm text-amber-800">
+          <p className="text-sm">
             Esta factura fue anulada por tu empresa de despacho. No tienes saldo por pagar de este
             período; las entregas se vuelven a facturar en el período en curso.
             {periodo.anuladoEn ? ` Anulada el ${formatearFechaCorta(periodo.anuladoEn)}.` : ""}
           </p>
           {periodo.motivoAnulacion && (
-            <p className="mt-2 text-sm text-amber-800">
+            <p className="mt-2 text-sm">
               <span className="font-medium">Motivo:</span> {periodo.motivoAnulacion}
             </p>
           )}
           {notaCredito ? (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-amber-900">
+              <p className="text-sm">
                 Nota de crédito{" "}
                 <span className="font-semibold tabular-nums">Folio {notaCredito.folio}</span>
                 {" · "}
@@ -180,7 +186,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
               )}
             </div>
           ) : (
-            <p className="mt-2 text-sm text-amber-700">
+            <p className="mt-2 text-sm opacity-80">
               La nota de crédito se está emitiendo. Recarga la página en unos segundos.
             </p>
           )}
@@ -191,7 +197,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       {dte && (
         <section
           aria-labelledby="factura-titulo"
-          className="rounded-xl border bg-card p-5 shadow-sm"
+          className="rounded-lg border bg-card p-5 shadow-xs"
         >
           <h2
             id="factura-titulo"
@@ -202,11 +208,11 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
-              <p className="text-2xl font-bold tabular-nums">Folio {dte.folio}</p>
+              <p className="text-2xl font-semibold tabular-nums">Folio {dte.folio}</p>
               <p className="text-sm text-muted-foreground">
                 Emitida el {formatearFechaCorta(dte.fechaEmision)}
               </p>
-              <p className="text-xl font-bold tabular-nums">
+              <p className="text-xl font-semibold tabular-nums">
                 {formatearCLP(dte.montoTotalClp)}
               </p>
 
@@ -215,13 +221,13 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
 
               {/* Mensajes contextuales (sin detalles técnicos para el seller) */}
               {dte.estadoSii === "aceptado_con_discrepancias" && (
-                <p className="mt-2 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
+                <p className="mt-2 rounded-lg bg-warning-subtle px-3 py-2 text-sm text-warning-subtle-foreground">
                   Esta factura fue aceptada por el SII con observaciones. Si tienes dudas,
                   contacta a tu empresa de despacho.
                 </p>
               )}
               {dte.estadoSii === "rechazado" && (
-                <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                <p className="mt-2 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
                   Esta factura fue rechazada por el SII. Tu empresa de despacho está
                   trabajando en resolverlo.
                 </p>
@@ -248,56 +254,80 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
         </h2>
 
         {lineas.length === 0 ? (
-          <div className="rounded-xl border bg-card px-6 py-10 text-center">
+          <div className="rounded-lg border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">
               Este período aún no tiene líneas registradas.
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Detalle de líneas del período">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2">Pedido</th>
-                    <th className="hidden px-4 py-2 sm:table-cell">Fecha entrega</th>
-                    <th className="px-4 py-2">Concepto</th>
-                    <th className="px-4 py-2 text-right">Monto</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {lineas.map((linea) => (
-                    <tr key={linea.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          #{linea.pedidoId.slice(0, 8)}
-                        </span>
-                      </td>
-                      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                        {formatearFechaCorta(linea.fechaEntrega)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">
-                        {linea.concepto}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-semibold">
-                        {formatearCLP(linea.montoFinalClp)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t bg-muted/40">
-                  <tr>
-                    <td colSpan={3} className="px-4 py-3 text-sm font-semibold">
-                      Total
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm font-bold tabular-nums">
-                      {formatearCLPOGuion(periodo.montoTotalClp)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
+          <DataTable>
+            <Table densidad="relaxed" aria-label="Detalle de líneas del período">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Pedido</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Fecha entrega</TableHead>
+                  <TableHead className="px-4">Concepto</TableHead>
+                  <TableHead className="px-4 text-right">Monto</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lineas.map((linea) => (
+                  <TableRow key={linea.id}>
+                    <TableCell className="px-4">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        #{linea.pedidoId.slice(0, 8)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
+                      {formatearFechaCorta(linea.fechaEntrega)}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate px-4 text-muted-foreground">
+                      {linea.concepto}
+                    </TableCell>
+                    <TableCell className="px-4 text-right font-semibold tabular-nums">
+                      {formatearCLP(linea.montoFinalClp)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                {(() => {
+                  const netoClp = lineas
+                    .filter((l) => !l.anulada)
+                    .reduce((s, l) => s + (l.montoFinalClp ?? 0), 0);
+                  const ivaClp = (periodo.montoTotalClp ?? 0) - netoClp;
+                  return (
+                    <>
+                      <TableRow className="text-muted-foreground">
+                        <TableCell colSpan={3} className="px-4 text-xs">
+                          Subtotal neto
+                        </TableCell>
+                        <TableCell className="px-4 text-right text-xs tabular-nums">
+                          {formatearCLP(netoClp)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow className="text-muted-foreground">
+                        <TableCell colSpan={3} className="px-4 text-xs">
+                          IVA 19%
+                        </TableCell>
+                        <TableCell className="px-4 text-right text-xs tabular-nums">
+                          {formatearCLP(ivaClp)}
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="px-4 text-sm font-semibold">
+                          Total (con IVA)
+                        </TableCell>
+                        <TableCell className="px-4 text-right text-sm font-bold tabular-nums">
+                          {formatearCLPOGuion(periodo.montoTotalClp)}
+                        </TableCell>
+                      </TableRow>
+                    </>
+                  );
+                })()}
+              </TableFooter>
+            </Table>
+          </DataTable>
         )}
       </section>
     </div>
@@ -310,12 +340,9 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
 
 function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
   const trad = traducirEstadoSii(estadoSii);
-  const colorClases = colorBadgeEstadoSii(trad.variante);
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorClases}`}
-    >
+    <Badge variant={badgeEstadoSii(trad.variante)} className="gap-1.5 px-2.5">
       {trad.variante === "advertencia" && (
         <AlertTriangle className="size-3.5 flex-shrink-0" aria-hidden="true" />
       )}
@@ -329,6 +356,6 @@ function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] })
         <Clock className="size-3.5 flex-shrink-0" aria-hidden="true" />
       )}
       {trad.texto}
-    </span>
+    </Badge>
   );
 }

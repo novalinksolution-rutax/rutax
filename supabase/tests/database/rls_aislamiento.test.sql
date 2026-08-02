@@ -25,7 +25,7 @@
 
 begin;
 
-select plan(57);
+select plan(58);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada
@@ -168,7 +168,7 @@ begin
     (t_a, s_a,  'ML-A-1', 'sana'),
     (t_a, s_a2, 'ML-A-2', 'pendiente'),
     (t_b, s_b,  'ML-B-1', 'sana')
-  on conflict (seller_id) do nothing;
+  on conflict (seller_id, ml_user_id) where ml_user_id is not null do nothing;
 
   -- tarifas (interna — el seller jamás debe verlas, ni la suya propia)
   insert into identidad.tarifas (tenant_id, seller_id, tipo_entrega, modo_calculo, monto_clp, vigente_desde, estado)
@@ -233,6 +233,17 @@ select isnt_empty(
 select is_empty(
   $$ select 1 from public.usuarios_perfil where id = 'bbbbbbbb-3333-0000-0000-000000000002' $$,
   'usuarios_perfil: interno del tenant A NO ve al interno del tenant B'
+);
+
+-- F3-A: el super-admin de plataforma (fundador Rutax, sembrado en seed.sql) tiene
+-- fila en usuarios_perfil con tenant_id=null. La política usuarios_perfil_select
+-- filtra por `tenant_id = claim_tenant_id()`; con tenant_id null NUNCA calza el
+-- claim de un courier (null = 'aaaa…' es NULL/false) → un interno del courier no
+-- puede leer la identidad del backstage. Cierra el riesgo de fuga que introduce
+-- crear la fila del super-admin (revierte la omisión de "Ola 0").
+select is_empty(
+  $$ select 1 from public.usuarios_perfil where id = 'ad000000-0000-0000-0000-000000000001' $$,
+  'usuarios_perfil: interno del tenant A NO ve la fila del super-admin de plataforma (tenant_id null nunca calza claim_tenant_id → sin fuga del backstage)'
 );
 
 select set_eq(

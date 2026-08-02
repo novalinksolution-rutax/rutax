@@ -33,6 +33,15 @@ export type {
   AbrirIncidenciaEntrada,
   ActualizarIncidenciaEntrada,
   MetricasOperativas,
+  // F6, ítem 1.3 — auto-asignación
+  Conductor,
+  ConductorZona,
+  MotivoSinAsignar,
+  PedidoSinAsignar,
+  AsignacionPorConductor,
+  ResultadoAutoAsignacion,
+  ResultadoRedistribucion,
+  ImpactoSla,
 } from "./tipos";
 
 export { ESTADOS_PEDIDO, ESTADOS_TERMINALES, TIPOS_PEDIDO, TIPOS_INCIDENCIA } from "./tipos";
@@ -54,7 +63,19 @@ export {
   listarPedidos,
   actualizarEstadoPedido,
   crearPedidoSameDay,
+  asegurarCodigoInterno,
 } from "./pedidos";
+
+// --- Código interno operativo (etiqueta con QR, same-day) --------------------
+export {
+  generarCodigoInterno,
+  esCodigoInternoValido,
+  PATRON_CODIGO_INTERNO,
+} from "./codigo-interno";
+
+// --- Etiqueta imprimible same-day (PDF + QR) ---------------------------------
+export { generarEtiquetaSameDayPdf } from "./etiqueta-same-day-pdf";
+export type { FormatoEtiqueta } from "./etiqueta-same-day-pdf";
 
 // --- Manifiestos ------------------------------------------------------------
 export {
@@ -72,4 +93,12 @@ export {
 } from "./incidencias";
 
 // --- Métricas (dashboard) ---------------------------------------------------
-export { obtenerMetricasDelDia } from "./metricas";
+export { obtenerMetricasDelDia, obtenerImpactoSlaDeReasignacion } from "./metricas";
+
+// --- Auto-asignación heurística (F6, ítem 1.3) ----------------------------
+export {
+  elegirConductor,
+  autoAsignarPendientesDelDia,
+  marcarConductorNoDisponibleYRedistribuir,
+} from "./auto-asignacion";
+export type { PedidoConZona, ConductorCandidato } from "./auto-asignacion";

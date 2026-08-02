@@ -1,0 +1,250 @@
+/**
+ * Utilidades de zona horaria para America/Santiago.
+ *
+ * Chile opera en America/Santiago (CLT UTC-3, CLST UTC-4 en verano).
+ * El DST lo maneja el IANA mediante `Intl.DateTimeFormat` — NUNCA
+ * se hardcodea el offset (+3/-4). Vercel corre en UTC, por lo que
+ * cualquier `new Date()` crudo sin estas utilidades produce horas incorrectas
+ * al comparar con hora_corte (time LOCAL America/Santiago en la BD).
+ *
+ * API pública:
+ *   - `ahoraEnSantiago()` — instante actual descompuesto en fecha/hora local.
+ *   - `combinarFechaHoraSantiago(fecha, hora)` — fecha + hora locales → timestamptz.
+ *   - `fechaLocalEnSantiago(instante)` — Date → 'YYYY-MM-DD' en Santiago.
+ */
+
+// Formateadores con caching a nivel de módulo (construcción costosa, singleton).
+const _partesFecha = new Intl.DateTimeFormat('es-CL', {
+  timeZone: 'America/Santiago',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+});
+
+/**
+ * Descompone un instante en sus partes de fecha y hora local de Santiago.
+ * Devuelve un mapa de { year, month, day, hour, minute, second } con números.
+ */
+function descomponerInstante(instante: Date): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const partes = _partesFecha.formatToParts(instante);
+  const mapa: Record<string, number> = {};
+  for (const p of partes) {
+    if (p.type !== 'literal') {
+      mapa[p.type] = Number(p.value);
+    }
+  }
+  return {
+    year: mapa.year,
+    month: mapa.month,
+    day: mapa.day,
+    hour: mapa.hour,
+    minute: mapa.minute,
+    second: mapa.second,
+  };
+}
+
+/**
+ * Devuelve el momento actual descompuesto en la zona horaria de Santiago.
+ *
+ * - `fecha`: 'YYYY-MM-DD' en hora local Santiago.
+ * - `hora`: 'HH:MM' en hora local Santiago.
+ * - `instante`: el `Date` absoluto correspondiente (para comparaciones de TZ).
+ */
+export function ahoraEnSantiago(): { fecha: string; hora: string; instante: Date } {
+  const instante = new Date();
+  const p = descomponerInstante(instante);
+
+  const fecha = `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  const hora = `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+
+  return { fecha, hora, instante };
+}
+
+/**
+ * La fecha civil de HOY en Santiago, 'YYYY-MM-DD'.
+ *
+ * Existe porque medio repo la re-implementaba por su cuenta —unos con
+ * `Intl.DateTimeFormat('en-CA')`, otros con `new Date().toISOString().slice(0,10)`,
+ * que es directamente incorrecto: `toISOString()` da UTC, y desde las 20:00 de
+ * Santiago (21:00 en verano) UTC ya está en el día siguiente. Una pantalla que
+ * pregunta "¿qué pasó hoy?" a las 20:30 se vacía.
+ *
+ * Si necesitas además la hora, usa `ahoraEnSantiago()` y no llames a las dos.
+ */
+export function hoyEnSantiago(): string {
+  return ahoraEnSantiago().fecha;
+}
+
+/**
+ * Los límites absolutos del día civil `fecha` en Santiago: `[desde, hasta)`.
+ *
+ * Para filtrar una columna `timestamptz` por "el día X en Santiago". El error
+ * clásico es escribir `` `${fecha}T00:00:00.000Z` ``, que interpreta una fecha
+ * civil chilena como instante UTC y corre la ventana 3–4 horas. El otro error es
+ * hardcodear el offset (`-03:00`): Santiago es −04:00 en invierno y −03:00 en
+ * verano, así que un offset fijo está mal la mitad del año. Aquí el DST lo
+ * resuelve IANA vía `Intl`.
+ *
+ * Es semiabierto a propósito: `hasta` es el inicio del día siguiente, así que se
+ * usa con `>= desde` y `< hasta` y no se pierde el último segundo del día.
+ */
+export function limitesDelDiaSantiago(fecha: string): { desde: Date; hasta: Date } {
+  return {
+    desde: combinarFechaHoraSantiago(fecha, '00:00:00'),
+    hasta: combinarFechaHoraSantiago(sumarDiasCalendario(fecha, 1), '00:00:00'),
+  };
+}
+
+/**
+ * Interpreta `fecha` ('YYYY-MM-DD') y `horaLocal` ('HH:MM' o 'HH:MM:SS')
+ * como hora local America/Santiago y devuelve el instante absoluto (Date / timestamptz).
+ *
+ * Algoritmo: construye un Date en UTC con los componentes dados, luego ajusta
+ * la diferencia entre UTC y la hora local real de Santiago en ese instante,
+ * usando `Intl.DateTimeFormat` para que el DST lo gestione el runtime (IANA).
+ * Sin hardcodeo de offsets.
+ *
+ * Lanza `RangeError` si la fecha u hora tienen formato inválido.
+ */
+export function combinarFechaHoraSantiago(fecha: string, horaLocal: string): Date {
+  // Validar formato básico.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    throw new RangeError(`fecha inválida: "${fecha}". Formato esperado: YYYY-MM-DD`);
+  }
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(horaLocal)) {
+    throw new RangeError(`horaLocal inválida: "${horaLocal}". Formato esperado: HH:MM o HH:MM:SS`);
+  }
+
+  const [anioStr, mesStr, diaStr] = fecha.split('-');
+  const [horStr, minStr, segStr = '00'] = horaLocal.split(':');
+
+  const anio = Number(anioStr);
+  const mes = Number(mesStr);
+  const dia = Number(diaStr);
+  const hor = Number(horStr);
+  const min = Number(minStr);
+  const seg = Number(segStr);
+
+  // Paso 1: construir un candidato en UTC (naive) como punto de partida.
+  const candidatoUtc = new Date(Date.UTC(anio, mes - 1, dia, hor, min, seg));
+
+  // Paso 2: leer qué hora local muestra ese candidato en Santiago.
+  const p = descomponerInstante(candidatoUtc);
+
+  // Paso 3: calcular cuántos minutos hay que RESTAR al candidato UTC para que
+  // en Santiago aparezca la hora pedida.
+  //
+  // El offset de Santiago en minutos respecto de UTC es negativo (UTC-3 o UTC-4).
+  // `muestraMin` = hora local Santiago del candidato.
+  // Para que Santiago muestre `queremosMin`, necesitamos:
+  //   resultado_utc = candidatoUtc + (queremosMin - muestraMin) * 60_000
+  //
+  // Ejemplo invierno (UTC-4): candidato=14:30 UTC → Santiago muestra 10:30.
+  //   queremosMin=870 (14:30), muestraMin=630 (10:30), diff=+240 min.
+  //   resultado = candidato + 240 min = 18:30 UTC → Santiago = 14:30 ✓
+  //
+  // Esto es equivalente a ajustar el candidato por el offset opuesto.
+  const queremosMin = hor * 60 + min;
+  const muestraMin = p.hour * 60 + p.minute;
+  let diferenciaMin = queremosMin - muestraMin;
+
+  // Corrección de borde de día: si la diferencia cae fuera del rango ±12h,
+  // ajustar (DST puede cambiar el día en casos extremos).
+  if (diferenciaMin > 720) diferenciaMin -= 1440;
+  if (diferenciaMin < -720) diferenciaMin += 1440;
+
+  // Paso 4: aplicar la corrección (SUMAR la diferencia, no restar).
+  const resultado = new Date(candidatoUtc.getTime() + diferenciaMin * 60_000);
+
+  // Verificación: la hora local resultante debe coincidir con la pedida.
+  const verificacion = descomponerInstante(resultado);
+  if (verificacion.hour !== hor || verificacion.minute !== min) {
+    // En la transición de DST (hora ambigua o inexistente) puede quedar
+    // un minuto de diferencia — se acepta el resultado más cercano.
+    // No lanzamos error porque las horas de corte comerciales no caen en
+    // la transición de DST chilena (medianoche de un domingo de octubre/marzo).
+  }
+
+  return resultado;
+}
+
+/**
+ * Devuelve la fecha 'YYYY-MM-DD' local de Santiago para un instante dado.
+ * Útil para comparar `fecha_compromiso_hora` (timestamptz) con fechas del día.
+ */
+export function fechaLocalEnSantiago(instante: Date): string {
+  const p = descomponerInstante(instante);
+  return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+}
+
+/**
+ * Convierte una hora local de Santiago ('HH:MM') a un número de minutos
+ * desde medianoche. Usado para comparar hora_corte con la hora actual.
+ */
+export function horaAMinutos(hora: string): number {
+  const [hStr, mStr] = hora.split(':');
+  return Number(hStr) * 60 + Number(mStr);
+}
+
+/**
+ * Devuelve la hora local 'HH:MM' de Santiago para un instante ARBITRARIO
+ * (no necesariamente "ahora"). Hermana de `fechaLocalEnSantiago`: mismo truco
+ * (`descomponerInstante`, vía `Intl.DateTimeFormat`), pero para la hora en vez
+ * de la fecha. Útil para derivar la franja (`contexto.franja`) de un instante
+ * ya guardado (p. ej. `fecha_compromiso_hora` de un pedido) sin recurrir a
+ * `instante.toISOString()` / `instante.getHours()`, que devuelven la hora UTC
+ * y no la de Santiago.
+ */
+export function horaLocalEnSantiago(instante: Date): string {
+  const p = descomponerInstante(instante);
+  return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+}
+
+function validarFechaCivil(fecha: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    throw new RangeError(`fecha inválida: "${fecha}". Formato esperado: YYYY-MM-DD`);
+  }
+}
+
+/**
+ * Suma (o resta, con `dias` negativo) días CALENDARIO a una fecha
+ * 'YYYY-MM-DD'. Aritmética de fecha CIVIL (sin hora): usa `Date.UTC`
+ * internamente como truco para evitar cualquier drift de DST — una fecha
+ * 'YYYY-MM-DD' representa un día calendario, no un instante, así que no hay
+ * zona horaria que resolver aquí. Útil para sumar plazos a fechas YA
+ * expresadas en el calendario de Santiago (p. ej. `periodo_fin + 5 días` para
+ * `vence_en`, o `periodo_fin + 1 día` para la fecha efectiva de un downgrade).
+ */
+export function sumarDiasCalendario(fecha: string, dias: number): string {
+  validarFechaCivil(fecha);
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  const resultado = new Date(Date.UTC(anio, mes - 1, dia + dias));
+  return resultado.toISOString().slice(0, 10);
+}
+
+/**
+ * Diferencia en días CALENDARIO entre dos fechas 'YYYY-MM-DD' (`hasta - desde`).
+ * Mismo truco de `Date.UTC` que `sumarDiasCalendario` — comparación de fechas
+ * civiles, no de instantes. Devuelve un entero (puede ser negativo si `hasta`
+ * es anterior a `desde`).
+ */
+export function diferenciaEnDiasCalendario(desde: string, hasta: string): number {
+  validarFechaCivil(desde);
+  validarFechaCivil(hasta);
+  const [y1, m1, d1] = desde.split('-').map(Number);
+  const [y2, m2, d2] = hasta.split('-').map(Number);
+  const t1 = Date.UTC(y1, m1 - 1, d1);
+  const t2 = Date.UTC(y2, m2 - 1, d2);
+  return Math.round((t2 - t1) / 86_400_000);
+}

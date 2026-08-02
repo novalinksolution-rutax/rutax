@@ -7,15 +7,29 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useCallback } from "react";
+import { MapPinOff } from "lucide-react";
 import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
 import { TEXTO_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+/** Sentinela para "sin filtro": Radix Select no admite items con value="". */
+const TODOS = "__todos__";
 
 interface Props {
   sellers: { id: string; nombre: string }[];
   filtroSeller: string;
   filtroEstado: string;
   filtroFecha: string;
+  filtroPorRevisar: boolean;
   hayFiltroActivo: boolean;
 }
 
@@ -24,6 +38,7 @@ export function FiltrosPedidosForm({
   filtroSeller,
   filtroEstado,
   filtroFecha,
+  filtroPorRevisar,
   hayFiltroActivo,
 }: Props) {
   const router = useRouter();
@@ -35,79 +50,133 @@ export function FiltrosPedidosForm({
       if (campo !== "seller" && filtroSeller) params.set("seller", filtroSeller);
       if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
       if (campo !== "fecha" && filtroFecha) params.set("fecha", filtroFecha);
+      // "por_revisar" es exclusivo: al activarlo limpia estado/fecha
+      if (campo !== "por_revisar" && !filtroPorRevisar && false) { /* no-op */ }
       if (valor) params.set(campo, valor);
       // Resetear a página 1 al cambiar filtros
       router.push(`${pathname}?${params.toString()}`);
     },
-    [router, pathname, filtroSeller, filtroEstado, filtroFecha],
+    [router, pathname, filtroSeller, filtroEstado, filtroFecha, filtroPorRevisar],
   );
 
+  /** Activa/desactiva la bandeja "Por revisar"; es exclusiva con estado/fecha. */
+  const togglePorRevisar = useCallback(() => {
+    if (filtroPorRevisar) {
+      // Desactivar: volver a la vista sin filtros
+      router.push(pathname);
+    } else {
+      // Activar: solo seller + por_revisar (limpia estado y fecha para no confundir)
+      const params = new URLSearchParams();
+      if (filtroSeller) params.set("seller", filtroSeller);
+      params.set("por_revisar", "1");
+      router.push(`${pathname}?${params.toString()}`);
+    }
+  }, [router, pathname, filtroPorRevisar, filtroSeller]);
+
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      {/* Seller */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-seller" className="text-xs font-medium text-muted-foreground">
-          Seller
-        </label>
-        <select
-          id="filtro-seller"
-          value={filtroSeller}
-          onChange={(e) => actualizar("seller", e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          <option value="">Todos los sellers</option>
-          {sellers.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.nombre}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Estado */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-estado" className="text-xs font-medium text-muted-foreground">
-          Estado
-        </label>
-        <select
-          id="filtro-estado"
-          value={filtroEstado}
-          onChange={(e) => actualizar("estado", e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          <option value="">Todos los estados</option>
-          {ESTADOS_PEDIDO.map((estado) => (
-            <option key={estado} value={estado}>
-              {TEXTO_ESTADO_PEDIDO[estado as EstadoPedido]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Fecha */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-fecha" className="text-xs font-medium text-muted-foreground">
-          Fecha comprometida
-        </label>
-        <input
-          id="filtro-fecha"
-          type="date"
-          value={filtroFecha}
-          onChange={(e) => actualizar("fecha", e.target.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      </div>
-
-      {/* Limpiar filtros — solo visible cuando hay filtros activos */}
-      {hayFiltroActivo && (
+    <div className="space-y-3">
+      {/* Chip "Por revisar" — bandeja de excepciones geocoding */}
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => router.push(pathname)}
-          className="h-9 rounded-md px-3 text-sm font-medium text-muted-foreground underline-offset-2 hover:underline"
+          onClick={togglePorRevisar}
+          aria-pressed={filtroPorRevisar}
+          className={[
+            "inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold transition-colors",
+            filtroPorRevisar
+              ? "border-destructive bg-destructive-subtle text-destructive-subtle-foreground"
+              : "border-border bg-muted/50 text-muted-foreground hover:border-destructive/60 hover:text-destructive-subtle-foreground",
+          ].join(" ")}
         >
-          Limpiar filtros
+          <MapPinOff className="size-3.5" aria-hidden="true" />
+          Direcciones por revisar
         </button>
-      )}
+        {filtroPorRevisar && (
+          <span className="text-xs text-muted-foreground">
+            Mostrando pedidos con dirección no ubicada, fuera de cobertura o sin tarifa de zona.
+          </span>
+        )}
+      </div>
+
+      {/* Filtros regulares (deshabilitados cuando "por revisar" está activo) */}
+      <div className="flex flex-wrap items-end gap-3">
+        {/* Seller */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filtro-seller" className="text-xs font-medium text-muted-foreground">
+            Seller
+          </label>
+          <Select
+            value={filtroSeller || TODOS}
+            onValueChange={(v) => actualizar("seller", v === TODOS ? "" : v)}
+          >
+            <SelectTrigger id="filtro-seller" size="default" className="h-9 w-48">
+              <SelectValue placeholder="Todos los sellers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos los sellers</SelectItem>
+              {sellers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Estado — ocultar cuando "por revisar" está activo */}
+        {!filtroPorRevisar && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="filtro-estado" className="text-xs font-medium text-muted-foreground">
+              Estado
+            </label>
+            <Select
+              value={filtroEstado || TODOS}
+              onValueChange={(v) => actualizar("estado", v === TODOS ? "" : v)}
+            >
+              <SelectTrigger id="filtro-estado" size="default" className="h-9 w-48">
+                <SelectValue placeholder="Todos los estados" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TODOS}>Todos los estados</SelectItem>
+                {ESTADOS_PEDIDO.map((estado) => (
+                  <SelectItem key={estado} value={estado}>
+                    {TEXTO_ESTADO_PEDIDO[estado as EstadoPedido]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Fecha — ocultar cuando "por revisar" está activo */}
+        {!filtroPorRevisar && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="filtro-fecha" className="text-xs font-medium text-muted-foreground">
+              Fecha comprometida
+            </label>
+            <Input
+              id="filtro-fecha"
+              type="date"
+              value={filtroFecha}
+              onChange={(e) => actualizar("fecha", e.target.value)}
+              className="h-9 w-44"
+            />
+          </div>
+        )}
+
+        {/* Limpiar filtros — solo visible cuando hay filtros activos */}
+        {hayFiltroActivo && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push(pathname)}
+            className="h-9 text-muted-foreground"
+          >
+            Limpiar filtros
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

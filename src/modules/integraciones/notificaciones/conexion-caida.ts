@@ -19,6 +19,7 @@
 
 import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { hoyEnSantiago, limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 
 interface EventoConexionCaida {
   sellerId: string;
@@ -27,21 +28,6 @@ interface EventoConexionCaida {
   conexionId: string;
 }
 
-/** Zona horaria de Santiago para calcular la "fecha del día". */
-const TZ_SANTIAGO = "America/Santiago";
-
-/**
- * Devuelve la fecha en formato YYYY-MM-DD en zona horaria de Santiago.
- * Se usa como clave de deduplicación para "máximo una notificación por día".
- */
-function fechaHoySantiago(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ_SANTIAGO,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 export const jobNotificacionConexionCaida = inngest.createFunction(
   {
@@ -57,12 +43,20 @@ export const jobNotificacionConexionCaida = inngest.createFunction(
     // Paso 1: verificar deduplicación — máximo una notificación por (seller_id, fecha).
     const debeNotificar = await step.run("verificar-deduplicacion", async () => {
       const supabase = crearClienteServiceRole();
-      const fechaHoy = fechaHoySantiago();
+      const fechaHoy = hoyEnSantiago();
 
       // Buscar si ya existe una notificación para este seller hoy.
       // Usamos la bitácora de auditoría (tabla `identidad.bitacora_auditoria`).
       // Columnas: accion='notificacion.conexion_caida', entidad_tipo='seller',
       // entidad_id=sellerId (uuid), creado_en dentro del día de hoy en Santiago.
+      // Límites absolutos del día civil de hoy en Santiago.
+      // Antes esto hardcodeaba el offset `-03:00`, que solo es correcto en
+      // verano: Santiago es −04:00 de abril a septiembre. En invierno la ventana
+      // quedaba corrida una hora, así que una notificación enviada entre las
+      // 23:00 y la medianoche no se encontraba y el seller recibía un duplicado.
+      // `limitesDelDiaSantiago` deja el DST en manos de IANA vía Intl.
+      const { desde, hasta } = limitesDelDiaSantiago(fechaHoy);
+
       const { data, error } = await supabase
         .schema("identidad")
         .from("bitacora_auditoria")
@@ -71,9 +65,8 @@ export const jobNotificacionConexionCaida = inngest.createFunction(
         .eq("accion", "notificacion.conexion_caida")
         .eq("entidad_tipo", "seller")
         .eq("entidad_id", sellerId)
-        // Buscar notificaciones del día de hoy en Santiago
-        .gte("creado_en", `${fechaHoy}T00:00:00-03:00`)
-        .lt("creado_en", `${fechaHoy}T23:59:59-03:00`)
+        .gte("creado_en", desde.toISOString())
+        .lt("creado_en", hasta.toISOString())
         .limit(1);
 
       if (error) {

@@ -1,21 +1,28 @@
 /**
  * Detalle del pedido para conductor — Pantalla 3-B (Flujo 3, PWA)
  *
- * Solo lectura. Sin ninguna acción de cambio de estado (B-2).
- * Texto grande, legible en movimiento. Enlace Google Maps + tel:.
+ * Solo lectura para Flex. Para same-day en estado 'en_ruta': acciones de
+ * entrega/fallo con captura de foto y GPS (Bloque 2).
+ *
+ * FRONTERA DURA: las acciones de entrega aparecen SOLO si tipoPedido==='same_day'
+ * Y estado==='en_ruta'. Para Flex, banner permanente de solo lectura.
  */
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, MapPin, Phone, AlertTriangle } from "lucide-react";
+import { ChevronLeft, MapPin, Navigation, Phone, AlertTriangle, Clock } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { urlGoogleMapsBusqueda, urlWazeBusqueda } from "@/lib/ui/mapas";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
-  COLOR_ESTADO_PEDIDO,
+  BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
+import { obtenerEtaSameDay, formatearEtaSameDay } from "@/modules/operacion/eta-same-day";
+import { AccionesSameDay, BannerFlexSoloLectura } from "./acciones-same-day";
 
 // =============================================================================
 // Carga de datos
@@ -72,6 +79,13 @@ async function cargarPedidoConductor(
     notasInternas: (p.notas_internas as string | null) ?? null,
     creadoEn: p.creado_en as string,
     actualizadoEn: p.actualizado_en as string,
+    // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+    lat: (p.lat as number | null) ?? null,
+    long: (p.long as number | null) ?? null,
+    geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+    geoConfianza: (p.geo_confianza as number | null) ?? null,
+    geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+    coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
   };
 
   // Buscar incidencia abierta
@@ -130,14 +144,24 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
   const { pedido, incidenciaAbierta } = resultado;
 
-  // URL de Google Maps con la dirección completa
+  // Enlaces de navegación (Google Maps + Waze) a la dirección de la parada.
   const direccionCompleta = [pedido.destinatarioDireccion, pedido.destinatarioComuna, "Santiago"]
     .filter(Boolean)
     .join(", ");
-  const urlGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccionCompleta)}`;
+  const urlGoogleMaps = urlGoogleMapsBusqueda(direccionCompleta);
+  const urlWaze = urlWazeBusqueda(direccionCompleta);
+
+  // ETA (solo same-day)
+  const esSameDay = pedido.tipoPedido === "same_day";
+  const estaEnRuta = pedido.estado === "en_ruta";
+  const esFlex = pedido.tipoPedido === "flex";
+
+  const etaStr = esSameDay
+    ? formatearEtaSameDay(obtenerEtaSameDay(pedido))
+    : null;
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="space-y-5 pb-28">
       {/* Volver */}
       <Link
         href="/conductor/manifiesto"
@@ -149,16 +173,29 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Estado actual — badge grande */}
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">{pedido.destinatarioNombre}</h1>
-        <span
-          className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium flex-shrink-0 ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-        >
-          {traducirEstadoPedido(pedido.estado)}
-        </span>
+        <h1 className="text-2xl font-semibold">{pedido.destinatarioNombre}</h1>
+        <BadgeEstado
+          variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          texto={traducirEstadoPedido(pedido.estado)}
+          className="shrink-0"
+        />
       </div>
 
+      {/* ETA same-day (si existe) */}
+      {etaStr && estaEnRuta && (
+        <div className="flex items-center gap-2 rounded-lg bg-info-subtle px-4 py-3 text-info-subtle-foreground">
+          <Clock className="size-4 flex-shrink-0" aria-hidden="true" />
+          <p className="text-sm">
+            Entrega prometida para las <span className="font-semibold">{etaStr}</span>
+          </p>
+        </div>
+      )}
+
+      {/* Banner Flex — solo lectura */}
+      {esFlex && <BannerFlexSoloLectura />}
+
       {/* Dirección con enlace a Google Maps */}
-      <div className="rounded-xl border bg-card p-4 space-y-3">
+      <div className="rounded-lg border bg-card p-4 space-y-3">
         <div className="flex items-start gap-3">
           <MapPin className="size-5 text-muted-foreground mt-0.5 flex-shrink-0" aria-hidden="true" />
           <div className="space-y-1">
@@ -168,27 +205,38 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
             <p className="text-sm text-muted-foreground">{pedido.destinatarioComuna}</p>
           </div>
         </div>
-        <a
-          href={urlGoogleMaps}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-        >
-          <MapPin className="size-4" aria-hidden="true" />
-          Abrir en Google Maps
-        </a>
+        <div className="grid grid-cols-2 gap-2">
+          <a
+            href={urlGoogleMaps}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg bg-info px-4 text-sm font-semibold text-info-foreground transition-colors hover:bg-info/90"
+          >
+            <MapPin className="size-4" aria-hidden="true" />
+            Google Maps
+          </a>
+          <a
+            href={urlWaze}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-info bg-card px-4 text-sm font-semibold text-info transition-colors hover:bg-info-subtle"
+          >
+            <Navigation className="size-4" aria-hidden="true" />
+            Waze
+          </a>
+        </div>
       </div>
 
       {/* Teléfono (si existe) — enlace tel: */}
       {pedido.destinatarioTelefono && (
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-lg border bg-card p-4">
           <div className="flex items-center gap-3">
             <Phone className="size-5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
             <div className="flex-1 space-y-1">
               <p className="text-xs text-muted-foreground">Teléfono del destinatario</p>
               <a
                 href={`tel:${pedido.destinatarioTelefono}`}
-                className="block min-h-[48px] flex items-center text-lg font-semibold text-primary hover:underline"
+                className="flex min-h-[48px] items-center text-lg font-semibold text-primary hover:underline"
               >
                 {pedido.destinatarioTelefono}
               </a>
@@ -199,26 +247,48 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
 
       {/* Instrucciones de entrega (si existen) */}
       {pedido.instruccionesEntrega && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+        <div className="space-y-1 rounded-lg bg-info-subtle p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-info-subtle-foreground">
             Instrucciones de entrega
           </p>
-          <p className="text-sm text-blue-900">{pedido.instruccionesEntrega}</p>
+          <p className="text-sm text-info-subtle-foreground">{pedido.instruccionesEntrega}</p>
         </div>
       )}
 
-      {/* Incidencia abierta — solo informativo (B-2) */}
+      {/* Incidencia abierta — solo informativo */}
       {incidenciaAbierta && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-1">
+        <div className="space-y-1 rounded-lg bg-warning-subtle p-4 text-warning-subtle-foreground">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="size-4 text-amber-600 flex-shrink-0" aria-hidden="true" />
-            <p className="text-sm font-semibold text-amber-800">
+            <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+            <p className="text-sm font-semibold">
               Hay una incidencia abierta: {traducirTipoIncidencia(incidenciaAbierta.tipo)}
             </p>
           </div>
-          <p className="text-xs text-amber-700">
+          <p className="text-xs opacity-80">
             Si tienes información nueva, comenta con tu coordinador.
           </p>
+        </div>
+      )}
+
+      {/* ====================================================================
+          FRONTERA DURA: acciones de entrega SOLO para same-day en_ruta.
+          Para Flex → el banner superior ya indica que deben usar la app Flex.
+          ==================================================================== */}
+      {esSameDay && estaEnRuta && (
+        <section aria-labelledby="acciones-entrega-titulo">
+          <h2 id="acciones-entrega-titulo" className="sr-only">
+            Acciones de entrega
+          </h2>
+          <AccionesSameDay pedidoId={pedido.id} />
+        </section>
+      )}
+
+      {/* Estado terminal — pedido ya resuelto */}
+      {(pedido.estado === "entregado" || pedido.estado === "fallido") && (
+        <div className="rounded-lg bg-muted/40 px-4 py-3 text-center text-sm text-muted-foreground">
+          {pedido.estado === "entregado"
+            ? "Este pedido fue marcado como entregado."
+            : "Este pedido fue marcado como no entregado."}
         </div>
       )}
     </div>

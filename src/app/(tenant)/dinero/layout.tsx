@@ -16,6 +16,8 @@ import {
 } from "@/modules/identidad/capacidades";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarEventosConciliacion } from "@/modules/dinero/index";
+import { resolverModoDteTenant, type ModoDte } from "@/modules/dinero/modo-dte";
+import { BadgeModoDte } from "./badge-modo-dte";
 
 export default async function LayoutDinero({
   children,
@@ -50,6 +52,17 @@ export default async function LayoutDinero({
     }
   }
 
+  // Modo de emisión DTE (sandbox vs. real) — solo relevante para quien factura.
+  // Hace visible en toda la sección si las emisiones tocan el SII o son simuladas.
+  let modoDte: ModoDte | null = null;
+  if (puedeEmitirFacturas(sesion.usuario)) {
+    try {
+      modoDte = await resolverModoDteTenant(tenantId);
+    } catch {
+      // No bloquear la navegación si falla la resolución del modo.
+    }
+  }
+
   const navItems: { href: string; etiqueta: string; badge?: number; mostrar: boolean }[] = [
     {
       href: "/dinero/periodos",
@@ -74,7 +87,7 @@ export default async function LayoutDinero({
       {/* Navegación interna de la sección Dinero */}
       <nav
         aria-label="Sección Dinero"
-        className="flex flex-wrap gap-1 border-b pb-3"
+        className="flex flex-wrap items-center gap-1 border-b pb-3"
       >
         {navItems
           .filter((item) => item.mostrar)
@@ -88,13 +101,19 @@ export default async function LayoutDinero({
               {item.badge !== undefined && (
                 <span
                   aria-label={`${item.badge} pendiente${item.badge !== 1 ? "s" : ""}`}
-                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-xs font-bold text-white"
+                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-warning px-1.5 text-xs font-bold text-warning-foreground"
                 >
                   {item.badge}
                 </span>
               )}
             </Link>
           ))}
+        {modoDte && (
+          <BadgeModoDte
+            modo={modoDte}
+            className="ml-auto"
+          />
+        )}
       </nav>
 
       {children}

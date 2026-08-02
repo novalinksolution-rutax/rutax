@@ -81,6 +81,8 @@ describe("jobRefrescarTokens — lógica del loop de refresco", () => {
     ultimaSyncExitosaEn: new Date(),
     desconectadaDesde: null,
     ultimoError: null,
+    alias: null,
+    mlNickname: null,
   };
 
   const conexionDesvinculada: ConexionSellerMl = {

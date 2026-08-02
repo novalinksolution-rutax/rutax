@@ -63,6 +63,32 @@ describe("traducirEstadoMl — valores desconocidos", () => {
   });
 });
 
+describe("traducirEstadoMl — subestado de devolución (returning_to_sender)", () => {
+  it("not_delivered + 'returning_to_sender' → 'devuelto' (el subestado gana)", () => {
+    expect(traducirEstadoMl("not_delivered", "returning_to_sender")).toBe("devuelto");
+  });
+
+  it("not_delivered + 'returned' → 'devuelto'", () => {
+    expect(traducirEstadoMl("not_delivered", "returned")).toBe("devuelto");
+  });
+
+  it("not_delivered + subestado de ausencia → 'fallido' (no devolución)", () => {
+    expect(traducirEstadoMl("not_delivered", "receiver_absent")).toBe("fallido");
+  });
+
+  it("not_delivered sin subestado → 'fallido'", () => {
+    expect(traducirEstadoMl("not_delivered", null)).toBe("fallido");
+  });
+
+  it("subestado de devolución normaliza capitalización/espacios", () => {
+    expect(traducirEstadoMl("not_delivered", "  RETURNING_TO_SENDER  ")).toBe("devuelto");
+  });
+
+  it("'pending' → null (fuera del ciclo de entrega)", () => {
+    expect(traducirEstadoMl("pending")).toBeNull();
+  });
+});
+
 describe("estadoMlEsConocido", () => {
   it("retorna true para estados con transición", () => {
     expect(estadoMlEsConocido("shipped")).toBe(true);

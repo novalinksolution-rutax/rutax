@@ -31,6 +31,16 @@
  *
  * Se publica SOLO para estados financieramente relevantes:
  * 'entregado' | 'entregado_manual' | 'fallido' | 'fallido_manual' | 'devuelto' | 'cancelado'
+ *
+ * NOTA BLOQUE 3 (motor entrega→dinero same-day):
+ * Al implementar el Bloque 3, agregar el campo `podValido: boolean | null` al
+ * `data` de este evento. El job C1 (generar-lineas) debe retener la liquidación
+ * del conductor para entregas same-day sin POD válido (`podValido=false`):
+ * la línea de cobro al seller SÍ se genera (el seller paga igual), pero la
+ * línea de liquidación al conductor queda en estado 'retenida' hasta que el
+ * supervisor valide o rechace la entrega. No agregar este campo hasta que el
+ * job C1 esté listo para consumirlo, para no romper la deduplicación de Inngest
+ * con IDs existentes.
  */
 export interface EventoPedidoEstadoFinanciero {
   name: 'dinero/pedido.estado_financiero_relevante';
@@ -92,6 +102,34 @@ export interface EventoEmisionSolicitada {
     solicitadoPorUsuarioId: string;
     /** 'sandbox' (stub, sin SII real) | 'real' (emisión real al SII). */
     modo: 'sandbox' | 'real';
+  };
+}
+
+/**
+ * Pedido recién ingestado — gatillo de la geocodificación (F4, ítem 1.1).
+ *
+ * Publicado por `operacion` (lo cableará `backend`) cada vez que se crea un
+ * pedido (ingesta Flex o same-day ad-hoc), DESPUÉS de persistirlo con
+ * `geo_estado = 'pendiente'`. Consumido por el job
+ * `integraciones/geocoding/jobs/geocodificar-pedido.ts` (idempotente).
+ *
+ * MINIMIZACIÓN DE DATOS PERSONALES: el payload SOLO lleva datos de dirección.
+ * NUNCA incluye nombre ni teléfono del destinatario — el geocoding no los
+ * necesita y no deben viajar a un proveedor externo ni quedar en el log de
+ * eventos de Inngest. El job lee lo que falte directo de la fila vía
+ * service_role.
+ */
+export interface EventoPedidoIngestado {
+  name: 'operacion/pedido.ingestado';
+  data: {
+    pedidoId: string;
+    tenantId: string;
+    sellerId: string;
+    /** Dirección de calle del destinatario (sin normalizar). */
+    direccion: string;
+    /** Comuna declarada del destinatario. */
+    comuna: string;
+    tipoPedido: 'flex' | 'same_day';
   };
 }
 
@@ -191,3 +229,352 @@ export interface EventoNcEmisionSolicitada {
     modo: 'sandbox' | 'real';
   };
 }
+
+/**
+ * Compuerta de pago a conductor (F19, Bloque 3).
+ *
+ * Publicado EXCLUSIVAMENTE por la acción humana `emitirPagoLiquidacion`
+ * (gate `puedeGestionarLiquidacionesConductores`, bitácora ANTES del evento).
+ * Consumido por el job `jobEjecutarPayout` (`dinero/jobs/ejecutar-payout.ts`).
+ *
+ * Al igual que `dinero/periodo.emision-solicitada` para DTE, este evento es la
+ * compuerta de aprobación humana del dinero SALIENTE: ningún proceso automático
+ * (cron) emite un payout; solo esta acción, disparada por una persona con
+ * permiso de gestión de liquidaciones, publica el evento que activa el job.
+ *
+ * `montoTotalClp` es el monto BRUTO devengado. El job calcula el monto líquido
+ * restando la retención configurada en `courier_config_payout.porcentaje_retencion`.
+ * El puerto `PuertoPayout` recibe el neto — nunca el bruto.
+ */
+export interface EventoLiquidacionPagoSolicitado {
+  name: 'dinero/liquidacion.pago-solicitado';
+  data: {
+    liquidacionId: string;
+    tenantId: string;
+    driverId: string;
+    /** Monto BRUTO en CLP. El job calcula el neto tras retención. */
+    montoTotalClp: number;
+    solicitadoPorUsuarioId: string;
+  };
+}
+
+/**
+ * Confirmación instantánea de payout saliente (F19/Fase 3 — webhook Fintoc
+ * `transfer.outbound.*`).
+ *
+ * Publicado EXCLUSIVAMENTE por `api/webhooks/fintoc-payout/route.ts`, DESPUÉS
+ * de: (1) validar la firma `Fintoc-Signature` con el secreto de ORGANIZACIÓN
+ * (`FINTOC_PAYOUT_WEBHOOK_SECRET` — a diferencia de `dinero/pago.recibido`,
+ * que es por-tenant), (2) resolver el payout/tenant/liquidación por
+ * `transferExternoId`, (3) insertar en `dinero.eventos_payout_externos`
+ * (barrera de idempotencia dura por `evento_externo_id`), y (4) registrar en
+ * `bitacora_auditoria`. Consumido por `jobAplicarActualizacionPayout`
+ * (`dinero/jobs/transicion-payout.ts`), que aplica la MISMA tabla de
+ * transición que usa el polling (`jobConsultarEstadoPayout`) — una sola
+ * fuente de verdad para webhook y polling.
+ *
+ * El `id` del evento Inngest (`payout-webhook-${eventoExternoId}`) es
+ * idempotencia ADICIONAL sobre la barrera dura de BD: un reintento de Inngest
+ * no re-ejecuta el job dos veces para el mismo evento externo.
+ */
+export interface EventoActualizacionExternaPayout {
+  name: 'dinero/payout.actualizacion-externa';
+  data: {
+    tenantId: string;
+    payoutId: string;
+    liquidacionId: string;
+    /** Id del transfer en Fintoc (`tr_...`) — correlaciona con `payouts_conductor.payout_externo_id`. */
+    transferExternoId: string;
+    /** Id del evento en Fintoc (`evt_...`) — la barrera de idempotencia dura. */
+    eventoExternoId: string;
+    estadoExterno: 'confirmado' | 'pendiente' | 'fallido' | 'rechazado' | 'desconocido';
+    /** Motivo de rechazo/reversión saneado (Fintoc `return_reason`), o `null`. */
+    motivo: string | null;
+    /** Referencia al comprobante (Fintoc `receipt_url`), o `null`. */
+    comprobanteRef: string | null;
+  };
+}
+
+/**
+ * Un payout a conductor quedó `confirmado` (dinero efectivamente movido).
+ *
+ * Publicado por `jobAplicarActualizacionPayout` cuando `aplicarTransicionPayout`
+ * resuelve el evento como `confirmado` (webhook) — y también podría publicarse
+ * desde el polling en el futuro si se decide dar el mismo tratamiento; hoy el
+ * polling (`jobConsultarEstadoPayout`) NO lo emite (motor de re-chequeo, no
+ * gatillo de conciliación inmediata). Consumido por
+ * `jobConciliarPayoutConfirmado`, que corre una conciliación ACOTADA a esa
+ * liquidación (detector D1 restringido, ver `conciliacion-insercion.ts`) sin
+ * esperar el cron diario C7.
+ *
+ * El `id` determinístico (`payout-confirmado-${payoutId}`) evita que una
+ * re-confirmación (replay del webhook ya deduplicado en la barrera de BD, o
+ * un reintento del job) dispare la conciliación inmediata dos veces.
+ */
+export interface EventoPayoutConfirmado {
+  name: 'dinero/payout.confirmado';
+  data: {
+    tenantId: string;
+    payoutId: string;
+    liquidacionId: string;
+    driverId: string;
+  };
+}
+
+// =============================================================================
+// `plataforma` — backstage financiero de Rutax (Rutax cobra al courier).
+// DISTINTO del motor entrega→dinero de arriba (courier cobra al seller). Fase 1
+// de "completar suscripciones": superficie self-serve del courier
+// (`src/modules/plataforma/superficie-courier.ts`) + ciclo de cobro automático.
+// =============================================================================
+
+/**
+ * Alta de una suscripción — self-serve (courier) o asignada por super-admin.
+ *
+ * Publicado por `crearSuscripcionInicial` (`plataforma/superficie-courier.ts`,
+ * origen `self_serve`) DESPUÉS del INSERT, con la bitácora ya registrada ANTES
+ * (RNF-04). El alta super-admin (`asignarPlan`, `plataforma/acciones.ts`) hoy
+ * NO publica este evento (fuera de alcance de esta fase); el campo `origen` ya
+ * distingue el caso para cuando se conecte.
+ *
+ * Sin consumidor todavía — punto de extensión (p. ej. notificación de
+ * bienvenida, analítica de activación).
+ */
+export interface EventoSuscripcionCreada {
+  name: 'plataforma/suscripcion.creada';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    planId: string;
+    estado: 'trial' | 'activa';
+    trialHasta: string | null;
+    origen: 'self_serve' | 'super_admin';
+  };
+}
+
+/**
+ * Se generó un período de suscripción COBRABLE (`monto_clp > 0`) para una
+ * suscripción `activa`. Publicado por el cron `plataforma/generarPeriodos`
+ * (`jobs/generar-periodos.ts`) tras insertar el período — NO se publica para
+ * trials (`monto_clp = 0`): no hay nada que cobrar.
+ *
+ * Consumido por el futuro job de auto-cobro recurrente (mandato Fintoc,
+ * `integraciones`, encadenado a continuación de esta fase) — hoy sin
+ * consumidor registrado en el repo. El cron NUNCA cobra directamente (mismo
+ * principio que `dinero/periodo.cerrado`: generar ≠ cobrar); el `id` de evento
+ * es determinístico por `periodoId` para que un reintento del cron no dispare
+ * un segundo intento de cobro.
+ */
+export interface EventoSuscripcionPeriodoGenerado {
+  name: 'plataforma/suscripcion.periodo-generado';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    periodoId: string;
+    montoClp: number;
+    periodoInicio: string;
+    periodoFin: string;
+    periodicidad: 'mensual' | 'anual';
+  };
+}
+
+/**
+ * Un pago de suscripción quedó confirmado (período `pagado`).
+ *
+ * Publicado por `confirmarPagoSuscripcion` (`plataforma/cobro.ts`) tras marcar
+ * el período pagado — bitácora (actor `sistema`, el webhook) ya registrada
+ * ANTES de este evento. `metodo` incluye `fintoc_recurrente` para cuando el
+ * auto-cobro por mandato quede activo (hoy solo se produce `fintoc_link` y
+ * `transferencia_manual`/`cortesia` vía las acciones de super-admin).
+ *
+ * Sin consumidor todavía — punto de extensión (p. ej. recibo por correo al
+ * courier, analítica de cobranza).
+ */
+export interface EventoPagoSuscripcionConfirmado {
+  name: 'plataforma/pago.confirmado';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    periodoId: string;
+    montoClp: number;
+    metodo: 'fintoc_link' | 'fintoc_recurrente' | 'transferencia_manual' | 'cortesia';
+    confirmadoEn: string;
+  };
+}
+
+/**
+ * Un intento de cobro de suscripción falló (link expirado/rechazado, o —
+ * cuando exista— un cargo de mandato recurrente rechazado).
+ *
+ * Contrato tipado para el futuro job de auto-cobro recurrente (`integraciones`,
+ * continuación de esta fase): ese job es el PRODUCTOR real. Se define aquí
+ * ahora (regla del proyecto: "todo evento nuevo se define en `eventos.ts` antes
+ * de emitirse o consumirse") para que el siguiente agente implemente contra un
+ * contrato ya acordado, sin re-negociar la forma del payload. `motivoSaneado`
+ * es el motivo de rechazo YA saneado por el llamador — nunca el payload crudo
+ * del proveedor (puede traer datos sensibles del medio de pago).
+ */
+export interface EventoCobroSuscripcionFallido {
+  name: 'plataforma/cobro.fallido';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    periodoId: string;
+    montoClp: number;
+    motivoSaneado: string | null;
+    reintentable: boolean;
+  };
+}
+
+/**
+ * Un trial está por vencer.
+ *
+ * Contrato tipado para el futuro monitor de trials (cron, continuación de esta
+ * fase) — mismo razonamiento que `plataforma/cobro.fallido`: se define el
+ * contrato ahora, el productor llega con ese job.
+ */
+export interface EventoTrialPorVencer {
+  name: 'plataforma/trial.por-vencer';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    trialHasta: string;
+    diasRestantes: number;
+  };
+}
+
+/**
+ * El plan (o la periodicidad) de la suscripción de un courier CAMBIÓ de forma
+ * EFECTIVA (F2 "Ola 3", ítem M — ciclo de vida y comunicaciones).
+ *
+ * Publicado en el momento en que el cambio realmente toma efecto — no en el
+ * momento en que se SOLICITA un cambio diferido (ver el modelo de downgrade
+ * diferido documentado en `plataforma/superficie-courier.ts`, sobre
+ * `cambiarPlanCourier`):
+ *  - `upgrade` (efecto inmediato): lo publica `cambiarPlanCourier`
+ *    (`plataforma/superficie-courier.ts`) justo después de aplicar el swap de
+ *    `plan_id`, con o sin cargo de proración.
+ *  - `downgrade` / `periodicidad` (efecto diferido al próximo ciclo): NO se
+ *    publica al solicitarlo (nada cambió todavía) — lo publica
+ *    `plataforma/aplicarCambiosPlan` (`jobs/aplicar-cambios-plan.ts`) el día
+ *    en que el cron efectivamente aplica el swap.
+ * Un solo evento por cambio real evita duplicar el correo de confirmación.
+ *
+ * Consumido por `jobs/notificar-plan-cambiado.ts` (correo de confirmación al
+ * courier, vía el puerto de email).
+ */
+export interface EventoPlanCambiado {
+  name: 'plataforma/plan.cambiado';
+  data: {
+    tenantId: string;
+    suscripcionId: string;
+    planDesdeId: string;
+    planHaciaId: string;
+    tipo: 'upgrade' | 'downgrade' | 'periodicidad';
+    periodicidadDesde: 'mensual' | 'anual';
+    periodicidadHacia: 'mensual' | 'anual';
+    /** Cargo de proración inmediato (CLP), o `null` si no aplicó ninguno. */
+    montoAjusteClp: number | null;
+    /** Fecha ('YYYY-MM-DD', Santiago) en que el cambio es efectivo (hoy, siempre). */
+    efectivoDesde: string;
+    /** UUID de auth de quien solicitó el cambio, o `null` si lo aplicó el cron (cambio diferido). */
+    actorUsuarioId: string | null;
+  };
+}
+
+/**
+ * Comunicación de Rutax a los couriers publicada CON envío de email (F3 · Gap
+ * 7 — `plataforma.comunicaciones`, migración 20260713000001).
+ *
+ * Publicado EXCLUSIVAMENTE por `crearComunicacion` (`plataforma/comunicaciones.ts`)
+ * cuando `enviarEmail=true`, DESPUÉS del INSERT (bitácora ya registrada ANTES
+ * del INSERT — RNF-04). El banner in-app NO depende de este evento (lo resuelve
+ * `obtenerComunicacionesActivasParaCourier`, leído directo por el agregador de
+ * avisos en cada render) — este evento es SOLO el disparador del broadcast por
+ * correo a los couriers, consumido por `jobs/notificar-comunicacion.ts`.
+ *
+ * `id` de evento determinístico (`comunicacion-publicada-${comunicacionId}`):
+ * una comunicación se publica una sola vez, nunca se re-emite al desactivarla/
+ * reactivarla.
+ */
+export interface EventoComunicacionPublicada {
+  name: 'plataforma/comunicacion.publicada';
+  data: {
+    comunicacionId: string;
+    titulo: string;
+    cuerpo: string;
+    tipo: 'info' | 'mantencion' | 'novedad' | 'alerta';
+    nivel: 'informativo' | 'importante' | 'urgente';
+  };
+}
+
+// =============================================================================
+// `contexto` — Torre de control (anticipación operativa).
+//
+// Solo TRES eventos, a propósito. Los jobs de ingesta de este módulo (clima,
+// aire, calendario) son crones puros sin payload, y en este repo un cron no
+// necesita evento — ver `jobCerrarPeriodo`, que se dispara con `triggers:
+// [{ cron }]` y cero eventos. Definir `contexto/clima.refrescar` como evento
+// sería ruido en el archivo que es el contrato del motor entrega→dinero.
+// Aquí solo entra lo que cruza un límite de verdad.
+//
+// Límite del módulo: `operacion` y `dinero` NO consumen estos eventos. La capa
+// de anticipación depende del núcleo operativo, nunca al revés.
+// =============================================================================
+
+/**
+ * Fan-out del recálculo de riesgo: un evento por tenant activo.
+ *
+ * Publicado por el cron `contexto/riesgoBarrido`, que SOLO enumera tenants y
+ * hace `step.sendEvent` — no calcula nada. Consumido por
+ * `contexto/riesgoRecalcularTenant`, que corre en su propio run.
+ *
+ * Por qué fan-out real y no un `Promise.allSettled` dentro de un `step.run`
+ * (que es lo que hacen hoy `plataforma/verificar-salud` y
+ * `notificar-comunicacion`): este job corre cada 15 minutos y toca a todos los
+ * tenants. Con un solo step, un tenant lento consume el presupuesto de tiempo
+ * de los demás y un fallo suyo reintenta el lote completo. Con fan-out, cada
+ * tenant tiene su propio run, sus propios reintentos y su propia fila de
+ * telemetría en `infra.ejecuciones_job`.
+ *
+ * `id` determinístico `riesgo-${tenantId}-${fechaBase}-${slot15}`: un reintento
+ * del barrido no recalcula dos veces el mismo cuarto de hora. El job es un
+ * upsert sobre la PK `(tenant_id, zona_id, fecha, franja)`, así que correrlo de
+ * más es inofensivo — la idempotencia no depende de este id, lo refuerza.
+ */
+export interface EventoRiesgoRecalcularTenant {
+  name: 'contexto/riesgo.recalcular-tenant';
+  data: {
+    tenantId: string;
+    /**
+     * Fecha civil de Santiago ('YYYY-MM-DD') del primer día del horizonte.
+     * La calcula el barrido con `hoyEnSantiago()`, NUNCA con `toISOString`:
+     * este módulo es 100 % sensible a fecha y desde las 20:00 de Santiago UTC
+     * ya está en el día siguiente.
+     */
+    fechaBase: string;
+    horizontes: ('hoy' | 'manana' | '72h')[];
+    origen: 'cron' | 'manual';
+  };
+}
+
+/*
+ * SEÑALES DE PRENSA (F1.5) — sus dos eventos NO se declaran todavía, a
+ * propósito.
+ *
+ * El pipeline de §13 necesitará `contexto/senales.lote-ingestado` (separa la
+ * ingesta, gratis, de la clasificación con LLM, que cuesta y depende de un
+ * proveedor) y `contexto/senal.clasificada` (cruza la señal contra los pedidos
+ * de cada tenant; al LLM solo entra texto de noticia pública, el cruce ocurre
+ * después en SQL — gate de IA §13.5).
+ *
+ * No están escritos aquí porque `eventos.contrato.test.ts` exige que todo
+ * evento del catálogo tenga un productor real, y su lista de excepciones cubre
+ * el caso inverso —evento que ya se publica sin consumidor— no éste. Declarar
+ * un contrato una fase antes de tener quién lo emita es justo lo que ese guard
+ * evita, y meterlos en la excepción lo convertiría en el cajón de sastre que su
+ * propio comentario prohíbe.
+ *
+ * Su forma acordada está en `docs/arquitectura/torre-de-control.md` §13.4;
+ * quien construya F1.5 los define aquí junto con sus jobs, no antes.
+ */

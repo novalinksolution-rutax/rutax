@@ -2,8 +2,8 @@
  * Tests de aislamiento y RBAC para las Server Actions del módulo `dinero`.
  *
  * Verifica que `cerrarPeriodoManualmente`, `marcarLiquidacionPagada` y
- * `resolverEventoConciliacion` rechazan correctamente a usuarios sin las
- * capacidades requeridas.
+ * `transicionarEventoConciliacion` (bandeja de excepciones, §1.1 P1) rechazan
+ * correctamente a usuarios sin las capacidades requeridas.
  *
  * Estos tests NO prueban la capa de BD (RLS) — eso se hace en pgTAP.
  * Aquí se verifica únicamente la capa de RBAC en aplicación.
@@ -42,7 +42,13 @@ import {
   cerrarPeriodoManualmente,
   emitirFacturaPeriodo,
   marcarLiquidacionPagada,
-  resolverEventoConciliacion,
+  transicionarEventoConciliacion,
+  reabrirEventoConciliacion,
+  asignarEventoConciliacion,
+  fijarFechaLimiteConciliacion,
+  fijarBloqueosConciliacion,
+  cambiarAccionSugeridaConciliacion,
+  agregarComentarioConciliacion,
 } from './acciones';
 
 // =============================================================================
@@ -131,11 +137,14 @@ function crearMockSupabaseConEventoPendiente() {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
+    // `registrarHistorialConciliacion` hace un INSERT tras el UPDATE.
+    insert: vi.fn().mockResolvedValue({ error: null }),
     maybeSingle: vi.fn().mockResolvedValue({
       data: {
         id: 'evento-001',
         tenant_id: 'tenant-a',
         estado: 'pendiente',
+        accion_sugerida: 'generar_cobro_manual',
       },
       error: null,
     }),
@@ -405,56 +414,71 @@ describe('marcarLiquidacionPagada — RBAC', () => {
 });
 
 // =============================================================================
-// Tests de resolverEventoConciliacion
+// Tests de transicionarEventoConciliacion (§1.1 P1 — bandeja de excepciones)
 // =============================================================================
 
-describe('resolverEventoConciliacion — RBAC', () => {
+describe('transicionarEventoConciliacion — RBAC', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('rol supervisor → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioConRol('supervisor'), 'actor-001'),
+      transicionarEventoConciliacion('tenant-a', 'evento-001', 'en_analisis', usuarioConRol('supervisor'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol coordinador → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioConRol('coordinador'), 'actor-001'),
+      transicionarEventoConciliacion('tenant-a', 'evento-001', 'en_analisis', usuarioConRol('coordinador'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol seller → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'resuelto', usuarioConRol('seller'), 'actor-001'),
+      transicionarEventoConciliacion(
+        'tenant-a',
+        'evento-001',
+        'resuelta_manual',
+        usuarioConRol('seller'),
+        'actor-001',
+        { comentario: 'motivo' },
+      ),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol conductor → lanza ErrorValidacion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'ignorado', usuarioConRol('conductor'), 'actor-001'),
+      transicionarEventoConciliacion(
+        'tenant-a',
+        'evento-001',
+        'ignorada',
+        usuarioConRol('conductor'),
+        'actor-001',
+        { comentario: 'motivo' },
+      ),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('usuario suspendido → lanza ErrorValidacion incluso con rol administracion', async () => {
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuarioSuspendido('administracion'), 'actor-001'),
+      transicionarEventoConciliacion(
+        'tenant-a',
+        'evento-001',
+        'en_analisis',
+        usuarioSuspendido('administracion'),
+        'actor-001',
+      ),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
-  it('rol dueno → pasa el check RBAC', async () => {
+  it('rol dueno → pasa el check RBAC (pendiente → en_analisis, sin comentario requerido)', async () => {
     const usuario = usuarioConRol('dueno');
     const mockQuery = crearMockSupabaseConEventoPendiente();
-    mockQuery.update = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    });
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await resolverEventoConciliacion('tenant-a', 'evento-001', 'resuelto', usuario, 'actor-001');
+      await transicionarEventoConciliacion('tenant-a', 'evento-001', 'en_analisis', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -463,22 +487,17 @@ describe('resolverEventoConciliacion — RBAC', () => {
   it('rol administracion → pasa el check RBAC', async () => {
     const usuario = usuarioConRol('administracion');
     const mockQuery = crearMockSupabaseConEventoPendiente();
-    mockQuery.update = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ error: null }),
-      }),
-    });
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await resolverEventoConciliacion('tenant-a', 'evento-001', 'revisado', usuario, 'actor-001');
+      await transicionarEventoConciliacion('tenant-a', 'evento-001', 'en_analisis', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
   });
 
   // ---------------------------------------------------------------------------
-  // Aislamiento cross-tenant: intentar resolver un evento de otro tenant
+  // Aislamiento cross-tenant: intentar transicionar un evento de otro tenant.
   // El check se hace con .eq('tenant_id', tenantId) → la BD devuelve null
   // si el evento pertenece a otro tenant. El módulo debe manejar esto con
   // ErrorValidacion (no con un error de infraestructura).
@@ -499,7 +518,7 @@ describe('resolverEventoConciliacion — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     await expect(
-      resolverEventoConciliacion('tenant-a', 'evento-de-tenant-b', 'resuelto', usuario, 'actor-001'),
+      transicionarEventoConciliacion('tenant-a', 'evento-de-tenant-b', 'en_analisis', usuario, 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -517,12 +536,604 @@ describe('resolverEventoConciliacion — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await resolverEventoConciliacion('tenant-a', 'evento-inexistente', 'resuelto', usuario, 'actor-001');
+      await transicionarEventoConciliacion('tenant-a', 'evento-inexistente', 'en_analisis', usuario, 'actor-001');
       expect.fail('Debería haber lanzado ErrorValidacion');
     } catch (err) {
       expect(err).toBeInstanceOf(ErrorValidacion);
       // El mensaje de error debe mencionar el evento no encontrado
       expect((err as ErrorValidacion).message).toContain('evento-inexistente');
+    }
+  });
+});
+
+// =============================================================================
+// Tests de transicionarEventoConciliacion — máquina de estados y reglas nuevas
+// (§1.1 P1: transición inválida, nota obligatoria, precondición de
+// requiere_ajuste, motivo de reapertura).
+// =============================================================================
+
+describe('transicionarEventoConciliacion — máquina de estados y reglas de negocio', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('transición no permitida (pendiente → resuelta_manual, saltándose en_analisis) → ErrorValidacion', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = crearMockSupabaseConEventoPendiente(); // estado: 'pendiente'
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      transicionarEventoConciliacion('tenant-a', 'evento-001', 'resuelta_manual', usuario, 'actor-001', {
+        comentario: 'ok',
+      }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('destino resuelta_manual sin comentario → ErrorValidacion (nota obligatoria)', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockResolvedValue({ error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'evento-001',
+          tenant_id: 'tenant-a',
+          estado: 'en_analisis',
+          accion_sugerida: 'generar_cobro_manual',
+        },
+        error: null,
+      }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      transicionarEventoConciliacion('tenant-a', 'evento-001', 'resuelta_manual', usuario, 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('destino requiere_ajuste con accion_sugerida=sin_accion_requerida → ErrorValidacion', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockResolvedValue({ error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'evento-001',
+          tenant_id: 'tenant-a',
+          estado: 'en_analisis',
+          accion_sugerida: 'sin_accion_requerida',
+        },
+        error: null,
+      }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      transicionarEventoConciliacion('tenant-a', 'evento-001', 'requiere_ajuste', usuario, 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('reabrir desde un estado terminal sin comentario → ErrorValidacion (motivo de reapertura obligatorio)', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockResolvedValue({ error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'evento-001',
+          tenant_id: 'tenant-a',
+          estado: 'ignorada',
+          accion_sugerida: 'sin_accion_requerida',
+        },
+        error: null,
+      }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      transicionarEventoConciliacion('tenant-a', 'evento-001', 'en_analisis', usuario, 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('reabrir desde un estado terminal CON comentario → no lanza por reglas de negocio (RBAC/validación superadas)', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockResolvedValue({ error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'evento-001',
+          tenant_id: 'tenant-a',
+          estado: 'ignorada',
+          accion_sugerida: 'sin_accion_requerida',
+        },
+        error: null,
+      }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      transicionarEventoConciliacion('tenant-a', 'evento-001', 'en_analisis', usuario, 'actor-001', {
+        comentario: 'Se reabre para revisar con el seller.',
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// =============================================================================
+// RBAC de las otras 6 funciones de la bandeja de excepciones (§1.1 P1)
+// =============================================================================
+// `transicionarEventoConciliacion` ya tenía cobertura de RBAC arriba. Las 7
+// funciones comparten el mismo gate (`exigirPermisoConciliacion` →
+// `puedeVerConciliacion`), que se evalúa ANTES de tocar la BD — así que los
+// casos de rechazo no requieren configurar el mock de Supabase.
+
+describe('reabrirEventoConciliacion — RBAC', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rol supervisor → lanza ErrorValidacion', async () => {
+    await expect(
+      reabrirEventoConciliacion('tenant-a', 'evento-001', usuarioConRol('supervisor'), 'actor-001', {
+        comentario: 'motivo',
+      }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol coordinador → lanza ErrorValidacion', async () => {
+    await expect(
+      reabrirEventoConciliacion('tenant-a', 'evento-001', usuarioConRol('coordinador'), 'actor-001', {
+        comentario: 'motivo',
+      }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol seller → lanza ErrorValidacion', async () => {
+    await expect(
+      reabrirEventoConciliacion('tenant-a', 'evento-001', usuarioConRol('seller'), 'actor-001', {
+        comentario: 'motivo',
+      }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol conductor → lanza ErrorValidacion', async () => {
+    await expect(
+      reabrirEventoConciliacion('tenant-a', 'evento-001', usuarioConRol('conductor'), 'actor-001', {
+        comentario: 'motivo',
+      }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('usuario suspendido con rol dueno → lanza ErrorValidacion', async () => {
+    await expect(
+      reabrirEventoConciliacion('tenant-a', 'evento-001', usuarioSuspendido('dueno'), 'actor-001', {
+        comentario: 'motivo',
+      }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol dueno → pasa el check RBAC (evento terminal, asignado_a_usuario_id null → destino pendiente)', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockResolvedValue({ error: null }),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: {
+          id: 'evento-001',
+          tenant_id: 'tenant-a',
+          estado: 'ignorada',
+          accion_sugerida: 'sin_accion_requerida',
+          asignado_a_usuario_id: null,
+        },
+        error: null,
+      }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    try {
+      await reabrirEventoConciliacion('tenant-a', 'evento-001', usuario, 'actor-001', { comentario: 'Se reabre' });
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(ErrorValidacion);
+    }
+  });
+});
+
+describe('asignarEventoConciliacion — RBAC', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rol supervisor → lanza ErrorValidacion', async () => {
+    await expect(
+      asignarEventoConciliacion('tenant-a', 'evento-001', 'usuario-x', usuarioConRol('supervisor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol coordinador → lanza ErrorValidacion', async () => {
+    await expect(
+      asignarEventoConciliacion('tenant-a', 'evento-001', 'usuario-x', usuarioConRol('coordinador'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol seller → lanza ErrorValidacion', async () => {
+    await expect(
+      asignarEventoConciliacion('tenant-a', 'evento-001', null, usuarioConRol('seller'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol conductor → lanza ErrorValidacion', async () => {
+    await expect(
+      asignarEventoConciliacion('tenant-a', 'evento-001', null, usuarioConRol('conductor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('usuario suspendido con rol administracion → lanza ErrorValidacion', async () => {
+    await expect(
+      asignarEventoConciliacion('tenant-a', 'evento-001', null, usuarioSuspendido('administracion'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol dueno → pasa el check RBAC (desasignar con null, sin tocar usuarios_perfil)', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = crearMockSupabaseConEventoPendiente();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    try {
+      await asignarEventoConciliacion('tenant-a', 'evento-001', null, usuario, 'actor-001');
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(ErrorValidacion);
+    }
+  });
+});
+
+describe('fijarFechaLimiteConciliacion — RBAC', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rol supervisor → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarFechaLimiteConciliacion('tenant-a', 'evento-001', '2026-08-01', usuarioConRol('supervisor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol coordinador → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarFechaLimiteConciliacion('tenant-a', 'evento-001', '2026-08-01', usuarioConRol('coordinador'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol seller → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarFechaLimiteConciliacion('tenant-a', 'evento-001', null, usuarioConRol('seller'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol conductor → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarFechaLimiteConciliacion('tenant-a', 'evento-001', null, usuarioConRol('conductor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('usuario invitado con rol dueno → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarFechaLimiteConciliacion('tenant-a', 'evento-001', null, usuarioInvitado('dueno'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol dueno → pasa el check RBAC', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = crearMockSupabaseConEventoPendiente();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    try {
+      await fijarFechaLimiteConciliacion('tenant-a', 'evento-001', '2026-08-01', usuario, 'actor-001');
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(ErrorValidacion);
+    }
+  });
+
+  it('RBAC se evalúa ANTES que el formato de la fecha (rol sin permiso + fecha inválida → sigue siendo el error de RBAC)', async () => {
+    await expect(
+      fijarFechaLimiteConciliacion('tenant-a', 'evento-001', 'fecha-invalida', usuarioConRol('supervisor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    // No debe haber tocado la BD.
+    expect(crearClienteServiceRole).not.toHaveBeenCalled();
+  });
+});
+
+describe('fijarBloqueosConciliacion — RBAC y validación de motivo obligatorio', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rol supervisor → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: true, bloqueaPago: false, motivoBloqueo: 'motivo' },
+        usuarioConRol('supervisor'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol coordinador → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: false, bloqueaPago: false, motivoBloqueo: null },
+        usuarioConRol('coordinador'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol seller → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: false, bloqueaPago: false, motivoBloqueo: null },
+        usuarioConRol('seller'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol conductor → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: false, bloqueaPago: false, motivoBloqueo: null },
+        usuarioConRol('conductor'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('usuario suspendido con rol dueno → lanza ErrorValidacion', async () => {
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: false, bloqueaPago: false, motivoBloqueo: null },
+        usuarioSuspendido('dueno'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  // ---------------------------------------------------------------------------
+  // CHECK de motivo obligatorio — validado en TypeScript ANTES de tocar la BD
+  // (espejo del CHECK SQL `eventos_conciliacion_bloqueo_motivo`, no basta con
+  // confiar en que la BD lo rechace).
+  // ---------------------------------------------------------------------------
+
+  it('bloqueaFacturacion:true sin motivoBloqueo → ErrorValidacion, sin tocar la BD', async () => {
+    const usuario = usuarioConRol('dueno');
+
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: true, bloqueaPago: false, motivoBloqueo: null },
+        usuario,
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(crearClienteServiceRole).not.toHaveBeenCalled();
+  });
+
+  it('bloqueaPago:true con motivoBloqueo vacío/solo espacios → ErrorValidacion', async () => {
+    const usuario = usuarioConRol('administracion');
+
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: false, bloqueaPago: true, motivoBloqueo: '   ' },
+        usuario,
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(crearClienteServiceRole).not.toHaveBeenCalled();
+  });
+
+  it('ambos flags en false: NO exige motivo aunque venga null', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = crearMockSupabaseConEventoPendiente();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: false, bloqueaPago: false, motivoBloqueo: null },
+        usuario,
+        'actor-001',
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('rol dueno con motivo presente → pasa el check RBAC y la validación de motivo', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = crearMockSupabaseConEventoPendiente();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      fijarBloqueosConciliacion(
+        'tenant-a',
+        'evento-001',
+        { bloqueaFacturacion: true, bloqueaPago: false, motivoBloqueo: 'Se retiene hasta confirmar' },
+        usuario,
+        'actor-001',
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('cambiarAccionSugeridaConciliacion — RBAC', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rol supervisor → lanza ErrorValidacion', async () => {
+    await expect(
+      cambiarAccionSugeridaConciliacion(
+        'tenant-a',
+        'evento-001',
+        'generar_cobro_manual',
+        usuarioConRol('supervisor'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol coordinador → lanza ErrorValidacion', async () => {
+    await expect(
+      cambiarAccionSugeridaConciliacion(
+        'tenant-a',
+        'evento-001',
+        'generar_cobro_manual',
+        usuarioConRol('coordinador'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol seller → lanza ErrorValidacion', async () => {
+    await expect(
+      cambiarAccionSugeridaConciliacion(
+        'tenant-a',
+        'evento-001',
+        'generar_cobro_manual',
+        usuarioConRol('seller'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol conductor → lanza ErrorValidacion', async () => {
+    await expect(
+      cambiarAccionSugeridaConciliacion(
+        'tenant-a',
+        'evento-001',
+        'generar_cobro_manual',
+        usuarioConRol('conductor'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('usuario suspendido con rol administracion → lanza ErrorValidacion', async () => {
+    await expect(
+      cambiarAccionSugeridaConciliacion(
+        'tenant-a',
+        'evento-001',
+        'generar_cobro_manual',
+        usuarioSuspendido('administracion'),
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol dueno → pasa el check RBAC', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = crearMockSupabaseConEventoPendiente();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    try {
+      await cambiarAccionSugeridaConciliacion('tenant-a', 'evento-001', 'generar_cobro_manual', usuario, 'actor-001');
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(ErrorValidacion);
+    }
+  });
+
+  it('acción sugerida fuera del catálogo → ErrorValidacion (aunque el RBAC pase)', async () => {
+    const usuario = usuarioConRol('dueno');
+
+    await expect(
+      cambiarAccionSugeridaConciliacion(
+        'tenant-a',
+        'evento-001',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        'accion_inventada' as any,
+        usuario,
+        'actor-001',
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+});
+
+describe('agregarComentarioConciliacion — RBAC', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rol supervisor → lanza ErrorValidacion', async () => {
+    await expect(
+      agregarComentarioConciliacion('tenant-a', 'evento-001', 'un comentario', usuarioConRol('supervisor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol coordinador → lanza ErrorValidacion', async () => {
+    await expect(
+      agregarComentarioConciliacion('tenant-a', 'evento-001', 'un comentario', usuarioConRol('coordinador'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol seller → lanza ErrorValidacion', async () => {
+    await expect(
+      agregarComentarioConciliacion('tenant-a', 'evento-001', 'un comentario', usuarioConRol('seller'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol conductor → lanza ErrorValidacion', async () => {
+    await expect(
+      agregarComentarioConciliacion('tenant-a', 'evento-001', 'un comentario', usuarioConRol('conductor'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('usuario suspendido con rol dueno → lanza ErrorValidacion', async () => {
+    await expect(
+      agregarComentarioConciliacion('tenant-a', 'evento-001', 'un comentario', usuarioSuspendido('dueno'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it('rol dueno → pasa el check RBAC', async () => {
+    const usuario = usuarioConRol('dueno');
+    const mockQuery = crearMockSupabaseConEventoPendiente();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    try {
+      await agregarComentarioConciliacion('tenant-a', 'evento-001', 'un comentario válido', usuario, 'actor-001');
+    } catch (err) {
+      expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
   });
 });
@@ -628,6 +1239,11 @@ function crearMockPeriodo(estado: string, extra: Record<string, unknown> = {}) {
     from: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    // `hayFolioDisponible` (verificación de folios de `emitirFacturaPeriodo`,
+    // fix QA jul 2026) encadena `.order().limit()` antes de `.maybeSingle()` —
+    // este mock genérico (mismo objeto para toda tabla) necesita soportarlos.
+    order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({
       data: {
         id: 'periodo-001',
@@ -638,6 +1254,12 @@ function crearMockPeriodo(estado: string, extra: Record<string, unknown> = {}) {
         estado,
         monto_total_clp: 11400,
         documento_dte_id: null,
+        // Campos de folios CAF: este mock reutiliza el MISMO objeto para
+        // cualquier tabla (incluida `identidad.folios_caf`), así que estos
+        // campos satisfacen también la verificación de `hayFolioDisponible`
+        // (folio_actual <= folio_hasta) en el happy path.
+        folio_actual: 10,
+        folio_hasta: 100,
         ...extra,
       },
       error: null,
@@ -703,5 +1325,40 @@ describe('emitirFacturaPeriodo — compuerta de aprobación (B1-1)', () => {
     expect(evento.name).toBe('dinero/periodo.emision-solicitada');
     expect(evento.data.modo).toBe('sandbox');
     expect(evento.data.solicitadoPorUsuarioId).toBe('actor-001');
+  });
+
+  it('sin folios CAF tipo 33 disponibles → lanza ErrorValidacion y NO publica el evento (fix QA jul 2026)', async () => {
+    const periodoData = {
+      id: 'periodo-001',
+      tenant_id: 'tenant-a',
+      seller_id: 'seller-a',
+      fecha_inicio: '2026-06-01',
+      fecha_fin: '2026-06-30',
+      estado: 'cerrado',
+      monto_total_clp: 11400,
+      documento_dte_id: null,
+    };
+    const mockSecuencial = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      maybeSingle: vi
+        .fn()
+        // 1ª llamada: lectura del período (cerrado).
+        .mockResolvedValueOnce({ data: periodoData, error: null })
+        // 2ª llamada: `hayFolioDisponible` — sin CAF vigente tipo 33.
+        .mockResolvedValueOnce({ data: null, error: null }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      mockSecuencial as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(inngest.send).not.toHaveBeenCalled();
   });
 });

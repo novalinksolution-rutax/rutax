@@ -52,13 +52,13 @@ export function BotonCancelarManifiesto({ manifiestoId }: Props) {
         >
           {/* Overlay */}
           <div
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={() => !pending && setAbierto(false)}
             aria-hidden="true"
           />
 
           {/* Panel */}
-          <div className="relative z-10 w-full max-w-md rounded-xl bg-card shadow-xl border p-6 space-y-4">
+          <div className="relative z-10 w-full max-w-md space-y-4 rounded-xl bg-card p-6 ring-1 ring-foreground/10">
             <h2 id="dialog-cancelar-titulo" className="text-lg font-semibold">
               Cancelar manifiesto
             </h2>
@@ -67,7 +67,7 @@ export function BotonCancelarManifiesto({ manifiestoId }: Props) {
             </p>
 
             {error && (
-              <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 border border-red-200">
+              <p role="alert" className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
                 {error}
               </p>
             )}

@@ -9,15 +9,19 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { AlertTriangle, CheckCircle2, Wallet } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarLiquidaciones } from "@/modules/dinero/index";
 import type { Liquidacion } from "@/modules/dinero/tipos";
 import {
   traducirEstadoLiquidacion,
-  COLOR_ESTADO_LIQUIDACION,
+  BADGE_ESTADO_LIQUIDACION,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { BotonDescargaLiquidacion } from "./boton-descarga-liquidacion";
 
 export const metadata: Metadata = {
@@ -54,20 +58,18 @@ export default async function PaginaLiquidacionesConductor() {
   // Estado: error de red
   if (errorCarga) {
     return (
-      <div className="py-12 text-center space-y-4">
-        <p className="text-base font-medium text-foreground">
-          No se pudieron cargar tus liquidaciones.
-        </p>
-        <p className="text-sm text-muted-foreground">Verifica tu conexión.</p>
-        <form action="/conductor/liquidaciones">
-          <button
-            type="submit"
-            className="w-full min-h-[48px] rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Reintentar
-          </button>
-        </form>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        titulo="No se pudieron cargar tus liquidaciones"
+        descripcion="Revisa tu conexión e inténtalo de nuevo."
+        accion={
+          <form action="/conductor/liquidaciones">
+            <Button type="submit" size="lg">
+              Reintentar
+            </Button>
+          </form>
+        }
+      />
     );
   }
 
@@ -82,17 +84,16 @@ export default async function PaginaLiquidacionesConductor() {
         >
           ← Manifiesto
         </Link>
-        <h1 className="text-xl font-bold">Mis liquidaciones</h1>
+        <h1 className="text-xl font-semibold">Mis liquidaciones</h1>
       </div>
 
       {/* Estado: sin liquidaciones */}
       {liquidaciones.length === 0 ? (
-        <div className="rounded-xl border bg-card px-4 py-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            Aún no tienes liquidaciones. Aparecerán aquí cuando tu empresa registre tus
-            primeras entregas.
-          </p>
-        </div>
+        <EmptyState
+          icon={Wallet}
+          titulo="Aún no tienes liquidaciones"
+          descripcion="Aparecerán aquí cuando tu empresa registre tus primeras entregas."
+        />
       ) : (
         <ul className="space-y-3" aria-label="Lista de liquidaciones">
           {liquidaciones.map((liq) => (
@@ -111,22 +112,21 @@ export default async function PaginaLiquidacionesConductor() {
 // =============================================================================
 
 function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
-  const badgeClases = COLOR_ESTADO_LIQUIDACION[liquidacion.estado];
   const textoEstado = traducirEstadoLiquidacion(liquidacion.estado);
 
   return (
-    <article className="rounded-xl border bg-card p-4 shadow-sm">
+    <article className="rounded-lg border bg-card p-4 shadow-xs">
       {/* Línea superior: fechas + badge estado */}
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-foreground tabular-nums">
           {formatearFechaCorta(liquidacion.fechaInicio)} –{" "}
           {formatearFechaCorta(liquidacion.fechaFin)}
         </p>
-        <span
-          className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${badgeClases}`}
-        >
-          {textoEstado}
-        </span>
+        <BadgeEstado
+          variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}
+          texto={textoEstado}
+          className="shrink-0"
+        />
       </div>
 
       {/* Línea media: entregas + monto en tipografía grande */}
@@ -137,18 +137,35 @@ function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
             entrega{liquidacion.totalEntregas !== 1 ? "s" : ""}
           </p>
         </div>
-        <p className="text-2xl font-bold tabular-nums text-foreground">
+        <p className="text-2xl font-semibold tabular-nums text-foreground">
           {formatearCLPOGuion(liquidacion.montoTotalClp)}
         </p>
       </div>
+
+      {/* Confirmación visual de pago procesado */}
+      {liquidacion.estado === "pagada" && (
+        <div className="mt-3 flex items-center gap-1.5">
+          <CheckCircle2
+            className="h-4 w-4 shrink-0 text-success"
+            aria-hidden="true"
+          />
+          <p className="text-sm font-medium text-success">
+            Tu pago fue procesado
+          </p>
+        </div>
+      )}
 
       {/* Botón de descarga o mensaje si no hay PDF */}
       <div className="mt-3">
         {liquidacion.pdfRef ? (
           <BotonDescargaLiquidacion pdfRef={liquidacion.pdfRef} />
         ) : (
+          // El texto depende del estado: en una liquidación ya emitida o pagada,
+          // "cuando sea emitida" se contradice con el badge de al lado.
           <p className="text-xs text-muted-foreground">
-            PDF disponible cuando la liquidación sea emitida.
+            {liquidacion.estado === "borrador"
+              ? "El PDF estará disponible cuando tu liquidación sea emitida."
+              : "El PDF todavía no está disponible. Pídeselo a tu coordinador si lo necesitas."}
           </p>
         )}
       </div>

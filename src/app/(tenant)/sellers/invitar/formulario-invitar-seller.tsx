@@ -10,7 +10,7 @@
  */
 
 import { useId, useState, type FormEvent } from "react";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -229,8 +229,7 @@ export function FormularioInvitarSeller() {
             </Alert>
           ) : null}
 
-          <Button type="submit" disabled={enviando} className="w-full sm:w-auto">
-            {enviando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+          <Button type="submit" loading={enviando} className="w-full sm:w-auto">
             {enviando ? "Invitando…" : "Invitar a este seller"}
           </Button>
         </form>

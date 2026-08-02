@@ -10,8 +10,13 @@ export {
   intercambiarCodigoPorTokens,
   refrescarToken,
   obtenerConexionPorSeller,
+  obtenerConexionesPorSeller,
+  obtenerResumenSaludMlPorTenant,
+  renombrarConexion,
   obtenerEtiquetaEnvio,
   ErrorConexionMlRequiereRevinculacion,
+  ErrorTopeCuentasMlAlcanzado,
+  ErrorCuentaMlYaConectada,
 } from "./puerto";
 
 export type {
@@ -25,4 +30,5 @@ export type {
   RazonFalloRefresco,
   RefrescarTokenEntrada,
   RefrescarTokenResultado,
+  ResumenSaludMlTenant,
 } from "./tipos";

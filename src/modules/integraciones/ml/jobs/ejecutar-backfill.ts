@@ -31,6 +31,10 @@ import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { descifrarSecreto } from "../../secretos";
 import { ML_API_BASE_URL } from "../cliente-http";
+import { ahoraEnSantiago, horaAMinutos } from "@/lib/fecha-santiago";
+import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
+import { resolverZona } from "@/modules/operacion/zonas";
+import { resolverVentanaCorte } from "@/modules/operacion/ventanas-corte";
 
 const VENTANA_MAXIMA_DIAS = 7;
 const PAGE_SIZE = 50;
@@ -305,15 +309,47 @@ export const jobEjecutarBackfill = inngest.createFunction(
             continue;
           }
 
+          // Marca informativa de corte_riesgo (F7, ítem 1.2).
+          // NUNCA bloquea ni rechaza — es solo un flag de aviso.
+          // Si falla la resolución de ventana se inserta el pedido sin la marca.
+          let corteRiesgoFlex = false;
+          try {
+            const comunaFlexNorm = resolverComunaCanonica(
+              order.shipping_address?.city?.name ?? 'Santiago',
+            );
+            if (comunaFlexNorm) {
+              const zonaIdFlex = await resolverZona(supabase, tenantId, comunaFlexNorm);
+              const ventanaFlex = await resolverVentanaCorte(
+                supabase,
+                tenantId,
+                sellerId,
+                zonaIdFlex,
+                'flex',
+              );
+              if (ventanaFlex) {
+                const { hora } = ahoraEnSantiago();
+                corteRiesgoFlex = horaAMinutos(hora) > horaAMinutos(ventanaFlex.horaCorte);
+              }
+            }
+          } catch {
+            // Cálculo de corte best-effort — no interrumpir la ingesta.
+          }
+
           // Upsert en operacion.pedidos con origen = 'backfill'
-          // ON CONFLICT (tenant_id, ml_shipment_id) → actualizar estado_ml si difiere
-          await supabase
+          // ON CONFLICT (tenant_id, ml_shipment_id) → actualizar estado_ml si difiere.
+          // Se retorna creado_en/actualizado_en para detectar si fue INSERT nuevo:
+          // cuando ambos valores son idénticos el trigger los pone al mismo instante.
+          const { data: filaPedido } = await supabase
             .schema("operacion")
             .from("pedidos")
             .upsert(
               {
                 tenant_id: tenantId,
                 seller_id: sellerId,
+                // Origen de cuenta ML (estable): el backfill ya opera por conexión,
+                // así que estampamos de qué cuenta proviene el pedido. Guardado no
+                // nulo por el guard de arriba (conexión con ml_user_id).
+                ml_user_id: conexion.ml_user_id!,
                 tipo_pedido: "flex",
                 origen: "backfill",
                 ml_order_id: String(order.id),
@@ -326,14 +362,42 @@ export const jobEjecutarBackfill = inngest.createFunction(
                 destinatario_direccion:
                   order.shipping_address?.address_line ?? "Dirección pendiente",
                 destinatario_comuna: order.shipping_address?.city?.name ?? "Santiago",
+                corte_riesgo: corteRiesgoFlex,
               },
               {
                 onConflict: "tenant_id,ml_shipment_id",
                 ignoreDuplicates: false,
               },
-            );
+            )
+            .select("id, creado_en, actualizado_en, destinatario_direccion, destinatario_comuna")
+            .maybeSingle();
 
           totalProcesados++;
+
+          // Publicar evento de geocodificación SOLO para pedidos genuinamente nuevos
+          // (INSERT, no UPDATE). Se detecta comparando creado_en con actualizado_en:
+          // en un INSERT el trigger los pone al mismo instante; en un UPDATE difieren.
+          // Es best-effort: un fallo de Inngest no debe romper el backfill — el pedido
+          // quedó con geo_estado = 'pendiente' y el job barre por índice.
+          if (filaPedido && filaPedido.creado_en === filaPedido.actualizado_en) {
+            try {
+              await inngest.send({
+                name: 'operacion/pedido.ingestado',
+                id: `pedido-ingestado-${filaPedido.id as string}`,
+                data: {
+                  pedidoId: filaPedido.id as string,
+                  tenantId,
+                  sellerId,
+                  direccion: (filaPedido.destinatario_direccion as string | null) ?? 'Dirección pendiente',
+                  comuna: (filaPedido.destinatario_comuna as string | null) ?? 'Santiago',
+                  tipoPedido: 'flex' as const,
+                },
+              });
+            } catch {
+              // Evento best-effort. El pedido ya está en BD con geo_estado = 'pendiente'.
+              // El job de geocoding lo procesará por barrido del índice idx_pedidos_geo_pendiente.
+            }
+          }
         }
 
         offset += orders.length;

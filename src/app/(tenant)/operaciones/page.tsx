@@ -4,13 +4,19 @@
  *
  * Server Component. Los filtros (seller, estado, fecha) llegan como searchParams.
  * El objetivo: en menos de 10 segundos saber cuántos pedidos hay pendientes y cuáles.
+ *
+ * Pulido Fase 4 (UX-7 / UI-6): sistema DataTable + Table (densidad compacta,
+ * numéricos tabulares), estados de vista con EmptyState, paginación del sistema
+ * y color por tokens semánticos.
  */
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Inbox, SearchX, MapPinOff } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarPedidos } from "@/modules/operacion/pedidos";
+import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   puedeAsignarYReasignarPedidos,
   puedeGestionarIncidencias,
@@ -18,13 +24,33 @@ import {
 } from "@/modules/identidad/capacidades";
 import {
   traducirEstadoPedido,
-  COLOR_ESTADO_PEDIDO,
-  TEXTO_ESTADO_PEDIDO,
+  BADGE_ESTADO_PEDIDO,
+  traducirGeoEstado,
+  traducirCoberturaEstado,
+  BADGE_GEO_ESTADO,
+  BADGE_COBERTURA_ESTADO,
+  requiereRevisionGeo,
 } from "@/lib/ui/traduccion-estados";
-import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { FormularioPedidoSameDay } from "./formulario-same-day";
 import { FiltrosPedidosForm } from "./filtros-pedidos";
+import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Contadores de estado agrupados para los chips
@@ -51,6 +77,22 @@ function calcularContadores(pedidos: Pedido[]): Record<string, number> {
   return contadores;
 }
 
+const CONTADORES = [
+  { key: "pendiente_asignacion", label: "Pendiente asignación", clases: "bg-warning-subtle text-warning-subtle-foreground" },
+  { key: "asignado", label: "Asignados", clases: "bg-info-subtle text-info-subtle-foreground" },
+  { key: "en_ruta", label: "En ruta", clases: "bg-info-subtle text-info-subtle-foreground" },
+  { key: "entregado", label: "Entregados", clases: "bg-success-subtle text-success-subtle-foreground" },
+  { key: "con_problemas", label: "Con problemas", clases: "bg-destructive-subtle text-destructive-subtle-foreground" },
+] as const;
+
+/** Nombre visible de la cuenta de origen: alias → nickname de ML → últimos 4. */
+function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, mlUserId: string | null): string {
+  if (alias && alias.trim()) return alias;
+  if (mlNickname && mlNickname.trim()) return mlNickname;
+  if (mlUserId && mlUserId.length >= 4) return `···${mlUserId.slice(-4)}`;
+  return "Otra cuenta";
+}
+
 // =============================================================================
 // Página principal
 // =============================================================================
@@ -59,6 +101,7 @@ interface SearchParams {
   seller?: string;
   estado?: string;
   fecha?: string;
+  por_revisar?: string;
   pagina?: string;
 }
 
@@ -74,73 +117,164 @@ export default async function PaginaOperaciones({
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;
 
-  // Filtros desde URL
+  const hoyIso = fechaLocalEnSantiago(new Date());
   const filtroSeller = params.seller || "";
   const filtroEstado = (params.estado as EstadoPedido | "") || "";
-  const filtroFecha = params.fecha || new Date().toISOString().split("T")[0];
+  const filtroFecha = params.fecha || hoyIso;
+  const filtroPorRevisar = params.por_revisar === "1";
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
   const LIMITE = 25;
 
-  const hayFiltroActivo = !!(filtroSeller || filtroEstado || (params.fecha && params.fecha !== new Date().toISOString().split("T")[0]));
+  const hayFiltroActivo = !!(
+    filtroSeller ||
+    filtroEstado ||
+    filtroPorRevisar ||
+    (params.fecha && params.fecha !== hoyIso)
+  );
 
-  // Capacidades del usuario
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeIncidencias = puedeGestionarIncidencias(sesion.usuario);
   const puedeAjustar = puedeAjustarOperacionDiaria(sesion.usuario);
 
-  // Cargar pedidos
   const cliente = crearClienteServiceRole();
-  let resultado;
-  let errorCarga = false;
 
-  try {
-    resultado = await listarPedidos(cliente, {
+  // listarPedidos y la lista de sellers para los filtros no dependen entre sí:
+  // se cargan en paralelo (antes la lista de sellers esperaba a que terminara
+  // la carga de pedidos sin necesidad).
+  const [resPedidos, sellersDisponibles] = await Promise.all([
+    listarPedidos(cliente, {
       tenantId,
       sellerId: filtroSeller || undefined,
-      estado: (filtroEstado as EstadoPedido) || undefined,
-      fecha: filtroFecha || undefined,
+      estado: filtroPorRevisar ? undefined : (filtroEstado as EstadoPedido) || undefined,
+      fecha: filtroPorRevisar ? undefined : filtroFecha || undefined,
+      porRevisar: filtroPorRevisar || undefined,
       pagina,
       limite: LIMITE,
-    });
-  } catch {
-    errorCarga = true;
-    resultado = { datos: [], total: 0, pagina: 1, limite: LIMITE };
-  }
+    }).then(
+      (r) => ({ ok: true as const, datos: r }),
+      () => ({ ok: false as const }),
+    ),
+    // Lista de sellers para el filtro — cacheada por tenant (datos-tenant/sellers).
+    obtenerSellersDelTenant(tenantId).catch(() => [] as { id: string; nombre: string }[]),
+  ]);
+
+  const errorCarga = !resPedidos.ok;
+  const resultado = resPedidos.ok
+    ? resPedidos.datos
+    : { datos: [], total: 0, pagina: 1, limite: LIMITE };
 
   const pedidos = resultado.datos;
   const totalPedidos = resultado.total;
   const totalPaginas = Math.ceil(totalPedidos / LIMITE);
   const contadores = calcularContadores(pedidos);
+  const tieneAcciones = puedeAsignar || puedeIncidencias || puedeAjustar;
 
-  // Sellers disponibles para el filtro
-  let sellersDisponibles: { id: string; nombre: string }[] = [];
-  try {
-    const { data } = await cliente
-      .from("sellers")
-      .select("id, razon_social")
-      .eq("tenant_id", tenantId)
-      .order("razon_social");
-    sellersDisponibles = (data ?? []).map((s: { id: string; razon_social: string }) => ({
-      id: s.id,
-      nombre: s.razon_social,
-    }));
-  } catch {
-    // sin bloquear si falla — el filtro quedará vacío
+  // Nombres legibles del seller para la columna (UUID → razón social).
+  const nombreSellerPorId = Object.fromEntries(
+    sellersDisponibles.map((s) => [s.id, s.nombre]),
+  );
+
+  // El badge de origen (cuenta ML) y los nombres de conductor dependen ambos
+  // SOLO de `pedidos`, así que se resuelven en paralelo entre sí (antes eran
+  // dos esperas encadenadas). Cada bloque DEVUELVE su mapa — sin reasignar
+  // variables externas desde dentro de un closure async.
+  const [origenPorPedido, nombreConductorPorId] = await Promise.all([
+    // Badge de origen: la cuenta ML de cada pedido, SOLO si el seller tiene más
+    // de una cuenta conectada. Dos consultas acotadas — sin tocar el tipo
+    // `Pedido` ni el módulo de operación.
+    (async (): Promise<Record<string, string | null>> => {
+      const mapa: Record<string, string | null> = {};
+      try {
+        const sellerIds = Array.from(new Set(pedidos.map((p) => p.sellerId)));
+        const pedidoIds = pedidos.map((p) => p.id);
+        if (sellerIds.length === 0 || pedidoIds.length === 0) return mapa;
+        const [conexRes, pedRes] = await Promise.all([
+          cliente
+            .schema("identidad")
+            .from("conexiones_seller_ml")
+            .select("seller_id, ml_user_id, alias, ml_nickname")
+            .eq("tenant_id", tenantId)
+            .in("seller_id", sellerIds),
+          cliente
+            .schema("operacion")
+            .from("pedidos")
+            .select("id, seller_id, ml_user_id")
+            .in("id", pedidoIds),
+        ]);
+        const countBySeller: Record<string, number> = {};
+        const labelByKey: Record<string, string> = {};
+        for (const c of (conexRes.data ?? []) as Array<{
+          seller_id: string;
+          ml_user_id: string | null;
+          alias: string | null;
+          ml_nickname: string | null;
+        }>) {
+          countBySeller[c.seller_id] = (countBySeller[c.seller_id] ?? 0) + 1;
+          if (c.ml_user_id) {
+            labelByKey[`${c.seller_id}:${c.ml_user_id}`] = etiquetaCuentaOrigen(c.alias, c.ml_nickname, c.ml_user_id);
+          }
+        }
+        for (const p of (pedRes.data ?? []) as Array<{ id: string; seller_id: string; ml_user_id: string | null }>) {
+          if ((countBySeller[p.seller_id] ?? 0) > 1 && p.ml_user_id) {
+            mapa[p.id] = labelByKey[`${p.seller_id}:${p.ml_user_id}`] ?? null;
+          }
+        }
+      } catch {
+        // best-effort — sin badge si falla la resolución de origen.
+      }
+      return mapa;
+    })(),
+
+    // Nombres de conductor para la columna (UUID → nombre).
+    (async (): Promise<Record<string, string>> => {
+      try {
+        const driverIds = Array.from(
+          new Set(pedidos.flatMap((p) => (p.driverIdAsignado ? [p.driverIdAsignado] : []))),
+        );
+        return await mapaNombresConductores(cliente, tenantId, driverIds);
+      } catch {
+        // best-effort — si falla, la celda cae al UUID.
+        return {};
+      }
+    })(),
+  ]);
+
+  function hrefPagina(p: number): string {
+    const sp = new URLSearchParams();
+    if (filtroSeller) sp.set("seller", filtroSeller);
+    if (filtroPorRevisar) {
+      sp.set("por_revisar", "1");
+    } else {
+      if (filtroEstado) sp.set("estado", filtroEstado);
+      if (filtroFecha) sp.set("fecha", filtroFecha);
+    }
+    if (p > 1) sp.set("pagina", String(p));
+    const qs = sp.toString();
+    return qs ? `/operaciones?${qs}` : "/operaciones";
   }
 
   return (
     <div className="space-y-6">
       {/* Encabezado */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Pedidos</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-heading text-2xl font-semibold">
+              {filtroPorRevisar ? "Direcciones por revisar" : "Pedidos"}
+            </h1>
+            <IndicadorEnVivo tenantId={tenantId} />
+          </div>
+          {filtroPorRevisar && (
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Pedidos con dirección no ubicada, fuera de cobertura o sin tarifa de zona. Revísalos antes de rutear.
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {puedeIncidencias && (
-            <Link
-              href="/operaciones/incidencias"
-              className="rounded-lg border px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
-            >
-              Ver incidencias
-            </Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/operaciones/incidencias">Ver incidencias</Link>
+            </Button>
           )}
           {puedeAjustar && (
             <FormularioPedidoSameDay sellers={sellersDisponibles} tenantId={tenantId} />
@@ -152,27 +286,21 @@ export default async function PaginaOperaciones({
       {errorCarga && (
         <div
           role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
-          No se pudo cargar la lista — intenta recargar la página.
+          No pudimos cargar los pedidos. Intenta recargar la página.
         </div>
       )}
 
       {/* Bloque 1 — Contadores de estado */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="list" aria-label="Contadores por estado">
-        {[
-          { key: "pendiente_asignacion", label: "Pendiente asig.", color: "bg-yellow-50 border-yellow-200 text-yellow-800" },
-          { key: "asignado", label: "Asignados", color: "bg-blue-50 border-blue-200 text-blue-800" },
-          { key: "en_ruta", label: "En ruta", color: "bg-indigo-50 border-indigo-200 text-indigo-800" },
-          { key: "entregado", label: "Entregados", color: "bg-green-50 border-green-200 text-green-800" },
-          { key: "con_problemas", label: "Con problemas", color: "bg-red-50 border-red-200 text-red-800" },
-        ].map(({ key, label, color }) => (
-          <div
-            key={key}
-            role="listitem"
-            className={`rounded-lg border px-3 py-2 ${color}`}
-          >
-            <p className="text-lg font-bold tabular-nums">
+      <div
+        className="grid grid-cols-2 gap-2 sm:grid-cols-5"
+        role="list"
+        aria-label="Contadores por estado"
+      >
+        {CONTADORES.map(({ key, label, clases }) => (
+          <div key={key} role="listitem" className={`rounded-lg px-3 py-2 ${clases}`}>
+            <p className="text-lg font-semibold tabular-nums">
               {errorCarga ? "—" : (contadores[key] ?? 0)}
             </p>
             <p className="text-xs font-medium">{label}</p>
@@ -186,110 +314,105 @@ export default async function PaginaOperaciones({
         filtroSeller={filtroSeller}
         filtroEstado={filtroEstado}
         filtroFecha={filtroFecha}
+        filtroPorRevisar={filtroPorRevisar}
         hayFiltroActivo={hayFiltroActivo}
       />
 
-      {/* Bloque 3 — Tabla */}
+      {/* Bloque 3 — Tabla / estados de vista */}
       {pedidos.length === 0 && !errorCarga ? (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          {hayFiltroActivo ? (
-            <>
-              <p className="text-muted-foreground">
-                No hay pedidos que coincidan. Prueba cambiando el seller o la fecha.
-              </p>
-              <Link
-                href="/operaciones"
-                className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
-              >
-                Limpiar filtros
-              </Link>
-            </>
-          ) : (
-            <>
-              <p className="text-muted-foreground">No hay pedidos para esta fecha.</p>
-              {puedeAjustar && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Puedes crear un pedido same-day usando el botón de arriba.
-                </p>
-              )}
-            </>
-          )}
-        </div>
+        filtroPorRevisar ? (
+          <EmptyState
+            icon={MapPinOff}
+            tono="filtro"
+            titulo="Sin direcciones por revisar"
+            descripcion="Todos los pedidos tienen dirección ubicada y cobertura confirmada. Buen trabajo."
+            accion={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/operaciones">Ver todos los pedidos</Link>
+              </Button>
+            }
+          />
+        ) : hayFiltroActivo ? (
+          <EmptyState
+            icon={SearchX}
+            tono="filtro"
+            titulo="Ningún pedido coincide"
+            descripcion="No hay pedidos con estos filtros. Prueba cambiando el seller, el estado o la fecha."
+            accion={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/operaciones">Limpiar filtros</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Inbox}
+            titulo="Aún no hay pedidos para esta fecha"
+            descripcion={
+              puedeAjustar
+                ? "Se sincronizan automáticamente desde Mercado Libre. También puedes crear un pedido same-day desde el botón de arriba."
+                : "Se sincronizan automáticamente desde Mercado Libre."
+            }
+          />
+        )
       ) : (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="flex items-center justify-between border-b px-4 py-2">
-            <span className="text-sm text-muted-foreground">
+        <DataTable
+          toolbar={
+            <span className="text-sm text-muted-foreground tabular-nums">
               {errorCarga ? "—" : `${totalPedidos} pedidos`}
             </span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Lista de pedidos">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="px-4 py-2">Destinatario</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Seller</th>
-                  <th className="hidden px-4 py-2 md:table-cell">Fecha comprometida</th>
-                  <th className="hidden px-4 py-2 lg:table-cell">Conductor</th>
-                  <th className="px-4 py-2">Tipo</th>
-                  {(puedeAsignar || puedeIncidencias || puedeAjustar) && (
-                    <th className="px-4 py-2">
-                      <span className="sr-only">Acciones</span>
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {pedidos.map((pedido) => (
-                  <FilaPedido
-                    key={pedido.id}
-                    pedido={pedido}
-                    puedeAsignar={puedeAsignar}
-                    puedeIncidencias={puedeIncidencias}
-                    puedeAjustar={puedeAjustar}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginación */}
-          {totalPaginas > 1 && (
-            <div className="flex items-center justify-between border-t px-4 py-3">
-              <span className="text-xs text-muted-foreground">
-                Página {pagina} de {totalPaginas}
-              </span>
-              <div className="flex gap-2">
-                {pagina > 1 && (
-                  <Link
-                    href={`/operaciones?${new URLSearchParams({
-                      ...(filtroSeller && { seller: filtroSeller }),
-                      ...(filtroEstado && { estado: filtroEstado }),
-                      ...(filtroFecha && { fecha: filtroFecha }),
-                      pagina: String(pagina - 1),
-                    })}`}
-                    className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
-                  >
-                    Anterior
-                  </Link>
+          }
+          footer={
+            totalPaginas > 1 ? (
+              <Pagination
+                pagina={pagina}
+                totalPaginas={totalPaginas}
+                hrefPagina={hrefPagina}
+              />
+            ) : undefined
+          }
+        >
+          <Table densidad="compact" aria-label="Lista de pedidos">
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead className="px-4">Estado</TableHead>
+                <TableHead className="px-4">Destinatario</TableHead>
+                <TableHead className="hidden px-4 sm:table-cell">Seller</TableHead>
+                {filtroPorRevisar ? (
+                  <TableHead className="px-4">Motivo</TableHead>
+                ) : (
+                  <TableHead className="hidden px-4 text-right md:table-cell">
+                    Fecha comprometida
+                  </TableHead>
                 )}
-                {pagina < totalPaginas && (
-                  <Link
-                    href={`/operaciones?${new URLSearchParams({
-                      ...(filtroSeller && { seller: filtroSeller }),
-                      ...(filtroEstado && { estado: filtroEstado }),
-                      ...(filtroFecha && { fecha: filtroFecha }),
-                      pagina: String(pagina + 1),
-                    })}`}
-                    className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
-                  >
-                    Siguiente
-                  </Link>
+                <TableHead className="hidden px-4 lg:table-cell">Conductor</TableHead>
+                <TableHead className="px-4">Tipo</TableHead>
+                {tieneAcciones && (
+                  <TableHead className="px-4 text-right">
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
                 )}
-              </div>
-            </div>
-          )}
-        </div>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pedidos.map((pedido) => (
+                <FilaPedido
+                  key={pedido.id}
+                  pedido={pedido}
+                  tieneAcciones={tieneAcciones}
+                  modoBandeja={filtroPorRevisar}
+                  origen={origenPorPedido[pedido.id] ?? null}
+                  sellerNombre={nombreSellerPorId[pedido.sellerId] ?? null}
+                  conductorNombre={
+                    pedido.driverIdAsignado
+                      ? (nombreConductorPorId[pedido.driverIdAsignado] ?? null)
+                      : null
+                  }
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </DataTable>
       )}
     </div>
   );
@@ -301,59 +424,120 @@ export default async function PaginaOperaciones({
 
 function FilaPedido({
   pedido,
-  puedeAsignar,
-  puedeIncidencias,
-  puedeAjustar,
+  tieneAcciones,
+  modoBandeja = false,
+  origen = null,
+  sellerNombre = null,
+  conductorNombre = null,
 }: {
   pedido: Pedido;
-  puedeAsignar: boolean;
-  puedeIncidencias: boolean;
-  puedeAjustar: boolean;
+  tieneAcciones: boolean;
+  modoBandeja?: boolean;
+  origen?: string | null;
+  sellerNombre?: string | null;
+  conductorNombre?: string | null;
 }) {
-  const tieneAcciones = puedeAsignar || puedeIncidencias || puedeAjustar;
-  const estadoClases = COLOR_ESTADO_PEDIDO[pedido.estado];
+  // Determinar si requiere revisión para mostrar badge discreto en la lista normal
+  const requiereRevision = requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado);
+  const estaPendienteGeo = pedido.geoEstado === "pendiente" && !requiereRevision;
 
   return (
-    <tr className="group hover:bg-muted/30 transition-colors">
-      <td className="px-4 py-3">
-        <span
-          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${estadoClases}`}
-        >
-          {traducirEstadoPedido(pedido.estado)}
-        </span>
-      </td>
-      <td className="px-4 py-3">
+    <TableRow className="group">
+      <TableCell className="px-4">
+        <BadgeEstado
+          variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          texto={traducirEstadoPedido(pedido.estado)}
+        />
+      </TableCell>
+      <TableCell className="px-4">
         <Link href={`/operaciones/${pedido.id}`} className="font-medium hover:underline">
           {pedido.destinatarioNombre}
         </Link>
-        <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
-      </td>
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        {pedido.sellerId}
-      </td>
-      <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-        {pedido.fechaCompromiso ?? "Sin fecha"}
-      </td>
-      <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-        {pedido.driverIdAsignado ? pedido.driverIdAsignado : (
-          <span className="text-yellow-600">Sin asignar</span>
+        <div className="flex flex-wrap items-center gap-1 mt-0.5">
+          <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
+          {/* Origen de cuenta ML — solo si el seller tiene más de una conexión */}
+          {origen && (
+            <span className="rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground">{origen}</span>
+          )}
+          {/* Badge discreto de geocoding: solo cuando hay problema, no en modo bandeja (ya tiene columna) */}
+          {!modoBandeja && requiereRevision && (
+            <span className="inline-flex items-center gap-0.5 rounded-md bg-destructive-subtle px-1.5 py-px text-[10px] font-medium text-destructive-subtle-foreground">
+              <MapPinOff className="size-2.5" aria-hidden="true" />
+              Por revisar
+            </span>
+          )}
+          {/* Indicador sutil de geocoding en curso */}
+          {!modoBandeja && estaPendienteGeo && (
+            <span className="text-[10px] text-muted-foreground/70 italic">Ubicando…</span>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
+        {sellerNombre ?? pedido.sellerId}
+      </TableCell>
+      {/* Columna condicional: Motivo en bandeja / Fecha comprometida en lista normal */}
+      {modoBandeja ? (
+        <TableCell className="px-4">
+          <BadgesMotivoGeo pedido={pedido} />
+        </TableCell>
+      ) : (
+        <TableCell className="hidden px-4 text-right font-mono text-muted-foreground tabular-nums md:table-cell">
+          {pedido.fechaCompromiso ?? "Sin fecha"}
+        </TableCell>
+      )}
+      <TableCell className="hidden px-4 text-muted-foreground lg:table-cell">
+        {pedido.driverIdAsignado ? (
+          (conductorNombre ?? pedido.driverIdAsignado)
+        ) : (
+          <span className="text-warning-subtle-foreground">Sin asignar</span>
         )}
-      </td>
-      <td className="px-4 py-3">
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize">
-          {pedido.tipoPedido === "flex" ? "Flex" : "Same-day"}
-        </span>
-      </td>
+      </TableCell>
+      <TableCell className="px-4">
+        <Badge variant="neutral">{pedido.tipoPedido === "flex" ? "Flex" : "Same-day"}</Badge>
+      </TableCell>
       {tieneAcciones && (
-        <td className="px-4 py-3 text-right">
+        <TableCell className="px-4 text-right">
           <Link
             href={`/operaciones/${pedido.id}`}
             className="text-xs font-medium text-primary hover:underline"
           >
             Ver detalle
           </Link>
-        </td>
+        </TableCell>
       )}
-    </tr>
+    </TableRow>
+  );
+}
+
+// =============================================================================
+// Badges de motivo de revisión para la bandeja
+// =============================================================================
+
+function BadgesMotivoGeo({ pedido }: { pedido: Pedido }) {
+  const tieneGeoProblema =
+    pedido.geoEstado === "no_resuelto" || pedido.geoEstado === "fuera_cobertura";
+  const tieneCoberturaProblema =
+    pedido.coberturaEstado === "sin_tarifa_zona" ||
+    pedido.coberturaEstado === "requiere_revision";
+
+  if (!tieneGeoProblema && !tieneCoberturaProblema) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tieneGeoProblema && (
+        <BadgeEstado
+          variante={BADGE_GEO_ESTADO[pedido.geoEstado]}
+          texto={traducirGeoEstado(pedido.geoEstado)}
+        />
+      )}
+      {tieneCoberturaProblema && (
+        <BadgeEstado
+          variante={BADGE_COBERTURA_ESTADO[pedido.coberturaEstado]}
+          texto={traducirCoberturaEstado(pedido.coberturaEstado)}
+        />
+      )}
+    </div>
   );
 }

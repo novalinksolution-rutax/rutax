@@ -77,6 +77,22 @@ export const CAPACIDADES = [
   "gestionar_incidencias",
   "ajustar_operacion_diaria",
 
+  // --- Torre de control: anticipación operativa ------------------------------
+  // Módulo `contexto` (ver `docs/arquitectura/torre-de-control.md` §8). Cruza
+  // señal externa (clima, aire, eventos, prensa) con la carga interna y la
+  // traduce a impacto en dinero. Es LECTURA: la capacidad no habilita ninguna
+  // acción irreversible — las acciones que la Torre sugiere (adelantar un corte,
+  // reasignar conductores) se ejecutan a través de las capacidades operativas
+  // que ya existen, y quien no las tenga ve la Torre sin poder actuar sobre ella.
+  //
+  // Decisión: dueño, supervisor y coordinador. NO `administracion`, que es el
+  // rol financiero "sin reasignación operativa" — la Torre responde "¿qué va a
+  // pasar hoy en la calle?", que no es su pregunta. Si administración necesitara
+  // el monto comprometido, va por `ver_reportes_ejecutivos`/`ver_conciliacion`,
+  // no por aquí. (Ojo: el monto de la Torre es el EXPUESTO, no una cifra
+  // financiera conciliable — ver §7 del documento de arquitectura.)
+  "ver_torre_control",
+
   // --- Reportes / dashboard (RF-046, RF-049) ---------------------------------
   // "Dueño/Gerente: ver reportes · Permisos totales dentro de su tenant".
   // Decisión: el levantamiento no listada explícitamente "ver reportes" para
@@ -90,6 +106,15 @@ export const CAPACIDADES = [
   // levantamiento, que solo dice "Sistema/dueño". Se documenta aquí esa fuente.
   "ver_bitacora_auditoria",
 
+  // --- Suscripción de la plataforma Rutax (backstage `plataforma`) -----------
+  // Distinto del motor entrega→dinero (`aprobar_facturacion`/`emitir_facturas`,
+  // courier→seller): esto es Rutax cobrándole al courier por usar el software.
+  // Decisión (Fase 1 "completar suscripciones"): SOLO el dueño — la relación
+  // comercial/de facturación con Rutax es del dueño, no de administración
+  // operativa (que sí gestiona la facturación courier→seller). Cubre el alta
+  // self-serve del plan y, a futuro (F2), el cambio de plan.
+  "gestionar_suscripcion",
+
   // --- Acciones propias de seller/conductor (RF-010, RF-011, RF-020, RF-042) -
   // "Seller: conectar OAuth, solicitar same-day, ver/descargar DTE, seguir
   // incidencias · Estrictamente acotado a sus datos".
@@ -97,6 +122,10 @@ export const CAPACIDADES = [
   "solicitar_same_day",
   "ver_documentos_propios", // DTE propios (seller) o liquidación propia (conductor) — ver nota en la matriz.
   "ver_incidencias_propias",
+  // Etiqueta imprimible con QR interno para pedidos same-day propios. Misma
+  // fila del levantamiento que "solicitar same-day" (RF-020/021) — el seller
+  // que crea el envío es quien necesita imprimir su etiqueta.
+  "descargar_etiqueta_same_day",
 
   // "Conductor: ver ruta, marcar evidencias internas, confirmar manifiesto ·
   // Solo sus propios datos". RF-042: visibilidad de su liquidación.
@@ -159,8 +188,10 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "ver_torre_control",
     "ver_reportes_ejecutivos",
     "ver_bitacora_auditoria",
+    "gestionar_suscripcion",
   ],
 
   // "Operativos; sin config financiera ni usuarios" — confirma/ajusta
@@ -172,10 +203,18 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "ver_torre_control",
   ],
 
-  // "Solo asignación operativa" — el más acotado de los internos.
-  coordinador: ["asignar_y_reasignar_pedidos", "generar_manifiestos"],
+  // "Solo asignación operativa" — el más acotado de los internos. Recibe
+  // `ver_torre_control` pese a ser el más acotado porque es el rol que MÁS vive
+  // en esa pantalla: la Torre existe para que quien asigna vea venir el problema
+  // antes de asignar. Es lectura; no le concede ninguna acción que no tuviera.
+  coordinador: [
+    "asignar_y_reasignar_pedidos",
+    "generar_manifiestos",
+    "ver_torre_control",
+  ],
 
   // "Financieros; sin reasignación operativa" — la capa de dinero: factura,
   // liquida, cobra, concilia. Explícitamente SIN asignar/reasignar/manifiestos.
@@ -213,6 +252,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "solicitar_same_day",
     "ver_documentos_propios",
     "ver_incidencias_propias",
+    "descargar_etiqueta_same_day",
   ],
 
   // Plataforma, no tenant — ver nota arriba de la matriz. La capacidad
@@ -333,6 +373,16 @@ export function puedeAjustarOperacionDiaria(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ajustar_operacion_diaria");
 }
 
+// --- Torre de control (módulo `contexto`) -------------------------------------
+/**
+ * Acceso a la Torre de control. Es LECTURA: no habilita ninguna acción
+ * irreversible. Las acciones que la Torre sugiere se ejercen con las
+ * capacidades operativas que el usuario ya tenga.
+ */
+export function puedeVerTorreControl(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "ver_torre_control");
+}
+
 // --- Reportes / auditoría (RF-046, 049, 004) ----------------------------------
 export function puedeVerReportesEjecutivos(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ver_reportes_ejecutivos");
@@ -342,6 +392,11 @@ export function puedeVerBitacoraAuditoria(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ver_bitacora_auditoria");
 }
 
+// --- Suscripción de la plataforma Rutax (backstage `plataforma`) -------------
+export function puedeGestionarSuscripcion(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "gestionar_suscripcion");
+}
+
 // --- Seller (RF-010, 011, 020, 037, 048) --------------------------------------
 export function puedeGestionarConexionMlPropia(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "gestionar_conexion_ml_propia");
@@ -349,6 +404,10 @@ export function puedeGestionarConexionMlPropia(usuario: UsuarioActual): boolean 
 
 export function puedeSolicitarSameDay(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "solicitar_same_day");
+}
+
+export function puedeDescargarEtiquetaSameDay(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "descargar_etiqueta_same_day");
 }
 
 export function puedeVerDocumentosPropios(usuario: UsuarioActual): boolean {

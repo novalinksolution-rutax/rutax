@@ -35,13 +35,37 @@ const MAPA_ESTADO_ML: Record<string, EstadoPedidoInterno | null> = {
   delivered: "entregado",
   not_delivered: "fallido",
   cancelled: "cancelado",
+  pending: null, // Pago/preparación pendiente — fuera del ciclo de entrega
   ready_to_ship: null, // Pre-despacho: no hay equivalente en nuestro flujo Flex
   handling: null, // En preparación: fuera del ciclo de vida de la entrega
   to_be_agreed: null, // Sin transición — ver comentario de archivo
 };
 
 /**
- * Traduce el `status` de ML al estado interno del pedido.
+ * Subestados de ML que SÍ cambian la traducción respecto del `status` base.
+ *
+ * Caso clave: la DEVOLUCIÓN al origen. ML NO tiene un `status` top-level
+ * "returned"; la devolución se expresa como SUBESTADO de `not_delivered`
+ * (`returning_to_sender`, y variantes que ML reporta al cerrar la devolución).
+ * Sin este mapeo, una devolución se traduciría como `fallido` y el pedido
+ * nunca llegaría a `devuelto` — perdiendo esa transición (hallazgo de auditoría).
+ *
+ * Fuente: docs/mercadolibre/05-mercado-envios-shipments.md (subestados de
+ * `not_delivered`: `receiver_absent`, `returning_to_sender`, etc.). La lista de
+ * subestados depende del `logistic_type` y NO es cerrada → defensivo.
+ */
+const MAPA_SUBESTADO_ML: Record<string, EstadoPedidoInterno> = {
+  returning_to_sender: "devuelto",
+  returned_to_hub: "devuelto",
+  returned: "devuelto",
+};
+
+/**
+ * Traduce el estado de ML (`status` + `substatus` opcional) al estado interno
+ * del pedido.
+ *
+ * Prioridad: si el `substatus` tiene un mapeo explícito (p. ej. devolución),
+ * gana sobre el `status` base. Si no, se traduce por `status`.
  *
  * Devuelve `null` si:
  * - El valor es desconocido (ML lo añadió sin que actualicemos este archivo).
@@ -50,7 +74,18 @@ const MAPA_ESTADO_ML: Record<string, EstadoPedidoInterno | null> = {
  * El llamador DEBE manejar `null` como "ignorar este evento".
  * NUNCA lanzar: estados desconocidos de ML no son errores de nuestra app.
  */
-export function traducirEstadoMl(estadoMl: string): EstadoPedidoInterno | null {
+export function traducirEstadoMl(
+  estadoMl: string,
+  subestadoMl?: string | null,
+): EstadoPedidoInterno | null {
+  // El subestado de devolución tiene prioridad sobre el status base.
+  if (subestadoMl) {
+    const claveSub = subestadoMl.toLowerCase().trim();
+    if (claveSub in MAPA_SUBESTADO_ML) {
+      return MAPA_SUBESTADO_ML[claveSub];
+    }
+  }
+
   // Normalizar a minúsculas para absorber variaciones de capitalización de ML.
   const clave = estadoMl.toLowerCase().trim();
 

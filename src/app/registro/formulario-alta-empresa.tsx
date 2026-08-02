@@ -86,15 +86,15 @@ export function FormularioAltaEmpresa() {
     const nuevosErrores: ErroresFormulario = {};
 
     if (!campos.nombreFantasia.trim()) {
-      nuevosErrores.nombreFantasia = "El nombre de fantasía del courier es obligatorio.";
+      nuevosErrores.nombreFantasia = "El nombre de fantasía de tu empresa es obligatorio.";
     }
     if (!campos.razonSocial.trim()) {
-      nuevosErrores.razonSocial = "La razón social del courier es obligatoria.";
+      nuevosErrores.razonSocial = "La razón social de tu empresa es obligatoria.";
     }
 
     const rutLimpio = limpiarMascaraRut(campos.rut);
     if (!rutLimpio) {
-      nuevosErrores.rut = "El RUT del courier es obligatorio.";
+      nuevosErrores.rut = "El RUT de tu empresa es obligatorio.";
     } else if (!/^[0-9]{1,8}-[0-9kK]$/.test(rutLimpio)) {
       nuevosErrores.rut = MENSAJE_RUT_FORMATO;
     } else if (!esRutValido(rutLimpio)) {
@@ -143,7 +143,7 @@ export function FormularioAltaEmpresa() {
   return (
     <Card className="w-full max-w-2xl">
       <CardHeader>
-        <CardTitle className="text-2xl">Crea tu cuenta de courier</CardTitle>
+        <CardTitle className="text-2xl font-semibold">Crea tu cuenta de courier</CardTitle>
         <CardDescription>
           Registra tu empresa en un solo paso. Te enviaremos un correo para activar tu cuenta y crear tu contraseña.
         </CardDescription>

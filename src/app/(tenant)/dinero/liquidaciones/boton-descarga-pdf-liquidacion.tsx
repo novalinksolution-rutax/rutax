@@ -47,7 +47,7 @@ export function BotonDescargaPdfLiquidacion({ pdfRef }: { pdfRef: string }) {
         {isPending ? "..." : "Descargar"}
       </button>
       {error && (
-        <p className="text-xs text-red-700" role="alert">
+        <p className="text-xs text-destructive" role="alert">
           Error
         </p>
       )}

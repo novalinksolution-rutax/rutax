@@ -74,6 +74,13 @@ export async function actionCrearPedidoSameDay(formData: FormData) {
   const sesion = await exigirSesionActual();
   if (!sesion.usuario.tenantId) redirect("/login");
 
+  // Mismo gate RBAC que muestra el botón en la UI (page.tsx: `puedeAjustar`).
+  // La Server Action es invocable directamente, así que la comprobación no puede
+  // vivir solo en el render — se impone también en el servidor.
+  if (!puedeAjustarOperacionDiaria(sesion.usuario)) {
+    return { error: "No tienes permiso para crear pedidos same-day." };
+  }
+
   const destinatarioNombre = formData.get("destinatarioNombre") as string;
   const destinatarioDireccion = formData.get("destinatarioDireccion") as string;
   const destinatarioComuna = formData.get("destinatarioComuna") as string;
@@ -91,7 +98,7 @@ export async function actionCrearPedidoSameDay(formData: FormData) {
 
   try {
     const cliente = crearClienteServiceRole();
-    const pedido = await crearPedidoSameDay(cliente, {
+    const { pedido, avisoCorte } = await crearPedidoSameDay(cliente, {
       tenantId: sesion.usuario.tenantId,
       sellerId,
       destinatarioNombre,
@@ -100,9 +107,10 @@ export async function actionCrearPedidoSameDay(formData: FormData) {
       destinatarioTelefono,
       instruccionesEntrega,
       fechaCompromiso,
+      actorUsuarioId: sesion.usuarioId,
     });
     revalidatePath("/operaciones");
-    return { exito: true, pedidoId: pedido.id };
+    return { exito: true, pedidoId: pedido.id, avisoCorte: avisoCorte ?? null };
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : "Error al crear el pedido.";
     return { error: mensaje };

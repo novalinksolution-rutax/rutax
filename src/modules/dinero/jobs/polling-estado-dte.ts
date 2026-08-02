@@ -11,6 +11,7 @@
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { obtenerPuertoDte } from '@/modules/integraciones/dte';
+import { camposClasificacionParaInsert } from '../conciliacion-clasificacion';
 
 export const jobPollingEstadoDte = inngest.createFunction(
   {
@@ -105,6 +106,12 @@ export const jobPollingEstadoDte = inngest.createFunction(
                     monto_diferencia_clp: dte.monto_total_clp ? Math.round(Number(dte.monto_total_clp)) : null,
                     estado: 'pendiente',
                     job_run_id: runId,
+                    // §1.1 P1: categoria_negocio es NOT NULL sin default — sin
+                    // esto el INSERT fallaría con 23502 (not-null violation).
+                    ...camposClasificacionParaInsert(
+                      'folio_consumido_sin_dte_persistido',
+                      new Date().toISOString(),
+                    ),
                   });
               }
 

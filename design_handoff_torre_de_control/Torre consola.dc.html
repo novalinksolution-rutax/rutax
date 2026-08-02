@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/modernist-24e45434-184e-41d9-a3c3-d73239d0c322/styles.css">
+  <script src="_ds/modernist-24e45434-184e-41d9-a3c3-d73239d0c322/_ds_bundle.js"></script>
+  <style>
+    .tc-num { font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum" 1, "lnum" 1; }
+    .tc-rail::-webkit-scrollbar { width: 10px; }
+    .tc-rail::-webkit-scrollbar-track { background: #eae9e9; }
+    .tc-rail::-webkit-scrollbar-thumb { background: #bab6b6; border: 3px solid #eae9e9; }
+    .tc-rail::-webkit-scrollbar-thumb:hover { background: #7d7979; }
+    @keyframes tc-latido { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+    @keyframes tc-barrido { 0% { background-position: 0 0 } 100% { background-position: 56px 0 } }
+    .tc-cargando { background-image: repeating-linear-gradient(135deg, #eae7e7 0 14px, #f3f2f2 14px 28px); animation: tc-barrido 1.6s linear infinite; }
+  </style>
+</helmet>
+
+<div style="font-family: var(--font-body); color: var(--color-text);" tabIndex="0" onKeyDown="{{ tecla }}" style-focus="outline: 2px solid #201e1d; outline-offset: 2px;">
+
+<sc-if value="{{ escritorio }}" hint-placeholder-val="{{ true }}">
+<div style="width: 1512px; height: 982px; background: var(--color-neutral-900); display: flex; flex-direction: column; gap: 2px; position: relative; overflow: hidden;">
+
+  <div style="background: var(--color-bg); display: flex; align-items: stretch; padding: 0 16px 0 0; flex: none; height: 52px;">
+    <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px 0 20px; border-right: 1px solid var(--color-divider);">
+      <div style="width: 13px; height: 13px; background: var(--color-text); position: relative;"><div style="position: absolute; inset: 4px 4px auto auto; width: 5px; height: 5px; background: var(--color-bg);"></div></div>
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 15px; letter-spacing: -0.01em;">Torre de control</div>
+      <div style="font-size: 11px; color: var(--color-neutral-600); letter-spacing: 0.02em;">Andes Última Milla</div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 0; padding: 0 18px; border-right: 1px solid var(--color-divider);">
+      <sc-for list="{{ horizontes }}" as="h" hint-placeholder-count="4">
+        <button onClick="{{ h.on }}" class="tc-num" style="appearance: none; border: 1px solid var(--color-divider); border-right: 0; background: {{ h.bg }}; color: {{ h.fg }}; font-family: var(--font-heading); font-weight: 800; font-size: 11.5px; letter-spacing: 0.04em; padding: 6px 13px 6px 12px; cursor: pointer; display: flex; align-items: baseline; gap: 5px; text-transform: uppercase;" style-hover="filter: brightness(.96);">
+          {{ h.etiqueta }}<span style="font-size: 8.5px; font-weight: 600; opacity: .5;">{{ h.tecla }}</span>
+        </button>
+      </sc-for>
+      <div style="width: 1px; align-self: stretch; background: var(--color-divider);"></div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 2px; padding: 0 16px; margin-left: auto;">
+      <div style="font-size: 8.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-neutral-600); margin-right: 10px;">Frescura</div>
+      <sc-for list="{{ fuentes }}" as="f" hint-placeholder-count="5">
+        <div title="{{ f.motivo }}" style="display: flex; align-items: center; gap: 6px; padding: 4px 9px; border: {{ f.bd }};">
+          <span style="font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-neutral-700);">{{ f.nombre }}</span>
+          <span class="tc-num" style="font-size: 11.5px; font-weight: {{ f.peso }}; color: {{ f.color }};">{{ f.edad }}</span>
+          <span style="font-size: 9px; color: {{ f.color }};">{{ f.glifo }}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; padding-left: 14px; border-left: 1px solid var(--color-divider);">
+      <button onClick="{{ abrirPaleta }}" style="appearance: none; background: transparent; border: 1px solid var(--color-divider); padding: 5px 11px; font-family: var(--font-body); font-size: 11px; letter-spacing: 0.04em; color: var(--color-neutral-700); cursor: pointer; display: flex; gap: 8px; align-items: center;" style-hover="border-color: var(--color-text); color: var(--color-text);">
+        Comandos <span class="tc-num" style="font-weight: 800; font-size: 10px;">⌘K</span>
+      </button>
+    </div>
+  </div>
+
+  <sc-if value="{{ conMensaje }}" hint-placeholder-val="{{ false }}">
+    <div style="background: var(--color-bg); display: flex; align-items: center; gap: 20px; padding: 13px 22px; flex: none;">
+      <div style="width: 8px; height: 8px; background: var(--color-text); flex: none;"></div>
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 14px; flex: none;">{{ mensaje.titulo }}</div>
+      <div style="font-size: 12.5px; color: var(--color-neutral-700); max-width: 760px;">{{ mensaje.cuerpo }}</div>
+      <sc-if value="{{ conAccion }}" hint-placeholder-val="{{ false }}">
+        <button style="margin-left: auto; appearance: none; font-family: var(--font-heading); font-weight: 800; font-size: 12px; padding: 8px 13px; border: 1px solid var(--color-text); background: transparent; cursor: pointer; white-space: nowrap;" style-hover="background: var(--color-text); color: var(--color-bg);">{{ mensaje.accion }}</button>
+      </sc-if>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ nR2 }}" hint-placeholder-val="{{ false }}">
+    <div class="tc-cargando" style="height: 132px; flex: none; display: flex; align-items: center; padding-left: 22px;">
+      <div style="background: var(--color-bg); border: 2px solid var(--color-neutral-900); padding: 8px 14px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">R2 · Ola entrante — cargando</div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ cR2 }}" hint-placeholder-val="{{ true }}">
+  <div style="background: var(--color-bg); flex: none; height: 132px; display: grid; grid-template-columns: 352px 1px 244px 1px 1fr;">
+    <div style="padding: 11px 18px 10px 20px;">
+      <div style="font-size: 8.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">Ola entrante · arquetipo regalo</div>
+      <div style="display: flex; align-items: baseline; gap: 10px; margin-top: 2px;">
+        <span style="font-family: var(--font-heading); font-weight: 800; font-size: 22px; letter-spacing: -0.02em;">Día del Niño</span>
+        <span class="tc-num" style="font-size: 11px; color: var(--color-neutral-700);">dom 9 ago · en 15 días</span>
+      </div>
+      <div style="font-size: 11px; line-height: 1.4; color: var(--color-neutral-700); margin-top: 4px; max-width: 320px;">Las entregas llegan <b>antes</b> del evento y el plazo es duro: la fecha es el deadline, no el inicio.</div>
+      <div class="tc-num" style="display: inline-flex; align-items: center; gap: 7px; margin-top: 7px; border: 1px solid var(--color-text); padding: 2px 7px; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase;">Hito vencido · confirmar sellers · 19 jul</div>
+    </div>
+    <div style="background: var(--color-divider);"></div>
+    <div style="display: flex; flex-direction: column; justify-content: center; padding: 0 18px;">
+      <sc-for list="{{ cifrasOla }}" as="c" hint-placeholder-count="3">
+        <div style="display: flex; align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--color-divider);">
+          <span style="font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600); flex: 1;">{{ c.etiqueta }}</span>
+          <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 17px; color: {{ c.color }};">{{ c.valor }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="background: var(--color-divider);"></div>
+    <div style="padding: 10px 20px 8px 18px; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px;">
+        <span style="font-size: 8.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600);">Curva de entregas proyectada</span>
+        <span class="tc-num" style="font-size: 9px; color: var(--color-neutral-600);">▮ proyectado &nbsp; ▯ base &nbsp; ┄ capacidad instalada</span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: flex-end; flex: 1; padding-bottom: 2px;">
+        <sc-for list="{{ curva }}" as="c" hint-placeholder-count="7">
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: stretch;">
+            <div style="position: relative; height: 66px;">
+              <div style="position: absolute; bottom: 0; left: 0; width: 30%; height: {{ c.hBase }}; border: 1px solid var(--color-neutral-500); background: transparent;"></div>
+              <div style="position: absolute; bottom: 0; right: 0; width: 48%; height: {{ c.hProy }}; background: var(--color-text);"></div>
+              <div style="position: absolute; bottom: {{ c.hProy }}; right: 0; width: 48%; height: {{ c.hExceso }}; background: {{ acento }};"></div>
+              <div style="position: absolute; bottom: {{ c.capBottom }}; left: 0; right: 0; border-top: 2px dashed var(--color-neutral-700);"></div>
+            </div>
+            <div class="tc-num" style="font-size: 10px; font-weight: {{ c.pesoDia }}; margin-top: 5px;">{{ c.proy }}</div>
+            <div class="tc-num" style="font-size: 9px; color: var(--color-neutral-600);">{{ c.dia }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <div style="display: grid; grid-template-columns: 1fr 404px; gap: 2px; background: var(--color-neutral-900); min-height: 0; flex: 1;">
+
+    <div style="background: var(--color-bg); position: relative; min-height: 0; overflow: hidden;">
+
+      <sc-if value="{{ nR3 }}" hint-placeholder-val="{{ false }}">
+        <div class="tc-cargando" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+          <div style="background: var(--color-bg); border: 2px solid var(--color-neutral-900); padding: 10px 16px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">R3 · Mapa — cargando</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ cR3 }}" hint-placeholder-val="{{ true }}">
+      <div style="position: absolute; inset: 0;">
+
+        <sc-if value="{{ mostrarMapa }}" hint-placeholder-val="{{ true }}">
+        <div onClick="{{ clicMapa }}" style="position: absolute; inset: 0; cursor: {{ cursorMapa }};">
+          <svg viewBox="0 0 1110 718" preserveAspectRatio="xMidYMid slice" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block;">
+            <defs>
+              <sc-for list="{{ patrones }}" as="p" hint-placeholder-count="5">
+                <pattern id="{{ p.id }}" width="{{ p.sp }}" height="{{ p.sp }}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                  <rect width="{{ p.sp }}" height="{{ p.sp }}" fill="{{ p.base }}"></rect>
+                  <line x1="0" y1="0" x2="0" y2="{{ p.sp }}" stroke="{{ p.ink }}" stroke-opacity="{{ p.op }}" stroke-width="{{ p.sw }}"></line>
+                </pattern>
+              </sc-for>
+              <pattern id="{{ uid }}-lluvia" width="9" height="9" patternUnits="userSpaceOnUse">
+                <circle cx="2" cy="2" r="1" fill="#201e1d" fill-opacity=".3"></circle>
+              </pattern>
+            </defs>
+
+            <rect width="1110" height="718" fill="#f3f2f2"></rect>
+            <g stroke="#201e1d" stroke-opacity=".09" stroke-width="1">
+              <line x1="75.9" y1="0" x2="75.9" y2="718"></line><line x1="275.5" y1="0" x2="275.5" y2="718"></line>
+              <line x1="475.1" y1="0" x2="475.1" y2="718"></line><line x1="674.8" y1="0" x2="674.8" y2="718"></line>
+              <line x1="874.4" y1="0" x2="874.4" y2="718"></line><line x1="1074.1" y1="0" x2="1074.1" y2="718"></line>
+              <line x1="0" y1="59.8" x2="1110" y2="59.8"></line><line x1="0" y1="179.5" x2="1110" y2="179.5"></line>
+              <line x1="0" y1="299.2" x2="1110" y2="299.2"></line><line x1="0" y1="418.8" x2="1110" y2="418.8"></line>
+              <line x1="0" y1="538.5" x2="1110" y2="538.5"></line><line x1="0" y1="658.2" x2="1110" y2="658.2"></line>
+            </g>
+            <g fill="#201e1d" fill-opacity=".34" font-size="9" font-family="Archivo, sans-serif" style="font-variant-numeric: tabular-nums;">
+              <text x="79" y="712">70,90° O</text><text x="278" y="712">70,80° O</text><text x="478" y="712">70,70° O</text>
+              <text x="678" y="712">70,60° O</text><text x="878" y="712">70,50° O</text>
+              <text x="6" y="56">33,35° S</text><text x="6" y="176">33,40° S</text><text x="6" y="296">33,45° S</text>
+              <text x="6" y="415">33,50° S</text><text x="6" y="535">33,55° S</text><text x="6" y="655">33,60° S</text>
+            </g>
+
+            <sc-for list="{{ zonas }}" as="z" hint-placeholder-count="5">
+              <path d="{{ z.d }}" fill="{{ z.fill }}" stroke="{{ z.stroke }}" stroke-width="{{ z.sw }}" stroke-dasharray="{{ z.dash }}" opacity="{{ z.op }}" onClick="{{ z.on }}" style="cursor: pointer; transition: opacity .18s;"></path>
+            </sc-for>
+
+            <sc-if value="{{ capaClima }}" hint-placeholder-val="{{ true }}">
+              <g>
+                <circle cx="784.5" cy="227.3" r="161.3" fill="url(#{{ uid }}-lluvia)" stroke="#201e1d" stroke-width="2" stroke-dasharray="9 6"></circle>
+                <rect x="676" y="42" width="217" height="22" fill="#201e1d"></rect>
+                <text x="686" y="57" fill="#f3f2f2" font-size="10.5" font-weight="700" font-family="Archivo, sans-serif" letter-spacing="0.1" style="font-variant-numeric: tabular-nums;">LLUVIA 8 mm/h · 16:00–19:00</text>
+              </g>
+            </sc-if>
+
+            <sc-if value="{{ capaEventos }}" hint-placeholder-val="{{ false }}">
+              <g>
+                <circle cx="654.2" cy="333.8" r="38.7" fill="none" stroke="#201e1d" stroke-width="2"></circle>
+                <line x1="654.2" y1="295" x2="654.2" y2="372" stroke="#201e1d" stroke-width="1"></line>
+                <text x="700" y="337" font-size="10" font-weight="700" font-family="Archivo, sans-serif" fill="#201e1d">Estadio Nacional · 18:00–23:30 · 45.000</text>
+              </g>
+            </sc-if>
+
+            <sc-if value="{{ capaTransito }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ incidentes }}" as="i" hint-placeholder-count="3">
+                <g>
+                  <path d="{{ i.d }}" fill="#201e1d"></path>
+                </g>
+              </sc-for>
+            </sc-if>
+
+            <sc-if value="{{ capaConductores }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ conductores }}" as="c" hint-placeholder-count="6">
+                <g>
+                  <circle cx="{{ c.x }}" cy="{{ c.y }}" r="{{ c.r }}" fill="{{ c.fill }}" stroke="{{ c.stroke }}" stroke-width="1.6" stroke-dasharray="{{ c.dash }}"></circle>
+                </g>
+              </sc-for>
+            </sc-if>
+
+            <g>
+              <circle cx="548.2" cy="215.9" r="12.9" fill="none" stroke="#201e1d" stroke-width="1.4" stroke-dasharray="3 3"></circle>
+              <rect x="544.2" y="211.9" width="8" height="8" fill="#201e1d"></rect>
+              <text x="566" y="219" font-size="9.5" font-weight="600" font-family="Archivo, sans-serif" fill="#201e1d">Marca · corte por feria, hasta 15:00</text>
+            </g>
+
+            <sc-if value="{{ conMarcaProv }}" hint-placeholder-val="{{ false }}">
+              <g>
+                <rect x="{{ marcaProv.x }}" y="{{ marcaProv.y }}" width="10" height="10" fill="none" stroke="#201e1d" stroke-width="2"></rect>
+                <text x="{{ marcaProv.x }}" y="{{ marcaProv.y }}" dx="16" dy="9" font-size="9.5" font-weight="700" font-family="Archivo, sans-serif" fill="#201e1d">Marca sin guardar</text>
+              </g>
+            </sc-if>
+
+            <sc-for list="{{ zonas }}" as="z" hint-placeholder-count="5">
+              <path d="{{ z.ticks }}" stroke="#201e1d" stroke-width="1" opacity="{{ z.op }}" fill="none"></path>
+            </sc-for>
+          </svg>
+
+          <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); aspect-ratio: 1110 / 718; min-width: 100%; min-height: 100%; pointer-events: none;">
+            <sc-for list="{{ zonas }}" as="z" hint-placeholder-count="5">
+              <div onClick="{{ z.on }}" style="position: absolute; left: {{ z.plateL }}; top: {{ z.plateT }}; width: 168px; height: 68px; background: var(--color-bg); border: 2px solid #201e1d; opacity: {{ z.op }}; pointer-events: auto; cursor: pointer; padding: 7px 10px 8px; display: flex; flex-direction: column; justify-content: space-between; transition: opacity .18s;">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;">
+                  <span style="font-family: var(--font-heading); font-weight: 800; font-size: 11.5px; letter-spacing: 0.09em; text-transform: uppercase;">{{ z.nombre }}</span>
+                  <span style="font-size: 9px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--color-neutral-600);">{{ z.palabra }}</span>
+                </div>
+                <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; border-top: 1px solid rgba(32,30,29,.26); padding-top: 3px;">
+                  <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 30px; line-height: .88; letter-spacing: -0.03em; color: {{ z.colorNum }};">{{ z.riesgo }}</span>
+                  <span class="tc-num" style="text-align: right; font-size: 10px; font-weight: 600; line-height: 1.35;">
+                    <span style="display: block;">{{ z.pend }} pendientes</span>
+                    <span style="display: block; color: var(--color-neutral-600);">corte {{ z.corte }}</span>
+                  </span>
+                </div>
+              </div>
+            </sc-for>
+
+            <sc-if value="{{ verComunas }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ zonas }}" as="z" hint-placeholder-count="5">
+                <div style="position: absolute; left: {{ z.plateL }}; top: {{ z.comunasT }}; width: 168px; opacity: {{ z.op }}; background: rgba(243,242,242,.86); padding: 5px 8px 6px; border-left: 1px solid #201e1d;">
+                  <sc-for list="{{ z.comunas }}" as="c" hint-placeholder-count="6">
+                    <div style="font-size: 9.5px; line-height: 1.5;">{{ c.n }}</div>
+                  </sc-for>
+                  <div style="font-size: 9.5px; line-height: 1.5; color: var(--color-neutral-600);">{{ z.resto }}</div>
+                </div>
+              </sc-for>
+            </sc-if>
+
+            <sc-if value="{{ capaConductores }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ conductores }}" as="c" hint-placeholder-count="6">
+                <div class="tc-num" style="position: absolute; left: {{ c.labL }}; top: {{ c.labT }}; font-size: 10px; font-weight: 600; white-space: nowrap; background: rgba(243,242,242,.85); padding: 1px 4px;">{{ c.etiqueta }}</div>
+              </sc-for>
+            </sc-if>
+
+            <sc-if value="{{ capaTransito }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ incidentes }}" as="i" hint-placeholder-count="3">
+                <div class="tc-num" style="position: absolute; left: {{ i.labL }}; top: {{ i.labT }}; font-size: 9.5px; font-weight: 600; white-space: nowrap; background: rgba(243,242,242,.85); padding: 1px 4px;">{{ i.via }}</div>
+              </sc-for>
+            </sc-if>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ enLista }}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; inset: 0; padding: 22px 26px; overflow: auto; background: var(--color-bg);">
+            <div style="font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-neutral-600); margin-bottom: 4px;">R3 · Equivalente sin mapa</div>
+            <div style="font-family: var(--font-heading); font-weight: 800; font-size: 20px; margin-bottom: 4px;">Zonas ordenadas por riesgo</div>
+            <div style="font-size: 12px; color: var(--color-neutral-700); margin-bottom: 18px;">Mismos datos que el mapa. Recorrible con tabulador; Enter selecciona.</div>
+            <sc-for list="{{ zonasOrden }}" as="z" hint-placeholder-count="5">
+              <button onClick="{{ z.on }}" style="appearance: none; width: 100%; text-align: left; display: grid; grid-template-columns: 44px 150px 1fr 120px 110px 100px; align-items: center; gap: 18px; padding: 15px 14px; background: transparent; border: 0; border-bottom: 1px solid var(--color-divider); cursor: pointer; font-family: var(--font-body);" style-hover="background: var(--color-neutral-200);" style-focus="outline: 2px solid var(--color-text); outline-offset: -2px;">
+                <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 27px; color: {{ z.colorNum }};">{{ z.riesgo }}</span>
+                <span><span style="font-family: var(--font-heading); font-weight: 800; font-size: 15px; display: block;">{{ z.nombre }}</span><span style="font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600);">{{ z.palabra }}</span></span>
+                <span style="height: 10px; background: var(--color-neutral-200); display: block; position: relative;"><span style="position: absolute; inset: 0 auto 0 0; width: {{ z.barra.w }}; background: {{ z.barra.bg }};"></span></span>
+                <span class="tc-num" style="font-size: 12.5px;">{{ z.pend }} pendientes</span>
+                <span class="tc-num" style="font-size: 12.5px;">corte {{ z.corte }}</span>
+                <span class="tc-num" style="font-size: 12.5px; text-align: right; color: var(--color-neutral-700);">{{ z.monto }}</span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <div style="position: absolute; top: 14px; left: 14px; width: 196px; background: var(--color-bg); border: 2px solid var(--color-neutral-900);">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--color-divider);">
+            <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Capas</span>
+            <span class="tc-num" style="font-size: 9.5px; font-weight: 700; color: var(--color-neutral-600);">{{ capasTxt }}</span>
+          </div>
+          <sc-for list="{{ capas }}" as="c" hint-placeholder-count="8">
+            <button onClick="{{ c.on }}" title="{{ c.motivo }}" style="appearance: none; width: 100%; display: flex; align-items: center; gap: 9px; padding: 6px 10px; background: {{ c.bg }}; color: {{ c.fg }}; border: 0; border-bottom: 1px solid var(--color-divider); font-family: var(--font-body); font-size: 11.5px; cursor: pointer; opacity: {{ c.op }}; text-align: left;" style-hover="filter: brightness(.95);">
+              <span style="font-size: 10px; width: 10px;">{{ c.marca }}</span>{{ c.etiqueta }}
+            </button>
+          </sc-for>
+          <sc-if value="{{ capasTope }}" hint-placeholder-val="{{ true }}">
+            <div style="padding: 7px 10px; font-size: 9.5px; line-height: 1.35; color: var(--color-neutral-700); background: var(--color-neutral-200);">Tope de 2 capas alcanzado. Apaga una para encender otra.</div>
+          </sc-if>
+        </div>
+
+        <div style="position: absolute; top: 14px; right: 14px; display: flex; gap: 10px; align-items: flex-start;">
+          <div style="display: flex; border: 2px solid var(--color-neutral-900); background: var(--color-bg);">
+            <sc-for list="{{ zooms }}" as="z" hint-placeholder-count="3">
+              <button onClick="{{ z.on }}" style="appearance: none; border: 0; border-right: 1px solid var(--color-divider); background: {{ z.bg }}; color: {{ z.fg }}; font-family: var(--font-body); font-size: 10.5px; letter-spacing: 0.04em; padding: 7px 11px; cursor: pointer;" style-hover="filter: brightness(.95);">{{ z.etiqueta }}</button>
+            </sc-for>
+          </div>
+          <button onClick="{{ toggleLista }}" style="appearance: none; border: 2px solid var(--color-neutral-900); background: var(--color-bg); font-family: var(--font-body); font-size: 10.5px; padding: 7px 11px; cursor: pointer; display: flex; gap: 7px; align-items: center;" style-hover="background: var(--color-neutral-200);">{{ listaTxt }} <span style="font-weight: 800; font-size: 9px; opacity: .5;">L</span></button>
+        </div>
+
+        <div style="position: absolute; bottom: 14px; left: 14px; background: var(--color-bg); border: 2px solid var(--color-neutral-900); padding: 9px 12px;">
+          <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 7px;">Escala de riesgo</div>
+          <div style="display: flex; gap: 0;">
+            <sc-for list="{{ escala }}" as="e" hint-placeholder-count="5">
+              <div style="width: 74px; border-right: 1px solid var(--color-divider); padding-right: 8px; margin-right: 8px;">
+                <svg width="66" height="18" style="display: block;"><rect width="66" height="18" fill="{{ e.fill }}" stroke="#201e1d" stroke-opacity=".35"></rect></svg>
+                <div class="tc-num" style="font-size: 10.5px; font-weight: 700; margin-top: 4px;">{{ e.rango }}</div>
+                <div style="font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-neutral-600);">{{ e.palabra }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="position: absolute; bottom: 14px; right: 14px; background: var(--color-bg); border: 2px solid var(--color-neutral-900); padding: 9px 12px; display: flex; align-items: center; gap: 12px; max-width: 330px;">
+          <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 26px;">7</span>
+          <span style="font-size: 10.5px; line-height: 1.35;">pedidos sin ubicar no están en este plano.<br><a href="#" style="color: var(--color-accent-700); font-weight: 600;">Revisar direcciones</a></span>
+        </div>
+
+        <sc-if value="{{ verPedidos }}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); background: var(--color-bg); border: 2px solid var(--color-neutral-900); padding: 14px 18px; max-width: 420px; box-shadow: var(--shadow-md);">
+            <div style="font-family: var(--font-heading); font-weight: 800; font-size: 14px; margin-bottom: 5px;">Nivel de pedidos</div>
+            <div style="font-size: 12px; line-height: 1.45; color: var(--color-neutral-700);">Los puntos individuales se generan en el servidor desde el geocoding real. El dataset de diseño solo trae los agregados por zona.</div>
+          </div>
+        </sc-if>
+      </div>
+      </sc-if>
+    </div>
+
+    <div class="tc-rail" style="background: var(--color-bg); overflow-y: auto; overflow-x: hidden; min-height: 0;">
+
+      <sc-if value="{{ nR4 }}" hint-placeholder-val="{{ false }}">
+        <div class="tc-cargando" style="height: 100%; min-height: 400px; display: flex; align-items: flex-start; justify-content: center; padding-top: 40px;">
+          <div style="background: var(--color-bg); border: 2px solid var(--color-neutral-900); padding: 10px 16px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">R4 · Riel — cargando</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ cR4 }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <sc-if value="{{ mostrarMetricas }}" hint-placeholder-val="{{ true }}">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; border-bottom: 2px solid var(--color-neutral-900);">
+          <sc-for list="{{ metricas }}" as="m" hint-placeholder-count="4">
+            <div style="padding: 12px 14px 13px; border-right: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider);">
+              <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase; color: var(--color-neutral-600);">{{ m.etiqueta }}</div>
+              <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 3px; white-space: nowrap;">
+                <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 22px; letter-spacing: -0.03em;">{{ m.valor }}</span>
+                <span class="tc-num" style="font-size: 10.5px; font-weight: 700; color: {{ m.variColor }};">{{ m.glifo }} {{ m.vari }}</span>
+              </div>
+              <div style="font-size: 10px; line-height: 1.35; color: var(--color-neutral-600); margin-top: 3px;">{{ m.detalle }}</div>
+            </div>
+          </sc-for>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ hayZona }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--color-text); color: var(--color-bg);">
+              <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Nivel 2 · por qué</span>
+              <button onClick="{{ limpiarZona }}" style="margin-left: auto; appearance: none; background: transparent; border: 1px solid rgba(243,242,242,.4); color: var(--color-bg); font-family: var(--font-body); font-size: 10px; padding: 3px 8px; cursor: pointer;" style-hover="background: rgba(243,242,242,.15);">Cerrar desglose</button>
+            </div>
+            <div style="padding: 14px 14px 12px; border-bottom: 1px solid var(--color-divider);">
+              <div style="display: flex; align-items: flex-start; gap: 14px;">
+                <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 46px; line-height: .9; letter-spacing: -0.03em; color: {{ desglose.colorNum }};">{{ desglose.riesgo }}</span>
+                <span style="padding-top: 2px;">
+                  <span style="font-family: var(--font-heading); font-weight: 800; font-size: 18px; display: block;">{{ desglose.nombre }}</span>
+                  <span style="font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-neutral-600);">riesgo {{ desglose.palabra }}</span>
+                </span>
+              </div>
+              <div style="font-size: 10px; line-height: 1.5; color: var(--color-neutral-700); margin-top: 9px;">{{ desglose.comunas }}</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--color-divider); margin-top: 11px;">
+                <div style="background: var(--color-bg); padding: 7px 8px;"><div style="font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600);">Holgura</div><div class="tc-num" style="font-size: 15px; font-weight: 800; color: {{ desglose.holguraColor }};">{{ desglose.holgura }}</div></div>
+                <div style="background: var(--color-bg); padding: 7px 8px;"><div style="font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600);">Corte</div><div class="tc-num" style="font-size: 15px; font-weight: 800;">{{ desglose.corte }}</div></div>
+                <div style="background: var(--color-bg); padding: 7px 8px;"><div style="font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600);">Conductores</div><div class="tc-num" style="font-size: 15px; font-weight: 800;">{{ desglose.cond }}</div></div>
+              </div>
+              <div class="tc-num" style="font-size: 10.5px; color: var(--color-neutral-700); margin-top: 8px;">{{ desglose.pend }} pendientes · {{ desglose.entreg }} entregados · capacidad {{ desglose.cap }} · {{ desglose.monto }} comprometidos</div>
+            </div>
+            <div style="padding: 10px 14px 4px; font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-neutral-600);">Seis factores · valor × peso</div>
+            <sc-for list="{{ desglose.factores }}" as="f" hint-placeholder-count="6">
+              <div style="border-bottom: 1px solid var(--color-divider);">
+                <button onClick="{{ f.on }}" style="appearance: none; width: 100%; text-align: left; background: transparent; border: 0; padding: 9px 14px; cursor: pointer; font-family: var(--font-body); display: block;" style-hover="background: var(--color-neutral-200);">
+                  <div style="display: flex; align-items: baseline; gap: 10px;">
+                    <span style="font-size: 12px; font-weight: 600; flex: 1;">{{ f.etiqueta }}</span>
+                    <span class="tc-num" style="font-size: 9.5px; color: var(--color-neutral-600);">peso {{ f.peso }}</span>
+                    <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 16px; width: 30px; text-align: right;">{{ f.valor }}</span>
+                  </div>
+                  <div style="height: 7px; background: var(--color-neutral-200); margin-top: 6px; position: relative;">
+                    <div style="position: absolute; inset: 0 auto 0 0; width: {{ f.barW }}; background: {{ f.bg }};"></div>
+                  </div>
+                  <div class="tc-num" style="font-size: 9.5px; color: var(--color-neutral-600); margin-top: 4px;">aporta {{ f.aporte }} puntos al total</div>
+                </button>
+                <sc-if value="{{ f.abierto }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding: 11px 14px 13px; background: var(--color-neutral-200); border-top: 1px solid var(--color-divider);">
+                    <div style="font-size: 11.5px; font-weight: 800; font-family: var(--font-heading); margin-bottom: 4px;">{{ f.panelTitulo }}</div>
+                    <div class="tc-num" style="font-size: 11px; font-weight: 700; margin-bottom: 5px;">{{ f.panelCifra }}</div>
+                    <div style="font-size: 10.5px; line-height: 1.45; color: var(--color-neutral-700);">{{ f.panelCuerpo }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ sinZona }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <sc-if value="{{ mostrarExcepciones }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display: flex; align-items: baseline; gap: 8px; padding: 11px 14px 9px;">
+              <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Excepciones</span>
+              <span style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600);">ordenadas por severidad</span>
+            </div>
+            <sc-for list="{{ excepciones }}" as="e" hint-placeholder-count="4">
+              <article style="border-top: 1px solid var(--color-divider); padding: 12px 14px 14px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 7px;">
+                  <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 7px; background: {{ e.sevBg }}; color: {{ e.sevFg }}; border: 1px solid {{ e.sevBd }};">{{ e.palabra }}</span>
+                  <button onClick="{{ e.onZona }}" style="appearance: none; background: transparent; border: 0; padding: 0; font-family: var(--font-body); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-700); cursor: pointer; text-decoration: underline; text-underline-offset: 3px;" style-hover="color: var(--color-text);">{{ e.zona }}</button>
+                  <span class="tc-num" style="margin-left: auto; font-size: 9.5px; color: var(--color-neutral-500);">{{ e.det }}</span>
+                </div>
+                <h3 style="font-family: var(--font-heading); font-weight: 800; font-size: 15.5px; line-height: 1.2; margin: 0 0 5px; text-wrap: pretty;">{{ e.titulo }}</h3>
+                <p style="font-size: 12px; line-height: 1.45; color: var(--color-neutral-700); margin: 0 0 9px; text-wrap: pretty;">{{ e.cuerpo }}</p>
+                <sc-if value="{{ e.deSenal }}" hint-placeholder-val="{{ false }}">
+                  <div class="tc-num" style="display: inline-flex; gap: 7px; align-items: center; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid var(--color-divider); padding: 3px 7px; margin-bottom: 8px;">desde prensa · confianza {{ e.conf }}</div>
+                </sc-if>
+                <sc-if value="{{ e.conImpacto }}" hint-placeholder-val="{{ true }}">
+                  <div class="tc-num" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--color-divider); border: 1px solid var(--color-divider); margin-bottom: 10px;">
+                    <div style="background: var(--color-bg); padding: 6px 8px;"><div style="font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-neutral-600);">Pedidos</div><div style="font-size: 14px; font-weight: 800;">{{ e.ped }}</div></div>
+                    <div style="background: var(--color-bg); padding: 6px 8px;"><div style="font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-neutral-600);">Monto</div><div style="font-size: 14px; font-weight: 800;">{{ e.monto }}</div></div>
+                    <div style="background: var(--color-bg); padding: 6px 8px;"><div style="font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-neutral-600);">Ventana</div><div style="font-size: 11px; font-weight: 700; padding-top: 2px;">{{ e.ventana }}</div></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ e.sinImpacto }}" hint-placeholder-val="{{ false }}">
+                  <div class="tc-num" style="font-size: 10.5px; color: var(--color-neutral-700); border: 1px solid var(--color-divider); padding: 6px 8px; margin-bottom: 10px;">Sin pedidos afectados todavía · {{ e.ventana }}</div>
+                </sc-if>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                  <sc-for list="{{ e.acciones }}" as="a" hint-placeholder-count="2">
+                    <button onClick="{{ a.on }}" style="appearance: none; font-family: var(--font-heading); font-weight: 800; font-size: 11.5px; letter-spacing: 0.01em; padding: 7px 11px; border: 1px solid var(--color-text); background: var(--color-text); color: var(--color-bg); cursor: pointer; text-align: left;" style-hover="background: var(--color-neutral-800);" style-active="background: var(--color-neutral-900);">{{ a.etiqueta }}</button>
+                  </sc-for>
+                  <button onClick="{{ e.onDescartar }}" style="appearance: none; font-family: var(--font-body); font-size: 11px; padding: 7px 9px; border: 1px solid var(--color-divider); background: transparent; color: var(--color-neutral-700); cursor: pointer;" style-hover="border-color: var(--color-text); color: var(--color-text);">Descartar</button>
+                </div>
+                <sc-for list="{{ e.acciones }}" as="a" hint-placeholder-count="0">
+                  <sc-if value="{{ a.abierta }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top: 9px; border: 2px solid var(--color-text); padding: 10px 11px; background: var(--color-neutral-200);">
+                      <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 4px;">Confirma antes de ejecutar</div>
+                      <div style="font-size: 11.5px; line-height: 1.4; margin-bottom: 9px;">{{ a.desc }}</div>
+                      <div style="display: flex; gap: 6px;">
+                        <button onClick="{{ a.cancelar }}" style="appearance: none; font-family: var(--font-heading); font-weight: 800; font-size: 11.5px; padding: 6px 12px; border: 1px solid var(--color-accent); background: var(--color-accent); color: var(--color-bg); cursor: pointer;" style-hover="background: var(--color-accent-600);">Sí, ejecutar</button>
+                        <button onClick="{{ a.cancelar }}" style="appearance: none; font-family: var(--font-body); font-size: 11.5px; padding: 6px 12px; border: 1px solid var(--color-divider); background: transparent; cursor: pointer;" style-hover="border-color: var(--color-text);">Cancelar</button>
+                      </div>
+                    </div>
+                  </sc-if>
+                </sc-for>
+              </article>
+            </sc-for>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ sinPedidos }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="padding: 11px 14px 9px; font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Preparación de la ola · Día del Niño</div>
+              <sc-for list="{{ hitos }}" as="h" hint-placeholder-count="4">
+                <div style="display: flex; align-items: baseline; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--color-divider);">
+                  <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 6px; border: 1px solid var(--color-text); background: {{ h.bg }}; color: {{ h.fg }};">{{ h.estado }}</span>
+                  <span style="font-size: 12px; flex: 1;">{{ h.titulo }}</span>
+                  <span class="tc-num" style="font-size: 11px; color: var(--color-neutral-600);">{{ h.fecha }}</span>
+                </div>
+              </sc-for>
+              <div style="padding: 13px 14px 8px; font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; border-top: 2px solid var(--color-neutral-900);">Proyección por día</div>
+              <div class="tc-num" style="display: grid; grid-template-columns: 1fr 56px 56px 56px; gap: 0 8px; padding: 0 14px 4px; font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600); text-align: right;">
+                <span style="text-align: left;">Día</span><span>Proy.</span><span>Base</span><span>Cap.</span>
+              </div>
+              <sc-for list="{{ curva }}" as="c" hint-placeholder-count="7">
+                <div class="tc-num" style="display: grid; grid-template-columns: 1fr 56px 56px 56px; gap: 0 8px; padding: 7px 14px; border-top: 1px solid var(--color-divider); font-size: 12px; text-align: right;">
+                  <span style="text-align: left; font-weight: {{ c.pesoDia }};">{{ c.dia }}</span>
+                  <span style="font-weight: 800;">{{ c.proy }}</span>
+                  <span style="color: var(--color-neutral-600);">{{ c.base }}</span>
+                  <span style="color: {{ c.capColor }};">{{ c.cap }}</span>
+                </div>
+              </sc-for>
+              <div style="padding: 12px 14px 18px; font-size: 11px; line-height: 1.45; color: var(--color-neutral-700); border-top: 1px solid var(--color-divider);">El jueves 6 la proyección supera la capacidad en 134 pedidos: son los 2 conductores de brecha.</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ tranquilo }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 22px 14px; border-top: 1px solid var(--color-divider);">
+              <div class="tc-num" style="font-size: 12.5px; line-height: 1.5;">Sin excepciones abiertas. El riel se queda vacío a propósito.</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mostrarExcepciones }}" hint-placeholder-val="{{ true }}">
+          <div style="border-top: 2px solid var(--color-neutral-900);">
+            <div style="display: flex; align-items: baseline; gap: 8px; padding: 11px 14px 9px;">
+              <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Señales de prensa</span>
+              <span style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600);">una por acontecimiento</span>
+            </div>
+            <sc-for list="{{ senales }}" as="x" hint-placeholder-count="1">
+              <article style="border-top: 1px solid var(--color-divider); padding: 12px 14px 14px;">
+                <div class="tc-num" style="display: flex; gap: 8px; align-items: center; font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-700); margin-bottom: 6px;">
+                  <span style="border: 1px solid var(--color-divider); padding: 2px 6px;">confianza {{ x.confPct }}</span>
+                  <span style="border: 1px solid var(--color-divider); padding: 2px 6px;">{{ x.nFuentes }}</span>
+                  <span style="border: 1px solid var(--color-divider); padding: 2px 6px;">{{ x.ped }} pedidos</span>
+                </div>
+                <h3 style="font-family: var(--font-heading); font-weight: 800; font-size: 14px; line-height: 1.25; margin: 0 0 5px; text-wrap: pretty;">{{ x.titulo }}</h3>
+                <p style="font-size: 11.5px; line-height: 1.45; color: var(--color-neutral-700); margin: 0 0 8px;">{{ x.resumen }}</p>
+                <div class="tc-num" style="font-size: 10px; color: var(--color-neutral-600); margin-bottom: 9px;">{{ x.comunas }} · {{ x.ejes }} · {{ x.ventana }}</div>
+                <button onClick="{{ toggleSenal }}" style="appearance: none; background: transparent; border: 1px solid var(--color-divider); font-family: var(--font-body); font-size: 10.5px; padding: 5px 9px; cursor: pointer; margin-bottom: 8px;" style-hover="border-color: var(--color-text);">Ver las 3 fuentes</button>
+                <sc-if value="{{ senalAbierta }}" hint-placeholder-val="{{ false }}">
+                  <div style="border: 1px solid var(--color-divider); margin-bottom: 9px;">
+                    <sc-for list="{{ x.fuentes }}" as="f" hint-placeholder-count="3">
+                      <a href="#" style="display: block; padding: 7px 9px; border-bottom: 1px solid var(--color-divider); text-decoration: none; color: var(--color-text);" style-hover="background: var(--color-neutral-200);">
+                        <span class="tc-num" style="font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600); display: block;">{{ f.medio }} · {{ f.hora }}</span>
+                        <span style="font-size: 11px; line-height: 1.35; display: block;">{{ f.titular }}</span>
+                      </a>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <div style="display: flex; gap: 6px;">
+                  <button style="appearance: none; font-family: var(--font-heading); font-weight: 800; font-size: 11px; padding: 6px 10px; border: 1px solid var(--color-text); background: transparent; cursor: pointer;" style-hover="background: var(--color-text); color: var(--color-bg);">Confirmar</button>
+                  <button style="appearance: none; font-family: var(--font-body); font-size: 11px; padding: 6px 10px; border: 1px solid var(--color-divider); background: transparent; color: var(--color-neutral-700); cursor: pointer;" style-hover="border-color: var(--color-text); color: var(--color-text);">Descartar</button>
+                </div>
+              </article>
+            </sc-for>
+            <button onClick="{{ toggleOtras }}" style="appearance: none; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--color-divider); background: var(--color-neutral-200); padding: 10px 14px; font-family: var(--font-body); font-size: 11px; color: var(--color-neutral-700); cursor: pointer;" style-hover="color: var(--color-text);">1 señal más sin impacto en tu operación →</button>
+            <sc-if value="{{ otras }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 11px 14px 14px; border-top: 1px solid var(--color-divider);">
+                <div class="tc-num" style="font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-600); margin-bottom: 4px;">informativa · confianza 72 % · 0 pedidos</div>
+                <div style="font-family: var(--font-heading); font-weight: 800; font-size: 13px; margin-bottom: 3px;">Falla en Línea 1 del Metro con servicio parcial</div>
+                <div style="font-size: 11px; line-height: 1.45; color: var(--color-neutral-700);">Metro reporta servicio interrumpido entre Los Héroes y Universidad Católica. Se habilitaron buses de apoyo. Desde las 08:05, sin término conocido.</div>
+              </div>
+            </sc-if>
+          </div>
+          </sc-if>
+        </div>
+        </sc-if>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="background: var(--color-bg); position: relative; overflow: hidden; flex: none; height: 98px;">
+    <sc-if value="{{ nR5 }}" hint-placeholder-val="{{ false }}">
+      <div class="tc-cargando" style="position: absolute; inset: 0; display: flex; align-items: center; padding-left: 22px;">
+        <div style="background: var(--color-bg); border: 2px solid var(--color-neutral-900); padding: 8px 14px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;">R5 · Línea de tiempo — cargando</div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ cR5 }}" hint-placeholder-val="{{ true }}">
+    <div style="position: absolute; inset: 0; display: grid; grid-template-columns: 148px 1fr;">
+      <div style="border-right: 1px solid var(--color-divider); padding: 10px 14px; display: flex; flex-direction: column; justify-content: space-between;">
+        <div><div style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Línea de tiempo</div>
+        <div style="font-size: 9.5px; color: var(--color-neutral-600); margin-top: 2px;">sáb 25 jul · Santiago</div></div>
+        <div class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 22px; letter-spacing: -0.02em;">09:14</div>
+      </div>
+      <div style="position: relative; padding: 10px 24px 0 12px;">
+        <div style="position: absolute; left: 12px; right: 24px; top: 10px; bottom: 22px;">
+          <sc-for list="{{ tl }}" as="b" hint-placeholder-count="5">
+            <div style="position: absolute; left: {{ b.left }}; top: {{ b.top }}; height: 17px;">
+              <sc-if value="{{ b.instante }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; align-items: stretch; height: 17px;">
+                  <div style="width: 2px; background: {{ b.color }};"></div>
+                  <div class="tc-num" style="font-size: 9.5px; font-weight: 700; color: {{ b.color }}; padding: 2px 6px; white-space: nowrap; border-top: 1px solid {{ b.color }};">{{ b.et }}</div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <sc-for list="{{ tl }}" as="b" hint-placeholder-count="5">
+            <div style="position: absolute; left: {{ b.left }}; top: {{ b.top }}; width: {{ b.width }}; height: 17px;">
+              <sc-if value="{{ b.extenso }}" hint-placeholder-val="{{ true }}">
+                <div style="height: 17px; border: 1px solid var(--color-text); display: flex; align-items: center; padding: 0 7px; overflow: hidden; background: var(--color-bg);">
+                  <span class="tc-num" style="font-size: 9.5px; font-weight: 600; white-space: nowrap;">{{ b.et }}</span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <div style="position: absolute; left: {{ ahoraLeft }}; top: -4px; bottom: -6px; width: 2px; background: var(--color-text); transition: left 4s linear;">
+            <div class="tc-num" style="position: absolute; top: -2px; left: 2px; background: var(--color-text); color: var(--color-bg); font-size: 9px; font-weight: 800; padding: 1px 5px; letter-spacing: 0.06em;">AHORA</div>
+          </div>
+        </div>
+        <div style="position: absolute; left: 12px; right: 24px; bottom: 0; height: 22px; border-top: 1px solid var(--color-divider);">
+          <sc-for list="{{ horas }}" as="h" hint-placeholder-count="14">
+            <div class="tc-num" style="position: absolute; left: {{ h.left }}; top: 0; font-size: 9px; color: var(--color-neutral-600); padding-top: 3px; border-left: 1px solid var(--color-divider); padding-left: 4px; height: 19px;">{{ h.h }}</div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ paleta }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ cerrarPaleta }}" style="position: absolute; inset: 0; background: rgba(45,43,43,.5); display: flex; align-items: flex-start; justify-content: center; padding-top: 120px; z-index: 40;">
+      <div style="width: 560px; background: var(--color-bg); border: 2px solid var(--color-neutral-900); box-shadow: var(--shadow-lg);">
+        <input value="{{ filtro }}" onChange="{{ onFiltro }}" placeholder="Saltar a una zona, cambiar horizonte, encender una capa…" autoFocus="{{ true }}" style="width: 100%; border: 0; border-bottom: 2px solid var(--color-neutral-900); background: transparent; padding: 14px 16px; font-family: var(--font-body); font-size: 14px; color: var(--color-text); outline: none;">
+        <div style="max-height: 320px; overflow: auto;">
+          <sc-for list="{{ comandos }}" as="c" hint-placeholder-count="6">
+            <button onClick="{{ c.on }}" style="appearance: none; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--color-divider); background: transparent; padding: 9px 16px; font-family: var(--font-body); font-size: 12.5px; cursor: pointer;" style-hover="background: var(--color-text); color: var(--color-bg);">{{ c.etiqueta }}</button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ marcando }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); background: var(--color-text); color: var(--color-bg); padding: 9px 16px; font-size: 12px; z-index: 30; display: flex; gap: 12px; align-items: center;">
+      <span style="font-weight: 800;">Modo marca</span> Haz clic en el mapa para dejar una marca operativa. Esc cancela.
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ carga }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; right: 18px; bottom: 118px; display: flex; gap: 6px; z-index: 30;">
+      <button onClick="{{ reproducir }}" style="appearance: none; font-family: var(--font-heading); font-weight: 800; font-size: 11.5px; padding: 8px 13px; border: 2px solid var(--color-neutral-900); background: var(--color-text); color: var(--color-bg); cursor: pointer;" style-hover="background: var(--color-neutral-800);">Reproducir la carga</button>
+      <button onClick="{{ reiniciar }}" style="appearance: none; font-family: var(--font-body); font-size: 11.5px; padding: 8px 13px; border: 2px solid var(--color-neutral-900); background: var(--color-bg); cursor: pointer;" style-hover="background: var(--color-neutral-200);">Reiniciar</button>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ movil }}" hint-placeholder-val="{{ false }}">
+<div style="width: 390px; height: 844px; background: var(--color-bg); overflow-y: auto; position: relative;">
+  <div style="position: sticky; top: 0; z-index: 5; background: var(--color-bg); border-bottom: 2px solid var(--color-neutral-900);">
+    <div style="display: flex; align-items: center; gap: 9px; padding: 12px 16px 9px;">
+      <div style="width: 11px; height: 11px; background: var(--color-text);"></div>
+      <div style="font-family: var(--font-heading); font-weight: 800; font-size: 14px;">Torre de control</div>
+      <div class="tc-num" style="margin-left: auto; font-size: 11px; color: var(--color-neutral-600);">09:14 · 5 fuentes · 1 atrasada</div>
+    </div>
+    <div style="display: flex; padding: 0 16px 10px; gap: 0;">
+      <sc-for list="{{ horizontes }}" as="h" hint-placeholder-count="4">
+        <button onClick="{{ h.on }}" style="appearance: none; flex: 1; border: 1px solid var(--color-divider); border-right: 0; background: {{ h.bg }}; color: {{ h.fg }}; font-family: var(--font-heading); font-weight: 800; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; padding: 9px 0; cursor: pointer;">{{ h.etiqueta }}</button>
+      </sc-for>
+      <div style="width: 1px; background: var(--color-divider);"></div>
+    </div>
+  </div>
+
+  <div style="padding: 14px 16px 10px; border-bottom: 2px solid var(--color-neutral-900);">
+    <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-neutral-600); margin-bottom: 6px;">Lo que hay que resolver</div>
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 42px; line-height: .9; letter-spacing: -0.03em; color: var(--color-accent);">81</span>
+      <span style="font-size: 13px; line-height: 1.35;"><b>Oriente</b> en riesgo crítico.<br><span class="tc-num" style="color: var(--color-neutral-700);">86 pedidos · corte 18:00</span></span>
+    </div>
+  </div>
+
+  <div class="tc-num" style="display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--color-divider); background: var(--color-neutral-200);">
+    <span style="font-family: var(--font-heading); font-weight: 800; font-size: 17px;">7</span>
+    <span style="font-size: 11px; line-height: 1.3;">pedidos sin ubicar. No están en ninguna zona de esta lista.</span>
+  </div>
+
+  <div style="padding: 12px 16px 6px; font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Excepciones · 4</div>
+  <sc-for list="{{ excepciones }}" as="e" hint-placeholder-count="4">
+    <article style="border-top: 1px solid var(--color-divider); padding: 12px 16px 15px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 7px;">
+        <span style="font-size: 9px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 7px; background: {{ e.sevBg }}; color: {{ e.sevFg }}; border: 1px solid {{ e.sevBd }};">{{ e.palabra }}</span>
+        <span style="font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-neutral-700);">{{ e.zona }}</span>
+      </div>
+      <h3 style="font-family: var(--font-heading); font-weight: 800; font-size: 16px; line-height: 1.2; margin: 0 0 5px; text-wrap: pretty;">{{ e.titulo }}</h3>
+      <p style="font-size: 13px; line-height: 1.45; color: var(--color-neutral-700); margin: 0 0 9px;">{{ e.cuerpo }}</p>
+      <div class="tc-num" style="font-size: 11px; margin-bottom: 10px; color: var(--color-neutral-700);">{{ e.ped }} pedidos · {{ e.monto }} · {{ e.ventana }}</div>
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <sc-for list="{{ e.acciones }}" as="a" hint-placeholder-count="2">
+          <button onClick="{{ a.on }}" style="appearance: none; min-height: 46px; font-family: var(--font-heading); font-weight: 800; font-size: 13px; padding: 10px 14px; border: 1px solid var(--color-text); background: var(--color-text); color: var(--color-bg); cursor: pointer; text-align: left;">{{ a.etiqueta }}</button>
+        </sc-for>
+      </div>
+    </article>
+  </sc-for>
+
+  <div style="border-top: 2px solid var(--color-neutral-900); padding: 12px 16px 6px;">
+    <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;">Zonas por riesgo</div>
+    <div style="font-size: 10.5px; color: var(--color-neutral-600); margin-top: 2px;">El equivalente sin mapa. Mismos datos.</div>
+  </div>
+  <sc-for list="{{ zonasOrden }}" as="z" hint-placeholder-count="5">
+    <button onClick="{{ z.on }}" style="appearance: none; width: 100%; text-align: left; display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px; padding: 13px 16px; min-height: 56px; background: transparent; border: 0; border-top: 1px solid var(--color-divider); cursor: pointer; font-family: var(--font-body);">
+      <span class="tc-num" style="font-family: var(--font-heading); font-weight: 800; font-size: 24px; color: {{ z.colorNum }};">{{ z.riesgo }}</span>
+      <span>
+        <span style="font-family: var(--font-heading); font-weight: 800; font-size: 14px; display: block;">{{ z.nombre }} <span style="font-weight: 400; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-neutral-600);">{{ z.palabra }}</span></span>
+        <span style="height: 8px; background: var(--color-neutral-200); display: block; position: relative; margin-top: 5px;"><span style="position: absolute; inset: 0 auto 0 0; width: {{ z.barra.w }}; background: {{ z.barra.bg }};"></span></span>
+      </span>
+      <span class="tc-num" style="font-size: 11px; text-align: right; color: var(--color-neutral-700);">{{ z.pend }} pend.<br>corte {{ z.corte }}</span>
+    </button>
+  </sc-for>
+
+  <div style="border-top: 2px solid var(--color-neutral-900); padding: 13px 16px 18px;">
+    <div style="font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-neutral-600);">Ola entrante · regalo</div>
+    <div style="font-family: var(--font-heading); font-weight: 800; font-size: 19px; margin-top: 3px;">Día del Niño</div>
+    <div class="tc-num" style="font-size: 12px; color: var(--color-neutral-700); margin-top: 2px;">dom 9 ago · en 15 días · entregas 3–8 ago</div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--color-divider); border: 1px solid var(--color-divider); margin-top: 11px;">
+      <div style="background: var(--color-bg); padding: 8px;"><div style="font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-neutral-600);">Volumen</div><div class="tc-num" style="font-size: 16px; font-weight: 800;">+38 %</div></div>
+      <div style="background: var(--color-bg); padding: 8px;"><div style="font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-neutral-600);">Peak</div><div class="tc-num" style="font-size: 16px; font-weight: 800;">jue 6</div></div>
+      <div style="background: var(--color-bg); padding: 8px;"><div style="font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-neutral-600);">Brecha</div><div class="tc-num" style="font-size: 16px; font-weight: 800;">−2</div></div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1512,&quot;height&quot;:982},&quot;estado&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;con_excepciones&quot;,&quot;tranquilo&quot;,&quot;cargando&quot;,&quot;degradado&quot;,&quot;sin_zonas&quot;,&quot;sin_pedidos&quot;],&quot;default&quot;:&quot;con_excepciones&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;modo&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;escritorio&quot;,&quot;movil&quot;],&quot;default&quot;:&quot;escritorio&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;zonaInicial&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string | null&quot;},&quot;acento&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#ec3013&quot;,&quot;options&quot;:[&quot;#ec3013&quot;,&quot;#201e1d&quot;,&quot;#9e3526&quot;],&quot;tsType&quot;:&quot;string&quot;},&quot;tramaRiesgo&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;trama&quot;,&quot;solido&quot;],&quot;default&quot;:&quot;trama&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const PX = x => (x / 1110 * 100).toFixed(3) + '%';
+const PY = y => (y / 718 * 100).toFixed(3) + '%';
+const CLP = n => '$' + Math.round(n).toLocaleString('es-CL');
+const PCT = n => (n > 0 ? '+' : '−') + Math.abs(n).toFixed(1).replace('.', ',') + ' %';
+
+const NIVEL = {
+  calmo:   { palabra: 'calmo',    paso: 1, sp: 13, sw: 1,   op: 0.34, base: '#f3f2f2', ink: '#201e1d' },
+  bajo:    { palabra: 'bajo',     paso: 2, sp: 9,  sw: 1,   op: 0.40, base: '#f3f2f2', ink: '#201e1d' },
+  medio:   { palabra: 'medio',    paso: 3, sp: 6,  sw: 1,   op: 0.52, base: '#f3f2f2', ink: '#201e1d' },
+  alto:    { palabra: 'alto',     paso: 4, sp: 4,  sw: 1.1, op: 0.66, base: '#eae7e7', ink: '#201e1d' },
+  critico: { palabra: 'crítico',  paso: 5, sp: 3,  sw: 1.4, op: 0.90, base: '#fff2ef',                ink: '#ec3013' },
+};
+
+const CELDAS = {
+  'zona-oriente':  { d: 'M702.8 0L1110 0L1110 545.3L720.6 424.2L611.1 193.5Z', x: 738.1, y: 200.8 },
+  'zona-centro':   { d: 'M611.1 193.5L720.6 424.2L525.2 467.9L317.4 210.5Z',   x: 536.4, y: 296.5 },
+  'zona-sur':      { d: 'M1110 545.3L1110 718L351.8 718L525.2 467.9L720.6 424.2Z', x: 608.3, y: 618.2 },
+  'zona-norte':    { d: 'M0 0L702.8 0L611.1 193.5L317.4 210.5L0 53.5Z',        x: 525.1, y: 99.8 },
+  'zona-poniente': { d: 'M317.4 210.5L525.2 467.9L351.8 718L0 718L0 53.5Z',    x: 355.4, y: 442.8 },
+};
+
+const ZONAS = [
+  { id: 'zona-oriente', nombre: 'Oriente', riesgo: 81, nivel: 'critico',
+    comunas: ['Las Condes','Vitacura','Lo Barnechea','Providencia','Ñuñoa','La Reina','Peñalolén','Macul'],
+    pend: 86, entreg: 24, cap: 60, asig: 2, disp: 2, corte: '18:00', cortemin: 526, monto: 486200,
+    factores: [
+      ['presion_operativa','Presión operativa',72,0.35,'86 pedidos pendientes contra capacidad de 60.'],
+      ['clima','Clima',95,0.20,'Lluvia de 8 mm/h entre 16:00 y 19:00, dentro de la ventana de reparto.'],
+      ['aire','Aire y restricción',40,0.15,'PM2.5 en rango regular. Sin restricción extraordinaria hoy.'],
+      ['transito','Tránsito',68,0.15,'4 incidentes activos, 2 de ellos sobre Vespucio Oriente.'],
+      ['eventos','Eventos',30,0.10,'Partido en Ñuñoa a las 20:00, fuera de la ventana de reparto.'],
+      ['historico','Histórico propio',88,0.05,'Tus últimas 4 lluvias en Oriente subieron los fallidos 14 %.'],
+    ] },
+  { id: 'zona-centro', nombre: 'Centro', riesgo: 54, nivel: 'medio',
+    comunas: ['Santiago','Estación Central','Quinta Normal','San Miguel','San Joaquín','Pedro Aguirre Cerda','Cerrillos'],
+    pend: 148, entreg: 61, cap: 130, asig: 6, disp: 6, corte: '12:00', cortemin: 166, monto: 742800,
+    factores: [
+      ['presion_operativa','Presión operativa',88,0.35,'148 pedidos pendientes contra capacidad de 130.'],
+      ['clima','Clima',15,0.20,'Nublado sin precipitación en la ventana.'],
+      ['aire','Aire y restricción',45,0.15,'PM2.5 regular. Restricción permanente afecta dígitos 6 y 7.'],
+      ['transito','Tránsito',60,0.15,'Congestión habitual de sábado en el eje Alameda.'],
+      ['eventos','Eventos',20,0.10,'Sin eventos masivos en la zona.'],
+      ['historico','Histórico propio',34,0.05,'Fallidos dentro del promedio de los últimos 30 días.'],
+    ] },
+  { id: 'zona-sur', nombre: 'Sur', riesgo: 31, nivel: 'bajo',
+    comunas: ['Puente Alto','La Florida','La Granja','La Pintana','El Bosque','La Cisterna','San Ramón','Lo Espejo','San Bernardo','Buin','Paine','Calera de Tango','Pirque','San José de Maipo'],
+    pend: 62, entreg: 38, cap: 100, asig: 5, disp: 5, corte: '17:00', cortemin: 466, monto: 298400,
+    factores: [
+      ['presion_operativa','Presión operativa',38,0.35,'62 pedidos pendientes contra capacidad de 100.'],
+      ['clima','Clima',12,0.20,'Sin precipitación pronosticada.'],
+      ['aire','Aire y restricción',34,0.15,'PM2.5 en rango bueno.'],
+      ['transito','Tránsito',26,0.15,'1 incidente menor en Vespucio Sur.'],
+      ['eventos','Eventos',10,0.10,'Sin eventos relevantes.'],
+      ['historico','Histórico propio',22,0.05,'Zona con la tasa de fallidos más baja del courier.'],
+    ] },
+  { id: 'zona-norte', nombre: 'Norte', riesgo: 28, nivel: 'bajo',
+    comunas: ['Conchalí','Huechuraba','Independencia','Quilicura','Recoleta','Renca','Colina','Lampa','Tiltil'],
+    pend: 64, entreg: 29, cap: 100, asig: 5, disp: 5, corte: '17:00', cortemin: 466, monto: 312600,
+    factores: [
+      ['presion_operativa','Presión operativa',30,0.35,'64 pedidos pendientes contra capacidad de 100.'],
+      ['clima','Clima',10,0.20,'Sin precipitación pronosticada.'],
+      ['aire','Aire y restricción',35,0.15,'PM2.5 en rango regular hacia la tarde.'],
+      ['transito','Tránsito',22,0.15,'Sin incidentes activos.'],
+      ['eventos','Eventos',0,0.10,'Sin eventos relevantes.'],
+      ['historico','Histórico propio',28,0.05,'Fallidos dentro del promedio.'],
+    ] },
+  { id: 'zona-poniente', nombre: 'Poniente', riesgo: 16, nivel: 'calmo',
+    comunas: ['Maipú','Pudahuel','Cerro Navia','Lo Prado','Curacaví','María Pinto','Melipilla','Alhué','San Pedro','Talagante','El Monte','Isla de Maipo','Padre Hurtado','Peñaflor'],
+    pend: 52, entreg: 26, cap: 80, asig: 4, disp: 4, corte: '16:00', cortemin: 406, monto: 241100,
+    factores: [
+      ['presion_operativa','Presión operativa',18,0.35,'52 pedidos pendientes contra capacidad de 80.'],
+      ['clima','Clima',8,0.20,'Despejado.'],
+      ['aire','Aire y restricción',30,0.15,'PM2.5 en rango bueno.'],
+      ['transito','Tránsito',14,0.15,'Sin incidentes activos.'],
+      ['eventos','Eventos',0,0.10,'Sin eventos relevantes.'],
+      ['historico','Histórico propio',18,0.05,'Fallidos bajo el promedio.'],
+    ] },
+];
+
+const FUENTES = [
+  { id: 'clima', nombre: 'Clima', estado: 'ok', edad: 4, cad: 60, motivo: null },
+  { id: 'aire', nombre: 'Aire', estado: 'ok', edad: 21, cad: 60, motivo: null },
+  { id: 'transito', nombre: 'Tránsito', estado: 'atrasada', edad: 38, cad: 10, motivo: 'El proveedor respondió con error en los últimos 3 intentos.' },
+  { id: 'eventos', nombre: 'Eventos', estado: 'ok', edad: 254, cad: 1440, motivo: null },
+  { id: 'senales', nombre: 'Prensa', estado: 'ok', edad: 14, cad: 30, motivo: null },
+];
+
+const CAPAS = [
+  { id: 'riesgo', etiqueta: 'Riesgo', disp: true, motivo: null },
+  { id: 'clima', etiqueta: 'Lluvia', disp: true, motivo: null },
+  { id: 'aire', etiqueta: 'Aire', disp: true, motivo: null },
+  { id: 'transito', etiqueta: 'Tránsito', disp: false, motivo: 'Datos con 38 minutos de atraso.' },
+  { id: 'eventos', etiqueta: 'Eventos', disp: true, motivo: null },
+  { id: 'conductores', etiqueta: 'Conductores', disp: true, motivo: null },
+  { id: 'pedidos', etiqueta: 'Pedidos', disp: true, motivo: null },
+  { id: 'comunas', etiqueta: 'Comunas', disp: true, motivo: null },
+];
+
+const METRICAS = [
+  { etiqueta: 'Pedidos hoy', valor: '412', vari: 6.2, detalle: '178 entregados · 234 pendientes' },
+  { etiqueta: 'Comprometido', valor: '$2.081.100', vari: 4.8, detalle: 'Cobro asociado a los pedidos aún no entregados' },
+  { etiqueta: 'SLA en riesgo', valor: '38', vari: 21.0, detalle: 'Pedidos cuyo compromiso vence antes del cierre de la zona' },
+  { etiqueta: 'Sin ubicar', valor: '7', vari: null, detalle: 'No aparecen en el mapa. Requieren revisión de dirección' },
+];
+
+const EXC = [
+  { id: 'exc-001', sev: 'critica', titulo: 'Lluvia 16–19 h sobre Oriente',
+    cuerpo: '86 pedidos con corte a las 18:00 y solo 2 conductores en zona. Tus últimas 4 lluvias en Oriente subieron los fallidos 14 %.',
+    zona: 'Oriente', zonaId: 'zona-oriente', ventana: '16:00–19:00 · hoy', ped: 86, monto: 486200,
+    origen: 'motor', conf: null, det: '09:10', descartable: true,
+    acciones: [
+      { id: 'a1', etiqueta: 'Adelantar corte de Oriente', desc: 'Mueve la ventana de corte de 18:00 a 15:30 solo para hoy.', conf: true },
+      { id: 'a2', etiqueta: 'Ver los 86 pedidos', desc: 'Abre la lista filtrada por zona y ventana.', conf: false },
+    ] },
+  { id: 'exc-002', sev: 'alta', titulo: 'Preemergencia probable el lunes',
+    cuerpo: 'El PM2.5 proyectado supera el umbral a 48 horas. Una restricción extraordinaria dejaría fuera del anillo Vespucio a los vehículos sin sello verde.',
+    zona: null, zonaId: null, ventana: 'lun 27 jul · todo el día', ped: 0, monto: 0,
+    origen: 'motor', conf: null, det: '08:53', descartable: true,
+    acciones: [{ id: 'a3', etiqueta: 'Ver flota expuesta', desc: 'Lista de conductores cuyo vehículo quedaría restringido.', conf: false }] },
+  { id: 'exc-003', sev: 'alta', titulo: 'Centro sin holgura',
+    cuerpo: '148 pedidos pendientes contra una capacidad de 130. La ventana de corte vence en 2 h 46 min.',
+    zona: 'Centro', zonaId: 'zona-centro', ventana: 'hasta las 12:00 · en 2 h 46 min', ped: 18, monto: 90400,
+    origen: 'motor', conf: null, det: '09:12', descartable: true,
+    acciones: [{ id: 'a4', etiqueta: 'Reasignar 2 conductores desde Poniente', desc: 'Poniente queda con 2 conductores y capacidad de 40.', conf: true }] },
+  { id: 'exc-004', sev: 'media', titulo: 'Corte de tránsito en Providencia por evento deportivo',
+    cuerpo: 'Tres medios reportan cierre perimetral en el eje Nueva Providencia desde las 18:00. Caen 24 pedidos tuyos dentro del perímetro.',
+    zona: 'Oriente', zonaId: 'zona-oriente', ventana: '18:00–23:30 · hoy', ped: 24, monto: 118800,
+    origen: 'senal', conf: 0.86, det: '09:00', descartable: true,
+    acciones: [{ id: 'a5', etiqueta: 'Ver los 24 pedidos', desc: 'Abre la lista filtrada por el perímetro del evento.', conf: false }] },
+];
+
+const SEV = {
+  critica:     { palabra: 'crítica',     bg: 'var(--color-accent)', fg: '#f3f2f2', bd: 'var(--color-accent)' },
+  alta:        { palabra: 'alta',        bg: '#201e1d', fg: '#f3f2f2', bd: '#201e1d' },
+  media:       { palabra: 'media',       bg: 'transparent', fg: '#201e1d', bd: '#201e1d' },
+  informativa: { palabra: 'informativa', bg: 'transparent', fg: '#7d7979', bd: '#bab6b6' },
+};
+
+const CURVA = [
+  ['lun 3', 402, 390, 470, false], ['mar 4', 448, 395, 470, false], ['mié 5', 512, 398, 470, false],
+  ['jue 6', 604, 402, 470, true], ['vie 7', 571, 410, 470, true], ['sáb 8', 318, 280, 380, false],
+  ['dom 9', 96, 90, 190, false],
+];
+
+const HITOS = [
+  ['Confirmar sellers participantes', '19 jul', 'vencido'],
+  ['Reforzar flota para el peak', '26 jul', 'pendiente'],
+  ['Validar tarifas y ventanas de corte', '2 ago', 'pendiente'],
+  ['Congelar cambios de configuración', '6 ago', 'pendiente'],
+];
+
+const TL = [
+  { id: 'tl-01', tipo: 'ventana_reparto', et: 'Ventana de reparto', a: 30, b: 600, carril: 0 },
+  { id: 'tl-02', tipo: 'corte_en_riesgo', et: 'Corte de Centro 12:00', a: 240, b: 240, carril: 1 },
+  { id: 'tl-03', tipo: 'clima', et: 'Lluvia sobre Oriente', a: 480, b: 660, carril: 1 },
+  { id: 'tl-04', tipo: 'corte_en_riesgo', et: 'Corte de Oriente en riesgo 18:00', a: 600, b: 600, carril: 2 },
+  { id: 'tl-05', tipo: 'evento', et: 'Partido en Ñuñoa', a: 600, b: 930, carril: 2 },
+];
+
+const SENALES = [
+  { id: 'sen-001', titulo: 'Cierre perimetral en Ñuñoa por partido en el Estadio Nacional',
+    resumen: 'Carabineros informa desvíos en el eje Grecia y cierre del perímetro del estadio desde las 18:00 hasta el término del encuentro.',
+    conf: 0.86, ped: 24, ventana: '18:00–23:30', comunas: 'Ñuñoa · Providencia', ejes: 'Avenida Grecia · Nueva Providencia',
+    fuentes: [
+      ['Transporte Informa RM', 'Desvíos de tránsito por encuentro en Estadio Nacional', '08:40'],
+      ['La Tercera', 'Carabineros anuncia cortes en Ñuñoa por el clásico', '08:12'],
+      ['Canal 13', 'Los desvíos que regirán este sábado en Ñuñoa', '07:55'],
+    ] },
+];
+
+const MENSAJES = {
+  tranquilo: { titulo: 'Todo tranquilo', cuerpo: 'Ninguna zona supera el umbral de riesgo y no hay eventos relevantes en las próximas 24 horas.', accion: 'Ver el detalle igual' },
+  degradado: { titulo: 'Faltan datos de tránsito', cuerpo: 'La capa de tránsito muestra información de hace 38 minutos. El resto del tablero está al día.', accion: null },
+  sin_zonas: { titulo: 'Todavía no defines tus zonas', cuerpo: 'Estás viendo las cinco macro-zonas de la Región Metropolitana. Agrupa tus comunas para que el tablero refleje cómo operas.', accion: 'Configurar zonas' },
+  sin_pedidos: { titulo: 'Sin pedidos para hoy', cuerpo: 'No hay pedidos asignados. La próxima ola comercial es el Día del Niño, en 15 días.', accion: 'Ver la ola entrante' },
+};
+
+const CONDUCTORES = [
+  { id: 'cond-01', n: 'Marcelo Ortiz', x: 483.7, y: 244.7, e: 'en_ruta', h: 11, t: 28, p: 2 },
+  { id: 'cond-02', n: 'Javiera Muñoz', x: 606.4, y: 187.9, e: 'en_ruta', h: 9, t: 32, p: 1 },
+  { id: 'cond-03', n: 'Rodrigo Salas', x: 684.1, y: 421.3, e: 'sin_senal', h: 7, t: 30, p: 27 },
+  { id: 'cond-04', n: 'Camila Vergara', x: 668.5, y: 567.6, e: 'en_ruta', h: 15, t: 24, p: 3 },
+  { id: 'cond-05', n: 'Ignacio Fuentes', x: 334.9, y: 440.6, e: 'detenido', h: 14, t: 22, p: 5 },
+  { id: 'cond-06', n: 'Pilar Reyes', x: 516.4, y: 110.6, e: 'en_ruta', h: 12, t: 26, p: 1 },
+];
+
+const INCIDENTES = [
+  { id: 'tr-001', x: 732.5, y: 226.8, mag: 3, via: 'Américo Vespucio Oriente', d: 'Colisión con dos pistas bloqueadas' },
+  { id: 'tr-002', x: 671.0, y: 203.8, mag: 2, via: 'Costanera Norte poniente', d: 'Tránsito lento por volumen' },
+  { id: 'tr-003', x: 633.3, y: 490.4, mag: 1, via: 'Vespucio Sur', d: 'Faena con desvío señalizado' },
+];
+
+const COMANDOS = [
+  ['Ir a zona Oriente', 'zona', 'zona-oriente'], ['Ir a zona Centro', 'zona', 'zona-centro'],
+  ['Ir a zona Sur', 'zona', 'zona-sur'], ['Ir a zona Norte', 'zona', 'zona-norte'],
+  ['Ir a zona Poniente', 'zona', 'zona-poniente'],
+  ['Horizonte: hoy', 'horizonte', 'hoy'], ['Horizonte: mañana', 'horizonte', 'manana'],
+  ['Horizonte: 72 h', 'horizonte', '72h'], ['Horizonte: olas', 'horizonte', 'olas'],
+  ['Capa: encender lluvia', 'capa', 'clima'], ['Capa: encender conductores', 'capa', 'conductores'],
+  ['Capa: encender comunas', 'capa', 'comunas'],
+  ['Vista de lista sin mapa', 'lista', null], ['Marcar un punto en el mapa', 'marca', null],
+];
+
+class Component extends DCLogic {
+  uid = 'k' + Math.random().toString(36).slice(2, 7);
+  state = {
+    horizonte: 'hoy',
+    zona: this.props.zonaInicial || null,
+    factor: null,
+    capas: ['riesgo', 'clima'],
+    zoom: 'zonas',
+    lista: false,
+    paleta: false,
+    filtro: '',
+    confirmando: null,
+    descartadas: [],
+    marcando: false,
+    marcaProv: null,
+    senal: false,
+    otras: false,
+    cargadas: [],
+    ahora: 74,
+  };
+
+  componentDidMount() {
+    this._t = setInterval(() => {
+      const d = new Date();
+      this.setState({ ahora: 74 + (d.getSeconds() / 60) * 0.4 });
+    }, 4000);
+  }
+  componentWillUnmount() { clearInterval(this._t); this._demo && this._demo.forEach(clearTimeout); }
+
+  reproducirCarga = () => {
+    this._demo && this._demo.forEach(clearTimeout);
+    this.setState({ cargadas: [] });
+    const orden = ['r1', 'r4', 'r3', 'r2', 'r5'];
+    this._demo = orden.map((k, i) => setTimeout(() => this.setState(s => ({ cargadas: s.cargadas.concat(k) })), 320 + i * 420));
+  };
+  reiniciarCarga = () => { this._demo && this._demo.forEach(clearTimeout); this.setState({ cargadas: [] }); };
+
+  toggleCapa = id => this.setState(s => {
+    const c = CAPAS.find(k => k.id === id);
+    if (!c.disp) return null;
+    if (s.capas.includes(id)) return { capas: s.capas.filter(k => k !== id) };
+    if (s.capas.length >= 2) return null;
+    return { capas: s.capas.concat(id) };
+  });
+
+  seleccionar = id => this.setState(s => ({ zona: s.zona === id ? null : id, factor: null }));
+
+  tecla = e => {
+    const k = e.key;
+    if (k === 'Escape') { this.setState({ paleta: false, marcando: false, confirmando: null, factor: null }); return; }
+    if ((e.metaKey || e.ctrlKey) && k.toLowerCase() === 'k') { e.preventDefault(); this.setState(s => ({ paleta: !s.paleta, filtro: '' })); return; }
+    if (this.state.paleta) return;
+    if (k === '1') this.setState({ horizonte: 'hoy' });
+    if (k === '2') this.setState({ horizonte: 'manana' });
+    if (k === '3') this.setState({ horizonte: '72h' });
+    if (k === '4') this.setState({ horizonte: 'olas' });
+    if (k.toLowerCase() === 'l') this.setState(s => ({ lista: !s.lista }));
+    if (k.toLowerCase() === 'm') this.setState(s => ({ marcando: !s.marcando }));
+  };
+
+  clicMapa = e => {
+    if (!this.state.marcando) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    this.setState({ marcaProv: { x: ((e.clientX - r.left) / r.width) * 1110, y: ((e.clientY - r.top) / r.height) * 718 }, marcando: false });
+  };
+
+  ejecutar = c => {
+    if (c[1] === 'zona') this.setState({ zona: c[2], paleta: false });
+    if (c[1] === 'horizonte') this.setState({ horizonte: c[2], paleta: false });
+    if (c[1] === 'capa') { this.toggleCapa(c[2]); this.setState({ paleta: false }); }
+    if (c[1] === 'lista') this.setState(s => ({ lista: !s.lista, paleta: false }));
+    if (c[1] === 'marca') this.setState({ marcando: true, paleta: false });
+  };
+
+  renderVals() {
+    const s = this.state, uid = this.uid;
+    const acento = this.props.acento || '#ec3013';
+    const solido = this.props.tramaRiesgo === 'solido';
+    const est = this.props.estado || 'con_excepciones';
+    const movil = this.props.modo === 'movil';
+    const carga = est === 'cargando';
+    const lista = (k) => !carga || s.cargadas.includes(k);
+    const sinZonas = est === 'sin_zonas';
+    const sinPedidos = est === 'sin_pedidos';
+    const tranquilo = est === 'tranquilo';
+    const mensaje = MENSAJES[est] || null;
+
+    const patrones = Object.keys(NIVEL).map(k => {
+      const n = NIVEL[k];
+      return { key: k, id: uid + '-' + k, sp: n.sp, sw: n.sw, op: n.op, base: n.base,
+        ink: k === 'critico' ? acento : '#201e1d' };
+    });
+
+    const zonaSel = s.zona;
+    const zonas = ZONAS.map(z => {
+      const n = NIVEL[z.nivel];
+      const sel = zonaSel === z.id;
+      const atenuada = !!zonaSel && !sel;
+      const rojo = z.nivel === 'critico';
+      const c = CELDAS[z.id];
+      return {
+        id: z.id, nombre: z.nombre, riesgo: z.riesgo, nivel: z.nivel, palabra: n.palabra,
+        d: c.d,
+        fill: sinZonas ? '#eae7e7' : (solido ? (rojo ? acento : ['#f3f2f2','#d7d3d3','#bab6b6','#7d7979','#444141'][n.paso - 1]) : 'url(#' + uid + '-' + z.nivel + ')'),
+        stroke: sel ? '#201e1d' : (rojo && !sinZonas ? acento : 'rgba(32,30,29,.5)'),
+        sw: sel ? 3 : (rojo ? 2 : 1),
+        dash: sinZonas ? '7 5' : 'none',
+        op: atenuada ? 0.16 : 1,
+        plateL: 'calc(' + PX(c.x) + ' - 84px)', plateT: 'calc(' + PY(c.y) + ' - 34px)',
+        comunasT: 'calc(' + PY(c.y) + ' + 40px)',
+        ticks: 'M' + (c.x - 97) + ' ' + c.y + 'H' + (c.x - 87) + 'M' + (c.x + 87) + ' ' + c.y + 'H' + (c.x + 97) +
+               'M' + c.x + ' ' + (c.y - 47) + 'V' + (c.y - 37) + 'M' + c.x + ' ' + (c.y + 37) + 'V' + (c.y + 47),
+        pend: z.pend, entreg: z.entreg, cap: z.cap, cond: z.disp, corte: z.corte, monto: CLP(z.monto),
+        sel, textoRiesgo: String(z.riesgo),
+        colorNum: rojo && !sinZonas && !solido ? acento : '#201e1d',
+        comunas: z.comunas.slice(0, 6).map(n => ({ n: '· ' + n })),
+        resto: z.comunas.length > 6 ? '+' + (z.comunas.length - 6) + ' más' : '',
+        on: () => this.seleccionar(z.id),
+        barra: { w: z.riesgo + '%', bg: rojo ? acento : ['#d7d3d3','#bab6b6','#7d7979','#444141','#201e1d'][n.paso - 1] },
+      };
+    });
+    const zonasOrden = zonas.slice().sort((a, b) => b.riesgo - a.riesgo);
+
+    const zsel = ZONAS.find(z => z.id === zonaSel);
+    let desglose = null;
+    if (zsel) {
+      const n = NIVEL[zsel.nivel];
+      desglose = {
+        id: zsel.id, nombre: zsel.nombre, riesgo: zsel.riesgo, palabra: n.palabra,
+        colorNum: zsel.nivel === 'critico' ? acento : '#201e1d',
+        pend: zsel.pend, entreg: zsel.entreg, cap: zsel.cap, cond: zsel.disp + ' de ' + zsel.asig,
+        corte: zsel.corte, cortemin: Math.floor(zsel.cortemin / 60) + ' h ' + (zsel.cortemin % 60) + ' min',
+        monto: CLP(zsel.monto), comunas: zsel.comunas.join(' · '),
+        holgura: (zsel.cap - zsel.pend) >= 0 ? '+' + (zsel.cap - zsel.pend) : String(zsel.cap - zsel.pend),
+        holguraColor: (zsel.cap - zsel.pend) < 0 ? acento : '#201e1d',
+        factores: zsel.factores.map(f => {
+          const ap = f[2] * f[3];
+          const abierto = s.factor === f[0];
+          return {
+            id: f[0], etiqueta: f[1], valor: f[2], peso: (f[3] * 100).toFixed(0) + ' %',
+            aporte: ap.toFixed(1).replace('.', ','), explicacion: f[4],
+            barW: f[2] + '%', aporteW: (ap / 30 * 100).toFixed(1) + '%',
+            bg: f[2] >= 76 ? acento : ['#d7d3d3','#bab6b6','#7d7979','#444141','#201e1d'][Math.min(4, Math.floor(f[2] / 20))],
+            abierto, cerrado: !abierto,
+            on: () => this.setState(st => ({ factor: st.factor === f[0] ? null : f[0] })),
+            panelTitulo: 'Pedidos afectados por ' + f[1].toLowerCase() + ' en ' + zsel.nombre,
+            panelCuerpo: f[4] + ' El detalle por pedido lo entrega el servidor a partir del geocoding; el dataset de diseño solo trae los agregados por zona.',
+            panelCifra: zsel.pend + ' pedidos pendientes · corte ' + zsel.corte,
+          };
+        }),
+      };
+    }
+
+    const capas = CAPAS.map(c => {
+      const activa = s.capas.includes(c.id);
+      const tope = !activa && s.capas.length >= 2;
+      const bloqueada = !c.disp || tope;
+      return {
+        id: c.id, etiqueta: c.etiqueta, activa, disponible: c.disp,
+        motivo: !c.disp ? c.motivo : (tope ? 'Máximo 2 capas. Apaga una para encender esta.' : ''),
+        conMotivo: !c.disp || tope,
+        bloqueada, op: bloqueada ? 0.42 : 1,
+        marca: activa ? '■' : (c.disp ? '□' : '⊘'),
+        bg: activa ? '#201e1d' : 'transparent', fg: activa ? '#f3f2f2' : '#201e1d',
+        on: () => this.toggleCapa(c.id),
+      };
+    });
+
+    const fuentes = FUENTES.map(f => {
+      const mal = f.estado !== 'ok';
+      const caida = est === 'degradado' && f.id === 'transito';
+      return {
+        id: f.id, nombre: f.nombre, edad: f.edad + '′', estado: f.estado,
+        motivo: f.motivo, conMotivo: !!f.motivo,
+        glifo: caida ? '✕' : (mal ? '▲' : '·'),
+        color: caida ? acento : (mal ? '#201e1d' : '#7d7979'),
+        peso: mal ? 800 : 400,
+        bd: mal ? '1px solid ' + (caida ? acento : '#201e1d') : '1px solid transparent',
+      };
+    });
+
+    const metricas = METRICAS.map(m => ({
+      etiqueta: m.etiqueta, valor: m.valor, detalle: m.detalle,
+      vari: m.vari === null ? '—' : PCT(m.vari),
+      variColor: m.vari === null ? '#9b9797' : '#201e1d',
+      glifo: m.vari === null ? '' : (m.vari > 0 ? '▲' : '▼'),
+    }));
+
+    const excepciones = EXC.filter(e => !s.descartadas.includes(e.id)).map(e => {
+      const sv = SEV[e.sev];
+      return {
+        id: e.id, palabra: sv.palabra, sevBg: e.sev === 'critica' ? acento : sv.bg, sevFg: sv.fg,
+        sevBd: e.sev === 'critica' ? acento : sv.bd,
+        titulo: e.titulo, cuerpo: e.cuerpo, ventana: e.ventana, det: 'detectada ' + e.det,
+        zona: e.zona || 'Toda la operación', ped: String(e.ped), monto: CLP(e.monto),
+        conImpacto: e.ped > 0, sinImpacto: e.ped === 0,
+        deSenal: e.origen === 'senal', conf: e.conf ? Math.round(e.conf * 100) + ' %' : '',
+        onZona: () => e.zonaId && this.seleccionar(e.zonaId),
+        onDescartar: () => this.setState(st => ({ descartadas: st.descartadas.concat(e.id) })),
+        acciones: e.acciones.map(a => ({
+          id: a.id, etiqueta: a.etiqueta, desc: a.desc, requiere: a.conf,
+          abierta: s.confirmando === a.id, cerrada: s.confirmando !== a.id,
+          on: () => this.setState({ confirmando: a.conf ? a.id : null }),
+          cancelar: () => this.setState({ confirmando: null }),
+        })),
+      };
+    });
+
+    const maxC = 640, hMax = 66;
+    const curva = CURVA.map(c => {
+      const exceso = Math.max(0, c[1] - c[3]);
+      return {
+        dia: c[0], proy: String(c[1]), base: String(c[2]), cap: String(c[3]), peak: c[4],
+        hProy: (Math.min(c[1], c[3]) / maxC * hMax).toFixed(1) + 'px',
+        hExceso: (exceso / maxC * hMax).toFixed(1) + 'px',
+        hBase: (c[2] / maxC * hMax).toFixed(1) + 'px',
+        capBottom: (c[3] / maxC * hMax).toFixed(1) + 'px',
+        conExceso: exceso > 0, excesoTxt: exceso > 0 ? '+' + exceso : '',
+        capColor: exceso > 0 ? acento : '#7d7979',
+        pesoDia: c[4] ? 800 : 600,
+      };
+    });
+
+    const tl = TL.map(b => ({
+      id: b.id, et: b.et, tipo: b.tipo, carril: b.carril,
+      left: (b.a / 780 * 100).toFixed(2) + '%',
+      width: (Math.max(0, Math.min(780, b.b) - b.a) / 780 * 100).toFixed(2) + '%',
+      instante: b.a === b.b, extenso: b.b !== b.a,
+      corta: b.b > 780,
+      rojo: b.id === 'tl-04',
+      color: b.id === 'tl-04' ? acento : '#201e1d',
+      fill: b.tipo === 'clima' ? 'url(#nada)' : 'transparent',
+      esClima: b.tipo === 'clima', esVentana: b.tipo === 'ventana_reparto', esEvento: b.tipo === 'evento',
+      top: (b.carril * 20) + 'px',
+    }));
+    const horas = [];
+    for (let h = 8; h <= 21; h++) horas.push({ h: (h < 10 ? '0' : '') + h + ':00', left: ((h - 8) * 60 / 780 * 100).toFixed(2) + '%' });
+
+    const horizontes = [
+      ['hoy', 'Hoy', '1'], ['manana', 'Mañana', '2'], ['72h', '72 h', '3'], ['olas', 'Olas', '4'],
+    ].map(h => ({
+      id: h[0], etiqueta: h[1], tecla: h[2], sel: s.horizonte === h[0],
+      bg: s.horizonte === h[0] ? '#201e1d' : 'transparent',
+      fg: s.horizonte === h[0] ? '#f3f2f2' : '#201e1d',
+      on: () => this.setState({ horizonte: h[0] }),
+    }));
+
+    const zooms = [['zonas', 'Zonas'], ['comunas', 'Comunas'], ['pedidos', 'Pedidos']].map(z => ({
+      id: z[0], etiqueta: z[1], sel: s.zoom === z[0],
+      bg: s.zoom === z[0] ? '#201e1d' : 'transparent', fg: s.zoom === z[0] ? '#f3f2f2' : '#201e1d',
+      on: () => this.setState({ zoom: z[0] }),
+    }));
+
+    const escala = [
+      ['calmo', '0–20', 16], ['bajo', '21–40', 31], ['medio', '41–60', 54], ['alto', '61–75', 0], ['crítico', '76–100', 81],
+    ].map((e, i) => ({ palabra: e[0], rango: e[1], id: uid + '-' + Object.keys(NIVEL)[i], fill: 'url(#' + uid + '-' + Object.keys(NIVEL)[i] + ')' }));
+
+    const comandos = COMANDOS.filter(c => c[0].toLowerCase().includes(s.filtro.toLowerCase()))
+      .map(c => ({ etiqueta: c[0], on: () => this.ejecutar(c) }));
+
+    const conductores = CONDUCTORES.map(c => ({
+      ...c, r: c.e === 'sin_senal' ? 5 : 6,
+      fill: c.e === 'sin_senal' ? 'none' : '#201e1d',
+      stroke: '#201e1d', dash: c.e === 'sin_senal' ? '2 2' : 'none',
+      labL: 'calc(' + PX(c.x) + ' + 10px)', labT: 'calc(' + PY(c.y) + ' - 8px)',
+      etiqueta: c.n + ' · ' + c.h + '/' + c.t + (c.e === 'sin_senal' ? ' · sin señal ' + c.p + '′' : ''),
+    }));
+
+    return {
+      uid, acento, patrones, zonas, zonasOrden, desglose, capas, fuentes, metricas, excepciones,
+      curva, tl, horas, horizontes, zooms, escala, comandos, conductores,
+      incidentes: INCIDENTES.map(i => ({ ...i,
+        d: 'M' + i.x + ' ' + (i.y - 6) + 'L' + (i.x + 6) + ' ' + i.y + 'L' + i.x + ' ' + (i.y + 6) + 'L' + (i.x - 6) + ' ' + i.y + 'Z',
+        labL: 'calc(' + PX(i.x) + ' + 10px)', labT: 'calc(' + PY(i.y) + ' - 8px)' })),
+      cifrasOla: [
+        { etiqueta: 'Ventana de entregas', valor: '3–8 ago', color: '#201e1d' },
+        { etiqueta: 'Variación esperada', valor: '+38 %', color: '#201e1d' },
+        { etiqueta: 'Brecha del día crítico', valor: '−2', color: '#201e1d' },
+      ],
+      conAccion: !!(mensaje && mensaje.accion),
+      hitos: HITOS.map(h => ({ titulo: h[0], fecha: h[1], estado: h[2], vencido: h[2] === 'vencido',
+        bg: h[2] === 'vencido' ? '#201e1d' : 'transparent', fg: h[2] === 'vencido' ? '#f3f2f2' : '#201e1d' })),
+      senales: SENALES.map(x => ({ ...x, confPct: Math.round(x.conf * 100) + ' %', nFuentes: x.fuentes.length + ' medios',
+        fuentes: x.fuentes.map(f => ({ medio: f[0], titular: f[1], hora: f[2] })) })),
+      mensaje, conMensaje: !!mensaje, sinMensaje: !mensaje,
+      capasTxt: s.capas.length + '/2 capas',
+      capasTope: s.capas.length >= 2,
+      zonaSel, hayZona: !!zonaSel, sinZona: !zonaSel,
+      escritorio: !movil, movil,
+      carga, noCarga: !carga,
+      cR1: lista('r1'), cR2: lista('r2'), cR3: lista('r3'), cR4: lista('r4'), cR5: lista('r5'),
+      nR1: !lista('r1'), nR2: !lista('r2'), nR3: !lista('r3'), nR4: !lista('r4'), nR5: !lista('r5'),
+      sinZonas, sinPedidos, tranquilo,
+      conOla: !carga || lista('r2'),
+      mostrarExcepciones: !tranquilo && !sinPedidos && !carga,
+      mostrarMetricas: !sinPedidos && !carga,
+      olaGrande: sinPedidos,
+      mostrarTimeline: !sinPedidos,
+      mostrarMapa: !s.lista,
+      enLista: s.lista,
+      verZonas: s.zoom === 'zonas', verComunas: s.zoom === 'comunas', verPedidos: s.zoom === 'pedidos',
+      capaClima: s.capas.includes('clima'), capaConductores: s.capas.includes('conductores'),
+      capaEventos: s.capas.includes('eventos'), capaTransito: s.capas.includes('transito'),
+      capaComunas: s.capas.includes('comunas'),
+      ahoraLeft: (s.ahora / 780 * 100).toFixed(3) + '%',
+      paleta: s.paleta, filtro: s.filtro,
+      onFiltro: e => this.setState({ filtro: e.target.value }),
+      abrirPaleta: () => this.setState({ paleta: true, filtro: '' }),
+      cerrarPaleta: () => this.setState({ paleta: false }),
+      tecla: this.tecla, clicMapa: this.clicMapa,
+      marcando: s.marcando, marcaProv: s.marcaProv, conMarcaProv: !!s.marcaProv,
+      cursorMapa: s.marcando ? 'crosshair' : 'default',
+      toggleLista: () => this.setState(st => ({ lista: !st.lista })),
+      listaTxt: s.lista ? 'Volver al mapa' : 'Vista de lista',
+      reproducir: this.reproducirCarga, reiniciar: this.reiniciarCarga,
+      senalAbierta: s.senal, senalCerrada: !s.senal,
+      toggleSenal: () => this.setState(st => ({ senal: !st.senal })),
+      otras: s.otras, toggleOtras: () => this.setState(st => ({ otras: !st.otras })),
+      limpiarZona: () => this.setState({ zona: null, factor: null }),
+    };
+  }
+}
+</script>
+</body>
+</html>

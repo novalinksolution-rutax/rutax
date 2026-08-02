@@ -61,7 +61,7 @@ export function FormularioAceptacion({ token, estadoInicial, esPrimerDueno }: Pr
   if (estadoInicial.estado === "ya_aceptada") {
     return (
       <PantallaEstadoFinal
-        icono={<CheckCircle2 className="size-7 text-emerald-600" aria-hidden="true" />}
+        icono={<CheckCircle2 className="size-7 text-success" aria-hidden="true" />}
         titulo="Esta invitación ya fue utilizada"
         descripcion="Si ya activaste tu cuenta, simplemente inicia sesión."
         accion={
@@ -76,7 +76,7 @@ export function FormularioAceptacion({ token, estadoInicial, esPrimerDueno }: Pr
   if (estadoInicial.estado === "expirada") {
     return (
       <PantallaEstadoFinal
-        icono={<ShieldAlert className="size-7 text-amber-600" aria-hidden="true" />}
+        icono={<ShieldAlert className="size-7 text-warning" aria-hidden="true" />}
         titulo="Este enlace venció"
         descripcion={
           esPrimerDueno
@@ -266,9 +266,9 @@ function calcularFortaleza(valor: string): { nivel: number; etiqueta: string; co
   if (/[0-9]/.test(valor) || /[^A-Za-z0-9]/.test(valor)) puntos += 1;
 
   if (puntos <= 1) return { nivel: 1, etiqueta: "Débil — agrega más caracteres", color: "bg-destructive" };
-  if (puntos === 2) return { nivel: 2, etiqueta: "Regular", color: "bg-amber-500" };
-  if (puntos === 3) return { nivel: 3, etiqueta: "Buena", color: "bg-amber-400" };
-  return { nivel: 4, etiqueta: "Fuerte", color: "bg-emerald-500" };
+  if (puntos === 2) return { nivel: 2, etiqueta: "Regular", color: "bg-warning" };
+  if (puntos === 3) return { nivel: 3, etiqueta: "Buena", color: "bg-warning" };
+  return { nivel: 4, etiqueta: "Fuerte", color: "bg-success" };
 }
 
 // -----------------------------------------------------------------------------

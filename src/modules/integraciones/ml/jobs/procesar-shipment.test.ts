@@ -7,10 +7,22 @@
  * 3. Traducción correcta: estado ML → estado interno.
  * 4. Estado sin traducción → salida limpia sin lanzar.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { ErrorConflicto, type EstadoPedidoInterno } from "../tipos-operacion";
 import { traducirEstadoMl } from "../traduccion-estados";
+
+// Mocks de las dependencias del adaptador REAL por defecto. Se declaran antes de
+// importar el módulo bajo prueba para que `vi.mock` (hoisted) los intercepte.
+const mockActualizarEstadoPedido = vi.fn();
+const mockCrearClienteServiceRole = vi.fn(() => ({ marca: "cliente-fake" }));
+
+vi.mock("@/modules/operacion", () => ({
+  actualizarEstadoPedido: (...args: unknown[]) => mockActualizarEstadoPedido(...args),
+}));
+vi.mock("@/lib/supabase/service-role", () => ({
+  crearClienteServiceRole: () => mockCrearClienteServiceRole(),
+}));
 
 // ---------------------------------------------------------------------------
 // Lógica de negocio extraída para prueba aislada
@@ -27,20 +39,34 @@ interface PedidoSimulado {
 
 type FnActualizar = (entrada: {
   pedidoId: string;
+  tenantId: string;
   estadoNuevo: EstadoPedidoInterno;
   estadoEsperado: EstadoPedidoInterno;
   actuadoPor: "sistema_ml";
   motivo?: string;
 }) => Promise<void>;
 
+/**
+ * Error de transición inválida con `name` = "ErrorTransicionInvalida", que es
+ * exactamente lo que el job inspecciona (por nombre, no por instancia, porque
+ * el error real viene del módulo `operacion`).
+ */
+class ErrorTransicionInvalidaFake extends Error {
+  constructor(mensaje = "transición inválida") {
+    super(mensaje);
+    this.name = "ErrorTransicionInvalida";
+  }
+}
+
 async function procesarActualizacionShipment(
   pedido: PedidoSimulado,
   estadoMlNuevo: string,
   fnActualizar: FnActualizar,
   onLog: (nivel: string, msg: string) => void,
+  subestadoMl?: string | null,
 ): Promise<{ resultado: string; detalle?: string }> {
-  // Traducir estado
-  const estadoInterno = traducirEstadoMl(estadoMlNuevo);
+  // Traducir estado (status + substatus)
+  const estadoInterno = traducirEstadoMl(estadoMlNuevo, subestadoMl);
 
   if (!estadoInterno) {
     onLog("info", `Estado ML '${estadoMlNuevo}' sin traducción. Ignorando.`);
@@ -57,15 +83,21 @@ async function procesarActualizacionShipment(
   try {
     await fnActualizar({
       pedidoId: pedido.id,
+      tenantId: pedido.tenantId,
       estadoNuevo: estadoInterno,
       estadoEsperado: pedido.estado,
       actuadoPor: "sistema_ml",
     });
     return { resultado: "actualizado", detalle: estadoInterno };
   } catch (error) {
-    if (error instanceof ErrorConflicto) {
+    const nombre = error instanceof Error ? error.name : "";
+    if (nombre === "ErrorConflicto") {
       onLog("warn", `Pedido ${pedido.id}: condición de carrera resuelta. Terminando.`);
       return { resultado: "conflicto_resuelto" };
+    }
+    if (nombre === "ErrorTransicionInvalida") {
+      onLog("warn", `Pedido ${pedido.id}: transición inválida no reintentable. Terminando.`);
+      return { resultado: "transicion_invalida" };
     }
     throw error; // Otros errores → Inngest reintenta
   }
@@ -222,5 +254,106 @@ describe("procesarShipmentActualizado — traducción de estados", () => {
 
     expect(resultado.resultado).toBe("actualizado");
     expect(resultado.detalle).toBe("fallido");
+  });
+
+  it("'not_delivered' + subestado 'returning_to_sender' → actualiza a 'devuelto'", async () => {
+    const fnMock = vi.fn().mockResolvedValue(undefined);
+
+    const resultado = await procesarActualizacionShipment(
+      { ...pedidoBase, estado: "en_ruta" },
+      "not_delivered",
+      fnMock,
+      () => {},
+      "returning_to_sender",
+    );
+
+    expect(resultado.resultado).toBe("actualizado");
+    expect(resultado.detalle).toBe("devuelto");
+  });
+});
+
+describe("procesarShipmentActualizado — transición inválida (no reintentable)", () => {
+  it("ErrorTransicionInvalida → loguea y termina sin relanzar (Inngest NO reintenta)", async () => {
+    const fnMock = vi.fn().mockRejectedValue(new ErrorTransicionInvalidaFake());
+    const logs: string[] = [];
+
+    const resultado = await procesarActualizacionShipment(
+      { ...pedidoBase, estado: "entregado" }, // terminal: 'shipped' tardío sería inválido
+      "shipped",
+      fnMock,
+      (nivel, msg) => {
+        if (nivel === "warn") logs.push(msg);
+      },
+    );
+
+    // 'entregado' + 'shipped'→'en_ruta' es distinto del estado actual, así que
+    // se intenta la transición; la fn la rechaza como inválida → se ignora.
+    expect(resultado.resultado).toBe("transicion_invalida");
+    expect(fnMock).toHaveBeenCalledOnce();
+    expect(logs.some((l) => l.includes("no reintentable"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wiring del bug crítico: el DEFAULT ya NO es un stub que lanza, sino el
+// adaptador real que delega en `actualizarEstadoPedido`.
+// ---------------------------------------------------------------------------
+describe("actualizarEstadoPedidoReal (adaptador por defecto) — wiring real", () => {
+  beforeEach(() => {
+    mockActualizarEstadoPedido.mockReset();
+    mockCrearClienteServiceRole.mockClear();
+  });
+
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it("el default NO lanza el stub 'aún no implementado' y delega en actualizarEstadoPedido", async () => {
+    mockActualizarEstadoPedido.mockResolvedValue({ id: "pedido-123" });
+
+    const { actualizarEstadoPedidoReal } = await import("./procesar-shipment");
+
+    await expect(
+      actualizarEstadoPedidoReal({
+        pedidoId: "pedido-123",
+        tenantId: "tenant-1",
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        actuadoPor: "sistema_ml",
+        motivo: "Actualización desde ML: status=delivered",
+      }),
+    ).resolves.toBeUndefined();
+
+    // Se creó el cliente service_role y se llamó a la función real con la
+    // entrada del módulo `operacion` (ejecutor='sistema', con tenantId, sin
+    // RBAC ni actor ni motivo).
+    expect(mockCrearClienteServiceRole).toHaveBeenCalledOnce();
+    expect(mockActualizarEstadoPedido).toHaveBeenCalledOnce();
+    expect(mockActualizarEstadoPedido).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        pedidoId: "pedido-123",
+        tenantId: "tenant-1",
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        ejecutor: "sistema",
+      },
+    );
+  });
+
+  it("propaga el error de actualizarEstadoPedido (p. ej. ErrorConflicto) sin envolverlo", async () => {
+    mockActualizarEstadoPedido.mockRejectedValue(new ErrorConflicto("carrera"));
+
+    const { actualizarEstadoPedidoReal } = await import("./procesar-shipment");
+
+    await expect(
+      actualizarEstadoPedidoReal({
+        pedidoId: "p1",
+        tenantId: "t1",
+        estadoNuevo: "entregado",
+        estadoEsperado: "en_ruta",
+        actuadoPor: "sistema_ml",
+      }),
+    ).rejects.toThrow("carrera");
   });
 });

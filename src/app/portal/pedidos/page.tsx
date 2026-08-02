@@ -8,21 +8,45 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Inbox, SearchX, Plus } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { obtenerConexionesPorSeller } from "@/modules/integraciones/ml";
 import {
   traducirEstadoPedido,
-  COLOR_ESTADO_PEDIDO,
-  TEXTO_ESTADO_PEDIDO,
+  BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
-import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { DataTable } from "@/components/ui/data-table";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
+import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
+import { BloqueEtiqueta } from "./bloque-etiqueta";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
 };
 
 const LIMITE = 25;
+
+/** Nombre visible de la cuenta de origen: alias → nickname de ML → últimos 4. */
+function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, mlUserId: string | null): string {
+  if (alias && alias.trim()) return alias;
+  if (mlNickname && mlNickname.trim()) return mlNickname;
+  if (mlUserId && mlUserId.length >= 4) return `···${mlUserId.slice(-4)}`;
+  return "Otra cuenta";
+}
 
 interface SearchParams {
   estado?: string;
@@ -50,8 +74,25 @@ export default async function PaginaPedidosSeller({
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
   const offset = (pagina - 1) * LIMITE;
 
+  // Badge de origen: solo si el seller tiene MÁS DE UNA cuenta ML conectada.
+  // Con una sola cuenta no se muestra nada (cero ruido).
+  let mostrarOrigen = false;
+  const etiquetaPorCuenta: Record<string, string> = {};
+  try {
+    const conexiones = await obtenerConexionesPorSeller(sellerId);
+    mostrarOrigen = conexiones.length > 1;
+    if (mostrarOrigen) {
+      for (const c of conexiones) {
+        if (c.mlUserId) etiquetaPorCuenta[c.mlUserId] = etiquetaCuentaOrigen(c.alias, c.mlNickname, c.mlUserId);
+      }
+    }
+  } catch {
+    // best-effort — sin badge si falla la lectura de conexiones.
+  }
+
   const cliente = crearClienteServiceRole();
   let pedidos: Pedido[] = [];
+  const mlUserPorPedido: Record<string, string | null> = {};
   let total = 0;
   let errorCarga = false;
 
@@ -72,7 +113,9 @@ export default async function PaginaPedidosSeller({
     if (error) throw error;
 
     total = count ?? 0;
-    pedidos = (data ?? []).map((p: Record<string, unknown>) => ({
+    pedidos = (data ?? []).map((p: Record<string, unknown>) => {
+      mlUserPorPedido[p.id as string] = (p.ml_user_id as string | null) ?? null;
+      return {
       id: p.id as string,
       tenantId: p.tenant_id as string,
       sellerId: p.seller_id as string,
@@ -95,7 +138,15 @@ export default async function PaginaPedidosSeller({
       notasInternas: (p.notas_internas as string | null) ?? null,
       creadoEn: p.creado_en as string,
       actualizadoEn: p.actualizado_en as string,
-    }));
+      // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+      lat: (p.lat as number | null) ?? null,
+      long: (p.long as number | null) ?? null,
+      geoEstado: ((p.geo_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").EstadoGeocoding,
+      geoConfianza: (p.geo_confianza as number | null) ?? null,
+      geocodificadoEn: (p.geocodificado_en as string | null) ?? null,
+      coberturaEstado: ((p.cobertura_estado as string | null) ?? 'pendiente') as import("@/modules/operacion/tipos").CoberturaEstado,
+      };
+    });
   } catch {
     errorCarga = true;
   }
@@ -125,164 +176,134 @@ export default async function PaginaPedidosSeller({
             Seguimiento de tus entregas. Los estados se actualizan automáticamente.
           </p>
         </div>
-        <Link
-          href="/portal/pedidos/nuevo"
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors whitespace-nowrap"
-        >
-          + Solicitar envío same-day
-        </Link>
+        <Button asChild className="whitespace-nowrap">
+          <Link href="/portal/pedidos/nuevo">
+            <Plus className="size-4" aria-hidden="true" />
+            Solicitar envío same-day
+          </Link>
+        </Button>
       </div>
 
       {/* Confirmación de envío creado */}
       {pedidoNuevoId && (
-        <div role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+        <div role="status" className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
           ¡Envío same-day solicitado con éxito! Quedará pendiente de asignación hasta que el courier lo asigne a un conductor.
         </div>
       )}
 
       {/* Filtros */}
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-estado-p" className="text-xs font-medium text-muted-foreground">
-            Estado
-          </label>
-          <select
-            id="f-estado-p"
-            name="estado"
-            defaultValue={filtroEstado}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">Todos los estados</option>
-            {ESTADOS_PEDIDO.map((e) => (
-              <option key={e} value={e}>
-                {TEXTO_ESTADO_PEDIDO[e]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="f-fecha-p" className="text-xs font-medium text-muted-foreground">
-            Fecha de compromiso
-          </label>
-          <input
-            id="f-fecha-p"
-            name="fecha"
-            type="date"
-            defaultValue={filtroFecha}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Filtrar
-        </button>
-        {hayFiltros && (
-          <Link
-            href="/portal/pedidos"
-            className="h-9 flex items-center px-3 text-sm text-muted-foreground underline-offset-2 hover:underline"
-          >
-            Limpiar filtros
-          </Link>
-        )}
-      </form>
+      <FiltrosPedidosSeller
+        filtroEstado={filtroEstado}
+        filtroFecha={filtroFecha}
+        hayFiltros={hayFiltros}
+      />
 
       {/* Error */}
       {errorCarga && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
           No se pudo cargar la lista de pedidos. Intenta recargar la página.
         </div>
       )}
 
-      {/* Contador */}
-      {!errorCarga && (
-        <p className="text-sm text-muted-foreground">
-          {total === 0 ? "Sin pedidos" : `${total} pedido${total !== 1 ? "s" : ""}`}
-          {hayFiltros ? " con los filtros aplicados" : ""}
-        </p>
-      )}
-
-      {/* Tabla */}
-      {!errorCarga && pedidos.length > 0 && (
-        <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Mis pedidos">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="px-4 py-2">Destinatario</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Dirección</th>
-                  <th className="hidden px-4 py-2 md:table-cell">F. compromiso</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
+      {/* Tabla / estados de vista */}
+      {!errorCarga && pedidos.length === 0 ? (
+        hayFiltros ? (
+          <EmptyState
+            icon={SearchX}
+            tono="filtro"
+            titulo="Ningún pedido coincide"
+            descripcion="No hay pedidos con estos filtros. Prueba cambiando el estado o la fecha."
+            accion={
+              <Button asChild variant="outline" size="sm">
+                <Link href="/portal/pedidos">Limpiar filtros</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Inbox}
+            titulo="Todavía no tienes pedidos"
+            descripcion="Aquí verás tus envíos cuando tu empresa de despacho los registre."
+          />
+        )
+      ) : (
+        !errorCarga && (
+          <DataTable
+            toolbar={
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {total} pedido{total !== 1 ? "s" : ""}
+                {hayFiltros ? " con filtros" : ""}
+              </span>
+            }
+            footer={
+              totalPaginas > 1 ? (
+                <Pagination
+                  pagina={pagina}
+                  totalPaginas={totalPaginas}
+                  hrefPagina={(p) => urlConFiltros({ pagina: String(p) })}
+                />
+              ) : undefined
+            }
+          >
+            <Table densidad="relaxed" aria-label="Mis pedidos">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Estado</TableHead>
+                  <TableHead className="px-4">Destinatario</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
+                  <TableHead className="px-4 text-right">
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {pedidos.map((pedido) => (
-                  <tr key={pedido.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_PEDIDO[pedido.estado]}`}
-                      >
-                        {traducirEstadoPedido(pedido.estado)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
+                  <TableRow key={pedido.id}>
+                    <TableCell className="px-4">
+                      <BadgeEstado
+                        variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+                        texto={traducirEstadoPedido(pedido.estado)}
+                      />
+                    </TableCell>
+                    <TableCell className="px-4 whitespace-normal">
                       <p className="font-medium">{pedido.destinatarioNombre}</p>
-                      <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+                      <p className="text-xs text-muted-foreground">
+                        {pedido.destinatarioComuna}
+                        {mostrarOrigen && etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] ? (
+                          <span className="text-muted-foreground/80">
+                            {" · "}
+                            {etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""]}
+                          </span>
+                        ) : null}
+                      </p>
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
                       {pedido.destinatarioDireccion}
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
                       {pedido.fechaCompromiso ?? "—"}
-                    </td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="px-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {pedido.tipoPedido === "same_day" &&
+                          !ESTADOS_TERMINALES.includes(pedido.estado) && (
+                            <BloqueEtiqueta pedidoId={pedido.id} compacto />
+                          )}
+                        <Link
+                          href={`/portal/pedidos/${pedido.id}`}
+                          className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
+                        >
+                          Ver detalle
+                        </Link>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Vacío */}
-      {!errorCarga && pedidos.length === 0 && (
-        <div className="rounded-xl border bg-card px-6 py-12 text-center">
-          <p className="text-muted-foreground">
-            {hayFiltros
-              ? "No hay pedidos que coincidan. Prueba cambiando el estado o la fecha."
-              : "Todavía no tienes pedidos registrados."}
-          </p>
-          {hayFiltros && (
-            <Link href="/portal/pedidos" className="mt-3 inline-block text-sm font-medium text-primary hover:underline">
-              Limpiar filtros
-            </Link>
-          )}
-        </div>
-      )}
-
-      {/* Paginación */}
-      {!errorCarga && totalPaginas > 1 && (
-        <nav aria-label="Paginación" className="flex items-center justify-center gap-2">
-          {pagina > 1 && (
-            <Link
-              href={urlConFiltros({ pagina: String(pagina - 1) })}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-            >
-              Anterior
-            </Link>
-          )}
-          <span className="text-sm text-muted-foreground">
-            Página {pagina} de {totalPaginas}
-          </span>
-          {pagina < totalPaginas && (
-            <Link
-              href={urlConFiltros({ pagina: String(pagina + 1) })}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors"
-            >
-              Siguiente
-            </Link>
-          )}
-        </nav>
+              </TableBody>
+            </Table>
+          </DataTable>
+        )
       )}
     </div>
   );

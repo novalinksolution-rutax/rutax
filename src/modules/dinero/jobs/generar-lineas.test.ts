@@ -14,8 +14,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { evaluarElegibilidad } from '../motor';
-import type { EntradaMotor } from '../motor';
+import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
+import type { EntradaMotor, TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
 
 describe('Job C1 — generar-lineas', () => {
   // =========================================================================
@@ -322,5 +322,381 @@ describe('Job C1 — generar-lineas', () => {
         expect(r.generaLiquidacion).toBe(false);
       }
     });
+  });
+});
+
+// =============================================================================
+// Reglas de anulación pre-cierre (flujo fallido → devuelto)
+//
+// El job C1 anula líneas existentes cuando estadoNuevo='devuelto' y ya existe
+// línea generada. Las reglas de elegibilidad del MOTOR son la base de esta
+// lógica: si generaCobro=false y generaLiquidacion=false → el job busca líneas
+// existentes y las anula (si el período/liquidación está en estado mutable).
+//
+// Los tests de BD (idempotencia de anulación, guarda de período cerrado) viven
+// en pgTAP (supabase/tests/database/). Aquí probamos la función pura del motor.
+// =============================================================================
+
+describe('Flujo fallido → devuelto — reglas de elegibilidad que disparan anulación', () => {
+  describe('devuelto siempre tiene generaCobro=false y generaLiquidacion=false', () => {
+    it('devuelto con conductor asignado → no genera líneas nuevas', () => {
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      // El motor indica "no generar" → el job procederá a buscar/anular líneas previas.
+      expect(resultado.generaCobro).toBe(false);
+      expect(resultado.generaLiquidacion).toBe(false);
+    });
+
+    it('devuelto sin conductor → tampoco genera', () => {
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: false,
+      });
+      expect(resultado.generaCobro).toBe(false);
+      expect(resultado.generaLiquidacion).toBe(false);
+    });
+
+    it('devuelto con esGastoPropio=true → tampoco genera cobro ni liquidación', () => {
+      // El gasto propio nunca cobra al seller, pero devuelto tampoco genera liquidación.
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: true,
+        tieneDriverAsignado: true,
+      });
+      expect(resultado.generaCobro).toBe(false);
+      expect(resultado.generaLiquidacion).toBe(false);
+    });
+  });
+
+  describe('contraste: fallido SÍ puede generar líneas (las que luego se anulan)', () => {
+    it('fallido con afecta_cobro=true y afecta_liquidacion=true → genera cobro Y liquidación', () => {
+      // Este es el evento ANTERIOR (fallido) que crea las líneas.
+      // El evento POSTERIOR (devuelto) las anulará si el período sigue abierto.
+      const resultado = evaluarElegibilidad({
+        estadoPedido: 'fallido',
+        afectaCobro: true,
+        afectaLiquidacion: true,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      expect(resultado.generaCobro).toBe(true);
+      expect(resultado.generaLiquidacion).toBe(true);
+    });
+
+    it('fallido_manual con afecta_cobro=true → genera cobro; devuelto posterior los anulará', () => {
+      const resultadoFallido = evaluarElegibilidad({
+        estadoPedido: 'fallido_manual',
+        afectaCobro: true,
+        afectaLiquidacion: false,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      expect(resultadoFallido.generaCobro).toBe(true);
+      expect(resultadoFallido.generaLiquidacion).toBe(false);
+
+      // Cuando llega el devuelto, el motor dice "no generar nada" → job anula lo de arriba.
+      const resultadoDevuelto = evaluarElegibilidad({
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      });
+      expect(resultadoDevuelto.generaCobro).toBe(false);
+      expect(resultadoDevuelto.generaLiquidacion).toBe(false);
+    });
+  });
+
+  describe('idempotencia del motor para el evento devuelto (reintentos del job)', () => {
+    it('devuelto ejecutado N veces produce siempre generaCobro=false (anulación no se re-aplica si ya anulada)', () => {
+      const entrada: EntradaMotor = {
+        estadoPedido: 'devuelto',
+        afectaCobro: null,
+        afectaLiquidacion: null,
+        esGastoPropio: false,
+        tieneDriverAsignado: true,
+      };
+      // Función pura — mismos resultados en todos los intentos.
+      // En BD el UPDATE con WHERE anulada=false es idempotente: el segundo intento
+      // no afecta filas (ya está anulada=true) → no-op correcto.
+      const resultados = Array.from({ length: 4 }, () => evaluarElegibilidad(entrada));
+      for (const r of resultados) {
+        expect(r.generaCobro).toBe(false);
+        expect(r.generaLiquidacion).toBe(false);
+      }
+    });
+  });
+});
+
+// =============================================================================
+// Snapshot inmutable de la regla económica (hallazgo P0 de auditoría) — el
+// job escribe `snapshot_regla` en el MISMO INSERT/UPDATE que determina
+// monto_base_clp/ajuste_incidencia_clp, en los 4 caminos de escritura:
+//   1. generar-linea-cobro       → INSERT nuevo
+//   2. generar-linea-cobro       → UPDATE de reactivación (existente.anulada)
+//   3. generar-linea-liquidacion → INSERT nuevo
+//   4. generar-linea-liquidacion → UPDATE de reactivación (existente.anulada)
+//
+// El job arma el snapshot UNA sola vez por step con `construirSnapshotRegla`
+// y reutiliza el MISMO objeto tanto para el INSERT como para la reactivación
+// (mismas variables `montoBase`/`ajuste`/`concepto` que ya usaba el código
+// existente) — por eso los pares 1/2 y 3/4 aquí comparten el mismo insumo:
+// lo que se prueba es que el contenido del envelope es correcto para el
+// contexto de cada camino, no que existan dos construcciones distintas.
+// =============================================================================
+describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => {
+  const jobRunId = 'run-test-c1';
+  const generadoEn = '2026-07-07T15:00:00.000Z';
+  const fechaTransicion = '2026-07-07T14:30:00.000Z';
+  const fechaEntregaLocal = '2026-07-07';
+
+  const tarifaFlex: TarifaSnapshotInput = {
+    tarifaId: 'tarifa-flex-1',
+    tipoEntrega: 'flex',
+    modoCalculo: 'monto_fijo',
+    zona: 'Zona Poniente',
+    zonaId: 'zona-poniente-1',
+    vigenteDesde: '2026-01-01',
+    vigenteHasta: null,
+    estado: 'activa',
+    minimoRetiroClp: null,
+    minimoFacturacionClp: null,
+    recargoReprogramacionClp: 1200,
+  };
+
+  // -----------------------------------------------------------------------
+  // Camino 1: generar-linea-cobro → INSERT nuevo (pedido entregado normal)
+  // -----------------------------------------------------------------------
+  it('camino 1 — INSERT nuevo cobro: snapshot con motivo ENTREGADO_GENERA_COBRO y valor_base_clp = monto_clp', () => {
+    const entradaMotor: EntradaMotor = {
+      estadoPedido: 'entregado',
+      afectaCobro: null,
+      afectaLiquidacion: null,
+      esGastoPropio: false,
+      tieneDriverAsignado: true,
+    };
+    const elegibilidad = evaluarElegibilidad(entradaMotor);
+    const motivos = evaluarMotivoElegibilidad(entradaMotor);
+    expect(elegibilidad.generaCobro).toBe(true); // precondición: este es el único camino en que el job llega al INSERT
+
+    const montoCobroBase = 3800;
+    const snapshotCobro = construirSnapshotRegla({
+      lado: 'cobro',
+      jobRunId,
+      generadoEn,
+      tarifa: tarifaFlex,
+      valorBaseClp: montoCobroBase,
+      ajusteIncidenciaClp: elegibilidad.ajusteCobroCLP,
+      comunaDestinatario: 'Maipú',
+      fechaTransicion,
+      fechaEntregaLocal,
+      estadoNuevo: 'entregado',
+      estadoAnterior: 'en_ruta',
+      tipoPedido: 'flex',
+      esGastoPropio: false,
+      incidencia: null,
+      motivo: motivos.cobro,
+      genera: true,
+    });
+
+    expect(snapshotCobro.origen_snapshot).toBe('generacion_original');
+    expect((snapshotCobro.regla as { regla_id: string }).regla_id).toBe('ENTREGADO_GENERA_COBRO');
+    expect((snapshotCobro.tarifa as { valor_base_clp: number }).valor_base_clp).toBe(montoCobroBase);
+    expect((snapshotCobro.elegibilidad as { genera: boolean; ajuste_clp: number }).genera).toBe(true);
+    expect((snapshotCobro.elegibilidad as { ajuste_clp: number }).ajuste_clp).toBe(0);
+  });
+
+  // -----------------------------------------------------------------------
+  // Camino 2: generar-linea-cobro → UPDATE de reactivación tras anulación
+  // (reclasificación B1: una incidencia que ahora SÍ afecta el cobro)
+  // -----------------------------------------------------------------------
+  it('camino 2 — reactivación cobro tras anulación: snapshot refleja la nueva incidencia (motivo FALLIDO_INCIDENCIA_AFECTA_COBRO)', () => {
+    const entradaMotor: EntradaMotor = {
+      estadoPedido: 'fallido',
+      afectaCobro: true,
+      afectaLiquidacion: false,
+      esGastoPropio: false,
+      tieneDriverAsignado: true,
+    };
+    const elegibilidad = evaluarElegibilidad(entradaMotor);
+    const motivos = evaluarMotivoElegibilidad(entradaMotor);
+    expect(elegibilidad.generaCobro).toBe(true); // precondición: reactivación solo ocurre si genera === true
+
+    const incidenciaReclasificada: IncidenciaSnapshotInput = {
+      id: 'incidencia-reclasificada-1',
+      tipo: 'destinatario_ausente',
+      afectaCobro: true,
+      afectaLiquidacion: false,
+    };
+
+    const snapshotCobro = construirSnapshotRegla({
+      lado: 'cobro',
+      jobRunId,
+      generadoEn,
+      tarifa: tarifaFlex,
+      valorBaseClp: 3800,
+      ajusteIncidenciaClp: elegibilidad.ajusteCobroCLP,
+      comunaDestinatario: 'Maipú',
+      fechaTransicion,
+      fechaEntregaLocal,
+      estadoNuevo: 'fallido',
+      estadoAnterior: 'en_ruta',
+      tipoPedido: 'flex',
+      esGastoPropio: false,
+      incidencia: incidenciaReclasificada,
+      motivo: motivos.cobro,
+      genera: true,
+    });
+
+    // Aunque la escritura sea un UPDATE (reactivación), el envelope sigue
+    // marcado 'generacion_original' — no es el backfill de la migración.
+    expect(snapshotCobro.origen_snapshot).toBe('generacion_original');
+    expect((snapshotCobro.regla as { regla_id: string }).regla_id).toBe('FALLIDO_INCIDENCIA_AFECTA_COBRO');
+    expect(snapshotCobro.incidencia).toEqual({
+      incidencia_id: 'incidencia-reclasificada-1',
+      tipo: 'destinatario_ausente',
+      afecta_cobro: true,
+      afecta_liquidacion: false,
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Camino 3: generar-linea-liquidacion → INSERT nuevo
+  // -----------------------------------------------------------------------
+  it('camino 3 — INSERT nuevo liquidación: valor_base_clp = monto_conductor_clp, recargos_descuentos SOLO ajuste_incidencia_clp', () => {
+    const entradaMotor: EntradaMotor = {
+      estadoPedido: 'entregado',
+      afectaCobro: null,
+      afectaLiquidacion: null,
+      esGastoPropio: false,
+      tieneDriverAsignado: true,
+    };
+    const elegibilidad = evaluarElegibilidad(entradaMotor);
+    const motivos = evaluarMotivoElegibilidad(entradaMotor);
+    expect(elegibilidad.generaLiquidacion).toBe(true);
+
+    const montoConductorBase = 2600;
+    const snapshotLiquidacion = construirSnapshotRegla({
+      lado: 'liquidacion',
+      jobRunId,
+      generadoEn,
+      tarifa: tarifaFlex,
+      valorBaseClp: montoConductorBase,
+      ajusteIncidenciaClp: elegibilidad.ajusteLiquidacionCLP,
+      comunaDestinatario: 'Maipú',
+      fechaTransicion,
+      fechaEntregaLocal,
+      estadoNuevo: 'entregado',
+      estadoAnterior: 'en_ruta',
+      tipoPedido: 'flex',
+      esGastoPropio: false,
+      incidencia: null,
+      motivo: motivos.liquidacion,
+      genera: true,
+    });
+
+    expect((snapshotLiquidacion.regla as { regla_id: string }).regla_id).toBe('ENTREGADO_GENERA_LIQUIDACION');
+    expect((snapshotLiquidacion.tarifa as { valor_base_clp: number }).valor_base_clp).toBe(montoConductorBase);
+    expect(snapshotLiquidacion.recargos_descuentos).toEqual({ ajuste_incidencia_clp: 0 });
+    expect(snapshotLiquidacion.recargos_descuentos).not.toHaveProperty('minimo_retiro_clp');
+    expect(snapshotLiquidacion.recargos_descuentos).not.toHaveProperty('recargo_reprogramacion_pactado_clp');
+  });
+
+  // -----------------------------------------------------------------------
+  // Camino 4: generar-linea-liquidacion → UPDATE de reactivación tras anulación
+  // -----------------------------------------------------------------------
+  it('camino 4 — reactivación liquidación tras anulación: snapshot refleja motivo FALLIDO_INCIDENCIA_AFECTA_LIQUIDACION', () => {
+    const entradaMotor: EntradaMotor = {
+      estadoPedido: 'fallido',
+      afectaCobro: false,
+      afectaLiquidacion: true,
+      esGastoPropio: false,
+      tieneDriverAsignado: true,
+    };
+    const elegibilidad = evaluarElegibilidad(entradaMotor);
+    const motivos = evaluarMotivoElegibilidad(entradaMotor);
+    expect(elegibilidad.generaLiquidacion).toBe(true); // precondición: reactivación solo ocurre si genera === true
+
+    const incidenciaReclasificada: IncidenciaSnapshotInput = {
+      id: 'incidencia-reclasificada-2',
+      tipo: 'entrega_parcial',
+      afectaCobro: false,
+      afectaLiquidacion: true,
+    };
+
+    const snapshotLiquidacion = construirSnapshotRegla({
+      lado: 'liquidacion',
+      jobRunId,
+      generadoEn,
+      tarifa: tarifaFlex,
+      valorBaseClp: 2600,
+      ajusteIncidenciaClp: elegibilidad.ajusteLiquidacionCLP,
+      comunaDestinatario: 'Maipú',
+      fechaTransicion,
+      fechaEntregaLocal,
+      estadoNuevo: 'fallido',
+      estadoAnterior: 'en_ruta',
+      tipoPedido: 'flex',
+      esGastoPropio: false,
+      incidencia: incidenciaReclasificada,
+      motivo: motivos.liquidacion,
+      genera: true,
+    });
+
+    expect(snapshotLiquidacion.origen_snapshot).toBe('generacion_original');
+    expect((snapshotLiquidacion.regla as { regla_id: string }).regla_id).toBe('FALLIDO_INCIDENCIA_AFECTA_LIQUIDACION');
+    expect(snapshotLiquidacion.incidencia).toEqual({
+      incidencia_id: 'incidencia-reclasificada-2',
+      tipo: 'entrega_parcial',
+      afecta_cobro: false,
+      afecta_liquidacion: true,
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // tarifaAplicableId ausente — el job pasa tarifa: null; el snapshot no
+  // debe crashear y debe reflejar tarifa_id null (monto_base=0 es
+  // responsabilidad del job, ver test de "tarifa nula" más arriba).
+  // -----------------------------------------------------------------------
+  it('sin tarifa aplicable → snapshot con tarifa_id null, no crashea', () => {
+    const entradaMotor: EntradaMotor = {
+      estadoPedido: 'entregado',
+      afectaCobro: null,
+      afectaLiquidacion: null,
+      esGastoPropio: false,
+      tieneDriverAsignado: true,
+    };
+    const motivos = evaluarMotivoElegibilidad(entradaMotor);
+
+    expect(() =>
+      construirSnapshotRegla({
+        lado: 'cobro',
+        jobRunId,
+        generadoEn,
+        tarifa: null,
+        valorBaseClp: 0,
+        ajusteIncidenciaClp: 0,
+        comunaDestinatario: null,
+        fechaTransicion,
+        fechaEntregaLocal,
+        estadoNuevo: 'entregado',
+        estadoAnterior: 'en_ruta',
+        tipoPedido: 'flex',
+        esGastoPropio: false,
+        incidencia: null,
+        motivo: motivos.cobro,
+        genera: true,
+      }),
+    ).not.toThrow();
   });
 });

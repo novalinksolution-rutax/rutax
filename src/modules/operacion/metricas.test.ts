@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { obtenerMetricasDelDia } from "./metricas";
+import { obtenerMetricasDelDia, obtenerSlaPorSeller, type SlaPorSeller } from "./metricas";
 
 const TENANT_A = "10000000-0000-0000-0000-000000000001";
 
@@ -24,6 +24,7 @@ interface FilaPedido {
   destinatario_comuna: string;
   fecha_compromiso: string | null;
   creado_en: string;
+  sla_cumplido?: boolean | null;
 }
 
 interface FilaConductor {
@@ -38,6 +39,30 @@ interface FilaManifiesto {
   driver_id: string;
   fecha_operacion: string;
   estado: string;
+}
+
+interface FilaPedidoSla {
+  id: string;
+  tenant_id: string;
+  seller_id: string;
+  estado: string;
+  sla_cumplido: boolean | null;
+  fecha_compromiso: string | null;
+}
+
+interface FilaSeller {
+  id: string;
+  tenant_id: string;
+  nombre_empresa: string;
+}
+
+interface FilaVentanaCorte {
+  seller_id: string;
+  tenant_id: string;
+  hora_corte: string;
+  sla_objetivo_pct: number;
+  zona_id: null;
+  activa: boolean;
 }
 
 interface Estado {
@@ -290,5 +315,185 @@ describe("obtenerMetricasDelDia — nuevas métricas RF-046", () => {
     expect(metricas.conductoresListosHoy).toBe(0);
     expect(metricas.paquetesPorComuna).toEqual([]);
     expect(metricas.rezagadosAyer).toBe(0);
+  });
+
+  it("slaGlobalPct es null cuando no hay pedidos con sla_cumplido evaluado", async () => {
+    coincideDiaActual = (f) => f.tenant_id === TENANT_A;
+
+    const cliente = crearClienteFalso({
+      pedidos: [
+        {
+          id: "p1",
+          tenant_id: TENANT_A,
+          estado: "pendiente_asignacion",
+          destinatario_comuna: "Maipú",
+          fecha_compromiso: "2026-06-09",
+          creado_en: "2026-06-09T10:00:00.000Z",
+          // sla_cumplido no incluido = undefined → tratado como null
+        } as FilaPedido,
+      ],
+    });
+
+    const metricas = await obtenerMetricasDelDia(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+    expect(metricas.slaGlobalPct).toBeNull();
+  });
+
+  it("slaGlobalPct calcula % correcto con pedidos evaluados", async () => {
+    coincideDiaActual = (f) => f.tenant_id === TENANT_A;
+
+    const pedidosConSla = [
+      { id: "p1", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z", sla_cumplido: true },
+      { id: "p2", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z", sla_cumplido: true },
+      { id: "p3", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z", sla_cumplido: false },
+      { id: "p4", tenant_id: TENANT_A, estado: "fallido", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z", sla_cumplido: false },
+    ] as unknown as FilaPedido[];
+
+    const cliente = crearClienteFalso({ pedidos: pedidosConSla });
+    const metricas = await obtenerMetricasDelDia(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+
+    // 2 a tiempo / 4 evaluados = 50%
+    expect(metricas.slaGlobalPct).toBe(50);
+  });
+});
+
+// =============================================================================
+// obtenerSlaPorSeller — SLA por seller
+// =============================================================================
+
+/**
+ * Builder de query encadenable para obtenerSlaPorSeller.
+ * Soporta el esquema identidad (sellers, ventanas_corte) y operacion (pedidos).
+ */
+function buildQuerySla<T extends Record<string, unknown>>(
+  filas: T[],
+  opts?: { count?: "exact"; head?: boolean },
+) {
+  const filtros: Array<(f: T) => boolean> = [];
+
+  const chain = {
+    select: (_cols: string, _opts?: object) => chain,
+    eq(campo: string, valor: unknown) { filtros.push((f) => f[campo] === valor); return chain; },
+    in(campo: string, valores: unknown[]) { filtros.push((f) => valores.includes(f[campo])); return chain; },
+    not(campo: string, op: string, _valor: unknown) {
+      if (op === 'is') { filtros.push((f) => f[campo] !== null && f[campo] !== undefined); }
+      return chain;
+    },
+    is(campo: string, valor: unknown) { filtros.push((f) => f[campo] === valor); return chain; },
+    gte(campo: string, valor: unknown) { filtros.push((f) => String(f[campo]) >= String(valor)); return chain; },
+    lte(campo: string, valor: unknown) { filtros.push((f) => String(f[campo]) <= String(valor)); return chain; },
+    order: () => chain,
+    then(resolve: (r: { data: T[] | null; count: number | null; error: null }) => void) {
+      const filtradas = filas.filter((f) => filtros.every((fn) => fn(f)));
+      if (opts?.head) {
+        resolve({ data: null, count: filtradas.length, error: null });
+      } else {
+        resolve({ data: filtradas, count: filtradas.length, error: null });
+      }
+    },
+  };
+
+  return chain;
+}
+
+function crearClienteSlaFalso(
+  pedidosSla: FilaPedidoSla[],
+  sellers: FilaSeller[],
+  ventanas: FilaVentanaCorte[],
+) {
+  function fromSla(tabla: string) {
+    if (tabla === "pedidos") {
+      return buildQuerySla(pedidosSla as unknown as Record<string, unknown>[]);
+    }
+    if (tabla === "sellers") {
+      return buildQuerySla(sellers as unknown as Record<string, unknown>[]);
+    }
+    if (tabla === "ventanas_corte") {
+      return buildQuerySla(ventanas as unknown as Record<string, unknown>[]);
+    }
+    throw new Error(`Tabla no mockeada en SLA: ${tabla}`);
+  }
+
+  return {
+    from: fromSla,
+    schema: (_nombre: string) => ({ from: fromSla }),
+  } as unknown as import("@supabase/supabase-js").SupabaseClient;
+}
+
+describe("obtenerSlaPorSeller — métricas SLA por seller (F7)", () => {
+  const sellers: FilaSeller[] = [
+    { id: "seller-a", tenant_id: TENANT_A, nombre_empresa: "Seller A" },
+    { id: "seller-b", tenant_id: TENANT_A, nombre_empresa: "Seller B" },
+  ];
+
+  const ventanas: FilaVentanaCorte[] = [
+    { seller_id: "seller-a", tenant_id: TENANT_A, hora_corte: "13:00", sla_objetivo_pct: 95, zona_id: null, activa: true },
+    { seller_id: "seller-b", tenant_id: TENANT_A, hora_corte: "14:00", sla_objetivo_pct: 97, zona_id: null, activa: true },
+  ];
+
+  it("calcula slaPct = 100 cuando todos los pedidos son a tiempo", async () => {
+    const pedidos: FilaPedidoSla[] = [
+      { id: "p1", tenant_id: TENANT_A, seller_id: "seller-a", estado: "entregado", sla_cumplido: true, fecha_compromiso: "2026-06-09" },
+      { id: "p2", tenant_id: TENANT_A, seller_id: "seller-a", estado: "entregado", sla_cumplido: true, fecha_compromiso: "2026-06-09" },
+    ];
+
+    const cliente = crearClienteSlaFalso(pedidos, sellers, ventanas);
+    const resultado = await obtenerSlaPorSeller(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"), 'dia');
+
+    const sellerA = resultado.find((r) => r.sellerId === "seller-a");
+    expect(sellerA?.slaPct).toBe(100);
+    expect(sellerA?.aTiempo).toBe(2);
+    expect(sellerA?.totalTerminales).toBe(2);
+    expect(sellerA?.objetivoPct).toBe(95);
+  });
+
+  it("calcula slaPct = 0 cuando todos los pedidos son tarde", async () => {
+    const pedidos: FilaPedidoSla[] = [
+      { id: "p1", tenant_id: TENANT_A, seller_id: "seller-b", estado: "entregado", sla_cumplido: false, fecha_compromiso: "2026-06-09" },
+      { id: "p2", tenant_id: TENANT_A, seller_id: "seller-b", estado: "fallido", sla_cumplido: false, fecha_compromiso: "2026-06-09" },
+    ];
+
+    const cliente = crearClienteSlaFalso(pedidos, sellers, ventanas);
+    const resultado = await obtenerSlaPorSeller(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"), 'dia');
+
+    const sellerB = resultado.find((r) => r.sellerId === "seller-b");
+    expect(sellerB?.slaPct).toBe(0);
+    expect(sellerB?.objetivoPct).toBe(97);
+  });
+
+  it("calcula slaPct mixto correctamente (3/4 = 75%)", async () => {
+    const pedidos: FilaPedidoSla[] = [
+      { id: "p1", tenant_id: TENANT_A, seller_id: "seller-a", estado: "entregado", sla_cumplido: true, fecha_compromiso: "2026-06-09" },
+      { id: "p2", tenant_id: TENANT_A, seller_id: "seller-a", estado: "entregado", sla_cumplido: true, fecha_compromiso: "2026-06-09" },
+      { id: "p3", tenant_id: TENANT_A, seller_id: "seller-a", estado: "entregado", sla_cumplido: true, fecha_compromiso: "2026-06-09" },
+      { id: "p4", tenant_id: TENANT_A, seller_id: "seller-a", estado: "fallido", sla_cumplido: false, fecha_compromiso: "2026-06-09" },
+    ];
+
+    const cliente = crearClienteSlaFalso(pedidos, sellers, ventanas);
+    const resultado = await obtenerSlaPorSeller(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"), 'dia');
+
+    const sellerA = resultado.find((r) => r.sellerId === "seller-a");
+    expect(sellerA?.slaPct).toBe(75);
+  });
+
+  it("usa objetivo por defecto (97) cuando el seller no tiene ventana configurada", async () => {
+    const pedidos: FilaPedidoSla[] = [
+      { id: "p1", tenant_id: TENANT_A, seller_id: "seller-sin-ventana", estado: "entregado", sla_cumplido: true, fecha_compromiso: "2026-06-09" },
+    ];
+    const sellersExtra: FilaSeller[] = [
+      ...sellers,
+      { id: "seller-sin-ventana", tenant_id: TENANT_A, nombre_empresa: "Sin Ventana" },
+    ];
+
+    const cliente = crearClienteSlaFalso(pedidos, sellersExtra, ventanas);
+    const resultado = await obtenerSlaPorSeller(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"), 'dia');
+
+    const sinVentana = resultado.find((r) => r.sellerId === "seller-sin-ventana");
+    expect(sinVentana?.objetivoPct).toBe(97);
+  });
+
+  it("devuelve array vacío si no hay pedidos con sla_cumplido evaluado", async () => {
+    const cliente = crearClienteSlaFalso([], sellers, ventanas);
+    const resultado = await obtenerSlaPorSeller(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"), 'dia');
+    expect(resultado).toEqual([]);
   });
 });

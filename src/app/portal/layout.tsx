@@ -1,15 +1,17 @@
 /**
- * Layout del portal del seller — navegación y shell compartida.
+ * Layout del portal del seller — mismo AppShell (sidebar + barra superior) que
+ * usa el backoffice del courier, para consistencia visual entre módulos.
  *
- * Verifica que el usuario autenticado es de tipo `seller`.
- * Incluye la navegación principal del portal, incluyendo el enlace
- * "Estado de cuenta" → /portal/cobros (Fase C).
+ * Nota: el seller tiene un único rol (sin variantes RBAC como el courier), así
+ * que la navegación es fija — no hay filtrado por capacidad como en
+ * `(tenant)/layout.tsx`.
  */
 
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { BotonCerrarSesion } from "./boton-cerrar-sesion";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { obtenerAvisosSeller } from "@/lib/avisos/obtener-avisos-seller";
+import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
 
 export default async function LayoutPortal({
   children,
@@ -28,57 +30,48 @@ export default async function LayoutPortal({
     redirect("/");
   }
 
-  const navItems = [
-    { href: "/portal", etiqueta: "Inicio" },
-    { href: "/portal/pedidos", etiqueta: "Mis pedidos" },
-    { href: "/portal/cobros", etiqueta: "Estado de cuenta" },
-    { href: "/portal/incidencias", etiqueta: "Incidencias" },
+  const cliente = crearClienteServiceRole();
+  const [{ data: seller }, avisos] = await Promise.all([
+    cliente
+      .from("sellers")
+      .select("razon_social")
+      .eq("id", sesion.usuario.sellerId)
+      .eq("tenant_id", sesion.usuario.tenantId)
+      .maybeSingle(),
+    obtenerAvisosSeller(sesion.usuario.sellerId),
+  ]);
+
+  // Agrupada por objetivo, mismo patrón que (tenant)/layout.tsx: "Inicio" suelto
+  // arriba (como "Dashboard" en el backoffice), luego Operación y Dinero.
+  const grupos: GrupoNav[] = [
+    {
+      titulo: null,
+      items: [{ href: "/portal", etiqueta: "Inicio", icono: "inicio" }],
+    },
+    {
+      titulo: "Operación",
+      items: [
+        { href: "/portal/pedidos", etiqueta: "Mis pedidos", icono: "pedidos" },
+        { href: "/portal/incidencias", etiqueta: "Incidencias", icono: "incidencias" },
+      ],
+    },
+    {
+      titulo: "Dinero",
+      items: [{ href: "/portal/cobros", etiqueta: "Estado de cuenta", icono: "cobros" }],
+    },
   ];
 
   return (
-    <div className="min-h-svh bg-muted/20">
-      {/* Cabecera del portal */}
-      <header className="sticky top-0 z-30 border-b bg-card shadow-sm">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <p className="text-sm font-semibold text-foreground">Portal del seller</p>
-          <div className="flex items-center gap-1">
-            <nav
-              aria-label="Navegación del portal"
-              className="hidden items-center gap-1 sm:flex"
-            >
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                >
-                  {item.etiqueta}
-                </Link>
-              ))}
-            </nav>
-            <BotonCerrarSesion />
-          </div>
-        </div>
-        {/* Navegación móvil */}
-        <nav
-          aria-label="Navegación móvil del portal"
-          className="flex overflow-x-auto border-t px-4 py-1 sm:hidden"
-        >
-          <div className="flex gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              >
-                {item.etiqueta}
-              </Link>
-            ))}
-          </div>
-        </nav>
-      </header>
-
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-    </div>
+    <AppShell
+      nombreFantasia={(seller?.razon_social as string | undefined) ?? "Portal del seller"}
+      nombreCompleto={sesion.nombreCompleto}
+      subtituloCuenta="Seller"
+      etiquetaMarca="Tienda"
+      densidad="relajada"
+      grupos={grupos}
+      avisos={avisos}
+    >
+      {children}
+    </AppShell>
   );
 }

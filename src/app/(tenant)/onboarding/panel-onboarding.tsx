@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   CircleDashed,
   Clock,
+  CreditCard,
   FileText,
   Landmark,
   Receipt,
@@ -27,17 +28,20 @@ import {
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { formatearFecha } from "@/lib/formato-cl";
-import type { EstadoOnboardingCourier } from "./estado";
+import { BADGE_ESTADO_SUSCRIPCION, TEXTO_ESTADO_SUSCRIPCION } from "@/lib/ui/traduccion-estados";
+import type { EstadoOnboardingCourier, EstadoPasoPlan } from "./estado";
 
 interface Props {
   estado: EstadoOnboardingCourier;
   puedeGestionarDte: boolean;
   puedeGestionarTarifas: boolean;
   puedeGestionarCobranza: boolean;
+  puedeGestionarPlan: boolean;
 }
 
 export function PanelOnboarding({
@@ -45,6 +49,7 @@ export function PanelOnboarding({
   puedeGestionarDte,
   puedeGestionarTarifas,
   puedeGestionarCobranza,
+  puedeGestionarPlan,
 }: Props) {
   const porcentaje = Math.round((estado.pasosCompletados / estado.totalPasos) * 100);
 
@@ -75,9 +80,9 @@ export function PanelOnboarding({
       </div>
 
       {estado.completo ? (
-        <Card className="border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20">
+        <Card className="border-success-subtle bg-success-subtle/40">
           <CardHeader className="flex-row items-start gap-3 space-y-0">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-subtle text-success-subtle-foreground">
               <Sparkles className="size-5" aria-hidden="true" />
             </div>
             <div className="space-y-1">
@@ -96,6 +101,7 @@ export function PanelOnboarding({
         <TarjetaPasoFolios estado={estado} puedeGestionar={puedeGestionarDte} />
         <TarjetaPasoTarifas estado={estado} puedeGestionar={puedeGestionarTarifas} />
         <TarjetaPasoCobranza estado={estado} puedeGestionar={puedeGestionarCobranza} />
+        <TarjetaPasoPlan estado={estado} puedeGestionar={puedeGestionarPlan} />
       </div>
     </div>
   );
@@ -121,7 +127,7 @@ function TarjetaPaso({
   destacado?: boolean;
 }) {
   return (
-    <Card className={destacado ? "border-amber-300 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/10" : undefined}>
+    <Card className={destacado ? "border-warning-subtle bg-warning-subtle/40" : undefined}>
       <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -158,18 +164,16 @@ function TarjetaPasoDte({ estado, puedeGestionar }: { estado: EstadoOnboardingCo
       descripcion: "Elige tu proveedor de facturación electrónica y carga tu certificado digital.",
     },
     en_proceso: {
-      icono: <Clock className="size-5 text-amber-600" aria-hidden="true" />,
+      icono: <Clock className="size-5 text-warning" aria-hidden="true" />,
       badge: (
-        <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">
-          En revisión
-        </Badge>
+        <Badge variant="warning">En revisión</Badge>
       ),
       descripcion: "Tu proveedor está validando tu certificado con el SII — puede tardar algunos días.",
     },
     activo: {
-      icono: <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />,
+      icono: <CheckCircle2 className="size-5 text-success" aria-hidden="true" />,
       badge: (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           Activo
         </Badge>
       ),
@@ -238,11 +242,11 @@ function TarjetaPasoFolios({ estado, puedeGestionar }: { estado: EstadoOnboardin
   if (folios.gestionadoPorProveedor) {
     return (
       <TarjetaPaso
-        icono={<CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />}
+        icono={<CheckCircle2 className="size-5 text-success" aria-hidden="true" />}
         titulo="Folios CAF"
         descripcion="Tu proveedor DTE gestiona tus folios directamente con el SII — no necesitas hacer nada aquí."
         badge={
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Lo gestiona tu proveedor
           </Badge>
         }
@@ -261,7 +265,7 @@ function TarjetaPasoFolios({ estado, puedeGestionar }: { estado: EstadoOnboardin
     <TarjetaPaso
       icono={
         vigentes ? (
-          <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />
+          <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
         ) : (
           <FileText className="size-5" aria-hidden="true" />
         )
@@ -274,7 +278,7 @@ function TarjetaPasoFolios({ estado, puedeGestionar }: { estado: EstadoOnboardin
       }
       badge={
         vigentes ? (
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Vigentes
           </Badge>
         ) : (
@@ -304,7 +308,7 @@ function TarjetaPasoTarifas({ estado, puedeGestionar }: { estado: EstadoOnboardi
     <TarjetaPaso
       icono={
         configuradas ? (
-          <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />
+          <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
         ) : (
           <Wallet className="size-5" aria-hidden="true" />
         )
@@ -317,7 +321,7 @@ function TarjetaPasoTarifas({ estado, puedeGestionar }: { estado: EstadoOnboardi
       }
       badge={
         configuradas ? (
-          <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+          <Badge variant="outline" className="border-success-subtle text-success">
             Configuradas
           </Badge>
         ) : (
@@ -363,13 +367,13 @@ function TarjetaPasoCobranza({
       icono: <Landmark className="size-5" aria-hidden="true" />,
       badge: <Badge variant="outline">Sin conectar</Badge>,
       descripcion:
-        "Conecta tu banco para reconocer, solos, los pagos que te hacen tus sellers y cruzarlos con sus facturas.",
+        "Conecta tu banco para que Rutax reconozca y concilie automáticamente los pagos de tus sellers con sus facturas.",
       destacado: false,
     },
     conectado: {
-      icono: <CheckCircle2 className="size-5 text-emerald-600" aria-hidden="true" />,
+      icono: <CheckCircle2 className="size-5 text-success" aria-hidden="true" />,
       badge: (
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700 dark:text-emerald-400">
+        <Badge variant="outline" className="border-success-subtle text-success">
           Conectado
         </Badge>
       ),
@@ -381,7 +385,7 @@ function TarjetaPasoCobranza({
     con_problemas: {
       icono: <ShieldAlert className="size-5 text-destructive" aria-hidden="true" />,
       badge: <Badge variant="destructive">Necesita tu atención</Badge>,
-      descripcion: "La conexión con tu banco dejó de funcionar. Reconéctala para seguir conciliando tus pagos.",
+      descripcion: "Tu conexión bancaria se desconectó. Reconéctala para seguir conciliando tus pagos automáticamente.",
       destacado: true,
     },
   };
@@ -405,6 +409,64 @@ function TarjetaPasoCobranza({
         ) : (
           <p className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">
             Solo el dueño o administración pueden conectar el banco.
+          </p>
+        )
+      }
+    />
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Paso 5 — Plan de Rutax (suscripción SaaS, informativo / NO bloqueante)
+// -----------------------------------------------------------------------------
+// Nunca cuenta para `totalPasos`/"completo" — mismo trato que Folios/Cobranza
+// (§ estado.ts: "plan" es informativo). Enlaza a `/configuracion/plan`, nunca
+// embebe el selector de planes aquí.
+
+function descripcionPlan(plan: EstadoOnboardingCourier["plan"]): string {
+  switch (plan.estado) {
+    case "trial":
+      return plan.trialHasta
+        ? `Estás en período de prueba de ${plan.nombrePlan ?? "tu plan"} — vence el ${formatearFecha(plan.trialHasta)}.`
+        : `Estás en período de prueba de ${plan.nombrePlan ?? "tu plan"}.`;
+    case "activa":
+      return `Tu plan ${plan.nombrePlan ?? ""} está activo — todo en orden.`;
+    case "suspendida":
+      return "Tu plan está suspendido. Usualmente se debe a un pago pendiente — escríbenos y lo resolvemos juntos.";
+    case "cancelada":
+      return "Tu plan está cancelado. Si quieres reactivarlo, contáctanos y te ayudamos.";
+    case "sin_suscripcion":
+    default:
+      return "Activa tu prueba gratuita de 14 días para seguir usando Rutax.";
+  }
+}
+
+function badgePlan(estadoPlan: EstadoPasoPlan) {
+  if (estadoPlan === "sin_suscripcion") {
+    return <Badge variant="outline">Sin activar</Badge>;
+  }
+  return <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[estadoPlan]} texto={TEXTO_ESTADO_SUSCRIPCION[estadoPlan]} />;
+}
+
+function TarjetaPasoPlan({ estado, puedeGestionar }: { estado: EstadoOnboardingCourier; puedeGestionar: boolean }) {
+  const { plan } = estado;
+  const sinActivar = plan.estado === "sin_suscripcion";
+
+  return (
+    <TarjetaPaso
+      icono={<CreditCard className="size-5" aria-hidden="true" />}
+      titulo="Tu plan de Rutax"
+      descripcion={descripcionPlan(plan)}
+      badge={badgePlan(plan.estado)}
+      destacado={plan.estado === "suspendida"}
+      accion={
+        puedeGestionar ? (
+          <Button asChild variant={sinActivar ? "default" : "outline"}>
+            <Link href="/configuracion/plan">{sinActivar ? "Activar plan" : "Ver mi plan"}</Link>
+          </Button>
+        ) : (
+          <p className="text-xs text-muted-foreground sm:max-w-40 sm:text-right">
+            Solo el dueño puede gestionar el plan de Rutax.
           </p>
         )
       }

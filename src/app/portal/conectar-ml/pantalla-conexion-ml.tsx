@@ -79,12 +79,18 @@ function PantallaConectar({ modo }: { modo: ModoConexionMl }) {
     <div className="w-full space-y-6 text-center">
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          {modo === "reconexion" ? "Reconecta tu cuenta de Mercado Libre" : "Conecta tu cuenta de Mercado Libre"}
+          {modo === "reconexion"
+            ? "Reconecta tu cuenta de Mercado Libre"
+            : modo === "agregar_cuenta"
+              ? "Conecta una cuenta adicional de Mercado Libre"
+              : "Conecta tu cuenta de Mercado Libre"}
         </h1>
         <p className="text-sm text-muted-foreground">
           {modo === "reconexion"
             ? "Vamos a llevarte a Mercado Libre para que vuelvas a autorizar el acceso. Esto solo toma un minuto."
-            : "Para que tus pedidos se sincronicen automáticamente, necesitamos que autorices el acceso desde tu cuenta de Mercado Libre."}
+            : modo === "agregar_cuenta"
+              ? "Vamos a llevarte a Mercado Libre para autorizar otra de tus cuentas. Puedes conectar hasta 3."
+              : "Para que tus pedidos se sincronicen automáticamente, necesitamos que autorices el acceso desde tu cuenta de Mercado Libre."}
         </p>
       </div>
 
@@ -96,12 +102,12 @@ function PantallaConectar({ modo }: { modo: ModoConexionMl }) {
         className={`flex gap-3 rounded-lg border-2 px-4 py-4 text-left ${
           modo === "reconexion"
             ? "border-destructive/50 bg-destructive/5"
-            : "border-amber-500/50 bg-amber-500/10"
+            : "border-warning/50 bg-warning/10"
         }`}
         role="alert"
       >
         <TriangleAlert
-          className={`size-6 shrink-0 ${modo === "reconexion" ? "text-destructive" : "text-amber-600"}`}
+          className={`size-6 shrink-0 ${modo === "reconexion" ? "text-destructive" : "text-warning"}`}
           aria-hidden="true"
         />
         <div className="space-y-1">
@@ -162,8 +168,8 @@ function PantallaResultado({ modo, resultado }: { modo: ModoConexionMl; resultad
   const contenido = construirContenido(modo, resultado);
 
   const estilosPorTono: Record<ContenidoResultado["tono"], string> = {
-    exito: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
-    advertencia: "border-amber-500/40 bg-amber-500/10 text-amber-700",
+    exito: "border-success/40 bg-success/10 text-success",
+    advertencia: "border-warning/40 bg-warning/10 text-warning",
     error: "border-destructive/40 bg-destructive/10 text-destructive",
     neutro: "border-border bg-muted/40 text-muted-foreground",
   };
@@ -200,6 +206,14 @@ function BotonIrAlPortal() {
   );
 }
 
+function BotonIrAMisConexiones() {
+  return (
+    <Button asChild className="w-full sm:w-auto">
+      <Link href="/portal">Ir a mis conexiones</Link>
+    </Button>
+  );
+}
+
 function BotonContactarSoporte() {
   return (
     <Button asChild variant="outline" className="w-full sm:w-auto">
@@ -230,7 +244,9 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         descripcion:
           modo === "reconexion"
             ? "Volviste a autorizar el acceso correctamente. Tus pedidos van a seguir sincronizándose con normalidad."
-            : "Ya podemos empezar a sincronizar tus pedidos automáticamente. Desde tu portal vas a poder seguir su estado en todo momento.",
+            : modo === "agregar_cuenta"
+              ? "Agregaste la cuenta correctamente. Ya estamos sincronizando sus pedidos junto con los de tus otras cuentas."
+              : "Ya podemos empezar a sincronizar tus pedidos automáticamente. Desde tu portal vas a poder seguir su estado en todo momento.",
         acciones: <BotonIrAlPortal />,
       };
 
@@ -285,6 +301,26 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         descripcion:
           "Pasó demasiado tiempo desde que iniciaste el proceso (o lo abriste en otra pestaña). No es un problema de tu cuenta de Mercado Libre — solo necesitas iniciar la conexión de nuevo.",
         acciones: <BotonVolverAIntentar modo={modo} />,
+      };
+
+    case "tope_alcanzado":
+      return {
+        icono: <ShieldAlert className="size-7" aria-hidden="true" />,
+        tono: "advertencia",
+        titulo: "Ya llegaste al límite de cuentas conectadas",
+        descripcion:
+          "Tu cuenta tiene hasta 3 conexiones de Mercado Libre. Para agregar una nueva, primero desconecta una de las que ya tienes desde tu portal.",
+        acciones: <BotonIrAMisConexiones />,
+      };
+
+    case "cuenta_ya_conectada":
+      return {
+        icono: <TriangleAlert className="size-7" aria-hidden="true" />,
+        tono: "advertencia",
+        titulo: "Esta cuenta ya está conectada",
+        descripcion:
+          "La cuenta de Mercado Libre con la que iniciaste sesión ya está vinculada a tu portal. Si tuvo problemas y quieres reconectarla, hazlo desde su tarjeta en tu portal.",
+        acciones: <BotonIrAMisConexiones />,
       };
 
     case "error_sistema":

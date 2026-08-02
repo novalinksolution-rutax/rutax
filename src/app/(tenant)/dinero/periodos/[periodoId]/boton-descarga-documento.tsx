@@ -62,7 +62,7 @@ export function BotonDescargaDocumento({ tipo, referencia, etiqueta }: Props) {
         {isPending ? "Generando enlace..." : (etiqueta ?? textoDefault)}
       </button>
       {error && (
-        <p className="text-xs text-red-700" role="alert">
+        <p className="text-xs text-destructive" role="alert">
           {error}
         </p>
       )}

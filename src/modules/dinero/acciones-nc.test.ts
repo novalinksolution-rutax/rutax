@@ -39,6 +39,7 @@ interface DB {
   periodos: Array<Record<string, unknown>>;
   documentos: Array<Record<string, unknown>>;
   configDte: Array<Record<string, unknown>>;
+  foliosCaf: Array<Record<string, unknown>>;
 }
 
 function crearFakeSupabase(db: DB) {
@@ -46,6 +47,7 @@ function crearFakeSupabase(db: DB) {
     if (schema === 'dinero' && tabla === 'periodos_cobro') return db.periodos;
     if (schema === 'dinero' && tabla === 'documentos_dte') return db.documentos;
     if (schema === 'identidad' && tabla === 'courier_config_dte') return db.configDte;
+    if (schema === 'identidad' && tabla === 'folios_caf') return db.foliosCaf;
     throw new Error(`Tabla no modelada: ${schema}.${tabla}`);
   }
   let schemaActual = '';
@@ -61,6 +63,12 @@ function crearFakeSupabase(db: DB) {
               const b = {
                 eq(col: string, val: unknown) {
                   filtros.push((f) => f[col] === val);
+                  return b;
+                },
+                order() {
+                  return b;
+                },
+                limit() {
                   return b;
                 },
                 maybeSingle() {
@@ -121,6 +129,9 @@ function dbBase(): DB {
       },
     ],
     configDte: [],
+    foliosCaf: [
+      { tenant_id: TENANT, tipo_documento: 61, estado: 'vigente', folio_actual: 5, folio_hasta: 200 },
+    ],
   };
 }
 
@@ -173,6 +184,17 @@ describe('emitirNotaCreditoPeriodo', () => {
       emitirNotaCreditoPeriodo(TENANT, PERIODO, 'motivo', dueno(), 'u-1'),
     ).rejects.toThrow(/rechazada/);
     expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('rechaza si no hay folios CAF tipo 61 disponibles (fix QA jul 2026: no publica un evento condenado a fallar)', async () => {
+    const db = dbBase();
+    db.foliosCaf = [];
+    usarDb(db);
+    await expect(
+      emitirNotaCreditoPeriodo(TENANT, PERIODO, 'motivo', dueno(), 'u-1'),
+    ).rejects.toThrow(/folios/i);
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(bitacoraMock).not.toHaveBeenCalled();
   });
 
   it('rechaza si ya existe una NC (61) para ese 33', async () => {

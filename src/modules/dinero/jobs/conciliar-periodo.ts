@@ -28,6 +28,21 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { camposClasificacionParaInsert } from '../conciliacion-clasificacion';
+import type { TipoDiferenciaConciliacion } from '../tipos';
+import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
+
+/**
+ * Calcula los 3 campos de clasificación de la bandeja de excepciones
+ * (§1.1 P1: `categoria_negocio`, `accion_sugerida`, `fecha_limite`) para un
+ * `tipo_diferencia` dado — evita triplicar la llamada en los 4 checks de este
+ * job (ninguno comparte un helper de inserción como `conciliar-tres-fuentes.ts`).
+ * `categoria_negocio` es NOT NULL sin default desde la migración
+ * 20260708000001 — sin esto, cada INSERT de abajo fallaría con 23502.
+ */
+function clasificacion(tipoDiferencia: TipoDiferenciaConciliacion) {
+  return camposClasificacionParaInsert(tipoDiferencia, new Date().toISOString());
+}
 
 export const jobConciliarPeriodo = inngest.createFunction(
   {
@@ -62,8 +77,12 @@ export const jobConciliarPeriodo = inngest.createFunction(
         .eq('tenant_id', tenantId)
         .eq('seller_id', sellerId)
         .in('estado', ['entregado', 'entregado_manual'])
-        .gte('actualizado_en', `${fechaInicio}T00:00:00`)
-        .lte('actualizado_en', `${fechaFin}T23:59:59`);
+        // Ventana del período en calendario de SANTIAGO. Sin esto, un
+        // timestamp sin offset se interpreta en la zona del servidor (UTC) y
+        // el período se corre 3–4 horas: entregas de la noche del último día
+        // quedaban fuera de la conciliación de su propio período.
+        .gte('actualizado_en', limitesDelDiaSantiago(fechaInicio).desde.toISOString())
+        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString());
 
       const pedidoIds = (pedidosEntregados ?? []).map((p) => p.id as string);
       if (pedidoIds.length === 0) return;
@@ -103,6 +122,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
               descripcion: `Pedido ${pedidoId} entregado sin línea de cobro generada.`,
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('pedido_entregado_sin_linea_cobro'),
             });
         }
       }
@@ -127,8 +147,12 @@ export const jobConciliarPeriodo = inngest.createFunction(
         .eq('seller_id', sellerId)
         .in('estado', ['entregado', 'entregado_manual'])
         .not('driver_id_asignado', 'is', null)
-        .gte('actualizado_en', `${fechaInicio}T00:00:00`)
-        .lte('actualizado_en', `${fechaFin}T23:59:59`);
+        // Ventana del período en calendario de SANTIAGO. Sin esto, un
+        // timestamp sin offset se interpreta en la zona del servidor (UTC) y
+        // el período se corre 3–4 horas: entregas de la noche del último día
+        // quedaban fuera de la conciliación de su propio período.
+        .gte('actualizado_en', limitesDelDiaSantiago(fechaInicio).desde.toISOString())
+        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString());
 
       const pedidoIds = (pedidosConDriver ?? []).map((p) => p.id as string);
       if (pedidoIds.length === 0) return;
@@ -166,6 +190,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
               descripcion: `Pedido ${pedidoId} entregado (con conductor) sin línea de liquidación.`,
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('pedido_entregado_sin_linea_liquidacion'),
             });
         }
       }
@@ -224,6 +249,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
               monto_diferencia_clp: Math.abs(montoDte - montoSumaLineas),
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('monto_dte_difiere_de_lineas'),
             });
 
           logger.warn(
@@ -274,6 +300,7 @@ export const jobConciliarPeriodo = inngest.createFunction(
                 'sin período asignado (periodo_cobro_id IS NULL).',
               estado: 'pendiente',
               job_run_id: runId,
+              ...clasificacion('periodo_cerrado_con_lineas_sueltas'),
             });
 
           logger.warn(

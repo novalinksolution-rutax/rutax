@@ -16,7 +16,14 @@ import {
   cerrarPeriodoManualmente,
   emitirFacturaPeriodo,
   emitirNotaCreditoPeriodo,
+  registrarPreflightOmitido,
 } from "@/modules/dinero/acciones";
+import {
+  preflightEmitirFactura,
+  preflightEmitirNotaCredito,
+  type ResultadoPreflight,
+  type TipoAccionDinero,
+} from "@/modules/dinero/preflight";
 
 export async function accionCerrarPeriodo(
   periodoId: string,
@@ -131,4 +138,72 @@ export async function accionDescargarXmlDte(xmlRef: string): Promise<void> {
   }
 
   redirect(data.signedUrl);
+}
+
+// =============================================================================
+// Preflight — hallazgo P0 de la auditoría (jul 2026)
+// =============================================================================
+// PREPARA/VERIFICA el estado antes de emitir factura o nota de crédito. 100%
+// de lectura — la única escritura de esta sección es la bitácora del override
+// "continuar bajo mi responsabilidad" (`accionRegistrarPreflightOmitido`),
+// para el escenario degradado en que el preflight mismo falla al ejecutarse.
+
+export type RespuestaPreflight =
+  | { ok: true; preflight: ResultadoPreflight }
+  | { ok: false; mensaje: string };
+
+/** PREFLIGHT de `accionEmitirFactura` — mismo gate RBAC, sin escribir nada. */
+export async function accionPreflightEmitirFactura(periodoId: string): Promise<RespuestaPreflight> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+  try {
+    const preflight = await preflightEmitirFactura(sesion.usuario.tenantId, periodoId, sesion.usuario);
+    return { ok: true, preflight };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error desconocido al verificar la emisión de la factura.";
+    return { ok: false, mensaje };
+  }
+}
+
+/** PREFLIGHT de `accionEmitirNotaCredito` — mismo gate RBAC, sin escribir nada. */
+export async function accionPreflightEmitirNotaCredito(periodoId: string): Promise<RespuestaPreflight> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+  try {
+    const preflight = await preflightEmitirNotaCredito(sesion.usuario.tenantId, periodoId, sesion.usuario);
+    return { ok: true, preflight };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error desconocido al verificar la nota de crédito.";
+    return { ok: false, mensaje };
+  }
+}
+
+/**
+ * Registra en bitácora que el usuario decidió CONTINUAR sin un preflight
+ * válido (el preflight mismo falló — error de red/lectura, escenario
+ * degradado). Se llama ANTES de permitir el click en "Confirmar" en ese caso;
+ * NUNCA reemplaza al preflight normal ni se usa cuando el preflight sí corrió
+ * y solo mostró advertencias (eso no requiere override, solo confirmar).
+ */
+export async function accionRegistrarPreflightOmitido(
+  tipoAccion: TipoAccionDinero,
+  entidadId: string,
+): Promise<void> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    throw new Error("No autenticado.");
+  }
+  await registrarPreflightOmitido(
+    sesion.usuario.tenantId,
+    tipoAccion,
+    entidadId,
+    sesion.usuario,
+    sesion.usuarioId,
+  );
 }

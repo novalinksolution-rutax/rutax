@@ -34,7 +34,7 @@ export default async function PaginaExportarDatos() {
         </p>
       </div>
 
-      <div className="rounded-xl border bg-card p-6 shadow-sm">
+      <div className="rounded-lg border bg-card p-6 shadow-sm">
         <div className="space-y-4">
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">Archivo de exportación (JSON)</p>

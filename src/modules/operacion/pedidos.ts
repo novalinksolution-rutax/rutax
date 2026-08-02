@@ -24,16 +24,27 @@ import type {
   PaginadoPedidos,
   ActualizarEstadoEntrada,
   CrearPedidoSameDayEntrada,
+  ResultadoCrearPedidoSameDay,
   EstadoPedido,
+  EstadoGeocoding,
+  CoberturaEstado,
 } from "./tipos";
+import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
+import { ahoraEnSantiago, combinarFechaHoraSantiago, horaAMinutos } from "@/lib/fecha-santiago";
+import { resolverZona } from "./zonas";
+import { resolverVentanaCorte } from "./ventanas-corte";
 import { ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
-import { puedeAjustarOperacionDiaria } from "@/modules/identidad/capacidades";
+import { puedeAjustarOperacionDiaria, puedeMarcarEvidenciasPropias } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { validarTransicion } from "./maquina-estados";
-import { abrirIncidencia } from "./incidencias";
+import { abrirIncidencia, actualizarIncidencia } from "./incidencias";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import { inngest } from "@/lib/inngest/cliente";
+import { generarCodigoInterno } from "./codigo-interno";
+
+/** Máximo de intentos al generar `codigo_interno` ante colisión (unique_violation, 23505). */
+const MAX_INTENTOS_CODIGO_INTERNO = 5;
 
 /**
  * Estados de pedido financieramente relevantes: al transicionar a cualquiera
@@ -82,6 +93,21 @@ function filaAPedido(fila: Record<string, any>): Pedido {
     notasInternas: fila.notas_internas ?? null,
     creadoEn: fila.creado_en,
     actualizadoEn: fila.actualizado_en,
+    // Columnas de geocoding (migración 0013 — F4, ítem 1.1)
+    lat: fila.lat ?? null,
+    long: fila.long ?? null,
+    geoEstado: (fila.geo_estado ?? 'pendiente') as EstadoGeocoding,
+    geoConfianza: fila.geo_confianza ?? null,
+    geocodificadoEn: fila.geocodificado_en ?? null,
+    coberturaEstado: (fila.cobertura_estado ?? 'pendiente') as CoberturaEstado,
+    // Columnas de SLA/corte (migración 0014 — F7, ítem 1.2)
+    fechaCompromisoHora: fila.fecha_compromiso_hora ?? null,
+    corteRiesgo: fila.corte_riesgo ?? false,
+    slaCumplido: fila.sla_cumplido ?? null,
+    // Columnas de tracking same-day (migración 0016 — Bloque 2)
+    trackingToken: fila.tracking_token ?? null,
+    // Código interno operativo para etiqueta con QR (same-day).
+    codigoInterno: fila.codigo_interno ?? null,
   };
 }
 
@@ -131,8 +157,17 @@ export async function listarPedidos(
 
   if (filtros.sellerId) query = query.eq("seller_id", filtros.sellerId);
   if (filtros.conductorId) query = query.eq("driver_id_asignado", filtros.conductorId);
-  if (filtros.estado) query = query.eq("estado", filtros.estado);
-  if (filtros.fecha) query = query.eq("fecha_compromiso", filtros.fecha);
+
+  if (filtros.porRevisar) {
+    // Bandeja de revisión geocoding: geo_estado problemático OR cobertura sin tarifa/revisión.
+    // Usamos .or() con la sintaxis de PostgREST (comas para AND dentro del grupo).
+    query = query.or(
+      "geo_estado.in.(no_resuelto,fuera_cobertura),cobertura_estado.in.(requiere_revision,sin_tarifa_zona)",
+    );
+  } else {
+    if (filtros.estado) query = query.eq("estado", filtros.estado);
+    if (filtros.fecha) query = query.eq("fecha_compromiso", filtros.fecha);
+  }
 
   query = query
     .order("creado_en", { ascending: false })
@@ -168,7 +203,7 @@ export async function actualizarEstadoPedido(
   entrada: ActualizarEstadoEntrada,
   actor?: UsuarioActual,
 ): Promise<Pedido> {
-  // 1. Verificar RBAC para correcciones manuales.
+  // 1. Verificar RBAC según el tipo de ejecutor.
   if (entrada.ejecutor === "interno") {
     if (!actor) {
       throw new ErrorValidacion(
@@ -187,12 +222,27 @@ export async function actualizarEstadoPedido(
     }
   }
 
+  if (entrada.ejecutor === "conductor") {
+    if (!actor) {
+      throw new ErrorValidacion(
+        "Se requiere el actor (conductor autenticado) para ejecutar esta transición",
+      );
+    }
+    if (!puedeMarcarEvidenciasPropias(actor)) {
+      throw new ErrorValidacion(
+        "El usuario no tiene capacidad de conductor para marcar evidencias propias",
+      );
+    }
+    // La barrera same-day y la verificación de asignación se aplican DESPUÉS de
+    // leer el pedido (paso 2), ya que necesitamos tipo_pedido y driver_id_asignado.
+  }
+
   // 2. Leer estado actual del pedido — con aislamiento de tenant.
-  // Se incluyen las columnas necesarias para el evento financiero post-commit:
-  // seller_id, driver_id_asignado, tipo_pedido, tarifa_aplicable_id.
+  // Se incluyen las columnas necesarias para el evento financiero post-commit
+  // y para la proyección de sla_cumplido (fecha_compromiso_hora).
   const { data: pedidoActual, error: errorLectura } = await cliente
     .from("pedidos")
-    .select("id, estado, seller_id, tenant_id, driver_id_asignado, tipo_pedido, tarifa_aplicable_id")
+    .select("id, estado, seller_id, tenant_id, driver_id_asignado, tipo_pedido, tarifa_aplicable_id, fecha_compromiso_hora, fecha_compromiso")
     .eq("id", entrada.pedidoId)
     .eq("tenant_id", entrada.tenantId)
     .maybeSingle();
@@ -207,6 +257,49 @@ export async function actualizarEstadoPedido(
 
   const estadoActual: EstadoPedido = pedidoActual.estado;
 
+  // 2b. FRONTERA DURA: si el ejecutor es 'conductor', aplicar las restricciones
+  //     same-day ANTES de validarTransicion. El conductor NUNCA actúa sobre Flex.
+  if (entrada.ejecutor === "conductor") {
+    // Solo pedidos same-day: los Flex los gobierna la app de Mercado Envíos Flex.
+    if (pedidoActual.tipo_pedido !== "same_day") {
+      throw new ErrorValidacion(
+        "El conductor solo opera pedidos same-day; los Flex los reporta Mercado Libre.",
+      );
+    }
+    // Solo pedidos asignados al propio conductor.
+    if (pedidoActual.driver_id_asignado !== actor!.driverId) {
+      throw new ErrorValidacion(
+        "El conductor solo puede actuar sobre pedidos asignados a él.",
+      );
+    }
+    // Si el nuevo estado es 'entregado', debe existir un POD válido (es_valido=true).
+    if (entrada.estadoNuevo === "entregado") {
+      const { data: podValido } = await cliente
+        .from("pruebas_entrega")
+        .select("id")
+        .eq("pedido_id", entrada.pedidoId)
+        .eq("tenant_id", entrada.tenantId)
+        .eq("tipo_resultado", "entregado")
+        .eq("es_valido", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (!podValido) {
+        throw new ErrorValidacion(
+          "No se puede cerrar la entrega sin prueba de entrega válida: falta foto o la ubicación no coincide con el destino.",
+        );
+      }
+    }
+    // Si el nuevo estado es 'fallido', exigir tipo_incidencia en la entrada.
+    if (entrada.estadoNuevo === "fallido") {
+      if (!entrada.tipoIncidenciaConductor) {
+        throw new ErrorValidacion(
+          "Se requiere el tipo de incidencia para registrar un fallo de entrega.",
+        );
+      }
+    }
+  }
+
   // 3. Optimistic locking: el estado actual debe coincidir con el esperado.
   // Si difiere → condición de carrera resuelta. El job que llama debe capturar
   // ErrorConflicto y terminar sin reintento (no es un fallo real).
@@ -220,13 +313,86 @@ export async function actualizarEstadoPedido(
   // 4. Validar transición (función pura — lanza ErrorTransicionInvalida si no es válida).
   validarTransicion(estadoActual, entrada.estadoNuevo, entrada.ejecutor);
 
-  // 5. Ejecutar el UPDATE.
+  // 4b. Proyección de sla_cumplido (F7, ítem 1.2).
+  // Al transicionar a un estado terminal se evalúa el SLA:
+  //   - entregado / entregado_manual + fecha_compromiso_hora existe + entrega a tiempo
+  //     → sla_cumplido = true
+  //   - cualquier terminal exitoso pero tardío, o estado fallido/devuelto/cancelado
+  //     → sla_cumplido = false
+  //   - sin fecha_compromiso_hora ni fecha_compromiso → null (no evaluable)
+  // La proyección es barata: un campo en el mismo UPDATE — sin job nuevo.
+  const ahora = new Date();
+  let slaCumplido: boolean | null = null;
+
+  const ESTADOS_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['entregado', 'entregado_manual']);
+  const ESTADOS_NO_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['fallido', 'fallido_manual', 'devuelto', 'cancelado']);
+
+  if (ESTADOS_EXITOSOS_TERMINALES.has(entrada.estadoNuevo)) {
+    const fechaCompromisoHora = pedidoActual.fecha_compromiso_hora as string | null;
+    if (fechaCompromisoHora) {
+      slaCumplido = ahora <= new Date(fechaCompromisoHora);
+    } else if (pedidoActual.fecha_compromiso as string | null) {
+      // Fallback: si hay fecha_compromiso (date) pero no timestamptz, comparar al final del día.
+      // Usamos la medianoche del día de compromiso (fin del día = 23:59:59 Santiago).
+      // Conservador: no se puede evaluar hora exacta → null.
+      slaCumplido = null;
+    }
+    // else: sin ninguna referencia → null
+  } else if (ESTADOS_NO_EXITOSOS_TERMINALES.has(entrada.estadoNuevo)) {
+    // Estado no exitoso: SLA incumplido si había compromiso horario configurado.
+    const fechaCompromisoHora = pedidoActual.fecha_compromiso_hora as string | null;
+    slaCumplido = fechaCompromisoHora ? false : null;
+  }
+
+  // 5. Bitácora ANTES del UPDATE (CLAUDE.md: "bitácora antes que efectos externos").
+  // Cualquier acción de usuario queda registrada incluso si el UPDATE posterior falla.
+  if (entrada.ejecutor === "interno" && actor) {
+    await registrarEnBitacora(cliente, {
+      tenantId: entrada.tenantId,
+      actorUsuarioId: entrada.actuadoPorUsuarioId ?? null,
+      actorTipo: "usuario",
+      accion: "pedido.estado_corregido_manual",
+      entidadTipo: "pedido",
+      entidadId: entrada.pedidoId,
+      detalle: {
+        estado_anterior: estadoActual,
+        estado_nuevo: entrada.estadoNuevo,
+        motivo: entrada.motivo,
+      },
+    });
+  }
+
+  if (entrada.ejecutor === "conductor" && actor) {
+    await registrarEnBitacora(cliente, {
+      tenantId: entrada.tenantId,
+      actorUsuarioId: entrada.actuadoPorUsuarioId ?? null,
+      actorTipo: "usuario",
+      accion: "pedido.estado_actualizado_conductor",
+      entidadTipo: "pedido",
+      entidadId: entrada.pedidoId,
+      detalle: {
+        estado_anterior: estadoActual,
+        estado_nuevo: entrada.estadoNuevo,
+        // No incluir foto_path, lat/long ni datos personales en bitácora.
+        tipo_incidencia: entrada.tipoIncidenciaConductor ?? null,
+      },
+    });
+  }
+
+  // 6. Ejecutar el UPDATE.
+  const updatePayload: Record<string, unknown> = {
+    estado: entrada.estadoNuevo,
+    actualizado_en: ahora.toISOString(),
+  };
+
+  // Solo escribir sla_cumplido si se pudo evaluar (no dejar null sobre un valor ya evaluado).
+  if (slaCumplido !== null) {
+    updatePayload.sla_cumplido = slaCumplido;
+  }
+
   const { data: pedidoActualizado, error: errorUpdate } = await cliente
     .from("pedidos")
-    .update({
-      estado: entrada.estadoNuevo,
-      actualizado_en: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", entrada.pedidoId)
     .eq("tenant_id", entrada.tenantId)
     .eq("estado", entrada.estadoEsperado) // guarda adicional a nivel de BD
@@ -247,38 +413,79 @@ export async function actualizarEstadoPedido(
 
   const pedido = filaAPedido(pedidoActualizado);
 
-  // 6. Si el nuevo estado es 'fallido' o 'fallido_manual', abrir incidencia
-  //    automáticamente si no hay una abierta (abrirIncidencia es idempotente).
+  // 7a. Si el nuevo estado es 'fallido' o 'fallido_manual', abrir incidencia
+  //     automáticamente si no hay una abierta (abrirIncidencia es idempotente).
   if (entrada.estadoNuevo === "fallido" || entrada.estadoNuevo === "fallido_manual") {
+    // El conductor puede declarar el tipo de incidencia al registrar su fallo.
+    const tipoIncidencia =
+      entrada.ejecutor === "conductor" && entrada.tipoIncidenciaConductor
+        ? entrada.tipoIncidenciaConductor
+        : "otro"; // tipo genérico al abrir automáticamente — el supervisor la refina
+
+    const descripcionIncidencia =
+      entrada.estadoNuevo === "fallido_manual"
+        ? `Fallo manual registrado. Motivo: ${entrada.motivo ?? "no especificado"}`
+        : entrada.ejecutor === "conductor"
+          ? `Fallo de entrega reportado por el conductor. Tipo: ${tipoIncidencia}`
+          : "Fallo de entrega reportado por ML";
+
     await abrirIncidencia(cliente, {
       tenantId: entrada.tenantId,
       pedidoId: entrada.pedidoId,
       sellerId: pedidoActual.seller_id,
-      tipo: "otro", // tipo genérico al abrir automáticamente — el supervisor la refina
-      descripcion:
-        entrada.estadoNuevo === "fallido_manual"
-          ? `Fallo manual registrado. Motivo: ${entrada.motivo ?? "no especificado"}`
-          : "Fallo de entrega reportado por ML",
+      tipo: tipoIncidencia,
+      descripcion: descripcionIncidencia,
       abiertaPorUsuarioId: entrada.actuadoPorUsuarioId ?? undefined,
       esAccionManual: false, // apertura automática — no requiere RBAC adicional
     });
   }
 
-  // 7. Bitácora para correcciones manuales (ejecutor='interno').
-  if (entrada.ejecutor === "interno" && actor) {
+  // 7b. Al transicionar a 'devuelto' DESDE 'fallido'/'fallido_manual', la incidencia
+  //     abierta por el fallo ya no aplica — el paquete fue devuelto al origen.
+  //     Se resuelve la incidencia abierta (idempotente: actualizarIncidencia lanza
+  //     ErrorConflicto si ya está resuelta/cerrada → la capturamos como no-op).
+  if (
+    entrada.estadoNuevo === "devuelto" &&
+    (estadoActual === "fallido" || estadoActual === "fallido_manual")
+  ) {
+    // Bitácora de la resolución de incidencia ANTES del efecto (CLAUDE.md).
     await registrarEnBitacora(cliente, {
       tenantId: entrada.tenantId,
       actorUsuarioId: entrada.actuadoPorUsuarioId ?? null,
-      actorTipo: "usuario",
-      accion: "pedido.estado_corregido_manual",
+      actorTipo: entrada.ejecutor === "interno" ? "usuario" : "sistema",
+      accion: "incidencia.resuelta_por_devolucion",
       entidadTipo: "pedido",
       entidadId: entrada.pedidoId,
       detalle: {
         estado_anterior: estadoActual,
-        estado_nuevo: entrada.estadoNuevo,
-        motivo: entrada.motivo,
+        motivo: "Paquete devuelto al origen",
       },
     });
+
+    // Buscar la incidencia abierta del pedido para resolverla.
+    const { data: incidenciasAbiertas } = await cliente
+      .from("incidencias")
+      .select("id, estado")
+      .eq("pedido_id", entrada.pedidoId)
+      .eq("tenant_id", entrada.tenantId)
+      .in("estado", ["abierta", "en_gestion"])
+      .limit(1);
+
+    if (incidenciasAbiertas && incidenciasAbiertas.length > 0) {
+      const incidencia = incidenciasAbiertas[0];
+      try {
+        await actualizarIncidencia(cliente, {
+          incidenciaId: incidencia.id as string,
+          tenantId: entrada.tenantId,
+          estado: "resuelta",
+          notasResolucion: "Paquete devuelto al origen",
+          resueltaPorUsuarioId: entrada.actuadoPorUsuarioId ?? undefined,
+        });
+      } catch {
+        // Si ya estaba resuelta/cerrada (inmutable) — no-op.
+        // La bitácora ya quedó registrada arriba.
+      }
+    }
   }
 
   // 8. Post-commit: publicar evento financiero si el nuevo estado es relevante.
@@ -290,7 +497,12 @@ export async function actualizarEstadoPedido(
     try {
       await inngest.send({
         name: 'dinero/pedido.estado_financiero_relevante',
-        id: `pedido-financiero-${entrada.pedidoId}`,
+        // Incluir estadoNuevo en el id para que cada transición financiera sea
+        // un evento distinto. Sin el estado, el segundo evento del mismo pedido
+        // (devuelto tras fallido) sería deduplicado por Inngest y el motor nunca
+        // ejecutaría la anulación de líneas. La idempotencia real (no duplicar
+        // líneas) la sigue garantizando el UNIQUE(pedido_id) en BD.
+        id: `pedido-financiero-${entrada.pedidoId}-${entrada.estadoNuevo}`,
         data: {
           pedidoId: entrada.pedidoId,
           tenantId: entrada.tenantId,
@@ -319,6 +531,16 @@ export async function actualizarEstadoPedido(
 /**
  * Crea un pedido same-day ad-hoc.
  *
+ * Regla dura de corte (F7, ítem 1.2):
+ * - Resuelve la zona de la comuna y la ventana de corte aplicable.
+ * - Si hay ventana configurada y la hora actual (local Santiago) supera la
+ *   hora_corte → crea el pedido con `corte_riesgo=true` y devuelve un
+ *   `avisoCorte` en el retorno (NO rechaza la creación).
+ * - Si está dentro del corte → `corte_riesgo=false` y calcula
+ *   `fecha_compromiso_hora = hora_corte + minutos_preparacion + minutos_ruta_estimado`
+ *   interpretada en la zona horaria de Santiago.
+ * - Si NO hay ventana → crea normal, `corte_riesgo=false`, `fecha_compromiso_hora=null`.
+ *
  * Busca la tarifa vigente para el seller (o la tarifa por defecto del tenant)
  * y la fija en tarifa_aplicable_id. Si no hay tarifa configurada, lanza
  * ErrorValidacion con mensaje orientativo.
@@ -326,10 +548,9 @@ export async function actualizarEstadoPedido(
 export async function crearPedidoSameDay(
   cliente: SupabaseClient,
   entrada: CrearPedidoSameDayEntrada,
-): Promise<Pedido> {
-  // Buscar tarifa vigente: primero específica del seller, luego por defecto del tenant.
-  // Ordenar por vigente_desde desc, tomar la primera cuya vigente_desde <= today.
-  const hoy = new Date().toISOString().split("T")[0]; // 'YYYY-MM-DD'
+): Promise<ResultadoCrearPedidoSameDay> {
+  // --- 1. Tarifa vigente -------------------------------------------------------
+  const { fecha: fechaHoy } = ahoraEnSantiago(); // 'YYYY-MM-DD' en Santiago
 
   const { data: tarifas, error: errorTarifa } = await cliente
     .from("tarifas")
@@ -337,10 +558,10 @@ export async function crearPedidoSameDay(
     .eq("tenant_id", entrada.tenantId)
     .eq("tipo_entrega", "same_day")
     .eq("estado", "activa")
-    .lte("vigente_desde", hoy)
-    .or(`vigente_hasta.is.null,vigente_hasta.gte.${hoy}`)
+    .lte("vigente_desde", fechaHoy)
+    .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaHoy}`)
     .or(`seller_id.eq.${entrada.sellerId},seller_id.is.null`)
-    .order("seller_id", { ascending: false, nullsFirst: false }) // seller específico primero
+    .order("seller_id", { ascending: false, nullsFirst: false })
     .order("vigente_desde", { ascending: false })
     .limit(1);
 
@@ -357,30 +578,200 @@ export async function crearPedidoSameDay(
 
   const tarifaAplicableId: string = tarifas[0].id;
 
-  // Crear el pedido.
-  const { data: nuevo, error: errorInsert } = await cliente
-    .from("pedidos")
-    .insert({
-      tenant_id: entrada.tenantId,
-      seller_id: entrada.sellerId,
-      tipo_pedido: "same_day",
-      origen: "same_day_manual",
-      estado: "pendiente_asignacion",
-      destinatario_nombre: entrada.destinatarioNombre,
-      destinatario_direccion: entrada.destinatarioDireccion,
-      destinatario_comuna: entrada.destinatarioComuna,
-      destinatario_telefono: entrada.destinatarioTelefono ?? null,
-      instrucciones_entrega: entrada.instruccionesEntrega ?? null,
-      fecha_compromiso: entrada.fechaCompromiso ?? null,
-      notas_internas: entrada.notasInternas ?? null,
-      tarifa_aplicable_id: tarifaAplicableId,
-    })
-    .select()
-    .single();
+  // --- 2. Resolver zona de la comuna -----------------------------------------
+  // Normalizar la comuna antes de llamar a resolver_zona (la función SQL compara
+  // por igualdad exacta y espera la forma canónica del catálogo).
+  const comunaCanonica = resolverComunaCanonica(entrada.destinatarioComuna);
+  const zonaId = comunaCanonica
+    ? await resolverZona(cliente, entrada.tenantId, comunaCanonica)
+    : null;
+
+  // --- 3. Resolver ventana de corte ------------------------------------------
+  const ventana = await resolverVentanaCorte(
+    cliente,
+    entrada.tenantId,
+    entrada.sellerId,
+    zonaId,
+    'same_day',
+  );
+
+  // --- 4. Evaluar hora de corte en TZ Santiago --------------------------------
+  const ahora = ahoraEnSantiago();
+  let fechaCompromisoHora: string | null = null;
+  let corteRiesgo = false;
+  let avisoCorte: ResultadoCrearPedidoSameDay['avisoCorte'] | undefined;
+
+  if (ventana) {
+    const minutosAhora = horaAMinutos(ahora.hora);
+    const minutosCorte = horaAMinutos(ventana.horaCorte);
+
+    if (minutosAhora > minutosCorte) {
+      // Fuera de corte: crear con aviso, no rechazar.
+      corteRiesgo = true;
+
+      // Bitácora de creación fuera de corte (CLAUDE.md: bitácora ANTES de efectos).
+      if (entrada.actorUsuarioId) {
+        await registrarEnBitacora(cliente, {
+          tenantId: entrada.tenantId,
+          actorUsuarioId: entrada.actorUsuarioId,
+          actorTipo: 'usuario',
+          accion: 'pedido.creado_fuera_corte',
+          entidadTipo: 'pedido',
+          entidadId: null,
+          detalle: {
+            seller_id: entrada.sellerId,
+            hora_corte: ventana.horaCorte,
+            hora_actual: ahora.hora,
+            zona_id: zonaId,
+          },
+        });
+      }
+
+      avisoCorte = {
+        tipo: 'fuera_corte',
+        mensaje: `Pasó la hora de corte (${ventana.horaCorte}). El pedido se registró, pero la entrega para hoy está en riesgo.`,
+        horaCorte: ventana.horaCorte,
+        sugerencia: 'Avisa al destinatario sobre el posible retraso o reactiva el pedido para mañana.',
+      };
+    } else {
+      // Dentro de corte: calcular fecha_compromiso_hora.
+      const minutosCompromiso = minutosCorte + ventana.minutosPreparacion + ventana.minutosRutaEstimado;
+      const horasCompromiso = Math.floor(minutosCompromiso / 60) % 24;
+      const minsCompromiso = minutosCompromiso % 60;
+      const horaCompromiso = `${String(horasCompromiso).padStart(2, '0')}:${String(minsCompromiso).padStart(2, '0')}`;
+
+      // El instante de compromiso se refiere al DÍA de hoy en Santiago.
+      const instante = combinarFechaHoraSantiago(ahora.fecha, horaCompromiso);
+      fechaCompromisoHora = instante.toISOString();
+    }
+  }
+
+  // --- 5. Crear el pedido -----------------------------------------------------
+  // Generar tracking_token opaco para same-day (UUID v4 estándar — no es un secreto
+  // cifrado, es un identificador no adivinable para el enlace de tracking público).
+  const trackingToken = crypto.randomUUID();
+
+  // codigo_interno: identificador operativo corto para la etiqueta con QR.
+  // Único por tenant (índice parcial) — reintento ante unique_violation (23505).
+  let nuevo: Record<string, unknown> | null = null;
+  let errorInsert: { code?: string; message: string } | null = null;
+
+  for (let intento = 1; intento <= MAX_INTENTOS_CODIGO_INTERNO; intento++) {
+    const codigoInterno = generarCodigoInterno();
+
+    const resultado = await cliente
+      .from("pedidos")
+      .insert({
+        tenant_id: entrada.tenantId,
+        seller_id: entrada.sellerId,
+        tipo_pedido: "same_day",
+        origen: "same_day_manual",
+        estado: "pendiente_asignacion",
+        destinatario_nombre: entrada.destinatarioNombre,
+        destinatario_direccion: entrada.destinatarioDireccion,
+        destinatario_comuna: entrada.destinatarioComuna,
+        destinatario_telefono: entrada.destinatarioTelefono ?? null,
+        instrucciones_entrega: entrada.instruccionesEntrega ?? null,
+        fecha_compromiso: entrada.fechaCompromiso ?? null,
+        notas_internas: entrada.notasInternas ?? null,
+        tarifa_aplicable_id: tarifaAplicableId,
+        fecha_compromiso_hora: fechaCompromisoHora,
+        corte_riesgo: corteRiesgo,
+        sla_cumplido: null,
+        tracking_token: trackingToken,
+        codigo_interno: codigoInterno,
+      })
+      .select()
+      .single();
+
+    nuevo = resultado.data as Record<string, unknown> | null;
+    errorInsert = resultado.error as { code?: string; message: string } | null;
+
+    if (!errorInsert) break;
+
+    // Solo reintentar ante colisión de codigo_interno (unique_violation). Cualquier
+    // otro error es definitivo — no tiene sentido regenerar el código para él.
+    if (errorInsert.code !== "23505") break;
+  }
 
   if (errorInsert || !nuevo) {
     throw new Error(`Error al crear el pedido same-day: ${errorInsert?.message ?? "sin datos"}`);
   }
 
-  return filaAPedido(nuevo);
+  const pedido = filaAPedido(nuevo);
+
+  // --- 6. Evento geocodificación (best-effort post-commit) --------------------
+  try {
+    await inngest.send({
+      name: 'operacion/pedido.ingestado',
+      id: `pedido-ingestado-${pedido.id}`,
+      data: {
+        pedidoId: pedido.id,
+        tenantId: pedido.tenantId,
+        sellerId: pedido.sellerId,
+        direccion: pedido.destinatarioDireccion,
+        comuna: pedido.destinatarioComuna,
+        tipoPedido: 'same_day',
+      },
+    });
+  } catch {
+    // Evento best-effort post-commit. Si falla, el pedido ya fue creado con
+    // geo_estado = 'pendiente' y el job de geocoding lo procesará por barrido.
+    // NUNCA relanzar — no debe bloquear la creación del pedido.
+  }
+
+  return { pedido, avisoCorte };
 }
+
+// =============================================================================
+// asegurarCodigoInterno — backfill perezoso
+// =============================================================================
+
+/**
+ * Devuelve el `codigo_interno` de un pedido same-day, generándolo y
+ * persistiéndolo si aún no lo tiene (pedidos creados antes de esta feature).
+ *
+ * Reintenta ante colisión (unique_violation, 23505) igual que en la creación.
+ * Se usa desde los endpoints de etiqueta — nunca desde el request de creación
+ * del pedido (ese camino ya genera el código directamente en el INSERT).
+ *
+ * Nota de concurrencia: si dos requests concurrentes hacen backfill sobre el
+ * mismo pedido, ambos UPDATE competirían por el mismo índice único — el
+ * perdedor recibe 23505 y reintenta con un código nuevo, generando dos códigos
+ * distintos persistidos en carrera (el último UPDATE gana). Esto es aceptable
+ * para un caso de backfill perezoso de baja frecuencia; no es una operación
+ * financiera y no requiere lock explícito.
+ */
+export async function asegurarCodigoInterno(
+  cliente: SupabaseClient,
+  pedido: Pick<Pedido, "id" | "tenantId" | "codigoInterno">,
+): Promise<string> {
+  if (pedido.codigoInterno) return pedido.codigoInterno;
+
+  let errorUpdate: { code?: string; message: string } | null = null;
+
+  for (let intento = 1; intento <= MAX_INTENTOS_CODIGO_INTERNO; intento++) {
+    const codigoInterno = generarCodigoInterno();
+
+    const { data, error } = await cliente
+      .from("pedidos")
+      .update({ codigo_interno: codigoInterno })
+      .eq("id", pedido.id)
+      .eq("tenant_id", pedido.tenantId)
+      .select("codigo_interno")
+      .single();
+
+    errorUpdate = error as { code?: string; message: string } | null;
+
+    if (!errorUpdate && data) {
+      return (data as { codigo_interno: string }).codigo_interno;
+    }
+
+    if (errorUpdate?.code !== "23505") break;
+  }
+
+  throw new Error(
+    `No se pudo generar codigo_interno para el pedido ${pedido.id}: ${errorUpdate?.message ?? "sin datos"}`,
+  );
+}
+

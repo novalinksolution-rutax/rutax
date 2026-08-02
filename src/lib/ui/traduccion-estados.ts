@@ -8,7 +8,7 @@
  * Fuente: tablas de traducción del documento docs/ux/fase-b-operacion.md (§B-1)
  */
 
-import type { EstadoPedido, TipoIncidencia, EstadoManifiesto, EstadoIncidencia } from "@/modules/operacion/tipos";
+import type { EstadoPedido, TipoIncidencia, EstadoManifiesto, EstadoIncidencia, EstadoGeocoding, CoberturaEstado } from "@/modules/operacion/tipos";
 import type {
   EstadoPeriodo,
   EstadoSii,
@@ -17,7 +17,19 @@ import type {
   TipoDiferenciaConciliacion,
   EstadoMatchPago,
   EstadoCobroPeriodo,
+  EstadoPayout,
+  CategoriaNegocioConciliacion,
+  AccionSugeridaConciliacion,
 } from "@/modules/dinero/tipos";
+import type {
+  EstadoSuscripcion,
+  // `EstadoPeriodo` de `plataforma` colisiona de nombre con el de `dinero` (ya
+  // importado arriba) — alias obligatorio.
+  EstadoPeriodo as EstadoPeriodoSuscripcion,
+  EstadoPago as EstadoPagoSuscripcion,
+  EstadoMandato,
+  MetodoPago,
+} from "@/modules/plataforma/tipos";
 
 // =============================================================================
 // EstadoPedido
@@ -52,17 +64,96 @@ export type ColorBadge =
   | "success"
   | "info";
 
-export const COLOR_ESTADO_PEDIDO: Record<EstadoPedido, string> = {
-  pendiente_asignacion: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  asignado: "bg-blue-100 text-blue-800 border-blue-200",
-  en_ruta: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  entregado: "bg-green-100 text-green-800 border-green-200",
-  entregado_manual: "bg-green-100 text-green-800 border-green-200",
-  fallido: "bg-red-100 text-red-800 border-red-200",
-  fallido_manual: "bg-red-100 text-red-800 border-red-200",
-  cancelado: "bg-gray-100 text-gray-600 border-gray-200",
-  devuelto: "bg-orange-100 text-orange-800 border-orange-200",
+/**
+ * Variante semántica de un estado. ÚNICA fuente de color de estado de la app:
+ * estos nombres mapean a los tokens de marca (DESIGN_SYSTEM §9), no a la paleta
+ * cruda de Tailwind. El color comunica estado; el texto traducido lo desambigua
+ * (accesibilidad: el color nunca es el único portador de significado).
+ */
+export type VarianteEstado = "neutral" | "info" | "exito" | "advertencia" | "error" | "marca";
+
+/**
+ * Clases de badge por variante, sobre tokens semánticos (bg subtle + texto).
+ * Coincide con las variantes del componente Badge; `border-transparent` neutraliza
+ * el `border-border` por defecto que aplican los consumidores con la utilidad `border`.
+ */
+export const CLASES_BADGE_VARIANTE: Record<VarianteEstado, string> = {
+  neutral: "bg-muted text-muted-foreground border-transparent",
+  info: "bg-info-subtle text-info-subtle-foreground border-transparent",
+  exito: "bg-success-subtle text-success-subtle-foreground border-transparent",
+  advertencia: "bg-warning-subtle text-warning-subtle-foreground border-transparent",
+  error: "bg-destructive-subtle text-destructive-subtle-foreground border-transparent",
+  marca: "bg-primary/10 text-primary border-transparent",
 };
+
+/** Construye el mapa estado→clases a partir de un mapa estado→variante. */
+function clasesPorEstado<E extends string>(
+  variantes: Record<E, VarianteEstado>
+): Record<E, string> {
+  const salida = {} as Record<E, string>;
+  for (const estado of Object.keys(variantes) as E[]) {
+    salida[estado] = CLASES_BADGE_VARIANTE[variantes[estado]];
+  }
+  return salida;
+}
+
+// =============================================================================
+// Puente a las variantes del componente <Badge> (fuente ÚNICA de render de
+// estado). En vez de pintar `<span>` a mano con clases sueltas, la UI usa
+// `<Badge variant={badgeDeVariante(...)}>`. Mantiene una sola altura, radio,
+// borde y foco en las 41 pantallas (DESIGN_SYSTEM §4/§9, consistencia extrema).
+// =============================================================================
+
+/** Variantes admitidas por el componente Badge usadas para estados. */
+export type BadgeVariante =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "success"
+  | "warning"
+  | "info"
+  | "error"
+  | "neutral"
+  | "outline";
+
+const VARIANTE_A_BADGE: Record<VarianteEstado, BadgeVariante> = {
+  neutral: "neutral",
+  info: "info",
+  exito: "success",
+  advertencia: "warning",
+  error: "error",
+  marca: "default",
+};
+
+/** Convierte una VarianteEstado (vocabulario interno) a variante de <Badge>. */
+export function badgeDeVariante(variante: VarianteEstado): BadgeVariante {
+  return VARIANTE_A_BADGE[variante];
+}
+
+/** Construye el mapa estado→variante-de-Badge a partir de un mapa estado→variante. */
+function badgePorEstado<E extends string>(
+  variantes: Record<E, VarianteEstado>
+): Record<E, BadgeVariante> {
+  const salida = {} as Record<E, BadgeVariante>;
+  for (const estado of Object.keys(variantes) as E[]) {
+    salida[estado] = VARIANTE_A_BADGE[variantes[estado]];
+  }
+  return salida;
+}
+
+const VARIANTE_ESTADO_PEDIDO: Record<EstadoPedido, VarianteEstado> = {
+  pendiente_asignacion: "advertencia",
+  asignado: "info",
+  en_ruta: "info",
+  entregado: "exito",
+  entregado_manual: "exito",
+  fallido: "error",
+  fallido_manual: "error",
+  cancelado: "neutral",
+  devuelto: "advertencia",
+};
+export const COLOR_ESTADO_PEDIDO = clasesPorEstado(VARIANTE_ESTADO_PEDIDO);
+export const BADGE_ESTADO_PEDIDO = badgePorEstado(VARIANTE_ESTADO_PEDIDO);
 
 // =============================================================================
 // TipoIncidencia
@@ -97,12 +188,14 @@ export function traducirEstadoIncidencia(estado: EstadoIncidencia): string {
   return TEXTO_ESTADO_INCIDENCIA[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_INCIDENCIA: Record<EstadoIncidencia, string> = {
-  abierta: "bg-red-100 text-red-800 border-red-200",
-  en_gestion: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  resuelta: "bg-green-100 text-green-800 border-green-200",
-  cerrada: "bg-gray-100 text-gray-600 border-gray-200",
+const VARIANTE_ESTADO_INCIDENCIA: Record<EstadoIncidencia, VarianteEstado> = {
+  abierta: "error",
+  en_gestion: "advertencia",
+  resuelta: "exito",
+  cerrada: "neutral",
 };
+export const COLOR_ESTADO_INCIDENCIA = clasesPorEstado(VARIANTE_ESTADO_INCIDENCIA);
+export const BADGE_ESTADO_INCIDENCIA = badgePorEstado(VARIANTE_ESTADO_INCIDENCIA);
 
 // =============================================================================
 // EstadoManifiesto
@@ -120,13 +213,102 @@ export function traducirEstadoManifiesto(estado: EstadoManifiesto): string {
   return TEXTO_ESTADO_MANIFIESTO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_MANIFIESTO: Record<EstadoManifiesto, string> = {
-  borrador: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  confirmado: "bg-blue-100 text-blue-800 border-blue-200",
-  en_ruta: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  completado: "bg-green-100 text-green-800 border-green-200",
-  cancelado: "bg-gray-100 text-gray-600 border-gray-200",
+const VARIANTE_ESTADO_MANIFIESTO: Record<EstadoManifiesto, VarianteEstado> = {
+  borrador: "advertencia",
+  confirmado: "info",
+  en_ruta: "info",
+  completado: "exito",
+  cancelado: "neutral",
 };
+export const COLOR_ESTADO_MANIFIESTO = clasesPorEstado(VARIANTE_ESTADO_MANIFIESTO);
+export const BADGE_ESTADO_MANIFIESTO = badgePorEstado(VARIANTE_ESTADO_MANIFIESTO);
+
+// =============================================================================
+// EstadoGeocoding — F4, ítem 1.1 (migración 0013)
+// =============================================================================
+
+export const TEXTO_GEO_ESTADO: Record<EstadoGeocoding, string> = {
+  pendiente: "Ubicando dirección…",
+  resuelto: "Dirección ubicada",
+  no_resuelto: "Dirección no ubicada",
+  fuera_cobertura: "Fuera de cobertura",
+};
+
+export function traducirGeoEstado(estado: EstadoGeocoding): string {
+  return TEXTO_GEO_ESTADO[estado] ?? estado;
+}
+
+const VARIANTE_GEO_ESTADO: Record<EstadoGeocoding, VarianteEstado> = {
+  pendiente: "neutral",
+  resuelto: "exito",
+  no_resuelto: "error",
+  fuera_cobertura: "error",
+};
+export const BADGE_GEO_ESTADO = badgePorEstado(VARIANTE_GEO_ESTADO);
+
+// =============================================================================
+// CoberturaEstado — F4, ítem 1.1 (migración 0013)
+// =============================================================================
+
+export const TEXTO_COBERTURA_ESTADO: Record<CoberturaEstado, string> = {
+  pendiente: "Verificando cobertura…",
+  tarifada: "Comuna tarifada",
+  sin_tarifa_zona: "Comuna sin tarifa",
+  requiere_revision: "Revisar dirección",
+};
+
+export function traducirCoberturaEstado(estado: CoberturaEstado): string {
+  return TEXTO_COBERTURA_ESTADO[estado] ?? estado;
+}
+
+const VARIANTE_COBERTURA_ESTADO: Record<CoberturaEstado, VarianteEstado> = {
+  pendiente: "neutral",
+  tarifada: "exito",
+  sin_tarifa_zona: "advertencia",
+  requiere_revision: "advertencia",
+};
+export const BADGE_COBERTURA_ESTADO = badgePorEstado(VARIANTE_COBERTURA_ESTADO);
+
+/**
+ * Verdadero si el pedido requiere revisión manual de dirección/cobertura.
+ * Usado para mostrar la bandeja "Direcciones por revisar" y los badges de alerta.
+ */
+export function requiereRevisionGeo(
+  geoEstado: EstadoGeocoding,
+  coberturaEstado: CoberturaEstado,
+): boolean {
+  return (
+    geoEstado === "no_resuelto" ||
+    geoEstado === "fuera_cobertura" ||
+    coberturaEstado === "requiere_revision" ||
+    coberturaEstado === "sin_tarifa_zona"
+  );
+}
+
+/**
+ * Minutos tras los cuales un pedido en `geo_estado='pendiente'` se considera
+ * "rancio". El geocoding corre en segundos tras la ingesta, así que un pedido
+ * que sigue pendiente pasado este umbral no está "en curso": su job nunca
+ * corrió (Inngest caído, o data insertada fuera de la tubería de ingesta que
+ * publica `operacion/pedido.ingestado`). Pasado el umbral, la UI deja de
+ * mostrar el spinner infinito y ofrece reintentar la ubicación.
+ */
+export const UMBRAL_GEOCODING_RANCIO_MINUTOS = 15;
+
+/**
+ * Verdadero si un pedido lleva demasiado tiempo en `geo_estado='pendiente'` sin
+ * geocodificarse — señal de que el geocoding está atascado, no en curso. Evita
+ * el spinner "Ubicando dirección…" eterno cuando el job jamás va a resolver.
+ */
+export function geocodingPendienteRancio(
+  geoEstado: EstadoGeocoding,
+  geocodificadoEn: string | null,
+  creadoEn: string,
+): boolean {
+  if (geoEstado !== "pendiente") return false;
+  if (geocodificadoEn !== null) return false;
+  return horasDesde(creadoEn) * 60 > UMBRAL_GEOCODING_RANCIO_MINUTOS;
+}
 
 // =============================================================================
 // Utilidades comunes
@@ -156,12 +338,14 @@ export function traducirEstadoPeriodoCobro(estado: EstadoPeriodo, folio?: number
   return textos[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_PERIODO: Record<EstadoPeriodo, string> = {
-  abierto: "bg-blue-100 text-blue-800 border-blue-200",
-  cerrado: "bg-gray-100 text-gray-600 border-gray-200",
-  facturado: "bg-green-100 text-green-800 border-green-200",
-  anulado: "bg-red-100 text-red-800 border-red-200",
+const VARIANTE_ESTADO_PERIODO: Record<EstadoPeriodo, VarianteEstado> = {
+  abierto: "info",
+  cerrado: "neutral",
+  facturado: "exito",
+  anulado: "error",
 };
+export const COLOR_ESTADO_PERIODO = clasesPorEstado(VARIANTE_ESTADO_PERIODO);
+export const BADGE_ESTADO_PERIODO = badgePorEstado(VARIANTE_ESTADO_PERIODO);
 
 // =============================================================================
 // EstadoSii — Fase C (criterio C-5)
@@ -196,14 +380,29 @@ export function traducirEstadoSii(estado: EstadoSii): TraduccionEstadoSii {
 export function colorBadgeEstadoSii(variante: TraduccionEstadoSii["variante"]): string {
   switch (variante) {
     case "exito":
-      return "bg-green-100 text-green-800 border-green-200";
+      return CLASES_BADGE_VARIANTE.exito;
     case "advertencia":
-      return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      return CLASES_BADGE_VARIANTE.advertencia;
     case "error":
-      return "bg-red-100 text-red-800 border-red-200";
+      return CLASES_BADGE_VARIANTE.error;
     case "neutro":
     default:
-      return "bg-gray-100 text-gray-600 border-gray-200";
+      return CLASES_BADGE_VARIANTE.neutral;
+  }
+}
+
+/** Variante del componente <Badge> para el estado SII. */
+export function badgeEstadoSii(variante: TraduccionEstadoSii["variante"]): BadgeVariante {
+  switch (variante) {
+    case "exito":
+      return "success";
+    case "advertencia":
+      return "warning";
+    case "error":
+      return "error";
+    case "neutro":
+    default:
+      return "neutral";
   }
 }
 
@@ -221,49 +420,176 @@ export function traducirEstadoLiquidacion(estado: EstadoLiquidacion): string {
   return TEXTO_ESTADO_LIQUIDACION[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_LIQUIDACION: Record<EstadoLiquidacion, string> = {
-  borrador: "bg-gray-100 text-gray-600 border-gray-200",
-  emitida: "bg-blue-100 text-blue-800 border-blue-200",
-  pagada: "bg-green-100 text-green-800 border-green-200",
+const VARIANTE_ESTADO_LIQUIDACION: Record<EstadoLiquidacion, VarianteEstado> = {
+  borrador: "neutral",
+  emitida: "info",
+  pagada: "exito",
 };
+export const COLOR_ESTADO_LIQUIDACION = clasesPorEstado(VARIANTE_ESTADO_LIQUIDACION);
+export const BADGE_ESTADO_LIQUIDACION = badgePorEstado(VARIANTE_ESTADO_LIQUIDACION);
 
 // =============================================================================
-// EstadoEventoConciliacion — Fase C
+// EstadoPayout — payouts a conductores (F19, Bloque 3)
 // =============================================================================
+
+export const TEXTO_ESTADO_PAYOUT: Record<EstadoPayout, string> = {
+  pendiente: "Pendiente",
+  enviado: "Enviado",
+  confirmado: "Confirmado",
+  rechazado: "Rechazado",
+  fallido: "Fallido",
+};
+
+export function traducirEstadoPayout(estado: EstadoPayout): string {
+  return TEXTO_ESTADO_PAYOUT[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_PAYOUT: Record<EstadoPayout, VarianteEstado> = {
+  pendiente: "neutral",
+  enviado: "info",
+  confirmado: "exito",
+  rechazado: "error",
+  fallido: "error",
+};
+export const COLOR_ESTADO_PAYOUT = clasesPorEstado(VARIANTE_ESTADO_PAYOUT);
+export const BADGE_ESTADO_PAYOUT = badgePorEstado(VARIANTE_ESTADO_PAYOUT);
+
+// =============================================================================
+// EstadoEventoConciliacion — bandeja de excepciones (§1.1 P1, jul 2026)
+// =============================================================================
+// 8 estados (antes 4): no-terminales `pendiente`/`en_analisis`/`esperando_info`/
+// `requiere_ajuste`; terminales `resuelta_auto`/`resuelta_manual`/
+// `aceptada_justificada`/`ignorada`. Ver `TRANSICIONES_VALIDAS` en
+// `@/modules/dinero/conciliacion-clasificacion` para la máquina de estados.
 
 export const TEXTO_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, string> = {
   pendiente: "Pendiente",
-  revisado: "Revisado",
-  resuelto: "Resuelto",
-  ignorado: "Ignorado",
+  en_analisis: "En análisis",
+  esperando_info: "Esperando información",
+  requiere_ajuste: "Requiere ajuste",
+  resuelta_auto: "Resuelta por el sistema",
+  resuelta_manual: "Resuelta",
+  aceptada_justificada: "Revisada (sin cambios)",
+  ignorada: "Descartada",
 };
 
 export function traducirEstadoConciliacion(estado: EstadoEventoConciliacion): string {
   return TEXTO_ESTADO_CONCILIACION[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, string> = {
-  pendiente: "bg-orange-100 text-orange-800 border-orange-200",
-  revisado: "bg-blue-100 text-blue-800 border-blue-200",
-  resuelto: "bg-green-100 text-green-800 border-green-200",
-  ignorado: "bg-gray-100 text-gray-600 border-gray-200",
+const VARIANTE_ESTADO_CONCILIACION: Record<EstadoEventoConciliacion, VarianteEstado> = {
+  pendiente: "advertencia",
+  en_analisis: "info",
+  esperando_info: "advertencia",
+  requiere_ajuste: "advertencia",
+  resuelta_auto: "exito",
+  resuelta_manual: "exito",
+  aceptada_justificada: "neutral",
+  ignorada: "neutral",
 };
+export const COLOR_ESTADO_CONCILIACION = clasesPorEstado(VARIANTE_ESTADO_CONCILIACION);
+export const BADGE_ESTADO_CONCILIACION = badgePorEstado(VARIANTE_ESTADO_CONCILIACION);
+
+// =============================================================================
+// CategoriaNegocioConciliacion — §1.1 P1
+// =============================================================================
+
+export const TEXTO_CATEGORIA_NEGOCIO_CONCILIACION: Record<CategoriaNegocioConciliacion, string> = {
+  cumplimiento_dte: "Cumplimiento DTE",
+  fuga_ingreso: "Fuga de ingreso",
+  pagos_pendientes: "Pagos pendientes",
+  integridad_datos: "Integridad de datos",
+};
+
+export function traducirCategoriaNegocioConciliacion(categoria: CategoriaNegocioConciliacion): string {
+  return TEXTO_CATEGORIA_NEGOCIO_CONCILIACION[categoria] ?? categoria;
+}
+
+const VARIANTE_CATEGORIA_NEGOCIO_CONCILIACION: Record<CategoriaNegocioConciliacion, VarianteEstado> = {
+  // Fuga de ingreso y cumplimiento DTE son las categorías con mayor riesgo
+  // financiero/tributario directo — se resaltan en rojo (mismo criterio que
+  // `esFugaDirecta` más abajo).
+  cumplimiento_dte: "error",
+  fuga_ingreso: "error",
+  pagos_pendientes: "advertencia",
+  integridad_datos: "neutral",
+};
+export const COLOR_CATEGORIA_NEGOCIO_CONCILIACION = clasesPorEstado(VARIANTE_CATEGORIA_NEGOCIO_CONCILIACION);
+export const BADGE_CATEGORIA_NEGOCIO_CONCILIACION = badgePorEstado(VARIANTE_CATEGORIA_NEGOCIO_CONCILIACION);
+
+// =============================================================================
+// AccionSugeridaConciliacion — §1.1 P1
+// =============================================================================
+
+export const TEXTO_ACCION_SUGERIDA_CONCILIACION: Record<AccionSugeridaConciliacion, string> = {
+  revisar_tarifa_aplicada: "Revisar tarifa aplicada",
+  confirmar_con_seller: "Confirmar con el seller",
+  confirmar_con_conductor: "Confirmar con el conductor",
+  generar_cobro_manual: "Crear cobro manual",
+  generar_ajuste_liquidacion: "Crear ajuste de liquidación",
+  reasignar_lineas_a_periodo: "Reasignar líneas al período",
+  reenviar_o_verificar_dte: "Reenviar o verificar el DTE",
+  gestionar_cobranza_seller: "Cobrar al seller",
+  gestionar_pago_conductor: "Gestionar el pago al conductor",
+  marcar_error_del_motor: "Marcar como error del motor",
+  sin_accion_requerida: "Sin acción requerida",
+  revisar_estado_externo: "Revisar estado externo",
+};
+
+export function traducirAccionSugeridaConciliacion(accion: AccionSugeridaConciliacion): string {
+  return TEXTO_ACCION_SUGERIDA_CONCILIACION[accion] ?? accion;
+}
 
 // =============================================================================
 // TipoDiferenciaConciliacion — Fase C
 // =============================================================================
 
 export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> = {
+  // Tipos originales (C6)
   pedido_entregado_sin_linea_cobro: "Pedido entregado sin línea de cobro",
   pedido_entregado_sin_linea_liquidacion: "Pedido entregado sin línea de liquidación",
   linea_cobro_sin_pedido_entregado: "Línea de cobro sin pedido entregado",
   folio_consumido_sin_dte_persistido: "Folio consumido sin DTE registrado",
   periodo_cerrado_con_lineas_sueltas: "Período cerrado con líneas sin asignar",
   monto_dte_difiere_de_lineas: "Monto del DTE no coincide con líneas",
+  // Tipos nuevos (C7 / F17 — detectores de 3 fuentes)
+  pagado_conductor_sin_cobro_seller: "Pagado al conductor sin cobro al seller (fuga)",
+  cobrado_seller_no_pagado_conductor: "Cobrado al seller sin liquidar al conductor",
+  reprogramacion_no_cobrada: "Reprogramación no cobrada",
+  minimo_omitido: "Mínimo de facturación no aplicado",
+  pago_seller_faltante: "Pago del seller pendiente de recibir",
+  pago_conductor_faltante: "Pago al conductor pendiente de emitir",
+  // Webhook de payout saliente (Fase 3, migración 20260708000002)
+  payout_revertido_post_confirmacion: "Payout revertido tras confirmarse",
+  // Webhook/polling de payout (migración 20260709000001) — separado de la
+  // reversión genuina de arriba por recomendación de QA.
+  payout_estado_no_reconocido: "Estado de pago no reconocido",
 };
 
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {
   return TEXTO_TIPO_DIFERENCIA[tipo] ?? tipo;
+}
+
+/**
+ * Verdadero si el tipo de diferencia corresponde a fuga directa de revenue.
+ * Estos tipos se muestran con variante "error" (alarma) en la bandeja.
+ *
+ * D1: `pagado_conductor_sin_cobro_seller` — se pagó sin cobrar (pérdida directa).
+ * D3: `reprogramacion_no_cobrada` — recargo omitido.
+ * D4: `minimo_omitido` — mínimo de facturación no aplicado.
+ */
+export function esFugaDirecta(tipo: TipoDiferenciaConciliacion): boolean {
+  return (
+    tipo === "pagado_conductor_sin_cobro_seller" ||
+    tipo === "reprogramacion_no_cobrada" ||
+    tipo === "minimo_omitido"
+  );
+}
+
+/** Variante de badge para el tipo de diferencia. Fuga directa → error; resto → advertencia. */
+export function badgeTipoDiferencia(tipo: TipoDiferenciaConciliacion): BadgeVariante {
+  if (esFugaDirecta(tipo)) return "error";
+  return "warning";
 }
 
 // =============================================================================
@@ -283,14 +609,16 @@ export function traducirEstadoMatchPago(estado: EstadoMatchPago): string {
   return TEXTO_ESTADO_MATCH_PAGO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, string> = {
-  sin_atribuir: "bg-orange-100 text-orange-800 border-orange-200",
-  atribuido: "bg-blue-100 text-blue-800 border-blue-200",
-  conciliado: "bg-green-100 text-green-800 border-green-200",
-  parcial: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  sobrante: "bg-purple-100 text-purple-800 border-purple-200",
-  descartado: "bg-gray-100 text-gray-600 border-gray-200",
+const VARIANTE_ESTADO_MATCH_PAGO: Record<EstadoMatchPago, VarianteEstado> = {
+  sin_atribuir: "advertencia",
+  atribuido: "info",
+  conciliado: "exito",
+  parcial: "advertencia",
+  sobrante: "advertencia",
+  descartado: "neutral",
 };
+export const COLOR_ESTADO_MATCH_PAGO = clasesPorEstado(VARIANTE_ESTADO_MATCH_PAGO);
+export const BADGE_ESTADO_MATCH_PAGO = badgePorEstado(VARIANTE_ESTADO_MATCH_PAGO);
 
 // =============================================================================
 // EstadoCobroPeriodo — cobranza Fintoc (proyección del período)
@@ -307,12 +635,14 @@ export function traducirEstadoCobroPeriodo(estado: EstadoCobroPeriodo): string {
   return TEXTO_ESTADO_COBRO_PERIODO[estado] ?? estado;
 }
 
-export const COLOR_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, string> = {
-  no_aplica: "bg-gray-100 text-gray-500 border-gray-200",
-  pendiente: "bg-amber-100 text-amber-800 border-amber-200",
-  parcial: "bg-yellow-100 text-yellow-800 border-yellow-200",
-  pagado: "bg-green-100 text-green-800 border-green-200",
+const VARIANTE_ESTADO_COBRO_PERIODO: Record<EstadoCobroPeriodo, VarianteEstado> = {
+  no_aplica: "neutral",
+  pendiente: "advertencia",
+  parcial: "advertencia",
+  pagado: "exito",
 };
+export const COLOR_ESTADO_COBRO_PERIODO = clasesPorEstado(VARIANTE_ESTADO_COBRO_PERIODO);
+export const BADGE_ESTADO_COBRO_PERIODO = badgePorEstado(VARIANTE_ESTADO_COBRO_PERIODO);
 
 // =============================================================================
 // Utilidades comunes
@@ -332,4 +662,116 @@ export function horasDesde(fechaIso: string): number {
 export function esIncidenciaSinGestion(estado: EstadoIncidencia, abiertaEn: string): boolean {
   if (estado !== "abierta") return false;
   return horasDesde(abiertaEn) > UMBRAL_INCIDENCIA_SIN_GESTION_HORAS;
+}
+
+// =============================================================================
+// EstadoSuscripcion — suscripción SaaS del courier a Rutax (backstage `plataforma`)
+// =============================================================================
+// Mismos colores que `src/app/admin/suscripciones/tabla-suscripciones.tsx`
+// (vista del super-admin): trial=azul/info, activa=verde/éxito,
+// suspendida=ámbar/advertencia, cancelada=neutral.
+
+export const TEXTO_ESTADO_SUSCRIPCION: Record<EstadoSuscripcion, string> = {
+  trial: "Prueba",
+  activa: "Activa",
+  suspendida: "Suspendida",
+  cancelada: "Cancelada",
+};
+
+export function traducirEstadoSuscripcion(estado: EstadoSuscripcion): string {
+  return TEXTO_ESTADO_SUSCRIPCION[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_SUSCRIPCION: Record<EstadoSuscripcion, VarianteEstado> = {
+  trial: "info",
+  activa: "exito",
+  suspendida: "advertencia",
+  cancelada: "neutral",
+};
+export const COLOR_ESTADO_SUSCRIPCION = clasesPorEstado(VARIANTE_ESTADO_SUSCRIPCION);
+export const BADGE_ESTADO_SUSCRIPCION = badgePorEstado(VARIANTE_ESTADO_SUSCRIPCION);
+
+// =============================================================================
+// EstadoPeriodoSuscripcion — período de cobro de la suscripción del courier
+// =============================================================================
+
+export const TEXTO_ESTADO_PERIODO_SUSCRIPCION: Record<EstadoPeriodoSuscripcion, string> = {
+  pendiente: "Pendiente",
+  pagado: "Pagado",
+  vencido: "Vencido",
+};
+
+export function traducirEstadoPeriodoSuscripcion(estado: EstadoPeriodoSuscripcion): string {
+  return TEXTO_ESTADO_PERIODO_SUSCRIPCION[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_PERIODO_SUSCRIPCION: Record<EstadoPeriodoSuscripcion, VarianteEstado> = {
+  pendiente: "advertencia",
+  pagado: "exito",
+  vencido: "error",
+};
+export const COLOR_ESTADO_PERIODO_SUSCRIPCION = clasesPorEstado(VARIANTE_ESTADO_PERIODO_SUSCRIPCION);
+export const BADGE_ESTADO_PERIODO_SUSCRIPCION = badgePorEstado(VARIANTE_ESTADO_PERIODO_SUSCRIPCION);
+
+// =============================================================================
+// EstadoPagoSuscripcion — un pago del historial de la suscripción del courier
+// =============================================================================
+
+export const TEXTO_ESTADO_PAGO_SUSCRIPCION: Record<EstadoPagoSuscripcion, string> = {
+  pendiente: "Pendiente",
+  confirmado: "Confirmado",
+  fallido: "Fallido",
+};
+
+export function traducirEstadoPagoSuscripcion(estado: EstadoPagoSuscripcion): string {
+  return TEXTO_ESTADO_PAGO_SUSCRIPCION[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_PAGO_SUSCRIPCION: Record<EstadoPagoSuscripcion, VarianteEstado> = {
+  pendiente: "advertencia",
+  confirmado: "exito",
+  fallido: "error",
+};
+export const COLOR_ESTADO_PAGO_SUSCRIPCION = clasesPorEstado(VARIANTE_ESTADO_PAGO_SUSCRIPCION);
+export const BADGE_ESTADO_PAGO_SUSCRIPCION = badgePorEstado(VARIANTE_ESTADO_PAGO_SUSCRIPCION);
+
+// =============================================================================
+// EstadoMandato — mandato de auto-cobro Fintoc de la suscripción del courier
+// =============================================================================
+
+export const TEXTO_ESTADO_MANDATO: Record<EstadoMandato, string> = {
+  sin_mandato: "Sin activar",
+  pendiente: "Confirmando con tu banco",
+  activo: "Activo",
+  cancelado: "Desactivado",
+  fallido: "Con problemas",
+};
+
+export function traducirEstadoMandato(estado: EstadoMandato): string {
+  return TEXTO_ESTADO_MANDATO[estado] ?? estado;
+}
+
+const VARIANTE_ESTADO_MANDATO: Record<EstadoMandato, VarianteEstado> = {
+  sin_mandato: "neutral",
+  pendiente: "info",
+  activo: "exito",
+  cancelado: "neutral",
+  fallido: "error",
+};
+export const COLOR_ESTADO_MANDATO = clasesPorEstado(VARIANTE_ESTADO_MANDATO);
+export const BADGE_ESTADO_MANDATO = badgePorEstado(VARIANTE_ESTADO_MANDATO);
+
+// =============================================================================
+// MetodoPago — método de un pago de la suscripción del courier a Rutax
+// =============================================================================
+
+const TEXTO_METODO_PAGO: Record<MetodoPago, string> = {
+  fintoc_link: "Cobro automático",
+  fintoc_recurrente: "Cobro automático",
+  transferencia_manual: "Transferencia",
+  cortesia: "Cortesía",
+};
+
+export function traducirMetodoPago(metodo: MetodoPago): string {
+  return TEXTO_METODO_PAGO[metodo] ?? metodo;
 }

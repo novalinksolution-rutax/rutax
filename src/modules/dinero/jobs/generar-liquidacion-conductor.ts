@@ -7,23 +7,20 @@
  * - Detectar líneas de liquidación sin `liquidacion_id` asignada.
  * - Agrupar por conductor y período.
  * - Crear `dinero.liquidaciones` si no existe para ese conductor + rango.
- * - Generar PDF de liquidación (stub en el MVP — @react-pdf/renderer no está instalado).
+ * - Generar PDF de liquidación con @react-pdf/renderer.
  * - Guardar PDF en Storage: `{tenant_id}/liquidaciones/{liquidacion_id}/liquidacion.pdf`
  * - Actualizar `liquidaciones.pdf_ref` y `estado = 'emitida'`.
  *
  * Idempotencia:
  * - UNIQUE (tenant_id, driver_id, fecha_inicio, fecha_fin) en `liquidaciones`.
  * - Las líneas con liquidacion_id ya asignado no se procesan de nuevo.
- *
- * Nota sobre PDF:
- * @react-pdf/renderer no está instalado en el MVP. Se usa un stub que retorna
- * un Buffer vacío. Cuando se instale, reemplazar generarPdfLiquidacionStub
- * por la implementación real con @react-pdf/renderer.
  */
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { generarPdfLiquidacion } from '../liquidacion-pdf';
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 const TZ = 'America/Santiago';
 
@@ -34,22 +31,6 @@ function hoyEnSantiago(): string {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-}
-
-/**
- * Genera el PDF de una liquidación.
- * TODO: implementar con @react-pdf/renderer cuando se instale el paquete.
- * Por ahora retorna un Buffer vacío como stub.
- */
-async function generarPdfLiquidacionStub(
-  _liquidacionId: string,
-  _totalEntregas: number,
-  _montoTotalClp: number,
-): Promise<Buffer> {
-  // TODO: implementar con @react-pdf/renderer
-  // import { renderToBuffer } from '@react-pdf/renderer';
-  // return renderToBuffer(<LiquidacionDoc ... />);
-  return Buffer.from('');
 }
 
 export const jobGenerarLiquidacionConductor = inngest.createFunction(
@@ -98,12 +79,16 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
 
           try {
             // Contar y sumar líneas de la liquidación.
+            // IMPORTANTE: excluir líneas anuladas — las líneas de pedidos devueltos
+            // tras fallido se anulan antes de que se emita la liquidación; incluirlas
+            // pagaría de más al conductor.
             const { data: lineas, error: lineasError } = await supabase
               .schema('dinero')
               .from('lineas_liquidacion')
-              .select('monto_final_clp')
+              .select('pedido_id, fecha_entrega, concepto, monto_final_clp')
               .eq('tenant_id', tenantId)
-              .eq('liquidacion_id', liqId);
+              .eq('liquidacion_id', liqId)
+              .eq('anulada', false);
 
             if (lineasError) throw new Error(`Error al leer líneas: ${lineasError.message}`);
 
@@ -113,8 +98,46 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
               0,
             );
 
-            // Generar PDF (stub en el MVP).
-            const pdfBuffer = await generarPdfLiquidacionStub(liqId, totalEntregas, montoTotal);
+            // Obtener nombre del tenant y del conductor para el PDF.
+            const [{ data: tenantData }, { data: conductorData }] = await Promise.all([
+              supabase
+                .schema('identidad')
+                .from('tenants')
+                .select('nombre_fantasia')
+                .eq('id', tenantId)
+                .maybeSingle(),
+              supabase
+                .schema('identidad')
+                .from('conductores')
+                .select('nombre_completo')
+                .eq('id', driverId)
+                .eq('tenant_id', tenantId)
+                .maybeSingle(),
+            ]);
+
+            const tenantNombre = tenantData?.nombre_fantasia ?? 'Courier';
+            const conductorNombre = conductorData?.nombre_completo ?? 'Conductor';
+            const fechaInicio = (liq.fecha_inicio as string) ?? '';
+            const fechaFin = (liq.fecha_fin as string) ?? '';
+            const emitidaEn = fechaLocalEnSantiago(new Date());
+
+            // Generar PDF con @react-pdf/renderer.
+            const pdfBuffer = await generarPdfLiquidacion({
+              liquidacionId: liqId,
+              tenantNombre,
+              conductorNombre,
+              fechaInicio,
+              fechaFin,
+              lineas: (lineas ?? []).map((l) => ({
+                pedidoId: l.pedido_id as string,
+                fechaEntrega: (l.fecha_entrega as string) ?? '',
+                concepto: (l.concepto as string) ?? '',
+                montoFinalClp: Math.round(Number(l.monto_final_clp)),
+              })),
+              totalEntregas,
+              montoTotalClp: montoTotal,
+              emitidaEn,
+            });
 
             // Guardar PDF en Storage (path: {tenant_id}/liquidaciones/{liq_id}/liquidacion.pdf).
             const storagePath = `${tenantId}/liquidaciones/${liqId}/liquidacion.pdf`;

@@ -8,14 +8,20 @@ import {
   puedeGenerarManifiestos,
   puedeGestionarUsuariosYRoles,
   puedeGestionarConfiguracionDte,
+  puedeGestionarTarifas,
+  puedeGestionarIncidencias,
   puedeEmitirFacturas,
   puedeGestionarLiquidacionesConductores,
+  puedeGestionarCobranza,
   puedeVerConciliacion,
   puedeVerBitacoraAuditoria,
+  puedeGestionarSuscripcion,
+  puedeVerTorreControl,
 } from "@/modules/identidad/capacidades";
-import { BarraSuperior } from "@/components/app-shell/barra-superior";
+import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
 import { resolverEstadoOnboarding } from "@/app/(tenant)/onboarding/estado";
+import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
 
 /**
  * Layout del área autenticada para roles internos del courier (dueño, supervisor,
@@ -56,62 +62,140 @@ export default async function LayoutTenant({ children }: { children: React.React
     .eq("id", sesion.usuario.tenantId)
     .maybeSingle();
 
+  const u = sesion.usuario;
   const esOperativo =
-    puedeAsignarYReasignarPedidos(sesion.usuario) ||
-    puedeGenerarManifiestos(sesion.usuario) ||
-    puedeAjustarOperacionDiaria(sesion.usuario);
+    puedeAsignarYReasignarPedidos(u) ||
+    puedeGenerarManifiestos(u) ||
+    puedeAjustarOperacionDiaria(u);
 
-  const enlaces: { href: string; etiqueta: string }[] = [];
-
-  if (puedeVerReportesEjecutivos(sesion.usuario)) {
-    enlaces.push({ href: "/dashboard", etiqueta: "Dashboard" });
+  // Navegación AGRUPADA por objetivo y filtrada por capacidad (UX_STRATEGY §5.2).
+  // Lo que un rol no puede hacer, no se incluye como ítem — no se muestra
+  // deshabilitado. Un grupo sin ítems no se agrega.
+  const grupoPrincipal: GrupoNav = { titulo: null, items: [] };
+  if (puedeVerReportesEjecutivos(u)) {
+    grupoPrincipal.items.push({ href: "/dashboard", etiqueta: "Dashboard", icono: "dashboard" });
   }
+  // Destino de primer nivel, no un ítem de "Operación": el coordinador —que no
+  // tiene Dashboard— empieza el día aquí. Ver docs/arquitectura/torre-de-control.md.
+  if (puedeVerTorreControl(u)) {
+    grupoPrincipal.items.push({
+      href: "/torre-de-control",
+      etiqueta: "Torre de control",
+      icono: "torre-de-control",
+    });
+  }
+
+  const grupoOperacion: GrupoNav = { titulo: "Operación", items: [] };
   if (esOperativo) {
-    enlaces.push({ href: "/operaciones", etiqueta: "Pedidos" });
-    enlaces.push({ href: "/manifiestos", etiqueta: "Manifiestos" });
+    grupoOperacion.items.push({ href: "/operaciones", etiqueta: "Pedidos", icono: "pedidos" });
+    grupoOperacion.items.push({ href: "/manifiestos", etiqueta: "Manifiestos", icono: "manifiestos" });
+  }
+  if (puedeAsignarYReasignarPedidos(u)) {
+    grupoOperacion.items.push({ href: "/conductores", etiqueta: "Conductores", icono: "conductores" });
+  }
+  if (puedeGestionarIncidencias(u)) {
+    grupoOperacion.items.push({ href: "/operaciones/incidencias", etiqueta: "Incidencias", icono: "incidencias" });
   }
 
-  // Dinero — para roles financieros (Fase C)
-  if (puedeEmitirFacturas(sesion.usuario)) {
-    enlaces.push({ href: "/dinero/periodos", etiqueta: "Períodos" });
+  const grupoDinero: GrupoNav = { titulo: "Dinero", items: [] };
+  if (puedeEmitirFacturas(u)) {
+    grupoDinero.items.push({ href: "/dinero/periodos", etiqueta: "Períodos", icono: "periodos" });
   }
-  if (puedeGestionarLiquidacionesConductores(sesion.usuario)) {
-    enlaces.push({ href: "/dinero/liquidaciones", etiqueta: "Liquidaciones" });
+  if (puedeGestionarLiquidacionesConductores(u)) {
+    grupoDinero.items.push({ href: "/dinero/liquidaciones", etiqueta: "Liquidaciones", icono: "liquidaciones" });
   }
-  if (puedeVerConciliacion(sesion.usuario)) {
-    enlaces.push({ href: "/dinero/conciliacion", etiqueta: "Conciliación" });
-    enlaces.push({ href: "/dinero/cobranza", etiqueta: "Pagos" });
+  if (puedeVerConciliacion(u)) {
+    grupoDinero.items.push({ href: "/dinero/conciliacion", etiqueta: "Conciliación", icono: "conciliacion" });
+  }
+  if (puedeVerConciliacion(u) || puedeGestionarCobranza(u)) {
+    grupoDinero.items.push({ href: "/dinero/cobranza", etiqueta: "Cobranza", icono: "pagos" });
   }
 
-  enlaces.push({ href: "/onboarding", etiqueta: "Onboarding" });
-  if (puedeGestionarUsuariosYRoles(sesion.usuario)) {
-    enlaces.push({ href: "/equipo", etiqueta: "Equipo" });
+  // Clientes — el seller es una entidad de negocio, no un ajuste (IA Blueprint §1.1).
+  const grupoClientes: GrupoNav = {
+    titulo: "Clientes",
+    items: [{ href: "/sellers", etiqueta: "Sellers", icono: "sellers" }],
+  };
+
+  // Settings anidado (Patrón H de Retell): el grupo Configuración SALE del sidebar
+  // principal y se vuelve una sub-navegación que reemplaza el sidebar al entrar
+  // (con "‹ Volver"). Mismo gating RBAC que antes; el hub de onboarding es
+  // "Puesta en marcha". Mi plan vive aquí y también en el bloque inferior (billing).
+  const itemsSettings: ItemNav[] = [
+    { href: "/onboarding", etiqueta: "Puesta en marcha", icono: "puesta-en-marcha" },
+  ];
+  if (puedeGestionarTarifas(u)) {
+    itemsSettings.push({ href: "/configuracion/tarifas", etiqueta: "Tarifas", icono: "tarifas" });
+    itemsSettings.push({ href: "/configuracion/api", etiqueta: "Integraciones", icono: "integraciones" });
+    itemsSettings.push({ href: "/configuracion/zonas", etiqueta: "Zonas", icono: "zonas" });
   }
-  enlaces.push({ href: "/sellers", etiqueta: "Sellers" });
-  if (puedeVerBitacoraAuditoria(sesion.usuario)) {
-    enlaces.push({ href: "/configuracion/exportar-datos", etiqueta: "Exportar datos" });
+  if (puedeGestionarUsuariosYRoles(u)) {
+    itemsSettings.push({ href: "/equipo", etiqueta: "Equipo", icono: "equipo" });
   }
+  if (puedeVerBitacoraAuditoria(u)) {
+    itemsSettings.push({ href: "/configuracion/exportar-datos", etiqueta: "Exportar datos", icono: "exportar" });
+  }
+  if (puedeGestionarSuscripcion(u)) {
+    itemsSettings.push({ href: "/configuracion/plan", etiqueta: "Mi plan", icono: "plan" });
+  }
+
+  const grupos: GrupoNav[] = [
+    grupoPrincipal,
+    grupoOperacion,
+    grupoDinero,
+    grupoClientes,
+  ].filter((g) => g.items.length > 0);
+
+  // Mi plan = card "Free trial" de Retell (billing, marco propio abajo).
+  const itemPlan: ItemNav | undefined = puedeGestionarSuscripcion(u)
+    ? { href: "/configuracion/plan", etiqueta: "Mi plan", icono: "plan" }
+    : undefined;
+
+  // Bloque inferior (ítems sobre la card de plan): entrada "Configuración" que
+  // ABRE el Settings anidado.
+  const itemsInferiores: ItemNav[] = [
+    { href: "/onboarding", etiqueta: "Configuración", icono: "configuracion" },
+  ];
+
+  // "‹ Volver" del Settings anidado → el primer ítem del sidebar principal.
+  const hrefPrincipal = grupos[0]?.items[0]?.href ?? "/dashboard";
+
+  const ROL_ETIQUETA: Record<string, string> = {
+    dueno: "Dueño",
+    supervisor: "Supervisor",
+    coordinador: "Coordinador",
+    administracion: "Administración",
+  };
 
   const puedeActuarSobreOnboarding = puedeGestionarConfiguracionDte(sesion.usuario);
-  const estadoOnboarding =
+  const [estadoOnboarding, avisos] = await Promise.all([
     puedeActuarSobreOnboarding && sesion.usuario.tenantId
-      ? await resolverEstadoOnboarding(sesion.usuario.tenantId)
-      : null;
+      ? resolverEstadoOnboarding(sesion.usuario.tenantId)
+      : Promise.resolve(null),
+    obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId),
+  ]);
 
   return (
-    <div className="flex min-h-svh flex-col bg-muted/20">
-      <BarraSuperior
-        nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
-        nombreCompleto={sesion.nombreCompleto}
-        enlaces={enlaces}
-      />
-      {estadoOnboarding && !estadoOnboarding.completo ? (
-        <BannerOnboarding
-          pasosCompletados={estadoOnboarding.pasosCompletados}
-          totalPasos={estadoOnboarding.totalPasos}
-        />
-      ) : null}
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
-    </div>
+    <AppShell
+      nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
+      nombreCompleto={sesion.nombreCompleto}
+      subtituloCuenta={ROL_ETIQUETA[sesion.usuario.rol] ?? null}
+      grupos={grupos}
+      itemsInferiores={itemsInferiores}
+      itemsSettings={itemsSettings}
+      hrefPrincipal={hrefPrincipal}
+      itemPlan={itemPlan}
+      avisos={avisos}
+      banner={
+        estadoOnboarding && !estadoOnboarding.completo ? (
+          <BannerOnboarding
+            pasosCompletados={estadoOnboarding.pasosCompletados}
+            totalPasos={estadoOnboarding.totalPasos}
+          />
+        ) : null
+      }
+    >
+      {children}
+    </AppShell>
   );
 }

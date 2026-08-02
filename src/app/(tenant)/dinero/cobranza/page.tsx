@@ -19,9 +19,10 @@ import { listarPagosRecibidos } from "@/modules/dinero/index";
 import type { PagoRecibido, EstadoMatchPago } from "@/modules/dinero/tipos";
 import {
   traducirEstadoMatchPago,
-  COLOR_ESTADO_MATCH_PAGO,
+  BADGE_ESTADO_MATCH_PAGO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import { MenuAccionesPago } from "./menu-acciones-pago";
 
 export const metadata: Metadata = {
@@ -96,7 +97,7 @@ export default async function PaginaBandejaCobranza() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Revisión de pagos</h1>
+        <h1 className="text-2xl font-semibold">Revisión de pagos</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Pagos recibidos de tus sellers que aún no calzan solos con una factura. Atribúyelos al seller y período
           correctos, o descártalos si no son cobranzas.
@@ -104,7 +105,10 @@ export default async function PaginaBandejaCobranza() {
       </div>
 
       {errorCarga && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <div
+          role="alert"
+          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
+        >
           No se pudo cargar la bandeja de pagos. Intenta recargar la página.
         </div>
       )}
@@ -114,19 +118,21 @@ export default async function PaginaBandejaCobranza() {
         <div
           role="status"
           aria-live="polite"
-          className="flex flex-col items-center justify-center gap-4 rounded-xl border border-green-200 bg-green-50 px-6 py-16 text-center"
+          className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-card px-6 py-16 text-center"
         >
-          <CheckCircle2 className="size-12 text-green-500" aria-hidden="true" />
+          <div className="flex size-11 items-center justify-center rounded-full bg-success-subtle">
+            <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
+          </div>
           <div>
-            <p className="text-lg font-semibold text-green-800">No hay pagos por revisar.</p>
-            <p className="mt-1 text-sm text-green-700">
+            <p className="font-heading text-sm font-medium text-foreground">No hay pagos por revisar</p>
+            <p className="mt-1 text-sm text-muted-foreground">
               Todos los pagos recibidos se atribuyeron y conciliaron solos.
             </p>
           </div>
         </div>
       ) : (
         !errorCarga && (
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Pagos por revisar">
                 <thead>
@@ -161,7 +167,7 @@ export default async function PaginaBandejaCobranza() {
           >
             Conciliados recientemente
           </h2>
-          <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Pagos conciliados recientes">
                 <thead>
@@ -247,10 +253,6 @@ function FilaPago({ pago, sellers }: { pago: PagoConSeller; sellers: { id: strin
 
 function BadgeEstadoMatch({ estado }: { estado: EstadoMatchPago }) {
   return (
-    <span
-      className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${COLOR_ESTADO_MATCH_PAGO[estado]}`}
-    >
-      {traducirEstadoMatchPago(estado)}
-    </span>
+    <BadgeEstado variante={BADGE_ESTADO_MATCH_PAGO[estado]} texto={traducirEstadoMatchPago(estado)} />
   );
 }

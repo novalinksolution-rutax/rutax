@@ -18,6 +18,13 @@ import { esTransicionValida } from "@/modules/operacion/maquina-estados";
 import { traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
 import { actionCambiarEstadoPedido } from "../actions";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const MOTIVO_MIN = 10;
 
@@ -79,7 +86,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className="rounded-lg border border-orange-300 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-800 hover:bg-orange-100 transition-colors"
+        className="rounded-lg border border-warning bg-warning-subtle px-4 py-2 text-sm font-medium text-warning-subtle-foreground transition-colors hover:bg-warning-subtle/70"
       >
         Cambiar estado
       </button>
@@ -93,13 +100,13 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
         >
           {/* Fondo */}
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
             onClick={cerrar}
             aria-hidden="true"
           />
 
           {/* Drawer */}
-          <div className="relative z-10 flex h-full w-full max-w-md flex-col bg-background shadow-2xl sm:w-96">
+          <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l border-border bg-popover shadow-lg sm:w-96">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 id="drawer-estado-titulo" className="text-base font-semibold">
                 Corrección manual de estado
@@ -128,21 +135,23 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                   <label htmlFor="selector-estado-nuevo" className="block text-sm font-medium">
                     Nuevo estado <span aria-hidden="true">*</span>
                   </label>
-                  <select
-                    id="selector-estado-nuevo"
+                  <Select
                     value={estadoNuevo}
-                    onChange={(e) => setEstadoNuevo(e.target.value as EstadoPedido)}
+                    onValueChange={(v) => setEstadoNuevo(v as EstadoPedido)}
                     disabled={pending}
                     required
-                    className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   >
-                    <option value="">Seleccionar nuevo estado...</option>
-                    {estadosValidos.map((estado) => (
-                      <option key={estado} value={estado}>
-                        {traducirEstadoPedido(estado)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="selector-estado-nuevo" className="mt-1 w-full">
+                      <SelectValue placeholder="Seleccionar nuevo estado..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {estadosValidos.map((estado) => (
+                        <SelectItem key={estado} value={estado}>
+                          {traducirEstadoPedido(estado)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Motivo obligatorio (mínimo 10 caracteres) */}
@@ -164,14 +173,14 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                   <p id="motivo-ayuda" className="mt-1 text-xs text-muted-foreground">
                     {motivo.trim().length}/{MOTIVO_MIN} caracteres mínimos
                     {motivo.trim().length >= MOTIVO_MIN && (
-                      <span className="ml-1 text-green-600">&#10003;</span>
+                      <span className="ml-1 text-success">&#10003;</span>
                     )}
                   </p>
                 </div>
 
                 {/* Advertencia de bitácora */}
                 <div
-                  className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800"
+                  className="flex items-start gap-2 rounded-lg bg-warning-subtle px-3 py-3 text-sm text-warning-subtle-foreground"
                   role="note"
                 >
                   <AlertTriangle className="mt-0.5 size-4 flex-shrink-0" aria-hidden="true" />
@@ -179,7 +188,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                 </div>
 
                 {error && (
-                  <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <p role="alert" className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
                     {error}
                   </p>
                 )}
@@ -191,7 +200,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                 type="submit"
                 form="form-cambio-estado"
                 disabled={!puedeConfirmar}
-                className="w-full rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {pending ? "Guardando..." : "Confirmar cambio de estado"}
               </button>
