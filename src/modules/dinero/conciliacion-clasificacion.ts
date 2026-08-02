@@ -15,7 +15,7 @@ import type {
   TipoDiferenciaConciliacion,
 } from './tipos';
 
-const TZ = 'America/Santiago';
+import { fechaLocalEnSantiago, sumarDiasCalendario } from '@/lib/fecha-santiago';
 
 // =============================================================================
 // categoriaNegocioPorTipo / accionSugeridaPorTipo
@@ -87,23 +87,6 @@ const DIAS_SLA_POR_CATEGORIA: Record<CategoriaNegocioConciliacion, number> = {
   integridad_datos: 7,
 };
 
-/** Descompone un ISO timestamptz en su fecha 'YYYY-MM-DD' local de America/Santiago. */
-function fechaSantiagoDeIso(fechaCreacionIso: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(fechaCreacionIso));
-}
-
-/** Suma `dias` días de calendario a una fecha 'YYYY-MM-DD' (aritmética en UTC sobre un date-only, sin problemas de DST). */
-function sumarDias(fechaIso: string, dias: number): string {
-  const fecha = new Date(`${fechaIso}T00:00:00Z`);
-  fecha.setUTCDate(fecha.getUTCDate() + dias);
-  return fecha.toISOString().slice(0, 10);
-}
-
 /**
  * Fecha límite (SLA) por defecto de una excepción recién detectada: fecha de
  * creación (zona America/Santiago) + N días según la categoría de negocio.
@@ -113,8 +96,8 @@ export function fechaLimiteDefaultPorCategoria(
   categoria: CategoriaNegocioConciliacion,
   fechaCreacionIso: string,
 ): string {
-  const fechaBase = fechaSantiagoDeIso(fechaCreacionIso);
-  return sumarDias(fechaBase, DIAS_SLA_POR_CATEGORIA[categoria]);
+  const fechaBase = fechaLocalEnSantiago(new Date(fechaCreacionIso));
+  return sumarDiasCalendario(fechaBase, DIAS_SLA_POR_CATEGORIA[categoria]);
 }
 
 /**

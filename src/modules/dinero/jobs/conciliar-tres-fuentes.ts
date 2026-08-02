@@ -53,8 +53,7 @@ import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { capturarMensaje } from '@/lib/observabilidad';
 import { existeEventoConciliacion, insertarEventoConciliacion } from '../conciliacion-insercion';
-
-const TZ = 'America/Santiago';
+import { diferenciaEnDiasCalendario, hoyEnSantiago } from '@/lib/fecha-santiago';
 
 /**
  * Días máximos tras emitir una liquidación para que pase a `pagada`.
@@ -65,22 +64,6 @@ const DIAS_PAGO_CONDUCTOR_MAX = (() => {
   const v = Number(process.env.DINERO_DIAS_PAGO_CONDUCTOR_MAX);
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : 7;
 })();
-
-function hoyEnSantiago(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
-
-/** Días enteros entre dos fechas ISO date (positivo si hasta > desde). */
-function diasEntre(desdeIso: string, hastaIso: string): number {
-  const desde = new Date(`${desdeIso}T00:00:00Z`).getTime();
-  const hasta = new Date(`${hastaIso}T00:00:00Z`).getTime();
-  return Math.round((hasta - desde) / (1000 * 60 * 60 * 24));
-}
 
 export const jobConciliarTresFuentes = inngest.createFunction(
   {
@@ -744,7 +727,7 @@ async function detectorD5_PagoSellerFaltante(
 
     const estadoCobro = (periodo.estado_cobro as string | null) ?? 'pendiente';
     const fechaFin = periodo.fecha_fin as string;
-    const diasAtraso = diasEntre(fechaFin, fecha);
+    const diasAtraso = diferenciaEnDiasCalendario(fechaFin, fecha);
 
     await insertarEventoConciliacion(supabase, {
       tenant_id: tenantId,
@@ -806,7 +789,7 @@ async function detectorD6_PagoConductorFaltante(
 
     // Calcular días desde la emisión.
     const fechaEmision = generadoEn.substring(0, 10); // YYYY-MM-DD
-    const dias = diasEntre(fechaEmision, fecha);
+    const dias = diferenciaEnDiasCalendario(fechaEmision, fecha);
 
     if (dias <= DIAS_PAGO_CONDUCTOR_MAX) continue;
 

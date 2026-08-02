@@ -234,6 +234,21 @@ export function sumarDiasCalendario(fecha: string, dias: number): string {
 }
 
 /**
+ * Día de la semana de una fecha CIVIL 'YYYY-MM-DD': 0 = domingo … 6 = sábado.
+ *
+ * Mismo truco de `Date.UTC` que `sumarDiasCalendario`: una fecha civil no es un
+ * instante, así que no hay zona horaria que resolver. La alternativa que se ve
+ * en el repo —`new Date('YYYY-MM-DDT12:00:00').getDay()`— ancla a mediodía para
+ * sobrevivir al desplazamiento del huso, y funciona sólo mientras el proceso
+ * corra dentro de ±12 h de UTC. Aquí no hay nada que sobrevivir.
+ */
+export function diaSemanaCalendario(fecha: string): number {
+  validarFechaCivil(fecha);
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay();
+}
+
+/**
  * Diferencia en días CALENDARIO entre dos fechas 'YYYY-MM-DD' (`hasta - desde`).
  * Mismo truco de `Date.UTC` que `sumarDiasCalendario` — comparación de fechas
  * civiles, no de instantes. Devuelve un entero (puede ser negativo si `hasta`

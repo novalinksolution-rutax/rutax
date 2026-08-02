@@ -26,7 +26,7 @@ import { obtenerComunicacionesActivasParaCourier } from "@/modules/plataforma/co
 import { UMBRAL_FOLIOS } from "@/modules/dinero/folios";
 import { ESTADOS_NO_TERMINALES_CONCILIACION } from "@/modules/dinero/conciliacion-clasificacion";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
-import { ahoraEnSantiago, horaAMinutos } from "@/lib/fecha-santiago";
+import { ahoraEnSantiago, horaAMinutos, sumarDiasCalendario } from "@/lib/fecha-santiago";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import {
   esIncidenciaSinGestion,
@@ -278,13 +278,6 @@ async function avisosDiscrepanciasConciliacion(tenantId: string): Promise<Aviso[
 /** Días de anticipación con que se avisa un SLA de excepción por vencer. */
 const UMBRAL_EXCEPCION_DIAS = 2;
 
-/** Suma `dias` días de calendario a una fecha 'YYYY-MM-DD' (date-only, sin problemas de DST). */
-function sumarDiasFecha(fechaIso: string, dias: number): string {
-  const fecha = new Date(`${fechaIso}T00:00:00Z`);
-  fecha.setUTCDate(fecha.getUTCDate() + dias);
-  return fecha.toISOString().slice(0, 10);
-}
-
 /**
  * Excepciones de conciliación asignadas al usuario actual cuya `fecha_limite`
  * (SLA — §1.1 P1) está vencida o a ≤2 días. El motor C7/C6 (`eventos_conciliacion`)
@@ -296,7 +289,7 @@ async function avisosExcepcionesVencidas(tenantId: string, usuarioId: string): P
   try {
     const cliente = crearClienteServiceRole();
     const { fecha: hoy } = ahoraEnSantiago();
-    const limite = sumarDiasFecha(hoy, UMBRAL_EXCEPCION_DIAS);
+    const limite = sumarDiasCalendario(hoy, UMBRAL_EXCEPCION_DIAS);
 
     const { data } = await cliente
       .schema("dinero")

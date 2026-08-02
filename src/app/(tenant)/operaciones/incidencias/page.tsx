@@ -25,6 +25,7 @@ import { PanelIncidencia } from "./panel-incidencia";
 import { FiltrosIncidencias } from "./filtros-incidencias";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Carga de datos
@@ -55,7 +56,11 @@ async function cargarIncidencias(tenantId: string, filtros: FiltrosIncidencias) 
     query = query.in("estado", ["abierta", "en_gestion"]);
   }
   if (filtros.fechaDesde) {
-    query = query.gte("abierta_en", `${filtros.fechaDesde}T00:00:00.000Z`);
+    // El usuario elige una fecha en el calendario chileno, así que el borde va
+    // en Santiago. Pegar `T00:00:00.000Z` corría la ventana 3–4 h y colaba
+    // incidencias abiertas la noche anterior.
+    const { desde } = limitesDelDiaSantiago(filtros.fechaDesde);
+    query = query.gte("abierta_en", desde.toISOString());
   }
 
   const { data, error } = await query;

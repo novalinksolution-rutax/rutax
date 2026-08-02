@@ -208,12 +208,6 @@ export async function obtenerMiPlan(tenantId: string): Promise<VistaMiPlan | nul
  */
 export const TRIAL_DIAS = 14;
 
-function agregarDias(fechaBase: Date, dias: number): string {
-  const copia = new Date(fechaBase.getTime());
-  copia.setUTCDate(copia.getUTCDate() + dias);
-  return copia.toISOString().slice(0, 10);
-}
-
 /**
  * Alta self-serve de la suscripción de un tenant. Idempotente: si el tenant ya
  * tiene suscripción, la devuelve sin crear una segunda (el UNIQUE(tenant_id) de
@@ -257,7 +251,7 @@ export async function crearSuscripcionInicial(opts: {
     throw new Error(`El plan solicitado no existe o no está disponible.`);
   }
 
-  const trialHasta = agregarDias(new Date(), TRIAL_DIAS);
+  const trialHasta = sumarDiasCalendario(ahoraEnSantiago().fecha, TRIAL_DIAS);
 
   // Bitácora ANTES del INSERT (RNF-04: acción financiera con autor).
   await registrarEnBitacora(supabase, {
