@@ -632,11 +632,47 @@ alguno de mis pedidos de hoy o mañana?", después las fuentes.
 
 ### 13.2 Fuentes (verificadas en vivo)
 
+> ⚠️ **CORRECCIÓN (2026-08-02). Las tres filas del cuadro están mal, y la
+> primera repite el error de Open-Meteo.** Se verificó cada una en vivo:
+>
+> 1. **Google News RSS NO se puede usar.** El propio feed devuelve, en su
+>    `<copyright>`: *"This XML feed is made available solely for the purpose of
+>    rendering Google News results within a personal feed reader for **personal,
+>    non-commercial use**. Any other use of the feed is expressly prohibited."*
+>    Rutax es un SaaS de pago. "Verificado, funciona" comprobó que **responde**,
+>    no que **se pueda usar** — exactamente la distinción que ya nos costó
+>    Open-Meteo en §4. No es la columna vertebral: no es una opción.
+> 2. **GDELT sí permite uso comercial** (*"available for unlimited and
+>    unrestricted use for any academic, commercial, or governmental use of any
+>    kind without fee"*, con cita y enlace al redistribuir), pero **no está
+>    probado como columna vertebral**: en un sondeo espaciado a 12 s (su límite
+>    declarado es 1 req/5 s), 4 de 5 consultas devolvieron 429 y la única que
+>    pasó devolvió **0 artículos** para Chile. Antes de apoyarse en él hay que
+>    resolver cobertura chilena y cadencia real desde el servidor.
+> 3. **Los dos endpoints "RSS oficiales" del cuadro no existen como RSS.**
+>    `senapred.gob.cl/feed/` devuelve HTML y `airerm.mma.gob.cl/rss` no resuelve.
+>    **Pero SENAPRED sí publica sus alertas de forma programática**, en
+>    FeatureServers ArcGIS públicos (p. ej.
+>    `services3.arcgis.com/CNzkI2T3GmfwkaAR/…/METEOROLOGICAS_ROJA/FeatureServer/0`,
+>    descubiertos desde el dashboard oficial). Devuelven datos **estructurados y
+>    vigentes** —151 alertas activas al 2026-08-02— con `CUT_COM`, el código
+>    único territorial de comuna, además de `TIPO_ALERT`, `CAUSALIDAD` y
+>    `FECHA_INI`.
+>
+> **Consecuencia sobre §13.5, que es lo importante:** para las alertas de
+> emergencia **no hace falta LLM**. El dato llega ya estructurado y con el código
+> de comuna, así que "extraer la comuna de la prosa" es un problema que esa mitad
+> del módulo no tiene — y una extracción por LLM sería menos fiable que el campo
+> oficial. La IA solo aporta valor en la prosa periodística sobre cortes y
+> marchas… que es justamente la mitad cuya única fuente probada es la prohibida.
+> Por eso el conjunto de evaluación de ~100 noticias **está bloqueado**: no se
+> puede medir la extracción sobre un corpus que no se podrá usar en producción.
+
 | Fuente | Estado | Rol |
 | --- | --- | --- |
-| **Google News RSS** (`news.google.com/rss/search?q=…&hl=es-419&gl=CL`) | **Verificado, funciona** | La columna vertebral. Sin key, sin límite práctico, consultas arbitrarias |
-| **GDELT 2.0 DOC API** | Gratis, sin key, refresco 15 min | Ampliación y respaldo. Devolvió 429 desde red compartida — validar desde el servidor |
-| RSS oficiales (SENAPRED, `airerm.mma.gob.cl`) | Gratis | Alertas de emergencia y calidad del aire |
+| **Google News RSS** (`news.google.com/rss/search?q=…&hl=es-419&gl=CL`) | ~~Verificado, funciona~~ · **PROHIBIDO uso comercial** | Descartada. Ver corrección |
+| **GDELT 2.0 DOC API** | Uso comercial permitido; 429 persistente y 0 artículos para Chile en el sondeo | Candidata, **sin validar** |
+| RSS oficiales (SENAPRED, `airerm.mma.gob.cl`) | Los endpoints RSS no existen | Reemplazados por FeatureServers ArcGIS de SENAPRED (estructurados, con `CUT_COM`) |
 
 La consulta de prueba `Santiago corte de transito OR manifestacion` devolvió
 exactamente lo que se necesita: *"Maratón de Santiago: cortes de tránsito"*,
