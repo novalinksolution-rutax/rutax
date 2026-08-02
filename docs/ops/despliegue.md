@@ -107,10 +107,35 @@ En el DevCenter de ML, la **Redirect URI** registrada debe coincidir EXACTO con 
 | `EMAIL_SANDBOX_MODE` | `true` (piloto) |
 | `SUSCRIPCION_SANDBOX_MODE` | `true` (piloto) |
 | `SUSCRIPCION_RECURRENTE_SANDBOX_MODE` | `true` (piloto) |
-| `SENTRY_DSN` | (opcional) DSN de Sentry, o vacío |
+| `SENTRY_DSN` | DSN de Sentry — **ver nota abajo**, ya no es "opcional" en la práctica |
 | `GEOCODING_PROVIDER` | `stub` (piloto, $0) |
 
 > **NO** setees las credenciales reales de Fintoc/DTE/Resend en el piloto — mientras los flags están en `true`, no se usan.
+
+### `SENTRY_DSN` — lo único que falta para tener observabilidad
+
+El código está **completo y verificado**; falta solo pegar el valor. Sin la
+variable, la app no se cae: `src/lib/observabilidad/index.ts` degrada a log
+estructurado en stdout. Pero con datos reales en producción, quedarse en stdout
+significa enterarse de los errores por el courier, no por la herramienta.
+
+Pasos (5 minutos, requieren cuenta de Sentry):
+
+1. En Sentry: **Projects → Create Project → Next.js**. Copia el DSN, con la forma
+   `https://<clave>@o<org>.ingest.sentry.io/<id-proyecto>`.
+2. En Vercel: **Settings → Environment Variables** → `SENTRY_DSN` = ese valor, en
+   Production (y Preview si quieres separar ruido). **No** lleva prefijo
+   `NEXT_PUBLIC_`: es de servidor y no debe viajar al cliente.
+3. Redeploy (las variables no se aplican a un build ya hecho).
+4. Comprobación: provoca un error de servidor y confirma que aparece en Sentry
+   con el tag `tenant_id`.
+
+Verificado el 2026-08-02 contra un receptor local, sin cuenta de Sentry: el
+envelope sale bien formado (`/api/<id>/envelope/?sentry_key=…&sentry_version=7`,
+`Content-Type: application/x-sentry-envelope`, cabecera + item + evento), con
+`tenant_id` y `correlacion_id` como tags — y **los secretos salen redactados**:
+`access_token` y `password` viajan como `[redactado]`, sin rastro del valor en el
+cuerpo crudo.
 
 ---
 

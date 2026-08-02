@@ -91,7 +91,7 @@ Proyecto **maduro**: la base está construida. Ya NO razonamos en "MVP/V2" sino 
 **En alcance (activo / próximo):**
 - Foco activo de innovación: precisión y robustez del motor entrega→dinero sobre **same-day + MELI/Flex**.
 - Calidad de mesa del servicio completo: operación, manifiestos, portales y reportería deben ser excelentes (diferenciador ≠ producto completo).
-- **Seller con hasta 3 cuentas ML** (próximo trabajo concreto): hoy el esquema `identidad.conexiones_seller_ml` es **1:1** (unique en `seller_id`); pasar a 1:N con tope 3, iterar el pipeline ML (refresco de tokens, polling, backfill, procesar-shipment) **por conexión**, registrar la cuenta de origen (`ml_user_id`) en el pedido y mostrarla en la UI **solo si el seller tiene más de una**. Evitar conectar dos veces la misma cuenta.
+- ~~**Seller con hasta 3 cuentas ML**~~ — **HECHO** (verificado 2026-08-02). El esquema es 1:N con tope 3 impuesto por trigger, unicidad `(seller_id, ml_user_id)`, los cinco jobs del pipeline iteran por conexión, el pedido guarda su `ml_user_id` y la UI muestra la cuenta de origen solo si el seller tiene más de una. Detalle y evidencia en `docs/arquitectura/seller-multicuenta-ml.md` §9.
 - **Prioritario** (deja de ser "pendiente opcional"): observabilidad/Sentry y disponibilidad/respaldos (devops) — ya es un pasivo con datos reales, no un "nice to have".
 
 **Más adelante (dirección declarada, no ahora):**
