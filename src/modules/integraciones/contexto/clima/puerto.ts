@@ -8,20 +8,20 @@
  * dato de tenant (§5 del diseño), así que la fábrica NO recibe `tenantId` y no
  * hay nada que descifrar por courier.
  *
- *   - CONTEXTO_CLIMA_PROVIDER=stub  (default en dev/test/CI) → determinista, sin red.
- *   - CONTEXTO_CLIMA_PROVIDER=open-meteo                     → adaptador real.
+ *   - CONTEXTO_CLIMA_PROVIDER=stub         (default en dev/test/CI) → sin red.
+ *   - CONTEXTO_CLIMA_PROVIDER=openweather  → adaptador real.
  *
- * Variables opcionales del adaptador real:
- *   - OPEN_METEO_CLIMA_BASE_URL — sobrescribe el host. Existe porque el tier
- *     COMERCIAL de Open-Meteo usa otro host (`customer-api.open-meteo.com`) y no
- *     se inventa aquí un hostname que no se pudo verificar sin suscripción.
- *   - OPEN_METEO_API_KEY — SOLO tier comercial. Es un SECRETO: no se loguea, no
- *     entra en ningún mensaje de error y no se cita ninguna URL que la lleve
- *     (`referenciaSegura()` corta el query string).
+ * Variables del adaptador real:
+ *   - OPENWEATHER_API_KEY — obligatoria. Es un SECRETO: no se loguea, no entra
+ *     en ningún mensaje de error y no se cita ninguna URL que la lleve
+ *     (`referenciaSegura()` corta el query string). Se obtiene sin tarjeta.
+ *   - OPENWEATHER_BASE_URL — opcional. Existe para las pruebas y por si algún
+ *     día se contrata un host distinto; no se inventa aquí un hostname.
  *
- * ⚠️ El tier gratuito de Open-Meteo NO permite uso comercial — ver el encabezado
- * de `../open-meteo-comun.ts`. La decisión de contratar el plan de pago es de
- * negocio, no de este archivo; el código solo deja de ser un obstáculo.
+ * ⚠️ La licencia del tier gratuito de OpenWeather permite uso comercial **a
+ * cambio de atribución visible en pantalla**. Vive en la franja al pie del mapa
+ * y quitarla rompe la licencia, no solo la cortesía. Fue justamente la falta de
+ * permiso comercial lo que descartó a Open-Meteo, el proveedor anterior.
  *
  * DEGRADACIÓN: `obtenerPronostico` NUNCA lanza por un fallo de la fuente —
  * devuelve `ResultadoContexto`, que sabe decir "no pude". Lo único que lanza es
@@ -31,7 +31,7 @@
 
 import { ErrorContextoConfig } from '../errores';
 import type { ResultadoContexto } from '../resultado';
-import { OpenMeteoClimaAdapter } from './adaptadores/open-meteo';
+import { OpenWeatherClimaAdapter } from './adaptadores/openweather';
 import { StubClimaAdapter } from './adaptadores/stub';
 import type { ParametrosClima, PronosticoClima } from './tipos';
 
@@ -53,17 +53,17 @@ export function obtenerPuertoClima(): PuertoClima {
     case 'stub':
       return new StubClimaAdapter();
 
-    case 'open-meteo':
-    case 'openmeteo': {
-      const baseUrl = process.env.OPEN_METEO_CLIMA_BASE_URL?.trim() || undefined;
-      const apiKey = process.env.OPEN_METEO_API_KEY?.trim() || undefined;
+    case 'openweather':
+    case 'open-weather': {
+      const baseUrl = process.env.OPENWEATHER_BASE_URL?.trim() || undefined;
+      const apiKey = process.env.OPENWEATHER_API_KEY?.trim() || undefined;
       // Nunca se loguea `apiKey`, ni su largo, ni un prefijo.
-      return new OpenMeteoClimaAdapter({ baseUrl, apiKey });
+      return new OpenWeatherClimaAdapter({ baseUrl, apiKey });
     }
 
     default:
       throw new ErrorContextoConfig(
-        `CONTEXTO_CLIMA_PROVIDER='${proveedor}' no es reconocido (usa 'stub' u 'open-meteo')`,
+        `CONTEXTO_CLIMA_PROVIDER='${proveedor}' no es reconocido (usa 'stub' u 'openweather')`,
       );
   }
 }

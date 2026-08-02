@@ -8,7 +8,8 @@ import {
   puedeVerTorreControl,
 } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
-import { ESTADO_TORRE, type EstadoTorre } from "./_fixture/estado-torre";
+import { cargarCabecera, cargarTablero, type CabeceraTorre } from "@/modules/contexto/composer";
+import type { TorreRespuesta } from "@/modules/contexto/contrato-torre";
 import { VARIANTES, esEstadoPantalla } from "./_fixture/variantes";
 import { TorreConsola } from "./_componentes/torre-consola";
 import { EsqueletoConsola } from "./_componentes/esqueleto-region";
@@ -34,21 +35,27 @@ export const metadata: Metadata = {
  * (adelantar un corte, reasignar conductores) se ejercen con las capacidades
  * operativas que el usuario ya tenga.
  *
- * Las seis regiones se construyen contra `_fixture/estado-torre.ts` (copia
- * tipada del contrato congelado `docs/torre-de-control/datos-dummy.ts`).
- * Cuando exista el endpoint real solo cambia la fuente de `estado` — ningún
- * componente de región debería necesitar tocarse.
+ * -----------------------------------------------------------------------------
+ * POR QUÉ ESTE COMPONENTE NO HACE `await`
+ * -----------------------------------------------------------------------------
+ * Los dos cargadores se invocan y sus PROMESAS se pasan a la consola sin
+ * resolver. Esperar aquí bloquearía la pantalla entera hasta la última consulta,
+ * y el handoff (§6) pide lo contrario: ningún spinner de página, cada región
+ * llega por su cuenta y el hueco nombra lo que falta. Cada región tiene su
+ * `<Suspense>` y consume la promesa con `use()` dentro de él.
+ *
+ * No hay endpoint `/api/torre/estado` ni `revalidatePath`: los tres horizontes
+ * vienen precalculados en el mismo payload y el cambio de horizonte es puramente
+ * de cliente. Un round-trip ahí remontaría el tablero y haría saltar la posición
+ * de scroll del riel, que el handoff prohíbe.
  *
  * La ruta vive en el grupo `(consola)` y NO en `(tenant)`: es una consola de
  * viewport fijo, no una pantalla de backoffice. Ver `(consola)/layout.tsx`
  * para el porqué y para los guards de acceso, que son los mismos.
- *
- * Paso B4: previsualización de los seis `EstadoPantalla` vía `?estado=…`,
- * ACTIVA SOLO EN DESARROLLO (ver `resolverEstado`).
  */
 
 /**
- * Elige qué variante de la fixture renderizar.
+ * Previsualización de los seis `EstadoPantalla` vía `?estado=…`.
  *
  * ⚠️ El query param es una herramienta de DESARROLLO y nada más. En producción
  * `EstadoPantalla` lo DERIVA EL SERVIDOR desde los datos reales —¿hay
@@ -61,9 +68,9 @@ export const metadata: Metadata = {
  * Por eso el guard es `NODE_ENV !== 'production'` y no una capacidad RBAC: no
  * es una función del producto, es andamiaje.
  */
-function resolverEstado(estadoPedido: string | undefined): EstadoTorre {
-  if (process.env.NODE_ENV === "production") return ESTADO_TORRE;
-  return esEstadoPantalla(estadoPedido) ? VARIANTES[estadoPedido] : ESTADO_TORRE;
+function variantePedida(estadoPedido: string | undefined) {
+  if (process.env.NODE_ENV === "production") return null;
+  return esEstadoPantalla(estadoPedido) ? VARIANTES[estadoPedido] : null;
 }
 
 export default async function PaginaTorreDeControl({
@@ -103,12 +110,38 @@ export default async function PaginaTorreDeControl({
     );
   }
 
-  const estado = resolverEstado((await searchParams).estado);
+  const tenantId = sesion.usuario.tenantId;
+  const variante = variantePedida((await searchParams).estado);
 
-  // `cargando` no renderiza la consola con datos vacíos: renderiza los
-  // esqueletos que, cuando el dato venga del servidor, serán el `fallback` del
-  // `<Suspense>` de cada región.
-  if (estado.estado === "cargando") return <EsqueletoConsola />;
+  if (variante) {
+    // `cargando` no es una variante de datos: es la ausencia de ellos. En
+    // producción lo resuelve el `<Suspense>` de cada región; aquí se fuerza el
+    // tablero completo de esqueletos para poder mirarlo.
+    if (variante.estado === "cargando") return <EsqueletoConsola />;
 
-  return <TorreConsola estado={estado} hrefSalida={hrefSalida} />;
+    const fijo: TorreRespuesta = {
+      horizonteInicial: "hoy",
+      horizontes: { hoy: variante, manana: variante, "72h": variante },
+    };
+    const cabeceraFija: CabeceraTorre = {
+      courier: variante.courier,
+      frescura: variante.frescura,
+      ahoraIso: variante.ahora,
+    };
+    return (
+      <TorreConsola
+        cabecera={Promise.resolve(cabeceraFija)}
+        tablero={Promise.resolve(fijo)}
+        hrefSalida={hrefSalida}
+      />
+    );
+  }
+
+  return (
+    <TorreConsola
+      cabecera={cargarCabecera(tenantId)}
+      tablero={cargarTablero(tenantId)}
+      hrefSalida={hrefSalida}
+    />
+  );
 }

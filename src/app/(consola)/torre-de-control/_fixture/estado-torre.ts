@@ -2,89 +2,103 @@
  * Torre de control — fixture tipada del frontend.
  * =====================================================================
  *
- * Copia (no re-export) del contrato congelado `docs/torre-de-control/datos-dummy.ts`.
+ * Los DATOS de ejemplo del contrato congelado `docs/torre-de-control/datos-dummy.ts`.
  *
- * Por qué copiar y no importar directo desde `docs/`: sigue el mismo criterio
- * que ya usa el backend del módulo en `src/modules/contexto/tipos.ts` ("no se
- * importa el contrato directamente [...] vive en `docs/`, no es código de
- * producción: se mirror aquí"). Mismo criterio, mismo lado de la app.
+ * ⚠️ **Los TIPOS ya no viven aquí**: se movieron a
+ * `@/modules/contexto/contrato-torre` y este archivo los reexporta, así que
+ * cualquier import existente (`import type { Zona } from "../_fixture/estado-torre"`)
+ * sigue funcionando sin cambios.
  *
- * Disciplina de esta copia: cero invención. Todo tipo, campo, cifra, nombre de
- * zona/comuna/conductor y evento es idéntico al original. Cuando exista el
- * endpoint real (`GET /api/torre-de-control` o equivalente), este archivo se
- * reemplaza por el fetch real y el resto de la UI no cambia una línea, porque
- * consume exactamente `EstadoTorre`.
+ * Por qué se movieron: el composer del servidor produce `EstadoTorre` y esta
+ * pantalla lo consume. Con dos declaraciones «iguales» —una aquí, otra en el
+ * módulo— el compilador no vería un desajuste entre lo que el servidor arma y
+ * lo que la interfaz espera. Con una sola, el desajuste es un error de
+ * compilación. La fixture se queda con lo suyo: los datos.
  *
- * Si `docs/torre-de-control/datos-dummy.ts` cambia, esta copia hay que
- * actualizarla a mano — no hay build step que las sincronice todavía.
+ * Para qué sirve todavía esta fixture, ahora que hay datos reales:
+ *
+ *   1. Es la fuente de las variantes de `EstadoPantalla` (`variantes.ts`), que
+ *      son la única forma de ver los seis estados sin esperar a que ocurran en
+ *      producción.
+ *   2. Es el catálogo de macro-zonas del fallback `sin_zonas` — las cinco
+ *      particionan exactamente las 52 comunas de la RM.
+ *   3. Es el dataset contra el que se leyeron las capturas del handoff.
+ *
+ * Disciplina de esta copia: cero invención. Toda cifra, nombre de
+ * zona/comuna/conductor y evento es idéntico al original.
+ *
+ * ⚠️ El dummy es contrato de TIPOS, no de VALORES. Sus umbrales de PM2.5, por
+ * ejemplo, no son los reales (los del Plan Operacional GEC 2026 del MMA son
+ * Alerta 80 · Preemergencia 110 · Emergencia 170 sobre la media móvil de 24 h).
+ * No leer cifras de aquí para tomar decisiones de producto.
  */
 
-// =============================================================================
-// 1. Primitivas
-// =============================================================================
+import type {
+  BloqueTimeline,
+  EstadoCapa,
+  EstadoTorre,
+  EventoCiudad,
+  EventoComercial,
+  Excepcion,
+  FrescuraFuente,
+  Interaccion,
+  MarcaOperativa,
+  MensajeEstado,
+  MetricaResumen,
+  OlaEntrante,
+  PronosticoAire,
+  RestriccionVehicular,
+  Senal,
+  Ventana,
+  Zona,
+  CeldaClima,
+  ConductorEnMapa,
+  IncidenteTransito,
+} from "@/modules/contexto/contrato-torre";
 
-/** Horizonte temporal que el usuario selecciona. Gobierna toda la pantalla. */
-export type Horizonte = 'hoy' | 'manana' | '72h' | 'olas';
-
-/** Nivel de riesgo derivado del puntaje. La UI decide cómo representarlo. */
-export type NivelRiesgo = 'calmo' | 'bajo' | 'medio' | 'alto' | 'critico';
-
-/** Severidad de una excepción. Independiente del puntaje de zona. */
-export type Severidad = 'critica' | 'alta' | 'media' | 'informativa';
-
-/** Estado de salud de una fuente externa. Nunca desaparece: se marca. */
-export type EstadoFuente = 'ok' | 'atrasada' | 'caida';
-
-/** Capas conmutables del mapa. Regla de producto: máximo 2 activas. */
-export type CapaMapa =
-  | 'riesgo'
-  | 'clima'
-  | 'aire'
-  | 'transito'
-  | 'eventos'
-  | 'conductores'
-  | 'pedidos'
-  | 'comunas';
-
-/** Nivel de zoom semántico. Determina la unidad de agregación visible. */
-export type NivelZoom = 'zonas' | 'comunas' | 'pedidos';
-
-export interface Coordenada {
-  lat: number;
-  long: number;
-}
-
-/**
- * Rango temporal. Fechas ISO 8601 con offset de Santiago.
- * `fin: null` = en curso, sin término conocido (una falla, un corte abierto).
- * La UI debe resolver ese caso: "desde las 08:05" en vez de un rango cerrado.
- */
-export interface Ventana {
-  inicio: string;
-  fin: string | null;
-}
+export type {
+  AccionSugerida,
+  ArquetipoOla,
+  BloqueTimeline,
+  CapaMapa,
+  CeldaClima,
+  ConductorEnMapa,
+  Coordenada,
+  EstadoCapa,
+  EstadoFuente,
+  EstadoPantalla,
+  EstadoTorre,
+  EventoCiudad,
+  EventoComercial,
+  Excepcion,
+  FactorRiesgo,
+  FrescuraFuente,
+  FuenteSenal,
+  HitoPreparacion,
+  Horizonte,
+  IncidenteTransito,
+  Interaccion,
+  MarcaOperativa,
+  MensajeEstado,
+  MetricaResumen,
+  NivelAire,
+  NivelRiesgo,
+  NivelZoom,
+  OlaEntrante,
+  PronosticoAire,
+  PuntoCurva,
+  RestriccionVehicular,
+  Senal,
+  Severidad,
+  TorreRespuesta,
+  Ventana,
+  VentanaCorte,
+  Zona,
+} from "@/modules/contexto/contrato-torre";
 
 // =============================================================================
 // 2. Frescura de fuentes
 // =============================================================================
-
-/**
- * Edad y salud de cada fuente externa. Se muestra siempre: en un producto de
- * dinero, saber cuán viejo es el dato es parte de poder confiar en él.
- */
-export interface FrescuraFuente {
-  id: string;
-  nombre: string;
-  estado: EstadoFuente;
-  /** Última actualización exitosa. */
-  actualizadoEn: string;
-  /** Minutos transcurridos desde `actualizadoEn`. Precalculado para la UI. */
-  edadMinutos: number;
-  /** Cada cuántos minutos debería refrescarse. Si edad > 2×, pasa a 'atrasada'. */
-  cadenciaMinutos: number;
-  /** Presente solo si estado !== 'ok'. Se muestra al usuario tal cual. */
-  motivo: string | null;
-}
 
 export const FRESCURA_FUENTES: FrescuraFuente[] = [
   {
@@ -137,49 +151,6 @@ export const FRESCURA_FUENTES: FrescuraFuente[] = [
 // =============================================================================
 // 3. Zonas y su riesgo
 // =============================================================================
-
-/**
- * Un factor del puntaje de riesgo. El motor es determinístico y explicable:
- * la suma ponderada de `valor × peso` da el puntaje de la zona.
- */
-export interface FactorRiesgo {
-  id: 'presion_operativa' | 'clima' | 'aire' | 'transito' | 'eventos' | 'historico';
-  etiqueta: string;
-  /** 0–100. Qué tan malo está este factor. */
-  valor: number;
-  /** 0–1. Cuánto pesa en el puntaje final. Suma 1 entre todos los factores. */
-  peso: number;
-  /** Frase corta que explica el valor. Se muestra al abrir el desglose. */
-  explicacion: string;
-}
-
-/** Ventana de corte de la zona: hasta cuándo se puede seguir despachando. */
-export interface VentanaCorte {
-  hora: string;
-  /** Minutos que faltan para el corte. Negativo si ya venció. */
-  minutosRestantes: number;
-}
-
-export interface Zona {
-  id: string;
-  nombre: string;
-  comunas: string[];
-  /** 0–100. Suma ponderada de los factores. */
-  riesgo: number;
-  nivel: NivelRiesgo;
-  factores: FactorRiesgo[];
-  pedidosPendientes: number;
-  pedidosEntregados: number;
-  /** Capacidad estimada = conductores disponibles × capacidad individual. */
-  capacidadEstimada: number;
-  conductoresAsignados: number;
-  conductoresDisponibles: number;
-  ventanaCorte: VentanaCorte;
-  /** Monto de cobro asociado a los pedidos pendientes. NO es pérdida esperada. */
-  montoComprometidoClp: number;
-  /** Centro visual de la zona, para etiquetas y encuadre. */
-  centro: Coordenada;
-}
 
 export const ZONAS: Zona[] = [
   {
@@ -320,19 +291,6 @@ export const ZONAS: Zona[] = [
 // 4. Métricas de resumen
 // =============================================================================
 
-export interface MetricaResumen {
-  id: string;
-  etiqueta: string;
-  /** Valor ya formateado para mostrar. La UI no debería tener que formatear. */
-  valor: string;
-  /** Valor crudo, por si el diseño quiere formatear distinto. */
-  valorCrudo: number;
-  /** Variación contra el mismo día de la semana anterior. null = sin base. */
-  variacionPorcentual: number | null;
-  /** Contexto corto. Puede ir como subtítulo o tooltip. */
-  detalle: string;
-}
-
 export const METRICAS: MetricaResumen[] = [
   {
     id: 'pedidos-hoy',
@@ -371,37 +329,6 @@ export const METRICAS: MetricaResumen[] = [
 // =============================================================================
 // 5. Excepciones (el riel de alertas)
 // =============================================================================
-
-/** Acción que la excepción sugiere. La UI la presenta como control. */
-export interface AccionSugerida {
-  id: string;
-  etiqueta: string;
-  /** Qué pasa al ejecutarla. Se muestra antes de confirmar. */
-  descripcion: string;
-  /** true = requiere confirmación explícita antes de ejecutar. */
-  requiereConfirmacion: boolean;
-}
-
-export interface Excepcion {
-  id: string;
-  severidad: Severidad;
-  titulo: string;
-  cuerpo: string;
-  zonaId: string | null;
-  /** Cuándo ocurre el problema, no cuándo se detectó. */
-  ventana: Ventana | null;
-  /** Pedidos del courier afectados. 0 = alerta contextual sin impacto directo. */
-  pedidosAfectados: number;
-  montoAfectadoClp: number;
-  acciones: AccionSugerida[];
-  /** De dónde salió: motor de riesgo, señal de prensa, marca manual. */
-  origen: 'motor' | 'senal' | 'manual';
-  /** 0–1. Solo presente cuando el origen es 'senal'. */
-  confianza: number | null;
-  detectadaEn: string;
-  /** El coordinador puede descartarla; eso calibra umbrales. */
-  descartable: boolean;
-}
 
 export const EXCEPCIONES: Excepcion[] = [
   {
@@ -508,61 +435,6 @@ export const EXCEPCIONES: Excepcion[] = [
 // 6. Ola entrante (calendario comercial)
 // =============================================================================
 
-/**
- * Dos arquetipos con comportamiento opuesto:
- * - 'venta': la ola de entregas llega DESPUÉS del evento (D+1 a D+5).
- * - 'regalo': la ola llega ANTES y el plazo es duro (la fecha es el deadline).
- */
-export type ArquetipoOla = 'venta' | 'regalo';
-
-/** Un día de la curva de entregas proyectada. */
-export interface PuntoCurva {
-  fecha: string;
-  /** Etiqueta corta para el eje. */
-  etiquetaDia: string;
-  /** Desplazamiento respecto al evento. Negativo = antes. */
-  offsetDias: number;
-  pedidosProyectados: number;
-  /** Volumen que habría sin el evento. Sirve de línea base. */
-  pedidosBase: number;
-  /** Capacidad instalada ese día. Si es menor que lo proyectado, hay brecha. */
-  capacidadEstimada: number;
-  esPeak: boolean;
-}
-
-/** Hito de preparación con cuenta regresiva. */
-export interface HitoPreparacion {
-  id: string;
-  /** Días antes del evento en que corresponde hacerlo. */
-  tMenosDias: number;
-  fechaLimite: string;
-  titulo: string;
-  estado: 'pendiente' | 'hecho' | 'vencido';
-}
-
-export interface OlaEntrante {
-  id: string;
-  nombre: string;
-  arquetipo: ArquetipoOla;
-  organizador: string | null;
-  /** Fecha del evento comercial en sí. */
-  fechaEvento: Ventana;
-  diasParaEvento: number;
-  /** Ventana en que llegan las entregas. Distinta de `fechaEvento`. */
-  ventanaEntregas: Ventana;
-  /** Variación esperada del volumen contra una semana base. */
-  variacionEsperadaPct: number;
-  curva: PuntoCurva[];
-  /** Día con mayor brecha entre proyección y capacidad. */
-  diaCritico: string;
-  brechaConductores: number;
-  /** Solo para arquetipo 'regalo': hasta cuándo puede comprar el cliente final. */
-  fechaLimiteCompraPorZona: { zonaId: string; fecha: string }[] | null;
-  hitos: HitoPreparacion[];
-  /** De dónde salió el multiplicador: catálogo o histórico propio del courier. */
-  fuenteProyeccion: 'catalogo' | 'historico_tenant';
-}
-
 export const OLA_ENTRANTE: OlaEntrante = {
   id: 'ola-dia-del-nino-2026',
   nombre: 'Día del Niño',
@@ -600,19 +472,6 @@ export const OLA_ENTRANTE: OlaEntrante = {
 };
 
 /** Calendario comercial chileno 2026. Fechas verificadas al 2026-07-25. */
-export interface EventoComercial {
-  id: string;
-  nombre: string;
-  arquetipo: ArquetipoOla;
-  organizador: string | null;
-  inicio: string;
-  fin: string;
-  /** Multiplicador de volumen sobre la línea base. */
-  multiplicadorBase: number;
-  /** Distribución del rezago: clave = offset en días, valor = proporción. */
-  curvaRezago: Record<string, number>;
-}
-
 export const CALENDARIO_COMERCIAL_2026: EventoComercial[] = [
   { id: 'cyberday-2026', nombre: 'CyberDay', arquetipo: 'venta', organizador: 'Cámara de Comercio de Santiago', inicio: '2026-06-01', fin: '2026-06-03', multiplicadorBase: 2.4, curvaRezago: { '1': 0.20, '2': 0.30, '3': 0.25, '4': 0.15, '5': 0.10 } },
   { id: 'cybermonday-2026', nombre: 'CyberMonday', arquetipo: 'venta', organizador: 'Cámara de Comercio de Santiago', inicio: '2026-10-05', fin: '2026-10-07', multiplicadorBase: 2.2, curvaRezago: { '1': 0.20, '2': 0.30, '3': 0.25, '4': 0.15, '5': 0.10 } },
@@ -627,18 +486,6 @@ export const CALENDARIO_COMERCIAL_2026: EventoComercial[] = [
 // =============================================================================
 // 7. Línea de tiempo del día
 // =============================================================================
-
-/** Un bloque en la franja temporal. Puede solaparse con otros. */
-export interface BloqueTimeline {
-  id: string;
-  tipo: 'ventana_reparto' | 'clima' | 'evento' | 'corte_en_riesgo' | 'restriccion';
-  etiqueta: string;
-  inicio: string;
-  fin: string;
-  zonaId: string | null;
-  /** Carril visual sugerido para evitar solapes. La UI puede ignorarlo. */
-  carril: number;
-}
 
 export const TIMELINE_HOY: BloqueTimeline[] = [
   { id: 'tl-01', tipo: 'ventana_reparto', etiqueta: 'Ventana de reparto', inicio: '2026-07-25T08:30:00-04:00', fin: '2026-07-25T18:00:00-04:00', zonaId: null, carril: 0 },
@@ -661,16 +508,6 @@ export const RANGO_TIMELINE: Ventana = {
 // 8. Capas del mapa
 // =============================================================================
 
-export interface EstadoCapa {
-  id: CapaMapa;
-  etiqueta: string;
-  activa: boolean;
-  /** false cuando su fuente está caída. Se muestra deshabilitada, no oculta. */
-  disponible: boolean;
-  /** Motivo de indisponibilidad, para mostrar al usuario. */
-  motivoNoDisponible: string | null;
-}
-
 export const CAPAS: EstadoCapa[] = [
   { id: 'riesgo', etiqueta: 'Riesgo', activa: true, disponible: true, motivoNoDisponible: null },
   { id: 'clima', etiqueta: 'Lluvia', activa: true, disponible: true, motivoNoDisponible: null },
@@ -689,19 +526,6 @@ export const MAX_CAPAS_ACTIVAS = 2;
 // 9. Entidades geográficas del mapa
 // =============================================================================
 
-export interface ConductorEnMapa {
-  id: string;
-  nombre: string;
-  zonaId: string;
-  posicion: Coordenada;
-  ultimoPing: string;
-  /** Minutos desde el último ping. Si supera 20, se marca como sin señal. */
-  minutosSinPing: number;
-  paradasTotales: number;
-  paradasCompletadas: number;
-  estado: 'en_ruta' | 'detenido' | 'sin_senal' | 'finalizado';
-}
-
 export const CONDUCTORES: ConductorEnMapa[] = [
   { id: 'cond-01', nombre: 'Marcelo Ortiz', zonaId: 'zona-centro', posicion: { lat: -33.4372, long: -70.6506 }, ultimoPing: '2026-07-25T09:12:00-04:00', minutosSinPing: 2, paradasTotales: 28, paradasCompletadas: 11, estado: 'en_ruta' },
   { id: 'cond-02', nombre: 'Javiera Muñoz', zonaId: 'zona-oriente', posicion: { lat: -33.4152, long: -70.5891 }, ultimoPing: '2026-07-25T09:13:00-04:00', minutosSinPing: 1, paradasTotales: 32, paradasCompletadas: 9, estado: 'en_ruta' },
@@ -710,20 +534,6 @@ export const CONDUCTORES: ConductorEnMapa[] = [
   { id: 'cond-05', nombre: 'Ignacio Fuentes', zonaId: 'zona-poniente', posicion: { lat: -33.5089, long: -70.7702 }, ultimoPing: '2026-07-25T09:09:00-04:00', minutosSinPing: 5, paradasTotales: 22, paradasCompletadas: 14, estado: 'detenido' },
   { id: 'cond-06', nombre: 'Pilar Reyes', zonaId: 'zona-norte', posicion: { lat: -33.3712, long: -70.6789 }, ultimoPing: '2026-07-25T09:13:00-04:00', minutosSinPing: 1, paradasTotales: 26, paradasCompletadas: 12, estado: 'en_ruta' },
 ];
-
-/** Evento de ciudad con radio de influencia. */
-export interface EventoCiudad {
-  id: string;
-  nombre: string;
-  tipo: 'deportivo' | 'masivo' | 'civico' | 'comercial';
-  recinto: string;
-  comuna: string;
-  posicion: Coordenada;
-  radioMetros: number;
-  ventana: Ventana;
-  asistenciaEstimada: number | null;
-  fuente: string;
-}
 
 export const EVENTOS_CIUDAD: EventoCiudad[] = [
   {
@@ -740,17 +550,6 @@ export const EVENTOS_CIUDAD: EventoCiudad[] = [
   },
 ];
 
-/** Celda de precipitación. Geometría simplificada como círculo. */
-export interface CeldaClima {
-  id: string;
-  tipo: 'lluvia' | 'viento';
-  centro: Coordenada;
-  radioMetros: number;
-  intensidadMmHora: number;
-  ventana: Ventana;
-  zonasAfectadas: string[];
-}
-
 export const CELDAS_CLIMA: CeldaClima[] = [
   {
     id: 'clima-001',
@@ -763,34 +562,11 @@ export const CELDAS_CLIMA: CeldaClima[] = [
   },
 ];
 
-export interface IncidenteTransito {
-  id: string;
-  tipo: 'accidente' | 'corte' | 'congestion' | 'obra';
-  descripcion: string;
-  via: string;
-  posicion: Coordenada;
-  magnitud: 1 | 2 | 3 | 4;
-  desde: string;
-  hasta: string | null;
-  zonaId: string;
-}
-
 export const INCIDENTES_TRANSITO: IncidenteTransito[] = [
   { id: 'tr-001', tipo: 'accidente', descripcion: 'Colisión con dos pistas bloqueadas', via: 'Américo Vespucio Oriente', posicion: { lat: -33.4198, long: -70.5701 }, magnitud: 3, desde: '2026-07-25T08:41:00-04:00', hasta: null, zonaId: 'zona-oriente' },
   { id: 'tr-002', tipo: 'congestion', descripcion: 'Tránsito lento por volumen', via: 'Costanera Norte poniente', posicion: { lat: -33.4102, long: -70.6011 }, magnitud: 2, desde: '2026-07-25T08:20:00-04:00', hasta: null, zonaId: 'zona-oriente' },
   { id: 'tr-003', tipo: 'obra', descripcion: 'Faena con desvío señalizado', via: 'Vespucio Sur', posicion: { lat: -33.5301, long: -70.6202 }, magnitud: 1, desde: '2026-07-24T07:00:00-04:00', hasta: '2026-07-30T18:00:00-04:00', zonaId: 'zona-sur' },
 ];
-
-/** Marca puesta a mano por el coordinador. Alimenta el mapa y el histórico. */
-export interface MarcaOperativa {
-  id: string;
-  nota: string;
-  posicion: Coordenada;
-  radioMetros: number;
-  ventana: Ventana;
-  autor: string;
-  creadaEn: string;
-}
 
 export const MARCAS_OPERATIVAS: MarcaOperativa[] = [
   {
@@ -808,30 +584,11 @@ export const MARCAS_OPERATIVAS: MarcaOperativa[] = [
 // 10. Calidad del aire y restricción vehicular
 // =============================================================================
 
-export type NivelAire = 'bueno' | 'regular' | 'alerta' | 'preemergencia' | 'emergencia';
-
-export interface PronosticoAire {
-  fecha: string;
-  pm25Maximo: number;
-  nivel: NivelAire;
-  /** true cuando el pronóstico proyecta un episodio, aún sin decreto oficial. */
-  esProyeccion: boolean;
-}
-
 export const PRONOSTICO_AIRE: PronosticoAire[] = [
   { fecha: '2026-07-25', pm25Maximo: 48, nivel: 'regular', esProyeccion: false },
   { fecha: '2026-07-26', pm25Maximo: 71, nivel: 'alerta', esProyeccion: true },
   { fecha: '2026-07-27', pm25Maximo: 96, nivel: 'preemergencia', esProyeccion: true },
 ];
-
-export interface RestriccionVehicular {
-  fecha: string;
-  tipo: 'permanente' | 'preemergencia' | 'emergencia';
-  digitos: number[];
-  alcance: string;
-  /** Vehículos del courier afectados. null si el modelo aún no guarda patentes. */
-  vehiculosAfectados: number | null;
-}
 
 export const RESTRICCIONES: RestriccionVehicular[] = [
   { fecha: '2026-07-25', tipo: 'permanente', digitos: [6, 7], alcance: 'Provincia de Santiago, San Bernardo y Puente Alto', vehiculosAfectados: null },
@@ -841,33 +598,6 @@ export const RESTRICCIONES: RestriccionVehicular[] = [
 // =============================================================================
 // 11. Señales de prensa
 // =============================================================================
-
-export interface FuenteSenal {
-  medio: string;
-  titular: string;
-  url: string;
-  publicadoEn: string;
-}
-
-export interface Senal {
-  id: string;
-  /** Título del acontecimiento, no del artículo. Uno por evento, no por medio. */
-  titulo: string;
-  resumen: string;
-  tipo: 'corte_transito' | 'manifestacion' | 'paro' | 'emergencia' | 'transporte' | 'otro';
-  comunas: string[];
-  ejesViales: string[];
-  ventana: Ventana | null;
-  severidad: Severidad;
-  /** 0–1. Sube cuando varios medios independientes reportan lo mismo. */
-  confianza: number;
-  afectaOperacion: boolean;
-  pedidosEnRango: number;
-  zonasAfectadas: string[];
-  fuentes: FuenteSenal[];
-  /** El coordinador marca si era relevante; eso calibra el filtro. */
-  marcaHumana: 'confirmada' | 'descartada' | null;
-}
 
 export const SENALES: Senal[] = [
   {
@@ -916,31 +646,6 @@ export const SENALES: Senal[] = [
 // 12. Estados de la pantalla
 // =============================================================================
 
-/**
- * Estados que la interfaz DEBE resolver explícitamente. No son casos borde:
- * son estados de diseño de primera clase.
- */
-export type EstadoPantalla =
-  /** Datos completos y al menos una excepción. El caso de la captura. */
-  | 'con_excepciones'
-  /** Sin riesgo: se dice en una línea y la pantalla se calla. */
-  | 'tranquilo'
-  /** Primera carga. Cada panel llega por separado, ninguno bloquea al otro. */
-  | 'cargando'
-  /** Una o más fuentes caídas. El resto sigue funcionando. */
-  | 'degradado'
-  /** El courier no configuró zonas. Se usa el fallback y se invita a configurar. */
-  | 'sin_zonas'
-  /** No hay pedidos hoy (feriado, domingo). */
-  | 'sin_pedidos';
-
-export interface MensajeEstado {
-  estado: EstadoPantalla;
-  titulo: string;
-  cuerpo: string;
-  accion: { etiqueta: string; destino: string } | null;
-}
-
 export const MENSAJES_ESTADO: MensajeEstado[] = [
   {
     estado: 'tranquilo',
@@ -972,19 +677,6 @@ export const MENSAJES_ESTADO: MensajeEstado[] = [
 // 13. Interacciones
 // =============================================================================
 
-/**
- * Contrato de interacción. Define QUÉ hace cada gesto, no cómo se ve ni cómo
- * se anima. Los tiempos son presupuestos de respuesta percibida, no de estilo.
- */
-export interface Interaccion {
-  id: string;
-  gesto: string;
-  resultado: string;
-  /** Milisegundos máximos hasta que el usuario ve una respuesta. */
-  presupuestoMs: number;
-  atajoTeclado: string | null;
-}
-
 export const INTERACCIONES: Interaccion[] = [
   { id: 'hover-zona', gesto: 'Puntero sobre una zona', resultado: 'La zona se destaca y aparece su nombre y puntaje.', presupuestoMs: 100, atajoTeclado: null },
   { id: 'seleccionar-zona', gesto: 'Clic en una zona', resultado: 'Las demás zonas se atenúan y el riel muestra el desglose de factores.', presupuestoMs: 180, atajoTeclado: null },
@@ -995,38 +687,12 @@ export const INTERACCIONES: Interaccion[] = [
   { id: 'paleta-comandos', gesto: 'Abrir la paleta de comandos', resultado: 'Saltar a una zona, cambiar horizonte, encender capa o buscar un pedido.', presupuestoMs: 120, atajoTeclado: 'Cmd+K' },
   { id: 'marcar-evento', gesto: 'Marcar un punto en el mapa', resultado: 'Crea una marca operativa visible para todo el equipo.', presupuestoMs: 200, atajoTeclado: 'M' },
   { id: 'descartar-excepcion', gesto: 'Descartar una excepción', resultado: 'La saca del riel y calibra el umbral que la generó.', presupuestoMs: 120, atajoTeclado: null },
-  { id: 'lista-sin-mapa', gesto: 'Cambiar a vista de lista', resultado: 'Zonas ordenadas por riesgo, navegable con teclado. Mismos datos.', presupuestoMs: 120, atajoTeclado: 'L' },
+  { id: 'lista-sin-mapa', gesto: 'Cambiar a vista de lista', resultado: 'Zonas ordenadas por riesgo, navegable con teclado. Mismos datos.', presupuestoMs: 120, atajoTeclado: null },
 ];
 
 // =============================================================================
 // 14. Raíz — todo el estado de la pantalla en un objeto
 // =============================================================================
-
-export interface EstadoTorre {
-  courier: { id: string; nombre: string };
-  ahora: string;
-  horizonte: Horizonte;
-  estado: EstadoPantalla;
-  zoom: NivelZoom;
-  zonaSeleccionada: string | null;
-  metricas: MetricaResumen[];
-  zonas: Zona[];
-  excepciones: Excepcion[];
-  senales: Senal[];
-  olaEntrante: OlaEntrante | null;
-  timeline: BloqueTimeline[];
-  rangoTimeline: Ventana;
-  capas: EstadoCapa[];
-  frescura: FrescuraFuente[];
-  conductores: ConductorEnMapa[];
-  eventosCiudad: EventoCiudad[];
-  celdasClima: CeldaClima[];
-  incidentesTransito: IncidenteTransito[];
-  marcasOperativas: MarcaOperativa[];
-  pronosticoAire: PronosticoAire[];
-  restricciones: RestriccionVehicular[];
-  pedidosSinGeocodificar: number;
-}
 
 export const ESTADO_TORRE: EstadoTorre = {
   courier: { id: 'courier-demo', nombre: 'Andes Última Milla' },

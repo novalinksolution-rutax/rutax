@@ -20,7 +20,7 @@ import {
   combinarFechaHoraSantiago,
   sumarDiasCalendario,
 } from '@/lib/fecha-santiago';
-import { puntosDeConsulta } from '../../open-meteo-comun';
+import { comunasDeConsulta } from '../../grilla-rm';
 import {
   exito,
   fallo,
@@ -71,7 +71,7 @@ export class StubAireAdapter implements PuertoAire {
 
     let comunas;
     try {
-      comunas = puntosDeConsulta(args.comunas).map((p) => p.comuna);
+      comunas = comunasDeConsulta(args.comunas);
     } catch (e) {
       return fallo(
         MOTIVOS_DEGRADACION.malConfigurada('calidad del aire'),

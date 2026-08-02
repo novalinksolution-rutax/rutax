@@ -80,7 +80,24 @@ export function Riel(props: Props) {
   if (estado === "sin_pedidos") {
     return (
       <div id="detalle" className="tc-rail flex h-full w-[var(--tc-w-riel)] shrink-0 flex-col overflow-y-auto bg-tc-papel">
-        {olaEntrante ? <PreparacionOla ola={olaEntrante} /> : null}
+        {olaEntrante ? (
+          <PreparacionOla ola={olaEntrante} />
+        ) : (
+          /* El handoff da por hecho que en `sin_pedidos` siempre hay una ola que
+             preparar. Con datos reales no la hay todavía (el calendario comercial
+             es un bloque aparte), y el riel se quedaba en blanco: 300 px de nada,
+             sin decir por qué. Nombrar lo que falta es parte del diseño. */
+          <div className="p-3.5">
+            <p className="text-[9px] font-extrabold tracking-[0.13em] text-tc-ink-600 uppercase">
+              Sin nada que preparar
+            </p>
+            <p className="mt-2 text-[12px] leading-[1.5] text-tc-ink-700">
+              No hay pedidos en este horizonte y todavía no hay una ola comercial
+              a la vista. El mapa sigue mostrando tus zonas y el contexto de la
+              ciudad.
+            </p>
+          </div>
+        )}
       </div>
     );
   }

@@ -31,7 +31,7 @@
 import type { ComunaRM } from '@/lib/ui/comunas-rm';
 
 /** Proveedor que produjo el pronóstico. */
-export type ProveedorClima = 'open-meteo' | 'stub';
+export type ProveedorClima = 'openweather' | 'stub';
 
 /** Una hora de pronóstico para una comuna. Una fila de `contexto.clima_horario`. */
 export interface PronosticoHoraComuna {

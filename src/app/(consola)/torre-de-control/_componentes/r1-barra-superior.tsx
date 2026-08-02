@@ -133,7 +133,14 @@ function CeldaFrescura({ fuente }: { fuente: FrescuraFuente }) {
     >
       <span aria-hidden="true">{glifo}</span>
       <span>{fuente.nombre}</span>
-      <span className="tc-num">{minutosPrimeTorre(fuente.edadMinutos)}</span>
+      {/* Sin `actualizadoEn` la fuente NUNCA se actualizó con éxito, así que no
+          tiene edad que mostrar. Se imprime «—» y no «0′»: un cero al lado del
+          nombre se lee como dato recién llegado, que es lo contrario de lo que
+          pasa. (El contrato declara `actualizadoEn` no-nulo; la columna es
+          nullable justamente por este caso, y el composer lo trae vacío.) */}
+      <span className="tc-num">
+        {fuente.actualizadoEn ? minutosPrimeTorre(fuente.edadMinutos) : "—"}
+      </span>
       {fuente.motivo ? <span className="sr-only"> — {fuente.motivo}</span> : null}
     </span>
   );

@@ -30,8 +30,10 @@ es `src/app/(consola)/`, `src/modules/contexto/agregacion.ts` (+ su test),
 `public/mapas/` y `scripts/mapa/`.
 
 Verificación actual EN VERDE: `npm run typecheck` limpio · `npm run lint` **0 errores**
-(153 warnings preexistentes, ninguno de estos módulos) · `npm test` **2275 passed /
-5 skipped** en 142 archivos · `npx supabase test db` **476 tests pgTAP** en 25 archivos.
+(153 warnings preexistentes, ninguno de estos módulos) · `npm test` **2342 passed /
+5 skipped** en 144 archivos · `npx supabase test db` **476 tests pgTAP** en 25 archivos.
+Además, smoke real: `GET /torre-de-control` responde 200 con el payload completo del
+tenant demo contra Supabase local, y la consola se vio pintando en Chrome real.
 
 ### Ya construido y verificado
 
@@ -51,50 +53,113 @@ Verificación actual EN VERDE: `npm run typecheck` limpio · `npm run lint` **0 
   punta.
 - **Motor de riesgo cerrado**: los seis factores entran con dato real
   (`src/modules/contexto/agregacion.ts`, módulo puro con 36 tests).
+- **El composer**: la pantalla se alimenta de la base, con `<Suspense>` por región,
+  `cache()` por request, los tres horizontes precalculados en un solo payload y
+  validación zod. Verificado contra Supabase local y en Chrome real.
+- **Los 5 jobs, ejecutados de verdad**: fan-out por tenant, idempotencia, reintentos
+  aislados y degradación de fuente, todo comprobado contra el Inngest Dev Server. Las
+  tablas de `contexto` ya no están vacías.
+- **Fuentes externas migradas a OpenWeather** (clima y aire), con clave real y
+  corriendo contra la API de verdad. Open-Meteo retirado del código.
+- **La ola entrante (bloque C)**: catálogo sembrado, proyección con línea base del
+  propio courier, y R2 + riel mostrándola.
 
 ## Lo que falta, en orden
 
-### 1. El composer (lo siguiente)
+### ~~1. El composer~~ — HECHO (paso B7)
 
-Hoy la pantalla se alimenta de `_fixture/estado-torre.ts`. Falta exponer los datos
-reales y cambiar la fixture por ellos.
+La pantalla ya no lee la fixture: se alimenta de la base. Detalle completo en el
+bloque «paso B7» del checklist. Lo que hay que saber para seguir:
 
-- Server Components con `<Suspense>` **por región** y `cache()` de React por request
-  (`zonas` la necesitan R3, R4 y R5).
-- **Nada de `/api/torre/estado`** ni de `revalidatePath` (remonta el tablero y salta el
-  scroll del riel, que el handoff prohíbe).
-- Las consultas ya existen y están probadas: reutiliza `src/modules/contexto/agregacion.ts`
-  y el patrón de `reunir-insumos` de `jobs/recalcular-riesgo.ts`. **No las dupliques** —
-  si el composer agregara por su cuenta, el mapa y el desglose de nivel 2 podrían
-  contradecirse, que es justo lo que la jerarquía de tres niveles no permite.
-- `EstadoTorre` se envuelve en `TorreRespuesta { horizonteInicial, horizontes:
-  Record<'hoy'|'manana'|'72h', EstadoTorre> }` (aditivo; el tipo congelado queda intacto).
-  `olas` no va ahí: se compone en cliente.
-- Valida el payload con zod contra los tipos del contrato congelado.
+- `src/modules/contexto/composer/` — `consultas` (I/O con `cache()` por request),
+  `armado-zonas` / `armado-mapa` / `armado-riel` (puros, 61 tests), `esquema` (zod
+  declarado `z.ZodType<TorreRespuesta>` para que no pueda divergir del tipo) e `index`
+  (dos cargadores: `cargarCabecera` y `cargarTablero`).
+- **Los tipos del contrato se movieron** a `src/modules/contexto/contrato-torre.ts`.
+  `_fixture/estado-torre.ts` los reexporta, así que ningún componente cambió su import;
+  la fixture conserva solo los DATOS (y sigue siendo la fuente de las variantes de
+  `EstadoPantalla` y del catálogo de macro-zonas).
+- **El `<Suspense>` es por región; el dato tiene dos puntos de llegada.** Partir el
+  tablero más fino no se puede sin mentir: R5 dibuja los bloques de lluvia que salen de
+  las celdas de R3, el control de capas necesita saber si hay lluvia, y R4 necesita las
+  zonas que pinta R3. R1 sí llega por su cuenta y antes.
+- **El composer NO recalcula el riesgo**: lee `contexto.riesgo_zona` tal cual, incluida
+  la franja dominante que marcó el job. Cuando no hay fila (el job no ha corrido, o el
+  courier no tiene zonas), los pendientes y el monto salen de un conteo EN VIVO con
+  `cargaPorZona` — la misma función pura del job — y los seis factores dicen que
+  todavía no hay cálculo.
+- **`leerTodasLasFilas`** (`src/lib/supabase/`) existe porque PostgREST corta en
+  `max_rows = 1000` sin avisar. Ya estaba mordiendo al job (30 días de pedidos cerrados
+  y ~3.700 filas de pronóstico). Úsalo en toda consulta que después se agregue.
 
-### 2. QA funcional con stack vivo
+### ~~2. QA funcional con stack vivo~~ — HECHO (paso B8)
 
-Los 5 jobs **nunca se han ejecutado** contra el Inngest Dev Server con datos de demo.
-El **fan-out por tenant es patrón nuevo en el repo** (antes había cero `step.sendEvent`
-y cero `concurrency` en todo `src/`): probarlo con ≥3 tenants, incluyendo reintentos.
-Las tablas de `contexto` están vacías porque ningún job ha corrido. Arranque en
-`docs/PRUEBA.md`.
+Los 5 jobs corrieron contra el Inngest Dev Server con datos de demo. Detalle en el
+bloque «paso B8» del checklist. Resumen de lo que quedó probado: el fan-out despacha
+un run por tenant no suspendido y **un tenant que falla no arrastra a los demás**
+(reintenta solo el suyo, 2 veces, y muere ahí); la clave de idempotencia del evento
+evita el doble recálculo dentro del mismo cuarto de hora; el upsert no duplica; y una
+fuente caída degrada con copy para el usuario **conservando el dato viejo y su última
+actualización exitosa**, sin reventar el job.
 
-### 3. Migrar las fuentes externas
+Lo que sigue abierto de este frente:
+- **No existe un job que pueble `contexto.eventos_ciudad`** (§6 lo lista como
+  `contexto/eventos.sincronizar`). Hoy la fila de frescura `eventos` la marca sana el
+  job de **calendario y feriados**, que es otra cosa. Decidir si se desdobla la fuente
+  o se renombra el slot del contrato.
+- Vista móvil a 390 px, sin revisar desde el refactor de regiones.
 
-Open-Meteo prohíbe uso comercial en su tier libre y Rutax cobra suscripción. Decidido:
-aire → **MMA/SINCA** (es quien decreta los episodios), clima → **OpenWeather** (tier
-gratuito permite SaaS comercial con atribución visible —ya está puesta en el mapa—,
-tope 1.000 llamadas/día). Bajar el muestreo de 52 comunas a **~10 puntos de grilla**
-sobre la RM, asignando a cada comuna su punto más cercano: el esquema no cambia y el
-consumo baja a ~240/día. **Los puertos NO cambian de forma; solo los adaptadores
-detrás.** Los adaptadores actuales se llaman `open-meteo.ts` y hay que reemplazarlos.
+### ~~3. Migrar las fuentes externas~~ — HECHO, con una corrección
 
-### 4. Bloque C — calendario comercial (olas)
+Open-Meteo quedó **retirado del código** (su tier libre prohíbe uso comercial). Clima
+**y aire** van ahora con **OpenWeather**: misma cuenta, tier gratuito sin tarjeta, uso
+comercial permitido a cambio de atribución visible con el texto literal «Weather data
+provided by OpenWeather». Los puertos no cambiaron de forma; solo los adaptadores.
 
-§12 del diseño técnico: dos arquetipos (venta, las entregas llegan después; regalo,
-llegan antes y el plazo es duro), curvas de rezago, proyección por día y zona, brecha
-de capacidad y fecha límite de compra por zona.
+**Lo que el traspaso decía mal:** «aire → MMA/SINCA». Se verificó el JSON de SINCA en
+vivo y **publica observaciones por estación, no pronóstico** — el mismo defecto por el
+que se había descartado la DMC para clima. La Torre anticipa a 24–72 h, así que aire
+pasó a **OpenWeather Air Pollution** (horario, 4 días). SINCA sigue siendo la fuente
+correcta para «qué mide la ciudad ahora»: sería un adaptador nuevo detrás del mismo
+puerto, no un reemplazo.
+
+Dos cosas que hay que tener presentes al leer el tablero:
+- **El clima gratuito viene en pasos de 3 horas**, no hora a hora, y `rain.3h` es un
+  acumulado: la intensidad queda como media del tramo y un chaparrón corto se lee más
+  suave. Se emite una fila por punto real, sin rellenar las horas intermedias.
+- **La grilla es de 14 puntos**, no 10 (`src/modules/integraciones/contexto/grilla-rm.ts`):
+  k-centros sobre los centroides comunales reales, peor caso 12,6 km, que es la
+  resolución del propio modelo. Un solo punto cubre las 25 comunas del casco urbano,
+  así que clima y aire **no distinguen Centro de Oriente** — el modelo tampoco.
+
+**Ya corre contra la API real.** La clave del tier gratuito está en `.env.local` y los
+dos puertos en `openweather`. Verificado en vivo: 1.248 filas de clima (52 comunas ×
+24 puntos de 3 h) y 3.796 de aire, con el viento en km/h (0,04–23,62) y la lluvia ya
+dividida (0–1,43 mm/h). El endpoint de histórico también es gratis, así que la siembra
+de la ventana de 24 h funciona. Hay horas con PM2.5 de 135 µg/m³ clasificadas `bueno`:
+es correcto — el nivel va sobre la media móvil de 24 h, no sobre la hora suelta.
+
+### ~~4. Bloque C — calendario comercial (olas)~~ — HECHO (paso B10)
+
+La ola entrante se proyecta y se muestra en R2 y en el riel. Detalle en el bloque
+«paso B10» del checklist. Lo que hay que saber:
+
+- **La fórmula de §12.3 está mal escrita en el documento.** `base × multiplicador ×
+  curva_rezago` da MENOS que un día normal, porque la curva suma 1 (es un reparto, no
+  un factor). Lo implementado: `extra = base × (multiplicador − 1) × días_del_evento`,
+  repartido por la curva y sumado a la base de cada día. Ver `src/modules/contexto/olas.ts`.
+- **Las cifras del dummy no se reproducen a propósito**: no salen de ninguna fórmula
+  publicada, y calzarlas habría sido elegir la fórmula por su resultado.
+- **El catálogo se siembra por migración** (`20260727000001`), con los 8 eventos que
+  tienen multiplicador y curva verificados. Los otros seis de §12.2 no entran hasta
+  tener multiplicador medido.
+- **La fecha límite de compra se mide** (mediana de días ingreso→compromiso por zona)
+  y una zona sin plazo medido NO aparece.
+
+Lo que queda abierto de este frente:
+- **El horizonte «Olas» (tecla 4) todavía cae a «hoy»**: no tiene vista propia.
+- **La alerta compuesta de §12.4** (ola + lluvia el día del peak).
+- **El aprendizaje de §12.5** (`contexto.olas_historicas`) es F3.
 
 ### 5. Bloque D — señales de prensa (F1.5)
 
@@ -176,6 +241,26 @@ Realtime y marcas operativas manuales.
     compositor: en una pestaña de fondo no llega nunca.
 11. **Los subagentes se han caído repetidamente por límite de sesión.** Para trabajo
     largo, hacerlo en la sesión principal o en trozos chicos.
+12. **PostgREST corta en `max_rows = 1000` SIN AVISAR.** No es un error que se pueda
+    capturar: son filas que faltan. Mortal en todo lo que después se agrega (un conteo
+    por zona, una suma de dinero, un pronóstico por comuna): el resultado sale plausible
+    y equivocado. Usa `leerTodasLasFilas` de `src/lib/supabase/`, o resuelve el conteo
+    en Postgres con `count: 'exact', head: true`.
+13. **El panel de navegador embebido nunca resuelve los `<Suspense>` de la Torre** — se
+    queda en los esqueletos aunque el HTML del servidor traiga todo. En Chrome real
+    tampoco resuelve con la pestaña en SEGUNDO PLANO. Para verificar la consola hace
+    falta la pestaña en primer plano (un `screenshot` de Claude in Chrome la activa).
+    Antes de dar por rota una región, comprueba con `fetch('/torre-de-control')` si el
+    contenido está en el HTML: si está, es el entorno, no el código.
+14. **Docker Desktop 4.56 encadena dos sockets huérfanos tras un cierre sucio**:
+    primero `AppData\Local\Docker\run\dockerInference`, después
+    `AppData\Local\docker-secrets-engine\engine.sock`. Hay que renombrar LAS DOS
+    carpetas (no se pueden borrar) y arrancar una sola vez; si arranca y vuelve a
+    caer, deja un socket nuevo y hay que repetir. **Nunca «Reset to factory
+    defaults»**: borra los volúmenes, incluida la base local con los datos de demo.
+    Y si tocas `settings-store.json` desde PowerShell 5.1, escríbelo **sin BOM**
+    (`[System.IO.File]::WriteAllText` con `UTF8Encoding($false)`): `Out-File -Encoding
+    utf8` mete BOM y el parser de Go de Docker lo rechaza con «invalid character 'ï'».
 
 ## Cómo trabajar
 
@@ -217,7 +302,15 @@ Realtime y marcas operativas manuales.
 2. **Estrategia de refresco en cliente** respetando las cadencias por fuente (clima 60
    min, tránsito 10 min, eventos 1440 min, prensa 30 min), sin que salte la posición de
    scroll del riel.
-3. **Acciones de las excepciones**: hoy completan el flujo de confirmación en el sitio
-   pero no ejecutan nada real ("adelantar corte", "reasignar conductores"). Falta
-   decidir si se cablean al backend en este módulo o se delegan a las pantallas
-   operativas que ya existen.
+3. **Acciones de las excepciones**: el composer YA NO EMITE las que requieren
+   confirmación ("adelantar corte", "reasignar conductores"), porque completan el flujo
+   y no ejecutan nada — un botón que confirma y no hace nada es peor que su ausencia.
+   Solo emite "Ver los N pedidos" (enlace real) y "Ver flota expuesta" (revelación
+   honesta in-situ). Falta decidir si esas dos acciones se cablean al backend en este
+   módulo o se delegan a las pantallas operativas que ya existen; cuando se decida, se
+   agregan en `composer/armado-riel.ts`.
+4. **La ventana de reparto de R5 termina en el corte MÁS TARDÍO del courier.** Con el
+   tenant demo todos los cortes son a las 12:00, así que la franja dibuja 08:00–12:00 y
+   se ve corta. Es fiel al modelo (el corte es "hasta cuándo se puede seguir
+   despachando"), pero conviene confirmar con el usuario que esa es la lectura correcta
+   y no "hasta cuándo se reparte".

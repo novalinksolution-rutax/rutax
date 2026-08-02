@@ -11,6 +11,24 @@ function porcentaje(minutos: number): number {
   return (Math.max(0, Math.min(MINUTOS_TOTALES, minutos)) / MINUTOS_TOTALES) * 100;
 }
 
+/**
+ * Reloj `HH:MM` a partir de los minutos transcurridos desde las 08:00.
+ *
+ * El valor puede ser NEGATIVO (son las 00:04, la jornada empieza a las 08:00) o
+ * pasar de 780 (son las 23:00). Con la aritmética directa —`(8 + minutos/60) %
+ * 24` y `minutos % 60`— eso imprimía `00:-56`, porque el `%` de JavaScript
+ * conserva el signo del dividendo. Se vio en pantalla a medianoche.
+ *
+ * Se normaliza al día completo en vez de recortarlo al rango: el MARCADOR sí se
+ * pega al borde de la franja, pero la hora tiene que decir la verdad. Recortarla
+ * mostraría «08:00» a medianoche, que es peor que un número raro — es un número
+ * creíble y falso.
+ */
+function relojDesdeInicioJornada(minutos: number): string {
+  const total = ((8 * 60 + Math.floor(minutos)) % 1440 + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
 interface Props {
   bloques: BloqueTimeline[];
   rango: Ventana;
@@ -26,6 +44,9 @@ interface Props {
 export function R5LineaDeTiempo({ bloques, rango, ahoraIso }: Props) {
   const minutosAhora = useMinutosDesdeSantiago(ahoraIso);
   const leftAhora = porcentaje(minutosAhora);
+  // El marcador se pega al borde cuando «ahora» cae fuera de la franja; sin
+  // decirlo, un marcador clavado a la izquierda se lee como «son las 08:00».
+  const fueraDeJornada = minutosAhora < 0 || minutosAhora > MINUTOS_TOTALES;
   const carriles = Math.max(1, ...bloques.map((b) => b.carril + 1));
   const altoPista = carriles * 20;
 
@@ -40,9 +61,18 @@ export function R5LineaDeTiempo({ bloques, rango, ahoraIso }: Props) {
           Línea de tiempo
         </p>
         <p className="text-[10px] text-tc-ink-600">{fechaCortaSantiago(rango.inicio)} · Santiago</p>
-        <p className="tc-num text-[22px] font-extrabold text-tc-tinta">
-          {String((8 + Math.floor(minutosAhora / 60)) % 24).padStart(2, "0")}:
-          {String(Math.floor(minutosAhora) % 60).padStart(2, "0")}
+        <p
+          className="tc-num text-[22px] font-extrabold text-tc-tinta"
+          title={
+            fueraDeJornada ? "Fuera de la ventana de reparto (08:00–21:00)" : undefined
+          }
+        >
+          {relojDesdeInicioJornada(minutosAhora)}
+          {fueraDeJornada ? (
+            <span className="ml-1 align-middle text-[10px] font-semibold text-tc-ink-600">
+              fuera de ventana
+            </span>
+          ) : null}
         </p>
       </div>
 

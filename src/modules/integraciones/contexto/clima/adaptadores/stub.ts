@@ -28,7 +28,7 @@ import {
   combinarFechaHoraSantiago,
   sumarDiasCalendario,
 } from '@/lib/fecha-santiago';
-import { puntosDeConsulta } from '../../open-meteo-comun';
+import { comunasDeConsulta } from '../../grilla-rm';
 import { exito, fallo, MOTIVOS_DEGRADACION, sanearParaMensaje } from '../../resultado';
 import type { ResultadoContexto } from '../../resultado';
 import type { PuertoClima } from '../puerto';
@@ -73,7 +73,7 @@ export class StubClimaAdapter implements PuertoClima {
 
     let comunas;
     try {
-      comunas = puntosDeConsulta(args.comunas).map((p) => p.comuna);
+      comunas = comunasDeConsulta(args.comunas);
     } catch (e) {
       return fallo(
         MOTIVOS_DEGRADACION.malConfigurada('clima'),

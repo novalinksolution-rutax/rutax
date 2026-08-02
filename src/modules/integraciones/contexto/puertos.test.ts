@@ -58,14 +58,25 @@ describe('default = stub (nada de red en dev/CI por descuido)', () => {
 });
 
 describe('selección del adaptador real', () => {
-  it('open-meteo construye el adaptador real de clima sin exigir credenciales', () => {
-    process.env.CONTEXTO_CLIMA_PROVIDER = 'open-meteo';
+  // La fábrica CONSTRUYE sin credenciales a propósito: la clave se exige al
+  // hacer la llamada, no al instanciar. Así un despliegue sin `OPENWEATHER_API_KEY`
+  // degrada la capa de clima con un motivo legible en vez de tumbar el arranque
+  // del job entero.
+  it('openweather construye el adaptador real de clima sin exigir credenciales', () => {
+    process.env.CONTEXTO_CLIMA_PROVIDER = 'openweather';
     expect(() => obtenerPuertoClima()).not.toThrow();
   });
 
-  it('open-meteo construye el adaptador real de aire sin exigir credenciales', () => {
-    process.env.CONTEXTO_AIRE_PROVIDER = 'open-meteo';
+  it('openweather construye el adaptador real de aire sin exigir credenciales', () => {
+    process.env.CONTEXTO_AIRE_PROVIDER = 'openweather';
     expect(() => obtenerPuertoAire()).not.toThrow();
+  });
+
+  it('open-meteo YA NO se acepta: su tier libre prohíbe el uso comercial', () => {
+    process.env.CONTEXTO_CLIMA_PROVIDER = 'open-meteo';
+    expect(() => obtenerPuertoClima()).toThrow(ErrorContextoConfig);
+    process.env.CONTEXTO_AIRE_PROVIDER = 'open-meteo';
+    expect(() => obtenerPuertoAire()).toThrow(ErrorContextoConfig);
   });
 
   it('boostr construye el adaptador real de feriados sin exigir credenciales', () => {

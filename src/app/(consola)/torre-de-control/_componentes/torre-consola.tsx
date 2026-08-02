@@ -1,11 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useReducer } from "react";
-import type { EstadoTorre } from "../_fixture/estado-torre";
-import { MENSAJES_ESTADO } from "../_fixture/estado-torre";
-import { ESTADO_CONSOLA_INICIAL, reducirConsola } from "../_lib/estado-consola";
+import { Suspense, use, useCallback, useEffect, useReducer, type Dispatch } from "react";
+import type { CabeceraTorre } from "@/modules/contexto/composer";
+import type {
+  CapaMapa,
+  EstadoCapa,
+  EstadoTorre,
+  Horizonte,
+  TorreRespuesta,
+} from "@/modules/contexto/contrato-torre";
+import { MENSAJES_ESTADO_TORRE } from "@/modules/contexto/mensajes-estado";
+import {
+  ESTADO_CONSOLA_INICIAL,
+  reducirConsola,
+  type AccionConsola,
+  type EstadoConsola,
+} from "../_lib/estado-consola";
 import { HORIZONTES } from "../_lib/horizontes";
 import { DefsPatronesRiesgo } from "./trama-riesgo";
+import { EsqueletoRegion } from "./esqueleto-region";
 import { R1BarraSuperior } from "./r1-barra-superior";
 import { BandaMensajeEstado } from "./banda-mensaje-estado";
 import { R2OlaEntrante } from "./r2-ola-entrante";
@@ -22,24 +35,48 @@ import { FilaZona } from "./fila-zona";
 import { DesgloseZona } from "./riel/desglose-zona";
 
 interface Props {
-  estado: EstadoTorre;
+  /** Courier y frescura de fuentes. Llega antes que el tablero: R1 no espera. */
+  cabecera: Promise<CabeceraTorre>;
+  /** Los tres horizontes ya calculados. El cambio de horizonte es de cliente. */
+  tablero: Promise<TorreRespuesta>;
   /** Destino del control de salida de R1 (la consola vive fuera del shell). */
   hrefSalida: string;
 }
 
 /**
- * Raíz de la consola. Cliente porque gobierna interacción, teclado y la
- * paleta de comandos; el fetch del dato (hoy, la fixture) queda en el
- * Server Component (`page.tsx`).
+ * Raíz de la consola.
  *
- * Dos árboles paralelos (regla 7 + README §5): uno de escritorio (R1 + banda
- * + R2 + [lista de zonas | riel] + R5) y uno de móvil (cabecera sticky +
- * titular + contador + excepciones + zonas + ola). Tailwind alterna cuál se
- * ve con `hidden lg:flex` / `flex lg:hidden` — los dos existen en el DOM,
- * pero solo uno es visible (y por lo tanto solo uno entra al árbol de
- * accesibilidad, gracias a `display:none`).
+ * -----------------------------------------------------------------------------
+ * POR QUÉ RECIBE PROMESAS Y NO DATOS
+ * -----------------------------------------------------------------------------
+ * El handoff (§6) es explícito: **no hay spinner de página**. Cada región llega
+ * por su cuenta y ninguna bloquea a otra, y mientras falta, el hueco NOMBRA lo
+ * que falta — un rectángulo gris anónimo no le dice al coordinador si lo que no
+ * llegó es el mapa o el riel.
+ *
+ * Eso pide un `<Suspense>` POR REGIÓN, y una región no puede tener su propio
+ * límite si su padre ya esperó el dato por ella. Por eso el Server Component
+ * pasa las promesas sin resolver y cada región las consume con `use()` dentro de
+ * su límite: R1 pinta en cuanto llega la frescura, sin esperar a que el motor de
+ * riesgo termine de armar cinco zonas por tres horizontes.
+ *
+ * El estado de interacción (zona seleccionada, capas, horizonte, paleta) sigue
+ * viviendo AQUÍ, en un solo reducer, porque es compartido: el mapa y el riel
+ * tienen que estar de acuerdo sobre qué zona está seleccionada.
+ *
+ * -----------------------------------------------------------------------------
+ * CAMBIAR DE HORIZONTE NO VIAJA AL SERVIDOR
+ * -----------------------------------------------------------------------------
+ * `TorreRespuesta` trae `hoy`, `manana` y `72h` calculados. Cambiar de horizonte
+ * solo cambia de qué clave del objeto se lee. Nada de `router.refresh()` ni de
+ * `revalidatePath`: cualquiera de los dos remontaría el tablero y haría saltar
+ * la posición de scroll del riel, que el handoff prohíbe.
+ *
+ * Dos árboles paralelos (regla 7 + README §5): uno de escritorio y uno de móvil.
+ * Tailwind alterna cuál se ve; los dos existen en el DOM, pero solo uno entra al
+ * árbol de accesibilidad, gracias a `display:none`.
  */
-export function TorreConsola({ estado, hrefSalida }: Props) {
+export function TorreConsola({ cabecera, tablero, hrefSalida }: Props) {
   const [consola, dispatch] = useReducer(reducirConsola, ESTADO_CONSOLA_INICIAL);
 
   const seleccionarZona = useCallback((zonaId: string) => {
@@ -91,10 +128,7 @@ export function TorreConsola({ estado, hrefSalida }: Props) {
     return () => window.removeEventListener("keydown", alTeclear);
   }, [consola.paleta, consola.marcando]);
 
-  const zonasOrdenadas = [...estado.zonas].sort((a, b) => b.riesgo - a.riesgo);
-  const peorZona = zonasOrdenadas[0] ?? null;
-  const zonaActiva = consola.zona ? (estado.zonas.find((z) => z.id === consola.zona) ?? null) : null;
-  const excepcionesVisibles = estado.excepciones.filter((e) => !consola.descartadas.includes(e.id));
+  const comun = { tablero, consola, dispatch, seleccionarZona };
 
   return (
     <div
@@ -117,69 +151,46 @@ export function TorreConsola({ estado, hrefSalida }: Props) {
         detalle que hace que "solo el riel scrollea" sea verdad.
       */}
       <div className="hidden h-full flex-col gap-[var(--tc-regla-may)] overflow-hidden bg-tc-chasis lg:flex">
-        <R1BarraSuperior
-          courierNombre={estado.courier.nombre}
-          horizonte={consola.horizonte}
-          frescura={estado.frescura}
-          hrefSalida={hrefSalida}
-          onCambiarHorizonte={(horizonte) => dispatch({ tipo: "cambiar-horizonte", horizonte })}
-          onAbrirPaleta={() => dispatch({ tipo: "abrir-paleta" })}
-        />
-        <BandaMensajeEstado estado={estado.estado} mensajes={MENSAJES_ESTADO} />
-        <R2OlaEntrante ola={estado.olaEntrante} />
+        <Suspense fallback={<EsqueletoRegion region="R1 · barra superior" alto="var(--tc-h-barra)" />}>
+          <RegionR1
+            cabecera={cabecera}
+            horizonte={consola.horizonte}
+            hrefSalida={hrefSalida}
+            dispatch={dispatch}
+          />
+        </Suspense>
+
+        {/* La banda no tiene esqueleto propio: es la única región que puede no
+            existir (con_excepciones no tiene mensaje), así que un hueco con
+            nombre ahí anunciaría algo que quizá nunca llega. */}
+        <Suspense fallback={null}>
+          <RegionBanda tablero={tablero} horizonte={consola.horizonte} />
+        </Suspense>
+
+        {/* R2 tampoco lleva esqueleto: si no hay ola entrante la región NO se
+            dibuja (no se deja un hueco), así que un esqueleto de 132 px
+            aparecería y se desplomaría al llegar el dato — el salto de layout
+            exacto que los esqueletos existen para evitar. */}
+        <Suspense fallback={null}>
+          <RegionR2 tablero={tablero} horizonte={consola.horizonte} />
+        </Suspense>
+
         <div className="flex min-h-0 flex-1 gap-[var(--tc-regla-may)]">
           <div id="zonas-riesgo-escritorio" className="flex flex-1 overflow-hidden">
-            <R3Mapa
-              estadoPantalla={estado.estado}
-              zonas={estado.zonas}
-              zonaSeleccionada={consola.zona}
-              capas={estado.capas}
-              capasActivas={consola.capas}
-              zoom={consola.zoom}
-              pedidosSinGeocodificar={estado.pedidosSinGeocodificar}
-              celdasClima={estado.celdasClima}
-              eventosCiudad={estado.eventosCiudad}
-              conductores={estado.conductores}
-              incidentesTransito={estado.incidentesTransito}
-              marcasOperativas={estado.marcasOperativas}
-              marcando={consola.marcando}
-              marcaProvisional={consola.marcaProv}
-              mostrarLista={consola.lista}
-              onSeleccionarZona={seleccionarZona}
-              onAlternarCapa={(capa) => dispatch({ tipo: "alternar-capa", capa })}
-              onCambiarZoom={(zoom) => dispatch({ tipo: "cambiar-zoom", zoom })}
-              onAlternarLista={() => dispatch({ tipo: "alternar-lista" })}
-              onColocarMarca={(long, lat) =>
-                dispatch({ tipo: "colocar-marca-provisional", long, lat })
-              }
-            />
+            <Suspense fallback={<EsqueletoRegion region="R3 · mapa" className="flex-1" />}>
+              <RegionR3 {...comun} />
+            </Suspense>
           </div>
-          <Riel
-            estado={estado.estado}
-            metricas={estado.metricas}
-            excepciones={estado.excepciones}
-            descartadas={consola.descartadas}
-            zonas={estado.zonas}
-            zonaSeleccionada={consola.zona}
-            factorAbierto={consola.factor}
-            senales={estado.senales}
-            olaEntrante={estado.olaEntrante}
-            ahoraIso={estado.ahora}
-            confirmando={consola.confirmando}
-            fuentesAbiertas={consola.senal}
-            otrasAbiertas={consola.otras}
-            onSeleccionarZona={seleccionarZona}
-            onCerrarDesglose={() => dispatch({ tipo: "cerrar-desglose" })}
-            onAbrirFactor={(factorId) => dispatch({ tipo: "abrir-factor", factorId })}
-            onPedirConfirmacion={(accionId) => dispatch({ tipo: "pedir-confirmacion", accionId })}
-            onCancelarConfirmacion={() => dispatch({ tipo: "cancelar-confirmacion" })}
-            onConfirmarAccion={() => dispatch({ tipo: "confirmar-accion" })}
-            onDescartarExcepcion={(excepcionId) => dispatch({ tipo: "descartar-excepcion", excepcionId })}
-            onAlternarFuentes={() => dispatch({ tipo: "alternar-fuentes-senal" })}
-            onAlternarOtras={() => dispatch({ tipo: "alternar-otras-senales" })}
-          />
+          <Suspense
+            fallback={<EsqueletoRegion region="R4 · riel" className="w-[var(--tc-w-riel)] shrink-0" />}
+          >
+            <RegionRiel {...comun} />
+          </Suspense>
         </div>
-        <R5LineaDeTiempo bloques={estado.timeline} rango={estado.rangoTimeline} ahoraIso={estado.ahora} />
+
+        <Suspense fallback={<EsqueletoRegion region="R5 · línea de tiempo" alto="var(--tc-h-tiempo)" />}>
+          <RegionR5 tablero={tablero} horizonte={consola.horizonte} />
+        </Suspense>
       </div>
 
       {/* ================= Móvil ================= */}
@@ -187,89 +198,21 @@ export function TorreConsola({ estado, hrefSalida }: Props) {
           orden es una lista de arriba abajo. El scroll vive en este contenedor
           porque el layout de la ruta fija el alto de la ventana. */}
       <div className="flex h-full flex-col overflow-y-auto lg:hidden">
-        <CabeceraSticky
-          ahoraIso={estado.ahora}
-          frescura={estado.frescura}
-          horizonte={consola.horizonte}
-          onCambiarHorizonte={(horizonte) => dispatch({ tipo: "cambiar-horizonte", horizonte })}
-        />
-        <BandaMensajeEstado estado={estado.estado} mensajes={MENSAJES_ESTADO} />
-
-        {estado.estado !== "tranquilo" && peorZona ? <TitularRiesgo zona={peorZona} /> : null}
-
-        <div className="border-b-2 border-tc-chasis bg-tc-papel px-4 py-3">
-          <ContadorSinUbicar cantidad={estado.pedidosSinGeocodificar} />
-        </div>
-
-        {estado.estado !== "sin_pedidos" ? (
-          <div className="border-b-2 border-tc-chasis bg-tc-papel">
-            <p className="px-4 pt-3 pb-1 text-[9px] font-extrabold tracking-[0.13em] text-tc-ink-600 uppercase">
-              Excepciones · {excepcionesVisibles.length}
-            </p>
-            {excepcionesVisibles.length === 0 ? (
-              <p className="px-4 pb-4 text-[12px] text-tc-ink-700">
-                Sin excepciones abiertas. El riel se queda vacío a propósito.
-              </p>
-            ) : (
-              excepcionesVisibles.map((excepcion) => (
-                <FichaExcepcion
-                  key={excepcion.id}
-                  excepcion={excepcion}
-                  zonaNombre={estado.zonas.find((z) => z.id === excepcion.zonaId)?.nombre ?? null}
-                  ahoraIso={estado.ahora}
-                  confirmando={consola.confirmando}
-                  onSeleccionarZona={seleccionarZona}
-                  onPedirConfirmacion={(accionId) => dispatch({ tipo: "pedir-confirmacion", accionId })}
-                  onCancelarConfirmacion={() => dispatch({ tipo: "cancelar-confirmacion" })}
-                  onConfirmarAccion={() => dispatch({ tipo: "confirmar-accion" })}
-                  onDescartar={() => dispatch({ tipo: "descartar-excepcion", excepcionId: excepcion.id })}
-                  variante="movil"
-                />
-              ))
-            )}
-          </div>
-        ) : null}
-
-        <div id="zonas-riesgo-movil" className="border-b-2 border-tc-chasis bg-tc-papel">
-          <p className="px-4 pt-3 pb-1 text-[9px] font-extrabold tracking-[0.13em] text-tc-ink-600 uppercase">
-            Zonas por riesgo
-          </p>
-          {zonasOrdenadas.map((zona) => (
-            <FilaZona
-              key={zona.id}
-              zona={zona}
-              seleccionada={consola.zona === zona.id}
-              onSeleccionar={() => seleccionarZona(zona.id)}
-              variante="movil"
-            />
-          ))}
-          {zonaActiva ? (
-            <DesgloseZona
-              zona={zonaActiva}
-              factorAbierto={consola.factor}
-              onCerrar={() => dispatch({ tipo: "cerrar-desglose" })}
-              onAbrirFactor={(factorId) => dispatch({ tipo: "abrir-factor", factorId })}
-            />
-          ) : null}
-        </div>
-
-        <OlaEntranteMovil ola={estado.olaEntrante} />
+        <Suspense fallback={<EsqueletoRegion region="Cabecera" alto="var(--tc-h-barra)" />}>
+          <RegionCabeceraMovil
+            cabecera={cabecera}
+            horizonte={consola.horizonte}
+            dispatch={dispatch}
+          />
+        </Suspense>
+        <Suspense fallback={<EsqueletoRegion region="Zonas y excepciones" alto="60vh" />}>
+          <RegionMovil {...comun} />
+        </Suspense>
       </div>
 
-      <PaletaComandos
-        abierto={consola.paleta}
-        filtro={consola.filtro}
-        zonas={estado.zonas}
-        capas={estado.capas}
-        capasActivas={consola.capas}
-        onCambiarFiltro={(filtro) => dispatch({ tipo: "cambiar-filtro", filtro })}
-        onCerrar={() => dispatch({ tipo: "cerrar-paleta" })}
-        onIrAZona={(zonaId) => dispatch({ tipo: "ir-a-zona", zonaId })}
-        onCambiarHorizonte={(horizonte) => dispatch({ tipo: "cambiar-horizonte", horizonte })}
-        onAlternarCapa={(capa) => dispatch({ tipo: "alternar-capa", capa })}
-        onAlternarLista={() => dispatch({ tipo: "alternar-lista" })}
-        onActivarMarca={() => dispatch({ tipo: "activar-modo-marca" })}
-      />
+      <Suspense fallback={null}>
+        <RegionPaleta {...comun} />
+      </Suspense>
 
       {consola.marcando ? (
         <div
@@ -282,5 +225,288 @@ export function TorreConsola({ estado, hrefSalida }: Props) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+// =============================================================================
+// Regiones — cada una consume el dato dentro de SU límite de Suspense
+// =============================================================================
+
+interface PropsComunes {
+  tablero: Promise<TorreRespuesta>;
+  consola: EstadoConsola;
+  dispatch: Dispatch<AccionConsola>;
+  seleccionarZona: (zonaId: string) => void;
+}
+
+/**
+ * El `EstadoTorre` del horizonte que el usuario tiene puesto.
+ *
+ * `olas` no es un horizonte del motor de riesgo: es la proyección de volumen del
+ * calendario comercial, que todavía no existe (bloque C). Mientras tanto cae a
+ * `hoy` — el tablero sigue siendo verdadero, y R2 ya sabe decir que no hay ola
+ * que mostrar. Es preferible a dejar la pantalla en blanco al pulsar `4`.
+ */
+function useHorizonte(tablero: Promise<TorreRespuesta>, horizonte: Horizonte): EstadoTorre {
+  const respuesta = use(tablero);
+  return respuesta.horizontes[horizonte === "olas" ? "hoy" : horizonte];
+}
+
+/**
+ * Las capas que el usuario dejó encendidas, MENOS las que el servidor declaró
+ * no disponibles.
+ *
+ * El estado inicial del reducer trae Riesgo y Lluvia encendidas (regla del
+ * handoff), pero la disponibilidad depende del dato del día: si la fuente de
+ * clima nunca corrió, la consola mostraba «Lluvia» marcada como activa y al
+ * mismo tiempo bloqueada con su motivo, dos cosas contradictorias en el mismo
+ * control. El filtro se aplica al pintar y no borrando del reducer: en cuanto
+ * la fuente vuelva, la capa se enciende sola sin que el usuario tenga que
+ * acordarse de reactivarla.
+ */
+function capasEncendibles(
+  activas: readonly CapaMapa[],
+  capas: readonly EstadoCapa[],
+): CapaMapa[] {
+  const disponibles = new Set(capas.filter((c) => c.disponible).map((c) => c.id));
+  return activas.filter((capa) => disponibles.has(capa));
+}
+
+function RegionR1({
+  cabecera,
+  horizonte,
+  hrefSalida,
+  dispatch,
+}: {
+  cabecera: Promise<CabeceraTorre>;
+  horizonte: Horizonte;
+  hrefSalida: string;
+  dispatch: Dispatch<AccionConsola>;
+}) {
+  const datos = use(cabecera);
+  return (
+    <R1BarraSuperior
+      courierNombre={datos.courier.nombre}
+      horizonte={horizonte}
+      frescura={datos.frescura}
+      hrefSalida={hrefSalida}
+      onCambiarHorizonte={(valor) => dispatch({ tipo: "cambiar-horizonte", horizonte: valor })}
+      onAbrirPaleta={() => dispatch({ tipo: "abrir-paleta" })}
+    />
+  );
+}
+
+function RegionBanda({
+  tablero,
+  horizonte,
+}: {
+  tablero: Promise<TorreRespuesta>;
+  horizonte: Horizonte;
+}) {
+  const estado = useHorizonte(tablero, horizonte);
+  return <BandaMensajeEstado estado={estado.estado} mensajes={MENSAJES_ESTADO_TORRE} />;
+}
+
+function RegionR2({
+  tablero,
+  horizonte,
+}: {
+  tablero: Promise<TorreRespuesta>;
+  horizonte: Horizonte;
+}) {
+  const estado = useHorizonte(tablero, horizonte);
+  return <R2OlaEntrante ola={estado.olaEntrante} />;
+}
+
+function RegionR3({ tablero, consola, dispatch, seleccionarZona }: PropsComunes) {
+  const estado = useHorizonte(tablero, consola.horizonte);
+  return (
+    <R3Mapa
+      estadoPantalla={estado.estado}
+      zonas={estado.zonas}
+      zonaSeleccionada={consola.zona}
+      capas={estado.capas}
+      capasActivas={capasEncendibles(consola.capas, estado.capas)}
+      zoom={consola.zoom}
+      pedidosSinGeocodificar={estado.pedidosSinGeocodificar}
+      celdasClima={estado.celdasClima}
+      eventosCiudad={estado.eventosCiudad}
+      conductores={estado.conductores}
+      incidentesTransito={estado.incidentesTransito}
+      marcasOperativas={estado.marcasOperativas}
+      marcando={consola.marcando}
+      marcaProvisional={consola.marcaProv}
+      mostrarLista={consola.lista}
+      onSeleccionarZona={seleccionarZona}
+      onAlternarCapa={(capa) => dispatch({ tipo: "alternar-capa", capa })}
+      onCambiarZoom={(zoom) => dispatch({ tipo: "cambiar-zoom", zoom })}
+      onAlternarLista={() => dispatch({ tipo: "alternar-lista" })}
+      onColocarMarca={(long, lat) => dispatch({ tipo: "colocar-marca-provisional", long, lat })}
+    />
+  );
+}
+
+function RegionRiel({ tablero, consola, dispatch, seleccionarZona }: PropsComunes) {
+  const estado = useHorizonte(tablero, consola.horizonte);
+  return (
+    <Riel
+      estado={estado.estado}
+      metricas={estado.metricas}
+      excepciones={estado.excepciones}
+      descartadas={consola.descartadas}
+      zonas={estado.zonas}
+      zonaSeleccionada={consola.zona}
+      factorAbierto={consola.factor}
+      senales={estado.senales}
+      olaEntrante={estado.olaEntrante}
+      ahoraIso={estado.ahora}
+      confirmando={consola.confirmando}
+      fuentesAbiertas={consola.senal}
+      otrasAbiertas={consola.otras}
+      onSeleccionarZona={seleccionarZona}
+      onCerrarDesglose={() => dispatch({ tipo: "cerrar-desglose" })}
+      onAbrirFactor={(factorId) => dispatch({ tipo: "abrir-factor", factorId })}
+      onPedirConfirmacion={(accionId) => dispatch({ tipo: "pedir-confirmacion", accionId })}
+      onCancelarConfirmacion={() => dispatch({ tipo: "cancelar-confirmacion" })}
+      onConfirmarAccion={() => dispatch({ tipo: "confirmar-accion" })}
+      onDescartarExcepcion={(excepcionId) => dispatch({ tipo: "descartar-excepcion", excepcionId })}
+      onAlternarFuentes={() => dispatch({ tipo: "alternar-fuentes-senal" })}
+      onAlternarOtras={() => dispatch({ tipo: "alternar-otras-senales" })}
+    />
+  );
+}
+
+function RegionR5({
+  tablero,
+  horizonte,
+}: {
+  tablero: Promise<TorreRespuesta>;
+  horizonte: Horizonte;
+}) {
+  const estado = useHorizonte(tablero, horizonte);
+  return (
+    <R5LineaDeTiempo
+      bloques={estado.timeline}
+      rango={estado.rangoTimeline}
+      ahoraIso={estado.ahora}
+    />
+  );
+}
+
+function RegionPaleta({ tablero, consola, dispatch }: PropsComunes) {
+  const estado = useHorizonte(tablero, consola.horizonte);
+  return (
+    <PaletaComandos
+      abierto={consola.paleta}
+      filtro={consola.filtro}
+      zonas={estado.zonas}
+      capas={estado.capas}
+      capasActivas={capasEncendibles(consola.capas, estado.capas)}
+      onCambiarFiltro={(filtro) => dispatch({ tipo: "cambiar-filtro", filtro })}
+      onCerrar={() => dispatch({ tipo: "cerrar-paleta" })}
+      onIrAZona={(zonaId) => dispatch({ tipo: "ir-a-zona", zonaId })}
+      onCambiarHorizonte={(horizonte) => dispatch({ tipo: "cambiar-horizonte", horizonte })}
+      onAlternarCapa={(capa) => dispatch({ tipo: "alternar-capa", capa })}
+      onAlternarLista={() => dispatch({ tipo: "alternar-lista" })}
+      onActivarMarca={() => dispatch({ tipo: "activar-modo-marca" })}
+    />
+  );
+}
+
+// =============================================================================
+// Móvil
+// =============================================================================
+
+function RegionCabeceraMovil({
+  cabecera,
+  horizonte,
+  dispatch,
+}: {
+  cabecera: Promise<CabeceraTorre>;
+  horizonte: Horizonte;
+  dispatch: Dispatch<AccionConsola>;
+}) {
+  const datos = use(cabecera);
+  return (
+    <CabeceraSticky
+      ahoraIso={datos.ahoraIso}
+      frescura={datos.frescura}
+      horizonte={horizonte}
+      onCambiarHorizonte={(valor) => dispatch({ tipo: "cambiar-horizonte", horizonte: valor })}
+    />
+  );
+}
+
+function RegionMovil({ tablero, consola, dispatch, seleccionarZona }: PropsComunes) {
+  const estado = useHorizonte(tablero, consola.horizonte);
+  const zonasOrdenadas = [...estado.zonas].sort((a, b) => b.riesgo - a.riesgo);
+  const peorZona = zonasOrdenadas[0] ?? null;
+  const zonaActiva = consola.zona ? (estado.zonas.find((z) => z.id === consola.zona) ?? null) : null;
+  const excepcionesVisibles = estado.excepciones.filter((e) => !consola.descartadas.includes(e.id));
+
+  return (
+    <>
+      <BandaMensajeEstado estado={estado.estado} mensajes={MENSAJES_ESTADO_TORRE} />
+
+      {estado.estado !== "tranquilo" && peorZona ? <TitularRiesgo zona={peorZona} /> : null}
+
+      <div className="border-b-2 border-tc-chasis bg-tc-papel px-4 py-3">
+        <ContadorSinUbicar cantidad={estado.pedidosSinGeocodificar} />
+      </div>
+
+      {estado.estado !== "sin_pedidos" ? (
+        <div className="border-b-2 border-tc-chasis bg-tc-papel">
+          <p className="px-4 pt-3 pb-1 text-[9px] font-extrabold tracking-[0.13em] text-tc-ink-600 uppercase">
+            Excepciones · {excepcionesVisibles.length}
+          </p>
+          {excepcionesVisibles.length === 0 ? (
+            <p className="px-4 pb-4 text-[12px] text-tc-ink-700">
+              Sin excepciones abiertas. El riel se queda vacío a propósito.
+            </p>
+          ) : (
+            excepcionesVisibles.map((excepcion) => (
+              <FichaExcepcion
+                key={excepcion.id}
+                excepcion={excepcion}
+                zonaNombre={estado.zonas.find((z) => z.id === excepcion.zonaId)?.nombre ?? null}
+                ahoraIso={estado.ahora}
+                confirmando={consola.confirmando}
+                onSeleccionarZona={seleccionarZona}
+                onPedirConfirmacion={(accionId) => dispatch({ tipo: "pedir-confirmacion", accionId })}
+                onCancelarConfirmacion={() => dispatch({ tipo: "cancelar-confirmacion" })}
+                onConfirmarAccion={() => dispatch({ tipo: "confirmar-accion" })}
+                onDescartar={() => dispatch({ tipo: "descartar-excepcion", excepcionId: excepcion.id })}
+                variante="movil"
+              />
+            ))
+          )}
+        </div>
+      ) : null}
+
+      <div id="zonas-riesgo-movil" className="border-b-2 border-tc-chasis bg-tc-papel">
+        <p className="px-4 pt-3 pb-1 text-[9px] font-extrabold tracking-[0.13em] text-tc-ink-600 uppercase">
+          Zonas por riesgo
+        </p>
+        {zonasOrdenadas.map((zona) => (
+          <FilaZona
+            key={zona.id}
+            zona={zona}
+            seleccionada={consola.zona === zona.id}
+            onSeleccionar={() => seleccionarZona(zona.id)}
+            variante="movil"
+          />
+        ))}
+        {zonaActiva ? (
+          <DesgloseZona
+            zona={zonaActiva}
+            factorAbierto={consola.factor}
+            onCerrar={() => dispatch({ tipo: "cerrar-desglose" })}
+            onAbrirFactor={(factorId) => dispatch({ tipo: "abrir-factor", factorId })}
+          />
+        ) : null}
+      </div>
+
+      <OlaEntranteMovil ola={estado.olaEntrante} />
+    </>
   );
 }

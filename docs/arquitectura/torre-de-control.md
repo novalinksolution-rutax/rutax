@@ -74,14 +74,32 @@ propio**: con el tiempo Rutax sabe cuánto le cuesta la lluvia a *ese* courier e
 > precio no es público y contradicen la decisión 1 del §2.
 >
 > **Fuentes decididas en reemplazo:**
-> - **Aire → MMA / SINCA.** Es la fuente oficial chilena y, sobre todo, es *quien
->   decreta* los episodios: la alerta de preemergencia deja de ser la estimación
->   de un modelo global y pasa a ser el dato que rige. Mejor por mérito, no solo
->   por licencia.
-> - **Clima → OpenWeather.** Su tier gratuito permite uso comercial y menciona
->   plataformas SaaS explícitamente, a cambio de **atribución visible en
->   pantalla** (que el handoff no tiene prevista: hay que abrirle lugar en el
->   borde del mapa, junto a la de OpenStreetMap). Tope de 1.000 llamadas/día.
+> - ~~**Aire → MMA / SINCA.**~~ **CORREGIDO OTRA VEZ (2026-07-27, al implementar):
+>   SINCA no sirve como fuente del factor aire.** Se verificó su JSON en vivo
+>   (`sinca.mma.gob.cl/index.php/json/listadomapa2k19/`) y publica
+>   **observaciones horarias por estación, no pronóstico** — exactamente el mismo
+>   defecto por el que dos párrafos más abajo se descarta la DMC para clima. La
+>   Torre anticipa a 24–72 h; alimentarla con lo ya ocurrido le quita su razón de
+>   ser. Es cierto que el MMA es quien decreta los episodios, pero el decreto
+>   llega el día del episodio, no tres días antes.
+>   **Aire pasa a OpenWeather Air Pollution API** (pronóstico horario a 4 días de
+>   PM2.5/PM10, gratis, misma cuenta que el clima). La clasificación a niveles
+>   chilenos sigue siendo nuestra, sobre la media móvil de 24 h del Plan
+>   Operacional del MMA — no se usa el índice AQI del proveedor.
+>   SINCA sigue siendo la fuente correcta para «qué está midiendo la ciudad ahora
+>   mismo» y para contrastar el pronóstico contra la realidad: sería un adaptador
+>   NUEVO detrás del mismo puerto, no un reemplazo.
+> - **Clima → OpenWeather.** Su tier gratuito permite uso comercial y **no pide
+>   tarjeta**, a cambio de **atribución visible en pantalla** con el texto
+>   literal «Weather data provided by OpenWeather» y enlace al sitio (el handoff
+>   no la tenía prevista: se le abrió una franja de 18 px al pie del mapa, junto
+>   a la de OpenStreetMap). Cuota real verificada: **60 llamadas/minuto y
+>   1.000.000/mes** — no las 1.000/día que decía este documento, que eran las de
+>   One Call 3.0, un producto distinto que sí exige tarjeta.
+>   El endpoint gratuito es `/data/2.5/forecast`: **paso de 3 horas**, no hora a
+>   hora, y `rain.3h` es un ACUMULADO del tramo. Consecuencia aceptada: la
+>   intensidad de lluvia queda como media del tramo y un chaparrón corto se lee
+>   más suave de lo que fue.
 > - **La DMC (Dirección Meteorológica de Chile) se evaluó y NO sirve para esto**:
 >   publica observaciones de estaciones automáticas e histórico, no un pronóstico
 >   horario por ubicación. El factor clima de la Torre es inherentemente
@@ -91,7 +109,7 @@ propio**: con el tiempo Rutax sabe cuánto le cuesta la lluvia a *ese* courier e
 | Fuente | Endpoint | Key | Verificado |
 | --- | --- | --- | --- |
 | Clima horario | OpenWeather (ver corrección arriba) | sí, gratuita | Uso comercial permitido con atribución visible |
-| Calidad del aire | MMA / SINCA (ver corrección arriba) | — | Fuente oficial: es la que decreta los episodios |
+| Calidad del aire | OpenWeather Air Pollution API (ver corrección arriba) | sí, misma que clima | Pronóstico horario a 4 días; SINCA descartada por ser observación, no pronóstico |
 | Tránsito (F2) | TomTom Traffic API (`incidentDetails`) | sí, freemium | Sí — Chile con cobertura incidents + flow + flow detailed; 2.500 req/día gratis, uso comercial permitido |
 | Feriados | `api.boostr.cl/holidays.json` | no | Sí — incluye marca de irrenunciable |
 | Restricción / GEC | `airerm.mma.gob.cl` (feeds RSS por tag) + calendario fijo GEC 2026 | no | Sí |

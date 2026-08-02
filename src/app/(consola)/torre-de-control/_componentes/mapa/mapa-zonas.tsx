@@ -361,6 +361,32 @@ export function MapaZonas({
         }
         y = Math.min(Math.max(y, MARGEN), Math.max(MARGEN, altoMax - alto - MARGEN));
         colocadas.push({ x, y, ancho, alto });
+      } else if (ancho > 0 && alto > 0) {
+        // Las etiquetas que NO son placas de zona (lluvia, eventos, marcas)
+        // también chocan, y con datos reales chocan mucho: un frente de invierno
+        // pone una etiqueta de lluvia sobre cada zona y el handoff nunca las vio
+        // juntas. Ceden ellas, no las placas — las placas ya están en
+        // `colocadas` porque `anclas` las lista primero, y son las que responden
+        // la pregunta principal del mapa.
+        //
+        // Dos diferencias con el trato de las placas, y las dos a propósito:
+        // NO se acotan al lienzo (una etiqueta marca un punto: arrastrarla al
+        // borde la pondría sobre un sitio que no es el suyo), y el tope de
+        // intentos es más corto — pasados dos empujes se acepta el solape antes
+        // que despegar la cifra de su círculo.
+        for (let intento = 0; intento < 2; intento += 1) {
+          const choque = colocadas.find(
+            (c) =>
+              x < c.x + c.ancho + MARGEN &&
+              x + ancho + MARGEN > c.x &&
+              y < c.y + c.alto + MARGEN &&
+              y + alto + MARGEN > c.y,
+          );
+          if (!choque) break;
+          const haciaArriba = y + alto / 2 < choque.y + choque.alto / 2;
+          y = haciaArriba ? choque.y - alto - MARGEN : choque.y + choque.alto + MARGEN;
+        }
+        colocadas.push({ x, y, ancho, alto });
       }
 
       nodo.style.transform = `translate3d(${x}px, ${y}px, 0)`;
@@ -371,9 +397,18 @@ export function MapaZonas({
     const mapa = mapaRef.current;
     if (!mapa) return;
     reposicionar();
+    // Y otra vez en el frame siguiente. El des-solapado mide `offsetWidth`, y
+    // las etiquetas que no son placas no tienen ancho fijo: se dimensionan por
+    // su texto. En la primera pasada —el mismo tick en que se montan— todavía
+    // miden 0, así que la detección de choques compara cajas vacías y no mueve
+    // nada. Es el mismo modo de fallo que ya había tenido el envoltorio de la
+    // placa cuando medía 0×0; aquí el disparador es distinto (el tiempo, no el
+    // posicionamiento) y por eso no lo cubría el arreglo anterior.
+    const frame = requestAnimationFrame(reposicionar);
     mapa.on("move", reposicionar);
     mapa.on("resize", reposicionar);
     return () => {
+      cancelAnimationFrame(frame);
       mapa.off("move", reposicionar);
       mapa.off("resize", reposicionar);
     };
@@ -570,6 +605,38 @@ export function MapaZonas({
 
   const mostrarComunas = capasActivas.includes("comunas") || zoom === "comunas";
   const capaClimaActiva = capasActivas.includes("clima");
+
+  /**
+   * Qué celdas de lluvia llevan CIFRA encima.
+   *
+   * El pronóstico es por comuna, así que un frente de invierno produce una celda
+   * por cada comuna mojada — con el courier operando 14 comunas eso son 14 chips
+   * negros que se pisan entre sí y tapan las placas de zona. Se vio en pantalla
+   * con datos reales; con la fixture (una sola celda) el problema no existía.
+   *
+   * Los CÍRCULOS se dibujan todos: son la geometría de la lluvia y quitarlos
+   * sería mentir sobre dónde llueve. Lo que se colapsa es el texto — uno por
+   * zona, el de la celda más intensa —, que es exactamente lo que ya hace la
+   * línea de tiempo al hablar de «Lluvia sobre Oriente» en vez de listar comunas.
+   * `celdasClima` viene ordenada de mayor a menor intensidad, así que la primera
+   * de cada zona es la que manda.
+   */
+  const celdasConCifra = useMemo(() => {
+    const elegidas = new Set<string>();
+    const zonasVistas = new Set<string>();
+    for (const celda of celdasClima) {
+      const zonaId = celda.zonasAfectadas[0];
+      // Sin zona no hay con quién agrupar: se rotula, es una celda suelta.
+      if (zonaId === undefined) {
+        elegidas.add(celda.id);
+        continue;
+      }
+      if (zonasVistas.has(zonaId)) continue;
+      zonasVistas.add(zonaId);
+      elegidas.add(celda.id);
+    }
+    return elegidas;
+  }, [celdasClima]);
   const capaEventosActiva = capasActivas.includes("eventos");
   const capaConductoresActiva = capasActivas.includes("conductores");
   const capaTransitoActiva = capasActivas.includes("transito");
@@ -624,17 +691,19 @@ export function MapaZonas({
         ))}
 
         {capaClimaActiva
-          ? celdasClima.map((celda) => (
-              <div
-                key={celda.id}
-                ref={registrar(`clima-${celda.id}`)}
-                className="absolute top-0 left-0 bg-tc-tinta px-2 py-1 text-[10.5px] font-bold text-tc-papel uppercase"
-              >
-                <span className="tc-num">
-                  {celda.tipo === "lluvia" ? "Lluvia" : "Viento"} {celda.intensidadMmHora} mm/h
-                </span>
-              </div>
-            ))
+          ? celdasClima
+              .filter((celda) => celdasConCifra.has(celda.id))
+              .map((celda) => (
+                <div
+                  key={celda.id}
+                  ref={registrar(`clima-${celda.id}`)}
+                  className="absolute top-0 left-0 bg-tc-tinta px-2 py-1 text-[10.5px] font-bold text-tc-papel uppercase"
+                >
+                  <span className="tc-num">
+                    {celda.tipo === "lluvia" ? "Lluvia" : "Viento"} {celda.intensidadMmHora} mm/h
+                  </span>
+                </div>
+              ))
           : null}
 
         {capaEventosActiva

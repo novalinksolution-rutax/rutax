@@ -31,7 +31,7 @@ import type { ComunaRM } from '@/lib/ui/comunas-rm';
  */
 export type NivelAire = 'bueno' | 'regular' | 'alerta' | 'preemergencia' | 'emergencia';
 
-export type ProveedorAire = 'open-meteo' | 'stub';
+export type ProveedorAire = 'openweather' | 'stub';
 
 /** Una hora de pronóstico de aire para una comuna. */
 export interface PronosticoHoraAire {

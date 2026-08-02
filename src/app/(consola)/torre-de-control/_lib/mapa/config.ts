@@ -61,6 +61,10 @@ export function urlBasemap(): string | null {
  */
 export const ATRIBUCIONES = [
   { etiqueta: "© OpenStreetMap", href: "https://www.openstreetmap.org/copyright" },
-  { etiqueta: "Clima OpenWeather", href: "https://openweathermap.org/" },
+  // Texto LITERAL que exige la licencia del tier gratuito de OpenWeather
+  // («Weather data provided by OpenWeather» + enlace al sitio). Es la condición
+  // bajo la cual un producto comercial puede usar el tier gratuito: no es una
+  // etiqueta que se pueda acortar ni traducir a gusto.
+  { etiqueta: "Weather data provided by OpenWeather", href: "https://openweathermap.org/" },
   { etiqueta: "Límites DPA 2023 · SUBDERE/INE", href: "https://www.ide.cl/" },
 ] as const;

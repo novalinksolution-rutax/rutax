@@ -46,6 +46,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
 import {
   ahoraEnSantiago,
   horaAMinutos,
@@ -193,17 +194,26 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
       // `operacion.pedidos` NO tiene `zona_id`: la agregación comuna→zona la
       // hace la aplicación, con el MISMO helper de normalización que se usó al
       // escribir `zona_comunas` (que guarda la forma sin acentos y minúscula).
+      // Paginado, no una consulta suelta: PostgREST corta en `max_rows = 1000`
+      // SIN AVISAR, y estas filas se agregan por zona. Un courier con volumen
+      // real cruza ese tope en un día, y el resultado no sería un error sino un
+      // tablero con pendientes y dinero comprometido plausibles y equivocados.
       const hasta = sumarDiasCalendario(fechaBase, 2);
-      const { data: pedidos, error: errPedidos } = await supabase
-        .schema('operacion')
-        .from('pedidos')
-        .select('destinatario_comuna, fecha_compromiso, tarifa_aplicable_id')
-        .eq('tenant_id', tenantId)
-        .in('estado', ESTADOS_PENDIENTES)
-        .gte('fecha_compromiso', fechaBase)
-        .lte('fecha_compromiso', hasta);
-
-      if (errPedidos) throw new Error(`Error al leer pedidos: ${errPedidos.message}`);
+      const pedidos = await leerTodasLasFilas<{
+        destinatario_comuna: string;
+        fecha_compromiso: string | null;
+        tarifa_aplicable_id: string | null;
+      }>('pedidos pendientes', (desde, hastaFila) =>
+        supabase
+          .schema('operacion')
+          .from('pedidos')
+          .select('destinatario_comuna, fecha_compromiso, tarifa_aplicable_id')
+          .eq('tenant_id', tenantId)
+          .in('estado', ESTADOS_PENDIENTES)
+          .gte('fecha_compromiso', fechaBase)
+          .lte('fecha_compromiso', hasta)
+          .range(desde, hastaFila),
+      );
 
       // Tarifas del courier, para valorizar lo pendiente. NO se usan
       // `dinero.lineas_cobro`: esas nacen con la ENTREGA, así que para los
@@ -255,33 +265,56 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
       const desdeInstante = limitesDelDiaSantiago(fechaBase).desde.toISOString();
       const hastaInstante = limitesDelDiaSantiago(hasta).hasta.toISOString();
 
+      // También paginado: 52 comunas × 72 horas son ~3.700 filas de pronóstico,
+      // casi cuatro veces el tope de PostgREST. Sin paginar, el motor evaluaría
+      // el clima de un tercio de la ciudad y daría por bueno el resto.
       const [clima, aire, eventos] = await Promise.all([
-        supabase
-          .schema('contexto')
-          .from('clima_horario')
-          .select('comuna, hora, precipitacion_mm, viento_kmh')
-          .in('comuna', comunasDelTenant)
-          .gte('hora', desdeInstante)
-          .lte('hora', hastaInstante),
-        supabase
-          .schema('contexto')
-          .from('aire_horario')
-          .select('comuna, hora, nivel_estimado')
-          .in('comuna', comunasDelTenant)
-          .gte('hora', desdeInstante)
-          .lte('hora', hastaInstante),
-        supabase
-          .schema('contexto')
-          .from('eventos_ciudad')
-          .select('nombre, comuna, ventana_inicio, ventana_fin, asistencia_estimada')
-          .in('comuna', comunasDelTenant)
-          .lte('ventana_inicio', hastaInstante)
-          .or(`ventana_fin.is.null,ventana_fin.gte.${desdeInstante}`),
+        leerTodasLasFilas<{
+          comuna: string;
+          hora: string;
+          precipitacion_mm: number | null;
+          viento_kmh: number | null;
+        }>('clima_horario', (desde, hastaFila) =>
+          supabase
+            .schema('contexto')
+            .from('clima_horario')
+            .select('comuna, hora, precipitacion_mm, viento_kmh')
+            .in('comuna', comunasDelTenant)
+            .gte('hora', desdeInstante)
+            .lte('hora', hastaInstante)
+            .range(desde, hastaFila),
+        ),
+        leerTodasLasFilas<{
+          comuna: string;
+          hora: string;
+          nivel_estimado: FilaAire['nivelEstimado'];
+        }>('aire_horario', (desde, hastaFila) =>
+          supabase
+            .schema('contexto')
+            .from('aire_horario')
+            .select('comuna, hora, nivel_estimado')
+            .in('comuna', comunasDelTenant)
+            .gte('hora', desdeInstante)
+            .lte('hora', hastaInstante)
+            .range(desde, hastaFila),
+        ),
+        leerTodasLasFilas<{
+          nombre: string;
+          comuna: string;
+          ventana_inicio: string;
+          ventana_fin: string | null;
+          asistencia_estimada: number | null;
+        }>('eventos_ciudad', (desde, hastaFila) =>
+          supabase
+            .schema('contexto')
+            .from('eventos_ciudad')
+            .select('nombre, comuna, ventana_inicio, ventana_fin, asistencia_estimada')
+            .in('comuna', comunasDelTenant)
+            .lte('ventana_inicio', hastaInstante)
+            .or(`ventana_fin.is.null,ventana_fin.gte.${desdeInstante}`)
+            .range(desde, hastaFila),
+        ),
       ]);
-
-      if (clima.error) throw new Error(`Error al leer clima_horario: ${clima.error.message}`);
-      if (aire.error) throw new Error(`Error al leer aire_horario: ${aire.error.message}`);
-      if (eventos.error) throw new Error(`Error al leer eventos_ciudad: ${eventos.error.message}`);
 
       // --- Restricción vehicular vigente ------------------------------------
       const { data: restricciones, error: errRestric } = await supabase
@@ -298,25 +331,29 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
       // --- Histórico propio --------------------------------------------------
       // El factor que ninguna API entrega: cuánto le cuesta a ESTE courier
       // repartir en ESA zona. Ventana móvil de 30 días sobre pedidos cerrados.
-      const { data: cerrados, error: errCerrados } = await supabase
-        .schema('operacion')
-        .from('pedidos')
-        .select('destinatario_comuna, estado')
-        .eq('tenant_id', tenantId)
-        .in('estado', ESTADOS_CERRADOS)
-        .gte('fecha_compromiso', sumarDiasCalendario(fechaBase, -DIAS_HISTORICO))
-        .lt('fecha_compromiso', fechaBase);
-
-      if (errCerrados) throw new Error(`Error al leer histórico: ${errCerrados.message}`);
+      // 30 días de pedidos cerrados es la consulta más grande del job: para un
+      // courier con volumen real son decenas de miles de filas. Truncada en
+      // 1.000, la tasa de fallidos saldría de una muestra sesgada hacia el
+      // principio del período — y ese factor es justamente el que ninguna API
+      // entrega y el que se vuelve el foso del producto.
+      const cerrados = await leerTodasLasFilas<{ destinatario_comuna: string; estado: string }>(
+        'histórico de pedidos cerrados',
+        (desde, hastaFila) =>
+          supabase
+            .schema('operacion')
+            .from('pedidos')
+            .select('destinatario_comuna, estado')
+            .eq('tenant_id', tenantId)
+            .in('estado', ESTADOS_CERRADOS)
+            .gte('fecha_compromiso', sumarDiasCalendario(fechaBase, -DIAS_HISTORICO))
+            .lt('fecha_compromiso', fechaBase)
+            .range(desde, hastaFila),
+      );
 
       return {
         zonas: zonas as { id: string; nombre: string }[],
         mapeo: (mapeo ?? []) as { zona_id: string; comuna: string }[],
-        pedidos: (pedidos ?? []) as {
-          destinatario_comuna: string;
-          fecha_compromiso: string | null;
-          tarifa_aplicable_id: string | null;
-        }[],
+        pedidos,
         tarifas: (tarifas ?? []) as { id: string; monto_clp: number }[],
         conductores: (conductores ?? []) as { id: string; capacidad_paradas: number }[],
         asignaciones: (asignaciones ?? []) as { conductor_id: string; zona_id: string }[],
@@ -325,26 +362,11 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
           hora_corte: string;
           activa: boolean;
         }[],
-        clima: (clima.data ?? []) as {
-          comuna: string;
-          hora: string;
-          precipitacion_mm: number | null;
-          viento_kmh: number | null;
-        }[],
-        aire: (aire.data ?? []) as {
-          comuna: string;
-          hora: string;
-          nivel_estimado: FilaAire['nivelEstimado'];
-        }[],
-        eventos: (eventos.data ?? []) as {
-          nombre: string;
-          comuna: string;
-          ventana_inicio: string;
-          ventana_fin: string | null;
-          asistencia_estimada: number | null;
-        }[],
+        clima,
+        aire,
+        eventos,
         restricciones: (restricciones ?? []) as { fecha: string; tipo: string }[],
-        cerrados: (cerrados ?? []) as { destinatario_comuna: string; estado: string }[],
+        cerrados,
       };
     });
 
