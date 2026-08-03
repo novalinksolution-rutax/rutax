@@ -204,7 +204,14 @@ etiquetas y el estilo.
 ### Plan de trabajo (en la pasada de implementación, no ahora)
 
 1. **Publicar glifos.** Extraer los PBF de fuente y publicarlos junto al basemap;
-   añadir `glyphs` al estilo. Es el desbloqueo de todo lo demás. *(~medio día)*
+   añadir `glyphs` al estilo. Es el desbloqueo de todo lo demás.
+
+   ⚠️ **Estimación NO verificada, y es la única del plan que no lo está**
+   (revisado 2026-08-03). `scripts/mapa/` no tiene una sola línea sobre fuentes ni
+   glifos — el basemap se construyó a propósito sin etiquetas, así que **este
+   pipeline hay que crearlo, no encenderlo**. Haz una espiga corta antes de
+   estimar: un peso de una fuente, etiqueta de comuna a un solo nivel de zoom,
+   verla en pantalla. Los pasos 2–4 dependen enteros de este.
 2. **Encender etiquetas** en tres niveles jerárquicos: comuna (siempre), ejes
    principales (zoom medio), calle local (zoom alto, que es cuando se llega al
    punto de entrega individual). *(~1 día)*

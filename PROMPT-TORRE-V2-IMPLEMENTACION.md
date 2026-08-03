@@ -76,6 +76,11 @@ terminar hay dato real por comuna aunque la pantalla siga fea.
 
 Cada vía es su propia sesión y su propio commit. **No mezcles A con B.**
 
+> ✅ **La Torre NO está en uso real** (confirmado por el usuario, 2026-08-03). Eso
+> significa que **entre la Vía A y la Vía C la pantalla puede quedar rota sin
+> consecuencias** — no hay que coordinar las ramas, ni poner un feature flag, ni
+> apurar C para tapar A. Trabaja tranquilo.
+
 ---
 
 ## 3. Vía A — datos y backend
@@ -89,30 +94,60 @@ rota — eso es esperable y se arregla en C.
 1. **Contrato** (`arquitecto` → `src/modules/contexto/contrato-torre.ts`).
    Es un tipo **vivo**: reescríbelo. Cae `TorreRespuesta.horizontes`; la unidad
    pasa a comuna; entra el código de envío y el `+N` de agrupación por ubicación.
-2. **Esquema** (`base-datos-rls`). Migración de retiro para las 7 tablas de
-   §5.1: `clima_horario`, `aire_horario`, `eventos_ciudad`, `senales`,
+2. **Esquema** (`base-datos-rls`). Retiro de las 7 tablas de §5.1:
+   `clima_horario`, `aire_horario`, `eventos_ciudad`, `senales`,
    `senales_tenant`, `marcas_operativas`, `riesgo_zona`. Conservar `calendario`,
    `eventos_comerciales`, `fuentes_estado` y `restriccion_vehicular`.
-   Actualizar los tests pgTAP de aislamiento en consecuencia.
+
+   ⚠️ **Pártelo en DOS migraciones, no una.** Primero deja de leer y escribir
+   (código); el `drop table` va en una migración **posterior**, cuando la v2 ya
+   esté verificada en vivo. Retirar 7 tablas no tiene vuelta atrás sin restaurar
+   un respaldo, y el commit extra te compra poder revertir.
+
+   Tests pgTAP a actualizar: `supabase/tests/database/rls_aislamiento_contexto_torre.test.sql`
+   (28 casos). Sobreviven los de las 4 tablas que quedan; caen el resto. El seed
+   **no** referencia el esquema `contexto`, así que no hay que tocarlo.
 3. **Jobs y adaptadores** (`backend` + `integraciones`). Retirar
    `refrescar-clima.ts`, `refrescar-aire.ts`, `recalcular-riesgo.ts` y sus crones;
    retirar `integraciones/contexto/clima/`, `aire/`, `openweather-comun.ts`,
    `grilla-rm.ts`. Conservar `calendario/`, `http.ts`, `resultado.ts`,
    `errores.ts`. Retirar `motor-riesgo.ts` y sus ~70 tests, y `macro-zonas-rm.ts`.
+
+   **Dónde están enchufados** (fácil de olvidar): `src/app/api/inngest/route.ts`
+   registra **5** jobs de contexto — se retiran `jobRefrescarClima`,
+   `jobRefrescarAire`, `jobRiesgoBarrido` y `jobRiesgoRecalcularTenant`;
+   sobrevive `jobSincronizarCalendario`. Y el evento
+   `contexto/riesgo.recalcular-tenant` sale de `src/lib/inngest/eventos.ts`.
 4. **Composer** (`backend`). Reescribir `agregacion.ts` para agregar por comuna y
    `composer/armado-*.ts` contra el contrato nuevo. `olas.ts` se conserva.
-5. **Realtime** (F5). **Ya está resuelto y es casi gratis**: reutiliza
+5. **Realtime** (F5). **Ya está resuelto y es gratis**: reutiliza
    `src/components/tiempo-real/indicador-en-vivo.tsx`, que ya se suscribe por
    defecto a `operacion.pedidos`, agrupa eventos con debounce de 800 ms y dispara
-   `router.refresh()`. Solo hay que pasarle también la tabla de incidencias y
-   verificar que esté en la publicación `supabase_realtime`.
-6. **`qa`**: aislamiento multi-tenant y conteos.
+   `router.refresh()`. Pásale también `operacion.incidencias` — **ya está en la
+   publicación `supabase_realtime`** (migración `20260709000004`), así que no hay
+   migración que escribir.
+6. **Limpieza de entorno.** Al apagarse OpenWeather quedan variables muertas:
+   `.env.example` líneas ~225–253 (`OPENWEATHER_API_KEY`, `OPENWEATHER_BASE_URL`,
+   los selectores de adaptador de clima y aire, y la nota de atribución). Quítalas
+   ahí **y en Vercel**. Recién entonces se puede retirar la línea «Weather data
+   provided by OpenWeather» de `ATRIBUCIONES`.
+7. **`qa`**: aislamiento multi-tenant y conteos.
 
 ### Lo que hay que migrar junto, o se rompe
 
 **`src/app/(tenant)/dashboard/banda-torre.tsx` consume `cargarTablero`.** Es la
 pieza mejor calibrada del módulo (muestra tres líneas solo si hay algo que
 mirar). Migra en el mismo cambio. **No la rompas.**
+
+### Definition of Done — Vía A
+
+- `cargarTablero` devuelve pendientes **por comuna**, en vivo, sin puntaje.
+- La banda del dashboard sigue funcionando.
+- **Cero referencias a OpenWeather en todo el repo** (`grep -ri openweather`
+  devuelve solo el histórico y los docs que lo registran como decisión).
+- `npx supabase test db` verde con el pgTAP reescrito.
+- Los 4 jobs retirados ya no aparecen en el Inngest Dev Server.
+- Verificación estándar completa (§8).
 
 ---
 
@@ -137,14 +172,25 @@ decide; no toca datos.
 
 Empieza con `ux-ui` (flujos y jerarquía) antes de que `frontend` toque nada.
 
+### Definition of Done — Vía B
+
+Tokens decididos (se quedan / se ajustan / se absorben), los dos estilos de mapa
+especificados, y el escalón entre los tres niveles de zoom resuelto en wireframe.
+No se toca `src/modules/` ni el composer.
+
 ---
 
 ## 5. Vía C — la pantalla
 
 Necesita A y B hechas.
 
-- **Mudanza a `(tenant)`.** Retirar el grupo `(consola)` entero, incluida la
-  duplicación de guards de su `layout.tsx`.
+- **Mudanza a `(tenant)`: es más barata de lo que parece.** La entrada del
+  sidebar **ya existe** (`src/app/(tenant)/layout.tsx:79`, con su icono
+  registrado en `app-shell.tsx:95`), y como `(consola)/torre-de-control` y
+  `(tenant)/torre-de-control` resuelven a **la misma URL**, mover la carpeta no
+  rompe un solo enlace: ni el sidebar, ni `banda-torre.tsx`. En la práctica es
+  mover archivos y borrar `(consola)/layout.tsx` con su duplicación de guards.
+  Verifica que `(consola)/` quede vacío y retira el grupo entero.
 - **El ancho ya tiene mecanismo.** `src/components/app-shell/app-shell.tsx:539`
   ya conmuta `max-w-5xl`/`max-w-6xl` con una prop `relajado`. Añadir ahí una
   variante ancha (o `full`) es la solución limpia: **no le quites el `max-w` a
@@ -162,6 +208,25 @@ Necesita A y B hechas.
   muerta.
 - **Trabajo de cartografía** (`docs/arquitectura/mapa-torre-v2.md` §5): publicar
   glifos → encender etiquetas en tres niveles → jerarquía vial → dos temas.
+
+  ⚠️ **Los glifos NO existen: hay que construir el pipeline, no encender un
+  flag.** Se verificó — `scripts/mapa/` no tiene una sola línea sobre fuentes ni
+  glifos, porque el basemap se diseñó deliberadamente sin etiquetas. Hay que
+  extraer los PBF de una tipografía, publicarlos junto al basemap y añadir
+  `glyphs` al estilo. **Es la única estimación del plan que no está verificada, y
+  bloquea todo lo demás del mapa.** Haz una espiga corta primero (un solo peso de
+  una sola fuente, etiqueta de comuna a un solo nivel de zoom) y estima recién
+  después de verla en pantalla. No arranques por la jerarquía vial.
+
+### Definition of Done — Vía C
+
+- La Torre vive en `(tenant)`, dentro del `AppShell`, y `src/app/(consola)/` ya
+  no existe.
+- El mapa tiene altura acotada y el botón de pantalla completa funciona.
+- Ningún componente importa `_fixture/`; el `?estado=` ya no existe.
+- El árbol `_componentes/movil/` está retirado.
+- Etiquetas de calle y comuna visibles, en claro y en oscuro.
+- Verificación estándar completa (§8) **más** captura en navegador real.
 
 ---
 
@@ -242,12 +307,24 @@ npm run typecheck && npm run lint && npm test && npm run build
 - `npm test` — la suite ronda las 2.000 pruebas. Si retiras el motor de riesgo,
   el conteo **baja** ~70: eso es correcto, no una regresión.
 - Aislamiento: `npx supabase test db` (pgTAP).
-- Funcional en vivo: `docs/PRUEBA.md` para levantar el stack, y
-  `torre_de_control_arranque_local` para el orden exacto de los jobs de contexto.
+- Funcional en vivo: `docs/PRUEBA.md` para levantar el stack. ⚠️ **`PRUEBA.md` no
+  menciona la Torre** — el arranque local del módulo solo vive en la memoria
+  `torre_de_control_arranque_local`, y esa memoria describe la v1 (con los jobs
+  de clima y aire que ahora se retiran). **Documenta el arranque de la v2 en
+  `PRUEBA.md` al terminar**; es parte del trabajo, no un extra.
+- ⚠️ **Antes del QA visual, revisa que el seed alcance.** La pantalla v2 se
+  alimenta de pedidos del día **geocodificados y repartidos en varias comunas**.
+  Si `supabase/seed-demo-full.sql` los concentra en dos o tres, el mapa se ve
+  vacío y no prueba nada — amplíalo antes de dar por buena la vista. *(Ojo con el
+  bug abierto de idempotencia al cruzar de mes; ver §6.)*
 - **En el navegador, de verdad.** Usa el Browser pane. Ojo: si otra sesión ya
   tiene un dev server en esta carpeta, choca por `.next` — `autoPort` lo resuelve.
 - Al terminar, agrega las entradas nuevas al `checklist-pruebas-funcionales-mvp.md`
   (las de la v1 están marcadas como registro histórico, no las reescribas).
+
+**Fuera de alcance, aunque tiente:** observabilidad/Sentry y respaldos están
+marcados como prioritarios en `CLAUDE.md`, pero son otra pasada. No los metas
+aquí.
 
 ---
 
