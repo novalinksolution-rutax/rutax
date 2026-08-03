@@ -1152,4 +1152,27 @@ Estos requerimientos son de **Crecimiento (V2)** o **Futura (V3)**; no deberían
 
 ---
 
+## Torre de control v2 — Vía B: lenguaje visual — 2026-08-03
+
+**Feature:** el lenguaje visual de la v2. Esta vía **no toca datos** (`src/modules/` intacto): decide cómo se ve la Torre y deja el mapa escrito. Lo que decidió, en una línea: la Torre **deja de tener lenguaje visual propio** y pasa a ser una pantalla más de Rutax; el único trabajo visual del módulo es el mapa, porque MapLibre no lee CSS. Documento producto: `docs/torre-de-control/lenguaje-visual-v2.md`.
+
+**Código:** `src/app/(tenant)/torre-de-control/_lib/mapa/paleta.ts` (los dos temas, umbrales de zoom, encuadre RM) · `estilo.ts` (constructor del estilo base + capas de dato) · `config.ts` (activos y atribuciones) · `estilo.test.ts` (12 pruebas) · `src/app/globals.css` (retiro del bloque `--tc-*`) · `.env.example` (`NEXT_PUBLIC_MAPA_GLIFOS_URL`) · `eslint.config.mjs`.
+
+- [x] **Los 12 tokens `--tc-*` se retiraron enteros** (157 líneas de `globals.css`). Dos razones, y la segunda cierra la discusión: la Torre bajó a `(tenant)` y un lenguaje paralelo dentro del mismo shell se ve roto al lado de las otras pantallas; y al caer el árbol de la v1 **no quedaba un solo consumidor** (`grep -rn "tc-" src --include=*.tsx` da cero). Queda una lápida en el archivo con el destino de cada token.
+- [x] **La paleta del mapa vive en TypeScript, no en CSS, y no por gusto.** MapLibre ignora `var(--muted)` dentro de `fill-color` —la capa queda transparente—, así que los valores están en `paleta.ts` **con el token de origen anotado al lado de cada uno**. Ese archivo es la lista de lo que hay que mover si cambia un token del producto.
+- [x] **El rojo sigue reservado a la incidencia abierta.** `estilo.test.ts` falla si el rojo aparece en una segunda capa. La regla dejó de ser prosa.
+- [x] **Los dos temas tienen las mismas capas.** Hay una prueba que falla si un tema pierde una capa que el otro tiene — el modo oscuro es donde ese error se cuela sin que nadie lo note.
+- [x] **La etiqueta de calle local está clavada al umbral del nivel 3** (z13.6), con prueba que lo bloquea. No es coincidencia: la Torre muestra el código de envío y no la dirección, así que el nombre de calle del plano es lo único que ubica el punto. **La etiqueta es del basemap, no del pedido**: no se expone ningún dato del destinatario.
+- [x] **`maxzoom: 13` en la fuente del basemap**, con prueba. El extracto llega hasta z13; sin declararlo, MapLibre deja de pedir tiles al pasar z13 y el plano desaparece justo en el nivel del punto de entrega.
+- [x] **Glifos: la única estimación sin verificar del plan del mapa, resuelta con una espiga.** No hay pipeline que construir — son **4 archivos PBF (~410 KB)** de Noto Sans Regular y Medium que se descargan del build público de Protomaps y se suben junto al basemap. Cero herramientas nativas (`fontnik`/`node-gyp`), que era el riesgo real. `mapa-torre-v2.md` §5 quedó corregido.
+- [x] **Corregido un supuesto falso del plan del mapa** que iba a costar un día: decía que la jerarquía vial «requiere re-recortar con más capas OSM». No — `pmtiles extract` recorta por bbox, **no por capas**, y el extracto ya trae `roads` en z3–15 con `name` y `kind`. La jerarquía vial es puro estilo.
+- [x] **`.artefactos/**` ignorado por ESLint.** El prototipo navegable y sus vendorizados de MapLibre/PMTiles dejaban el lint en rojo (`require()` en el bundle compilado). Con eso los warnings vuelven a su línea base real: de 242 a **151**.
+- [x] **Verificación estándar completa:** `typecheck` limpio · `lint` **0 errores** (151 warnings preexistentes) · **2141 pruebas Vitest** en 138 archivos (+12 de `estilo.test.ts`) · `build` OK · **476 pruebas pgTAP**.
+
+**Pendiente, no bloqueante:**
+- [ ] **QA visual en la pantalla real.** Lo que se vio en navegador fue el **prototipo** de `.artefactos/prototipo-torre-v2/` (fuera del repo), que consume una copia compilada de `estilo.ts`. La pantalla de Next no existe todavía: llega con la Vía C, y ahí va la captura en navegador real, claro y oscuro.
+- [ ] **Publicar los glifos al bucket `contexto-mapas`** y poner `NEXT_PUBLIC_MAPA_GLIFOS_URL`. Es Vía C / devops; acá quedó verificado *qué* publicar y *cómo*. Vacía es un estado válido: el estilo se construye sin capas de etiqueta antes que romperse.
+
+---
+
 *Documento de trabajo · pruebas funcionales del MVP. Pensado para validar el lazo operación→dinero antes de las etapas de frontend y UX/UI.*

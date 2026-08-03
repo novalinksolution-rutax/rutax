@@ -18,6 +18,13 @@ const eslintConfig = defineConfig([
     // importa. Lintearlo deja el proyecto en rojo por código que nadie va a
     // mantener.
     "docs/_historico/**",
+    // Artefactos generados y fuera del repo (`.gitignore`): el basemap PMTiles
+    // recortado y el prototipo navegable de la Torre v2, con su copia compilada
+    // del estilo y sus vendorizados de MapLibre/PMTiles. Es andamiaje de
+    // diseño, no código de producción — no se compila ni se importa desde
+    // `src/`. Sin esto, el `require()` del bundle compilado deja el lint en
+    // rojo por código que nadie escribió a mano.
+    ".artefactos/**",
   ]),
 ]);
 

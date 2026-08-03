@@ -201,31 +201,51 @@ Costo por carga: cero. Migración: ninguna. Riesgo de proveedor: ninguno. Y
 resuelve lo que el usuario pidió, porque lo que falta no es el motor: son las
 etiquetas y el estilo.
 
-### Plan de trabajo (en la pasada de implementación, no ahora)
+### Plan de trabajo
 
-1. **Publicar glifos.** Extraer los PBF de fuente y publicarlos junto al basemap;
-   añadir `glyphs` al estilo. Es el desbloqueo de todo lo demás.
+> ⚠️ **Los pasos 1 a 4 están SUPERADOS: los ejecutó la Vía B el 2026-08-03**, y de
+> paso desmintió dos de sus supuestos. El estilo vive en
+> `src/app/(tenant)/torre-de-control/_lib/mapa/{estilo,paleta}.ts` y el porqué en
+> `docs/torre-de-control/lenguaje-visual-v2.md`. Se conservan acá tachados porque
+> el error de estimación es la parte instructiva. Lo único que queda pendiente es
+> **publicar** los glifos al bucket (Vía C / devops).
 
-   ⚠️ **Estimación NO verificada, y es la única del plan que no lo está**
-   (revisado 2026-08-03). `scripts/mapa/` no tiene una sola línea sobre fuentes ni
-   glifos — el basemap se construyó a propósito sin etiquetas, así que **este
-   pipeline hay que crearlo, no encenderlo**. Haz una espiga corta antes de
-   estimar: un peso de una fuente, etiqueta de comuna a un solo nivel de zoom,
-   verla en pantalla. Los pasos 2–4 dependen enteros de este.
-2. **Encender etiquetas** en tres niveles jerárquicos: comuna (siempre), ejes
-   principales (zoom medio), calle local (zoom alto, que es cuando se llega al
-   punto de entrega individual). *(~1 día)*
-3. **Rehacer el basemap con jerarquía vial.** Hoy los ejes van todos en el mismo
-   gris tenue; separar autopista / troncal / local es la mitad de lo que hace que
-   un plano se vea «fino» al estilo Uber/Rappi. Requiere re-recortar con más
-   capas OSM: el pipeline de `scripts/mapa/` ya lo hace. *(~1 día)*
-4. **Dos temas de mapa, claro y oscuro**, siguiendo el tema del sistema. Es un
-   segundo objeto de estilo sobre las mismas tiles — no duplica el basemap.
-   *(~1 día)*
+1. ~~**Publicar glifos.**~~ **HECHO, y la estimación era pesimista.** Se hizo la
+   espiga que este documento pedía y el resultado fue que **no hay pipeline que
+   construir: son cuatro archivos que se descargan y se suben** (Noto Sans
+   Regular y Medium, rangos `0-255` y `256-511`, ~410 KB en total, del build
+   público de `protomaps/basemaps-assets`, bajo SIL Open Font License — el
+   `OFL.txt` viaja al lado, que es condición de la licencia). **Cero herramientas
+   nativas:** ni `fontnik`, ni `node-gyp`, ni compilar nada, que era el riesgo
+   real de la estimación. Se publican junto al basemap y la base va en
+   `NEXT_PUBLIC_MAPA_GLIFOS_URL`; vacía es un estado válido y el estilo se
+   construye sin capas de etiqueta. *(No es Inter, que es la fuente de la UI: no
+   existen glifos PBF publicados de Inter y generarlos sí exigiría el pipeline
+   nativo que esta espiga evitó.)*
+2. ~~**Encender etiquetas**~~ **HECHO**, en tres escalones: lugar desde z11, ejes
+   estructurantes desde z12 y calle local desde **z13.6**, que es exactamente el
+   umbral del nivel 3 del zoom. Se respeta el `min_zoom` por *feature* que trae
+   Protomaps: es su propia jerarquía de importancia y es mejor que cualquiera que
+   inventemos.
+3. ~~**Rehacer el basemap con jerarquía vial.**~~ **HECHO, y el supuesto era
+   falso.** Este paso decía que la jerarquía vial «requiere re-recortar con más
+   capas OSM». **No.** Se verificó leyendo los metadatos del propio PMTiles: el
+   extracto ya trae el esquema Protomaps completo, con `roads` en z3–15 llevando
+   `name` y `kind` (`highway`, `major_road`, `medium_road`, `minor_road`,
+   `path`, `rail`…). `pmtiles extract` recorta **por bbox, no por capas**: nunca
+   hubo nada que descartar. La jerarquía vial es **puro estilo** y ya está
+   escrita — se ahorra el día que este plan le asignaba. **No re-recortes el
+   basemap creyendo que hace falta.**
+4. ~~**Dos temas de mapa, claro y oscuro.**~~ **HECHO.** Segundo objeto de estilo
+   sobre las mismas tiles; el PMTiles no se duplica.
 5. **Regla dura de rendimiento:** los pedidos y todo lo que escale con el volumen
    se quedan en fuentes GeoJSON/WebGL. La capa HTML es solo para las ~32 placas
    de comuna y los conductores. Si alguna vez se cruza, cachear las medidas antes
    de tocar nada más.
+6. **El extracto llega hasta z13**, y por eso la fuente del basemap declara
+   `maxzoom: 13`. Sin eso MapLibre deja de pedir tiles al pasar z13 y el plano
+   **desaparece justo en el nivel del punto de entrega**, que es donde más se
+   necesita. Hay un test que lo bloquea.
 
 ### Costo total
 
