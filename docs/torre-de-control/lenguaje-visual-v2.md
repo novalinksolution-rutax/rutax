@@ -134,7 +134,7 @@ registro.
 | Punto entregado | `#a7aebd` al 75 % | `#5b6068` al 75 % | **Se apaga, no se borra.** Si lo entregado desapareciera, un día cerrado se vería igual que un día sin pedidos |
 | Cerca del corte (F7) | anillo ámbar `#ff8447` | `#e97135` | Marca, no reloj. Y su cifra va siempre en la cabecera |
 | **Incidencia** | **`#fb3748`** | **`#e93544`** | **El único rojo de la pantalla**, y se pinta arriba de todo |
-| `+N` de agrupados | texto sobre el propio punto | ídem | Un edificio con seis entregas es UN punto con «6», no seis puntos encimados |
+| `+N` de agrupados | texto sobre el propio punto | ídem | Un edificio con seis entregas es UN punto con «6», no seis puntos encimados. **Sin glifos se sustituye por un anillo** — ver §6 |
 
 **El navy como canal de dato es la única excepción a «el navy es recurso
 escaso»**, y está acotada al relleno de comuna y al punto en ruta. Fuera del
@@ -196,12 +196,41 @@ NIVEL 3 · punto             z ≥ 13.6
 | Placas HTML | sí | no | no |
 | Burbujas | no | **sí** | no |
 | Puntos | no | no | **sí** |
-| Velo sobre el resto | no | sí | sí |
+| Velo sobre el resto | no | sí\* | sí\* |
 | Etiqueta de lugar | del módulo (placa) | del plano | del plano |
+
+\* Solo si hay comuna activa. El velo lo produce la selección, no el zoom — ver
+abajo.
+
+**El panel de la derecha son tres pestañas, y el nivel elige cuál abre.** El
+wireframe muestra `Incidencias` en el nivel 1, `Conductores` en el 2 y `Comunas`
+en el 3: eso es la pestaña **por defecto** de cada nivel, no el único contenido
+disponible. Las tres están siempre a un clic, y una vez que el usuario elige una,
+manda su elección — cambiar de nivel no se la pisa. Es la misma mecánica que §6
+ya declara para `con_incidencias` («el panel abre en la pestaña de incidencias»):
+la pantalla sugiere dónde mirar, no decide por el usuario.
 
 **Cómo se sube de nivel:** migas de pan siempre visibles arriba a la izquierda
 (`Región Metropolitana / Providencia / Puntos de entrega`), `Esc`, o alejar con
 la rueda. Al volver al nivel 1 se limpia la comuna activa y se apaga el velo.
+
+**Bajar con la rueda NO es idéntico a hacer clic**, aunque arriba se diga que se
+llega «por las dos vías». Es la misma cámara, pero el clic además **elige una
+comuna** y la rueda no, así que hay un tercer caso que la tabla no cubre: nivel 2
+o 3 **sin comuna activa**. Se resuelve así, y no es un detalle de implementación
+—cambia lo que se ve:
+
+| | Con comuna activa (clic) | Sin comuna activa (rueda) |
+|---|---|---|
+| Velo sobre el resto | sí | **no** — no hay «resto» del que distinguirse |
+| Migas | `RM / Providencia / …` | solo `Región Metropolitana` |
+| Burbujas y puntos | los de todo el encuadre | ídem |
+
+La regla detrás: **el velo y el nombre en la miga los produce la SELECCIÓN, no el
+zoom.** Apagar media ciudad porque alguien giró la rueda sería el mapa decidiendo
+por el usuario. Y al revés: si se vuelve al nivel 1, la comuna activa se limpia
+sola — quedarse seleccionada mientras se mira toda la región dejaría un velo que
+nadie pidió.
 
 **Ninguna capa se agrega ni se quita al cambiar de nivel**: todas existen desde
 el principio y solo cambian `visibility` y opacidad. Es lo que permite que el
@@ -277,6 +306,22 @@ dos condiciones que se cruzan con cualquiera de ellos:
 | `cargando` | Esqueleto con la forma final (cifras, caja del mapa, filas del panel). Nunca un spinner de página |
 | **Frescura atrasada** (F6) | Chip ámbar en la cabecera: «Sin cierres hace 52 min». **Invisible mientras el dato está fresco** — un indicador que siempre está ahí deja de leerse justo el día que importa |
 | **Sin basemap** | El mapa dibuja las comunas sobre el color de tierra, sin plano urbano. Es un estado válido y se declara; lo que se pierde ahí es ubicar el punto |
+| **Sin glifos** | No se dibuja **ninguna** capa de texto, ni del plano ni del dato. No es una preferencia: un `text-font` sin glifos publicados hace que MapLibre **descarte la capa entera** y lo repita una vez por tesela. Se pierden dos cifras, y no pesan igual — ver abajo |
+
+**Sin glifos, la cifra de la burbuja se puede perder; el `+N` no.** El radio de
+la burbuja del nivel 2 ya codifica el volumen (13→28 px), así que sin su número
+la magnitud se sigue leyendo, solo que sin precisión. El punto del nivel 3 es
+distinto: su radio depende **solo del zoom**, así que sin el `+N` un edificio con
+seis entregas quedaría idéntico a uno con una. Eso es el mapa **escondiendo
+carga**, que es justo lo que prohíbe la regla 5 del alcance. Por eso, sin glifos,
+el `+N` se sustituye por un **anillo** alrededor del punto: se pierde el número,
+no el hecho de que ahí hay varios. El anillo va **por debajo** de los puntos —el
+punto le tapa el centro y lo deja como anillo sin dibujar un contorno aparte, y
+así la incidencia sigue siendo la última marca que se pinta.
+
+Por eso `capasDatos(tema, conEtiquetas)` lleva el segundo parámetro **sin valor
+por defecto**: es el mismo `urlGlifos !== null` que recibe el estilo base, y
+olvidarlo fallaría mudo. Sin default, olvidarlo no compila.
 
 ---
 

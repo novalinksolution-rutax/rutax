@@ -55,7 +55,7 @@ describe('capas de dato — las reglas de color del alcance', () => {
     // Regla 4: el rojo está reservado a la incidencia abierta. Nada decorativo
     // puede tomarlo — ni un borde, ni un realce, ni un hover.
     const rojo = paletaDe(tema).datos.puntoIncidencia;
-    const conRojo = capasDatos(tema).filter((capa) => JSON.stringify(capa).includes(rojo));
+    const conRojo = capasDatos(tema, true).filter((capa) => JSON.stringify(capa).includes(rojo));
     expect(conRojo.map((capa) => capa.id)).toEqual([IDS_CAPAS.puntoIncidencia]);
   });
 
@@ -66,16 +66,49 @@ describe('capas de dato — las reglas de color del alcance', () => {
   });
 
   it('la incidencia se pinta al final: nada la tapa', () => {
-    const ids = capasDatos('claro').map((capa) => capa.id);
+    const ids = capasDatos('claro', true).map((capa) => capa.id);
     expect(ids.at(-2)).toBe(IDS_CAPAS.puntoIncidencia);
     // Lo único encima es el `+N`, que es texto sobre el propio punto.
     expect(ids.at(-1)).toBe(IDS_CAPAS.puntoAgrupado);
   });
 
+  it.each(TEMAS)('sin glifos no queda una sola capa symbol en el dato (%s)', (tema) => {
+    // La misma regla que ya cumplía el plano, que a estas capas se les había
+    // escapado: un `text-font` sin glifos publicados no degrada solo, MapLibre
+    // descarta la capa entera y lo repite una vez por tesela.
+    expect(capasDatos(tema, false).some((capa) => capa.type === 'symbol')).toBe(false);
+    expect(capasDatos(tema, true).some((capa) => capa.type === 'symbol')).toBe(true);
+  });
+
+  it.each(TEMAS)('sin glifos el `+N` se sustituye por un anillo, no desaparece (%s)', (tema) => {
+    // Regla 5 del alcance: el mapa NUNCA esconde carga. El radio del punto
+    // depende solo del zoom, así que sin el `+N` un edificio con seis entregas
+    // se vería idéntico a uno con una. La cifra se pierde; el hecho, no.
+    const sinGlifos = capasDatos(tema, false);
+    const anillo = sinGlifos.find((capa) => capa.id === IDS_CAPAS.puntoAgrupadoAnillo);
+    expect(anillo).toBeDefined();
+    expect(anillo).toMatchObject({ filter: ['>', ['get', 'agrupados'], 1] });
+
+    // Y va DEBAJO de los puntos, para que la incidencia siga siendo la última
+    // marca que se pinta.
+    const ids = sinGlifos.map((capa) => capa.id);
+    expect(ids.indexOf(IDS_CAPAS.puntoAgrupadoAnillo)).toBeLessThan(
+      ids.indexOf(IDS_CAPAS.puntoEntregado),
+    );
+    expect(ids.at(-1)).toBe(IDS_CAPAS.puntoIncidencia);
+  });
+
+  it('el anillo del agrupado no existe cuando sí hay glifos', () => {
+    // Dos marcas para lo mismo es el ruido que la regla 1 prohíbe: o el número
+    // o el anillo, nunca los dos.
+    const ids = capasDatos('claro', true).map((capa) => capa.id);
+    expect(ids).not.toContain(IDS_CAPAS.puntoAgrupadoAnillo);
+  });
+
   it('los pedidos van por fuente GeoJSON, nunca como anclas HTML', () => {
     // Medido: 600 anclas HTML cuestan 31,77 ms/frame (≈31 fps); por GeoJSON las
     // dibuja la GPU. La capa HTML es solo para las ~32 placas de comuna.
-    const dePuntos = capasDatos('claro').filter((capa) => 'source' in capa && capa.source === IDS_FUENTES.puntos);
+    const dePuntos = capasDatos('claro', true).filter((capa) => 'source' in capa && capa.source === IDS_FUENTES.puntos);
     expect(dePuntos.length).toBeGreaterThanOrEqual(5);
   });
 });

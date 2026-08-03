@@ -28,10 +28,14 @@
  *   tierra → suelo (verde, equipamiento) → agua → edificios → vías (borde y
  *   relleno, de menor a mayor) → límites → etiquetas del plano →
  *   ‖ dato operativo ‖ → velo → carga por comuna → borde de comuna →
- *   agrupaciones → puntos (entregado, pendiente, en ruta, corte, INCIDENCIA).
+ *   agrupaciones → puntos (entregado, pendiente, en ruta, corte, INCIDENCIA) →
+ *   `+N` de agrupados.
  *
- * La incidencia va **arriba de todo**: es lo único accionable de la pantalla y
- * no puede quedar tapada por un punto entregado.
+ * La incidencia es la última MARCA que se pinta: es lo único accionable de la
+ * pantalla y no puede quedar tapada por un punto entregado. Encima solo va el
+ * `+N`, que es texto sobre el propio punto — una etiqueta rotula, no tapa. Sin
+ * glifos ese `+N` no existe y lo sustituye un anillo, que va por DEBAJO de los
+ * puntos justamente para no romper esta regla (ver `capasDatos`).
  */
 
 // Los tipos del estilo NO los reexporta `maplibre-gl` (solo exporta runtime):
@@ -81,6 +85,8 @@ export const IDS_CAPAS = {
   puntoCorte: 'tc-punto-corte',
   puntoIncidencia: 'tc-punto-incidencia',
   puntoAgrupado: 'tc-punto-agrupado',
+  /** Sustituto del `+N` cuando no hay glifos. Ver `capasDatos`. */
+  puntoAgrupadoAnillo: 'tc-punto-agrupado-anillo',
 } as const;
 
 /** Pesos de Noto Sans publicados junto al basemap. Ver `config.ts`. */
@@ -457,12 +463,53 @@ function capasBasemap(paleta: PaletaMapa, conEtiquetas: boolean): LayerSpecifica
  * - `comunas`: `paso` (0–3, el escalón de la rampa de carga), `activa` (bool).
  * - `agrupaciones`: `cantidad`.
  * - `puntos`: `estado` (`EstadoPunto`), `cercaDelCorte` (bool), `agrupados`.
+ *
+ * `conEtiquetas` es la MISMA condición que gobierna el plano: si no hay glifos
+ * publicados, no puede haber una sola capa `symbol`. Un `text-font` sin glifos
+ * no degrada solo — MapLibre descarta la capa entera y lo dice una vez por
+ * tesela. El estilo base ya lo respetaba; estas capas no, y por eso se pasa.
+ *
+ * Sin etiquetas se pierden dos cifras, y NO pesan igual:
+ * - La de la burbuja (nivel 2) se puede perder: su radio ya codifica el
+ *   volumen, así que la magnitud sigue leyéndose, solo que sin precisión.
+ * - El `+N` del punto (nivel 3) NO se puede perder: el radio del punto depende
+ *   solo del zoom, así que un edificio con seis entregas quedaría idéntico a
+ *   uno con una. Eso es el mapa escondiendo carga, que es exactamente lo que
+ *   prohíbe la regla 5 del alcance. Por eso, sin glifos, el `+N` se sustituye
+ *   por un anillo — se pierde el número, no el hecho de que ahí hay varios.
+ *
+ * `conEtiquetas` va SIN valor por defecto a propósito. Un default obligaría a
+ * acordarse de pasarlo, y olvidarlo falla mudo: la capa se descarta sola y la
+ * consola no dice nada útil. Sin default, olvidarlo no compila. Pásale el mismo
+ * `urlGlifos !== null` que le pasas a `construirEstiloBase`.
  */
-export function capasDatos(tema: TemaMapa): LayerSpecification[] {
+export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecification[] {
   const d = paletaDe(tema).datos;
   const comunas = IDS_FUENTES.comunas;
   const agrupaciones = IDS_FUENTES.agrupaciones;
   const puntos = IDS_FUENTES.puntos;
+
+  /**
+   * El anillo que sustituye al `+N` cuando no hay glifos. Va DEBAJO de los
+   * puntos —no encima— por dos razones: el punto le tapa el centro y lo deja
+   * como anillo sin dibujar un contorno aparte, y así la incidencia sigue
+   * siendo la última marca que se pinta.
+   */
+  const anilloAgrupado: LayerSpecification = {
+    id: IDS_CAPAS.puntoAgrupadoAnillo,
+    type: 'circle',
+    source: puntos,
+    filter: ['>', ['get', 'agrupados'], 1],
+    paint: {
+      'circle-color': 'transparent',
+      // Por encima del radio de cualquier punto (el mayor es el del corte, 6,5
+      // a 10), para que asome siempre.
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 8, 17, 13],
+      'circle-stroke-color': d.agrupacionBorde,
+      'circle-stroke-width': 1.2,
+      'circle-stroke-opacity': 0.75,
+    },
+  };
 
   return [
     {
@@ -525,18 +572,24 @@ export function capasDatos(tema: TemaMapa): LayerSpecification[] {
         'circle-radius': ['interpolate', ['linear'], ['get', 'cantidad'], 1, 13, 25, 20, 120, 28],
       },
     },
-    {
-      id: IDS_CAPAS.agrupacionCifra,
-      type: 'symbol',
-      source: agrupaciones,
-      layout: {
-        'text-field': ['to-string', ['get', 'cantidad']],
-        'text-font': FUENTE_MEDIA,
-        'text-size': 12,
-        'text-allow-overlap': true,
-      },
-      paint: { 'text-color': d.agrupacionTexto },
-    },
+    // La cifra de la burbuja solo si hay glifos. Se puede perder: el radio de
+    // la burbuja ya codifica el volumen.
+    ...(conEtiquetas
+      ? ([
+          {
+            id: IDS_CAPAS.agrupacionCifra,
+            type: 'symbol',
+            source: agrupaciones,
+            layout: {
+              'text-field': ['to-string', ['get', 'cantidad']],
+              'text-font': FUENTE_MEDIA,
+              'text-size': 12,
+              'text-allow-overlap': true,
+            },
+            paint: { 'text-color': d.agrupacionTexto },
+          },
+        ] satisfies LayerSpecification[])
+      : [anilloAgrupado]),
     {
       // Los entregados no se borran: se apagan. Ver el contador bajar es la
       // pantalla entera; si lo entregado desapareciera, el mapa se vaciaría y no
@@ -607,25 +660,31 @@ export function capasDatos(tema: TemaMapa): LayerSpecification[] {
         'circle-stroke-width': 1.8,
       },
     },
-    {
-      // El `+N` de los pedidos que caen en la misma ubicación (F3). Un edificio
-      // con seis entregas es UN punto con «6», no seis puntos encimados.
-      id: IDS_CAPAS.puntoAgrupado,
-      type: 'symbol',
-      source: puntos,
-      filter: ['>', ['get', 'agrupados'], 1],
-      layout: {
-        'text-field': ['concat', '+', ['to-string', ['-', ['get', 'agrupados'], 1]]],
-        'text-font': FUENTE_MEDIA,
-        'text-size': 10,
-        'text-offset': [0.9, -0.9],
-        'text-allow-overlap': true,
-      },
-      paint: {
-        'text-color': d.agrupacionTexto,
-        'text-halo-color': d.puntoHalo,
-        'text-halo-width': 1.4,
-      },
-    },
+    // El `+N` de los pedidos que caen en la misma ubicación (F3). Un edificio
+    // con seis entregas es UN punto con «6», no seis puntos encimados. Es texto
+    // sobre el propio punto: puede ir encima de la incidencia porque una
+    // etiqueta rotula, no tapa. Sin glifos lo sustituye `anilloAgrupado`.
+    ...(conEtiquetas
+      ? ([
+          {
+            id: IDS_CAPAS.puntoAgrupado,
+            type: 'symbol',
+            source: puntos,
+            filter: ['>', ['get', 'agrupados'], 1],
+            layout: {
+              'text-field': ['concat', '+', ['to-string', ['-', ['get', 'agrupados'], 1]]],
+              'text-font': FUENTE_MEDIA,
+              'text-size': 10,
+              'text-offset': [0.9, -0.9],
+              'text-allow-overlap': true,
+            },
+            paint: {
+              'text-color': d.agrupacionTexto,
+              'text-halo-color': d.puntoHalo,
+              'text-halo-width': 1.4,
+            },
+          },
+        ] satisfies LayerSpecification[])
+      : []),
   ];
 }
