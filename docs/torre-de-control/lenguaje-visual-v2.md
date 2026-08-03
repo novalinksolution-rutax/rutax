@@ -129,9 +129,10 @@ registro.
 | Borde de comuna | `#c6c9de` | `#ffffff26` | |
 | Comuna activa | navy 2px | periwinkle 2px | |
 | Velo (las demás) | tierra al 72 % | tierra al 77 % | Entrar en una comuna no cambia de pantalla: apaga el resto de la ciudad |
-| Punto pendiente | `#2f3a4b` (= `--primary`) | `#e6e9ef` | |
+| Punto pendiente | `#2f3a4b` (= `--primary`) | `#e6e9ef` | Halo de 1,6 px |
 | Punto en ruta | anillo navy sobre relleno del halo | anillo periwinkle | Anillo vs. relleno: se distinguen **por forma**, no solo por color |
 | Punto entregado | `#a7aebd` al 75 % | `#5b6068` al 75 % | **Se apaga, no se borra.** Si lo entregado desapareciera, un día cerrado se vería igual que un día sin pedidos |
+| **Sombra bajo el punto** | tinta `#1e2536` al 22 % | negro al 50 % | Ver abajo |
 | Cerca del corte (F7) | anillo ámbar `#ff8447` | `#e97135` | Marca, no reloj. Y su cifra va siempre en la cabecera |
 | **Incidencia** | **`#fb3748`** | **`#e93544`** | **El único rojo de la pantalla**, y se pinta arriba de todo |
 | `+N` de agrupados | texto sobre el propio punto | ídem | Un edificio con seis entregas es UN punto con «6», no seis puntos encimados. **Sin glifos se sustituye por un anillo** — ver §6 |
@@ -140,9 +141,64 @@ registro.
 escaso»**, y está acotada al relleno de comuna y al punto en ruta. Fuera del
 mapa, el navy sigue siendo solo enlace, activo y foco.
 
+### 3.4 El punto: halo y profundidad
+
+Decidido tras ver el nivel 3 en navegador (2026-08-03): los puntos planos se
+leían **pegados encima** del plano, no asentados sobre él. Se corrigió sin tocar
+el lenguaje de formas y **sin introducir un solo icono** — `estilo.ts` sigue
+declarando que el mapa no tiene sprites.
+
+Dos cambios, y el segundo es el que carga el significado:
+
+1. **Una capa de sombra compartida** (`tc-punto-sombra`), debajo de todos los
+   estados: círculo difuso (`circle-blur: 0.9`) desplazado **1,5 px hacia abajo**,
+   con la luz viniendo de arriba igual que las sombras del sistema (`--shadow-*`).
+   Su radio va poco más que el núcleo que sombrea (~1,2 px) y **nunca más**: una
+   sombra mayor que el objeto deja de leerse como sombra y pasa a glow.
+2. **El entregado NO lleva sombra.** Es lo que lo hunde en el plano y lo separa
+   de lo que todavía cuenta, sin gastar un color nuevo: lo que ya no cuenta deja
+   de tener volumen. Refuerza «se apaga, no se borra» por una vía distinta al
+   color, que es justo lo que pide la regla 2 del alcance.
+
+El halo del pendiente sube de 1,2 a **1,6 px**: con una sombra debajo, un halo
+delgado deja el punto apoyado sobre su propia sombra en vez de recortado del
+plano.
+
+En oscuro la sombra es **negro puro y más opaca**, no la tinta tintada del claro:
+sobre una tierra que ya es casi negra (`#131417`) una sombra de color no se
+separa del fondo, y la profundidad la da el contraste contra el halo oscuro del
+punto.
+
+### 3.5 La ficha del punto: sale de donde la llamaron
+
+Decidido el 2026-08-03, tras ver que la ficha aparecía **clavada en la esquina
+inferior derecha** y de golpe. Con varios puntos en pantalla eso obligaba a
+saltar la vista del punto a la esquina y de vuelta, y no había forma de saber a
+cuál de los puntos se refería.
+
+- **Anclada a su punto**, en coordenadas de pantalla, con **cola triangular** que
+  lo apunta. La cola se dibuja en dos capas para conservar el borde de 1 px.
+- **Arriba del punto por defecto** —donde no tapa lo que el usuario acaba de
+  mirar—; si no cabe, cae debajo y la cola se da vuelta. En horizontal se centra
+  y **se recorta contra los bordes de la caja**: una ficha que asoma media fuera
+  se lee como un error de render. La cola sigue apuntando al punto aunque la
+  tarjeta se haya recortado.
+- **Sigue al mapa**: se reposiciona en cada `move`. Si no, se despega y queda
+  flotando sobre otra cosa.
+- **Entrada de 160 ms**, `scale(0.94)` + 4 px hacia el punto, con la curva
+  estándar del sistema y **origen en la punta de la cola**: el crecimiento se lee
+  como «esto sale de ahí» y no como «apareció algo». Se respeta
+  `prefers-reduced-motion`.
+
+⚠️ **160 ms y no más.** Una consola se mira muchas veces al día: la animación que
+encanta la primera vez estorba la vigésima. El dato no puede hacerse esperar.
+
+---
+
 Estas reglas no viven solo en prosa: `estilo.test.ts` falla si el rojo aparece en
-una segunda capa, si un tema pierde una capa que el otro tiene, o si la etiqueta
-de calle local se separa del umbral del nivel 3.
+una segunda capa, si un tema pierde una capa que el otro tiene, si la etiqueta de
+calle local se separa del umbral del nivel 3, o si la sombra se cuela por encima
+de cualquier punto o deja de excluir al entregado.
 
 ---
 

@@ -79,6 +79,8 @@ export const IDS_CAPAS = {
   comunaBordeActiva: 'tc-comuna-borde-activa',
   agrupacionBurbuja: 'tc-agrupacion-burbuja',
   agrupacionCifra: 'tc-agrupacion-cifra',
+  /** Sombra difusa bajo los puntos que todavía cuentan. Ver `capasDatos`. */
+  puntoSombra: 'tc-punto-sombra',
   puntoEntregado: 'tc-punto-entregado',
   puntoPendiente: 'tc-punto-pendiente',
   puntoEnRuta: 'tc-punto-en-ruta',
@@ -591,6 +593,40 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         ] satisfies LayerSpecification[])
       : [anilloAgrupado]),
     {
+      /**
+       * Sombra difusa bajo el punto. Una sola capa compartida por todos los
+       * estados, debajo de todos ellos.
+       *
+       * Es lo que separa un punto **pegado** encima del plano de uno **asentado**
+       * sobre él, y es la misma idea que las sombras del sistema (`--shadow-*`):
+       * luz desde arriba, así que la sombra se desplaza 1,5 px hacia abajo.
+       *
+       * ⚠️ **El entregado queda fuera del filtro a propósito.** Sin sombra se
+       * hunde en el plano, y eso refuerza «se apaga, no se borra» sin gastar un
+       * color nuevo: lo que ya no cuenta deja de tener volumen.
+       */
+      id: IDS_CAPAS.puntoSombra,
+      type: 'circle',
+      source: puntos,
+      filter: ['!=', ['get', 'estado'], 'entregado'],
+      paint: {
+        'circle-color': d.puntoSombra,
+        // Poco más que el núcleo que sombrea (~1,2 px), nunca más: una sombra
+        // más grande que el objeto deja de leerse como sombra y pasa a glow.
+        'circle-radius': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          13,
+          ['match', ['get', 'estado'], 'incidencia', 6.2, 4.8],
+          17,
+          ['match', ['get', 'estado'], 'incidencia', 9.4, 7.2],
+        ],
+        'circle-blur': 0.9,
+        'circle-translate': [0, 1.5],
+      },
+    },
+    {
       // Los entregados no se borran: se apagan. Ver el contador bajar es la
       // pantalla entera; si lo entregado desapareciera, el mapa se vaciaría y no
       // se distinguiría un día cerrado de un día sin pedidos.
@@ -612,8 +648,10 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       paint: {
         'circle-color': d.puntoPendiente,
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3.5, 17, 6],
+        // 1,6 y no 1,2: con la sombra debajo, un halo delgado deja el punto
+        // apoyado sobre su propia sombra en vez de recortado del plano.
         'circle-stroke-color': d.puntoHalo,
-        'circle-stroke-width': 1.2,
+        'circle-stroke-width': 1.6,
       },
     },
     {

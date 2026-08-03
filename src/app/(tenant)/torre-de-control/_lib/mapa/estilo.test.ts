@@ -105,6 +105,33 @@ describe('capas de dato — las reglas de color del alcance', () => {
     expect(ids).not.toContain(IDS_CAPAS.puntoAgrupadoAnillo);
   });
 
+  it.each(TEMAS)('la sombra va bajo TODOS los puntos y el entregado no la lleva (%s)', (tema) => {
+    // El tratamiento «halo y profundidad»: una sola capa de sombra compartida,
+    // debajo de todos los estados. Si se colara por encima de cualquier punto,
+    // lo ensuciaría en vez de asentarlo.
+    for (const conEtiquetas of [true, false]) {
+      const capas = capasDatos(tema, conEtiquetas);
+      const ids = capas.map((capa) => capa.id);
+      const iSombra = ids.indexOf(IDS_CAPAS.puntoSombra);
+      expect(iSombra).toBeGreaterThanOrEqual(0);
+
+      for (const id of [
+        IDS_CAPAS.puntoEntregado,
+        IDS_CAPAS.puntoPendiente,
+        IDS_CAPAS.puntoEnRuta,
+        IDS_CAPAS.puntoCorte,
+        IDS_CAPAS.puntoIncidencia,
+      ]) {
+        expect(iSombra).toBeLessThan(ids.indexOf(id));
+      }
+
+      // El entregado se apaga Y se hunde: sin sombra no tiene volumen, y eso es
+      // lo que lo separa de lo que todavía cuenta sin gastar otro color.
+      const sombra = capas[iSombra];
+      expect(sombra).toMatchObject({ filter: ['!=', ['get', 'estado'], 'entregado'] });
+    }
+  });
+
   it('los pedidos van por fuente GeoJSON, nunca como anclas HTML', () => {
     // Medido: 600 anclas HTML cuestan 31,77 ms/frame (≈31 fps); por GeoJSON las
     // dibuja la GPU. La capa HTML es solo para las ~32 placas de comuna.

@@ -91,6 +91,14 @@ export interface PaletaDatos {
   anilloCorte: string;
   /** Halo de los puntos: el color de la tierra, para recortarlos del plano. */
   puntoHalo: string;
+  /**
+   * Sombra difusa bajo el punto. Lleva su alfa embebido, como el velo y la
+   * rampa de carga, para no depender de una opacidad de capa aparte.
+   *
+   * El **entregado no la lleva**: es lo que lo hunde en el plano y lo separa de
+   * lo que todavía cuenta, sin gastar otro color.
+   */
+  puntoSombra: string;
 }
 
 export interface PaletaMapa {
@@ -137,6 +145,10 @@ const CLARO: PaletaMapa = {
     puntoIncidencia: '#fb3748', // = --destructive · ÚNICO ROJO
     anilloCorte: '#ff8447', //     = --warning
     puntoHalo: '#ffffff',
+    // Sombra bajo el punto. Tinta del sistema al 22 %, no negro: un gris neutro
+    // sobre la tierra fría (#f1f2f8) se ve sucio. Es lo que asienta el punto
+    // sobre el plano en vez de dejarlo pegado encima.
+    puntoSombra: '#1e253638',
   },
 };
 
@@ -180,6 +192,10 @@ const OSCURO: PaletaMapa = {
     puntoIncidencia: '#e93544', // = --destructive dark · ÚNICO ROJO
     anilloCorte: '#e97135', //     = --warning dark
     puntoHalo: '#0d0e11',
+    // En oscuro la sombra es negro puro y más opaca: sobre una tierra que ya es
+    // casi negra (#131417), una sombra tintada no se separa del fondo. Lo que da
+    // la profundidad acá es el contraste contra el halo oscuro del punto.
+    puntoSombra: '#00000080',
   },
 };
 
