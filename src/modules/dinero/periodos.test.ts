@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { calcularRangoPeriodo, obtenerOCrearPeriodoCobroAbierto } from './periodos';
+import { fechaLocalEnSantiago } from '@/lib/fecha-santiago';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 // =============================================================================
@@ -200,7 +201,7 @@ describe('invariantes de calcularRangoPeriodo', () => {
 
   for (const tipo of tipos) {
     for (const fecha of fechas) {
-      it(`[${tipo}] fechaInicio <= fechaFin para ${fecha.toISOString().split('T')[0]}`, () => {
+      it(`[${tipo}] fechaInicio <= fechaFin para ${fechaLocalEnSantiago(fecha)}`, () => {
         const { fechaInicio, fechaFin } = calcularRangoPeriodo(fecha, tipo);
         expect(fechaInicio <= fechaFin).toBe(true);
       });

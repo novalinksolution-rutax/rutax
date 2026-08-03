@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { diferenciaEnDiasCalendario } from '@/lib/fecha-santiago';
 
 // =============================================================================
 // Lógica pura extraída de cada detector — sin dependencias de BD
@@ -189,11 +190,10 @@ interface Liquidacion {
   montoTotalClp: number;
 }
 
-function diasEntre(desdeIso: string, hastaIso: string): number {
-  const desde = new Date(`${desdeIso}T00:00:00Z`).getTime();
-  const hasta = new Date(`${hastaIso}T00:00:00Z`).getTime();
-  return Math.round((hasta - desde) / (1000 * 60 * 60 * 24));
-}
+// Espejo de lo que hace el job: el mismo helper compartido, no una segunda
+// implementación. Si el test re-derivara la aritmética por su cuenta, dejaría
+// de comprobar el comportamiento real.
+const diasEntre = diferenciaEnDiasCalendario;
 
 function detectarPagosConductorFaltantes(
   liquidaciones: Liquidacion[],

@@ -16,24 +16,7 @@ import { esEstadoTerminal } from "@/modules/dinero/conciliacion-clasificacion";
 import type { EstadoEventoConciliacion } from "@/modules/dinero/tipos";
 import type { BadgeVariante } from "@/lib/ui/traduccion-estados";
 
-const TZ = "America/Santiago";
-
-/** Fecha de hoy 'YYYY-MM-DD' en zona America/Santiago. */
-function hoySantiago(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
-/** Días de calendario entre dos fechas 'YYYY-MM-DD' (positivo si `fecha` es futura respecto de `hoy`). */
-function diferenciaDias(fecha: string, hoy: string): number {
-  const a = new Date(`${fecha}T00:00:00Z`).getTime();
-  const b = new Date(`${hoy}T00:00:00Z`).getTime();
-  return Math.round((a - b) / 86_400_000);
-}
+import { diferenciaEnDiasCalendario, hoyEnSantiago } from "@/lib/fecha-santiago";
 
 export interface SemaforoVencimiento {
   variant: BadgeVariante;
@@ -49,7 +32,9 @@ export function semaforoVencimiento(
   if (estado === "esperando_info") return { variant: "neutral", etiqueta: "SLA en pausa" };
   if (!fechaLimite) return { variant: "neutral", etiqueta: "Sin fecha límite" };
 
-  const dias = diferenciaDias(fechaLimite, hoySantiago());
+  // Ojo con el orden: `diferenciaEnDiasCalendario(desde, hasta)` es `hasta − desde`,
+  // y aquí queremos positivo cuando la fecha límite aún está en el futuro.
+  const dias = diferenciaEnDiasCalendario(hoyEnSantiago(), fechaLimite);
   if (dias < 0) return { variant: "error", etiqueta: "Vencida" };
   if (dias <= 2) return { variant: "warning", etiqueta: dias === 0 ? "Vence hoy" : "Vence pronto" };
   return { variant: "success", etiqueta: "En plazo" };
