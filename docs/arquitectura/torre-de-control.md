@@ -314,8 +314,10 @@ layout `(tenant)`, condicionado por capacidad. RBAC: capacidad nueva
 > alcance v2 decide si sobreviven: 8.3 (disclosure de tres niveles) y 8.6
 > (silencio por defecto).
 >
-> La ruta de 8.1 también cambió: la pantalla NO vive en `(tenant)` sino en
-> `src/app/(consola)/torre-de-control/`.
+> Sobre la ruta de 8.1: la pantalla se movió a `src/app/(consola)/` en la v1 y
+> **vuelve a `(tenant)` en la v2** (2026-08-03), esta vez dentro del `AppShell`,
+> con el mapa acotado en altura más un botón de pantalla completa. El grupo
+> `(consola)` se retira entero. Ver `alcance-v2.md` §5.8.
 
 ### 8.1 Estructura
 

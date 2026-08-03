@@ -106,6 +106,13 @@ cambia si se cambia de proveedor de tiles.** MapLibre y Protomaps no aparecen en
 la medición. Cambiar de proveedor por un problema de fluidez sería pagar una
 migración por un problema que no está ahí.
 
+> **Nota sobre el tamaño del lienzo (2026-08-03).** La v2 mete el mapa dentro del
+> `AppShell` de `(tenant)`, con altura acotada más un botón de pantalla completa
+> (`alcance-v2.md` §5.8). Eso no altera nada de lo anterior: el banco se midió
+> sobre un lienzo de 1100×700, es decir el **peor caso** (pantalla completa). Con
+> el mapa embebido hay menos superficie y menos elementos visibles, así que sale
+> más barato, no más caro.
+
 ---
 
 ## 3. La trampa de licencia, otra vez
@@ -174,9 +181,10 @@ Google también saldrían gratis a 20 couriers. Lo que discrimina es licencia,
 control de estilo y fricción diaria de desarrollo. Y ahí gana lo que ya existe.
 
 **La opción 6 (sin plano urbano) queda descartada por una respuesta de producto**,
-no por gusto: el usuario quiere hacer zoom hasta el punto de entrega y leer su
-dirección. Una dirección sobre un fondo liso, sin la calle debajo, no ubica a
-nadie.
+no por gusto: el usuario quiere hacer zoom hasta el punto de entrega individual.
+La Torre **no muestra la dirección** —muestra el código de envío, ver
+`alcance-v2.md` §F3—, y precisamente por eso **la calle debajo es la que ubica el
+punto**. Un código sobre un fondo liso no le dice a nadie dónde está esa entrega.
 
 **La opción 5 no compite con la 1: se suma.** No sustituye al basemap; resuelve
 dibujar miles de puntos fuera del DOM. Y la medición dice que hoy **no hace
@@ -198,8 +206,8 @@ etiquetas y el estilo.
 1. **Publicar glifos.** Extraer los PBF de fuente y publicarlos junto al basemap;
    añadir `glyphs` al estilo. Es el desbloqueo de todo lo demás. *(~medio día)*
 2. **Encender etiquetas** en tres niveles jerárquicos: comuna (siempre), ejes
-   principales (zoom medio), calle local (zoom alto, que es cuando se lee la
-   dirección de un pedido). *(~1 día)*
+   principales (zoom medio), calle local (zoom alto, que es cuando se llega al
+   punto de entrega individual). *(~1 día)*
 3. **Rehacer el basemap con jerarquía vial.** Hoy los ejes van todos en el mismo
    gris tenue; separar autopista / troncal / local es la mitad de lo que hace que
    un plano se vea «fino» al estilo Uber/Rappi. Requiere re-recortar con más
@@ -243,9 +251,10 @@ derivada; quitarla es incumplir.
 ### Detalle menor, detectado de paso
 
 `_lib/mapa/config.ts` cita `scripts/mapa/publicar-cartografia.mjs`, pero el
-archivo real se llama **`publicar-basemap.mjs`**. Corregirlo al tocar ese archivo
-en la pasada de implementación (no se toca ahora: el archivo está bajo
-`(consola)/`, congelado en esta sesión).
+archivo real se llama **`publicar-basemap.mjs`**. Corregirlo en la pasada de
+implementación, que es cuando ese archivo se toca de todos modos: el módulo entero
+se muda de `(consola)/` a `(tenant)/` (`alcance-v2.md` §5.8). No se toca ahora
+porque el código del módulo está congelado en esta sesión.
 
 ---
 

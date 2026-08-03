@@ -50,13 +50,31 @@ La comuna es la unidad primaria y la primera vista. La cifra de cada comuna es
 3. **Punto de entrega individual** — un pedido, un punto.
 
 ### F3 · Detalle del punto de entrega
-**Dato:** dirección del pedido · conductor asignado · pendientes de ese conductor.
-**Decisión que soporta:** a quién llamar por este paquete.
-Al llegar al punto individual se ve **la dirección de la entrega**, **qué
-conductor la lleva** y **cuántos paquetes le faltan a ese conductor**.
-⚠️ **Bloqueado por revisión previa** — ver §5.6: mostrar la dirección del
-destinatario amplía lo que el producto expone de datos personales y tiene que
-pasar por `seguridad-cumplimiento` antes de construirse.
+**Dato:** código de envío · conductor asignado · pendientes de ese conductor.
+**Decisión que soporta:** a quién llamar por este paquete, y con qué número en la
+mano.
+Al llegar al punto individual se ve el **código de envío**, **qué conductor lo
+lleva** y **cuántos paquetes le faltan a ese conductor**.
+
+**Sin dirección y sin nombre del destinatario** (decisión del usuario,
+2026-08-03). El identificador es el código, que es lo que el coordinador
+necesita para buscarlo en `/operaciones` o para nombrárselo al conductor:
+
+| Fuente | Campo | Formato |
+|---|---|---|
+| Flex | `operacion.pedidos.ml_shipment_id` | el número de envío de Mercado Envíos |
+| Same-day | `operacion.pedidos.codigo_interno` | `RX-XXXX-XXXX` (base32 Crockford), el mismo que va en el QR de la etiqueta |
+
+⚠️ **Nunca `tracking_token`.** Es el otro identificador del pedido y es
+**público**: viaja en la URL `/tracking/[token]` que se comparte con el
+destinatario. No es un identificador operativo y no va en la Torre.
+
+**Agrupación en el mismo punto:** varios pedidos que caen en la misma ubicación
+se colapsan en un punto con su cantidad (`+2`, `+5`). Un punto por dirección, no
+un punto por paquete — si no, un edificio con seis entregas se ve como una mancha.
+
+**No requiere revisión de `seguridad-cumplimiento`**: un código de envío es un
+identificador operativo, no un dato personal del destinatario. Ver §5.6.
 
 ### F4 · Incidencias en vivo
 **Dato:** incidencias abiertas del módulo `operacion`.
@@ -240,18 +258,25 @@ sigue siendo valioso y no cuesta nada mantenerlo; y la Torre leyendo en vivo de
 refactor sin premio. Lo que sí cambia es su descripción: de «contexto externo» a
 **anticipación y agregación operativa**.
 
-### 5.6 Datos personales — gate obligatorio
+### 5.6 Datos personales — la v2 NO amplía la exposición
 
-**F3 (dirección del destinatario en el punto del mapa) no se construye sin la
-revisión de `seguridad-cumplimiento`.** Hoy el mapa lleva a propósito solo punto
-y estado, sin dirección ni nombre, por minimización de PII. F3 amplía eso y es
-exactamente el caso que la regla del proyecto obliga a revisar antes.
+**Resuelto el 2026-08-03: la Torre v2 no muestra ni dirección ni nombre del
+destinatario.** F3 se resolvió con el **código de envío**, que es un
+identificador operativo del paquete y no un dato personal de nadie. En
+consecuencia **no hay gate de `seguridad-cumplimiento`** para este módulo: la v2
+no expone nada que el producto no exponga ya en `/operaciones`.
 
-Lo que **no** cambia y conviene dejar dicho: **no se guarda recorrido del
-conductor.** El usuario fue explícito («no digo que tenga que ver el conductor
-con GPS»). El modelo sigue con una sola fila por conductor, la última posición,
-sin histórico — minimización bajo la Ley 21.431. Esa decisión se mantiene y F1–F12
-no la tocan.
+Las dos minimizaciones vigentes se mantienen intactas:
+
+- **Destinatario:** el mapa sigue llevando solo punto, estado y ahora código. Sin
+  dirección, sin nombre, sin teléfono.
+- **Conductor (Ley 21.431):** **no se guarda recorrido.** El usuario fue
+  explícito («no digo que tenga que ver el conductor con GPS»). El modelo sigue
+  con una sola fila por conductor —la última posición, sin histórico— y F1–F12 no
+  la tocan.
+
+Si alguna vez se propone volver a poner la dirección en el mapa, **eso sí reabre
+la revisión**. Queda dicho para que nadie lo cuele como un detalle.
 
 ### 5.7 Riesgo asumido: la Torre no distingue la fuente del pedido
 
@@ -265,7 +290,43 @@ Mitigación acordada, que no contradice la decisión: **F6, el indicador global 
 frescura**. Un solo dato en la cabecera, para que el contador nunca mienta en
 silencio, sin ensuciar la lectura punto a punto.
 
-### 5.8 Lo que NO cambia
+*Matiz sin consecuencia de diseño:* el **código de envío de F3 delata su origen**
+por el formato (un id de Mercado Envíos no se parece a un `RX-XXXX-XXXX`). No
+contradice la decisión — nadie agrupa ni cuenta por fuente; simplemente el
+identificador es el que es.
+
+### 5.8 La Torre baja a `(tenant)` y `(consola)` se retira
+
+**Decisión del usuario (2026-08-03), que revierte la de la v1.** La Torre deja de
+ser una consola de viewport fijo y pasa a ser **un módulo más del SaaS**: dentro
+de `(tenant)`, con el `AppShell`, el mismo sidebar y la misma navegación que
+cualquier otra pantalla. El mapa va **grande, pero acotado** —una altura
+definida, no el viewport entero— y con un **botón de pantalla completa** para
+cuando se quiera mirar en serio.
+
+Consecuencias:
+
+- **El grupo de rutas `src/app/(consola)/` se retira entero.** La Torre era su
+  único ocupante; `src/app/` vuelve a tener cinco destinos. Con él se va la
+  duplicación de guards de `(consola)/layout.tsx`, que repetía los de
+  `(tenant)/layout.tsx`.
+- **La regla general del repo deja de tener excepción**: *toda* pantalla del
+  courier vive en `(tenant)`. Esto simplifica CLAUDE.md, no solo el código.
+- **El `max-w-6xl` del `<main>` es el punto a resolver** en la implementación: el
+  mapa necesita más ancho que el resto del backoffice. Se resuelve dejando que
+  esta pantalla se salga del `max-w` (no quitándoselo a todas), y es un detalle de
+  layout, no de arquitectura.
+- **Pantalla completa** con la Fullscreen API sobre el contenedor del mapa. No es
+  una ruta nueva ni un layout nuevo: es estado local de la pantalla.
+- Sin cambio de RBAC ni de guards: `(tenant)/layout.tsx` ya impone los mismos que
+  imponía `(consola)`, y `ver_torre_control` sigue gateando la pantalla.
+
+*Nota honesta: la recomendación de esta sesión había sido quedarse en
+`(consola)`. La decisión del usuario es además la que deja el repo más simple —
+elimina un grupo de rutas y una duplicación de guards a cambio de un ajuste de
+ancho.*
+
+### 5.9 Lo que NO cambia
 
 - **RBAC:** `ver_torre_control` (dueño, supervisor, coordinador) sigue igual, de
   lectura. Al no escribir, no hay capacidad nueva ni bitácora de auditoría.
@@ -279,7 +340,7 @@ silencio, sin ensuciar la lectura punto a punto.
   quedan (condición de licencia). **La de OpenWeather se retira**, pero solo
   cuando no quede ningún dato de OpenWeather en el producto.
 
-### 5.9 Andamiaje a retirar
+### 5.10 Andamiaje a retirar
 
 `_fixture/estado-torre.ts` y `_fixture/variantes.ts` (la copia del contrato
 congelado más el `?estado=` para revisar las capturas del handoff) los importan
@@ -298,14 +359,21 @@ congelado más el `?estado=` para revisar las capturas del handoff) los importan
   calidad cartográfica y tipográfica del plano — no 3D ni cámara inclinada.
 
 **Para la sesión de implementación:**
-- ¿La Torre se queda en `(consola)` o baja a `(tenant)`? Vivía en `(consola)` por
-  fidelidad al handoff. El uso real —dos minutos, varias veces al día— apuntaría
-  a `(tenant)`; pero el usuario pidió expresamente «el mapa en grande», y eso es
-  incompatible con el `AppShell` (`max-w-6xl` + scroll de página).
-  **Recomendación: quedarse en `(consola)`**, retirando lo que se justificaba
-  solo para quien vive en la pantalla (atajos, ⌘K, tope de capas).
+- Cómo se resuelve el ancho: la pantalla tiene que salirse del `max-w-6xl` del
+  `<main>` de `(tenant)` sin quitárselo al resto del backoffice (§5.8).
+- A qué altura queda el mapa «grande pero no tanto», y el comportamiento del
+  botón de pantalla completa.
+- Cuándo colapsar los puntos que comparten ubicación en el `+N` de F3 — por
+  coordenada exacta o por radio.
 - Destino de `contexto.restriccion_vehicular` (§5.1).
-- El cambio sin commitear en `jobs/recalcular-riesgo.ts` (§5.2).
+- El cambio sin commitear en `jobs/recalcular-riesgo.ts` (§5.2) — el usuario
+  decidió seguir sin resolverlo por ahora; resolverlo al retirar el job.
 - Orden del trabajo sugerido: `arquitecto` (contrato nuevo comuna-first) →
   `base-datos-rls` (retiro de tablas) → `backend` (composer + realtime) →
-  `frontend` (pantalla) → `qa`. Y `seguridad-cumplimiento` **antes** de F3.
+  `frontend` (pantalla) → `qa`.
+
+**Ya no está abierto:**
+- ~~`(consola)` vs `(tenant)`~~ → resuelto: baja a `(tenant)` y `(consola)` se
+  retira (§5.8).
+- ~~Gate de `seguridad-cumplimiento` por la dirección del destinatario~~ →
+  resuelto: no se muestra dirección, se muestra código de envío (§5.6).
