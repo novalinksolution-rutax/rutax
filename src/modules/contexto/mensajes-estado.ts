@@ -2,23 +2,26 @@
  * Copys de la banda de estado de la Torre.
  * =====================================================================
  *
- * Vive aparte del armado —y no dentro de `composer/armado-riel.ts`— porque lo
- * consume un componente de CLIENTE. Un archivo de copy no debería arrastrar al
- * bundle del navegador el grafo entero del composer solo para traer cuatro
- * frases.
+ * Vive aparte del armado —y no dentro de `composer/`— porque lo consume un
+ * componente de CLIENTE. Un archivo de copy no debería arrastrar al bundle del
+ * navegador el grafo entero del composer solo para traer tres frases.
  *
- * Copys del handoff §8, con dos apartados deliberados:
+ * -----------------------------------------------------------------------------
+ * DOS ESTADOS SE RETIRARON CON LA v2
+ * -----------------------------------------------------------------------------
+ * · **`degradado`** existía para cuando una fuente externa no respondía. Ya no
+ *   hay fuentes externas: clima, aire, tránsito, eventos y prensa salieron del
+ *   producto. Su reemplazo es F6, el indicador de frescura, que mide el dato
+ *   propio de Rutax y **está callado mientras todo va bien** — así que no
+ *   necesita un copy de banda.
+ * · **`sin_zonas`** invitaba a agrupar comunas en zonas. Con la comuna como
+ *   unidad primaria del mapa, un courier sin zonas configuradas ve exactamente lo
+ *   mismo que uno que sí las tiene: las comunas de la RM existen igual.
  *
- * - **`degradado` ya no nombra a tránsito.** El copy original («La capa de
- *   tránsito muestra información de hace 38 minutos») describía el escenario del
- *   dummy congelado. Con fuentes reales la que se cae puede ser cualquiera, y
- *   afirmar en pantalla que es tránsito cuando la caída es la del aire sería una
- *   cifra falsa en un tablero de decisión. Cuál está caída se lee en la barra
- *   superior, marca por marca, que es donde vive esa información.
- *
- * - **`sin_pedidos` ya no promete la ola comercial.** El calendario de olas
- *   (bloque C) todavía no existe; anunciar «la próxima ola es el Día del Niño»
- *   sería ofrecer una pantalla que no está.
+ * `con_incidencias` tampoco lleva copy: cuando hay una incidencia abierta, lo que
+ * habla es la incidencia misma en el panel, con su código y su conductor. Una
+ * banda diciendo «hay incidencias» encima de la lista de incidencias sería la
+ * pantalla explicándose a sí misma.
  */
 
 import type { MensajeEstado } from './contrato-torre';
@@ -28,28 +31,14 @@ export const MENSAJES_ESTADO_TORRE: MensajeEstado[] = [
     estado: 'tranquilo',
     titulo: 'Todo tranquilo',
     cuerpo:
-      'Ninguna zona supera el umbral de riesgo y no hay eventos relevantes en las próximas 24 horas.',
-    accion: { etiqueta: 'Ver el detalle igual', destino: '#detalle' },
-  },
-  {
-    estado: 'degradado',
-    titulo: 'Falta el dato de alguna fuente',
-    cuerpo:
-      'Una o más fuentes externas no están respondiendo. El resto del tablero está al día; arriba, cada fuente muestra su edad y su estado.',
+      'No hay incidencias abiertas y las entregas van saliendo. El contador de arriba baja solo a medida que los conductores cierran sus paradas.',
     accion: null,
-  },
-  {
-    estado: 'sin_zonas',
-    titulo: 'Todavía no defines tus zonas',
-    cuerpo:
-      'Estás viendo las cinco macro-zonas de la Región Metropolitana. Agrupa tus comunas para que el tablero refleje cómo operas.',
-    accion: { etiqueta: 'Configurar zonas', destino: '/configuracion/zonas' },
   },
   {
     estado: 'sin_pedidos',
-    titulo: 'Sin pedidos para esta fecha',
+    titulo: 'Sin pedidos para hoy',
     cuerpo:
-      'No hay pedidos con compromiso de entrega en este horizonte. El tablero sigue mostrando el contexto de la ciudad.',
-    accion: null,
+      'No hay pedidos con compromiso de entrega para hoy. Si esperabas carga, revisa la ingesta en Operaciones.',
+    accion: { etiqueta: 'Ir a Operaciones', destino: '/operaciones' },
   },
 ];

@@ -72,7 +72,7 @@ Clasificación de sensibilidad (define cómo se trata cada dato):
 - Frontend: Next.js (React) + Tailwind + shadcn/ui.
 - Datos: PostgreSQL con Row-Level Security (RLS). Backend: Supabase (Postgres + Auth + Storage + RLS + funciones).
 - Jobs en segundo plano: orquestador gestionado — **Inngest** (canónico en el repo: ver `src/lib/inngest/` y `api/inngest`). No introducir colas propias.
-- App de conductor: PWA + app nativa Expo (esta última ya existe, en `Desktop/rutax-conductor`, con API routes Bearer en Next.js); es la superficie operativa unificada del conductor para todas las fuentes.
+- App de conductor: PWA + **app nativa Expo (`Desktop/rutax-conductor`, repo aparte, con API routes Bearer en Next.js)**; es la superficie operativa unificada del conductor para todas las fuentes. **No es un accesorio: es la fuente de verdad operativa de la Torre de control** — el conductor cierra cada parada ahí (`operacion.pruebas_entrega` en same-day, `operacion.cierres_conductor` en Flex) y eso es lo que la Torre cuenta, por delante del estado oficial de ML. Además es donde se hará la **versión móvil de la Torre**, más adelante; por eso el árbol móvil se retira de este repo.
 - Hosting: Vercel + Supabase.
 - Integraciones como adaptadores aislados (un "puerto" por servicio: ML/Flex, DTE, pagos; más fuentes "Más adelante").
 
@@ -146,7 +146,10 @@ El módulo **Torre de control** es la pantalla de monitoreo del día del courier
 
 **El handoff de diseño dejó de mandar** (2026-08-03). `design_handoff_torre_de_control/` era la interfaz aprobada y la referencia obligatoria: sus 7 reglas, sus 6 regiones, sus tokens y sus copys ya **no** son autoridad. Está archivado en `docs/_historico/torre-v1/` — se conserva porque explica por qué el código de hoy es como es, no para seguirlo. Con él cae el "contrato congelado" de tipos: `src/modules/contexto/contrato-torre.ts` es un tipo **vivo y editable**.
 
-Cuatro decisiones de la v2 que se rompen fácil por descuido:
+Cinco decisiones de la v2 que se rompen fácil por descuido:
+
+0. **La Torre cuenta lo que declara la app de Rutax, no el estado oficial del pedido.** El conductor cierra cada parada en `Desktop/rutax-conductor`: same-day va a `operacion.pruebas_entrega` (POD autoritativo, mueve el estado) y Flex va a `operacion.cierres_conductor` (registro paralelo, NO mueve el estado, porque el POD de Flex lo gobierna Mercado Envíos). La Torre unifica los dos. **Consecuencia asumida:** durante unas horas la Torre puede mostrar menos pendientes que `/operaciones`, porque va por delante de la sincronización con ML. No es un descuadre, y el motor entrega→dinero no se toca: sigue rigiéndose por el estado oficial.
+
 1. **La unidad primaria es la COMUNA, no la zona.** El zoom es semántico en tres niveles: comuna → agrupaciones → punto de entrega individual. Las zonas del courier siguen existiendo detrás (ventana de corte, conductores, capacidad), pero no mandan el mapa.
 2. **La cifra es una magnitud, nunca un índice.** "38 de 120 pendientes", no "73 de riesgo". El puntaje 0–100 y sus seis factores se retiran enteros, y con ellos **clima y aire salen del producto**: se apagan jobs, adaptadores de OpenWeather, la grilla de 14 puntos, las tablas `clima_horario`/`aire_horario` y la atribución de OpenWeather.
 3. **El rojo está reservado a la incidencia abierta.** Es lo único accionable de la pantalla; nada decorativo puede usarlo.

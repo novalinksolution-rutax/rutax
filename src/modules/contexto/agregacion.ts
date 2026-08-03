@@ -1,130 +1,74 @@
 /**
- * Agregación de insumos del motor de riesgo — de filas de BD a entradas puras.
+ * Agregación de la Torre v2 — de filas planas a las cifras de la pantalla.
  * =====================================================================
  *
- * Entre las consultas (I/O, en el job y en el composer) y el motor de riesgo
- * (puro, sin BD) falta un paso que no es ninguna de las dos cosas: convertir
- * filas planas —pronóstico horario por comuna, ventanas de corte por seller,
- * asignaciones de conductor a zona, tarifas— en las entradas por ZONA y por
- * FRANJA que el motor espera.
+ * Entre las consultas (I/O, en `composer/consultas.ts`) y el armado del payload
+ * falta un paso que no es ninguna de las dos cosas: convertir filas de pedidos,
+ * cierres e incidencias en **la carga por comuna**, los puntos del mapa y el
+ * avance de cada conductor.
  *
- * Ese paso vive aquí, separado y puro, por dos razones:
+ * Ese paso vive aquí, separado y **puro**: sin base, sin reloj propio, todo por
+ * parámetro. Es lo que más fácil se equivoca en silencio —una comuna que no
+ * empareja por un acento, un pedido contado dos veces, un corte leído en UTC— y
+ * nada de eso lanza: produce un número plausible y equivocado. Aislado y puro, se
+ * puede probar.
  *
- *   1. **El job y el composer necesitan exactamente lo mismo.** El nivel 2 de
- *      la pantalla («por qué») muestra el desglose de los mismos seis factores
- *      que el job persiste. Si cada uno agregara por su cuenta, el mapa y el
- *      desglose podrían contradecirse — que es justo lo que la jerarquía de
- *      tres niveles no puede permitirse.
- *   2. **Es lo que más fácil se equivoca en silencio.** Un `max` donde iba un
- *      `promedio`, una comuna que no empareja por un acento, una franja que se
- *      lee en UTC. Nada de eso lanza: produce un número plausible y equivocado.
- *      Aislado y puro, se puede probar.
- *
- * ZONA HORARIA. `clima_horario.hora` y `aire_horario.hora` son `timestamptz`
- * (UTC en disco). Aquí se convierten a fecha y hora **de Santiago** con los
- * helpers de `@/lib/fecha-santiago`, nunca con `toISOString()`. A las 21:00 de
- * Santiago UTC ya está en el día siguiente: leer la fecha civil de un instante
- * UTC mete el pronóstico de mañana en la franja de punta de hoy.
+ * -----------------------------------------------------------------------------
+ * QUÉ CAMBIÓ RESPECTO DE LA v1
+ * -----------------------------------------------------------------------------
+ * La versión anterior agregaba **por zona y por franja** para alimentar los seis
+ * factores del motor de riesgo. Con el puntaje retirado, cayeron enteros el clima
+ * por zona, el aire por zona, los eventos por zona, las tres franjas del día y la
+ * tasa histórica de fallidos. Lo único que sobrevive de aquel archivo es la
+ * aritmética del corte (`minutosHastaCorte`), porque F7 sigue necesitándola —
+ * ahora para marcar lo que está cerca del corte, no para puntuar.
  */
 
-import { fechaLocalEnSantiago, horaLocalEnSantiago, horaAMinutos } from '@/lib/fecha-santiago';
-import { normalizarComuna } from '@/modules/integraciones/geocoding/normalizacion';
-import type { NivelAire } from '@/modules/integraciones/contexto/aire/tipos';
-import type { EntradaClima, EntradaEventos, EventoEnVentana } from './motor-riesgo';
-import type { Franja } from './tipos';
-
-/** Ventana horaria local de cada franja. Espeja `contexto.franja` de la migración. */
-export const RANGO_FRANJA: Readonly<Record<Franja, { desde: string; hasta: string }>> = {
-  manana: { desde: '08:00', hasta: '12:00' },
-  tarde: { desde: '12:00', hasta: '17:00' },
-  punta: { desde: '17:00', hasta: '21:00' },
-};
-
-/**
- * Niveles de aire, de mejor a peor. El orden ES la comparación: `indexOf` sobre
- * este arreglo es lo que decide cuál es «el peor» de una zona. Se declara
- * `satisfies` contra `NivelAire` para que añadir un nivel al enum sin ordenarlo
- * aquí sea un error de compilación y no una comparación silenciosamente mal.
- */
-const ORDEN_AIRE = [
-  'bueno',
-  'regular',
-  'alerta',
-  'preemergencia',
-  'emergencia',
-] as const satisfies readonly NivelAire[];
+import { horaAMinutos } from '@/lib/fecha-santiago';
+import {
+  normalizarComuna,
+  resolverComunaCanonica,
+} from '@/modules/integraciones/geocoding/normalizacion';
 
 // =============================================================================
-// Capacidad por zona
+// Índice comuna → zona
 // =============================================================================
 
-export interface ConductorCapacidad {
+/** Una zona del courier con las comunas que cubre. */
+export interface ZonaConComunas {
   id: string;
-  capacidadParadas: number;
-}
-
-/** Fila de `identidad.conductor_zonas`. */
-export interface AsignacionZona {
-  conductorId: string;
-  zonaId: string;
+  comunas: readonly string[];
 }
 
 /**
- * Reparte la capacidad instalada entre las zonas, usando las zonas preferentes
- * de cada conductor.
+ * Índice `comuna normalizada → zonaId`.
  *
- * Tres reglas, y las tres importan:
+ * En la v2 la zona **no agrega el mapa**, pero sigue decidiendo qué ventana de
+ * corte aplica a cada comuna. Una comuna que no está en ninguna zona no es un
+ * error: es un courier que todavía no la configuró, y su corte cae en la ventana
+ * por defecto.
  *
- * - Un conductor asignado a UNA zona aporta ahí toda su capacidad.
- * - Un conductor asignado a VARIAS reparte su capacidad entre ellas. No se
- *   suma completa a cada una: un conductor con 30 paradas que cubre Centro y
- *   Poniente no da 30 paradas en cada una, da 30 en total. Contarlo dos veces
- *   infla la holgura justo donde el coordinador la mira para decidir.
- * - Un conductor SIN zonas asignadas es pool flexible y se reparte entre todas.
- *   Es el caso del courier que todavía no configuró preferencias, y antes de
- *   esto era el ÚNICO comportamiento: se dividía el pool completo a partes
- *   iguales, con lo que una zona con cero conductores propios mostraba
- *   capacidad como si los tuviera.
- *
- * Devuelve un entero por zona (se trunca: media parada no existe).
+ * Si dos zonas declaran la misma comuna gana la primera, que es el mismo criterio
+ * que ya usaba el guard de `zona_comunas` en la base.
  */
-export function capacidadPorZona(
-  conductores: readonly ConductorCapacidad[],
-  asignaciones: readonly AsignacionZona[],
-  zonaIds: readonly string[],
-): Map<string, number> {
-  const capacidad = new Map<string, number>(zonaIds.map((id) => [id, 0]));
-  if (zonaIds.length === 0) return capacidad;
-
-  const zonasValidas = new Set(zonaIds);
-  const zonasDeConductor = new Map<string, string[]>();
-  for (const a of asignaciones) {
-    if (!zonasValidas.has(a.zonaId)) continue;
-    const lista = zonasDeConductor.get(a.conductorId);
-    if (lista) lista.push(a.zonaId);
-    else zonasDeConductor.set(a.conductorId, [a.zonaId]);
-  }
-
-  const acumulado = new Map<string, number>(zonaIds.map((id) => [id, 0]));
-  for (const conductor of conductores) {
-    const destino = zonasDeConductor.get(conductor.id) ?? zonaIds;
-    const porZona = conductor.capacidadParadas / destino.length;
-    for (const zonaId of destino) {
-      acumulado.set(zonaId, (acumulado.get(zonaId) ?? 0) + porZona);
+export function indexarComunaAZona(zonas: readonly ZonaConComunas[]): Map<string, string> {
+  const indice = new Map<string, string>();
+  for (const zona of zonas) {
+    for (const comuna of zona.comunas) {
+      const clave = normalizarComuna(comuna);
+      if (!indice.has(clave)) indice.set(clave, zona.id);
     }
   }
-
-  for (const [zonaId, valor] of acumulado) capacidad.set(zonaId, Math.floor(valor));
-  return capacidad;
+  return indice;
 }
 
 // =============================================================================
-// Minutos hasta el corte
+// Minutos hasta el corte — F7, cálculo interno
 // =============================================================================
 
 /** Fila de `identidad.ventanas_corte`, ya filtrada por tenant. */
 export interface VentanaCorte {
-  /** `null` = ventana por defecto del seller; con valor = override de esa zona. */
+  /** `null` = ventana por defecto; con valor = override de esa zona. */
   zonaId: string | null;
   /** Hora local de Santiago, `HH:MM` o `HH:MM:SS`. */
   horaCorte: string;
@@ -132,27 +76,25 @@ export interface VentanaCorte {
 }
 
 /**
- * Minutos que faltan para el primer corte aplicable a la zona.
+ * Minutos que faltan para el primer corte aplicable a una zona.
  *
- * **La más temprana entre las activas aplicables**, y no la de la zona ni la
- * media: el corte que aprieta es el primero que vence. Una zona con un seller
- * que corta a las 12:00 y otro a las 18:00 tiene su presión a las 12:00 — si
- * se tomara la última, el tablero diría que hay seis horas de holgura que no
- * existen para la mitad de los pedidos.
+ * **La más temprana entre las activas aplicables**, no la de la zona ni la media:
+ * el corte que aprieta es el primero que vence. Una zona con un seller que corta
+ * a las 12:00 y otro a las 18:00 tiene su presión a las 12:00 — tomar la última
+ * diría que hay seis horas de holgura que no existen para la mitad de los
+ * pedidos.
  *
- * Aplicables = activas y con `zonaId` igual al de la zona **o** `null` (la
- * ventana por defecto del seller, que rige donde no hay override).
+ * Aplicables = activas y con `zonaId` igual al de la zona **o** `null`.
  *
- * Devuelve `null` si el courier no configuró ninguna ventana — el motor lo
- * trata como «sin dato», que es distinto de «sin tiempo». Un corte ya vencido
- * devuelve 0, no un negativo: el motor mide urgencia, y más allá del corte la
- * urgencia ya no crece.
+ * Devuelve `null` si el courier no configuró ninguna ventana: «sin dato» es
+ * distinto de «sin tiempo», y marcar de urgente todo lo de un courier que aún no
+ * configuró su corte sería ruido puro. Un corte ya vencido devuelve 0, no un
+ * negativo — más allá del corte la urgencia ya no crece.
  */
 export function minutosHastaCorte(
   ventanas: readonly VentanaCorte[],
-  zonaId: string,
-  fechaObjetivo: string,
-  ahora: { fecha: string; horaMinutos: number },
+  zonaId: string | null,
+  ahoraMinutos: number,
 ): number | null {
   const aplicables = ventanas.filter(
     (v) => v.activa && (v.zonaId === zonaId || v.zonaId === null),
@@ -160,323 +102,372 @@ export function minutosHastaCorte(
   if (aplicables.length === 0) return null;
 
   const minutoCorte = Math.min(...aplicables.map((v) => horaAMinutos(v.horaCorte)));
-  const diasDeDiferencia = diasEntre(ahora.fecha, fechaObjetivo);
-  return Math.max(0, diasDeDiferencia * 1440 + minutoCorte - ahora.horaMinutos);
-}
-
-/** Días de calendario entre dos fechas civiles `YYYY-MM-DD`. */
-function diasEntre(desde: string, hasta: string): number {
-  const a = Date.UTC(
-    Number(desde.slice(0, 4)),
-    Number(desde.slice(5, 7)) - 1,
-    Number(desde.slice(8, 10)),
-  );
-  const b = Date.UTC(
-    Number(hasta.slice(0, 4)),
-    Number(hasta.slice(5, 7)) - 1,
-    Number(hasta.slice(8, 10)),
-  );
-  return Math.round((b - a) / 86_400_000);
-}
-
-// =============================================================================
-// Clima y aire por zona y franja
-// =============================================================================
-
-/** Fila de `contexto.clima_horario`. `hora` es el timestamptz tal como llega. */
-export interface FilaClima {
-  comuna: string;
-  hora: string;
-  precipitacionMm: number | null;
-  vientoKmh: number | null;
-}
-
-/** Fila de `contexto.aire_horario`. */
-export interface FilaAire {
-  comuna: string;
-  hora: string;
-  nivelEstimado: NivelAire;
+  return Math.max(0, minutoCorte - ahoraMinutos);
 }
 
 /**
- * Índice `comuna normalizada → fecha Santiago → franja → filas`. Se construye
- * UNA vez por corrida y lo comparten las tres franjas × las N zonas × los tres
- * horizontes: sin él, cada combinación recorrería las ~3.700 filas del
- * pronóstico completo.
- */
-export function indexarPorComunaFechaFranja<T extends { comuna: string; hora: string }>(
-  filas: readonly T[],
-): Map<string, Map<string, Map<Franja, T[]>>> {
-  const indice = new Map<string, Map<string, Map<Franja, T[]>>>();
-
-  for (const fila of filas) {
-    const instante = new Date(fila.hora);
-    if (Number.isNaN(instante.getTime())) continue;
-
-    const fecha = fechaLocalEnSantiago(instante);
-    const franja = franjaDeHora(horaLocalEnSantiago(instante));
-    if (!franja) continue; // fuera de 08–21: no es ventana de reparto
-
-    const comuna = normalizarComuna(fila.comuna);
-    let porFecha = indice.get(comuna);
-    if (!porFecha) indice.set(comuna, (porFecha = new Map()));
-    let porFranja = porFecha.get(fecha);
-    if (!porFranja) porFecha.set(fecha, (porFranja = new Map()));
-    const lista = porFranja.get(franja);
-    if (lista) lista.push(fila);
-    else porFranja.set(franja, [fila]);
-  }
-
-  return indice;
-}
-
-/**
- * Franja a la que pertenece una hora local `HH:MM`, o `null` si cae fuera de la
- * jornada de reparto. El borde es cerrado por abajo y abierto por arriba
- * (12:00 es tarde, no mañana), igual que `RANGO_FRANJA`.
- */
-export function franjaDeHora(hora: string): Franja | null {
-  const minutos = horaAMinutos(hora);
-  for (const franja of ['manana', 'tarde', 'punta'] as const) {
-    const { desde, hasta } = RANGO_FRANJA[franja];
-    if (minutos >= horaAMinutos(desde) && minutos < horaAMinutos(hasta)) return franja;
-  }
-  return null;
-}
-
-function filasDe<T>(
-  indice: Map<string, Map<string, Map<Franja, T[]>>>,
-  comunas: readonly string[],
-  fecha: string,
-  franja: Franja,
-): T[] {
-  const salida: T[] = [];
-  for (const comuna of comunas) {
-    const filas = indice.get(normalizarComuna(comuna))?.get(fecha)?.get(franja);
-    if (filas) salida.push(...filas);
-  }
-  return salida;
-}
-
-/**
- * Clima de una zona en una franja: el **peor** de sus comunas, no el promedio.
+ * A cuántos minutos del corte un pendiente se considera «en riesgo» (F7).
  *
- * Una zona no se moja «en promedio». Si llueve 8 mm/h sobre Las Condes y nada
- * sobre Vitacura, el coordinador de la zona Oriente tiene un problema de 8, no
- * de 4: los pedidos de Las Condes se van a atrasar igual. Promediar es lo que
- * hace que un tablero de anticipación no anticipe nada.
+ * Noventa minutos es una hora y media de reparto: es el margen en que todavía se
+ * puede llamar al conductor y redistribuir, y por debajo del cual ya no. No es un
+ * umbral calibrado con datos —no los hay todavía— y por eso vive acá arriba, con
+ * nombre, en vez de estar enterrado como un `90` suelto en una comparación.
  */
-export function climaDeZonaFranja(
-  indice: Map<string, Map<string, Map<Franja, FilaClima[]>>>,
-  comunas: readonly string[],
-  fecha: string,
-  franja: Franja,
-): EntradaClima {
-  const filas = filasDe(indice, comunas, fecha, franja);
-  const { desde, hasta } = RANGO_FRANJA[franja];
+export const MINUTOS_RIESGO_DE_CORTE = 90;
 
-  let precipitacion = 0;
-  let viento: number | null = null;
-  for (const fila of filas) {
-    if (fila.precipitacionMm !== null && fila.precipitacionMm > precipitacion) {
-      precipitacion = fila.precipitacionMm;
-    }
-    if (fila.vientoKmh !== null && (viento === null || fila.vientoKmh > viento)) {
-      viento = fila.vientoKmh;
+/** Un pendiente está en riesgo si el corte de su comuna vence dentro del margen. */
+export function estaEnRiesgoDeCorte(minutosRestantes: number | null): boolean {
+  return minutosRestantes !== null && minutosRestantes <= MINUTOS_RIESGO_DE_CORTE;
+}
+
+// =============================================================================
+// Entregas declaradas en la app de Rutax
+// =============================================================================
+
+/**
+ * Lo que un conductor declaró sobre una parada, viniendo de cualquiera de las dos
+ * tablas: el POD autoritativo del same-day o el cierre operativo de Flex.
+ *
+ * Unificarlas acá y no en la consulta es a propósito: son dos tablas con
+ * semántica distinta —una mueve el estado del pedido y la otra no— y esa
+ * distinción importa en `operacion` y en el motor de dinero. Para la Torre, en
+ * cambio, las dos responden la misma pregunta: ¿este paquete ya se resolvió, y
+ * cuándo lo dijo el conductor?
+ */
+export interface RegistroDeEntrega {
+  pedidoId: string;
+  conductorId: string;
+  entregado: boolean;
+  /** Instante ISO en que el conductor lo declaró. */
+  registradoEn: string;
+}
+
+/**
+ * Junta POD y cierres en un solo registro por pedido.
+ *
+ * Cuando un pedido tiene los dos (un same-day con POD que además se cerró), gana
+ * el **más reciente**: es la última declaración del conductor sobre esa parada, y
+ * el cierre es explícitamente corregible por diseño (la tabla tiene `unique` por
+ * pedido y se actualiza, no se acumula).
+ */
+export function unificarRegistros(
+  registros: readonly RegistroDeEntrega[],
+): Map<string, RegistroDeEntrega> {
+  const porPedido = new Map<string, RegistroDeEntrega>();
+  for (const registro of registros) {
+    const previo = porPedido.get(registro.pedidoId);
+    if (!previo || registro.registradoEn > previo.registradoEn) {
+      porPedido.set(registro.pedidoId, registro);
     }
   }
+  return porPedido;
+}
 
+// =============================================================================
+// Carga por comuna — F1
+// =============================================================================
+
+/** Pedido del día, reducido a lo que la agregación necesita. */
+export interface PedidoAgregable {
+  id: string;
+  comuna: string | null;
+  /** Estado oficial. Solo se usa como respaldo cuando no hay registro de Rutax. */
+  estado: string;
+  ubicado: boolean;
+}
+
+export interface CargaComuna {
+  pendientes: number;
+  total: number;
+  entregados: number;
+  incidenciasAbiertas: number;
+  enRiesgoDeCorte: number;
+  sinUbicar: number;
+}
+
+/** Estados oficiales que ya cerraron el ciclo del pedido. */
+const ESTADOS_CERRADOS = new Set(['entregado', 'entregado_manual', 'fallido', 'fallido_manual']);
+
+/** Estados oficiales que cuentan como entrega lograda. */
+const ESTADOS_ENTREGADOS = new Set(['entregado', 'entregado_manual']);
+
+/**
+ * ¿Este pedido ya está resuelto, y lo está por entrega?
+ *
+ * **Manda el registro de la app de Rutax**; el estado oficial es el respaldo para
+ * los pedidos que nadie cerró en la app (un same-day marcado a mano desde el
+ * backoffice, un Flex que sincronizó antes de que el conductor cerrara).
+ *
+ * Ese orden ES la decisión de producto: la Torre va por delante del estado
+ * oficial en Flex, a propósito. Invertirlo la volvería a atrasar. Ver el
+ * encabezado de `composer/consultas.ts`.
+ */
+export function resolverPedido(
+  pedido: PedidoAgregable,
+  registro: RegistroDeEntrega | undefined,
+): { cerrado: boolean; entregado: boolean } {
+  if (registro) return { cerrado: true, entregado: registro.entregado };
   return {
-    precipitacionMaximaMmHora: precipitacion,
-    vientoMaximoKmh: viento,
-    ventanaInicioLocal: desde,
-    ventanaFinLocal: hasta,
+    cerrado: ESTADOS_CERRADOS.has(pedido.estado),
+    entregado: ESTADOS_ENTREGADOS.has(pedido.estado),
   };
 }
 
 /**
- * Nivel de aire de una zona en una franja: el peor de sus comunas. Mismo
- * criterio que el clima, y aquí con más razón — un episodio se decreta, no se
- * promedia.
+ * La carga del día por comuna: la fracción «38 de 120» y lo que la acompaña.
  *
- * Sin dato devuelve `'bueno'`, que es el neutro del motor. Es una decisión
- * consciente: no hay forma de distinguir «aire limpio» de «no medimos» con el
- * tipo del contrato, y suponer lo peor pintaría de rojo todas las zonas cada
- * vez que el feed del MMA se cae.
+ * Un pedido sin comuna resuelta no se descarta: se agrupa bajo `null` y el
+ * composer lo cuenta en el resumen global. Descartarlo sería exactamente lo que
+ * prohíbe la regla 5 del alcance — el mapa nunca esconde carga.
  */
-export function aireDeZonaFranja(
-  indice: Map<string, Map<string, Map<Franja, FilaAire[]>>>,
-  comunas: readonly string[],
-  fecha: string,
-  franja: Franja,
-): NivelAire {
-  const filas = filasDe(indice, comunas, fecha, franja);
-  let peor: NivelAire = 'bueno';
-  for (const fila of filas) {
-    if (ORDEN_AIRE.indexOf(fila.nivelEstimado) > ORDEN_AIRE.indexOf(peor)) {
-      peor = fila.nivelEstimado;
-    }
-  }
-  return peor;
-}
-
-// =============================================================================
-// Eventos por zona y franja
-// =============================================================================
-
-/** Fila de `contexto.eventos_ciudad`. */
-export interface FilaEvento {
-  nombre: string;
-  comuna: string;
-  ventanaInicio: string;
-  ventanaFin: string | null;
-  asistenciaEstimada: number | null;
-}
-
-/**
- * Eventos que caen sobre una zona en una franja.
- *
- * El emparejamiento es **por comuna**, no por distancia al radio. El contrato
- * trae `lat/long/radio_m`, pero las zonas del courier no tienen geometría en la
- * base: se definen como un conjunto de comunas. Cruzar un radio en metros
- * contra un conjunto de nombres exigiría la geometría comunal en el servidor —
- * hoy solo existe en el cliente, como activo estático del mapa. La comuna del
- * recinto es la aproximación honesta y disponible; el radio se usa en el mapa,
- * que sí tiene geometría, para dibujar el perímetro.
- *
- * Un evento cuenta si su ventana se solapa con la franja. `ventanaFin` nula =
- * sin término conocido, y se toma como que sigue en curso.
- */
-export function eventosDeZonaFranja(
-  eventos: readonly FilaEvento[],
-  comunas: readonly string[],
-  fecha: string,
-  franja: Franja,
-): EntradaEventos {
-  const deLaZona = new Set(comunas.map(normalizarComuna));
-  const { desde, hasta } = RANGO_FRANJA[franja];
-  const relevantes: EventoEnVentana[] = [];
-
-  for (const evento of eventos) {
-    if (!deLaZona.has(normalizarComuna(evento.comuna))) continue;
-
-    const inicio = new Date(evento.ventanaInicio);
-    if (Number.isNaN(inicio.getTime())) continue;
-    const fin = evento.ventanaFin ? new Date(evento.ventanaFin) : null;
-
-    const fechaInicio = fechaLocalEnSantiago(inicio);
-    const fechaFin = fin ? fechaLocalEnSantiago(fin) : null;
-    // El evento tiene que tocar el día evaluado.
-    if (fechaInicio > fecha) continue;
-    if (fechaFin !== null && fechaFin < fecha) continue;
-
-    // Y solaparse con la franja dentro de ese día.
-    const minutoInicio = fechaInicio === fecha ? horaAMinutos(horaLocalEnSantiago(inicio)) : 0;
-    const minutoFin =
-      fin === null ? 1440 : fechaFin === fecha ? horaAMinutos(horaLocalEnSantiago(fin)) : 1440;
-    if (minutoInicio >= horaAMinutos(hasta) || minutoFin <= horaAMinutos(desde)) continue;
-
-    relevantes.push({ nombre: evento.nombre, asistenciaEstimada: evento.asistenciaEstimada });
-  }
-
-  return { eventos: relevantes };
-}
-
-// =============================================================================
-// Dinero comprometido
-// =============================================================================
-
-/** Pedido pendiente, con lo mínimo para agregarlo por zona y valorizarlo. */
-export interface PedidoPendiente {
-  destinatarioComuna: string;
-  fechaCompromiso: string | null;
-  tarifaAplicableId: string | null;
-}
-
-/**
- * Pendientes y monto comprometido por zona para una fecha.
- *
- * **El monto sale de `identidad.tarifas` vía `pedidos.tarifa_aplicable_id`, y
- * NO de `dinero.lineas_cobro`.** Las líneas de cobro nacen cuando el pedido se
- * entrega: consultarlas aquí daría siempre cero, porque estos pedidos son
- * justamente los que todavía NO se entregaron. Lo que la Torre necesita es lo
- * contrario — cuánto dinero está en juego si el reparto de hoy falla — y eso es
- * la tarifa pactada del pedido pendiente.
- *
- * Un pedido sin tarifa asignada suma a los pendientes pero no al monto: no se
- * le inventa un precio.
- */
-export function cargaPorZona(
-  pedidos: readonly PedidoPendiente[],
-  comunaAZona: ReadonlyMap<string, string>,
-  tarifas: ReadonlyMap<string, number>,
-  fecha: string,
-): Map<string, { pendientes: number; montoClp: number }> {
-  const carga = new Map<string, { pendientes: number; montoClp: number }>();
+export function cargaPorComuna(
+  pedidos: readonly PedidoAgregable[],
+  registros: ReadonlyMap<string, RegistroDeEntrega>,
+  incidenciasPorPedido: ReadonlyMap<string, number>,
+  comunaEnRiesgo: ReadonlySet<string>,
+): Map<string | null, CargaComuna> {
+  const carga = new Map<string | null, CargaComuna>();
 
   for (const pedido of pedidos) {
-    if (pedido.fechaCompromiso !== fecha) continue;
-    const zonaId = comunaAZona.get(normalizarComuna(pedido.destinatarioComuna));
-    if (!zonaId) continue;
+    const clave = pedido.comuna === null ? null : resolverComunaCanonica(pedido.comuna) ?? pedido.comuna;
 
-    const actual = carga.get(zonaId) ?? { pendientes: 0, montoClp: 0 };
-    actual.pendientes += 1;
-    const tarifa = pedido.tarifaAplicableId ? tarifas.get(pedido.tarifaAplicableId) : undefined;
-    if (tarifa !== undefined) actual.montoClp += tarifa;
-    carga.set(zonaId, actual);
+    const actual =
+      carga.get(clave) ??
+      {
+        pendientes: 0,
+        total: 0,
+        entregados: 0,
+        incidenciasAbiertas: 0,
+        enRiesgoDeCorte: 0,
+        sinUbicar: 0,
+      };
+
+    const { cerrado, entregado } = resolverPedido(pedido, registros.get(pedido.id));
+
+    actual.total += 1;
+    if (entregado) actual.entregados += 1;
+    if (!cerrado) {
+      actual.pendientes += 1;
+      if (clave !== null && comunaEnRiesgo.has(clave)) actual.enRiesgoDeCorte += 1;
+    }
+    if (!pedido.ubicado) actual.sinUbicar += 1;
+    actual.incidenciasAbiertas += incidenciasPorPedido.get(pedido.id) ?? 0;
+
+    carga.set(clave, actual);
   }
 
   return carga;
 }
 
 // =============================================================================
-// Histórico propio
+// Colapso de puntos que comparten ubicación — el `+N` de F3
 // =============================================================================
 
-/** Pedido ya cerrado, para la tasa de fallidos. */
-export interface PedidoCerrado {
-  destinatarioComuna: string;
-  estado: string;
+/**
+ * Precisión del colapso, en grados decimales.
+ *
+ * `0.0002°` son ~22 m de latitud en Santiago: la escala de un edificio.
+ *
+ * **Por coordenada redondeada y no por radio**, que era la otra opción abierta:
+ * redondear es determinístico y O(n), mientras que agrupar por radio depende del
+ * orden en que llegan los puntos —dos corridas con los mismos datos pueden dar
+ * agrupaciones distintas— y obliga a un clustering que la medición dice que no
+ * hace falta.
+ *
+ * ⚠️ **Lo que una grilla NO garantiza:** que dos puntos cercanos caigan siempre
+ * en la misma celda. Dos coordenadas separadas por un metro pueden quedar a ambos
+ * lados de un borde y no colapsar. Toda grilla tiene bordes; el radio los cambia
+ * por no-determinismo, que es peor.
+ *
+ * En la práctica casi no muerde, y vale la pena saber por qué: el geocoding
+ * resuelve la DIRECCIÓN, no el departamento, así que las seis entregas de una
+ * misma torre llegan con la coordenada IDÉNTICA y colapsan siempre. El borde solo
+ * afecta a direcciones distintas que caen muy cerca, y ahí el peor caso es ver
+ * dos puntos en vez de uno — no perder ninguno.
+ */
+export const PRECISION_COLAPSO_GRADOS = 0.0002;
+
+/** Clave de agrupación de una coordenada. Expuesta para poder probarla. */
+export function claveDeUbicacion(lat: number, long: number): string {
+  const factor = 1 / PRECISION_COLAPSO_GRADOS;
+  return `${Math.round(lat * factor)}:${Math.round(long * factor)}`;
 }
 
-const ESTADOS_FALLIDOS = new Set(['fallido', 'fallido_manual']);
-const ESTADOS_ENTREGADOS = new Set(['entregado', 'entregado_manual']);
+/**
+ * Cuántos pedidos comparten ubicación con cada uno.
+ *
+ * Devuelve el conteo por clave, no los puntos ya colapsados: quién se queda como
+ * representante del grupo es decisión del armado, que sí sabe cuál estado tiene
+ * prioridad visual (una incidencia nunca puede quedar escondida detrás de un
+ * entregado).
+ */
+export function contarPorUbicacion(
+  puntos: readonly { lat: number; long: number }[],
+): Map<string, number> {
+  const conteo = new Map<string, number>();
+  for (const punto of puntos) {
+    const clave = claveDeUbicacion(punto.lat, punto.long);
+    conteo.set(clave, (conteo.get(clave) ?? 0) + 1);
+  }
+  return conteo;
+}
+
+// =============================================================================
+// Avance por conductor — F13
+// =============================================================================
 
 /**
- * Tasa de fallidos por zona, en porcentaje, sobre los pedidos ya cerrados.
+ * Hora local a partir de la cual el día se considera cerrado y los pendientes
+ * pasan a contarse como **paquetes rezagados**.
  *
- * Este es el factor que ninguna API entrega y que se vuelve el foso del
- * producto con el tiempo: cuánto le cuesta a ESTE courier repartir en ESA zona.
+ * Las 23:00, una hora después del corte de despacho (~21:00–22:00), por decisión
+ * del usuario (2026-08-03): da margen para que entren los últimos cierres que el
+ * conductor sube desde la calle antes de contar a nadie.
  *
- * `null` cuando la muestra es demasiado chica para significar algo. Con cinco
- * pedidos, un fallido son 20 puntos de tasa y eso no es una señal, es ruido —
- * y el motor ya sabe tratar `null` como «sin historia suficiente» en vez de
- * como «cero fallidos».
+ * **Antes de esta hora no existe «rezagado»**, y eso no es un detalle de
+ * presentación: a las 10 de la mañana todos los conductores tienen casi todo
+ * pendiente, así que la palabra no significaría nada y la pantalla estaría
+ * gritando por diseño.
  */
-export const MINIMO_MUESTRA_HISTORICO = 20;
+export const HORA_CIERRE_DIA = '23:00';
 
-export function tasaFallidosPorZona(
-  cerrados: readonly PedidoCerrado[],
-  comunaAZona: ReadonlyMap<string, string>,
-): Map<string, number | null> {
-  const conteo = new Map<string, { fallidos: number; total: number }>();
+/** ¿El día ya cerró? Decide si F13 habla de avance o de rezago. */
+export function diaCerrado(ahoraMinutos: number): boolean {
+  return ahoraMinutos >= horaAMinutos(HORA_CIERRE_DIA);
+}
 
-  for (const pedido of cerrados) {
-    const zonaId = comunaAZona.get(normalizarComuna(pedido.destinatarioComuna));
-    if (!zonaId) continue;
-    const esFallido = ESTADOS_FALLIDOS.has(pedido.estado);
-    const esEntregado = ESTADOS_ENTREGADOS.has(pedido.estado);
-    if (!esFallido && !esEntregado) continue; // cancelado/devuelto no son intento fallido
+export interface AvanceConductor {
+  id: string;
+  nombre: string;
+  asignados: number;
+  completados: number;
+  pendientes: number;
+  /** `null` mientras el día sigue abierto. */
+  rezagados: number | null;
+  ultimoRegistroEn: string | null;
+  minutosSinRegistrar: number | null;
+}
 
-    const actual = conteo.get(zonaId) ?? { fallidos: 0, total: 0 };
-    actual.total += 1;
-    if (esFallido) actual.fallidos += 1;
-    conteo.set(zonaId, actual);
+/**
+ * El avance de cada conductor con paradas hoy.
+ *
+ * Se arma sobre las paradas del MANIFIESTO, no sobre `pedidos.driver_id_asignado`:
+ * una reasignación deja el denormalizado apuntando al último conductor y las
+ * paradas del primero desaparecerían de su cuenta.
+ *
+ * El orden es por **cuánto le falta**, descendente — no alfabético. La lista
+ * existe para decidir a quién mirar primero, y un orden alfabético entierra al
+ * que está trabado detrás de los que ya terminaron.
+ */
+export function avanceDeConductores(params: {
+  /** Paradas del manifiesto de hoy: qué pedido lleva cada conductor. */
+  paradas: readonly { conductorId: string; pedidoId: string }[];
+  nombres: ReadonlyMap<string, string>;
+  registros: ReadonlyMap<string, RegistroDeEntrega>;
+  pedidos: ReadonlyMap<string, PedidoAgregable>;
+  /** Instante de referencia, en milisegundos. */
+  ahoraMs: number;
+  diaCerrado: boolean;
+}): AvanceConductor[] {
+  const { paradas, nombres, registros, pedidos, ahoraMs } = params;
+
+  const acumulado = new Map<
+    string,
+    { asignados: number; completados: number; pendientes: number; ultimo: string | null }
+  >();
+
+  for (const parada of paradas) {
+    const actual =
+      acumulado.get(parada.conductorId) ??
+      { asignados: 0, completados: 0, pendientes: 0, ultimo: null as string | null };
+
+    actual.asignados += 1;
+
+    const pedido = pedidos.get(parada.pedidoId);
+    const registro = registros.get(parada.pedidoId);
+    const { cerrado } = pedido
+      ? resolverPedido(pedido, registro)
+      : { cerrado: registro !== undefined };
+
+    if (cerrado) actual.completados += 1;
+    else actual.pendientes += 1;
+
+    // El ritmo se mide con lo que el conductor DECLARÓ, no con el estado del
+    // pedido: el estado no guarda cuándo cambió, y en Flex además cambia por la
+    // sincronización con ML y no por una acción suya.
+    if (registro && (actual.ultimo === null || registro.registradoEn > actual.ultimo)) {
+      actual.ultimo = registro.registradoEn;
+    }
+
+    acumulado.set(parada.conductorId, actual);
   }
 
-  const tasas = new Map<string, number | null>();
-  for (const [zonaId, { fallidos, total }] of conteo) {
-    tasas.set(zonaId, total < MINIMO_MUESTRA_HISTORICO ? null : (fallidos / total) * 100);
+  const salida: AvanceConductor[] = [];
+  for (const [id, datos] of acumulado) {
+    const ultimoMs = datos.ultimo ? Date.parse(datos.ultimo) : Number.NaN;
+    salida.push({
+      id,
+      nombre: nombres.get(id) ?? 'Conductor sin nombre',
+      asignados: datos.asignados,
+      completados: datos.completados,
+      pendientes: datos.pendientes,
+      rezagados: params.diaCerrado ? datos.pendientes : null,
+      ultimoRegistroEn: datos.ultimo,
+      minutosSinRegistrar: Number.isNaN(ultimoMs)
+        ? null
+        : Math.max(0, Math.floor((ahoraMs - ultimoMs) / 60_000)),
+    });
   }
-  return tasas;
+
+  return salida.sort(
+    (a, b) => b.pendientes - a.pendientes || a.nombre.localeCompare(b.nombre, 'es'),
+  );
+}
+
+// =============================================================================
+// Frescura — F6
+// =============================================================================
+
+/**
+ * A partir de cuántos minutos sin un solo registro la pantalla deja de estar
+ * callada.
+ *
+ * Cuarenta y cinco minutos: en una operación de última milla activa entra un
+ * cierre cada pocos minutos, así que tres cuartos de hora sin ninguno ya no es
+ * una pausa de almuerzo — es la app sin subir datos, o la operación detenida. Las
+ * dos cosas ameritan que el coordinador desconfíe del contador que está mirando.
+ */
+export const UMBRAL_FRESCURA_MINUTOS = 45;
+
+/**
+ * Cuán reciente es el último registro que subió cualquier conductor del courier.
+ *
+ * Un courier que todavía no tiene ningún registro hoy **no está atrasado**:
+ * está empezando el día. Marcar de atrasada la pantalla a las 7 de la mañana,
+ * antes de la primera entrega, sería la alarma que enseña a ignorar la alarma.
+ */
+export function calcularFrescura(
+  registros: readonly RegistroDeEntrega[],
+  ahoraMs: number,
+): { ultimoRegistroEn: string | null; edadMinutos: number | null; atrasada: boolean } {
+  let ultimo: string | null = null;
+  for (const registro of registros) {
+    if (ultimo === null || registro.registradoEn > ultimo) ultimo = registro.registradoEn;
+  }
+
+  if (ultimo === null) {
+    return { ultimoRegistroEn: null, edadMinutos: null, atrasada: false };
+  }
+
+  const ultimoMs = Date.parse(ultimo);
+  if (Number.isNaN(ultimoMs)) {
+    return { ultimoRegistroEn: null, edadMinutos: null, atrasada: false };
+  }
+
+  const edadMinutos = Math.max(0, Math.floor((ahoraMs - ultimoMs) / 60_000));
+  return {
+    ultimoRegistroEn: ultimo,
+    edadMinutos,
+    atrasada: edadMinutos > UMBRAL_FRESCURA_MINUTOS,
+  };
 }

@@ -60,6 +60,22 @@
  *   distinguen vencido de pendiente.
  * · **`fuenteProyeccion` es siempre `'catalogo'`.** El ajuste con el histórico
  *   del propio courier (§12.5, `contexto.olas_historicas`) es F3.
+ *
+ * -----------------------------------------------------------------------------
+ * QUÉ CAMBIÓ EN LA v2
+ * -----------------------------------------------------------------------------
+ * · **Son VARIAS olas, no una.** Con CyberMonday y Navidad los dos en horizonte,
+ *   devolver solo la más próxima escondía la otra. Ahora salen las 2 o 3
+ *   siguientes: la más cercana desplegada, el resto como una línea cada una. Es
+ *   lo que la convierte en «calendario que me recuerda» y no en «aviso suelto».
+ * · **La curva se calcula pero NO se publica.** Sigue haciendo falta para sacar
+ *   el día crítico, la brecha y la variación; lo que se retiró es dibujarla. Es
+ *   un gráfico que dice lo mismo que brecha + día crítico en diez veces el
+ *   espacio.
+ * · **Se retiraron los hitos de preparación y la fecha límite de compra.** Los
+ *   hitos eran cuatro textos genéricos con fecha calculada y sin forma de
+ *   marcarlos hechos; la fecha límite de compra le sirve al SELLER para su
+ *   publicidad, no al courier para despachar.
  */
 
 import {
@@ -67,12 +83,26 @@ import {
   diferenciaEnDiasCalendario,
   sumarDiasCalendario,
 } from '@/lib/fecha-santiago';
-import type {
-  ArquetipoOla,
-  HitoPreparacion,
-  OlaEntrante,
-  PuntoCurva,
-} from './contrato-torre';
+import type { ArquetipoOla, OlaEntrante } from './contrato-torre';
+
+/**
+ * Un día de la curva de entregas proyectada.
+ *
+ * **Es interno al módulo**: dejó de estar en el contrato con la pantalla cuando
+ * se retiró el gráfico de la ola. Se conserva como tipo porque la proyección
+ * sigue necesitando la curva para derivar el día crítico y la brecha.
+ */
+export interface PuntoCurva {
+  fecha: string;
+  etiquetaDia: string;
+  /** Desplazamiento respecto al evento. Negativo = antes. */
+  offsetDias: number;
+  pedidosProyectados: number;
+  /** Volumen que habría sin el evento. Sirve de línea base. */
+  pedidosBase: number;
+  capacidadEstimada: number;
+  esPeak: boolean;
+}
 
 // =============================================================================
 // Entradas
@@ -108,12 +138,6 @@ export interface EntradaProyeccion {
   capacidadPorConductor: number;
   /** Fecha civil de hoy en Santiago. */
   hoy: string;
-  /**
-   * Días de holgura entre la compra y la entrega, por zona. Solo se usa en el
-   * arquetipo `regalo`, para la fecha límite de compra. Sale del propio
-   * histórico del courier; una zona sin historia no aparece en el resultado.
-   */
-  plazoPorZona?: ReadonlyMap<string, number>;
 }
 
 // =============================================================================
@@ -123,28 +147,36 @@ export interface EntradaProyeccion {
 /** Cuántos días antes de un evento empieza a tener sentido mostrarlo. */
 export const HORIZONTE_OLA_DIAS = 45;
 
+/** Cuántas olas se muestran a la vez: la desplegada más un par de líneas. */
+export const MAXIMO_OLAS_VISIBLES = 3;
+
 /**
- * El evento que la Torre debe mostrar: el más próximo cuya ventana de entregas
- * todavía no terminó, dentro del horizonte.
+ * Los eventos que la Torre debe mostrar: los más próximos cuya ventana de
+ * entregas todavía no terminó, dentro del horizonte, en orden cronológico.
  *
  * Se mira la VENTANA DE ENTREGAS, no la fecha del evento, y esa distinción es el
  * módulo entero: el 26 de diciembre Navidad ya pasó, pero el 10 de junio el
  * CyberDay del 1–3 sigue siendo la ola que el courier está entregando.
+ *
+ * **Devuelve varias** (hasta `MAXIMO_OLAS_VISIBLES`) porque dos olas pueden
+ * convivir en el horizonte —CyberMonday y Navidad— y quedarse con una escondía la
+ * otra sin decirlo.
  */
-export function proximaOla(
+export function proximasOlas(
   eventos: readonly EventoComercialCatalogo[],
   hoy: string,
   horizonteDias = HORIZONTE_OLA_DIAS,
-): EventoComercialCatalogo | null {
-  const candidatos = eventos
+  maximo = MAXIMO_OLAS_VISIBLES,
+): EventoComercialCatalogo[] {
+  return eventos
     .map((evento) => ({ evento, ventana: ventanaDeEntregas(evento) }))
     .filter(({ evento, ventana }) => {
       if (ventana.fin < hoy) return false; // la ola ya se entregó entera
       return diferenciaEnDiasCalendario(hoy, evento.inicio) <= horizonteDias;
     })
-    .sort((a, b) => a.ventana.inicio.localeCompare(b.ventana.inicio));
-
-  return candidatos[0]?.evento ?? null;
+    .sort((a, b) => a.ventana.inicio.localeCompare(b.ventana.inicio))
+    .slice(0, maximo)
+    .map(({ evento }) => evento);
 }
 
 /** Primer y último día de entrega, derivados de los offsets de la curva. */
@@ -173,15 +205,6 @@ function offsetsOrdenados(evento: EventoComercialCatalogo): number[] {
 // =============================================================================
 // Proyección
 // =============================================================================
-
-const DIAS_HITO = [21, 14, 7, 3] as const;
-
-const TITULO_HITO: Readonly<Record<number, string>> = {
-  21: 'Confirmar sellers participantes',
-  14: 'Reforzar flota para el peak',
-  7: 'Validar tarifas y ventanas de corte',
-  3: 'Congelar cambios de configuración',
-};
 
 const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const MESES_CORTOS = [
@@ -284,16 +307,26 @@ export function proyectarOla(entrada: EntradaProyeccion): OlaEntrante | null {
     diasParaEvento: diferenciaEnDiasCalendario(hoy, evento.inicio),
     ventanaEntregas: ventanaDeDias(entregas.inicio, entregas.fin),
     variacionEsperadaPct,
-    curva,
     diaCritico: critico.fecha,
     brechaConductores,
-    fechaLimiteCompraPorZona:
-      evento.arquetipo === 'regalo'
-        ? fechasLimiteDeCompra(evento, entrada.plazoPorZona)
-        : null,
-    hitos: hitosDePreparacion(evento.inicio, hoy),
     fuenteProyeccion: 'catalogo',
   };
+}
+
+/**
+ * Proyecta varias olas de una vez, descartando las que no se pueden proyectar.
+ *
+ * Una ola sin línea base histórica devuelve `null` y simplemente no aparece: una
+ * fila de ceros con pinta de dato es peor que no mostrar la ola.
+ */
+export function proyectarOlas(
+  eventos: readonly EventoComercialCatalogo[],
+  comun: Omit<EntradaProyeccion, 'evento'>,
+): OlaEntrante[] {
+  return eventos.flatMap((evento) => {
+    const ola = proyectarOla({ ...comun, evento });
+    return ola ? [ola] : [];
+  });
 }
 
 /** Media del volumen base sobre los días de semana que tienen dato. */
@@ -303,45 +336,7 @@ function promedioBase(volumenBase: VolumenBasePorDiaSemana): number {
   return valores.reduce((s, v) => s + v, 0) / valores.length;
 }
 
-/**
- * Hasta cuándo puede comprar el cliente final para que le llegue a tiempo.
- *
- * `fecha del evento − 1 día` (tiene que estar EN LA CASA la víspera, no el día
- * mismo) menos el plazo real de la zona. Sin plazo medido la zona no aparece:
- * prometer una fecha límite calculada sobre un supuesto es exactamente el tipo
- * de dato que hace que un seller pierda una venta.
- */
-export function fechasLimiteDeCompra(
-  evento: EventoComercialCatalogo,
-  plazoPorZona?: ReadonlyMap<string, number>,
-): { zonaId: string; fecha: string }[] | null {
-  if (!plazoPorZona || plazoPorZona.size === 0) return null;
-
-  const vispera = sumarDiasCalendario(evento.inicio, -1);
-  return [...plazoPorZona.entries()]
-    .map(([zonaId, plazo]) => ({
-      zonaId,
-      fecha: sumarDiasCalendario(vispera, -Math.max(0, Math.round(plazo))),
-    }))
-    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.zonaId.localeCompare(b.zonaId));
-}
-
-/** Los cuatro hitos de preparación, con su cuenta regresiva ya resuelta. */
-export function hitosDePreparacion(fechaEvento: string, hoy: string): HitoPreparacion[] {
-  return DIAS_HITO.map((tMenos) => {
-    const fechaLimite = sumarDiasCalendario(fechaEvento, -tMenos);
-    return {
-      id: `h-${tMenos}`,
-      tMenosDias: tMenos,
-      fechaLimite,
-      titulo: TITULO_HITO[tMenos],
-      // Solo vencido/pendiente: nadie puede marcar «hecho» todavía.
-      estado: fechaLimite < hoy ? ('vencido' as const) : ('pendiente' as const),
-    };
-  });
-}
-
-/** Formato corto de fecha para copys. Expuesto porque lo usa el riel móvil. */
+/** Formato corto de fecha para copys («14 sep»). */
 export function fechaCortaDeCivil(fecha: string): string {
   const [, mes, dia] = fecha.split('-').map(Number);
   return `${dia} ${MESES_CORTOS[mes - 1]}`;
@@ -384,61 +379,4 @@ export function volumenBasePorDiaSemana(
   const base: Record<number, number> = {};
   for (const [dia, { total, dias }] of acumulado) base[dia] = total / dias;
   return base;
-}
-
-/** Pedido cerrado, con lo mínimo para medir su plazo. */
-export interface PedidoConPlazo {
-  comuna: string;
-  /** Instante de ingreso del pedido (timestamptz). */
-  creadoEn: string;
-  /** Fecha civil comprometida. */
-  fechaCompromiso: string;
-}
-
-/**
- * Plazo MEDIANO de entrega por zona, en días.
- *
- * Mediana y no promedio: un pedido con fecha de compromiso a tres semanas —un
- * reagendado, una preventa— arrastra la media y adelantaría la fecha límite de
- * compra de toda la zona. La mediana lo ignora, que es lo que corresponde con una
- * cola larga.
- *
- * La fecha de creación se lee en calendario de SANTIAGO, no del instante UTC: un
- * pedido ingresado a las 21:30 de un martes es de ese martes, no del miércoles.
- */
-export function plazoMedianoPorZona(
-  pedidos: readonly PedidoConPlazo[],
-  comunaAZona: ReadonlyMap<string, string>,
-  normalizar: (comuna: string) => string,
-  fechaLocal: (instante: Date) => string,
-): Map<string, number> {
-  const plazosPorZona = new Map<string, number[]>();
-
-  for (const pedido of pedidos) {
-    const zonaId = comunaAZona.get(normalizar(pedido.comuna));
-    if (!zonaId || !pedido.fechaCompromiso) continue;
-
-    const creado = new Date(pedido.creadoEn);
-    if (Number.isNaN(creado.getTime())) continue;
-
-    const dias = diferenciaEnDiasCalendario(fechaLocal(creado), pedido.fechaCompromiso);
-    // Un plazo negativo es un pedido cargado después de su propia fecha de
-    // compromiso (una regularización): no dice nada del tiempo de entrega.
-    if (dias < 0) continue;
-
-    const lista = plazosPorZona.get(zonaId);
-    if (lista) lista.push(dias);
-    else plazosPorZona.set(zonaId, [dias]);
-  }
-
-  const medianas = new Map<string, number>();
-  for (const [zonaId, plazos] of plazosPorZona) {
-    plazos.sort((a, b) => a - b);
-    const medio = Math.floor(plazos.length / 2);
-    medianas.set(
-      zonaId,
-      plazos.length % 2 === 0 ? (plazos[medio - 1] + plazos[medio]) / 2 : plazos[medio],
-    );
-  }
-  return medianas;
 }

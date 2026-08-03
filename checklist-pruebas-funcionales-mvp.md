@@ -1121,4 +1121,35 @@ Estos requerimientos son de **Crecimiento (V2)** o **Futura (V3)**; no deberían
 
 ---
 
+## Torre de control v2 — Vía A: datos y backend — 2026-08-03
+
+**Feature:** la capa de datos del rediseño v2. `cargarTablero` pasa de un puntaje de riesgo por zona precalculado por un cron a **pendientes por comuna leídos en vivo**. Alcance en `docs/torre-de-control/alcance-v2.md`. La pantalla se construye en la Vía C; esta pasada deja la ruta con las cifras del día en texto.
+
+**Código:** `src/modules/contexto/contrato-torre.ts` (reescrito, tipo vivo) · `agregacion.ts` (reescrito por comuna, + 37 pruebas) · `olas.ts` (varias olas, + 17 pruebas) · `composer/` (`consultas`, `armado` nuevo que reemplaza a los tres `armado-*`, `esquema`, `index`, + 18 pruebas) · `mensajes-estado.ts` · `supabase/migrations/20260803000001_contexto_torre_v2_retiro_sin_drop.sql` · `src/app/(tenant)/torre-de-control/page.tsx` (ruta en su casa nueva) · `src/app/(tenant)/dashboard/banda-torre.tsx` (reescrita) · `src/app/api/inngest/route.ts` · `src/lib/inngest/eventos.ts` · `.env.example`.
+
+**Retirado:** `src/app/(consola)/` **entero** (la Torre era su único ocupante) · `motor-riesgo.ts` + sus ~70 pruebas · `macro-zonas-rm.ts` · `tipos.ts` · `jobs/refrescar-clima.ts`, `refrescar-aire.ts`, `recalcular-riesgo.ts` · `integraciones/contexto/clima/`, `aire/`, `openweather-comun.ts`, `grilla-rm.ts` · el evento `contexto/riesgo.recalcular-tenant`.
+
+- [x] **La cifra es una magnitud, no un índice.** `cargarTablero` devuelve la fracción por comuna («38 de 120»), no un puntaje 0–100. El puntaje y sus seis factores se retiraron enteros.
+- [x] **La unidad primaria es la comuna.** La zona del courier sobrevive solo para resolver la ventana de corte aplicable (F7) y para colgar el enlace profundo; no agrega el mapa.
+- [x] **«Entregado» sale de la app de Rutax, no del estado oficial.** POD de same-day (`pruebas_entrega`) y cierre de Flex (`cierres_conductor`) se unifican, y el registro del conductor MANDA sobre `pedidos.estado`. Probado: un pedido `en_ruta` con cierre entregado cuenta como entregado. **Consecuencia asumida y declarada:** con carga Flex la Torre puede mostrar menos pendientes que `/operaciones` durante un rato. El motor entrega→dinero no se tocó.
+- [x] **El mapa nunca esconde carga.** Los pedidos sin comuna resuelta se agrupan bajo `null` y **entran igual al total** del resumen; los sin geocodificar se declaran en `sinUbicar`, una sola vez.
+- [x] **F13 reencuadrado a paquetes rezagados.** Durante el día, avance sin juzgar («Pérez · 12 de 40», ordenado por cuánto falta); después de las **23:00** fijas, `rezagados` trae cuántos paquetes quedaron. Antes del cierre va en `null` a propósito.
+- [x] **F6 mide el dato propio.** La frescura es el último cierre que subió un conductor, con umbral de 45 min, y **calla** mientras está fresco. Un courier sin ningún registro todavía no cuenta como atrasado.
+- [x] **F7 sin reloj.** El corte se calcula y marca lo que está a ≤90 min, en la comuna y en el punto. No se dibuja ninguna cuenta regresiva.
+- [x] **El `+N` colapsa por coordenada redondeada a ~20 m.** Determinístico y O(n). Limitación conocida y documentada: dos direcciones distintas muy cercanas pueden caer a ambos lados de un borde de grilla; el peor caso es ver dos puntos en vez de uno, nunca perder uno.
+- [x] **Minimización verificada por prueba, no por revisión.** Hay un test que fija las claves exactas de `PuntoEntrega`: si alguien agrega un campo del destinatario, falla. No viaja dirección, ni nombre, ni teléfono, ni `tracking_token`.
+- [x] **PostgREST paginado.** Todas las lecturas que después se agregan usan `leerTodasLasFilas`. El `select` de pedidos va en un solo literal: concatenar con `+` ensancha el tipo a `string` y supabase-js pierde la inferencia (se detectó en typecheck).
+- [x] **Retiro de tablas en DOS migraciones.** Ésta **no borra nada**: marca las 7 tablas como retiradas y re-siembra `fuentes_estado` (de 5 filas a 1, `calendario`). El `drop table` va en una migración posterior, cuando la v2 esté verificada en vivo. Hallazgo al aplicarla: el `CHECK` del `id` enumeraba las 5 fuentes viejas y había que reemplazarlo antes de insertar.
+- [x] **`degradado` desaparece por la raíz.** `fuentes_estado` declaraba `senales` y `transito` caídas de forma permanente, y ése era el motivo real de que la Torre abriera SIEMPRE en degradado. El estado se retiró del contrato.
+- [x] **Cero OpenWeather en el código.** `grep -ri openweather` sobre `src/`, `supabase/`, `scripts/` y `.env.example` devuelve solo las tres notas que registran el retiro como decisión. La atribución «Weather data provided by OpenWeather» se quitó del mapa — era condición de licencia, y solo se pudo quitar al no quedar ningún dato de OpenWeather.
+- [x] **La banda del dashboard no se rompió.** Reescrita a comunas + pendientes + incidencias + ola en una línea, conservando su mecánica: aparece solo si hay algo que mirar y, si la Torre falla, desaparece en vez de tumbar el dashboard.
+- [x] **`(consola)` retirado entero.** `src/app/` vuelve a cinco destinos y se va la duplicación de guards. La regla del repo deja de tener excepción: toda pantalla del courier vive en `(tenant)`.
+- [x] **Verificación estándar completa:** `typecheck` limpio · `lint` 0 errores (152 warnings preexistentes, dos menos que antes) · **2129 pruebas Vitest** · `build` OK · **476 pruebas pgTAP** incluido el aislamiento de `contexto`.
+
+**Pendiente, no bloqueante:**
+- [ ] **QA visual con datos reales.** `supabase/seed-demo-full.sql` reparte los 960 pedidos en 14 comunas pero **todos los de una comuna comparten el mismo par lat/long exacto**, así que en el nivel de punto una comuna entera colapsa en un `+N`. Hay que darle dispersión antes de dar por buena la vista del mapa (Vía C).
+- [ ] **Verificar en el Inngest Dev Server** que los 4 jobs retirados ya no aparecen. A nivel de código están desregistrados de `api/inngest/route.ts`.
+
+---
+
 *Documento de trabajo · pruebas funcionales del MVP. Pensado para validar el lazo operación→dinero antes de las etapas de frontend y UX/UI.*

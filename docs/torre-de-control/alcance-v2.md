@@ -96,7 +96,7 @@ La pantalla se actualiza sola, sin recargar. Patrón: Supabase Realtime como
 que ya está verificado como aislado por RLS, sin filtro de cliente).
 
 ### F6 · Frescura, callada
-**Dato:** marca de tiempo del último dato incorporado.
+**Dato:** instante del último cierre que un conductor subió por la app de Rutax.
 **Decisión que soporta:** saber si puedes confiar en el número que estás viendo.
 Un solo indicador global, no una marca por punto.
 
@@ -203,19 +203,35 @@ tres se retiran. En la v2 dice **comunas + pendientes + incidencias**.
 **Y aloja la ola adaptada** (F9): el dueño entra al dashboard, no a la Torre, así
 que es el lugar natural para el aviso de anticipación.
 
-### F13 · Panel de conductores rezagados
-**Dato:** entregas completadas vs asignadas por conductor, y tiempo desde la
-última entrega registrada.
-**Decisión que soporta:** a quién llamar **antes** del corte.
-Es el objetivo declarado del módulo —cazar al conductor rezagado o el paquete
+### F13 · Panel de avance por conductor, y paquetes rezagados al cierre
+**Dato:** paradas del manifiesto vs cierres declarados por conductor.
+**Decisión que soporta:** durante el día, a quién mirar primero; al cierre, cuánto
+quedó sin entregar y con quién.
+Es el objetivo declarado del módulo —cazar al conductor trabado o el paquete
 olvidado— y F1–F4 no lo cubrían: trabajan en **comuna**, y una comuna puede verse
 bien en agregado mientras un conductor adentro está trabado.
 
-> Pérez · 12 de 40 · **sin registrar entrega hace 1 h 20**
+**⚠️ Lo rezagado son los PAQUETES, no las personas** (decisión del usuario,
+2026-08-03). Un paquete que no se entregó hoy lo puede entregar mañana otro
+conductor, así que «conductor rezagado» era el sujeto equivocado. El panel tiene
+por eso **dos lecturas según la hora**:
 
-Esa última línea es el detector. **No necesita GPS** —decisión ya tomada, no se
-guarda recorrido—: se calcula con marcas de tiempo de entregas, que ya existen.
-Ordenado por riesgo de no terminar, no alfabético.
+| Cuándo | Qué muestra |
+|---|---|
+| Durante el día | Avance, sin juzgar: **«Pérez · 12 de 40»**, ordenado por cuánto le falta |
+| Después de las **23:00** | Los mismos conductores, con **cuántos paquetes quedaron rezagados** |
+
+**Las 23:00 son fijas**, una hora después del corte de despacho (~21:00–22:00):
+da margen para que entren los últimos cierres que el conductor sube desde la
+calle antes de contar nada.
+
+*Se descartó el umbral de «minutos sin registrar entrega» como detector en vivo.*
+Habría exigido elegir un número sin datos reales, y castiga las rutas largas
+mientras perdona las densas. El minutaje se conserva en el payload
+(`minutosSinRegistrar`) como dato de orden, no como acusación.
+
+**No necesita GPS** —decisión ya tomada, no se guarda recorrido—: se calcula con
+las marcas de tiempo de los cierres, que ya existen.
 
 ---
 
@@ -369,22 +385,40 @@ Las dos minimizaciones vigentes se mantienen intactas:
 Si alguna vez se propone volver a poner la dirección en el mapa, **eso sí reabre
 la revisión**. Queda dicho para que nadie lo cuele como un detalle.
 
-### 5.7 Riesgo asumido: la Torre no distingue la fuente del pedido
+### 5.7 La fuente de verdad de la Torre es la app de Rutax
 
-Decisión del usuario, tomada con la consecuencia sobre la mesa: **Flex y same-day
-se cuentan juntos, sin distinguir.** En same-day el POD es de Rutax y la entrega
-aparece al instante; en Flex la verdad la tiene la app de Mercado Envíos y Rutax
-se entera con retraso. El contador de una comuna con carga Flex, por lo tanto,
-va atrasado respecto de la realidad.
+**Resuelto el 2026-08-03, y cambia lo que decía este apartado.** La versión
+anterior asumía que el contador de Flex iría atrasado porque el POD lo gobierna
+Mercado Envíos. Al revisar el código apareció la pieza que faltaba:
+**`operacion.cierres_conductor`**.
 
-Mitigación acordada, que no contradice la decisión: **F6, el indicador global de
-frescura**. Un solo dato en la cabecera, para que el contador nunca mienta en
-silencio, sin ensuciar la lectura punto a punto.
+El conductor usa la app de Rutax *en paralelo* a la de Mercado Envíos Flex, y
+cierra ahí cada parada. Son dos tablas según la fuente:
+
+| Fuente | Dónde queda el cierre | ¿Mueve `pedidos.estado`? |
+|---|---|---|
+| **Same-day** | `operacion.pruebas_entrega` — POD autoritativo, foto obligatoria | **Sí**, al instante |
+| **Flex** | `operacion.cierres_conductor` — registro paralelo del courier, sin frontera de tipo | **No** — el estado oficial lo mueve la sincronización con ML |
+
+**Decisión del usuario: la Torre cuenta el cierre de Rutax, no el estado
+oficial.** Así el contador es el más fresco posible en las dos fuentes y deja de
+depender del polling de ML.
+
+**Consecuencia asumida, tomada con la contrapartida sobre la mesa:** durante unas
+horas la Torre puede decir «38 pendientes» mientras `/operaciones` dice 45,
+porque el estado oficial de los Flex todavía no llegó. **No es un descuadre: es
+la Torre yendo por delante.** La pantalla lo declara para que nadie lo lea como
+un error. El **motor entrega→dinero no se toca**: sigue rigiéndose por el estado
+oficial, que es el que soporta la factura.
+
+**F6 sigue existiendo**, y ahora mide lo que corresponde: cuánto hace que un
+conductor no sube un cierre. Si nadie sube nada en 45 minutos, la pantalla deja
+de estar callada — porque ahí el contador sí puede estar mintiendo en silencio.
 
 *Matiz sin consecuencia de diseño:* el **código de envío de F3 delata su origen**
 por el formato (un id de Mercado Envíos no se parece a un `RX-XXXX-XXXX`). No
-contradice la decisión — nadie agrupa ni cuenta por fuente; simplemente el
-identificador es el que es.
+contradice nada — nadie agrupa ni cuenta por fuente; el identificador es el que
+es.
 
 ### 5.8 La Torre baja a `(tenant)` y `(consola)` se retira
 
@@ -454,20 +488,45 @@ congelado más el `?estado=` para revisar las capturas del handoff) los importan
   `<main>` de `(tenant)` sin quitárselo al resto del backoffice (§5.8).
 - A qué altura queda el mapa «grande pero no tanto», y el comportamiento del
   botón de pantalla completa.
-- Cuándo colapsar los puntos que comparten ubicación en el `+N` de F3 — por
-  coordenada exacta o por radio.
-- **Los hitos de preparación de la ola** (`HitoPreparacion[]`): mirar qué traen.
-  Si son acciones con fecha, se quedan; si es texto genérico, caen (§F9).
-- Umbral de F6: a partir de cuántos minutos el indicador de frescura deja de
-  estar callado y molesta.
-- Umbral de F13: cuántos minutos sin registrar entrega marcan a un conductor
-  como rezagado. Debe salir de datos reales, no de una corazonada.
-- Destino de `contexto.restriccion_vehicular` (§5.1).
-- El cambio sin commitear en `jobs/recalcular-riesgo.ts` (§5.2) — el usuario
-  decidió seguir sin resolverlo por ahora; resolverlo al retirar el job.
 - Orden del trabajo sugerido: `arquitecto` (contrato nuevo comuna-first) →
   `base-datos-rls` (retiro de tablas) → `backend` (composer + realtime) →
   `frontend` (pantalla) → `qa`.
+
+**Resuelto en la implementación de la Vía A (2026-08-03):**
+- ~~Cuándo colapsar los puntos del `+N`~~ → **por coordenada redondeada a
+  ~20 m** (`PRECISION_COLAPSO_GRADOS` en `agregacion.ts`), no por radio.
+  Redondear es determinístico y O(n); agrupar por radio depende del orden en que
+  llegan los puntos y obliga a un clustering que la medición dice que no hace
+  falta.
+- ~~Los hitos de preparación de la ola~~ → **se retiran.** Se miraron: eran
+  cuatro textos fijos («Confirmar sellers participantes», «Reforzar flota para el
+  peak»…) con fecha calculada, y `estado: 'hecho'` no existía porque no hay dónde
+  guardarlo. Pasan el test que este mismo documento puso: texto genérico, cae.
+- ~~Umbral de F6~~ → **45 minutos** (`UMBRAL_FRESCURA_MINUTOS`). En una operación
+  activa entra un cierre cada pocos minutos; tres cuartos de hora sin ninguno ya
+  no es una pausa. Un courier sin ningún registro todavía **no** cuenta como
+  atrasado: está empezando el día.
+- ~~Umbral de F13~~ → **sin objeto**: F13 se reencuadró a paquetes rezagados con
+  corte a las 23:00 (ver F13 arriba). No hay umbral de minutos que elegir.
+- ~~Destino de `contexto.restriccion_vehicular`~~ → **se conserva la tabla y el
+  job que la escribe; sale del payload.** Sin consumidor en la v2. Su destino
+  definitivo se decide junto con el `drop` del paso 2.
+- ~~El cambio sin commitear en `jobs/recalcular-riesgo.ts`~~ → **resuelto por
+  eliminación**: el job se retiró entero.
+- **`contexto.fuentes_estado` se redujo a una sola fila** (`calendario`). Sus
+  cinco filas originales eran las cinco fuentes retiradas, y dos de ellas
+  (`senales`, `transito`) estaban declaradas caídas de forma permanente — ese era
+  el motivo real de que la Torre abriera siempre en `degradado`. La frescura de
+  F6 **no** sale de esta tabla: sale del dato operativo por tenant.
+- **`TorreRespuesta` desapareció.** Con un solo horizonte, el envoltorio
+  `{ horizonteInicial, horizontes }` solo servía para escribir `.horizontes.hoy`
+  en todas partes. `cargarTablero` devuelve un `EstadoTorre` y ya.
+
+**Sigue abierto para la Vía C:**
+- Cómo se resuelve el ancho: la pantalla tiene que salirse del `max-w-6xl` del
+  `<main>` de `(tenant)` sin quitárselo al resto del backoffice (§5.8).
+- A qué altura queda el mapa «grande pero no tanto», y el comportamiento del
+  botón de pantalla completa.
 
 **Ya no está abierto:**
 - ~~`(consola)` vs `(tenant)`~~ → resuelto: baja a `(tenant)` y `(consola)` se

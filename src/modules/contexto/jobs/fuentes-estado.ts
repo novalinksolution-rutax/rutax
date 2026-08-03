@@ -1,34 +1,45 @@
 /**
- * Registro de salud de las fuentes externas de la Torre de control.
+ * Registro de salud del puerto externo de la Torre de control.
  * =====================================================================
  *
- * Alimenta `contexto.fuentes_estado`, que es lo que la barra superior muestra
- * como FRESCURA: el nombre de cada fuente y su edad en minutos.
+ * Alimenta `contexto.fuentes_estado`: el nombre de la fuente, su edad y su
+ * motivo de degradación si lo hay.
  *
- * Por qué esto importa más de lo que parece: en un producto de dinero, saber
- * cuán viejo es el dato es parte de poder confiar en él. El handoff no muestra
- * un icono de estado — muestra la EDAD EN MINUTOS, siempre visible. Una fuente
- * caída se marca con su motivo; nunca desaparece en silencio.
+ * ⚠️ **Esto NO es la frescura que muestra la Torre v2 (F6).** Son dos cosas
+ * distintas y confundirlas es fácil:
+ *
+ *   · **Esta tabla** mide la salud de un puerto EXTERNO —hoy solo el calendario
+ *     de feriados— y es global: los feriados de Chile son los mismos para todos
+ *     los couriers.
+ *   · **F6** mide cuán reciente es el dato OPERATIVO que la pantalla está
+ *     mostrando, y sale del último cierre que un conductor subió por la app de
+ *     Rutax. Es dato por tenant y se calcula en vivo en el composer, sin pasar
+ *     por acá.
  *
  * Dos reglas que se rompen fácil:
  *
- * 1. **`motivo` es copy para un coordinador, no un stack trace.** Lo lee una
- *    persona en la barra superior. Los puertos ya devuelven `motivo` redactado
- *    y `detalleTecnico` saneado por separado; aquí solo entra el primero.
+ * 1. **`motivo` es copy para un coordinador, no un stack trace.** Los puertos ya
+ *    devuelven `motivo` redactado y `detalleTecnico` saneado por separado; acá
+ *    solo entra el primero.
  * 2. **No se deriva de `infra.ejecuciones_job`.** Esa tabla es deny-all de
- *    super-admin y su público es el tablero de salud de la plataforma; este
- *    dato lo consume un courier. Cruzar ambos ámbitos por conveniencia erosiona
- *    un límite que existe por algo.
+ *    super-admin y su público es el tablero de salud de la plataforma; este dato
+ *    lo consume un courier. Cruzar ambos ámbitos por conveniencia erosiona un
+ *    límite que existe por algo.
  *
- * `contexto.fuentes_estado` es una de las tablas GLOBALES del carve-out: no
- * lleva `tenant_id` porque la salud del proveedor de clima es la misma para
- * todos los couriers. Se escribe solo con `service_role`.
+ * `contexto.fuentes_estado` es una de las tablas GLOBALES del carve-out: no lleva
+ * `tenant_id` y se escribe solo con `service_role`.
  */
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 
-/** Los identificadores son los del contrato (`FrescuraFuente.id`). */
-export type IdFuenteContexto = 'clima' | 'aire' | 'transito' | 'eventos' | 'senales';
+/**
+ * Fuentes externas con salud registrada.
+ *
+ * Eran cinco (`clima`, `aire`, `transito`, `eventos`, `senales`). Las cinco se
+ * retiraron o nunca se construyeron; queda el calendario. Ver la migración
+ * `20260803000001_contexto_torre_v2_retiro_sin_drop.sql`.
+ */
+export type IdFuenteContexto = 'calendario';
 
 export type EstadoFuenteContexto = 'ok' | 'atrasada' | 'caida';
 

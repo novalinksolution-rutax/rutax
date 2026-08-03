@@ -175,6 +175,35 @@ npx inngest-cli@latest dev
    - Conductores activos: 7 (los que tienen entregas o manifiestos)
    - Alertas: TecnoHogar desconectada · 1 incidencia abierta
 
+### Paso 11 — Torre de control (2 min)
+
+La Torre es la pantalla de monitoreo del día: **cuántos paquetes faltan por
+entregar, en qué comunas, y si algo se está atascando**. Es de **solo lectura**.
+
+1. Sigue como **Dueño** (o supervisor/coordinador — la capacidad es
+   `ver_torre_control`; administración NO la tiene) y entra a
+   **Torre de control** (`/torre-de-control`), dentro del `AppShell`.
+2. Verás la fracción del día —«38 de 120 por entregar»— y las comunas ordenadas
+   por cuántas faltan, cada una con su propia fracción.
+3. Vuelve al **Dashboard**: si hay pendientes, incidencias o una ola dentro de 30
+   días, aparece la **banda de la Torre**. Si el día va bien, **no aparece**, y
+   eso es correcto: el silencio es el estado normal.
+
+**Qué NO necesita arrancar** (cambió respecto de la v1, y es fácil perder tiempo
+buscándolo): la Torre v2 **no depende de ningún job**. Lee la carga en vivo desde
+`operacion`. Los cuatro jobs de clima, aire y riesgo se retiraron; queda
+`contexto/calendario.sincronizar`, que solo alimenta las olas comerciales y puede
+no haber corrido nunca sin que la pantalla se vea mal.
+
+**De dónde sale «entregado»**: del cierre que el conductor declara en la app de
+Rutax — `operacion.pruebas_entrega` en same-day y `operacion.cierres_conductor`
+en Flex — **no** del estado oficial del pedido. Por eso, con carga Flex, la Torre
+puede mostrar menos pendientes que `/operaciones` durante un rato: va por
+delante de la sincronización con Mercado Libre. No es un descuadre.
+
+> ⚠️ **El mapa por comuna y el panel de conductores están en construcción.** La
+> capa de datos está completa; la pantalla se termina en la pasada siguiente.
+
 ---
 
 ## Estado de los tests
