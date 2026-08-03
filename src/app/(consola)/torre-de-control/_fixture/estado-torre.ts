@@ -37,7 +37,6 @@ import type {
   BloqueTimeline,
   EstadoCapa,
   EstadoTorre,
-  EventoCiudad,
   EventoComercial,
   Excepcion,
   FrescuraFuente,
@@ -48,12 +47,10 @@ import type {
   OlaEntrante,
   PronosticoAire,
   RestriccionVehicular,
-  Senal,
   Ventana,
   Zona,
   CeldaClima,
   ConductorEnMapa,
-  IncidenteTransito,
 } from "@/modules/contexto/contrato-torre";
 
 export type {
@@ -68,15 +65,12 @@ export type {
   EstadoFuente,
   EstadoPantalla,
   EstadoTorre,
-  EventoCiudad,
   EventoComercial,
   Excepcion,
   FactorRiesgo,
   FrescuraFuente,
-  FuenteSenal,
   HitoPreparacion,
   Horizonte,
-  IncidenteTransito,
   Interaccion,
   MarcaOperativa,
   MensajeEstado,
@@ -84,11 +78,11 @@ export type {
   NivelAire,
   NivelRiesgo,
   NivelZoom,
+  PedidoEnMapa,
   OlaEntrante,
   PronosticoAire,
   PuntoCurva,
   RestriccionVehicular,
-  Senal,
   Severidad,
   TorreRespuesta,
   Ventana,
@@ -119,33 +113,6 @@ export const FRESCURA_FUENTES: FrescuraFuente[] = [
     cadenciaMinutos: 60,
     motivo: null,
   },
-  {
-    id: 'transito',
-    nombre: 'Tránsito',
-    estado: 'atrasada',
-    actualizadoEn: '2026-07-25T08:36:00-04:00',
-    edadMinutos: 38,
-    cadenciaMinutos: 10,
-    motivo: 'El proveedor respondió con error en los últimos 3 intentos.',
-  },
-  {
-    id: 'eventos',
-    nombre: 'Eventos de la ciudad',
-    estado: 'ok',
-    actualizadoEn: '2026-07-25T05:00:00-04:00',
-    edadMinutos: 254,
-    cadenciaMinutos: 1440,
-    motivo: null,
-  },
-  {
-    id: 'senales',
-    nombre: 'Señales de prensa',
-    estado: 'ok',
-    actualizadoEn: '2026-07-25T09:00:00-04:00',
-    edadMinutos: 14,
-    cadenciaMinutos: 30,
-    motivo: null,
-  },
 ];
 
 // =============================================================================
@@ -163,12 +130,12 @@ export const ZONAS: Zona[] = [
     riesgo: 81,
     nivel: 'critico',
     factores: [
-      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 72, peso: 0.35, explicacion: '86 pedidos pendientes contra capacidad de 60.' },
-      { id: 'clima', etiqueta: 'Clima', valor: 95, peso: 0.20, explicacion: 'Lluvia de 8 mm/h entre 16:00 y 19:00, dentro de la ventana de reparto.' },
-      { id: 'aire', etiqueta: 'Aire y restricción', valor: 40, peso: 0.15, explicacion: 'PM2.5 en rango regular. Sin restricción extraordinaria hoy.' },
-      { id: 'transito', etiqueta: 'Tránsito', valor: 68, peso: 0.15, explicacion: '4 incidentes activos, 2 de ellos sobre Vespucio Oriente.' },
-      { id: 'eventos', etiqueta: 'Eventos', valor: 30, peso: 0.10, explicacion: 'Partido en Ñuñoa a las 20:00, fuera de la ventana de reparto.' },
-      { id: 'historico', etiqueta: 'Histórico propio', valor: 88, peso: 0.05, explicacion: 'Tus últimas 4 lluvias en Oriente subieron los fallidos 14 %.' },
+      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 72, peso: 0.4667, explicacion: '86 pedidos pendientes contra capacidad de 60.' },
+      { id: 'clima', etiqueta: 'Clima', valor: 95, peso: 0.2667, explicacion: 'Lluvia de 8 mm/h entre 16:00 y 19:00, dentro de la ventana de reparto.' },
+      { id: 'aire', etiqueta: 'Aire y restricción', valor: 40, peso: 0.20, explicacion: 'PM2.5 en rango regular. Sin restricción extraordinaria hoy.' },
+      { id: 'transito', etiqueta: 'Tránsito', valor: 0, peso: 0, explicacion: 'Sin fuente: la capa de tránsito quedó fuera de alcance.' },
+      { id: 'eventos', etiqueta: 'Eventos', valor: 0, peso: 0, explicacion: 'Sin fuente: nadie puebla los eventos de ciudad.' },
+      { id: 'historico', etiqueta: 'Histórico propio', valor: 88, peso: 0.0667, explicacion: 'Tus últimas 4 lluvias en Oriente subieron los fallidos 14 %.' },
     ],
     pedidosPendientes: 86,
     pedidosEntregados: 24,
@@ -189,12 +156,12 @@ export const ZONAS: Zona[] = [
     riesgo: 54,
     nivel: 'medio',
     factores: [
-      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 88, peso: 0.35, explicacion: '148 pedidos pendientes contra capacidad de 130.' },
-      { id: 'clima', etiqueta: 'Clima', valor: 15, peso: 0.20, explicacion: 'Nublado sin precipitación en la ventana.' },
-      { id: 'aire', etiqueta: 'Aire y restricción', valor: 45, peso: 0.15, explicacion: 'PM2.5 regular. Restricción permanente afecta dígitos 6 y 7.' },
-      { id: 'transito', etiqueta: 'Tránsito', valor: 60, peso: 0.15, explicacion: 'Congestión habitual de sábado en el eje Alameda.' },
-      { id: 'eventos', etiqueta: 'Eventos', valor: 20, peso: 0.10, explicacion: 'Sin eventos masivos en la zona.' },
-      { id: 'historico', etiqueta: 'Histórico propio', valor: 34, peso: 0.05, explicacion: 'Fallidos dentro del promedio de los últimos 30 días.' },
+      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 88, peso: 0.4667, explicacion: '148 pedidos pendientes contra capacidad de 130.' },
+      { id: 'clima', etiqueta: 'Clima', valor: 15, peso: 0.2667, explicacion: 'Nublado sin precipitación en la ventana.' },
+      { id: 'aire', etiqueta: 'Aire y restricción', valor: 45, peso: 0.20, explicacion: 'PM2.5 regular. Restricción permanente afecta dígitos 6 y 7.' },
+      { id: 'transito', etiqueta: 'Tránsito', valor: 0, peso: 0, explicacion: 'Sin fuente: la capa de tránsito quedó fuera de alcance.' },
+      { id: 'eventos', etiqueta: 'Eventos', valor: 0, peso: 0, explicacion: 'Sin fuente: nadie puebla los eventos de ciudad.' },
+      { id: 'historico', etiqueta: 'Histórico propio', valor: 34, peso: 0.0667, explicacion: 'Fallidos dentro del promedio de los últimos 30 días.' },
     ],
     pedidosPendientes: 148,
     pedidosEntregados: 61,
@@ -216,12 +183,12 @@ export const ZONAS: Zona[] = [
     riesgo: 31,
     nivel: 'bajo',
     factores: [
-      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 38, peso: 0.35, explicacion: '62 pedidos pendientes contra capacidad de 100.' },
-      { id: 'clima', etiqueta: 'Clima', valor: 12, peso: 0.20, explicacion: 'Sin precipitación pronosticada.' },
-      { id: 'aire', etiqueta: 'Aire y restricción', valor: 34, peso: 0.15, explicacion: 'PM2.5 en rango bueno.' },
-      { id: 'transito', etiqueta: 'Tránsito', valor: 26, peso: 0.15, explicacion: '1 incidente menor en Vespucio Sur.' },
-      { id: 'eventos', etiqueta: 'Eventos', valor: 10, peso: 0.10, explicacion: 'Sin eventos relevantes.' },
-      { id: 'historico', etiqueta: 'Histórico propio', valor: 22, peso: 0.05, explicacion: 'Zona con la tasa de fallidos más baja del courier.' },
+      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 38, peso: 0.4667, explicacion: '62 pedidos pendientes contra capacidad de 100.' },
+      { id: 'clima', etiqueta: 'Clima', valor: 12, peso: 0.2667, explicacion: 'Sin precipitación pronosticada.' },
+      { id: 'aire', etiqueta: 'Aire y restricción', valor: 34, peso: 0.20, explicacion: 'PM2.5 en rango bueno.' },
+      { id: 'transito', etiqueta: 'Tránsito', valor: 0, peso: 0, explicacion: 'Sin fuente: la capa de tránsito quedó fuera de alcance.' },
+      { id: 'eventos', etiqueta: 'Eventos', valor: 0, peso: 0, explicacion: 'Sin fuente: nadie puebla los eventos de ciudad.' },
+      { id: 'historico', etiqueta: 'Histórico propio', valor: 22, peso: 0.0667, explicacion: 'Zona con la tasa de fallidos más baja del courier.' },
     ],
     pedidosPendientes: 62,
     pedidosEntregados: 38,
@@ -242,12 +209,12 @@ export const ZONAS: Zona[] = [
     riesgo: 28,
     nivel: 'bajo',
     factores: [
-      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 30, peso: 0.35, explicacion: '64 pedidos pendientes contra capacidad de 100.' },
-      { id: 'clima', etiqueta: 'Clima', valor: 10, peso: 0.20, explicacion: 'Sin precipitación pronosticada.' },
-      { id: 'aire', etiqueta: 'Aire y restricción', valor: 35, peso: 0.15, explicacion: 'PM2.5 en rango regular hacia la tarde.' },
-      { id: 'transito', etiqueta: 'Tránsito', valor: 22, peso: 0.15, explicacion: 'Sin incidentes activos.' },
-      { id: 'eventos', etiqueta: 'Eventos', valor: 0, peso: 0.10, explicacion: 'Sin eventos relevantes.' },
-      { id: 'historico', etiqueta: 'Histórico propio', valor: 28, peso: 0.05, explicacion: 'Fallidos dentro del promedio.' },
+      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 30, peso: 0.4667, explicacion: '64 pedidos pendientes contra capacidad de 100.' },
+      { id: 'clima', etiqueta: 'Clima', valor: 10, peso: 0.2667, explicacion: 'Sin precipitación pronosticada.' },
+      { id: 'aire', etiqueta: 'Aire y restricción', valor: 35, peso: 0.20, explicacion: 'PM2.5 en rango regular hacia la tarde.' },
+      { id: 'transito', etiqueta: 'Tránsito', valor: 0, peso: 0, explicacion: 'Sin fuente: la capa de tránsito quedó fuera de alcance.' },
+      { id: 'eventos', etiqueta: 'Eventos', valor: 0, peso: 0, explicacion: 'Sin fuente: nadie puebla los eventos de ciudad.' },
+      { id: 'historico', etiqueta: 'Histórico propio', valor: 28, peso: 0.0667, explicacion: 'Fallidos dentro del promedio.' },
     ],
     pedidosPendientes: 64,
     pedidosEntregados: 29,
@@ -269,12 +236,12 @@ export const ZONAS: Zona[] = [
     riesgo: 16,
     nivel: 'calmo',
     factores: [
-      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 18, peso: 0.35, explicacion: '52 pedidos pendientes contra capacidad de 80.' },
-      { id: 'clima', etiqueta: 'Clima', valor: 8, peso: 0.20, explicacion: 'Despejado.' },
-      { id: 'aire', etiqueta: 'Aire y restricción', valor: 30, peso: 0.15, explicacion: 'PM2.5 en rango bueno.' },
-      { id: 'transito', etiqueta: 'Tránsito', valor: 14, peso: 0.15, explicacion: 'Sin incidentes activos.' },
-      { id: 'eventos', etiqueta: 'Eventos', valor: 0, peso: 0.10, explicacion: 'Sin eventos relevantes.' },
-      { id: 'historico', etiqueta: 'Histórico propio', valor: 18, peso: 0.05, explicacion: 'Fallidos bajo el promedio.' },
+      { id: 'presion_operativa', etiqueta: 'Presión operativa', valor: 18, peso: 0.4667, explicacion: '52 pedidos pendientes contra capacidad de 80.' },
+      { id: 'clima', etiqueta: 'Clima', valor: 8, peso: 0.2667, explicacion: 'Despejado.' },
+      { id: 'aire', etiqueta: 'Aire y restricción', valor: 30, peso: 0.20, explicacion: 'PM2.5 en rango bueno.' },
+      { id: 'transito', etiqueta: 'Tránsito', valor: 0, peso: 0, explicacion: 'Sin fuente: la capa de tránsito quedó fuera de alcance.' },
+      { id: 'eventos', etiqueta: 'Eventos', valor: 0, peso: 0, explicacion: 'Sin fuente: nadie puebla los eventos de ciudad.' },
+      { id: 'historico', etiqueta: 'Histórico propio', valor: 18, peso: 0.0667, explicacion: 'Fallidos bajo el promedio.' },
     ],
     pedidosPendientes: 52,
     pedidosEntregados: 26,
@@ -346,19 +313,15 @@ export const EXCEPCIONES: Excepcion[] = [
         id: 'adelantar-corte-oriente',
         etiqueta: 'Adelantar corte de Oriente',
         descripcion: 'Mueve la ventana de corte de 18:00 a 15:30 solo para hoy.',
-        requiereConfirmacion: true,
       },
       {
         id: 'ver-pedidos-oriente',
         etiqueta: 'Ver los 86 pedidos',
         descripcion: 'Abre la lista filtrada por zona y ventana.',
-        requiereConfirmacion: false,
       },
     ],
     origen: 'motor',
-    confianza: null,
     detectadaEn: '2026-07-25T09:10:00-04:00',
-    descartable: true,
   },
   {
     id: 'exc-002',
@@ -375,13 +338,10 @@ export const EXCEPCIONES: Excepcion[] = [
         id: 'ver-flota-expuesta',
         etiqueta: 'Ver flota expuesta',
         descripcion: 'Lista de conductores cuyo vehículo quedaría restringido.',
-        requiereConfirmacion: false,
       },
     ],
     origen: 'motor',
-    confianza: null,
     detectadaEn: '2026-07-25T08:53:00-04:00',
-    descartable: true,
   },
   {
     id: 'exc-003',
@@ -398,13 +358,10 @@ export const EXCEPCIONES: Excepcion[] = [
         id: 'reasignar-desde-poniente',
         etiqueta: 'Reasignar 2 conductores desde Poniente',
         descripcion: 'Poniente queda con 2 conductores y capacidad de 40.',
-        requiereConfirmacion: true,
       },
     ],
     origen: 'motor',
-    confianza: null,
     detectadaEn: '2026-07-25T09:12:00-04:00',
-    descartable: true,
   },
   {
     id: 'exc-004',
@@ -421,13 +378,10 @@ export const EXCEPCIONES: Excepcion[] = [
         id: 'ver-pedidos-perimetro',
         etiqueta: 'Ver los 24 pedidos',
         descripcion: 'Abre la lista filtrada por el perímetro del evento.',
-        requiereConfirmacion: false,
       },
     ],
-    origen: 'senal',
-    confianza: 0.86,
+    origen: 'motor',
     detectadaEn: '2026-07-25T09:00:00-04:00',
-    descartable: true,
   },
 ];
 
@@ -492,7 +446,6 @@ export const TIMELINE_HOY: BloqueTimeline[] = [
   { id: 'tl-02', tipo: 'corte_en_riesgo', etiqueta: 'Corte de Centro', inicio: '2026-07-25T12:00:00-04:00', fin: '2026-07-25T12:00:00-04:00', zonaId: 'zona-centro', carril: 1 },
   { id: 'tl-03', tipo: 'clima', etiqueta: 'Lluvia sobre Oriente', inicio: '2026-07-25T16:00:00-04:00', fin: '2026-07-25T19:00:00-04:00', zonaId: 'zona-oriente', carril: 1 },
   { id: 'tl-04', tipo: 'corte_en_riesgo', etiqueta: 'Corte de Oriente en riesgo', inicio: '2026-07-25T18:00:00-04:00', fin: '2026-07-25T18:00:00-04:00', zonaId: 'zona-oriente', carril: 2 },
-  { id: 'tl-05', tipo: 'evento', etiqueta: 'Partido en Ñuñoa', inicio: '2026-07-25T18:00:00-04:00', fin: '2026-07-25T23:30:00-04:00', zonaId: 'zona-oriente', carril: 2 },
 ];
 
 /** Marcador de "ahora". Se mueve solo; no salta. */
@@ -512,8 +465,6 @@ export const CAPAS: EstadoCapa[] = [
   { id: 'riesgo', etiqueta: 'Riesgo', activa: true, disponible: true, motivoNoDisponible: null },
   { id: 'clima', etiqueta: 'Lluvia', activa: true, disponible: true, motivoNoDisponible: null },
   { id: 'aire', etiqueta: 'Aire', activa: false, disponible: true, motivoNoDisponible: null },
-  { id: 'transito', etiqueta: 'Tránsito', activa: false, disponible: false, motivoNoDisponible: 'Datos con 38 minutos de atraso.' },
-  { id: 'eventos', etiqueta: 'Eventos', activa: false, disponible: true, motivoNoDisponible: null },
   { id: 'conductores', etiqueta: 'Conductores', activa: false, disponible: true, motivoNoDisponible: null },
   { id: 'pedidos', etiqueta: 'Pedidos', activa: false, disponible: true, motivoNoDisponible: null },
   { id: 'comunas', etiqueta: 'Comunas', activa: false, disponible: true, motivoNoDisponible: null },
@@ -535,21 +486,6 @@ export const CONDUCTORES: ConductorEnMapa[] = [
   { id: 'cond-06', nombre: 'Pilar Reyes', zonaId: 'zona-norte', posicion: { lat: -33.3712, long: -70.6789 }, ultimoPing: '2026-07-25T09:13:00-04:00', minutosSinPing: 1, paradasTotales: 26, paradasCompletadas: 12, estado: 'en_ruta' },
 ];
 
-export const EVENTOS_CIUDAD: EventoCiudad[] = [
-  {
-    id: 'ev-001',
-    nombre: 'Universidad de Chile vs. Colo Colo',
-    tipo: 'deportivo',
-    recinto: 'Estadio Nacional',
-    comuna: 'Ñuñoa',
-    posicion: { lat: -33.4645, long: -70.6103 },
-    radioMetros: 1800,
-    ventana: { inicio: '2026-07-25T18:00:00-04:00', fin: '2026-07-25T23:30:00-04:00' },
-    asistenciaEstimada: 45000,
-    fuente: 'Calendario de Primera División',
-  },
-];
-
 export const CELDAS_CLIMA: CeldaClima[] = [
   {
     id: 'clima-001',
@@ -560,12 +496,6 @@ export const CELDAS_CLIMA: CeldaClima[] = [
     ventana: { inicio: '2026-07-25T16:00:00-04:00', fin: '2026-07-25T19:00:00-04:00' },
     zonasAfectadas: ['zona-oriente'],
   },
-];
-
-export const INCIDENTES_TRANSITO: IncidenteTransito[] = [
-  { id: 'tr-001', tipo: 'accidente', descripcion: 'Colisión con dos pistas bloqueadas', via: 'Américo Vespucio Oriente', posicion: { lat: -33.4198, long: -70.5701 }, magnitud: 3, desde: '2026-07-25T08:41:00-04:00', hasta: null, zonaId: 'zona-oriente' },
-  { id: 'tr-002', tipo: 'congestion', descripcion: 'Tránsito lento por volumen', via: 'Costanera Norte poniente', posicion: { lat: -33.4102, long: -70.6011 }, magnitud: 2, desde: '2026-07-25T08:20:00-04:00', hasta: null, zonaId: 'zona-oriente' },
-  { id: 'tr-003', tipo: 'obra', descripcion: 'Faena con desvío señalizado', via: 'Vespucio Sur', posicion: { lat: -33.5301, long: -70.6202 }, magnitud: 1, desde: '2026-07-24T07:00:00-04:00', hasta: '2026-07-30T18:00:00-04:00', zonaId: 'zona-sur' },
 ];
 
 export const MARCAS_OPERATIVAS: MarcaOperativa[] = [
@@ -591,56 +521,13 @@ export const PRONOSTICO_AIRE: PronosticoAire[] = [
 ];
 
 export const RESTRICCIONES: RestriccionVehicular[] = [
-  { fecha: '2026-07-25', tipo: 'permanente', digitos: [6, 7], alcance: 'Provincia de Santiago, San Bernardo y Puente Alto', vehiculosAfectados: null },
-  { fecha: '2026-07-27', tipo: 'preemergencia', digitos: [2, 3, 4, 5], alcance: 'Sin sello verde, dentro del anillo Américo Vespucio', vehiculosAfectados: null },
+  { fecha: '2026-07-25', tipo: 'permanente', digitos: [6, 7], alcance: 'Provincia de Santiago, San Bernardo y Puente Alto' },
+  { fecha: '2026-07-27', tipo: 'preemergencia', digitos: [2, 3, 4, 5], alcance: 'Sin sello verde, dentro del anillo Américo Vespucio' },
 ];
 
 // =============================================================================
 // 11. Señales de prensa
 // =============================================================================
-
-export const SENALES: Senal[] = [
-  {
-    id: 'sen-001',
-    titulo: 'Cierre perimetral en Ñuñoa por partido en el Estadio Nacional',
-    resumen:
-      'Carabineros informa desvíos en el eje Grecia y cierre del perímetro del estadio desde las 18:00 hasta el término del encuentro.',
-    tipo: 'corte_transito',
-    comunas: ['Ñuñoa', 'Providencia'],
-    ejesViales: ['Avenida Grecia', 'Nueva Providencia'],
-    ventana: { inicio: '2026-07-25T18:00:00-04:00', fin: '2026-07-25T23:30:00-04:00' },
-    severidad: 'media',
-    confianza: 0.86,
-    afectaOperacion: true,
-    pedidosEnRango: 24,
-    zonasAfectadas: ['zona-oriente'],
-    fuentes: [
-      { medio: 'Transporte Informa RM', titular: 'Desvíos de tránsito por encuentro en Estadio Nacional', url: 'https://www.transporteinforma.cl/', publicadoEn: '2026-07-25T08:40:00-04:00' },
-      { medio: 'La Tercera', titular: 'Carabineros anuncia cortes en Ñuñoa por el clásico', url: 'https://www.latercera.com/', publicadoEn: '2026-07-25T08:12:00-04:00' },
-      { medio: 'Canal 13', titular: 'Los desvíos que regirán este sábado en Ñuñoa', url: 'https://www.13.cl/', publicadoEn: '2026-07-25T07:55:00-04:00' },
-    ],
-    marcaHumana: null,
-  },
-  {
-    id: 'sen-002',
-    titulo: 'Falla en Línea 1 del Metro con servicio parcial',
-    resumen:
-      'Metro reporta servicio interrumpido entre Los Héroes y Universidad Católica. Se habilitaron buses de apoyo.',
-    tipo: 'transporte',
-    comunas: ['Santiago', 'Providencia'],
-    ejesViales: ['Alameda'],
-    ventana: { inicio: '2026-07-25T08:05:00-04:00', fin: null },
-    severidad: 'informativa',
-    confianza: 0.72,
-    afectaOperacion: false,
-    pedidosEnRango: 0,
-    zonasAfectadas: [],
-    fuentes: [
-      { medio: 'Emol', titular: 'Metro informa servicio parcial en Línea 1', url: 'https://www.emol.com/', publicadoEn: '2026-07-25T08:20:00-04:00' },
-    ],
-    marcaHumana: null,
-  },
-];
 
 // =============================================================================
 // 12. Estados de la pantalla
@@ -704,16 +591,16 @@ export const ESTADO_TORRE: EstadoTorre = {
   metricas: METRICAS,
   zonas: ZONAS,
   excepciones: EXCEPCIONES,
-  senales: SENALES,
   olaEntrante: OLA_ENTRANTE,
   timeline: TIMELINE_HOY,
   rangoTimeline: RANGO_TIMELINE,
   capas: CAPAS,
   frescura: FRESCURA_FUENTES,
   conductores: CONDUCTORES,
-  eventosCiudad: EVENTOS_CIUDAD,
   celdasClima: CELDAS_CLIMA,
-  incidentesTransito: INCIDENTES_TRANSITO,
+  // Vacío a propósito: los puntos de pedido salen de coordenadas reales, y
+  // una fixture con domicilios inventados sería ruido con forma de dato.
+  pedidos: [],
   marcasOperativas: MARCAS_OPERATIVAS,
   pronosticoAire: PRONOSTICO_AIRE,
   restricciones: RESTRICCIONES,

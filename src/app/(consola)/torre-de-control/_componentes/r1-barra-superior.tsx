@@ -13,7 +13,6 @@ interface Props {
   /** Destino del control de salida: la consola vive fuera del shell de `(tenant)`. */
   hrefSalida: string;
   onCambiarHorizonte: (h: Horizonte) => void;
-  onAbrirPaleta: () => void;
 }
 
 /**
@@ -27,7 +26,6 @@ export function R1BarraSuperior({
   frescura,
   hrefSalida,
   onCambiarHorizonte,
-  onAbrirPaleta,
 }: Props) {
   return (
     <header className="flex h-[var(--tc-h-barra)] shrink-0 items-stretch bg-tc-papel">
@@ -84,17 +82,6 @@ export function R1BarraSuperior({
         {frescura.map((f) => (
           <CeldaFrescura key={f.id} fuente={f} />
         ))}
-      </div>
-
-      {/* Comandos */}
-      <div className="flex items-center border-l border-tc-ink-300 px-4">
-        <button
-          type="button"
-          onClick={onAbrirPaleta}
-          className={`flex items-center gap-2 border border-tc-ink-300 px-3 py-1.5 text-[11px] text-tc-tinta transition-colors hover:border-tc-tinta ${FOCO_ANILLO}`}
-        >
-          Comandos <kbd className="text-[9px] font-semibold">⌘K</kbd>
-        </button>
       </div>
 
       {/* Salida.

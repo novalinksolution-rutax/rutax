@@ -12,13 +12,18 @@ interface Props {
 
 /**
  * Cabecera sticky móvil (README §5, punto 1): marca + frescura comprimida a
- * una línea (`"09:14 · 5 fuentes · 1 atrasada"`) + los 4 horizontes en
- * segmentado de ancho completo, `min-height: 44px` cada botón.
+ * una línea (`"09:14 · 3 fuentes · 1 atrasada"`) + los horizontes en segmentado
+ * de ancho completo, `min-height: 44px` cada botón.
  *
- * `top-14` (no `top-0`): esta pantalla vive dentro de `AppShell`, que ya pone
- * su propia barra sticky de 56 px (`h-14`) en móvil (logo + menú). Si esta
- * cabecera también quedara en `top-0`, ambas se superpondrían al hacer
- * scroll — se ancla justo debajo de la del shell.
+ * `top-0`, y esto ES una corrección: antes decía `top-14` porque la Torre vivía
+ * dentro de `AppShell`, que pone su propia barra sticky de 56 px en móvil. La
+ * Torre se mudó a `(consola)`, cuyo layout devuelve `children` a secas — sin
+ * shell y sin barra. El `top-14` que sobrevivió a esa mudanza dejaba 56 px de
+ * hueco por el que se veía pasar el contenido al hacer scroll.
+ *
+ * El segmentado NO lleva `grid-cols-N` fijo: se deriva de `HORIZONTES.length`.
+ * Con `grid-cols-4` y tres horizontes quedaba una cuarta columna vacía y los
+ * botones ocupaban tres cuartos del ancho.
  */
 export function CabeceraSticky({ ahoraIso, frescura, horizonte, onCambiarHorizonte }: Props) {
   const atrasadas = frescura.filter((f) => f.estado === "atrasada").length;
@@ -28,7 +33,7 @@ export function CabeceraSticky({ ahoraIso, frescura, horizonte, onCambiarHorizon
   if (atrasadas > 0) partes.push(`${atrasadas} atrasada${atrasadas === 1 ? "" : "s"}`);
 
   return (
-    <header className="sticky top-14 z-20 border-b-2 border-tc-chasis bg-tc-papel">
+    <header className="sticky top-0 z-20 border-b-2 border-tc-chasis bg-tc-papel">
       <div className="flex items-center justify-between gap-2 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className="relative inline-block size-[11px] shrink-0 bg-tc-tinta" aria-hidden="true">
@@ -40,7 +45,10 @@ export function CabeceraSticky({ ahoraIso, frescura, horizonte, onCambiarHorizon
           {horaSantiago(ahoraIso)} · {partes.join(" · ")}
         </p>
       </div>
-      <div className="grid grid-cols-4 border-t border-tc-ink-300">
+      <div
+        className="grid border-t border-tc-ink-300"
+        style={{ gridTemplateColumns: `repeat(${HORIZONTES.length}, minmax(0, 1fr))` }}
+      >
         {HORIZONTES.map((h, i) => {
           const activo = horizonte === h.valor;
           return (

@@ -114,7 +114,6 @@ const accionSugerida = z.object({
   id: z.string().min(1),
   etiqueta: z.string().min(1),
   descripcion: z.string(),
-  requiereConfirmacion: z.boolean(),
 });
 
 const severidad = z.enum(['critica', 'alta', 'media', 'informativa']);
@@ -129,34 +128,8 @@ const excepcion = z.object({
   pedidosAfectados: z.number().int().min(0),
   montoAfectadoClp: z.number().min(0),
   acciones: z.array(accionSugerida),
-  origen: z.enum(['motor', 'senal', 'manual']),
-  confianza: z.number().min(0).max(1).nullable(),
+  origen: z.enum(['motor', 'manual']),
   detectadaEn: instante,
-  descartable: z.boolean(),
-});
-
-const senal = z.object({
-  id: z.string().min(1),
-  titulo: z.string().min(1),
-  resumen: z.string(),
-  tipo: z.enum(['corte_transito', 'manifestacion', 'paro', 'emergencia', 'transporte', 'otro']),
-  comunas: z.array(z.string()),
-  ejesViales: z.array(z.string()),
-  ventana: ventana.nullable(),
-  severidad,
-  confianza: z.number().min(0).max(1),
-  afectaOperacion: z.boolean(),
-  pedidosEnRango: z.number().int().min(0),
-  zonasAfectadas: z.array(z.string()),
-  fuentes: z.array(
-    z.object({
-      medio: z.string(),
-      titular: z.string(),
-      url: z.string(),
-      publicadoEn: z.string(),
-    }),
-  ),
-  marcaHumana: z.enum(['confirmada', 'descartada']).nullable(),
 });
 
 const olaEntrante = z.object({
@@ -198,7 +171,7 @@ const olaEntrante = z.object({
 
 const bloqueTimeline = z.object({
   id: z.string().min(1),
-  tipo: z.enum(['ventana_reparto', 'clima', 'evento', 'corte_en_riesgo', 'restriccion']),
+  tipo: z.enum(['ventana_reparto', 'clima', 'corte_en_riesgo', 'restriccion']),
   etiqueta: z.string().min(1),
   inicio: instante,
   fin: instante,
@@ -207,7 +180,7 @@ const bloqueTimeline = z.object({
 });
 
 const estadoCapa = z.object({
-  id: z.enum(['riesgo', 'clima', 'aire', 'transito', 'eventos', 'conductores', 'pedidos', 'comunas']),
+  id: z.enum(['riesgo', 'clima', 'aire', 'conductores', 'pedidos', 'comunas']),
   etiqueta: z.string().min(1),
   activa: z.boolean(),
   disponible: z.boolean(),
@@ -226,19 +199,6 @@ const conductorEnMapa = z.object({
   estado: z.enum(['en_ruta', 'detenido', 'sin_senal', 'finalizado']),
 });
 
-const eventoCiudad = z.object({
-  id: z.string(),
-  nombre: z.string().min(1),
-  tipo: z.enum(['deportivo', 'masivo', 'civico', 'comercial']),
-  recinto: z.string(),
-  comuna: z.string(),
-  posicion: coordenada,
-  radioMetros: z.number().positive(),
-  ventana,
-  asistenciaEstimada: z.number().int().min(0).nullable(),
-  fuente: z.string(),
-});
-
 const celdaClima = z.object({
   id: z.string(),
   tipo: z.enum(['lluvia', 'viento']),
@@ -249,16 +209,12 @@ const celdaClima = z.object({
   zonasAfectadas: z.array(z.string()),
 });
 
-const incidenteTransito = z.object({
+const pedidoEnMapa = z.object({
   id: z.string(),
-  tipo: z.enum(['accidente', 'corte', 'congestion', 'obra']),
-  descripcion: z.string(),
-  via: z.string(),
   posicion: coordenada,
-  magnitud: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
-  desde: instante,
-  hasta: instante.nullable(),
-  zonaId: z.string(),
+  estado: z.string(),
+  cerrado: z.boolean(),
+  zonaId: z.string().nullable(),
 });
 
 const marcaOperativa = z.object({
@@ -283,7 +239,6 @@ const restriccionVehicular = z.object({
   tipo: z.enum(['permanente', 'preemergencia', 'emergencia']),
   digitos: z.array(z.number().int().min(0).max(9)),
   alcance: z.string(),
-  vehiculosAfectados: z.number().int().min(0).nullable(),
 });
 
 // =============================================================================
@@ -293,23 +248,21 @@ const restriccionVehicular = z.object({
 export const esquemaEstadoTorre: z.ZodType<EstadoTorre> = z.object({
   courier: z.object({ id: z.string().min(1), nombre: z.string().min(1) }),
   ahora: instante,
-  horizonte: z.enum(['hoy', 'manana', '72h', 'olas']),
+  horizonte: z.enum(['hoy', 'manana', '72h']),
   estado: z.enum(['con_excepciones', 'tranquilo', 'cargando', 'degradado', 'sin_zonas', 'sin_pedidos']),
   zoom: z.enum(['zonas', 'comunas', 'pedidos']),
   zonaSeleccionada: z.string().nullable(),
   metricas: z.array(metricaResumen),
   zonas: z.array(zona),
   excepciones: z.array(excepcion),
-  senales: z.array(senal),
   olaEntrante: olaEntrante.nullable(),
   timeline: z.array(bloqueTimeline),
   rangoTimeline: ventanaCerrada,
   capas: z.array(estadoCapa),
   frescura: z.array(frescuraFuente),
   conductores: z.array(conductorEnMapa),
-  eventosCiudad: z.array(eventoCiudad),
   celdasClima: z.array(celdaClima),
-  incidentesTransito: z.array(incidenteTransito),
+  pedidos: z.array(pedidoEnMapa),
   marcasOperativas: z.array(marcaOperativa),
   pronosticoAire: z.array(pronosticoAire),
   restricciones: z.array(restriccionVehicular),
@@ -317,7 +270,7 @@ export const esquemaEstadoTorre: z.ZodType<EstadoTorre> = z.object({
 });
 
 export const esquemaTorreRespuesta: z.ZodType<TorreRespuesta> = z.object({
-  horizonteInicial: z.enum(['hoy', 'manana', '72h', 'olas']),
+  horizonteInicial: z.enum(['hoy', 'manana', '72h']),
   horizontes: z.object({
     hoy: esquemaEstadoTorre,
     manana: esquemaEstadoTorre,

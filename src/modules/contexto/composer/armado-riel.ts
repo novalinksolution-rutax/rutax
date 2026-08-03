@@ -31,10 +31,8 @@ import type {
   FrescuraFuente,
   MetricaResumen,
   PronosticoAire,
-  Senal,
   Zona,
 } from '../contrato-torre';
-import type { FilaSenalTenant } from './consultas';
 import { franjaDominanteDesdeDesglose, type RiesgoDeFranja } from './armado-zonas';
 import { instanteSantiago } from './armado-mapa';
 
@@ -144,57 +142,6 @@ export function armarMetricas(entrada: EntradaMetricas): MetricaResumen[] {
 // Señales de prensa
 // =============================================================================
 
-/**
- * Vuelve a unir la parte global del acontecimiento con la parte del courier.
- *
- * Descarta las que ya terminaron antes de la fecha mirada: el filtro fino se
- * hace aquí y no en SQL porque expresar «fin es nulo O fin >= X» sobre un
- * recurso embebido de PostgREST es frágil, y estas filas son pocas.
- */
-export function armarSenales(
-  filas: readonly FilaSenalTenant[],
-  zonaIdsValidos: ReadonlySet<string>,
-  desdeInstante: string,
-): Senal[] {
-  const senales: Senal[] = [];
-  // Comparar como INSTANTES, no como texto: PostgREST serializa `timestamptz`
-  // con offset (`…+00:00`) y `toISOString()` con sufijo `Z`. Las dos cadenas
-  // representan el mismo momento y ordenan distinto en cuanto cambia la forma.
-  const desde = Date.parse(desdeInstante);
-
-  for (const fila of filas) {
-    const global = fila.senales;
-    if (!global) continue;
-    if (global.ventana_fin !== null && Date.parse(global.ventana_fin) < desde) continue;
-
-    senales.push({
-      id: global.id,
-      titulo: global.titulo,
-      resumen: global.resumen,
-      tipo: global.tipo,
-      comunas: global.comunas ?? [],
-      ejesViales: global.ejes_viales ?? [],
-      ventana:
-        global.ventana_inicio === null
-          ? null
-          : { inicio: global.ventana_inicio, fin: global.ventana_fin },
-      severidad: global.severidad,
-      confianza: Number(global.confianza ?? 0),
-      afectaOperacion: global.afecta_operacion,
-      pedidosEnRango: fila.pedidos_en_rango,
-      // Se filtran contra las zonas vigentes: una zona desactivada después de
-      // que el job escribió la señal dejaría un id que la pantalla no sabe pintar.
-      zonasAfectadas: (fila.zonas_afectadas ?? []).filter((id) => zonaIdsValidos.has(id)),
-      fuentes: Array.isArray(global.fuentes)
-        ? (global.fuentes as Senal['fuentes'])
-        : [],
-      marcaHumana: fila.marca_humana,
-    });
-  }
-
-  return senales.sort((a, b) => b.confianza - a.confianza);
-}
-
 // =============================================================================
 // Excepciones
 // =============================================================================
@@ -215,7 +162,6 @@ export interface EntradaExcepciones {
   zonas: readonly Zona[];
   /** Filas de riesgo de la fecha, para leer la franja dominante y el instante. */
   riesgo: readonly RiesgoDeFranja[];
-  senales: readonly Senal[];
   pronosticoAire: readonly PronosticoAire[];
   /** Fecha civil del horizonte. */
   fecha: string;
@@ -272,7 +218,6 @@ export function armarExcepciones(entrada: EntradaExcepciones): Excepcion[] {
               // enlace real a la lista filtrada. Cambiarla la vuelve un botón mudo.
               etiqueta: `Ver los ${entero(zona.pedidosPendientes)} pedidos`,
               descripcion: 'Abre la lista de pedidos de esa fecha.',
-              requiereConfirmacion: false,
             },
           ]
         : [];
@@ -288,9 +233,7 @@ export function armarExcepciones(entrada: EntradaExcepciones): Excepcion[] {
       montoAfectadoClp: zona.montoComprometidoClp,
       acciones,
       origen: 'motor',
-      confianza: null,
       detectadaEn: entrada.ahoraIso,
-      descartable: true,
     });
   }
 
@@ -321,42 +264,10 @@ export function armarExcepciones(entrada: EntradaExcepciones): Excepcion[] {
           id: `ver-flota-expuesta-${episodio.fecha}`,
           etiqueta: 'Ver flota expuesta',
           descripcion: 'Lista de conductores cuyo vehículo quedaría restringido.',
-          requiereConfirmacion: false,
         },
       ],
       origen: 'motor',
-      confianza: null,
       detectadaEn: entrada.ahoraIso,
-      descartable: true,
-    });
-  }
-
-  for (const senal of entrada.senales) {
-    if (!senal.afectaOperacion) continue;
-    excepciones.push({
-      id: `exc-senal-${senal.id}`,
-      severidad: senal.severidad,
-      titulo: senal.titulo,
-      cuerpo: senal.resumen,
-      zonaId: senal.zonasAfectadas[0] ?? null,
-      ventana: senal.ventana,
-      pedidosAfectados: senal.pedidosEnRango,
-      montoAfectadoClp: 0,
-      acciones:
-        senal.pedidosEnRango > 0
-          ? [
-              {
-                id: `ver-pedidos-senal-${senal.id}`,
-                etiqueta: `Ver los ${entero(senal.pedidosEnRango)} pedidos`,
-                descripcion: 'Abre la lista de pedidos de esa fecha.',
-                requiereConfirmacion: false,
-              },
-            ]
-          : [],
-      origen: 'senal',
-      confianza: senal.confianza,
-      detectadaEn: entrada.ahoraIso,
-      descartable: true,
     });
   }
 

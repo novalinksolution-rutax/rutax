@@ -20,12 +20,12 @@ import { HORIZONTES } from "../_lib/horizontes";
 import { DefsPatronesRiesgo } from "./trama-riesgo";
 import { EsqueletoRegion } from "./esqueleto-region";
 import { R1BarraSuperior } from "./r1-barra-superior";
+import { PanelMarca } from "./panel-marca";
 import { BandaMensajeEstado } from "./banda-mensaje-estado";
 import { R2OlaEntrante } from "./r2-ola-entrante";
 import { R3Mapa } from "./r3-mapa";
 import { Riel } from "./riel/riel";
 import { R5LineaDeTiempo } from "./r5-linea-tiempo";
-import { PaletaComandos } from "./paleta-comandos";
 import { CabeceraSticky } from "./movil/cabecera-sticky";
 import { TitularRiesgo } from "./movil/titular-riesgo";
 import { ContadorSinUbicar } from "./contador-sin-ubicar";
@@ -60,7 +60,7 @@ interface Props {
  * su límite: R1 pinta en cuanto llega la frescura, sin esperar a que el motor de
  * riesgo termine de armar cinco zonas por tres horizontes.
  *
- * El estado de interacción (zona seleccionada, capas, horizonte, paleta) sigue
+ * El estado de interacción (zona seleccionada, capas, horizonte) sigue
  * viviendo AQUÍ, en un solo reducer, porque es compartido: el mapa y el riel
  * tienen que estar de acuerdo sobre qué zona está seleccionada.
  *
@@ -90,20 +90,14 @@ export function TorreConsola({ cabecera, tablero, hrefSalida }: Props) {
   }, []);
 
   // Atajos de teclado (README §6). Cmd/Ctrl+K y Escape funcionan siempre;
-  // el resto se ignora mientras la paleta está abierta o mientras se escribe
+  // el resto se ignora mientras se escribe
   // en un campo de texto (para no romper la escritura normal).
   useEffect(() => {
     function alTeclear(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        dispatch({ tipo: consola.paleta ? "cerrar-paleta" : "abrir-paleta" });
-        return;
-      }
       if (e.key === "Escape") {
         dispatch({ tipo: "escape" });
         return;
       }
-      if (consola.paleta) return;
 
       const activo = document.activeElement;
       const escribiendo =
@@ -111,7 +105,7 @@ export function TorreConsola({ cabecera, tablero, hrefSalida }: Props) {
         (activo.tagName === "INPUT" || activo.tagName === "TEXTAREA" || activo.isContentEditable);
       if (escribiendo) return;
 
-      if (["1", "2", "3", "4"].includes(e.key)) {
+      if (["1", "2", "3"].includes(e.key)) {
         const horizonte = HORIZONTES[Number(e.key) - 1]?.valor;
         if (horizonte) dispatch({ tipo: "cambiar-horizonte", horizonte });
         return;
@@ -126,7 +120,7 @@ export function TorreConsola({ cabecera, tablero, hrefSalida }: Props) {
     }
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
-  }, [consola.paleta, consola.marcando]);
+  }, [consola.marcando]);
 
   const comun = { tablero, consola, dispatch, seleccionarZona };
 
@@ -210,11 +204,13 @@ export function TorreConsola({ cabecera, tablero, hrefSalida }: Props) {
         </Suspense>
       </div>
 
-      <Suspense fallback={null}>
-        <RegionPaleta {...comun} />
-      </Suspense>
-
-      {consola.marcando ? (
+      {consola.marcaProv ? (
+        <PanelMarca
+          posicion={consola.marcaProv}
+          onCancelar={() => dispatch({ tipo: "cancelar-modo-marca" })}
+          onGuardada={() => dispatch({ tipo: "cancelar-modo-marca" })}
+        />
+      ) : consola.marcando ? (
         <div
           role="status"
           className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 border-2 border-tc-tinta bg-tc-tinta px-4 py-2.5 text-[12px] font-semibold text-tc-papel shadow-tc-lg"
@@ -249,7 +245,7 @@ interface PropsComunes {
  */
 function useHorizonte(tablero: Promise<TorreRespuesta>, horizonte: Horizonte): EstadoTorre {
   const respuesta = use(tablero);
-  return respuesta.horizontes[horizonte === "olas" ? "hoy" : horizonte];
+  return respuesta.horizontes[horizonte];
 }
 
 /**
@@ -291,7 +287,6 @@ function RegionR1({
       frescura={datos.frescura}
       hrefSalida={hrefSalida}
       onCambiarHorizonte={(valor) => dispatch({ tipo: "cambiar-horizonte", horizonte: valor })}
-      onAbrirPaleta={() => dispatch({ tipo: "abrir-paleta" })}
     />
   );
 }
@@ -330,10 +325,9 @@ function RegionR3({ tablero, consola, dispatch, seleccionarZona }: PropsComunes)
       zoom={consola.zoom}
       pedidosSinGeocodificar={estado.pedidosSinGeocodificar}
       celdasClima={estado.celdasClima}
-      eventosCiudad={estado.eventosCiudad}
       conductores={estado.conductores}
-      incidentesTransito={estado.incidentesTransito}
       marcasOperativas={estado.marcasOperativas}
+      pedidos={estado.pedidos}
       marcando={consola.marcando}
       marcaProvisional={consola.marcaProv}
       mostrarLista={consola.lista}
@@ -353,25 +347,14 @@ function RegionRiel({ tablero, consola, dispatch, seleccionarZona }: PropsComune
       estado={estado.estado}
       metricas={estado.metricas}
       excepciones={estado.excepciones}
-      descartadas={consola.descartadas}
       zonas={estado.zonas}
       zonaSeleccionada={consola.zona}
       factorAbierto={consola.factor}
-      senales={estado.senales}
       olaEntrante={estado.olaEntrante}
       ahoraIso={estado.ahora}
-      confirmando={consola.confirmando}
-      fuentesAbiertas={consola.senal}
-      otrasAbiertas={consola.otras}
       onSeleccionarZona={seleccionarZona}
       onCerrarDesglose={() => dispatch({ tipo: "cerrar-desglose" })}
       onAbrirFactor={(factorId) => dispatch({ tipo: "abrir-factor", factorId })}
-      onPedirConfirmacion={(accionId) => dispatch({ tipo: "pedir-confirmacion", accionId })}
-      onCancelarConfirmacion={() => dispatch({ tipo: "cancelar-confirmacion" })}
-      onConfirmarAccion={() => dispatch({ tipo: "confirmar-accion" })}
-      onDescartarExcepcion={(excepcionId) => dispatch({ tipo: "descartar-excepcion", excepcionId })}
-      onAlternarFuentes={() => dispatch({ tipo: "alternar-fuentes-senal" })}
-      onAlternarOtras={() => dispatch({ tipo: "alternar-otras-senales" })}
     />
   );
 }
@@ -389,26 +372,6 @@ function RegionR5({
       bloques={estado.timeline}
       rango={estado.rangoTimeline}
       ahoraIso={estado.ahora}
-    />
-  );
-}
-
-function RegionPaleta({ tablero, consola, dispatch }: PropsComunes) {
-  const estado = useHorizonte(tablero, consola.horizonte);
-  return (
-    <PaletaComandos
-      abierto={consola.paleta}
-      filtro={consola.filtro}
-      zonas={estado.zonas}
-      capas={estado.capas}
-      capasActivas={capasEncendibles(consola.capas, estado.capas)}
-      onCambiarFiltro={(filtro) => dispatch({ tipo: "cambiar-filtro", filtro })}
-      onCerrar={() => dispatch({ tipo: "cerrar-paleta" })}
-      onIrAZona={(zonaId) => dispatch({ tipo: "ir-a-zona", zonaId })}
-      onCambiarHorizonte={(horizonte) => dispatch({ tipo: "cambiar-horizonte", horizonte })}
-      onAlternarCapa={(capa) => dispatch({ tipo: "alternar-capa", capa })}
-      onAlternarLista={() => dispatch({ tipo: "alternar-lista" })}
-      onActivarMarca={() => dispatch({ tipo: "activar-modo-marca" })}
     />
   );
 }
@@ -442,7 +405,7 @@ function RegionMovil({ tablero, consola, dispatch, seleccionarZona }: PropsComun
   const zonasOrdenadas = [...estado.zonas].sort((a, b) => b.riesgo - a.riesgo);
   const peorZona = zonasOrdenadas[0] ?? null;
   const zonaActiva = consola.zona ? (estado.zonas.find((z) => z.id === consola.zona) ?? null) : null;
-  const excepcionesVisibles = estado.excepciones.filter((e) => !consola.descartadas.includes(e.id));
+  const excepcionesVisibles = estado.excepciones;
 
   return (
     <>
@@ -470,12 +433,7 @@ function RegionMovil({ tablero, consola, dispatch, seleccionarZona }: PropsComun
                 excepcion={excepcion}
                 zonaNombre={estado.zonas.find((z) => z.id === excepcion.zonaId)?.nombre ?? null}
                 ahoraIso={estado.ahora}
-                confirmando={consola.confirmando}
                 onSeleccionarZona={seleccionarZona}
-                onPedirConfirmacion={(accionId) => dispatch({ tipo: "pedir-confirmacion", accionId })}
-                onCancelarConfirmacion={() => dispatch({ tipo: "cancelar-confirmacion" })}
-                onConfirmarAccion={() => dispatch({ tipo: "confirmar-accion" })}
-                onDescartar={() => dispatch({ tipo: "descartar-excepcion", excepcionId: excepcion.id })}
                 variante="movil"
               />
             ))

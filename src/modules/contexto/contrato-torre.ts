@@ -27,8 +27,16 @@
 // 1. Primitivas
 // =============================================================================
 
-/** Horizonte temporal que el usuario selecciona. Gobierna toda la pantalla. */
-export type Horizonte = 'hoy' | 'manana' | '72h' | 'olas';
+/**
+ * Horizonte temporal que el usuario selecciona. Gobierna toda la pantalla.
+ *
+ * Eran cuatro: `'olas'` se fusionó con `'72h'`. No era un horizonte del motor
+ * sino una vista aparte que nunca se construyó y caía a «hoy», mientras 72 h se
+ * veía casi vacío por diseño (solo cuenta pedidos YA ingestados). La ola
+ * entrante se calcula una vez y se muestra en los tres horizontes, así que
+ * fusionarlos no perdió nada: quitó un modo que no llevaba a ninguna parte.
+ */
+export type Horizonte = 'hoy' | 'manana' | '72h';
 
 /** Nivel de riesgo derivado del puntaje. La UI decide cómo representarlo. */
 export type NivelRiesgo = 'calmo' | 'bajo' | 'medio' | 'alto' | 'critico';
@@ -39,13 +47,19 @@ export type Severidad = 'critica' | 'alta' | 'media' | 'informativa';
 /** Estado de salud de una fuente externa. Nunca desaparece: se marca. */
 export type EstadoFuente = 'ok' | 'atrasada' | 'caida';
 
-/** Capas conmutables del mapa. Regla de producto: máximo 2 activas. */
+/**
+ * Capas conmutables del mapa. Regla de producto: máximo 2 activas.
+ *
+ * `transito` y `eventos` SALIERON del contrato. Tránsito quedó fuera de alcance
+ * (TomTom es de pago y el conductor ya ve la congestión en Waze); eventos de
+ * ciudad se quedó sin fuente al parar el pipeline de señales. Los factores
+ * homónimos del motor de riesgo SÍ siguen existiendo, en peso 0 y valor 0 —
+ * son cosas distintas: el factor explica el puntaje, la capa dibuja el mapa.
+ */
 export type CapaMapa =
   | 'riesgo'
   | 'clima'
   | 'aire'
-  | 'transito'
-  | 'eventos'
   | 'conductores'
   | 'pedidos'
   | 'comunas';
@@ -164,8 +178,6 @@ export interface AccionSugerida {
   etiqueta: string;
   /** Qué pasa al ejecutarla. Se muestra antes de confirmar. */
   descripcion: string;
-  /** true = requiere confirmación explícita antes de ejecutar. */
-  requiereConfirmacion: boolean;
 }
 
 export interface Excepcion {
@@ -180,13 +192,17 @@ export interface Excepcion {
   pedidosAfectados: number;
   montoAfectadoClp: number;
   acciones: AccionSugerida[];
-  /** De dónde salió: motor de riesgo, señal de prensa, marca manual. */
-  origen: 'motor' | 'senal' | 'manual';
-  /** 0–1. Solo presente cuando el origen es 'senal'. */
-  confianza: number | null;
+  /**
+   * De dónde salió. `'senal'` se retiró junto con el pipeline de prensa.
+   *
+   * También se fue `descartable`: el botón de descartar solo ocultaba la ficha
+   * en el estado local del navegador y prometía «calibrar umbrales» sin nada
+   * detrás. Un control que completa el flujo y no ejecuta nada es peor que su
+   * ausencia — el mismo criterio por el que se quitaron «adelantar corte» y
+   * «reasignar conductores».
+   */
+  origen: 'motor' | 'manual';
   detectadaEn: string;
-  /** El coordinador puede descartarla; eso calibra umbrales. */
-  descartable: boolean;
 }
 
 // =============================================================================
@@ -266,10 +282,15 @@ export interface EventoComercial {
 // 7. Línea de tiempo del día
 // =============================================================================
 
-/** Un bloque en la franja temporal. Puede solaparse con otros. */
+/**
+ * Un bloque en la franja temporal. Puede solaparse con otros.
+ *
+ * El tipo `'evento'` salió junto con la capa de eventos de ciudad: sin fuente
+ * que la pueble, nadie producía esos bloques.
+ */
 export interface BloqueTimeline {
   id: string;
-  tipo: 'ventana_reparto' | 'clima' | 'evento' | 'corte_en_riesgo' | 'restriccion';
+  tipo: 'ventana_reparto' | 'clima' | 'corte_en_riesgo' | 'restriccion';
   etiqueta: string;
   inicio: string;
   fin: string;
@@ -309,20 +330,6 @@ export interface ConductorEnMapa {
   estado: 'en_ruta' | 'detenido' | 'sin_senal' | 'finalizado';
 }
 
-/** Evento de ciudad con radio de influencia. */
-export interface EventoCiudad {
-  id: string;
-  nombre: string;
-  tipo: 'deportivo' | 'masivo' | 'civico' | 'comercial';
-  recinto: string;
-  comuna: string;
-  posicion: Coordenada;
-  radioMetros: number;
-  ventana: Ventana;
-  asistenciaEstimada: number | null;
-  fuente: string;
-}
-
 /** Celda de precipitación. Geometría simplificada como círculo. */
 export interface CeldaClima {
   id: string;
@@ -334,16 +341,29 @@ export interface CeldaClima {
   zonasAfectadas: string[];
 }
 
-export interface IncidenteTransito {
+/**
+ * Un pedido ubicado en el mapa (nivel 3 del zoom).
+ *
+ * ⚠️ **MINIMIZACIÓN DE DATO PERSONAL — decisión de producto, no de estilo.**
+ * Este tipo lleva el PUNTO y el ESTADO, y nada más. No lleva la dirección, ni el
+ * nombre del destinatario, ni su teléfono. El mapa pinta un círculo coloreado
+ * por estado, sin etiqueta; quien necesite la dirección abre el pedido, y ahí la
+ * ve la pantalla de operación con su propio control de acceso.
+ *
+ * El motivo es el invariante de CLAUDE.md: los datos del destinatario van con
+ * minimización. Un tablero que un supervisor deja abierto toda la mañana no
+ * tiene por qué mostrar el domicilio de cada cliente del courier.
+ *
+ * `seguridad-cumplimiento` debe firmar esto antes del release.
+ */
+export interface PedidoEnMapa {
   id: string;
-  tipo: 'accidente' | 'corte' | 'congestion' | 'obra';
-  descripcion: string;
-  via: string;
   posicion: Coordenada;
-  magnitud: 1 | 2 | 3 | 4;
-  desde: string;
-  hasta: string | null;
-  zonaId: string;
+  /** Estado operativo, para colorear el punto. No se muestra como texto. */
+  estado: string;
+  /** true cuando el estado ya es terminal (entregado, fallido, cancelado…). */
+  cerrado: boolean;
+  zonaId: string | null;
 }
 
 /** Marca puesta a mano por el coordinador. Alimenta el mapa y el histórico. */
@@ -371,44 +391,25 @@ export interface PronosticoAire {
   esProyeccion: boolean;
 }
 
+/**
+ * Restricción vehicular vigente. Es LÍNEA DE CONTEXTO, no alerta con impacto.
+ *
+ * Tenía un `vehiculosAfectados` que iba siempre en `null` y se retiró en vez de
+ * llenarlo, porque no se puede llenar con sentido: la restricción PERMANENTE
+ * solo aplica a vehículos sin sello verde —una flota de última milla moderna
+ * daría 0 siempre, menos informativo que el propio `null`— y la de EPISODIO,
+ * que sí importaría, depende de un decreto con dígitos que la autoridad fija
+ * arbitrariamente y que el sistema deliberadamente no adivina.
+ *
+ * Construir la entidad `vehiculos` solo para este conteo no se justifica: si
+ * algún día existe, será porque la operación la necesite por sí misma.
+ */
 export interface RestriccionVehicular {
   fecha: string;
   tipo: 'permanente' | 'preemergencia' | 'emergencia';
   digitos: number[];
   alcance: string;
-  /** Vehículos del courier afectados. null si el modelo aún no guarda patentes. */
-  vehiculosAfectados: number | null;
-}
 
-// =============================================================================
-// 11. Señales de prensa
-// =============================================================================
-
-export interface FuenteSenal {
-  medio: string;
-  titular: string;
-  url: string;
-  publicadoEn: string;
-}
-
-export interface Senal {
-  id: string;
-  /** Título del acontecimiento, no del artículo. Uno por evento, no por medio. */
-  titulo: string;
-  resumen: string;
-  tipo: 'corte_transito' | 'manifestacion' | 'paro' | 'emergencia' | 'transporte' | 'otro';
-  comunas: string[];
-  ejesViales: string[];
-  ventana: Ventana | null;
-  severidad: Severidad;
-  /** 0–1. Sube cuando varios medios independientes reportan lo mismo. */
-  confianza: number;
-  afectaOperacion: boolean;
-  pedidosEnRango: number;
-  zonasAfectadas: string[];
-  fuentes: FuenteSenal[];
-  /** El coordinador marca si era relevante; eso calibra el filtro. */
-  marcaHumana: 'confirmada' | 'descartada' | null;
 }
 
 // =============================================================================
@@ -471,16 +472,14 @@ export interface EstadoTorre {
   metricas: MetricaResumen[];
   zonas: Zona[];
   excepciones: Excepcion[];
-  senales: Senal[];
   olaEntrante: OlaEntrante | null;
   timeline: BloqueTimeline[];
   rangoTimeline: Ventana;
   capas: EstadoCapa[];
   frescura: FrescuraFuente[];
   conductores: ConductorEnMapa[];
-  eventosCiudad: EventoCiudad[];
   celdasClima: CeldaClima[];
-  incidentesTransito: IncidenteTransito[];
+  pedidos: PedidoEnMapa[];
   marcasOperativas: MarcaOperativa[];
   pronosticoAire: PronosticoAire[];
   restricciones: RestriccionVehicular[];
@@ -492,11 +491,12 @@ export interface EstadoTorre {
 // =============================================================================
 
 /**
- * Los tres horizontes del motor de riesgo. `'olas'` NO está aquí: no es un
- * horizonte del motor sino la proyección de volumen del calendario comercial
- * (§12 del diseño técnico), con su propio mecanismo y su propia fuente.
+ * Los horizontes que el motor precalcula. Desde que `'olas'` se fusionó con
+ * `'72h'`, coincide exactamente con `Horizonte` — se conserva como alias porque
+ * `TorreRespuesta` habla de «los horizontes precalculados», que es un concepto
+ * del servidor, no de la pantalla.
  */
-export type HorizonteTorre = 'hoy' | 'manana' | '72h';
+export type HorizonteTorre = Horizonte;
 
 export const HORIZONTES_TORRE: readonly HorizonteTorre[] = ['hoy', 'manana', '72h'];
 

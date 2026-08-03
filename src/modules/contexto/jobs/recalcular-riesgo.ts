@@ -268,7 +268,7 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
       // También paginado: 52 comunas × 72 horas son ~3.700 filas de pronóstico,
       // casi cuatro veces el tope de PostgREST. Sin paginar, el motor evaluaría
       // el clima de un tercio de la ciudad y daría por bueno el resto.
-      const [clima, aire, eventos] = await Promise.all([
+      const [clima, aire] = await Promise.all([
         leerTodasLasFilas<{
           comuna: string;
           hora: string;
@@ -296,22 +296,6 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
             .in('comuna', comunasDelTenant)
             .gte('hora', desdeInstante)
             .lte('hora', hastaInstante)
-            .range(desde, hastaFila),
-        ),
-        leerTodasLasFilas<{
-          nombre: string;
-          comuna: string;
-          ventana_inicio: string;
-          ventana_fin: string | null;
-          asistencia_estimada: number | null;
-        }>('eventos_ciudad', (desde, hastaFila) =>
-          supabase
-            .schema('contexto')
-            .from('eventos_ciudad')
-            .select('nombre, comuna, ventana_inicio, ventana_fin, asistencia_estimada')
-            .in('comuna', comunasDelTenant)
-            .lte('ventana_inicio', hastaInstante)
-            .or(`ventana_fin.is.null,ventana_fin.gte.${desdeInstante}`)
             .range(desde, hastaFila),
         ),
       ]);
@@ -424,13 +408,11 @@ export const jobRiesgoRecalcularTenant = inngest.createFunction(
         nivelEstimado: a.nivel_estimado,
       })),
     );
-    const eventos: FilaEvento[] = insumos.eventos.map((e) => ({
-      nombre: e.nombre,
-      comuna: e.comuna,
-      ventanaInicio: e.ventana_inicio,
-      ventanaFin: e.ventana_fin,
-      asistenciaEstimada: e.asistencia_estimada,
-    }));
+    // El factor `eventos` se quedó sin fuente (nadie puebla `eventos_ciudad`) y
+    // por eso su peso efectivo es 0. Se le pasa la lista vacía a propósito: el
+    // motor devuelve entonces valor 0 con su explicación, que es exactamente lo
+    // que aportó al puntaje. Leer la tabla sería E/S muerta.
+    const eventos: FilaEvento[] = [];
     const fechasConRestriccion = new Set(insumos.restricciones.map((r) => r.fecha));
 
     const tasasFallidos = tasaFallidosPorZona(

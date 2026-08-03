@@ -7,9 +7,8 @@ import type {
   ConductorEnMapa,
   EstadoCapa,
   EstadoPantalla,
-  EventoCiudad,
-  IncidenteTransito,
   MarcaOperativa,
+  PedidoEnMapa,
   NivelZoom,
   Zona,
 } from "../_fixture/estado-torre";
@@ -47,10 +46,9 @@ interface Props {
   zoom: NivelZoom;
   pedidosSinGeocodificar: number;
   celdasClima: CeldaClima[];
-  eventosCiudad: EventoCiudad[];
   conductores: ConductorEnMapa[];
-  incidentesTransito: IncidenteTransito[];
   marcasOperativas: MarcaOperativa[];
+  pedidos: PedidoEnMapa[];
   marcando: boolean;
   marcaProvisional: { long: number; lat: number } | null;
   /** `true` = el usuario pidió el equivalente sin mapa (tecla `L`). */
@@ -63,18 +61,21 @@ interface Props {
 }
 
 /**
- * El nivel de zoom «pedidos» y la capa homónima quedan bloqueados mientras el
- * geocoding corra con el proveedor de respaldo: ahí todos los pedidos caen en
- * el centroide de su comuna, así que un plano de puntos mostraría cinco pilas
- * perfectamente alineadas y ninguna dirección real. Es la misma honestidad que
- * el handoff pide para esta capa (§4: «Requiere geocoding real. Hoy declara el
- * vacío… No inventes puntos») y que la regla 5 pide para los sin ubicar.
+ * La capa de pedidos ya NO está bloqueada por diseño.
  *
- * Cuando exista geocoding real se enciende por configuración —el motivo pasa a
- * `null`— sin tocar este componente.
+ * Estuvo apagada mientras el geocoding corría con el proveedor de respaldo: ahí
+ * todos los pedidos caían en el centroide de su comuna y el plano habría sido
+ * cinco pilas alineadas, ninguna real. Eso cambió: la ingesta de Mercado Libre
+ * ahora guarda la coordenada que viene en `receiver_address`, y el composer solo
+ * emite los pedidos con `geo_estado = 'resuelto'`.
+ *
+ * Lo que queda del principio antiguo: **no se inventa ningún punto**. Un pedido
+ * sin coordenada creíble no se dibuja, y el contador de «sin ubicar» dice
+ * cuántos son (regla 5 del handoff). Por eso el único motivo de bloqueo que
+ * queda es el trivial: que todavía no haya ni uno ubicado.
  */
-const MOTIVO_PEDIDOS =
-  "Necesita geocoding real: hoy los pedidos se ubican en el centroide de su comuna.";
+const MOTIVO_PEDIDOS_VACIO =
+  "Ningún pedido del horizonte tiene ubicación resuelta todavía.";
 
 /**
  * R3 · el mapa, con sus cuatro controles flotantes, y su equivalente sin mapa.
@@ -92,10 +93,9 @@ export function R3Mapa({
   zoom,
   pedidosSinGeocodificar,
   celdasClima,
-  eventosCiudad,
   conductores,
-  incidentesTransito,
   marcasOperativas,
+  pedidos,
   marcando,
   marcaProvisional,
   mostrarLista,
@@ -110,7 +110,11 @@ export function R3Mapa({
   // geocoding corre), no del dataset.
   const capasResueltas: EstadoCapa[] = capas.map((capa) =>
     capa.id === "pedidos"
-      ? { ...capa, disponible: false, motivoNoDisponible: MOTIVO_PEDIDOS }
+      ? {
+          ...capa,
+          disponible: pedidos.length > 0,
+          motivoNoDisponible: pedidos.length > 0 ? null : MOTIVO_PEDIDOS_VACIO,
+        }
       : capa,
   );
 
@@ -140,10 +144,9 @@ export function R3Mapa({
             capasActivas={capasActivas}
             zoom={zoom}
             celdasClima={celdasClima}
-            eventosCiudad={eventosCiudad}
             conductores={conductores}
-            incidentesTransito={incidentesTransito}
             marcasOperativas={marcasOperativas}
+            pedidos={pedidos}
             marcando={marcando}
             marcaProvisional={marcaProvisional}
             onSeleccionarZona={onSeleccionarZona}
@@ -158,7 +161,7 @@ export function R3Mapa({
             <div className="pointer-events-auto absolute top-3.5 right-3.5">
               <ControlZoom
                 zoom={zoom}
-                motivoPedidos={MOTIVO_PEDIDOS}
+                motivoPedidos={pedidos.length > 0 ? null : MOTIVO_PEDIDOS_VACIO}
                 onCambiarZoom={onCambiarZoom}
                 onAlternarLista={onAlternarLista}
               />

@@ -25,9 +25,8 @@ import type {
   CapaMapa,
   CeldaClima,
   ConductorEnMapa,
-  EventoCiudad,
-  IncidenteTransito,
   MarcaOperativa,
+  PedidoEnMapa,
   NivelZoom,
   Zona,
 } from "../../_fixture/estado-torre";
@@ -55,10 +54,9 @@ export interface PropsMapaZonas {
   capasActivas: CapaMapa[];
   zoom: NivelZoom;
   celdasClima: CeldaClima[];
-  eventosCiudad: EventoCiudad[];
   conductores: ConductorEnMapa[];
-  incidentesTransito: IncidenteTransito[];
   marcasOperativas: MarcaOperativa[];
+  pedidos: PedidoEnMapa[];
   marcando: boolean;
   marcaProvisional: { long: number; lat: number } | null;
   onSeleccionarZona: (zonaId: string) => void;
@@ -118,10 +116,9 @@ export function MapaZonas({
   capasActivas,
   zoom,
   celdasClima,
-  eventosCiudad,
   conductores,
-  incidentesTransito,
   marcasOperativas,
+  pedidos,
   marcando,
   marcaProvisional,
   onSeleccionarZona,
@@ -259,15 +256,7 @@ export function MapaZonas({
 
   // --- Reposicionamiento de la capa HTML ------------------------------------
   const anclas = useMemo<Ancla[]>(() => {
-    const otras: Ancla[] = [
-      ...eventosCiudad.map((e) => ({
-        id: `evento-${e.id}`,
-        long: e.posicion.long,
-        lat: e.posicion.lat,
-        dx: 10,
-        dy: -10,
-      })),
-      ...conductores.map((c) => ({
+    const otras: Ancla[] = [      ...conductores.map((c) => ({
         id: `conductor-${c.id}`,
         long: c.posicion.long,
         lat: c.posicion.lat,
@@ -281,13 +270,6 @@ export function MapaZonas({
         dx: -60,
         dy: -9,
       })),
-      ...incidentesTransito.map((i) => ({
-        id: `transito-${i.id}`,
-        long: i.posicion.long,
-        lat: i.posicion.lat,
-        dx: 10,
-        dy: -8,
-      })),
       ...marcasOperativas.map((m) => ({
         id: `marca-${m.id}`,
         long: m.posicion.long,
@@ -297,7 +279,7 @@ export function MapaZonas({
       })),
     ];
     return [...anclasZonas, ...otras];
-  }, [anclasZonas, eventosCiudad, conductores, celdasClima, incidentesTransito, marcasOperativas]);
+  }, [anclasZonas, conductores, celdasClima, marcasOperativas]);
 
   /**
    * Coloca la capa HTML sobre el lienzo.
@@ -498,13 +480,18 @@ export function MapaZonas({
     );
 
     asignar(
-      IDS_FUENTES.eventos,
+      IDS_FUENTES.pedidos,
       coleccion(
-        eventosCiudad.map((evento) => ({
+        pedidos.map((pedido) => ({
           type: "Feature" as const,
-          id: evento.id,
-          geometry: circuloGeodesico(evento.posicion, evento.radioMetros),
-          properties: { id: evento.id, nombre: evento.nombre },
+          id: pedido.id,
+          geometry: {
+            type: "Point" as const,
+            coordinates: [pedido.posicion.long, pedido.posicion.lat],
+          },
+          // Solo el estado y si está cerrado. Sin dirección: el mapa no la tiene
+          // ni la necesita.
+          properties: { id: pedido.id, estado: pedido.estado, cerrado: pedido.cerrado },
         })),
       ),
     );
@@ -520,21 +507,6 @@ export function MapaZonas({
             coordinates: [conductor.posicion.long, conductor.posicion.lat],
           },
           properties: { id: conductor.id, estado: conductor.estado },
-        })),
-      ),
-    );
-
-    asignar(
-      IDS_FUENTES.transito,
-      coleccion(
-        incidentesTransito.map((incidente) => ({
-          type: "Feature" as const,
-          id: incidente.id,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [incidente.posicion.long, incidente.posicion.lat],
-          },
-          properties: { id: incidente.id, via: incidente.via },
         })),
       ),
     );
@@ -569,10 +541,9 @@ export function MapaZonas({
   }, [
     mapaListo,
     celdasClima,
-    eventosCiudad,
     conductores,
-    incidentesTransito,
     marcasOperativas,
+    pedidos,
     marcaProvisional,
     zonasGeo,
     zonas,
@@ -637,9 +608,7 @@ export function MapaZonas({
     }
     return elegidas;
   }, [celdasClima]);
-  const capaEventosActiva = capasActivas.includes("eventos");
   const capaConductoresActiva = capasActivas.includes("conductores");
-  const capaTransitoActiva = capasActivas.includes("transito");
 
   const registrar = useCallback(
     (id: string) => (nodo: HTMLDivElement | null) => {
@@ -705,25 +674,6 @@ export function MapaZonas({
                 </div>
               ))
           : null}
-
-        {capaEventosActiva
-          ? eventosCiudad.map((evento) => (
-              <div
-                key={evento.id}
-                ref={registrar(`evento-${evento.id}`)}
-                className="absolute top-0 left-0 border border-tc-tinta bg-tc-papel px-1.5 py-1 text-[9.5px] leading-tight text-tc-tinta"
-              >
-                <span className="block font-extrabold">{evento.nombre}</span>
-                <span className="tc-num block text-tc-ink-600">
-                  {evento.recinto}
-                  {evento.asistenciaEstimada
-                    ? ` · ${evento.asistenciaEstimada.toLocaleString("es-CL")}`
-                    : ""}
-                </span>
-              </div>
-            ))
-          : null}
-
         {capaConductoresActiva
           ? conductores.map((conductor) => (
               <div
@@ -743,19 +693,6 @@ export function MapaZonas({
               </div>
             ))
           : null}
-
-        {capaTransitoActiva
-          ? incidentesTransito.map((incidente) => (
-              <div
-                key={incidente.id}
-                ref={registrar(`transito-${incidente.id}`)}
-                className="absolute top-0 left-0 bg-[rgba(243,242,242,.88)] px-1 text-[9.5px] font-semibold text-tc-tinta"
-              >
-                {incidente.via}
-              </div>
-            ))
-          : null}
-
         {marcasOperativas.map((marca) => (
           <div
             key={marca.id}

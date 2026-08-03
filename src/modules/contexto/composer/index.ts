@@ -70,6 +70,7 @@ import {
   obtenerEntregados,
   obtenerFrescuraFuentes,
   obtenerMarcasOperativas,
+  obtenerPedidosUbicados,
   obtenerNombresDeUsuarios,
   obtenerPedidosPendientes,
   obtenerRiesgoZona,
@@ -91,9 +92,9 @@ import {
   armarCapas,
   armarCeldasClima,
   armarConductores,
-  armarEventosCiudad,
   armarFrescura,
   armarMarcasOperativas,
+  armarPedidosEnMapa,
   armarPronosticoAire,
   armarRestricciones,
   armarTimeline,
@@ -101,7 +102,6 @@ import {
 import {
   armarExcepciones,
   armarMetricas,
-  armarSenales,
   etiquetaPedidosDeHorizonte,
   fechaDeHorizonte,
   resolverEstadoPantalla,
@@ -195,7 +195,7 @@ export const cargarTablero = cache(async function cargarTablero(
     conteos,
     externo,
     marcasFilas,
-    senalesFilas,
+    pedidosUbicadosFilas,
     entregadosFilas,
     pendientesFilas,
     tarifasFilas,
@@ -217,7 +217,7 @@ export const cargarTablero = cache(async function cargarTablero(
       obtenerConteosPedidos(tenantId, fechaBase),
       obtenerContextoExterno(comunasDelTenant.join(','), fechaBase, fechaUltima),
       obtenerMarcasOperativas(tenantId, fechaBase, fechaUltima),
-      obtenerSenalesDelTenant(tenantId, fechaUltima),
+      obtenerPedidosUbicados(tenantId, fechaBase, fechaUltima),
       obtenerEntregados(tenantId, fechaBase, fechaUltima),
       obtenerPedidosPendientes(tenantId, fechaBase, fechaUltima),
       obtenerTarifas(tenantId),
@@ -288,11 +288,8 @@ export const cargarTablero = cache(async function cargarTablero(
   const pronosticoAire = armarPronosticoAire(externo.aire, fechaBase);
   const restricciones = armarRestricciones(externo.restricciones);
   const marcasOperativas = armarMarcasOperativas(marcasFilas, nombresAutores);
-  const senales = armarSenales(
-    senalesFilas,
-    zonaIdsValidos,
-    limitesDelDiaSantiago(fechaBase).desde.toISOString(),
-  );
+  // Nivel 3 del mapa. Solo punto y estado — la dirección no entra al payload.
+  const pedidosEnMapa = armarPedidosEnMapa(pedidosUbicadosFilas, comunaAZona);
 
   const motivoSinCalculo = tieneZonasPropias ? MOTIVO_SIN_CALCULO_JOB : MOTIVO_SIN_CALCULO_ZONAS;
 
@@ -432,19 +429,16 @@ export const cargarTablero = cache(async function cargarTablero(
     });
 
     const celdasClima = armarCeldasClima(externo.clima, comunaAZona, fecha);
-    const eventosCiudad = armarEventosCiudad(externo.eventos, fecha);
     const { timeline, rangoTimeline } = armarTimeline({
       fecha,
       zonas: zonasDelHorizonte,
       celdasClima,
-      eventosCiudad,
       restricciones,
     });
 
     const excepciones = armarExcepciones({
       zonas: zonasDelHorizonte,
       riesgo: riesgoDelDia,
-      senales,
       pronosticoAire,
       fecha,
       ahoraIso,
@@ -479,7 +473,6 @@ export const cargarTablero = cache(async function cargarTablero(
       metricas,
       zonas: zonasDelHorizonte,
       excepciones,
-      senales,
       // `null` cuando no hay ola a la vista dentro del horizonte, o cuando el
       // courier no tiene todavía historia con la que fijar su línea base. R2 ya
       // sabe no dibujarse en ese caso.
@@ -489,15 +482,12 @@ export const cargarTablero = cache(async function cargarTablero(
       capas: armarCapas({
         frescura: cabecera.frescura,
         hayClima: celdasClima.length > 0,
-        hayEventos: eventosCiudad.length > 0,
         hayConductores: conductoresEnMapa.length > 0,
       }),
       frescura: cabecera.frescura,
       conductores: conductoresEnMapa,
-      eventosCiudad,
       celdasClima,
-      // Tránsito es F2 (TomTom). Misma regla: capa declarada, lista vacía.
-      incidentesTransito: [],
+      pedidos: pedidosEnMapa,
       marcasOperativas,
       pronosticoAire,
       restricciones,

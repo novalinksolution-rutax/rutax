@@ -42,8 +42,10 @@ import {
 import {
   puedeVerReportesEjecutivos,
   puedeVerConciliacion,
+  puedeVerTorreControl,
 } from "@/modules/identidad/capacidades";
 import { WidgetSlaPorSeller, TiraCortesSeller } from "./widget-sla";
+import { BandaTorre, EsqueletoBandaTorre } from "./banda-torre";
 import {
   FranjaAnaliticaFinanciera,
   type DatosAnaliticaFinanciera,
@@ -273,6 +275,11 @@ export default async function PaginaDashboard() {
           ]}
         />
       </div>
+      {puedeVerTorreControl(sesion.usuario) ? (
+        <Suspense fallback={<EsqueletoBandaTorre />}>
+          <BandaTorre tenantId={tenantId} />
+        </Suspense>
+      ) : null}
       <Suspense fallback={<EsqueletoOperativa />}>
         <SeccionOperativa tenantId={tenantId} puedeVerAnalitica={puedeVerAnalitica} />
       </Suspense>

@@ -55,7 +55,6 @@ const TRANQUILO: EstadoTorre = {
   excepciones: [],
   // Las señales sin impacto siguen existiendo (viven colapsadas en el riel);
   // las que afectan la operación, no — si afectaran, no estaríamos tranquilos.
-  senales: ESTADO_TORRE.senales.filter((s) => !s.afectaOperacion),
   timeline: ESTADO_TORRE.timeline.filter((b) => b.tipo !== "corte_en_riesgo"),
 };
 
@@ -65,13 +64,13 @@ const DEGRADADO: EstadoTorre = {
   // §8: en `degradado` la fuente de tránsito se marca CAÍDA con `✕`, no
   // atrasada. El resto del tablero opera con normalidad.
   frescura: ESTADO_TORRE.frescura.map((f) =>
-    f.id === "transito"
-      ? { ...f, estado: "caida" as const, motivo: "El proveedor no responde desde las 08:36." }
+    f.id === "clima"
+      ? { ...f, estado: "caida" as const, motivo: "El proveedor de clima no responde desde las 08:36." }
       : f,
   ),
   capas: ESTADO_TORRE.capas.map((c) =>
-    c.id === "transito"
-      ? { ...c, activa: false, disponible: false, motivoNoDisponible: "La fuente de tránsito está caída." }
+    c.id === "clima"
+      ? { ...c, activa: false, disponible: false, motivoNoDisponible: "La fuente de clima está caída." }
       : c,
   ),
 };
@@ -100,7 +99,6 @@ const SIN_PEDIDOS: EstadoTorre = {
   estado: "sin_pedidos",
   metricas: [],
   excepciones: [],
-  senales: [],
   timeline: [],
   zonas: ESTADO_TORRE.zonas.map((z) => ({
     ...z,

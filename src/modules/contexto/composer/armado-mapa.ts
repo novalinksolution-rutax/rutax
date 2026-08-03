@@ -6,11 +6,12 @@
  *
  * Las tres decisiones que hay que entender antes de tocar este archivo:
  *
- * 1. **Lo que no existe se declara, no se finge.** Tránsito (F2) no tiene dato
- *    todavía, y la flota en vivo solo lo tiene cuando alguien está reportando
- *    posición: sus capas salen `disponible: false` CON MOTIVO, no vacías y
- *    encendibles. Una capa que se puede prender y no dibuja nada es peor que una
- *    capa bloqueada que explica por qué.
+ * 1. **Lo que no existe se declara, no se finge — y lo que no va a existir se
+ *    retira.** La flota en vivo solo tiene dato cuando alguien está reportando
+ *    posición: su capa sale `disponible: false` CON MOTIVO, no vacía y
+ *    encendible. Tránsito y eventos de ciudad, en cambio, ya no vuelven (uno
+ *    fuera de alcance, el otro sin fuente): esas capas se retiraron del
+ *    contrato en vez de quedar declaradas para siempre.
  *
  * 2. **Las celdas de lluvia se derivan de la comuna, con un radio que sale de
  *    la geografía y no de un número bonito.** El contrato ya declara la celda
@@ -35,9 +36,9 @@ import type {
   CeldaClima,
   ConductorEnMapa,
   EstadoCapa,
-  EventoCiudad,
   FrescuraFuente,
   MarcaOperativa,
+  PedidoEnMapa,
   NivelAire,
   PronosticoAire,
   RestriccionVehicular,
@@ -47,9 +48,9 @@ import type {
 import type {
   FilaAireHorario,
   FilaClimaHorario,
-  FilaEventoCiudad,
   FilaFuenteEstado,
   FilaMarcaOperativa,
+  FilaPedidoUbicado,
   FilaRestriccion,
 } from './consultas';
 
@@ -121,25 +122,28 @@ interface EntradaCapas {
   frescura: readonly FrescuraFuente[];
   /** false cuando no hay ni una celda de lluvia que dibujar en el horizonte. */
   hayClima: boolean;
-  hayEventos: boolean;
   /** false cuando ningún conductor está reportando posición. */
   hayConductores: boolean;
 }
 
 /**
- * Las ocho capas con su disponibilidad resuelta.
+ * Las seis capas con su disponibilidad resuelta.
  *
  * Una fuente `caida` bloquea su capa; una `atrasada` NO la bloquea —el dato
  * viejo sigue siendo dato, y la barra superior ya muestra su edad—, salvo que el
  * propio motivo diga otra cosa. La capa `pedidos` sale disponible desde aquí: es
  * R3 quien la bloquea, porque su motivo depende del proveedor de geocoding que
  * corra en el entorno, no del dataset.
+ *
+ * Eran ocho: `transito` y `eventos` se retiraron. Tránsito quedó fuera de
+ * alcance y eventos se quedó sin fuente. Una capa permanentemente vacía no es
+ * "honestidad por declaración": es un control que nunca hace nada.
  */
 export function armarCapas(entrada: EntradaCapas): EstadoCapa[] {
   const porId = new Map(entrada.frescura.map((f) => [f.id, f]));
 
   function desdeFuente(
-    id: 'clima' | 'aire' | 'transito' | 'eventos',
+    id: 'clima' | 'aire',
     hayDato: boolean,
     sinDato: string,
   ): { disponible: boolean; motivo: string | null } {
@@ -153,15 +157,11 @@ export function armarCapas(entrada: EntradaCapas): EstadoCapa[] {
 
   const clima = desdeFuente('clima', entrada.hayClima, 'Sin precipitación pronosticada en este horizonte.');
   const aire = desdeFuente('aire', true, '');
-  const transito = desdeFuente('transito', false, 'La capa de tránsito se habilita en una entrega posterior.');
-  const eventos = desdeFuente('eventos', entrada.hayEventos, 'Sin eventos de ciudad en este horizonte.');
 
   return [
     { id: 'riesgo', etiqueta: 'Riesgo', activa: true, disponible: true, motivoNoDisponible: null },
     { id: 'clima', etiqueta: 'Lluvia', activa: clima.disponible, disponible: clima.disponible, motivoNoDisponible: clima.motivo },
     { id: 'aire', etiqueta: 'Aire', activa: false, disponible: aire.disponible, motivoNoDisponible: aire.motivo },
-    { id: 'transito', etiqueta: 'Tránsito', activa: false, disponible: transito.disponible, motivoNoDisponible: transito.motivo },
-    { id: 'eventos', etiqueta: 'Eventos', activa: false, disponible: eventos.disponible, motivoNoDisponible: eventos.motivo },
     {
       id: 'conductores',
       etiqueta: 'Conductores',
@@ -356,48 +356,13 @@ export function armarRestricciones(filas: readonly FilaRestriccion[]): Restricci
       tipo: fila.tipo,
       digitos: fila.digitos ?? [],
       alcance: fila.alcance,
-      vehiculosAfectados: null,
     }))
     .sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
 // =============================================================================
-// Eventos de ciudad y marcas operativas
+// Marcas operativas
 // =============================================================================
-
-/** Eventos cuya ventana toca la fecha del horizonte. */
-export function armarEventosCiudad(
-  filas: readonly FilaEventoCiudad[],
-  fecha: string,
-): EventoCiudad[] {
-  const eventos: EventoCiudad[] = [];
-
-  for (const fila of filas) {
-    const inicio = new Date(fila.ventana_inicio);
-    if (Number.isNaN(inicio.getTime())) continue;
-    const fin = fila.ventana_fin ? new Date(fila.ventana_fin) : null;
-
-    const fechaInicio = fechaLocalEnSantiago(inicio);
-    const fechaFin = fin && !Number.isNaN(fin.getTime()) ? fechaLocalEnSantiago(fin) : null;
-    if (fechaInicio > fecha) continue;
-    if (fechaFin !== null && fechaFin < fecha) continue;
-
-    eventos.push({
-      id: fila.id,
-      nombre: fila.nombre,
-      tipo: fila.tipo,
-      recinto: fila.recinto,
-      comuna: fila.comuna,
-      posicion: { lat: fila.lat, long: fila.long },
-      radioMetros: fila.radio_m,
-      ventana: { inicio: inicio.toISOString(), fin: fin ? fin.toISOString() : null },
-      asistenciaEstimada: fila.asistencia_estimada,
-      fuente: fila.fuente,
-    });
-  }
-
-  return eventos;
-}
 
 /**
  * Marcas del coordinador, con el autor resuelto a nombre.
@@ -511,7 +476,6 @@ export interface EntradaTimeline {
   fecha: string;
   zonas: readonly Zona[];
   celdasClima: readonly CeldaClima[];
-  eventosCiudad: readonly EventoCiudad[];
   restricciones: readonly RestriccionVehicular[];
 }
 
@@ -590,17 +554,6 @@ export function armarTimeline(entrada: EntradaTimeline): {
     });
   }
 
-  for (const evento of entrada.eventosCiudad) {
-    candidatos.push({
-      id: `tl-evento-${evento.id}`,
-      tipo: 'evento',
-      etiqueta: evento.nombre,
-      inicio: evento.ventana.inicio,
-      fin: evento.ventana.fin ?? rangoFin,
-      zonaId: null,
-    });
-  }
-
   // Solo la restricción EXTRAORDINARIA entra a la franja: la permanente del GEC
   // rige todos los días hábiles y pintarla a diario sería ruido, no señal.
   const extraordinaria = entrada.restricciones.find(
@@ -662,4 +615,53 @@ function asignarCarriles(bloques: readonly Omit<BloqueTimeline, 'carril'>[]): Bl
   }
 
   return salida;
+}
+
+// =============================================================================
+// Pedidos ubicados (nivel 3 del mapa)
+// =============================================================================
+
+/**
+ * Estados en los que el pedido ya no está en juego. Se dibujan igual —el
+ * coordinador quiere ver lo entregado— pero apagados, para que el ojo se vaya
+ * a lo que falta.
+ */
+const ESTADOS_CERRADOS = new Set([
+  'entregado',
+  'entregado_manual',
+  'fallido',
+  'fallido_manual',
+  'cancelado',
+  'devuelto',
+]);
+
+/**
+ * `PedidoEnMapa[]` a partir de los pedidos con coordenada resuelta.
+ *
+ * ⚠️ Solo salen el punto y el estado. La dirección y el nombre del destinatario
+ * NO entran al payload de la Torre — ver la nota de `PedidoEnMapa` en el
+ * contrato. La comuna se usa aquí y se descarta: sirve para atribuir el pedido a
+ * su zona, no para mostrarla.
+ */
+export function armarPedidosEnMapa(
+  filas: readonly FilaPedidoUbicado[],
+  comunaAZona: ReadonlyMap<string, string>,
+): PedidoEnMapa[] {
+  const pedidos: PedidoEnMapa[] = [];
+
+  for (const fila of filas) {
+    if (typeof fila.lat !== 'number' || typeof fila.long !== 'number') continue;
+    if (!Number.isFinite(fila.lat) || !Number.isFinite(fila.long)) continue;
+
+    const clave = fila.destinatario_comuna ? normalizarComuna(fila.destinatario_comuna) : null;
+    pedidos.push({
+      id: fila.id,
+      posicion: { lat: fila.lat, long: fila.long },
+      estado: fila.estado,
+      cerrado: ESTADOS_CERRADOS.has(fila.estado),
+      zonaId: clave ? (comunaAZona.get(clave) ?? null) : null,
+    });
+  }
+
+  return pedidos;
 }

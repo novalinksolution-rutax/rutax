@@ -28,7 +28,7 @@ export const FRANJAS: readonly Franja[] = ['manana', 'tarde', 'punta'];
 
 /**
  * Horizonte temporal que gobierna el recálculo de riesgo. Subconjunto del
- * `Horizonte` del contrato congelado (ese además incluye `'olas'`, que no es
+ * `Horizonte` del contrato (que desde la fusión de `'olas'` con `'72h'` no es
  * un horizonte del motor de riesgo — es la proyección de volumen del
  * calendario comercial, §12, con su propio mecanismo).
  */

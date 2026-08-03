@@ -3,40 +3,26 @@ import type {
   EstadoPantalla,
   MetricaResumen,
   OlaEntrante,
-  Senal,
   Zona,
 } from "../../_fixture/estado-torre";
 import { Metricas } from "./metricas";
 import { FichaExcepcion } from "./ficha-excepcion";
-import { FichaSenal } from "./ficha-senal";
 import { DesgloseZona } from "./desglose-zona";
 import { numeroTorre } from "../../_lib/formato";
 import { fechaCortaSantiago } from "../../_lib/tiempo";
-import { FOCO_ANILLO } from "../../_lib/estilos";
 
 interface Props {
   estado: EstadoPantalla;
   metricas: MetricaResumen[];
   excepciones: Excepcion[];
-  descartadas: string[];
   zonas: Zona[];
   zonaSeleccionada: string | null;
   factorAbierto: string | null;
-  senales: Senal[];
   olaEntrante: OlaEntrante | null;
   ahoraIso: string;
-  confirmando: string | null;
-  fuentesAbiertas: boolean;
-  otrasAbiertas: boolean;
   onSeleccionarZona: (zonaId: string) => void;
   onCerrarDesglose: () => void;
   onAbrirFactor: (factorId: string) => void;
-  onPedirConfirmacion: (accionId: string) => void;
-  onCancelarConfirmacion: () => void;
-  onConfirmarAccion: (accionId: string) => void;
-  onDescartarExcepcion: (excepcionId: string) => void;
-  onAlternarFuentes: () => void;
-  onAlternarOtras: () => void;
 }
 
 /**
@@ -51,31 +37,17 @@ export function Riel(props: Props) {
     estado,
     metricas,
     excepciones,
-    descartadas,
     zonas,
     zonaSeleccionada,
     factorAbierto,
-    senales,
     olaEntrante,
     ahoraIso,
-    confirmando,
-    fuentesAbiertas,
-    otrasAbiertas,
     onSeleccionarZona,
     onCerrarDesglose,
     onAbrirFactor,
-    onPedirConfirmacion,
-    onCancelarConfirmacion,
-    onConfirmarAccion,
-    onDescartarExcepcion,
-    onAlternarFuentes,
-    onAlternarOtras,
   } = props;
 
   const zonaActiva = zonaSeleccionada ? zonas.find((z) => z.id === zonaSeleccionada) ?? null : null;
-  const excepcionesVisibles = excepciones.filter((e) => !descartadas.includes(e.id));
-  const directas = senales.filter((s) => s.afectaOperacion && s.pedidosEnRango > 0);
-  const colapsadas = senales.filter((s) => !(s.afectaOperacion && s.pedidosEnRango > 0));
 
   if (estado === "sin_pedidos") {
     return (
@@ -113,7 +85,7 @@ export function Riel(props: Props) {
           onCerrar={onCerrarDesglose}
           onAbrirFactor={onAbrirFactor}
         />
-      ) : excepcionesVisibles.length === 0 ? (
+      ) : excepciones.length === 0 ? (
         <p className="px-3.5 py-4 text-[12px] text-tc-ink-700">
           Sin excepciones abiertas. El riel se queda vacío a propósito.
         </p>
@@ -122,64 +94,18 @@ export function Riel(props: Props) {
           <p className="px-3.5 pt-3 pb-1 text-[9px] font-extrabold tracking-[0.13em] text-tc-ink-600 uppercase">
             Excepciones · ordenadas por severidad
           </p>
-          {excepcionesVisibles.map((excepcion) => (
+          {excepciones.map((excepcion) => (
             <FichaExcepcion
               key={excepcion.id}
               excepcion={excepcion}
               zonaNombre={zonas.find((z) => z.id === excepcion.zonaId)?.nombre ?? null}
               ahoraIso={ahoraIso}
-              confirmando={confirmando}
               onSeleccionarZona={onSeleccionarZona}
-              onPedirConfirmacion={onPedirConfirmacion}
-              onCancelarConfirmacion={onCancelarConfirmacion}
-              onConfirmarAccion={onConfirmarAccion}
-              onDescartar={() => onDescartarExcepcion(excepcion.id)}
             />
           ))}
         </div>
       )}
 
-      {senales.length > 0 ? (
-        <div className="mt-2 border-t-2 border-tc-chasis">
-          <p className="px-3.5 pt-3 pb-1 text-[9px] font-extrabold tracking-[0.13em] text-tc-ink-600 uppercase">
-            Señales de prensa
-          </p>
-          {directas.map((senal) => (
-            <FichaSenal
-              key={senal.id}
-              senal={senal}
-              ahoraIso={ahoraIso}
-              fuentesAbiertas={fuentesAbiertas}
-              onAlternarFuentes={onAlternarFuentes}
-            />
-          ))}
-
-          {colapsadas.length > 0 ? (
-            <div className="border-t border-tc-ink-300">
-              <button
-                type="button"
-                onClick={onAlternarOtras}
-                aria-expanded={otrasAbiertas}
-                className={`w-full px-3.5 py-2.5 text-left text-[11px] font-semibold text-tc-ink-700 hover:bg-tc-inserto ${FOCO_ANILLO}`}
-              >
-                {colapsadas.length} señal{colapsadas.length === 1 ? "" : "es"} más sin impacto en tu
-                operación →
-              </button>
-              {otrasAbiertas
-                ? colapsadas.map((senal) => (
-                    <FichaSenal
-                      key={senal.id}
-                      senal={senal}
-                      ahoraIso={ahoraIso}
-                      fuentesAbiertas={fuentesAbiertas}
-                      onAlternarFuentes={onAlternarFuentes}
-                    />
-                  ))
-                : null}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

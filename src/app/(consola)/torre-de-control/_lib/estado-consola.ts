@@ -32,19 +32,10 @@ export interface EstadoConsola {
   zoom: NivelZoom;
   /** equivalente sin mapa (regla de producto 7); `L` lo conmuta con el mapa. */
   lista: boolean;
-  paleta: boolean;
   filtro: string;
-  /** id de acción esperando confirmación en el sitio. */
-  confirmando: string | null;
-  /** ids de excepción ocultas (optimista; el POST de descarte va detrás). */
-  descartadas: string[];
   marcando: boolean;
   /** Coordenadas geográficas, no de pantalla — ver cabecera. */
   marcaProv: { long: number; lat: number } | null;
-  /** desplegables del bloque de prensa: "ver fuentes" de la señal principal. */
-  senal: boolean;
-  /** desplegable de "señales sin impacto" (secundarias). */
-  otras: boolean;
 }
 
 export const ESTADO_CONSOLA_INICIAL: EstadoConsola = {
@@ -54,14 +45,9 @@ export const ESTADO_CONSOLA_INICIAL: EstadoConsola = {
   capas: ["riesgo", "clima"],
   zoom: "zonas",
   lista: false,
-  paleta: false,
   filtro: "",
-  confirmando: null,
-  descartadas: [],
   marcando: false,
   marcaProv: null,
-  senal: false,
-  otras: false,
 };
 
 export type AccionConsola =
@@ -73,18 +59,10 @@ export type AccionConsola =
   | { tipo: "alternar-capa"; capa: CapaMapa }
   | { tipo: "cambiar-zoom"; zoom: NivelZoom }
   | { tipo: "alternar-lista" }
-  | { tipo: "abrir-paleta" }
-  | { tipo: "cerrar-paleta" }
   | { tipo: "cambiar-filtro"; filtro: string }
-  | { tipo: "pedir-confirmacion"; accionId: string }
-  | { tipo: "cancelar-confirmacion" }
-  | { tipo: "confirmar-accion" }
-  | { tipo: "descartar-excepcion"; excepcionId: string }
   | { tipo: "activar-modo-marca" }
   | { tipo: "cancelar-modo-marca" }
   | { tipo: "colocar-marca-provisional"; long: number; lat: number }
-  | { tipo: "alternar-fuentes-senal" }
-  | { tipo: "alternar-otras-senales" }
   | { tipo: "escape" };
 
 export function reducirConsola(estado: EstadoConsola, accion: AccionConsola): EstadoConsola {
@@ -126,26 +104,8 @@ export function reducirConsola(estado: EstadoConsola, accion: AccionConsola): Es
     case "alternar-lista":
       return { ...estado, lista: !estado.lista };
 
-    case "abrir-paleta":
-      return { ...estado, paleta: true, filtro: "" };
-
-    case "cerrar-paleta":
-      return { ...estado, paleta: false, filtro: "" };
-
     case "cambiar-filtro":
       return { ...estado, filtro: accion.filtro };
-
-    case "pedir-confirmacion":
-      return { ...estado, confirmando: accion.accionId };
-
-    case "cancelar-confirmacion":
-      return { ...estado, confirmando: null };
-
-    case "confirmar-accion":
-      return { ...estado, confirmando: null };
-
-    case "descartar-excepcion":
-      return { ...estado, descartadas: [...estado.descartadas, accion.excepcionId] };
 
     case "activar-modo-marca":
       return { ...estado, marcando: true };
@@ -156,16 +116,8 @@ export function reducirConsola(estado: EstadoConsola, accion: AccionConsola): Es
     case "colocar-marca-provisional":
       return { ...estado, marcaProv: { long: accion.long, lat: accion.lat } };
 
-    case "alternar-fuentes-senal":
-      return { ...estado, senal: !estado.senal };
-
-    case "alternar-otras-senales":
-      return { ...estado, otras: !estado.otras };
-
     case "escape":
-      if (estado.paleta) return { ...estado, paleta: false, filtro: "" };
       if (estado.marcando) return { ...estado, marcando: false, marcaProv: null };
-      if (estado.confirmando) return { ...estado, confirmando: null };
       if (estado.factor) return { ...estado, factor: null };
       if (estado.zona) return { ...estado, zona: null, factor: null };
       return estado;

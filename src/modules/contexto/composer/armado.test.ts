@@ -12,6 +12,7 @@
  * de estas pruebas llevan ese offset explícito, nunca `Z`.
  */
 
+import { normalizarComuna } from '@/modules/integraciones/geocoding/normalizacion';
 import { describe, expect, it } from 'vitest';
 import { COMUNAS_RM } from '@/lib/ui/comunas-rm';
 import { MACRO_ZONAS_RM } from '../macro-zonas-rm';
@@ -34,6 +35,7 @@ import {
   armarFrescura,
   armarPronosticoAire,
   armarRestricciones,
+  armarPedidosEnMapa,
   armarTimeline,
   instanteSantiago,
   radioDeComuna,
@@ -374,7 +376,6 @@ describe('armarCapas', () => {
     const capas = armarCapas({
       frescura: [frescura('caida', 'clima')],
       hayClima: true,
-      hayEventos: true,
       hayConductores: false,
     });
     const clima = capas.find((c) => c.id === 'clima')!;
@@ -387,7 +388,6 @@ describe('armarCapas', () => {
     const capas = armarCapas({
       frescura: [frescura('atrasada', 'clima')],
       hayClima: true,
-      hayEventos: true,
       hayConductores: false,
     });
     expect(capas.find((c) => c.id === 'clima')!.disponible).toBe(true);
@@ -397,33 +397,32 @@ describe('armarCapas', () => {
     const capas = armarCapas({
       frescura: [frescura('ok', 'clima')],
       hayClima: false,
-      hayEventos: false,
       hayConductores: false,
     });
     expect(capas.find((c) => c.id === 'clima')!.disponible).toBe(false);
     expect(capas.find((c) => c.id === 'clima')!.motivoNoDisponible).toMatch(/Sin precipitación/);
   });
 
-  it('tránsito se declara no disponible, no vacío', () => {
-    const capas = armarCapas({ frescura: [], hayClima: true, hayEventos: true, hayConductores: true });
-    expect(capas.find((c) => c.id === 'transito')!.disponible).toBe(false);
-    expect(capas.find((c) => c.id === 'transito')!.motivoNoDisponible).toBeTruthy();
+  it('las capas retiradas ya no aparecen: tránsito y eventos salieron del contrato', () => {
+    const ids = armarCapas({ frescura: [], hayClima: true, hayConductores: true }).map((c) => c.id);
+    expect(ids).not.toContain('transito');
+    expect(ids).not.toContain('eventos');
   });
 
   it('la capa de conductores sigue el dato: se bloquea solo si nadie reporta', () => {
-    const sinFlota = armarCapas({ frescura: [], hayClima: true, hayEventos: true, hayConductores: false });
+    const sinFlota = armarCapas({ frescura: [], hayClima: true, hayConductores: false });
     expect(sinFlota.find((c) => c.id === 'conductores')!.disponible).toBe(false);
     expect(sinFlota.find((c) => c.id === 'conductores')!.motivoNoDisponible).toBeTruthy();
 
-    const conFlota = armarCapas({ frescura: [], hayClima: true, hayEventos: true, hayConductores: true });
+    const conFlota = armarCapas({ frescura: [], hayClima: true, hayConductores: true });
     expect(conFlota.find((c) => c.id === 'conductores')!.disponible).toBe(true);
     expect(conFlota.find((c) => c.id === 'conductores')!.motivoNoDisponible).toBeNull();
   });
 
-  it('deja las ocho capas del contrato, ninguna de menos', () => {
+  it('deja las seis capas del contrato, ninguna de menos', () => {
     expect(
-      armarCapas({ frescura: [], hayClima: true, hayEventos: true, hayConductores: true }),
-    ).toHaveLength(8);
+      armarCapas({ frescura: [], hayClima: true, hayConductores: true }),
+    ).toHaveLength(6);
   });
 });
 
@@ -599,11 +598,21 @@ describe('armarPronosticoAire', () => {
 });
 
 describe('armarRestricciones', () => {
-  it('deja `vehiculosAfectados` en null: el modelo no guarda patentes', () => {
-    const [restriccion] = armarRestricciones([
+  it('ordena por fecha y pasa los dígitos tal cual', () => {
+    const restricciones = armarRestricciones([
       { fecha: '2026-07-27', tipo: 'preemergencia', digitos: [2, 3], alcance: 'Sin sello verde' },
+      { fecha: '2026-07-25', tipo: 'permanente', digitos: [6, 7], alcance: 'Provincia de Santiago' },
     ]);
-    expect(restriccion.vehiculosAfectados).toBeNull();
+    expect(restricciones.map((r) => r.fecha)).toEqual(['2026-07-25', '2026-07-27']);
+    expect(restricciones[0].digitos).toEqual([6, 7]);
+  });
+
+  it('conserva el alcance textual: es lo único que ubica la restricción', () => {
+    const [restriccion] = armarRestricciones([
+      { fecha: '2026-07-25', tipo: 'permanente', digitos: [], alcance: 'Dentro de Américo Vespucio' },
+    ]);
+    expect(restriccion.alcance).toBe('Dentro de Américo Vespucio');
+    expect(restriccion.digitos).toEqual([]);
   });
 });
 
@@ -635,16 +644,8 @@ describe('armarTimeline', () => {
   const base = {
     fecha: '2026-07-25',
     celdasClima: [],
-    eventosCiudad: [],
     restricciones: [],
   };
-
-  it('la ventana de reparto se queda con el carril 0', () => {
-    const { timeline } = armarTimeline({ ...base, zonas: [zonaDePrueba()] });
-    const reparto = timeline.find((b) => b.tipo === 'ventana_reparto')!;
-    expect(reparto.carril).toBe(0);
-    expect(timeline.filter((b) => b.carril === 0)).toHaveLength(1);
-  });
 
   it('un corte sin pedidos pendientes no entra: no hay nada que dependa de él', () => {
     const { timeline } = armarTimeline({
@@ -692,30 +693,27 @@ describe('armarTimeline', () => {
     expect(clima.carril).toBeGreaterThan(0);
   });
 
-  it('recorta lo que desborda la jornada y descarta lo que cae entero fuera', () => {
+  it('recorta lo que desborda la jornada', () => {
     const { timeline, rangoTimeline } = armarTimeline({
       ...base,
       zonas: [zonaDePrueba()],
-      eventosCiudad: [
+      celdasClima: [
         {
-          id: 'ev-1',
-          nombre: 'Partido nocturno',
-          tipo: 'deportivo',
-          recinto: 'Estadio Nacional',
-          comuna: 'Ñuñoa',
-          posicion: { lat: -33.46, long: -70.61 },
-          radioMetros: 1800,
+          id: 'c-nocturna',
+          tipo: 'lluvia',
+          centro: { lat: -33.46, long: -70.61 },
+          radioMetros: 5000,
+          intensidadMmHora: 6,
           ventana: {
             inicio: instanteSantiago('2026-07-25', '20:00'),
             fin: instanteSantiago('2026-07-25', '23:30'),
           },
-          asistenciaEstimada: 45000,
-          fuente: 'Calendario',
+          zonasAfectadas: ['zona-1'],
         },
       ],
     });
-    const evento = timeline.find((b) => b.tipo === 'evento')!;
-    expect(evento.fin).toBe(rangoTimeline.fin);
+    const clima = timeline.find((b) => b.tipo === 'clima')!;
+    expect(clima.fin).toBe(rangoTimeline.fin);
     expect(rangoTimeline.inicio).toBe(instanteSantiago('2026-07-25', '08:00'));
   });
 
@@ -724,7 +722,7 @@ describe('armarTimeline', () => {
       ...base,
       zonas: [zonaDePrueba()],
       restricciones: [
-        { fecha: '2026-07-25', tipo: 'permanente', digitos: [6, 7], alcance: '', vehiculosAfectados: null },
+        { fecha: '2026-07-25', tipo: 'permanente', digitos: [6, 7], alcance: '' },
       ],
     }).timeline;
     expect(permanente.some((b) => b.tipo === 'restriccion')).toBe(false);
@@ -733,7 +731,7 @@ describe('armarTimeline', () => {
       ...base,
       zonas: [zonaDePrueba()],
       restricciones: [
-        { fecha: '2026-07-25', tipo: 'preemergencia', digitos: [2, 3], alcance: '', vehiculosAfectados: null },
+        { fecha: '2026-07-25', tipo: 'preemergencia', digitos: [2, 3], alcance: '' },
       ],
     }).timeline;
     expect(preemergencia.some((b) => b.tipo === 'restriccion')).toBe(true);
@@ -852,8 +850,8 @@ describe('armarExcepciones', () => {
     const [excepcion] = armarExcepciones({ ...comun, zonas: [zonaDePrueba()] });
     expect(excepcion.acciones).toHaveLength(1);
     expect(excepcion.acciones[0].etiqueta).toMatch(/^Ver los \d+ pedidos$/);
-    // Ninguna acción con confirmación: hoy no ejecutan nada contra el backend.
-    expect(excepcion.acciones.every((a) => !a.requiereConfirmacion)).toBe(true);
+    // Solo se emiten acciones que HACEN algo: esta es un enlace real.
+    expect(excepcion.acciones[0].descripcion).toBeTruthy();
   });
 
   it('un episodio de aire genera una excepción SIN zona: no es de una zona, es de la ciudad', () => {
@@ -963,5 +961,73 @@ describe('resolverEstadoPantalla', () => {
         frescura: frescuraOk,
       }),
     ).toBe('tranquilo');
+  });
+});
+
+// =============================================================================
+// armarPedidosEnMapa — nivel 3, con minimización de dato personal
+// =============================================================================
+
+describe('armarPedidosEnMapa', () => {
+  // Se construye con la MISMA función que usa producción: inventar la clave a
+  // mano hacía pasar el test con un formato que el composer no genera.
+  const comunaAZona = new Map([[normalizarComuna('Las Condes'), 'z-oriente']]);
+
+  function fila(over = {}) {
+    return {
+      id: 'p-1',
+      lat: -33.41,
+      long: -70.57,
+      estado: 'en_ruta',
+      destinatario_comuna: 'Las Condes',
+      ...over,
+    };
+  }
+
+  it('ubica el pedido y lo atribuye a su zona por comuna', () => {
+    const [p] = armarPedidosEnMapa([fila()], comunaAZona);
+    expect(p.posicion).toEqual({ lat: -33.41, long: -70.57 });
+    expect(p.zonaId).toBe('z-oriente');
+    expect(p.estado).toBe('en_ruta');
+    expect(p.cerrado).toBe(false);
+  });
+
+  /**
+   * El borde que de verdad importa: el payload de la Torre NO puede llevar el
+   * domicilio ni el nombre del destinatario. Si alguien añade un campo al
+   * `select` y lo pasa al tipo, este test lo caza.
+   */
+  it('NO expone dirección ni nombre del destinatario', () => {
+    const [p] = armarPedidosEnMapa(
+      [fila({ destinatario_direccion: 'Av. Siempre Viva 742', destinatario_nombre: 'Juana Pérez' })],
+      comunaAZona,
+    );
+    expect(Object.keys(p).sort()).toEqual(['cerrado', 'estado', 'id', 'posicion', 'zonaId']);
+    expect(JSON.stringify(p)).not.toContain('Siempre Viva');
+    expect(JSON.stringify(p)).not.toContain('Juana');
+  });
+
+  it('marca cerrado los estados terminales', () => {
+    const estados = ['entregado', 'fallido', 'cancelado', 'devuelto'];
+    for (const estado of estados) {
+      const [p] = armarPedidosEnMapa([fila({ estado })], comunaAZona);
+      expect(p.cerrado, estado).toBe(true);
+    }
+  });
+
+  it('descarta coordenadas no finitas en vez de pintarlas en el vacío', () => {
+    expect(armarPedidosEnMapa([fila({ lat: NaN })], comunaAZona)).toHaveLength(0);
+    expect(armarPedidosEnMapa([fila({ long: Infinity })], comunaAZona)).toHaveLength(0);
+  });
+
+  it('una comuna que no mapea a zona deja zonaId en null, no revienta', () => {
+    const [p] = armarPedidosEnMapa([fila({ destinatario_comuna: 'Valparaíso' })], comunaAZona);
+    expect(p.zonaId).toBeNull();
+    expect(p.posicion.lat).toBe(-33.41);
+  });
+
+  it('sin comuna, el punto igual se dibuja', () => {
+    const [p] = armarPedidosEnMapa([fila({ destinatario_comuna: null })], comunaAZona);
+    expect(p.zonaId).toBeNull();
   });
 });

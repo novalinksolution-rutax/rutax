@@ -14,7 +14,11 @@
  * 6. Token nunca aparece en parámetros públicos del job (seguridad).
  */
 import { describe, expect, it, vi } from "vitest";
-import { obtenerLogisticTypePorShipment, LOGISTIC_TYPE_FLEX } from "./ejecutar-backfill";
+import {
+  obtenerLogisticTypePorShipment,
+  coordenadasDeReceiver,
+  LOGISTIC_TYPE_FLEX,
+} from "./ejecutar-backfill";
 
 // =============================================================================
 // Lógica de cálculo de ventana — extraída para prueba pura (sin Inngest/BD)
@@ -402,5 +406,70 @@ describe("ejecutarBackfill — decisión de filtro: solo se ingiere Flex", () =>
       ["222", "self_service"],
     ]);
     expect(shipmentsIngeridos(orders, mapa)).toEqual(["111", "222"]);
+  });
+});
+
+// =============================================================================
+// coordenadasDeReceiver — el geocoding gratis de ML
+// =============================================================================
+// ML declara `latitude`/`longitude` en `receiver_address` SIEMPRE, pero los
+// rellena solo a veces (en el ejemplo de su propia documentación vienen en
+// null). Estas pruebas fijan que solo se acepta una coordenada creíble: lo que
+// está en juego es dibujar un pedido en el lugar equivocado del mapa.
+// =============================================================================
+
+describe("coordenadasDeReceiver", () => {
+  it("acepta una coordenada válida de Santiago", () => {
+    expect(coordenadasDeReceiver({ latitude: -33.4489, longitude: -70.6693 })).toEqual({
+      lat: -33.4489,
+      long: -70.6693,
+    });
+  });
+
+  it("acepta números que ML manda como string", () => {
+    expect(coordenadasDeReceiver({ latitude: "-33.45", longitude: "-70.66" })).toEqual({
+      lat: -33.45,
+      long: -70.66,
+    });
+  });
+
+  it("rechaza null, undefined y el objeto ausente", () => {
+    const vacio = { lat: null, long: null };
+    expect(coordenadasDeReceiver({ latitude: null, longitude: null })).toEqual(vacio);
+    expect(coordenadasDeReceiver({})).toEqual(vacio);
+    expect(coordenadasDeReceiver(null)).toEqual(vacio);
+    expect(coordenadasDeReceiver(undefined)).toEqual(vacio);
+  });
+
+  it("rechaza (0,0): es el Golfo de Guinea, no un domicilio", () => {
+    expect(coordenadasDeReceiver({ latitude: 0, longitude: 0 })).toEqual({
+      lat: null,
+      long: null,
+    });
+  });
+
+  it("rechaza coordenadas fuera de rango", () => {
+    expect(coordenadasDeReceiver({ latitude: 95, longitude: -70 })).toEqual({
+      lat: null,
+      long: null,
+    });
+    expect(coordenadasDeReceiver({ latitude: -33, longitude: 200 })).toEqual({
+      lat: null,
+      long: null,
+    });
+  });
+
+  it("rechaza texto que no es número", () => {
+    expect(coordenadasDeReceiver({ latitude: "sin dato", longitude: "sin dato" })).toEqual({
+      lat: null,
+      long: null,
+    });
+  });
+
+  it("una sola coordenada presente no basta: se descartan las dos", () => {
+    expect(coordenadasDeReceiver({ latitude: -33.45, longitude: null })).toEqual({
+      lat: null,
+      long: null,
+    });
   });
 });

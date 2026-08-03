@@ -91,11 +91,56 @@ interface OrderMl {
  * `null` → se OMITE (no se asume Flex): preferimos no ingerir que mis-ingerir
  * un Full como Flex.
  */
-export async function obtenerLogisticTypePorShipment(
+export interface DatosShipmentMl {
+  logisticType: string | null;
+  /** Coordenadas del destinatario, cuando ML las trae. Ver la nota de abajo. */
+  lat: number | null;
+  long: number | null;
+}
+
+/**
+ * Extrae lat/long de `receiver_address` si vienen y son números válidos.
+ *
+ * **ML declara los campos siempre, pero los rellena solo a veces** — en el
+ * propio ejemplo de su documentación vienen en `null`. Por eso esto es
+ * best-effort: cuando hay coordenada nos ahorramos una llamada de geocoding
+ * pagado, y cuando no la hay el pedido sigue su curso normal a la cola de
+ * geocodificación. Nunca se inventa un punto.
+ */
+export function coordenadasDeReceiver(
+  receiver: { latitude?: unknown; longitude?: unknown } | null | undefined,
+): { lat: number | null; long: number | null } {
+  // `Number(null)` es 0, y 0 es una coordenada perfectamente válida: sin este
+  // descarte previo, una longitud ausente colocaba el pedido en Greenwich.
+  const crudoLat = receiver?.latitude;
+  const crudoLong = receiver?.longitude;
+  if (crudoLat === null || crudoLat === undefined || crudoLat === "") {
+    return { lat: null, long: null };
+  }
+  if (crudoLong === null || crudoLong === undefined || crudoLong === "") {
+    return { lat: null, long: null };
+  }
+
+  const lat = Number(crudoLat);
+  const long = Number(crudoLong);
+  const valido =
+    Number.isFinite(lat) &&
+    Number.isFinite(long) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    long >= -180 &&
+    long <= 180 &&
+    // (0,0) es el Golfo de Guinea: ML lo devuelve como relleno, no como dato.
+    !(lat === 0 && long === 0);
+
+  return valido ? { lat, long } : { lat: null, long: null };
+}
+
+export async function obtenerDatosPorShipment(
   shipmentIds: string[],
   accessToken: string,
-): Promise<Map<string, string | null>> {
-  const mapa = new Map<string, string | null>();
+): Promise<Map<string, DatosShipmentMl>> {
+  const mapa = new Map<string, DatosShipmentMl>();
   if (shipmentIds.length === 0) return mapa;
 
   const idsParam = shipmentIds.join(",");
@@ -111,12 +156,26 @@ export async function obtenerLogisticTypePorShipment(
   const shipments = (await respuesta.json()) as Array<{
     id: number | string;
     logistic_type?: string | null;
+    receiver_address?: { latitude?: unknown; longitude?: unknown } | null;
   }>;
 
   for (const s of shipments ?? []) {
-    mapa.set(String(s.id), s.logistic_type ?? null);
+    const { lat, long } = coordenadasDeReceiver(s.receiver_address);
+    mapa.set(String(s.id), { logisticType: s.logistic_type ?? null, lat, long });
   }
   return mapa;
+}
+
+/**
+ * Compatibilidad: el filtro a Flex solo necesita el `logistic_type`.
+ * Se conserva como envoltorio para no tocar sus llamadores ni sus tests.
+ */
+export async function obtenerLogisticTypePorShipment(
+  shipmentIds: string[],
+  accessToken: string,
+): Promise<Map<string, string | null>> {
+  const datos = await obtenerDatosPorShipment(shipmentIds, accessToken);
+  return new Map([...datos].map(([id, d]) => [id, d.logisticType]));
 }
 
 export const jobEjecutarBackfill = inngest.createFunction(
@@ -292,7 +351,10 @@ export const jobEjecutarBackfill = inngest.createFunction(
         const shipmentIdsPagina = orders
           .map((o) => (o.shipping?.shipment_id ? String(o.shipping.shipment_id) : null))
           .filter((id): id is string => id !== null);
-        const mapaLogistic = await obtenerLogisticTypePorShipment(shipmentIdsPagina, accessToken);
+        // La misma llamada trae `receiver_address`, así que de paso nos quedamos
+        // con la coordenada del destinatario cuando ML la tiene: es geocoding
+        // gratis, sin una segunda llamada ni un proveedor de pago.
+        const mapaShipments = await obtenerDatosPorShipment(shipmentIdsPagina, accessToken);
 
         for (const order of orders) {
           const shipmentId = order.shipping?.shipment_id
@@ -304,7 +366,7 @@ export const jobEjecutarBackfill = inngest.createFunction(
           // Filtro de alcance: solo Flex. Si el tipo no es self_service
           // (Full/Colecta/Agencia) o no se pudo resolver, se omite — nunca se
           // ingiere como Flex.
-          if (mapaLogistic.get(shipmentId) !== LOGISTIC_TYPE_FLEX) {
+          if (mapaShipments.get(shipmentId)?.logisticType !== LOGISTIC_TYPE_FLEX) {
             totalOmitidosNoFlex++;
             continue;
           }
@@ -363,6 +425,20 @@ export const jobEjecutarBackfill = inngest.createFunction(
                   order.shipping_address?.address_line ?? "Dirección pendiente",
                 destinatario_comuna: order.shipping_address?.city?.name ?? "Santiago",
                 corte_riesgo: corteRiesgoFlex,
+                // Solo se escriben las columnas geo si ML trajo coordenada. Sin
+                // ella el pedido queda en `pendiente` y lo toma la cola de
+                // geocodificación, igual que siempre.
+                ...(mapaShipments.get(shipmentId)?.lat != null
+                  ? {
+                      lat: mapaShipments.get(shipmentId)!.lat,
+                      long: mapaShipments.get(shipmentId)!.long,
+                      geo_estado: "resuelto",
+                      // La coordenada viene de la propia plataforma que originó
+                      // el pedido, no de un geocodificador que interpreta texto.
+                      geo_confianza: 1,
+                      geocodificado_en: new Date().toISOString(),
+                    }
+                  : {}),
               },
               {
                 onConflict: "tenant_id,ml_shipment_id",

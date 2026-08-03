@@ -35,7 +35,7 @@ import type {
   GeoJSONSourceSpecification,
 } from "@maplibre/maplibre-gl-style-spec";
 import { ESCALA_RIESGO } from "../riesgo";
-import { ID_ROMBO_TRANSITO, ID_TRAMA_PUNTOS, idTrama } from "./tramas";
+import { ID_TRAMA_PUNTOS, idTrama } from "./tramas";
 
 /** Grises del plano. Contraste bajísimo contra Papel #f3f2f2, a propósito. */
 const AGUA = "#e3e1e1";
@@ -44,6 +44,8 @@ const EJE = "#dedbdb";
 const PAPEL = "#f3f2f2";
 const TINTA = "#201e1d";
 const SENAL = "#ec3013";
+/** Gris medio del lenguaje visual de la Torre, para lo ya resuelto. */
+const INK_500 = "#8a8785";
 
 /** Kinds de `landuse` que cuentan como área verde. */
 const KINDS_VERDES = [
@@ -70,9 +72,8 @@ export const IDS_FUENTES = {
   comunas: "tc-comunas",
   clima: "tc-clima",
   aire: "tc-aire",
-  eventos: "tc-eventos",
   conductores: "tc-conductores",
-  transito: "tc-transito",
+  pedidos: "tc-pedidos",
   marcas: "tc-marcas",
 } as const;
 
@@ -81,13 +82,10 @@ export const CAPAS_POR_ID: Record<string, string[]> = {
   riesgo: ["zonas-relleno", "zonas-borde"],
   clima: ["clima-relleno", "clima-borde"],
   aire: ["aire-relleno", "aire-borde"],
-  transito: ["transito-simbolo"],
-  eventos: ["eventos-borde", "eventos-eje"],
   conductores: ["conductores-punto", "conductores-sin-senal"],
-  // `pedidos` no tiene capa: con geocoding de respaldo todos los pedidos caen
-  // en el centroide de su comuna, así que pintarlos sería inventar precisión.
-  // El control lo declara bloqueado con su motivo (regla 2 del handoff).
-  pedidos: [],
+  // Dos capas: los abiertos llenos, los cerrados en contorno. Ninguna dibuja
+  // TEXTO — la dirección del destinatario no va en el mapa (ver `PedidoEnMapa`).
+  pedidos: ["pedidos-abiertos", "pedidos-cerrados"],
   comunas: ["comunas-borde"],
 };
 
@@ -171,9 +169,8 @@ export function construirEstilo({ urlBasemap, sinZonas }: OpcionesEstilo): Style
       [IDS_FUENTES.comunas]: fuenteVacia(),
       [IDS_FUENTES.clima]: fuenteVacia(),
       [IDS_FUENTES.aire]: fuenteVacia(),
-      [IDS_FUENTES.eventos]: fuenteVacia(),
       [IDS_FUENTES.conductores]: fuenteVacia(),
-      [IDS_FUENTES.transito]: fuenteVacia(),
+      [IDS_FUENTES.pedidos]: fuenteVacia(),
       [IDS_FUENTES.marcas]: fuenteVacia(),
     },
     layers: [
@@ -276,33 +273,33 @@ export function construirEstilo({ urlBasemap, sinZonas }: OpcionesEstilo): Style
         paint: { "line-color": TINTA, "line-width": 2, "line-dasharray": [4.5, 3] },
       },
 
-      // --- Eventos ----------------------------------------------------------
+      // --- Pedidos (nivel 3) --------------------------------------------------
+      // Punto pequeño y sin etiqueta: son cientos, y el dato personal se queda
+      // fuera del mapa a propósito.
       {
-        id: "eventos-borde",
-        type: "line",
-        source: IDS_FUENTES.eventos,
+        id: "pedidos-cerrados",
+        type: "circle",
+        source: IDS_FUENTES.pedidos,
         layout: { visibility: "none" },
-        filter: ["==", ["geometry-type"], "Polygon"],
-        paint: { "line-color": TINTA, "line-width": 2 },
+        filter: ["==", ["get", "cerrado"], true],
+        paint: {
+          "circle-radius": 2.5,
+          "circle-color": "rgba(0,0,0,0)",
+          "circle-stroke-width": 1,
+          "circle-stroke-color": INK_500,
+        },
       },
       {
-        id: "eventos-eje",
-        type: "line",
-        source: IDS_FUENTES.eventos,
+        id: "pedidos-abiertos",
+        type: "circle",
+        source: IDS_FUENTES.pedidos,
         layout: { visibility: "none" },
-        filter: ["==", ["geometry-type"], "LineString"],
-        paint: { "line-color": TINTA, "line-width": 1 },
-      },
-
-      // --- Tránsito ---------------------------------------------------------
-      {
-        id: "transito-simbolo",
-        type: "symbol",
-        source: IDS_FUENTES.transito,
-        layout: {
-          visibility: "none",
-          "icon-image": ID_ROMBO_TRANSITO,
-          "icon-allow-overlap": true,
+        filter: ["!=", ["get", "cerrado"], true],
+        paint: {
+          "circle-radius": 3,
+          "circle-color": TINTA,
+          "circle-stroke-width": 0.75,
+          "circle-stroke-color": PAPEL,
         },
       },
 

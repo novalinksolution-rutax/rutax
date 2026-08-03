@@ -23,7 +23,7 @@
  * POR QUÉ `service_role` Y CÓMO NO CONVERTIRLO EN UN AGUJERO
  * -----------------------------------------------------------------------------
  * Las ocho tablas globales del carve-out (`clima_horario`, `aire_horario`,
- * `eventos_ciudad`, `restriccion_vehicular`, `fuentes_estado`, `senales`…) son
+ * `restriccion_vehicular`, `fuentes_estado`, `senales`…) son
  * **deny-all**: RLS forzada sin políticas y sin un solo grant a `authenticated`.
  * Es a propósito, y la propia migración lo dice: se leen con
  * `crearClienteServiceRole()` desde el composer del módulo. No hay otra puerta.
@@ -138,21 +138,6 @@ export interface FilaAireHorario {
   hora: string;
   pm25: number | null;
   nivel_estimado: NivelAire;
-}
-
-export interface FilaEventoCiudad {
-  id: string;
-  nombre: string;
-  tipo: 'deportivo' | 'masivo' | 'civico' | 'comercial';
-  recinto: string;
-  comuna: string;
-  lat: number;
-  long: number;
-  radio_m: number;
-  ventana_inicio: string;
-  ventana_fin: string | null;
-  asistencia_estimada: number | null;
-  fuente: string;
 }
 
 export interface FilaRestriccion {
@@ -430,6 +415,47 @@ export const obtenerEntregados = cache(async function obtenerEntregados(
  * pedidos pendientes contra capacidad de 60»). Mostrar al lado un conteo más
  * fresco haría que el nivel 1 y el nivel 2 se contradijeran en pantalla.
  */
+/** Fila de un pedido ya ubicado, para el nivel 3 del mapa. */
+export interface FilaPedidoUbicado {
+  id: string;
+  lat: number;
+  long: number;
+  estado: string;
+  destinatario_comuna: string | null;
+}
+
+/**
+ * Pedidos del día con coordenada resuelta, para pintarlos en el mapa.
+ *
+ * ⚠️ **El `select` es deliberadamente corto: NO trae dirección, ni nombre, ni
+ * teléfono del destinatario.** El mapa solo necesita el punto y el estado; la
+ * dirección se ve al abrir el pedido, en la pantalla de operación. Traer aquí
+ * campos que la pantalla no dibuja los expondría en el payload igual, así que
+ * la minimización empieza en la consulta y no en el render.
+ *
+ * `geo_estado = 'resuelto'` es el filtro que garantiza que lat/long no son
+ * nulos: el resto queda fuera y lo cuenta el contador de «sin ubicar».
+ */
+export const obtenerPedidosUbicados = cache(async function obtenerPedidosUbicados(
+  tenantId: string,
+  fechaDesde: string,
+  fechaHasta: string,
+): Promise<FilaPedidoUbicado[]> {
+  const supabase = crearClienteServiceRole();
+  return leerTodasLasFilas<FilaPedidoUbicado>('pedidos ubicados', (desde, hasta) =>
+    supabase
+      .schema('operacion')
+      .from('pedidos')
+      .select('id, lat, long, estado, destinatario_comuna')
+      .eq('tenant_id', tenantId)
+      .eq('geo_estado', 'resuelto')
+      .not('lat', 'is', null)
+      .gte('fecha_compromiso', fechaDesde)
+      .lte('fecha_compromiso', fechaHasta)
+      .range(desde, hasta),
+  );
+});
+
 export const obtenerPedidosPendientes = cache(async function obtenerPedidosPendientes(
   tenantId: string,
   fechaDesde: string,
@@ -774,12 +800,11 @@ export const obtenerPlazosDeEntrega = cache(async function obtenerPlazosDeEntreg
 export interface ContextoExterno {
   clima: FilaClimaHorario[];
   aire: FilaAireHorario[];
-  eventos: FilaEventoCiudad[];
   restricciones: FilaRestriccion[];
 }
 
 /**
- * Clima, aire, eventos de ciudad y restricción vehicular de la ventana.
+ * Clima, aire y restricción vehicular de la ventana.
  *
  * El filtro por comuna acota a las que el courier realmente opera. Va como
  * string separado por comas y no como arreglo para que `cache()` pueda usarlo
@@ -795,7 +820,7 @@ export const obtenerContextoExterno = cache(async function obtenerContextoExtern
   const comunas = comunasCsv ? comunasCsv.split(',') : [];
 
   if (comunas.length === 0) {
-    return { clima: [], aire: [], eventos: [], restricciones: [] };
+    return { clima: [], aire: [], restricciones: [] };
   }
 
   // `limitesDelDiaSantiago` y no un literal UTC: Santiago es −04:00 en invierno
@@ -804,7 +829,7 @@ export const obtenerContextoExterno = cache(async function obtenerContextoExtern
   const desdeInstante = limitesDelDiaSantiago(fechaDesde).desde.toISOString();
   const hastaInstante = limitesDelDiaSantiago(fechaHasta).hasta.toISOString();
 
-  const [clima, aire, eventos, restricciones] = await Promise.all([
+  const [clima, aire, restricciones] = await Promise.all([
     leerTodasLasFilas<FilaClimaHorario>('clima_horario', (desde, hasta) =>
       supabase
         .schema('contexto')
@@ -825,18 +850,6 @@ export const obtenerContextoExterno = cache(async function obtenerContextoExtern
         .lte('hora', hastaInstante)
         .range(desde, hasta),
     ),
-    leerTodasLasFilas<FilaEventoCiudad>('eventos_ciudad', (desde, hasta) =>
-      supabase
-        .schema('contexto')
-        .from('eventos_ciudad')
-        .select(
-          'id, nombre, tipo, recinto, comuna, lat, long, radio_m, ventana_inicio, ventana_fin, asistencia_estimada, fuente',
-        )
-        .in('comuna', comunas)
-        .lte('ventana_inicio', hastaInstante)
-        .or(`ventana_fin.is.null,ventana_fin.gte.${desdeInstante}`)
-        .range(desde, hasta),
-    ),
     leerTodasLasFilas<FilaRestriccion>('restriccion_vehicular', (desde, hasta) =>
       supabase
         .schema('contexto')
@@ -848,7 +861,7 @@ export const obtenerContextoExterno = cache(async function obtenerContextoExtern
     ),
   ]);
 
-  return { clima, aire, eventos, restricciones };
+  return { clima, aire, restricciones };
 });
 
 // =============================================================================
