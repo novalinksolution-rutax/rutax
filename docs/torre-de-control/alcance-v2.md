@@ -41,6 +41,10 @@ existente) · geometría comunal DPA 2023 ya versionada.
 La comuna es la unidad primaria y la primera vista. La cifra de cada comuna es
 **cuántos faltan por entregar** — no un puntaje, no un porcentaje.
 
+**Se muestra como fracción, no como número suelto: «38 de 120».** Un "38" pelado
+obliga a recordar de cuánto partió la comuna; la fracción da el avance de un
+vistazo sin necesidad de gráfico.
+
 ### F2 · Zoom semántico de tres niveles
 **Dato:** los mismos pedidos, a distinta granularidad.
 **Decisión que soporta:** pasar de «¿dónde duele?» a «¿cuál es exactamente?».
@@ -53,8 +57,9 @@ La comuna es la unidad primaria y la primera vista. La cifra de cada comuna es
 **Dato:** código de envío · conductor asignado · pendientes de ese conductor.
 **Decisión que soporta:** a quién llamar por este paquete, y con qué número en la
 mano.
-Al llegar al punto individual se ve el **código de envío**, **qué conductor lo
-lleva** y **cuántos paquetes le faltan a ese conductor**.
+Al llegar al punto individual se ve el **código de envío**, el **nombre del
+conductor** que lo lleva y **cuántos paquetes le faltan a ese conductor**. El
+nombre, no el id: el coordinador va a llamar a una persona.
 
 **Sin dirección y sin nombre del destinatario** (decisión del usuario,
 2026-08-03). El identificador es el código, que es lo que el coordinador
@@ -90,18 +95,35 @@ La pantalla se actualiza sola, sin recargar. Patrón: Supabase Realtime como
 **señal** → `router.refresh()`, que es el que ya usa el tablero de operación (y
 que ya está verificado como aislado por RLS, sin filtro de cliente).
 
-### F6 · Indicador global de frescura
+### F6 · Frescura, callada
 **Dato:** marca de tiempo del último dato incorporado.
 **Decisión que soporta:** saber si puedes confiar en el número que estás viendo.
-Un solo indicador en la cabecera («al día hace 2 min»), no una marca por punto.
-Existe por la consecuencia asumida en §5.5: la Torre **no** distingue Flex de
-same-day, y el dato de Flex llega con retraso.
+Un solo indicador global, no una marca por punto.
 
-### F7 · Cuenta regresiva al corte
+**Callado por defecto:** invisible mientras el dato está fresco, visible —y
+molesto— solo cuando pasa el umbral. Es la regla de silencio por defecto (§4.1)
+aplicada a la confianza en el dato.
+
+Existe por la consecuencia asumida en §5.7: la Torre **no** distingue Flex de
+same-day, y el dato de Flex llega con retraso porque su POD es de Mercado
+Envíos. Sin esto, un job de polling atrasado deja la pantalla viéndose perfecta
+mientras miente, y el coordinador persigue a un conductor que ya entregó.
+
+### F7 · Proximidad al corte — cálculo interno, sin widget
 **Dato:** ventana de corte del día.
-**Decisión que soporta:** convertir un número en urgencia. 38 pendientes a las
-15:00 es normal; a las 20:30 es una emergencia.
-Va en la **cabecera**, una sola vez para todo el día — no por comuna.
+**Decisión que soporta:** distinguir «38 pendientes» de «38 pendientes que no
+van a alcanzar».
+
+⚠️ **No se dibuja ninguna cuenta regresiva en pantalla** (decisión del usuario,
+2026-08-03): el corte del same-day es uno solo y todo el courier lo sabe de
+memoria, así que un reloj en la cabecera no informa nada.
+
+Lo que sí queda es **el corte como criterio**: se calcula la proximidad y se usa
+para **marcar los pendientes que están cerca de la hora de corte**, en el mapa y
+en la lista. La urgencia vive pegada al dato, no en un widget aparte.
+
+*Si algún día los cortes difieren por comuna o por seller, esto se reabre — ahí
+ya no se puede saber de memoria y vuelve a necesitar superficie propia.*
 
 ### F8 · Contador de pedidos sin ubicar
 **Dato:** pedidos sin geocodificar.
@@ -109,35 +131,91 @@ Va en la **cabecera**, una sola vez para todo el día — no por comuna.
 Un mapa que esconde lo que no pudo ubicar miente sobre la carga real. **Una sola
 vez en pantalla** (hoy aparece cuatro veces).
 
-### F9 · Ola entrante
+### F9 · Olas entrantes (en plural)
 **Dato:** `contexto.calendario` + `contexto.eventos_comerciales` (calendario
 comercial chileno) y la brecha contra la capacidad configurada.
 **Decisión que soporta:** contratar o reservar conductores con días de
 anticipación.
-Es lo **único** que mira hacia adelante en la v2, y por eso se conserva: «en 6
-días llega el peak de CyberDay, te faltan N conductores». Banda de aviso, no
-región permanente: si no hay ola dentro del horizonte, no ocupa espacio.
+Es lo **único** que mira hacia adelante en la v2. Banda de aviso, no región
+permanente: si no hay ola dentro del horizonte, no ocupa espacio.
+
+**Cambio respecto de la v1: son varias, no una.** Hoy el contrato tiene
+`olaEntrante: OlaEntrante | null` — con CyberMonday y Navidad los dos en
+horizonte, solo verías uno. Pasa a **las próximas 2 o 3**: la más cercana
+desplegada, el resto como una línea cada una. Es lo que la convierte en
+«calendario que me recuerda» en vez de «aviso suelto».
+
+**Qué se muestra de cada ola** (el contrato trae 11 campos; no todos aportan):
+
+| Campo | Destino |
+|---|---|
+| Nombre + **días para el evento** | **Queda.** Es el gancho: «CyberDay, en 6 días» |
+| **Arquetipo** (`venta` / `regalo`) | **Queda — el más importante.** En `venta` las entregas llegan **después** (D+1 a D+5); en `regalo` llegan **antes** y el plazo es duro. Sin esto las fechas engañan |
+| **Ventana de entregas** | **Queda.** Es la fecha que importa, distinta de la del evento |
+| **Brecha de conductores** + **día crítico** | **Queda — LA cifra accionable.** «El 15 te faltan 4 conductores» |
+| Variación esperada (%) | Queda. Orienta de un vistazo y es barato |
+| Fuente de la proyección (`catalogo` / `historico_tenant`) | Queda, como letra chica. Señal de confianza: salir del histórico propio del courier se cree; salir de un catálogo genérico se toma con pinzas |
+| **Curva** (proyectado vs base vs capacidad) | **Se retira.** Es un gráfico, y dice lo mismo que brecha + día crítico ocupando diez veces el espacio |
+| Fecha límite de compra por zona | **Se retira de la Torre.** Le sirve al **seller** para su publicidad, no al courier para despachar |
+| Hitos de preparación | **Pendiente de revisar en implementación.** Si son acciones con fecha («contrata refuerzo antes del 10») valen mucho; si son texto genérico, sobran |
+| Organizador (Mercado Libre, etc.) | Queda pegado al nombre. Trivial |
+
+**También va al dashboard, adaptada** (ver F12): el dueño entra ahí, no a la
+Torre. Versión mínima: nombre + días + brecha de conductores, en una línea.
 
 ### F10 · Equivalente sin mapa
 **Dato:** los mismos de F1.
 **Decisión que soporta:** las mismas, sin depender del render.
-Lista de comunas ordenada por cuántas faltan, navegable con teclado. No es un
-premio de consuelo: es el modo de degradación cuando la geometría o el basemap
-no cargan, y es también lo que se lee más rápido.
+Lista de comunas ordenada por cuántas faltan, navegable con teclado.
+
+**Alcance reducido respecto de la v1.** Nació como el equivalente accesible **y**
+la vista de celular; con el móvil fuera de este repo le queda solo el rol de
+degradación (si no carga la geometría o el basemap) y de lectura rápida. Sigue
+valiendo la pena, pero **no es una superficie co-igual** y no debe llevarse la
+mitad del esfuerzo de la pantalla.
 
 ### F11 · Enlaces profundos a donde se actúa
 **Dato:** n/a.
 **Decisión que soporta:** todas — la Torre no ejecuta ninguna.
-Cada comuna, incidencia y pedido lleva a `/operaciones` con el filtro ya
-aplicado. Es la contrapartida de que la Torre sea de solo lectura: si obliga a
-buscar de nuevo en la otra pantalla, no sirve.
+Cada comuna, incidencia, conductor y pedido lleva a la pantalla donde se
+resuelve, **con el filtro ya aplicado**. Es la contrapartida de que la Torre sea
+de solo lectura: si obliga a buscar de nuevo en la otra pantalla, no sirve.
+
+**Solo módulos existentes — no se inventa ninguno.** Los destinos son
+`/operaciones`, `/manifiestos`, `/conductores` y `/dinero`, que ya existen.
+
+**Autorizado modificar la pantalla de destino si le falta el filtro** (decisión
+del usuario, 2026-08-03). Si `/operaciones` no filtra por comuna, se le agrega:
+es una adición acotada a una pantalla existente, no un módulo nuevo. Verificar
+qué filtros faltan es parte del trabajo, no una sorpresa.
 
 ### F12 · Banda de la Torre en el dashboard
 **Dato:** el mismo composer.
 **Decisión que soporta:** enterarse sin entrar.
 `(tenant)/dashboard/banda-torre.tsx` ya existe, está bien calibrada y muestra
-tres líneas solo si hay algo que mirar. **Se conserva y se migra junto con el
-composer** — no se rompe.
+tres líneas con un enlace **solo si hay algo que mirar** — si el día va bien no
+ocupa espacio, y si la Torre falla desaparece en vez de romper el dashboard. Esa
+mecánica se conserva tal cual.
+
+**Se reescribe el contenido**, porque hoy habla de riesgo, zonas y cortes, y los
+tres se retiran. En la v2 dice **comunas + pendientes + incidencias**.
+
+**Y aloja la ola adaptada** (F9): el dueño entra al dashboard, no a la Torre, así
+que es el lugar natural para el aviso de anticipación.
+
+### F13 · Panel de conductores rezagados
+**Dato:** entregas completadas vs asignadas por conductor, y tiempo desde la
+última entrega registrada.
+**Decisión que soporta:** a quién llamar **antes** del corte.
+Es el objetivo declarado del módulo —cazar al conductor rezagado o el paquete
+olvidado— y F1–F4 no lo cubrían: trabajan en **comuna**, y una comuna puede verse
+bien en agregado mientras un conductor adentro está trabado.
+
+> Pérez · 12 de 40 · **sin registrar entrega hace 1 h 20**
+
+Esa última línea es el detector. **No necesita GPS** —decisión ya tomada, no se
+guarda recorrido—: se calcula con marcas de tiempo de entregas, que ya existen.
+Ordenado por riesgo de no terminar, no alfabético.
 
 ---
 
@@ -151,6 +229,10 @@ composer** — no se rompe.
 | **Señales de prensa (R6)** | Pipeline muerto: Google News RSS prohíbe uso comercial, GDELT no cubre Chile, SENAPRED solo desastres naturales. 0 filas y ningún escritor. |
 | **Zona como unidad primaria del mapa** | El usuario reconoce comunas, no «Sur / Oriente». La zona sigue existiendo detrás (cortes, conductores, capacidad), pero no manda el mapa. |
 | **Línea de tiempo (R5)** | Mezclaba lluvia, eventos y ventanas de reparto. Sin clima ni eventos, queda vacía. |
+| **Cuenta regresiva al corte, como widget** | El corte del same-day es uno solo y todo el courier lo sabe de memoria. Sobrevive como **cálculo interno** que marca lo que está cerca del corte (F7), no como reloj en pantalla. |
+| **La curva de la ola** (proyectado vs base vs capacidad) | Es un gráfico y dice lo mismo que brecha de conductores + día crítico, ocupando diez veces el espacio. |
+| **Fecha límite de compra por zona** (ola arquetipo `regalo`) | Es información para que el **seller** planifique su publicidad, no para que el courier despache. |
+| **Proyección de hora de cierre por comuna** | Se evaluó y el usuario la descartó (2026-08-03): sumaba una cifra derivada a una pantalla que quiere ser simple. |
 | **Marcas operativas manuales** | 0 filas pese a estar construida entera. Y es una **escritura**, incompatible con una Torre de solo lectura. |
 | **Variación contra la semana anterior** | Una cifra más en una pantalla que tiene que leerse en dos minutos. |
 | **Tope de 2 capas activas** | Existía para que el mapa no se saturara de capas de ambiente. Sin esas capas, no hay nada que topear. |
@@ -243,7 +325,16 @@ estado real.
 - `agregacion.ts` → **se reescribe**: agrega por **comuna**, no por zona.
 - `olas.ts` → **se conserva** (F9).
 - `contrato-torre.ts` → **se reescribe**. Ya no es contrato congelado: es un tipo
-  vivo. Cae `TorreRespuesta.horizontes` (queda un solo horizonte).
+  vivo. Cae `TorreRespuesta.horizontes` (queda un solo horizonte). **`olaEntrante:
+  OlaEntrante | null` pasa a una lista** de 2–3 (F9), y de `OlaEntrante` caen
+  `curva` y `fechaLimiteCompraPorZona`.
+- **Consulta nueva para F13** (conductores rezagados): entregas completadas vs
+  asignadas por conductor + minutos desde la última entrega registrada. Sale de
+  `operacion`, no necesita tabla nueva ni ping de ubicación.
+- **Filtros en las pantallas de destino** (F11): verificar cuáles faltan —
+  probablemente filtrar `/operaciones` por comuna y por conductor. Es una adición
+  acotada a pantallas existentes, autorizada por el usuario, pero es trabajo real
+  y hay que presupuestarlo.
 - `composer/armado-mapa.ts`, `armado-riel.ts`, `armado-zonas.ts` → **se
   reescriben** contra el contrato nuevo.
 - ⚠️ **`(tenant)/dashboard/banda-torre.tsx` consume `cargarTablero`.** Migra en
@@ -365,6 +456,12 @@ congelado más el `?estado=` para revisar las capturas del handoff) los importan
   botón de pantalla completa.
 - Cuándo colapsar los puntos que comparten ubicación en el `+N` de F3 — por
   coordenada exacta o por radio.
+- **Los hitos de preparación de la ola** (`HitoPreparacion[]`): mirar qué traen.
+  Si son acciones con fecha, se quedan; si es texto genérico, caen (§F9).
+- Umbral de F6: a partir de cuántos minutos el indicador de frescura deja de
+  estar callado y molesta.
+- Umbral de F13: cuántos minutos sin registrar entrega marcan a un conductor
+  como rezagado. Debe salir de datos reales, no de una corazonada.
 - Destino de `contexto.restriccion_vehicular` (§5.1).
 - El cambio sin commitear en `jobs/recalcular-riesgo.ts` (§5.2) — el usuario
   decidió seguir sin resolverlo por ahora; resolverlo al retirar el job.

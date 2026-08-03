@@ -55,9 +55,15 @@ discusión de producto sin que el usuario la pida.
 - **Un solo horizonte: hoy.** La ola es lo único que mira adelante.
 - **Solo lectura.** `ver_torre_control` no cambia y no hay bitácora nueva.
 - **La Torre baja a `(tenant)`** y el grupo `(consola)` se retira entero.
-- **En el punto se muestra el código de envío**, nunca la dirección.
+- **En el punto se muestra el código de envío y el nombre del conductor**, nunca
+  la dirección ni el nombre del destinatario.
 - **El mapa se queda en MapLibre + PMTiles auto-hospedado.** No evalúes
   proveedores otra vez: está medido y documentado.
+- **Nada de gráficos.** Se evaluaron y se descartaron tres veces: la línea de
+  tiempo, la curva del día y la curva de la ola. La pantalla habla en cifras.
+- **Ninguna cuenta regresiva en pantalla.** El corte se calcula y se usa para
+  marcar lo que está en riesgo, pero no se dibuja un reloj (F7).
+- **Las olas son varias, no una** (F9), y también van al dashboard adaptadas.
 
 ---
 
@@ -94,6 +100,8 @@ rota — eso es esperable y se arregla en C.
 1. **Contrato** (`arquitecto` → `src/modules/contexto/contrato-torre.ts`).
    Es un tipo **vivo**: reescríbelo. Cae `TorreRespuesta.horizontes`; la unidad
    pasa a comuna; entra el código de envío y el `+N` de agrupación por ubicación.
+   `olaEntrante` pasa de una a **lista de 2–3** y pierde `curva` y
+   `fechaLimiteCompraPorZona`. Entra la forma de F13 (conductores rezagados).
 2. **Esquema** (`base-datos-rls`). Retiro de las 7 tablas de §5.1:
    `clima_horario`, `aire_horario`, `eventos_ciudad`, `senales`,
    `senales_tenant`, `marcas_operativas`, `riesgo_zona`. Conservar `calendario`,
@@ -119,7 +127,13 @@ rota — eso es esperable y se arregla en C.
    sobrevive `jobSincronizarCalendario`. Y el evento
    `contexto/riesgo.recalcular-tenant` sale de `src/lib/inngest/eventos.ts`.
 4. **Composer** (`backend`). Reescribir `agregacion.ts` para agregar por comuna y
-   `composer/armado-*.ts` contra el contrato nuevo. `olas.ts` se conserva.
+   `composer/armado-*.ts` contra el contrato nuevo. `olas.ts` se conserva, pero
+   pasa a devolver **varias olas** en vez de una.
+
+   Consultas nuevas: **F13** (entregas completadas vs asignadas por conductor +
+   minutos desde la última entrega registrada — sale de `operacion`, sin tabla
+   nueva) y **F7 interno** (proximidad al corte, que marca los pendientes en
+   riesgo sin dibujar ninguna cuenta regresiva).
 5. **Realtime** (F5). **Ya está resuelto y es gratis**: reutiliza
    `src/components/tiempo-real/indicador-en-vivo.tsx`, que ya se suscribe por
    defecto a `operacion.pedidos`, agrupa eventos con debounce de 800 ms y dispara
@@ -218,10 +232,22 @@ Necesita A y B hechas.
   una sola fuente, etiqueta de comuna a un solo nivel de zoom) y estima recién
   después de verla en pantalla. No arranques por la jerarquía vial.
 
+- **Filtros en las pantallas de destino (F11).** Los enlaces profundos exigen que
+  el destino sepa filtrar. Verifica qué falta —probablemente `/operaciones` por
+  comuna y por conductor— y **agrégalo**: el usuario autorizó modificar las
+  pantallas existentes. No son módulos nuevos, pero sí trabajo real.
+- **La banda del dashboard (F12) se reescribe, no solo se migra.** Hoy habla de
+  riesgo, zonas y cortes; pasa a comunas + pendientes + incidencias, y además
+  aloja la **versión adaptada de la ola** (nombre + días + brecha de conductores,
+  en una línea). Conserva su mecánica: aparece solo si hay algo que mirar, y si
+  la Torre falla desaparece en vez de romper el dashboard.
+
 ### Definition of Done — Vía C
 
 - La Torre vive en `(tenant)`, dentro del `AppShell`, y `src/app/(consola)/` ya
   no existe.
+- Los enlaces profundos llegan a destino **con el filtro aplicado**, no a una
+  lista sin filtrar.
 - El mapa tiene altura acotada y el botón de pantalla completa funciona.
 - Ningún componente importa `_fixture/`; el `?estado=` ya no existe.
 - El árbol `_componentes/movil/` está retirado.

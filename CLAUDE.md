@@ -142,7 +142,7 @@ El módulo **Torre de control** es la pantalla de monitoreo del día del courier
 
 **Qué es en una frase:** el courier opera same-day contra un corte de ~21–22 h; el dueño y el coordinador entran un par de minutos, varias veces al día, a ver **cuántos paquetes faltan por entregar, en qué comunas, y si algo se está atascando**. El contador baja durante el día; una entrega fallida pinta su punto en rojo y aparece como incidencia. **La Torre no ejecuta: lee y enlaza.**
 
-**Lee `@docs/torre-de-control/alcance-v2.md` antes de tocar este módulo.** Es la fuente de verdad: las 12 funcionalidades que quedan, lo que se retira y por qué, las 6 reglas de producto y las consecuencias técnicas.
+**Lee `@docs/torre-de-control/alcance-v2.md` antes de tocar este módulo.** Es la fuente de verdad: las 13 funcionalidades que quedan, lo que se retira y por qué, las 6 reglas de producto y las consecuencias técnicas.
 
 **El handoff de diseño dejó de mandar** (2026-08-03). `design_handoff_torre_de_control/` era la interfaz aprobada y la referencia obligatoria: sus 7 reglas, sus 6 regiones, sus tokens y sus copys ya **no** son autoridad. Está archivado en `docs/_historico/torre-v1/` — se conserva porque explica por qué el código de hoy es como es, no para seguirlo. Con él cae el "contrato congelado" de tipos: `src/modules/contexto/contrato-torre.ts` es un tipo **vivo y editable**.
 
