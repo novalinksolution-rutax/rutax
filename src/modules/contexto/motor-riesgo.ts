@@ -11,39 +11,44 @@
  * el motor auditable: mismo input, mismo output, siempre.
  *
  * -----------------------------------------------------------------------------
- * REDISTRIBUCIÓN DEL PESO DE TRÁNSITO (15 %) — DECISIÓN DE ESTE PASO (A4)
+ * REDISTRIBUCIÓN DE LOS PESOS SIN FUENTE (TRÁNSITO 15 % + EVENTOS 10 %)
  * -----------------------------------------------------------------------------
- * §7 fija seis factores cuyos pesos suman 1 (35/20/15/15/10/5), pero tránsito
- * es F2 (requiere TomTom, que no está construido) y el histórico propio
- * arranca en 0 (no hay historia todavía). El diseño es explícito: "el peso de
- * tránsito se redistribuye en F1" — pero no dice CÓMO.
+ * §7 fija seis factores cuyos pesos suman 1 (35/20/15/15/10/5). Dos de ellos no
+ * tienen fuente y no la van a tener:
  *
- * Se eligió redistribuir PROPORCIONALMENTE entre los cinco factores restantes:
- * cada peso nominal se divide por (1 − 0.15) = 0.85. Es decir, cada factor
- * activo conserva exactamente la MISMA importancia relativa entre sí que tenía
- * en el diseño original (presión operativa sigue pesando ~2.33× lo que aire,
- * igual que 35/15 en el diseño de seis factores) — no se privilegia ni se
- * penaliza arbitrariamente a ningún factor. Las alternativas consideradas y
- * descartadas:
- *   - Repartir los 15 puntos en partes iguales entre los cinco: rompería la
- *     jerarquía de importancia que §7 estableció a propósito (presión
- *     operativa y clima dejarían de ser claramente los factores dominantes).
- *   - Dárselo todo a "histórico propio": no tiene sentido subir el peso de un
- *     factor que hoy vale 0 por falta de historia — inflaría un cero.
- *   - Dárselo todo a "presión operativa": cambiaría el carácter del modelo
- *     (pasaría a pesar 50%) sin que el diseño lo pida.
+ *   - **Tránsito** requiere TomTom, que es de pago y quedó FUERA DE ALCANCE: el
+ *     conductor ya ve la congestión en Waze mejor que nosotros, y el
+ *     coordinador no puede accionar sobre ella.
+ *   - **Eventos de ciudad** dependía del pipeline de señales de prensa (§13),
+ *     que está parado. `contexto.eventos_ciudad` no la escribe ningún job.
  *
- * Resultado (exacto, en fracciones de /85 para que la suma dé 1 sin arrastre
- * de redondeo): presión 35/85 ≈ 0.4118 · clima 20/85 ≈ 0.2353 · aire 15/85 ≈
- * 0.1765 · eventos 10/85 ≈ 0.1176 · histórico 5/85 ≈ 0.0588 · tránsito 0.
+ * Un factor sin fuente conserva su peso pero aporta SIEMPRE valor 0, y eso no
+ * es neutro: arrastra el puntaje hacia abajo. Con eventos en 11,76 % efectivo,
+ * una zona que debía leerse "medio" se mostraba "bajo" — la Torre decía que
+ * había menos riesgo del que había. Por eso los dos van a peso 0 explícito.
  *
- * `desglose.factores` SIEMPRE incluye una fila para `transito`, con
- * `peso: 0` y `valor: 0` — nunca con el 15% nominal. Es la única forma honesta
- * de cumplir "que desglose lo refleje con honestidad": 0 es exactamente lo que
- * tránsito aportó al puntaje. Ocultarlo del todo también sería razonable, pero
- * mostrarlo en 0 dice explícitamente "este factor existe, hoy no cuenta, y por
- * qué" — más informativo para el coordinador que un factor que simplemente no
- * aparece.
+ * Se redistribuye PROPORCIONALMENTE entre los cuatro factores restantes: cada
+ * peso nominal se divide por (1 − 0.15 − 0.10) = 0.75. Cada factor activo
+ * conserva la MISMA importancia relativa que tenía en el diseño original
+ * (presión operativa sigue pesando 2.33× lo que aire, igual que 35/15) — no se
+ * privilegia ni se penaliza a ninguno. Las alternativas descartadas:
+ *   - Repartir los 25 puntos en partes iguales: rompería la jerarquía que §7
+ *     estableció a propósito (presión y clima dejarían de dominar).
+ *   - Dárselo todo a "histórico propio": inflaría un factor que hoy vale 0 por
+ *     falta de historia.
+ *   - Dárselo todo a "presión operativa": pasaría a pesar ~47 % y cambiaría el
+ *     carácter del modelo sin que el diseño lo pida.
+ *
+ * Resultado (exacto, en fracciones de /75 para que la suma dé 1 sin arrastre de
+ * redondeo): presión 35/75 ≈ 0.4667 · clima 20/75 ≈ 0.2667 · aire 15/75 = 0.20
+ * · histórico 5/75 ≈ 0.0667 · tránsito 0 · eventos 0.
+ *
+ * `desglose.factores` SIEMPRE incluye la fila de `transito` y la de `eventos`,
+ * con `peso: 0` y `valor: 0` — nunca con su peso nominal. Es la forma honesta
+ * de cumplir "que el desglose lo refleje con honestidad": 0 es exactamente lo
+ * que aportaron al puntaje. Ocultarlas también sería razonable, pero mostrarlas
+ * en 0 dice explícitamente "este factor existe, hoy no cuenta, y por qué" —
+ * más informativo para el coordinador que un factor que simplemente no aparece.
  *
  * -----------------------------------------------------------------------------
  * COLAPSO POR FRANJA — MÁXIMO, NO PROMEDIO
@@ -94,23 +99,35 @@ export const PESOS_NOMINALES: Readonly<Record<FactorRiesgoId, number>> = {
   historico: 0.05,
 };
 
-/** Peso de tránsito que NO se aplica en F1 (F2 — requiere TomTom). */
-const PESO_TRANSITO_NOMINAL = PESOS_NOMINALES.transito;
-const FACTOR_RENORMALIZACION = 1 / (1 - PESO_TRANSITO_NOMINAL);
+/**
+ * Factores SIN FUENTE, cuyo peso no se aplica y se redistribuye.
+ *
+ * `transito` está fuera de alcance (TomTom es de pago) y `eventos` se quedó sin
+ * fuente al parar el pipeline de señales: `contexto.eventos_ciudad` no la
+ * escribe ningún job. Si alguno recupera fuente, se saca de esta lista y la
+ * renormalización se ajusta sola.
+ */
+const FACTORES_SIN_FUENTE = ['transito', 'eventos'] as const satisfies readonly FactorRiesgoId[];
+
+const PESO_SIN_FUENTE = FACTORES_SIN_FUENTE.reduce(
+  (suma, id) => suma + PESOS_NOMINALES[id],
+  0,
+);
+const FACTOR_RENORMALIZACION = 1 / (1 - PESO_SIN_FUENTE);
 
 /**
- * Pesos EFECTIVAMENTE usados por `calcularRiesgoZona` en F1: los cinco activos
- * renormalizados (ver cabecera del archivo) + tránsito en 0. Exportado para que
- * los tests puedan verificar la suma y para que un futuro composer explique la
- * redistribución sin duplicar el cálculo.
+ * Pesos EFECTIVAMENTE usados por `calcularRiesgoZona` en F1: los cuatro activos
+ * renormalizados (ver cabecera del archivo) + tránsito y eventos en 0.
+ * Exportado para que los tests puedan verificar la suma y para que el composer
+ * explique la redistribución sin duplicar el cálculo.
  */
 export const PESOS_EFECTIVOS_F1: Readonly<Record<FactorRiesgoId, number>> = {
   presion_operativa: PESOS_NOMINALES.presion_operativa * FACTOR_RENORMALIZACION,
   clima: PESOS_NOMINALES.clima * FACTOR_RENORMALIZACION,
   aire: PESOS_NOMINALES.aire * FACTOR_RENORMALIZACION,
-  eventos: PESOS_NOMINALES.eventos * FACTOR_RENORMALIZACION,
   historico: PESOS_NOMINALES.historico * FACTOR_RENORMALIZACION,
   transito: 0,
+  eventos: 0,
 };
 
 // =============================================================================

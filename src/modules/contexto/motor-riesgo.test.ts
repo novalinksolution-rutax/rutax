@@ -8,13 +8,10 @@
  *  - el colapso por franja (MÁXIMO, no promedio),
  *  - el descarte de franjas vencidas para horizonte 'hoy',
  *  - un test con reloj a las 22:00 de Santiago (fake timers),
- *  - un guard estático: `toISOString` no debe aparecer en este módulo.
+ *  - el guard estático de fechas se mudó a src/lib/fecha-santiago.guard.test.ts.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { ahoraEnSantiago, horaAMinutos } from '@/lib/fecha-santiago';
 import {
   PESOS_NOMINALES,
@@ -36,19 +33,15 @@ import {
 // Redistribución de pesos (cabecera del archivo, decisión A4)
 // =============================================================================
 
-describe('pesos: redistribución del 15% de tránsito', () => {
+describe('pesos: redistribución de tránsito (15%) y eventos (10%)', () => {
   it('los pesos NOMINALES de §7 suman 1', () => {
     const suma = Object.values(PESOS_NOMINALES).reduce((a, b) => a + b, 0);
     expect(suma).toBeCloseTo(1, 9);
   });
 
-  it('los pesos EFECTIVOS de F1 (con tránsito en 0) también suman 1', () => {
+  it('los pesos EFECTIVOS de F1 (con tránsito y eventos en 0) también suman 1', () => {
     const suma = Object.values(PESOS_EFECTIVOS_F1).reduce((a, b) => a + b, 0);
     expect(suma).toBeCloseTo(1, 9);
-  });
-
-  it('tránsito efectivo es exactamente 0 (no el 15% nominal)', () => {
-    expect(PESOS_EFECTIVOS_F1.transito).toBe(0);
   });
 
   it('la redistribución es proporcional: la razón presión/aire se conserva', () => {
@@ -57,12 +50,22 @@ describe('pesos: redistribución del 15% de tránsito', () => {
     expect(razonEfectiva).toBeCloseTo(razonNominal, 9);
   });
 
-  it('valores exactos esperados (35/85, 20/85, 15/85, 10/85, 5/85)', () => {
-    expect(PESOS_EFECTIVOS_F1.presion_operativa).toBeCloseTo(35 / 85, 9);
-    expect(PESOS_EFECTIVOS_F1.clima).toBeCloseTo(20 / 85, 9);
-    expect(PESOS_EFECTIVOS_F1.aire).toBeCloseTo(15 / 85, 9);
-    expect(PESOS_EFECTIVOS_F1.eventos).toBeCloseTo(10 / 85, 9);
-    expect(PESOS_EFECTIVOS_F1.historico).toBeCloseTo(5 / 85, 9);
+  it('valores exactos esperados (35/75, 20/75, 15/75, 5/75)', () => {
+    expect(PESOS_EFECTIVOS_F1.presion_operativa).toBeCloseTo(35 / 75, 9);
+    expect(PESOS_EFECTIVOS_F1.clima).toBeCloseTo(20 / 75, 9);
+    expect(PESOS_EFECTIVOS_F1.aire).toBeCloseTo(15 / 75, 9);
+    expect(PESOS_EFECTIVOS_F1.historico).toBeCloseTo(5 / 75, 9);
+  });
+
+  /**
+   * Los dos factores sin fuente van en CERO, no en su peso nominal. Es la línea
+   * que evita que vuelva el bug: un factor que siempre vale 0 pero conserva
+   * peso arrastra el puntaje hacia abajo y hace que las zonas se lean más
+   * calmas de lo que están.
+   */
+  it('tránsito y eventos pesan 0 por no tener fuente', () => {
+    expect(PESOS_EFECTIVOS_F1.transito).toBe(0);
+    expect(PESOS_EFECTIVOS_F1.eventos).toBe(0);
   });
 });
 
@@ -497,21 +500,18 @@ describe('calcularRiesgoZona', () => {
   });
 
   /**
-   * El peor escenario construible NO da 100, y eso es correcto por diseño.
+   * El peor escenario construible ahora SÍ da 100.
    *
-   * `eventos` tiene techo 90: 80 por un evento de asistencia alta, más un bonus
-   * de hasta 10 por eventos simultáneos. Un solo evento, por masivo que sea, no
-   * satura el factor — dos eventos a la vez sí son peores que uno, y la escala
-   * lo refleja. Con peso 10/85, esos 10 puntos que faltan restan ~1,2 al total.
+   * Antes daba 99: `eventos` tiene techo 90 (80 por un evento de asistencia
+   * alta más un bonus de hasta 10 por simultáneos), y con peso 10/85 esos 10
+   * puntos que faltaban restaban ~1,2 al total. Al quedarse sin fuente, eventos
+   * pasó a peso 0 y salió del cálculo: los cuatro factores activos saturan en
+   * 100 y el total también.
    *
-   * Techo real: (100·35 + 100·20 + 100·15 + 90·10 + 100·5) / 85 = 98,82 → 99.
-   *
-   * Que los pesos sumen 1 se verifica aparte (ver el bloque de pesos arriba),
-   * así que este test no necesita apoyarse en un 100 redondo: verifica que el
-   * peor caso cae holgado en `critico` y que ningún factor se queda corto por
-   * un error de escala.
+   * El escenario sigue pasando eventos saturados a propósito — es la prueba de
+   * que su peso 0 los deja fuera del puntaje de verdad, no solo del desglose.
    */
-  it('peor escenario construible: puntaje 99 y nivel critico', () => {
+  it('peor escenario construible: puntaje 100 y nivel critico', () => {
     const r = calcularRiesgoZona({
       presionOperativa: { pedidosPendientes: 500, capacidadEstimada: 10, minutosHastaCorte: 0 },
       clima: { precipitacionMaximaMmHora: 20, vientoMaximoKmh: 80, ventanaInicioLocal: '16:00', ventanaFinLocal: '19:00' },
@@ -525,7 +525,7 @@ describe('calcularRiesgoZona', () => {
       },
       historico: { tasaFallidosPct: 50 },
     });
-    expect(r.puntaje).toBe(99);
+    expect(r.puntaje).toBe(100);
     expect(r.nivel).toBe('critico');
 
     // Todos los factores activos saturados salvo eventos, que topa en 90.
@@ -719,84 +719,10 @@ describe('integración: 22:00 de Santiago (invierno, fake timers)', () => {
 });
 
 // =============================================================================
-// Guard estático: prohibido toISOString dentro de src/modules/contexto/
+// El guard estatico de fechas se mudo a src/lib/fecha-santiago.guard.test.ts
 // =============================================================================
-// Barato y para siempre (instrucción del paso A4): un grep del directorio que
-// falla si alguien reintroduce el bug conocido del proyecto (derivar una fecha
-// civil con toISOString, que es UTC y no Santiago). No distingue "uso
-// inocente" de "uso peligroso" a propósito — la prohibición es total dentro de
-// este módulo.
-// =============================================================================
-
-describe('guard: toISOString prohibido en src/modules/contexto/', () => {
-  const DIR_CONTEXTO = dirname(fileURLToPath(import.meta.url));
-
-  function listarArchivosFuente(dir: string): string[] {
-    const salida: string[] = [];
-    for (const entrada of readdirSync(dir)) {
-      const ruta = join(dir, entrada);
-      const stat = statSync(ruta);
-      if (stat.isDirectory()) {
-        salida.push(...listarArchivosFuente(ruta));
-      } else if (/\.tsx?$/.test(entrada)) {
-        salida.push(ruta);
-      }
-    }
-    return salida;
-  }
-
-  /**
-   * Los dos patrones que SÍ son bugs, no la llamada en sí.
-   *
-   * Una primera versión de este guard prohibía cualquier `toISOString`, y eso
-   * está mal: serializar un instante para escribirlo en una columna
-   * `timestamptz` es exactamente lo correcto, y es lo que hacen los jobs de
-   * este módulo al estampar `actualizado_en`. Un guard que prohíbe lo legítimo
-   * termina con una excepción encima, y esa excepción es por donde después se
-   * cuela el bug de verdad.
-   *
-   * Lo que rompe la Torre son estos dos:
-   *
-   * 1. Truncar un instante UTC para obtener una FECHA CIVIL. Desde las 20:00 de
-   *    Santiago (21:00 en verano) UTC ya está en el día siguiente, así que la
-   *    pantalla muestra el clima del día equivocado y el coordinador decide con
-   *    datos de mañana creyendo que son de hoy.
-   * 2. Pegarle una hora UTC a una fecha civil chilena para armar un rango de
-   *    día. Corre la ventana 3–4 horas, y con offset fijo (`-03:00`) además
-   *    está mal la mitad del año, porque Santiago es −04:00 en invierno.
-   *
-   * Los patrones se arman con `new RegExp` sobre trozos concatenados para que
-   * este archivo no contenga los literales que busca — si no, el guard se
-   * delata a sí mismo. Así el barrido cubre TODOS los archivos del módulo,
-   * incluido este, sin listas de exclusión.
-   */
-  const PATRONES_PROHIBIDOS: { motivo: string; regex: RegExp }[] = [
-    {
-      motivo: 'deriva una fecha civil truncando un instante UTC',
-      regex: new RegExp('toISO' + 'String\\(\\)\\s*\\.\\s*(slice|split|substring)'),
-    },
-    {
-      motivo: 'interpreta una fecha civil chilena como instante UTC',
-      regex: new RegExp('T(00:00:00|23:59:59)[.\\d]*Z'),
-    },
-  ];
-
-  it('ningún archivo de src/modules/contexto/ deriva fechas en UTC', () => {
-    const archivos = listarArchivosFuente(DIR_CONTEXTO);
-    const infractores: string[] = [];
-
-    for (const ruta of archivos) {
-      const texto = readFileSync(ruta, 'utf8');
-      for (const { motivo, regex } of PATRONES_PROHIBIDOS) {
-        if (regex.test(texto)) infractores.push(`${ruta} (${motivo})`);
-      }
-    }
-
-    expect(
-      infractores,
-      `Este módulo es 100 % sensible a fecha y hora: usa los helpers de ` +
-        `src/lib/fecha-santiago.ts (hoyEnSantiago, fechaLocalEnSantiago, ` +
-        `limitesDelDiaSantiago). Infractores: ${infractores.join(' · ')}`,
-    ).toEqual([]);
-  });
-});
+// Nacio aqui, acotado a src/modules/contexto/. Se elevo al repo entero cuando
+// la auditoria encontro el mismo bug fuera de la Torre (las metricas del dia
+// del dashboard y el borde de mes de los periodos de cobro). Cubre los mismos
+// patrones y uno mas —el offset de Santiago clavado—, que es justo por donde
+// se habia colado contexto/olas.ts.
