@@ -5,7 +5,42 @@ el mapa de la Región Metropolitana que cruza **señal externa** (clima, aire,
 tránsito, eventos) con la **carga interna** (pedidos, zonas, conductores, SLA) y
 la traduce a **impacto en dinero**.
 
-Estado: diseño aprobado, sin implementar. Fecha: 2026-07-25.
+Escrito el 2026-07-25 como diseño de la v1. Implementado. **En rediseño v2 desde
+el 2026-08-03.**
+
+> ## Qué de este documento sigue mandando (2026-08-03)
+>
+> El módulo entró en rediseño. La fuente de verdad de **producto** es
+> `docs/torre-de-control/alcance-v2.md`. Este documento sigue siendo la fuente de
+> verdad **técnica**, pero solo en parte:
+>
+> **Vigente:**
+> - §1–§3 — qué es el módulo, decisiones de encuadre y qué reutiliza del repo.
+> - §5 — modelo de datos: esquema `contexto`, su carve-out deny-all y `tenant_id`
+>   en las tablas de negocio (`riesgo_zona`, `marcas_operativas`).
+> - §6 — adaptadores como puertos aislados, jobs y sus cadencias.
+> - §7 — el motor de riesgo **como pieza de arquitectura** (dónde vive, cómo se
+>   invoca, cómo persiste). ⚠️ Sus **pesos y factores** están en revisión: el
+>   rediseño decide si clima y aire salen del puntaje (ver `alcance-v2.md`).
+> - El pipeline de cartografía: `scripts/mapa/README.md` y
+>   `public/mapas/comunas-rm.topojson.json`.
+>
+> **Superado — no lo sigas:**
+> - **§4 (fuentes externas).** Corregido dos veces por la realidad. Lo cierto
+>   está en las correcciones fechadas de la propia sección y en CLAUDE.md.
+> - **§8 (pantalla) entera.** Regiones, capas del mapa, zoom semántico,
+>   interacciones y estados de pantalla se redefinen en `alcance-v2.md`.
+> - **§8.8 (SVG vs MapLibre): resuelto.** Ganó MapLibre + PMTiles. Y la elección
+>   de motor cartográfico se vuelve a evaluar, con su propio entregable, en
+>   `docs/arquitectura/mapa-torre-v2.md`.
+> - **§13 (señales de prensa): pipeline muerto.** Sus fuentes están bloqueadas
+>   por licencia o por falta de cobertura en Chile; las tablas
+>   `contexto.eventos_ciudad`, `contexto.senales` y `contexto.senales_tenant`
+>   tienen 0 filas y ningún escritor. Se conserva como registro de por qué no se
+>   construyó.
+>
+> Nada de esto se borró: el documento es la memoria de por qué se descartaron
+> cosas.
 
 ---
 
@@ -62,6 +97,16 @@ propio**: con el tiempo Rutax sabe cuánto le cuesta la lluvia a *ese* courier e
 ---
 
 ## 4. Fuentes externas (verificadas 2026-07-25)
+
+> ⚠️ **SECCIÓN SUPERADA (2026-08-03).** Se equivocó dos veces y la realidad la
+> corrigió las dos: Open-Meteo (prohíbe uso comercial → se migró a OpenWeather) y
+> las fuentes de prensa (bloqueadas → §13). Lo cierto está en las correcciones
+> fechadas de más abajo y en CLAUDE.md.
+>
+> Y encima queda pendiente de una decisión de producto: si clima y aire salen del
+> puntaje de riesgo, se apagan los adaptadores de OpenWeather, la grilla de 14
+> puntos y las tablas `clima_horario` / `aire_horario`, y el módulo `contexto`
+> se queda sin contexto externo. Lo decide `docs/torre-de-control/alcance-v2.md`.
 
 ### Se usan
 
@@ -257,19 +302,20 @@ Ruta: `src/app/(tenant)/torre-de-control/`. Botón fijo en la navegación del
 layout `(tenant)`, condicionado por capacidad. RBAC: capacidad nueva
 `ver_torre_control` para dueño, supervisor y coordinador.
 
-> ⚠️ **Esta sección quedó superada en todo lo visual y de layout.** La interfaz
-> aprobada es la de `design_handoff_torre_de_control/README.md`: tokens, medidas
-> de las regiones, geometría del mapa, estados y comportamiento salen de ahí.
+> ⚠️ **SUPERADA ENTERA (2026-08-03).** Esta sección ya había quedado superada por
+> el handoff de diseño; ahora el handoff también dejó de mandar y está archivado
+> en `docs/_historico/torre-v1/`. Regiones, capas, zoom semántico, color,
+> movimiento, interacciones y estados de pantalla se redefinen desde cero en
+> `docs/torre-de-control/alcance-v2.md`, sobre una decisión de producto nueva:
+> **el mapa es exclusivamente operativo** (zonas, conductores, pedidos, carga),
+> sin capas de ambiente.
 >
-> - **8.2 (color) y 8.5 (movimiento) están OBSOLETAS.** El diseño final usa
->   papel/grafito, radio 0 en todo, riesgo por trama de 45° en vez de rampa
->   cromática y `#ec3013` reservado a lo crítico accionable.
-> - **8.4 y 8.8 quedan condicionadas** a la decisión de motor de mapa (ver 8.8).
-> - Sigue vigente: 8.3 (disclosure de tres niveles), 8.6 (silencio por defecto),
->   8.7 (estados) y 8.9 (accesibilidad) — el handoff las recoge como reglas de
->   producto.
+> Se conserva como registro. Dos cosas de aquí siguen siendo candidatas y el
+> alcance v2 decide si sobreviven: 8.3 (disclosure de tres niveles) y 8.6
+> (silencio por defecto).
 >
-> `docs/torre-de-control/lenguaje-visual.md` fue **descartado**. No usarlo.
+> La ruta de 8.1 también cambió: la pantalla NO vive en `(tenant)` sino en
+> `src/app/(consola)/torre-de-control/`.
 
 ### 8.1 Estructura
 
@@ -394,10 +440,17 @@ deja de leerse al mes.
   mapa que los esconde miente sobre la carga real.
 - **Tenant sin zonas** → fallback a macro-zonas + invitación a configurarlas.
 
-### 8.8 Construcción del mapa — DECISIÓN ABIERTA
+### 8.8 Construcción del mapa — RESUELTA
 
-> ⚠️ **El diseño aprobado y esta sección proponen motores distintos.** Hay que
-> elegir uno antes de escribir código de mapa.
+> ✅ **Resuelta (2026-07-26): ganó la Opción 2, MapLibre + PMTiles**, por
+> orientación urbana, con geometría comunal DPA 2023 real y basemap acromático
+> mínimo. Lo que sigue es el registro del trade-off.
+>
+> ⚠️ **Y se vuelve a abrir, con otro encuadre (2026-08-03).** Al quitarle al mapa
+> las capas de ambiente, el mapa cambia de trabajo, y el usuario pidió replantear
+> la herramienta. Esa evaluación —opciones, licencias, costo y medición de
+> rendimiento— tiene su propio entregable: `docs/arquitectura/mapa-torre-v2.md`.
+> No decidas motor de mapa desde aquí.
 >
 > **Opción 1 — la del handoff (SVG + TopoJSON).** El diseño aprobado dibuja el
 > mapa como SVG geométrico con una capa HTML de etiquetas encima, sin basemap,
@@ -617,6 +670,19 @@ adelante en vez de hacia atrás.
 ---
 
 ## 13. Señales — radar de acontecimientos
+
+> ⚠️ **PIPELINE MUERTO (2026-08-03). No lo construyas.** Las fuentes están
+> bloqueadas: Google News RSS prohíbe el uso comercial, GDELT no cubre Chile y
+> SENAPRED solo publica desastres naturales (detalle en la corrección de §13.2).
+> Las tablas `contexto.eventos_ciudad`, `contexto.senales` y
+> `contexto.senales_tenant` existen con **0 filas y ningún escritor**, y
+> `obtenerSenalesDelTenant` se importa en el composer pero nunca se llama.
+> Efecto colateral: la fuente `senales` está declarada caída de forma permanente
+> en `contexto.fuentes_estado`, y por eso la Torre abre siempre en estado
+> `degradado`.
+>
+> Se conserva como registro de la investigación y de por qué no se construyó. Su
+> retiro se decide en `docs/torre-de-control/alcance-v2.md`.
 
 Investigado 2026-07-25. Objetivo: detectar acontecimientos (cortes, marchas,
 paros, emergencias, fallas del Metro) que afecten la operación, antes de que el

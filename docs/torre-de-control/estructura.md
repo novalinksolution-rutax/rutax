@@ -1,15 +1,21 @@
-# Torre de control — estructura de información
+# Torre de control — estructura de información (v1)
 
-Compañero de [`datos-dummy.ts`](datos-dummy.ts).
+> ⚠️ **Esto describe la Torre v1 y ya NO es el contrato del endpoint**
+> (2026-08-03). El módulo entra en rediseño: el mapa pasa a ser exclusivamente
+> operativo y el handoff de diseño dejó de ser autoridad. La v2 se define en
+> [`alcance-v2.md`](alcance-v2.md); esto queda como referencia de lo que existe
+> hoy en pantalla y de por qué.
+>
+> En concreto, quedan superadas las seis regiones (R1–R6), el tope de 2 capas,
+> el zoom semántico de 3 niveles, la lista de capas del mapa y las señales de
+> prensa (§R6 — su pipeline está muerto: 0 filas y ningún escritor).
 
 **Este documento no decide nada visual.** No hay colores, tipografías, espaciados
 ni layout. Define qué información existe, cómo se jerarquiza, qué estados hay que
-resolver y qué debe hacer cada gesto. La interfaz se diseña aparte y con
-libertad total.
+resolver y qué debe hacer cada gesto.
 
-> El lenguaje visual que había propuesto está en
-> [`lenguaje-visual.md`](lenguaje-visual.md). Queda como una opción, no como una
-> restricción.
+El dataset dummy que lo acompañaba y el lenguaje visual que proponía están
+archivados en [`docs/_historico/torre-v1/`](../_historico/torre-v1/README.md).
 
 ---
 

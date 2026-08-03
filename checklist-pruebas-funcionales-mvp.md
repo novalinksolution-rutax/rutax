@@ -854,6 +854,14 @@ npx supabase test db    # corre los pgTAP
 
 ---
 
+> ⚠️ **La Torre de control entra en rediseño v2 (2026-08-03).** Las entradas de
+> la Torre que siguen a continuación quedan como **registro de lo que se probó
+> en la v1** — no se reescriben ni se re-verifican. El handoff de diseño dejó de
+> ser autoridad (archivado en `docs/_historico/torre-v1/`), el contrato de tipos
+> dejó de estar congelado, y el mapa pasa a ser exclusivamente operativo. El
+> alcance de la v2 se define en `docs/torre-de-control/alcance-v2.md`; cuando se
+> implemente, se abren entradas nuevas más abajo.
+
 ## Torre de control — cimiento de datos (módulo `contexto`, F1) — 2026-07-26
 
 **Feature:** módulo nuevo de anticipación operativa. Esta pasada cubre **la vía de datos**, no la interfaz: esquema `contexto` con su aislamiento, puertos de contexto externo, motor de riesgo y jobs. La interfaz va aparte y avanza contra una fixture tipada, porque el contrato de tipos (`docs/torre-de-control/datos-dummy.ts`) ya está congelado por el handoff de diseño.

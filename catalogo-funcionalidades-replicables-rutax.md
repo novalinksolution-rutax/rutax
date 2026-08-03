@@ -153,6 +153,7 @@
 - **Quién lo hace bien y cómo:** Onfleet y Bringg: estados en vivo, "en riesgo", on-time, productividad.
 - **Cómo lo replicas:** ya tienes dashboard; sube el estándar con el **semáforo de SLA** (cumplimiento Flex por seller) y "pedidos en riesgo de corte" como primeros widgets.
 - **Dónde superarlos:** unir KPIs operativos con financieros (costo por entrega) en la misma vista.
+- **Nota (2026-08-03):** además del dashboard existe el módulo Torre de control, que **entra en rediseño v2**: mapa exclusivamente operativo, sin capas de ambiente. Alcance en `docs/torre-de-control/alcance-v2.md`.
 
 ### F22 — Analítica / BI (costo, productividad, fuga) `[Rutax: 🟡]`
 - **Qué resuelve:** decidir con datos y tener argumento de venta.

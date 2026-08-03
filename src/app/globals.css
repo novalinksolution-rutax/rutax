@@ -262,7 +262,12 @@
 /* =============================================================================
  * TORRE DE CONTROL — lenguaje visual propio del módulo.
  * -----------------------------------------------------------------------------
- * Fuente: design_handoff_torre_de_control/tokens.css.
+ * Fuente: docs/_historico/torre-v1/design_handoff_torre_de_control/tokens.css.
+ *
+ * ⚠️ EN REDISEÑO (2026-08-03). El handoff que definió estos tokens dejó de ser
+ * autoridad y está archivado; el rediseño visual de la Torre decide el destino
+ * de este bloque. Hasta entonces se quedan tal cual: son lo que hace que la
+ * pantalla se vea. Alcance del rediseño: docs/torre-de-control/alcance-v2.md.
  *
  * ⚠️ Este módulo NO sigue DESIGN_SYSTEM.md, a propósito y por instrucción
  * explícita del diseño aprobado. Papel/grafito, radio 0 en absolutamente todo,
