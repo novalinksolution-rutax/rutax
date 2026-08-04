@@ -208,6 +208,27 @@ de cualquier punto o deja de excluir al entregado.
 clic en una comuna → `flyTo` de 700 ms; o rueda del mouse → el nivel cambia solo
 al cruzar el umbral. Nada de modos que el usuario tenga que elegir.
 
+**Y hay una tercera entrada, del nivel 2 al 3: el clic en una burbuja** (añadida
+el 2026-08-03 tras encontrarla rota en el prototipo). La burbuja es un resumen
+—«acá hay 5»—, así que hacer clic en ella tiene una sola lectura posible:
+**enséñame cuáles son esos 5.** Sus puntos la sustituyen.
+
+Dos reglas de implementación que se rompen fácil, y que ya se rompieron una vez:
+
+1. **El nivel se cambia ANTES de volar, no al aterrizar.** Si se dejara al
+   sincronizador de zoom, la burbuja viajaría encima de sus propios puntos
+   durante todo el vuelo. Y como el sincronizador está suprimido mientras la
+   cámara vuela por orden nuestra, el último evento `zoom` llega antes de que se
+   libere la bandera: **hay que re-sincronizar en `moveend`** o cualquier vuelo
+   que cruce un umbral deja el nivel desfasado hasta que el usuario toque la
+   rueda a mano.
+2. **El clic se resuelve por especificidad, nunca por el orden que devuelva
+   `queryRenderedFeatures`.** El polígono de comuna cubre el mapa entero, así que
+   está siempre entre los resultados: quedarse con el primero hacía que un clic
+   sobre una burbuja cerca de un borde comunal se resolviera como «entrar en la
+   comuna vecina». El orden correcto es de lo más pequeño a lo más grande:
+   **punto → burbuja → comuna.**
+
 ```
 NIVEL 1 · comuna            z < 11
 ┌──────────────────────────────────────────────┬─────────────────┐
