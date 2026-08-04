@@ -197,31 +197,54 @@ encanta la primera vez estorba la vigésima. El dato no puede hacerse esperar.
 sobrevive queda flotando sobre un mapa que ya no la explica: señalaba un punto
 que dejó de dibujarse.
 
-### 3.6 Previsualización de una agrupación
+### 3.6 Previsualización en el nivel 3
 
-Decidido el 2026-08-03. Al abrir una burbuja de **más de un pedido**, cada uno de
-los suyos asoma como **la misma tarjeta a la mitad de tamaño y translúcida**
-(escala 0.5, opacidad 0.72), anclada a su propio punto.
+Decidido el 2026-08-03. En el nivel 3, **cada pedido a la vista se previsualiza
+solo**, sin tener que pincharlo. El criterio es el **encuadre**, no el origen del
+clic: al entrar por una agrupación se ven también puntos de las vecinas, y esos
+piden exactamente lo mismo.
 
-Resuelve el problema real de una agrupación —saber **qué** hay dentro sin pinchar
-uno por uno— y lo hace sin inventar un componente nuevo: es la ficha, más
-pequeña. Así el clic no cambia de lenguaje, solo de tamaño. Al pasar por encima
-crece a 0.62 y recupera opacidad, anticipando lo que hará el clic; al hacer clic
-—en la miniatura **o** en su punto— se abre en tamaño normal, y **las demás
-siguen como contexto**: si desaparecieran se perdería justo lo que se vino a ver.
+**Dos tratamientos, y la diferencia es de fondo:**
 
-Cuatro reglas:
+| | Qué asoma | Por qué |
+|---|---|---|
+| Pedido normal | **La misma ficha a la mitad y translúcida** (escala 0.5, opacidad 0.72). Al pasar por encima crece a 0.62 y recupera opacidad | No inventa un componente: es la ficha, más pequeña, así que el clic no cambia de lenguaje, solo de tamaño |
+| **Incidencia** | **Su etiqueta, no una tarjeta**: una píldora roja con el tipo —«Domicilio cerrado», «Destinatario rechaza»—, a tamaño completo y sin translucidez | La tarjeta contesta «quién lo lleva y desde cuándo»; ante una incidencia eso es secundario y lo primero es **de qué se trata**, porque decide qué se hace: un domicilio cerrado se reintenta, un paquete dañado no. Cabe en dos palabras, así que gastar una tarjeta entera sería enterrar el dato |
 
-- **El criterio es la cantidad de la burbuja, no el número de puntos.** Una
-  burbuja de 5 puede ser un edificio con cinco entregas (un punto con `+4`) o
-  cinco portales distintos; en ambos casos hay más de un pedido que mirar. Con un
-  solo pedido no se dibuja: la miniatura no añadiría nada que el punto no diga.
-- **Aparecen al aterrizar, no al despegar.** Dibujadas antes del `flyTo`
-  viajarían por la pantalla durante todo el vuelo.
-- **Se voltean bajo el punto cuando arriba no caben**, igual que la ficha grande
-  —midiendo su alto **escalado**, o un punto cerca del borde superior deja la
-  tarjeta cortada por la caja del mapa.
-- **Se van con el nivel.** Fuera del 3 no existen.
+La incidencia va **sin escalar y sin translucidez a propósito**: es lo único
+accionable de la pantalla y no puede competir en desventaja con lo que no lo es.
+
+Al hacer clic —en la previsualización **o** en su punto— se abre la ficha
+completa, y **las demás siguen como contexto**: si desaparecieran se perdería
+justo lo que se vino a ver. En una incidencia, el chip de la ficha lleva **el
+tipo** y no «Incidencia abierta»: que está abierta ya lo dice el rojo.
+
+Cinco reglas:
+
+- **Los entregados no se previsualizan.** Ya no piden atención, y llenarían la
+  pantalla de tarjetas de algo cerrado.
+- **Solo lo estrictamente dentro del encuadre.** Un margen de tolerancia le daba
+  tarjeta a puntos fuera de la caja, y la tarjeta salía cortada señalando algo
+  que no se ve.
+- **El conjunto se recalcula al asentarse la vista** (`moveend`), no en cada
+  frame: durante el movimiento solo se reposiciona lo ya montado.
+- **Se des-solapan por caja, y el orden decide quién sobrevive: primero las
+  incidencias, después lo más quieto.** Ocultar una previsualización **no**
+  esconde carga —el punto se sigue dibujando y sigue siendo clicable—: lo que se
+  pierde es un atajo, no un pedido. Por eso acá el des-solape sí es legítimo,
+  al contrario que en el mapa.
+- **Se voltean bajo el punto cuando arriba no caben** —midiendo su alto
+  **escalado**—, y si no caben ni arriba ni abajo no se dibujan: moverlas hasta
+  que quepan las despegaría de su punto, y una tarjeta que señala a otra cosa es
+  peor que ninguna.
+
+**Las tres líneas de la ficha** son `Conductor` · `Seller` · `Sin cambios hace X`
+(2026-08-03). La tercera reemplazó a «Le faltan N paquetes», que describía al
+**conductor** en una tarjeta que va de un **paquete**. El tiempo sin moverse es
+lo único de la ficha que contesta «¿este necesita mi atención?» —una de las tres
+razones por las que el coordinador abre la Torre— y usa el mismo lenguaje que el
+panel («hace 23 min»). El seller es la otra parte del motor entrega→dinero y lo
+primero que hace falta ante una incidencia: a quién avisar.
 
 ---
 
