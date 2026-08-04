@@ -50,6 +50,7 @@ import { FormularioPedidoSameDay } from "./formulario-same-day";
 import { FiltrosPedidosForm } from "./filtros-pedidos";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { obtenerConductoresDelTenant } from "@/lib/datos-tenant/conductores";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
@@ -101,6 +102,10 @@ interface SearchParams {
   seller?: string;
   estado?: string;
   fecha?: string;
+  /** Comuna de destino — destino de los enlaces profundos de la Torre (F11). */
+  comuna?: string;
+  /** Id del conductor — ídem. */
+  conductor?: string;
   por_revisar?: string;
   pagina?: string;
 }
@@ -121,6 +126,8 @@ export default async function PaginaOperaciones({
   const filtroSeller = params.seller || "";
   const filtroEstado = (params.estado as EstadoPedido | "") || "";
   const filtroFecha = params.fecha || hoyIso;
+  const filtroComuna = params.comuna || "";
+  const filtroConductor = params.conductor || "";
   const filtroPorRevisar = params.por_revisar === "1";
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
   const LIMITE = 25;
@@ -128,6 +135,8 @@ export default async function PaginaOperaciones({
   const hayFiltroActivo = !!(
     filtroSeller ||
     filtroEstado ||
+    filtroComuna ||
+    filtroConductor ||
     filtroPorRevisar ||
     (params.fecha && params.fecha !== hoyIso)
   );
@@ -141,10 +150,15 @@ export default async function PaginaOperaciones({
   // listarPedidos y la lista de sellers para los filtros no dependen entre sí:
   // se cargan en paralelo (antes la lista de sellers esperaba a que terminara
   // la carga de pedidos sin necesidad).
-  const [resPedidos, sellersDisponibles] = await Promise.all([
+  const [resPedidos, sellersDisponibles, conductoresDisponibles] = await Promise.all([
     listarPedidos(cliente, {
       tenantId,
       sellerId: filtroSeller || undefined,
+      // Comuna y conductor SÍ aplican junto a «por revisar»: la bandeja de
+      // direcciones es un corte del mismo universo, y acotarla a una comuna es
+      // exactamente lo que se quiere al llegar desde la Torre.
+      comuna: filtroComuna || undefined,
+      conductorId: filtroConductor || undefined,
       estado: filtroPorRevisar ? undefined : (filtroEstado as EstadoPedido) || undefined,
       fecha: filtroPorRevisar ? undefined : filtroFecha || undefined,
       porRevisar: filtroPorRevisar || undefined,
@@ -156,6 +170,9 @@ export default async function PaginaOperaciones({
     ),
     // Lista de sellers para el filtro — cacheada por tenant (datos-tenant/sellers).
     obtenerSellersDelTenant(tenantId).catch(() => [] as { id: string; nombre: string }[]),
+    // Conductores para el filtro (F11). Cacheada por tenant igual que la de
+    // sellers: cambia poco y la piden varias pantallas.
+    obtenerConductoresDelTenant(tenantId).catch(() => [] as { id: string; nombre: string }[]),
   ]);
 
   const errorCarga = !resPedidos.ok;
@@ -311,9 +328,12 @@ export default async function PaginaOperaciones({
       {/* Bloque 2 — Filtros */}
       <FiltrosPedidosForm
         sellers={sellersDisponibles}
+        conductores={conductoresDisponibles}
         filtroSeller={filtroSeller}
         filtroEstado={filtroEstado}
         filtroFecha={filtroFecha}
+        filtroComuna={filtroComuna}
+        filtroConductor={filtroConductor}
         filtroPorRevisar={filtroPorRevisar}
         hayFiltroActivo={hayFiltroActivo}
       />
