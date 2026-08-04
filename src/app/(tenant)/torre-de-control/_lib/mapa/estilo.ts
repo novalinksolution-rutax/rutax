@@ -611,19 +611,28 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       filter: ['!=', ['get', 'estado'], 'entregado'],
       paint: {
         'circle-color': d.puntoSombra,
-        // Poco más que el núcleo que sombrea (~1,2 px), nunca más: una sombra
-        // más grande que el objeto deja de leerse como sombra y pasa a glow.
+        /**
+         * ⚠️ Se mide contra el borde EXTERIOR del punto, no contra su núcleo.
+         * `circle-stroke-width` de MapLibre se dibuja **hacia afuera** del
+         * radio, así que el halo hay que sumarlo: un pendiente a z17 ocupa
+         * 6 + 1,6 = 7,6 px, y la incidencia 8 + 1,8 = 9,8. Dimensionarla contra
+         * el núcleo la dejaba entera debajo del halo blanco — invisible, como
+         * se comprobó comparando la misma vista con y sin ella.
+         *
+         * Aun así se queda corta y difusa: una sombra que sobresale mucho deja
+         * de leerse como sombra y pasa a glow.
+         */
         'circle-radius': [
           'interpolate',
           ['linear'],
           ['zoom'],
           13,
-          ['match', ['get', 'estado'], 'incidencia', 6.2, 4.8],
+          ['match', ['get', 'estado'], 'incidencia', 8.8, 7.2],
           17,
-          ['match', ['get', 'estado'], 'incidencia', 9.4, 7.2],
+          ['match', ['get', 'estado'], 'incidencia', 12, 10],
         ],
-        'circle-blur': 0.9,
-        'circle-translate': [0, 1.5],
+        'circle-blur': 0.8,
+        'circle-translate': [0, 2],
       },
     },
     {

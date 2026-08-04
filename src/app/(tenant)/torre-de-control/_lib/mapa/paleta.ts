@@ -148,7 +148,7 @@ const CLARO: PaletaMapa = {
     // Sombra bajo el punto. Tinta del sistema al 22 %, no negro: un gris neutro
     // sobre la tierra fría (#f1f2f8) se ve sucio. Es lo que asienta el punto
     // sobre el plano en vez de dejarlo pegado encima.
-    puntoSombra: '#1e253638',
+    puntoSombra: '#1e25364d',
   },
 };
 

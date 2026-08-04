@@ -41,9 +41,18 @@ existente) · geometría comunal DPA 2023 ya versionada.
 La comuna es la unidad primaria y la primera vista. La cifra de cada comuna es
 **cuántos faltan por entregar** — no un puntaje, no un porcentaje.
 
-**Se muestra como fracción, no como número suelto: «38 de 120».** Un "38" pelado
-obliga a recordar de cuánto partió la comuna; la fracción da el avance de un
-vistazo sin necesidad de gráfico.
+**Se muestra como fracción, no como número suelto: «faltan 38 de 120».** Un "38"
+pelado obliga a recordar de cuánto partió la comuna; la fracción da el avance de
+un vistazo sin necesidad de gráfico.
+
+⚠️ **La fracción va con la palabra «faltan», y no es decoración** (corregido el
+2026-08-03 tras el QA visual). Sin ella, «38 de 120» se lee como «38 hechos de
+120» tan fácil como al revés — le pasó al dueño del producto mirando su propia
+pantalla, que es el lector mejor informado posible. Se evaluó invertir la
+fracción a lo entregado («82 de 120 entregados») y **se descartó**: la Torre mide
+lo que falta y su contador tiene que **achicarse** durante el día. Ese descenso
+es la idea central del módulo; contar lo hecho lo convertiría en una barra de
+progreso y dejaría «¿cuántos me faltan?» detrás de una resta.
 
 ### F2 · Zoom semántico de tres niveles
 **Dato:** los mismos pedidos, a distinta granularidad.

@@ -213,12 +213,13 @@ NIVEL 1 · comuna            z < 11
 ┌──────────────────────────────────────────────┬─────────────────┐
 │  Región Metropolitana                    ⊕ ⊖ │  Incidencias    │
 │                                            ⤢ │ ─────────────── │
-│        ┌ Renca 12 de 28 ┐                    │ ● RX-8F2K-9QD1  │
-│                    ┌ Providencia 38 de 86 ●┐ │   Providencia   │
-│   ┌ Maipú 31 de 96 ┐        ┌ Las Condes ─┐  │   Muñoz · 12min │
+│     ┌ Renca faltan 12 de 28 ┐                │ ● RX-8F2K-9QD1  │
+│              ┌ Providencia faltan 38 de 86 ●┐│   Providencia   │
+│   ┌ Maipú faltan 31 de 96 ┐   ┌ Las Condes ─┐│   Muñoz · 12min │
 │                                              │                 │
 │   · comunas rellenas por carga (4 pasos)     │ ● 11122334455   │
-│   · placa = nombre + fracción + punto rojo   │   Maipú · 26min │
+│   · placa = nombre + «faltan» + fracción     │   Maipú · 26min │
+│     + punto rojo si hay incidencia           │                 │
 └──────────────────────────────────────────────┴─────────────────┘
 
 NIVEL 2 · agrupaciones      11 ≤ z < 13.6      (clic en comuna / rueda)
