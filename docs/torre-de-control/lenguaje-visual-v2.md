@@ -193,6 +193,36 @@ cuál de los puntos se refería.
 ⚠️ **160 ms y no más.** Una consola se mira muchas veces al día: la animación que
 encanta la primera vez estorba la vigésima. El dato no puede hacerse esperar.
 
+⚠️ **La ficha es del nivel 3 y solo del nivel 3.** Al salir se cierra sola. Si
+sobrevive queda flotando sobre un mapa que ya no la explica: señalaba un punto
+que dejó de dibujarse.
+
+### 3.6 Previsualización de una agrupación
+
+Decidido el 2026-08-03. Al abrir una burbuja de **más de un pedido**, cada uno de
+los suyos asoma como **la misma tarjeta a la mitad de tamaño y translúcida**
+(escala 0.5, opacidad 0.72), anclada a su propio punto.
+
+Resuelve el problema real de una agrupación —saber **qué** hay dentro sin pinchar
+uno por uno— y lo hace sin inventar un componente nuevo: es la ficha, más
+pequeña. Así el clic no cambia de lenguaje, solo de tamaño. Al pasar por encima
+crece a 0.62 y recupera opacidad, anticipando lo que hará el clic; al hacer clic
+—en la miniatura **o** en su punto— se abre en tamaño normal, y **las demás
+siguen como contexto**: si desaparecieran se perdería justo lo que se vino a ver.
+
+Cuatro reglas:
+
+- **El criterio es la cantidad de la burbuja, no el número de puntos.** Una
+  burbuja de 5 puede ser un edificio con cinco entregas (un punto con `+4`) o
+  cinco portales distintos; en ambos casos hay más de un pedido que mirar. Con un
+  solo pedido no se dibuja: la miniatura no añadiría nada que el punto no diga.
+- **Aparecen al aterrizar, no al despegar.** Dibujadas antes del `flyTo`
+  viajarían por la pantalla durante todo el vuelo.
+- **Se voltean bajo el punto cuando arriba no caben**, igual que la ficha grande
+  —midiendo su alto **escalado**, o un punto cerca del borde superior deja la
+  tarjeta cortada por la caja del mapa.
+- **Se van con el nivel.** Fuera del 3 no existen.
+
 ---
 
 Estas reglas no viven solo en prosa: `estilo.test.ts` falla si el rojo aparece en
