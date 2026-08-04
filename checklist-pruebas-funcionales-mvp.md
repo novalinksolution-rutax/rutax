@@ -1147,8 +1147,9 @@ Estos requerimientos son de **Crecimiento (V2)** o **Futura (V3)**; no deberían
 - [x] **Verificación estándar completa:** `typecheck` limpio · `lint` 0 errores (152 warnings preexistentes, dos menos que antes) · **2129 pruebas Vitest** · `build` OK · **476 pruebas pgTAP** incluido el aislamiento de `contexto`.
 
 **Pendiente, no bloqueante:**
-- [ ] **QA visual con datos reales.** `supabase/seed-demo-full.sql` reparte los 960 pedidos en 14 comunas pero **todos los de una comuna comparten el mismo par lat/long exacto**, así que en el nivel de punto una comuna entera colapsa en un `+N`. Hay que darle dispersión antes de dar por buena la vista del mapa (Vía C).
-- [ ] **Verificar en el Inngest Dev Server** que los 4 jobs retirados ya no aparecen. A nivel de código están desregistrados de `api/inngest/route.ts`.
+- [x] **QA visual con datos reales.** Resuelto en la Vía C con `supabase/seed-torre-hoy.sql`: ~1.050 pedidos en 23 comunas con dispersión calibrada contra el polígono DPA. El problema era real y peor de lo anotado — el seed grande **además** congela las fechas al re-aplicarse.
+- [x] **Los 4 jobs retirados no quedan en el código.** Verificado (2026-08-04): `api/inngest/route.ts` registra un solo job de contexto (`jobSincronizarCalendario`), `src/modules/contexto/jobs/` tiene únicamente `sincronizar-calendario.ts` y `fuentes-estado.ts`, y las únicas menciones a los nombres retirados —y a `contexto/riesgo.recalcular-tenant`— son **comentarios de lápida** que explican por qué se fueron.
+- [ ] **Confirmarlo en el Inngest Dev Server**, que es lo único que no se pudo hacer: no estaba levantado. Es un chequeo de 30 segundos para la sesión de QA — arrancarlo y ver que la lista de funciones no trae ninguno de los cuatro.
 
 ---
 
