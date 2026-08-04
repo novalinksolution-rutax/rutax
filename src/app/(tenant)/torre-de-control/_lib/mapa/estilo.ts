@@ -47,7 +47,11 @@
 // carga su Web Worker como archivo suelto y Turbopack no resuelve ese patrón
 // dentro de `node_modules`; falla mudo, con el lienzo en blanco y la consola
 // limpia.
-import type { LayerSpecification, StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
+import type {
+  DataDrivenPropertyValueSpecification,
+  LayerSpecification,
+  StyleSpecification,
+} from '@maplibre/maplibre-gl-style-spec';
 import { paletaDe, type PaletaMapa, type TemaMapa } from './paleta';
 
 // =============================================================================
@@ -94,6 +98,30 @@ export const IDS_CAPAS = {
 /** Pesos de Noto Sans publicados junto al basemap. Ver `config.ts`. */
 const FUENTE_REGULAR = ['Noto Sans Regular'];
 const FUENTE_MEDIA = ['Noto Sans Medium'];
+
+/** Opacidad de un punto que NO pertenece a la agrupación abierta. */
+const OPACIDAD_FORANEA = 0.25;
+
+/**
+ * Atenúa lo que no pertenece a la agrupación que el usuario abrió.
+ *
+ * ⚠️ **Existe porque la cifra de la burbuja y la cuenta de puntos NO coinciden,
+ * y con razón.** La burbuja cuenta **paquetes** —tiene que hacerlo, o su suma
+ * dejaría de dar el pendiente de la comuna (regla 5)— mientras que cada punto es
+ * una **ubicación**: un edificio con tres paquetes es UN punto con «+2». Así,
+ * una burbuja de 4 puede ser legítimamente 2 puntos (3 + 1).
+ *
+ * Eso es correcto y aun así no se leía: al abrir una burbuja de 4 se contaban
+ * dos puntos y la resta no cerraba, porque el `+2` es chico y hay que ir a
+ * buscarlo. Atenuando lo ajeno, los puntos de la burbuja quedan solos en primer
+ * plano y la cuenta se puede hacer de un vistazo.
+ *
+ * `foraneo` lo calcula el cliente al armar la fuente: es `false` para todos
+ * mientras no haya ninguna agrupación abierta.
+ */
+function atenuar(normal: number = 1): DataDrivenPropertyValueSpecification<number> {
+  return ['case', ['get', 'foraneo'], OPACIDAD_FORANEA, normal];
+}
 
 /** `kind` de `landuse` que se pintan como área verde. */
 const KINDS_VERDES = [
@@ -227,6 +255,15 @@ function capasBasemap(paleta: PaletaMapa, conEtiquetas: boolean): LayerSpecifica
   // Pintar borde+relleno vía por vía deja costuras en cada cruce: el borde de la
   // calle de arriba se dibuja encima del relleno de la de abajo. Por eso van en
   // dos pasadas completas, que es como se dibuja una red vial.
+  //
+  // ⚠️ **La jerarquía son TRES clases, no cuatro.** El esquema de Protomaps
+  // declara `medium_road`, pero este extracto de la RM no trae ni una: se
+  // verificó contra el propio PMTiles —16 teselas, cuatro zooms (z10–z13) por
+  // cuatro puntos de la ciudad— y aparece en **cero**. Las dos capas que la
+  // filtraban (`bm-via-secundaria` y `bm-via-borde-media`) se retiraron en la
+  // Vía C: no dibujaban nunca y hacían creer que había un escalón intermedio
+  // entre la troncal y el pasaje. Si algún día se re-recorta el basemap con
+  // datos que sí la traigan, vuelven — pero se agregan viéndolas pintar.
   capas.push(
     {
       id: 'bm-via-borde-mayor',
@@ -241,16 +278,19 @@ function capasBasemap(paleta: PaletaMapa, conEtiquetas: boolean): LayerSpecifica
       },
     },
     {
-      id: 'bm-via-borde-media',
+      id: 'bm-via-borde-local',
       type: 'line',
       source: fuente,
       'source-layer': 'roads',
-      filter: ['==', ['get', 'kind'], 'medium_road'],
-      minzoom: 11,
+      filter: ['==', ['get', 'kind'], 'minor_road'],
+      // `minor_road` tampoco existe bajo z12 en el extracto (0 de 8 teselas a
+      // z10–z11, 8 de 8 a z12–z13), así que el borde entra donde entra el dato.
+      minzoom: 12.5,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': c.viaBorde,
-        'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 11, 1.2, 14, 4, 17, 12],
+        'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 12.5, 1.2, 15, 4, 17, 11],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 12.5, 0, 13.5, 1],
       },
     },
     {
@@ -265,19 +305,6 @@ function capasBasemap(paleta: PaletaMapa, conEtiquetas: boolean): LayerSpecifica
         'line-color': c.viaLocal,
         'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 12.5, 0.6, 15, 3, 17, 9],
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 12.5, 0, 13.5, 1],
-      },
-    },
-    {
-      id: 'bm-via-secundaria',
-      type: 'line',
-      source: fuente,
-      'source-layer': 'roads',
-      filter: ['==', ['get', 'kind'], 'medium_road'],
-      minzoom: 11,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: {
-        'line-color': c.viaSecundaria,
-        'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 11, 0.6, 14, 2.6, 17, 9],
       },
     },
     {
@@ -342,6 +369,17 @@ function capasBasemap(paleta: PaletaMapa, conEtiquetas: boolean): LayerSpecifica
       // Escalón 3 (calle local): aparece a z13.6, que es exactamente donde el
       // zoom semántico abre los pedidos individuales. No es coincidencia: el
       // nombre de calle es lo que ubica un punto que no muestra su dirección.
+      //
+      // ⚠️ **Hoy esta capa no rotula nada, y se conserva a propósito.** En este
+      // extracto los `minor_road` vienen sin `name`, así que el filtro no deja
+      // pasar ni una. Quien ubica el punto de abajo termina siendo el escalón 2
+      // (`major_road`, con nombre en 506 de 524), desde z12 en vez de z13.6.
+      //
+      // Por qué ésta se queda y las de `medium_road` se fueron: aquélla es una
+      // clase que **no existe** en el extracto —cero features—, mientras que
+      // ésta filtra una clase que sí está presente desde z12 y a la que solo le
+      // falta un atributo. Si Protomaps publica nombres de calle local, esta
+      // capa se enciende sola; la otra habría seguido muerta.
       id: 'bm-etq-via-local',
       type: 'symbol',
       source: fuente,
@@ -371,11 +409,10 @@ function capasBasemap(paleta: PaletaMapa, conEtiquetas: boolean): LayerSpecifica
       source: fuente,
       'source-layer': 'roads',
       minzoom: 12,
-      filter: [
-        'all',
-        ['has', 'name'],
-        ['in', ['get', 'kind'], ['literal', ['highway', 'major_road', 'medium_road']]],
-      ],
+      // Sin `medium_road`: no existe en el extracto. Y en la práctica ésta es la
+      // capa que rotula las calles de la ciudad, no solo los ejes — ver la nota
+      // de `bm-etq-via-local`.
+      filter: ['all', ['has', 'name'], ['in', ['get', 'kind'], ['literal', ['highway', 'major_road']]]],
       layout: {
         'symbol-placement': 'line',
         'text-field': ['get', 'name'],
@@ -537,6 +574,13 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         // Cuatro pasos de un solo tono. Es intensidad de una MAGNITUD (cuántos
         // faltan), no una escala semántica: no hay leyenda que aprender, y la
         // fracción exacta va siempre en la placa.
+        //
+        // ⚠️ **La comuna SIN carga no se pinta** (`paso: -1` → transparente), y
+        // no es un caso borde: es lo que hace que el azul signifique algo. Antes
+        // caía en el paso 0 —el escalón más bajo, no «nada»— y el relleno cubría
+        // las 52 comunas de la RM tuvieran pedidos o no. Una capa que está en
+        // todas partes no informa de ninguna, y se lee como un velo mal puesto
+        // encima del plano. El polígono sigue dibujado: lo mantiene su borde.
         'fill-color': [
           'match',
           ['get', 'paso'],
@@ -546,7 +590,9 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
           d.cargaComuna[1],
           2,
           d.cargaComuna[2],
+          3,
           d.cargaComuna[3],
+          'transparent',
         ],
       },
     },
@@ -633,6 +679,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         ],
         'circle-blur': 0.8,
         'circle-translate': [0, 2],
+        'circle-opacity': atenuar(),
       },
     },
     {
@@ -646,7 +693,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       paint: {
         'circle-color': d.puntoEntregado,
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 17, 4.5],
-        'circle-opacity': 0.75,
+        'circle-opacity': atenuar(0.75),
       },
     },
     {
@@ -661,6 +708,8 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         // apoyado sobre su propia sombra en vez de recortado del plano.
         'circle-stroke-color': d.puntoHalo,
         'circle-stroke-width': 1.6,
+        'circle-opacity': atenuar(),
+        'circle-stroke-opacity': atenuar(),
       },
     },
     {
@@ -673,6 +722,8 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3.5, 17, 6],
         'circle-stroke-color': d.puntoEnRuta,
         'circle-stroke-width': 2.2,
+        'circle-opacity': atenuar(),
+        'circle-stroke-opacity': atenuar(),
       },
     },
     {
@@ -691,6 +742,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 6.5, 17, 10],
         'circle-stroke-color': d.anilloCorte,
         'circle-stroke-width': 1.8,
+        'circle-stroke-opacity': atenuar(),
       },
     },
     {
@@ -705,6 +757,11 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 5, 17, 8],
         'circle-stroke-color': d.puntoHalo,
         'circle-stroke-width': 1.8,
+        // La incidencia ajena también se atenúa, pero **conserva su rojo**: es lo
+        // único accionable de la pantalla y apagarle el color la escondería.
+        // Baja de plano, no de categoría.
+        'circle-opacity': atenuar(),
+        'circle-stroke-opacity': atenuar(),
       },
     },
     // El `+N` de los pedidos que caen en la misma ubicación (F3). Un edificio
@@ -729,6 +786,10 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
               'text-color': d.agrupacionTexto,
               'text-halo-color': d.puntoHalo,
               'text-halo-width': 1.4,
+              // El `+N` se atenúa con su punto: es LA cifra que explica por qué
+              // una burbuja de 4 puede ser 2 puntos, así que tiene que quedar
+              // clara en los de la agrupación abierta y apagada en los ajenos.
+              'text-opacity': atenuar(),
             },
           },
         ] satisfies LayerSpecification[])

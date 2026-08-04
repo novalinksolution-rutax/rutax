@@ -43,7 +43,28 @@ no existen. Verificado en disco, no por lectura.
 |---|---|---|
 | **A — datos y backend** | HECHA y verde | `4183cdd` |
 | **B — lenguaje visual** | HECHA, verde y **verificada en navegador real** | `4901691`, `cbfcbba`, `0fba738`, `93ff329`, `3ecff22`, `c0e36c1`, `f4c12a3`, `f5dafc0`, `dced5ec` |
-| **C — la pantalla** | **PENDIENTE, es lo que sigue** | — |
+| **C — la pantalla** | **HECHA (2026-08-04)**, verde y verificada en Chrome real, claro y oscuro | sin commitear |
+
+> ✅ **Las tres vías están hechas. Este archivo es andamiaje y ya cumplió**: el
+> registro de lo construido y probado vive en
+> `checklist-pruebas-funcionales-mvp.md` («Torre de control v2 — Vía C»), el
+> arranque local en `docs/PRUEBA.md` §Paso 11, y las decisiones en
+> `docs/torre-de-control/`. **Bórralo** cuando el trabajo esté commiteado.
+>
+> Tres cosas de la Vía C que conviene no perder, porque costaron y no están en
+> los documentos de diseño:
+>
+> 1. **El seed grande no sirve para esta pantalla.** Congela las fechas (`on
+>    conflict do nothing` sobre ids deterministas) y pone todos los pedidos de
+>    una comuna en la misma coordenada. Se agregó `supabase/seed-torre-hoy.sql`,
+>    idempotente por borrado y re-ejecutable cualquier día.
+> 2. **El volumen real destapó tres bugs que el dato de demo escondía**: `URI too
+>    long` por un `.in()` con mil UUID, «Conductor sin nombre» al filtrar por
+>    `estado='activo'`, y el mapa mudo por `position: relative` de MapLibre
+>    ganándole a Tailwind. Los tres están en el checklist con su causa.
+> 3. **La mina de Tailwind sin capa se volvió a pisar** habiéndola escrito en el
+>    encabezado del mismo archivo. Si algo de MapLibre no se posiciona, mira eso
+>    primero.
 
 Qué hay hoy en `src/app/(tenant)/torre-de-control/`: solo `page.tsx` (un stub de
 texto con el guard de RBAC y las cifras del día) y `_lib/mapa/` con los cuatro

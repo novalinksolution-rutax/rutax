@@ -159,34 +159,62 @@ export interface ComunaEnTorre {
  */
 export type EstadoPunto = 'pendiente' | 'en_ruta' | 'entregado' | 'incidencia';
 
+/**
+ * Un pedido concreto dentro de un punto del mapa.
+ *
+ * ⚠️ **Existe porque un punto NO es un pedido: es una UBICACIÓN.** Los pedidos
+ * que comparten portal se colapsan en un solo punto (`agrupados`), y hasta ahora
+ * del resto solo sobrevivía la cuenta: el mapa decía «+2» y no había forma de
+ * saber cuáles eran esos dos sin salir a `/operaciones`. Con la lista, la ficha
+ * los pagina en el mismo sitio.
+ *
+ * Es deliberadamente plano y corto: lo que la tarjeta dibuja y nada más. **Del
+ * destinatario no viaja nada** — ni nombre, ni dirección, ni teléfono—, igual
+ * que en el punto que lo contiene.
+ */
+export interface PedidoEnPunto {
+  id: string;
+  /** `ml_shipment_id` en Flex, `codigo_interno` en same-day. Nunca `tracking_token`. */
+  codigoEnvio: string | null;
+  estado: EstadoPunto;
+  /** El NOMBRE, no el id: el coordinador va a llamar a una persona. */
+  conductorNombre: string | null;
+  sellerNombre: string | null;
+  /** Intentos anteriores a hoy. `0` = primer intento. */
+  intentosPrevios: number;
+}
+
 export interface PuntoEntrega {
+  /** Id del pedido REPRESENTANTE. Es con lo que el clic abre la ficha. */
   id: string;
   posicion: Coordenada;
   /**
-   * El identificador operativo del paquete: `ml_shipment_id` en Flex,
-   * `codigo_interno` (`RX-XXXX-XXXX`) en same-day. Es lo que el coordinador
-   * necesita para buscarlo en `/operaciones` o para nombrárselo al conductor.
+   * Los pedidos de esta ubicación, **empezando por el representante**.
    *
-   * ⚠️ **Nunca `tracking_token`** — ver el encabezado del archivo.
+   * `pedidos.length` es el `+N` del mapa, y es la única fuente de esa cuenta: no
+   * hay un campo aparte que pueda divergir. El primero es el de mayor prioridad
+   * visual —una incidencia nunca queda escondida detrás de un entregado—, y es
+   * el que la ficha muestra al abrirse.
    *
-   * `null` solo en el caso degenerado de un pedido sin ninguno de los dos.
+   * ⚠️ **Antes acá vivían `codigoEnvio`, `conductorNombre`, `sellerNombre` e
+   * `intentosPrevios` del representante, más un `agrupados` con la cuenta.** Eso
+   * dejaba al mapa diciendo «+2» sin forma de saber cuáles eran esos dos. Con la
+   * lista, esos campos viven donde corresponde —en cada pedido— y la cuenta se
+   * deriva de su largo.
    */
-  codigoEnvio: string | null;
+  pedidos: PedidoEnPunto[];
+  /**
+   * Estado de la UBICACIÓN: el de mayor prioridad visual entre sus pedidos.
+   *
+   * Es lo que pinta el punto, y por eso no se deriva en el cliente: una
+   * incidencia nunca puede quedar escondida detrás de un entregado, y esa regla
+   * se decide una vez en el servidor.
+   */
   estado: EstadoPunto;
   comuna: string | null;
+  /** Conductor del representante. Sirve para enlazar; el nombre va en el pedido. */
   conductorId: string | null;
-  /** El NOMBRE, no el id: el coordinador va a llamar a una persona. */
-  conductorNombre: string | null;
-  /**
-   * Cuántos pedidos comparten esta ubicación, contando este. `1` = punto simple;
-   * `>1` es el `+N`.
-   *
-   * Existe porque un edificio con seis entregas se vería como una mancha de seis
-   * puntos encimados. El colapso es por coordenada redondeada (~20 m), no por
-   * radio: es determinístico y no necesita clustering.
-   */
-  agrupados: number;
-  /** Pendiente y cerca del corte (F7). Marca, no reloj. */
+  /** Algún pendiente de esta ubicación está cerca del corte (F7). Marca, no reloj. */
   cercaDelCorte: boolean;
 }
 

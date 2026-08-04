@@ -41,6 +41,7 @@ function ubicable(over: Partial<PedidoUbicable> & { id: string }): PedidoUbicabl
     long: -70.5969,
     codigoEnvio: 'FLEX-2026-000001',
     conductorId: 'c1',
+    sellerId: 's1',
     ...over,
   };
 }
@@ -122,6 +123,8 @@ describe('armarPuntos', () => {
     registros: new Map<string, RegistroDeEntrega>(),
     pedidosConIncidencia: new Set<string>(),
     nombresConductores: new Map([['c1', 'Pérez']]),
+    nombresSellers: new Map([['s1', 'Falabella Retail SpA']]),
+    intentosPrevios: new Map<string, number>(),
     comunasEnRiesgo: new Set<string>(),
   };
 
@@ -136,7 +139,7 @@ describe('armarPuntos', () => {
     });
 
     expect(puntos).toHaveLength(2);
-    expect(puntos.find((p) => p.agrupados === 2)).toBeDefined();
+    expect(puntos.find((p) => p.pedidos.length === 2)).toBeDefined();
   });
 
   it('una incidencia NUNCA queda escondida detrás de un entregado', () => {
@@ -158,17 +161,17 @@ describe('armarPuntos', () => {
 
     expect(puntos).toHaveLength(1);
     expect(puntos[0].estado).toBe('incidencia');
-    expect(puntos[0].agrupados).toBe(2);
+    expect(puntos[0].pedidos.length).toBe(2);
   });
 
   it('muestra el NOMBRE del conductor, no su id', () => {
     const [punto] = armarPuntos({ ...base, pedidos: [ubicable({ id: 'p1' })] });
-    expect(punto.conductorNombre).toBe('Pérez');
+    expect(punto.pedidos[0].conductorNombre).toBe('Pérez');
   });
 
   it('no inventa nombre para un conductor desconocido', () => {
     const [punto] = armarPuntos({ ...base, pedidos: [ubicable({ id: 'p1', conductorId: 'c9' })] });
-    expect(punto.conductorNombre).toBeNull();
+    expect(punto.pedidos[0].conductorNombre).toBeNull();
   });
 
   it('marca cerca del corte solo lo que sigue pendiente', () => {
@@ -190,20 +193,114 @@ describe('armarPuntos', () => {
     expect(puntos.find((p) => p.id === 'p2')?.cercaDelCorte).toBe(false);
   });
 
+  it('muestra la razón social del seller', () => {
+    const [punto] = armarPuntos({ ...base, pedidos: [ubicable({ id: 'p1' })] });
+    expect(punto.pedidos[0].sellerNombre).toBe('Falabella Retail SpA');
+  });
+
+  it('no inventa nombre para un seller desconocido', () => {
+    const [punto] = armarPuntos({ ...base, pedidos: [ubicable({ id: 'p1', sellerId: 's9' })] });
+    expect(punto.pedidos[0].sellerNombre).toBeNull();
+  });
+
+  it('un paquete sin historial va en cero intentos previos, no en null', () => {
+    // La ficha decide callarse comparando contra 0. Un `null` obligaría a la
+    // pantalla a distinguir «sin historial» de «no vino el dato», y no hay tal
+    // distinción: la ausencia de incidencias cerradas ES cero.
+    const [punto] = armarPuntos({ ...base, pedidos: [ubicable({ id: 'p1' })] });
+    expect(punto.pedidos[0].intentosPrevios).toBe(0);
+  });
+
+  it('cuenta los intentos previos del paquete', () => {
+    const [punto] = armarPuntos({
+      ...base,
+      pedidos: [ubicable({ id: 'p1' })],
+      intentosPrevios: new Map([['p1', 2]]),
+    });
+    expect(punto.pedidos[0].intentosPrevios).toBe(2);
+  });
+
+  it('los intentos previos son los del REPRESENTANTE del grupo', () => {
+    // Un edificio con tres entregas muestra la ficha de una de ellas, y tiene
+    // que ser coherente: si el representante es el de la incidencia, el conteo
+    // que se ve es el suyo y no el del vecino.
+    const puntos = armarPuntos({
+      ...base,
+      pedidos: [ubicable({ id: 'sano' }), ubicable({ id: 'roto' })],
+      pedidosConIncidencia: new Set(['roto']),
+      intentosPrevios: new Map([
+        ['sano', 5],
+        ['roto', 1],
+      ]),
+    });
+
+    expect(puntos).toHaveLength(1);
+    expect(puntos[0].id).toBe('roto');
+    expect(puntos[0].pedidos[0].intentosPrevios).toBe(1);
+  });
+
+  it('el REPRESENTANTE va primero en la lista de pedidos', () => {
+    // Es lo que hace que la ficha abra en el pedido correcto: si la incidencia
+    // quedara en la página 2, el usuario vería primero un paquete sano en un
+    // punto rojo.
+    const puntos = armarPuntos({
+      ...base,
+      pedidos: [ubicable({ id: 'sano' }), ubicable({ id: 'roto' }), ubicable({ id: 'sano2' })],
+      pedidosConIncidencia: new Set(['roto']),
+    });
+
+    expect(puntos[0].pedidos.map((p) => p.id)).toEqual(['roto', 'sano', 'sano2']);
+    expect(puntos[0].pedidos).toHaveLength(3);
+  });
+
+  it('la ubicación se marca cerca del corte si CUALQUIERA de sus pedidos lo está', () => {
+    // Un edificio con un paquete apretado es un edificio apretado: mirar solo al
+    // representante escondería la urgencia del vecino de al lado.
+    const puntos = armarPuntos({
+      ...base,
+      pedidos: [
+        ubicable({ id: 'entregado' }),
+        ubicable({ id: 'pendiente' }),
+      ],
+      registros: unificarRegistros([
+        {
+          pedidoId: 'entregado',
+          conductorId: 'c1',
+          entregado: true,
+          registradoEn: '2026-08-03T15:00:00.000Z',
+        },
+      ]),
+      comunasEnRiesgo: new Set(['Ñuñoa']),
+    });
+
+    expect(puntos).toHaveLength(1);
+    expect(puntos[0].cercaDelCorte).toBe(true);
+  });
+
   it('el punto NO lleva ningún dato del destinatario', () => {
     const [punto] = armarPuntos({ ...base, pedidos: [ubicable({ id: 'p1' })] });
     // Invariante de minimización: si alguien agrega un campo del destinatario al
-    // contrato, esta prueba lo caza antes de que llegue al navegador.
+    // contrato, esta prueba lo caza antes de que llegue al navegador. Cubre las
+    // dos capas: la ubicación y cada uno de sus pedidos.
+    //
+    // `sellerNombre` es la razón social de una EMPRESA cliente, no un dato
+    // personal del destinatario, y por eso entra a la lista a conciencia.
     expect(Object.keys(punto).sort()).toEqual([
-      'agrupados',
       'cercaDelCorte',
-      'codigoEnvio',
       'comuna',
       'conductorId',
+      'estado',
+      'id',
+      'pedidos',
+      'posicion',
+    ]);
+    expect(Object.keys(punto.pedidos[0]).sort()).toEqual([
+      'codigoEnvio',
       'conductorNombre',
       'estado',
       'id',
-      'posicion',
+      'intentosPrevios',
+      'sellerNombre',
     ]);
   });
 });

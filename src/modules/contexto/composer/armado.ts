@@ -27,6 +27,7 @@ import type {
   EstadoPantalla,
   EstadoPunto,
   IncidenciaEnTorre,
+  PedidoEnPunto,
   PuntoEntrega,
   ResumenTorre,
 } from '../contrato-torre';
@@ -110,6 +111,7 @@ export interface PedidoUbicable extends PedidoAgregable {
   long: number;
   codigoEnvio: string | null;
   conductorId: string | null;
+  sellerId: string;
 }
 
 /**
@@ -120,20 +122,35 @@ export interface PedidoUbicable extends PedidoAgregable {
  * fps), mientras que por GeoJSON los dibuja la GPU. La capa HTML es solo para las
  * placas de comuna y los conductores. Ver `docs/arquitectura/mapa-torre-v2.md` §2.
  *
- * El colapso deja **un punto por ubicación** con su `agrupados`, y el
- * representante es el de mayor prioridad visual. Sin esto, un edificio con seis
- * entregas se ve como una mancha de seis círculos encimados.
+ * El colapso deja **un punto por ubicación**, con la lista de sus pedidos y el de
+ * mayor prioridad visual al frente. Sin esto, un edificio con seis entregas se ve
+ * como una mancha de seis círculos encimados.
+ *
+ * La lista completa viaja —no solo la cuenta— para que la ficha pueda paginar
+ * los pedidos del mismo portal sin salir a `/operaciones`: antes el mapa decía
+ * «+2» y no había forma de saber cuáles eran esos dos.
  */
 export function armarPuntos(params: {
   pedidos: readonly PedidoUbicable[];
   registros: ReadonlyMap<string, RegistroDeEntrega>;
   pedidosConIncidencia: ReadonlySet<string>;
   nombresConductores: ReadonlyMap<string, string>;
+  nombresSellers: ReadonlyMap<string, string>;
+  /** Incidencias YA CERRADAS por pedido: los intentos anteriores a hoy. */
+  intentosPrevios: ReadonlyMap<string, number>;
   comunasEnRiesgo: ReadonlySet<string>;
 }): PuntoEntrega[] {
-  const { pedidos, registros, pedidosConIncidencia, nombresConductores, comunasEnRiesgo } = params;
+  const {
+    pedidos,
+    registros,
+    pedidosConIncidencia,
+    nombresConductores,
+    nombresSellers,
+    intentosPrevios,
+    comunasEnRiesgo,
+  } = params;
 
-  const porUbicacion = new Map<string, { punto: PuntoEntrega; total: number }>();
+  const porUbicacion = new Map<string, PuntoEntrega>();
 
   for (const pedido of pedidos) {
     const { cerrado, entregado } = resolverPedido(pedido, registros.get(pedido.id));
@@ -151,35 +168,53 @@ export function armarPuntos(params: {
             ? 'en_ruta'
             : 'pendiente';
 
-    const punto: PuntoEntrega = {
+    const enPunto: PedidoEnPunto = {
       id: pedido.id,
-      posicion: { lat: pedido.lat, long: pedido.long },
       codigoEnvio: pedido.codigoEnvio,
       estado,
-      comuna,
-      conductorId: pedido.conductorId,
       conductorNombre: pedido.conductorId
         ? nombresConductores.get(pedido.conductorId) ?? null
         : null,
-      agrupados: 1,
-      cercaDelCorte: !cerrado && comuna !== null && comunasEnRiesgo.has(comuna),
+      sellerNombre: nombresSellers.get(pedido.sellerId) ?? null,
+      intentosPrevios: intentosPrevios.get(pedido.id) ?? 0,
     };
+    const cercaDelCorte = !cerrado && comuna !== null && comunasEnRiesgo.has(comuna);
 
     const clave = claveDeUbicacion(pedido.lat, pedido.long);
     const grupo = porUbicacion.get(clave);
 
     if (!grupo) {
-      porUbicacion.set(clave, { punto, total: 1 });
+      porUbicacion.set(clave, {
+        id: pedido.id,
+        posicion: { lat: pedido.lat, long: pedido.long },
+        pedidos: [enPunto],
+        estado,
+        comuna,
+        conductorId: pedido.conductorId,
+        cercaDelCorte,
+      });
       continue;
     }
 
-    grupo.total += 1;
-    if (PRIORIDAD_ESTADO[estado] > PRIORIDAD_ESTADO[grupo.punto.estado]) {
-      grupo.punto = punto;
+    grupo.pedidos.push(enPunto);
+    // La ubicación se marca si CUALQUIERA de sus pedidos está cerca del corte:
+    // un edificio con uno apretado es un edificio apretado.
+    grupo.cercaDelCorte = grupo.cercaDelCorte || cercaDelCorte;
+
+    // El representante es el de mayor prioridad visual, y además pasa al frente
+    // de la lista: es el que la ficha muestra al abrirse, y una incidencia no
+    // puede quedar escondida detrás de un entregado ni en el punto ni en la
+    // primera página de la tarjeta.
+    if (PRIORIDAD_ESTADO[estado] > PRIORIDAD_ESTADO[grupo.estado]) {
+      grupo.id = pedido.id;
+      grupo.estado = estado;
+      grupo.conductorId = pedido.conductorId;
+      grupo.pedidos.pop();
+      grupo.pedidos.unshift(enPunto);
     }
   }
 
-  return [...porUbicacion.values()].map(({ punto, total }) => ({ ...punto, agrupados: total }));
+  return [...porUbicacion.values()];
 }
 
 // =============================================================================

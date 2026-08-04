@@ -100,6 +100,21 @@ export const ESTADOS_DE_CARGA = [
 /** Estados de incidencia que siguen pidiendo atención. */
 export const ESTADOS_INCIDENCIA_ABIERTA = ['abierta', 'en_gestion'] as const;
 
+/**
+ * Cuántos ids caben en un `.in()` sin pasarse del tamaño de URL admitido.
+ *
+ * Un UUID ocupa 36 caracteres más la coma: 100 dan ~3,7 KB de query string, con
+ * holgura de sobra bajo el tope habitual de 8 KB de cabecera. **No es un ajuste
+ * de rendimiento sino de corrección**: pasarse no degrada, devuelve `URI too
+ * long` y tumba la pantalla entera.
+ *
+ * Es el hermano del tope de 1.000 filas de PostgREST que resuelve
+ * `leerTodasLasFilas`: aquél trunca la RESPUESTA en silencio, éste rechaza la
+ * PETICIÓN a gritos. Los dos aparecen recién cuando el courier tiene volumen de
+ * verdad.
+ */
+const TAMANO_LOTE_IDS = 100;
+
 // =============================================================================
 // Formas de fila (lo que devuelve cada consulta, en snake_case como la BD)
 // =============================================================================
@@ -119,6 +134,8 @@ export interface FilaConductor {
   nombre_completo: string;
   capacidad_paradas: number | null;
   disponible: boolean;
+  /** `activo` | `inactivo`. Separa quién SUMA capacidad de quién solo tiene nombre. */
+  estado: string;
 }
 
 export interface FilaAsignacionZona {
@@ -149,9 +166,16 @@ export interface FilaPedidoDelDia {
   /** Código de envío de same-day (`RX-XXXX-XXXX`). */
   codigo_interno: string | null;
   driver_id_asignado: string | null;
+  /** Dueño comercial del paquete. Se resuelve a razón social en el armado. */
+  seller_id: string;
   lat: number | null;
   long: number | null;
   geo_estado: string | null;
+}
+
+export interface FilaSeller {
+  id: string;
+  razon_social: string;
 }
 
 /** Cierre operativo declarado por el conductor en la app de Rutax (Flex y same-day). */
@@ -170,7 +194,7 @@ export interface FilaPruebaEntrega {
   capturado_en: string;
 }
 
-export interface FilaIncidenciaAbierta {
+export interface FilaIncidencia {
   id: string;
   pedido_id: string;
   tipo: string;
@@ -251,12 +275,20 @@ export const obtenerZonasConfiguradas = cache(async function obtenerZonasConfigu
 });
 
 /**
- * Conductores activos + sus zonas preferentes.
+ * **TODOS** los conductores del courier + sus zonas preferentes.
  *
- * Se traen los NO disponibles a propósito: el panel de F13 muestra el avance de
- * quien está en la calle hoy, y alguien marcado no-disponible que igual tiene
- * paradas asignadas es justamente el caso que hay que ver. La CAPACIDAD para la
- * brecha de la ola, en cambio, se calcula solo con los disponibles.
+ * ⚠️ **Sin filtrar por `estado`, y eso es una corrección deliberada.** Antes se
+ * pedían solo los `activo`, y el resultado era que un conductor dado de baja
+ * esta tarde —con sus 40 paradas del día todavía en la calle— aparecía en el
+ * panel como «Conductor sin nombre». Justo en la pantalla cuyo propósito es
+ * saber **a quién llamar**, que es también por lo que F3 muestra el nombre y no
+ * el id. Los conductores son decenas, no miles: traerlos todos y decidir en
+ * memoria cuesta menos que una consulta extra.
+ *
+ * Las dos lecturas se separan en el composer, y no son la misma:
+ *   · **Nombre** — de cualquiera que tenga paradas hoy, esté activo o no.
+ *   · **Capacidad** para la brecha de la ola — solo de los `activo` **y**
+ *     `disponible`: un conductor de baja no va a cubrir el CyberDay.
  */
 export const obtenerCapacidadInstalada = cache(async function obtenerCapacidadInstalada(
   tenantId: string,
@@ -267,9 +299,8 @@ export const obtenerCapacidadInstalada = cache(async function obtenerCapacidadIn
     supabase
       .schema('identidad')
       .from('conductores')
-      .select('id, nombre_completo, capacidad_paradas, disponible')
-      .eq('tenant_id', tenantId)
-      .eq('estado', 'activo'),
+      .select('id, nombre_completo, capacidad_paradas, disponible, estado')
+      .eq('tenant_id', tenantId),
     supabase
       .schema('identidad')
       .from('conductor_zonas')
@@ -335,7 +366,7 @@ export const obtenerPedidosDelDia = cache(async function obtenerPedidosDelDia(
       // Un solo literal, sin concatenar con `+`: la concatenación ensancha el
       // tipo a `string` y supabase-js pierde la inferencia del `select`.
       .select(
-        'id, estado, destinatario_comuna, ml_shipment_id, codigo_interno, driver_id_asignado, lat, long, geo_estado',
+        'id, estado, destinatario_comuna, ml_shipment_id, codigo_interno, driver_id_asignado, seller_id, lat, long, geo_estado',
       )
       .eq('tenant_id', tenantId)
       .eq('fecha_compromiso', fecha)
@@ -401,31 +432,82 @@ export const obtenerPodDelDia = cache(async function obtenerPodDelDia(
 });
 
 /**
- * Incidencias todavía abiertas de los pedidos de hoy.
+ * TODAS las incidencias de los pedidos de hoy, abiertas y cerradas.
  *
- * Es lo único que se pinta en rojo en la pantalla (regla 4 del alcance). Se
- * filtra por los pedidos del día ya leídos en vez de por fecha de apertura: una
- * incidencia abierta ayer sobre un pedido que sigue comprometido para hoy tiene
- * que seguir apareciendo.
+ * Se filtra por los pedidos del día ya leídos en vez de por fecha de apertura:
+ * una incidencia abierta ayer sobre un pedido que sigue comprometido para hoy
+ * tiene que seguir apareciendo.
+ *
+ * **Por qué no se filtra por estado en la consulta**, que era lo que hacía
+ * antes: las dos mitades alimentan cosas distintas y las dos hacen falta.
+ *   · Las **abiertas** son lo único que se pinta en rojo (regla 4 del alcance).
+ *   · Las **cerradas** son los intentos previos del paquete — la tercera línea
+ *     de la ficha («2º intento»).
+ * Traerlas juntas es un viaje en vez de dos sobre el mismo índice y el mismo
+ * conjunto de pedidos; separarlas es un `filter` en memoria. Quién es qué lo
+ * decide `ESTADOS_INCIDENCIA_ABIERTA`, que sigue siendo la única definición.
  */
-export const obtenerIncidenciasAbiertas = cache(async function obtenerIncidenciasAbiertas(
-  tenantId: string,
-  pedidoIdsCsv: string,
-): Promise<FilaIncidenciaAbierta[]> {
-  const pedidoIds = pedidoIdsCsv ? pedidoIdsCsv.split(',') : [];
-  if (pedidoIds.length === 0) return [];
+export const obtenerIncidenciasDeLosPedidos = cache(
+  async function obtenerIncidenciasDeLosPedidos(
+    tenantId: string,
+    pedidoIdsCsv: string,
+  ): Promise<FilaIncidencia[]> {
+    const pedidoIds = pedidoIdsCsv ? pedidoIdsCsv.split(',') : [];
+    if (pedidoIds.length === 0) return [];
 
+    const supabase = crearClienteServiceRole();
+    const salida: FilaIncidencia[] = [];
+
+    // ⚠️ **Por lotes, o el servidor devuelve `URI too long`.** PostgREST recibe
+    // el `.in()` como query string, y un courier con mil pedidos en el día
+    // produce ~38 KB de URL — muy por encima del tope de cabecera de Kong. No
+    // falla en desarrollo con datos de demo flacos: falla el día que el courier
+    // crece, que es la peor forma de fallar.
+    //
+    // **Se sigue filtrando por lista de ids y no por fecha**, aunque una fecha
+    // cabría en la URL: una incidencia abierta AYER sobre un pedido que sigue
+    // comprometido para hoy tiene que aparecer igual. Y filtrar por
+    // `pedidos.fecha_compromiso` con un embed obligaría a repetir acá la
+    // definición de «carga del día» que ya vive en `obtenerPedidosDelDia` — dos
+    // copias que se contradicen en el borde de un cambio de estado.
+    for (let i = 0; i < pedidoIds.length; i += TAMANO_LOTE_IDS) {
+      const lote = pedidoIds.slice(i, i + TAMANO_LOTE_IDS);
+      const filas = await leerTodasLasFilas<FilaIncidencia>(
+        'incidencias de los pedidos',
+        (desde, hasta) =>
+          supabase
+            .schema('operacion')
+            .from('incidencias')
+            .select('id, pedido_id, tipo, estado, abierta_en')
+            .eq('tenant_id', tenantId)
+            .in('pedido_id', lote)
+            .range(desde, hasta),
+      );
+      salida.push(...filas);
+    }
+
+    return salida;
+  },
+);
+
+/**
+ * Razón social de los sellers del courier.
+ *
+ * Son unidades, no miles: un courier tiene decenas de sellers, así que se leen
+ * todos y se indexan en memoria en vez de resolverlos con un join por pedido.
+ */
+export const obtenerSellers = cache(async function obtenerSellers(
+  tenantId: string,
+): Promise<FilaSeller[]> {
   const supabase = crearClienteServiceRole();
-  return leerTodasLasFilas<FilaIncidenciaAbierta>('incidencias abiertas', (desde, hasta) =>
-    supabase
-      .schema('operacion')
-      .from('incidencias')
-      .select('id, pedido_id, tipo, estado, abierta_en')
-      .eq('tenant_id', tenantId)
-      .in('estado', [...ESTADOS_INCIDENCIA_ABIERTA])
-      .in('pedido_id', pedidoIds)
-      .range(desde, hasta),
-  );
+  const { data, error } = await supabase
+    .schema('identidad')
+    .from('sellers')
+    .select('id, razon_social')
+    .eq('tenant_id', tenantId);
+
+  if (error) throw new Error(`Error al leer sellers: ${error.message}`);
+  return (data ?? []) as FilaSeller[];
 });
 
 /**

@@ -57,6 +57,7 @@ Convenciones de rutas en `src/app/` (Next.js App Router, App Router groups):
 - Tests: `npm test` (Vitest — pruebas unitarias del lado servidor: RBAC, onboarding/invitaciones, cifrado de secretos, adaptador OAuth ML, reglas de dinero; conviven junto a su código fuente como `*.test.ts`, ver `vitest.config.ts`). `npm run test:watch` para modo watch. Las pruebas de aislamiento RLS viven aparte, en pgTAP (`supabase/tests/database/`, vía `npx supabase test db`).
 - Base de datos: migraciones versionadas e idempotentes en `supabase/migrations/` (Supabase CLI). Nada de DDL crudo fuera de migraciones.
 - Entorno local/staging: ver `docs/PRUEBA.md` para arranque completo (Supabase local, `npx supabase db seed` carga `supabase/seed.sql` con datos de demo de un solo tenant, Inngest Dev Server, credenciales de demo). Úsalo para QA funcional antes de marcar un ítem del checklist como hecho.
+- Datos de demo del día para la Torre: `supabase/seed-torre-hoy.sql`, idempotente **por borrado** y re-ejecutable cualquier día. Existe porque `seed-demo-full.sql` ancla las fechas al momento en que se aplicó y no las mueve al re-aplicarlo (`on conflict do nothing` sobre ids deterministas), y porque pone todos los pedidos de una comuna en la misma coordenada. **Ojo al depurar con datos de demo flacos:** el volumen real destapó tres bugs que 60 pedidos escondían (`URI too long` por un `.in()` con mil UUID, nombres de conductor faltantes, y el lienzo del mapa en altura 0).
 - Variables de entorno: copia `.env.example` a `.env.local` y completa las claves de Supabase (Settings > API). Nunca commitees `.env.local`.
 
 ## Datos y tipo de información
@@ -136,9 +137,9 @@ Convierte estos documentos a Markdown en `docs/` para que el `@`-referencing fun
 - `@docs/PRUEBA.md` — guía de arranque del entorno local/staging y datos de demo (un solo tenant).
 - `@checklist-pruebas-funcionales-mvp.md` — checklist de pruebas funcionales del MVP; mantenerlo al día.
 
-## Torre de control — rediseño v2 (alcance aprobado 2026-08-03)
+## Torre de control — rediseño v2 (**construido**; alcance aprobado 2026-08-03, pantalla terminada 2026-08-04)
 
-El módulo **Torre de control** es la pantalla de monitoreo del día del courier. Hoy el código vive en `src/app/(consola)/torre-de-control/` (UI) y `src/modules/contexto/` (composer y agregación), con sus adaptadores en `src/modules/integraciones/contexto/`. **En la v2 la pantalla se muda a `(tenant)` y el grupo `(consola)` se retira entero** — ver abajo.
+El módulo **Torre de control** es la pantalla de monitoreo del día del courier. El código vive en `src/app/(tenant)/torre-de-control/` (UI: `_componentes/` y `_lib/`) y `src/modules/contexto/` (composer y agregación), con su único adaptador vivo en `src/modules/integraciones/contexto/calendario/`. El grupo `(consola)` **ya no existe**.
 
 **Qué es en una frase:** el courier opera same-day contra un corte de ~21–22 h; el dueño y el coordinador entran un par de minutos, varias veces al día, a ver **cuántos paquetes faltan por entregar, en qué comunas, y si algo se está atascando**. El contador baja durante el día; una entrega fallida pinta su punto en rojo y aparece como incidencia. **La Torre no ejecuta: lee y enlaza.**
 

@@ -152,6 +152,19 @@ interface AppShellProps {
   etiquetaMarca?: string
   /** Densidad: `compacta` (courier) o `relajada` (portal). */
   densidad?: "compacta" | "relajada"
+  /**
+   * Rutas que se salen del `max-w` del `<main>` y usan el ancho amplio.
+   *
+   * Existe por una sola pantalla —la Torre de control— y por una razón concreta:
+   * un mapa necesita más ancho que un formulario, y `max-w-6xl` deja la caja
+   * cartográfica angosta justo donde la comuna tiene que reconocerse de un
+   * vistazo. **La excepción se declara acá y no se le quita el `max-w` a las
+   * demás pantallas**, que es lo que mantiene legible el resto del backoffice.
+   *
+   * La lista la pasa el layout que conoce sus rutas, no el shell: éste es
+   * genérico y lo comparten `(tenant)`, `portal`, `conductor` y `admin`.
+   */
+  rutasAnchas?: string[]
   avisos?: Aviso[]
   /** Server Action de cierre de sesión (admin). Sin ella, cierre cliente. */
   accionSalir?: () => void | Promise<void>
@@ -316,6 +329,7 @@ export function AppShell({
   subtituloCuenta,
   etiquetaMarca = "Courier",
   densidad = "compacta",
+  rutasAnchas = [],
   avisos,
   accionSalir,
   adornoCuenta,
@@ -330,6 +344,9 @@ export function AppShell({
   const colapsado = useSyncExternalStore(suscribirColapso, leerColapso, () => false)
   const activo = hrefActivo(pathname, grupos, [...itemsInferiores, ...itemsSettings])
   const relajado = densidad === "relajada"
+  // El ancho amplio es por RUTA, no por densidad: la densidad la fija el layout
+  // para toda su área y esto es la excepción de una pantalla.
+  const ancho = rutasAnchas.some((r) => pathname === r || pathname?.startsWith(`${r}/`))
   // Settings anidado (Patrón H): activo cuando el pathname cae en un ítem de settings.
   const enSettings =
     itemsSettings.length > 0 &&
@@ -536,7 +553,14 @@ export function AppShell({
         <main
           id="contenido"
           tabIndex={-1}
-          className={cn("mx-auto w-full flex-1 px-4 pb-10 outline-none lg:px-8", relajado ? "max-w-5xl pt-6 lg:pt-8" : "max-w-6xl pt-5 lg:pt-6")}
+          className={cn(
+            "mx-auto w-full flex-1 px-4 pb-10 outline-none lg:px-8",
+            ancho
+              ? "max-w-[1600px] pt-5 lg:pt-6"
+              : relajado
+                ? "max-w-5xl pt-6 lg:pt-8"
+                : "max-w-6xl pt-5 lg:pt-6",
+          )}
         >
           {children}
         </main>

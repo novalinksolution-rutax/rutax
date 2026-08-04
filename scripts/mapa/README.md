@@ -1,14 +1,17 @@
 # Cartografía de la Torre de control
 
-Dos activos, con ciclos de vida opuestos. No se tratan igual porque no cambian igual.
+Tres activos, con ciclos de vida distintos. No se tratan igual porque no cambian igual.
 
 | Activo | Peso | Dónde vive | Cada cuánto cambia |
 | --- | --- | --- | --- |
 | Geometría comunal DPA 2023 | 113 KB | `public/mapas/comunas-rm.topojson.json`, **versionado** | Cuando la SUBDERE publica una DPA nueva (años) |
 | Basemap PMTiles de la RM | ~19 MB | Bucket público `contexto-mapas`, **fuera del repo** | Cuando se quiera OSM más fresco |
+| Glifos de Noto Sans (PBF) | ~406 KB | Bucket público `contexto-mapas`, **fuera del repo** | Casi nunca: solo si el estilo pide otro peso |
 
-El módulo funciona sin el basemap: pinta las zonas sobre Papel, sin el plano urbano
-debajo. Sin la geometría comunal, en cambio, no hay mapa — por eso esa sí se versiona.
+El módulo funciona sin el basemap: pinta las comunas sobre el color de tierra, sin el
+plano urbano debajo. Sin la geometría comunal, en cambio, no hay mapa — por eso esa sí
+se versiona. Y sin glifos el plano queda **mudo**: MapLibre descarta la capa `symbol`
+entera, así que no se dibuja ni un nombre de calle ni la cifra de una burbuja.
 
 ---
 
@@ -33,6 +36,31 @@ e imprime la URL que hay que poner en `NEXT_PUBLIC_MAPA_BASEMAP_URL`.
 `tippecanoe` pide Go; `ogr2ogr` pide GDAL. Este entorno no tiene ninguno de los tres.
 `pmtiles extract` evita el problema entero: el planeta ya está teselado y publicado, y
 el formato PMTiles permite extraer un bbox por rangos.
+
+---
+
+## Glifos (automatizado)
+
+```bash
+node --env-file=.env.local scripts/mapa/publicar-glifos.mjs
+```
+
+Descarga los cuatro PBF de `protomaps/basemaps-assets` —Noto Sans Regular y Medium,
+rangos `0-255` (español completo) y `256-511` (latín extendido)— junto con el `OFL.txt`,
+los cachea en `.artefactos/mapa/glifos/` y los sube a `contexto-mapas/glifos/<version>/`.
+Imprime la URL que va en `NEXT_PUBLIC_MAPA_GLIFOS_URL`.
+
+**No hay pipeline que construir, y esa fue la sorpresa buena de la Vía B.** La
+estimación original marcaba los glifos como el riesgo del mapa v2, porque generar PBF
+desde un `.ttf` pide `fontnik` → `node-gyp` → toolchain nativa. El build público de
+Protomaps ya los publica: son cuatro descargas y una subida.
+
+**Por qué Noto Sans y no Inter**, que es la fuente de la interfaz: no existen glifos PBF
+publicados de Inter, y generarlos exigiría justamente ese pipeline. A tamaño de mapa
+(9–14 px) la diferencia en una etiqueta de calle es imperceptible.
+
+**El `OFL.txt` no es opcional.** La SIL Open Font License exige que el aviso viaje junto
+a los archivos de fuente, así que se sube al mismo directorio.
 
 ---
 

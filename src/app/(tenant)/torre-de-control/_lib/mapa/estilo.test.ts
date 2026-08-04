@@ -48,6 +48,107 @@ describe('estilo del mapa — invariantes de las dos versiones', () => {
     const etiqueta = estilo.layers.find((capa) => capa.id === 'bm-etq-via-local');
     expect(etiqueta?.minzoom).toBe(UMBRALES_ZOOM.punto);
   });
+
+  it.each(TEMAS)('ninguna capa filtra por `medium_road` (%s)', (tema) => {
+    // La clase existe en el ESQUEMA de Protomaps pero no en este extracto de la
+    // RM: se verificó sobre el propio PMTiles —16 teselas, z10 a z13, cuatro
+    // puntos de la ciudad— y no aparece en ninguna. Las dos capas que la
+    // filtraban se veían perfectas en el código y no dibujaban jamás, que es la
+    // peor combinación posible. Esta prueba existe para que no vuelvan por
+    // simetría con el esquema.
+    const estilo = construirEstiloBase({ tema, ...URLS });
+    expect(JSON.stringify(estilo.layers)).not.toContain('medium_road');
+  });
+});
+
+// =============================================================================
+// Contraste y separación — medidos, no estimados
+// =============================================================================
+// Las dos reglas de acá se rompen editando un hex, sin que nada falle y sin que
+// se note hasta tener el mapa delante. Por eso van como número y no como
+// criterio: son las que el QA visual de la Vía B encontró rotas.
+
+/** Luminancia relativa WCAG de un `#rrggbb`. */
+function luminancia(hex: string): number {
+  const canal = (i: number) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * canal(1) + 0.7152 * canal(3) + 0.0722 * canal(5);
+}
+
+function contraste(a: string, b: string): number {
+  const [x, y] = [luminancia(a), luminancia(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+/** Lab D65, para medir cuánto se separan dos superficies contiguas. */
+function lab(hex: string): [number, number, number] {
+  const canal = (i: number) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const [r, g, b] = [canal(1), canal(3), canal(5)];
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+  const y = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+function deltaE(a: string, b: string): number {
+  const [A, B] = [lab(a), lab(b)];
+  return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+}
+
+/** Aplana un `#rrggbbaa` sobre un fondo opaco, con un multiplicador de opacidad. */
+function sobre(color8: string, fondo: string, multiplicador = 1): string {
+  const alfa = (parseInt(color8.slice(7, 9), 16) / 255) * multiplicador;
+  const canal = (i: number) => {
+    const f = parseInt(color8.slice(i, i + 2), 16);
+    const b = parseInt(fondo.slice(i, i + 2), 16);
+    return Math.round(b + alfa * (f - b))
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${canal(1)}${canal(3)}${canal(5)}`;
+}
+
+describe('contraste y separación del mapa', () => {
+  it.each(TEMAS)('el anillo del corte cumple el mínimo WCAG de 3:1 sobre la tierra (%s)', (tema) => {
+    // WCAG 1.4.11 (objetos gráficos). El anillo ámbar del `--warning` del sistema
+    // daba 2.17:1 en claro: se perdía exactamente sobre el fondo que más ocupa la
+    // pantalla, así que la marca de «no alcanza al corte» era invisible.
+    const p = paletaDe(tema);
+    expect(contraste(p.datos.anilloCorte, p.basemap.tierra)).toBeGreaterThanOrEqual(3);
+  });
+
+  it.each(TEMAS)('el anillo del corte no se confunde con el rojo de incidencia (%s)', (tema) => {
+    // Corolario de la regla 4. Oscurecer el ámbar para ganar contraste lo empuja
+    // hacia el rojo, y un anillo rojizo sobre un punto sano diría «acá pasa algo»
+    // justo donde no pasa nada.
+    const p = paletaDe(tema);
+    expect(deltaE(p.datos.anilloCorte, p.datos.puntoIncidencia)).toBeGreaterThan(20);
+  });
+
+  it.each(TEMAS)('los cuatro pasos de la rampa se distinguen entre sí (%s)', (tema) => {
+    const p = paletaDe(tema);
+    const pasos = p.datos.cargaComuna.map((c) => sobre(c, p.basemap.tierra));
+    for (let i = 1; i < pasos.length; i++) {
+      expect(deltaE(pasos[i], pasos[i - 1])).toBeGreaterThan(6);
+    }
+  });
+
+  it.each(TEMAS)('la rampa sigue distinguiéndose atenuada dentro de una comuna (%s)', (tema) => {
+    // Dentro de una comuna el relleno baja al 45 %, y ahí la rampa original caía
+    // a ΔE 2.6 entre sus dos primeros pasos — bajo el umbral en que el ojo separa
+    // dos superficies contiguas. Cuatro pasos declarados, tres a la vista.
+    const p = paletaDe(tema);
+    const pasos = p.datos.cargaComuna.map((c) => sobre(c, p.basemap.tierra, 0.45));
+    for (let i = 1; i < pasos.length; i++) {
+      expect(deltaE(pasos[i], pasos[i - 1])).toBeGreaterThan(3);
+    }
+  });
 });
 
 describe('capas de dato — las reglas de color del alcance', () => {

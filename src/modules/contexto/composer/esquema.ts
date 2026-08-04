@@ -67,16 +67,26 @@ const comuna = z.object({
   zonaId: z.string().nullable(),
 });
 
+const estadoPunto = z.enum(['pendiente', 'en_ruta', 'entregado', 'incidencia']);
+
+const pedidoEnPunto = z.object({
+  id: z.string(),
+  codigoEnvio: z.string().nullable(),
+  estado: estadoPunto,
+  conductorNombre: z.string().nullable(),
+  sellerNombre: z.string().nullable(),
+  /** 0 = primer intento. Nunca negativo: cuenta incidencias cerradas. */
+  intentosPrevios: conteo,
+});
+
 const punto = z.object({
   id: z.string(),
   posicion: coordenada,
-  codigoEnvio: z.string().nullable(),
-  estado: z.enum(['pendiente', 'en_ruta', 'entregado', 'incidencia']),
+  /** Al menos el representante. Su largo es el `+N` del mapa. */
+  pedidos: z.array(pedidoEnPunto).min(1),
+  estado: estadoPunto,
   comuna: z.string().nullable(),
   conductorId: z.string().nullable(),
-  conductorNombre: z.string().nullable(),
-  /** Un grupo tiene al menos a su propio representante. */
-  agrupados: z.number().int().min(1),
   cercaDelCorte: z.boolean(),
 });
 

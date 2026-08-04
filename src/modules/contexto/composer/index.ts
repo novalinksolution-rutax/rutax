@@ -55,14 +55,16 @@ import {
 } from '../olas';
 import type { EstadoTorre } from '../contrato-torre';
 import {
+  ESTADOS_INCIDENCIA_ABIERTA,
   obtenerCapacidadInstalada,
   obtenerCierresDelDia,
   obtenerCourier,
   obtenerEventosComerciales,
-  obtenerIncidenciasAbiertas,
+  obtenerIncidenciasDeLosPedidos,
   obtenerParadasDelDia,
   obtenerPedidosDelDia,
   obtenerPodDelDia,
+  obtenerSellers,
   obtenerVentanasCorte,
   obtenerVolumenBase,
   obtenerZonasConfiguradas,
@@ -120,6 +122,7 @@ export const cargarTablero = cache(async function cargarTablero(
     cabecera,
     configuradas,
     capacidad,
+    sellersFilas,
     ventanas,
     pedidosFilas,
     cierresFilas,
@@ -131,6 +134,7 @@ export const cargarTablero = cache(async function cargarTablero(
     cargarCabecera(tenantId),
     obtenerZonasConfiguradas(tenantId),
     obtenerCapacidadInstalada(tenantId),
+    obtenerSellers(tenantId),
     obtenerVentanasCorte(tenantId),
     obtenerPedidosDelDia(tenantId, fecha),
     obtenerCierresDelDia(tenantId, fecha),
@@ -147,10 +151,25 @@ export const cargarTablero = cache(async function cargarTablero(
   ]);
 
   // --- Incidencias: dependen de qué pedidos hay hoy ---------------------------
-  const incidenciasFilas = await obtenerIncidenciasAbiertas(
+  // Vienen todas en un viaje y se parten acá. Las abiertas son lo único rojo de
+  // la pantalla; las cerradas son los intentos previos de cada paquete.
+  const todasLasIncidencias = await obtenerIncidenciasDeLosPedidos(
     tenantId,
     pedidosFilas.map((p) => p.id).join(','),
   );
+  const abiertas = new Set<string>(ESTADOS_INCIDENCIA_ABIERTA);
+  const incidenciasFilas = todasLasIncidencias.filter((i) => abiertas.has(i.estado));
+
+  // Cuántas veces falló antes este paquete. `0` no se guarda: el punto lo
+  // resuelve con `?? 0`, así que el mapa solo lleva a los que tienen historia.
+  const intentosPrevios = new Map<string, number>();
+  for (const incidencia of todasLasIncidencias) {
+    if (abiertas.has(incidencia.estado)) continue;
+    intentosPrevios.set(
+      incidencia.pedido_id,
+      (intentosPrevios.get(incidencia.pedido_id) ?? 0) + 1,
+    );
+  }
 
   // --- Zonas: solo para resolver el corte y colgar el enlace ------------------
   const comunasPorZona = new Map<string, string[]>();
@@ -236,6 +255,7 @@ export const cargarTablero = cache(async function cargarTablero(
   const nombresConductores = new Map(
     capacidad.conductores.map((c) => [c.id, c.nombre_completo]),
   );
+  const nombresSellers = new Map(sellersFilas.map((s) => [s.id, s.razon_social]));
 
   // El conductor de un pedido sale primero del registro que él mismo subió y,
   // si no hay, del denormalizado del pedido. Ese orden importa: el registro dice
@@ -260,6 +280,7 @@ export const cargarTablero = cache(async function cargarTablero(
         long: fila.long,
         codigoEnvio: codigos.get(fila.id) ?? null,
         conductorId: conductorDePedido.get(fila.id) ?? null,
+        sellerId: fila.seller_id,
       },
     ];
   });
@@ -269,6 +290,8 @@ export const cargarTablero = cache(async function cargarTablero(
     registros,
     pedidosConIncidencia,
     nombresConductores,
+    nombresSellers,
+    intentosPrevios,
     comunasEnRiesgo,
   });
 
@@ -297,7 +320,13 @@ export const cargarTablero = cache(async function cargarTablero(
   });
 
   // --- F9: las olas entrantes -------------------------------------------------
-  const disponibles = capacidad.conductores.filter((c) => c.disponible);
+  // La capacidad de la ola la ponen los que van a estar: `activo` **y**
+  // `disponible`. El nombre, en cambio, se lee de todos —incluido el que se dio
+  // de baja hoy con sus paradas en la calle— porque el panel existe para saber a
+  // quién llamar. Ver `obtenerCapacidadInstalada`.
+  const disponibles = capacidad.conductores.filter(
+    (c) => c.estado === 'activo' && c.disponible,
+  );
   const capacidadDiaria = disponibles.reduce((s, c) => s + (c.capacidad_paradas ?? 0), 0);
   const capacidadMediaConductor =
     disponibles.length > 0 ? Math.round(capacidadDiaria / disponibles.length) : 0;

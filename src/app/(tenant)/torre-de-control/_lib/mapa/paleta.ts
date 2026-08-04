@@ -130,9 +130,29 @@ const CLARO: PaletaMapa = {
     halo: '#f1f2f8',
   },
   datos: {
-    // Navy de marca (#2a3ca0) a 4 opacidades. En hex de 8 dígitos para que el
-    // estilo no dependa de `fill-opacity` y la rampa conviva con el velo.
-    cargaComuna: ['#2a3ca014', '#2a3ca024', '#2a3ca038', '#2a3ca052'],
+    // Navy de marca (#2a3ca0) a 4 opacidades: 4 / 13 / 24 / 36 %. En hex de 8
+    // dígitos para que el estilo no dependa de `fill-opacity` y la rampa conviva
+    // con el velo.
+    //
+    // ⚠️ **Reequilibrada dos veces el mismo día, y las dos por medición.**
+    //
+    // Iba en 8/14/22/32 % y los dos primeros pasos daban ΔE76 4,5 entre sí:
+    // cuatro pasos declarados, tres a la vista. Dentro de una comuna la capa
+    // baja al 45 % de opacidad y ahí el escalón caía a ΔE 1,8 — bajo el umbral
+    // en que el ojo separa dos superficies contiguas.
+    //
+    // El primer arreglo (6/17/30/45) resolvió eso pero **subió el tope de 32 % a
+    // 45 %**, y la consecuencia se vio en pantalla antes que en el número: la
+    // comuna cargada quedaba tan azul que el relleno se leía como un velo puesto
+    // encima del plano en vez de como un dato. Se reportó, con razón, como «esa
+    // capa parece mal ubicada».
+    //
+    // 4/13/24/36 es el punto medio medido: ΔE 7,9 / 8,9 / 10,1 entre pasos
+    // —mejor separación que el original— y 3,7 / 3,7 / 4,2 atenuada, con el tope
+    // de vuelta cerca del 32 % que el diseño había elegido. **La separación se
+    // gana abriendo el extremo BAJO, no oscureciendo el alto**: es lo que deja
+    // leer el plano por debajo de la comuna más cargada.
+    cargaComuna: ['#2a3ca00a', '#2a3ca021', '#2a3ca03d', '#2a3ca05c'],
     comunaBorde: '#c6c9de',
     comunaBordeActiva: '#2a3ca0',
     velo: '#f1f2f8b8',
@@ -143,7 +163,16 @@ const CLARO: PaletaMapa = {
     puntoEnRuta: '#2a3ca0', //    = --brand
     puntoEntregado: '#a7aebd',
     puntoIncidencia: '#fb3748', // = --destructive · ÚNICO ROJO
-    anilloCorte: '#ff8447', //     = --warning
+    // Ámbar oscurecido del `--warning` (#ff8447 → #d9590a). El token del sistema
+    // daba **2,17:1** contra la tierra, bajo el mínimo de 3:1 que la WCAG 1.4.11
+    // pide para objetos gráficos: el anillo se perdía justo sobre el fondo que
+    // más se usa. Medido, no estimado (Vía C, 2026-08-04): así queda en 3,49:1.
+    //
+    // ⚠️ Se paró en 3,49 y no se siguió oscureciendo a propósito. Los ámbares
+    // con más contraste (#c2410c da 4,64:1) derivan hacia el rojo, y el rojo
+    // está reservado a la incidencia — un anillo rojizo alrededor de un punto
+    // sano diría «acá pasa algo» justo donde no pasa nada.
+    anilloCorte: '#d9590a', //     = --warning, oscurecido para cumplir 3:1
     puntoHalo: '#ffffff',
     // Sombra bajo el punto. Tinta del sistema al 22 %, no negro: un gris neutro
     // sobre la tierra fría (#f1f2f8) se ve sucio. Es lo que asienta el punto
@@ -178,8 +207,14 @@ const OSCURO: PaletaMapa = {
   },
   datos: {
     // El navy sube a periwinkle (#7080f5, el `--brand` de dark) y las opacidades
-    // suben con él: sobre negro, el mismo alfa rinde menos.
-    cargaComuna: ['#7080f51f', '#7080f533', '#7080f54d', '#7080f566'],
+    // suben con él: sobre negro, el mismo alfa rinde menos. 7 / 18 / 31 / 46 %.
+    //
+    // Se mueve en paralelo a la del claro, y no por un defecto propio: el oscuro
+    // ya separaba bien. Es para conservar la relación que la línea de arriba
+    // declara — el tema que necesita más alfa tiene que seguir teniendo más.
+    // Bajar el tope de 58 % a 46 % además devuelve el plano: la vía sobre la
+    // comuna más cargada pasa de 1,31:1 a 1,43:1 de contraste.
+    cargaComuna: ['#7080f512', '#7080f52e', '#7080f54f', '#7080f575'],
     comunaBorde: '#ffffff26',
     comunaBordeActiva: '#7080f5',
     velo: '#131417c4',
@@ -265,6 +300,25 @@ export const ENCUADRE_RM = {
     [-71.9, -34.45],
     [-69.6, -32.8],
   ] as [[number, number], [number, number]],
-  zoomMinimo: 8,
+  /**
+   * Suelo de alejamiento.
+   *
+   * ⚠️ **Subió de 8 a 8.8 en la Vía C, y el motivo es la forma de la caja.**
+   * `limites` cubre 2,3° de longitud —holgado a propósito, hay couriers que
+   * reparten en Melipilla o Paine—, así que `maxBounds` solo empieza a frenar
+   * cuando esos 2,3° llenan el lienzo. En una caja ancha y **baja** (~864×473,
+   * que es la de esta pantalla) eso ocurre recién en z≈8,04: con el suelo en 8,
+   * el freno prácticamente no existía y la rueda dejaba salir hasta ver medio
+   * país, con las comunas convertidas en manchas.
+   *
+   * A 8,8 el lienzo muestra ~1,4° de ancho: el Gran Santiago entero con margen
+   * de sobra, y ni un grado más. El encuadre de entrada (`region`, 9,2) queda
+   * justo por encima, así que sigue habiendo recorrido para alejarse un poco
+   * antes de topar.
+   *
+   * Depende del alto de la caja: si algún día el mapa cambia de proporción, este
+   * número se recalcula. No es un gusto, es geometría.
+   */
+  zoomMinimo: 8.8,
   zoomMaximo: 17.5,
 } as const;

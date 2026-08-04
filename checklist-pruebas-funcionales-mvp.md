@@ -1219,8 +1219,172 @@ Gotcha que costó media sesión y conviene no volver a pagar: **MapLibre coloca 
 - [ ] **Bajo ~1200 px el mapa se estrangula.** No hay desborde ni recortes, pero como el panel es de 340 px fijos el mapa cae a 380 px a 1024, 256 px a 900 y **124 px a 768**. El documento ya prevé la salida (`< lg` → el mapa se retira y manda la lista de comunas, F10); **el prototipo no la implementa** y llega con la Vía C.
 
 **Pendiente, no bloqueante:**
-- [ ] **QA visual en la pantalla real.** Lo que se vio en navegador fue el **prototipo** de `.artefactos/prototipo-torre-v2/` (fuera del repo), que consume una copia compilada de `estilo.ts`. La pantalla de Next no existe todavía: llega con la Vía C, y ahí va la captura en navegador real, claro y oscuro.
-- [ ] **Publicar los glifos al bucket `contexto-mapas`** y poner `NEXT_PUBLIC_MAPA_GLIFOS_URL`. Es Vía C / devops; acá quedó verificado *qué* publicar y *cómo*. Vacía es un estado válido: el estilo se construye sin capas de etiqueta antes que romperse.
+- [x] **QA visual en la pantalla real.** Hecho en la Vía C, en Chrome real y con la ventana visible. Ver la entrada de abajo.
+- [x] **Publicar los glifos al bucket `contexto-mapas`** y poner `NEXT_PUBLIC_MAPA_GLIFOS_URL`. Hecho en la Vía C con `scripts/mapa/publicar-glifos.mjs` (5 archivos, 406 KB). Verificado que MapLibre los pide con el fontstack codificado (`Noto%20Sans%20Regular`) y que las etiquetas de calle rotulan.
+
+---
+
+## Torre de control v2 — Vía C: la pantalla — 2026-08-04
+
+**Feature:** la pantalla real del rediseño v2, sobre la capa de datos de la Vía A y el lenguaje visual de la Vía B. Mapa MapLibre con zoom semántico de tres niveles, panel de tres pestañas, ficha anclada con previsualizaciones, vista sin mapa bajo `lg` y enlaces profundos con filtro aplicado.
+
+**Código:** `src/app/(tenant)/torre-de-control/` (`page.tsx`, `loading.tsx`, `_componentes/` — mapa, placas, ficha, panel, cifras, banda de olas, lista de comunas, orquestador — y `_lib/` — geometría, derivación, comunas + 2 archivos de test) · `src/components/app-shell/app-shell.tsx` (prop `rutasAnchas`) · `(tenant)/layout.tsx` · `src/modules/contexto/contrato-torre.ts` y `composer/` (seller, intentos previos, lote de ids, nombres de conductor) · `src/lib/datos-tenant/conductores.ts` · `(tenant)/operaciones/` (filtros de comuna y conductor) · `src/modules/operacion/{tipos,pedidos}.ts` · `supabase/seed-torre-hoy.sql`.
+
+- [x] **Los tres niveles de zoom, por las dos vías.** Clic en comuna y rueda llegan al mismo lugar; el clic además selecciona, la rueda no. Verificado: con rueda, las migas se quedan en «Región Metropolitana» y no hay velo — el velo lo produce la selección, no el zoom.
+- [x] **Clic en burbuja abre sus puntos** (tercera entrada del nivel 2 al 3). Verificado en navegador: `Región Metropolitana / Santiago / Puntos de entrega`.
+- [x] **El nivel se cambia antes de volar y se re-sincroniza en `moveend`.** Se rompió una vez en esta misma pasada: el orquestador volaba con `mapa.flyTo()` a pelo, sin la bandera, y el sincronizador borraba la comuna recién elegida a mitad del vuelo. Se cerró la puerta con `ControlesMapa` — el `Map` crudo sigue saliendo para `project()`, pero mover la cámara solo se puede por ahí.
+- [x] **La ficha lleva conductor, seller y «2º intento».** Verificado de punta a punta con dato real: `FLEX-2026-710114 · Pablo Sebastián Torres Reyes · FalabellaTech Ltda. · 2º intento`. La tercera línea es callada: sin historial, la ficha queda en dos líneas.
+- [x] **La incidencia asoma con su etiqueta, no con una tarjeta**, a tamaño completo y sin translucidez. Verificado: «Problema de acceso», «Destinatario ausente», «Reagendado».
+- [x] **La suma de lo dibujado da el pendiente de la comuna** (regla 5). Cubierto por `_lib/derivar.test.ts`: la burbuja suma `agrupados` y no puntos, y los entregados no burbujean.
+- [x] **Sin pedidos, la ciudad sigue dibujada.** La geometría se carga aparte del conteo (`_lib/geometria.ts`), con prueba.
+- [x] **Bajo `lg` el mapa no se monta** y manda la lista de comunas.
+- [x] **Enlaces profundos con filtro aplicado.** `/operaciones?comuna=Providencia` → 59 pedidos, todos de Providencia. `/operaciones?conductor=<id>` → 77 pedidos de ese conductor. El pedido y la incidencia van al **detalle** del pedido, que es donde se resuelven.
+- [x] **Estados de pantalla.** `con_incidencias` y `tranquilo` verificados en vivo; el chip ámbar de frescura apareció solo al cruzar los 45 min («Sin cierres de conductor hace 48 min») y el panel de conductores cambió solo a «N sin entregar» al pasar las 23:00.
+- [x] **Verificación estándar completa:** typecheck limpio · lint 0 errores (151 warnings preexistentes) · 2.174 pruebas verdes · `npm run build` exitoso con `/torre-de-control` en el manifiesto · `npx supabase test db` 476 pruebas pgTAP verdes.
+- [x] **Los dos temas, en navegador real y con la ventana visible.** Oscuro y claro. En claro se confirma lo que sostiene el «premium» del plano: las vías van más claras que la tierra. En los dos se leen nombres de calle, así que los glifos cargan y el estilo llega completo — con la ventana tapada MapLibre se queda en 18 de 30 capas y esto no probaría nada.
+
+**Bugs reales encontrados y corregidos en esta pasada** (los tres los destapó el fixture con volumen real, no el dato de demo flaco):
+
+- **`URI too long` al cargar la pantalla.** La consulta de incidencias mandaba los ~1.000 UUID del día en un `.in()`, o sea ~38 KB de query string. Con 4 pedidos de demo nunca se vio; con volumen real reventaba en la primera carga. Corregido leyendo por lotes de 100 ids.
+- **«Conductor sin nombre» en el panel.** El composer leía nombres solo de los conductores `activo`, así que uno dado de baja con sus 76 paradas del día en la calle salía sin nombre — justo en la pantalla que existe para saber a quién llamar. Ahora los nombres se leen de todos y el filtro `activo`+`disponible` queda solo para la capacidad de la ola.
+- **El mapa no dibujaba nada, sin un solo error en consola.** El contenedor iba con `className="absolute inset-0"`, y `.maplibregl-map` trae `position: relative` desde un CSS **sin capa**, que gana siempre a Tailwind: el lienzo quedaba de 0 px de alto. Es la mina documentada, y se cayó en ella igual. Ahora va con estilos en línea.
+
+**Paridad con el prototipo — cuatro defectos de sensación reportados por el usuario al probarlo (2026-08-04).** Los cuatro eran diferencias concretas con `.artefactos/prototipo-torre-v2/`, no gustos:
+
+- [x] **Las placas quedaban «fijadas y desordenadas» al volver del nivel 2.** React las desmontaba al salir del nivel 1 y con ellas se iba la medida cacheada; al volver, el bucle hacía `continue` por falta de medida y **dejaba el nodo con el `transform` de tres zooms atrás**. Corregido siguiendo al prototipo: los nodos **no se desmontan** (se apaga el contenedor), la medida se toma con la capa visible, y la posición usa `translate(-50%,-50%)` para **no depender** de la medida. Verificado en el ciclo completo nivel 1 → comuna → alejar.
+- [x] **Al abrir una previsualización se movían todas las demás.** El recálculo dependía del punto activo y la ficha completa reservaba su caja, así que abrir una re-maquetaba el conjunto. Ahora la ficha abierta se dibuja **aparte y encima**, como el `#ficha` del prototipo. Medido: al abrir una tarjeta, **0 de 15 previas cambiaron de `transform`**.
+- [x] **El pedido abierto ya no se ve dos veces.** Corolario del arreglo anterior: al sacar el punto activo del recálculo, su previa dejaba de ocultarse y quedaban la tarjeta completa **y** su miniatura asomando debajo. Se descarta al **dibujar** y no al calcular — filtrarlo en el recálculo liberaría su caja y volvería a mover a las vecinas. Medido: 16 previas → 15, y ninguna se movió. *(El prototipo tampoco la oculta; ahí no se nota porque su tarjeta abierta cae justo encima de la miniatura y la tapa. La de Rutax es más alta porque lleva el enlace a Operaciones.)*
+- [x] **Acercarse con la rueda llenaba el mapa de burbujas de toda la ciudad.** El prototipo devuelve **cero** agrupaciones sin comuna activa; la burbuja es el resumen *de una comuna* y un resumen de todo a la vez no resume nada. Con prueba.
+- [x] **Se podía alejar hasta ver medio país.** `maxBounds` cubre 2,3° de longitud a propósito, así que solo frena cuando llenan el lienzo — y en una caja ancha y baja (864×473) eso pasaba recién en z≈8,04, justo el suelo que había. `zoomMinimo` sube a **8,8**, calculado contra la geometría de esta caja.
+- [x] **Ninguna placa queda bajo las migas ni bajo el botón de pantalla completa.** Los controles dibujados sobre el mapa entran al des-solape como cajas ocupadas, leídas del DOM porque las migas cambian de ancho con el nombre de la comuna.
+- [x] **Entrar en una comuna la ENCUADRA, no vuela a un zoom fijo.** Las comunas de la RM van de 7 km² (Independencia) a 197 (Pudahuel): con `ZOOM_DESTINO.comuna` para todas, de la grande se veía un fragmento sin un solo borde a la vista —«no sé en qué comuna estoy»— y la chica quedaba diminuta entre sus vecinas. Verificado en los dos extremos: ambas llenan el encuadre y **ambas aterrizan en el nivel 2**.
+  - ⚠️ **El zoom del encuadre se topa por los DOS extremos, y el de abajo es el que costó encontrar.** Pudahuel encuadra a z 10,7 — por debajo del umbral del nivel 1—, así que al aterrizar el sincronizador leía «nivel comuna» y **deshacía la selección recién hecha**: el mapa volaba, la miga volvía a «Región Metropolitana» y el velo se apagaba solo. Se veía como que el clic no había servido de nada.
+  - ⚠️ **El primer intento fallaba mudo.** Usaba `cameraForBounds` + `flyTo` y volvía sin volar cuando el resultado no convencía: la cámara no se movía y no quedaba ni un error en consola. Ahora hay respaldo a `fitBounds`; ningún camino termina en «no pasa nada».
+
+- [x] **Las burbujas ya no aparecen fuera del límite de la comuna.** Se reportó al ver burbujas afuera del polígono en el nivel 2. **No eran de otra comuna** —el filtro por `comuna` lo impide por construcción— sino de la misma, mal ubicadas: era defecto del **fixture**, que dispersaba los pedidos en una caja **cuadrada** con un radio estimado a ojo. Medido: **134 de 1.008 pedidos (13 %) caían fuera de su comuna**, y Vitacura —larga y estrecha— llegaba al 54 %. Los radios se recalcularon encogiendo la caja envolvente de cada polígono DPA hasta cubrir ≥97 %, con radio de latitud y de longitud separados: **de 13,3 % a 1,5 %**, y Vitacura a cero. *El ~1,5 % restante se deja a propósito: el geocoding sí pone direcciones de calles limítrofes al otro lado del límite administrativo.*
+
+- [x] **El encuadre de entrada se adapta a lo que el courier reparte.** Lo destapó agregar **Colina** al fixture: `ENCUADRE_RM` es una constante centrada en el Gran Santiago, así que una comuna periférica con 30 pendientes quedaba **fuera de pantalla** —no se pintaba, su placa no aparecía, y solo se descubría entrando a la pestaña de comunas—. Eso es el mapa escondiendo carga (regla 5). Ahora la vista general encuadra la unión de las cajas de las comunas **con carga**, y el regreso desde una comuna usa el mismo encuadre: sin eso, Colina aparecía al abrir la pantalla y desaparecía al volver de ella. Sin carga —o sin geometría— manda la constante de siempre. Con prueba.
+- [x] **Una comuna que no cabe en la banda del nivel 2 ya no se auto-deselecciona.** Colina mide 0,42° × 0,40° y necesita z≈9,5 para verse entera, por debajo del umbral del nivel 1: al aterrizar, el sincronizador la leía como nivel 1 y borraba la selección recién hecha. Se resolvió con `zoomEntrada`: **con una comuna seleccionada, el suelo del nivel 2 es el zoom con el que se entró**, no el umbral global. Se sale alejándose *más* de donde entraste, o por la miga y `Esc`.
+  - ⚠️ **Limitación conocida:** en la comuna más grande del set (Colina) el margen entre su zoom de encuadre y `zoomMinimo` (8,8) es tan estrecho que **salir con la rueda casi no tiene recorrido**; la miga y `Esc` sí funcionan. Es la tensión entre dos decisiones del usuario —«no me dejes alejarme tanto» y «encuadra las comunas grandes»— y se deja anotada, no resuelta.
+
+- [x] **Abrir una burbuja de N ahora deja ver de dónde salen esos N.** Se reportó que una burbuja de «4» abría solo 2 puntos. **No faltaba ninguno**: verificado contra el dato, esa celda es `3 + 1` — un edificio de 3 paquetes (que es UN punto con `+2`) más un pedido suelto. La burbuja cuenta **paquetes** (obligatorio: su suma tiene que dar el pendiente de la comuna) y el punto cuenta **ubicaciones**. Correcto, y aun así ilegible: había que ir a buscar el `+2`. Ahora al abrir una burbuja se recuerda su celda y **todo lo que no es suyo se atenúa al 25 %**, incluidas sus previsualizaciones, así que los puntos de la agrupación quedan solos en primer plano y la cuenta se hace de un vistazo. *La incidencia ajena se atenúa pero conserva su rojo: baja de plano, no de categoría.* Con pruebas del cruce burbuja↔punto.
+
+- [x] **La ficha pagina los pedidos del mismo portal.** Nace de la observación anterior: el mapa decía «+2» y no había forma de ver cuáles eran esos dos sin salir a `/operaciones`. **Fue un cambio de contrato, no de interfaz**: el composer colapsaba por ubicación y guardaba UN representante, así que del resto solo sobrevivía la cuenta. `PuntoEntrega` pasa a llevar `pedidos: PedidoEnPunto[]` —con el representante primero— y `codigoEnvio`, `conductorNombre`, `sellerNombre` e `intentosPrevios` bajan a cada pedido, donde corresponden. El `+N` del mapa se **deriva** de `pedidos.length`: ya no hay un campo aparte que pueda decir «+2» mientras la tarjeta pagina tres. En la ficha, dos flechas y un «1/3» en una fila propia; el enlace a Operaciones sigue a la página. Verificado en vivo sobre un portal de 3: tres códigos, tres conductores, tres sellers, y vuelta circular al primero.
+  - La tarjeta se dimensiona con el pedido **más largo** del punto, no con el representante: si no, pasar a uno con una línea más la haría crecer hacia el punto y taparlo.
+  - La prueba de minimización de datos personales ahora cubre **las dos capas** —la ubicación y cada pedido—, así que un campo del destinatario no se puede colar por la lista nueva.
+- [x] **La incidencia se marca con un punto rojo junto al código, no con un chip.** Paginando, el marcador tiene que estar pegado a lo que identifica al paquete para que se vea **cuál de los tres** falló. Y corrige un defecto que el paginador había introducido: el chip ocupaba una línea propia, así que la tarjeta **crecía al pasar a una página con incidencia** y se movía sola sobre el mapa. Medido en vivo sobre un edificio de 3 con una incidencia: alto 118 px y posición idénticos en las tres páginas, con el punto solo en la que corresponde. El tipo de incidencia sigue disponible en el `title`, en la píldora del mapa y en el panel.
+  - Caso de prueba: **no hizo falta sembrar nada**. El fixture ya produce **41 edificios** con incidencia mezclada; el verificado está en Quilicura, con `FLEX-2026-800001` marcado y `…002` / `…003` limpios.
+
+**Correcciones de la deuda que dejó el QA visual de la Vía B:**
+
+- [x] **`medium_road` no existe en el extracto.** Se verificó contra el propio PMTiles —16 teselas, z10 a z13, cuatro puntos de la ciudad— y aparece en **cero**. Se retiraron `bm-via-secundaria` y `bm-via-borde-media`; en su lugar entró el borde de la calle local, que sí tiene datos. Hay una prueba que impide que vuelvan.
+- [x] **El anillo del corte cumple WCAG.** Pasó de 2,17:1 a 3,49:1 y se paró ahí: más contraste lo empuja al rojo reservado. Con prueba de contraste y de distancia al rojo.
+- [x] **La rampa de carga vuelve a tener cuatro pasos a la vista.** De 8/14/22/32 % a **4/13/24/36 %**: el primer escalón sube de ΔE 4,5 a 7,9, y de 1,8 a 3,7 cuando la capa se atenúa dentro de una comuna. Con prueba en los dos temas. *(Se reequilibró dos veces: el primer intento —6/17/30/45— resolvía la separación pero subía el tope de 32 % a 45 %, y el usuario reportó el relleno como «una capa azul que parece mal ubicada». La separación se gana abriendo el extremo BAJO, no oscureciendo el alto.)*
+- [x] **La comuna sin carga ya no se pinta.** Caía en el paso 0 —el escalón más bajo, no «nada»—, así que el relleno cubría las 52 comunas de la RM tuvieran pedidos o no. Una capa que está en todas partes no informa de ninguna. Ahora `paso: -1` → transparente; el polígono sigue dibujado por su borde. Con prueba.
+- [ ] **`bm-etq-via-local` sigue sin rotular** porque `minor_road` viene sin `name` en este extracto. La capa se conserva a propósito —filtra una clase presente a la que solo le falta un atributo— y las calles se rotulan igual desde `major_road`, a z12 en vez de z13.6. Se reabre si Protomaps publica nombres de calle local.
+
+**Pendiente, no bloqueante:**
+
+- [ ] **La cifra «cerca del corte» iguala a la de pendientes cuando el corte ya venció.** Pasada la hora, `minutosHastaCorte` devuelve 0 y todo lo que falta cae dentro del margen de 90 min, así que la cuarta magnitud repite la primera. Es aritméticamente correcto —a esa hora todo lo pendiente está efectivamente pasado de corte— pero deja de informar. Decisión de producto, no bug: o se calla después del corte, o cambia de texto.
+- [ ] **Publicar glifos y basemap al bucket de producción** y poner las dos variables en Vercel. Acá quedaron publicados y verificados solo contra el Supabase local.
+
+---
+
+# Alcance de pruebas — sesión de QA completa (pendiente)
+
+> **Para qué es esta sección.** Todo lo de arriba está verificado **por quien lo
+> construyó**, que es el peor auditor posible: prueba lo que sabe que hizo. Esto
+> es la lista para una sesión de QA aparte, con ojos nuevos, cuyo objetivo NO es
+> confirmar que funciona sino **encontrar lo que falta antes de producción**.
+>
+> Marca `[x]` lo que pase, `[!]` lo que falle —con qué viste— y `[?]` lo que no
+> se pudo probar y por qué. Un `[!]` bien descrito vale más que diez `[x]`.
+
+## 0. Dejar el entorno listo (10 min, y sin esto nada de lo demás sirve)
+
+- [ ] Stack local arriba según `docs/PRUEBA.md` (Supabase, `seed.sql`, `seed-demo-full.sql`, Inngest).
+- [ ] **Sembrar el día de la Torre.** Sin esto la pantalla abre en `sin_pedidos` y no se prueba nada:
+      `docker exec -i supabase_db_SaaS_Courier_Again psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/seed-torre-hoy.sql`
+- [ ] **Glifos publicados** y `NEXT_PUBLIC_MAPA_GLIFOS_URL` puesta: `node --env-file=.env.local scripts/mapa/publicar-glifos.mjs`. Sin ellos el plano sale mudo y varias pruebas de abajo son imposibles.
+- [ ] ⚠️ **La ventana del navegador VISIBLE y al frente durante todo el QA del mapa.** Con `document.hidden === true` MapLibre se queda en 18 de 30 capas y no rotula nada; se diagnostica mal como «faltan glifos». Comprobar `document.hidden` antes de reportar cualquier fallo de etiquetas o puntos.
+
+## 1. Estados de pantalla
+
+- [ ] **`tranquilo`** — sin incidencias abiertas, el panel dice «Sin incidencias abiertas. El día va bien.» y **nada** en rojo.
+- [ ] **`con_incidencias`** — la cifra toma el rojo y el panel abre en esa pestaña.
+- [ ] **`sin_pedidos`** — mensaje encima del mapa y **las comunas siguen dibujadas**. (Se reproduce fácil: no sembrar el día, o borrar el bloque `6d7c…`.)
+- [ ] **`cargando`** — el esqueleto tiene la forma final (cifras, caja del mapa, filas del panel). Nunca un spinner de página.
+- [ ] **Frescura atrasada** — chip ámbar «Sin cierres de conductor hace N min» a partir de 45 min, e **invisible** antes. Se fuerza envejeciendo `cierres_conductor.cerrado_en` / `pruebas_entrega.capturado_en`.
+- [ ] **Sin basemap** — vaciar `NEXT_PUBLIC_MAPA_BASEMAP_URL`: el mapa dibuja las comunas sobre el color de tierra y lo declara. Es un estado válido, no un error.
+- [ ] **Sin glifos** — vaciar `NEXT_PUBLIC_MAPA_GLIFOS_URL`: **ninguna** capa de texto, y el `+N` se sustituye por un anillo alrededor del punto.
+
+## 2. Navegación y los tres niveles
+
+- [ ] **Nivel 1** — comunas rellenas por carga, placa con «faltan N de M», punto rojo solo donde hay incidencia.
+- [ ] **La comuna sin carga NO se pinta.** Con el fixture son 23 de 52; las otras 29 quedan sin relleno, solo con su borde.
+- [ ] **Entrar por clic** en una comuna: vuela, la **encuadra entera** y baja a nivel 2 con velo sobre el resto.
+- [ ] **Comuna grande (Colina, Pudahuel, Maipú)** — cabe entera y **la selección se sostiene**; no vuelve sola a «Región Metropolitana».
+- [ ] **Comuna chica (Independencia, Vitacura)** — llena el encuadre y **no se salta al nivel 3**.
+- [ ] **Entrar por rueda** (sin clic): baja de nivel **sin** seleccionar comuna → sin velo, miga en «Región Metropolitana», y **cero burbujas**.
+- [ ] **Clic en burbuja** → nivel 3 sobre sus puntos.
+- [ ] **Salir**: por miga, por `Esc` y alejando con la rueda. *(Conocido: en Colina el recorrido de rueda es casi nulo; miga y `Esc` deben funcionar.)*
+- [ ] **Alejar al máximo** no deja ver medio país: el suelo es z8,8.
+- [ ] **Volver a la región** muestra **el mismo encuadre** con que se entró (con Colina incluida), no el de la RM por defecto.
+- [ ] **Las placas no se congelan** al ir y volver de nivel 2 varias veces, ni quedan desordenadas ni bajo las migas.
+
+## 3. Puntos, burbujas y ficha
+
+- [ ] **Los cuatro estados del punto se distinguen**: pendiente, en ruta (anillo), entregado (apagado, **sin sombra**) e incidencia (rojo, encima de todo). ⚠️ *No se ha confirmado que los entregados se dibujen — es lo primero que hay que mirar acá.*
+- [ ] **Anillo ámbar** en los pendientes cerca del corte, y su cifra en la cabecera.
+- [ ] **La suma de las burbujas de una comuna = su pendiente en la placa.** Es la regla 5: si no cuadra, el mapa esconde carga.
+- [ ] **Abrir una burbuja de N** deja ver de dónde salen esos N: sus puntos en primer plano, el resto atenuado al 25 %, y el `+N` explicando la diferencia.
+- [ ] **Ficha anclada**: cola apuntando al punto, arriba por defecto, volteada si no cabe, recortada contra los bordes, y siguiendo al mapa al arrastrar.
+- [ ] **Paginador** en un edificio: `‹ 1/3 ›`, circular, con el enlace a Operaciones siguiendo a la página.
+- [ ] **Punto rojo junto al código** solo en el paquete con incidencia, y **la tarjeta no cambia de alto** al paginar.
+- [ ] **Previsualizaciones**: los entregados no se previsualizan, las incidencias asoman como píldora roja con su tipo, y ninguna sale cortada contra el borde.
+- [ ] **Al abrir una tarjeta las demás no se mueven**, y la del propio pedido no se ve duplicada.
+- [ ] **`Esc` cierra la ficha**; salir del nivel 3 la cierra sola.
+
+## 4. Panel, cifras y ola
+
+- [ ] **Tres pestañas**; el nivel sugiere cuál abre pero **la elección del usuario manda** al cambiar de nivel.
+- [ ] **Incidencias** — código, comuna, conductor y «hace N min», ordenadas de la más reciente.
+- [ ] **Conductores** — «N de M» durante el día y **«N sin entregar» después de las 23:00**. Se fuerza cambiando la hora del sistema o sembrando cierres tardíos.
+- [ ] **Comunas** — ordenadas por cuántas faltan; al hacer clic entra en la comuna.
+- [ ] **Cifras** — las cuatro magnitudes, tabular-nums, y «sin ubicar» declarado **una sola vez**.
+- [ ] **Ola** — aparece solo si hay uno dentro del horizonte; la más cercana desplegada y el resto en una línea. Si no hay, **no ocupa espacio**.
+
+## 5. Fuera de la Torre — regresión de lo que se tocó
+
+- [ ] **`/operaciones` con los filtros nuevos**: comuna y conductor, solos y combinados con seller/estado/fecha, y conviviendo con «Direcciones por revisar».
+- [ ] **Los enlaces profundos llegan filtrados**: comuna → lista por comuna; conductor → lista por conductor; pedido e incidencia → **detalle** del pedido.
+- [ ] **El ancho amplio es solo de la Torre**: `/dashboard`, `/operaciones`, `/dinero/*`, `/conductores` y configuración conservan su `max-w-6xl`.
+- [ ] **Banda de la Torre en el dashboard**: aparece con carga o incidencias, **desaparece** si el día va bien, y **no rompe el dashboard** si la Torre falla.
+- [ ] **Portal del seller y app del conductor** siguen intactos (no se tocaron, pero comparten `AppShell` y `listarPedidos`).
+
+## 6. Permisos y aislamiento
+
+- [ ] **`ver_torre_control`**: dueño, supervisor y coordinador entran; **administración NO**.
+- [ ] **La Torre no escribe nada.** Ninguna acción de la pantalla debe producir una fila en `bitacora_auditoria`.
+- [ ] **Aislamiento multi-tenant**: con dos couriers sembrados, ninguna cifra, punto, incidencia ni conductor del otro aparece. *(El composer lee con `service_role`, así que el aislamiento depende del `.eq('tenant_id', …)` de cada consulta — es el punto a atacar.)*
+- [ ] **Datos personales**: en el payload de red (pestaña Network) **no** debe viajar dirección, nombre ni teléfono del destinatario, ni `tracking_token`.
+
+## 7. Rendimiento — lo que decide si sirve en producción
+
+- [ ] **Tiempo hasta la primera cifra** y **hasta el mapa dibujado**, con el fixture de ~1.050 pedidos.
+- [ ] **Fluidez al arrastrar y hacer zoom** en nivel 3 con muchas previsualizaciones a la vista.
+- [ ] **Peso del payload** de `/torre-de-control` (el `pedidos[]` por punto lo engorda respecto de la versión anterior).
+- [ ] **Coste de las consultas**: son ~10 viajes a Supabase por carga, más los lotes de incidencias. Medir con volumen y ver si alguna necesita índice.
+- [ ] **Realtime**: con movimiento real de pedidos, comprobar que el `router.refresh()` no dispara más veces de las necesarias (debounce de 800 ms).
+
+## 8. Antes de desplegar a producción
+
+- [ ] **Publicar basemap y glifos al bucket de producción** y poner `NEXT_PUBLIC_MAPA_BASEMAP_URL` y `NEXT_PUBLIC_MAPA_GLIFOS_URL` en Vercel.
+- [ ] **Retirar de Vercel las variables muertas de OpenWeather** (`OPENWEATHER_API_KEY`, `OPENWEATHER_BASE_URL`, `CONTEXTO_CLIMA_PROVIDER`, `CONTEXTO_AIRE_PROVIDER`) y **revocar la API key**, que estuvo en texto plano.
+- [ ] **Decidir la segunda migración de la Vía A**: el `drop table` de las 7 tablas de `contexto` sigue pendiente a propósito, para poder revertir. Con la v2 verificada en vivo, decidir si se ejecuta.
+- [ ] **Sentry con DSN real** (`convenciones_codigo_gotchas`: está cableado, falta la variable) — con datos reales, un fallo mudo del mapa es caro.
+- [ ] **Comprobar que producción tiene pedidos geocodificados**: sin `geo_estado = 'resuelto'` el mapa aparece vacío y el contador de «sin ubicar» se dispara.
+- [ ] **Decidir la cifra «cerca del corte»** pasada la hora de corte (ver pendientes de la Vía C).
 
 ---
 

@@ -91,17 +91,25 @@ Mismo archivo PMTiles, dos objetos de estilo. El código está en
 | Edificios | `#e7e8f0` | `#1b1d23` | Solo desde z14, con opacidad creciente: dan textura al llegar al punto y antes son ruido |
 | Autopista | `#ffffff` | `#3b404c` | En claro las vías van **más claras que la tierra**: es lo que hace que un plano se lea como plano |
 | Troncal | `#ffffff` | `#33373f` | |
-| Secundaria | `#fafafd` | `#2a2d34` | |
+| ~~Secundaria~~ | ~~`#fafafd`~~ | ~~`#2a2d34`~~ | **Retirada en la Vía C.** Filtraba `medium_road`, que no existe en este extracto |
 | Local | `#f7f7fc` | `#232529` | Desde z12.5, con fundido de opacidad para que no aparezca de golpe |
-| Borde de vía | `#dedfeb` | `#0f1013` | El contorno es lo que convierte una línea en una calle |
+| Borde de vía | `#dedfeb` | `#0f1013` | El contorno es lo que convierte una línea en una calle. Va en **dos** capas: ejes y local |
 | Texto de lugar | `#172131` | `#eef0f4` | = `--foreground` |
 | Texto de vía | `#606a78` | `#9da3ad` | = `--muted-foreground` |
 | Halo | `#f1f2f8` | `#0d0e11` | |
 
-**La jerarquía vial de cuatro anchos es la mitad del «premium».** En la v1 todos
-los ejes iban en el mismo gris tenue. Que una autopista, una troncal, una
-secundaria y un pasaje se dibujen distinto es lo que hace que el plano se lea
-como Uber o Rappi — más que cualquier color.
+**La jerarquía vial es la mitad del «premium».** En la v1 todos los ejes iban en
+el mismo gris tenue. Que una autopista, una troncal y un pasaje se dibujen
+distinto es lo que hace que el plano se lea como Uber o Rappi — más que
+cualquier color.
+
+⚠️ **Son TRES anchos, no cuatro** (corregido en la Vía C, 2026-08-04). El
+escalón intermedio se declaró contra `medium_road`, una clase que el esquema de
+Protomaps define pero que **este extracto de la RM no trae**: verificado sobre el
+propio PMTiles, 16 teselas entre z10 y z13 en cuatro puntos de la ciudad, cero
+apariciones. Las dos capas que la filtraban se leían perfectas en el código y no
+dibujaron nunca. En su lugar entró el **borde de la calle local**, que sí tiene
+datos desde z12 y que le faltaba a la única clase que quedaba sin contorno.
 
 Se pintan **primero todos los bordes y después todos los rellenos**. Hacerlo vía
 por vía deja costuras en cada cruce.
@@ -114,6 +122,15 @@ por vía deja costuras en cada cruce.
 | 2 | Ejes estructurantes | z12 | Ya se está dentro de una comuna y hace falta saber por qué avenida se llega |
 | 3 | Calle local | **z13.6** | Es **exactamente** el umbral del nivel 3 del zoom. No es coincidencia: la Torre muestra el código de envío y no la dirección, así que la calle de abajo es lo único que ubica el punto |
 
+⚠️ **El escalón 3 hoy no rotula nada, y la capa se conserva igual.** En este
+extracto los `minor_road` vienen sin `name`, así que el filtro no deja pasar ni
+una. Quien termina ubicando el punto es el escalón 2 (`major_road`, con nombre en
+506 de 524), desde z12 en vez de z13.6 — o sea que **las calles sí se rotulan**,
+solo que antes y con los ejes. Se conserva, a diferencia de las capas de
+`medium_road` que se retiraron, porque aquélla filtra una clase inexistente y
+ésta una clase presente a la que solo le falta un atributo: si Protomaps publica
+nombres de calle local, esta capa se enciende sola.
+
 Se respeta el campo `min_zoom` que Protomaps trae por *feature*: es su propia
 jerarquía de importancia, y es mejor que cualquiera que inventemos. Los **POIs
 van apagados** (ruido puro para esta pantalla) y los **límites administrativos
@@ -125,7 +142,8 @@ registro.
 
 | Elemento | Claro | Oscuro | Regla que respeta |
 |---|---|---|---|
-| Carga por comuna | navy `#2a3ca0` a 8/14/22/32 % | periwinkle `#7080f5` a 12/20/30/40 % | Rampa de **un solo tono, cuatro pasos**: es intensidad de una magnitud, no una escala semántica. Siempre acompañada de la fracción en la placa |
+| Carga por comuna | navy `#2a3ca0` a 4/13/24/36 % | periwinkle `#7080f5` a 7/18/31/46 % | Rampa de **un solo tono, cuatro pasos**: es intensidad de una magnitud, no una escala semántica. Siempre acompañada de la fracción en la placa. **Reequilibrada en la Vía C**: iba en 8/14/22/32 % y los dos primeros pasos daban ΔE76 4,5 — y solo 1,8 atenuada al 45 % dentro de una comuna, bajo el umbral de percepción. La separación se gana **abriendo el extremo bajo**, no oscureciendo el alto: 4/13/24/36 da ΔE 7,9 / 8,9 / 10,1 y deja leer el plano por debajo de la comuna más cargada |
+| **Comuna sin carga** | sin relleno | sin relleno | **No se pinta.** El paso 0 es el escalón más bajo de la rampa, no «nada»: usarlo para las comunas vacías teñía las 52 de la RM tuvieran pedidos o no, y una capa que está en todas partes no informa de ninguna — se lee como un velo mal puesto encima del plano. El polígono sigue dibujado; lo mantiene su borde |
 | Borde de comuna | `#c6c9de` | `#ffffff26` | |
 | Comuna activa | navy 2px | periwinkle 2px | |
 | Velo (las demás) | tierra al 72 % | tierra al 77 % | Entrar en una comuna no cambia de pantalla: apaga el resto de la ciudad |
@@ -133,7 +151,7 @@ registro.
 | Punto en ruta | anillo navy sobre relleno del halo | anillo periwinkle | Anillo vs. relleno: se distinguen **por forma**, no solo por color |
 | Punto entregado | `#a7aebd` al 75 % | `#5b6068` al 75 % | **Se apaga, no se borra.** Si lo entregado desapareciera, un día cerrado se vería igual que un día sin pedidos |
 | **Sombra bajo el punto** | tinta `#1e2536` al 22 % | negro al 50 % | Ver abajo |
-| Cerca del corte (F7) | anillo ámbar `#ff8447` | `#e97135` | Marca, no reloj. Y su cifra va siempre en la cabecera |
+| Cerca del corte (F7) | anillo ámbar `#d9590a` | `#e97135` | Marca, no reloj. Y su cifra va siempre en la cabecera. **En claro NO es el `--warning` del sistema** (`#ff8447`): ése daba 2,17:1 contra la tierra, bajo el 3:1 que la WCAG pide para objetos gráficos, y el anillo se perdía justo sobre el fondo que más ocupa la pantalla. Oscurecido queda en 3,49:1, y no más: los ámbares con más contraste derivan hacia el rojo, que está reservado |
 | **Incidencia** | **`#fb3748`** | **`#e93544`** | **El único rojo de la pantalla**, y se pinta arriba de todo |
 | `+N` de agrupados | texto sobre el propio punto | ídem | Un edificio con seis entregas es UN punto con «6», no seis puntos encimados. **Sin glifos se sustituye por un anillo** — ver §6 |
 
