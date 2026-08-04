@@ -8,10 +8,59 @@
 ## Mensaje para pegar en la sesión nueva
 
 ```
-Lee PROMPT-TORRE-V2-IMPLEMENTACION.md entero antes de tocar nada. El alcance ya
-está aprobado en docs/torre-de-control/alcance-v2.md: no lo re-litigues, léelo y
-ejecútalo. Dime con qué vía arranco (A, B o C) y por qué, y espera mi
-confirmación antes de escribir código.
+Vamos con la Vía C de la Torre de control v2: construir la pantalla real.
+
+Lee PRIMERO, en este orden:
+  1. PROMPT-TORRE-V2-IMPLEMENTACION.md §Estado real, §5 y §6 (este archivo)
+  2. docs/torre-de-control/alcance-v2.md      — QUÉ muestra. Aprobado, no re-litigar.
+  3. docs/torre-de-control/lenguaje-visual-v2.md — CÓMO se ve. Aprobado, no re-litigar.
+
+Las vías A (datos) y B (lenguaje visual) están HECHAS, commiteadas y verificadas
+en navegador. Falta solo la pantalla.
+
+Hay un prototipo navegable COMPLETO que ya implementa toda la interacción y es tu
+referencia ejecutable:
+    node .artefactos/prototipo-torre-v2/servidor.mjs   →  http://localhost:4173
+Levántalo y úsalo antes de escribir nada: cada decisión de interacción ya está
+tomada y probada ahí.
+
+⚠️ El prototipo está gitignored: vive SOLO en disco. No corras `git clean -x`.
+
+No arranques a escribir hasta haber leído el contrato de datos real
+(src/modules/contexto/contrato-torre.ts) y haberme dicho qué le falta al composer
+para sostener la pantalla. Espera mi confirmación del plan.
+```
+
+---
+
+## Estado real — actualizado 2026-08-03, fin de la Vía B
+
+**Lo que este archivo decía y ya NO es cierto** (corregido abajo): los glifos sí
+están resueltos, `(consola)` ya se retiró, y el árbol móvil y los `_fixture` ya
+no existen. Verificado en disco, no por lectura.
+
+| Vía | Estado | Commits |
+|---|---|---|
+| **A — datos y backend** | HECHA y verde | `4183cdd` |
+| **B — lenguaje visual** | HECHA, verde y **verificada en navegador real** | `4901691`, `cbfcbba`, `0fba738`, `93ff329`, `3ecff22`, `c0e36c1`, `f4c12a3`, `f5dafc0`, `dced5ec` |
+| **C — la pantalla** | **PENDIENTE, es lo que sigue** | — |
+
+Qué hay hoy en `src/app/(tenant)/torre-de-control/`: solo `page.tsx` (un stub de
+texto con el guard de RBAC y las cifras del día) y `_lib/mapa/` con los cuatro
+archivos de la Vía B (`paleta.ts`, `estilo.ts`, `config.ts`, `estilo.test.ts`).
+Nada más. `(consola)`, `_componentes/movil/` y `_fixture/` ya no existen.
+
+**El prototipo es la referencia ejecutable de la Vía C.** Implementa y tiene
+probado: los tres niveles de zoom con su escalón, el velo por selección, las
+placas, las burbujas, los puntos con sombra, la ficha anclada, las
+previsualizaciones, las etiquetas de incidencia y los cinco escenarios. Consume
+una **copia compilada del mismo `estilo.ts`/`paleta.ts`** que está commiteado, así
+que lo que se ve ahí es lo que dará la pantalla real. Si tocas el estilo,
+recompílalo o el prototipo mentirá:
+
+```bash
+npx tsc "src/app/(tenant)/torre-de-control/_lib/mapa/estilo.ts" "src/app/(tenant)/torre-de-control/_lib/mapa/paleta.ts" --module commonjs --target es2022 --moduleResolution node --skipLibCheck --outDir .artefactos/prototipo-torre-v2/compilado
+node .artefactos/prototipo-torre-v2/generar-estilos.mjs
 ```
 
 ---
@@ -196,69 +245,114 @@ No se toca `src/modules/` ni el composer.
 
 ## 5. Vía C — la pantalla
 
-Necesita A y B hechas.
+A y B están hechas. Esto es lo único que queda.
 
-- **Mudanza a `(tenant)`: es más barata de lo que parece.** La entrada del
-  sidebar **ya existe** (`src/app/(tenant)/layout.tsx:79`, con su icono
-  registrado en `app-shell.tsx:95`), y como `(consola)/torre-de-control` y
-  `(tenant)/torre-de-control` resuelven a **la misma URL**, mover la carpeta no
-  rompe un solo enlace: ni el sidebar, ni `banda-torre.tsx`. En la práctica es
-  mover archivos y borrar `(consola)/layout.tsx` con su duplicación de guards.
-  Verifica que `(consola)/` quede vacío y retira el grupo entero.
-- **El ancho ya tiene mecanismo.** `src/components/app-shell/app-shell.tsx:539`
-  ya conmuta `max-w-5xl`/`max-w-6xl` con una prop `relajado`. Añadir ahí una
-  variante ancha (o `full`) es la solución limpia: **no le quites el `max-w` a
-  todas las pantallas**.
-- **Pantalla completa** con la Fullscreen API sobre el contenedor del mapa. No es
-  una ruta nueva ni un layout nuevo: es estado local.
-- **Retirar el árbol móvil** (`_componentes/movil/`). El móvil se hace fuera de
-  este repo, en la app nativa.
-- **Retirar el andamiaje**: `_fixture/estado-torre.ts`, `_fixture/variantes.ts` y
-  el `?estado=`. Los importan ~20 componentes, así que va al final.
-- **Corregir de paso** (`alcance-v2.md` §7 del doc de mapa): `_lib/mapa/config.ts`
-  cita `scripts/mapa/publicar-cartografia.mjs`; el archivo real es
-  `publicar-basemap.mjs`. Y los comentarios que aún citan
-  `docs/torre-de-control/datos-dummy.ts` como «contrato congelado» — es ruta
-  muerta.
-- **Trabajo de cartografía** (`docs/arquitectura/mapa-torre-v2.md` §5): publicar
-  glifos → encender etiquetas en tres niveles → jerarquía vial → dos temas.
+### Ya NO hay que hacerlo (lo hizo la Vía A o la B)
 
-  ⚠️ **Los glifos NO existen: hay que construir el pipeline, no encender un
-  flag.** Se verificó — `scripts/mapa/` no tiene una sola línea sobre fuentes ni
-  glifos, porque el basemap se diseñó deliberadamente sin etiquetas. Hay que
-  extraer los PBF de una tipografía, publicarlos junto al basemap y añadir
-  `glyphs` al estilo. **Es la única estimación del plan que no está verificada, y
-  bloquea todo lo demás del mapa.** Haz una espiga corta primero (un solo peso de
-  una sola fuente, etiqueta de comuna a un solo nivel de zoom) y estima recién
-  después de verla en pantalla. No arranques por la jerarquía vial.
+- ~~Mudanza a `(tenant)` y retiro de `(consola)`~~ — hecho, `(consola)` no existe.
+- ~~Retirar `_componentes/movil/` y `_fixture/`~~ — hechos, no existen.
+- ~~Construir el pipeline de glifos~~ — **resuelto**: no hay pipeline. Son 4 PBF
+  (~410 KB, Noto Sans Regular y Medium) que se descargan del build público de
+  Protomaps. Queda **publicarlos al bucket** y poner `NEXT_PUBLIC_MAPA_GLIFOS_URL`.
+- ~~Diseñar etiquetas, jerarquía vial y los dos temas~~ — escritos y verificados
+  en navegador. `estilo.ts` está cerrado salvo que algo nuevo lo pida.
 
-- **Filtros en las pantallas de destino (F11).** Los enlaces profundos exigen que
-  el destino sepa filtrar. Verifica qué falta —probablemente `/operaciones` por
-  comuna y por conductor— y **agrégalo**: el usuario autorizó modificar las
-  pantallas existentes. No son módulos nuevos, pero sí trabajo real.
-- **La banda del dashboard (F12) se reescribe, no solo se migra.** Hoy habla de
-  riesgo, zonas y cortes; pasa a comunas + pendientes + incidencias, y además
-  aloja la **versión adaptada de la ola** (nombre + días + brecha de conductores,
-  en una línea). Conserva su mecánica: aparece solo si hay algo que mirar, y si
-  la Torre falla desaparece en vez de romper el dashboard.
+### Orden sugerido
+
+1. **Leer el contrato real** (`src/modules/contexto/contrato-torre.ts`) y decir
+   qué le falta al composer para sostener la pantalla. La Vía A dejó las cifras
+   del día; hay que confirmar si entrega puntos, agrupaciones, seller y el tiempo
+   sin cambios que la ficha pide (ver `lenguaje-visual-v2.md` §3.6).
+2. **El ancho del shell.** `app-shell.tsx:539` conmuta hoy
+   `relajado ? "max-w-5xl …" : "max-w-6xl …"`. Añadir ahí la variante ancha
+   (`max-w-[1600px]`) — **no le quites el `max-w` a las demás pantallas**.
+3. **La caja del mapa**: `min(68vh, 720px)`, mínimo `420px`, panel de **340 px**
+   fijos, más el botón de pantalla completa (Fullscreen API sobre el contenedor,
+   estado local, y **llamar `map.resize()` al entrar y salir**).
+4. **Portar la interacción del prototipo.** Está toda resuelta y probada ahí; la
+   especificación está en `lenguaje-visual-v2.md` §3.4, §3.5, §3.6 y §4.
+5. **`< lg`**: el mapa se retira y manda la lista de comunas (F10). El prototipo
+   **no** lo implementa; medido: con el panel de 340 px fijos el mapa cae a
+   **124 px a 768**. Es trabajo real, no un breakpoint suelto.
+6. **Filtros en las pantallas de destino (F11).** Los enlaces profundos exigen
+   que el destino sepa filtrar; probablemente falte `/operaciones` por comuna y
+   por conductor. El usuario autorizó modificar esas pantallas.
+7. **La banda del dashboard (F12) se reescribe, no se migra.** Pasa a comunas +
+   pendientes + incidencias y aloja la ola adaptada. Conserva su mecánica: si la
+   Torre falla, desaparece en vez de romper el dashboard.
+8. **Corregir de paso**: `_lib/mapa/config.ts` cita
+   `scripts/mapa/publicar-cartografia.mjs`; el archivo real es
+   `publicar-basemap.mjs`.
+
+### Deuda heredada de la Vía B — decisiones abiertas
+
+Las encontró el QA visual. Ninguna bloquea, pero conviene decidirlas al empezar:
+
+- **`medium_road` no existe en el extracto PMTiles.** Comprobado en cuatro
+  encuadres y cuatro zooms. `bm-via-secundaria` y `bm-via-borde-media` **no
+  dibujan nada, nunca**: la jerarquía son 3 clases, no 4.
+- **`bm-etq-via-local` no puede rotular jamás**: `minor_road` viene siempre sin
+  `name`. Lo salva `major_road` (506 de 524 con nombre), así que las calles SÍ se
+  rotulan, pero desde el escalón de *ejes* (z12) y no desde el de calle local
+  (z13.6). Hay un test que fija ese umbral y hoy protege una capa que no pinta.
+- **«Sin pedidos» borra las comunas**, y `lenguaje-visual-v2.md` dice que deben
+  seguir dibujadas. La geometría comunal es cartografía estática (DPA 2023, 52
+  polígonos): en la Vía C tiene que entrar **por separado del conteo**.
+- **Los cuatro pasos de la rampa son tres a la vista**: paso 0 y paso 1 no se
+  distinguen (ΔE76 5.07). Y con el `fill-opacity: 0.45` de los niveles 2 y 3 ese
+  escalón cae a **ΔE 2.19**, bajo el umbral de percepción.
+- **El anillo ámbar del corte da 2.17:1 en claro**, bajo el mínimo WCAG para
+  objetos gráficos (en oscuro está bien, 6.03:1).
 
 ### Definition of Done — Vía C
 
-- La Torre vive en `(tenant)`, dentro del `AppShell`, y `src/app/(consola)/` ya
-  no existe.
-- Los enlaces profundos llegan a destino **con el filtro aplicado**, no a una
-  lista sin filtrar.
 - El mapa tiene altura acotada y el botón de pantalla completa funciona.
-- Ningún componente importa `_fixture/`; el `?estado=` ya no existe.
-- El árbol `_componentes/movil/` está retirado.
+- Los enlaces profundos llegan a destino **con el filtro aplicado**.
+- **La suma de lo dibujado da el pendiente de la comuna.** Regla 5 del alcance: si
+  el composer muestrea o pagina los pedidos, el mapa esconde carga y la pantalla
+  miente. Merece su propia prueba.
+- Bajo `lg` el mapa se retira y manda la lista de comunas.
 - Etiquetas de calle y comuna visibles, en claro y en oscuro.
-- Verificación estándar completa (§8) **más** captura en navegador real.
+- Verificación estándar completa (§8) **más** captura en navegador real, con la
+  ventana **visible** (ver §6).
 
 ---
 
 ## 6. Minas conocidas
 
 Estas ya explotaron una vez en este repo. Todas aplican a este módulo.
+
+**Añadidas por el QA visual de la Vía B (2026-08-03). Las cinco costaron tiempo:**
+
+- ⚠️ **Para QA del mapa, la ventana tiene que estar VISIBLE.** MapLibre coloca
+  los símbolos de forma asíncrona y **todo su ciclo de render pasa por
+  `requestAnimationFrame`** — hasta el parseo del estilo. Con
+  `document.hidden === true` (ventana minimizada o **totalmente tapada** por otra;
+  Chrome en Windows lo marca por oclusión) el estilo se queda en **18 de 30
+  capas** y `queryRenderedFeatures` devuelve **0 rótulos aunque el dato y los
+  glifos estén sanos**. Se diagnostica mal como «faltan glifos» o «el estilo está
+  roto». **Comprueba `document.hidden` antes de concluir nada.**
+- ⚠️ **`circle-stroke-width` se dibuja HACIA AFUERA del radio.** Cualquier cosa
+  que se dimensione contra un punto tiene que sumarle el halo: un pendiente a z17
+  ocupa 6 + 1,6 = 7,6 px, no 6. La primera sombra se midió contra el núcleo y
+  quedaba **entera debajo del halo blanco** — invisible. Se descubrió comparando
+  la misma vista con la capa encendida y apagada; **hazlo siempre que añadas algo
+  sutil**, o no sabrás si está ahí.
+- ⚠️ **El clic se resuelve por ESPECIFICIDAD, nunca por el orden de
+  `queryRenderedFeatures`.** El polígono de comuna cubre el mapa entero, así que
+  está siempre entre los resultados: quedarse con `halladas[0]` hacía que un clic
+  sobre una burbuja cerca de un borde comunal entrara en la comuna vecina.
+  Orden correcto: **punto → burbuja → comuna.**
+- ⚠️ **Al volar por orden nuestra, el nivel se cambia ANTES de volar y se
+  re-sincroniza en `moveend`.** El sincronizador está suprimido durante el vuelo
+  y el último evento `zoom` llega **antes** de que se libere la bandera: sin
+  re-sincronizar al aterrizar, cualquier vuelo que cruce un umbral deja el nivel
+  desfasado hasta que el usuario toque la rueda.
+- ⚠️ **Nada de márgenes de tolerancia para dibujar encima del mapa.** Un margen
+  de 60 px al decidir qué previsualizar le daba tarjeta a puntos fuera de la caja,
+  y salían recortadas por el borde señalando algo que no se ve. Filtro estricto al
+  encuadre; y si un elemento no cabe ni arriba ni abajo de su ancla, **no se
+  dibuja** — moverlo lo despegaría de lo que señala.
 
 - **`maplibre-gl` clavado en `5.24.0` exacto. NO subir a 6.x.** La 6.0.0 carga su
   Web Worker como archivo suelto y Turbopack no resuelve ese patrón dentro de
