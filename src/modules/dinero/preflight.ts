@@ -31,7 +31,7 @@
  */
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
-import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
+import { leerTodasLasFilas, leerPorLotesDeIds } from '@/lib/supabase/leer-paginado';
 import {
   puedeEmitirFacturas,
   puedeGestionarLiquidacionesConductores,
@@ -262,17 +262,22 @@ async function evaluarIncidenciasAbiertas(
 ): Promise<ItemPreflight[]> {
   if (pedidoIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .schema('operacion')
-    .from('incidencias')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('estado', 'abierta')
-    .in('pedido_id', pedidoIds);
-
-  if (error) throw new Error(`Error al leer incidencias abiertas: ${error.message}`);
-
-  const incidencias = data ?? [];
+  // EN LOTES. Ojo con la cadena: `pedidoIds` sale de las líneas del período, y al
+  // paginar esa lectura (agosto 2026) la lista dejó de estar acotada en 1.000 —
+  // así que este `.in()` pasó a poder reventar el largo de URL. Arreglar un techo
+  // puede destapar el otro; van juntos.
+  const incidencias = await leerPorLotesDeIds<{ id: string }>(
+    'incidencias abiertas de los pedidos del período',
+    pedidoIds,
+    (lote) =>
+      supabase
+        .schema('operacion')
+        .from('incidencias')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('estado', 'abierta')
+        .in('pedido_id', lote),
+  );
   if (incidencias.length === 0) return [];
 
   return [

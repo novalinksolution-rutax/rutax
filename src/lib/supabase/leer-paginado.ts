@@ -70,3 +70,45 @@ export async function leerTodasLasFilas<T>(
     desde += tamano;
   }
 }
+
+/**
+ * Cuántos ids caben en un `.in(...)` sin acercarse al límite de largo de URL.
+ * 200 UUIDs ≈ 7 KB de query string, holgado frente al techo típico de 8-16 KB.
+ */
+const LOTE_IDS = 200;
+
+/**
+ * Lee filas filtrando por una lista de ids, **en lotes**.
+ *
+ * `.in('col', [...])` viaja en el query string, así que una lista que crece con
+ * el volumen del tenant revienta el largo máximo de URL y PostgREST responde
+ * `URI too long`. A diferencia del corte por `max_rows`, este SÍ es un error —
+ * pero se pierde igual si el llamador lo atrapa por elemento, que es exactamente
+ * lo que dejó muerto al detector de líneas huérfanas durante meses: fallaba
+ * entero, el `catch` por-tenant lo logueaba, y el resumen informaba
+ * "0 hallazgos", que se lee como "todo limpio".
+ *
+ * **Regla: nunca construir un `.in()` cuyo tamaño dependa del tamaño del tenant.**
+ * Si la lista viene de otra consulta, va por acá.
+ *
+ * Devuelve la unión de todos los lotes, en el orden en que llegaron.
+ */
+export async function leerPorLotesDeIds<T>(
+  etiqueta: string,
+  ids: readonly string[],
+  consultar: (lote: string[]) => PromiseLike<RespuestaPagina<T>>,
+  opciones: { tamanoLote?: number } = {},
+): Promise<T[]> {
+  if (ids.length === 0) return [];
+
+  const tamano = opciones.tamanoLote ?? LOTE_IDS;
+  const acumulado: T[] = [];
+
+  for (let desde = 0; desde < ids.length; desde += tamano) {
+    const { data, error } = await consultar(ids.slice(desde, desde + tamano) as string[]);
+    if (error) throw new Error(`Error al leer ${etiqueta}: ${error.message}`);
+    acumulado.push(...(data ?? []));
+  }
+
+  return acumulado;
+}

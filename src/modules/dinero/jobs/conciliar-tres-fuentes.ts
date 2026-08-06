@@ -51,6 +51,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { leerTodasLasFilas, leerPorLotesDeIds } from '@/lib/supabase/leer-paginado';
 import { capturarMensaje } from '@/lib/observabilidad';
 import { existeEventoConciliacion, insertarEventoConciliacion } from '../conciliacion-insercion';
 import { diferenciaEnDiasCalendario, hoyEnSantiago } from '@/lib/fecha-santiago';
@@ -210,19 +211,22 @@ async function detectorD1_PagadoConductorSinCobroSeller(
   // Líneas de liquidación vigentes (anulada=false) cuyos pedidos pertenecen
   // a los períodos cerrados/facturados (a través de lineas_cobro.periodo_cobro_id).
   // Primero: pedidos que tienen línea de cobro activa en esos períodos.
-  const { data: lineasCobro, error: errCobro } = await supabase
-    .schema('dinero')
-    .from('lineas_cobro')
-    .select('pedido_id')
-    .eq('tenant_id', tenantId)
-    .eq('anulada', false)
-    .in('periodo_cobro_id', periodosIds);
-
-  if (errCobro) throw new Error(`D1 · Error al leer lineas_cobro: ${errCobro.message}`);
-
-  const pedidosConCobro = new Set(
-    (lineasCobro ?? []).map((l) => l.pedido_id as string),
+  // PAGINADO. Un detector que lee 1.000 filas de 18.000 informa "sin
+  // discrepancias" habiendo mirado el 5%, y eso se lee como que todo cuadra.
+  const lineasCobro = await leerTodasLasFilas<{ pedido_id: string }>(
+    'D1 · líneas de cobro de los períodos',
+    (desde, hasta) => supabase
+      .schema('dinero')
+      .from('lineas_cobro')
+      .select('pedido_id')
+      .eq('tenant_id', tenantId)
+      .eq('anulada', false)
+      .in('periodo_cobro_id', periodosIds)
+      .order('id')
+      .range(desde, hasta),
   );
+
+  const pedidosConCobro = new Set(lineasCobro.map((l) => l.pedido_id));
 
   // Pedidos que tienen línea de liquidación activa en esos períodos de cobro.
   // La línea de liquidación no tiene periodo_cobro_id directamente — filtramos
@@ -232,16 +236,26 @@ async function detectorD1_PagadoConductorSinCobroSeller(
   // Usamos la fecha_entrega para circunscribir al universo del período.
   // Estrategia: obtener todos los pedido_id con linea_liquidacion vigente del tenant,
   // luego cruzar contra los que NO tienen linea_cobro vigente en un periodo cerrado.
-  const { data: lineasLiq, error: errLiq } = await supabase
-    .schema('dinero')
-    .from('lineas_liquidacion')
-    // liquidacion_id (§1.1 P1): permite que el hook `bloqueaPago` enlace este
-    // tipo de evento a una liquidación concreta (antes solo poblaba driver_id).
-    .select('pedido_id, driver_id, liquidacion_id, monto_final_clp')
-    .eq('tenant_id', tenantId)
-    .eq('anulada', false);
-
-  if (errLiq) throw new Error(`D1 · Error al leer lineas_liquidacion: ${errLiq.message}`);
+  // PAGINADO, y esta es la peor de todas: barre las líneas de liquidación de
+  // TODO el tenant, sin filtro de período. A escala de piloto son ~18.000 filas.
+  const lineasLiq = await leerTodasLasFilas<{
+    pedido_id: string;
+    driver_id: string;
+    liquidacion_id: string | null;
+    monto_final_clp: number | string;
+  }>(
+    'D1 · líneas de liquidación del tenant',
+    (desde, hasta) => supabase
+      .schema('dinero')
+      .from('lineas_liquidacion')
+      // liquidacion_id (§1.1 P1): permite que el hook `bloqueaPago` enlace este
+      // tipo de evento a una liquidación concreta (antes solo poblaba driver_id).
+      .select('pedido_id, driver_id, liquidacion_id, monto_final_clp')
+      .eq('tenant_id', tenantId)
+      .eq('anulada', false)
+      .order('id')
+      .range(desde, hasta),
+  );
 
   // Para cada línea de liquidación: ¿existe cobro al seller (anulada=false)?
   // Si no existe → FUGA DIRECTA.
@@ -349,44 +363,56 @@ async function detectorD2_CobradoSellerNoPagadoConductor(
   const periodosIds = periodos.map((p) => p.id as string);
 
   // Líneas de cobro activas en esos períodos.
-  const { data: lineasCobro, error: errCobro } = await supabase
-    .schema('dinero')
-    .from('lineas_cobro')
-    .select('pedido_id, seller_id, periodo_cobro_id, monto_final_clp')
-    .eq('tenant_id', tenantId)
-    .eq('anulada', false)
-    .in('periodo_cobro_id', periodosIds);
-
-  if (errCobro) throw new Error(`D2 · Error al leer lineas_cobro: ${errCobro.message}`);
-  if (!lineasCobro || lineasCobro.length === 0) return 0;
-
-  // Obtener pedidos con conductor asignado (driver_id_asignado NOT NULL).
-  const pedidoIdsConCobro = lineasCobro.map((l) => l.pedido_id as string);
-
-  const { data: pedidosConDriver, error: errPedidos } = await supabase
-    .schema('operacion')
-    .from('pedidos')
-    .select('id, driver_id_asignado')
-    .eq('tenant_id', tenantId)
-    .in('id', pedidoIdsConCobro)
-    .not('driver_id_asignado', 'is', null);
-
-  if (errPedidos) throw new Error(`D2 · Error al leer pedidos: ${errPedidos.message}`);
-
-  const pedidosConDriverSet = new Set(
-    (pedidosConDriver ?? []).map((p) => p.id as string),
+  const lineasCobro = await leerTodasLasFilas<{
+    pedido_id: string;
+    seller_id: string;
+    periodo_cobro_id: string;
+    monto_final_clp: number | string;
+  }>(
+    'D2 · líneas de cobro de los períodos',
+    (desde, hasta) => supabase
+      .schema('dinero')
+      .from('lineas_cobro')
+      .select('pedido_id, seller_id, periodo_cobro_id, monto_final_clp')
+      .eq('tenant_id', tenantId)
+      .eq('anulada', false)
+      .in('periodo_cobro_id', periodosIds)
+      .order('id')
+      .range(desde, hasta),
   );
 
-  // Pedidos con línea de liquidación activa.
-  const { data: lineasLiq, error: errLiq } = await supabase
-    .schema('dinero')
-    .from('lineas_liquidacion')
-    .select('pedido_id')
-    .eq('tenant_id', tenantId)
-    .eq('anulada', false)
-    .in('pedido_id', pedidoIdsConCobro);
+  if (lineasCobro.length === 0) return 0;
 
-  if (errLiq) throw new Error(`D2 · Error al leer lineas_liquidacion: ${errLiq.message}`);
+  // Obtener pedidos con conductor asignado (driver_id_asignado NOT NULL).
+  // EN LOTES: la lista de ids crece con el volumen del período.
+  const pedidoIdsConCobro = lineasCobro.map((l) => l.pedido_id);
+
+  const pedidosConDriver = await leerPorLotesDeIds<{ id: string; driver_id_asignado: string }>(
+    'D2 · pedidos con conductor',
+    pedidoIdsConCobro,
+    (lote) => supabase
+      .schema('operacion')
+      .from('pedidos')
+      .select('id, driver_id_asignado')
+      .eq('tenant_id', tenantId)
+      .in('id', lote)
+      .not('driver_id_asignado', 'is', null),
+  );
+
+  const pedidosConDriverSet = new Set(pedidosConDriver.map((p) => p.id));
+
+  // Pedidos con línea de liquidación activa.
+  const lineasLiq = await leerPorLotesDeIds<{ pedido_id: string }>(
+    'D2 · líneas de liquidación por pedido',
+    pedidoIdsConCobro,
+    (lote) => supabase
+      .schema('dinero')
+      .from('lineas_liquidacion')
+      .select('pedido_id')
+      .eq('tenant_id', tenantId)
+      .eq('anulada', false)
+      .in('pedido_id', lote),
+  );
 
   const pedidosConLiqSet = new Set(
     (lineasLiq ?? []).map((l) => l.pedido_id as string),
@@ -464,32 +490,45 @@ async function detectorD3_ReprogramacionNoCobrada(
   const periodosIds = periodos.map((p) => p.id as string);
 
   // Líneas de cobro activas en esos períodos con ajuste_incidencia_clp = 0.
-  const { data: lineasCobro, error: errCobro } = await supabase
-    .schema('dinero')
-    .from('lineas_cobro')
-    .select('id, pedido_id, seller_id, periodo_cobro_id, tarifa_id, ajuste_incidencia_clp')
-    .eq('tenant_id', tenantId)
-    .eq('anulada', false)
-    .eq('ajuste_incidencia_clp', 0)
-    .in('periodo_cobro_id', periodosIds);
+  const lineasCobro = await leerTodasLasFilas<{
+    id: string;
+    pedido_id: string;
+    seller_id: string;
+    periodo_cobro_id: string;
+    tarifa_id: string | null;
+    ajuste_incidencia_clp: number;
+  }>(
+    'D3 · líneas de cobro sin ajuste',
+    (desde, hasta) => supabase
+      .schema('dinero')
+      .from('lineas_cobro')
+      .select('id, pedido_id, seller_id, periodo_cobro_id, tarifa_id, ajuste_incidencia_clp')
+      .eq('tenant_id', tenantId)
+      .eq('anulada', false)
+      .eq('ajuste_incidencia_clp', 0)
+      .in('periodo_cobro_id', periodosIds)
+      .order('id')
+      .range(desde, hasta),
+  );
 
-  if (errCobro) throw new Error(`D3 · Error al leer lineas_cobro: ${errCobro.message}`);
-  if (!lineasCobro || lineasCobro.length === 0) return 0;
+  if (lineasCobro.length === 0) return 0;
 
-  const pedidoIds = lineasCobro.map((l) => l.pedido_id as string);
+  const pedidoIds = lineasCobro.map((l) => l.pedido_id);
 
   // Pedidos que tienen incidencia tipo `reagendado` resuelta o cerrada
   // (incidencias abiertas/en_gestion pueden aún no haber ajustado el cobro).
-  const { data: incidenciasReagendado, error: errInc } = await supabase
-    .schema('operacion')
-    .from('incidencias')
-    .select('pedido_id')
-    .eq('tenant_id', tenantId)
-    .eq('tipo', 'reagendado')
-    .in('pedido_id', pedidoIds)
-    .in('estado', ['resuelta', 'cerrada']);
-
-  if (errInc) throw new Error(`D3 · Error al leer incidencias: ${errInc.message}`);
+  const incidenciasReagendado = await leerPorLotesDeIds<{ pedido_id: string }>(
+    'D3 · incidencias reagendadas',
+    pedidoIds,
+    (lote) => supabase
+      .schema('operacion')
+      .from('incidencias')
+      .select('pedido_id')
+      .eq('tenant_id', tenantId)
+      .eq('tipo', 'reagendado')
+      .in('pedido_id', lote)
+      .in('estado', ['resuelta', 'cerrada']),
+  );
 
   const pedidosConReagendado = new Set(
     (incidenciasReagendado ?? []).map((i) => i.pedido_id as string),
