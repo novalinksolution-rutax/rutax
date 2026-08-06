@@ -37,6 +37,7 @@ import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaci
 
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
+import { jobPurgarEvidencias } from "@/modules/operacion/jobs/purgar-evidencias";
 
 // Jobs de Dinero (Fase C — motor entrega→dinero)
 import { jobGenerarLineas } from "@/modules/dinero/jobs/generar-lineas";
@@ -101,6 +102,7 @@ const funciones = [
   jobNotificacionConexionCaida,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
+  jobPurgarEvidencias,
   // Jobs Dinero (Fase C)
   jobGenerarLineas,
   jobCerrarPeriodo,
