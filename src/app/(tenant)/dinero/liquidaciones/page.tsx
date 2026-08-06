@@ -102,24 +102,24 @@ export default async function PaginaLiquidaciones({
   let contPagadas = 0;
 
   try {
-    // Conductores disponibles para el filtro
-    const { data: conductoresData } = await cliente
-      .from("conductores")
-      .select("id, nombre_completo")
-      .eq("tenant_id", tenantId)
-      .order("nombre_completo");
+    // Conductores y liquidaciones no dependen entre sí: en paralelo. (El payout de
+    // más abajo sí depende de los ids de las liquidaciones, y por eso sigue después.)
+    const [{ data: conductoresData }, todasLiquidaciones] = await Promise.all([
+      // Conductores disponibles para el filtro
+      cliente
+        .from("conductores")
+        .select("id, nombre_completo")
+        .eq("tenant_id", tenantId)
+        .order("nombre_completo"),
+      // Todas las liquidaciones (sin filtro de estado para contadores)
+      listarLiquidaciones(cliente, tenantId, filtroConductor || undefined),
+    ]);
+
     conductoresDisponibles = (conductoresData ?? []).map((c: Record<string, unknown>) => ({
       id: c.id as string,
       nombre: c.nombre_completo as string,
     }));
     const conductoresMap = new Map(conductoresDisponibles.map((c) => [c.id, c.nombre]));
-
-    // Todas las liquidaciones (sin filtro de estado para contadores)
-    const todasLiquidaciones = await listarLiquidaciones(
-      cliente,
-      tenantId,
-      filtroConductor || undefined,
-    );
 
     for (const l of todasLiquidaciones) {
       if (l.estado === "borrador") contBorrador++;

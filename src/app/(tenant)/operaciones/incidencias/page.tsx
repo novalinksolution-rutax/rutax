@@ -134,27 +134,25 @@ export default async function PaginaIncidencias({
   const filtroFecha = params.fecha ?? "";
   const hayFiltro = !!(filtroSeller || filtroTipo || filtroEstado || filtroFecha);
 
-  let incidencias: Incidencia[] = [];
-  let errorCarga = false;
-
-  try {
-    incidencias = await cargarIncidencias(tenantId, {
+  // Incidencias y sellers son independientes entre sí: van en paralelo para no
+  // pagar dos round-trips en fila. Cada una conserva su propio manejo de error —
+  // si fallan las incidencias la pantalla lo avisa, si fallan los sellers no
+  // bloquea (el filtro queda vacío).
+  const [resIncidencias, sellers] = await Promise.all([
+    cargarIncidencias(tenantId, {
       seller: filtroSeller || undefined,
       tipo: (filtroTipo as TipoIncidencia) || undefined,
       estado: (filtroEstado as EstadoIncidencia) || undefined,
       fechaDesde: filtroFecha || undefined,
-    });
-  } catch {
-    errorCarga = true;
-  }
+    }).catch(() => null),
+    // Sellers para el filtro — lista cacheada por tenant (datos-tenant/sellers).
+    obtenerSellersDelTenant(tenantId).catch(
+      () => [] as { id: string; nombre: string }[],
+    ),
+  ]);
 
-  // Sellers para el filtro — lista cacheada por tenant (datos-tenant/sellers).
-  let sellers: { id: string; nombre: string }[] = [];
-  try {
-    sellers = await obtenerSellersDelTenant(tenantId);
-  } catch {
-    // Sin bloquear
-  }
+  const errorCarga = resIncidencias === null;
+  const incidencias: Incidencia[] = resIncidencias ?? [];
 
   // Nombre legible del seller en la tabla (en vez del UUID).
   const nombreSellerPorId = Object.fromEntries(sellers.map((s) => [s.id, s.nombre]));

@@ -60,16 +60,17 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   const pagina = Math.max(1, parseInt(sp.pagina ?? "1", 10));
   const tenantId = sesion.usuario.tenantId;
 
-  // Modo de emisión DTE efectivo: define el copy y el badge de los diálogos de
-  // emisión (que una simulación no parezca real). Defecto conservador: sandbox.
-  let modoDte: ModoDte = "sandbox";
-  try {
-    modoDte = await resolverModoDteTenant(tenantId);
-  } catch {
-    // Se mantiene el defecto 'sandbox' si la resolución falla.
-  }
-
   const cliente = crearClienteServiceRole();
+
+  // Modo de emisión DTE efectivo: define el copy y el badge de los diálogos de
+  // emisión (que una simulación no parezca real). Defecto conservador: sandbox si
+  // la resolución falla.
+  //
+  // No depende del período, así que se lanza ahora y se recoge después de cargarlo:
+  // encadenado costaba un round-trip antes siquiera de empezar a leer el período.
+  const modoDtePromesa: Promise<ModoDte> = resolverModoDteTenant(tenantId).catch(
+    () => "sandbox" as ModoDte,
+  );
 
   let periodo;
   let dte: DocumentoDte | null = null;
@@ -109,6 +110,8 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
     unstable_rethrow(error);
     errorCarga = true;
   }
+
+  const modoDte = await modoDtePromesa;
 
   if (errorCarga || !periodo) {
     return (
