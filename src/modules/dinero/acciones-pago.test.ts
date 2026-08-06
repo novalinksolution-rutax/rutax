@@ -84,6 +84,7 @@ function crearFakeSupabase(db: DB) {
           return {
             select() {
               const filtros: Array<(f: Record<string, unknown>) => boolean> = [];
+              let rango: { desde: number; hasta: number } | undefined;
               const b = {
                 eq(col: string, val: unknown) {
                   filtros.push((f) => f[col] === val);
@@ -99,6 +100,12 @@ function crearFakeSupabase(db: DB) {
                 limit() {
                   return b;
                 },
+                // `.range()` real: `leerTodasLasFilas` termina cuando la página
+                // viene incompleta.
+                range(desde: number, hasta: number) {
+                  rango = { desde, hasta };
+                  return b;
+                },
                 maybeSingle() {
                   const r = filas.filter((f) => filtros.every((fn) => fn(f)));
                   return Promise.resolve({ data: r[0] ?? null, error: null });
@@ -107,7 +114,8 @@ function crearFakeSupabase(db: DB) {
                   resolve: (v: { data: Array<Record<string, unknown>>; error: null }) => unknown,
                   reject?: (e: unknown) => unknown,
                 ) {
-                  const r = filas.filter((f) => filtros.every((fn) => fn(f)));
+                  const filtradas = filas.filter((f) => filtros.every((fn) => fn(f)));
+                  const r = rango ? filtradas.slice(rango.desde, rango.hasta + 1) : filtradas;
                   return Promise.resolve({ data: r, error: null }).then(resolve, reject);
                 },
               };

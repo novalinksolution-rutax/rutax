@@ -20,6 +20,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
 import { montosDesdeNeto } from '../montos';
 
 const TZ = 'America/Santiago';
@@ -79,21 +80,32 @@ export const jobCerrarPeriodo = inngest.createFunction(
           // Calcular totales desde líneas de cobro del período.
           // IMPORTANTE: excluir líneas anuladas (anulada = false) para que los
           // pedidos devueltos tras fallido no inflen el total de la factura.
-          const { data: lineas, error: errorLineas } = await supabase
-            .schema('dinero')
-            .from('lineas_cobro')
-            .select('monto_final_clp')
-            .eq('tenant_id', tenantId)
-            .eq('periodo_cobro_id', pid)
-            .eq('anulada', false);
+          //
+          // ⚠️ PAGINADO OBLIGATORIO — es el monto que el seller termina pagando.
+          // Sin paginar, PostgREST corta en `max_rows` (1000) SIN error y el
+          // período queda cerrado por menos de lo que se entregó. Medido con 1.365
+          // líneas: $4.681.000 reales guardados como $3.420.800, un 27% menos.
+          // Peor: `emitir-dte-periodo` truncaba igual, así que el DTE coincidía
+          // con el período y la conciliación no encontraba nada.
+          const lineas = await leerTodasLasFilas<{ monto_final_clp: number | string }>(
+            `líneas del período ${pid}`,
+            (desde, hasta) =>
+              supabase
+                .schema('dinero')
+                .from('lineas_cobro')
+                .select('monto_final_clp')
+                .eq('tenant_id', tenantId)
+                .eq('periodo_cobro_id', pid)
+                .eq('anulada', false)
+                .order('id')
+                .range(desde, hasta),
+          );
 
-          if (errorLineas) throw new Error(`Error al leer líneas: ${errorLineas.message}`);
-
-          const totalLineas = (lineas ?? []).length;
+          const totalLineas = lineas.length;
           // Las líneas guardan montos NETOS (tarifa = neto, decisión A2). El
           // total del período es BRUTO (lo que el seller paga y contra lo que
           // concilia la cobranza): neto + IVA, calculado UNA vez sobre la suma.
-          const netoTotal = (lineas ?? []).reduce(
+          const netoTotal = lineas.reduce(
             (acc, l) => acc + Math.round(Number(l.monto_final_clp)),
             0,
           );
