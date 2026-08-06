@@ -177,6 +177,42 @@ allowed_mime_types = ["image/png", "image/jpeg", "image/webp"]
 public = true
 file_size_limit = "50MiB"
 
+# Bucket PRIVADO con los PDF de liquidación del conductor, que escribe el job
+# `generar-liquidacion-conductor` (`@react-pdf/renderer`) y lee el conductor desde
+# `/conductor/liquidaciones` vía URL firmada.
+#
+# Estuvo referenciado en código sin existir: el `upload` fallaba, el job traga el
+# error a propósito para no perder la liquidación por un PDF, y `pdf_ref` quedaba en
+# null — el conductor nunca recibía su comprobante y no aparecía ningún error.
+#
+# Privado, y sin discusión: el PDF trae el detalle de entregas y montos de UN
+# conductor de UN tenant. El aislamiento lo impone el service_role + la URL firmada
+# de vida corta; no hay políticas sobre storage.objects.
+#
+# Convención de path: {tenant_id}/liquidaciones/{liquidacion_id}/liquidacion.pdf
+[storage.buckets.liquidaciones]
+public = false
+file_size_limit = "10MiB"
+allowed_mime_types = ["application/pdf"]
+
+# Bucket PRIVADO con los PDF de las facturas DTE, que lee el courier desde
+# `(tenant)/dinero/periodos` y el seller desde `portal/cobros`, siempre por URL
+# firmada.
+#
+# Hoy NADIE escribe acá: los dos adaptadores DTE devuelven `pdfUrl: null` (el de
+# sandbox y el de Openfactura), así que `documentos_dte.pdf_ref` nunca se llena. El
+# bucket se declara ahora para que exista el día que se conecte el proveedor real —
+# ese trabajo incluye persistir el PDF que el proveedor entrega inline en base64.
+#
+# Privado: es el documento tributario de un seller concreto bajo el RUT de un
+# courier concreto.
+#
+# Convención de path: {tenant_id}/dte/{documento_dte_id}/factura.pdf
+[storage.buckets.documentos-dte]
+public = false
+file_size_limit = "10MiB"
+allowed_mime_types = ["application/pdf"]
+
 # Allow connections via S3 compatible clients
 [storage.s3_protocol]
 enabled = true

@@ -48,8 +48,25 @@ npx supabase db push                                  # aplica supabase/migratio
 ```
 > **NO** corras `db reset` ni `db seed` en prod: `seed.sql` son datos DEMO. En prod solo van las migraciones.
 
-### 1.5 Provisionar el bucket de Storage
-El bucket `pod-evidencias` (evidencias de entrega) debe existir. En **Storage**, créalo con las mismas propiedades que `supabase/config.toml` (`[storage.buckets.pod-evidencias]`: privado, límite de tamaño de archivo). O aplica la config vía CLI si tu versión lo soporta.
+### 1.5 Provisionar los buckets de Storage
+En **Storage**, crea los cuatro buckets con las mismas propiedades que declara
+`supabase/config.toml` (el hosted no lee ese archivo — hay que replicarlo a mano):
+
+| Bucket | Público | Límite | MIME | Para qué |
+|---|---|---|---|---|
+| `pod-evidencias` | no | 50 MiB | png, jpeg, webp | Fotos y firmas del POD same-day |
+| `liquidaciones` | no | 10 MiB | pdf | PDF de liquidación del conductor |
+| `documentos-dte` | no | 10 MiB | pdf | PDF de las facturas DTE |
+| `contexto-mapas` | **sí** | 50 MiB | (sin allowlist) | Cartografía de la Torre: PMTiles, glyphs, sprites |
+
+> `contexto-mapas` es el único público, y solo de lectura: es cartografía OSM/DPA sin
+> un dato de nadie, y PMTiles se sirve por rangos HTTP (una URL firmada por rango no
+> funciona). Los otros tres son privados y se leen únicamente por URL firmada emitida
+> desde el backend con `service_role`.
+>
+> **Si `liquidaciones` falta, falla en silencio:** el job genera el PDF, el `upload`
+> falla, el job traga el error a propósito para no perder la liquidación, y `pdf_ref`
+> queda en `null`. El conductor no recibe su comprobante y no aparece ningún error.
 
 ### 1.6 Crear el super-admin real (el seed demo NO corre en prod)
 1. En **Authentication → Users → Add user**: crea el usuario del fundador con su email real y una contraseña fuerte; marca el email como **confirmado**. Copia su **UUID**.
@@ -80,6 +97,13 @@ on conflict (usuario_id) do update set activo=true, rol_admin='admin_total';
 ## 3. Vercel (hosting)
 1. **Add New Project** → importa el repo de GitHub → rama `master` (o la que mergees).
 2. Framework: Next.js (autodetectado). Build: `npm run build` (por defecto).
+
+> **La región de las funciones ya viene fijada en `vercel.json` (`gru1`, São Paulo)** y
+> no hay que tocarla en el dashboard. Es deliberado: el default de Vercel es `iad1`
+> (Washington), y con la base en `sa-east-1` cada consulta cruzaría el hemisferio dos
+> veces — ~150 ms por consulta en vez de ~40. Vercel no tiene región en Santiago, así
+> que `gru1` es lo más cerca que se llega de Chile. El razonamiento completo, con
+> costos y la alternativa chilena evaluada, está en `docs/ops/latencia-y-region.md`.
 3. **Environment Variables** (Production) — ver la tabla de la sección 5. **Clave:** `APP_PUBLIC_URL` = tu dominio real (`https://app.rutax.cl`).
 4. Deploy. Vercel te da una URL; conecta tu dominio en **Settings → Domains**.
 
