@@ -228,7 +228,8 @@
 - [x] **I-07 — Procesos pesados como jobs.** Ingesta, facturación, liquidación, sincronización de estados y salud de conexiones corren **como jobs** (no en el request del usuario). *Ref:* RNF-05, RNF-07. **(Alto)**
   Confirmado: todos los procesos pesados están implementados como funciones Inngest en `src/modules/*/jobs/` (`generar-lineas`, `emitir-dte-periodo`, `conciliar-periodo`, `generar-liquidacion-conductor`, `polling-estados`, `sondeo-salud`, `refrescar-tokens`, `ejecutar-backfill`, `polling-estado-dte`, `alerta-folios-proximos`), registrados vía `src/lib/inngest/cliente.ts`. Ninguna server action realiza estas operaciones de forma síncrona.
 - [ ] **I-08 — Observabilidad.** Errores y salud de jobs/integraciones (incl. conexiones ML) están monitoreados con alertas. *Ref:* RNF-10. **(Medio)**
-  FALLA: no se encontró integración de Sentry (ni otro proveedor de monitoreo/alertas de errores) en el repo — `package.json`/código sin referencias a `@sentry/*`. La "salud de conexiones ML" sí se modela como dato de negocio (B-03/G-01), pero no hay monitoreo/alerta de **errores de jobs** a nivel de infraestructura. Corresponde a la fase `devops` (CLAUDE.md la lista explícitamente como responsable de Sentry/monitoreo) — pendiente, no es un bug de esta fase.
+  **El código está; falta encender el destino.** Esta nota decía "no se encontró integración de Sentry" y quedó desfasada: `src/lib/observabilidad/` (captura + redacción de secretos/PII) está cableado vía `instrumentation.ts` (`onRequestError`) y el middleware de Inngest (`onRunError`, solo en el intento final), más el watchdog horario `plataforma/verificarSalud` y el tablero `/admin/salud`. Todo eso emite por `capturarMensaje`/`capturarExcepcion`, que **sin `SENTRY_DSN` solo escribe a stdout** — o sea, hoy nadie recibe la alerta. Sigue en `[ ]` hasta que el DSN esté seteado en Vercel. Verificado el 2026-08-05.
+  <!-- nota original (2026-06): no se encontró integración de Sentry en el repo — `package.json`/código sin referencias a `@sentry/*`. La "salud de conexiones ML" sí se modela como dato de negocio (B-03/G-01), pero no hay monitoreo/alerta de **errores de jobs** a nivel de infraestructura. Corresponde a la fase `devops` (CLAUDE.md la lista explícitamente como responsable de Sentry/monitoreo) — pendiente, no es un bug de esta fase.
 
 ---
 
@@ -267,7 +268,7 @@
 - [N/A] **L-02 — Disponibilidad en ventana operativa.** Operativo en corte (~12–13 h) y reparto (~15–21 h); **degradación elegante** si un servicio externo falla. *Ref:* RNF-08. **(Alto)**
   N/A para ambiente local — depende de configuración de hosting/monitoreo (Vercel/Supabase) no provisionada aún (fase devops). La "degradación elegante" ante fallo de ML está cubierta a nivel de código por I-01/I-02.
 - [ ] **L-03 — Respaldo y restauración.** Respaldos automáticos activos y **prueba de restauración** verificada; **no se pierden datos financieros**. *Ref:* RNF-09. **(Crítico)**
-  Runbook completo en `docs/ops/restauracion.md` (RPO/RTO documentados y justificados: interino ≤24h/≤4h, objetivo con Cloud+PITR ≤5min/≤4h). **Drill de restauración REAL ejecutado** contra el stack local (`docs/ops/bitacora-restauracion.md`, 2026-07-06/07, 9m40s): dump de esquema+datos (schemas de negocio) + export de `pod-evidencias`, restaurado en una base de datos aislada del mismo clúster, verificado (a) conteos por tabla idénticos, (b) aislamiento por tenant sin cruce (comparación exacta de `(id, tenant_id)`, no solo agregados), (c) round-trip de descifrado de `identidad.secretos_cifrados` con la clave real (OK/OK, sin imprimir valores), (d) integridad de Storage por hash SHA-256 idéntico. Sigue **[ ]** y no `[x]` porque "respaldos automáticos" (cron/PITR) todavía no están activos — no existe proyecto Supabase Cloud (pre-lanzamiento); PITR no se pudo ejercitar (requiere plan Pro sobre un proyecto real). Hallazgo adicional: los buckets `liquidaciones` y `documentos-dte` están referenciados en código pero no provisionados (ni migración ni `config.toml`) — ver runbook §2.2. Pendiente antes de producción real: activar PITR el mismo día que exista el proyecto Cloud (gate de lanzamiento, no opcional) y repetir el drill contra ese proyecto.
+  Runbook completo en `docs/ops/restauracion.md` (RPO/RTO documentados y justificados: interino ≤24h/≤4h, objetivo con Cloud+PITR ≤5min/≤4h). **Drill de restauración REAL ejecutado** contra el stack local (`docs/ops/bitacora-restauracion.md`, 2026-07-06/07, 9m40s): dump de esquema+datos (schemas de negocio) + export de `pod-evidencias`, restaurado en una base de datos aislada del mismo clúster, verificado (a) conteos por tabla idénticos, (b) aislamiento por tenant sin cruce (comparación exacta de `(id, tenant_id)`, no solo agregados), (c) round-trip de descifrado de `identidad.secretos_cifrados` con la clave real (OK/OK, sin imprimir valores), (d) integridad de Storage por hash SHA-256 idéntico. Sigue **[ ]** y no `[x]` porque "respaldos automáticos" (cron/PITR) todavía no están activos — no existe proyecto Supabase Cloud (pre-lanzamiento); PITR no se pudo ejercitar (requiere plan Pro sobre un proyecto real). Hallazgo adicional: los buckets `liquidaciones` y `documentos-dte` estaban referenciados en código pero no provisionados — **resuelto el 2026-08-05**: ambos declarados en `supabase/config.toml` (privados, 10 MiB, solo `application/pdf`) y agregados al runbook §1.5. El de `liquidaciones` no era un problema futuro sino un **bug vivo**: el job generaba el PDF, el `upload` fallaba, el `catch` deliberado dejaba `pdf_ref = null` para no perder la liquidación, y el conductor nunca recibía su comprobante sin que apareciera ningún error. Pendiente antes de producción real: activar PITR el mismo día que exista el proyecto Cloud (gate de lanzamiento, no opcional) y repetir el drill contra ese proyecto.
 - [N/A] **L-04 — Escala sin rediseño.** El sistema soporta crecer de decenas a cientos de couriers (al menos verificado en diseño/carga sintética). *Ref:* RNF-07. **(Medio)**
   N/A — no se realizó prueba de carga sintética en este pase. El diseño multi-tenant con `tenant_id` + RLS (H-01, 152/152) y jobs asíncronos (I-07) no presenta acoplamientos obvios que impidan escalar horizontalmente, pero esto es una evaluación de diseño, no una medición.
 
@@ -327,14 +328,66 @@
 - [x] **N-10 — Aislamiento: tenant_id en UPDATE de anulación.** La lógica de anulación filtra por `pedido_id AND tenant_id` en el SELECT y en el WHERE del UPDATE; una línea del Tenant B no puede ser anulada con `tenantId=TENANT_A` (2 tests).
 - [x] **N-11 — No-regresión: devuelto directo desde en_ruta.** Sin líneas previas, el motor devuelve `generaCobro=false`, `generaLiquidacion=false`; `lineaCobro=null` → condición `if (lineaCobro && !lineaCobro.anulada)` → false → no-op (2 tests).
 
-### Escenarios pendientes de stack vivo
+### Escenarios de stack vivo — EJECUTADOS el 2026-08-05
 
-Los siguientes escenarios requieren Supabase local activo + Inngest Dev Server y NO se pueden correr ahora (stack en puertos reubicados — mismatch entre `config.toml` y puertos WinNAT asignados). Correr tras reinicio del sistema o re-provisión del stack.
+Corridos contra Supabase local + Inngest Dev Server, con datos de demo a escala
+(716 líneas de cobro, 7 tenants) y restaurando el entorno al terminar.
 
-- [ ] **N-E2E-1 — Flujo completo fallido → devuelto con BD real.** Crear pedido demo → `en_ruta` → `fallido` (job C1 genera líneas) → verificar `lineas_cobro` + `lineas_liquidacion` en BD → `devuelto` (job C1 anula líneas con `anulada=true`, `motivo_anulacion='devolucion'`) → verificar que `cobro_generado=false`, `liquidacion_generada=false` en `operacion.pedidos`. *Pendiente: stack local en puertos reubicados; correr tras reinicio.*
-- [ ] **N-E2E-2 — Compuerta con período cerrado en BD real.** Pedido `fallido` → job C1 genera líneas → cerrar el período manualmente → `devuelto` → verificar que las líneas NO se anularon (período `cerrado`) y que `eventos_conciliacion` tiene una fila de tipo discrepancia. *Pendiente: stack local en puertos reubicados; correr tras reinicio.*
-- [ ] **N-E2E-3 — Idempotencia de evento devuelto con Inngest real.** Disparar el evento `dinero/pedido.estado_financiero_relevante` con `estadoNuevo='devuelto'` dos veces para el mismo pedido → verificar que el job se ejecuta (el ID incluye el estado, no se deduplica) pero la segunda anulación es no-op (`WHERE anulada=false` no afecta filas). *Pendiente: stack local en puertos reubicados; correr tras reinicio.*
-- [ ] **N-E2E-4 — pgTAP: RLS bloquea anulación cross-tenant.** Verificar a nivel de BD que `UPDATE dinero.lineas_cobro SET anulada=true WHERE pedido_id=X AND tenant_id=TENANT_A` ejecutado con el rol del Tenant B (vía RLS) no afecta filas. *Pendiente: `npx supabase test db` tras reinicio del stack.*
+- **N-E2E-1 pasa tal cual.** Salvedad de montaje: un `fallido` **sin incidencia** no
+  genera ninguna línea — `evaluarElegibilidad` deja que la incidencia decida. Con
+  incidencia que afecta cobro: fallido → línea de cobro $3.500 + liquidación $2.200;
+  devuelto → ambas `anulada=true` con `motivo_anulacion='devolucion'` y los dos flags
+  del pedido en `false`.
+- **N-E2E-2 pasa en lo esencial, pero el detalle esperado era incorrecto.** La línea de
+  **cobro** no se anula con el período `cerrado` (la compuerta funciona), pero la de
+  **liquidación SÍ**: cuelga de la liquidación del conductor, no del período del seller,
+  y esa seguía abierta. Y **no** se escribe en `eventos_conciliacion` en ese momento: el
+  job promete que "C6 detectará la discrepancia", pero C6 corre al cerrar el período, o
+  sea *antes* de la devolución. Quien lo caza es el watchdog horario.
+- **N-E2E-3 pasa.** Segundo disparo del mismo evento: el run vuelve a ejecutarse (no se
+  deduplica) y `actualizado_en` de la línea no cambia.
+- **N-E2E-4 hecho como pgTAP** (tests 27-30). Más estricto que "no afecta filas":
+  `authenticated` no tiene GRANT de UPDATE sobre `lineas_cobro`, así que da `42501`, y
+  también sobre la línea propia. Son de solo lectura para toda sesión de usuario.
+
+> **BUG — el detector de integridad no corría a escala real. CORREGIDO el 2026-08-05.**
+> `detectarLineasCobroHuerfanas` armaba `.in('id', pedidoIds)` con un id por línea de
+> cobro del tenant (715 en el demo) y PostgREST respondía **`URI too long`**. El `catch`
+> por-tenant del watchdog se comía el error y el resumen informaba `lineas_huerfanas=0`
+> — que se lee como "todo limpio" cuando significaba "nunca corrió". La red de seguridad
+> que la auditoría de julio agregó llevaba muerta desde el primer courier con unos
+> cientos de líneas. **Arreglado:** pagina la lectura (`.range()` de 500, bajo el
+> `max_rows` de 1000 — el select sin paginar era una segunda bomba latente) y consulta
+> los pedidos en lotes de 200 ids. Verificado contra la base real con 716 líneas: el
+> watchdog pasó de `lineas_huerfanas=0` a `1`. Ver [[gotcha_postgrest_max_rows]].
+
+> **Línea de cobro sin período — HECHA VISIBLE el 2026-08-05.** Si
+> `asignar-periodo-cobro` falla (el período destino ya está cerrado/facturado, p. ej.
+> una transición tardía), el paso previo ya insertó la línea e Inngest memoiza los pasos
+> completados: queda con `periodo_cobro_id = NULL` para siempre y el pedido aparece como
+> si no hubiera generado cobro. No la veía ningún detector (`esLineaCobroHuerfana`
+> excluye `fallido` a propósito, que es el estado del caso típico). Tipo nuevo
+> `linea_cobro_sin_periodo` (migración `20260805000001`), clasificado **`fuga_ingreso`**
+> con acción `reasignar_lineas_a_periodo` y SLA de 3 días. **Decisión de negocio tomada
+> el 2026-08-05: se resuelven A MANO desde la bandeja**, no se reasignan solas — con un
+> courier el volumen es mínimo y conviene medir la frecuencia antes de automatizar un
+> movimiento de plata. El watchdog además reporta `tenants_con_error`: un barrido que
+> falla deja de poder leerse como "sin hallazgos".
+
+> **Dos inconsistencias del seed — CORREGIDAS.** `seed-demo-full.sql` asignaba
+> `tracking_token` a todos los pedidos incluidos los Flex (producción solo a same-day), y
+> marcaba `cobro_generado=true` sin línea. Esto último no es cosmético: el motor usa ese
+> flag como guarda de idempotencia, así que un pedido mal marcado se salta la generación
+> para siempre. Se agregó una reconciliación al final del seed (559 → 0).
+
+> **Aparte, sobre el entorno local:** la base de demo tiene **1.048 pedidos con prefijo
+> `6d7c…` que ningún seed del repo produce**. El entorno local no es reproducible desde
+> el código: quien reconstruya la demo obtiene 960 pedidos, no 2.024.
+
+- [x] **N-E2E-1 — Flujo completo fallido → devuelto con BD real.** Crear pedido demo → `en_ruta` → `fallido` (job C1 genera líneas) → verificar `lineas_cobro` + `lineas_liquidacion` en BD → `devuelto` (job C1 anula líneas con `anulada=true`, `motivo_anulacion='devolucion'`) → verificar que `cobro_generado=false`, `liquidacion_generada=false` en `operacion.pedidos`. **Ejecutado el 2026-08-05** (ver nota del bloque).
+- [x] **N-E2E-2 — Compuerta con período cerrado en BD real.** Pedido `fallido` → job C1 genera líneas → cerrar el período manualmente → `devuelto` → verificar que las líneas NO se anularon (período `cerrado`) y que `eventos_conciliacion` tiene una fila de tipo discrepancia. **Ejecutado el 2026-08-05** (ver nota del bloque).
+- [x] **N-E2E-3 — Idempotencia de evento devuelto con Inngest real.** Disparar el evento `dinero/pedido.estado_financiero_relevante` con `estadoNuevo='devuelto'` dos veces para el mismo pedido → verificar que el job se ejecuta (el ID incluye el estado, no se deduplica) pero la segunda anulación es no-op (`WHERE anulada=false` no afecta filas). **Ejecutado el 2026-08-05** (ver nota del bloque).
+- [x] **N-E2E-4 — pgTAP: RLS bloquea anulación cross-tenant.** Verificar a nivel de BD que `UPDATE dinero.lineas_cobro SET anulada=true WHERE pedido_id=X AND tenant_id=TENANT_A` ejecutado con el rol del Tenant B (vía RLS) no afecta filas. **Hecho**: 4 aserciones (tests 27-30) en `rls_aislamiento_dinero.test.sql`.
 8. Descarga real de etiqueta ML (C-04) y refresco real de tokens OAuth requieren credenciales/sandbox de Mercado Libre reales, no disponibles en este ambiente local — el manejo de error (409 `ErrorConexionMlRequiereRevinculacion`) está verificado.
 
 **Bugs corregidos durante este pase (no requieren acción adicional):**
@@ -484,11 +537,11 @@ No se encontraron bugs en la implementacion del Bloque 2. Los tests adversariale
 
 Requieren Supabase local con migraciones 0016+ aplicadas. Correr tras reinicio del stack (puertos reubicados).
 
-- [ ] **P-1** — RLS pruebas_entrega: conductor de TENANT_B no puede SELECT/INSERT sobre pruebas_entrega.tenant_id = TENANT_A. *(Ampliar `rls_aislamiento_geocoding.test.sql` con casos same-day.)*
-- [ ] **P-2** — Trigger `trg_pruebas_entrega_solo_same_day`: INSERT de POD sobre pedido Flex desde psql → CHECK_VIOLATION.
-- [ ] **P-3** — UNIQUE parcial `idx_pruebas_entrega_entregado_uk`: segundo INSERT con mismo pedido_id WHERE tipo_resultado='entregado' → UNIQUE_VIOLATION (23505).
-- [ ] **P-4** — RLS ubicacion_conductor: el seller NO puede leer `ubicacion_conductor` de ningun conductor del tenant.
-- [ ] **P-5** — Tracking publico `/tracking/[token]`: token valido → 200 con datos del pedido; token de otro tenant → 404.
+- [x] **P-1** — RLS pruebas_entrega: conductor de TENANT_B no puede SELECT/INSERT sobre pruebas_entrega.tenant_id = TENANT_A. **Ya cubierto** por `rls_aislamiento_pod_y_ubicacion.test.sql` (7 aserciones que mapean P-1..P-4 una a una); verificado el 2026-08-05.
+- [x] **P-2** — Trigger `trg_pruebas_entrega_solo_same_day`: INSERT de POD sobre pedido Flex desde psql → CHECK_VIOLATION.
+- [x] **P-3** — UNIQUE parcial `idx_pruebas_entrega_entregado_uk`: segundo INSERT con mismo pedido_id WHERE tipo_resultado='entregado' → UNIQUE_VIOLATION (23505).
+- [x] **P-4** — RLS ubicacion_conductor: el seller NO puede leer `ubicacion_conductor` de ningun conductor del tenant.
+- [x] **P-5** — Tracking publico `/tracking/[token]`. **Verificado el 2026-08-05** contra la app corriendo: token same-day válido → 200; token inexistente → 404; token de un pedido **Flex** → 404 (la frontera dura aguanta aunque el token exista, que es la versión fuerte del test). La expectativa escrita —"token de otro tenant → 404"— no aplica por diseño: el token ES la credencial del destinatario, la ruta usa `service_role` a propósito y no hay noción de tenant del lado de quien mira. Sí se comprobó la minimización: la página expone solo tienda, estado y comuna — ni nombre, ni dirección, ni teléfono. El token es `crypto.randomUUID()` (122 bits).
 
 **Como ejecutar tras reiniciar el stack:**
 ```
@@ -776,7 +829,7 @@ npx supabase test db    # corre los pgTAP
 - [x] **Secretos fuera de logs.** `RESEND_API_KEY` viaja solo en el header `Authorization`; test dedicado confirma que no aparece en el body serializado ni en los mensajes de error. El stub loguea únicamente destinatario + asunto (nunca `html`/`texto`), verificado con test.
 - [x] **Composición, no duplicación, del núcleo de auto-cobro.** `ejecutarYPersistirAutoCobro` (extraído de `cobrar-periodo-auto.ts`) es el ÚNICO lugar que llama al proveedor y persiste `pagos_plataforma` — tanto el intento inicial (evento `suscripcion.periodo-generado`) como el reintento de dunning (`reintentar-cobro-vencido.ts`) lo invocan; la `idempotencyKey` determinística (`susc-cobro-${periodoId}`) es la barrera real anti-doble-cargo entre ambas rutas, no la memoización de `step.run` (que es por-función, no cruza jobs).
 - [ ] **QA / E2E en staging real.** Pendiente: correr con Supabase local + Inngest Dev Server (`docs/PRUEBA.md`) para observar el flujo completo (trial venciendo → email; período venciendo → recordatorio + reintentos con backoff en días reales; cambio de plan → email) y para que `qa` audite aislamiento multi-tenant de las consultas nuevas (`resolverDestinatarioCourier`, listados de `vigilar-trials`/`reintentar-cobro-vencido`) con datos sembrados de dos tenants. No se corrió `npm run build` ni pgTAP en esta sesión (ver nota de metodología).
-- [ ] **Revisión de copy.** Todos los textos de los correos (`construirEmail*`, `plataforma/notificaciones.ts`) son placeholders funcionales en español de Chile, marcados `// TODO(copywriter)`.
+- [x] **Revisión de copy.** Hecha en los commits `7a336de` y `0e34147`. Los `construirEmail*` ya no tienen marcas `TODO(copywriter)`: siguen la estructura de la guía (asunto corto → saludo → qué pasó → qué hacer con enlace → cierre firmado "Rutax") y los tonos de cobro fallido/vencimiento son firmes sin ser alarmistas. Verificado el 2026-08-05.
 
 **Decisiones de diseño no obvias (documentadas en el propio código, resumidas aquí):**
 - Transición trial→activa vive en el núcleo COMPARTIDO `confirmarPeriodoPagado` (`plataforma/cobro.ts`), no en cada webhook por separado — cubre cobro por link y auto-cobro recurrente con un solo cambio.
@@ -798,7 +851,7 @@ npx supabase test db    # corre los pgTAP
 - [x] Accesibilidad: `th scope="col"` en la tabla de alertas, `aria-label` en tabla/enlaces, el color del badge de salud nunca es el único portador de significado (badge + texto siempre).
 - [x] Responsive: grillas de KPI 2→4 columnas (`sm`/`lg`), columna "Entidad" de la tabla de alertas oculta en móvil (`hidden sm:table-cell`).
 - [x] `npm run typecheck` → limpio. `npm run lint` → 0 errores (145 warnings preexistentes, ninguno nuevo). `npm test` → 114 archivos, **1859 passed / 5 skipped, 2 fallos** — ver nota abajo (preexistentes, no relacionados con esta pantalla).
-- [ ] **Revisión de copy.** Dos mapas de traducción locales en `page.tsx` (`TEXTO_ACCION_ALERTA`, `TEXTO_ENTIDAD_TIPO`) son microcopy provisional para las 9 acciones curadas de `ACCIONES_ALERTA_TENANT` (`observabilidad-tenant.ts`) — marcados `COPY:` en el código, a revisar por `copywriter`.
+- [x] **Revisión de copy.** Hecha el 2026-08-05: revisados contra `docs/copy-voz-y-estilo.md` y retiradas las marcas `COPY:`. Tres ajustes: "Folios de boleta/factura" → "Folios DTE" (el courier emite factura 33 / NC 61, no boletas), verbo primero en "Falló el mandato…", y "por un monto distinto". <!-- nota original: dos mapas de traducción locales en `page.tsx` (`TEXTO_ACCION_ALERTA`, `TEXTO_ENTIDAD_TIPO`) son microcopy provisional para las 9 acciones curadas de `ACCIONES_ALERTA_TENANT` (`observabilidad-tenant.ts`) — marcados `COPY:` en el código, a revisar por `copywriter`.
 - [ ] QA / E2E en staging real (Supabase local + datos de demo multi-tenant, con couriers en distintos estados de salud/morosidad) — pantalla nueva, aún no probada en vivo contra Postgres real.
 
 **Nota (hallazgo fuera de alcance de esta tarea, reportado a `backend`/`copywriter`):** en esta misma corrida, `npm test` mostró **2 fallos preexistentes** en `src/modules/plataforma/notificaciones.test.ts` (`construirEmailCobroFallido`: el texto esperado por el test — "reintentar el cobro automáticamente" / "re-vincules" — no coincide con el copy actual del código — "Reintentaremos el cobro automáticamente" / "re-vincularlo"). No relacionado con el trabajo de esta tarea (`page.tsx`/`observabilidad-tenant.ts` no tocan ese archivo); parece que el copy de `plataforma/notificaciones.ts` se ajustó después del QA gate de la ola anterior (línea ~770 de este documento) sin actualizar el test.
