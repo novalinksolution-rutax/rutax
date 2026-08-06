@@ -1438,6 +1438,18 @@ en «Hallazgos del pase».
 - [x] **`ver_torre_control`**, probado **en vivo con los cuatro roles**, no por lectura de código: dueño, supervisor y coordinador entran (payload de ~640 KB con `"total":1048`); **administración NO** — su sidebar no muestra la Torre y `/torre-de-control` devuelve 58 KB con «No tienes permiso para ver esta sección» y **cero datos** (sin `resumen`, sin `pendientes`, sin comunas, sin códigos de envío). ⚠️ Ojo al revisar: responde **200, no un redirect**; el 200 es la página de denegación.
 - [x] **La Torre no escribe nada.** 154 filas en `bitacora_auditoria` antes y después de ~6 cargas y de toda la navegación por niveles; la última entrada seguía siendo del día anterior.
 - [x] **Aislamiento multi-tenant** — probado sembrando un **courier intruso** (Andes Express) con 60 pedidos y 8 incidencias de HOY en 6 comunas compartidas con el tenant de demo: **0** apariciones en el payload (ni nombres, ni ids `bb00…`, ni su `tenant_id`) y `total` se mantuvo en **1.048**, no 1.108. La auditoría estática acompaña: de 15 consultas del composer, 13 llevan `.eq('tenant_id', …)`, una filtra `tenants` por `.eq('id', …)` y la única global es `contexto.eventos_comerciales`, que es el carve-out de datos de referencia. *(El fixture intruso se retiró al cerrar el pase.)*
+  **Re-verificado de forma independiente el 2026-08-05**, por una sesión distinta y con
+  un fixture distinto (7 pedidos en Lo Barnechea —comuna que el tenant de demo NO usa—,
+  conductor «Zenobia Andes», códigos `AX-QA00-…`, y 25 pedidos del tenant de demo puestos
+  en la fecha de hoy para que las dos direcciones fueran comprobables). Resultado en
+  **ambos sentidos**: la Torre del tenant A muestra sus 6 comunas y **0** marcas de B; la
+  del tenant B muestra Lo Barnechea 9 / Zenobia 7 / `AX-QA00` 7, el nombre «Andes Express»
+  y **0** de las 6 comunas de A. Dos corridas independientes concuerdan.
+  ⚠️ **Gotcha al montar el fixture:** el contenedor de Postgres corre en UTC, así que
+  `current_date` es el día siguiente al de Santiago a partir de las 21:00 locales. Sembrar
+  con `current_date` deja los pedidos en «mañana» y la Torre —que pide el hoy de
+  Santiago— sale vacía sin que nada falle. Usar
+  `(now() at time zone 'America/Santiago')::date`.
 - [x] **Datos personales** — se sacaron muestras reales de la BD y se buscaron en los 665 KB del payload, data RSC incluida: **0 de 4** nombres de destinatario, **0 de 4** direcciones, **0 de 3** teléfonos (tampoco por patrón `+569…`), **0 de 3** `tracking_token` (ni siquiera aparece la clave). Los códigos de envío sí viajan, que es lo correcto.
 
 ## 7. Rendimiento — lo que decide si sirve en producción
