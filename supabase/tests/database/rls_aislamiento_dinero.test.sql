@@ -25,7 +25,7 @@
 
 begin;
 
-select plan(26);
+select plan(30);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (redefinidos aquí — cada .test.sql corre en su
@@ -633,6 +633,66 @@ select is_empty(
   $$ select 1 from public.liquidaciones
      where driver_id = 'aaaaaaaa-2222-0000-0000-000000000003' $$, -- d_a2
   'P3 liquidaciones: conductor A NO ve liquidaciones del conductor A2 (mismo tenant)'
+);
+
+-- =============================================================================
+-- BLOQUE 6 · ANULACIÓN de líneas: ninguna sesión de usuario puede escribirla
+-- =============================================================================
+-- Cierra el punto ciego que el checklist registraba como N-E2E-4. El test 19 ya
+-- cubre el INSERT; falta el UPDATE, que es el camino que de verdad importa:
+-- `anulada = true` es como el motor entrega→dinero revierte una línea cuando un
+-- pedido fallido termina devuelto. Si esa columna fuera escribible desde una
+-- sesión de usuario, cualquiera podría borrar un cobro sin dejar rastro.
+--
+-- El resultado real es MÁS estricto que "no afecta filas" (que era la
+-- expectativa anotada en el checklist): `authenticated` no tiene GRANT de UPDATE
+-- sobre la tabla, así que ni siquiera se llega a evaluar RLS → 42501 explícito y
+-- auditable, no un "UPDATE 0" silencioso. Vale para la línea de OTRO tenant y
+-- también para la PROPIA: las líneas de dinero son de solo lectura para toda
+-- sesión de usuario y únicamente los jobs (service_role) las anulan.
+
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-000000000001'::uuid, -- u_dueno_a
+  'aaaaaaaa-0000-0000-0000-000000000001'::uuid, -- t_a
+  'interno', 'dueno'
+);
+
+-- Test 27: el dueño del tenant A no puede anular la línea del tenant B
+select throws_ok(
+  $$ update dinero.lineas_cobro set anulada = true
+     where id = 'bbbbbbbb-cccc-0000-0000-000000000001' $$, -- linea_cobro_b1
+  '42501',
+  null,
+  'N-E2E-4 · UPDATE anulada sobre lineas_cobro de OTRO tenant falla con 42501'
+);
+
+-- Test 28: tampoco puede anular la suya (solo el job con service_role escribe)
+select throws_ok(
+  $$ update dinero.lineas_cobro set anulada = true
+     where id = 'aaaaaaaa-cccc-0000-0000-000000000001' $$, -- linea_cobro_a1
+  '42501',
+  null,
+  'N-E2E-4 · UPDATE anulada sobre la lineas_cobro PROPIA también falla con 42501'
+);
+
+-- Test 29: mismo contrato en la pata del conductor
+select throws_ok(
+  $$ update dinero.lineas_liquidacion set anulada = true
+     where tenant_id = 'aaaaaaaa-0000-0000-0000-000000000001' $$, -- t_a
+  '42501',
+  null,
+  'N-E2E-4 · UPDATE anulada sobre lineas_liquidacion falla con 42501 (solo jobs)'
+);
+
+select test_cerrar_sesion();
+
+-- Test 30: y la anulación SÍ funciona por el camino legítimo (service_role, que
+-- es como corre el job C1). Confirma que el 42501 de arriba es una restricción
+-- de la sesión de usuario y no que la columna sea inescribible.
+select lives_ok(
+  $$ update dinero.lineas_cobro set anulada = true, motivo_anulacion = 'devolucion'
+     where id = 'aaaaaaaa-cccc-0000-0000-000000000001' $$, -- como postgres
+  'N-E2E-4 · la anulación por devolución SÍ pasa por el camino del job'
 );
 
 -- =============================================================================

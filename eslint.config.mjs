@@ -25,6 +25,15 @@ const eslintConfig = defineConfig([
     // `src/`. Sin esto, el `require()` del bundle compilado deja el lint en
     // rojo por código que nadie escribió a mano.
     ".artefactos/**",
+    // Worktrees de git. Claude Code los crea DENTRO del repo (`.claude/worktrees/`),
+    // así que un `npm run lint` desde la raíz entra a lintear la copia de trabajo
+    // de cada worktree: son los mismos archivos otra vez, más su `coverage/` y su
+    // `.next/`. Medido: 836 archivos de ruido y 2.266 "errores" que no existen en
+    // el código — suficiente para que la salida del lint deje de servir mientras
+    // haya un worktree abierto.
+    ".claude/**",
+    // Reportes de `npm run coverage`: HTML y JS generados, no fuente.
+    "coverage/**",
   ]),
 ]);
 
