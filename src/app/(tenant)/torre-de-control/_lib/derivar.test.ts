@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ComunaEnTorre, PuntoEntrega } from '@/modules/contexto/contrato-torre';
 import {
+  cuentaComoPendiente,
   geoAgrupaciones,
   geoComunas,
   geoPuntos,
@@ -96,7 +97,7 @@ describe('la suma de lo dibujado cuadra con el pendiente de la comuna', () => {
     expect(total).toBe(9);
   });
 
-  it('los entregados no burbujean, y por eso la suma es el PENDIENTE y no el total', () => {
+  it('ni los entregados ni las incidencias burbujean: la suma es el PENDIENTE', () => {
     const puntos = [
       punto({ id: 'a', agrupados: 4 }),
       punto({ id: 'b', estado: 'entregado', agrupados: 7 }),
@@ -107,8 +108,61 @@ describe('la suma de lo dibujado cuadra con el pendiente de la comuna', () => {
       (suma, f) => suma + (f.properties?.cantidad as number),
       0,
     );
-    // 4 + 2 + 1: lo entregado ya no pide ir a ninguna parte.
-    expect(total).toBe(7);
+    // 4 + 1. Lo entregado ya no pide ir a ninguna parte, y el `fallido` de la
+    // incidencia tampoco: ya se intentó y no vuelve a salir hoy. La placa lo
+    // excluye de «faltan», así que la burbuja también — si no, no cuadran.
+    expect(total).toBe(5);
+  });
+
+  it('un edificio de estados MEZCLADOS cuenta paquete por paquete', () => {
+    // El bug que destapó el QA del 2026-08-04. Un punto se clasifica por su
+    // pedido REPRESENTANTE, así que contar `pedidos.length` sobre los puntos «no
+    // entregados» arrastraba a la burbuja los paquetes ya entregados del mismo
+    // portal: la burbuja daba 18 donde la placa decía 13, en dos comunas.
+    const edificio = punto({ id: 'a', agrupados: 3 });
+    edificio.pedidos[0].estado = 'pendiente';
+    edificio.pedidos[1].estado = 'entregado';
+    edificio.pedidos[2].estado = 'entregado';
+
+    const total = geoAgrupaciones([edificio], 'Santiago').features.reduce(
+      (suma, f) => suma + (f.properties?.cantidad as number),
+      0,
+    );
+    // Uno solo falta en esa dirección, aunque el portal tenga tres paquetes.
+    expect(total).toBe(1);
+  });
+
+  it('el `+N` del punto NO se reduce: dice cuántos hay, no cuántos faltan', () => {
+    // Es la contracara del caso anterior y hay que dejarla explícita: la burbuja
+    // cuenta lo que falta, el `+N` cuenta lo que hay en esa dirección. Que no
+    // coincidan es correcto — y por eso la ficha pagina los tres.
+    const edificio = punto({ id: 'a', agrupados: 3 });
+    edificio.pedidos[1].estado = 'entregado';
+    edificio.pedidos[2].estado = 'entregado';
+
+    const fc = geoPuntos([edificio]);
+    expect(fc.features[0].properties?.agrupados).toBe(3);
+  });
+
+  it('un punto donde YA no falta nada deja de burbujear', () => {
+    // Su representante puede seguir siendo `pendiente` por prioridad visual, pero
+    // si ningún paquete cuenta, la celda no existe.
+    const edificio = punto({ id: 'a', agrupados: 2 });
+    edificio.pedidos[0].estado = 'entregado';
+    edificio.pedidos[1].estado = 'incidencia';
+
+    expect(geoAgrupaciones([edificio], 'Santiago').features).toHaveLength(0);
+  });
+
+  it('cuentaComoPendiente es la MISMA definición que usa la placa', () => {
+    // Si alguien separa las dos, la suma deja de dar la cifra de la placa y el
+    // mapa empieza a mentir sobre la carga. `entregado` y `fallido` son los
+    // estados cerrados en `agregacion.ts`; `incidencia` es como llega el fallido
+    // al mapa.
+    expect(cuentaComoPendiente('pendiente')).toBe(true);
+    expect(cuentaComoPendiente('en_ruta')).toBe(true);
+    expect(cuentaComoPendiente('entregado')).toBe(false);
+    expect(cuentaComoPendiente('incidencia')).toBe(false);
   });
 
   it('reparte en celdas distintas sin perder ni duplicar pedidos', () => {
@@ -290,6 +344,68 @@ describe('limitesDeLaCarga', () => {
       comuna({ nombre: 'Comuna Fantasma', pendientes: 9 }),
     ]);
     expect(limites).not.toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------
+  // El bug de Puente Alto (QA 2026-08-04)
+  // ---------------------------------------------------------------------------
+
+  it('el secano vacío de una comuna grande NO estira el encuadre', () => {
+    // Con la unión de CAJAS, la de Colina (0,2° de radio en esta fixture) mandaba
+    // el borde norte a -33,0 aunque sus pedidos estuvieran en -33,25. Ese margen
+    // vacío empujaba el ajuste contra `zoomMinimo` y el recorte se llevaba el sur.
+    const limites = limitesDeLaCarga(
+      geo,
+      [
+        comuna({ nombre: 'Santiago', pendientes: 61, total: 120 }),
+        comuna({ nombre: 'Colina', pendientes: 30, total: 48 }),
+      ],
+      [
+        punto({ id: 's', comuna: 'Santiago', posicion: { lat: -33.45, long: -70.66 } }),
+        punto({ id: 'c', comuna: 'Colina', posicion: { lat: -33.25, long: -70.67 } }),
+      ],
+    );
+    // El norte lo pone el PEDIDO de Colina (-33,25), no su polígono (-33,0).
+    expect(limites![1][1]).toBeCloseTo(-33.25, 5);
+  });
+
+  it('la comuna del extremo sur entra en el encuadre', () => {
+    // Puente Alto quedaba 0,055° fuera del borde inferior con 39 pendientes.
+    const limites = limitesDeLaCarga(
+      geo,
+      [comuna({ nombre: 'Colina', pendientes: 30 }), comuna({ nombre: 'Puente Alto', pendientes: 39 })],
+      [
+        punto({ id: 'c', comuna: 'Colina', posicion: { lat: -33.14, long: -70.67 } }),
+        punto({ id: 'p', comuna: 'Puente Alto', posicion: { lat: -33.61, long: -70.57 } }),
+      ],
+    );
+    const [[, sur], [, norte]] = limites!;
+    expect(sur).toBeLessThanOrEqual(-33.61);
+    expect(norte).toBeGreaterThanOrEqual(-33.14);
+  });
+
+  it('lo entregado no estira el encuadre: solo la carga viva', () => {
+    const limites = limitesDeLaCarga(
+      geo,
+      [comuna({ nombre: 'Santiago', pendientes: 3 })],
+      [
+        punto({ id: 'vivo', posicion: { lat: -33.45, long: -70.66 } }),
+        punto({ id: 'listo', estado: 'entregado', posicion: { lat: -33.9, long: -71.2 } }),
+      ],
+    );
+    expect(limites![0][1]).toBeCloseTo(-33.45, 5);
+  });
+
+  it('sin puntos ubicados se cae a la caja de los polígonos', () => {
+    // Día ya cerrado o geocodificación pendiente: peor encuadre, pero la pantalla
+    // nunca se queda sin nada que mostrar.
+    const limites = limitesDeLaCarga(
+      geo,
+      [comuna({ nombre: 'Santiago', pendientes: 5 })],
+      [punto({ id: 'listo', estado: 'entregado' })],
+    );
+    expect(limites).not.toBeNull();
+    expect(limites![1][1]).toBeCloseTo(-33.42, 5);
   });
 });
 

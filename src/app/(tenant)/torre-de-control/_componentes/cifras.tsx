@@ -20,7 +20,7 @@
  */
 
 import { cn } from '@/lib/utils';
-import type { FrescuraTorre, ResumenTorre } from '@/modules/contexto/contrato-torre';
+import type { EstadoTorre, FrescuraTorre, ResumenTorre } from '@/modules/contexto/contrato-torre';
 
 function Magnitud({
   etiqueta,
@@ -51,9 +51,11 @@ function Magnitud({
 export function CifrasTorre({
   resumen,
   frescura,
+  corte,
 }: {
   resumen: ResumenTorre;
   frescura: FrescuraTorre;
+  corte: EstadoTorre['corte'];
 }) {
   return (
     <div>
@@ -71,7 +73,11 @@ export function CifrasTorre({
           </span>
         </Magnitud>
 
-        <Magnitud etiqueta="Cerca del corte">
+        {/* Pasada la hora, «cerca del corte» es una repetición muda de «faltan
+            por entregar»: `minutosHastaCorte` devuelve 0 y todo lo pendiente cae
+            dentro del margen. El número es correcto y no se toca; lo que cambia
+            es lo que dice, que pasa de anunciar un riesgo a declarar un atraso. */}
+        <Magnitud etiqueta={corte.vencido ? 'Pasadas del corte' : 'Cerca del corte'}>
           <span
             className={
               resumen.enRiesgoDeCorte > 0 ? 'text-warning-subtle-foreground' : undefined

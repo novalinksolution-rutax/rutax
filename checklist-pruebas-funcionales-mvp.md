@@ -1301,91 +1301,350 @@ Gotcha que costó media sesión y conviene no volver a pagar: **MapLibre coloca 
 > Marca `[x]` lo que pase, `[!]` lo que falle —con qué viste— y `[?]` lo que no
 > se pudo probar y por qué. Un `[!]` bien descrito vale más que diez `[x]`.
 
+### Pase ejecutado — 2026-08-04, tarde/noche (Santiago)
+
+Entorno: Supabase local, fixture del día con 1.048 pedidos en 23 comunas (1.038
+geocodificados), basemap y glifos publicados, dev server en `:57592`, Chrome real
+con la ventana visible. Suite automatizada de referencia: **2.188 pruebas verdes,
+5 saltadas, 140 archivos** (`npm test`, exit 0).
+
+**Resultado: 4 hallazgos nuevos**, uno de ellos serio (§2/§3), más dos
+observaciones de lectura y una corrección al propio checklist. Detalle al final,
+en «Hallazgos del pase».
+
 ## 0. Dejar el entorno listo (10 min, y sin esto nada de lo demás sirve)
 
-- [ ] Stack local arriba según `docs/PRUEBA.md` (Supabase, `seed.sql`, `seed-demo-full.sql`, Inngest).
-- [ ] **Sembrar el día de la Torre.** Sin esto la pantalla abre en `sin_pedidos` y no se prueba nada:
+- [x] Stack local arriba según `docs/PRUEBA.md` (Supabase, `seed.sql`, `seed-demo-full.sql`, Inngest).
+- [x] **Sembrar el día de la Torre.** Sin esto la pantalla abre en `sin_pedidos` y no se prueba nada:
       `docker exec -i supabase_db_SaaS_Courier_Again psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/seed-torre-hoy.sql`
-- [ ] **Glifos publicados** y `NEXT_PUBLIC_MAPA_GLIFOS_URL` puesta: `node --env-file=.env.local scripts/mapa/publicar-glifos.mjs`. Sin ellos el plano sale mudo y varias pruebas de abajo son imposibles.
-- [ ] ⚠️ **La ventana del navegador VISIBLE y al frente durante todo el QA del mapa.** Con `document.hidden === true` MapLibre se queda en 18 de 30 capas y no rotula nada; se diagnostica mal como «faltan glifos». Comprobar `document.hidden` antes de reportar cualquier fallo de etiquetas o puntos.
+- [x] **Glifos publicados** y `NEXT_PUBLIC_MAPA_GLIFOS_URL` puesta: `node --env-file=.env.local scripts/mapa/publicar-glifos.mjs`. Verificado por dos vías: los 4 PBF están en el bucket, y el plano rotula calles («Reina Norte», «Autopista Los Libertadores», «Los Álamos de Liray») con **6 capas de símbolo** activas.
+- [!] ⚠️ **La ventana del navegador VISIBLE y al frente durante todo el QA del mapa.** El aviso se queda MUY corto y hay que reescribirlo: con el panel/ventana sin componer no es que MapLibre pierda capas, es que **la Torre no sale nunca del esqueleto de `loading.tsx`** — React no cierra el boundary de Suspense, el mapa jamás monta y `innerText` devuelve `''` en toda la página (depende de layout; usar `textContent`). Se diagnostica como «la Torre no carga». Con la ventana visible se confirmó **30 de 30 capas**.
+- [x] **Comprobación previa obligatoria:** `document.hidden === false` antes de creerle nada al mapa.
+- [!] **Al cruzar la medianoche UTC, `current_date` en psql deja de ser «hoy».** La BD corre en UTC y la app en Santiago: después de las 20:00 CL, `current_date` ya apunta al día siguiente y toda consulta de contraste devuelve 0 pedidos. **El seed hace lo correcto** (`seed-torre-hoy.sql:72` usa fecha civil de Santiago, nunca `current_date`); el riesgo es de quien escribe las consultas de verificación. Usar siempre `(now() at time zone 'America/Santiago')::date`.
 
 ## 1. Estados de pantalla
 
-- [ ] **`tranquilo`** — sin incidencias abiertas, el panel dice «Sin incidencias abiertas. El día va bien.» y **nada** en rojo.
-- [ ] **`con_incidencias`** — la cifra toma el rojo y el panel abre en esa pestaña.
-- [ ] **`sin_pedidos`** — mensaje encima del mapa y **las comunas siguen dibujadas**. (Se reproduce fácil: no sembrar el día, o borrar el bloque `6d7c…`.)
-- [ ] **`cargando`** — el esqueleto tiene la forma final (cifras, caja del mapa, filas del panel). Nunca un spinner de página.
-- [ ] **Frescura atrasada** — chip ámbar «Sin cierres de conductor hace N min» a partir de 45 min, e **invisible** antes. Se fuerza envejeciendo `cierres_conductor.cerrado_en` / `pruebas_entrega.capturado_en`.
-- [ ] **Sin basemap** — vaciar `NEXT_PUBLIC_MAPA_BASEMAP_URL`: el mapa dibuja las comunas sobre el color de tierra y lo declara. Es un estado válido, no un error.
-- [ ] **Sin glifos** — vaciar `NEXT_PUBLIC_MAPA_GLIFOS_URL`: **ninguna** capa de texto, y el `+N` se sustituye por un anillo alrededor del punto.
+- [?] **`tranquilo`** — no reproducible sin intervenir el fixture, que tiene 83 incidencias abiertas todo el día. Requiere cerrarlas y volver a abrirlas.
+- [x] **`con_incidencias`** — la cifra toma el rojo (83) y el panel abre en esa pestaña. Verificado.
+- [?] **`sin_pedidos`** — no probado: habría dejado el resto de la sesión sin datos. Pendiente para un pase corto aparte.
+- [x] **`cargando`** — el esqueleto tiene la forma final (dos líneas de cabecera, cuatro cajas de cifras con su rótulo y su número, caja del mapa, filas del panel). Ningún spinner. Se observó de sobra, porque es justo donde se queda la pantalla si la ventana no compone.
+- [x] **Frescura atrasada** — chip ámbar «Sin cierres de conductor hace 500 min». Aparece por encima del umbral, como corresponde.
+- [?] **Sin basemap** — no probado (exige reiniciar el dev server sin la variable).
+- [?] **Sin glifos** — no probado, misma razón. Sí se verificó el caso positivo: 6 capas de texto y calles rotuladas.
 
 ## 2. Navegación y los tres niveles
 
-- [ ] **Nivel 1** — comunas rellenas por carga, placa con «faltan N de M», punto rojo solo donde hay incidencia.
-- [ ] **La comuna sin carga NO se pinta.** Con el fixture son 23 de 52; las otras 29 quedan sin relleno, solo con su borde.
-- [ ] **Entrar por clic** en una comuna: vuela, la **encuadra entera** y baja a nivel 2 con velo sobre el resto.
-- [ ] **Comuna grande (Colina, Pudahuel, Maipú)** — cabe entera y **la selección se sostiene**; no vuelve sola a «Región Metropolitana».
-- [ ] **Comuna chica (Independencia, Vitacura)** — llena el encuadre y **no se salta al nivel 3**.
-- [ ] **Entrar por rueda** (sin clic): baja de nivel **sin** seleccionar comuna → sin velo, miga en «Región Metropolitana», y **cero burbujas**.
-- [ ] **Clic en burbuja** → nivel 3 sobre sus puntos.
-- [ ] **Salir**: por miga, por `Esc` y alejando con la rueda. *(Conocido: en Colina el recorrido de rueda es casi nulo; miga y `Esc` deben funcionar.)*
-- [ ] **Alejar al máximo** no deja ver medio país: el suelo es z8,8.
-- [ ] **Volver a la región** muestra **el mismo encuadre** con que se entró (con Colina incluida), no el de la RM por defecto.
-- [ ] **Las placas no se congelan** al ir y volver de nivel 2 varias veces, ni quedan desordenadas ni bajo las migas.
+- [x] **Nivel 1** — comunas rellenas por carga, placa con «faltan N de M», punto rojo solo donde hay incidencia. Atribución correcta («© OpenStreetMap · Límites DPA 2023 · SUBDERE/INE»).
+- [x] **La comuna sin carga NO se pinta.** Exactamente **23 placas en el DOM** = las 23 comunas con carga; las otras 29 solo con su borde.
+- [x] **Entrar por clic** en una comuna: vuela, la **encuadra entera** y baja a nivel 2 con velo sobre el resto.
+- [x] **Comuna grande (Colina)** — cabe entera y **la selección se sostiene**; no vuelve sola a «Región Metropolitana». Verificado en el caso que antes fallaba.
+- [x] **Comuna chica (Vitacura)** — llena el encuadre y **no se salta al nivel 3**.
+- [x] **Entrar por rueda** (sin clic): z8,8 → 9,8 **sin** seleccionar comuna → velo en opacidad 0, miga en «Región Metropolitana», y **cero burbujas**. Sigue hasta nivel 3 y aparecen los puntos.
+- [x] **Clic en burbuja** → nivel 3 sobre sus puntos, miga «… / Puntos de entrega».
+- [x] **Salir**: por miga, alejando con la rueda (vuelve exacto a z8,8) y **por `Esc`** — este último tras el arreglo del **Hallazgo 2**. La miga intermedia además pasó a ser un botón de verdad.
+- [x] **Alejar al máximo** no deja ver medio país: `minZoom` del mapa es 8,8 y lo impone el propio MapLibre.
+- [x] **Volver a la región** muestra el mismo encuadre con que se entró (placas en posiciones idénticas) y, tras el **Hallazgo 1**, ese encuadre **sí incluye Puente Alto**.
+- [x] **Las placas no se congelan** al ir y volver de nivel 2 varias veces, ni quedan desordenadas ni bajo las migas. *(Las **burbujas** sí caen bajo las migas: no participan del des-solape porque van en el lienzo. Menor, anotado abajo.)*
+- [x] **Nivel y zoom no se desincronizan** al mover el mapa después de salir por la miga.
 
 ## 3. Puntos, burbujas y ficha
 
-- [ ] **Los cuatro estados del punto se distinguen**: pendiente, en ruta (anillo), entregado (apagado, **sin sombra**) e incidencia (rojo, encima de todo). ⚠️ *No se ha confirmado que los entregados se dibujen — es lo primero que hay que mirar acá.*
-- [ ] **Anillo ámbar** en los pendientes cerca del corte, y su cifra en la cabecera.
-- [ ] **La suma de las burbujas de una comuna = su pendiente en la placa.** Es la regla 5: si no cuadra, el mapa esconde carga.
-- [ ] **Abrir una burbuja de N** deja ver de dónde salen esos N: sus puntos en primer plano, el resto atenuado al 25 %, y el `+N` explicando la diferencia.
-- [ ] **Ficha anclada**: cola apuntando al punto, arriba por defecto, volteada si no cabe, recortada contra los bordes, y siguiendo al mapa al arrastrar.
-- [ ] **Paginador** en un edificio: `‹ 1/3 ›`, circular, con el enlace a Operaciones siguiendo a la página.
-- [ ] **Punto rojo junto al código** solo en el paquete con incidencia, y **la tarjeta no cambia de alto** al paginar.
-- [ ] **Previsualizaciones**: los entregados no se previsualizan, las incidencias asoman como píldora roja con su tipo, y ninguna sale cortada contra el borde.
-- [ ] **Al abrir una tarjeta las demás no se mueven**, y la del propio pedido no se ve duplicada.
-- [ ] **`Esc` cierra la ficha**; salir del nivel 3 la cierra sola.
+- [x] **Los cuatro estados del punto se distinguen** — **duda resuelta: los entregados SÍ se dibujan.** En Vitacura, por capa: `entregado` 8 (y solo `entregado`), `pendiente` 6, `en_ruta` 3, `incidencia` 3. La capa de sombra dibuja 12 = pendiente + en ruta + incidencia, y **excluye a los entregados**, que es exactamente el «apagado, sin sombra» especificado.
+- [x] **Anillo ámbar** en los pendientes cerca del corte: `tc-punto-corte` dibuja 9 (pendiente + en ruta), con su cifra en la cabecera.
+- [x] **La suma de las burbujas de una comuna = su pendiente en la placa.** Falló en el pase (Colina y Vitacura daban 18 contra 13) y quedó **arreglado**: Colina da ahora **13 = 13**. → **Hallazgo 3**, con la precisión de que el invariante vale para la carga *ubicable* (Puente Alto queda en 38 de 39 por un pedido sin geocodificar, que la pantalla ya declara).
+- [x] **Abrir una burbuja de N** deja ver de dónde salen esos N, y el `+N` explica la diferencia: la burbuja de 3 de Colina abre **un punto con «+2»** (un edificio de 3 paquetes). *(El atenuado al 25 % del resto no se midió por separado; el mecanismo existe y está probado — bandera `foraneo` = fuera de la celda abierta.)*
+- [x] **Ficha anclada**: arriba del punto por defecto, y **sigue al mapa al arrastrar** con precisión exacta (desplazamiento medido de (−80, −60) al mover la cámara 80/60). Posición estable entre páginas (x 529, y 225 en las tres).
+- [x] **Paginador** en un edificio: `‹ 1/3 ›`, **circular** (1/3 → 2/3 → 3/3 → 1/3), con **el enlace a Operaciones siguiendo a la página** (tres ids distintos).
+- [x] **Punto rojo junto al código** solo en el paquete con incidencia, y **la tarjeta no cambia de alto** al paginar. Falló en el pase (118 → 101 → 101) y quedó **arreglado**: 118 px y posición idénticos en las tres páginas. → **Hallazgo 4**.
+- [x] **Previsualizaciones**: ninguna de las mostradas corresponde a un punto entregado (7–8 entregados dibujados, 0 previsualizados), la incidencia asoma como **píldora roja con su tipo** («Problema de acceso»), y ninguna sale cortada contra el borde.
+- [x] **Al abrir una tarjeta las demás no se mueven** — medido: **0 de 2** previas cambiaron de `transform`. Y la del propio pedido **no** se ve duplicada.
+- [x] **`Esc` cierra la ficha** ✔ (y deja el nivel intacto, que es lo correcto acá).
+- [x] **HTML válido en la ficha abierta.** Falló en el pase (`<button>` anidados y un `<a href>` dentro de un `<button>`, con aviso de hidratación de React) y quedó **arreglado**: 0 y 0, consola limpia. → **Hallazgo 5**.
 
 ## 4. Panel, cifras y ola
 
-- [ ] **Tres pestañas**; el nivel sugiere cuál abre pero **la elección del usuario manda** al cambiar de nivel.
-- [ ] **Incidencias** — código, comuna, conductor y «hace N min», ordenadas de la más reciente.
-- [ ] **Conductores** — «N de M» durante el día y **«N sin entregar» después de las 23:00**. Se fuerza cambiando la hora del sistema o sembrando cierres tardíos.
-- [ ] **Comunas** — ordenadas por cuántas faltan; al hacer clic entra en la comuna.
-- [ ] **Cifras** — las cuatro magnitudes, tabular-nums, y «sin ubicar» declarado **una sola vez**.
-- [ ] **Ola** — aparece solo si hay uno dentro del horizonte; la más cercana desplegada y el resto en una línea. Si no hay, **no ocupa espacio**.
+- [x] **Tres pestañas**; el nivel sugiere cuál abre (entrar a una comuna abrió «Conductores», bajar a puntos abrió «Comunas») pero **la elección del usuario manda**: con «Comunas» elegida a mano, entrar en Vitacura no la cambió.
+- [x] **Incidencias** — código, comuna, conductor y antigüedad, ordenadas de la más reciente (8 h, 8 h, 8 h, 8 h, 9 h). Las edades en BD van de 565 a 590+ min, así que el orden es real y no un empate.
+- [x] **Conductores** — «N de M» durante el día («José Miguel Vega Morales 50 de 87»). *El caso «N sin entregar» tras las 23:00 no se forzó.*
+- [x] **Comunas** — ordenadas por cuántas faltan (61, 41, 39, 39, 39, 27, 26, 26, 25); al hacer clic entra en la comuna.
+- [x] **Cifras** — las cuatro magnitudes (487 de 1048 · 478 · 83 · 487) y «10 pedidos no se pudieron ubicar» declarado **una sola vez**.
+- [!] **Ola** — aparece con uno dentro del horizonte, la primera desplegada y el resto en una línea ✔, pero **la desplegada no es la de menos días**: «Día del Niño en 5 días» va desplegada sobre «Fecha doble 8.8 en 4 días». Es correcto (se ordena por `ventana.inicio`, la ventana de entregas, que para el Día del Niño ya está abierta) pero **la pantalla ordena por un criterio y muestra otro**. **NO se tocó**: el orden es el bueno y cambiar el texto es decisión de copy, no un arreglo. Queda para `copywriter`.
 
 ## 5. Fuera de la Torre — regresión de lo que se tocó
 
-- [ ] **`/operaciones` con los filtros nuevos**: comuna y conductor, solos y combinados con seller/estado/fecha, y conviviendo con «Direcciones por revisar».
-- [ ] **Los enlaces profundos llegan filtrados**: comuna → lista por comuna; conductor → lista por conductor; pedido e incidencia → **detalle** del pedido.
-- [ ] **El ancho amplio es solo de la Torre**: `/dashboard`, `/operaciones`, `/dinero/*`, `/conductores` y configuración conservan su `max-w-6xl`.
-- [ ] **Banda de la Torre en el dashboard**: aparece con carga o incidencias, **desaparece** si el día va bien, y **no rompe el dashboard** si la Torre falla.
-- [ ] **Portal del seller y app del conductor** siguen intactos (no se tocaron, pero comparten `AppShell` y `listarPedidos`).
+- [x] **`/operaciones` con los filtros nuevos**, contrastados contra la BD uno a uno: `?comuna=Providencia` → **58** (BD 58) · `?conductor=…009` → **87** (BD 87), y las 25 filas de la página 1 son todas suyas · `?comuna=Providencia&estado=en_ruta` → **20** (BD 20), un solo estado y una sola comuna · `?por_revisar=1` → **17** (BD 17) · `?por_revisar=1&comuna=Providencia` → **1** (BD 1). «Direcciones por revisar» descarta `fecha` y `estado` a propósito y conserva comuna y conductor, como dice su comentario.
+- [x] **Los enlaces profundos llegan filtrados**: comuna → lista por comuna; conductor → lista por conductor; pedido → **detalle** del pedido, que abre con su incidencia.
+- [x] **El ancho amplio es solo de la Torre**: `/dashboard`, `/operaciones`, `/dinero/periodos`, `/dinero/liquidaciones`, `/conductores`, `/onboarding` y `/configuracion/plan` conservan `max-w-6xl`; la Torre es la única con `max-w-[1600px]`.
+- [x] **Banda de la Torre en el dashboard**: aparece con carga o incidencias — «487 de 1048 por entregar · 83 incidencias abiertas · Día del Niño en 5 días», coherente con las cifras de la Torre y enlazando a `/torre-de-control`. *(«Desaparece si el día va bien» y «no rompe el dashboard si la Torre falla» no se forzaron.)*
+- [x] **Las 14 rutas del sidebar responden 200**, incluidas todas las de dinero y configuración.
+- [?] **Portal del seller y app del conductor** — no probados: exigen sesión de otro rol y habrían cortado la sesión de dueño a mitad del pase.
+- [x] **`/operaciones` singulariza.** Decía «1 pedidos» y ahora dice «1 pedido». → **Hallazgo 6**.
 
 ## 6. Permisos y aislamiento
 
-- [ ] **`ver_torre_control`**: dueño, supervisor y coordinador entran; **administración NO**.
-- [ ] **La Torre no escribe nada.** Ninguna acción de la pantalla debe producir una fila en `bitacora_auditoria`.
-- [ ] **Aislamiento multi-tenant**: con dos couriers sembrados, ninguna cifra, punto, incidencia ni conductor del otro aparece. *(El composer lee con `service_role`, así que el aislamiento depende del `.eq('tenant_id', …)` de cada consulta — es el punto a atacar.)*
-- [ ] **Datos personales**: en el payload de red (pestaña Network) **no** debe viajar dirección, nombre ni teléfono del destinatario, ni `tracking_token`.
+- [x] **`ver_torre_control`**, probado **en vivo con los cuatro roles**, no por lectura de código: dueño, supervisor y coordinador entran (payload de ~640 KB con `"total":1048`); **administración NO** — su sidebar no muestra la Torre y `/torre-de-control` devuelve 58 KB con «No tienes permiso para ver esta sección» y **cero datos** (sin `resumen`, sin `pendientes`, sin comunas, sin códigos de envío). ⚠️ Ojo al revisar: responde **200, no un redirect**; el 200 es la página de denegación.
+- [x] **La Torre no escribe nada.** 154 filas en `bitacora_auditoria` antes y después de ~6 cargas y de toda la navegación por niveles; la última entrada seguía siendo del día anterior.
+- [x] **Aislamiento multi-tenant** — probado sembrando un **courier intruso** (Andes Express) con 60 pedidos y 8 incidencias de HOY en 6 comunas compartidas con el tenant de demo: **0** apariciones en el payload (ni nombres, ni ids `bb00…`, ni su `tenant_id`) y `total` se mantuvo en **1.048**, no 1.108. La auditoría estática acompaña: de 15 consultas del composer, 13 llevan `.eq('tenant_id', …)`, una filtra `tenants` por `.eq('id', …)` y la única global es `contexto.eventos_comerciales`, que es el carve-out de datos de referencia. *(El fixture intruso se retiró al cerrar el pase.)*
+- [x] **Datos personales** — se sacaron muestras reales de la BD y se buscaron en los 665 KB del payload, data RSC incluida: **0 de 4** nombres de destinatario, **0 de 4** direcciones, **0 de 3** teléfonos (tampoco por patrón `+569…`), **0 de 3** `tracking_token` (ni siquiera aparece la clave). Los códigos de envío sí viajan, que es lo correcto.
 
 ## 7. Rendimiento — lo que decide si sirve en producción
 
-- [ ] **Tiempo hasta la primera cifra** y **hasta el mapa dibujado**, con el fixture de ~1.050 pedidos.
-- [ ] **Fluidez al arrastrar y hacer zoom** en nivel 3 con muchas previsualizaciones a la vista.
-- [ ] **Peso del payload** de `/torre-de-control` (el `pedidos[]` por punto lo engorda respecto de la versión anterior).
-- [ ] **Coste de las consultas**: son ~10 viajes a Supabase por carga, más los lotes de incidencias. Medir con volumen y ver si alguna necesita índice.
-- [ ] **Realtime**: con movimiento real de pedidos, comprobar que el `router.refresh()` no dispara más veces de las necesarias (debounce de 800 ms).
+- [x] **Tiempo hasta la primera cifra** — render de servidor tibio y estable en **880–1.010 ms** (4 medidas), TTFB 1.031 ms en la carga completa, DOMContentLoaded 1.443 ms. En dev, sin compilar.
+- [x] **Peso del payload** de `/torre-de-control`: **49 KB comprimidos** / 633–650 KB en claro, para 1.048 pedidos. No es el cuello.
+- [?] **Fluidez al arrastrar y hacer zoom** en nivel 3 — no medida con instrumentación; el arrastre y el zoom por rueda respondieron sin salto perceptible, pero eso no es un número.
+- [?] **Coste de las consultas** — no perfilado por consulta. El total de servidor (≈900 ms) acota el conjunto; falta ver si alguna pide índice.
+- [?] **Realtime** — no probado: exige mover pedidos de verdad mientras se observa.
 
 ## 8. Antes de desplegar a producción
 
-- [ ] **Publicar basemap y glifos al bucket de producción** y poner `NEXT_PUBLIC_MAPA_BASEMAP_URL` y `NEXT_PUBLIC_MAPA_GLIFOS_URL` en Vercel.
-- [ ] **Retirar de Vercel las variables muertas de OpenWeather** (`OPENWEATHER_API_KEY`, `OPENWEATHER_BASE_URL`, `CONTEXTO_CLIMA_PROVIDER`, `CONTEXTO_AIRE_PROVIDER`) y **revocar la API key**, que estuvo en texto plano.
-- [ ] **Decidir la segunda migración de la Vía A**: el `drop table` de las 7 tablas de `contexto` sigue pendiente a propósito, para poder revertir. Con la v2 verificada en vivo, decidir si se ejecuta.
-- [ ] **Sentry con DSN real** (`convenciones_codigo_gotchas`: está cableado, falta la variable) — con datos reales, un fallo mudo del mapa es caro.
-- [ ] **Comprobar que producción tiene pedidos geocodificados**: sin `geo_estado = 'resuelto'` el mapa aparece vacío y el contador de «sin ubicar» se dispara.
-- [ ] **Decidir la cifra «cerca del corte»** pasada la hora de corte (ver pendientes de la Vía C).
+- [ ] **Publicar basemap y glifos al bucket de producción** y poner `NEXT_PUBLIC_MAPA_BASEMAP_URL` y `NEXT_PUBLIC_MAPA_GLIFOS_URL` en Vercel. *(En local están los 6 objetos publicados y verificados.)*
+- [ ] **Retirar de Vercel las variables muertas de OpenWeather** y **revocar la API key**. *(Comprobado: en el repo no queda una sola referencia a OpenWeather bajo `src/` ni `scripts/`. Lo que falta es fuera del código.)*
+- [ ] **Decidir la segunda migración de la Vía A.** Siguen vivas 11 tablas en `contexto`, de las que solo `eventos_comerciales` la usa el composer. La migración de retiro sin `drop` es `20260803000001_contexto_torre_v2_retiro_sin_drop`.
+- [ ] **Sentry con DSN real** — sigue cableado y sin variable.
+- [ ] **Comprobar que producción tiene pedidos geocodificados.** *(En local, 1.038 de 1.048; los 10 restantes son justo los que alimentan el «sin ubicar», y se declaran bien.)*
+- [x] ~~**Decidir la cifra «cerca del corte»** pasada la hora de corte.~~ **DECIDIDO Y HECHO (2026-08-04):** cambia de rótulo a «Pasadas del corte», no se calla. Ver el hallazgo 7. *(El pase le había subido la prioridad: con los cortes reales del tenant —12:00, 14:00, 15:30— la cifra repetía a «faltan por entregar» desde media tarde, no solo al final del día.)*
+
+---
+
+## Hallazgos del pase — 2026-08-04
+
+> **Estado: los 6 arreglados y verificados el mismo día.** Cada hallazgo lleva su
+> nota de cierre. Verificación estándar tras los arreglos: typecheck limpio · lint
+> **0 errores** (151 warnings, los mismos preexistentes) · **2.196 pruebas verdes**
+> (8 nuevas) · comprobado en Chrome con la ventana visible.
+>
+> Dos decisiones de producto las tomó el usuario: la burbuja **deja de contar
+> incidencias**, y «cerca del corte» **cambia de rótulo** en vez de callarse.
+
+### 1. 🔴 El encuadre de entrada deja Puente Alto entero fuera de pantalla
+
+**Qué se ve.** Al abrir la Torre, Puente Alto —**81 pedidos, 39 pendientes, empatada
+en 3er lugar de 23 comunas**— no está dibujada. No es que le falte la placa: el
+polígono queda fuera del encuadre. Solo se descubre entrando a la pestaña
+«Comunas», que sí la lista.
+
+**Medición.** Borde sur del mapa **−33,556**; centroide de Puente Alto **−33,611**
+(sus pedidos, entre −33,600 y −33,622). Zoom **8,80 = `zoomMinimo`**, ya en el suelo.
+
+**No es falta de zoom, es centrado.** El mapa muestra 0,574° de latitud y los
+pedidos del día abarcan 0,486° (−33,622 a −33,136): **cabe de sobra**. Lo que pasa
+es que desperdicia **0,219° vacíos al norte** y recorta 0,055° al sur.
+
+**Causa raíz.** El encuadre une **cajas de polígonos**, no pedidos. La caja de
+Colina mide **0,401° ella sola** (llega a −32,942) y es casi toda secano rural sin
+un pedido: sus 30 están entre −33,261 y −33,136, o sea **0,194° de su caja están
+vacíos**. Esa cola infla la unión a 0,702°, no cabe en la caja de 864×435, choca
+contra `zoomMinimo` y el recorte se lo lleva el sur.
+
+**Ironía a tener presente:** es el mismo arreglo hecho para que **Colina** no
+desapareciera el que ahora expulsa a Puente Alto. La nota de la Vía C dice «encuadra
+la unión de las **cajas** de las comunas con carga» — ahí está el error.
+
+**Dirección del arreglo.** Encuadrar sobre la extensión de los **pedidos
+geocodificados**, no sobre las cajas de los polígonos. Con 0,486° contra los 0,574°
+disponibles entra todo sin tocar `zoomMinimo`.
+
+**Arrastre:** solo **5 de 23 placas** se dibujan. Las 18 restantes caen por
+`display:none`, entre ellas La Florida (39 pendientes), que sí está en cuadro pero
+a ~6 px del borde y el filtro es estricto sin tolerancia. Entre Puente Alto y La
+Florida son **78 pendientes — el 16 % del día — invisibles o sin rotular** al abrir
+la pantalla. Es regla 5 (el mapa nunca esconde carga).
+
+> ✅ **ARREGLADO.** `limitesDeLaCarga` une la caja de los **pedidos no entregados**
+> en vez de la de los polígonos, con respaldo a la caja de polígonos cuando no hay
+> ningún punto ubicado (día cerrado o geocodificación pendiente). Verificado en
+> carga limpia: zoom **8,80**, borde sur **−33,649**, y «Puente Alto · faltan 39 de
+> 82» **dibujada y rotulada** en el mapa. Con 4 pruebas nuevas, incluida una que
+> fija que el secano de una comuna grande no estira el encuadre.
+>
+> ⚠️ **Lo que NO arregla, y hay que saberlo:** la densidad de placas. Se pasó de 5
+> a 6 de 23, no a 23. Caben pocas etiquetas en una caja de 864×435 y el des-solape
+> reparte por carga descendente, que es la regla correcta. Lo que se arregló es que
+> la comuna **se dibuje**; que además tenga placa depende del espacio. Las 23 siguen
+> listadas en la pestaña «Comunas».
+
+### 2. 🟠 `Esc` no sale de nivel — y es la única salida prometida para Colina
+
+`Esc` está atado **solo a cerrar la ficha** (`ficha.tsx:529`, listener dentro del
+componente de la ficha). No existe manejador para salir de nivel: se probó dos veces
+en nivel 3 y las migas no se movieron.
+
+Importa por lo que ya estaba anotado en la Vía C: *«en Colina el margen entre su
+zoom de encuadre y `zoomMinimo` es tan estrecho que salir con la rueda casi no tiene
+recorrido; la miga y `Esc` sí funcionan»*. De las dos salidas prometidas **solo
+funciona la miga**, así que en la comuna más grande queda exactamente una.
+
+*(La miga sí funciona, y salir con la rueda devuelve exacto a z8,8. Detalle menor:
+al salir por la miga la cámara se queda en el zoom profundo — nivel 2 correcto,
+pero mirando una esquina a 12,3 en vez del encuadre de la comuna.)*
+
+> ✅ **ARREGLADO.** Se añadió `subirDeNivel()` en `torre.tsx` y un manejador de
+> `Escape` que **cede ante la ficha**: si hay una abierta la cierra su propio
+> listener y este no hace nada; el segundo `Esc` ya sube de nivel. Verificado en
+> vivo: `Esc` desde una comuna devolvió a la región (zoom 8,8, cero burbujas).
+>
+> De paso se cerraron dos cosas que aparecieron al mirarlo:
+> - **Al volver al nivel 2 se RE-ENCUADRA la comuna.** Antes la cámara se quedaba
+>   en el zoom de calle y el nivel decía «comuna» mientras la vista mostraba una
+>   esquina.
+> - **La miga intermedia era un `<span>` dentro de un `<nav>` con
+>   `pointer-events-none`**: el clic la atravesaba y llegaba al mapa, así que
+>   «salir por la miga» funcionaba por un efecto lateral del clic en el lienzo, no
+>   porque la miga hiciera algo. Ahora es un botón de verdad — y solo en el nivel 3,
+>   que es cuando lleva a alguna parte.
+
+### 3. 🟠 La suma de las burbujas no da el pendiente de la placa
+
+`derivar.ts:12` declara el invariante: *«La suma de lo dibujado da el pendiente de
+la comuna (regla 5)»*, y tiene prueba. **No se cumple, y es sistemático:**
+
+| Comuna | Burbujas | Placa |
+|---|---|---|
+| Colina | **18** | 13 |
+| Vitacura | **18** (5+13) | 13 |
+
+**Dos causas, ambas medidas.** Desglose de Vitacura — registro: 13 pendientes + 10
+entregados + 3 incidencias = 26; mapa: 11 (6 pendiente + 5 en ruta) + 8 entregado +
+7 incidencia = 26.
+
+1. **Edificios mixtos (+2).** `geoAgrupaciones` hace `celda.cantidad +=
+   p.pedidos.length`, o sea suma **todos** los paquetes de una ubicación no
+   entregada, aunque cada paquete tenga su propio estado. En Vitacura hay **2
+   paquetes entregados** viviendo en puntos clasificados como no entregados.
+   `PedidoEnPunto` ya lleva `estado`, así que el arreglo es local: filtrar por el
+   estado de cada paquete en vez de contar el largo del arreglo.
+2. **Incidencias.** La burbuja cuenta todo lo que no sea `entregado`, incluidas las
+   3 incidencias; la placa («faltan N») las excluye, porque `fallido` es estado
+   cerrado. Esta mitad es **definicional**, no aritmética: hay que decidir si una
+   entrega fallida «falta» o no, y alinear las dos cifras.
+
+El error va hacia arriba (18 > 13), así que el mapa **no esconde** carga — la infla.
+Pero el invariante está escrito y roto.
+
+> ✅ **ARREGLADO.** `geoAgrupaciones` cuenta **paquete por paquete con el estado de
+> cada uno** (`cuentaComoPendiente`, que replica la definición de `agregacion.ts`)
+> en vez de `pedidos.length` sobre los puntos no entregados. Por decisión del
+> usuario, **la incidencia tampoco burbujea**: un `fallido` ya se intentó y no
+> vuelve a salir hoy, así que sale de la burbuja igual que sale de «faltan». La
+> señal no se pierde — conserva su punto rojo en la placa de la comuna y su punto
+> rojo propio en el nivel 3.
+>
+> Verificado con dato real: **Colina da 13 = 13** (era 18). Con 5 pruebas nuevas,
+> incluida la del edificio de estados mezclados y la que fija que el `+N` del punto
+> NO se reduce —porque responde «cuántos hay en esta dirección», no «cuántos
+> faltan»—.
+>
+> ⚠️ **Precisión del invariante, encontrada al verificar:** `Σ burbujas ===
+> pendientes` vale para la carga **ubicable**. Puente Alto dio 38 contra 39, y la
+> diferencia es exactamente **1 pedido sin geocodificar**: cuenta en la placa y no
+> tiene punto que dibujar. No es un descuadre nuevo — es la cifra que la pantalla
+> ya declara arriba («10 pedidos no se pudieron ubicar…»), vista desde una comuna.
+> Colina y Vitacura, con 0 sin ubicar, cuadran exacto.
+
+*(Menor, del mismo bloque: dos burbujas de celdas vecinas pueden quedar a 11 px una
+de otra y taparse —«13» y «5» encimados en Vitacura—, porque el centro es el
+promedio de sus puntos y las burbujas no tienen des-solape. Y una burbuja puede caer
+bajo las migas: el des-solape reserva esa caja para las placas, pero las burbujas van
+en el lienzo de MapLibre y no participan.)*
+
+### 4. 🟡 La ficha cambia de alto al paginar
+
+Medido sobre un edificio de 3 en Vitacura: **118 → 101 → 101 px**. La Vía C afirma
+*«alto 118 px y posición idénticos en las tres páginas»*.
+
+La posición **sí** es idéntica (x 529, y 225 en las tres). Lo que cambia es el alto,
+y **no por la incidencia** —ese arreglo funciona, el chip pasó a ser un punto junto
+al código— sino porque **las páginas 2 y 3 no traen línea de conductor**: sus dos
+pedidos están en `pendiente_asignacion` y de verdad no tienen conductor. Dato
+correcto, no hay bug de datos.
+
+`altoDe()` **sí** calcula el máximo de líneas entre los pedidos del punto, tal como
+está documentado, pero se usa para **posicionar** (`colocar(...)`) y no se aplica
+como alto del elemento — por eso la posición es estable y el tamaño no. El comentario
+de `ficha.tsx:466` («el alto no cambia al pasar de página») solo vale si todos los
+paquetes traen las mismas líneas opcionales. Cosmético: la tarjeta se encoge alejándose
+del punto, no lo tapa.
+
+> ✅ **ARREGLADO.** Con paginador, la tarjeta **reserva en blanco** las líneas
+> opcionales que necesite cualquier pedido del punto (conductor, seller, intento).
+> Se reserva con una línea vacía y no con un `min-height` calculado, para que el
+> alto lo fije el DOM con las métricas reales de la fuente en vez de un número que
+> hay que mantener a mano cada vez que cambia un `text-[11px]`.
+>
+> Verificado en vivo sobre un edificio de 3: **118 px y posición (610, 304)
+> idénticos en las tres páginas**, y circular.
+
+### 5. 🟡 HTML inválido en la ficha: `<button>` dentro de `<button>`
+
+React lo reporta en el overlay de dev: *«In HTML, `<button>` cannot be a descendant
+of `<button>`. This will cause a hydration error.»*
+
+La tarjeta entera va envuelta en `<button onClick={onCerrar}>` y dentro renderiza
+**2 botones** («Paquete anterior/Siguiente de esta dirección») más **1 `<a href>`**
+(«Ver en Operaciones»). Los botones solo aparecen en puntos agrupados —por eso no
+había salido antes—, pero **el enlace está en toda ficha**, así que el anidamiento
+inválido afecta a todas. Además de la hidratación, es un problema de accesibilidad:
+controles interactivos anidados no tienen semántica definida para teclado ni lector.
+
+> ✅ **ARREGLADO.** El envoltorio pasa de `<button>` a `<div>` con su `onClick`.
+> Cerrar con el clic se conserva como atajo de ratón; la vía accesible es `Esc`,
+> que ya cerraba la ficha, así que el contenedor no necesita ser enfocable — y si
+> lo fuera, volvería a meter un control alrededor de otros dos.
+>
+> Verificado con la ficha abierta: **0 botones anidados, 0 enlaces dentro de botón**,
+> y el overlay de dev sin errores.
+
+### 6. 🟡 `/operaciones` dice «1 pedidos»
+
+`(tenant)/operaciones/page.tsx:382` interpola `` `${totalPedidos} pedidos` `` sin
+singularizar. Se llega justo desde la Torre: un enlace profundo con comuna + «por
+revisar» cae en un solo resultado.
+
+> ✅ **ARREGLADO.** Verificado en `/operaciones?por_revisar=1&comuna=Providencia`:
+> ahora dice «1 pedido».
+
+### 7. ✅ «Cerca del corte» cambia de rótulo pasada la hora
+
+Decisión del usuario (2026-08-04): la cifra no cambia, cambia lo que dice. Se añadió
+`corte.vencido` al contrato, calculado en el SERVIDOR con el mismo `ahoraMinutos`
+que el resto —derivarlo en el cliente comparando con `hora` reintroduciría una zona
+horaria en el navegador, que es justo lo que este contrato evita—. Con el corte
+vencido la magnitud pasa de «Cerca del corte» a **«Pasadas del corte»**: deja de ser
+una repetición muda de «faltan por entregar» y se vuelve una declaración de atraso.
+
+Verificado en pantalla a las 21:0x de Santiago, con los cortes del tenant en 12:00,
+14:00 y 15:30.
+
+### Menores que se dejan anotados y NO se tocaron
+
+Los dos son de las burbujas, que se dibujan en el lienzo de MapLibre y no
+participan del des-solape en DOM de las placas:
+
+- **Dos burbujas de celdas vecinas pueden quedar a ~11 px y taparse** («13» y «5»
+  encimados en Vitacura). El centro de la burbuja es el promedio de sus puntos, así
+  que dos celdas cuya carga se apiña contra el borde común producen centros casi
+  iguales. Se separan al acercarse.
+- **Una burbuja puede caer bajo las migas.** El des-solape reserva esa caja
+  (`data-reserva-placas`) para las placas, pero la burbuja va en el lienzo.
+
+Se dejan a propósito: la salida obvia —descartar la burbuja que choca— **escondería
+carga**, que es exactamente lo que la regla 5 prohíbe, y mover el centro reabre el
+bug de «burbujas fuera del polígono» que costó recalcular los radios del fixture.
+Ninguno de los dos impide leer la cifra, y los dos se resuelven acercándose.
+
+### Dos sustos que resultaron correctos
+
+- **`incidenciasAbiertas: 83` con 55 `abierta` en BD.** `ESTADOS_INCIDENCIA_ABIERTA
+  = ['abierta','en_gestion']`, y 55 + 28 = 83. Una sola definición compartida. Vale
+  anotar que el rótulo dice «abiertas» y en BD `abierta` es un estado más estrecho.
+- **`por_revisar=1` da 17 y no 10.** El modo descarta `fecha` y `estado` a propósito
+  y lo dice en un comentario. El error fue de la consulta de contraste.
+
+### Corrección al propio checklist
+
+El aviso de §0 sobre la ventana visible describe un síntoma menor (18 de 30 capas) y
+oculta el grave: **sin composición la Torre no sale del esqueleto de `loading.tsx`**.
+Ya está reescrito arriba. Se añadió también la trampa de `current_date` en UTC.
 
 ---
 

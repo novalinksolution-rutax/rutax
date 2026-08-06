@@ -418,6 +418,20 @@ export interface EstadoTorre {
   /** Las próximas 2 o 3. Vacío cuando no hay ninguna en el horizonte. */
   olas: OlaEntrante[];
   frescura: FrescuraTorre;
-  /** Hora de corte aplicable, y si el día ya cerró (F13 cambia de lectura ahí). */
-  corte: { hora: string | null; diaCerrado: boolean };
+  /**
+   * Hora de corte aplicable, si el día ya cerró (F13 cambia de lectura ahí) y si
+   * el corte YA VENCIÓ.
+   *
+   * `vencido` existe porque pasada la hora `minutosHastaCorte` devuelve 0 y todo
+   * lo pendiente cae dentro del margen de riesgo: la cuarta magnitud pasa a
+   * repetir exacto a «faltan por entregar» y deja de informar. Con los cortes
+   * reales de un courier same-day (mediodía y media tarde) eso ocurre durante
+   * buena parte de la jornada, no solo al final. La cifra no cambia — cambia el
+   * rótulo, que pasa a decir «pasadas del corte».
+   *
+   * Se calcula en el SERVIDOR, con el mismo `ahoraMinutos` que alimenta el resto
+   * del cálculo. Derivarlo en el cliente comparando con `hora` reintroduciría una
+   * zona horaria en el navegador, que es justo lo que este contrato evita.
+   */
+  corte: { hora: string | null; diaCerrado: boolean; vencido: boolean };
 }

@@ -375,6 +375,10 @@ export const cargarTablero = cache(async function cargarTablero(
     corte: {
       hora: primeraHoraDeCorte(ventanasCorte),
       diaCerrado: cerrado,
+      // `zonaId: null` = las ventanas que aplican a todo el courier, el mismo
+      // criterio que `primeraHoraDeCorte`. `0` significa vencido: la función
+      // trunca en cero a propósito, más allá del corte la urgencia no crece.
+      vencido: minutosHastaCorte(ventanasCorte, null, ahoraMinutos) === 0,
     },
   });
 });

@@ -156,6 +156,8 @@ export const esquemaEstadoTorre: z.ZodType<EstadoTorre> = z.object({
     /** Hora local `HH:MM`, o `null` si el courier no configuró ninguna. */
     hora: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
     diaCerrado: z.boolean(),
+    /** El corte más temprano ya venció: la cifra de riesgo cambia de rótulo. */
+    vencido: z.boolean(),
   }),
 });
 

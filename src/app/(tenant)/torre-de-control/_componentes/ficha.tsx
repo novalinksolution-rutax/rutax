@@ -235,6 +235,28 @@ function Tarjeta({
     onIndice?.((indice + paso + total) % total);
   };
 
+  /**
+   * Qué líneas opcionales RESERVA la tarjeta mientras se pagina.
+   *
+   * `altoDe()` ya calculaba el máximo del punto, pero solo para COLOCAR la
+   * tarjeta: nada fijaba el alto del elemento, así que el alto real seguía al
+   * contenido de cada página. Medido en el fixture: 118 px en la página con
+   * conductor y 101 px en las dos sin él — la tarjeta se encogía sola bajo el
+   * cursor. (No era la incidencia: ésa ya dejó de ocupar línea propia.)
+   *
+   * Se reserva con una línea en blanco y no con un `min-height` calculado, para
+   * que el alto lo fije el DOM con las métricas reales de la fuente en vez de un
+   * número que hay que mantener a mano cada vez que cambia un `text-[11px]`.
+   *
+   * Solo aplica con paginador: sin él la tarjeta muestra un pedido y ya, y una
+   * línea vacía sería un hueco sin motivo.
+   */
+  const reserva = {
+    conductor: paginable && punto.pedidos.some((p) => p.conductorNombre !== null),
+    seller: paginable && punto.pedidos.some((p) => p.sellerNombre !== null),
+    intento: paginable && punto.pedidos.some((p) => p.intentosPrevios > 0),
+  };
+
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-card px-2.5 py-2 shadow-md">
       <div className="flex items-center gap-1.5">
@@ -268,10 +290,18 @@ function Tarjeta({
         <p className="truncate text-[11px] leading-tight text-muted-foreground">
           {pedido.conductorNombre}
         </p>
+      ) : reserva.conductor ? (
+        <p className="text-[11px] leading-tight" aria-hidden="true">
+          &nbsp;
+        </p>
       ) : null}
       {pedido.sellerNombre ? (
         <p className="truncate text-[11px] leading-tight text-muted-foreground">
           {pedido.sellerNombre}
+        </p>
+      ) : reserva.seller ? (
+        <p className="text-[11px] leading-tight" aria-hidden="true">
+          &nbsp;
         </p>
       ) : null}
       {/* Callada cuando no hay historial: la mayoría de los paquetes va en su
@@ -279,6 +309,10 @@ function Tarjeta({
       {pedido.intentosPrevios > 0 ? (
         <p className="text-[11px] leading-tight font-medium text-warning-subtle-foreground">
           {pedido.intentosPrevios + 1}º intento
+        </p>
+      ) : reserva.intento ? (
+        <p className="text-[11px] leading-tight" aria-hidden="true">
+          &nbsp;
         </p>
       ) : null}
 
@@ -639,18 +673,28 @@ export function CapaFichas({
             zIndex: 3,
           }}
         >
-          <button type="button" className="block w-full text-left" onClick={onCerrar}>
-            <span className="relative block">
-              <Tarjeta
-                punto={fichaAbierta.punto}
-                indice={indicePagina}
-                etiquetasIncidencia={etiquetasIncidencia}
-                completa
-                onIndice={irAPagina}
-              />
-              <Cola abajo={fichaAbierta.caja.abajo} x={fichaAbierta.caja.colaX} />
-            </span>
-          </button>
+          {/*
+            ⚠️ **Un `<div>` y no un `<button>`.** La tarjeta abierta contiene las
+            dos flechas del paginador y el enlace a Operaciones, y `<button>`
+            dentro de `<button>` —o un `<a>` dentro de un `<button>`— es HTML
+            inválido: React avisa de error de hidratación, y para teclado y
+            lector de pantalla un control anidado no tiene semántica definida.
+
+            Cerrar con el clic se conserva como atajo de ratón. La vía accesible
+            es `Esc`, que ya cierra la ficha (ver el efecto de arriba), así que no
+            hace falta que este contenedor sea enfocable — y si lo fuera, volvería
+            a meter un control alrededor de otros dos.
+          */}
+          <div className="relative block w-full text-left" onClick={onCerrar}>
+            <Tarjeta
+              punto={fichaAbierta.punto}
+              indice={indicePagina}
+              etiquetasIncidencia={etiquetasIncidencia}
+              completa
+              onIndice={irAPagina}
+            />
+            <Cola abajo={fichaAbierta.caja.abajo} x={fichaAbierta.caja.colaX} />
+          </div>
         </div>
       ) : null}
     </div>

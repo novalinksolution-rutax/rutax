@@ -379,7 +379,7 @@ export default async function PaginaOperaciones({
         <DataTable
           toolbar={
             <span className="text-sm text-muted-foreground tabular-nums">
-              {errorCarga ? "—" : `${totalPedidos} pedidos`}
+              {errorCarga ? "—" : `${totalPedidos} ${totalPedidos === 1 ? "pedido" : "pedidos"}`}
             </span>
           }
           footer={

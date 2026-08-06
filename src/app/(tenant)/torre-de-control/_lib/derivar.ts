@@ -10,10 +10,16 @@
  * Dos invariantes que se rompen fácil y que tienen prueba:
  *
  *   1. **La suma de lo dibujado da el pendiente de la comuna** (regla 5 del
- *      alcance). Un punto con `agrupados: 3` vale por TRES pedidos, así que la
- *      burbuja que lo contiene tiene que sumar 3 y no 1. Contando puntos en vez
- *      de pedidos, la suma de las burbujas queda por debajo de la cifra de la
- *      placa y el mapa esconde carga.
+ *      alcance): `Σ burbujas === comuna.pendientes`. Se cuenta **paquete por
+ *      paquete con el estado de cada uno** (`cuentaComoPendiente`), ni por puntos
+ *      ni por `pedidos.length`. Contar puntos deja la suma por debajo de la placa
+ *      y el mapa esconde carga; contar `pedidos.length` la deja por encima,
+ *      porque un punto se clasifica por su representante y arrastra a la burbuja
+ *      los paquetes ya entregados del mismo portal. Los dos errores se cometieron.
+ *
+ *      Ojo con el `+N` del punto: ése SÍ es `pedidos.length`, y a propósito —
+ *      responde «cuántos paquetes hay en esta dirección», no «cuántos faltan».
+ *      Por eso la suma de los `+N` de una celda puede superar a su burbuja.
  *   2. **La geometría no depende del conteo.** Las comunas se dibujan siempre,
  *      con pedidos o sin ellos; lo que varía es el paso de la rampa. Ver
  *      `geometria.ts`.
@@ -119,21 +125,37 @@ export function geoComunas(
 }
 
 /**
- * La caja que contiene TODAS las comunas con carga hoy.
+ * La caja que contiene TODA la carga que sigue en la calle hoy.
  *
  * ⚠️ **El encuadre de entrada no puede ser una constante.** `ENCUADRE_RM` está
  * centrado en el Gran Santiago; un courier que reparte en Colina, Buin o
  * Melipilla tiene esa carga fuera de pantalla, y una comuna con 30 pendientes
  * que no se dibuja es el mapa escondiendo carga — regla 5 del alcance.
  *
- * Se une la caja de los POLÍGONOS y no la de los centroides: una comuna grande
- * cabe entera, no solo su centro. Devuelve `null` cuando no hay nada que
- * encuadrar —día sin pedidos, o geometría aún sin cargar— y ahí manda el
- * encuadre por defecto de la RM.
+ * ⚠️ **Se une la caja de los PEDIDOS, no la de los polígonos**, y esto costó un
+ * bug en producción de QA. La primera versión unía `limitesDe(geometria)` con un
+ * argumento razonable —«una comuna grande cabe entera, no solo su centro»— pero
+ * una comuna periurbana arrastra kilómetros de secano sin un solo pedido: la caja
+ * de Colina mide 0,40° de latitud ella sola y llega hasta −32,94, mientras sus 30
+ * pedidos viven entre −33,26 y −33,14. Esos 0,19° vacíos inflaban la unión hasta
+ * no caber en el lienzo, el ajuste chocaba contra `zoomMinimo` y **el recorte se
+ * lo llevaba el sur**: Puente Alto, con 39 pendientes, quedaba entero fuera de
+ * pantalla. El mapa escondía carga por culpa del arreglo que existía para no
+ * esconderla.
+ *
+ * Encuadrar los pedidos resuelve las dos cosas a la vez: la comuna periférica
+ * entra (sus pedidos están dentro) y el secano vacío deja de pedir espacio.
+ *
+ * Se toman los puntos **no entregados**, que son los que el mapa dibuja como
+ * carga viva. Si no queda ninguno ubicado —día ya cerrado, o geocodificación
+ * pendiente— se cae a la caja de los polígonos de las comunas con pendientes,
+ * que es peor encuadre pero nunca deja la pantalla sin nada. Devuelve `null` solo
+ * cuando tampoco hay eso, y ahí manda el encuadre por defecto de la RM.
  */
 export function limitesDeLaCarga(
   geometrias: MapaGeometrias,
   comunas: readonly ComunaEnTorre[],
+  puntos: readonly PuntoEntrega[] = [],
 ): [[number, number], [number, number]] | null {
   let oeste = Infinity;
   let sur = Infinity;
@@ -141,16 +163,29 @@ export function limitesDeLaCarga(
   let norte = -Infinity;
   let hubo = false;
 
-  for (const comuna of comunas) {
-    if (comuna.pendientes === 0) continue;
-    const geometria = geometrias.get(claveComuna(comuna.nombre));
-    if (!geometria) continue;
-    const [[o, s], [e, n]] = limitesDe(geometria);
-    if (o < oeste) oeste = o;
-    if (s < sur) sur = s;
-    if (e > este) este = e;
-    if (n > norte) norte = n;
+  for (const punto of puntos) {
+    if (punto.estado === 'entregado') continue;
+    const { lat, long } = punto.posicion;
+    if (long < oeste) oeste = long;
+    if (lat < sur) sur = lat;
+    if (long > este) este = long;
+    if (lat > norte) norte = lat;
     hubo = true;
+  }
+
+  // Respaldo: sin puntos vivos ubicados, la caja de los polígonos con carga.
+  if (!hubo) {
+    for (const comuna of comunas) {
+      if (comuna.pendientes === 0) continue;
+      const geometria = geometrias.get(claveComuna(comuna.nombre));
+      if (!geometria) continue;
+      const [[o, s], [e, n]] = limitesDe(geometria);
+      if (o < oeste) oeste = o;
+      if (s < sur) sur = s;
+      if (e > este) este = e;
+      if (n > norte) norte = n;
+      hubo = true;
+    }
   }
 
   return hubo
@@ -249,6 +284,19 @@ export function celdaDe(posicion: { lat: number; long: number }): string {
   return `${Math.floor(posicion.long / LADO_CELDA_GRADOS)}:${Math.floor(posicion.lat / LADO_CELDA_GRADOS)}`;
 }
 
+/**
+ * ¿Este paquete cuenta como carga que todavía falta por entregar?
+ *
+ * Es la MISMA definición que usa `comuna.pendientes` en el servidor
+ * (`agregacion.ts`: `entregado` y `fallido` son estados cerrados), reescrita acá
+ * en los términos del mapa. Que las dos definiciones coincidan es lo que sostiene
+ * el invariante 1: si alguien las separa, la suma de las burbujas deja de dar la
+ * cifra de la placa y el mapa empieza a mentir sobre la carga.
+ */
+export function cuentaComoPendiente(estado: PuntoEntrega['estado']): boolean {
+  return estado !== 'entregado' && estado !== 'incidencia';
+}
+
 export interface PropiedadesAgrupacion {
   /** Cuántos PEDIDOS, no cuántos puntos. Ver el invariante 1 del encabezado. */
   cantidad: number;
@@ -275,6 +323,22 @@ export interface PropiedadesAgrupacion {
  * **Los entregados no burbujean**: el nivel 2 existe para decidir dónde hay que
  * ir, y lo ya entregado no pide ir a ninguna parte. Es coherente con la placa,
  * que también cuenta lo que falta.
+ *
+ * ⚠️ **Se cuenta paquete por paquete, con el estado de CADA UNO**, y esto es el
+ * invariante 1 del encabezado. Contar `pedidos.length` sobre los puntos «no
+ * entregados» —como hacía la primera versión— parece equivalente y no lo es: un
+ * punto se clasifica por su pedido REPRESENTANTE, así que un portal con tres
+ * paquetes de los que uno sigue pendiente y dos ya se entregaron sumaba 3 a la
+ * burbuja mientras la placa contaba 1. Medido en el fixture: la burbuja daba 18
+ * donde la placa decía 13, en dos comunas distintas.
+ *
+ * **La incidencia tampoco burbujea** (decisión de producto, 2026-08-04). Un
+ * `fallido` ya se intentó y no vuelve a salir hoy: la placa no lo cuenta en
+ * «faltan», así que la burbuja tampoco. La señal no se pierde — la incidencia
+ * sigue teniendo su punto rojo en la placa de la comuna y su punto rojo propio en
+ * el nivel 3, que es donde se actúa sobre ella.
+ *
+ * Con las dos reglas, `Σ burbujas === comuna.pendientes`. Hay prueba.
  */
 export function geoAgrupaciones(
   puntos: readonly PuntoEntrega[],
@@ -285,14 +349,15 @@ export function geoAgrupaciones(
   const celdas = new Map<string, { x: number; y: number; puntos: number; cantidad: number }>();
 
   for (const p of puntos) {
-    if (p.estado === 'entregado') continue;
+    // Paquete por paquete y con SU estado, no el del representante del punto.
+    const cuentan = p.pedidos.filter((q) => cuentaComoPendiente(q.estado)).length;
+    if (cuentan === 0) continue;
     const clave = celdaDe(p.posicion);
     const celda = celdas.get(clave) ?? { x: 0, y: 0, puntos: 0, cantidad: 0 };
     celda.x += p.posicion.long;
     celda.y += p.posicion.lat;
     celda.puntos += 1;
-    // `agrupados` y no 1: un punto de edificio vale por todos sus pedidos.
-    celda.cantidad += p.pedidos.length;
+    celda.cantidad += cuentan;
     celdas.set(clave, celda);
   }
 

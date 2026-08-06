@@ -99,22 +99,22 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
   const encuadrarLaCarga = useCallback(
     (duracion: number) => {
       if (!controles) return;
-      const limites = geometrias ? limitesDeLaCarga(geometrias, estado.comunas) : null;
+      const limites = geometrias ? limitesDeLaCarga(geometrias, estado.comunas, estado.puntos) : null;
       if (limites) controles.encuadrarRegion(limites, duracion);
       // Día sin carga, o geometría aún sin cargar: el encuadre por defecto de la
       // RM. Es el único caso en que la constante sigue mandando.
       else controles.volarA(ENCUADRE_RM.centro, ZOOM_DESTINO.region, duracion);
     },
-    [controles, geometrias, estado.comunas],
+    [controles, geometrias, estado.comunas, estado.puntos],
   );
 
   const yaEncuadrado = useRef(false);
   useEffect(() => {
     if (yaEncuadrado.current || !geometrias || !controles) return;
-    if (!limitesDeLaCarga(geometrias, estado.comunas)) return;
+    if (!limitesDeLaCarga(geometrias, estado.comunas, estado.puntos)) return;
     yaEncuadrado.current = true;
     encuadrarLaCarga(0);
-  }, [geometrias, controles, estado.comunas, encuadrarLaCarga]);
+  }, [geometrias, controles, estado.comunas, estado.puntos, encuadrarLaCarga]);
 
   // --- Pantalla completa -----------------------------------------------------
   useEffect(() => {
@@ -181,6 +181,44 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
   // deja ver un frame con la atenuación puesta en el nivel equivocado.
   const celdaVisible = nivel === 'punto' ? celdaAbierta : null;
 
+  /**
+   * Subir un escalón del zoom semántico: puntos → comuna → región.
+   *
+   * Al volver al nivel 2 se RE-ENCUADRA la comuna. Sin eso la cámara se queda en
+   * el zoom de calle con el que se entró al nivel 3 y el usuario aterriza mirando
+   * una esquina, con las burbujas repartidas fuera de cuadro: el nivel dice
+   * «comuna» y la vista no.
+   */
+  const subirDeNivel = useCallback(() => {
+    if (nivel === 'punto') {
+      setPuntoAbierto(null);
+      setCeldaAbierta(null);
+      setNivel('agrupacion');
+      const geometria = comunaActiva ? geometrias?.get(claveComuna(comunaActiva)) : null;
+      if (geometria && controles) controles.encuadrarEn(limitesDe(geometria));
+      return;
+    }
+    if (comunaActiva) volverALaRegion();
+  }, [nivel, comunaActiva, geometrias, controles, volverALaRegion]);
+
+  /**
+   * `Esc` sale del nivel. Antes solo cerraba la ficha, y la salida por rueda casi
+   * no tiene recorrido en las comunas grandes (Colina entra a z≈9,5 con el suelo
+   * en 8,8), así que quedaba una sola forma de salir: la miga.
+   *
+   * **Cede ante la ficha.** Si hay una abierta, su propio `Esc` la cierra y este
+   * no hace nada — un solo `Esc` no puede cerrar la tarjeta y cambiar el nivel a
+   * la vez. El segundo `Esc` ya sube.
+   */
+  useEffect(() => {
+    const alPresionar = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || puntoVisible) return;
+      subirDeNivel();
+    };
+    window.addEventListener('keydown', alPresionar);
+    return () => window.removeEventListener('keydown', alPresionar);
+  }, [puntoVisible, subirDeNivel]);
+
   const etiquetasIncidencia = new Map(
     estado.incidencias.map((i) => [i.pedidoId, i.etiqueta] as const),
   );
@@ -214,7 +252,7 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
 
       <BandaOlas olas={estado.olas} />
 
-      <CifrasTorre resumen={estado.resumen} frescura={estado.frescura} />
+      <CifrasTorre resumen={estado.resumen} frescura={estado.frescura} corte={estado.corte} />
 
       {/* La región cartográfica. `< lg` el mapa se retira entero y manda la
           lista: con el panel de 340 px fijos el mapa caía a 124 px a 768, que no
@@ -298,9 +336,29 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                   {comunaActiva ? (
                     <>
                       <span className="text-muted-foreground">/</span>
-                      <span className="rounded-md border border-border bg-card/90 px-2 py-1 font-medium backdrop-blur-[2px]">
-                        {comunaActiva}
-                      </span>
+                      {/*
+                        Navegable solo desde el nivel 3, que es cuando queda algo
+                        por encima. En el nivel 2 es el sitio donde ya estás, y un
+                        botón que no lleva a ninguna parte miente.
+
+                        Antes era siempre un `<span>` dentro de un `<nav>` con
+                        `pointer-events-none`: el clic atravesaba la miga y llegaba
+                        al mapa, así que «salir por la miga» parecía funcionar por
+                        un efecto lateral del clic en el lienzo.
+                      */}
+                      {nivel === 'punto' ? (
+                        <button
+                          type="button"
+                          onClick={subirDeNivel}
+                          className="pointer-events-auto rounded-md border border-border bg-card/90 px-2 py-1 font-medium backdrop-blur-[2px] transition-colors hover:bg-card"
+                        >
+                          {comunaActiva}
+                        </button>
+                      ) : (
+                        <span className="rounded-md border border-border bg-card/90 px-2 py-1 font-medium backdrop-blur-[2px]">
+                          {comunaActiva}
+                        </span>
+                      )}
                     </>
                   ) : null}
                   {nivel === 'punto' ? (
