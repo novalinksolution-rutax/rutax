@@ -28,6 +28,9 @@ const CATEGORIA_POR_TIPO: Record<TipoDiferenciaConciliacion, CategoriaNegocioCon
   pagado_conductor_sin_cobro_seller: 'fuga_ingreso',
   reprogramacion_no_cobrada: 'fuga_ingreso',
   minimo_omitido: 'fuga_ingreso',
+  // Una línea sin período no entra en ninguna factura: es ingreso que se pierde,
+  // no un dato feo. Por eso `fuga_ingreso` (SLA 3 días) y no `integridad_datos`.
+  linea_cobro_sin_periodo: 'fuga_ingreso',
 
   pago_seller_faltante: 'pagos_pendientes',
   pago_conductor_faltante: 'pagos_pendientes',
@@ -68,6 +71,9 @@ const ACCION_POR_TIPO: Record<TipoDiferenciaConciliacion, AccionSugeridaConcilia
   pago_conductor_faltante: 'gestionar_pago_conductor',
   payout_revertido_post_confirmacion: 'gestionar_pago_conductor',
   payout_estado_no_reconocido: 'revisar_estado_externo',
+  // Mismo remedio que `periodo_cerrado_con_lineas_sueltas`: la línea existe y es
+  // correcta, lo que falta es colgarla de un período que se pueda facturar.
+  linea_cobro_sin_periodo: 'reasignar_lineas_a_periodo',
 };
 
 /** Mapeo fijo `tipoDiferencia → accionSugerida` — espejo del backfill SQL §4.1. */

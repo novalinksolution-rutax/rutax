@@ -59,7 +59,14 @@ export type TipoDiferenciaConciliacion =
   // mutación financiera — NO es un pago pendiente, requiere revisión humana
   // del estado externo. Separado de `payout_revertido_post_confirmacion` por
   // recomendación de QA (categorías/acciones semánticamente distintas).
-  | 'payout_estado_no_reconocido';
+  | 'payout_estado_no_reconocido'
+  // Integridad estructural (migración 20260805000001): línea de cobro ACTIVA sin
+  // `periodo_cobro_id`. Ocurre cuando el paso `asignar-periodo-cobro` de C1 falla
+  // —típicamente porque el período destino ya estaba cerrado/facturado— después de
+  // que el paso anterior ya insertó la línea; Inngest memoiza los pasos
+  // completados, así que la línea queda colgando. Es ingreso que no entra en
+  // ninguna factura, de ahí `fuga_ingreso` y no `integridad_datos`.
+  | 'linea_cobro_sin_periodo';
 
 /**
  * Estado de un evento de conciliación (bandeja de excepciones — §1.1 P1).

@@ -204,30 +204,57 @@ export const jobVerificarSalud = inngest.createFunction(
       if (errTenants) throw new Error(`Watchdog · Error al listar tenants: ${errTenants.message}`);
 
       let total = 0;
+      let totalSinPeriodo = 0;
+      // Un tenant que falle no cancela el barrido de los demás — pero tampoco
+      // puede desaparecer del resumen: si todos fallan, `total=0` se leería como
+      // "todo limpio" cuando significa "no se comprobó nada". Por eso se cuentan
+      // los tenants con error y se alerta si hubo alguno.
+      let tenantsConError = 0;
+
       for (const t of tenants ?? []) {
         const tenantId = t.id as string;
         try {
-          const nuevas = await detectarLineasCobroHuerfanas(supabase, tenantId, runId);
-          if (nuevas > 0) {
-            total += nuevas;
+          const { huerfanas, sinPeriodo } = await detectarLineasCobroHuerfanas(supabase, tenantId, runId);
+          if (huerfanas > 0) {
+            total += huerfanas;
             await capturarMensaje(
-              `Integridad: ${nuevas} línea(s) de cobro huérfana(s) detectada(s).`,
+              `Integridad: ${huerfanas} línea(s) de cobro huérfana(s) detectada(s).`,
               'warning',
-              { origen: 'job:plataforma/verificarSalud', tenantId, correlacionId: runId, etiquetas: { tipo: 'lineas_huerfanas', nuevas: String(nuevas) } },
+              { origen: 'job:plataforma/verificarSalud', tenantId, correlacionId: runId, etiquetas: { tipo: 'lineas_huerfanas', nuevas: String(huerfanas) } },
+            );
+          }
+          if (sinPeriodo > 0) {
+            totalSinPeriodo += sinPeriodo;
+            await capturarMensaje(
+              `Integridad: ${sinPeriodo} línea(s) de cobro sin período — no entrarán en ninguna factura.`,
+              'warning',
+              { origen: 'job:plataforma/verificarSalud', tenantId, correlacionId: runId, etiquetas: { tipo: 'lineas_sin_periodo', nuevas: String(sinPeriodo) } },
             );
           }
         } catch (err) {
-          // Un tenant que falle no cancela el barrido de los demás.
+          tenantsConError++;
           logger.error(`Watchdog integridad [tenant=${tenantId}]: ${(err as Error).message}`);
         }
       }
-      return total;
+
+      if (tenantsConError > 0) {
+        await capturarMensaje(
+          `Integridad: el barrido falló en ${tenantsConError} tenant(s) — su resultado NO es "sin hallazgos".`,
+          'error',
+          { origen: 'job:plataforma/verificarSalud', correlacionId: runId, etiquetas: { tipo: 'integridad_barrido_incompleto', tenants: String(tenantsConError) } },
+        );
+      }
+
+      return { huerfanas: total, sinPeriodo: totalSinPeriodo, tenantsConError };
     });
 
     logger.info(
       `Watchdog completado · crons_alertados=${cronsAlertados} · ` +
       `periodos_sin_cerrar=${backlog.periodosAbiertosVencidos} · ` +
-      `conciliaciones_vencidas=${backlog.conciliacionesVencidas} · lineas_huerfanas=${lineasHuerfanas}.`,
+      `conciliaciones_vencidas=${backlog.conciliacionesVencidas} · ` +
+      `lineas_huerfanas=${lineasHuerfanas.huerfanas} · ` +
+      `lineas_sin_periodo=${lineasHuerfanas.sinPeriodo} · ` +
+      `tenants_con_error=${lineasHuerfanas.tenantsConError}.`,
     );
 
     return {
@@ -235,7 +262,9 @@ export const jobVerificarSalud = inngest.createFunction(
       cronsAlertados,
       periodosAbiertosVencidos: backlog.periodosAbiertosVencidos,
       conciliacionesVencidas: backlog.conciliacionesVencidas,
-      lineasHuerfanas,
+      lineasHuerfanas: lineasHuerfanas.huerfanas,
+      lineasSinPeriodo: lineasHuerfanas.sinPeriodo,
+      tenantsConErrorIntegridad: lineasHuerfanas.tenantsConError,
     };
   },
 );
