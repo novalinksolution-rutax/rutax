@@ -52,10 +52,12 @@ const CAMPOS_INICIALES: CamposFormulario = {
 export function FormularioAltaEmpresa() {
   const router = useRouter();
   const idBase = useId();
+  const idAyudaTerminos = `${idBase}-ayuda-terminos`;
 
   const [campos, setCampos] = useState<CamposFormulario>(CAMPOS_INICIALES);
   const [errores, setErrores] = useState<ErroresFormulario>({});
   const [enviando, setEnviando] = useState(false);
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
   const [errorServidor, setErrorServidor] = useState<{ tipo: string; mensaje: string } | null>(null);
 
   function actualizarCampo<K extends keyof CamposFormulario>(campo: K, valor: string) {
@@ -286,8 +288,54 @@ export function FormularioAltaEmpresa() {
             </Alert>
           ) : null}
 
+          {/* Consentimiento explícito. Va con casilla SIN marcar y bloqueando el
+              envío a propósito: un consentimiento premarcado no es consentimiento
+              (Ley 21.719 exige que sea inequívoco), y un "al continuar aceptas"
+              al pie no deja constancia de que alguien decidió nada. */}
           <div className="space-y-3">
-            <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={enviando}>
+            <label className="flex items-start gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={aceptaTerminos}
+                onChange={(e) => setAceptaTerminos(e.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]"
+                aria-describedby={idAyudaTerminos}
+              />
+              <span>
+                He leído y acepto los{" "}
+                <a
+                  href="/terminos"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium underline underline-offset-4"
+                >
+                  términos y condiciones
+                </a>{" "}
+                y la{" "}
+                <a
+                  href="/privacidad"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium underline underline-offset-4"
+                >
+                  política de privacidad
+                </a>
+                .
+              </span>
+            </label>
+            <p id={idAyudaTerminos} className="pl-6.5 text-xs text-muted-foreground">
+              Rutax trata los datos de tus conductores y destinatarios por encargo tuyo: tú
+              decides qué se recoge y para qué.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full sm:w-auto"
+              disabled={enviando || !aceptaTerminos}
+            >
               {enviando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
               {enviando ? "Creando tu cuenta…" : "Crear mi cuenta"}
             </Button>
