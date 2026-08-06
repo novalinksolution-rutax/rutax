@@ -59,7 +59,6 @@ const SALUD_CONFIG: Record<NivelSaludCourier, { texto: string; variant: "success
  * `observabilidad-tenant.ts`). La bitácora registra decenas de acciones de
  * todo el sistema; no existe (ni se justifica) un traductor genérico
  * compartido para todas ellas — este mapa es chico y acotado a propósito.
- * COPY: microcopy provisional, a revisar por `copywriter`.
  */
 const TEXTO_ACCION_ALERTA: Record<string, string> = {
   "notificacion.conexion_caida": "Conexión de Mercado Libre caída",
@@ -68,16 +67,16 @@ const TEXTO_ACCION_ALERTA: Record<string, string> = {
   "operacion.conductor_caido": "Conductor marcado no disponible (pedidos redistribuidos)",
   "operacion.notificacion_incidencia_sin_gestion": "Incidencia sin gestionar por más de 4 horas",
   "dinero.alerta_morosidad": "Alerta de morosidad enviada a un seller",
-  "dinero.alerta_folios_proximos": "Folios de boleta/factura por agotarse",
-  "plataforma.mandato_fallido": "Mandato de cobro automático falló",
-  "plataforma.pago_suscripcion_monto_discrepante": "Pago de suscripción con un monto distinto al esperado",
+  "dinero.alerta_folios_proximos": "Folios DTE por agotarse",
+  "plataforma.mandato_fallido": "Falló el mandato de cobro automático",
+  "plataforma.pago_suscripcion_monto_discrepante": "Pago de suscripción por un monto distinto al esperado",
 };
 
 function traducirAccionAlerta(accion: string): string {
   return TEXTO_ACCION_ALERTA[accion] ?? accion;
 }
 
-/** Ídem — tipos de entidad observados en las acciones curadas de arriba. COPY: revisar con `copywriter`. */
+/** Ídem — tipos de entidad observados en las acciones curadas de arriba. */
 const TEXTO_ENTIDAD_TIPO: Record<string, string> = {
   seller: "Seller",
   conductor: "Conductor",
