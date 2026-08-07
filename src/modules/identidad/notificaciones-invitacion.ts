@@ -148,6 +148,35 @@ export interface ResultadoEnvioInvitacion {
   motivo?: MotivoNoEnviado;
 }
 
+/**
+ * Deja constancia en la invitación de que el proveedor ACEPTÓ el envío, con su
+ * id de mensaje. `email_estado = 'enviado'` es deliberadamente distinto de
+ * `'entregado'`: aceptar no es entregar, y esa diferencia es justo la que el
+ * webhook viene a resolver después.
+ *
+ * No lanza: si esta escritura falla, el correo ya salió igual. Lo único que se
+ * pierde es la trazabilidad del rebote.
+ */
+async function marcarEnvioAceptado(
+  cliente: ClienteServicio,
+  invitacionId: string,
+  proveedorId: string,
+): Promise<void> {
+  try {
+    await cliente
+      .from("invitaciones")
+      .update({
+        email_proveedor_id: proveedorId,
+        email_estado: "enviado",
+        email_estado_en: new Date().toISOString(),
+        email_motivo: null,
+      })
+      .eq("id", invitacionId);
+  } catch {
+    // Sin efecto sobre el resultado del envío.
+  }
+}
+
 /** Lee el nombre de fantasía del courier; degrada a genérico si no se puede. */
 async function leerNombreCourier(cliente: ClienteServicio, tenantId: string): Promise<string> {
   try {
@@ -210,6 +239,14 @@ export async function enviarEmailInvitacion(
       resultado = envio.enviado
         ? { enviado: true }
         : { enviado: false, motivo: envio.modo === "stub" ? "stub" : "error_proveedor" };
+
+      // Guardar el id del proveedor es lo que hace posible el webhook de
+      // entrega/rebote: el webhook trae ESE id, no el de la invitación. Sin
+      // esto, un rebote no se puede atribuir a nadie. Se escribe solo cuando el
+      // proveedor aceptó — en sandbox no hay id que guardar.
+      if (envio.enviado && envio.proveedorId) {
+        await marcarEnvioAceptado(cliente, args.invitacionId, envio.proveedorId);
+      }
     }
   } catch {
     resultado = { enviado: false, motivo: "error_proveedor" };

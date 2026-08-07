@@ -58,6 +58,14 @@ interface SellerFila {
   estadoSalud: string;
   /** Hay una invitación viva que todavía se puede entregar a mano. */
   invitacionPendiente: boolean;
+  /** Qué sabemos de la ENTREGA del correo. `rebotado` es lo accionable. */
+  invitacionEmailEstado: string | null;
+  invitacionEmailMotivo: string | null;
+}
+
+interface EstadoEnvioInvitacion {
+  emailEstado: string | null;
+  emailMotivo: string | null;
 }
 
 /**
@@ -72,22 +80,27 @@ interface SellerFila {
 async function cargarInvitacionesPendientes(
   cliente: ReturnType<typeof crearClienteServiceRole>,
   tenantId: string,
-): Promise<Set<string>> {
+): Promise<Map<string, EstadoEnvioInvitacion>> {
   const { data, error } = await cliente
     .from("invitaciones")
-    .select("seller_id")
+    .select("seller_id, email_estado, email_motivo")
     .eq("tenant_id", tenantId)
     .eq("tipo_usuario", "seller")
     .eq("estado", "pendiente")
     .gt("expira_en", new Date().toISOString());
 
-  if (error || !data) return new Set();
+  if (error || !data) return new Map();
 
-  return new Set(
-    (data as Record<string, unknown>[])
-      .map((i) => i.seller_id as string | null)
-      .filter((id): id is string => Boolean(id)),
-  );
+  const mapa = new Map<string, EstadoEnvioInvitacion>();
+  for (const fila of data as Record<string, unknown>[]) {
+    const sellerId = fila.seller_id as string | null;
+    if (!sellerId) continue;
+    mapa.set(sellerId, {
+      emailEstado: (fila.email_estado as string | null) ?? null,
+      emailMotivo: (fila.email_motivo as string | null) ?? null,
+    });
+  }
+  return mapa;
 }
 
 async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
@@ -109,6 +122,7 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
     const conexion = s.conexiones_seller_ml as { estado_salud: string } | { estado_salud: string }[] | null;
     const conexionUnica = Array.isArray(conexion) ? conexion[0] : conexion;
     const id = s.id as string;
+    const envio = pendientes.get(id);
     return {
       id,
       razonSocial: s.razon_social as string,
@@ -116,8 +130,37 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
       estado: s.estado as string,
       estadoSalud: conexionUnica?.estado_salud ?? "pendiente",
       invitacionPendiente: pendientes.has(id),
+      invitacionEmailEstado: envio?.emailEstado ?? null,
+      invitacionEmailMotivo: envio?.emailMotivo ?? null,
     };
   });
+}
+
+/**
+ * Aviso de entrega del correo de invitación.
+ *
+ * Solo se dice algo cuando hay algo que hacer. `enviado` y `entregado` no
+ * pintan nada: el caso normal no necesita rótulo, y un "entregado" en cada fila
+ * volvería invisible al único que importa. `null` tampoco dice nada — son
+ * invitaciones anteriores a que registráramos esto, o creadas sin envío.
+ */
+function avisoEntrega(estado: string | null, motivo: string | null) {
+  if (estado === "rebotado") {
+    return (
+      <p className="text-right text-xs font-medium text-destructive">
+        El correo rebotó — no llegó
+        {motivo ? <span className="block font-normal text-muted-foreground">{motivo}</span> : null}
+      </p>
+    );
+  }
+  if (estado === "marcado_spam") {
+    return (
+      <p className="text-right text-xs font-medium text-warning">
+        Llegó, pero lo marcaron como spam
+      </p>
+    );
+  }
+  return null;
 }
 
 /**
@@ -211,7 +254,8 @@ export default async function PaginaSellers() {
                   {mostrarColumnaInvitacion && (
                     <TableCell className="px-4 text-right">
                       {seller.invitacionPendiente ? (
-                        <div className="flex justify-end">
+                        <div className="flex flex-col items-end gap-1.5">
+                          {avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)}
                           <BotonCopiarInvitacion
                             sellerId={seller.id}
                             razonSocial={seller.razonSocial}
