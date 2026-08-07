@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { construirEnlaceInvitacion, resolverUrlBaseApp } from "./enlace-invitacion";
 
-const CLAVES = ["APP_BASE_URL", "NEXT_PUBLIC_APP_URL", "VERCEL_URL"] as const;
+const CLAVES = ["APP_PUBLIC_URL", "APP_BASE_URL", "NEXT_PUBLIC_APP_URL", "VERCEL_URL"] as const;
 
 describe("construirEnlaceInvitacion", () => {
   it("arma la URL de canje sobre la ruta real de la pantalla", () => {
@@ -53,6 +53,23 @@ describe("resolverUrlBaseApp", () => {
     process.env.APP_BASE_URL = "https://explicita.cl";
     process.env.NEXT_PUBLIC_APP_URL = "https://publica.cl";
     expect(resolverUrlBaseApp()).toBe("https://explicita.cl");
+  });
+
+  // Regresión: la primera versión NO leía APP_PUBLIC_URL — la variable canónica
+  // del proyecto, la que exige el redirect URI de ML y la única que ya estaba
+  // puesta en produccion. El correo habría caído a la URL efímera del deployment
+  // teniendo el dominio real al lado.
+  it("usa APP_PUBLIC_URL, la canónica del proyecto, por sobre todas las demás", () => {
+    process.env.APP_PUBLIC_URL = "https://app.rutax.cl";
+    process.env.APP_BASE_URL = "https://explicita.cl";
+    process.env.NEXT_PUBLIC_APP_URL = "https://publica.cl";
+    process.env.VERCEL_URL = "efimera.vercel.app";
+    expect(resolverUrlBaseApp()).toBe("https://app.rutax.cl");
+  });
+
+  it("con solo APP_PUBLIC_URL puesta, resuelve igual", () => {
+    process.env.APP_PUBLIC_URL = "https://app.rutax.cl/";
+    expect(resolverUrlBaseApp()).toBe("https://app.rutax.cl");
   });
 
   it("cae a VERCEL_URL y le agrega el protocolo que Vercel no incluye", () => {

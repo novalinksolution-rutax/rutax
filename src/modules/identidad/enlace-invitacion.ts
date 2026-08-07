@@ -28,16 +28,23 @@ function normalizarBase(url: string): string {
 /**
  * URL pública de la app, o `null` si el entorno no la declara.
  *
- * Orden de precedencia (mismo que `integraciones/pagos/.../fintoc.ts`, que ya
- * necesitaba resolver esto para sus URLs de retorno):
- *   1. `APP_BASE_URL`         — override explícito de servidor.
- *   2. `NEXT_PUBLIC_APP_URL`  — la que ya usa el resto del proyecto.
- *   3. `VERCEL_URL`           — red de seguridad: en Vercel siempre existe y
+ * Orden de precedencia:
+ *   1. `APP_PUBLIC_URL`       — la CANÓNICA del proyecto: es la que documenta
+ *      `docs/ops/despliegue.md`, la que lee `next.config.ts` y la que debe
+ *      coincidir exacto con el redirect URI registrado en el DevCenter de ML.
+ *      Va primero justamente porque es la que ya está puesta en producción.
+ *   2. `APP_BASE_URL`         — override explícito de servidor.
+ *   3. `NEXT_PUBLIC_APP_URL`  — variante que usa `integraciones/pagos/.../fintoc.ts`.
+ *   4. `VERCEL_URL`           — red de seguridad: en Vercel siempre existe y
  *      produce un enlace que FUNCIONA (apunta al deployment, no al dominio
  *      estable, pero un enlace vivo es mejor que ninguno).
+ *
+ * Las tres primeras se leen aunque el proyecto tenga tres nombres para lo
+ * mismo: preferir un enlace correcto sobre la pureza de una sola variable.
  */
 export function resolverUrlBaseApp(): string | null {
-  const explicita = process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+  const explicita =
+    process.env.APP_PUBLIC_URL ?? process.env.APP_BASE_URL ?? process.env.NEXT_PUBLIC_APP_URL;
   if (explicita && explicita.trim()) {
     return normalizarBase(explicita);
   }
