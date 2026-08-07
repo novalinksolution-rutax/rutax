@@ -138,9 +138,14 @@ export function FormularioInvitarSeller() {
     // que no ocurrió deja al seller esperando y al courier sin saber por qué
     // nunca entró — que es precisamente el problema que originó esta pantalla.
     if (resultado.seller.emailEnviado) {
-      toast.success(
-        `Invitamos a ${resultado.seller.razonSocial} — le llegó un correo a ${resultado.seller.emailContacto}.`,
-      );
+      // "Enviamos", NO "le llegó": el proveedor ACEPTA el envío y devuelve un id;
+      // el rebote (dirección inexistente, buzón lleno) ocurre después y de forma
+      // asincrónica. Afirmar la entrega deja al courier creyendo que el seller
+      // recibió algo que nunca llegó — con un correo mal tipeado, sin una sola
+      // señal. La invitación queda pendiente y "Copiar enlace" es la salida.
+      toast.success(`Invitamos a ${resultado.seller.razonSocial}.`, {
+        description: `Enviamos el correo a ${resultado.seller.emailContacto}. Si no le llega, revisa que la dirección esté bien y usa “Copiar enlace” en Sellers.`,
+      });
     } else {
       toast.success(`Registramos a ${resultado.seller.razonSocial}.`, {
         description:
