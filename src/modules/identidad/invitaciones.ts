@@ -29,6 +29,7 @@ import { puedeInvitarUsuarios, puedeRevocarInvitaciones } from "./capacidades";
 import type { UsuarioActual } from "./usuario-actual";
 import { registrarEnBitacora } from "./auditoria";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
+import { enviarEmailInvitacion, type MotivoNoEnviado } from "./notificaciones-invitacion";
 import type { Rol } from "./roles";
 
 /** Forma mínima del cliente service_role que estas funciones necesitan. */
@@ -66,6 +67,14 @@ export interface InvitacionCreada {
   id: string;
   token: string;
   expiraEn: string;
+  /**
+   * `true` solo si el proveedor REAL aceptó el correo. En sandbox (el default)
+   * es `false` — y la UI debe decirlo tal cual en vez de prometer un correo que
+   * nadie va a recibir.
+   */
+  emailEnviado: boolean;
+  /** Por qué no se envió, cuando no se envió. Ver `MotivoNoEnviado`. */
+  emailMotivo?: MotivoNoEnviado;
 }
 
 function validarCoherenciaTipoUsuario(input: CrearInvitacionInput): void {
@@ -172,7 +181,30 @@ export async function crearInvitacion(
     },
   });
 
-  return { id: data.id as string, token: data.token as string, expiraEn: data.expira_en as string };
+  // Entrega. Va DESPUÉS de la bitácora (invariante "bitácora antes que efectos
+  // externos") y no puede lanzar por contrato — si el correo falla, la
+  // invitación ya existe y sigue siendo canjeable con "Copiar enlace".
+  //
+  // Vive acá adentro, y no en cada llamador, a propósito: son tres puntos de
+  // entrada (alta de seller, alta de interno, reinvitar) y un correo que se
+  // envía "solo si el que programó se acordó" es exactamente cómo se llegó a
+  // tener invitaciones que nunca se entregaban.
+  const envio = await enviarEmailInvitacion(cliente, {
+    tenantId: actor.tenantId,
+    invitacionId: data.id as string,
+    email,
+    tipoUsuario: input.tipoUsuario,
+    token: data.token as string,
+    expiraEn: data.expira_en as string,
+  });
+
+  return {
+    id: data.id as string,
+    token: data.token as string,
+    expiraEn: data.expira_en as string,
+    emailEnviado: envio.enviado,
+    emailMotivo: envio.motivo,
+  };
 }
 
 // -----------------------------------------------------------------------------

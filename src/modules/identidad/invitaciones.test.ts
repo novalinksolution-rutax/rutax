@@ -96,6 +96,20 @@ function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[] }) {
       };
     }
 
+    // `crearInvitacion` lee el nombre del courier para el correo de invitación
+    // (ver notificaciones-invitacion.ts). Es cosmético — si no está, el correo
+    // sale con un nombre genérico — pero se modela igual para que el doble no
+    // dependa del `catch` de la función de producción.
+    if (tabla === "tenants") {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { nombre_fantasia: "Courier de Prueba" }, error: null }),
+          }),
+        }),
+      };
+    }
+
     if (tabla === "bitacora_auditoria") {
       return {
         insert: async (fila: Record<string, unknown>) => {
@@ -239,8 +253,7 @@ describe("crearInvitacion", () => {
       sellerId: SELLER_A,
     });
 
-    expect(estado.bitacora).toHaveLength(1);
-    const entrada = estado.bitacora[0];
+    const entrada = estado.bitacora.find((b) => b.accion === "invitacion.creada");
     expect(entrada).toMatchObject({
       tenant_id: TENANT_A,
       actor_usuario_id: ACTOR_USUARIO_ID,
@@ -248,9 +261,68 @@ describe("crearInvitacion", () => {
       accion: "invitacion.creada",
       entidad_tipo: "invitacion",
     });
-    const detalle = entrada.detalle as Record<string, unknown>;
+    const detalle = entrada!.detalle as Record<string, unknown>;
     expect(detalle).not.toHaveProperty("token");
-    expect(JSON.stringify(detalle).toLowerCase()).not.toContain("token");
+
+    // Ninguna entrada — ni la del alta ni la del correo — puede llevar el token.
+    for (const fila of estado.bitacora) {
+      expect(JSON.stringify(fila.detalle).toLowerCase()).not.toContain("token");
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Entrega del correo (el paso que faltaba: antes se creaba el token y nadie
+  // se lo mandaba a nadie).
+  // ---------------------------------------------------------------------------
+
+  it("registra en bitácora el resultado del envío, DESPUÉS del alta y sin el token", async () => {
+    await crearInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, {
+      email: "seller.correo@example.com",
+      tipoUsuario: "seller",
+      rol: "seller",
+      sellerId: SELLER_A,
+    });
+
+    const acciones = estado.bitacora.map((b) => b.accion);
+    // El orden importa: "bitácora antes que efectos externos" — si el envío
+    // revienta, el alta ya quedó registrada.
+    expect(acciones.indexOf("invitacion.creada")).toBe(0);
+    expect(acciones.some((a) => String(a).startsWith("invitacion.email_"))).toBe(true);
+  });
+
+  it("en sandbox informa emailEnviado=false — la UI no debe prometer un correo que no salió", async () => {
+    const resultado = await crearInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, {
+      email: "seller.sandbox@example.com",
+      tipoUsuario: "seller",
+      rol: "seller",
+      sellerId: SELLER_A,
+    });
+
+    // Sin EMAIL_SANDBOX_MODE=false + RESEND_API_KEY, el puerto devuelve el stub.
+    expect(resultado.emailEnviado).toBe(false);
+    expect(estado.bitacora.map((b) => b.accion)).toContain("invitacion.email_no_enviado");
+  });
+
+  it("el fallo del correo NUNCA tumba el alta: la invitación queda creada y canjeable", async () => {
+    const { cliente: clienteRoto, estado: estadoRoto } = crearClienteFalso();
+    // Un cliente al que `tenants` le explota simula el peor caso del paso de
+    // entrega. La invitación debe existir igual.
+    const original = (clienteRoto as never as { from: (t: string) => unknown }).from;
+    (clienteRoto as never as { from: (t: string) => unknown }).from = (tabla: string) => {
+      if (tabla === "tenants") throw new Error("caída simulada");
+      return (original as (t: string) => unknown)(tabla);
+    };
+
+    const resultado = await crearInvitacion(clienteRoto, dueno(), ACTOR_USUARIO_ID, {
+      email: "seller.resiliente@example.com",
+      tipoUsuario: "seller",
+      rol: "seller",
+      sellerId: SELLER_A,
+    });
+
+    expect(resultado.token).toBeTruthy();
+    expect(estadoRoto.invitaciones).toHaveLength(1);
+    expect(estadoRoto.invitaciones[0].estado).toBe("pendiente");
   });
 });
 

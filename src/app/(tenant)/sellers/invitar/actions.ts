@@ -43,6 +43,12 @@ export interface SellerInvitado {
   razonSocial: string;
   rut: string;
   emailContacto: string;
+  /**
+   * `true` solo si el correo SALIÓ de verdad. En sandbox es `false` y la UI
+   * debe mandar al courier a "Copiar enlace" en vez de prometerle un correo
+   * que nadie va a recibir.
+   */
+  emailEnviado: boolean;
 }
 
 export type AccionInvitarSellerResultado =
@@ -152,13 +158,15 @@ export async function invitarSeller(entrada: InvitarSellerEntrada): Promise<Acci
 
   // 2) Invitación asociada — delega íntegro a `crearInvitacion` (valida
   //    coherencia tipo_usuario↔rol↔seller_id y audita por su cuenta).
+  let emailEnviado = false;
   try {
-    await crearInvitacion(cliente, sesion.usuario, sesion.usuarioId, {
+    const invitacion = await crearInvitacion(cliente, sesion.usuario, sesion.usuarioId, {
       email: emailContacto,
       tipoUsuario: "seller",
       rol: "seller",
       sellerId,
     });
+    emailEnviado = invitacion.emailEnviado;
   } catch (error) {
     // La fila `sellers` ya quedó creada — no la revertimos: es una entidad de
     // negocio legítima (el courier sí tiene este cliente) aunque el envío de
@@ -185,6 +193,7 @@ export async function invitarSeller(entrada: InvitarSellerEntrada): Promise<Acci
       razonSocial,
       rut: rutNormalizado,
       emailContacto,
+      emailEnviado,
     },
   };
 }

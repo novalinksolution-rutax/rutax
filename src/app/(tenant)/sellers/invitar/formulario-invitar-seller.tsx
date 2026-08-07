@@ -134,7 +134,19 @@ export function FormularioInvitarSeller() {
       return;
     }
 
-    toast.success(`Invitamos a ${resultado.seller.razonSocial} — le llegará un correo a ${resultado.seller.emailContacto}.`);
+    // El mensaje refleja lo que REALMENTE pasó con el correo. Prometer un envío
+    // que no ocurrió deja al seller esperando y al courier sin saber por qué
+    // nunca entró — que es precisamente el problema que originó esta pantalla.
+    if (resultado.seller.emailEnviado) {
+      toast.success(
+        `Invitamos a ${resultado.seller.razonSocial} — le llegó un correo a ${resultado.seller.emailContacto}.`,
+      );
+    } else {
+      toast.success(`Registramos a ${resultado.seller.razonSocial}.`, {
+        description:
+          "No pudimos enviarle el correo. Entra a Sellers y usa “Copiar enlace” para mandárselo tú.",
+      });
+    }
     // Limpia el formulario para seguir invitando sin recargar — "esta es una
     // acción que el courier repetirá varias veces" (mismo principio que la I).
     setCampos(CAMPOS_INICIALES);
