@@ -306,7 +306,14 @@ function FilaInvitacion({
       setMensaje({ tipo: "error", texto: resultado.mensaje });
       return;
     }
-    setMensaje({ tipo: "exito", texto: `Invitación reenviada a ${invitacion.email}.` });
+    setMensaje(
+      resultado.emailEnviado
+        ? { tipo: "exito", texto: `Correo reenviado a ${invitacion.email}.` }
+        : {
+            tipo: "error",
+            texto: "No pudimos enviar el correo. El envío de correos no está habilitado en este entorno.",
+          },
+    );
   }
 
   async function manejarReinvitar() {
@@ -326,7 +333,14 @@ function FilaInvitacion({
       expiraEn: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       creadoEn: new Date().toISOString(),
     });
-    setMensaje({ tipo: "exito", texto: `Invitación nueva enviada a ${invitacion.email}.` });
+    setMensaje(
+      resultado.emailEnviado
+        ? { tipo: "exito", texto: `Invitación nueva enviada a ${invitacion.email}.` }
+        : {
+            tipo: "error",
+            texto: "Creamos la invitación nueva, pero no pudimos enviar el correo.",
+          },
+    );
   }
 
   async function manejarRevocar() {

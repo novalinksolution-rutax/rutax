@@ -27,7 +27,12 @@ import {
   puedeInvitarUsuarios,
   puedeRevocarInvitaciones,
 } from "@/modules/identidad/capacidades";
-import { crearInvitacion, revocarInvitacion } from "@/modules/identidad/invitaciones";
+import {
+  crearInvitacion,
+  revocarInvitacion,
+  type TipoUsuarioInvitacion,
+} from "@/modules/identidad/invitaciones";
+import { enviarEmailInvitacion } from "@/modules/identidad/notificaciones-invitacion";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
 import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
 
@@ -161,7 +166,17 @@ async function resolverCorreos(cliente: ClienteAdmin, ids: string[]): Promise<Ma
 // Acciones sobre invitaciones — reenviar / reinvitar / revocar (tabla §2.2)
 // -----------------------------------------------------------------------------
 
-export type AccionEquipoResultado = { ok: true } | { ok: false; tipo: "permiso" | "validacion" | "conflicto" | "desconocido"; mensaje: string };
+export type AccionEquipoResultado =
+  | {
+      ok: true;
+      /**
+       * Presente solo en las acciones que mandan correo (reenviar/reinvitar).
+       * `false` significa que NO salió — en sandbox, o sin URL pública
+       * declarada. La UI debe decirlo tal cual en vez de afirmar "enviada".
+       */
+      emailEnviado?: boolean;
+    }
+  | { ok: false; tipo: "permiso" | "validacion" | "conflicto" | "desconocido"; mensaje: string };
 
 function mapearError(error: unknown): AccionEquipoResultado {
   if (error instanceof ErrorValidacion) {
@@ -182,11 +197,19 @@ function mapearError(error: unknown): AccionEquipoResultado {
 
 /**
  * Reenvía el correo de una invitación `pendiente` — MISMO token, mismo
- * registro. No existe una función de dominio separada para esto porque no
- * cambia ningún dato: en Fase A (sin proveedor de correo transaccional aún
- * conectado — eso es de `integraciones`), reenviar equivale a "tocar" el
- * registro para que el job de notificaciones lo recoja de nuevo. Se modela
- * explícito para no inventar una mutación donde el dominio no la define.
+ * registro, ningún dato mutado (esa es la diferencia con "reinvitar", que crea
+ * una invitación nueva porque la anterior ya no sirve).
+ *
+ * HISTORIA: esta función era un no-op. Confirmaba la elegibilidad y devolvía
+ * `ok:true` dejando el envío "para el job de notificaciones" — un job que no
+ * existía. El botón decía "Reenviar correo", la UI confirmaba "Invitación
+ * reenviada" y no salía nada. Ahora envía de verdad por el mismo camino que el
+ * alta (`enviarEmailInvitacion`) y devuelve si SALIÓ, para que la confirmación
+ * no vuelva a ser una promesa vacía.
+ *
+ * Usa `service_role` (no el cliente de sesión) por dos razones: necesita leer
+ * el `token` para poder armar el enlace, y `enviarEmailInvitacion` escribe en
+ * `bitacora_auditoria`, que no admite INSERT de ningún rol de cliente.
  */
 export async function reenviarInvitacion(invitacionId: string): Promise<AccionEquipoResultado> {
   const sesion = await obtenerSesionActual();
@@ -197,10 +220,11 @@ export async function reenviarInvitacion(invitacionId: string): Promise<AccionEq
     return { ok: false, tipo: "permiso", mensaje: "No tienes permiso para invitar usuarios — contacta al dueño de la cuenta." };
   }
 
-  const supabase = await createClient();
-  const { data: invitacion, error: errorBuscar } = await supabase
+  const cliente = crearClienteServiceRole();
+  // El filtro por `tenant_id` es lo que aísla: `service_role` salta RLS.
+  const { data: invitacion, error: errorBuscar } = await cliente
     .from("invitaciones")
-    .select("id, estado")
+    .select("id, estado, email, tipo_usuario, token, expira_en")
     .eq("id", invitacionId)
     .eq("tenant_id", sesion.usuario.tenantId)
     .maybeSingle();
@@ -218,12 +242,26 @@ export async function reenviarInvitacion(invitacionId: string): Promise<AccionEq
       mensaje: "Esta invitación ya no está pendiente — usa 'Reinvitar' para enviar una nueva.",
     };
   }
+  // Una `pendiente` puede estar vencida por el reloj sin que nadie haya movido
+  // su estado todavía: reenviarla mandaría un enlace que no sirve.
+  if (new Date(invitacion.expira_en as string).getTime() <= Date.now()) {
+    return {
+      ok: false,
+      tipo: "conflicto",
+      mensaje: "Esta invitación ya venció — usa 'Reinvitar' para enviar una nueva.",
+    };
+  }
 
-  // El envío real del correo lo resuelve el job/adaptador de notificaciones
-  // (fuera del alcance de este lote — `integraciones`). Aquí solo se confirma
-  // la elegibilidad y se deja la señal lista para que ese job la recoja; no se
-  // muta ningún dato porque el registro ya está completo y vigente.
-  return { ok: true };
+  const envio = await enviarEmailInvitacion(cliente, {
+    tenantId: sesion.usuario.tenantId,
+    invitacionId: invitacion.id as string,
+    email: invitacion.email as string,
+    tipoUsuario: invitacion.tipo_usuario as TipoUsuarioInvitacion,
+    token: invitacion.token as string,
+    expiraEn: invitacion.expira_en as string,
+  });
+
+  return { ok: true, emailEnviado: envio.enviado };
 }
 
 /**
@@ -266,17 +304,19 @@ export async function reinvitarUsuario(invitacionId: string): Promise<AccionEqui
   }
 
   const cliente = crearClienteServiceRole();
+  let emailEnviado = false;
   try {
-    await crearInvitacion(cliente, sesion.usuario, sesion.usuarioId, {
+    const nueva = await crearInvitacion(cliente, sesion.usuario, sesion.usuarioId, {
       email: anterior.email as string,
       tipoUsuario: "interno",
       rol: anterior.rol as RolInterno,
     });
+    emailEnviado = nueva.emailEnviado;
   } catch (error) {
     return mapearError(error);
   }
 
-  return { ok: true };
+  return { ok: true, emailEnviado };
 }
 
 /** Revoca una invitación `pendiente` — delega íntegro a `revocarInvitacion`. */
