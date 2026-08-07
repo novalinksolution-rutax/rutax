@@ -49,6 +49,7 @@ interface FakeBuilder {
   in(col: string, vals: unknown[]): FakeBuilder;
   order(): FakeBuilder;
   limit(): FakeBuilder;
+  range(desde: number, hasta: number): FakeBuilder;
   maybeSingle(): Promise<{ data: Fila | null; error: null }>;
   then(
     resolve: (v: { data: Fila[]; error: null }) => unknown,
@@ -57,8 +58,24 @@ interface FakeBuilder {
 }
 
 function crearFakeSupabase(tablas: Tablas) {
-  function construirBuilder(filas: Fila[], filtros: Array<(f: Fila) => boolean>): FakeBuilder {
-    const aplicarFiltros = () => filas.filter((f) => filtros.every((fn) => fn(f)));
+  function construirBuilder(
+    filas: Fila[],
+    filtros: Array<(f: Fila) => boolean>,
+    rango?: { desde: number; hasta: number },
+  ): FakeBuilder {
+    // `.range()` se aplica DE VERDAD, no como no-op: `leerTodasLasFilas` decide
+    // que llegó a la última página cuando recibe uno incompleto, así que un doble
+    // que ignorara el rango devolvería siempre la página llena y el lector
+    // pagitaría para siempre.
+    const aplicarFiltros = () => {
+      const filtradas = filas.filter((f) => filtros.every((fn) => fn(f)));
+      // Sin `.range()`, el doble CORTA EN 1000 igual que PostgREST con su
+      // `max_rows`. Es lo que vuelve honesta a esta suite: si el doble devolviera
+      // todo, un test sobre 1.365 filas pasaría aunque el código leyera sin
+      // paginar, y daría por buena justo la clase de bug que costó una factura
+      // 27% menor a la real.
+      return rango ? filtradas.slice(rango.desde, rango.hasta + 1) : filtradas.slice(0, 1000);
+    };
     const builder: FakeBuilder = {
       eq(col: string, val: unknown) {
         return construirBuilder(filas, [...filtros, (f: Fila) => f[col] === val]);
@@ -71,6 +88,9 @@ function crearFakeSupabase(tablas: Tablas) {
       },
       limit() {
         return builder;
+      },
+      range(desde: number, hasta: number) {
+        return construirBuilder(filas, filtros, { desde, hasta });
       },
       maybeSingle() {
         const encontradas = aplicarFiltros();
@@ -678,5 +698,46 @@ describe('preflightEmitirPago', () => {
     const r = await preflightEmitirPago(TENANT, LIQUIDACION_ID, usuarioConRol('dueno'));
     expect(r.ok).toBe(false);
     expect(r.bloqueos.map((b) => b.codigo)).toContain('bandeja_excepciones');
+  });
+});
+
+/**
+ * Regresión del truncamiento silencioso de PostgREST en las cifras de dinero.
+ *
+ * Hallado el 2026-08-05 con el fixture de carga a escala del piloto: las
+ * lecturas de líneas por período iban SIN paginar, y PostgREST corta en
+ * `max_rows` (1000) sin devolver error. Un período con 1.365 líneas sumaba
+ * $4.681.000 en la base y se mostraba —y se facturaba— como $3.420.800.
+ *
+ * Lo que lo hacía indetectable es que todos los caminos truncaban igual: el
+ * total del período, el del DTE y el del preflight coincidían entre sí, así que
+ * la conciliación no encontraba nada y la persona que aprueba la emisión veía
+ * una cifra plausible y equivocada. Y el DTE es irreversible ante el SII.
+ *
+ * El número 1.365 no es decorativo: está justo sobre el techo, que es donde el
+ * bug vive. Con 999 líneas este test pasaría aun con el código roto.
+ */
+describe('preflight — cifras completas por sobre el techo de PostgREST', () => {
+  const LINEAS = 1365;
+  const MONTO = 3429;
+
+  it('suma TODAS las líneas de un período con más de 1.000, no las primeras 1.000', async () => {
+    const lineas = Array.from({ length: LINEAS }, (_, i) => ({
+      tenant_id: TENANT,
+      periodo_cobro_id: PERIODO_ID,
+      pedido_id: `pedido-${i}`,
+      monto_final_clp: MONTO,
+      anulada: false,
+    }));
+
+    usar(fixturesFactura({ 'dinero.lineas_cobro': lineas }));
+
+    const r = await preflightEmitirFactura(TENANT, PERIODO_ID, usuarioConRol('dueno'));
+
+    const resumen = r.resumen as { lineasIncluidas: number; netoClp: number };
+    expect(resumen.lineasIncluidas).toBe(LINEAS);
+    expect(resumen.netoClp).toBe(LINEAS * MONTO);
+    // Y explícitamente: NO se quedó en el techo.
+    expect(resumen.lineasIncluidas).toBeGreaterThan(1000);
   });
 });

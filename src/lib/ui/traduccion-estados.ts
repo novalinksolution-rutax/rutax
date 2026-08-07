@@ -564,6 +564,8 @@ export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> =
   // Webhook/polling de payout (migración 20260709000001) — separado de la
   // reversión genuina de arriba por recomendación de QA.
   payout_estado_no_reconocido: "Estado de pago no reconocido",
+  // Integridad estructural (migración 20260805000001)
+  linea_cobro_sin_periodo: "Línea de cobro sin período (no se facturará)",
 };
 
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {

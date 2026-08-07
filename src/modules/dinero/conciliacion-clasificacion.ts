@@ -15,7 +15,7 @@ import type {
   TipoDiferenciaConciliacion,
 } from './tipos';
 
-const TZ = 'America/Santiago';
+import { fechaLocalEnSantiago, sumarDiasCalendario } from '@/lib/fecha-santiago';
 
 // =============================================================================
 // categoriaNegocioPorTipo / accionSugeridaPorTipo
@@ -28,6 +28,9 @@ const CATEGORIA_POR_TIPO: Record<TipoDiferenciaConciliacion, CategoriaNegocioCon
   pagado_conductor_sin_cobro_seller: 'fuga_ingreso',
   reprogramacion_no_cobrada: 'fuga_ingreso',
   minimo_omitido: 'fuga_ingreso',
+  // Una línea sin período no entra en ninguna factura: es ingreso que se pierde,
+  // no un dato feo. Por eso `fuga_ingreso` (SLA 3 días) y no `integridad_datos`.
+  linea_cobro_sin_periodo: 'fuga_ingreso',
 
   pago_seller_faltante: 'pagos_pendientes',
   pago_conductor_faltante: 'pagos_pendientes',
@@ -68,6 +71,9 @@ const ACCION_POR_TIPO: Record<TipoDiferenciaConciliacion, AccionSugeridaConcilia
   pago_conductor_faltante: 'gestionar_pago_conductor',
   payout_revertido_post_confirmacion: 'gestionar_pago_conductor',
   payout_estado_no_reconocido: 'revisar_estado_externo',
+  // Mismo remedio que `periodo_cerrado_con_lineas_sueltas`: la línea existe y es
+  // correcta, lo que falta es colgarla de un período que se pueda facturar.
+  linea_cobro_sin_periodo: 'reasignar_lineas_a_periodo',
 };
 
 /** Mapeo fijo `tipoDiferencia → accionSugerida` — espejo del backfill SQL §4.1. */
@@ -87,23 +93,6 @@ const DIAS_SLA_POR_CATEGORIA: Record<CategoriaNegocioConciliacion, number> = {
   integridad_datos: 7,
 };
 
-/** Descompone un ISO timestamptz en su fecha 'YYYY-MM-DD' local de America/Santiago. */
-function fechaSantiagoDeIso(fechaCreacionIso: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(fechaCreacionIso));
-}
-
-/** Suma `dias` días de calendario a una fecha 'YYYY-MM-DD' (aritmética en UTC sobre un date-only, sin problemas de DST). */
-function sumarDias(fechaIso: string, dias: number): string {
-  const fecha = new Date(`${fechaIso}T00:00:00Z`);
-  fecha.setUTCDate(fecha.getUTCDate() + dias);
-  return fecha.toISOString().slice(0, 10);
-}
-
 /**
  * Fecha límite (SLA) por defecto de una excepción recién detectada: fecha de
  * creación (zona America/Santiago) + N días según la categoría de negocio.
@@ -113,8 +102,8 @@ export function fechaLimiteDefaultPorCategoria(
   categoria: CategoriaNegocioConciliacion,
   fechaCreacionIso: string,
 ): string {
-  const fechaBase = fechaSantiagoDeIso(fechaCreacionIso);
-  return sumarDias(fechaBase, DIAS_SLA_POR_CATEGORIA[categoria]);
+  const fechaBase = fechaLocalEnSantiago(new Date(fechaCreacionIso));
+  return sumarDiasCalendario(fechaBase, DIAS_SLA_POR_CATEGORIA[categoria]);
 }
 
 /**

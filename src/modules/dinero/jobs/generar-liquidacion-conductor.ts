@@ -18,6 +18,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { generarPdfLiquidacion } from '../liquidacion-pdf';
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
@@ -82,18 +83,29 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
             // IMPORTANTE: excluir líneas anuladas — las líneas de pedidos devueltos
             // tras fallido se anulan antes de que se emita la liquidación; incluirlas
             // pagaría de más al conductor.
-            const { data: lineas, error: lineasError } = await supabase
-              .schema('dinero')
-              .from('lineas_liquidacion')
-              .select('pedido_id, fecha_entrega, concepto, monto_final_clp')
-              .eq('tenant_id', tenantId)
-              .eq('liquidacion_id', liqId)
-              .eq('anulada', false);
+            // ⚠️ PAGINADO OBLIGATORIO — de esta suma sale lo que se le PAGA al
+            // conductor. Sin paginar, PostgREST corta en `max_rows` (1000) sin
+            // error y se le paga de menos. Un conductor con 40 entregas diarias
+            // cruza las 1.000 líneas en un período mensual.
+            const lineas = await leerTodasLasFilas<{
+              pedido_id: string;
+              fecha_entrega: string;
+              concepto: string;
+              monto_final_clp: number | string;
+            }>(`líneas de la liquidación ${liqId}`, (desde, hasta) =>
+              supabase
+                .schema('dinero')
+                .from('lineas_liquidacion')
+                .select('pedido_id, fecha_entrega, concepto, monto_final_clp')
+                .eq('tenant_id', tenantId)
+                .eq('liquidacion_id', liqId)
+                .eq('anulada', false)
+                .order('id')
+                .range(desde, hasta),
+            );
 
-            if (lineasError) throw new Error(`Error al leer líneas: ${lineasError.message}`);
-
-            const totalEntregas = (lineas ?? []).length;
-            const montoTotal = (lineas ?? []).reduce(
+            const totalEntregas = lineas.length;
+            const montoTotal = lineas.reduce(
               (acc, l) => acc + Math.round(Number(l.monto_final_clp)),
               0,
             );
@@ -128,7 +140,7 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
               conductorNombre,
               fechaInicio,
               fechaFin,
-              lineas: (lineas ?? []).map((l) => ({
+              lineas: lineas.map((l) => ({
                 pedidoId: l.pedido_id as string,
                 fechaEntrega: (l.fecha_entrega as string) ?? '',
                 concepto: (l.concepto as string) ?? '',

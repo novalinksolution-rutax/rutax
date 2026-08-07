@@ -16,119 +16,56 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TipoPeriodoFacturacion } from './tipos';
-
-const TZ = 'America/Santiago';
+import {
+  diaSemanaCalendario,
+  fechaLocalEnSantiago,
+  sumarDiasCalendario,
+} from '@/lib/fecha-santiago';
 
 // =============================================================================
 // Cálculo de fechas de período
 // =============================================================================
 
 /**
- * Extrae la fecha local en Santiago en formato 'YYYY-MM-DD'.
+ * Último día del mes al que pertenece `fecha`, en calendario de Santiago,
+ * como 'YYYY-MM-DD'.
  *
- * BUG FIX: la versión anterior usaba `toLocaleDateString('es-CL', ...)` y
- * asumía que el locale `es-CL` devuelve 'DD-MM-YYYY'. Eso depende del motor
- * de JS del entorno y no es garantizado. Se usa `Intl.DateTimeFormat('en-CA')`
- * que garantiza el formato ISO 'YYYY-MM-DD' en todos los entornos.
- */
-function fechaLocalSantiago(fecha: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(fecha);
-}
-
-/**
- * Calcula el primer día del mes en zona Santiago (no UTC).
- */
-function primerDiaMes(fecha: Date): Date {
-  const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(fecha).split('-'); // 'YYYY-MM-DD'
-  // Construir la fecha como medianoche UTC del día local en Santiago
-  return new Date(`${partes[0]}-${partes[1]}-01T00:00:00-03:00`);
-}
-
-/**
- * Calcula el último día del mes en zona Santiago.
- *
- * BUG FIX: la versión anterior usaba `new Date(anio, mes, 0)` que crea la
- * fecha en la timezone local del servidor (UTC en Vercel). Para una fecha
- * cerca de la medianoche UTC cuya hora local en Santiago pertenece al día
- * anterior, el mes calculado podría ser incorrecto.
- * La versión corregida representa el último día explícitamente como string
- * ISO 'YYYY-MM-DD' sin depender de la timezone del servidor.
- */
-function ultimoDiaMes(fecha: Date): Date {
-  const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(fecha).split('-');
-  const anio = parseInt(partes[0], 10);
-  const mes = parseInt(partes[1], 10);
-  // Construir el primer día del mes siguiente y restar un día,
-  // todo en zona Santiago para evitar el problema de la timezone del servidor.
-  // Usamos offset fijo -03:00 (hora de Santiago sin DST en invierno;
-  // en producción se usaría temporal-polyfill para manejar DST correctamente,
-  // pero para el propósito de obtener el último día del mes es suficiente).
-  const primerDelSiguiente = new Date(`${anio}-${String(mes % 12 + 1).padStart(2, '0')}-01T00:00:00-03:00`);
-  // Corregir mes 12 → enero del año siguiente
-  if (mes === 12) {
-    const primerEneroSiguiente = new Date(`${anio + 1}-01-01T00:00:00-03:00`);
-    // Restar 1 ms para obtener el último instante del 31/12
-    return new Date(primerEneroSiguiente.getTime() - 1);
-  }
-  return new Date(primerDelSiguiente.getTime() - 1);
-}
-
-/**
- * Devuelve la fecha ISO 'YYYY-MM-DD' del último día del mes.
+ * La versión anterior construía instantes con el offset `-03:00` CLAVADO y les
+ * restaba un milisegundo. Santiago es −04:00 en invierno, así que medio año el
+ * borde del mes quedaba una hora corrido y una entrega de las 23:xx del último
+ * día caía en el período de facturación equivocado. Aquí no hay instantes que
+ * ubicar: el mes se cierra con aritmética de fecha CIVIL (primero del mes
+ * siguiente menos un día), que no tiene huso horario que resolver.
  */
 function ultimoDiaMesStr(fecha: Date): string {
-  const ultimo = ultimoDiaMes(fecha);
-  // Formatear en Santiago
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(ultimo);
+  const [anio, mes] = fechaLocalEnSantiago(fecha).split('-').map(Number);
+  const anioSiguiente = mes === 12 ? anio + 1 : anio;
+  const mesSiguiente = mes === 12 ? 1 : mes + 1;
+  const primeroDelSiguiente = `${anioSiguiente}-${String(mesSiguiente).padStart(2, '0')}-01`;
+  return sumarDiasCalendario(primeroDelSiguiente, -1);
 }
 
 /**
- * Obtiene la fecha del lunes de la semana que contiene `fecha` en zona Santiago.
+ * Lunes de la semana que contiene `fecha`, en calendario de Santiago.
+ *
+ * La versión anterior anclaba a mediodía SIN sufijo de zona
+ * (`new Date('YYYY-MM-DDT12:00:00')`), que el runtime interpreta en el huso del
+ * proceso. El ancla a mediodía sobrevive un desplazamiento de ±12 h, así que
+ * funcionaba en UTC por accidente, no por diseño.
  */
 function lunesDeSemana(fecha: Date): string {
-  const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(fecha).split('-');
-  // Construir fecha local
-  const local = new Date(`${partes[0]}-${partes[1]}-${partes[2]}T12:00:00`);
-  const diaSemana = local.getDay(); // 0=domingo, 1=lunes...
-  const diasDesdelunes = (diaSemana === 0) ? 6 : diaSemana - 1;
-  const lunes = new Date(local);
-  lunes.setDate(local.getDate() - diasDesdelunes);
-  return lunes.toISOString().split('T')[0];
+  const fechaLocal = fechaLocalEnSantiago(fecha);
+  const diaSemana = diaSemanaCalendario(fechaLocal); // 0=domingo, 1=lunes…
+  const diasDesdeLunes = diaSemana === 0 ? 6 : diaSemana - 1;
+  return sumarDiasCalendario(fechaLocal, -diasDesdeLunes);
 }
 
 /**
- * Obtiene la fecha del domingo de la semana que contiene `fecha` en zona Santiago.
+ * Domingo que CIERRA la semana que empieza en `inicio` ('YYYY-MM-DD').
+ * (Se llamaba `domingoDeSemanaSiguiente`, que sugería la semana de después.)
  */
-function domingoDeSemanaSiguiente(inicio: string): string {
-  const lunes = new Date(`${inicio}T12:00:00`);
-  const domingo = new Date(lunes);
-  domingo.setDate(lunes.getDate() + 6);
-  return domingo.toISOString().split('T')[0];
+function domingoDeSemana(inicio: string): string {
+  return sumarDiasCalendario(inicio, 6);
 }
 
 /**
@@ -141,15 +78,8 @@ export function calcularRangoPeriodo(
   fechaEntrega: Date,
   tipoPeriodo: TipoPeriodoFacturacion,
 ): { fechaInicio: string; fechaFin: string } {
-  const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(fechaEntrega).split('-');
-  const diaLocal = parseInt(partes[2], 10);
-  const anioStr = partes[0];
-  const mesStr = partes[1];
+  const [anioStr, mesStr, diaStr] = fechaLocalEnSantiago(fechaEntrega).split('-');
+  const diaLocal = parseInt(diaStr, 10);
 
   if (tipoPeriodo === 'mensual') {
     return {
@@ -174,7 +104,7 @@ export function calcularRangoPeriodo(
 
   if (tipoPeriodo === 'semanal') {
     const inicio = lunesDeSemana(fechaEntrega);
-    const fin = domingoDeSemanaSiguiente(inicio);
+    const fin = domingoDeSemana(inicio);
     return { fechaInicio: inicio, fechaFin: fin };
   }
 

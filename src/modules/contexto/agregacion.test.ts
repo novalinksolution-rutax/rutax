@@ -1,385 +1,425 @@
 /**
- * Tests de la agregación de insumos del motor de riesgo.
+ * Pruebas de la agregación de la Torre v2.
+ * =====================================================================
  *
- * Lo que se cubre aquí no es «la función devuelve un número»: son las cuatro
- * decisiones que, si se equivocan, producen un tablero plausible y falso —
- * repartir capacidad, elegir el corte que aprieta, colapsar el pronóstico de
- * varias comunas en una zona, y de dónde sale el dinero comprometido.
+ * Todo lo de este archivo es puro, y es justo lo que se equivoca en silencio: un
+ * pedido contado dos veces, una comuna que no empareja por un acento, un corte
+ * leído al revés. Nada de eso lanza — produce un número plausible y equivocado.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-  RANGO_FRANJA,
-  aireDeZonaFranja,
-  capacidadPorZona,
-  cargaPorZona,
-  climaDeZonaFranja,
-  eventosDeZonaFranja,
-  franjaDeHora,
-  indexarPorComunaFechaFranja,
+  avanceDeConductores,
+  calcularFrescura,
+  cargaPorComuna,
+  claveDeUbicacion,
+  contarPorUbicacion,
+  diaCerrado,
+  estaEnRiesgoDeCorte,
+  indexarComunaAZona,
   minutosHastaCorte,
-  tasaFallidosPorZona,
-  type FilaAire,
-  type FilaClima,
+  resolverPedido,
+  unificarRegistros,
+  MINUTOS_RIESGO_DE_CORTE,
+  UMBRAL_FRESCURA_MINUTOS,
+  type PedidoAgregable,
+  type RegistroDeEntrega,
 } from './agregacion';
 
-const ZONAS = ['z-centro', 'z-oriente', 'z-sur'];
+const SIN_INCIDENCIAS = new Map<string, number>();
+const SIN_RIESGO = new Set<string>();
 
-describe('capacidadPorZona', () => {
-  it('asigna toda la capacidad del conductor a su única zona', () => {
-    const capacidad = capacidadPorZona(
-      [{ id: 'c1', capacidadParadas: 30 }],
-      [{ conductorId: 'c1', zonaId: 'z-centro' }],
-      ZONAS,
-    );
-    expect(capacidad.get('z-centro')).toBe(30);
-    expect(capacidad.get('z-oriente')).toBe(0);
-    expect(capacidad.get('z-sur')).toBe(0);
+function pedido(over: Partial<PedidoAgregable> & { id: string }): PedidoAgregable {
+  return { comuna: 'Ñuñoa', estado: 'asignado', ubicado: true, ...over };
+}
+
+function registro(over: Partial<RegistroDeEntrega> & { pedidoId: string }): RegistroDeEntrega {
+  return {
+    conductorId: 'c1',
+    entregado: true,
+    registradoEn: '2026-08-03T15:00:00.000Z',
+    ...over,
+  };
+}
+
+// =============================================================================
+// Índice comuna → zona
+// =============================================================================
+
+describe('indexarComunaAZona', () => {
+  it('empareja sin importar acentos ni mayúsculas', () => {
+    const indice = indexarComunaAZona([{ id: 'z1', comunas: ['Ñuñoa', 'Providencia'] }]);
+    expect(indice.get('nunoa')).toBe('z1');
   });
 
-  it('NO cuenta dos veces al conductor asignado a dos zonas', () => {
-    const capacidad = capacidadPorZona(
-      [{ id: 'c1', capacidadParadas: 30 }],
-      [
-        { conductorId: 'c1', zonaId: 'z-centro' },
-        { conductorId: 'c1', zonaId: 'z-oriente' },
-      ],
-      ZONAS,
-    );
-    expect(capacidad.get('z-centro')).toBe(15);
-    expect(capacidad.get('z-oriente')).toBe(15);
-    // Y el total sigue siendo el que hay, no el doble.
-    const total = [...capacidad.values()].reduce((a, b) => a + b, 0);
-    expect(total).toBe(30);
-  });
-
-  it('reparte entre todas las zonas al conductor sin asignación (pool flexible)', () => {
-    const capacidad = capacidadPorZona([{ id: 'c1', capacidadParadas: 30 }], [], ZONAS);
-    expect([...capacidad.values()]).toEqual([10, 10, 10]);
-  });
-
-  it('ignora asignaciones a zonas que ya no existen', () => {
-    const capacidad = capacidadPorZona(
-      [{ id: 'c1', capacidadParadas: 20 }],
-      [{ conductorId: 'c1', zonaId: 'z-borrada' }],
-      ZONAS,
-    );
-    // Sin asignaciones válidas vuelve al pool flexible, no desaparece.
-    expect([...capacidad.values()]).toEqual([6, 6, 6]);
-  });
-
-  it('deja todas las zonas en cero si no hay conductores disponibles', () => {
-    const capacidad = capacidadPorZona([], [], ZONAS);
-    expect([...capacidad.values()]).toEqual([0, 0, 0]);
+  it('si dos zonas declaran la misma comuna, gana la primera', () => {
+    const indice = indexarComunaAZona([
+      { id: 'z1', comunas: ['Maipú'] },
+      { id: 'z2', comunas: ['Maipú'] },
+    ]);
+    expect(indice.get('maipu')).toBe('z1');
   });
 });
 
-describe('minutosHastaCorte', () => {
-  const AHORA = { fecha: '2026-07-25', horaMinutos: 9 * 60 + 14 };
+// =============================================================================
+// Corte — F7
+// =============================================================================
 
-  it('toma el corte MÁS TEMPRANO entre los aplicables, no el último', () => {
-    const minutos = minutosHastaCorte(
-      [
-        { zonaId: 'z-centro', horaCorte: '18:00', activa: true },
-        { zonaId: null, horaCorte: '12:00', activa: true },
-      ],
-      'z-centro',
-      '2026-07-25',
-      AHORA,
-    );
-    expect(minutos).toBe(12 * 60 - (9 * 60 + 14)); // 166
+describe('minutosHastaCorte', () => {
+  const ventanas = [
+    { zonaId: null, horaCorte: '18:00', activa: true },
+    { zonaId: 'z1', horaCorte: '12:00', activa: true },
+    { zonaId: 'z2', horaCorte: '09:00', activa: true },
+  ];
+
+  it('toma el corte MÁS TEMPRANO entre los aplicables, no el de la zona', () => {
+    // z1 tiene su override a las 12:00 y además le aplica el default de las
+    // 18:00. El que aprieta es el primero que vence.
+    expect(minutosHastaCorte(ventanas, 'z1', 10 * 60)).toBe(120);
   });
 
-  it('ignora las ventanas de OTRA zona', () => {
-    const minutos = minutosHastaCorte(
-      [
-        { zonaId: 'z-oriente', horaCorte: '10:00', activa: true },
-        { zonaId: 'z-centro', horaCorte: '17:00', activa: true },
-      ],
-      'z-centro',
-      '2026-07-25',
-      AHORA,
-    );
-    expect(minutos).toBe(17 * 60 - (9 * 60 + 14));
+  it('una zona sin override cae en la ventana por defecto', () => {
+    expect(minutosHastaCorte(ventanas, 'z9', 10 * 60)).toBe(8 * 60);
+  });
+
+  it('no considera el corte de OTRA zona', () => {
+    // Si tomara el de z2 (09:00), z1 a las 10:00 ya estaría vencida.
+    expect(minutosHastaCorte(ventanas, 'z1', 10 * 60)).toBeGreaterThan(0);
+  });
+
+  it('un corte ya vencido devuelve 0, nunca un negativo', () => {
+    expect(minutosHastaCorte(ventanas, 'z1', 23 * 60)).toBe(0);
+  });
+
+  it('sin ventanas configuradas devuelve null: «sin dato» no es «sin tiempo»', () => {
+    expect(minutosHastaCorte([], 'z1', 600)).toBeNull();
   });
 
   it('ignora las ventanas inactivas', () => {
-    const minutos = minutosHastaCorte(
-      [
-        { zonaId: null, horaCorte: '10:00', activa: false },
-        { zonaId: 'z-centro', horaCorte: '16:00', activa: true },
-      ],
-      'z-centro',
-      '2026-07-25',
-      AHORA,
-    );
-    expect(minutos).toBe(16 * 60 - (9 * 60 + 14));
-  });
-
-  it('suma los días de calendario para un horizonte futuro', () => {
-    const minutos = minutosHastaCorte(
-      [{ zonaId: null, horaCorte: '12:00', activa: true }],
-      'z-centro',
-      '2026-07-27',
-      AHORA,
-    );
-    expect(minutos).toBe(2 * 1440 + 12 * 60 - (9 * 60 + 14));
-  });
-
-  it('devuelve 0 —no un negativo— cuando el corte ya venció', () => {
-    const minutos = minutosHastaCorte(
-      [{ zonaId: null, horaCorte: '08:00', activa: true }],
-      'z-centro',
-      '2026-07-25',
-      AHORA,
-    );
-    expect(minutos).toBe(0);
-  });
-
-  it('devuelve null si el courier no configuró ninguna ventana', () => {
-    expect(minutosHastaCorte([], 'z-centro', '2026-07-25', AHORA)).toBeNull();
-  });
-
-  it('acepta la hora con segundos, como la devuelve Postgres', () => {
-    const minutos = minutosHastaCorte(
-      [{ zonaId: null, horaCorte: '12:00:00', activa: true }],
-      'z-centro',
-      '2026-07-25',
-      AHORA,
-    );
-    expect(minutos).toBe(12 * 60 - (9 * 60 + 14));
+    const soloInactiva = [{ zonaId: null, horaCorte: '09:00', activa: false }];
+    expect(minutosHastaCorte(soloInactiva, null, 600)).toBeNull();
   });
 });
 
-describe('franjaDeHora', () => {
-  it('parte el día en las tres franjas de la migración', () => {
-    expect(franjaDeHora('08:00')).toBe('manana');
-    expect(franjaDeHora('11:59')).toBe('manana');
-    expect(franjaDeHora('12:00')).toBe('tarde'); // borde abierto por arriba
-    expect(franjaDeHora('16:59')).toBe('tarde');
-    expect(franjaDeHora('17:00')).toBe('punta');
-    expect(franjaDeHora('20:59')).toBe('punta');
+describe('estaEnRiesgoDeCorte', () => {
+  it('marca dentro del margen y no fuera', () => {
+    expect(estaEnRiesgoDeCorte(MINUTOS_RIESGO_DE_CORTE)).toBe(true);
+    expect(estaEnRiesgoDeCorte(MINUTOS_RIESGO_DE_CORTE + 1)).toBe(false);
   });
 
-  it('devuelve null fuera de la jornada de reparto', () => {
-    expect(franjaDeHora('07:59')).toBeNull();
-    expect(franjaDeHora('21:00')).toBeNull();
-    expect(franjaDeHora('03:00')).toBeNull();
+  it('sin corte configurado NO marca: sería ruido en todo el courier', () => {
+    expect(estaEnRiesgoDeCorte(null)).toBe(false);
   });
 });
 
-describe('climaDeZonaFranja', () => {
-  // 16:00 en Santiago (UTC-4 en julio) = 20:00Z → franja tarde del día 25.
-  const FILAS: FilaClima[] = [
-    { comuna: 'Las Condes', hora: '2026-07-25T20:00:00Z', precipitacionMm: 8, vientoKmh: 20 },
-    { comuna: 'Vitacura', hora: '2026-07-25T20:00:00Z', precipitacionMm: 0, vientoKmh: 45 },
-    { comuna: 'Santiago', hora: '2026-07-25T20:00:00Z', precipitacionMm: 30, vientoKmh: 10 },
-  ];
+// =============================================================================
+// Registros de entrega
+// =============================================================================
 
-  it('toma el PEOR de las comunas de la zona, no el promedio', () => {
-    const indice = indexarPorComunaFechaFranja(FILAS);
-    const clima = climaDeZonaFranja(indice, ['Las Condes', 'Vitacura'], '2026-07-25', 'tarde');
-    expect(clima.precipitacionMaximaMmHora).toBe(8); // no 4
-    expect(clima.vientoMaximoKmh).toBe(45);
-  });
-
-  it('no mezcla comunas de otra zona', () => {
-    const indice = indexarPorComunaFechaFranja(FILAS);
-    const clima = climaDeZonaFranja(indice, ['Las Condes', 'Vitacura'], '2026-07-25', 'tarde');
-    expect(clima.precipitacionMaximaMmHora).not.toBe(30); // Santiago no es de esta zona
-  });
-
-  it('empareja la comuna ignorando acentos y caja', () => {
-    const indice = indexarPorComunaFechaFranja([
-      { comuna: 'ÑUÑOA', hora: '2026-07-25T20:00:00Z', precipitacionMm: 5, vientoKmh: null },
+describe('unificarRegistros', () => {
+  it('cuando un pedido tiene POD y cierre, gana el más reciente', () => {
+    const unificado = unificarRegistros([
+      registro({ pedidoId: 'p1', entregado: false, registradoEn: '2026-08-03T15:00:00.000Z' }),
+      registro({ pedidoId: 'p1', entregado: true, registradoEn: '2026-08-03T16:00:00.000Z' }),
     ]);
-    const clima = climaDeZonaFranja(indice, ['Ñuñoa'], '2026-07-25', 'tarde');
-    expect(clima.precipitacionMaximaMmHora).toBe(5);
+    expect(unificado.get('p1')?.entregado).toBe(true);
   });
 
-  it('devuelve el neutro cuando no hay pronóstico para esa franja', () => {
-    const indice = indexarPorComunaFechaFranja(FILAS);
-    const clima = climaDeZonaFranja(indice, ['Las Condes'], '2026-07-25', 'manana');
-    expect(clima.precipitacionMaximaMmHora).toBe(0);
-    expect(clima.vientoMaximoKmh).toBeNull();
-  });
-
-  it('viaja con la ventana local de su franja', () => {
-    const indice = indexarPorComunaFechaFranja(FILAS);
-    const clima = climaDeZonaFranja(indice, ['Las Condes'], '2026-07-25', 'punta');
-    expect(clima.ventanaInicioLocal).toBe(RANGO_FRANJA.punta.desde);
-    expect(clima.ventanaFinLocal).toBe(RANGO_FRANJA.punta.hasta);
-  });
-
-  it('clasifica la hora por la FECHA DE SANTIAGO, no por la UTC', () => {
-    // 26-jul 00:30 UTC = 25-jul 20:30 en Santiago → punta del día 25. Leerlo
-    // como UTC lo metería en el día 26 y la franja quedaría vacía.
-    // (La hora se escribe con minutos distintos de cero a propósito: el guard
-    // de zona horaria de este módulo prohíbe el literal de medianoche UTC,
-    // porque es la firma del bug que busca.)
-    const indice = indexarPorComunaFechaFranja([
-      { comuna: 'Santiago', hora: '2026-07-26T00:30:00Z', precipitacionMm: 12, vientoKmh: null },
+  it('el orden de llegada no cambia el resultado', () => {
+    const alReves = unificarRegistros([
+      registro({ pedidoId: 'p1', entregado: true, registradoEn: '2026-08-03T16:00:00.000Z' }),
+      registro({ pedidoId: 'p1', entregado: false, registradoEn: '2026-08-03T15:00:00.000Z' }),
     ]);
-    expect(climaDeZonaFranja(indice, ['Santiago'], '2026-07-25', 'punta').precipitacionMaximaMmHora).toBe(12);
-    expect(climaDeZonaFranja(indice, ['Santiago'], '2026-07-26', 'punta').precipitacionMaximaMmHora).toBe(0);
+    expect(alReves.get('p1')?.entregado).toBe(true);
   });
 });
 
-describe('aireDeZonaFranja', () => {
-  const FILAS: FilaAire[] = [
-    { comuna: 'Puente Alto', hora: '2026-07-25T20:00:00Z', nivelEstimado: 'preemergencia' },
-    { comuna: 'La Florida', hora: '2026-07-25T20:00:00Z', nivelEstimado: 'regular' },
+describe('resolverPedido', () => {
+  it('MANDA el registro de Rutax, aunque el estado oficial diga en_ruta', () => {
+    // Es el caso Flex: el conductor cerró en la app pero ML todavía no sincronizó.
+    const resultado = resolverPedido(
+      pedido({ id: 'p1', estado: 'en_ruta' }),
+      registro({ pedidoId: 'p1', entregado: true }),
+    );
+    expect(resultado).toEqual({ cerrado: true, entregado: true });
+  });
+
+  it('un cierre «no entregado» cierra el pedido pero no lo cuenta como entrega', () => {
+    const resultado = resolverPedido(
+      pedido({ id: 'p1', estado: 'en_ruta' }),
+      registro({ pedidoId: 'p1', entregado: false }),
+    );
+    expect(resultado).toEqual({ cerrado: true, entregado: false });
+  });
+
+  it('sin registro cae al estado oficial (marcado a mano desde el backoffice)', () => {
+    expect(resolverPedido(pedido({ id: 'p1', estado: 'entregado_manual' }), undefined)).toEqual({
+      cerrado: true,
+      entregado: true,
+    });
+    expect(resolverPedido(pedido({ id: 'p2', estado: 'fallido' }), undefined)).toEqual({
+      cerrado: true,
+      entregado: false,
+    });
+    expect(resolverPedido(pedido({ id: 'p3', estado: 'asignado' }), undefined)).toEqual({
+      cerrado: false,
+      entregado: false,
+    });
+  });
+});
+
+// =============================================================================
+// Carga por comuna — F1
+// =============================================================================
+
+describe('cargaPorComuna', () => {
+  it('produce la fracción pendientes/total por comuna', () => {
+    const carga = cargaPorComuna(
+      [
+        pedido({ id: 'p1', comuna: 'Ñuñoa' }),
+        pedido({ id: 'p2', comuna: 'Ñuñoa' }),
+        pedido({ id: 'p3', comuna: 'Ñuñoa', estado: 'entregado' }),
+      ],
+      new Map(),
+      SIN_INCIDENCIAS,
+      SIN_RIESGO,
+    );
+
+    expect(carga.get('Ñuñoa')).toMatchObject({ total: 3, pendientes: 2, entregados: 1 });
+  });
+
+  it('normaliza el nombre de la comuna a su forma canónica', () => {
+    const carga = cargaPorComuna(
+      [pedido({ id: 'p1', comuna: 'ÑUÑOA' }), pedido({ id: 'p2', comuna: 'nunoa' })],
+      new Map(),
+      SIN_INCIDENCIAS,
+      SIN_RIESGO,
+    );
+
+    // Las dos escrituras caen en la MISMA comuna: si no, el mapa mostraría dos.
+    expect(carga.size).toBe(1);
+    expect(carga.get('Ñuñoa')?.total).toBe(2);
+  });
+
+  it('un pedido sin comuna se agrupa bajo null, NO se descarta', () => {
+    // Regla 5 del alcance: el mapa nunca esconde carga.
+    const carga = cargaPorComuna(
+      [pedido({ id: 'p1', comuna: null })],
+      new Map(),
+      SIN_INCIDENCIAS,
+      SIN_RIESGO,
+    );
+    expect(carga.get(null)?.total).toBe(1);
+  });
+
+  it('cuenta los sin ubicar sin sacarlos del total', () => {
+    const carga = cargaPorComuna(
+      [pedido({ id: 'p1', ubicado: false }), pedido({ id: 'p2', ubicado: true })],
+      new Map(),
+      SIN_INCIDENCIAS,
+      SIN_RIESGO,
+    );
+    expect(carga.get('Ñuñoa')).toMatchObject({ total: 2, sinUbicar: 1 });
+  });
+
+  it('solo los PENDIENTES cuentan como en riesgo de corte', () => {
+    const carga = cargaPorComuna(
+      [pedido({ id: 'p1' }), pedido({ id: 'p2', estado: 'entregado' })],
+      new Map(),
+      SIN_INCIDENCIAS,
+      new Set(['Ñuñoa']),
+    );
+    // El entregado no está en riesgo de nada: ya llegó.
+    expect(carga.get('Ñuñoa')).toMatchObject({ pendientes: 1, enRiesgoDeCorte: 1 });
+  });
+
+  it('el cierre de Rutax baja el contador aunque el estado oficial no se haya movido', () => {
+    const carga = cargaPorComuna(
+      [pedido({ id: 'p1', estado: 'en_ruta' })],
+      unificarRegistros([registro({ pedidoId: 'p1', entregado: true })]),
+      SIN_INCIDENCIAS,
+      SIN_RIESGO,
+    );
+    expect(carga.get('Ñuñoa')).toMatchObject({ pendientes: 0, entregados: 1 });
+  });
+});
+
+// =============================================================================
+// Colapso por ubicación — el `+N` de F3
+// =============================================================================
+
+describe('colapso por ubicación', () => {
+  it('el mismo edificio colapsa: el geocoding resuelve la dirección, no el depto', () => {
+    // Éste es el caso real del `+N`. Seis entregas en la misma torre llegan con
+    // la coordenada IDÉNTICA, así que la clave es la misma siempre.
+    expect(claveDeUbicacion(-33.4489, -70.6693)).toBe(claveDeUbicacion(-33.4489, -70.6693));
+  });
+
+  it('dentro de una misma celda de la grilla, colapsa', () => {
+    // 0,00005° ≈ 5 m, y estas dos caen en la misma celda.
+    expect(claveDeUbicacion(-33.44880, -70.66920)).toBe(claveDeUbicacion(-33.44885, -70.66925));
+  });
+
+  it('dos puntos a ~100 m NO se colapsan', () => {
+    expect(claveDeUbicacion(-33.4489, -70.6693)).not.toBe(claveDeUbicacion(-33.4498, -70.6693));
+  });
+
+  it('cuenta cuántos comparten cada ubicación', () => {
+    const conteo = contarPorUbicacion([
+      { lat: -33.4489, long: -70.6693 },
+      { lat: -33.4489, long: -70.6693 },
+      { lat: -33.5, long: -70.7 },
+    ]);
+    expect([...conteo.values()].sort()).toEqual([1, 2]);
+  });
+});
+
+// =============================================================================
+// Avance por conductor — F13
+// =============================================================================
+
+describe('diaCerrado', () => {
+  it('el corte es a las 23:00 en punto', () => {
+    expect(diaCerrado(22 * 60 + 59)).toBe(false);
+    expect(diaCerrado(23 * 60)).toBe(true);
+  });
+});
+
+describe('avanceDeConductores', () => {
+  const paradas = [
+    { conductorId: 'c1', pedidoId: 'p1' },
+    { conductorId: 'c1', pedidoId: 'p2' },
+    { conductorId: 'c2', pedidoId: 'p3' },
   ];
-
-  it('toma el peor nivel de la zona', () => {
-    const indice = indexarPorComunaFechaFranja(FILAS);
-    expect(aireDeZonaFranja(indice, ['Puente Alto', 'La Florida'], '2026-07-25', 'tarde')).toBe(
-      'preemergencia',
-    );
-  });
-
-  it('sin dato devuelve el neutro y no lo peor', () => {
-    const indice = indexarPorComunaFechaFranja(FILAS);
-    expect(aireDeZonaFranja(indice, ['Maipú'], '2026-07-25', 'tarde')).toBe('bueno');
-  });
-});
-
-describe('eventosDeZonaFranja', () => {
-  const PARTIDO = {
-    nombre: 'Partido en el Estadio Nacional',
-    comuna: 'Ñuñoa',
-    // 18:00 a 23:30 hora de Santiago.
-    ventanaInicio: '2026-07-25T22:00:00Z',
-    ventanaFin: '2026-07-26T03:30:00Z',
-    asistenciaEstimada: 42000,
-  };
-
-  it('cae en la franja punta de su día', () => {
-    const { eventos } = eventosDeZonaFranja([PARTIDO], ['Ñuñoa'], '2026-07-25', 'punta');
-    expect(eventos).toHaveLength(1);
-    expect(eventos[0].asistenciaEstimada).toBe(42000);
-  });
-
-  it('no cae en franjas anteriores del mismo día', () => {
-    expect(eventosDeZonaFranja([PARTIDO], ['Ñuñoa'], '2026-07-25', 'manana').eventos).toHaveLength(0);
-    expect(eventosDeZonaFranja([PARTIDO], ['Ñuñoa'], '2026-07-25', 'tarde').eventos).toHaveLength(0);
-  });
-
-  it('no cae sobre una zona que no incluye su comuna', () => {
-    expect(eventosDeZonaFranja([PARTIDO], ['Maipú'], '2026-07-25', 'punta').eventos).toHaveLength(0);
-  });
-
-  it('un evento sin término conocido sigue contando', () => {
-    const abierto = { ...PARTIDO, ventanaFin: null };
-    expect(eventosDeZonaFranja([abierto], ['Ñuñoa'], '2026-07-25', 'punta').eventos).toHaveLength(1);
-  });
-
-  it('no cuenta en un día anterior al de inicio', () => {
-    expect(eventosDeZonaFranja([PARTIDO], ['Ñuñoa'], '2026-07-24', 'punta').eventos).toHaveLength(0);
-  });
-});
-
-describe('cargaPorZona', () => {
-  const COMUNA_A_ZONA = new Map([
-    ['santiago', 'z-centro'],
-    ['las condes', 'z-oriente'],
+  const nombres = new Map([
+    ['c1', 'Pérez'],
+    ['c2', 'Soto'],
   ]);
-  const TARIFAS = new Map([
-    ['t-flex', 2500],
-    ['t-same-day', 4000],
+  const pedidos = new Map([
+    ['p1', pedido({ id: 'p1' })],
+    ['p2', pedido({ id: 'p2' })],
+    ['p3', pedido({ id: 'p3' })],
   ]);
+  const ahoraMs = Date.parse('2026-08-03T20:00:00.000Z');
 
-  it('cuenta pendientes y valoriza con la tarifa del pedido', () => {
-    const carga = cargaPorZona(
-      [
-        { destinatarioComuna: 'Santiago', fechaCompromiso: '2026-07-25', tarifaAplicableId: 't-flex' },
-        { destinatarioComuna: 'Santiago', fechaCompromiso: '2026-07-25', tarifaAplicableId: 't-same-day' },
-      ],
-      COMUNA_A_ZONA,
-      TARIFAS,
-      '2026-07-25',
-    );
-    expect(carga.get('z-centro')).toEqual({ pendientes: 2, montoClp: 6500 });
+  it('durante el día NO declara rezagados: a las 10 AM la palabra no significa nada', () => {
+    const avance = avanceDeConductores({
+      paradas,
+      nombres,
+      registros: new Map(),
+      pedidos,
+      ahoraMs,
+      diaCerrado: false,
+    });
+    expect(avance.every((c) => c.rezagados === null)).toBe(true);
   });
 
-  it('cuenta el pedido sin tarifa pero NO le inventa un precio', () => {
-    const carga = cargaPorZona(
-      [
-        { destinatarioComuna: 'Santiago', fechaCompromiso: '2026-07-25', tarifaAplicableId: null },
-        { destinatarioComuna: 'Santiago', fechaCompromiso: '2026-07-25', tarifaAplicableId: 't-flex' },
-      ],
-      COMUNA_A_ZONA,
-      TARIFAS,
-      '2026-07-25',
-    );
-    expect(carga.get('z-centro')).toEqual({ pendientes: 2, montoClp: 2500 });
+  it('después del cierre, los pendientes pasan a ser paquetes rezagados', () => {
+    const avance = avanceDeConductores({
+      paradas,
+      nombres,
+      registros: new Map(),
+      pedidos,
+      ahoraMs,
+      diaCerrado: true,
+    });
+    expect(avance.find((c) => c.id === 'c1')?.rezagados).toBe(2);
   });
 
-  it('descarta los pedidos de otra fecha', () => {
-    const carga = cargaPorZona(
-      [{ destinatarioComuna: 'Santiago', fechaCompromiso: '2026-07-26', tarifaAplicableId: 't-flex' }],
-      COMUNA_A_ZONA,
-      TARIFAS,
-      '2026-07-25',
-    );
-    expect(carga.get('z-centro')).toBeUndefined();
+  it('cuenta completados con el cierre de Rutax y ordena por cuánto falta', () => {
+    const avance = avanceDeConductores({
+      paradas,
+      nombres,
+      registros: unificarRegistros([registro({ pedidoId: 'p1' })]),
+      pedidos,
+      ahoraMs,
+      diaCerrado: false,
+    });
+
+    const perez = avance.find((c) => c.id === 'c1');
+    expect(perez).toMatchObject({ asignados: 2, completados: 1, pendientes: 1 });
+    // Pérez y Soto quedan con 1 pendiente cada uno: desempata el nombre.
+    expect(avance.map((c) => c.nombre)).toEqual(['Pérez', 'Soto']);
   });
 
-  it('descarta el pedido de una comuna que ninguna zona cubre', () => {
-    const carga = cargaPorZona(
-      [{ destinatarioComuna: 'Melipilla', fechaCompromiso: '2026-07-25', tarifaAplicableId: 't-flex' }],
-      COMUNA_A_ZONA,
-      TARIFAS,
-      '2026-07-25',
-    );
-    expect(carga.size).toBe(0);
+  it('el que más pendientes tiene va primero', () => {
+    const avance = avanceDeConductores({
+      paradas,
+      nombres,
+      registros: new Map(),
+      pedidos,
+      ahoraMs,
+      diaCerrado: false,
+    });
+    expect(avance[0].id).toBe('c1');
   });
 
-  it('empareja la comuna del pedido ignorando acentos', () => {
-    const carga = cargaPorZona(
-      [{ destinatarioComuna: 'LAS CONDES', fechaCompromiso: '2026-07-25', tarifaAplicableId: 't-flex' }],
-      COMUNA_A_ZONA,
-      TARIFAS,
-      '2026-07-25',
-    );
-    expect(carga.get('z-oriente')?.pendientes).toBe(1);
+  it('mide los minutos sin registrar desde el ÚLTIMO cierre del conductor', () => {
+    const avance = avanceDeConductores({
+      paradas,
+      nombres,
+      registros: unificarRegistros([
+        registro({ pedidoId: 'p1', registradoEn: '2026-08-03T18:00:00.000Z' }),
+        registro({ pedidoId: 'p2', registradoEn: '2026-08-03T19:30:00.000Z' }),
+      ]),
+      pedidos,
+      ahoraMs,
+      diaCerrado: false,
+    });
+    expect(avance.find((c) => c.id === 'c1')?.minutosSinRegistrar).toBe(30);
+  });
+
+  it('un conductor que no ha cerrado nada no tiene minutaje inventado', () => {
+    const avance = avanceDeConductores({
+      paradas,
+      nombres,
+      registros: new Map(),
+      pedidos,
+      ahoraMs,
+      diaCerrado: false,
+    });
+    expect(avance[0].minutosSinRegistrar).toBeNull();
+    expect(avance[0].ultimoRegistroEn).toBeNull();
   });
 });
 
-describe('tasaFallidosPorZona', () => {
-  const COMUNA_A_ZONA = new Map([['santiago', 'z-centro']]);
+// =============================================================================
+// Frescura — F6
+// =============================================================================
 
-  function cerrados(fallidos: number, entregados: number) {
-    return [
-      ...Array.from({ length: fallidos }, () => ({ destinatarioComuna: 'Santiago', estado: 'fallido' })),
-      ...Array.from({ length: entregados }, () => ({ destinatarioComuna: 'Santiago', estado: 'entregado' })),
-    ];
-  }
+describe('calcularFrescura', () => {
+  const ahoraMs = Date.parse('2026-08-03T20:00:00.000Z');
 
-  it('calcula el porcentaje sobre los intentos cerrados', () => {
-    const tasas = tasaFallidosPorZona(cerrados(5, 45), COMUNA_A_ZONA);
-    expect(tasas.get('z-centro')).toBeCloseTo(10, 6);
+  it('sin ningún registro NO está atrasada: el courier recién empieza el día', () => {
+    expect(calcularFrescura([], ahoraMs)).toEqual({
+      ultimoRegistroEn: null,
+      edadMinutos: null,
+      atrasada: false,
+    });
   });
 
-  it('devuelve null con muestra insuficiente, en vez de fingir precisión', () => {
-    const tasas = tasaFallidosPorZona(cerrados(1, 4), COMUNA_A_ZONA);
-    expect(tasas.get('z-centro')).toBeNull();
+  it('toma el registro más reciente de todos los conductores', () => {
+    const frescura = calcularFrescura(
+      [
+        registro({ pedidoId: 'p1', registradoEn: '2026-08-03T18:00:00.000Z' }),
+        registro({ pedidoId: 'p2', registradoEn: '2026-08-03T19:50:00.000Z' }),
+      ],
+      ahoraMs,
+    );
+    expect(frescura.edadMinutos).toBe(10);
+    expect(frescura.atrasada).toBe(false);
   });
 
-  it('no cuenta cancelados ni devueltos como intento', () => {
-    const base = cerrados(5, 45);
-    const conRuido = [
-      ...base,
-      ...Array.from({ length: 50 }, () => ({ destinatarioComuna: 'Santiago', estado: 'cancelado' })),
-    ];
-    expect(tasaFallidosPorZona(conRuido, COMUNA_A_ZONA).get('z-centro')).toBeCloseTo(10, 6);
+  it('pasado el umbral, deja de estar callada', () => {
+    const viejo = new Date(ahoraMs - (UMBRAL_FRESCURA_MINUTOS + 1) * 60_000).toISOString();
+    const frescura = calcularFrescura([registro({ pedidoId: 'p1', registradoEn: viejo })], ahoraMs);
+    expect(frescura.atrasada).toBe(true);
   });
 
-  it('cuenta las variantes manuales de entregado y fallido', () => {
-    const filas = [
-      ...Array.from({ length: 10 }, () => ({ destinatarioComuna: 'Santiago', estado: 'fallido_manual' })),
-      ...Array.from({ length: 10 }, () => ({ destinatarioComuna: 'Santiago', estado: 'entregado_manual' })),
-    ];
-    expect(tasaFallidosPorZona(filas, COMUNA_A_ZONA).get('z-centro')).toBeCloseTo(50, 6);
+  it('justo en el umbral todavía calla: el borde no dispara', () => {
+    const borde = new Date(ahoraMs - UMBRAL_FRESCURA_MINUTOS * 60_000).toISOString();
+    expect(calcularFrescura([registro({ pedidoId: 'p1', registradoEn: borde })], ahoraMs).atrasada).toBe(
+      false,
+    );
   });
 });

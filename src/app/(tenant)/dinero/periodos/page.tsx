@@ -87,32 +87,28 @@ export default async function PaginaPeriodosCobro({
   let contConProblemas = 0;
 
   try {
-    // Sellers disponibles para el filtro
-    const { data: sellersData } = await cliente
-      .from("sellers")
-      .select("id, razon_social")
-      .eq("tenant_id", tenantId)
-      .order("razon_social");
+    // Las tres consultas son independientes entre sí (solo dependen de tenantId y
+    // del filtro de seller), así que van en paralelo: encadenadas costaban tres
+    // round-trips a la base en vez de uno.
+    const [{ data: sellersData }, todosPeriodos, todosDte] = await Promise.all([
+      // Sellers disponibles para el filtro
+      cliente
+        .from("sellers")
+        .select("id, razon_social")
+        .eq("tenant_id", tenantId)
+        .order("razon_social"),
+      // Todos los períodos (sin filtro de estado) para contadores
+      listarPeriodosCobro(cliente, tenantId, filtroSeller || undefined),
+      // Documentos DTE para cruzar datos
+      listarDocumentosDte(cliente, tenantId, filtroSeller || undefined),
+    ]);
+
     sellersDisponibles = (sellersData ?? []).map((s: Record<string, unknown>) => ({
       id: s.id as string,
       nombre: s.razon_social as string,
     }));
 
     const sellersMap = new Map(sellersDisponibles.map((s) => [s.id, s.nombre]));
-
-    // Todos los períodos (sin filtro de estado) para contadores
-    const todosPeriodos = await listarPeriodosCobro(
-      cliente,
-      tenantId,
-      filtroSeller || undefined,
-    );
-
-    // Documentos DTE para cruzar datos
-    const todosDte = await listarDocumentosDte(
-      cliente,
-      tenantId,
-      filtroSeller || undefined,
-    );
     // Solo facturas (33): la nota de crédito (61) comparte periodo_cobro_id
     // con la factura que anula y no debe pisarla en este mapa.
     const dteMap = new Map<string, DocumentoDte>(

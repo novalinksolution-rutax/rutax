@@ -33,6 +33,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { obtenerPuertoDte } from '@/modules/integraciones/dte';
 import { reservarFolio } from '../folios';
@@ -136,18 +137,35 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
     // total bruto del período) para que el neto del DTE sea EXACTAMENTE la suma
     // de líneas — el `total` resultante coincide con `periodos_cobro.monto_total_clp`
     // (ambos usan el mismo cálculo `montosDesdeNeto`), sin deriva de ±1 CLP.
+    // ⚠️ PAGINADO OBLIGATORIO. Esta lectura estuvo sin paginar y producía facturas
+    // por menos de lo debido: PostgREST corta en `max_rows` (1000) SIN error, así
+    // que un período con más de 1.000 líneas se facturaba truncado. Medido con
+    // 1.365 líneas: $4.681.000 reales facturados como $3.420.800, un 27% menos.
+    //
+    // Lo que lo hacía indetectable es que `cerrar-periodo` truncaba igual, así que
+    // el total del período y el del DTE coincidían entre sí y la conciliación no
+    // encontraba nada. Y el DTE es irreversible ante el SII sin nota de crédito.
+    //
+    // Se dispara con ~67 entregas diarias de un solo seller en una quincena, o sea
+    // volumen normal. `leerTodasLasFilas` no puede truncar en silencio: o trae
+    // todo, o lanza al pasar su tope.
     const netoTotal = await step.run('sumar-neto-periodo', async () => {
       const supabase = crearClienteServiceRole();
-      const { data, error } = await supabase
-        .schema('dinero')
-        .from('lineas_cobro')
-        .select('monto_final_clp')
-        .eq('tenant_id', tenantId)
-        .eq('periodo_cobro_id', periodoCobroidId)
-        .eq('anulada', false);
+      const lineas = await leerTodasLasFilas<{ monto_final_clp: number | string }>(
+        `líneas del período ${periodoCobroidId}`,
+        (desde, hasta) =>
+          supabase
+            .schema('dinero')
+            .from('lineas_cobro')
+            .select('monto_final_clp')
+            .eq('tenant_id', tenantId)
+            .eq('periodo_cobro_id', periodoCobroidId)
+            .eq('anulada', false)
+            .order('id')
+            .range(desde, hasta),
+      );
 
-      if (error) throw new Error(`Error al sumar neto del período: ${error.message}`);
-      return (data ?? []).reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0);
+      return lineas.reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0);
     });
 
     // Step 4: Llamar al proveedor DTE.

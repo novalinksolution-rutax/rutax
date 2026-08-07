@@ -94,7 +94,7 @@ export const jobSincronizarCalendario = inngest.createFunction(
 
       await step.run('registrar-fuente-sana', async () => {
         await registrarSaludFuente({
-          id: 'eventos',
+          id: 'calendario',
           nombre: 'Calendario y feriados',
           cadenciaMinutos: CADENCIA_MINUTOS,
           estado: 'ok',
@@ -106,7 +106,7 @@ export const jobSincronizarCalendario = inngest.createFunction(
     } else {
       await step.run('registrar-fuente-degradada', async () => {
         await registrarSaludFuente({
-          id: 'eventos',
+          id: 'calendario',
           nombre: 'Calendario y feriados',
           cadenciaMinutos: CADENCIA_MINUTOS,
           estado: calendario.reintentable ? 'atrasada' : 'caida',

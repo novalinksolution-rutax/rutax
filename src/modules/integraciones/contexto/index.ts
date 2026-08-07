@@ -1,28 +1,41 @@
 /**
- * Puertos de CONTEXTO EXTERNO de la Torre de control.
+ * Puerto de contexto de la Torre de control.
  * =====================================================================
  *
- * Tres puertos aislados, uno por fuente, siguiendo el patrón vigente del repo
+ * Queda **uno solo**, siguiendo el patrón vigente del repo
  * (`integraciones/geocoding`): interfaz + tipos + adaptador real + adaptador
  * stub, y una fábrica que elige por variable de entorno.
  *
- *   contexto/clima       → Open-Meteo Forecast          (CONTEXTO_CLIMA_PROVIDER)
- *   contexto/aire        → Open-Meteo Air Quality       (CONTEXTO_AIRE_PROVIDER)
  *   contexto/calendario  → api.boostr.cl + cálculo GEC  (CONTEXTO_CALENDARIO_PROVIDER)
  *
- * Los tres degradan y ninguno revienta: `obtener*` devuelve `ResultadoContexto`,
- * que sabe decir "no pude" sin lanzar. El job de A4 traduce ese "no pude" a una
- * fila de `contexto.fuentes_estado` y sigue con las demás capas.
+ * Degrada y no revienta: `obtener*` devuelve `ResultadoContexto`, que sabe decir
+ * "no pude" sin lanzar.
  *
- * ESTE ARCHIVO NO CONTIENE JOBS NI CRONES. Los puertos son invocables; quién los
- * invoca y con qué cadencia es trabajo del paso siguiente (§6 del diseño).
+ * -----------------------------------------------------------------------------
+ * LOS PUERTOS DE CLIMA Y AIRE SE RETIRARON (2026-08-03)
+ * -----------------------------------------------------------------------------
+ * No se ocultaron: se apagaron. El rediseño v2 de la Torre sacó el clima y el
+ * aire del producto entero —eran factores de un puntaje de riesgo que también se
+ * retiró— y con ellos cayeron los adaptadores de OpenWeather, la grilla de 14
+ * puntos de la RM y la atribución en pantalla. La decisión y su motivo están en
+ * `docs/torre-de-control/alcance-v2.md` §3: el clima se ve desde el teléfono del
+ * conductor y en terreno, no desde una consola.
  *
- * Lo que NO se construyó aquí, con su razón, para que no se busque en vano:
- *   · `contexto/transito` (TomTom) — es F2 por decisión de fases.
- *   · `contexto/eventos` y `contexto/noticias` — §13, con su propio pipeline.
- *   · La restricción vehicular EXTRAORDINARIA por episodio — ver la nota larga
- *     en `calendario/puerto.ts`: los dígitos son "aleatorios" fijados por
- *     decreto, no derivables de ningún feed.
+ * *Memoria útil por si el tema vuelve:* Open-Meteo se había descartado antes
+ * porque su tier libre prohíbe el uso comercial y define como comercial «apps con
+ * suscripciones» — exactamente lo que es Rutax.
+ *
+ * ESTE ARCHIVO NO CONTIENE JOBS NI CRONES.
+ *
+ * Lo que NO se construyó acá, con su razón, para que no se busque en vano:
+ *   · `contexto/transito` (TomTom) — de pago, y el conductor ya ve la congestión
+ *     en Waze.
+ *   · `contexto/eventos` y `contexto/noticias` — pipeline de prensa muerto: Google
+ *     News RSS prohíbe uso comercial, GDELT no cubre Chile y SENAPRED solo publica
+ *     desastres naturales.
+ *   · La restricción vehicular EXTRAORDINARIA por episodio — ver la nota larga en
+ *     `calendario/puerto.ts`: los dígitos son "aleatorios" fijados por decreto, no
+ *     derivables de ningún feed.
  */
 
 // ---- Contrato de degradación, compartido por los tres puertos ---------------
@@ -47,23 +60,6 @@ export {
 } from './errores';
 
 // ---- Puertos ----------------------------------------------------------------
-export { obtenerPuertoClima } from './clima';
-export type {
-  PuertoClima,
-  ParametrosClima,
-  PronosticoClima,
-  PronosticoHoraComuna,
-} from './clima';
-
-export { obtenerPuertoAire, nivelMasSevero, UMBRALES_PM25 } from './aire';
-export type {
-  PuertoAire,
-  ParametrosAire,
-  PronosticoAireHorario,
-  PronosticoHoraAire,
-  NivelAire,
-} from './aire';
-
 export {
   obtenerPuertoCalendario,
   calcularRestriccionPermanente,

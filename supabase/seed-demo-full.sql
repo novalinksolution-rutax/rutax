@@ -382,7 +382,18 @@ select
       when 2 then (g.i % 19 <> 0)
       else (g.i % 29 <> 0) end
   end,
-  substr(md5('rutax-track-'||g.i::text), 1, 24),
+  -- tracking_token: SOLO same-day, igual que producción (`crearPedidoSameDay` en
+  -- operacion/pedidos.ts). En Flex el comprador hace seguimiento en Mercado Libre,
+  -- y `/tracking/[token]` rechaza cualquier pedido que no sea same-day. Antes el
+  -- seed se lo ponía a los ~1.600 Flex también, lo que contradecía el comentario
+  -- de la columna y hacía que los datos de demo no representaran la invariante.
+  --
+  -- Sigue siendo un md5 determinista (y no `gen_random_uuid()`) porque el seed
+  -- tiene que ser idempotente: re-aplicarlo debe producir los mismos valores. Es
+  -- adivinable, y da igual en datos de demo — pero por eso mismo este seed NUNCA
+  -- debe cargarse en un ambiente accesible desde internet.
+  case when g.tipo_pedido = 'same_day'
+       then substr(md5('rutax-track-'||g.i::text), 1, 24) end,
   g.momento - interval '14 hours'
 from (
   select
@@ -970,6 +981,38 @@ where liq.tenant_id = ll.tenant_id
   and ll.fecha_entrega between liq.fecha_inicio and liq.fecha_fin
   and ll.tenant_id = '10000000-0000-0000-0000-000000000001'
   and ll.liquidacion_id is distinct from liq.id;
+
+-- ---------------------------------------------------------------------------
+-- Reconciliación de flags: `cobro_generado` ⟺ existe línea de cobro.
+-- ---------------------------------------------------------------------------
+-- Los pedidos se insertan con `cobro_generado = entregado`, pero las líneas se
+-- crean después con un JOIN contra `periodos_cobro` por rango de fecha: un
+-- pedido entregado cuya `fecha_compromiso` no cae en ningún período generado se
+-- queda sin línea y el flag ya había quedado en true. Resultado: ~80 pedidos que
+-- dicen "ya generé cobro" sin nada detrás.
+--
+-- No es inocuo aunque sean datos de demo: el motor entrega→dinero usa esos flags
+-- como guarda de idempotencia (`.eq('cobro_generado', false)`), así que un pedido
+-- mal marcado se salta la generación de líneas para siempre — y eso hace que una
+-- prueba sobre datos de demo mienta. Se detectó ejecutando N-E2E-1 el 2026-08-05.
+--
+-- El flag es derivado, así que se recalcula al final en vez de intentar predecir
+-- el JOIN desde el insert de pedidos.
+update operacion.pedidos p
+set cobro_generado = exists (select 1 from dinero.lineas_cobro l where l.pedido_id = p.id),
+    monto_cobro_clp = case
+      when exists (select 1 from dinero.lineas_cobro l where l.pedido_id = p.id)
+      then p.monto_cobro_clp end
+where p.tenant_id = '10000000-0000-0000-0000-000000000001'
+  and p.cobro_generado
+  and not exists (select 1 from dinero.lineas_cobro l where l.pedido_id = p.id);
+
+update operacion.pedidos p
+set liquidacion_generada = false,
+    monto_liquidacion_clp = null
+where p.tenant_id = '10000000-0000-0000-0000-000000000001'
+  and p.liquidacion_generada
+  and not exists (select 1 from dinero.lineas_liquidacion l where l.pedido_id = p.id);
 
 -- Un puñado de ajustes por incidencia (para que la columna no sea siempre 0).
 update dinero.lineas_cobro lc

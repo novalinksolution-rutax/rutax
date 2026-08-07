@@ -157,6 +157,19 @@ export async function listarPedidos(
 
   if (filtros.sellerId) query = query.eq("seller_id", filtros.sellerId);
   if (filtros.conductorId) query = query.eq("driver_id_asignado", filtros.conductorId);
+  if (filtros.comuna) {
+    // `ilike` y no `eq`: `destinatario_comuna` guarda el texto tal como llegó de
+    // la fuente, y el mismo lugar aparece como «Ñuñoa» o «ÑUÑOA» según venga de
+    // ML o de una carga manual. La forma canónica se resuelve al ingestar, pero
+    // el histórico no se reescribe.
+    //
+    // ⚠️ Lo que `ilike` NO resuelve son los acentos: «Nunoa» sin tilde no
+    // empareja con «Ñuñoa». Es una limitación conocida y acotada — el enlace de
+    // la Torre siempre manda el nombre canónico, así que solo afecta a filas con
+    // comuna mal escrita en origen, que es un problema de calidad de dato y no
+    // de este filtro.
+    query = query.ilike("destinatario_comuna", filtros.comuna);
+  }
 
   if (filtros.porRevisar) {
     // Bandeja de revisión geocoding: geo_estado problemático OR cobertura sin tarifa/revisión.

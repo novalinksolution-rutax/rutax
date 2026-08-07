@@ -19,7 +19,7 @@
  */
 
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { ahoraEnSantiago } from "@/lib/fecha-santiago";
+import { ahoraEnSantiago, limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 
 export interface ConsumoTenant {
   /** Pedidos creados en el mes calendario en curso (zona Santiago). */
@@ -29,12 +29,14 @@ export interface ConsumoTenant {
 }
 
 /**
- * Consumo del tenant en el mes calendario en curso. Aproximación consistente
- * con `obtenerResumenFinancieroDelMes` (metricas.ts): los límites de mes se
- * calculan sobre fechas 'YYYY-MM-DD' y se comparan contra `creado_en`
- * (timestamptz) usando medianoche UTC como borde — igual que el resto del
- * módulo de métricas, no es un requisito de precisión al segundo (el aviso de
- * consumo es informativo/blando, nunca gatilla bloqueos).
+ * Consumo del tenant en el mes calendario en curso.
+ *
+ * Los límites del mes se calculan sobre fechas 'YYYY-MM-DD' del calendario de
+ * Santiago y se convierten al instante correspondiente con
+ * `limitesDelDiaSantiago`. Antes el borde era medianoche UTC, lo que corría la
+ * ventana 3–4 h: los pedidos creados en las últimas horas del último día del
+ * mes contaban para el mes siguiente. El desvío era chico y el aviso es blando
+ * (nunca gatilla bloqueos), pero el borde correcto no cuesta más.
  */
 export async function obtenerConsumoTenant(tenantId: string): Promise<ConsumoTenant> {
   const supabase = crearClienteServiceRole();
@@ -54,8 +56,8 @@ export async function obtenerConsumoTenant(tenantId: string): Promise<ConsumoTen
       .from("pedidos")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
-      .gte("creado_en", `${primerDiaMes}T00:00:00.000Z`)
-      .lt("creado_en", `${primerDiaMesSiguiente}T00:00:00.000Z`),
+      .gte("creado_en", limitesDelDiaSantiago(primerDiaMes).desde.toISOString())
+      .lt("creado_en", limitesDelDiaSantiago(primerDiaMesSiguiente).desde.toISOString()),
     supabase
       .schema("identidad")
       .from("conductores")

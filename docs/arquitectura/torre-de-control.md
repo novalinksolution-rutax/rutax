@@ -5,7 +5,42 @@ el mapa de la Región Metropolitana que cruza **señal externa** (clima, aire,
 tránsito, eventos) con la **carga interna** (pedidos, zonas, conductores, SLA) y
 la traduce a **impacto en dinero**.
 
-Estado: diseño aprobado, sin implementar. Fecha: 2026-07-25.
+Escrito el 2026-07-25 como diseño de la v1. Implementado. **En rediseño v2 desde
+el 2026-08-03.**
+
+> ## Qué de este documento sigue mandando (2026-08-03)
+>
+> El módulo entró en rediseño. La fuente de verdad de **producto** es
+> `docs/torre-de-control/alcance-v2.md`. Este documento sigue siendo la fuente de
+> verdad **técnica**, pero solo en parte:
+>
+> **Vigente:**
+> - §1–§3 — qué es el módulo, decisiones de encuadre y qué reutiliza del repo.
+> - §5 — modelo de datos: esquema `contexto`, su carve-out deny-all y `tenant_id`
+>   en las tablas de negocio (`riesgo_zona`, `marcas_operativas`).
+> - §6 — adaptadores como puertos aislados, jobs y sus cadencias.
+> - §7 — el motor de riesgo **como pieza de arquitectura** (dónde vive, cómo se
+>   invoca, cómo persiste). ⚠️ Sus **pesos y factores** están en revisión: el
+>   rediseño decide si clima y aire salen del puntaje (ver `alcance-v2.md`).
+> - El pipeline de cartografía: `scripts/mapa/README.md` y
+>   `public/mapas/comunas-rm.topojson.json`.
+>
+> **Superado — no lo sigas:**
+> - **§4 (fuentes externas).** Corregido dos veces por la realidad. Lo cierto
+>   está en las correcciones fechadas de la propia sección y en CLAUDE.md.
+> - **§8 (pantalla) entera.** Regiones, capas del mapa, zoom semántico,
+>   interacciones y estados de pantalla se redefinen en `alcance-v2.md`.
+> - **§8.8 (SVG vs MapLibre): resuelto.** Ganó MapLibre + PMTiles. Y la elección
+>   de motor cartográfico se vuelve a evaluar, con su propio entregable, en
+>   `docs/arquitectura/mapa-torre-v2.md`.
+> - **§13 (señales de prensa): pipeline muerto.** Sus fuentes están bloqueadas
+>   por licencia o por falta de cobertura en Chile; las tablas
+>   `contexto.eventos_ciudad`, `contexto.senales` y `contexto.senales_tenant`
+>   tienen 0 filas y ningún escritor. Se conserva como registro de por qué no se
+>   construyó.
+>
+> Nada de esto se borró: el documento es la memoria de por qué se descartaron
+> cosas.
 
 ---
 
@@ -63,6 +98,16 @@ propio**: con el tiempo Rutax sabe cuánto le cuesta la lluvia a *ese* courier e
 
 ## 4. Fuentes externas (verificadas 2026-07-25)
 
+> ⚠️ **SECCIÓN SUPERADA (2026-08-03).** Se equivocó dos veces y la realidad la
+> corrigió las dos: Open-Meteo (prohíbe uso comercial → se migró a OpenWeather) y
+> las fuentes de prensa (bloqueadas → §13). Lo cierto está en las correcciones
+> fechadas de más abajo y en CLAUDE.md.
+>
+> Y encima queda pendiente de una decisión de producto: si clima y aire salen del
+> puntaje de riesgo, se apagan los adaptadores de OpenWeather, la grilla de 14
+> puntos y las tablas `clima_horario` / `aire_horario`, y el módulo `contexto`
+> se queda sin contexto externo. Lo decide `docs/torre-de-control/alcance-v2.md`.
+
 ### Se usan
 
 > ⚠️ **CORRECCIÓN (2026-07-26).** Este cuadro afirmaba que Open-Meteo era
@@ -74,14 +119,32 @@ propio**: con el tiempo Rutax sabe cuánto le cuesta la lluvia a *ese* courier e
 > precio no es público y contradicen la decisión 1 del §2.
 >
 > **Fuentes decididas en reemplazo:**
-> - **Aire → MMA / SINCA.** Es la fuente oficial chilena y, sobre todo, es *quien
->   decreta* los episodios: la alerta de preemergencia deja de ser la estimación
->   de un modelo global y pasa a ser el dato que rige. Mejor por mérito, no solo
->   por licencia.
-> - **Clima → OpenWeather.** Su tier gratuito permite uso comercial y menciona
->   plataformas SaaS explícitamente, a cambio de **atribución visible en
->   pantalla** (que el handoff no tiene prevista: hay que abrirle lugar en el
->   borde del mapa, junto a la de OpenStreetMap). Tope de 1.000 llamadas/día.
+> - ~~**Aire → MMA / SINCA.**~~ **CORREGIDO OTRA VEZ (2026-07-27, al implementar):
+>   SINCA no sirve como fuente del factor aire.** Se verificó su JSON en vivo
+>   (`sinca.mma.gob.cl/index.php/json/listadomapa2k19/`) y publica
+>   **observaciones horarias por estación, no pronóstico** — exactamente el mismo
+>   defecto por el que dos párrafos más abajo se descarta la DMC para clima. La
+>   Torre anticipa a 24–72 h; alimentarla con lo ya ocurrido le quita su razón de
+>   ser. Es cierto que el MMA es quien decreta los episodios, pero el decreto
+>   llega el día del episodio, no tres días antes.
+>   **Aire pasa a OpenWeather Air Pollution API** (pronóstico horario a 4 días de
+>   PM2.5/PM10, gratis, misma cuenta que el clima). La clasificación a niveles
+>   chilenos sigue siendo nuestra, sobre la media móvil de 24 h del Plan
+>   Operacional del MMA — no se usa el índice AQI del proveedor.
+>   SINCA sigue siendo la fuente correcta para «qué está midiendo la ciudad ahora
+>   mismo» y para contrastar el pronóstico contra la realidad: sería un adaptador
+>   NUEVO detrás del mismo puerto, no un reemplazo.
+> - **Clima → OpenWeather.** Su tier gratuito permite uso comercial y **no pide
+>   tarjeta**, a cambio de **atribución visible en pantalla** con el texto
+>   literal «Weather data provided by OpenWeather» y enlace al sitio (el handoff
+>   no la tenía prevista: se le abrió una franja de 18 px al pie del mapa, junto
+>   a la de OpenStreetMap). Cuota real verificada: **60 llamadas/minuto y
+>   1.000.000/mes** — no las 1.000/día que decía este documento, que eran las de
+>   One Call 3.0, un producto distinto que sí exige tarjeta.
+>   El endpoint gratuito es `/data/2.5/forecast`: **paso de 3 horas**, no hora a
+>   hora, y `rain.3h` es un ACUMULADO del tramo. Consecuencia aceptada: la
+>   intensidad de lluvia queda como media del tramo y un chaparrón corto se lee
+>   más suave de lo que fue.
 > - **La DMC (Dirección Meteorológica de Chile) se evaluó y NO sirve para esto**:
 >   publica observaciones de estaciones automáticas e histórico, no un pronóstico
 >   horario por ubicación. El factor clima de la Torre es inherentemente
@@ -91,7 +154,7 @@ propio**: con el tiempo Rutax sabe cuánto le cuesta la lluvia a *ese* courier e
 | Fuente | Endpoint | Key | Verificado |
 | --- | --- | --- | --- |
 | Clima horario | OpenWeather (ver corrección arriba) | sí, gratuita | Uso comercial permitido con atribución visible |
-| Calidad del aire | MMA / SINCA (ver corrección arriba) | — | Fuente oficial: es la que decreta los episodios |
+| Calidad del aire | OpenWeather Air Pollution API (ver corrección arriba) | sí, misma que clima | Pronóstico horario a 4 días; SINCA descartada por ser observación, no pronóstico |
 | Tránsito (F2) | TomTom Traffic API (`incidentDetails`) | sí, freemium | Sí — Chile con cobertura incidents + flow + flow detailed; 2.500 req/día gratis, uso comercial permitido |
 | Feriados | `api.boostr.cl/holidays.json` | no | Sí — incluye marca de irrenunciable |
 | Restricción / GEC | `airerm.mma.gob.cl` (feeds RSS por tag) + calendario fijo GEC 2026 | no | Sí |
@@ -239,19 +302,22 @@ Ruta: `src/app/(tenant)/torre-de-control/`. Botón fijo en la navegación del
 layout `(tenant)`, condicionado por capacidad. RBAC: capacidad nueva
 `ver_torre_control` para dueño, supervisor y coordinador.
 
-> ⚠️ **Esta sección quedó superada en todo lo visual y de layout.** La interfaz
-> aprobada es la de `design_handoff_torre_de_control/README.md`: tokens, medidas
-> de las regiones, geometría del mapa, estados y comportamiento salen de ahí.
+> ⚠️ **SUPERADA ENTERA (2026-08-03).** Esta sección ya había quedado superada por
+> el handoff de diseño; ahora el handoff también dejó de mandar y está archivado
+> en `docs/_historico/torre-v1/`. Regiones, capas, zoom semántico, color,
+> movimiento, interacciones y estados de pantalla se redefinen desde cero en
+> `docs/torre-de-control/alcance-v2.md`, sobre una decisión de producto nueva:
+> **el mapa es exclusivamente operativo** (zonas, conductores, pedidos, carga),
+> sin capas de ambiente.
 >
-> - **8.2 (color) y 8.5 (movimiento) están OBSOLETAS.** El diseño final usa
->   papel/grafito, radio 0 en todo, riesgo por trama de 45° en vez de rampa
->   cromática y `#ec3013` reservado a lo crítico accionable.
-> - **8.4 y 8.8 quedan condicionadas** a la decisión de motor de mapa (ver 8.8).
-> - Sigue vigente: 8.3 (disclosure de tres niveles), 8.6 (silencio por defecto),
->   8.7 (estados) y 8.9 (accesibilidad) — el handoff las recoge como reglas de
->   producto.
+> Se conserva como registro. Dos cosas de aquí siguen siendo candidatas y el
+> alcance v2 decide si sobreviven: 8.3 (disclosure de tres niveles) y 8.6
+> (silencio por defecto).
 >
-> `docs/torre-de-control/lenguaje-visual.md` fue **descartado**. No usarlo.
+> Sobre la ruta de 8.1: la pantalla se movió a `src/app/(consola)/` en la v1 y
+> **vuelve a `(tenant)` en la v2** (2026-08-03), esta vez dentro del `AppShell`,
+> con el mapa acotado en altura más un botón de pantalla completa. El grupo
+> `(consola)` se retira entero. Ver `alcance-v2.md` §5.8.
 
 ### 8.1 Estructura
 
@@ -376,10 +442,17 @@ deja de leerse al mes.
   mapa que los esconde miente sobre la carga real.
 - **Tenant sin zonas** → fallback a macro-zonas + invitación a configurarlas.
 
-### 8.8 Construcción del mapa — DECISIÓN ABIERTA
+### 8.8 Construcción del mapa — RESUELTA
 
-> ⚠️ **El diseño aprobado y esta sección proponen motores distintos.** Hay que
-> elegir uno antes de escribir código de mapa.
+> ✅ **Resuelta (2026-07-26): ganó la Opción 2, MapLibre + PMTiles**, por
+> orientación urbana, con geometría comunal DPA 2023 real y basemap acromático
+> mínimo. Lo que sigue es el registro del trade-off.
+>
+> ⚠️ **Y se vuelve a abrir, con otro encuadre (2026-08-03).** Al quitarle al mapa
+> las capas de ambiente, el mapa cambia de trabajo, y el usuario pidió replantear
+> la herramienta. Esa evaluación —opciones, licencias, costo y medición de
+> rendimiento— tiene su propio entregable: `docs/arquitectura/mapa-torre-v2.md`.
+> No decidas motor de mapa desde aquí.
 >
 > **Opción 1 — la del handoff (SVG + TopoJSON).** El diseño aprobado dibuja el
 > mapa como SVG geométrico con una capa HTML de etiquetas encima, sin basemap,
@@ -600,6 +673,19 @@ adelante en vez de hacia atrás.
 
 ## 13. Señales — radar de acontecimientos
 
+> ⚠️ **PIPELINE MUERTO (2026-08-03). No lo construyas.** Las fuentes están
+> bloqueadas: Google News RSS prohíbe el uso comercial, GDELT no cubre Chile y
+> SENAPRED solo publica desastres naturales (detalle en la corrección de §13.2).
+> Las tablas `contexto.eventos_ciudad`, `contexto.senales` y
+> `contexto.senales_tenant` existen con **0 filas y ningún escritor**, y
+> `obtenerSenalesDelTenant` se importa en el composer pero nunca se llama.
+> Efecto colateral: la fuente `senales` está declarada caída de forma permanente
+> en `contexto.fuentes_estado`, y por eso la Torre abre siempre en estado
+> `degradado`.
+>
+> Se conserva como registro de la investigación y de por qué no se construyó. Su
+> retiro se decide en `docs/torre-de-control/alcance-v2.md`.
+
 Investigado 2026-07-25. Objetivo: detectar acontecimientos (cortes, marchas,
 paros, emergencias, fallas del Metro) que afecten la operación, antes de que el
 coordinador los descubra en la calle.
@@ -614,11 +700,47 @@ alguno de mis pedidos de hoy o mañana?", después las fuentes.
 
 ### 13.2 Fuentes (verificadas en vivo)
 
+> ⚠️ **CORRECCIÓN (2026-08-02). Las tres filas del cuadro están mal, y la
+> primera repite el error de Open-Meteo.** Se verificó cada una en vivo:
+>
+> 1. **Google News RSS NO se puede usar.** El propio feed devuelve, en su
+>    `<copyright>`: *"This XML feed is made available solely for the purpose of
+>    rendering Google News results within a personal feed reader for **personal,
+>    non-commercial use**. Any other use of the feed is expressly prohibited."*
+>    Rutax es un SaaS de pago. "Verificado, funciona" comprobó que **responde**,
+>    no que **se pueda usar** — exactamente la distinción que ya nos costó
+>    Open-Meteo en §4. No es la columna vertebral: no es una opción.
+> 2. **GDELT sí permite uso comercial** (*"available for unlimited and
+>    unrestricted use for any academic, commercial, or governmental use of any
+>    kind without fee"*, con cita y enlace al redistribuir), pero **no está
+>    probado como columna vertebral**: en un sondeo espaciado a 12 s (su límite
+>    declarado es 1 req/5 s), 4 de 5 consultas devolvieron 429 y la única que
+>    pasó devolvió **0 artículos** para Chile. Antes de apoyarse en él hay que
+>    resolver cobertura chilena y cadencia real desde el servidor.
+> 3. **Los dos endpoints "RSS oficiales" del cuadro no existen como RSS.**
+>    `senapred.gob.cl/feed/` devuelve HTML y `airerm.mma.gob.cl/rss` no resuelve.
+>    **Pero SENAPRED sí publica sus alertas de forma programática**, en
+>    FeatureServers ArcGIS públicos (p. ej.
+>    `services3.arcgis.com/CNzkI2T3GmfwkaAR/…/METEOROLOGICAS_ROJA/FeatureServer/0`,
+>    descubiertos desde el dashboard oficial). Devuelven datos **estructurados y
+>    vigentes** —151 alertas activas al 2026-08-02— con `CUT_COM`, el código
+>    único territorial de comuna, además de `TIPO_ALERT`, `CAUSALIDAD` y
+>    `FECHA_INI`.
+>
+> **Consecuencia sobre §13.5, que es lo importante:** para las alertas de
+> emergencia **no hace falta LLM**. El dato llega ya estructurado y con el código
+> de comuna, así que "extraer la comuna de la prosa" es un problema que esa mitad
+> del módulo no tiene — y una extracción por LLM sería menos fiable que el campo
+> oficial. La IA solo aporta valor en la prosa periodística sobre cortes y
+> marchas… que es justamente la mitad cuya única fuente probada es la prohibida.
+> Por eso el conjunto de evaluación de ~100 noticias **está bloqueado**: no se
+> puede medir la extracción sobre un corpus que no se podrá usar en producción.
+
 | Fuente | Estado | Rol |
 | --- | --- | --- |
-| **Google News RSS** (`news.google.com/rss/search?q=…&hl=es-419&gl=CL`) | **Verificado, funciona** | La columna vertebral. Sin key, sin límite práctico, consultas arbitrarias |
-| **GDELT 2.0 DOC API** | Gratis, sin key, refresco 15 min | Ampliación y respaldo. Devolvió 429 desde red compartida — validar desde el servidor |
-| RSS oficiales (SENAPRED, `airerm.mma.gob.cl`) | Gratis | Alertas de emergencia y calidad del aire |
+| **Google News RSS** (`news.google.com/rss/search?q=…&hl=es-419&gl=CL`) | ~~Verificado, funciona~~ · **PROHIBIDO uso comercial** | Descartada. Ver corrección |
+| **GDELT 2.0 DOC API** | Uso comercial permitido; 429 persistente y 0 artículos para Chile en el sondeo | Candidata, **sin validar** |
+| RSS oficiales (SENAPRED, `airerm.mma.gob.cl`) | Los endpoints RSS no existen | Reemplazados por FeatureServers ArcGIS de SENAPRED (estructurados, con `CUT_COM`) |
 
 La consulta de prueba `Santiago corte de transito OR manifestacion` devolvió
 exactamente lo que se necesita: *"Maratón de Santiago: cortes de tránsito"*,

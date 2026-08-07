@@ -9,6 +9,7 @@
  * Ninguna función aquí escribe en BD ni tiene side effects.
  */
 
+import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   PeriodoCobro,
@@ -304,17 +305,26 @@ export async function listarLineasCobroPorPeriodo(
   tenantId: string,
   periodoId: string,
 ): Promise<LineaCobro[]> {
-  const { data, error } = await cliente
-    .schema('dinero')
-    .from('lineas_cobro')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('periodo_cobro_id', periodoId)
-    .eq('anulada', false)
-    .order('fecha_entrega', { ascending: true });
+  // ⚠️ PAGINADO OBLIGATORIO. Es la lista con la que el courier revisa el período
+  // antes de facturarlo: sin paginar, PostgREST corta en `max_rows` (1000) sin
+  // error y tanto el listado como cualquier total derivado salen incompletos.
+  // Medido con 1.365 líneas: mostraba $3.420.800 de $4.681.000 reales.
+  const data = await leerTodasLasFilas<Record<string, unknown>>(
+    `líneas de cobro del período ${periodoId}`,
+    (desde, hasta) =>
+      cliente
+        .schema('dinero')
+        .from('lineas_cobro')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('periodo_cobro_id', periodoId)
+        .eq('anulada', false)
+        .order('fecha_entrega', { ascending: true })
+        .order('id')
+        .range(desde, hasta),
+  );
 
-  if (error) throw new Error(`Error al listar líneas de cobro: ${error.message}`);
-  return (data ?? []).map(filaToLineaCobro);
+  return data.map(filaToLineaCobro);
 }
 
 // =============================================================================
@@ -394,18 +404,25 @@ export async function obtenerLiquidacion(
 
   // Filtrar anuladas: líneas de pedidos devueltos tras fallido no deben mostrarse
   // ni sumarse al total de la liquidación del conductor.
-  const { data: lineasData, error: lineasError } = await cliente
-    .schema('dinero')
-    .from('lineas_liquidacion')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('liquidacion_id', liquidacionId)
-    .eq('anulada', false)
-    .order('fecha_entrega', { ascending: true });
+  // ⚠️ PAGINADO OBLIGATORIO — es el detalle que el conductor abre para revisar lo
+  // que se le paga. Sin paginar, PostgREST corta en `max_rows` (1000) sin error y
+  // el conductor vería su liquidación incompleta, sin ninguna señal de que falta.
+  const lineasData = await leerTodasLasFilas<Record<string, unknown>>(
+    `líneas de la liquidación ${liquidacionId}`,
+    (desde, hasta) =>
+      cliente
+        .schema('dinero')
+        .from('lineas_liquidacion')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('liquidacion_id', liquidacionId)
+        .eq('anulada', false)
+        .order('fecha_entrega', { ascending: true })
+        .order('id')
+        .range(desde, hasta),
+  );
 
-  if (lineasError) throw new Error(`Error al listar líneas de liquidación: ${lineasError.message}`);
-
-  const lineas = (lineasData ?? []).map(filaToLineaLiquidacion);
+  const lineas = lineasData.map(filaToLineaLiquidacion);
   return { ...filaToLiquidacion(liqData), lineas };
 }
 

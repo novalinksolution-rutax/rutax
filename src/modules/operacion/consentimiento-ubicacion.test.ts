@@ -23,6 +23,7 @@ import {
   VERSION_TEXTO_CONSENTIMIENTO_UBICACION,
 } from "./consentimiento-ubicacion";
 import { actualizarUbicacionConductor } from "./ubicacion-conductor";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Fixtures
@@ -31,7 +32,10 @@ import { actualizarUbicacionConductor } from "./ubicacion-conductor";
 const TENANT_A = "aaaa0000-0000-0000-0000-000000000001";
 const CONDUCTOR_1 = "dddd0000-0000-0000-0000-000000000010";
 const USUARIO_ID = "uuuu0000-0000-0000-0000-000000000001";
-const HOY = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+// El día que ve el código bajo prueba es el de Santiago, no el de UTC.
+// Derivarlo con `toISOString()` hacía que este test se desincronizara solo
+// entre las 20:00 y la medianoche de Santiago.
+const HOY = hoyEnSantiago(); // YYYY-MM-DD
 
 // =============================================================================
 // Helpers de construcción de mocks

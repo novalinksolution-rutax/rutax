@@ -9,6 +9,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useCallback } from "react";
 import { MapPinOff } from "lucide-react";
 import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
+import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { TEXTO_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
@@ -26,18 +27,24 @@ const TODOS = "__todos__";
 
 interface Props {
   sellers: { id: string; nombre: string }[];
+  conductores: { id: string; nombre: string }[];
   filtroSeller: string;
   filtroEstado: string;
   filtroFecha: string;
+  filtroComuna: string;
+  filtroConductor: string;
   filtroPorRevisar: boolean;
   hayFiltroActivo: boolean;
 }
 
 export function FiltrosPedidosForm({
   sellers,
+  conductores,
   filtroSeller,
   filtroEstado,
   filtroFecha,
+  filtroComuna,
+  filtroConductor,
   filtroPorRevisar,
   hayFiltroActivo,
 }: Props) {
@@ -50,13 +57,26 @@ export function FiltrosPedidosForm({
       if (campo !== "seller" && filtroSeller) params.set("seller", filtroSeller);
       if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
       if (campo !== "fecha" && filtroFecha) params.set("fecha", filtroFecha);
-      // "por_revisar" es exclusivo: al activarlo limpia estado/fecha
-      if (campo !== "por_revisar" && !filtroPorRevisar && false) { /* no-op */ }
+      // Comuna y conductor sobreviven al cambio de cualquier otro filtro: se
+      // llega desde la Torre con uno puesto y afinar por estado no puede
+      // devolver al usuario a la ciudad entera.
+      if (campo !== "comuna" && filtroComuna) params.set("comuna", filtroComuna);
+      if (campo !== "conductor" && filtroConductor) params.set("conductor", filtroConductor);
+      if (campo !== "por_revisar" && filtroPorRevisar) params.set("por_revisar", "1");
       if (valor) params.set(campo, valor);
       // Resetear a página 1 al cambiar filtros
       router.push(`${pathname}?${params.toString()}`);
     },
-    [router, pathname, filtroSeller, filtroEstado, filtroFecha, filtroPorRevisar],
+    [
+      router,
+      pathname,
+      filtroSeller,
+      filtroEstado,
+      filtroFecha,
+      filtroComuna,
+      filtroConductor,
+      filtroPorRevisar,
+    ],
   );
 
   /** Activa/desactiva la bandeja "Por revisar"; es exclusiva con estado/fecha. */
@@ -117,6 +137,54 @@ export function FiltrosPedidosForm({
               {sellers.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {s.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Comuna — destino de los enlaces profundos de la Torre (F11). NO se
+            oculta con "por revisar": acotar la bandeja de direcciones a una
+            comuna es justamente lo que se quiere al llegar desde el mapa. */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filtro-comuna" className="text-xs font-medium text-muted-foreground">
+            Comuna
+          </label>
+          <Select
+            value={filtroComuna || TODOS}
+            onValueChange={(v) => actualizar("comuna", v === TODOS ? "" : v)}
+          >
+            <SelectTrigger id="filtro-comuna" size="default" className="h-9 w-48">
+              <SelectValue placeholder="Todas las comunas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todas las comunas</SelectItem>
+              {COMUNAS_RM.map((comuna) => (
+                <SelectItem key={comuna} value={comuna}>
+                  {comuna}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Conductor — ídem F11: «Pérez · 12 de 40» tiene que llegar acá filtrado. */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filtro-conductor" className="text-xs font-medium text-muted-foreground">
+            Conductor
+          </label>
+          <Select
+            value={filtroConductor || TODOS}
+            onValueChange={(v) => actualizar("conductor", v === TODOS ? "" : v)}
+          >
+            <SelectTrigger id="filtro-conductor" size="default" className="h-9 w-48">
+              <SelectValue placeholder="Todos los conductores" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos los conductores</SelectItem>
+              {conductores.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.nombre}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -81,4 +81,34 @@ Agregar a `operacion.pedidos` la cuenta de origen. **Recomendado: `ml_user_id te
 - `ejecutar-backfill.ts`: estampa `ml_user_id` en cada pedido ingestado (único ingreso Flex; el same-day de `operacion/pedidos.ts` lo deja `null`, correcto).
 - Verificado: `tsc --noEmit` limpio; 42 tests de `ejecutar-backfill`/`procesar-shipment` en verde.
 
-**Pendiente = el bundle acoplado del §7-D4** (no habilitar "agregar cuenta" hasta cerrarlo): flip de `conexiones_seller_ml` (drop `unique(seller_id)`, unicidad parcial `(seller_id, ml_user_id)`, tope 3, `alias`/`ml_nickname`) → **base-datos-rls**; `persistirTokens` onConflict + refactor de helpers "por seller" (token/etiqueta/portal) + `procesar-shipment`/`polling` por conexión + OAuth "agregar cuenta" → **integraciones**; UI de conexiones + badge de origen "solo si >1" → **frontend/ux-ui**; tests → **qa**.
+~~**Pendiente = el bundle acoplado del §7-D4**~~ — **CERRADO. Auditado y verificado el 2026-08-02.**
+
+El bundle §7-D4 completo está implementado; este §9 llevaba desde el 2026-06-30
+declarándolo pendiente cuando ya no lo estaba. Lo que se comprobó, pieza por pieza:
+
+- **Esquema (§1–§3)** — migración `20260630000002_…_multicuenta.sql` aplicada. En la
+  base local: sin `unique(seller_id)`, con `conexiones_seller_ml_seller_cuenta_uk
+  UNIQUE (seller_id, ml_user_id) WHERE ml_user_id IS NOT NULL`, y las columnas
+  `alias` / `ml_nickname`.
+- **Tope e unicidad, probados en vivo** (transacción revertida, base intacta):
+  tres cuentas entran; la **cuarta** la rechaza el trigger
+  `identidad.conexiones_seller_ml_imponer_tope()`; una cuenta **repetida** en el
+  mismo seller la rechaza `…_seller_cuenta_uk`; y la **misma cuenta ML en otro
+  seller sí se permite**, que es lo que el índice parcial pretende.
+  > Ojo al re-probar: con el seller ya en 3 conexiones, el intento de duplicado lo
+  > rechaza **el tope**, no la unicidad. Para aislar la unicidad hay que probarla
+  > con menos de 3 conexiones, o la prueba pasa por el motivo equivocado.
+- **Pipeline por conexión (§5)** — los cinco jobs iteran por conexión:
+  `polling-estados` agrupa por `(seller_id, ml_user_id)`, `procesar-shipment`
+  desambigua por la cuenta que notificó (sin `.maybeSingle()`), y
+  `refrescar-tokens` / `ejecutar-backfill` / `sondeo-salud` van por `id` de conexión.
+  `persistirTokensYActualizarConexion` ya no usa `upsert(onConflict)` sino
+  SELECT-por-cuenta → UPDATE | INSERT (ver `ml/multicuenta.test.ts`).
+- **OAuth (§7-D3)** — los tres modos existen (`conexion_inicial` / `reconexion` /
+  `agregar_cuenta`) y el callback traduce los rechazos a `tope_alcanzado` y
+  `cuenta_ya_conectada`.
+- **UI (§6)** — el portal lista hasta 3 cuentas con alias editable y "Agregar otra
+  cuenta"; el badge de origen en `(tenant)/operaciones` se pinta **solo si el
+  seller tiene más de una** conexión.
+- **Verificación**: typecheck y lint limpios, 2.355 tests, 476 pgTAP — incluida
+  `rls_aislamiento_conexiones_multicuenta.test.sql`.

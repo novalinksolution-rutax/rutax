@@ -175,6 +175,86 @@ npx inngest-cli@latest dev
    - Conductores activos: 7 (los que tienen entregas o manifiestos)
    - Alertas: TecnoHogar desconectada · 1 incidencia abierta
 
+### Paso 11 — Torre de control (2 min)
+
+La Torre es la pantalla de monitoreo del día: **cuántos paquetes faltan por
+entregar, en qué comunas, y si algo se está atascando**. Es de **solo lectura**.
+
+> **Antes de entrar, siembra el día.** El seed grande ancla las fechas al momento
+> en que se aplicó y usa `on conflict do nothing`, así que **no las mueve al
+> re-aplicarlo**: un día después la Torre abre casi vacía. Además pone todos los
+> pedidos de una comuna en la misma coordenada, con lo que el mapa dibujaría un
+> punto por comuna. Corre esto y queda el día de hoy con carga de verdad:
+>
+> ```bash
+> docker exec -i supabase_db_SaaS_Courier_Again psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/seed-torre-hoy.sql
+> ```
+>
+> Es idempotente **por borrado** —rehace su propio bloque— así que se puede
+> correr cualquier día y las veces que haga falta. Siembra ~1.020 pedidos en 22
+> comunas, con edificios que colapsan, incidencias abiertas, reintentos y cierres
+> de conductor. Detalle en el encabezado del propio archivo.
+
+**Además del basemap, la Torre v2 necesita los glifos publicados**, o el plano
+sale mudo (sin nombres de calle ni cifras en las burbujas):
+
+```bash
+node --env-file=.env.local scripts/mapa/publicar-glifos.mjs
+```
+
+Imprime la URL que va en `NEXT_PUBLIC_MAPA_GLIFOS_URL`. Sin esa variable el mapa
+**funciona igual**, sin una sola etiqueta: es un estado declarado, no un error.
+
+1. Sigue como **Dueño** (o supervisor/coordinador — la capacidad es
+   `ver_torre_control`; administración NO la tiene) y entra a
+   **Torre de control** (`/torre-de-control`), dentro del `AppShell`.
+2. Arriba, la fracción del día —«faltan 476 de 1022»— y las cuatro magnitudes.
+   Si hay una ola comercial dentro del horizonte, su banda va **encima** de las
+   cifras: es lo único que mira hacia adelante.
+3. **Nivel 1 — comunas.** Cada comuna se rellena según su carga (cuatro pasos por
+   cuantil) y lleva su placa con «faltan N de M». El punto rojo de la placa marca
+   incidencias abiertas.
+4. **Nivel 2 — agrupaciones.** Clic en una comuna: el mapa vuela, el resto de la
+   ciudad se apaga bajo un velo y aparecen burbujas con su cifra. Se llega igual
+   con la rueda, pero **la rueda no selecciona comuna**: sin selección no hay
+   velo ni nombre en las migas. Es correcto — apagar media ciudad porque alguien
+   giró la rueda sería el mapa decidiendo por el usuario.
+5. **Nivel 3 — puntos.** Clic en una burbuja (o sigue acercando): cada pedido a
+   la vista se previsualiza solo. Los normales asoman como la misma ficha a la
+   mitad y translúcida; **las incidencias, como una píldora roja con su tipo**, a
+   tamaño completo. Clic en cualquiera abre la ficha entera: código de envío,
+   conductor, seller y —solo si el paquete ya falló antes— «2º intento».
+6. **Pantalla completa** con el botón de arriba a la derecha; `Esc` cierra la
+   ficha y las migas suben de nivel.
+7. Cada fila del panel y cada comuna **enlazan a `/operaciones` con el filtro ya
+   puesto** (F11). La Torre no ejecuta: muestra y enlaza.
+8. Vuelve al **Dashboard**: si hay pendientes, incidencias o una ola dentro de 30
+   días, aparece la **banda de la Torre**. Si el día va bien, **no aparece**, y
+   eso es correcto: el silencio es el estado normal.
+
+**Qué mirar para creerle a la pantalla.** Entra a una comuna y compara la cifra
+de la placa con la suma de las burbujas: tienen que cuadrar. Si no cuadraran, el
+mapa estaría escondiendo carga, que es lo único que esta pantalla no puede hacer.
+
+**Qué NO necesita arrancar** (cambió respecto de la v1, y es fácil perder tiempo
+buscándolo): la Torre v2 **no depende de ningún job**. Lee la carga en vivo desde
+`operacion`. Los cuatro jobs de clima, aire y riesgo se retiraron; queda
+`contexto/calendario.sincronizar`, que solo alimenta las olas comerciales y puede
+no haber corrido nunca sin que la pantalla se vea mal.
+
+**De dónde sale «entregado»**: del cierre que el conductor declara en la app de
+Rutax — `operacion.pruebas_entrega` en same-day y `operacion.cierres_conductor`
+en Flex — **no** del estado oficial del pedido. Por eso, con carga Flex, la Torre
+puede mostrar menos pendientes que `/operaciones` durante un rato: va por
+delante de la sincronización con Mercado Libre. No es un descuadre.
+
+**Frescura y hora de cierre, dos cosas que cambian solas y confunden si no se
+esperan.** Si nadie sube un cierre en 45 minutos aparece un chip ámbar —«Sin
+cierres de conductor hace N min»— y desaparece cuando vuelve a entrar uno: es F6,
+callada por defecto. Y **después de las 23:00** el panel de conductores deja de
+mostrar avance («12 de 40») y pasa a mostrar paquetes rezagados («28 sin
+entregar»). Las dos son correctas; ninguna es un error de la demo.
+
 ---
 
 ## Estado de los tests

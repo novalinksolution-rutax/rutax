@@ -37,6 +37,7 @@ import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaci
 
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
+import { jobPurgarEvidencias } from "@/modules/operacion/jobs/purgar-evidencias";
 
 // Jobs de Dinero (Fase C — motor entrega→dinero)
 import { jobGenerarLineas } from "@/modules/dinero/jobs/generar-lineas";
@@ -83,13 +84,7 @@ import { jobNotificarComunicacion } from "@/modules/plataforma/jobs/notificar-co
 // Jobs F23 — API pública y webhooks salientes
 import { jobEntregarWebhook } from "@/modules/integraciones/api-publica/jobs/entregar-webhook";
 // Jobs de contexto — Torre de control (anticipación operativa)
-import { jobRefrescarClima } from "@/modules/contexto/jobs/refrescar-clima";
-import { jobRefrescarAire } from "@/modules/contexto/jobs/refrescar-aire";
 import { jobSincronizarCalendario } from "@/modules/contexto/jobs/sincronizar-calendario";
-import {
-  jobRiesgoBarrido,
-  jobRiesgoRecalcularTenant,
-} from "@/modules/contexto/jobs/recalcular-riesgo";
 
 /**
  * Array de todas las funciones de Inngest del sistema.
@@ -107,6 +102,7 @@ const funciones = [
   jobNotificacionConexionCaida,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
+  jobPurgarEvidencias,
   // Jobs Dinero (Fase C)
   jobGenerarLineas,
   jobCerrarPeriodo,
@@ -151,17 +147,15 @@ const funciones = [
   jobNotificarComunicacion,
   // Jobs F23 — entrega de webhooks salientes (cron cada 2 min)
   jobEntregarWebhook,
-  // Torre de control — ingesta de contexto externo. Crones desplazados fuera de
-  // la hora en punto: el repo ya tiene un cluster en 02:00–02:30 y 05:00–06:00.
-  // La pantalla NUNCA llama a una API externa en el render; todo lo precalculan
-  // estos jobs, y eso es lo que la hace sentirse instantánea (§8.4).
-  jobRefrescarClima,
-  jobRefrescarAire,
+  // Torre de control. Queda UN job: el calendario comercial, que alimenta las
+  // olas entrantes. Cron desplazado fuera de la hora en punto — el repo ya tiene
+  // un cluster en 02:00–02:30 y 05:00–06:00.
+  //
+  // Eran cinco. El rediseño v2 retiró `jobRefrescarClima`, `jobRefrescarAire`,
+  // `jobRiesgoBarrido` y `jobRiesgoRecalcularTenant`: la Torre dejó de tener un
+  // puntaje de riesgo que precalcular cada 15 minutos y pasó a leer la carga en
+  // vivo desde `operacion`. Ver `docs/torre-de-control/alcance-v2.md` §5.2.
   jobSincronizarCalendario,
-  // Motor de riesgo: fan-out real por tenant (primer uso de step.sendEvent +
-  // concurrency en el repo). El barrido solo enumera y despacha.
-  jobRiesgoBarrido,
-  jobRiesgoRecalcularTenant,
 ];
 
 export const { GET, POST, PUT } = serve({

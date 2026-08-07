@@ -31,6 +31,7 @@
  */
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { leerTodasLasFilas, leerPorLotesDeIds } from '@/lib/supabase/leer-paginado';
 import {
   puedeEmitirFacturas,
   puedeGestionarLiquidacionesConductores,
@@ -261,17 +262,22 @@ async function evaluarIncidenciasAbiertas(
 ): Promise<ItemPreflight[]> {
   if (pedidoIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .schema('operacion')
-    .from('incidencias')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('estado', 'abierta')
-    .in('pedido_id', pedidoIds);
-
-  if (error) throw new Error(`Error al leer incidencias abiertas: ${error.message}`);
-
-  const incidencias = data ?? [];
+  // EN LOTES. Ojo con la cadena: `pedidoIds` sale de las líneas del período, y al
+  // paginar esa lectura (agosto 2026) la lista dejó de estar acotada en 1.000 —
+  // así que este `.in()` pasó a poder reventar el largo de URL. Arreglar un techo
+  // puede destapar el otro; van juntos.
+  const incidencias = await leerPorLotesDeIds<{ id: string }>(
+    'incidencias abiertas de los pedidos del período',
+    pedidoIds,
+    (lote) =>
+      supabase
+        .schema('operacion')
+        .from('incidencias')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('estado', 'abierta')
+        .in('pedido_id', lote),
+  );
   if (incidencias.length === 0) return [];
 
   return [
@@ -319,23 +325,37 @@ async function leerLineasCobroPeriodo(
   tenantId: string,
   periodoId: string,
 ): Promise<LineasCobroPeriodo> {
-  const { data: vigentes, error: errorVigentes } = await supabase
-    .schema('dinero')
-    .from('lineas_cobro')
-    .select('pedido_id, monto_final_clp')
-    .eq('tenant_id', tenantId)
-    .eq('periodo_cobro_id', periodoId)
-    .eq('anulada', false);
-  if (errorVigentes) throw new Error(`Error al leer líneas de cobro: ${errorVigentes.message}`);
+  // ⚠️ PAGINADO OBLIGATORIO. El preflight es el resumen que ve una persona ANTES
+  // de aprobar la emisión de un DTE irreversible. Sin paginar, PostgREST corta en
+  // `max_rows` (1000) sin error y el resumen muestra menos de lo que se va a
+  // facturar — con lo que la compuerta humana aprueba una cifra que no es la real.
+  const vigentes = await leerTodasLasFilas<{ pedido_id: string; monto_final_clp: number | string }>(
+    `líneas vigentes del período ${periodoId}`,
+    (desde, hasta) =>
+      supabase
+        .schema('dinero')
+        .from('lineas_cobro')
+        .select('pedido_id, monto_final_clp')
+        .eq('tenant_id', tenantId)
+        .eq('periodo_cobro_id', periodoId)
+        .eq('anulada', false)
+        .order('id')
+        .range(desde, hasta),
+  );
 
-  const { data: anuladas, error: errorAnuladas } = await supabase
-    .schema('dinero')
-    .from('lineas_cobro')
-    .select('motivo_anulacion')
-    .eq('tenant_id', tenantId)
-    .eq('periodo_cobro_id', periodoId)
-    .eq('anulada', true);
-  if (errorAnuladas) throw new Error(`Error al leer líneas de cobro anuladas: ${errorAnuladas.message}`);
+  const anuladas = await leerTodasLasFilas<{ motivo_anulacion: string | null }>(
+    `líneas anuladas del período ${periodoId}`,
+    (desde, hasta) =>
+      supabase
+        .schema('dinero')
+        .from('lineas_cobro')
+        .select('motivo_anulacion')
+        .eq('tenant_id', tenantId)
+        .eq('periodo_cobro_id', periodoId)
+        .eq('anulada', true)
+        .order('id')
+        .range(desde, hasta),
+  );
 
   return {
     vigentes: (vigentes ?? []) as LineasCobroPeriodo['vigentes'],
@@ -796,14 +816,21 @@ export async function preflightEmitirPago(
     });
   }
 
-  const { data: lineasVigentes, error: errorVigentes } = await supabase
-    .schema('dinero')
-    .from('lineas_liquidacion')
-    .select('pedido_id')
-    .eq('tenant_id', tenantId)
-    .eq('liquidacion_id', liquidacionId)
-    .eq('anulada', false);
-  if (errorVigentes) throw new Error(`Error al leer líneas de liquidación: ${errorVigentes.message}`);
+  // ⚠️ PAGINADO OBLIGATORIO — mismo motivo, del otro lado: es el resumen previo a
+  // aprobar el PAGO a un conductor.
+  const lineasVigentes = await leerTodasLasFilas<{ pedido_id: string }>(
+    `líneas vigentes de la liquidación ${liquidacionId}`,
+    (desde, hasta) =>
+      supabase
+        .schema('dinero')
+        .from('lineas_liquidacion')
+        .select('pedido_id')
+        .eq('tenant_id', tenantId)
+        .eq('liquidacion_id', liquidacionId)
+        .eq('anulada', false)
+        .order('id')
+        .range(desde, hasta),
+  );
 
   const { data: lineasAnuladasData, error: errorAnuladas } = await supabase
     .schema('dinero')

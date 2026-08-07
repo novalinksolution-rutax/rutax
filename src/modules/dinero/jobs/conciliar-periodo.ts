@@ -28,6 +28,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { leerTodasLasFilas, leerPorLotesDeIds } from '@/lib/supabase/leer-paginado';
 import { camposClasificacionParaInsert } from '../conciliacion-clasificacion';
 import type { TipoDiferenciaConciliacion } from '../tipos';
 import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
@@ -70,7 +71,13 @@ export const jobConciliarPeriodo = inngest.createFunction(
 
       // Buscar pedidos del seller en el rango que estén entregados
       // pero sin línea de cobro correspondiente.
-      const { data: pedidosEntregados } = await supabase
+      // ⚠️ PAGINADO. Un barrido truncado informa "sin discrepancias" cuando en
+      // realidad no las miró todas — la misma trampa que tenía el detector de
+      // líneas huérfanas. Con quincenas, un seller de 67 entregas diarias cruza
+      // las 1.000 filas y el resto quedaba sin conciliar, en silencio.
+      const pedidosEntregados = await leerTodasLasFilas<{ id: string; estado: string }>(
+        `pedidos entregados del seller ${sellerId}`,
+        (desde, hasta) => supabase
         .schema('operacion')
         .from('pedidos')
         .select('id, estado')
@@ -82,20 +89,28 @@ export const jobConciliarPeriodo = inngest.createFunction(
         // el período se corre 3–4 horas: entregas de la noche del último día
         // quedaban fuera de la conciliación de su propio período.
         .gte('actualizado_en', limitesDelDiaSantiago(fechaInicio).desde.toISOString())
-        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString());
+        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString())
+        .order('id')
+        .range(desde, hasta),
+      );
 
-      const pedidoIds = (pedidosEntregados ?? []).map((p) => p.id as string);
+      const pedidoIds = pedidosEntregados.map((p) => p.id);
       if (pedidoIds.length === 0) return;
 
-      // Obtener pedido_ids que SÍ tienen línea de cobro.
-      const { data: lineasExistentes } = await supabase
-        .schema('dinero')
-        .from('lineas_cobro')
-        .select('pedido_id')
-        .eq('tenant_id', tenantId)
-        .in('pedido_id', pedidoIds);
+      // Obtener pedido_ids que SÍ tienen línea de cobro. EN LOTES: la lista crece
+      // con el volumen del seller y un `.in()` largo da `URI too long`.
+      const lineasExistentes = await leerPorLotesDeIds<{ pedido_id: string }>(
+        'líneas de cobro por pedido',
+        pedidoIds,
+        (lote) => supabase
+          .schema('dinero')
+          .from('lineas_cobro')
+          .select('pedido_id')
+          .eq('tenant_id', tenantId)
+          .in('pedido_id', lote),
+      );
 
-      const pedidosConLinea = new Set((lineasExistentes ?? []).map((l) => l.pedido_id as string));
+      const pedidosConLinea = new Set(lineasExistentes.map((l) => l.pedido_id));
       const pedidosSinLinea = pedidoIds.filter((id) => !pedidosConLinea.has(id));
 
       for (const pedidoId of pedidosSinLinea) {
@@ -139,7 +154,10 @@ export const jobConciliarPeriodo = inngest.createFunction(
       const supabase = crearClienteServiceRole();
 
       // Pedidos con conductor asignado que estén entregados en el rango.
-      const { data: pedidosConDriver } = await supabase
+      // ⚠️ PAGINADO — mismo motivo que la comparación de cobro de arriba.
+      const pedidosConDriver = await leerTodasLasFilas<{ id: string; driver_id_asignado: string }>(
+        `pedidos con conductor del seller ${sellerId}`,
+        (desde, hasta) => supabase
         .schema('operacion')
         .from('pedidos')
         .select('id, driver_id_asignado')
@@ -152,19 +170,27 @@ export const jobConciliarPeriodo = inngest.createFunction(
         // el período se corre 3–4 horas: entregas de la noche del último día
         // quedaban fuera de la conciliación de su propio período.
         .gte('actualizado_en', limitesDelDiaSantiago(fechaInicio).desde.toISOString())
-        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString());
+        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString())
+        .order('id')
+        .range(desde, hasta),
+      );
 
-      const pedidoIds = (pedidosConDriver ?? []).map((p) => p.id as string);
+      const pedidoIds = pedidosConDriver.map((p) => p.id);
       if (pedidoIds.length === 0) return;
 
-      const { data: lineasExistentes } = await supabase
-        .schema('dinero')
-        .from('lineas_liquidacion')
-        .select('pedido_id')
-        .eq('tenant_id', tenantId)
-        .in('pedido_id', pedidoIds);
+      // EN LOTES: la lista crece con el volumen del seller.
+      const lineasExistentes = await leerPorLotesDeIds<{ pedido_id: string }>(
+        'líneas de liquidación por pedido',
+        pedidoIds,
+        (lote) => supabase
+          .schema('dinero')
+          .from('lineas_liquidacion')
+          .select('pedido_id')
+          .eq('tenant_id', tenantId)
+          .in('pedido_id', lote),
+      );
 
-      const pedidosConLinea = new Set((lineasExistentes ?? []).map((l) => l.pedido_id as string));
+      const pedidosConLinea = new Set(lineasExistentes.map((l) => l.pedido_id));
       const pedidosSinLinea = pedidoIds.filter((id) => !pedidosConLinea.has(id));
 
       for (const pedidoId of pedidosSinLinea) {
@@ -264,17 +290,23 @@ export const jobConciliarPeriodo = inngest.createFunction(
     await step.run('check-lineas-sueltas', async () => {
       const supabase = crearClienteServiceRole();
 
-      const { data: lineasSueltas } = await supabase
+      // Cuenta POSTGRES, no `.length` sobre las filas traídas: acá solo interesa
+      // cuántas son, y traerlas para contarlas volvía a chocar con el corte en
+      // `max_rows` (1000). Un período con más líneas sueltas que eso reportaba
+      // "1000" para siempre, sin señal de que la cifra estaba tapada.
+      const { count, error: errorSueltas } = await supabase
         .schema('dinero')
         .from('lineas_cobro')
-        .select('id')
+        .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
         .eq('seller_id', sellerId)
         .is('periodo_cobro_id', null)
         .gte('fecha_entrega', fechaInicio)
         .lte('fecha_entrega', fechaFin);
 
-      const cantidadSueltas = (lineasSueltas ?? []).length;
+      if (errorSueltas) throw new Error(`Error al contar líneas sueltas: ${errorSueltas.message}`);
+
+      const cantidadSueltas = count ?? 0;
 
       if (cantidadSueltas > 0) {
         const { data: eventoExistente } = await supabase

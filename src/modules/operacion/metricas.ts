@@ -11,7 +11,15 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MetricasOperativas, EstadoPedido, ImpactoSla } from "./tipos";
-import { ahoraEnSantiago, horaAMinutos, fechaLocalEnSantiago, hoyEnSantiago } from "@/lib/fecha-santiago";
+import {
+  ahoraEnSantiago,
+  horaAMinutos,
+  fechaLocalEnSantiago,
+  hoyEnSantiago,
+  limitesDelDiaSantiago,
+  sumarDiasCalendario,
+  diaSemanaCalendario,
+} from "@/lib/fecha-santiago";
 
 /**
  * Devuelve las métricas operativas del tenant para la fecha indicada.
@@ -46,25 +54,20 @@ export const ESTADOS_TERMINALES_PEDIDO: readonly EstadoPedido[] = [
   "devuelto",
 ];
 
-/**
- * Devuelve la fecha del día anterior a `fechaStr` ('YYYY-MM-DD'), como string
- * en el mismo formato. Se opera sobre componentes de fecha "naive" (sin TZ),
- * consistente con el resto del módulo, que trata las columnas `date` de
- * Postgres como strings America/Santiago.
- */
-function diaAnterior(fechaStr: string): string {
-  const [anio, mes, dia] = fechaStr.split("-").map(Number);
-  // Usamos UTC para evitar que el TZ local del proceso desplace la fecha.
-  const fecha = new Date(Date.UTC(anio, mes - 1, dia));
-  fecha.setUTCDate(fecha.getUTCDate() - 1);
-  return fecha.toISOString().split("T")[0];
-}
 export async function obtenerMetricasDelDia(
   cliente: SupabaseClient,
   tenantId: string,
   fecha: Date,
 ): Promise<MetricasOperativas> {
   const fechaStr = fechaLocalEnSantiago(fecha);
+
+  // Los bordes del día van en calendario de SANTIAGO. Antes se pegaba
+  // `T00:00:00.000Z`/`T23:59:59.999Z` a una fecha civil chilena, lo que corría
+  // la ventana 3–4 h: los pedidos creados después de las 20:00 caían en el día
+  // siguiente y faltaban en las métricas de hoy, mientras entraban los de la
+  // noche anterior. El helper además es semiabierto, así que no se pierde el
+  // último milisegundo del día como pasaba con `23:59:59.999`.
+  const { desde, hasta } = limitesDelDiaSantiago(fechaStr);
 
   // Pedidos del día (por fecha_compromiso o creados ese día).
   // service_role accede al esquema directo (las vistas `public` son para el
@@ -74,7 +77,12 @@ export async function obtenerMetricasDelDia(
     .from("pedidos")
     .select("id, estado, destinatario_comuna, sla_cumplido")
     .eq("tenant_id", tenantId)
-    .or(`fecha_compromiso.eq.${fechaStr},and(fecha_compromiso.is.null,creado_en.gte.${fechaStr}T00:00:00.000Z,creado_en.lt.${fechaStr}T23:59:59.999Z)`);
+    .or(
+      `fecha_compromiso.eq.${fechaStr},` +
+        `and(fecha_compromiso.is.null,` +
+        `creado_en.gte.${desde.toISOString()},` +
+        `creado_en.lt.${hasta.toISOString()})`,
+    );
 
   if (errorPedidos) {
     throw new Error(`Error al obtener pedidos del día: ${errorPedidos.message}`);
@@ -171,7 +179,7 @@ export async function obtenerMetricasDelDia(
   ).size;
 
   // Rezagados de ayer: fecha_compromiso = ayer y estado no terminal.
-  const fechaAyer = diaAnterior(fechaStr);
+  const fechaAyer = sumarDiasCalendario(fechaStr, -1);
   const { count: rezagadosAyer, error: errorRezagados } = await cliente
     .schema("operacion")
     .from("pedidos")
@@ -310,15 +318,11 @@ export async function obtenerSlaPorSeller(
 ): Promise<SlaPorSeller[]> {
   const fechaStr = fechaLocalEnSantiago(fecha);
 
-  // Calcular ventana de fechas.
-  let fechaDesde: string;
-  if (ventana === 'semana') {
-    const hace7 = new Date(fecha);
-    hace7.setUTCDate(hace7.getUTCDate() - 6);
-    fechaDesde = hace7.toISOString().split("T")[0];
-  } else {
-    fechaDesde = fechaStr;
-  }
+  // Calcular ventana de fechas. Se restan los días sobre la fecha civil YA
+  // expresada en Santiago (`fechaStr`), no sobre el instante: derivarla aparte
+  // en UTC hacía que después de las 20:00 el extremo inferior se calculara
+  // desde el día siguiente y la ventana "semana" durara 6 días en vez de 7.
+  const fechaDesde = ventana === 'semana' ? sumarDiasCalendario(fechaStr, -6) : fechaStr;
 
   // Pedidos terminales con sla_cumplido evaluado, en la ventana.
   const TERMINALES_EXITOSOS = ['entregado', 'entregado_manual'];
@@ -433,12 +437,9 @@ export async function obtenerHistorialSlaSemanas(
   // las 20:00 de Santiago devolvía el día siguiente, y un domingo por la noche
   // el "lunes de la semana actual" saltaba a la semana que viene.
   const hoyStr = hoyEnSantiago();
-  const [a, m, d] = hoyStr.split("-").map(Number);
-  const hoyUtc = new Date(Date.UTC(a, m - 1, d));
-  const diaSemana = hoyUtc.getUTCDay(); // 0=dom, 1=lun..6=sab
-  const diasDesdelLunes = diaSemana === 0 ? 6 : diaSemana - 1;
-  const lunesActual = new Date(hoyUtc);
-  lunesActual.setUTCDate(hoyUtc.getUTCDate() - diasDesdelLunes);
+  const diaSemana = diaSemanaCalendario(hoyStr); // 0=dom, 1=lun..6=sab
+  const diasDesdeLunes = diaSemana === 0 ? 6 : diaSemana - 1;
+  const lunesActual = sumarDiasCalendario(hoyStr, -diasDesdeLunes);
 
   // Obtener objetivo SLA del seller.
   const { data: ventanaData } = await cliente
@@ -458,13 +459,8 @@ export async function obtenerHistorialSlaSemanas(
   const resultado: SemanaSlaSeller[] = [];
 
   for (let i = 0; i < semanas; i++) {
-    const lunes = new Date(lunesActual);
-    lunes.setUTCDate(lunesActual.getUTCDate() - i * 7);
-    const domingo = new Date(lunes);
-    domingo.setUTCDate(lunes.getUTCDate() + 6);
-
-    const semanaDesde = lunes.toISOString().split("T")[0];
-    const semanaHasta = domingo.toISOString().split("T")[0];
+    const semanaDesde = sumarDiasCalendario(lunesActual, -i * 7);
+    const semanaHasta = sumarDiasCalendario(semanaDesde, 6);
 
     const { data: pedidos } = await cliente
       .schema("operacion")

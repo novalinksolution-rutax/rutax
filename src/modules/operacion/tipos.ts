@@ -367,6 +367,13 @@ export interface FiltrosPedidos {
   tenantId: string;
   sellerId?: string;
   conductorId?: string;
+  /**
+   * Comuna de destino. Se agregó para los enlaces profundos de la Torre de
+   * control (F11): la Torre no ejecuta, solo enlaza, así que cada comuna del
+   * mapa tiene que llegar acá **con el filtro ya aplicado**. Si obligara a
+   * buscar de nuevo, la pantalla no serviría.
+   */
+  comuna?: string;
   estado?: EstadoPedido;
   fecha?: string; // fecha_compromiso (ISO date)
   /**

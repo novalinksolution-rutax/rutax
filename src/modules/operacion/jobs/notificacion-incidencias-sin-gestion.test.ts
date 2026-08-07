@@ -17,7 +17,7 @@
  * 4. Tenant sin incidencias → lista vacía, sin notificaciones.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   esIncidenciaSinGestion,
   filtrarIncidenciasSinGestion,
@@ -70,7 +70,20 @@ describe('Job G-06 — notificacion-incidencias-sin-gestion', () => {
     });
 
     it('justo en el umbral (no estrictamente mayor) → false', () => {
-      expect(esIncidenciaSinGestion('abierta', hace(UMBRAL_INCIDENCIA_SIN_GESTION_HORAS))).toBe(false);
+      // ⚠️ **Con el reloj congelado, o esta prueba es intermitente.** `hace()`
+      // toma `Date.now()` y `horasDesde()` vuelve a tomarlo dentro de la
+      // función: entre las dos llamadas pasa un milisegundo cada tantas
+      // corridas, la diferencia queda en 4 h + ε y el `>` estricto —que es el
+      // comportamiento correcto y justo lo que esta prueba fija— devuelve
+      // `true`. Pasaba solo cuando ambas caían en el mismo milisegundo, así que
+      // fallaba en las corridas con la máquina cargada.
+      vi.useFakeTimers();
+      try {
+        const enElUmbral = hace(UMBRAL_INCIDENCIA_SIN_GESTION_HORAS);
+        expect(esIncidenciaSinGestion('abierta', enElUmbral)).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

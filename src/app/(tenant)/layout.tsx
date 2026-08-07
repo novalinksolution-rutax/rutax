@@ -185,6 +185,11 @@ export default async function LayoutTenant({ children }: { children: React.React
       itemsSettings={itemsSettings}
       hrefPrincipal={hrefPrincipal}
       itemPlan={itemPlan}
+      // La Torre es la única pantalla ancha del backoffice: su mapa necesita más
+      // que el `max-w-6xl` con que se lee bien todo lo demás. La excepción se
+      // declara acá —donde viven las rutas— y no se le quita el ancho máximo a
+      // ninguna otra pantalla.
+      rutasAnchas={["/torre-de-control"]}
       avisos={avisos}
       banner={
         estadoOnboarding && !estadoOnboarding.completo ? (

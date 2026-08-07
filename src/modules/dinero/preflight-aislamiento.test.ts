@@ -43,8 +43,17 @@ type Fila = Record<string, unknown>;
 type Tablas = Record<string, Fila[]>;
 
 function crearFakeSupabase(tablas: Tablas) {
-  function construirBuilder(filas: Fila[], filtros: Array<(f: Fila) => boolean>) {
-    const aplicarFiltros = () => filas.filter((f) => filtros.every((fn) => fn(f)));
+  function construirBuilder(
+    filas: Fila[],
+    filtros: Array<(f: Fila) => boolean>,
+    rango?: { desde: number; hasta: number },
+  ) {
+    // `.range()` real, no no-op: `leerTodasLasFilas` para cuando recibe una página
+    // incompleta, así que un doble que devolviera siempre todo no terminaría.
+    const aplicarFiltros = () => {
+      const filtradas = filas.filter((f) => filtros.every((fn) => fn(f)));
+      return rango ? filtradas.slice(rango.desde, rango.hasta + 1) : filtradas;
+    };
     const builder = {
       eq(col: string, val: unknown) {
         return construirBuilder(filas, [...filtros, (f: Fila) => f[col] === val]);
@@ -57,6 +66,9 @@ function crearFakeSupabase(tablas: Tablas) {
       },
       limit() {
         return builder;
+      },
+      range(desde: number, hasta: number) {
+        return construirBuilder(filas, filtros, { desde, hasta });
       },
       maybeSingle() {
         const encontradas = aplicarFiltros();

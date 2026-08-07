@@ -511,70 +511,19 @@ export interface EventoComunicacionPublicada {
 // =============================================================================
 // `contexto` — Torre de control (anticipación operativa).
 //
-// Solo TRES eventos, a propósito. Los jobs de ingesta de este módulo (clima,
-// aire, calendario) son crones puros sin payload, y en este repo un cron no
-// necesita evento — ver `jobCerrarPeriodo`, que se dispara con `triggers:
-// [{ cron }]` y cero eventos. Definir `contexto/clima.refrescar` como evento
-// sería ruido en el archivo que es el contrato del motor entrega→dinero.
-// Aquí solo entra lo que cruza un límite de verdad.
+// **CERO eventos, y es correcto.** El único job que le queda al módulo
+// (`jobSincronizarCalendario`) es un cron puro sin payload, y en este repo un
+// cron no necesita evento — ver `jobCerrarPeriodo`, que se dispara con
+// `triggers: [{ cron }]` y cero eventos. Aquí solo entra lo que cruza un límite
+// de verdad.
 //
-// Límite del módulo: `operacion` y `dinero` NO consumen estos eventos. La capa
-// de anticipación depende del núcleo operativo, nunca al revés.
+// Se retiró `contexto/riesgo.recalcular-tenant` (2026-08-03). Era el fan-out por
+// tenant del motor de riesgo, que corría cada 15 minutos para precalcular un
+// puntaje 0–100 por zona. El rediseño v2 de la Torre retiró ese puntaje entero:
+// la pantalla lee la carga en vivo desde `operacion`, así que no queda nada que
+// precalcular ni, por lo tanto, nada que despachar. Ver
+// `docs/torre-de-control/alcance-v2.md` §5.2.
+//
+// Límite del módulo: `operacion` y `dinero` NO consumen eventos de `contexto`.
+// La capa de anticipación depende del núcleo operativo, nunca al revés.
 // =============================================================================
-
-/**
- * Fan-out del recálculo de riesgo: un evento por tenant activo.
- *
- * Publicado por el cron `contexto/riesgoBarrido`, que SOLO enumera tenants y
- * hace `step.sendEvent` — no calcula nada. Consumido por
- * `contexto/riesgoRecalcularTenant`, que corre en su propio run.
- *
- * Por qué fan-out real y no un `Promise.allSettled` dentro de un `step.run`
- * (que es lo que hacen hoy `plataforma/verificar-salud` y
- * `notificar-comunicacion`): este job corre cada 15 minutos y toca a todos los
- * tenants. Con un solo step, un tenant lento consume el presupuesto de tiempo
- * de los demás y un fallo suyo reintenta el lote completo. Con fan-out, cada
- * tenant tiene su propio run, sus propios reintentos y su propia fila de
- * telemetría en `infra.ejecuciones_job`.
- *
- * `id` determinístico `riesgo-${tenantId}-${fechaBase}-${slot15}`: un reintento
- * del barrido no recalcula dos veces el mismo cuarto de hora. El job es un
- * upsert sobre la PK `(tenant_id, zona_id, fecha, franja)`, así que correrlo de
- * más es inofensivo — la idempotencia no depende de este id, lo refuerza.
- */
-export interface EventoRiesgoRecalcularTenant {
-  name: 'contexto/riesgo.recalcular-tenant';
-  data: {
-    tenantId: string;
-    /**
-     * Fecha civil de Santiago ('YYYY-MM-DD') del primer día del horizonte.
-     * La calcula el barrido con `hoyEnSantiago()`, NUNCA con `toISOString`:
-     * este módulo es 100 % sensible a fecha y desde las 20:00 de Santiago UTC
-     * ya está en el día siguiente.
-     */
-    fechaBase: string;
-    horizontes: ('hoy' | 'manana' | '72h')[];
-    origen: 'cron' | 'manual';
-  };
-}
-
-/*
- * SEÑALES DE PRENSA (F1.5) — sus dos eventos NO se declaran todavía, a
- * propósito.
- *
- * El pipeline de §13 necesitará `contexto/senales.lote-ingestado` (separa la
- * ingesta, gratis, de la clasificación con LLM, que cuesta y depende de un
- * proveedor) y `contexto/senal.clasificada` (cruza la señal contra los pedidos
- * de cada tenant; al LLM solo entra texto de noticia pública, el cruce ocurre
- * después en SQL — gate de IA §13.5).
- *
- * No están escritos aquí porque `eventos.contrato.test.ts` exige que todo
- * evento del catálogo tenga un productor real, y su lista de excepciones cubre
- * el caso inverso —evento que ya se publica sin consumidor— no éste. Declarar
- * un contrato una fase antes de tener quién lo emita es justo lo que ese guard
- * evita, y meterlos en la excepción lo convertiría en el cajón de sastre que su
- * propio comentario prohíbe.
- *
- * Su forma acordada está en `docs/arquitectura/torre-de-control.md` §13.4;
- * quien construya F1.5 los define aquí junto con sus jobs, no antes.
- */

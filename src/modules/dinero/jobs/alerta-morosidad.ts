@@ -28,31 +28,17 @@
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
-import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
-
-const TZ = 'America/Santiago';
+import {
+  diferenciaEnDiasCalendario,
+  hoyEnSantiago,
+  limitesDelDiaSantiago,
+} from '@/lib/fecha-santiago';
 
 /** Días de gracia tras `fecha_fin` antes de marcar morosidad (default 30). */
 const DIAS_MOROSIDAD = (() => {
   const v = Number(process.env.DINERO_MOROSIDAD_DIAS);
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : 30;
 })();
-
-function hoyEnSantiago(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
-
-/** Días enteros entre dos fechas ISO (date), positivo si `hasta` > `desde`. */
-function diasEntre(desdeIso: string, hastaIso: string): number {
-  const desde = new Date(`${desdeIso}T00:00:00Z`).getTime();
-  const hasta = new Date(`${hastaIso}T00:00:00Z`).getTime();
-  return Math.round((hasta - desde) / (1000 * 60 * 60 * 24));
-}
 
 export const jobAlertaMorosidad = inngest.createFunction(
   {
@@ -85,7 +71,8 @@ export const jobAlertaMorosidad = inngest.createFunction(
           tenantId: p.tenant_id as string,
           sellerId: p.seller_id as string,
           fechaFin: p.fecha_fin as string,
-          diasAtraso: diasEntre(p.fecha_fin as string, hoy) - DIAS_MOROSIDAD,
+          diasAtraso:
+            diferenciaEnDiasCalendario(p.fecha_fin as string, hoy) - DIAS_MOROSIDAD,
           saldoClp:
             Math.round(Number(p.monto_total_clp ?? 0)) -
             Math.round(Number(p.monto_pagado_clp ?? 0)),

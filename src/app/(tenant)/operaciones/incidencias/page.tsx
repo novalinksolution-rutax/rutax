@@ -25,6 +25,7 @@ import { PanelIncidencia } from "./panel-incidencia";
 import { FiltrosIncidencias } from "./filtros-incidencias";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Carga de datos
@@ -55,7 +56,11 @@ async function cargarIncidencias(tenantId: string, filtros: FiltrosIncidencias) 
     query = query.in("estado", ["abierta", "en_gestion"]);
   }
   if (filtros.fechaDesde) {
-    query = query.gte("abierta_en", `${filtros.fechaDesde}T00:00:00.000Z`);
+    // El usuario elige una fecha en el calendario chileno, así que el borde va
+    // en Santiago. Pegar `T00:00:00.000Z` corría la ventana 3–4 h y colaba
+    // incidencias abiertas la noche anterior.
+    const { desde } = limitesDelDiaSantiago(filtros.fechaDesde);
+    query = query.gte("abierta_en", desde.toISOString());
   }
 
   const { data, error } = await query;
@@ -129,27 +134,25 @@ export default async function PaginaIncidencias({
   const filtroFecha = params.fecha ?? "";
   const hayFiltro = !!(filtroSeller || filtroTipo || filtroEstado || filtroFecha);
 
-  let incidencias: Incidencia[] = [];
-  let errorCarga = false;
-
-  try {
-    incidencias = await cargarIncidencias(tenantId, {
+  // Incidencias y sellers son independientes entre sí: van en paralelo para no
+  // pagar dos round-trips en fila. Cada una conserva su propio manejo de error —
+  // si fallan las incidencias la pantalla lo avisa, si fallan los sellers no
+  // bloquea (el filtro queda vacío).
+  const [resIncidencias, sellers] = await Promise.all([
+    cargarIncidencias(tenantId, {
       seller: filtroSeller || undefined,
       tipo: (filtroTipo as TipoIncidencia) || undefined,
       estado: (filtroEstado as EstadoIncidencia) || undefined,
       fechaDesde: filtroFecha || undefined,
-    });
-  } catch {
-    errorCarga = true;
-  }
+    }).catch(() => null),
+    // Sellers para el filtro — lista cacheada por tenant (datos-tenant/sellers).
+    obtenerSellersDelTenant(tenantId).catch(
+      () => [] as { id: string; nombre: string }[],
+    ),
+  ]);
 
-  // Sellers para el filtro — lista cacheada por tenant (datos-tenant/sellers).
-  let sellers: { id: string; nombre: string }[] = [];
-  try {
-    sellers = await obtenerSellersDelTenant(tenantId);
-  } catch {
-    // Sin bloquear
-  }
+  const errorCarga = resIncidencias === null;
+  const incidencias: Incidencia[] = resIncidencias ?? [];
 
   // Nombre legible del seller en la tabla (en vez del UUID).
   const nombreSellerPorId = Object.fromEntries(sellers.map((s) => [s.id, s.nombre]));
