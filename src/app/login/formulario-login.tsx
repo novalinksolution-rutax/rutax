@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Lock, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,16 @@ export function FormularioLogin() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Contraseña</Label>
+              <Link
+                href="/recuperar-contrasena"
+                className="text-sm text-brand underline-offset-4 hover:underline"
+                tabIndex={cargando ? -1 : undefined}
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
             <div className="relative">
               <Lock className="absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden="true" />
               <Input
