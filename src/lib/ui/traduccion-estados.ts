@@ -224,6 +224,48 @@ export const COLOR_ESTADO_MANIFIESTO = clasesPorEstado(VARIANTE_ESTADO_MANIFIEST
 export const BADGE_ESTADO_MANIFIESTO = badgePorEstado(VARIANTE_ESTADO_MANIFIESTO);
 
 // =============================================================================
+// EstadoSeller — estado de la CUENTA del seller, no de su empresa
+// =============================================================================
+// `invitado` significa que el courier ya dio de alta a este cliente pero nadie
+// de esa empresa entró todavía al portal. El seller EXISTE y puede tener
+// pedidos igual (el courier le crea same-day sin que el otro haya entrado
+// nunca): por eso aparece en los filtros del courier, y por eso conviene
+// rotularlo en vez de esconderlo.
+
+export type EstadoSeller = "invitado" | "activo" | "suspendido";
+
+export const TEXTO_ESTADO_SELLER: Record<EstadoSeller, string> = {
+  invitado: "Invitado",
+  activo: "Activo",
+  suspendido: "Suspendido",
+};
+
+export function traducirEstadoSeller(estado: string): string {
+  return TEXTO_ESTADO_SELLER[estado as EstadoSeller] ?? estado;
+}
+
+const VARIANTE_ESTADO_SELLER: Record<EstadoSeller, VarianteEstado> = {
+  invitado: "advertencia",
+  activo: "exito",
+  suspendido: "error",
+};
+export const BADGE_ESTADO_SELLER = badgePorEstado(VARIANTE_ESTADO_SELLER);
+
+/**
+ * Nombre del seller para un selector, con su estado colgado cuando NO está
+ * activo: `Comercial Andes · Invitado`.
+ *
+ * El estado se omite en el caso normal a propósito. Rotular "Activo" en cada
+ * fila sería ruido en todas para no decir nada en ninguna; el rótulo existe
+ * justamente para explicar la excepción — "¿por qué aparece este nombre si esa
+ * empresa nunca entró?".
+ */
+export function etiquetaSellerConEstado(nombre: string, estado: string | null | undefined): string {
+  if (!estado || estado === "activo") return nombre;
+  return `${nombre} · ${traducirEstadoSeller(estado)}`;
+}
+
+// =============================================================================
 // EstadoGeocoding — F4, ítem 1.1 (migración 0013)
 // =============================================================================
 

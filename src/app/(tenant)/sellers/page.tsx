@@ -17,23 +17,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { BadgeVariante } from "@/lib/ui/traduccion-estados";
+import {
+  BADGE_ESTADO_SELLER,
+  traducirEstadoSeller,
+  type BadgeVariante,
+  type EstadoSeller,
+} from "@/lib/ui/traduccion-estados";
 import { BotonCopiarInvitacion } from "./boton-copiar-invitacion";
 
 export const metadata: Metadata = {
   title: "Sellers",
-};
-
-const TEXTO_ESTADO_SELLER: Record<string, string> = {
-  invitado: "Invitado",
-  activo: "Activo",
-  suspendido: "Suspendido",
-};
-
-const BADGE_ESTADO_SELLER: Record<string, BadgeVariante> = {
-  invitado: "warning",
-  activo: "success",
-  suspendido: "error",
 };
 
 const TEXTO_SALUD_CONEXION: Record<string, string> = {
@@ -241,8 +234,8 @@ export default async function PaginaSellers() {
                   </TableCell>
                   <TableCell className="px-4">
                     <BadgeEstado
-                      variante={BADGE_ESTADO_SELLER[seller.estado] ?? "warning"}
-                      texto={TEXTO_ESTADO_SELLER[seller.estado] ?? seller.estado}
+                      variante={BADGE_ESTADO_SELLER[seller.estado as EstadoSeller] ?? "warning"}
+                      texto={traducirEstadoSeller(seller.estado)}
                     />
                   </TableCell>
                   <TableCell className="px-4">

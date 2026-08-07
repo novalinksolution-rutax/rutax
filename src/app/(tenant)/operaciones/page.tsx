@@ -49,7 +49,7 @@ import {
 import { FormularioPedidoSameDay } from "./formulario-same-day";
 import { FiltrosPedidosForm } from "./filtros-pedidos";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
-import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { obtenerSellersDelTenant, type SellerFiltro } from "@/lib/datos-tenant/sellers";
 import { obtenerConductoresDelTenant } from "@/lib/datos-tenant/conductores";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
@@ -169,7 +169,7 @@ export default async function PaginaOperaciones({
       () => ({ ok: false as const }),
     ),
     // Lista de sellers para el filtro — cacheada por tenant (datos-tenant/sellers).
-    obtenerSellersDelTenant(tenantId).catch(() => [] as { id: string; nombre: string }[]),
+    obtenerSellersDelTenant(tenantId).catch(() => [] as SellerFiltro[]),
     // Conductores para el filtro (F11). Cacheada por tenant igual que la de
     // sellers: cambia poco y la piden varias pantallas.
     obtenerConductoresDelTenant(tenantId).catch(() => [] as { id: string; nombre: string }[]),

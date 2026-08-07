@@ -20,7 +20,15 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 
 export interface SellerFiltro {
   id: string;
+  /** Razón social, CRUDA. Sin adornos: varias pantallas la usan para rotular filas. */
   nombre: string;
+  /**
+   * Estado de la CUENTA (`invitado` | `activo` | `suspendido`). Los selectores
+   * lo cuelgan del nombre con `etiquetaSellerConEstado` para explicar por qué
+   * aparece un cliente que nunca entró al portal — un seller `invitado` puede
+   * tener pedidos igual, así que esconderlo rompería el filtro del courier.
+   */
+  estado: string;
 }
 
 /** Tag de revalidación de la lista de sellers de un tenant. */
@@ -32,13 +40,14 @@ async function consultarSellers(tenantId: string): Promise<SellerFiltro[]> {
   const cliente = crearClienteServiceRole();
   const { data } = await cliente
     .from("sellers")
-    .select("id, razon_social")
+    .select("id, razon_social, estado")
     .eq("tenant_id", tenantId)
     .order("razon_social");
 
-  return ((data ?? []) as Array<{ id: string; razon_social: string }>).map((s) => ({
+  return ((data ?? []) as Array<{ id: string; razon_social: string; estado: string }>).map((s) => ({
     id: s.id,
     nombre: s.razon_social,
+    estado: s.estado,
   }));
 }
 

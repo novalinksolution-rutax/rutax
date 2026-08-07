@@ -24,7 +24,7 @@ import type { Incidencia, TipoIncidencia, EstadoIncidencia } from "@/modules/ope
 import { PanelIncidencia } from "./panel-incidencia";
 import { FiltrosIncidencias } from "./filtros-incidencias";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
-import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { obtenerSellersDelTenant, type SellerFiltro } from "@/lib/datos-tenant/sellers";
 import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
@@ -146,9 +146,7 @@ export default async function PaginaIncidencias({
       fechaDesde: filtroFecha || undefined,
     }).catch(() => null),
     // Sellers para el filtro — lista cacheada por tenant (datos-tenant/sellers).
-    obtenerSellersDelTenant(tenantId).catch(
-      () => [] as { id: string; nombre: string }[],
-    ),
+    obtenerSellersDelTenant(tenantId).catch(() => [] as SellerFiltro[]),
   ]);
 
   const errorCarga = resIncidencias === null;

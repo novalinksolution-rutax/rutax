@@ -17,9 +17,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import { etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
 
 interface Props {
-  sellers: { id: string; nombre: string }[];
+  sellers: { id: string; nombre: string; estado?: string }[];
   tenantId: string;
   /** Si el creador es el propio seller: fijar sellerId y ocultarlo */
   sellerFijo?: string;
@@ -320,9 +321,13 @@ export function FormularioPedidoSameDay({ sellers, sellerFijo }: Props) {
                         <SelectValue placeholder="Seleccionar seller..." />
                       </SelectTrigger>
                       <SelectContent>
+                        {/* El estado va colgado del nombre porque acá importa
+                            todavía más que en el filtro: se está creando un
+                            pedido para un cliente que quizá no puede verlo aún
+                            en su portal. */}
                         {sellers.map((s) => (
                           <SelectItem key={s.id} value={s.id}>
-                            {s.nombre}
+                            {etiquetaSellerConEstado(s.nombre, s.estado)}
                           </SelectItem>
                         ))}
                       </SelectContent>
