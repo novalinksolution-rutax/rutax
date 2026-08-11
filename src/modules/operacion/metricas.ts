@@ -27,7 +27,9 @@ import {
  * - `totalPedidos`: pedidos con fecha_compromiso en el día (o creados en el día
  *   para same-day sin fecha fija).
  * - `porEstado`: distribución de pedidos por estado (todos los pedidos del tenant).
- * - `tasaEntrega`: (entregado + entregado_manual) / total pedidos con estado terminal.
+ * - `tasaEntrega`: (entregado + entregado_manual) / (entregado + entregado_manual +
+ *   fallido + fallido_manual + devuelto). `cancelado` queda fuera del
+ *   denominador a propósito — ver comentario junto al cálculo.
  * - `incidenciasAbiertas`: incidencias con estado IN ('abierta', 'en_gestion').
  * - `conexionesCaidas`: conexiones ML con estado_salud = 'desvinculada'.
  * - `conductoresActivos`: conductores del tenant con estado='activo'.
@@ -98,14 +100,21 @@ export async function obtenerMetricasDelDia(
     porEstado[est] = (porEstado[est] ?? 0) + 1;
   }
 
-  // Tasa de entrega = entregados / (entregados + fallidos + cancelados + devueltos).
+  // Tasa de entrega = entregados / (entregados + fallidos + devueltos).
+  // 'cancelado' NO entra en el denominador: mismo criterio que el fix de
+  // sla_cumplido en 23107c6 (pedidos.ts) — un pedido cancelado no es un
+  // intento de entrega fallido, es una entrega que nadie llegó a pedir.
+  // Contarlo aquí hunde la tasa del courier por decisiones del seller
+  // (gestionar_pedidos_propios), no por su desempeño.
+  // 'devuelto' SÍ se mantiene, a propósito: solo es alcanzable desde
+  // en_ruta/fallido/fallido_manual (máquina de estados), es decir que
+  // siempre hubo un intento real de entrega que terminó devuelto al origen.
   const entregados =
     (porEstado["entregado"] ?? 0) + (porEstado["entregado_manual"] ?? 0);
   const terminales =
     entregados +
     (porEstado["fallido"] ?? 0) +
     (porEstado["fallido_manual"] ?? 0) +
-    (porEstado["cancelado"] ?? 0) +
     (porEstado["devuelto"] ?? 0);
   const tasaEntrega = terminales > 0 ? entregados / terminales : 0;
 

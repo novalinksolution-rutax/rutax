@@ -383,6 +383,78 @@ describe("obtenerMetricasDelDia — nuevas métricas RF-046", () => {
     expect(metricasConCancelado.slaGlobalPct).toBe(100);
     expect(metricasConCancelado.totalPedidos).toBe(3); // el cancelado sí entra en el total del día, solo no en el SLA
   });
+
+  // ===========================================================================
+  // tasaEntrega — mismo bug de fondo que 23107c6 (sla_cumplido), aplicado al
+  // denominador de la tarjeta "Tasa de entrega" del dashboard del dueño.
+  // Reproducción literal reportada por qa: 1 entregado + 1 cancelado ⇒ el
+  // cálculo viejo daba 0.5 pese a que ningún intento de entrega falló.
+  // ===========================================================================
+
+  it("un pedido cancelado no baja tasaEntrega (queda fuera del denominador)", async () => {
+    coincideDiaActual = (f) => f.tenant_id === TENANT_A;
+
+    // Reproducción literal del bug: 1 entregado + 1 cancelado. Con el bug,
+    // tasaEntrega = 1 / (1 + 1) = 0.5 pese a que ningún intento de entrega
+    // falló — el cancelado nunca debió entrar al denominador.
+    const pedidos = [
+      { id: "p1", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+      { id: "p2", tenant_id: TENANT_A, estado: "cancelado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+    ] as unknown as FilaPedido[];
+
+    const cliente = crearClienteFalso({ pedidos });
+    const metricas = await obtenerMetricasDelDia(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+
+    expect(metricas.tasaEntrega).toBe(1);
+    expect(metricas.totalPedidos).toBe(2); // el cancelado sigue contando en el volumen del día
+  });
+
+  it("tasaEntrega no cambia entre agregar cancelados de más (fuera del denominador)", async () => {
+    coincideDiaActual = (f) => f.tenant_id === TENANT_A;
+
+    // Baseline: 1 entregado / 1 fallido = 50%.
+    const pedidosBase = [
+      { id: "p1", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+      { id: "p2", tenant_id: TENANT_A, estado: "fallido", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+    ] as unknown as FilaPedido[];
+
+    const clienteBase = crearClienteFalso({ pedidos: pedidosBase });
+    const metricasBase = await obtenerMetricasDelDia(clienteBase, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+    expect(metricasBase.tasaEntrega).toBe(0.5);
+
+    // Agregar cancelados no debe mover la tasa: siguen fuera del denominador.
+    const pedidosConCancelados = [
+      ...pedidosBase,
+      { id: "p3", tenant_id: TENANT_A, estado: "cancelado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+      { id: "p4", tenant_id: TENANT_A, estado: "cancelado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+    ] as unknown as FilaPedido[];
+
+    const clienteConCancelados = crearClienteFalso({ pedidos: pedidosConCancelados });
+    const metricasConCancelados = await obtenerMetricasDelDia(clienteConCancelados, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+
+    expect(metricasConCancelados.tasaEntrega).toBe(0.5);
+    expect(metricasConCancelados.totalPedidos).toBe(4);
+  });
+
+  // Contraste deliberado, igual que hizo 23107c6 para sla_cumplido: 'devuelto'
+  // SÍ se mantiene en el denominador de tasaEntrega. A diferencia de
+  // 'cancelado', 'devuelto' solo es alcanzable desde en_ruta/fallido/
+  // fallido_manual (máquina de estados) — siempre hubo un intento real de
+  // entrega que terminó devuelto al origen, así que es un fallo genuino.
+  it("un pedido devuelto SIGUE bajando tasaEntrega (sin cambios, a propósito)", async () => {
+    coincideDiaActual = (f) => f.tenant_id === TENANT_A;
+
+    const pedidos = [
+      { id: "p1", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+      { id: "p2", tenant_id: TENANT_A, estado: "devuelto", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z" },
+    ] as unknown as FilaPedido[];
+
+    const cliente = crearClienteFalso({ pedidos });
+    const metricas = await obtenerMetricasDelDia(cliente, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+
+    // 1 entregado / (1 entregado + 1 devuelto) = 50%, no 100%.
+    expect(metricas.tasaEntrega).toBe(0.5);
+  });
 });
 
 // =============================================================================
