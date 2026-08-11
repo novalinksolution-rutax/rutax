@@ -354,6 +354,35 @@ describe("obtenerMetricasDelDia — nuevas métricas RF-046", () => {
     // 2 a tiempo / 4 evaluados = 50%
     expect(metricas.slaGlobalPct).toBe(50);
   });
+
+  it("un pedido cancelado con sla_cumplido=null no mueve slaGlobalPct (queda fuera del denominador)", async () => {
+    coincideDiaActual = (f) => f.tenant_id === TENANT_A;
+
+    // Baseline: 2 entregados a tiempo / 2 evaluados = 100%.
+    const pedidosBase = [
+      { id: "p1", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z", sla_cumplido: true },
+      { id: "p2", tenant_id: TENANT_A, estado: "entregado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z", sla_cumplido: true },
+    ] as unknown as FilaPedido[];
+
+    const clienteBase = crearClienteFalso({ pedidos: pedidosBase });
+    const metricasBase = await obtenerMetricasDelDia(clienteBase, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+    expect(metricasBase.slaGlobalPct).toBe(100);
+
+    // Mismo escenario + un pedido cancelado que TENÍA fecha_compromiso_hora y
+    // fue forzado a sla_cumplido=null por actualizarEstadoPedido (§5 fila 5 del
+    // doc de arquitectura). El % de SLA no debe cambiar: el cancelado queda
+    // fuera del denominador, no cuenta como incumplimiento.
+    const pedidosConCancelado = [
+      ...pedidosBase,
+      { id: "p3", tenant_id: TENANT_A, estado: "cancelado", destinatario_comuna: "Maipú", fecha_compromiso: "2026-06-09", creado_en: "2026-06-09T10:00:00.000Z", sla_cumplido: null },
+    ] as unknown as FilaPedido[];
+
+    const clienteConCancelado = crearClienteFalso({ pedidos: pedidosConCancelado });
+    const metricasConCancelado = await obtenerMetricasDelDia(clienteConCancelado, TENANT_A, new Date("2026-06-09T12:00:00Z"));
+
+    expect(metricasConCancelado.slaGlobalPct).toBe(100);
+    expect(metricasConCancelado.totalPedidos).toBe(3); // el cancelado sí entra en el total del día, solo no en el SLA
+  });
 });
 
 // =============================================================================

@@ -777,6 +777,104 @@ describe("actualizarEstadoPedido — pedido no encontrado", () => {
 });
 
 // =============================================================================
+// actualizarEstadoPedido — proyección de sla_cumplido al cancelar (§5 fila 5,
+// docs/arquitectura/edicion-y-cancelacion-de-pedidos.md). Un pedido cancelado
+// no es un incumplimiento de SLA — es una entrega que nadie pidió. Por eso
+// sla_cumplido debe quedar `null` (no evaluable), forzado explícitamente aunque
+// la columna ya tuviera un valor de una transición anterior.
+// =============================================================================
+
+describe("actualizarEstadoPedido — sla_cumplido al cancelar", () => {
+  it("cancelado fuerza sla_cumplido=null aunque ya estuviera en true (fecha_compromiso_hora pasada)", async () => {
+    const fechaPasada = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // hace 1h
+    const pedido = pedidoBase("asignado");
+    pedido.fecha_compromiso_hora = fechaPasada;
+    pedido.sla_cumplido = true; // valor de una evaluación anterior — debe limpiarse
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "cancelado",
+      estadoEsperado: "asignado",
+      ejecutor: "sistema", // asignado→cancelado ya existe con ejecutor 'sistema'
+    });
+
+    expect(estado.pedidos[0].estado).toBe("cancelado");
+    expect(estado.pedidos[0].sla_cumplido).toBeNull();
+  });
+
+  it("cancelado desde 'fallido' (ejecutor interno) también fuerza sla_cumplido=null", async () => {
+    const fechaPasada = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const pedido = pedidoBase("fallido");
+    pedido.fecha_compromiso_hora = fechaPasada;
+    pedido.sla_cumplido = false; // el fallido previo ya lo había marcado incumplido
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "cancelado",
+        estadoEsperado: "fallido",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: "usuario-supervisor-1",
+        motivo: "Seller solicitó cancelar, no hay reintento posible",
+      },
+      actorSupervisor(),
+    );
+
+    expect(estado.pedidos[0].estado).toBe("cancelado");
+    expect(estado.pedidos[0].sla_cumplido).toBeNull();
+  });
+
+  it("cancelado sin fecha_compromiso_hora también queda en null (caso trivial, sin regresión)", async () => {
+    const pedido = pedidoBase("asignado");
+    pedido.fecha_compromiso_hora = null;
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "cancelado",
+      estadoEsperado: "asignado",
+      ejecutor: "sistema",
+    });
+
+    expect(estado.pedidos[0].sla_cumplido).toBeNull();
+  });
+
+  // Contraste deliberado: 'devuelto' NO cambia con este fix. A diferencia de
+  // 'cancelado', 'devuelto' solo es alcanzable desde 'en_ruta'/'fallido'/
+  // 'fallido_manual' (maquina-estados.ts) — siempre hubo un intento real de
+  // entrega que terminó devuelto al origen, así que sí es un incumplimiento
+  // genuino de SLA cuando había compromiso horario. Se deja documentado y sin
+  // tocar (decisión pendiente de confirmar con el equipo, ver entregable).
+  it("devuelto SIGUE marcando sla_cumplido=false si había fecha_compromiso_hora (sin cambios, a propósito)", async () => {
+    const fechaPasada = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const pedido = pedidoBase("en_ruta");
+    pedido.fecha_compromiso_hora = fechaPasada;
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "devuelto",
+      estadoEsperado: "en_ruta",
+      ejecutor: "sistema",
+    });
+
+    expect(estado.pedidos[0].estado).toBe("devuelto");
+    expect(estado.pedidos[0].sla_cumplido).toBe(false);
+  });
+});
+
+// =============================================================================
 // crearPedidoSameDay — manejo de tarifa
 // =============================================================================
 

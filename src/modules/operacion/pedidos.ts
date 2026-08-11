@@ -330,15 +330,27 @@ export async function actualizarEstadoPedido(
   // Al transicionar a un estado terminal se evalúa el SLA:
   //   - entregado / entregado_manual + fecha_compromiso_hora existe + entrega a tiempo
   //     → sla_cumplido = true
-  //   - cualquier terminal exitoso pero tardío, o estado fallido/devuelto/cancelado
+  //   - cualquier terminal exitoso pero tardío, o estado fallido/devuelto
   //     → sla_cumplido = false
+  //   - cancelado → sla_cumplido = null SIEMPRE (no evaluable): un pedido cancelado
+  //     no es un incumplimiento de SLA, es una entrega que nadie llegó a pedir.
+  //     Contarlo como fallo hundiría el % de cumplimiento por decisiones ajenas
+  //     al desempeño del courier. `slaGlobalPct` cuenta sobre
+  //     `sla_cumplido IS NOT NULL`, así que null es justo lo que lo saca del
+  //     denominador (ver §5 fila 5 de docs/arquitectura/edicion-y-cancelacion-de-pedidos.md).
   //   - sin fecha_compromiso_hora ni fecha_compromiso → null (no evaluable)
   // La proyección es barata: un campo en el mismo UPDATE — sin job nuevo.
   const ahora = new Date();
   let slaCumplido: boolean | null = null;
+  // true cuando hay que forzar la escritura de `sla_cumplido = null` aunque la
+  // columna ya tenga un valor de una transición anterior (p. ej. fallido→cancelado
+  // dejó sla_cumplido=false y hay que limpiarlo). Sin este flag, el UPDATE de más
+  // abajo omite el campo cuando slaCumplido es null y la columna conserva su
+  // valor viejo.
+  let forzarSlaNulo = false;
 
   const ESTADOS_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['entregado', 'entregado_manual']);
-  const ESTADOS_NO_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['fallido', 'fallido_manual', 'devuelto', 'cancelado']);
+  const ESTADOS_NO_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['fallido', 'fallido_manual', 'devuelto']);
 
   if (ESTADOS_EXITOSOS_TERMINALES.has(entrada.estadoNuevo)) {
     const fechaCompromisoHora = pedidoActual.fecha_compromiso_hora as string | null;
@@ -352,9 +364,18 @@ export async function actualizarEstadoPedido(
     }
     // else: sin ninguna referencia → null
   } else if (ESTADOS_NO_EXITOSOS_TERMINALES.has(entrada.estadoNuevo)) {
-    // Estado no exitoso: SLA incumplido si había compromiso horario configurado.
+    // Estado no exitoso (fallido/fallido_manual/devuelto): SLA incumplido si
+    // había compromiso horario configurado. `devuelto` siempre llega desde un
+    // intento real de entrega (en_ruta/fallido/fallido_manual) que terminó
+    // devuelta al origen — es un incumplimiento genuino, a diferencia de
+    // `cancelado`.
     const fechaCompromisoHora = pedidoActual.fecha_compromiso_hora as string | null;
     slaCumplido = fechaCompromisoHora ? false : null;
+  } else if (entrada.estadoNuevo === 'cancelado') {
+    // No evaluable, siempre — y forzado: si el pedido venía de 'fallido' con
+    // sla_cumplido=false ya escrito, cancelar debe limpiarlo a null.
+    slaCumplido = null;
+    forzarSlaNulo = true;
   }
 
   // 5. Bitácora ANTES del UPDATE (CLAUDE.md: "bitácora antes que efectos externos").
@@ -398,8 +419,9 @@ export async function actualizarEstadoPedido(
     actualizado_en: ahora.toISOString(),
   };
 
-  // Solo escribir sla_cumplido si se pudo evaluar (no dejar null sobre un valor ya evaluado).
-  if (slaCumplido !== null) {
+  // Solo escribir sla_cumplido si se pudo evaluar (no dejar null sobre un valor ya
+  // evaluado) — salvo que forzarSlaNulo lo exija explícitamente (cancelado).
+  if (slaCumplido !== null || forzarSlaNulo) {
     updatePayload.sla_cumplido = slaCumplido;
   }
 
