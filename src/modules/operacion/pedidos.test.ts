@@ -1264,6 +1264,165 @@ describe("cancelarPedido — motivo obligatorio (>= 10 caracteres)", () => {
       ),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
+
+  // Bordes exactos del límite (busca lo que nadie miró — encargo QA).
+  it("motivo de EXACTAMENTE 9 caracteres (uno menos del mínimo) ⇒ ErrorValidacion", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const motivo9 = "123456789";
+    expect(motivo9).toHaveLength(9);
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: motivo9,
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(estado.pedidos[0].estado).toBe("pendiente_asignacion");
+  });
+
+  it("motivo de EXACTAMENTE 10 caracteres (el mínimo, inclusive) ⇒ SE ACEPTA", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const motivo10 = "1234567890";
+    expect(motivo10).toHaveLength(10);
+
+    const pedido = await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "pendiente_asignacion",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: motivo10,
+      },
+      actorSupervisor(),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+    expect(estado.pedidos[0].motivo_cancelacion).toBe(motivo10);
+  });
+
+  it("motivo hecho SOLO de espacios, aunque tenga 15 caracteres de largo aparente ⇒ ErrorValidacion (se valida el trim, no el largo bruto)", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const soloEspacios = " ".repeat(15);
+    expect(soloEspacios).toHaveLength(15);
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: soloEspacios,
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(estado.pedidos[0].estado).toBe("pendiente_asignacion");
+  });
+
+  it("motivo MUY largo (2000 caracteres) se acepta sin truncar — motivo_cancelacion es text libre", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const motivoLargo = "El seller solicitó anular este pedido porque ".repeat(50); // ~2350 chars
+
+    const pedido = await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "pendiente_asignacion",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: motivoLargo,
+      },
+      actorSupervisor(),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+    expect(estado.pedidos[0].motivo_cancelacion).toBe(motivoLargo);
+    expect((estado.pedidos[0].motivo_cancelacion as string).length).toBe(motivoLargo.length);
+  });
+});
+
+describe("cancelarPedido — carreras (busca lo que nadie miró, encargo QA)", () => {
+  it("cancelar con un estadoEsperado ya obsoleto (alguien reasignó el pedido mientras tanto) ⇒ ErrorConflicto, sin mutar el pedido", async () => {
+    // El llamador leyó 'pendiente_asignacion' hace un instante, pero el
+    // sistema (o el coordinador) ya lo movió a 'asignado' antes de que esta
+    // llamada llegara al UPDATE — la guarda .eq('estado', estadoEsperado) no
+    // encuentra la fila.
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("asignado")], // el estado REAL ya avanzó
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion", // stale
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: "Cancelar mientras alguien más asigna el pedido",
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+
+    // El pedido sigue 'asignado' — ni se movió a 'cancelado' a medias, ni
+    // quedó bitácora de una cancelación que no ocurrió.
+    expect(estado.pedidos[0].estado).toBe("asignado");
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  it("dos cancelaciones simultáneas del MISMO pedido: la primera gana, la segunda recibe ErrorConflicto — nunca doble bitácora ni doble anulación", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    const entrada = {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoEsperado: "pendiente_asignacion" as const,
+      ejecutor: "interno" as const,
+      actuadoPorUsuarioId: USUARIO_INTERNO_1,
+      motivo: "Dos coordinadores cancelando el mismo pedido a la vez",
+    };
+
+    // Primera "hebra": gana, deja el pedido en 'cancelado'.
+    const primera = await cancelarPedido(cliente, entrada, actorSupervisor());
+    expect(primera.estado).toBe("cancelado");
+
+    // Segunda "hebra": leyó el mismo estadoEsperado ANTES de que la primera
+    // corriera (la carrera real), así que llega con el mismo valor stale.
+    await expect(
+      cancelarPedido(cliente, entrada, actorSupervisor()),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+
+    // Exactamente UNA entrada de bitácora 'pedido.cancelado' — la segunda
+    // hebra nunca llegó a escribir nada (falla en el UPDATE, no después).
+    const cancelaciones = estado.bitacora.filter((e) => e.accion === "pedido.cancelado");
+    expect(cancelaciones).toHaveLength(1);
+  });
 });
 
 describe("cancelarPedido — barrera por fuente: SOLO same_day (§3.2)", () => {
