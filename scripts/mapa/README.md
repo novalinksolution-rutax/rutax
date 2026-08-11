@@ -26,11 +26,26 @@ público de Protomaps pidiendo solo los rangos HTTP que necesita: ~20 MB transfe
 de un archivo de ~120 GB. Tarda menos de un minuto.
 
 ```bash
-node scripts/mapa/publicar-basemap.mjs
+node --env-file=.env.local scripts/mapa/publicar-basemap.mjs
 ```
 
 Lo sube a `contexto-mapas/basemap/<version>/rm.pmtiles` con `SUPABASE_SERVICE_ROLE_KEY`
 e imprime la URL que hay que poner en `NEXT_PUBLIC_MAPA_BASEMAP_URL`.
+
+**Los dos scripts de publicación leen el entorno, y Node no carga `.env.local` solo.**
+Sin `--env-file` fallan con «Faltan NEXT_PUBLIC_SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY
+en el entorno». Y ojo con a dónde apuntan: `.env.local` es el Supabase **local**, así que
+`--env-file=.env.local` publica al bucket local. **Para publicar a producción hay que
+exportar antes la URL y la `service_role` del proyecto hosted** y correr los scripts sin
+`--env-file`, para no dejar la credencial de producción escrita en un archivo del repo:
+
+```powershell
+$env:NEXT_PUBLIC_SUPABASE_URL  = "https://<ref-de-produccion>.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY = "<service_role de produccion>"
+node scripts/mapa/publicar-basemap.mjs
+node scripts/mapa/publicar-glifos.mjs
+Remove-Item Env:\NEXT_PUBLIC_SUPABASE_URL, Env:\SUPABASE_SERVICE_ROLE_KEY
+```
 
 **Por qué no Planetiler.** Construir el basemap desde un `.osm.pbf` pide Java;
 `tippecanoe` pide Go; `ogr2ogr` pide GDAL. Este entorno no tiene ninguno de los tres.

@@ -2,7 +2,7 @@
 
 Guía paso a paso para dejar **un courier real** operando en producción, manteniendo Fintoc/DTE/Email en **sandbox** (sin costo variable) hasta que decidas encenderlos.
 
-> **Regla de oro:** los flags de sandbox (`DTE_SANDBOX_MODE`, `EMAIL_SANDBOX_MODE`, `SUSCRIPCION_SANDBOX_MODE`, `SUSCRIPCION_RECURRENTE_SANDBOX_MODE`) se quedan en `true` para el piloto. Así corre toda la operación (pedidos, manifiestos, conductor, POD, motor entrega→dinero) con datos reales, pero **no se mueve plata ni se emiten DTE reales**.
+> **Regla de oro:** los flags de sandbox (`DTE_SANDBOX_MODE`, `EMAIL_SANDBOX_MODE`, `SUSCRIPCION_SANDBOX_MODE`, `SUSCRIPCION_RECURRENTE_SANDBOX_MODE`, `PAYOUT_SANDBOX_MODE`) se quedan en `true` para el piloto. Así corre toda la operación (pedidos, manifiestos, conductor, POD, motor entrega→dinero) con datos reales, pero **no se mueve plata ni se emiten DTE reales**.
 
 ---
 
@@ -12,7 +12,7 @@ Guía paso a paso para dejar **un courier real** operando en producción, manten
 - **Vercel** — hosting. **Pro ($20/mes)** para uso comercial legítimo.
 - **Inngest** — jobs en segundo plano. Free alcanza para 1 courier.
 - (Opcional) **Sentry** — errores. Free.
-- (Opcional, al encender correos) **Resend**.
+- **Resend** — cuenta + dominio verificado. No es opcional aunque `EMAIL_SANDBOX_MODE` se quede en `true` durante el piloto: ese flag solo gobierna los correos propios de la app (invitación a sellers/equipo); el SMTP de Auth de Supabase (invite del dueño, recuperación de contraseña — §1.8) necesita Resend desde el día uno, porque el SMTP integrado de Supabase da 2 correos/hora y no está pensado para producción.
 - **Dominio** — p. ej. `app.rutax.cl` (~$12/año).
 
 ---
@@ -48,25 +48,40 @@ npx supabase db push                                  # aplica supabase/migratio
 ```
 > **NO** corras `db reset` ni `db seed` en prod: `seed.sql` son datos DEMO. En prod solo van las migraciones.
 
-### 1.5 Provisionar los buckets de Storage
-En **Storage**, crea los cuatro buckets con las mismas propiedades que declara
-`supabase/config.toml` (el hosted no lee ese archivo — hay que replicarlo a mano):
+### 1.5 Buckets de Storage — los crean las migraciones, NO a mano
+Los cuatro buckets nacen solos al correr `db push` (§1.4): cada uno tiene un
+`insert into storage.buckets (...) on conflict do ...` idempotente dentro de su
+migración. **No los crees a mano en el dashboard** — declararlos solo en
+`supabase/config.toml` los crea en local (`supabase start`) pero NO en el
+proyecto hosted, que ignora ese archivo por completo; lo único que el hosted
+aplica son migraciones (DDL) y ajustes del panel.
 
-| Bucket | Público | Límite | MIME | Para qué |
-|---|---|---|---|---|
-| `pod-evidencias` | no | 50 MiB | png, jpeg, webp | Fotos y firmas del POD same-day |
-| `liquidaciones` | no | 10 MiB | pdf | PDF de liquidación del conductor |
-| `documentos-dte` | no | 10 MiB | pdf | PDF de las facturas DTE |
-| `contexto-mapas` | **sí** | 50 MiB | (sin allowlist) | Cartografía de la Torre: PMTiles, glyphs, sprites |
+| Bucket | Público | Límite | MIME | Para qué | Migración que lo crea |
+|---|---|---|---|---|---|
+| `pod-evidencias` | no | 50 MiB | png, jpeg, webp | Fotos y firmas del POD same-day | `20260613000008_operacion_pod_tracking.sql` |
+| `liquidaciones` | no | 10 MiB | pdf | PDF de liquidación del conductor | `20260806000001_storage_buckets_liquidaciones_documentos_dte.sql` |
+| `documentos-dte` | no | 10 MiB | pdf | PDF de las facturas DTE | `20260806000001_storage_buckets_liquidaciones_documentos_dte.sql` |
+| `contexto-mapas` | **sí** | 50 MiB | (sin allowlist) | Cartografía de la Torre: PMTiles, glyphs, sprites | `20260725000001_contexto_torre_de_control.sql` |
 
+> **Verificación, no creación:** tras `db push`, entra a **Storage** en el
+> dashboard y confirma que los 4 buckets aparecen con estas propiedades. Si
+> falta alguno, el `db push` no llegó a esa migración — revisa su log; no lo
+> crees a mano (una creación manual con propiedades distintas a las de la
+> migración es una fuente de discrepancias silenciosa, aunque el `on conflict`
+> no rompa nada).
+>
 > `contexto-mapas` es el único público, y solo de lectura: es cartografía OSM/DPA sin
 > un dato de nadie, y PMTiles se sirve por rangos HTTP (una URL firmada por rango no
 > funciona). Los otros tres son privados y se leen únicamente por URL firmada emitida
 > desde el backend con `service_role`.
 >
-> **Si `liquidaciones` falta, falla en silencio:** el job genera el PDF, el `upload`
-> falla, el job traga el error a propósito para no perder la liquidación, y `pdf_ref`
-> queda en `null`. El conductor no recibe su comprobante y no aparece ningún error.
+> **Si `liquidaciones` falta (p. ej. la migración no llegó a aplicarse), falla en
+> silencio:** el job genera el PDF, el `upload` falla, el job traga el error a
+> propósito para no perder la liquidación, y `pdf_ref` queda en `null`. El
+> conductor no recibe su comprobante y no aparece ningún error. Esto ya ocurrió
+> una vez en producción (2026-08-06) cuando estos dos buckets solo estaban
+> declarados en `config.toml`; quedó cerrado con la migración de la tabla de
+> arriba.
 
 ### 1.6 Crear el super-admin real (el seed demo NO corre en prod)
 1. En **Authentication → Users → Add user**: crea el usuario del fundador con su email real y una contraseña fuerte; marca el email como **confirmado**. Copia su **UUID**.
@@ -83,6 +98,98 @@ values ('<UUID>', '<EMAIL>', '<NOMBRE>', 'admin_total', true)
 on conflict (usuario_id) do update set activo=true, rol_admin='admin_total';
 ```
 3. La primera vez que entres a `/admin` te pedirá enrolar el 2FA (TOTP).
+
+### 1.7 ⚠️ Checklist de post-provisionamiento — `config.toml` NO aplica al hosted
+
+Esta es la advertencia más cara del proyecto, y ya mordió **tres veces el
+2026-08-06** al levantar `rutax-prod`. `supabase/config.toml` describe el
+entorno LOCAL (`supabase start`); en un proyecto hosted **no se lee en
+absoluto**. Lo único que un proyecto hosted aplica automáticamente son las
+migraciones (DDL, §1.4). Todo lo demás que `config.toml` declara hay que
+replicarlo a mano en el dashboard — o, si es una tabla/bucket, con una
+migración idempotente (como ya se hizo para los 4 buckets, §1.5).
+
+La peor mordida: el hook `[auth.hook.custom_access_token]`. La función
+`identidad.custom_access_token_hook` sí existía (la crea la migración
+`20260101000001`), pero el hook estaba **sin registrar** en producción — la
+página de Auth Hooks aparecía vacía. Esa función es la que inyecta `tenant_id`,
+`tipo_usuario`, `seller_id`, `driver_id` y `rol` al JWT; sin ella, todas las
+funciones `claim_*` que usan las políticas RLS devuelven `null`, y **RLS le
+niega todo a todos los usuarios, en toda la app** — no solo en `/admin`. No
+hay síntoma en el build ni en el deploy: se descubre porque cada pantalla
+carga vacía o con "no autorizado".
+
+Checklist explícito — repásalo entero en cualquier proyecto Supabase nuevo
+(el de producción actual ya lo tiene resuelto; esto es para el próximo courier
+que necesite un proyecto propio, o para volver a levantar `rutax-prod` desde
+cero):
+
+- [ ] **Esquemas expuestos** (Settings → API → Exposed schemas) — ver §1.2.
+- [ ] **`extra_search_path`** (Settings → API → la misma pantalla, más abajo,
+      o Database → search path según la versión del dashboard): igualar a
+      `supabase/config.toml` → `public, operacion, identidad, dinero,
+      integraciones, plataforma, extensions`. **`contexto` NO va en esta
+      lista a propósito** (ver el comentario en `config.toml`): su acceso
+      siempre se califica con `.schema('contexto')` y sus nombres de tabla
+      genéricos (`calendario`, `senales`) podrían sombrear otra tabla si
+      entraran al search_path de cada request. Producción venía con solo
+      `public, extensions` — 25 de 31 funciones no fijan su propio
+      `search_path`, así que sin este ajuste corren contra el path por
+      defecto, no el del monolito.
+- [ ] **Buckets de Storage** — ya NO requieren creación manual, ver §1.5
+      (los 4 llevan migración idempotente). Solo verifica que aparezcan tras
+      `db push`.
+- [ ] **Hook de Auth `custom_access_token`** (Authentication → Hooks):
+      registra `identidad.custom_access_token_hook` como el hook "Customize
+      Access Token (JWT) Claims". **Crítico** — ver el incidente arriba.
+- [ ] **`site_url` y `additional_redirect_urls`** (Authentication → URL
+      Configuration): apunta al dominio real de producción (el mismo
+      `APP_PUBLIC_URL` de §5), no al `http://127.0.0.1:3000` que trae
+      `config.toml` por defecto.
+- [ ] **Políticas de signup/confirmación de correo** (Authentication →
+      Providers → Email): revisa `Confirm email` (afecta si el registro
+      público por `/registro` requiere confirmar el correo antes de poder
+      entrar) y `Enable email signup`. Decide el valor explícitamente — no
+      asumas que coincide con lo que `config.toml` fija en local.
+- [ ] **Plantillas de correo de Auth** (Authentication → Email Templates): el
+      default de Supabase usa `{{ .ConfirmationURL }}`, que es el flujo
+      *implícito* y entrega los tokens en el **fragmento** de la URL (`#`).
+      La app usa `@supabase/ssr` y su ruta `/auth/confirm` lee `token_hash`
+      del **query string** — con la plantilla default nunca se encuentran, y
+      el usuario invitado aterriza en la raíz del sitio en vez de en
+      `/activar-cuenta` (o pierde el flujo si ya tenía otra sesión abierta en
+      ese navegador). En cada plantilla que uses, reemplaza el enlace por:
+      `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=<tipo>`
+      (agrega `&next=/ruta-destino` cuando el destino no es el default).
+      Aplica al menos a **Invite user**, **Magic link** y **Reset Password**.
+- [ ] **SMTP de Auth** — ver §1.8. Sin esto, el correo de Auth (no el de la
+      app, ese va por Resend vía API REST) sale por el SMTP integrado de
+      Supabase, limitado a 2 correos/hora.
+
+### 1.8 SMTP de Auth (Supabase → Resend)
+
+Por defecto, todo el correo que envía **Supabase Auth** (invitación de
+usuario, recuperación de contraseña, magic link) sale por el SMTP integrado
+de Supabase: 2 correos/hora y el propio panel lo marca como "not meant for
+production use". Esto es una vía **distinta** de Resend-vía-API-REST que ya
+usa la app para sus propios correos transaccionales (invitación a sellers,
+notificaciones de plataforma — `src/modules/integraciones/notificaciones/email/adaptadores/resend.ts`):
+esa integración NO alimenta el SMTP de Auth, hay que configurarlo aparte.
+
+Pasos:
+1. En el dashboard de Supabase: **Authentication → SMTP Settings**
+   (`/auth/smtp`). Activa "Enable Custom SMTP".
+2. **Host**: `smtp.resend.com`
+3. **Puerto**: `587` (STARTTLS — el recomendado; Resend también acepta
+   `465`/`2465` con TLS implícito y `25`/`2587`, pero `587` es el valor de
+   ejemplo de la propia guía de Supabase para SMTP personalizado).
+4. **Usuario**: `resend` (literal, no tu email).
+5. **Contraseña**: la `RESEND_API_KEY` que ya está provisionada para el
+   adaptador REST (mismo valor, dos usos).
+6. **Sender email**: una dirección del dominio que ya verificaste en Resend
+   (el mismo dominio de `EMAIL_FROM_ADDRESS`).
+7. Guarda y envía un correo de prueba (p. ej. dispara un "reset password"
+   desde `/login`) para confirmar que llega.
 
 ---
 
@@ -104,7 +211,7 @@ on conflict (usuario_id) do update set activo=true, rol_admin='admin_total';
 > veces — ~150 ms por consulta en vez de ~40. Vercel no tiene región en Santiago, así
 > que `gru1` es lo más cerca que se llega de Chile. El razonamiento completo, con
 > costos y la alternativa chilena evaluada, está en `docs/ops/latencia-y-region.md`.
-3. **Environment Variables** (Production) — ver la tabla de la sección 5. **Clave:** `APP_PUBLIC_URL` = tu dominio real (`https://app.rutax.cl`).
+3. **Environment Variables** (Production) — ver §5 (imprescindibles) y `.env.example` (la lista completa). **Clave:** `APP_PUBLIC_URL` = tu dominio real (`https://app.rutax.cl`).
 4. Deploy. Vercel te da una URL; conecta tu dominio en **Settings → Domains**.
 
 ---
@@ -116,25 +223,61 @@ En el DevCenter de ML, la **Redirect URI** registrada debe coincidir EXACTO con 
 
 ## 5. Variables de entorno (Vercel · Production)
 
-| Variable | Qué poner en el piloto |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase prod |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon key de Supabase prod |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role key (⚠️ secreto, nunca al cliente) |
-| `APP_PUBLIC_URL` | `https://app.rutax.cl` (tu dominio real) |
-| `SECRETOS_CLAVE_CIFRADO_B64` | genera: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
-| `SUPER_ADMIN_SECRET` | genera otro valor con el mismo comando (firma cookie de soporte + defensa) |
-| `ML_APP_CLIENT_ID` / `ML_APP_CLIENT_SECRET` | credenciales de tu app de ML |
-| `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY` | de Inngest |
-| `TZ` | `America/Santiago` |
-| `DTE_SANDBOX_MODE` | `true` (piloto) |
-| `EMAIL_SANDBOX_MODE` | `true` (piloto) |
-| `SUSCRIPCION_SANDBOX_MODE` | `true` (piloto) |
-| `SUSCRIPCION_RECURRENTE_SANDBOX_MODE` | `true` (piloto) |
-| `SENTRY_DSN` | DSN de Sentry — **ver nota abajo**, ya no es "opcional" en la práctica |
-| `GEOCODING_PROVIDER` | `stub` (piloto, $0) |
+**`.env.example` (raíz del repo) es la fuente de verdad de TODAS las
+variables** que lee el código — su propósito, su default y qué pasa si falta.
+No la dupliques aquí: el código hoy lee ~41 variables y una tabla paralela en
+este runbook se desactualiza sola en cuanto se agrega una sin acordarse de
+tocar dos archivos. Esta sección documenta solo lo que es específico del
+**despliegue**: qué scope de Vercel usar, qué es imprescindible para arrancar,
+y qué falla en silencio si falta.
 
-> **NO** setees las credenciales reales de Fintoc/DTE/Resend en el piloto — mientras los flags están en `true`, no se usan.
+### Scope
+Carga todas las variables en el scope **Production** solamente — nunca
+"Production and Preview". Con Preview activado, cualquier deploy de una rama
+correría contra la base de datos de producción con datos reales. Si algún día
+se quieren previews reales, la solución es un segundo proyecto Supabase;
+nunca compartir el de producción.
+
+### Imprescindibles para arrancar
+Sin estas, la app no sirve una sola página o el login no funciona:
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `SECRETOS_CLAVE_CIFRADO_B64`,
+`SUPER_ADMIN_SECRET`, `APP_PUBLIC_URL`, `ML_APP_CLIENT_ID` /
+`ML_APP_CLIENT_SECRET`, `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`.
+
+### Flags de sandbox (piloto) — déjalos en `true`
+`DTE_SANDBOX_MODE`, `EMAIL_SANDBOX_MODE`, `SUSCRIPCION_SANDBOX_MODE`,
+`SUSCRIPCION_RECURRENTE_SANDBOX_MODE`, `PAYOUT_SANDBOX_MODE`. Los cinco
+comparten la misma semántica de seguridad por defecto: ausente, vacío o
+cualquier valor que no sea el literal `"false"` = sandbox. **NO** setees las
+credenciales reales de Fintoc/DTE/Resend mientras los flags están en `true` —
+no se usan, y dejarlas puestas es exposición innecesaria.
+
+### Fallan en silencio si faltan (no rompen el build ni el request)
+- `SENTRY_DSN` — sin ella, los errores quedan solo en el log de Vercel; ver
+  nota debajo.
+- `GEOCODING_PROVIDER` (default `stub`) — con `google` pero sin
+  `GOOGLE_MAPS_API_KEY`, la geocodificación falla en cada intento; `stub` no
+  tiene costo pero tampoco produce coordenadas reales.
+- `RESEND_WEBHOOK_SECRET` — sin ella, `POST /api/webhooks/resend` rechaza
+  todo con 401 (fail-closed a propósito): un correo de invitación rebotado se
+  ve exactamente igual que uno entregado. Además de cargarla en Vercel, hay
+  que suscribir el endpoint en el dashboard de Resend a los eventos
+  `email.delivered`, `email.bounced` y `email.complained`.
+- `NEXT_PUBLIC_MAPA_BASEMAP_URL` / `NEXT_PUBLIC_MAPA_GLIFOS_URL` — la Torre de
+  control degrada a comunas sobre color de tierra, sin plano urbano ni
+  etiquetas. Es un estado válido, pero probablemente no el que quieres.
+
+### `TZ` — NO la setees, es imposible
+`TZ` es un nombre **reservado** por el runtime de funciones de Vercel (junto a
+variables de AWS Lambda como `AWS_LAMBDA_FUNCTION_NAME`). El formulario de
+Environment Variables responde "Environment variable TZ is invalid" y el
+botón **Deploy deja de responder sin mostrar ningún mensaje al pie** — parece
+que la página se colgó, pero es el rechazo silencioso de esa variable. No
+hace falta: ~40 archivos de `src/` pasan `timeZone: "America/Santiago"`
+explícito en cada `Intl`/formateo de fecha (ver `src/lib/fecha-santiago.ts` y
+sus usos), así que la zona horaria del proceso (las funciones de Vercel
+corren en UTC) es irrelevante para la app.
 
 ### `SENTRY_DSN` — lo único que falta para tener observabilidad
 
@@ -175,7 +318,7 @@ cuerpo crudo.
 
 ## 7. Cuando decidas encender lo "real" (después del piloto)
 Un flag a la vez, con revisión de `seguridad-cumplimiento`:
-1. **Correos:** contrata Resend, verifica el dominio de envío, setea `RESEND_API_KEY` + `EMAIL_FROM_ADDRESS`, y `EMAIL_SANDBOX_MODE=false`.
+1. **Correos:** contrata Resend, verifica el dominio de envío, setea `RESEND_API_KEY` + `EMAIL_FROM_ADDRESS`, y `EMAIL_SANDBOX_MODE=false`. De paso, si aún no lo hiciste (§1.7/§1.8): registra el webhook de Resend apuntando a `/api/webhooks/resend` suscrito a `email.delivered` / `email.bounced` / `email.complained`, carga su `RESEND_WEBHOOK_SECRET`, y configura el SMTP de Auth en Supabase.
 2. **Cobros:** contrata Fintoc, setea sus claves + webhooks, y `SUSCRIPCION_SANDBOX_MODE=false` / `SUSCRIPCION_RECURRENTE_SANDBOX_MODE=false`.
 3. **DTE real:** conecta el proveedor (Openfactura), configura certificado/folios, opt-in por courier desde `/admin`, y `DTE_SANDBOX_MODE=false`. **Irreversible ante el SII** — hazlo último y con doble revisión.
 
