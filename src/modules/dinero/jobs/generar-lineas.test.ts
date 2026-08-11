@@ -13,10 +13,27 @@
  * 2. pedido.estado = 'cancelado' → generaCobro: false, generaLiquidacion: false → no inserta nada.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
 import type { EntradaMotor, TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
-import { derivarMotivoAnulacion, derivarAccionBitacoraAnulacion } from './generar-lineas';
+import { ESTADOS_NO_TERMINALES_CONCILIACION } from '../conciliacion-clasificacion';
+import type { crearClienteServiceRole } from '@/lib/supabase/service-role';
+
+// `levantarExcepcionLineaNoAnulable` (H2) llama a `registrarEnBitacora` — se
+// mockea igual que en `acciones-anular-lineas.test.ts` para poder verificar
+// el ORDEN bitácora→INSERT sin tocar Supabase real. El `supabase` que recibe
+// la función SÍ se pasa como doble de prueba directo (no via
+// `crearClienteServiceRole()`), así que no hace falta mockear ese módulo.
+vi.mock('@/modules/identidad/auditoria', () => ({
+  registrarEnBitacora: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import {
+  derivarMotivoAnulacion,
+  derivarAccionBitacoraAnulacion,
+  levantarExcepcionLineaNoAnulable,
+} from './generar-lineas';
 
 describe('Job C1 — generar-lineas', () => {
   // =========================================================================
@@ -742,5 +759,242 @@ describe('derivarMotivoAnulacion / derivarAccionBitacoraAnulacion — fidelidad 
     expect(derivarAccionBitacoraAnulacion('fallido')).toBe(
       'dinero.lineas_anuladas_por_devolucion',
     );
+  });
+});
+
+// =============================================================================
+// Punto ciego H2 tapado (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+// §2.3/§2.4 D-A2, migración 20260811000002): cuando la línea NO se puede
+// anular porque el contenedor (período/liquidación) ya cerró, el job levanta
+// una excepción BLOQUEANTE en `dinero.eventos_conciliacion` en vez de solo
+// loguear. Se prueba `levantarExcepcionLineaNoAnulable` directamente, con un
+// doble de prueba encadenable para `supabase` — mismo patrón que
+// `acciones-anular-lineas.test.ts` — porque es la función que absorbe TODO el
+// I/O (select de idempotencia, bitácora, insert); el job solo decide CUÁNDO
+// llamarla (período≠'abierto' / liquidación≠'borrador', ya cubierto arriba).
+// =============================================================================
+describe('levantarExcepcionLineaNoAnulable — H2, tapa el punto ciego', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Doble de prueba encadenable de un cliente Supabase, especializado para el
+   * único camino que usa esta función: `select(...).eq(...).in(...).maybeSingle()`
+   * (idempotencia) y `insert(...)` (la fila nueva). `insertMock`/`inMock`
+   * quedan expuestos para inspeccionar qué se llamó y con qué payload.
+   */
+  function mockSupabaseExcepcion(opciones: {
+    eventoExistente: { id: string } | null;
+    errorInsert?: { message: string } | null;
+  }) {
+    const insertMock = vi.fn((_payload: Record<string, unknown>) =>
+      Promise.resolve({ error: opciones.errorInsert ?? null }),
+    );
+    const inMock = vi.fn(() => q);
+    const q: Record<string, unknown> = {
+      schema: vi.fn(() => q),
+      from: vi.fn(() => q),
+      select: vi.fn(() => q),
+      eq: vi.fn(() => q),
+      in: inMock,
+      maybeSingle: vi.fn(() => Promise.resolve({ data: opciones.eventoExistente, error: null })),
+      insert: insertMock,
+    };
+    return { q, insertMock, inMock };
+  }
+
+  const inputCobroBase = {
+    tenantId: 'tenant-1',
+    pedidoId: 'pedido-1',
+    sellerId: 'seller-1',
+    tipoLinea: 'cobro' as const,
+    lineaId: 'lc-1',
+    tipoDiferencia: 'linea_cobro_sin_pedido_entregado' as const,
+    estadoNuevo: 'cancelado',
+    estadoContenedor: 'facturado',
+    periodoCobroId: 'periodo-1',
+    bloqueaFacturacion: true,
+    bloqueaPago: false,
+    jobRunId: 'run-1',
+  };
+
+  const inputLiquidacionBase = {
+    tenantId: 'tenant-1',
+    pedidoId: 'pedido-2',
+    sellerId: 'seller-1',
+    tipoLinea: 'liquidacion' as const,
+    lineaId: 'll-1',
+    tipoDiferencia: 'linea_liquidacion_sin_pedido_entregado' as const,
+    estadoNuevo: 'cancelado',
+    estadoContenedor: 'pagada',
+    driverId: 'driver-1',
+    liquidacionId: 'liq-1',
+    bloqueaFacturacion: false,
+    bloqueaPago: true,
+    jobRunId: 'run-2',
+  };
+
+  it("lado cobro (período 'facturado'): inserta evento con bloquea_facturacion=true, bloquea_pago=false y motivo_bloqueo no vacío", async () => {
+    const { q, insertMock } = mockSupabaseExcepcion({ eventoExistente: null });
+
+    const eventoId = await levantarExcepcionLineaNoAnulable(
+      q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputCobroBase,
+    );
+
+    expect(eventoId).not.toBeNull();
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.tipo_diferencia).toBe('linea_cobro_sin_pedido_entregado');
+    expect(payload.bloquea_facturacion).toBe(true);
+    expect(payload.bloquea_pago).toBe(false);
+    expect(payload.periodo_cobro_id).toBe('periodo-1');
+    expect(payload.pedido_id).toBe('pedido-1');
+    expect(payload.seller_id).toBe('seller-1');
+    expect(payload.estado).toBe('pendiente');
+    // El CHECK eventos_conciliacion_bloqueo_motivo exige motivo_bloqueo no
+    // vacío cuando cualquiera de los dos bloqueos es true — sin esto, el
+    // INSERT real caería con 23514.
+    expect(typeof payload.motivo_bloqueo).toBe('string');
+    expect((payload.motivo_bloqueo as string).trim().length).toBeGreaterThan(0);
+    // categoria_negocio/accion_sugerida/fecha_limite son NOT NULL sin default
+    // (migración 20260708000001) — deben venir del insert, no quedar ausentes.
+    // El lado cobro reusa el tipo YA existente `linea_cobro_sin_pedido_entregado`
+    // (integridad_datos, SLA 7 días): la línea viva es un dato feo que un
+    // humano corrige antes de facturar, no una fuga que ya salió del bolsillo
+    // del courier — a diferencia de su hermano del lado liquidación (ver
+    // el test de abajo).
+    expect(payload.categoria_negocio).toBe('integridad_datos');
+    expect(payload.accion_sugerida).toBeTruthy();
+    expect(payload.fecha_limite).toBeTruthy();
+  });
+
+  it("lado liquidación (liquidación 'pagada'): inserta evento con bloquea_pago=true, bloquea_facturacion=false, con driver_id y liquidacion_id", async () => {
+    const { q, insertMock } = mockSupabaseExcepcion({ eventoExistente: null });
+
+    const eventoId = await levantarExcepcionLineaNoAnulable(
+      q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputLiquidacionBase,
+    );
+
+    expect(eventoId).not.toBeNull();
+    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.tipo_diferencia).toBe('linea_liquidacion_sin_pedido_entregado');
+    expect(payload.bloquea_pago).toBe(true);
+    expect(payload.bloquea_facturacion).toBe(false);
+    expect(payload.driver_id).toBe('driver-1');
+    expect(payload.liquidacion_id).toBe('liq-1');
+    expect((payload.motivo_bloqueo as string).trim().length).toBeGreaterThan(0);
+    expect(payload.categoria_negocio).toBe('fuga_ingreso');
+  });
+
+  it('idempotencia: ya existe un evento vigente (no terminal) para (tenant_id, pedido_id, tipo_diferencia) → no inserta ni audita de nuevo', async () => {
+    const { q, insertMock, inMock } = mockSupabaseExcepcion({
+      eventoExistente: { id: 'evento-ya-existe' },
+    });
+
+    const eventoId = await levantarExcepcionLineaNoAnulable(
+      q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputCobroBase,
+    );
+
+    expect(eventoId).toBeNull();
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(registrarEnBitacora).not.toHaveBeenCalled();
+    // La clave de idempotencia filtra por estado NO terminal — mismo criterio
+    // que el resto del módulo (preflight de bloqueo, avisos de SLA).
+    expect(inMock).toHaveBeenCalledWith('estado', ESTADOS_NO_TERMINALES_CONCILIACION);
+  });
+
+  it('re-ejecución del job (mismo hallazgo dos veces) no duplica el evento', async () => {
+    // Primera "ejecución": no hay evento previo → inserta.
+    const primera = mockSupabaseExcepcion({ eventoExistente: null });
+    const primerId = await levantarExcepcionLineaNoAnulable(
+      primera.q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputCobroBase,
+    );
+    expect(primerId).not.toBeNull();
+    expect(primera.insertMock).toHaveBeenCalledTimes(1);
+
+    // Segunda "ejecución" (reintento de Inngest): el evento ya existe (mismo
+    // id que se acaba de crear) → el select de idempotencia lo encuentra y
+    // NO se inserta una segunda fila.
+    const segunda = mockSupabaseExcepcion({ eventoExistente: { id: primerId! } });
+    const segundoId = await levantarExcepcionLineaNoAnulable(
+      segunda.q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputCobroBase,
+    );
+    expect(segundoId).toBeNull();
+    expect(segunda.insertMock).not.toHaveBeenCalled();
+  });
+
+  it('bitácora ANTES del INSERT (invariante CLAUDE.md) — orden verificado', async () => {
+    const orden: string[] = [];
+    const { q } = mockSupabaseExcepcion({ eventoExistente: null });
+    (q as Record<string, unknown>).insert = vi.fn(() => {
+      orden.push('insert');
+      return Promise.resolve({ error: null });
+    });
+    vi.mocked(registrarEnBitacora).mockImplementationOnce(async () => {
+      orden.push('bitacora');
+    });
+
+    await levantarExcepcionLineaNoAnulable(
+      q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputCobroBase,
+    );
+
+    expect(orden).toEqual(['bitacora', 'insert']);
+  });
+
+  it('la bitácora lleva tipo_linea, linea_id, el estado del contenedor y el evento_conciliacion_id (pre-generado, mismo id del INSERT)', async () => {
+    const { q, insertMock } = mockSupabaseExcepcion({ eventoExistente: null });
+
+    const eventoId = await levantarExcepcionLineaNoAnulable(
+      q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputCobroBase,
+    );
+
+    expect(registrarEnBitacora).toHaveBeenCalledTimes(1);
+    const [, entrada] = vi.mocked(registrarEnBitacora).mock.calls[0];
+    expect(entrada.accion).toBe('dinero.linea_no_anulable_por_cancelacion');
+    expect(entrada.actorTipo).toBe('sistema');
+    expect(entrada.actorUsuarioId).toBeNull();
+    expect(entrada.detalle?.tipo_linea).toBe('cobro');
+    expect(entrada.detalle?.linea_id).toBe('lc-1');
+    expect(entrada.detalle?.estado_periodo).toBe('facturado');
+    expect(entrada.detalle?.evento_conciliacion_id).toBe(eventoId);
+
+    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.id).toBe(eventoId);
+  });
+
+  it('lado liquidación: la bitácora lleva estado_liquidacion (no estado_periodo)', async () => {
+    const { q } = mockSupabaseExcepcion({ eventoExistente: null });
+
+    await levantarExcepcionLineaNoAnulable(
+      q as unknown as ReturnType<typeof crearClienteServiceRole>,
+      inputLiquidacionBase,
+    );
+
+    const [, entrada] = vi.mocked(registrarEnBitacora).mock.calls[0];
+    expect(entrada.detalle?.tipo_linea).toBe('liquidacion');
+    expect(entrada.detalle?.estado_liquidacion).toBe('pagada');
+    expect(entrada.detalle).not.toHaveProperty('estado_periodo');
+  });
+
+  it('propaga el error si el INSERT del evento de conciliación falla', async () => {
+    const { q } = mockSupabaseExcepcion({
+      eventoExistente: null,
+      errorInsert: { message: 'boom' },
+    });
+
+    await expect(
+      levantarExcepcionLineaNoAnulable(
+        q as unknown as ReturnType<typeof crearClienteServiceRole>,
+        inputCobroBase,
+      ),
+    ).rejects.toThrow(/boom/);
   });
 });

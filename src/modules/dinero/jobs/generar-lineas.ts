@@ -8,14 +8,22 @@
  * en estado financieramente relevante. Asignarlas al período/liquidación abiertos.
  * Actualizar los flags en `operacion.pedidos`.
  *
- * Flujo `fallido → devuelto` (anulación pre-cierre):
- * Cuando llega `estadoNuevo = 'devuelto'` y YA EXISTE una línea para ese pedido,
- * el job anula la línea (soft-delete: `anulada = true`) SOLO si el período / la
- * liquidación todavía están en estado mutable:
- *   - cobro   : período `abierto`  → anular. cerrado/facturado → NO tocar; C6 detecta.
- *   - liquidac: liquidación `borrador` → anular. emitida/pagada → NO tocar; C6 detecta.
+ * Flujo `fallido → devuelto` / `→ cancelado` (anulación pre-cierre):
+ * Cuando llega `estadoNuevo ∈ {'devuelto', 'cancelado'}` y YA EXISTE una línea
+ * para ese pedido, el job anula la línea (soft-delete: `anulada = true`) SOLO
+ * si el período / la liquidación todavía están en estado mutable:
+ *   - cobro   : período `abierto`  → anular. cerrado/facturado → NO se anula.
+ *   - liquidac: liquidación `borrador` → anular. emitida/pagada → NO se anula.
  * El `monto_final_clp` es GENERATED — no se puede setear. Para neutralizar el efecto
  * en los totales todos los cálculos de período / liquidación filtran `anulada = false`.
+ *
+ * Punto ciego H2 tapado (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+ * §2.3/§2.4 D-A2): cuando NO se puede anular porque el contenedor ya cerró, el
+ * job YA NO solo loguea — levanta una excepción BLOQUEANTE en
+ * `dinero.eventos_conciliacion` (`levantarExcepcionLineaNoAnulable`), porque
+ * C6 (`conciliar-periodo`) ya no vuelve a correr sobre un período facturado:
+ *   - cobro   : `linea_cobro_sin_pedido_entregado`       + `bloquea_facturacion=true`.
+ *   - liquidac: `linea_liquidacion_sin_pedido_entregado` + `bloquea_pago=true`.
  *
  * Idempotencia:
  * - EventId = `dinero-lineas-${pedidoId}-${estadoNuevo}` — Inngest no deduplica
@@ -24,6 +32,9 @@
  * - INSERT ON CONFLICT (pedido_id) DO NOTHING — la BD absorbe el segundo intento.
  * - UPDATE con WHERE periodo_cobro_id IS NULL / liquidacion_id IS NULL — idempotente.
  * - Anular dos veces = no-op (la línea ya tiene `anulada = true`).
+ * - Excepción de conciliación: `select … maybeSingle()` por
+ *   `(tenant_id, pedido_id, tipo_diferencia)` en estado no terminal antes del
+ *   insert — no siembra duplicados en reintentos.
  *
  * SEGURIDAD:
  * - Nunca se loguean tokens, certificados ni credenciales.
@@ -37,6 +48,11 @@ import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
 import type { TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
 import { obtenerOCrearPeriodoCobroAbierto, obtenerOCrearLiquidacionAbierta } from '../periodos';
+import {
+  camposClasificacionParaInsert,
+  ESTADOS_NO_TERMINALES_CONCILIACION,
+} from '../conciliacion-clasificacion';
+import type { TipoDiferenciaConciliacion } from '../tipos';
 import type { EstadoPedido } from '@/modules/operacion/tipos';
 
 const TZ = 'America/Santiago';
@@ -77,6 +93,125 @@ export function derivarAccionBitacoraAnulacion(
   return estadoNuevo === 'cancelado'
     ? 'dinero.lineas_anuladas_por_cancelacion'
     : 'dinero.lineas_anuladas_por_devolucion';
+}
+
+/**
+ * Tapa el punto ciego H2 (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+ * §2.3/§2.4 D-A2): cuando el pedido pasó a `cancelado`/`devuelto` pero su línea
+ * de cobro o de liquidación NO se pudo anular porque el contenedor (período /
+ * liquidación) ya está cerrado, levanta una excepción BLOQUEANTE en
+ * `dinero.eventos_conciliacion` en vez de solo loguear. C6 (`conciliar-periodo`)
+ * ya no vuelve a correr sobre un período facturado, así que este es el único
+ * punto de detección posible — sin esto, una línea viva queda dentro de un DTE
+ * emitido o un conductor cobra una entrega que no ocurrió, y nadie se entera.
+ *
+ * Idempotencia: `select … maybeSingle()` previo al insert por
+ * `(tenant_id, pedido_id, tipo_diferencia)` en estado NO terminal — mismo
+ * patrón que los cuatro checks de `conciliar-periodo.ts`. Si ya existe un
+ * hallazgo vigente para esta combinación, no se duplica (C1 se reintenta).
+ * Si el hallazgo previo llegó a un estado terminal (alguien lo resolvió/
+ * ignoró) y la línea sigue viva en un reintento posterior, se levanta uno
+ * nuevo — el hecho persiste y merece una excepción fresca.
+ *
+ * Bitácora ANTES del INSERT del evento (invariante CLAUDE.md): el `id` del
+ * evento se genera acá mismo (client-side, `crypto.randomUUID()`) y se pasa
+ * explícito en el INSERT, igual que el patrón ya establecido en
+ * `operacion/conductores.ts` (`crearConductor`) — así el detalle de bitácora
+ * puede llevar `evento_conciliacion_id` sin invertir el orden bitácora→efecto.
+ *
+ * Devuelve el id del evento creado, o `null` si ya existía uno vigente.
+ */
+export async function levantarExcepcionLineaNoAnulable(
+  supabase: ReturnType<typeof crearClienteServiceRole>,
+  input: {
+    tenantId: string;
+    pedidoId: string;
+    sellerId: string;
+    tipoLinea: 'cobro' | 'liquidacion';
+    lineaId: string;
+    tipoDiferencia: TipoDiferenciaConciliacion;
+    estadoNuevo: string;
+    /** Estado del período (lado cobro) o de la liquidación (lado liquidación). */
+    estadoContenedor: string | null;
+    periodoCobroId?: string | null;
+    driverId?: string | null;
+    liquidacionId?: string | null;
+    bloqueaFacturacion: boolean;
+    bloqueaPago: boolean;
+    jobRunId: string;
+  },
+): Promise<string | null> {
+  const { data: existente } = await supabase
+    .schema('dinero')
+    .from('eventos_conciliacion')
+    .select('id')
+    .eq('tenant_id', input.tenantId)
+    .eq('pedido_id', input.pedidoId)
+    .eq('tipo_diferencia', input.tipoDiferencia)
+    .in('estado', ESTADOS_NO_TERMINALES_CONCILIACION)
+    .maybeSingle();
+
+  if (existente) return null; // ya hay un hallazgo vigente — idempotente, no duplicar.
+
+  const eventoConciliacionId = crypto.randomUUID();
+  const motivoBloqueo =
+    input.tipoLinea === 'cobro'
+      ? `Pedido ${input.pedidoId} pasó a '${input.estadoNuevo}' con línea de cobro ` +
+        `(${input.lineaId}) viva dentro de un período en estado '${input.estadoContenedor}'. ` +
+        `No se anuló automáticamente: requiere nota de crédito o ajuste manual antes de facturar.`
+      : `Pedido ${input.pedidoId} pasó a '${input.estadoNuevo}' con línea de liquidación ` +
+        `(${input.lineaId}) viva dentro de una liquidación en estado '${input.estadoContenedor}'. ` +
+        `El pago al conductor ya salió o está por salir: requiere ajuste/descuento manual.`;
+
+  // Bitácora ANTES del INSERT del evento de conciliación.
+  await registrarEnBitacora(supabase, {
+    tenantId: input.tenantId,
+    actorUsuarioId: null,
+    actorTipo: 'sistema',
+    accion: 'dinero.linea_no_anulable_por_cancelacion',
+    entidadTipo: 'pedido',
+    entidadId: input.pedidoId,
+    detalle: {
+      tipo_linea: input.tipoLinea,
+      linea_id: input.lineaId,
+      ...(input.tipoLinea === 'cobro'
+        ? { estado_periodo: input.estadoContenedor }
+        : { estado_liquidacion: input.estadoContenedor }),
+      evento_conciliacion_id: eventoConciliacionId,
+      job_run_id: input.jobRunId,
+    },
+  });
+
+  const clasificacion = camposClasificacionParaInsert(input.tipoDiferencia, new Date().toISOString());
+
+  const { error } = await supabase
+    .schema('dinero')
+    .from('eventos_conciliacion')
+    .insert({
+      id: eventoConciliacionId,
+      tenant_id: input.tenantId,
+      seller_id: input.sellerId,
+      periodo_cobro_id: input.periodoCobroId ?? null,
+      pedido_id: input.pedidoId,
+      driver_id: input.driverId ?? null,
+      liquidacion_id: input.liquidacionId ?? null,
+      tipo_diferencia: input.tipoDiferencia,
+      descripcion: motivoBloqueo,
+      estado: 'pendiente',
+      bloquea_facturacion: input.bloqueaFacturacion,
+      bloquea_pago: input.bloqueaPago,
+      motivo_bloqueo: motivoBloqueo,
+      job_run_id: input.jobRunId,
+      ...clasificacion,
+    });
+
+  if (error) {
+    throw new Error(
+      `Error al insertar excepción de conciliación [${input.tipoDiferencia}]: ${error.message}`,
+    );
+  }
+
+  return eventoConciliacionId;
 }
 
 export const jobGenerarLineas = inngest.createFunction(
@@ -262,12 +397,19 @@ export const jobGenerarLineas = inngest.createFunction(
       // Solo aplica cuando el estado nuevo no genera cobro NI liquidación
       // (devuelto, cancelado, y el caso defensivo de estado no reconocido).
       if (elegibilidad.generaCobro || elegibilidad.generaLiquidacion) {
-        return { anuloCobro: false, anuloLiquidacion: false };
+        return {
+          anuloCobro: false,
+          anuloLiquidacion: false,
+          eventoConciliacionCobroId: null,
+          eventoConciliacionLiquidacionId: null,
+        };
       }
 
       const supabase = crearClienteServiceRole();
       let anuloCobro = false;
       let anuloLiquidacion = false;
+      let eventoConciliacionCobroId: string | null = null;
+      let eventoConciliacionLiquidacionId: string | null = null;
 
       // --- Línea de cobro ---
       const { data: lineaCobro } = await supabase
@@ -347,19 +489,40 @@ export const jobGenerarLineas = inngest.createFunction(
             .eq('id', pedidoId)
             .eq('tenant_id', tenantId);
         } else {
-          // Período ya cerrado/facturado — no tocar. C6 detectará la discrepancia.
-          logger.info(
+          // Período ya cerrado/facturado — no se puede anular. C6 ya no vuelve a
+          // correr sobre un período facturado, así que en vez de solo loguear se
+          // levanta una excepción BLOQUEANTE de conciliación (H2, D-A2).
+          logger.warn(
             `Pedido ${pedidoId}: línea de cobro no anulada — período en estado '${estadoPeriodo}' ` +
-            `(solo se anulan en período 'abierto'). C6 (conciliación) detectará la discrepancia.`,
+            `(solo se anulan en período 'abierto'). Se levanta excepción de conciliación bloqueante.`,
           );
+
+          eventoConciliacionCobroId = await levantarExcepcionLineaNoAnulable(supabase, {
+            tenantId,
+            pedidoId,
+            sellerId,
+            tipoLinea: 'cobro',
+            lineaId: lineaCobro.id as string,
+            tipoDiferencia: 'linea_cobro_sin_pedido_entregado',
+            estadoNuevo,
+            estadoContenedor: estadoPeriodo,
+            periodoCobroId: lineaCobro.periodo_cobro_id ?? null,
+            bloqueaFacturacion: true,
+            bloqueaPago: false,
+            jobRunId: runId,
+          });
         }
       }
 
       // --- Línea de liquidación ---
+      // `driver_id` se lee de la línea (no de `driverIdAsignado` del evento):
+      // es el conductor que efectivamente quedó atado a la liquidación, y
+      // puede diferir del conductor asignado AHORA si el pedido se reasignó
+      // después de generar la línea.
       const { data: lineaLiq } = await supabase
         .schema('dinero')
         .from('lineas_liquidacion')
-        .select('id, anulada, liquidacion_id')
+        .select('id, anulada, liquidacion_id, driver_id')
         .eq('pedido_id', pedidoId)
         .eq('tenant_id', tenantId)
         .maybeSingle();
@@ -433,14 +596,38 @@ export const jobGenerarLineas = inngest.createFunction(
             .eq('id', pedidoId)
             .eq('tenant_id', tenantId);
         } else {
-          logger.info(
+          // Liquidación ya emitida/pagada — no se puede anular. El conductor ya
+          // cobró (o va a cobrar) una entrega cancelada/devuelta: se levanta una
+          // excepción BLOQUEANTE de conciliación (H2, D-A2) en vez de solo loguear.
+          logger.warn(
             `Pedido ${pedidoId}: línea de liquidación no anulada — liquidación en estado ` +
-            `'${estadoLiquidacion}' (solo se anulan en 'borrador'). C6 detectará la discrepancia.`,
+            `'${estadoLiquidacion}' (solo se anulan en 'borrador'). Se levanta excepción de conciliación bloqueante.`,
           );
+
+          eventoConciliacionLiquidacionId = await levantarExcepcionLineaNoAnulable(supabase, {
+            tenantId,
+            pedidoId,
+            sellerId,
+            tipoLinea: 'liquidacion',
+            lineaId: lineaLiq.id as string,
+            tipoDiferencia: 'linea_liquidacion_sin_pedido_entregado',
+            estadoNuevo,
+            estadoContenedor: estadoLiquidacion,
+            driverId: (lineaLiq.driver_id as string | null) ?? driverIdAsignado,
+            liquidacionId: lineaLiq.liquidacion_id ?? null,
+            bloqueaFacturacion: false,
+            bloqueaPago: true,
+            jobRunId: runId,
+          });
         }
       }
 
-      return { anuloCobro, anuloLiquidacion };
+      return {
+        anuloCobro,
+        anuloLiquidacion,
+        eventoConciliacionCobroId,
+        eventoConciliacionLiquidacionId,
+      };
     });
 
     // Si ya anulamos líneas y el estado no genera nada nuevo, terminamos aquí.
@@ -458,6 +645,8 @@ export const jobGenerarLineas = inngest.createFunction(
         lineaLiquidacionId: null,
         anuloCobro: anulacionRealizada.anuloCobro,
         anuloLiquidacion: anulacionRealizada.anuloLiquidacion,
+        eventoConciliacionCobroId: anulacionRealizada.eventoConciliacionCobroId,
+        eventoConciliacionLiquidacionId: anulacionRealizada.eventoConciliacionLiquidacionId,
       };
     }
 

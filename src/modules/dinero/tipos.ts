@@ -66,7 +66,16 @@ export type TipoDiferenciaConciliacion =
   // que el paso anterior ya insertó la línea; Inngest memoiza los pasos
   // completados, así que la línea queda colgando. Es ingreso que no entra en
   // ninguna factura, de ahí `fuga_ingreso` y no `integridad_datos`.
-  | 'linea_cobro_sin_periodo';
+  | 'linea_cobro_sin_periodo'
+  // Punto ciego H2 (migración 20260811000002; docs/arquitectura/edicion-y-
+  // cancelacion-de-pedidos.md §2.3/§2.4 D-A2): el lado LIQUIDACIÓN del mismo
+  // problema que `linea_cobro_sin_pedido_entregado`. El pedido pasó a
+  // `cancelado`/`devuelto` pero su línea de liquidación no se pudo anular
+  // porque la liquidación ya estaba `emitida`/`pagada` — el conductor ya cobró
+  // (o va a cobrar) una entrega que no ocurrió. Tipo propio (no se reusa el del
+  // cobro) porque el bloqueo son dos booleanos independientes
+  // (`bloquea_facturacion`/`bloquea_pago`) y este debe encender `bloquea_pago`.
+  | 'linea_liquidacion_sin_pedido_entregado';
 
 /**
  * Estado de un evento de conciliación (bandeja de excepciones — §1.1 P1).

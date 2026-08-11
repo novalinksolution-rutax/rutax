@@ -608,6 +608,10 @@ export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> =
   payout_estado_no_reconocido: "Estado de pago no reconocido",
   // Integridad estructural (migración 20260805000001)
   linea_cobro_sin_periodo: "Línea de cobro sin período (no se facturará)",
+  // Punto ciego H2 (migración 20260811000002): lado liquidación de
+  // linea_cobro_sin_pedido_entregado — el conductor ya cobró (o va a cobrar)
+  // una entrega cancelada/devuelta.
+  linea_liquidacion_sin_pedido_entregado: "Línea de liquidación sin pedido entregado",
 };
 
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {

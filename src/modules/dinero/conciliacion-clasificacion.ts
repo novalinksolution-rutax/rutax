@@ -31,6 +31,13 @@ const CATEGORIA_POR_TIPO: Record<TipoDiferenciaConciliacion, CategoriaNegocioCon
   // Una línea sin período no entra en ninguna factura: es ingreso que se pierde,
   // no un dato feo. Por eso `fuga_ingreso` (SLA 3 días) y no `integridad_datos`.
   linea_cobro_sin_periodo: 'fuga_ingreso',
+  // H2 (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §2.4 D-A2): a
+  // diferencia de su hermano del cobro (`linea_cobro_sin_pedido_entregado`,
+  // más abajo `integridad_datos` — ahí la línea viva es un dato feo que un
+  // humano corrige antes de facturar), aquí el dinero YA SALIÓ (o está por
+  // salir) del bolsillo del courier hacia el conductor. Es fuga real, no un
+  // problema de datos: SLA 3 días, no 7.
+  linea_liquidacion_sin_pedido_entregado: 'fuga_ingreso',
 
   pago_seller_faltante: 'pagos_pendientes',
   pago_conductor_faltante: 'pagos_pendientes',
@@ -74,6 +81,10 @@ const ACCION_POR_TIPO: Record<TipoDiferenciaConciliacion, AccionSugeridaConcilia
   // Mismo remedio que `periodo_cerrado_con_lineas_sueltas`: la línea existe y es
   // correcta, lo que falta es colgarla de un período que se pueda facturar.
   linea_cobro_sin_periodo: 'reasignar_lineas_a_periodo',
+  // H2: el pedido no se entregó, así que la liquidación del conductor debe
+  // corregirse (descuento/ajuste), no solo "reasignarse" — mismo remedio que
+  // `pedido_entregado_sin_linea_liquidacion` y `cobrado_seller_no_pagado_conductor`.
+  linea_liquidacion_sin_pedido_entregado: 'generar_ajuste_liquidacion',
 };
 
 /** Mapeo fijo `tipoDiferencia → accionSugerida` — espejo del backfill SQL §4.1. */
