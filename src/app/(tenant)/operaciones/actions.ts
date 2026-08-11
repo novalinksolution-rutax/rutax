@@ -42,6 +42,26 @@ export async function actionCambiarEstadoPedido(formData: FormData) {
     return { error: "El motivo debe tener al menos 10 caracteres." };
   }
 
+  // Defensa en profundidad (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+  // §3.2/§4.1 — "ocultar no basta"): esta corrección genérica no conoce el
+  // tipo_pedido del pedido, así que no puede imponer la barrera same_day que sí
+  // impone `cancelarPedido`. Para las 3 transiciones NUEVAS hacia 'cancelado'
+  // (§3.3) esa barrera es obligatoria — se rechaza aquí, sin llegar a tocar la
+  // BD, y se dirige a la acción dedicada (que sí valida same_day + preflight de
+  // dinero). Desde 'fallido'/'fallido_manual' NO se bloquea: es la válvula de
+  // escape existente para un Flex atascado, sin cambios.
+  if (
+    estadoNuevo === "cancelado" &&
+    (estadoEsperado === "pendiente_asignacion" ||
+      estadoEsperado === "asignado" ||
+      estadoEsperado === "en_ruta")
+  ) {
+    return {
+      error:
+        "Para cancelar este pedido usa el botón \"Cancelar pedido\": valida que sea same-day y revisa el estado del dinero antes de confirmar.",
+    };
+  }
+
   try {
     const cliente = crearClienteServiceRole();
     await actualizarEstadoPedido(
