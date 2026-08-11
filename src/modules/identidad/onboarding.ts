@@ -26,8 +26,37 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarEnBitacora } from "./auditoria";
+import { resolverUrlBaseApp } from "./enlace-invitacion";
 import { ErrorConflicto, ErrorValidacion } from "./errores";
 import { normalizarYValidarRut } from "./rut";
+
+/** Ruta (relativa) de la pantalla "Define tu contraseña" — ver `src/app/activar-cuenta/page.tsx`. */
+export const RUTA_ACTIVACION_CUENTA = "/activar-cuenta";
+
+/**
+ * `redirectTo` para `auth.admin.inviteUserByEmail`.
+ *
+ * Sin este parámetro, el enlace del correo depende POR COMPLETO de que la
+ * plantilla de invitación de Supabase esté personalizada (con
+ * `{{ .TokenHash }}` + `{{ .RedirectTo }}` apuntando a `/auth/confirm`, que lee
+ * `token_hash` del QUERY STRING — ver `src/app/auth/confirm/route.ts`). Si
+ * alguien resetea las plantillas al default de Supabase
+ * (`{{ .ConfirmationURL }}`, flujo implícito con los tokens en el FRAGMENTO de
+ * la URL), el dueño aterriza en la raíz del sitio en vez de en
+ * `/activar-cuenta` y el alta se rompe en silencio.
+ *
+ * Reutiliza `resolverUrlBaseApp()` — la misma fuente de verdad que ya usa el
+ * correo de invitaciones de equipo/seller/conductor (ver `enlace-invitacion.ts`
+ * y su precedencia `APP_PUBLIC_URL` → `APP_BASE_URL` → `NEXT_PUBLIC_APP_URL` →
+ * `VERCEL_URL`), para no inventar una segunda forma de construir la URL
+ * pública. Devuelve `undefined` (no `null`, no `""`) cuando el entorno no
+ * declara ninguna URL — así el SDK simplemente omite el parámetro en vez de
+ * recibir un enlace muerto.
+ */
+export function resolverRedirectToActivacionCuenta(): string | undefined {
+  const urlBase = resolverUrlBaseApp();
+  return urlBase ? `${urlBase}${RUTA_ACTIVACION_CUENTA}` : undefined;
+}
 
 export interface DatosTenant {
   nombreFantasia: string;
@@ -120,7 +149,10 @@ export async function crearTenantConDueno(
   // contraseñas provisorias, que terminarían siendo un secreto más que cuidar.
   const { data: authData, error: authError } = await cliente.auth.admin.inviteUserByEmail(
     input.dueno.email.trim().toLowerCase(),
-    { data: { nombre_completo: input.dueno.nombreCompleto.trim() } },
+    {
+      data: { nombre_completo: input.dueno.nombreCompleto.trim() },
+      redirectTo: resolverRedirectToActivacionCuenta(),
+    },
   );
 
   if (authError || !authData?.user) {

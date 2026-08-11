@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { crearTenantConDueno } from "./onboarding";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { crearTenantConDueno, resolverRedirectToActivacionCuenta } from "./onboarding";
 import { ErrorConflicto, ErrorValidacion } from "./errores";
 
 // -----------------------------------------------------------------------------
@@ -17,6 +17,8 @@ interface EstadoFalso {
   tenants: Array<Record<string, unknown>>;
   perfiles: Array<Record<string, unknown>>;
   bitacora: Array<Record<string, unknown>>;
+  /** Opciones con las que se llamó a `inviteUserByEmail` — para poder afirmar sobre `redirectTo`. */
+  opcionesInvitacion: Array<{ redirectTo?: string; data?: Record<string, unknown> } | undefined>;
 }
 
 function crearClienteFalso(opciones?: {
@@ -24,23 +26,26 @@ function crearClienteFalso(opciones?: {
   fallarEnInsertTenant?: { code?: string; message?: string };
   emailYaExiste?: boolean;
 }) {
-  const estado: EstadoFalso = { usuariosAuth: [], tenants: [], perfiles: [], bitacora: [] };
+  const estado: EstadoFalso = { usuariosAuth: [], tenants: [], perfiles: [], bitacora: [], opcionesInvitacion: [] };
   let contadorId = 0;
   const nuevoId = (prefijo: string) => `${prefijo}-${++contadorId}`;
 
   const auth = {
     admin: {
-      inviteUserByEmail: vi.fn(async (email: string) => {
-        if (opciones?.emailYaExiste || estado.usuariosAuth.some((u) => u.email === email)) {
-          return {
-            data: { user: null },
-            error: { message: "A user with this email address has already been registered", code: "email_exists" },
-          };
-        }
-        const user = { id: nuevoId("auth-user"), email };
-        estado.usuariosAuth.push(user);
-        return { data: { user }, error: null };
-      }),
+      inviteUserByEmail: vi.fn(
+        async (email: string, invitacionOpciones?: { redirectTo?: string; data?: Record<string, unknown> }) => {
+          estado.opcionesInvitacion.push(invitacionOpciones);
+          if (opciones?.emailYaExiste || estado.usuariosAuth.some((u) => u.email === email)) {
+            return {
+              data: { user: null },
+              error: { message: "A user with this email address has already been registered", code: "email_exists" },
+            };
+          }
+          const user = { id: nuevoId("auth-user"), email };
+          estado.usuariosAuth.push(user);
+          return { data: { user }, error: null };
+        },
+      ),
       deleteUser: vi.fn(async (id: string) => {
         estado.usuariosAuth = estado.usuariosAuth.filter((u) => u.id !== id);
         return { data: {}, error: null };
@@ -216,6 +221,68 @@ describe("crearTenantConDueno — camino feliz", () => {
     expect(detalle).not.toHaveProperty("password");
     expect(detalle).not.toHaveProperty("certificado");
     expect(JSON.stringify(detalle).toLowerCase()).not.toContain("token");
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Regresión (deuda detectada al provisionar producción, 2026-08-07):
+// `inviteUserByEmail` SIN `redirectTo` hace que el alta del dueño dependa por
+// completo de que la plantilla de correo de Supabase esté personalizada. El
+// default de Supabase usa `{{ .ConfirmationURL }}` (flujo implícito, tokens en
+// el FRAGMENTO de la URL); `/auth/confirm` lee `token_hash` del QUERY STRING —
+// nunca se encuentran, y el dueño aterriza en la raíz del sitio en vez de en
+// `/activar-cuenta`. Estas pruebas fallan si alguien vuelve a quitar el
+// `redirectTo` de la llamada, en cualquiera de los dos módulos que invitan
+// (`crearTenantConDueno` y `reenviarCorreoActivacion` en `app/registro/actions.ts`).
+// -----------------------------------------------------------------------------
+describe("crearTenantConDueno — redirectTo de activación (no depender de la plantilla de Supabase)", () => {
+  const CLAVES = ["APP_PUBLIC_URL", "APP_BASE_URL", "NEXT_PUBLIC_APP_URL", "VERCEL_URL"] as const;
+  const original: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const clave of CLAVES) {
+      original[clave] = process.env[clave];
+      delete process.env[clave];
+    }
+  });
+
+  afterEach(() => {
+    for (const clave of CLAVES) {
+      if (original[clave] === undefined) delete process.env[clave];
+      else process.env[clave] = original[clave];
+    }
+  });
+
+  it("resolverRedirectToActivacionCuenta arma la URL sobre APP_PUBLIC_URL + /activar-cuenta", () => {
+    process.env.APP_PUBLIC_URL = "https://app.rutax.cl";
+    expect(resolverRedirectToActivacionCuenta()).toBe("https://app.rutax.cl/activar-cuenta");
+  });
+
+  it("resolverRedirectToActivacionCuenta es undefined si el entorno no declara ninguna URL", () => {
+    expect(resolverRedirectToActivacionCuenta()).toBeUndefined();
+  });
+
+  it("pasa redirectTo, no vacío, a inviteUserByEmail cuando hay URL pública declarada", async () => {
+    process.env.APP_PUBLIC_URL = "https://app.rutax.cl";
+    const { cliente, estado } = crearClienteFalso();
+
+    await crearTenantConDueno(cliente, ENTRADA_VALIDA);
+
+    expect(estado.opcionesInvitacion).toHaveLength(1);
+    expect(estado.opcionesInvitacion[0]?.redirectTo).toBe("https://app.rutax.cl/activar-cuenta");
+  });
+
+  it("no manda un redirectTo vacío ni la ruta relativa sola — siempre absoluto sobre /activar-cuenta", async () => {
+    process.env.APP_PUBLIC_URL = "https://app.rutax.cl/";
+    const { cliente, estado } = crearClienteFalso();
+
+    await crearTenantConDueno(cliente, ENTRADA_VALIDA);
+
+    const redirectTo = estado.opcionesInvitacion[0]?.redirectTo;
+    expect(redirectTo).toBeTruthy();
+    expect(redirectTo).not.toBe("");
+    expect(redirectTo).not.toBe("/activar-cuenta");
+    expect(redirectTo).toMatch(/^https?:\/\/.+\/activar-cuenta$/);
   });
 });
 

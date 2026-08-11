@@ -15,7 +15,7 @@
  * `{ usuarioId: null, tipo: 'sistema' }` — "el propio interesado se da de alta".
  */
 
-import { crearTenantConDueno } from "@/modules/identidad/onboarding";
+import { crearTenantConDueno, resolverRedirectToActivacionCuenta } from "@/modules/identidad/onboarding";
 import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 
@@ -104,7 +104,9 @@ export async function reenviarCorreoActivacion(email: string): Promise<ReenviarC
       return { ok: true, mensaje: `Si ${correo} tiene una activación pendiente, te reenviamos el enlace.` };
     }
 
-    const { error: errorInvitacion } = await cliente.auth.admin.inviteUserByEmail(correo);
+    const { error: errorInvitacion } = await cliente.auth.admin.inviteUserByEmail(correo, {
+      redirectTo: resolverRedirectToActivacionCuenta(),
+    });
     if (errorInvitacion) {
       return {
         ok: false,
