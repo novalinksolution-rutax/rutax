@@ -61,6 +61,7 @@ import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
 import { VisorPod } from "./visor-pod";
 import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
+import { ACCIONES_HISTORIAL_ESTADO_PEDIDO } from "./historial-estados";
 
 // =============================================================================
 // Carga de datos
@@ -82,7 +83,7 @@ async function cargarHistorialEstados(pedidoId: string, tenantId: string) {
     .select("*")
     .eq("entidad_id", pedidoId)
     .eq("tenant_id", tenantId)
-    .in("accion", ["pedido.estado_corregido_manual"])
+    .in("accion", ACCIONES_HISTORIAL_ESTADO_PEDIDO)
     .order("creado_en", { ascending: false })
     .limit(20);
   return data ?? [];
@@ -659,11 +660,17 @@ function AccionesPedido({
   const puedeDescargarEtiqueta =
     puedeAsignar && !esTerminal && (!!pedido.mlShipmentId || pedido.tipoPedido === "same_day");
 
-  // Sin ninguna acción visible: no renderizar nada
+  // Sin ninguna acción visible: no renderizar nada. `DrawerCambioEstado` (el
+  // único botón que gatea `puedeAjustar`) se auto-oculta cuando no hay ningún
+  // estado destino válido — y un pedido terminal NUNCA tiene uno (la máquina de
+  // estados no admite transiciones de salida desde un estado terminal). Sin el
+  // `&& !esTerminal` aquí, el título "Acciones" quedaba huérfano en cualquier
+  // pedido terminal cuando el usuario tenía `puedeAjustar` pero ninguna otra
+  // capacidad: el título se pintaba y no había ni un botón debajo.
   const hayAcciones =
     (puedeAsignar && (esPendiente || puedeReasignar)) ||
     (puedeIncidencias && !esTerminal) ||
-    puedeAjustar ||
+    (puedeAjustar && !esTerminal) ||
     puedeDescargarEtiqueta;
 
   if (!hayAcciones) return null;

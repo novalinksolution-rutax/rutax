@@ -31,7 +31,7 @@ import {
   BADGE_COBERTURA_ESTADO,
   requiereRevisionGeo,
 } from "@/lib/ui/traduccion-estados";
-import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
+import type { Pedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -52,6 +52,12 @@ import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerSellersDelTenant, type SellerFiltro } from "@/lib/datos-tenant/sellers";
 import { obtenerConductoresDelTenant } from "@/lib/datos-tenant/conductores";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import {
+  sanearFiltroEstadoPedido,
+  sanearFiltroUuid,
+  sanearFiltroFechaCivil,
+  sanearNumeroPagina,
+} from "./sanear-filtros";
 
 // =============================================================================
 // Contadores de estado agrupados para los chips
@@ -123,13 +129,20 @@ export default async function PaginaOperaciones({
   const tenantId = sesion.usuario.tenantId;
 
   const hoyIso = fechaLocalEnSantiago(new Date());
-  const filtroSeller = params.seller || "";
-  const filtroEstado = (params.estado as EstadoPedido | "") || "";
-  const filtroFecha = params.fecha || hoyIso;
+  // Saneados ANTES de tocar `listarPedidos`: un valor inválido en la URL (un
+  // enlace mal copiado, un marcador viejo, `?estado=todos`) se ignora — se
+  // trata como si el filtro no viniera — en vez de llegar intacto a un `.eq()`
+  // sobre una columna enum/uuid/date de Postgres y tumbar la lista entera con
+  // "No pudimos cargar los pedidos" (ver `sanear-filtros.ts`). `comuna` no
+  // necesita saneo: es texto libre contra `ilike`, sin tipo que Postgres pueda
+  // rechazar.
+  const filtroSeller = sanearFiltroUuid(params.seller);
+  const filtroEstado = sanearFiltroEstadoPedido(params.estado);
+  const filtroFecha = sanearFiltroFechaCivil(params.fecha) || hoyIso;
   const filtroComuna = params.comuna || "";
-  const filtroConductor = params.conductor || "";
+  const filtroConductor = sanearFiltroUuid(params.conductor);
   const filtroPorRevisar = params.por_revisar === "1";
-  const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
+  const pagina = sanearNumeroPagina(params.pagina);
   const LIMITE = 25;
 
   const hayFiltroActivo = !!(
@@ -138,7 +151,7 @@ export default async function PaginaOperaciones({
     filtroComuna ||
     filtroConductor ||
     filtroPorRevisar ||
-    (params.fecha && params.fecha !== hoyIso)
+    filtroFecha !== hoyIso
   );
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
@@ -159,7 +172,7 @@ export default async function PaginaOperaciones({
       // exactamente lo que se quiere al llegar desde la Torre.
       comuna: filtroComuna || undefined,
       conductorId: filtroConductor || undefined,
-      estado: filtroPorRevisar ? undefined : (filtroEstado as EstadoPedido) || undefined,
+      estado: filtroPorRevisar ? undefined : filtroEstado || undefined,
       fecha: filtroPorRevisar ? undefined : filtroFecha || undefined,
       porRevisar: filtroPorRevisar || undefined,
       pagina,
