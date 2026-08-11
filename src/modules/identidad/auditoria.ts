@@ -21,13 +21,21 @@
  * capaz de escribir aquí, y por eso esta utilidad vive junto a las funciones
  * que ya necesitan ese cliente (alta de tenant, invitaciones).
  *
+ * El llamador DEBE pasar un cliente `service_role` (`crearClienteServiceRole()`).
+ * Pasar la sesión del usuario es un error de programación —no una restricción
+ * que haya que relajar en la BD— y esta utilidad lo rechaza explícitamente
+ * cuando puede detectarlo (`esClienteQueNoEsServiceRole`).
+ *
  * Nota de acceso: se inserta a través de `public.bitacora_auditoria` (la vista
- * `security_invoker = true` que espeja `identidad.bitacora_auditoria`), porque
- * el esquema `identidad` NO está en `api.schemas` de `supabase/config.toml`
- * (solo `public`/`graphql_public` — ver migración 0001 §9). El rol
- * `service_role` de Postgres tiene `BYPASSRLS`, así que `security_invoker`
- * no lo restringe: el INSERT llega íntegro a la tabla base pese a que
- * `authenticated`/`anon` no tienen privilegio de escritura sobre ella.
+ * `security_invoker = true` que espeja `identidad.bitacora_auditoria`), herencia
+ * de cuando el esquema `identidad` no estaba expuesto a PostgREST. Hoy SÍ lo
+ * está (`api.schemas` en `supabase/config.toml`), así que la vista no es una
+ * barrera de nada: quien no tiene privilegio sobre la tabla base tampoco escribe
+ * por la vista, y quien lo tiene puede ir por cualquiera de las dos. Lo que
+ * protege la bitácora es el privilegio de tabla, no la indirección. El rol
+ * `service_role` tiene `BYPASSRLS`, así que `security_invoker` no lo restringe:
+ * el INSERT llega íntegro a la tabla base pese a que `authenticated`/`anon` no
+ * tienen privilegio de escritura sobre ella.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -71,6 +79,35 @@ function sanearDetalle(valor: unknown): unknown {
   return valor;
 }
 
+/**
+ * ¿El cliente recibido es, con certeza, uno que NO es `service_role`?
+ *
+ * Existe porque el 2026-08-11 el alta de conductores se rompió en producción
+ * pasando aquí el cliente de la SESIÓN del usuario: la BD lo rechazó (bien) con
+ * "permission denied for view bitacora_auditoria", pero el error solo aparecía
+ * en runtime, en el flujo del usuario final, y era críptico. Esto convierte ese
+ * fallo en un error de programación explícito, ANTES de tocar la BD.
+ *
+ * Detección conservadora — solo afirma cuando puede probarlo:
+ *   - `supabaseKey` es la clave con la que se construyó el cliente (existe tanto
+ *     en `@supabase/supabase-js` como en `@supabase/ssr`).
+ *   - Si esa clave falta (dobles de prueba) o si no hay clave de service_role en
+ *     el entorno, devuelve `false`: preferimos no bloquear antes que bloquear un
+ *     caso legítimo por una heurística. La barrera REAL sigue siendo la base de
+ *     datos (sin privilegio de INSERT para `authenticated`/`anon`), no esto.
+ *
+ * NUNCA se loguea ni se incluye el valor de ninguna clave en el mensaje.
+ */
+function esClienteQueNoEsServiceRole(cliente: SupabaseClient): boolean {
+  const claveDelCliente = (cliente as unknown as { supabaseKey?: unknown }).supabaseKey;
+  const claveServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (typeof claveDelCliente !== "string" || claveDelCliente.length === 0) return false;
+  if (typeof claveServiceRole !== "string" || claveServiceRole.length === 0) return false;
+
+  return claveDelCliente !== claveServiceRole;
+}
+
 /** Identifica quién ejecuta la acción — espejo de `actor_tipo_auditoria` (migración 0004). */
 export type ActorTipo = "usuario" | "sistema" | "super_admin";
 
@@ -103,6 +140,20 @@ export async function registrarEnBitacora(
   cliente: SupabaseClient,
   entrada: RegistrarEnBitacoraInput,
 ): Promise<void> {
+  // Guarda de programación (defensa en profundidad, NO el control de acceso):
+  // la bitácora solo se escribe con `service_role`. Ampliar el privilegio de
+  // INSERT a `authenticated` para que "funcione" con la sesión del usuario
+  // permitiría fabricar entradas de auditoría desde el navegador vía PostgREST
+  // — por eso la salida correcta es siempre traer el cliente adecuado.
+  if (esClienteQueNoEsServiceRole(cliente)) {
+    throw new Error(
+      `No se pudo registrar en bitácora_auditoria (${entrada.accion}): se recibió un ` +
+        `cliente Supabase que no es service_role (probablemente la sesión del usuario). ` +
+        `bitacora_auditoria es append-only y ningún rol de cliente tiene INSERT sobre ella; ` +
+        `usa crearClienteServiceRole() para auditar.`,
+    );
+  }
+
   const detalleSaneado = sanearDetalle(entrada.detalle ?? {});
 
   const { error } = await cliente.from("bitacora_auditoria").insert({

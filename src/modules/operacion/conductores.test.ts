@@ -9,6 +9,12 @@
  *   alta permitida cuando hay cupo, cuando el límite es `null` (ilimitado) y
  *   cuando el tenant no tiene suscripción (fail-open).
  * - Bitácora ANTES del INSERT, con `actorUsuarioId`.
+ * - Bitácora escrita con el cliente `service_role` y NO con el cliente RLS de la
+ *   sesión (bug de producción 2026-08-11: "permission denied for view
+ *   bitacora_auditoria" — la bitácora es append-only y ningún rol de cliente
+ *   tiene INSERT sobre ella). El INSERT del conductor, en cambio, SÍ debe seguir
+ *   yendo por el cliente RLS: su aislamiento de tenant lo impone la policy
+ *   `conductores_insert_interno`, no la aplicación.
  * - Minimización de PII en la bitácora (Ley 21.431): `entidadId` es el id del
  *   conductor (no el RUT), y `detalle` no lleva el RUT completo ni el nombre
  *   completo.
@@ -30,7 +36,17 @@ vi.mock('@/modules/plataforma/enforcement', () => ({
   verificarLimite: vi.fn(),
 }));
 
+// Cliente service_role falso, distinguible del cliente RLS de la sesión: es lo
+// que permite afirmar CUÁL de los dos se usa para cada escritura. Se crea dentro
+// de la fábrica del mock (no en un const del módulo) porque `vi.mock` se iza por
+// sobre las importaciones y una referencia externa quedaría en zona muerta.
+vi.mock('@/lib/supabase/service-role', () => {
+  const clienteFalso = { esServiceRole: true };
+  return { crearClienteServiceRole: vi.fn(() => clienteFalso) };
+});
+
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { verificarLimite } from '@/modules/plataforma/enforcement';
 import { crearConductor } from './conductores';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
@@ -180,7 +196,9 @@ describe('crearConductor', () => {
     }
 
     expect(registrarEnBitacora).toHaveBeenCalledWith(
-      cliente,
+      // service_role, NO el cliente RLS de la sesión (ver el test de regresión
+      // "escribe la bitácora con service_role…" más abajo).
+      crearClienteServiceRole(),
       expect.objectContaining({
         tenantId: 'tenant-a',
         actorUsuarioId: 'user-1',
@@ -216,6 +234,48 @@ describe('crearConductor', () => {
       rut: '12345678-5',
       tipo_relacion: 'independiente',
     });
+  });
+
+  it('escribe la bitácora con service_role y el conductor con el cliente RLS (regresión: "permission denied for view bitacora_auditoria")', async () => {
+    // Bug de producción 2026-08-11: el alta pasaba el cliente de la sesión a
+    // `registrarEnBitacora`. `bitacora_auditoria` es append-only y `authenticated`
+    // no tiene INSERT sobre ella (ni sobre la vista espejo de `public`), así que
+    // el alta moría antes de crear al conductor. La corrección NO fue conceder
+    // ese INSERT —eso permitiría fabricar auditoría desde el navegador— sino
+    // traer el cliente correcto solo para la bitácora.
+    vi.mocked(verificarLimite).mockResolvedValue({
+      permitido: true,
+      motivo: 'ok',
+      usoActual: 1,
+      limite: 5,
+      porcentaje: 20,
+    });
+    const { cliente, insertPayloads } = crearClienteStub({
+      data: {
+        id: 'conductor-4',
+        tenant_id: 'tenant-a',
+        estado: 'activo',
+        disponible: true,
+        capacidad_paradas: 30,
+        nombre_completo: 'Juan Pérez Soto',
+        banco: null,
+        tipo_cuenta: null,
+        numero_cuenta: null,
+      },
+      error: null,
+    });
+
+    await crearConductor(cliente, 'tenant-a', DATOS_VALIDOS, 'user-1', actorConCapacidad);
+
+    const [clienteUsadoEnBitacora] = vi.mocked(registrarEnBitacora).mock.calls[0];
+    expect(clienteUsadoEnBitacora).toBe(crearClienteServiceRole());
+    expect(clienteUsadoEnBitacora).not.toBe(cliente);
+
+    // Contrapartida no negociable: el INSERT del conductor sigue yendo por el
+    // cliente RLS, para que el aislamiento de tenant lo imponga la policy
+    // `conductores_insert_interno` y no esta función.
+    expect(insertPayloads).toHaveLength(1);
+    expect(insertPayloads[0]).toMatchObject({ tenant_id: 'tenant-a' });
   });
 
   it('límite null (ilimitado): permite el alta igual', async () => {

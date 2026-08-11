@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { registrarEnBitacora } from "./auditoria";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -140,5 +140,83 @@ describe("registrarEnBitacora — saneo de secretos", () => {
     await expect(
       registrarEnBitacora(clienteFalso, { ...entradaBase, accion: "tenant.alta" }),
     ).rejects.toThrow("error simulado de BD");
+  });
+});
+
+/**
+ * Guarda contra el bug de producción del 2026-08-11: el alta de conductores
+ * pasaba aquí el cliente de la SESIÓN del usuario y la BD respondía
+ * "permission denied for view bitacora_auditoria" (correctamente: `authenticated`
+ * no tiene INSERT sobre la bitácora). El error solo aparecía en runtime y era
+ * críptico; peor, invitaba a "arreglarlo" con un GRANT que dejaría al usuario
+ * final fabricar entradas de auditoría.
+ */
+describe("registrarEnBitacora — exige cliente service_role", () => {
+  const claveServiceRoleOriginal = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  afterEach(() => {
+    if (claveServiceRoleOriginal === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = claveServiceRoleOriginal;
+    }
+  });
+
+  /** Cliente falso que además expone `supabaseKey`, como los reales. */
+  function crearClienteConClave(clave: string) {
+    const { clienteFalso, inserts } = crearClienteFalso();
+    (clienteFalso as unknown as { supabaseKey: string }).supabaseKey = clave;
+    return { clienteFalso, inserts };
+  }
+
+  it("rechaza (y NO intenta el INSERT) un cliente con la clave anon — la sesión del usuario", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "clave-service-role";
+    const { clienteFalso, inserts } = crearClienteConClave("clave-anon");
+
+    await expect(
+      registrarEnBitacora(clienteFalso, { ...entradaBase, accion: "conductor.alta" }),
+    ).rejects.toThrow(/no es service_role/i);
+
+    // Se corta ANTES de tocar la base: el mensaje es de programación, no un 42501.
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("el mensaje nombra la acción y NUNCA incluye el valor de una clave", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "clave-service-role";
+    const { clienteFalso } = crearClienteConClave("clave-anon");
+
+    const error = await registrarEnBitacora(clienteFalso, {
+      ...entradaBase,
+      accion: "conductor.alta",
+    }).catch((err: Error) => err);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("conductor.alta");
+    expect((error as Error).message).not.toContain("clave-anon");
+    expect((error as Error).message).not.toContain("clave-service-role");
+  });
+
+  it("acepta el cliente cuya clave ES la de service_role", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "clave-service-role";
+    const { clienteFalso, inserts } = crearClienteConClave("clave-service-role");
+
+    await registrarEnBitacora(clienteFalso, entradaBase);
+    expect(inserts).toHaveLength(1);
+  });
+
+  it("no bloquea dobles de prueba sin `supabaseKey` (la barrera real es la BD, no esta heurística)", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "clave-service-role";
+    const { clienteFalso, inserts } = crearClienteFalso();
+
+    await registrarEnBitacora(clienteFalso, entradaBase);
+    expect(inserts).toHaveLength(1);
+  });
+
+  it("no bloquea si el entorno no define SUPABASE_SERVICE_ROLE_KEY (no hay con qué comparar)", async () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const { clienteFalso, inserts } = crearClienteConClave("clave-anon");
+
+    await registrarEnBitacora(clienteFalso, entradaBase);
+    expect(inserts).toHaveLength(1);
   });
 });
