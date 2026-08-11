@@ -66,7 +66,11 @@ export type CodigoItemPreflight =
   | 'discrepancias_conciliacion'
   | 'incidencias_abiertas'
   | 'bandeja_excepciones'
-  | 'lineas_anuladas_excluidas';
+  | 'lineas_anuladas_excluidas'
+  // Usados por `preflightCancelacionPedido` (./preflight-cancelacion.ts) —
+  // agregados al final, sin reordenar los anteriores.
+  | 'linea_cobro_no_anulable'
+  | 'linea_liquidacion_no_anulable';
 
 export interface ItemPreflight {
   codigo: CodigoItemPreflight;

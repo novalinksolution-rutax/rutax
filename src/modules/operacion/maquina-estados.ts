@@ -1,7 +1,8 @@
 /**
  * Máquina de estados del pedido — función pura, sin dependencia de BD.
  *
- * Implementa la tabla completa de §3 del documento `docs/arquitectura/fase-b-operacion.md`.
+ * Implementa la tabla completa de §3 del documento `docs/arquitectura/fase-b-operacion.md`,
+ * con el delta de cancelación de §3.3 de `docs/arquitectura/edicion-y-cancelacion-de-pedidos.md`.
  * Al ser pura, es completamente testeable sin mocks.
  *
  * Invariantes que respeta:
@@ -10,7 +11,10 @@
  * 2. Las transiciones con ejecutor='sistema' las inicia el job de webhook/polling ML.
  * 3. Las transiciones con ejecutor='interno' las inicia un usuario humano con
  *    capacidad `puedeAjustarOperacionDiaria` (verificada en `pedidos.ts`, no aquí).
- * 4. La función es agnóstica de permisos: solo valida la transición de estado.
+ * 4. Las transiciones con ejecutor='seller' las inicia el propio seller
+ *    cancelando SU pedido, con capacidad `puedeGestionarPedidosPropios`
+ *    (verificada en `cancelarPedido`, no aquí) — solo llega hasta `asignado`.
+ * 5. La función es agnóstica de permisos: solo valida la transición de estado.
  *    La validación de RBAC es responsabilidad de quien llama a esta función.
  */
 
@@ -34,6 +38,10 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
     [
       // Sistema (job de asignación) asigna el pedido a un manifiesto activo.
       { destino: "asignado", ejecutores: ["sistema"] },
+      // Cancelación antes de que nadie lo tome (docs/arquitectura/
+      // edicion-y-cancelacion-de-pedidos.md §3.3). La barrera tipo_pedido='same_day'
+      // la impone `cancelarPedido`, no esta función pura.
+      { destino: "cancelado", ejecutores: ["interno", "seller"] },
     ],
   ],
   [
@@ -45,8 +53,10 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
       { destino: "en_ruta", ejecutores: ["sistema", "conductor"] },
       // Reasignación: coordinador/supervisor devuelve a cola para asignarlo a otro.
       { destino: "pendiente_asignacion", ejecutores: ["interno"] },
-      // Cancelación antes de salir a ruta (ML lo reporta).
-      { destino: "cancelado", ejecutores: ["sistema"] },
+      // Cancelación: 'sistema' (ML lo reporta) ya existía; 'interno'/'seller' son
+      // nuevos (§3.3) — el pedido está en un manifiesto pero no salió, se puede
+      // sacar limpiamente desactivando la asignación (impuesto en cancelarPedido).
+      { destino: "cancelado", ejecutores: ["sistema", "interno", "seller"] },
       // Correcciones manuales con nota obligatoria (RF-029).
       { destino: "entregado_manual", ejecutores: ["interno"] },
       { destino: "fallido_manual", ejecutores: ["interno"] },
@@ -62,8 +72,11 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
       // ML reporta not_delivered (Flex) o conductor registra fallo (same-day).
       // 'conductor' puede hacer en_ruta→fallido SOLO para same_day con tipo_incidencia.
       { destino: "fallido", ejecutores: ["sistema", "conductor"] },
-      // Cancelación tardía (ML la reporta ya estando en ruta).
-      { destino: "cancelado", ejecutores: ["sistema"] },
+      // Cancelación: 'sistema' (cancelación tardía, ML) ya existía; 'interno' es
+      // nuevo (§3.3) — el conductor ya lo lleva, así que solo el courier decide
+      // (el seller NO llega hasta aquí: el terminal correcto de un paquete que
+      // vuelve desde la ruta es 'devuelto', no 'cancelado').
+      { destino: "cancelado", ejecutores: ["sistema", "interno"] },
       // ML reporta devolución al origen.
       { destino: "devuelto", ejecutores: ["sistema"] },
       // Correcciones manuales con nota obligatoria (supervisor+).
@@ -76,7 +89,8 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
     [
       // Reintento: nueva asignación. La incidencia previa queda abierta.
       { destino: "asignado", ejecutores: ["interno"] },
-      // Sin reintento posible: cierre definitivo.
+      // Sin reintento posible: cierre definitivo. SIN barrera de tipo_pedido —
+      // es la válvula de escape existente para un Flex atascado (§3.2); no se toca.
       { destino: "cancelado", ejecutores: ["interno"] },
       // ML evoluciona el subestado: receiver_absent → returning_to_sender.
       // El sistema (job de webhook/polling) y un usuario interno pueden marcar
@@ -89,6 +103,10 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
     [
       // Igual que fallido: reintento con nueva asignación.
       { destino: "asignado", ejecutores: ["interno"] },
+      // Cancelación (§3.3, NUEVA por simetría): desde 'fallido' ya se podía
+      // cerrar definitivamente; desde 'fallido_manual' faltaba y era una
+      // asimetría sin motivo.
+      { destino: "cancelado", ejecutores: ["interno"] },
       // Devolución física desde fallo manual: mismo tratamiento que fallido.
       { destino: "devuelto", ejecutores: ["sistema", "interno"] },
     ],

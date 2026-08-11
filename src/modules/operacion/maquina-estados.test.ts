@@ -209,12 +209,6 @@ describe("validarTransicion — transiciones inválidas lanza ErrorTransicionInv
       desc: "asignado → en_ruta por interno (es transición de sistema)",
     },
     {
-      origen: "asignado",
-      destino: "cancelado",
-      ejecutor: "interno",
-      desc: "asignado → cancelado por interno (solo sistema puede)",
-    },
-    {
       origen: "en_ruta",
       destino: "entregado",
       ejecutor: "interno",
@@ -225,12 +219,6 @@ describe("validarTransicion — transiciones inválidas lanza ErrorTransicionInv
       destino: "fallido",
       ejecutor: "interno",
       desc: "en_ruta → fallido por interno (solo sistema puede)",
-    },
-    {
-      origen: "en_ruta",
-      destino: "cancelado",
-      ejecutor: "interno",
-      desc: "en_ruta → cancelado por interno (solo sistema puede)",
     },
     {
       origen: "en_ruta",
@@ -251,13 +239,6 @@ describe("validarTransicion — transiciones inválidas lanza ErrorTransicionInv
       destino: "en_ruta",
       ejecutor: "interno",
       desc: "fallido → en_ruta (saltarse pendiente_asignacion/asignado)",
-    },
-    // fallido_manual no puede ir a cancelado
-    {
-      origen: "fallido_manual",
-      destino: "cancelado",
-      ejecutor: "interno",
-      desc: "fallido_manual → cancelado (no está en la tabla de §3)",
     },
   ];
 
@@ -431,5 +412,126 @@ describe("validarTransicion — ejecutor 'conductor' (Bloque 2 same-day)", () =>
 
   it("esTransicionValida: en_ruta → cancelado por conductor = false", () => {
     expect(esTransicionValida("en_ruta", "cancelado", "conductor")).toBe(false);
+  });
+});
+
+// =============================================================================
+// Delta de cancelación §3.3 — docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+//
+// pendiente_asignacion → cancelado    ['interno', 'seller']            ← NUEVA
+// asignado             → cancelado    ['sistema', 'interno', 'seller'] ← +interno, +seller
+// en_ruta              → cancelado    ['sistema', 'interno']           ← +interno
+// fallido              → cancelado    ['interno']                      ← sin cambios
+// fallido_manual       → cancelado    ['interno']                      ← NUEVA (simetría)
+//
+// La barrera tipo_pedido='same_day' NO vive aquí (función pura, agnóstica de
+// tipo_pedido) — la impone `cancelarPedido` en pedidos.ts. Estos tests cubren
+// SOLO el par (origen, destino, ejecutor).
+// =============================================================================
+
+describe("validarTransicion — cancelación: los 5 casos EN POSITIVO (§3.3)", () => {
+  it("pendiente_asignacion → cancelado por interno: válida (NUEVA)", () => {
+    expect(validarTransicion("pendiente_asignacion", "cancelado", "interno")).toBe(true);
+  });
+
+  it("pendiente_asignacion → cancelado por seller: válida (NUEVA)", () => {
+    expect(validarTransicion("pendiente_asignacion", "cancelado", "seller")).toBe(true);
+  });
+
+  it("asignado → cancelado por interno: válida (NUEVA)", () => {
+    expect(validarTransicion("asignado", "cancelado", "interno")).toBe(true);
+  });
+
+  it("asignado → cancelado por seller: válida (NUEVA)", () => {
+    expect(validarTransicion("asignado", "cancelado", "seller")).toBe(true);
+  });
+
+  it("asignado → cancelado por sistema: sigue válida (ya existía, sin cambios)", () => {
+    expect(validarTransicion("asignado", "cancelado", "sistema")).toBe(true);
+  });
+
+  it("en_ruta → cancelado por interno: válida (NUEVA)", () => {
+    expect(validarTransicion("en_ruta", "cancelado", "interno")).toBe(true);
+  });
+
+  it("en_ruta → cancelado por sistema: sigue válida (ya existía, sin cambios)", () => {
+    expect(validarTransicion("en_ruta", "cancelado", "sistema")).toBe(true);
+  });
+
+  it("fallido → cancelado por interno: sigue válida (sin cambios — válvula de escape Flex)", () => {
+    expect(validarTransicion("fallido", "cancelado", "interno")).toBe(true);
+  });
+
+  it("fallido_manual → cancelado por interno: válida (NUEVA, por simetría con 'fallido')", () => {
+    expect(validarTransicion("fallido_manual", "cancelado", "interno")).toBe(true);
+  });
+});
+
+describe("validarTransicion — cancelación: negativos, sobre todo la ventana del seller (§3.1)", () => {
+  it("seller NO puede en_ruta → cancelado (el paquete ya va en el vehículo)", () => {
+    expect(() => validarTransicion("en_ruta", "cancelado", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+    expect(esTransicionValida("en_ruta", "cancelado", "seller")).toBe(false);
+  });
+
+  it("seller NO puede fallido → cancelado (fuera de su ventana)", () => {
+    expect(() => validarTransicion("fallido", "cancelado", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("seller NO puede fallido_manual → cancelado (fuera de su ventana)", () => {
+    expect(() => validarTransicion("fallido_manual", "cancelado", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("seller NO puede → entregado desde ningún estado (pendiente_asignacion)", () => {
+    expect(() => validarTransicion("pendiente_asignacion", "entregado", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("seller NO puede asignado → entregado_manual (esa es 'interno')", () => {
+    expect(() => validarTransicion("asignado", "entregado_manual", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("seller NO puede en_ruta → entregado (esa es 'sistema'/'conductor')", () => {
+    expect(() => validarTransicion("en_ruta", "entregado", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("seller NO puede asignado → en_ruta (esa es 'sistema'/'conductor')", () => {
+    expect(() => validarTransicion("asignado", "en_ruta", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("sistema NO puede pendiente_asignacion → cancelado (esa fila es solo 'interno'/'seller')", () => {
+    expect(() => validarTransicion("pendiente_asignacion", "cancelado", "sistema")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("conductor NO puede cancelar en ningún estado nuevo de la tabla", () => {
+    expect(() => validarTransicion("pendiente_asignacion", "cancelado", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+    expect(() => validarTransicion("asignado", "cancelado", "conductor")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  it("los estados terminales siguen sin admitir cancelación repetida, ni para 'seller'", () => {
+    expect(() => validarTransicion("cancelado", "cancelado", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
+    expect(() => validarTransicion("entregado", "cancelado", "seller")).toThrow(
+      ErrorTransicionInvalida,
+    );
   });
 });

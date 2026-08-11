@@ -28,6 +28,7 @@ export type {
   FiltrosPedidos,
   PaginadoPedidos,
   ActualizarEstadoEntrada,
+  CancelarPedidoEntrada,
   CrearPedidoSameDayEntrada,
   CrearManifiestoEntrada,
   AbrirIncidenciaEntrada,
@@ -62,6 +63,7 @@ export {
   obtenerPedido,
   listarPedidos,
   actualizarEstadoPedido,
+  cancelarPedido,
   crearPedidoSameDay,
   asegurarCodigoInterno,
 } from "./pedidos";

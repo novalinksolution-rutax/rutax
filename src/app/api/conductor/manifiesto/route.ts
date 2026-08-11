@@ -4,6 +4,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { listarCierresPorPedidos } from "@/modules/operacion/cierre-conductor";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import { ESTADOS_TERMINALES, type EstadoPedido } from "@/modules/operacion/tipos";
 
 /**
  * GET /api/conductor/manifiesto
@@ -89,7 +90,15 @@ export async function GET(request: NextRequest) {
           geoEstado: (p.geo_estado as string | null) ?? "pendiente",
         };
       })
-      .filter((p): p is NonNullable<typeof p> => p !== null);
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+      // Defensa en profundidad (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+      // §5 fila 1): la asignación activa la desactiva `cancelarPedido` en el mismo
+      // acto de cancelar, así que en el camino normal esto nunca filtra nada. Pero
+      // esta ruta filtra SOLO por `asignaciones_pedido.activa = true` y no mira el
+      // estado del pedido — si por lo que sea una asignación quedara activa sobre
+      // un pedido ya terminal (cancelado/devuelto/entregado*), la parada NO debe
+      // seguir viva en la app del conductor.
+      .filter((p) => !ESTADOS_TERMINALES.includes(p.estado as EstadoPedido));
 
     const pedidoIds = pedidosBase.map((p) => p.id);
     const incidenciasMap = new Map<string, { id: string; tipo: string; estado: string }>();
