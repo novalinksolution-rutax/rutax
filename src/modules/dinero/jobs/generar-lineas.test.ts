@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
 import type { EntradaMotor, TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
+import { derivarMotivoAnulacion, derivarAccionBitacoraAnulacion } from './generar-lineas';
 
 describe('Job C1 — generar-lineas', () => {
   // =========================================================================
@@ -698,5 +699,48 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
         genera: true,
       }),
     ).not.toThrow();
+  });
+});
+
+// =============================================================================
+// Fidelidad de la anulación (H1, docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+// §2.4 D-A4). El paso 'anular-lineas-si-devolucion' se dispara para
+// estadoNuevo='devuelto' Y para estadoNuevo='cancelado' (ambos hacen
+// !generaCobro && !generaLiquidacion), pero antes de este fix el motivo y la
+// acción de bitácora quedaban hardcodeados a 'devolucion' sin importar cuál de
+// los dos fue realmente. `derivarMotivoAnulacion`/`derivarAccionBitacoraAnulacion`
+// son las funciones puras que el job usa en los 4 puntos de escritura (bitácora +
+// UPDATE, para lineas_cobro y lineas_liquidacion).
+// =============================================================================
+describe('derivarMotivoAnulacion / derivarAccionBitacoraAnulacion — fidelidad H1', () => {
+  it("estadoNuevo='cancelado' → motivo 'cancelacion'", () => {
+    expect(derivarMotivoAnulacion('cancelado')).toBe('cancelacion');
+  });
+
+  it("estadoNuevo='devuelto' → motivo 'devolucion' (sin cambios)", () => {
+    expect(derivarMotivoAnulacion('devuelto')).toBe('devolucion');
+  });
+
+  it("estadoNuevo='cancelado' → acción de bitácora 'dinero.lineas_anuladas_por_cancelacion'", () => {
+    expect(derivarAccionBitacoraAnulacion('cancelado')).toBe(
+      'dinero.lineas_anuladas_por_cancelacion',
+    );
+  });
+
+  it("estadoNuevo='devuelto' → acción de bitácora 'dinero.lineas_anuladas_por_devolucion' (sin cambios)", () => {
+    expect(derivarAccionBitacoraAnulacion('devuelto')).toBe(
+      'dinero.lineas_anuladas_por_devolucion',
+    );
+  });
+
+  it('cualquier otro estado (defensivo) cae a devolucion — comportamiento previo preservado', () => {
+    // ESTADOS_FINANCIEROS solo permite llegar aquí con 'devuelto' o 'cancelado'
+    // en la práctica, pero la derivación es defensiva: no debe crashear ante un
+    // valor inesperado, y debe mantener el comportamiento anterior (que siempre
+    // asumía 'devolucion') para no introducir una regresión silenciosa.
+    expect(derivarMotivoAnulacion('fallido')).toBe('devolucion');
+    expect(derivarAccionBitacoraAnulacion('fallido')).toBe(
+      'dinero.lineas_anuladas_por_devolucion',
+    );
   });
 });

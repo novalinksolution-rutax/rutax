@@ -54,6 +54,31 @@ function fechaLocalSantiago(isoStr: string): string {
   }).format(d);
 }
 
+/**
+ * Fidelidad de la anulación (H1, docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+ * §2.4 D-A4): el paso 'anular-lineas-si-devolucion' se dispara tanto para
+ * `estadoNuevo='devuelto'` como para `estadoNuevo='cancelado'` (ambos hacen
+ * `!generaCobro && !generaLiquidacion`), pero antes de este fix el motivo y la
+ * acción de bitácora quedaban hardcodeados a 'devolucion' sin importar cuál
+ * de los dos fue. Se derivan de `estadoNuevo`, que ya viaja en el payload del
+ * evento (sin cambio de contrato, ver `src/lib/inngest/eventos.ts`).
+ *
+ * Cualquier otro estado que llegue a esta rama (hoy no debería, es defensivo)
+ * se trata como 'devolucion' — es el comportamiento previo, no una regresión.
+ */
+export function derivarMotivoAnulacion(estadoNuevo: string): 'cancelacion' | 'devolucion' {
+  return estadoNuevo === 'cancelado' ? 'cancelacion' : 'devolucion';
+}
+
+/** Acción de bitácora correspondiente al motivo derivado — ver `derivarMotivoAnulacion`. */
+export function derivarAccionBitacoraAnulacion(
+  estadoNuevo: string,
+): 'dinero.lineas_anuladas_por_cancelacion' | 'dinero.lineas_anuladas_por_devolucion' {
+  return estadoNuevo === 'cancelado'
+    ? 'dinero.lineas_anuladas_por_cancelacion'
+    : 'dinero.lineas_anuladas_por_devolucion';
+}
+
 export const jobGenerarLineas = inngest.createFunction(
   {
     id: 'dinero/generarLineas',
@@ -230,8 +255,9 @@ export const jobGenerarLineas = inngest.createFunction(
     // facturados / emitidos / pagados, la compuerta humana manda: no tocar nada y
     // dejar que C6 (conciliación) detecte la discrepancia.
     //
-    // Bitácora ANTES del efecto: se registra con accion 'dinero.lineas_anuladas_por_devolucion'
-    // ANTES de hacer cualquier UPDATE (invariante CLAUDE.md).
+    // Bitácora ANTES del efecto: se registra con la acción derivada de estadoNuevo
+    // ('dinero.lineas_anuladas_por_cancelacion' | '..._por_devolucion', ver
+    // `derivarAccionBitacoraAnulacion`) ANTES de hacer cualquier UPDATE (invariante CLAUDE.md).
     const anulacionRealizada = await step.run('anular-lineas-si-devolucion', async () => {
       // Solo aplica cuando el estado nuevo no genera cobro NI liquidación
       // (devuelto, cancelado, y el caso defensivo de estado no reconocido).
@@ -273,12 +299,15 @@ export const jobGenerarLineas = inngest.createFunction(
         }
 
         if (puedeAnularCobro) {
+          const motivoAnulacion = derivarMotivoAnulacion(estadoNuevo);
+          const accionBitacora = derivarAccionBitacoraAnulacion(estadoNuevo);
+
           // Bitácora ANTES del UPDATE (invariante financiero CLAUDE.md).
           await registrarEnBitacora(supabase, {
             tenantId,
             actorUsuarioId: null,
             actorTipo: 'sistema',
-            accion: 'dinero.lineas_anuladas_por_devolucion',
+            accion: accionBitacora,
             entidadTipo: 'pedido',
             entidadId: pedidoId,
             detalle: {
@@ -287,7 +316,7 @@ export const jobGenerarLineas = inngest.createFunction(
               estado_pedido: estadoNuevo,
               periodo_cobro_id: lineaCobro.periodo_cobro_id ?? null,
               estado_periodo: estadoPeriodo,
-              motivo: 'devolucion',
+              motivo: motivoAnulacion,
               job_run_id: runId,
             },
           });
@@ -298,7 +327,7 @@ export const jobGenerarLineas = inngest.createFunction(
             .update({
               anulada: true,
               anulada_en: new Date().toISOString(),
-              motivo_anulacion: 'devolucion',
+              motivo_anulacion: motivoAnulacion,
               actualizado_en: new Date().toISOString(),
             })
             .eq('id', lineaCobro.id as string)
@@ -356,12 +385,15 @@ export const jobGenerarLineas = inngest.createFunction(
         }
 
         if (puedeAnularLiq) {
+          const motivoAnulacion = derivarMotivoAnulacion(estadoNuevo);
+          const accionBitacora = derivarAccionBitacoraAnulacion(estadoNuevo);
+
           // Bitácora ANTES del UPDATE.
           await registrarEnBitacora(supabase, {
             tenantId,
             actorUsuarioId: null,
             actorTipo: 'sistema',
-            accion: 'dinero.lineas_anuladas_por_devolucion',
+            accion: accionBitacora,
             entidadTipo: 'pedido',
             entidadId: pedidoId,
             detalle: {
@@ -370,7 +402,7 @@ export const jobGenerarLineas = inngest.createFunction(
               estado_pedido: estadoNuevo,
               liquidacion_id: lineaLiq.liquidacion_id ?? null,
               estado_liquidacion: estadoLiquidacion,
-              motivo: 'devolucion',
+              motivo: motivoAnulacion,
               job_run_id: runId,
             },
           });
@@ -381,7 +413,7 @@ export const jobGenerarLineas = inngest.createFunction(
             .update({
               anulada: true,
               anulada_en: new Date().toISOString(),
-              motivo_anulacion: 'devolucion',
+              motivo_anulacion: motivoAnulacion,
               actualizado_en: new Date().toISOString(),
             })
             .eq('id', lineaLiq.id as string)
