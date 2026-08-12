@@ -3,6 +3,17 @@
 /**
  * Botón "Auto-asignar pendientes del día" para la vista de manifiestos.
  *
+ * ⚠️ DESACTIVADO desde 2026-08-12 (Etapa 0 de
+ * `docs/arquitectura/retiro-y-ruteo-plan.md`). Este componente ya no se
+ * importa desde `./page.tsx` ni desde ninguna otra pantalla — el archivo se
+ * conserva como camino de vuelta. La Server Action que llama
+ * (`actionAutoAsignarPendientes`) tiene su propia guarda de rechazo, así que
+ * reactivar esto requiere también quitar esa guarda en
+ * `./actions.ts`. Ver el comentario de cabecera de
+ * `src/modules/operacion/auto-asignacion.ts` para el porqué completo.
+ * Destino final: eliminarlo cuando la asignación en bloque (Etapa 6) esté en
+ * uso.
+ *
  * Sigue el patrón del dialog-reasignacion.tsx: confirmación explícita antes
  * de ejecutar, y resumen del resultado con detalle de no-asignados.
  *

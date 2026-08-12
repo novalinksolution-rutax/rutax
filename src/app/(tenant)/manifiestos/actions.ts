@@ -197,8 +197,15 @@ export async function actionCompletarManifiesto(formData: FormData) {
 }
 
 // =============================================================================
-// Auto-asignación heurística (F6, ítem 1.3)
+// Auto-asignación heurística (F6, ítem 1.3) — DESACTIVADA (2026-08-12)
 // =============================================================================
+//
+// Etapa 0 de docs/arquitectura/retiro-y-ruteo-plan.md: ver el comentario de
+// cabecera de src/modules/operacion/auto-asignacion.ts para el porqué. El
+// botón que llamaba a esta acción ya no se renderiza en ninguna pantalla;
+// esta guarda cubre que alguien la invoque por una ruta directa. No se borra
+// la acción ni el motor de abajo — se reactiva quitando la guarda.
+const AUTO_ASIGNACION_DESACTIVADA = true;
 
 /**
  * Dispara el motor heurístico para asignar los pedidos pendientes del día.
@@ -207,6 +214,14 @@ export async function actionCompletarManifiesto(formData: FormData) {
 export async function actionAutoAsignarPendientes(
   fecha?: string,
 ): Promise<Respuesta<ResultadoAutoAsignacion>> {
+  if (AUTO_ASIGNACION_DESACTIVADA) {
+    return {
+      ok: false,
+      mensaje:
+        "La auto-asignación automática está desactivada. Asigna los pedidos manualmente desde el manifiesto.",
+    };
+  }
+
   const sesion = await exigirSesionActual();
   if (!sesion.usuario.tenantId) {
     return { ok: false, mensaje: "No hay sesión activa." };

@@ -9,6 +9,14 @@
  *   - Zonas preferentes (multiselect).
  *   - Marcar no disponible + redistribuir paradas.
  *
+ * El botón "Auto-asignar pendientes del día" que vivía aquí (duplicado del
+ * de `../manifiestos/boton-auto-asignar.tsx`) se retiró el 2026-08-12 —
+ * Etapa 0 de `docs/arquitectura/retiro-y-ruteo-plan.md`. Ver el comentario
+ * de cabecera de `src/modules/operacion/auto-asignacion.ts` para el porqué.
+ * "Marcar no disponible + redistribuir" es una función DISTINTA y sigue
+ * activa: solo mueve las paradas de un conductor puntual, no barre pedidos
+ * sueltos del día.
+ *
  * Patrón reutilizado de panel-zonas.tsx: estado local inicializado desde
  * server component, server actions para mutaciones, diseño de cards.
  */
@@ -64,10 +72,7 @@ import {
   obtenerZonasConductor,
   type EstadoConductores,
 } from "./actions";
-import {
-  actionAutoAsignarPendientes,
-  actionMarcarConductorNoDisponible,
-} from "../manifiestos/actions";
+import { actionMarcarConductorNoDisponible } from "../manifiestos/actions";
 
 // =============================================================================
 // Panel principal
@@ -99,9 +104,6 @@ export function PanelConductores({ estadoInicial, fechaHoy, puedeEditarBanco }: 
       <div className="flex justify-end">
         <DialogNuevoConductor onCreado={onConductorCreado} />
       </div>
-
-      {/* Botón auto-asignar — acción rápida del día */}
-      <BotonAutoAsignar fechaHoy={fechaHoy} />
 
       {/* Lista de conductores */}
       {conductores.length === 0 ? (
@@ -329,217 +331,15 @@ function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }
 }
 
 // =============================================================================
-// Botón auto-asignar pendientes del día
+// Botón auto-asignar pendientes del día — RETIRADO (2026-08-12)
 // =============================================================================
-
-function BotonAutoAsignar({ fechaHoy }: { fechaHoy: string }) {
-  const [dialogAbierto, setDialogAbierto] = useState(false);
-  const [pendiente, iniciarTransicion] = useTransition();
-  const [resultado, setResultado] = useState<{
-    tipo: "exito" | "vacio";
-    totalAsignados: number;
-    totalSinAsignar: number;
-    conductoresAfectados: number;
-    sinAsignarDetalle: Array<{ motivo: string; cantidad: number }>;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  function abrir() {
-    setResultado(null);
-    setError(null);
-    setDialogAbierto(true);
-  }
-
-  function confirmar() {
-    setError(null);
-    iniciarTransicion(async () => {
-      const resp = await actionAutoAsignarPendientes(fechaHoy);
-      if (!resp.ok) {
-        setError(resp.mensaje);
-        return;
-      }
-
-      const datos = resp.datos;
-      const totalAsignados = datos.asignados.reduce(
-        (acc, a) => acc + a.pedidosAsignados.length,
-        0,
-      );
-
-      // Agrupar sin-asignar por motivo.
-      const porMotivo = new Map<string, number>();
-      for (const p of datos.sinAsignar) {
-        porMotivo.set(p.motivo, (porMotivo.get(p.motivo) ?? 0) + 1);
-      }
-
-      setResultado({
-        tipo: totalAsignados > 0 ? "exito" : "vacio",
-        totalAsignados,
-        totalSinAsignar: datos.sinAsignar.length,
-        conductoresAfectados: datos.conductoresAfectados.length,
-        sinAsignarDetalle: [...porMotivo.entries()].map(([motivo, cantidad]) => ({
-          motivo: traducirMotivoSinAsignar(motivo),
-          cantidad,
-        })),
-      });
-    });
-  }
-
-  return (
-    <>
-      <div className="flex items-center justify-between gap-4 rounded-lg border bg-card px-5 py-4">
-        <div>
-          <p className="font-semibold">Auto-asignar pendientes del día</p>
-          <p className="text-sm text-muted-foreground">
-            Asigna automáticamente los pedidos sin conductor usando la heurística de zonas y cupo.
-          </p>
-        </div>
-        <Button onClick={abrir} className="shrink-0">
-          <Truck className="size-4" aria-hidden="true" />
-          Auto-asignar
-        </Button>
-      </div>
-
-      {dialogAbierto && (
-        <DialogAutoAsignar
-          pendiente={pendiente}
-          resultado={resultado}
-          error={error}
-          onConfirmar={confirmar}
-          onCerrar={() => setDialogAbierto(false)}
-        />
-      )}
-    </>
-  );
-}
-
-// =============================================================================
-// Dialog auto-asignar
-// =============================================================================
-
-interface PropsDialogAutoAsignar {
-  pendiente: boolean;
-  resultado: {
-    tipo: "exito" | "vacio";
-    totalAsignados: number;
-    totalSinAsignar: number;
-    conductoresAfectados: number;
-    sinAsignarDetalle: Array<{ motivo: string; cantidad: number }>;
-  } | null;
-  error: string | null;
-  onConfirmar: () => void;
-  onCerrar: () => void;
-}
-
-function DialogAutoAsignar({
-  pendiente,
-  resultado,
-  error,
-  onConfirmar,
-  onCerrar,
-}: PropsDialogAutoAsignar) {
-  const mostrarConfirmacion = !resultado && !error;
-
-  return (
-    <div
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="dialog-autoasig-titulo"
-      aria-describedby="dialog-autoasig-desc"
-      className="fixed inset-0 z-50 flex items-center justify-center px-4"
-    >
-      <div
-        className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-        onClick={() => !pendiente && onCerrar()}
-        aria-hidden="true"
-      />
-      <div className="relative z-10 w-full max-w-md rounded-xl bg-card p-6 ring-1 ring-foreground/10">
-        <h2 id="dialog-autoasig-titulo" className="font-semibold text-lg">
-          Auto-asignar pedidos pendientes
-        </h2>
-
-        {mostrarConfirmacion && (
-          <p id="dialog-autoasig-desc" className="mt-2 text-sm text-muted-foreground">
-            Se asignarán automáticamente todos los pedidos en estado{" "}
-            <strong className="text-foreground">pendiente de asignación</strong> del día de hoy
-            a los conductores disponibles según sus zonas y cupo.
-          </p>
-        )}
-
-        {pendiente && (
-          <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
-            <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
-            Ejecutando auto-asignación…
-          </div>
-        )}
-
-        {error && (
-          <Alert variant="destructive" className="mt-4">
-            <ShieldAlert />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {resultado && (
-          <div className="mt-4 space-y-4">
-            <Alert className={resultado.tipo === "exito" ? "bg-success-subtle text-success-subtle-foreground" : ""}>
-              {resultado.tipo === "exito" ? (
-                <CheckCircle2 className="text-success" />
-              ) : (
-                <AlertTriangle className="text-warning" />
-              )}
-              <AlertDescription>
-                {resultado.tipo === "exito"
-                  ? `${resultado.totalAsignados} pedido${resultado.totalAsignados !== 1 ? "s" : ""} asignado${resultado.totalAsignados !== 1 ? "s" : ""} a ${resultado.conductoresAfectados} conductor${resultado.conductoresAfectados !== 1 ? "es" : ""}.`
-                  : "No hay pedidos pendientes de asignación para hoy."}
-              </AlertDescription>
-            </Alert>
-
-            {resultado.sinAsignarDetalle.length > 0 && (
-              <div className="rounded-lg border border-border p-4 space-y-2">
-                <p className="text-sm font-medium text-foreground">
-                  {resultado.totalSinAsignar} pedido{resultado.totalSinAsignar !== 1 ? "s" : ""} sin asignar
-                </p>
-                <ul className="space-y-1">
-                  {resultado.sinAsignarDetalle.map(({ motivo, cantidad }) => (
-                    <li key={motivo} className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">{motivo}</span>
-                      <Badge variant="neutral">{cantidad}</Badge>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs text-muted-foreground">
-                  Puedes reasignarlos manualmente desde la vista de manifiestos.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="mt-6 flex justify-end gap-3">
-          <Button
-            variant="outline"
-            onClick={onCerrar}
-            disabled={pendiente}
-          >
-            {resultado || error ? "Cerrar" : "Cancelar"}
-          </Button>
-          {mostrarConfirmacion && (
-            <Button onClick={onConfirmar} disabled={pendiente}>
-              {pendiente ? (
-                <>
-                  <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
-                  Asignando…
-                </>
-              ) : (
-                "Confirmar auto-asignación"
-              )}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+//
+// Vivía aquí un botón duplicado del de `../manifiestos/boton-auto-asignar.tsx`
+// (mismo resultado, dos lugares). La auto-asignación se desactivó en la
+// Etapa 0 de docs/arquitectura/retiro-y-ruteo-plan.md — ver el comentario de
+// cabecera de src/modules/operacion/auto-asignacion.ts para el porqué. El
+// componente oficial se conservó apagado en el archivo de manifiestos; este
+// duplicado, al quedar sin consumidor, se retiró en vez de dejarlo muerto.
 
 // =============================================================================
 // Tarjeta de conductor — toggle disponibilidad, capacidad, zonas, redistribución
@@ -1402,21 +1202,4 @@ function DialogRedistribucion({
       </div>
     </div>
   );
-}
-
-// =============================================================================
-// Helpers de traducción
-// =============================================================================
-
-function traducirMotivoSinAsignar(motivo: string): string {
-  switch (motivo) {
-    case "sin_conductor_disponible":
-      return "Sin conductor disponible";
-    case "sin_cupo":
-      return "Conductores sin cupo";
-    case "sin_conductor_en_zona":
-      return "Sin conductor en la zona";
-    default:
-      return motivo;
-  }
 }

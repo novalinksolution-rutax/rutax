@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Plus, Truck } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeGenerarManifiestos, puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
+import { puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
 import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   traducirEstadoManifiesto,
@@ -27,9 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
-import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 import { FiltrosManifiestos } from "./filtros-manifiestos";
-import { BotonAutoAsignar } from "./boton-auto-asignar";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 
 interface SearchParams {
@@ -50,8 +48,6 @@ export default async function PaginaManifiestos({
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;
   const puedeCrear = puedeGenerarManifiestos(sesion.usuario);
-  const puedeAutoAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
-  const fechaHoy = ahoraEnSantiago().fecha;
 
   const filtroEstado = (params.estado as EstadoManifiesto | "") ?? "";
   const filtroFecha = params.fecha ?? "";
@@ -111,7 +107,9 @@ export default async function PaginaManifiestos({
           />
         </div>
         <div className="flex items-center gap-2">
-          {puedeAutoAsignar && <BotonAutoAsignar fechaHoy={fechaHoy} />}
+          {/* Auto-asignar pendientes del día: desactivado (2026-08-12, Etapa 0
+              de docs/arquitectura/retiro-y-ruteo-plan.md). El componente sigue
+              en ./boton-auto-asignar.tsx, sin usar. */}
           {puedeCrear && (
             <Button asChild>
               <Link href="/manifiestos/nuevo">

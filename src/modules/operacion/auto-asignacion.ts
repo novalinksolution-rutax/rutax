@@ -1,6 +1,37 @@
 /**
  * Motor de auto-asignación heurístico (F6, ítem 1.3).
  *
+ * ⚠️ DESACTIVADA desde 2026-08-12 (Etapa 0 de
+ * `docs/arquitectura/retiro-y-ruteo-plan.md`). `autoAsignarPendientesDelDia`
+ * barre TODOS los pedidos `pendiente_asignacion` del día sin saber nada de
+ * retiros físicos. Está por construirse la ingesta diaria de Mercado Libre,
+ * que también va a traer los pedidos que el seller despacha con OTROS
+ * couriers; si esta función los mueve a `asignado`, el camino
+ * `asignado → en_ruta → entregado` queda habilitado y ML mismo publica esos
+ * dos eventos, así que el motor de dinero generaría cobro al seller por
+ * entregas que hizo la competencia. Se apaga aquí antes de abrir esa puerta.
+ *
+ * Qué queda vivo y qué no:
+ *   - El botón de la UI (`src/app/(tenant)/manifiestos/boton-auto-asignar.tsx`)
+ *     ya no se importa desde ninguna pantalla.
+ *   - La Server Action `actionAutoAsignarPendientes`
+ *     (`src/app/(tenant)/manifiestos/actions.ts`) tiene una guarda que
+ *     rechaza cualquier invocación, directa o no.
+ *   - Esta función y la heurística `elegirConductor` quedan intactas debajo,
+ *     sin guarda propia — la guarda vive en la Server Action porque hoy es
+ *     el único punto de entrada real (no hay cron ni evento Inngest que
+ *     dispare este módulo).
+ *   - `marcarConductorNoDisponibleYRedistribuir`, más abajo en este mismo
+ *     archivo, es una función DISTINTA y SIGUE ACTIVA: solo redistribuye las
+ *     paradas que YA estaban asignadas a un conductor puntual que cae, nunca
+ *     barre pedidos sueltos del día sin dueño — no reproduce el riesgo de
+ *     arriba, así que no se desactiva.
+ *
+ * Destino: no es apagado permanente. Se ELIMINA (código incluido) cuando la
+ * asignación en bloque (Etapa 6 del mismo plan) esté en uso — el
+ * coordinador filtra y asigna a mano, la auto-asignación deja de tener
+ * motivo de existir. Hasta entonces, queda como camino de vuelta.
+ *
  * FRONTERA DURA — este módulo NO es ruteo:
  *   - Asigna pedidos → conductores por reglas discretas (zona, carga, disponibilidad).
  *   - NUNCA ordena ni optimiza secuencia de paradas.

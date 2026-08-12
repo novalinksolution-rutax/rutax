@@ -2,11 +2,14 @@
  * Pantalla de gestión de conductores — pool del día (F6, ítem 1.3).
  *
  * Muestra la lista de conductores con sus opciones de configuración:
- *   - Auto-asignar pendientes del día (botón de acción rápida en la cabecera).
  *   - Toggle disponible/no-disponible por conductor.
  *   - Editar capacidad de paradas.
  *   - Editar zonas preferentes (multiselect).
  *   - Marcar no disponible + redistribuir (con panel de impacto SLA).
+ *
+ * El botón "Auto-asignar pendientes del día" que vivía aquí se retiró el
+ * 2026-08-12 (Etapa 0 de docs/arquitectura/retiro-y-ruteo-plan.md) — ver el
+ * comentario de cabecera de src/modules/operacion/auto-asignacion.ts.
  *
  * Solo accesible con capacidad `asignar_y_reasignar_pedidos`.
  */
