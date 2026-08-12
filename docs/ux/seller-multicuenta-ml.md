@@ -1,9 +1,13 @@
-# UX — Seller con múltiples cuentas de Mercado Libre (hasta 3)
+# UX — Seller con múltiples cuentas de Mercado Libre (hasta 10)
 
-**Estado:** flujo aprobado por el founder (2026-06-30). Implementa `frontend` sobre las pantallas existentes.
+**Estado:** implementado. Flujo aprobado por el founder (2026-06-30), sobre las pantallas existentes.
 Complementa `docs/arquitectura/seller-multicuenta-ml.md` (el "qué" técnico). Aquí va el "cómo se ve/usa".
 
-Premisa: **el seller, desde su propio usuario, conecta y gestiona hasta 3 cuentas de Mercado Libre.** El courier solo monitorea salud; no hace el OAuth del seller.
+Premisa: **el seller, desde su propio usuario, conecta y gestiona hasta 10 cuentas de Mercado Libre.** El courier solo monitorea salud; no hace el OAuth del seller.
+
+> ⚠️ **Actualización 2026-08-12.** Dos cambios que este documento no anticipaba:
+> 1. **El tope subió de 3 a 10** (un courier real tiene un seller con 4 cuentas). Donde abajo diga "3", léase 10.
+> 2. **"Agregar otra cuenta" tiene un paso previo obligatorio.** Mercado Libre no permite forzar el selector de cuenta (ni `prompt`, ni `select_account`, ni logout documentado): si el seller tiene sesión abierta en ML, vuelve con la MISMA cuenta y el sistema —antes de este arreglo— le decía "Agregaste la cuenta correctamente" sin haber agregado nada. Ahora se avisa antes de salir a ML (cerrar sesión en ML o ventana privada) y el callback detecta el duplicado tras el canje, devolviendo `cuenta_ya_conectada` en vez de `exito`.
 
 ## 1. Flujo (portal del seller)
 - **Ver cuentas**: sección "Mis cuentas de Mercado Libre" en el home del portal. Lista de tarjetas (0–3), una por conexión. Orden: `desvinculada` → `atencion` → `pendiente` → `sana`.

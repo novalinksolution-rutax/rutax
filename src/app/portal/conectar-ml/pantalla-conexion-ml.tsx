@@ -32,7 +32,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { iniciarConexionMl } from "./actions";
-import type { ModoConexionMl, ResultadoCallbackMl } from "./compartido";
+import { MAX_CUENTAS_ML, type ModoConexionMl, type ResultadoCallbackMl } from "./compartido";
 
 interface Props {
   modo: ModoConexionMl;
@@ -89,7 +89,7 @@ function PantallaConectar({ modo }: { modo: ModoConexionMl }) {
           {modo === "reconexion"
             ? "Vamos a llevarte a Mercado Libre para que vuelvas a autorizar el acceso. Esto solo toma un minuto."
             : modo === "agregar_cuenta"
-              ? "Vamos a llevarte a Mercado Libre para autorizar otra de tus cuentas. Puedes conectar hasta 3."
+              ? `Vamos a llevarte a Mercado Libre para autorizar otra de tus cuentas. Puedes conectar hasta ${MAX_CUENTAS_ML}.`
               : "Para que tus pedidos se sincronicen automáticamente, necesitamos que autorices el acceso desde tu cuenta de Mercado Libre."}
         </p>
       </div>
@@ -309,7 +309,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "advertencia",
         titulo: "Ya llegaste al límite de cuentas conectadas",
         descripcion:
-          "Tu cuenta tiene hasta 3 conexiones de Mercado Libre. Para agregar una nueva, primero desconecta una de las que ya tienes desde tu portal.",
+          `Tu cuenta tiene hasta ${MAX_CUENTAS_ML} conexiones de Mercado Libre. Para agregar una nueva, primero desconecta una de las que ya tienes desde tu portal.`,
         acciones: <BotonIrAMisConexiones />,
       };
 
@@ -317,9 +317,35 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
       return {
         icono: <TriangleAlert className="size-7" aria-hidden="true" />,
         tono: "advertencia",
-        titulo: "Esta cuenta ya está conectada",
+        titulo: "No se agregó una cuenta nueva",
         descripcion:
-          "La cuenta de Mercado Libre con la que iniciaste sesión ya está vinculada a tu portal. Si tuvo problemas y quieres reconectarla, hazlo desde su tarjeta en tu portal.",
+          "Mercado Libre conectó la cuenta que ya tenías abierta en este navegador, y esa cuenta ya estaba vinculada a tu portal — por eso no se sumó como una cuenta distinta. Si querías conectar otra cuenta, cierra sesión en mercadolibre.cl (o hazlo desde una ventana de navegación privada) y vuelve a intentarlo.",
+        acciones: <BotonIrAMisConexiones />,
+      };
+
+    // Los dos casos de "reconexión que terminó tocando otra cuenta". Se separan
+    // del `exito` a propósito: técnicamente algo se conectó, pero la conexión
+    // que el seller quería arreglar sigue rota, y felicitarlo lo manda de vuelta
+    // al portal creyendo que resolvió el problema. Origen: ML no deja elegir
+    // cuenta en su pantalla de autorización, así que conecta la que tenga sesión
+    // viva en el navegador (ver `compartido.ts`).
+    case "reconexion_otra_cuenta_nueva":
+      return {
+        icono: <TriangleAlert className="size-7" aria-hidden="true" />,
+        tono: "advertencia",
+        titulo: "Agregamos una cuenta nueva, pero no reconectamos la que querías",
+        descripcion:
+          "Mercado Libre te conectó con la cuenta que tenías abierta en este navegador, que era otra distinta de la que ibas a reconectar. La sumamos a tu portal como una cuenta más, así que sus pedidos ya empiezan a sincronizarse — pero la cuenta que estaba desconectada sigue igual. Para arreglarla, cierra sesión en mercadolibre.cl (o usa una ventana de navegación privada), entra con esa cuenta y vuelve a apretar Reconectar en su tarjeta.",
+        acciones: <BotonIrAMisConexiones />,
+      };
+
+    case "reconexion_otra_cuenta_existente":
+      return {
+        icono: <TriangleAlert className="size-7" aria-hidden="true" />,
+        tono: "advertencia",
+        titulo: "Renovamos otra de tus cuentas, no la que querías reconectar",
+        descripcion:
+          "Mercado Libre te conectó con la cuenta que tenías abierta en este navegador, que ya estaba vinculada a tu portal — no con la que ibas a reconectar, que sigue desconectada. Para arreglarla, cierra sesión en mercadolibre.cl (o usa una ventana de navegación privada), entra con esa cuenta y vuelve a apretar Reconectar en su tarjeta.",
         acciones: <BotonIrAMisConexiones />,
       };
 

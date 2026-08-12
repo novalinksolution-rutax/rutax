@@ -1,7 +1,11 @@
 # Arquitectura — Seller con múltiples cuentas de Mercado Libre (1:1 → 1:N)
 
-**Estado:** diseño aprobado para implementar. **Fecha:** 2026-06-30.
-**Decisión:** un `seller` (cliente del courier) puede conectar **hasta 3 cuentas ML**. El SaaS ingesta las ventas Flex de cada cuenta y las centraliza; en la UI el origen se muestra **solo si el seller tiene más de una cuenta**.
+**Estado:** implementado. **Fecha:** 2026-06-30.
+**Decisión:** un `seller` (cliente del courier) puede conectar **hasta 10 cuentas ML**. El SaaS ingesta las ventas Flex de cada cuenta y las centraliza; en la UI el origen se muestra **solo si el seller tiene más de una cuenta**.
+
+> ⚠️ **Actualización 2026-08-12 — el tope subió de 3 a 10.** La realidad desmintió el 3: un courier real tiene un seller con 4 cuentas ML vinculadas. El resto del diseño no cambia. Donde este documento diga "3" más abajo, léase 10 — el número vive en **un solo lugar ejecutable**, la función SQL `identidad.conexiones_seller_ml_tope_por_seller()` (migración `20260812000003`), más los textos de interfaz. No hay constante del tope en TypeScript.
+>
+> ⚠️ **Limitación de Mercado Libre descubierta el 2026-08-12 (verificada en su documentación oficial).** El flujo "Agregar otra cuenta" **no puede** forzar a ML a mostrar el selector de cuenta: `/authorization` no soporta `prompt`, `select_account`, `approval_prompt`, `max_age` ni `login_hint`, y no hay endpoint de logout documentado. Si el seller tiene sesión activa en ML, vuelve con la MISMA cuenta y sin aviso. Se mitiga avisando antes de salir a ML y **detectando el duplicado tras el canje** (`POST /oauth/token` devuelve `user_id`) — ver §7-D2.
 
 > Contexto de negocio y taxonomía de alcance: ver `CLAUDE.md` (secciones "Diferenciador y alcance" y "Alcance del proyecto"). Este documento es el "cómo".
 

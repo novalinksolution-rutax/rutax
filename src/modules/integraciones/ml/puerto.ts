@@ -58,6 +58,7 @@ import type {
   IniciarAutorizacionEntrada,
   IniciarAutorizacionResultado,
   IntercambiarCodigoEntrada,
+  IntercambiarCodigoResultado,
   ObtenerEtiquetaEnvioEntrada,
   ObtenerEtiquetaEnvioResultado,
   RazonFalloRefresco,
@@ -166,19 +167,25 @@ const codigosEnProceso = new CacheIdempotencia(2 * 60_000);
  * idempotencia. Bajo el modelo 1:N ya NO se puede resolver "la conexión del
  * seller" en un doble callback (el seller puede tener varias cuentas y el
  * `code` es de un solo uso — no podemos re-canjearlo ni conocer el `user_id`
- * sin re-golpear ML). Por eso memorizamos la conexión que dejó la primera
- * ejecución y la devolvemos tal cual en la segunda. TTL corto (mismo que el
- * marcador anti-doble-canje). Se limpia por edad de forma perezosa.
+ * sin re-golpear ML). Por eso memorizamos lo que dejó la primera ejecución y lo
+ * devolvemos tal cual en la segunda. TTL corto (mismo que el marcador
+ * anti-doble-canje). Se limpia por edad de forma perezosa.
+ *
+ * Memoriza el resultado COMPLETO (conexión + desenlace), no solo la conexión:
+ * si el segundo callback re-derivara el desenlace releyendo la BD, vería la
+ * fila que la primera ejecución acaba de insertar y reportaría
+ * `conexion_existente_actualizada` donde la primera reportó `alta_nueva` — dos
+ * pantallas distintas para el mismo clic del seller.
  */
-const resultadosIntercambio = new Map<string, { conexion: ConexionSellerMl; en: number }>();
+const resultadosIntercambio = new Map<string, { resultado: IntercambiarCodigoResultado; en: number }>();
 const TTL_RESULTADO_INTERCAMBIO_MS = 2 * 60_000;
 
-function recordarResultadoIntercambio(clave: string, conexion: ConexionSellerMl): void {
+function recordarResultadoIntercambio(clave: string, resultado: IntercambiarCodigoResultado): void {
   const ahora = Date.now();
   for (const [k, v] of resultadosIntercambio) {
     if (ahora - v.en > TTL_RESULTADO_INTERCAMBIO_MS) resultadosIntercambio.delete(k);
   }
-  resultadosIntercambio.set(clave, { conexion, en: ahora });
+  resultadosIntercambio.set(clave, { resultado, en: ahora });
 }
 
 // ---------------------------------------------------------------------------
@@ -236,15 +243,22 @@ export function iniciarAutorizacion(
  * inserta una fila nueva (sujeta al tope). Re-hacerlo con la MISMA cuenta hace
  * UPDATE de su fila. La resolución fina la hace
  * `persistirTokensYActualizarConexion` por `(seller_id, ml_user_id)`.
+ *
+ * DEVUELVE `{ conexion, desenlace }` — no solo la conexión. El `desenlace`
+ * (`alta_nueva` | `conexion_existente_actualizada`) es la ÚNICA forma que tiene
+ * el llamador de saber si de verdad se agregó una cuenta: ML no ofrece ningún
+ * parámetro de `/authorization` para forzar el selector de cuenta, así que un
+ * seller con sesión abierta y app ya autorizada vuelve del OAuth con un `code`
+ * de la misma cuenta sin haber elegido nada. Ver `DesenlaceIntercambioMl`.
  */
 export async function intercambiarCodigoPorTokens(
   entrada: IntercambiarCodigoEntrada,
-): Promise<ConexionSellerMl> {
+): Promise<IntercambiarCodigoResultado> {
   const claveIdempotencia = `ml:intercambio:${entrada.tenantId}:${entrada.sellerId}:${entrada.codigo}`;
 
   if (!codigosEnProceso.marcarSiEsNuevo(claveIdempotencia)) {
     const memorizado = resultadosIntercambio.get(claveIdempotencia);
-    if (memorizado) return memorizado.conexion;
+    if (memorizado) return memorizado.resultado;
     // Si por algún motivo no quedó memorizada (p. ej. la primera llamada
     // sigue en curso o el TTL expiró), dejamos que el flujo normal continúe.
     // Re-canjear un `code` ya gastado fallará en ML (error no reintentable que
@@ -281,7 +295,7 @@ export async function intercambiarCodigoPorTokens(
     mlNickname = null;
   }
 
-  const conexion = await persistirTokensYActualizarConexion({
+  const resultado = await persistirTokensYActualizarConexion({
     tenantId: entrada.tenantId,
     sellerId: entrada.sellerId,
     respuestaToken,
@@ -290,9 +304,11 @@ export async function intercambiarCodigoPorTokens(
     marcarComoSincronizada: true,
     mlNickname,
   });
+  const conexion = resultado.conexion;
 
-  // Memorizar el resultado para un eventual doble callback con el mismo `code`.
-  recordarResultadoIntercambio(claveIdempotencia, conexion);
+  // Memorizar el resultado (conexión + desenlace) para un eventual doble
+  // callback con el mismo `code` — ambos deben contar la misma historia.
+  recordarResultadoIntercambio(claveIdempotencia, resultado);
 
   // Publicar evento de reconexión para que el job de backfill recupere los
   // pedidos del período desconectado (RF-017). Solo si la conexión tiene fecha
@@ -312,7 +328,7 @@ export async function intercambiarCodigoPorTokens(
     },
   });
 
-  return conexion;
+  return resultado;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +403,10 @@ export async function refrescarToken(
       },
     });
 
-    const conexionActualizada = await persistirTokensYActualizarConexion({
+    // El desenlace no aporta nada en un refresco (siempre es la misma cuenta
+    // que ya tenía fila) — solo importa en el intercambio inicial, donde el
+    // llamador debe distinguir "agregó una cuenta" de "revalidó la que tenía".
+    const { conexion: conexionActualizada } = await persistirTokensYActualizarConexion({
       tenantId: conexion.tenant_id,
       sellerId: conexion.seller_id,
       respuestaToken,
@@ -879,12 +898,18 @@ interface PersistirTokensEntrada {
  *      parcial (23505) del esquema garantizan la integridad; se traducen a
  *      errores de dominio claros.
  *
+ * Devuelve también el `desenlace` de esa decisión (rama 2 vs. rama 3). Es la
+ * única fuente honesta de "¿se agregó una cuenta o solo se revalidó una que ya
+ * estaba?": ML devuelve un `code` válido en ambos casos y nada en la respuesta
+ * de `/oauth/token` distingue uno del otro salvo el `user_id`, que aquí ya se
+ * cruzó contra la BD.
+ *
  * Nunca persiste el token en claro en ninguna columna de negocio — solo las
  * referencias opacas que `cifrarSecreto` devuelve.
  */
 async function persistirTokensYActualizarConexion(
   entrada: PersistirTokensEntrada,
-): Promise<ConexionSellerMl> {
+): Promise<IntercambiarCodigoResultado> {
   const ahora = new Date();
   const mlUserId = String(entrada.respuestaToken.user_id);
   const tokenExpiraEn = new Date(ahora.getTime() + entrada.respuestaToken.expires_in * 1000);
@@ -953,7 +978,10 @@ async function persistirTokensYActualizarConexion(
     if (error) {
       throw new Error(`No se pudo actualizar la conexión ML: ${error.message}`);
     }
-    return aConexionPublica(data as unknown as FilaConexionInterna);
+    return {
+      conexion: aConexionPublica(data as unknown as FilaConexionInterna),
+      desenlace: "conexion_existente_actualizada",
+    };
   }
 
   // 3. INSERT — nueva cuenta. El trigger de tope y la unicidad parcial son la
@@ -980,15 +1008,25 @@ async function persistirTokensYActualizarConexion(
     // 23505 (unique_violation): dos altas concurrentes de la MISMA cuenta
     // (carrera contra el paso 1) — el índice parcial la rechazó. Es idempotente
     // en la práctica: leemos y devolvemos la fila ganadora.
+    //
+    // Desenlace `alta_nueva` a propósito: el SELECT del paso 1 confirmó que la
+    // cuenta NO estaba conectada cuando este flujo empezó, así que para el
+    // seller sí es un alta — la fila la creó su propio gemelo concurrente
+    // (misma acción, dos pestañas), no un vínculo anterior. Reportarlo como
+    // "ya estaba conectada" mentiría en la dirección contraria al bug que este
+    // desenlace existe para evitar.
     if (error.code === "23505") {
       const ganadora = await leerFilaConexionPorSellerYCuenta(entrada.sellerId, mlUserId);
-      if (ganadora) return aConexionPublica(ganadora);
+      if (ganadora) return { conexion: aConexionPublica(ganadora), desenlace: "alta_nueva" };
       throw new ErrorCuentaMlYaConectada(entrada.sellerId, mlUserId);
     }
     throw new Error(`No se pudo persistir la conexión ML: ${error.message}`);
   }
 
-  return aConexionPublica(data as unknown as FilaConexionInterna);
+  return {
+    conexion: aConexionPublica(data as unknown as FilaConexionInterna),
+    desenlace: "alta_nueva",
+  };
 }
 
 /**

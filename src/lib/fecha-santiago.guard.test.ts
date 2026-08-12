@@ -98,6 +98,12 @@ function rutaRelativa(ruta: string): string {
 }
 
 describe('guard: ninguna fecha civil se deriva en UTC dentro de src/', () => {
+  // Timeout explícito: este guard lee TODO `src/` de disco, así que su costo
+  // crece con el repo y compite por I/O con los otros 158 archivos de la suite.
+  // Aislado corre en ~2 s, pero dentro de `npm test` completo empezó a pasarse
+  // de los 5 s por defecto y a fallar de forma intermitente — un rojo por
+  // lentitud, no por un infractor. Subir el techo no relaja la comprobación:
+  // sigue escaneando exactamente lo mismo.
   it('no hay infractores', () => {
     const infractores: string[] = [];
 
@@ -133,7 +139,7 @@ describe('guard: ninguna fecha civil se deriva en UTC dentro de src/', () => {
         'src/lib/fecha-santiago.ts en vez de derivar fechas civiles en UTC. ' +
         `Infractores:\n  ${infractores.join('\n  ')}`,
     ).toEqual([]);
-  });
+  }, 30_000);
 
   it('la exención se mantiene chica (si crece, hay deuda que pagar)', () => {
     expect(ARCHIVOS_EXENTOS.size).toBeLessThanOrEqual(1);

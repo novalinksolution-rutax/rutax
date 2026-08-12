@@ -1,16 +1,21 @@
 -- =============================================================================
 -- Pruebas de aislamiento RLS + reglas de negocio — conexiones_seller_ml 1:N
--- (seller con hasta 3 cuentas de Mercado Libre)
+-- (seller con hasta 10 cuentas de Mercado Libre)
 -- =============================================================================
--- Migración probada: 20260630000002_identidad_conexiones_seller_ml_multicuenta.sql
+-- Migraciones probadas:
+--   20260630000002_identidad_conexiones_seller_ml_multicuenta.sql  (1:1 → 1:N)
+--   20260812000003_identidad_conexiones_ml_tope_10.sql             (tope 3 → 10)
 -- Diseño: docs/arquitectura/seller-multicuenta-ml.md (§3 RLS, §7-D2/D5).
 --
 -- Demuestra, contra una base Postgres real (no mocks de aplicación):
---   1. AISLAMIENTO — un seller con 3 conexiones ve EXACTAMENTE las suyas
+--   1. AISLAMIENTO — un seller con varias conexiones ve EXACTAMENTE las suyas
 --      (por seller y por tenant); un seller distinto del mismo tenant no las ve;
 --      un seller de otro tenant no ve ninguna; un interno ve las de su tenant y
 --      no las del otro.
---   2. TOPE 3 (D5) — la 4ª inserción para un mismo seller falla (check_violation).
+--   2. TOPE 10 (D5, subido desde 3 el 2026-08-12 porque un courier real trajo un
+--      seller con 4 cuentas) — la 10ª conexión de un seller ENTRA y la 11ª falla
+--      (check_violation). El valor del tope se fija explícitamente en una prueba:
+--      si alguien vuelve a moverlo, esta suite lo grita en vez de asumirlo.
 --   3. UNICIDAD PARCIAL (D2) — la MISMA ml_user_id repetida para el mismo seller
 --      falla (unique_violation); la MISMA cuenta en DOS sellers distintos SE
 --      PERMITE; filas "pendientes" (ml_user_id null) múltiples SE PERMITEN.
@@ -23,7 +28,7 @@
 
 begin;
 
-select plan(19);
+select plan(21);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (redefinidos aquí — cada .test.sql corre en su
@@ -70,7 +75,9 @@ $$;
 -- Fixtures (insertados como postgres → bypassa RLS y el trigger de tope NO se
 -- salta: BEFORE INSERT corre para cualquier rol, así que sembramos con cuidado
 -- de no exceder el tope en el fixture).
---   Tenant A: seller A con 3 conexiones ML (tope lleno) + seller A2 con 1.
+--   Tenant A: seller A con 9 conexiones ML (UNA bajo el tope de 10, para que el
+--             bloque 3 pruebe la 10ª que entra y la 11ª que rebota) + seller A2
+--             con 1.
 --   Tenant B: seller B con 1 conexión.
 -- -----------------------------------------------------------------------------
 do $$
@@ -78,7 +85,7 @@ declare
   t_a uuid := 'aaaaaaaa-0000-0000-0000-0000000000a1';
   t_b uuid := 'bbbbbbbb-0000-0000-0000-0000000000b2';
 
-  s_a  uuid := 'aaaaaaaa-1111-0000-0000-0000000000a1'; -- seller A (3 cuentas)
+  s_a  uuid := 'aaaaaaaa-1111-0000-0000-0000000000a1'; -- seller A (9 cuentas)
   s_a2 uuid := 'aaaaaaaa-1111-0000-0000-0000000000a3'; -- seller A2 (1 cuenta)
   s_b  uuid := 'bbbbbbbb-1111-0000-0000-0000000000b2'; -- seller B (1 cuenta)
 
@@ -119,12 +126,18 @@ begin
     (u_seller_b,  t_b, 'Usuario Seller B',  'seller',  s_b,  null, 'seller', 'activo')
   on conflict (id) do nothing;
 
-  -- Seller A: 3 conexiones (tope lleno). Distintas ml_user_id + alias/nickname.
+  -- Seller A: 9 conexiones (una bajo el tope de 10). Distintas ml_user_id +
+  -- alias/nickname. Se generan en serie para que subir/bajar el tope no obligue
+  -- a escribir a mano una lista de valores.
   insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, alias, ml_nickname, estado_salud)
-  values
-    (t_a, s_a, 'ML-A-1', 'Tienda oficial', 'nick_a1', 'sana'),
-    (t_a, s_a, 'ML-A-2', 'Outlet',         'nick_a2', 'sana'),
-    (t_a, s_a, 'ML-A-3', 'Mayorista',      'nick_a3', 'pendiente')
+  select
+    t_a, s_a, 'ML-A-' || g.i,
+    case g.i when 1 then 'Tienda oficial' when 2 then 'Outlet' when 3 then 'Mayorista' end,
+    'nick_a' || g.i,
+    -- estado_salud es un enum: en `insert ... select` el CASE resuelve a text y
+    -- Postgres no coerce text→enum solo, así que el cast es obligatorio.
+    (case when g.i = 3 then 'pendiente' else 'sana' end)::identidad.estado_salud_conexion_ml
+  from generate_series(1, 9) as g(i)
   on conflict do nothing;
 
   -- Seller A2: 1 conexión (mismo tenant, otro seller).
@@ -179,7 +192,7 @@ select isnt_empty(
 );
 
 -- =============================================================================
--- BLOQUE 2 · AISLAMIENTO — seller A con 3 conexiones ve exactamente las suyas
+-- BLOQUE 2 · AISLAMIENTO — seller A con 9 conexiones ve exactamente las suyas
 -- =============================================================================
 select test_iniciar_sesion(
   'aaaaaaaa-3333-0000-0000-0000000000a3'::uuid, -- u_seller_a
@@ -188,11 +201,11 @@ select test_iniciar_sesion(
   p_seller_id => 'aaaaaaaa-1111-0000-0000-0000000000a1'::uuid -- s_a
 );
 
--- Ve sus 3 conexiones — la RLS escala a N filas.
+-- Ve sus 9 conexiones — la RLS escala a N filas.
 select results_eq(
   $$ select count(*)::int from public.conexiones_seller_ml $$,
-  $$ values (3) $$,
-  'aislamiento: seller A ve EXACTAMENTE sus 3 conexiones ML (RLS escala a N filas)'
+  $$ values (9) $$,
+  'aislamiento: seller A ve EXACTAMENTE sus 9 conexiones ML (RLS escala a N filas)'
 );
 
 -- Todas son suyas (ninguna de otro seller se cuela).
@@ -227,10 +240,10 @@ select test_iniciar_sesion(
 select results_eq(
   $$ select count(*)::int from public.conexiones_seller_ml $$,
   $$ values (1) $$,
-  'aislamiento: seller B (otro tenant) ve solo su propia conexión, no las 3 de A'
+  'aislamiento: seller B (otro tenant) ve solo su propia conexión, no las 9 de A'
 );
 
--- --- Interno A: ve las 4 de su tenant (3 de A + 1 de A2), 0 del tenant B ----
+-- --- Interno A: ve las 10 de su tenant (9 de A + 1 de A2), 0 del tenant B ----
 select test_iniciar_sesion(
   'aaaaaaaa-3333-0000-0000-0000000000a1'::uuid, -- u_interno_a
   'aaaaaaaa-0000-0000-0000-0000000000a1'::uuid, -- t_a
@@ -239,8 +252,8 @@ select test_iniciar_sesion(
 
 select results_eq(
   $$ select count(*)::int from public.conexiones_seller_ml $$,
-  $$ values (4) $$,
-  'aislamiento: interno A ve las 4 conexiones de SU tenant (3 de A + 1 de A2)'
+  $$ values (10) $$,
+  'aislamiento: interno A ve las 10 conexiones de SU tenant (9 de A + 1 de A2)'
 );
 
 select is_empty(
@@ -252,24 +265,46 @@ select is_empty(
 select test_cerrar_sesion();
 
 -- =============================================================================
--- BLOQUE 3 · TOPE 3 (D5) — la 4ª inserción para el seller A falla
+-- BLOQUE 3 · TOPE 10 (D5) — la 10ª conexión del seller A entra, la 11ª rebota
 -- =============================================================================
+-- El tope subió de 3 a 10 el 2026-08-12 (migración 20260812000003) porque un
+-- courier real tenía un seller con 4 cuentas ML vinculadas.
+--
+-- Esta prueba FIJA el valor: la constante es la regla de negocio, no un detalle
+-- de implementación. Si alguien la mueve otra vez, falla acá y no en producción
+-- con un OAuth rechazado sin explicación.
+select results_eq(
+  $$ select identidad.conexiones_seller_ml_tope_por_seller() $$,
+  $$ values (10) $$,
+  'tope: identidad.conexiones_seller_ml_tope_por_seller() vale 10 (subió de 3 el 2026-08-12)'
+);
+
 -- Se prueba como postgres (bypassa RLS pero NO el trigger BEFORE INSERT).
+-- La 10ª del seller A (que tiene 9) ENTRA — con el tope viejo de 3 no habría entrado.
+select lives_ok(
+  $$ insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, estado_salud)
+     values ('aaaaaaaa-0000-0000-0000-0000000000a1', 'aaaaaaaa-1111-0000-0000-0000000000a1',
+             'ML-A-10', 'pendiente') $$,
+  'tope 10: la 10ª conexión del seller A SÍ entra (el tope viejo de 3 la rechazaba)'
+);
+
+-- La 11ª, ya con el tope lleno, falla.
 select throws_ok(
   $$ insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, estado_salud)
      values ('aaaaaaaa-0000-0000-0000-0000000000a1', 'aaaaaaaa-1111-0000-0000-0000000000a1',
-             'ML-A-4', 'pendiente') $$,
+             'ML-A-11', 'pendiente') $$,
   '23514',  -- check_violation (errcode que el trigger de tope emite)
   null,
-  'tope 3: insertar la 4ª conexión del seller A falla (check_violation)'
+  'tope 10: insertar la 11ª conexión del seller A falla (check_violation)'
 );
 
--- El seller A2 (con 1 conexión) SÍ puede agregar más — el tope es por seller.
+-- El seller A2 (con 1 conexión) SÍ puede agregar más — el tope es por seller,
+-- y que A esté lleno no le quita cupo a nadie más.
 select lives_ok(
   $$ insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, estado_salud)
      values ('aaaaaaaa-0000-0000-0000-0000000000a1', 'aaaaaaaa-1111-0000-0000-0000000000a3',
              'ML-A2-2', 'pendiente') $$,
-  'tope 3: el seller A2 (bajo el tope) SÍ puede agregar una 2ª conexión'
+  'tope 10: el seller A2 (bajo el tope) SÍ puede agregar una 2ª conexión'
 );
 
 -- =============================================================================

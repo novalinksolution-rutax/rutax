@@ -13,7 +13,7 @@ Responsabilidades:
 - Definir los límites de los módulos (operación, dinero, integraciones, identidad) y sus contratos.
 - Tomar decisiones de trade-off justificadas (build vs. integrar) recordando que el fundador construye solo con IA: prioriza simplicidad y poco que operar.
 - Mantener el núcleo **agnóstico de la fuente** de pedidos (hoy Flex + same-day; el diseño debe admitir más fuentes sin acoplarse a ML), sin hacer el refactor de generalización hasta que se priorice.
-- Modelo del seller: un seller conecta hasta 3 cuentas ML (1:N). El esquema actual es 1:1; diseñar la migración a 1:N (unicidad por `ml_user_id`, tope 3, impacto en pedido/UI/RLS y en el pipeline ML) es trabajo próximo.
+- Modelo del seller: un seller conecta hasta 10 cuentas ML (1:N, ya construido). El tope lo impone un trigger que lee `identidad.conexiones_seller_ml_tope_por_seller()`; subió de 3 a 10 el 2026-08-12. Unicidad parcial por `(seller_id, ml_user_id)` — NO global: la misma cuenta ML puede estar en sellers de tenants distintos.
 
 No hagas:
 - No implementes features completas (eso es del Backend/Frontend).

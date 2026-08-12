@@ -11,7 +11,11 @@
  *   3. Clasifica el resultado en una de las ramificaciones de la tabla §3.2 y
  *      redirige a `/portal/conectar-ml?resultado=...` — la página renderiza
  *      el contenido de la Pantalla N según ese parámetro (componente
- *      compartido M/N, parametrizable por `modo`).
+ *      compartido M/N, parametrizable por `modo`). La clasificación usa el
+ *      `desenlace` que devuelve el puerto (¿se agregó una cuenta o solo se
+ *      revalidó una existente?), NO el `modo` que el seller pidió: son cosas
+ *      distintas y tratarlas como una sola producía un "agregaste la cuenta"
+ *      falso (ver bloque de comentarios más abajo).
  *
  * Por qué un redirect con query param y no renderizar aquí mismo: este es un
  * Route Handler (no puede devolver JSX), y la Pantalla N comparte estructura
@@ -49,12 +53,17 @@ function urlResultado(origin: string, resultado: ResultadoCallbackMl, modo: Modo
 }
 
 /**
- * Limpia las cookies de `state`/`modo` del flujo OAuth — son de un solo uso,
- * no deben sobrevivir más allá de este intercambio (sea cual sea el desenlace).
+ * Limpia las cookies del flujo OAuth — son de un solo uso, no deben sobrevivir
+ * más allá de este intercambio (sea cual sea el desenlace).
+ *
+ * Incluye `COOKIE_CONEXION_ML`: antes se quedaba viva hasta que `iniciarConexionMl`
+ * la pisara en un flujo posterior, así que un "Reconectar" podía dejar su id
+ * objetivo colgando y contaminar la evaluación del siguiente intento.
  */
 function limpiarCookiesFlujo(respuesta: NextResponse): void {
   respuesta.cookies.delete(COOKIE_STATE_ML);
   respuesta.cookies.delete(COOKIE_MODO_ML);
+  respuesta.cookies.delete(COOKIE_CONEXION_ML);
 }
 
 export async function GET(request: NextRequest) {
@@ -69,6 +78,12 @@ export async function GET(request: NextRequest) {
   const stateCookie = almacenCookies.get(COOKIE_STATE_ML)?.value ?? null;
   const modoCookie = almacenCookies.get(COOKIE_MODO_ML)?.value ?? null;
   const modo: ModoConexionMl = leerModoConexionMl(modoCookie);
+  // Id de la conexión que el seller pidió reconectar. `iniciarConexionMl` solo
+  // lo deja tras verificar que la fila es SUYA, así que aquí es de confianza —
+  // pero puede faltar (alta/conexión inicial, o si esa verificación falló). Su
+  // ausencia no rompe nada: solo impide distinguir "reconectó la que quería" de
+  // "reconectó otra de las suyas", y en ese caso se conserva el desenlace previo.
+  const conexionObjetivo = almacenCookies.get(COOKIE_CONEXION_ML)?.value ?? null;
 
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId || sesion.usuario.tipoUsuario !== "seller" || !sesion.usuario.sellerId) {
@@ -117,7 +132,13 @@ export async function GET(request: NextRequest) {
   const redirectUriUsado = `${origin}/oauth/ml/callback`;
 
   try {
-    const conexion = await intercambiarCodigoPorTokens({
+    // `desenlace` = qué pasó DE VERDAD en `conexiones_seller_ml`: `alta_nueva`
+    // (se insertó una cuenta) vs. `conexion_existente_actualizada` (solo se
+    // rotaron los tokens de una que ya estaba). Es imprescindible porque ML no
+    // admite ningún parámetro de `/authorization` que fuerce el selector de
+    // cuenta: con sesión abierta y app ya autorizada, ML devuelve un `code` de
+    // la MISMA cuenta sin preguntar nada. Ver `DesenlaceIntercambioMl`.
+    const { conexion, desenlace } = await intercambiarCodigoPorTokens({
       tenantId,
       sellerId,
       codigo,
@@ -159,9 +180,63 @@ export async function GET(request: NextRequest) {
       return respuesta;
     }
 
+    // -------------------------------------------------------------------
+    // Lo que el seller PIDIÓ vs. lo que REALMENTE pasó.
+    //
+    // El resultado se decide por `desenlace`, no por `modo`. Confundir ambos
+    // es exactamente el bug que se vio en producción: un seller que acababa de
+    // reconectar pulsó "Agregar otra cuenta", ML lo devolvió al instante con un
+    // `code` de la MISMA cuenta (sesión viva + app autorizada, y ML no ofrece
+    // `prompt`/`select_account` ni logout para evitarlo), el puerto hizo UPDATE
+    // sin error, y la pantalla le dijo "Agregaste la cuenta correctamente".
+    // No había agregado nada.
+    // -------------------------------------------------------------------
+
+    // Pidió AGREGAR y la cuenta ya estaba conectada → no se agregó nada. Este
+    // es el camino por el que `cuenta_ya_conectada` se alcanza en la práctica:
+    // el 23505 del INSERT (la otra vía) solo salta en una carrera, porque el
+    // SELECT previo por `(seller_id, ml_user_id)` desvía a UPDATE antes.
+    if (modo === "agregar_cuenta" && desenlace === "conexion_existente_actualizada") {
+      const respuesta = NextResponse.redirect(urlResultado(origin, "cuenta_ya_conectada", modo));
+      limpiarCookiesFlujo(respuesta);
+      return respuesta;
+    }
+
+    // Pidió RECONECTAR y autorizó con una cuenta distinta, que no tenía fila →
+    // no reconectó nada: dio de alta una cuenta nueva, y la conexión que quería
+    // arreglar sigue rota. Decirle "¡Listo!" —aunque sea cierto que se agregó
+    // algo— lo manda a su portal creyendo que resolvió el problema.
+    if (modo === "reconexion" && desenlace === "alta_nueva") {
+      const respuesta = NextResponse.redirect(urlResultado(origin, "reconexion_otra_cuenta_nueva", modo));
+      limpiarCookiesFlujo(respuesta);
+      return respuesta;
+    }
+
+    // Pidió RECONECTAR una fila concreta y ML lo devolvió con OTRA de sus
+    // cuentas ya conectadas: se renovaron los tokens de esa otra, no los de la
+    // que pidió. Es el mismo engaño que el bug original, en su variante más
+    // sigilosa — la pantalla decía "Volviste a autorizar el acceso
+    // correctamente" y la tarjeta roja seguía roja al volver al portal.
+    // Requiere el id objetivo: sin cookie no hay con qué comparar, y entonces
+    // no se inventa un diagnóstico (cae al éxito de abajo).
+    if (
+      modo === "reconexion" &&
+      desenlace === "conexion_existente_actualizada" &&
+      conexionObjetivo !== null &&
+      conexionObjetivo !== conexion.id
+    ) {
+      const respuesta = NextResponse.redirect(
+        urlResultado(origin, "reconexion_otra_cuenta_existente", modo),
+      );
+      limpiarCookiesFlujo(respuesta);
+      return respuesta;
+    }
+
     // Éxito (incluye el caso "code ya canjeado/doble callback": la
     // idempotencia del puerto ya devuelve la conexión existente con
-    // `estado_salud: 'sana'` — el seller no debe notar el reintento interno).
+    // `estado_salud: 'sana'` Y el mismo `desenlace` de la primera pasada — el
+    // seller no debe notar el reintento interno ni ver dos desenlaces
+    // distintos para el mismo clic).
     const respuesta = NextResponse.redirect(urlResultado(origin, "exito", modo));
     limpiarCookiesFlujo(respuesta);
     return respuesta;

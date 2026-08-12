@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { RESULTADOS_CALLBACK_ML, type ModoConexionMl, type ResultadoCallbackMl } from "./compartido";
+import { RESULTADOS_CALLBACK_ML, leerModoConexionMl, type ResultadoCallbackMl } from "./compartido";
 import { PantallaConexionMl } from "./pantalla-conexion-ml";
 
 export const metadata: Metadata = {
@@ -17,9 +17,11 @@ function leerResultado(valor: string | undefined): ResultadoCallbackMl | null {
   return (RESULTADOS_CALLBACK_ML as string[]).includes(valor) ? (valor as ResultadoCallbackMl) : null;
 }
 
-function leerModo(valor: string | undefined): ModoConexionMl {
-  return valor === "reconexion" ? "reconexion" : "conexion_inicial";
-}
+// El modo se lee con `leerModoConexionMl` de `./compartido` — NO con un lector
+// propio. Hubo uno aquí que solo conocía `reconexion` y degradaba en silencio
+// `agregar_cuenta` a `conexion_inicial`: el seller que agregaba una segunda
+// cuenta veía el texto de "primera conexión". Cada modo nuevo que se agregue al
+// tipo debe quedar cubierto en un solo lugar.
 
 /**
  * Pantallas M + N — "Conectar con Mercado Libre" y "Resultado de la conexión"
@@ -47,7 +49,7 @@ export default async function PaginaConectarMl({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const resultado = leerResultado(params.resultado);
-  const modo = leerModo(params.modo);
+  const modo = leerModoConexionMl(params.modo);
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center justify-center px-4 py-10">

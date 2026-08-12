@@ -58,7 +58,8 @@ export async function obtenerEstadoConexionPropia(): Promise<ResultadoEstadoCone
 }
 
 // ---------------------------------------------------------------------------
-// Modelo 1:N — el seller gestiona hasta 3 cuentas de Mercado Libre.
+// Modelo 1:N — el seller gestiona hasta MAX_CUENTAS_ML cuentas de Mercado
+// Libre (constante única en conectar-ml/compartido.ts).
 // ---------------------------------------------------------------------------
 
 /** Una cuenta ML del seller, en la forma que consume el panel (sin jerga ni refs). */
@@ -76,7 +77,7 @@ export type ResultadoConexiones =
   | { ok: true; conexiones: ConexionMlSellerItem[] }
   | { ok: false; mensaje: string };
 
-/** Todas las cuentas ML del seller de la sesión (0 a 3), para el panel plural. */
+/** Todas las cuentas ML del seller de la sesión (0 a MAX_CUENTAS_ML), para el panel plural. */
 export async function obtenerConexionesPropia(): Promise<ResultadoConexiones> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId || sesion.usuario.tipoUsuario !== "seller" || !sesion.usuario.sellerId) {

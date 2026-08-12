@@ -13,6 +13,14 @@
  * 4. INSERT rechazado por unicidad parcial (SQLSTATE 23505) en carrera →
  *    se relee y se devuelve la fila ganadora (idempotente).
  *
+ * Cubre además el `desenlace` que el puerto devuelve junto a la conexión
+ * (`alta_nueva` | `conexion_existente_actualizada`): es lo único que distingue
+ * "el seller agregó una cuenta" de "el seller volvió del OAuth con la MISMA
+ * cuenta y solo se rotaron sus tokens". ML no ofrece forma de prevenir lo
+ * segundo (el endpoint `/authorization` no admite `prompt`/`select_account`/
+ * `approval_prompt`/`max_age`/`login_hint`, ni hay logout documentado), así que
+ * la detección post-canje es la única vía — y sin ella la UI mentía.
+ *
  * Mocks: Supabase service-role, cifrado, Inngest y fetch (sin red).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,6 +39,7 @@ vi.mock("../secretos", () => ({
 }));
 
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { inngest } from "@/lib/inngest/cliente";
 import { cifrarSecreto } from "../secretos";
 import {
   intercambiarCodigoPorTokens,
@@ -166,7 +175,7 @@ describe("conexiones ML 1:N — persistir por cuenta (seller con hasta N cuentas
     vi.mocked(crearClienteServiceRole).mockImplementation(() => fabrica() as never);
     global.fetch = mockFetchToken(777) as unknown as typeof fetch;
 
-    const conexion = await intercambiarCodigoPorTokens({
+    const { conexion, desenlace } = await intercambiarCodigoPorTokens({
       tenantId: TENANT_ID,
       sellerId: SELLER_ID,
       codigo: "code-A",
@@ -174,6 +183,7 @@ describe("conexiones ML 1:N — persistir por cuenta (seller con hasta N cuentas
     });
 
     expect(conexion.mlUserId).toBe("777");
+    expect(desenlace).toBe("alta_nueva");
     expect(insertsEmitidos).toHaveLength(1);
     expect(updatesEmitidos).toHaveLength(0);
     // El INSERT lleva ml_user_id de la cuenta (no un token en claro).
@@ -191,7 +201,7 @@ describe("conexiones ML 1:N — persistir por cuenta (seller con hasta N cuentas
     vi.mocked(crearClienteServiceRole).mockImplementation(() => fabrica() as never);
     global.fetch = mockFetchToken(999) as unknown as typeof fetch;
 
-    const conexion = await intercambiarCodigoPorTokens({
+    const { conexion, desenlace } = await intercambiarCodigoPorTokens({
       tenantId: TENANT_ID,
       sellerId: SELLER_ID,
       codigo: "code-B",
@@ -199,6 +209,8 @@ describe("conexiones ML 1:N — persistir por cuenta (seller con hasta N cuentas
     });
 
     expect(conexion.id).toBe("conexion-1");
+    // Lo que el callback necesita para NO decir "agregaste la cuenta".
+    expect(desenlace).toBe("conexion_existente_actualizada");
     expect(updatesEmitidos).toHaveLength(1);
     expect(insertsEmitidos).toHaveLength(0);
   });
@@ -233,7 +245,7 @@ describe("conexiones ML 1:N — persistir por cuenta (seller con hasta N cuentas
     vi.mocked(crearClienteServiceRole).mockImplementation(() => fabrica() as never);
     global.fetch = mockFetchToken(888) as unknown as typeof fetch;
 
-    const conexion = await intercambiarCodigoPorTokens({
+    const { conexion, desenlace } = await intercambiarCodigoPorTokens({
       tenantId: TENANT_ID,
       sellerId: SELLER_ID,
       codigo: "code-D",
@@ -242,6 +254,9 @@ describe("conexiones ML 1:N — persistir por cuenta (seller con hasta N cuentas
 
     expect(conexion.id).toBe("conexion-ganadora");
     expect(conexion.mlUserId).toBe("888");
+    // La cuenta NO estaba conectada cuando este flujo empezó (lo confirmó el
+    // SELECT previo): la creó el gemelo concurrente. Para el seller es un alta.
+    expect(desenlace).toBe("alta_nueva");
   });
 
   it("23505 sin fila ganadora relegible → ErrorCuentaMlYaConectada", async () => {
@@ -263,5 +278,74 @@ describe("conexiones ML 1:N — persistir por cuenta (seller con hasta N cuentas
         redirectUri: "https://app/cb",
       }),
     ).rejects.toBeInstanceOf(ErrorCuentaMlYaConectada);
+  });
+
+  /**
+   * Doble callback con el mismo `code` (doble clic, recarga, reintento del
+   * navegador). El `code` es de un solo uso en ML, así que la segunda pasada
+   * NO puede re-canjearlo: sale de `resultadosIntercambio`. Lo que se prueba
+   * aquí es que esa caché memoriza el DESENLACE, no solo la conexión — si la
+   * segunda pasada lo re-derivara leyendo la BD, vería la fila que la primera
+   * acaba de insertar y contaría una historia distinta (alta → "ya estaba
+   * conectada") para el mismo clic del seller.
+   */
+  describe("doble callback con el mismo `code` — la caché devuelve el MISMO desenlace", () => {
+    it("cuenta REPETIDA: ambas pasadas dicen `conexion_existente_actualizada`, sin re-canjear ni re-escribir", async () => {
+      const existente = fila({ id: "conexion-1", ml_user_id: "999" });
+      const { fabrica, insertsEmitidos, updatesEmitidos } = crearMock({
+        selects: [{ data: existente, error: null }],
+        updates: [{ data: fila({ id: "conexion-1", ml_user_id: "999" }), error: null }],
+      });
+      vi.mocked(crearClienteServiceRole).mockImplementation(() => fabrica() as never);
+      const fetchMock = mockFetchToken(999);
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const entrada = {
+        tenantId: TENANT_ID,
+        sellerId: SELLER_ID,
+        codigo: "code-doble-repetida",
+        redirectUri: "https://app/cb",
+      };
+
+      const primera = await intercambiarCodigoPorTokens(entrada);
+      const llamadasTrasPrimera = fetchMock.mock.calls.length;
+      const segunda = await intercambiarCodigoPorTokens(entrada);
+
+      expect(primera.desenlace).toBe("conexion_existente_actualizada");
+      expect(segunda.desenlace).toBe(primera.desenlace);
+      expect(segunda.conexion.id).toBe(primera.conexion.id);
+      // La segunda no vuelve a golpear ML ni a persistir nada.
+      expect(fetchMock.mock.calls.length).toBe(llamadasTrasPrimera);
+      expect(updatesEmitidos).toHaveLength(1);
+      expect(insertsEmitidos).toHaveLength(0);
+      // Y no re-publica el evento que dispara el backfill (comportamiento
+      // existente: se publica una sola vez por intercambio efectivo).
+      expect(vi.mocked(inngest.send)).toHaveBeenCalledTimes(1);
+    });
+
+    it("cuenta NUEVA: ambas pasadas dicen `alta_nueva` (la segunda NO re-deriva del estado que la primera escribió)", async () => {
+      const { fabrica, insertsEmitidos } = crearMock({
+        selects: [{ data: null, error: null }],
+        inserts: [{ data: fila({ id: "conexion-nueva", ml_user_id: "777" }), error: null }],
+      });
+      vi.mocked(crearClienteServiceRole).mockImplementation(() => fabrica() as never);
+      const fetchMock = mockFetchToken(777);
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const entrada = {
+        tenantId: TENANT_ID,
+        sellerId: SELLER_ID,
+        codigo: "code-doble-nueva",
+        redirectUri: "https://app/cb",
+      };
+
+      const primera = await intercambiarCodigoPorTokens(entrada);
+      const segunda = await intercambiarCodigoPorTokens(entrada);
+
+      expect(primera.desenlace).toBe("alta_nueva");
+      expect(segunda.desenlace).toBe("alta_nueva");
+      expect(segunda.conexion.id).toBe(primera.conexion.id);
+      expect(insertsEmitidos).toHaveLength(1);
+    });
   });
 });

@@ -1754,7 +1754,7 @@ values
    'mantencion','importante', true, now() - interval '1 day', now() + interval '4 days',
    false,'ad000000-0000-0000-0000-000000000001'),
   ('16000000-0000-0000-0000-000000000002',
-   'Ya puedes conectar hasta 3 cuentas de Mercado Libre por seller',
+   'Ya puedes conectar hasta 10 cuentas de Mercado Libre por seller',
    'Si un seller vende con más de una cuenta, ahora puedes conectarlas todas y ver de cuál viene cada pedido.',
    'novedad','informativo', true, now() - interval '6 days', now() + interval '20 days',
    false,'ad000000-0000-0000-0000-000000000001'),

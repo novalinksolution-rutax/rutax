@@ -1,14 +1,22 @@
 "use client";
 
 /**
- * Panel de cuentas de Mercado Libre del seller — modelo 1:N (hasta 3 cuentas).
+ * Panel de cuentas de Mercado Libre del seller — modelo 1:N (hasta
+ * `MAX_CUENTAS_ML` cuentas, única fuente de verdad en conectar-ml/compartido).
  *
  * Reemplaza la tarjeta única 1:1 por una LISTA de tarjetas, una por conexión.
  * Traduce `estado_salud` a lenguaje humano (nunca expone strings internos ni
  * jerga: token/OAuth/refresh). Controles por tarjeta: "Reconectar" (solo si la
  * cuenta necesita atención/está desvinculada) y "Editar nombre" (alias). Bajo
- * la lista: "Agregar otra cuenta" mientras haya menos de 3; al llegar a 3, una
- * nota informativa en vez del botón.
+ * la lista: "Agregar otra cuenta" mientras haya menos del tope; al llegarlo,
+ * una nota informativa en vez del botón.
+ *
+ * "Agregar otra cuenta" pasa antes por un diálogo de aviso: Mercado Libre NO
+ * soporta forzar selección de cuenta ni re-login (`prompt`/`select_account`/
+ * `login_hint` no existen en su `/authorization`), así que conecta de
+ * inmediato la cuenta que el seller tenga con sesión activa en el navegador.
+ * El diálogo se lo explica ANTES de salir, para que no interprete "te
+ * devolvió la misma cuenta" como que el sistema falló.
  *
  * Reglas de seguridad respetadas por diseño: el seller NUNCA escribe directo en
  * `conexiones_seller_ml`. Reconexión y alias van por server actions con
@@ -20,12 +28,19 @@ import { CheckCircle2, Clock, Loader2, Plus, ShieldAlert, TriangleAlert } from "
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EstadoError } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
+import { MAX_CUENTAS_ML } from "./conectar-ml/compartido";
 import { iniciarConexionMl } from "./conectar-ml/actions";
 import { obtenerConexionesPropia, renombrarConexionMl, type ConexionMlSellerItem } from "./actions";
-
-const MAX_CUENTAS = 3;
 
 interface Props {
   conexionesIniciales: ConexionMlSellerItem[];
@@ -38,6 +53,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
   const [cargando, setCargando] = useState(false);
   const [accionandoId, setAccionandoId] = useState<string | null>(null); // "nueva" para alta
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [mostrarAvisoAgregar, setMostrarAvisoAgregar] = useState(false);
 
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [valorEdit, setValorEdit] = useState("");
@@ -47,13 +63,21 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
   async function recargar() {
     setCargando(true);
     setError(null);
-    const resultado = await obtenerConexionesPropia();
-    setCargando(false);
-    if (!resultado.ok) {
-      setError(resultado.mensaje);
-      return;
+    try {
+      const resultado = await obtenerConexionesPropia();
+      if (!resultado.ok) {
+        setError(resultado.mensaje);
+        return;
+      }
+      setConexiones(resultado.conexiones);
+    } catch {
+      // Falla de red o Server Action obsoleta (p. ej. tras un deploy nuevo):
+      // igual liberamos el estado de carga y dejamos un mensaje accionable
+      // en vez de dejar el spinner girando para siempre.
+      setError("No pudimos cargar tus cuentas de Mercado Libre por un problema de conexión. Recarga la página e intenta de nuevo.");
+    } finally {
+      setCargando(false);
     }
-    setConexiones(resultado.conexiones);
   }
 
   async function iniciar(modo: "conexion_inicial" | "reconexion" | "agregar_cuenta", conexionId?: string) {
@@ -62,16 +86,26 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
     setErrorAccion(null);
     setAccionandoId(clave);
 
-    const resultado = await iniciarConexionMl(modo, conexionId);
-    if (!resultado.ok || !resultado.urlAutorizacion) {
+    try {
+      const resultado = await iniciarConexionMl(modo, conexionId);
+      if (!resultado.ok || !resultado.urlAutorizacion) {
+        setAccionandoId(null);
+        setErrorAccion(
+          resultado.mensaje ??
+            "No pudimos iniciar la conexión con Mercado Libre por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+        );
+        return;
+      }
+      window.location.assign(resultado.urlAutorizacion);
+    } catch {
+      // Si la Server Action rechaza (red caída, o quedó obsoleta tras un
+      // despliegue nuevo) el botón NO debe quedar deshabilitado para
+      // siempre con el spinner puesto — liberamos el estado y avisamos.
       setAccionandoId(null);
       setErrorAccion(
-        resultado.mensaje ??
-          "No pudimos iniciar la conexión con Mercado Libre por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+        "No pudimos conectar con Mercado Libre por un problema de conexión. Recarga la página e intenta de nuevo.",
       );
-      return;
     }
-    window.location.assign(resultado.urlAutorizacion);
   }
 
   function empezarEdicion(c: ConexionMlSellerItem) {
@@ -84,14 +118,19 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
     if (guardandoEdit) return;
     setGuardandoEdit(true);
     setErrorEdit(null);
-    const resultado = await renombrarConexionMl(id, valorEdit);
-    setGuardandoEdit(false);
-    if (!resultado.ok) {
-      setErrorEdit(resultado.mensaje);
-      return;
+    try {
+      const resultado = await renombrarConexionMl(id, valorEdit);
+      if (!resultado.ok) {
+        setErrorEdit(resultado.mensaje);
+        return;
+      }
+      setConexiones((prev) => prev.map((c) => (c.id === id ? { ...c, alias: resultado.alias } : c)));
+      setEditandoId(null);
+    } catch {
+      setErrorEdit("No pudimos guardar el nombre por un problema de conexión. Intenta de nuevo.");
+    } finally {
+      setGuardandoEdit(false);
     }
-    setConexiones((prev) => prev.map((c) => (c.id === id ? { ...c, alias: resultado.alias } : c)));
-    setEditandoId(null);
   }
 
   if (error && conexiones.length === 0) {
@@ -203,10 +242,10 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
         </ul>
       )}
 
-      {conexiones.length > 0 && conexiones.length < MAX_CUENTAS ? (
+      {conexiones.length > 0 && conexiones.length < MAX_CUENTAS_ML ? (
         <Button
           variant="outline"
-          onClick={() => iniciar("agregar_cuenta")}
+          onClick={() => setMostrarAvisoAgregar(true)}
           disabled={accionandoId !== null}
           className="w-full sm:w-auto"
         >
@@ -219,8 +258,8 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
         </Button>
       ) : null}
 
-      {conexiones.length >= MAX_CUENTAS ? (
-        <p className="text-sm text-muted-foreground">Ya tienes {MAX_CUENTAS} cuentas conectadas — ese es el límite máximo.</p>
+      {conexiones.length >= MAX_CUENTAS_ML ? (
+        <p className="text-sm text-muted-foreground">Ya tienes {MAX_CUENTAS_ML} cuentas conectadas — ese es el límite máximo.</p>
       ) : null}
 
       {errorAccion ? (
@@ -229,7 +268,90 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
           <AlertDescription>{errorAccion}</AlertDescription>
         </Alert>
       ) : null}
+
+      <DialogAvisoAgregarCuenta
+        open={mostrarAvisoAgregar}
+        onOpenChange={setMostrarAvisoAgregar}
+        onContinuar={() => {
+          setMostrarAvisoAgregar(false);
+          void iniciar("agregar_cuenta");
+        }}
+      />
     </section>
+  );
+}
+
+/**
+ * Aviso previo a "Agregar otra cuenta" — Mercado Libre no soporta forzar
+ * re-login ni selección de cuenta en su `/authorization` (no existen
+ * `prompt`/`select_account`/`login_hint`), así que conecta de inmediato la
+ * cuenta que el seller ya tenga con sesión activa en ESTE navegador. Sin este
+ * aviso, un seller que quiere agregar una cuenta distinta termina viendo
+ * "¡Listo! Agregaste la cuenta correctamente" cuando en realidad ML le
+ * devolvió la misma cuenta de siempre — el bug real que motivó este diálogo.
+ *
+ * Deliberadamente NO ofrece "copiar el enlace para abrirlo en una ventana
+ * privada": la cookie httpOnly del `state` anti-CSRF (y la sesión del portal)
+ * quedan en el navegador donde se generó el enlace — una ventana privada no
+ * comparte cookies con la ventana normal, así que un enlace pegado ahí
+ * fallaría la validación de `state` en el callback (o, antes de eso, no
+ * tendría sesión de seller). La salida real es repetir el proceso COMPLETO
+ * dentro de la ventana privada (entrar al portal ahí y volver a apretar el
+ * botón), no reutilizar un enlace ya generado en otra ventana.
+ */
+function DialogAvisoAgregarCuenta({
+  open,
+  onOpenChange,
+  onContinuar,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onContinuar: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Vas a conectar la cuenta de este navegador</DialogTitle>
+          <DialogDescription>
+            Mercado Libre conecta automáticamente la cuenta con la que tengas la sesión iniciada ahora
+            mismo en este navegador — no te va a dejar elegir otra en la pantalla siguiente.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div
+          className="flex gap-3 rounded-lg border-2 border-warning/50 bg-warning/10 px-4 py-4 text-left"
+          role="alert"
+        >
+          <TriangleAlert className="size-6 shrink-0 text-warning" aria-hidden="true" />
+          <div className="space-y-1">
+            <p className="font-semibold text-foreground">¿Quieres agregar una cuenta distinta?</p>
+            <p className="text-sm text-foreground">
+              Primero cierra la sesión de Mercado Libre en este navegador — entra a{" "}
+              <a
+                href="https://www.mercadolibre.cl"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                mercadolibre.cl
+              </a>{" "}
+              y cierra sesión — y vuelve a intentarlo. También puedes hacerlo desde una ventana de
+              navegación privada o incógnito: inicia sesión ahí en tu portal y repite este mismo paso.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={onContinuar}>
+            Continuar de todas formas
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

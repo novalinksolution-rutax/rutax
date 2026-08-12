@@ -44,14 +44,24 @@ export function obtenerUrlBasePublica(fallbackOrigin: string): string {
 }
 
 /**
+ * Tope de cuentas de Mercado Libre que un seller puede conectar — única
+ * fuente de verdad en TypeScript para este número (la usan tanto el panel de
+ * conexiones como las pantallas de conectar-ml). El límite duro real lo
+ * impone un trigger en `identidad.conexiones_seller_ml` (`supabase/migrations/`);
+ * este valor debe coincidir con el de esa migración.
+ */
+export const MAX_CUENTAS_ML = 10;
+
+/**
  * Punto de entrada al flujo OAuth. Tres variantes bajo el modelo 1:N:
  *   - `conexion_inicial` — el seller conecta su PRIMERA cuenta (aún no tiene
  *     ninguna fila en `conexiones_seller_ml`).
  *   - `reconexion` — vuelve a autorizar una cuenta EXISTENTE que se desvinculó
  *     o necesita atención (lleva el `conexion_id` objetivo en el `state`/cookie).
- *   - `agregar_cuenta` — conecta una cuenta ADICIONAL (ya tiene 1 o 2). El alta
- *     está sujeta al tope de 3 y a la unicidad `(seller_id, ml_user_id)`; el
- *     callback traduce esos rechazos a `tope_alcanzado`/`cuenta_ya_conectada`.
+ *   - `agregar_cuenta` — conecta una cuenta ADICIONAL (ya tiene 1 o más). El
+ *     alta está sujeta al tope `MAX_CUENTAS_ML` y a la unicidad
+ *     `(seller_id, ml_user_id)`; el callback traduce esos rechazos a
+ *     `tope_alcanzado`/`cuenta_ya_conectada`.
  */
 export type ModoConexionMl = "conexion_inicial" | "reconexion" | "agregar_cuenta";
 
@@ -80,6 +90,18 @@ export function leerModoConexionMl(valor: string | null | undefined): ModoConexi
  * seller ya tiene el máximo de cuentas) y `cuenta_ya_conectada` (esa misma
  * cuenta ML ya está vinculada a este seller). La UI de "agregar cuenta"
  * (frontend) debe rotular ambos con un mensaje accionable.
+ *
+ * Y dos más que nacen de la MISMA limitación de Mercado Libre (`/authorization`
+ * no admite `prompt`/`select_account`/`login_hint` ni existe logout, así que ML
+ * conecta sin preguntar la cuenta con sesión viva en el navegador). Cuando eso
+ * ocurre durante una RECONEXIÓN, el seller no arregló lo que quería arreglar:
+ *   - `reconexion_otra_cuenta_nueva` — autorizó con una cuenta que no tenía
+ *     conectada: se dio de alta como cuenta adicional, y la que quería
+ *     reconectar sigue igual de rota.
+ *   - `reconexion_otra_cuenta_existente` — autorizó con OTRA de sus cuentas ya
+ *     conectadas: se renovó esa, no la que pidió.
+ * Ambos son "éxito técnico, fracaso de intención": la pantalla NO puede
+ * felicitar, tiene que decir que la conexión objetivo sigue desconectada.
  */
 export type ResultadoCallbackMl =
   | "exito"
@@ -90,7 +112,9 @@ export type ResultadoCallbackMl =
   | "error_sistema"
   | "estado_invalido"
   | "tope_alcanzado"
-  | "cuenta_ya_conectada";
+  | "cuenta_ya_conectada"
+  | "reconexion_otra_cuenta_nueva"
+  | "reconexion_otra_cuenta_existente";
 
 export const RESULTADOS_CALLBACK_ML: ResultadoCallbackMl[] = [
   "exito",
@@ -102,4 +126,6 @@ export const RESULTADOS_CALLBACK_ML: ResultadoCallbackMl[] = [
   "estado_invalido",
   "tope_alcanzado",
   "cuenta_ya_conectada",
+  "reconexion_otra_cuenta_nueva",
+  "reconexion_otra_cuenta_existente",
 ];

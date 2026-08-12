@@ -79,6 +79,41 @@ export interface IntercambiarCodigoEntrada {
 }
 
 /**
+ * Qué le pasó REALMENTE a `conexiones_seller_ml` al canjear el `code`, bajo el
+ * modelo 1:N (un seller puede conectar varias cuentas ML).
+ *
+ * Por qué el llamador lo necesita: el endpoint `/authorization` de Mercado
+ * Libre NO admite ningún parámetro para forzar el selector de cuenta
+ * (`prompt`, `select_account`, `approval_prompt`, `max_age` y `login_hint` NO
+ * están documentados; los únicos parámetros son `response_type`, `client_id`,
+ * `redirect_uri`, `state`, `code_challenge` y `code_challenge_method`), y
+ * tampoco existe un endpoint de logout documentado. Consecuencia práctica: si
+ * el seller ya tiene sesión abierta en ML y la app autorizada, ML redirige de
+ * inmediato con un `code` de LA MISMA cuenta, sin preguntar nada. El único
+ * lugar donde se puede saber qué cuenta autorizó es DESPUÉS del canje, en el
+ * `user_id` que devuelve `POST /oauth/token`.
+ *
+ * Sin esta señal, "el seller pidió agregar una cuenta" y "el sistema agregó
+ * una cuenta" se confunden, y la UI termina diciendo "agregaste la cuenta"
+ * cuando en realidad solo se rotaron los tokens de una conexión que ya existía.
+ *
+ * - `alta_nueva` — no había fila para `(seller_id, ml_user_id)`: se insertó.
+ * - `conexion_existente_actualizada` — ya había fila para esa cuenta: se
+ *   actualizaron sus tokens/salud (UPDATE), no se agregó ninguna cuenta.
+ */
+export type DesenlaceIntercambioMl = "alta_nueva" | "conexion_existente_actualizada";
+
+/**
+ * Resultado del intercambio de `code` por tokens: la conexión resultante MÁS
+ * el desenlace real de la persistencia. Nunca incluye tokens ni referencias de
+ * secreto (ver `ConexionSellerMl`).
+ */
+export interface IntercambiarCodigoResultado {
+  conexion: ConexionSellerMl;
+  desenlace: DesenlaceIntercambioMl;
+}
+
+/**
  * Resumen agregado de salud de TODAS las conexiones ML de un tenant (todos sus
  * sellers, todas sus cuentas) — para el drill-down por-tenant del backstage
  * `/admin` (`plataforma/observabilidad-tenant.ts`, gap 9). Solo conteos por

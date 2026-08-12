@@ -21,10 +21,12 @@ export {
 
 export type {
   ConexionSellerMl,
+  DesenlaceIntercambioMl,
   EstadoSaludConexionMl,
   IniciarAutorizacionEntrada,
   IniciarAutorizacionResultado,
   IntercambiarCodigoEntrada,
+  IntercambiarCodigoResultado,
   ObtenerEtiquetaEnvioEntrada,
   ObtenerEtiquetaEnvioResultado,
   RazonFalloRefresco,
