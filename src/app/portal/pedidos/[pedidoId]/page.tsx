@@ -27,8 +27,12 @@ import {
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { VisorPodSeller, type PodSeller } from "./visor-pod-seller";
 import { BotonCopiarTracking } from "./boton-copiar-tracking";
+import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
 import { BloqueEtiqueta } from "../bloque-etiqueta";
+import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
+import { esTransicionValida } from "@/modules/operacion/maquina-estados";
+import { puedeGestionarPedidosPropios } from "@/modules/identidad/capacidades";
 
 export const metadata: Metadata = {
   title: "Detalle del pedido",
@@ -55,6 +59,10 @@ interface PedidoDetalle {
   instruccionesEntrega: string | null;
   /** Token opaco para el link público de seguimiento. Solo same-day. */
   trackingToken: string | null;
+  // Columnas de cancelación (migración 20260811000003) — §6.1/§9 del diseño.
+  canceladoEn: string | null;
+  canceladoPorUsuarioId: string | null;
+  motivoCancelacion: string | null;
 }
 
 // =============================================================================
@@ -95,14 +103,17 @@ function construirTimeline(estadoActual: EstadoPedido): PasoTimeline[] {
   }));
 }
 
-/** true si el estado es una "novedad" fuera de la línea feliz (mostrar aparte). */
+/**
+ * true si el estado es una "novedad" fuera de la línea feliz (mostrar aparte,
+ * banner de advertencia). 'cancelado' NO cuenta como novedad de advertencia:
+ * es un estado neutral (no una alarma) y ya tiene su propia sección
+ * "Cancelación" con motivo + quién, en tono neutral — repetirlo aquí en
+ * warning-subtle lo pintaría como algo que requiere atención cuando no la
+ * requiere (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md, tarea 17 de
+ * §11: "el rojo del sistema está reservado a lo accionable").
+ */
 function esEstadoDeNovedad(estado: EstadoPedido): boolean {
-  return (
-    estado === "fallido" ||
-    estado === "fallido_manual" ||
-    estado === "cancelado" ||
-    estado === "devuelto"
-  );
+  return estado === "fallido" || estado === "fallido_manual" || estado === "devuelto";
 }
 
 // =============================================================================
@@ -176,7 +187,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
   const { data: filaPedido, error: errorPedido } = await cliente
     .from("pedidos")
     .select(
-      "id, tenant_id, seller_id, estado, ml_shipment_id, ml_user_id, destinatario_nombre, destinatario_telefono, destinatario_direccion, destinatario_comuna, instrucciones_entrega, fecha_compromiso_hora, creado_en, tipo_pedido, tracking_token",
+      "id, tenant_id, seller_id, estado, ml_shipment_id, ml_user_id, destinatario_nombre, destinatario_telefono, destinatario_direccion, destinatario_comuna, instrucciones_entrega, fecha_compromiso_hora, creado_en, tipo_pedido, tracking_token, cancelado_en, cancelado_por_usuario_id, motivo_cancelacion",
     )
     .eq("id", pedidoId)
     .eq("tenant_id", tenantId)
@@ -214,6 +225,9 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
     destinatarioTelefono: (filaPedido.destinatario_telefono as string | null) ?? null,
     instruccionesEntrega: (filaPedido.instrucciones_entrega as string | null) ?? null,
     trackingToken: (filaPedido.tracking_token as string | null) ?? null,
+    canceladoEn: (filaPedido.cancelado_en as string | null) ?? null,
+    canceladoPorUsuarioId: (filaPedido.cancelado_por_usuario_id as string | null) ?? null,
+    motivoCancelacion: (filaPedido.motivo_cancelacion as string | null) ?? null,
   };
 
   // -------------------------------------------------------------------------
@@ -263,6 +277,41 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
   // Identificador legible para el usuario
   const idVisible = pedido.mlShipmentId ?? `#${idCorto(pedido.id)}`;
 
+  // "Quién canceló" (§6.1/§16), sin exponer el nombre de un usuario interno al
+  // portal (minimización — el seller no necesita saber cuál persona del
+  // courier lo hizo). Solo se distingue por tipo_usuario; el caso más común
+  // ("lo cancelé yo mismo") se resuelve por comparación directa de sesión.
+  let canceladoPorTexto: string | null = null;
+  if (pedido.canceladoEn) {
+    if (!pedido.canceladoPorUsuarioId) {
+      canceladoPorTexto = "Sincronización automática";
+    } else if (pedido.canceladoPorUsuarioId === sesion.usuarioId) {
+      canceladoPorTexto = "Tú";
+    } else {
+      try {
+        const { data: actor } = await cliente
+          .schema("identidad")
+          .from("usuarios_perfil")
+          .select("tipo_usuario")
+          .eq("id", pedido.canceladoPorUsuarioId)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        canceladoPorTexto = actor?.tipo_usuario === "seller" ? "Tu equipo" : "El courier";
+      } catch {
+        canceladoPorTexto = null;
+      }
+    }
+  }
+
+  // Ventana de cancelación del seller (docs/arquitectura/edicion-y-cancelacion-
+  // de-pedidos.md §3.1): llega hasta 'asignado', nunca 'en_ruta' — y solo
+  // same-day, sin excepción (un Flex vivo lo gobierna Mercado Envíos).
+  const puedeCancelarSeller =
+    puedeGestionarPedidosPropios(sesion.usuario) &&
+    pedido.tipoPedido === "same_day" &&
+    esTransicionValida(pedido.estado, "cancelado", "seller");
+  const yaSalioARuta = pedido.tipoPedido === "same_day" && pedido.estado === "en_ruta";
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {/* Breadcrumb / Volver */}
@@ -297,6 +346,16 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
       {/* Línea de tiempo del estado */}
       <SeccionTimeline estado={pedido.estado} />
 
+      {/* Cancelación (§6.1/§16): solo si el pedido ya está cancelado. Estado
+          neutral — nunca en tono destructivo, no es una alarma. */}
+      {pedido.estado === "cancelado" && (
+        <SeccionCancelacion
+          canceladoEn={pedido.canceladoEn}
+          canceladoPorTexto={canceladoPorTexto}
+          motivo={pedido.motivoCancelacion}
+        />
+      )}
+
       {/* Seguimiento en vivo (solo same-day — Flex usa el seguimiento de ML) */}
       {pedido.tipoPedido === "same_day" && pedido.trackingToken && (
         <section aria-labelledby="tracking-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
@@ -313,8 +372,9 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
         </section>
       )}
 
-      {/* Etiqueta imprimible con QR (solo same-day) */}
-      {pedido.tipoPedido === "same_day" && (
+      {/* Etiqueta imprimible con QR (solo same-day, nunca en estados terminales
+          — §16: no tiene sentido imprimir la etiqueta de un pedido cancelado). */}
+      {pedido.tipoPedido === "same_day" && !ESTADOS_TERMINALES.includes(pedido.estado) && (
         <section aria-labelledby="etiqueta-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
           <h2
             id="etiqueta-titulo"
@@ -431,7 +491,72 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
           )}
         </section>
       )}
+
+      {/* Acciones — solo same-day, según la ventana del seller (§3.1). En
+          'en_ruta' no hay botón: el paquete ya va en el vehículo, y una
+          cancelación unilateral desde el portal desincroniza al conductor sin
+          que el courier se entere. */}
+      {(puedeCancelarSeller || yaSalioARuta) && (
+        <section aria-labelledby="acciones-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
+          <h2
+            id="acciones-titulo"
+            className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            Acciones
+          </h2>
+          {puedeCancelarSeller ? (
+            <DialogCancelarPedido pedidoId={pedido.id} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Este pedido ya salió a ruta. Si necesitas cancelarlo, contacta al courier.
+            </p>
+          )}
+        </section>
+      )}
     </div>
+  );
+}
+
+// =============================================================================
+// Sección de cancelación — motivo + quién, en tono neutral (§6.1/§16)
+// =============================================================================
+
+function SeccionCancelacion({
+  canceladoEn,
+  canceladoPorTexto,
+  motivo,
+}: {
+  canceladoEn: string | null;
+  canceladoPorTexto: string | null;
+  motivo: string | null;
+}) {
+  return (
+    <section aria-labelledby="cancelacion-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
+      <h2
+        id="cancelacion-titulo"
+        className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        Cancelación
+      </h2>
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <dt className="text-xs text-muted-foreground">Cancelado el</dt>
+          <dd className="mt-0.5 font-medium">
+            {canceladoEn ? formatearFechaHora(canceladoEn) : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Cancelado por</dt>
+          <dd className="mt-0.5 font-medium">{canceladoPorTexto ?? "—"}</dd>
+        </div>
+      </dl>
+      {motivo && (
+        <div className="mt-3">
+          <p className="text-xs text-muted-foreground">Motivo</p>
+          <p className="mt-0.5 italic">&ldquo;{motivo}&rdquo;</p>
+        </div>
+      )}
+    </section>
   );
 }
 

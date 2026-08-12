@@ -37,6 +37,7 @@ describe('categoriaNegocioPorTipo', () => {
     reprogramacion_no_cobrada: 'fuga_ingreso',
     minimo_omitido: 'fuga_ingreso',
     linea_cobro_sin_periodo: 'fuga_ingreso',
+    linea_liquidacion_sin_pedido_entregado: 'fuga_ingreso',
     pago_seller_faltante: 'pagos_pendientes',
     pago_conductor_faltante: 'pagos_pendientes',
     payout_revertido_post_confirmacion: 'pagos_pendientes',
@@ -83,6 +84,7 @@ describe('accionSugeridaPorTipo', () => {
     payout_revertido_post_confirmacion: 'gestionar_pago_conductor',
     payout_estado_no_reconocido: 'revisar_estado_externo',
     linea_cobro_sin_periodo: 'reasignar_lineas_a_periodo',
+    linea_liquidacion_sin_pedido_entregado: 'generar_ajuste_liquidacion',
     liquidacion_atribuida_a_conductor_incorrecto: 'generar_ajuste_liquidacion',
   };
 

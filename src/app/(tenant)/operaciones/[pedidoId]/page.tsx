@@ -15,7 +15,12 @@ import { obtenerPedido, listarIncidenciasDePedido } from "@/modules/operacion/in
 import { obtenerPruebaEntregaPorPedido } from "@/modules/operacion/pruebas-entrega";
 import { listarEvidenciasPorPedido } from "@/modules/operacion/evidencias-entrega";
 import { obtenerTrazaDineroPorPedido } from "@/modules/dinero/index";
-import { mapaNombresSellers, mapaNombresConductores } from "@/modules/identidad/consultas";
+import {
+  mapaNombresSellers,
+  mapaNombresConductores,
+  mapaNombresUsuarios,
+  type UsuarioBasico,
+} from "@/modules/identidad/consultas";
 import {
   puedeAsignarYReasignarPedidos,
   puedeGestionarIncidencias,
@@ -52,9 +57,11 @@ import { DrawerIncidencia } from "./drawer-incidencia";
 import { DialogReasignacion } from "./dialog-reasignacion";
 import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
 import { BotonReubicar } from "./boton-reubicar";
+import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
 import { VisorPod } from "./visor-pod";
 import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
+import { ACCIONES_HISTORIAL_ESTADO_PEDIDO } from "./historial-estados";
 
 // =============================================================================
 // Carga de datos
@@ -76,7 +83,7 @@ async function cargarHistorialEstados(pedidoId: string, tenantId: string) {
     .select("*")
     .eq("entidad_id", pedidoId)
     .eq("tenant_id", tenantId)
-    .in("accion", ["pedido.estado_corregido_manual"])
+    .in("accion", ACCIONES_HISTORIAL_ESTADO_PEDIDO)
     .order("creado_en", { ascending: false })
     .limit(20);
   return data ?? [];
@@ -139,17 +146,31 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
   // resolución falla, la pantalla cae al UUID sin bloquear el render.
   let sellerNombre: string | null = null;
   let conductorNombre: string | null = null;
+  // Quién canceló (§6.1) — puede ser un usuario interno o el propio seller
+  // (ejecutor='seller' vía portal). `tipoUsuario` es lo que distingue el texto;
+  // nunca se expone al seller (esta resolución vive solo en la pantalla interna).
+  let canceladoPorTexto: string | null = null;
   try {
-    const [sellers, conductores] = await Promise.all([
+    const [sellers, conductores, usuarios] = await Promise.all([
       mapaNombresSellers(crearClienteServiceRole(), tenantId, [pedido.sellerId]),
       asignacion?.driver_id
         ? mapaNombresConductores(crearClienteServiceRole(), tenantId, [asignacion.driver_id])
         : Promise.resolve({} as Record<string, string>),
+      pedido.canceladoPorUsuarioId
+        ? mapaNombresUsuarios(crearClienteServiceRole(), tenantId, [pedido.canceladoPorUsuarioId])
+        : Promise.resolve({} as Record<string, UsuarioBasico>),
     ]);
     sellerNombre = sellers[pedido.sellerId] ?? null;
     conductorNombre = asignacion?.driver_id ? (conductores[asignacion.driver_id] ?? null) : null;
+    if (pedido.canceladoPorUsuarioId) {
+      const actor = usuarios[pedido.canceladoPorUsuarioId];
+      if (actor) {
+        canceladoPorTexto =
+          actor.tipoUsuario === "seller" ? `${actor.nombreCompleto} (seller)` : actor.nombreCompleto;
+      }
+    }
   } catch {
-    // sin bloquear — quedan los UUIDs como fallback.
+    // sin bloquear — quedan los UUIDs/valores por defecto como fallback.
   }
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
@@ -164,6 +185,12 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
   );
   const esTerminal = ESTADOS_TERMINALES.includes(pedido.estado);
   const pedidoEntregado = pedido.estado === "entregado" || pedido.estado === "entregado_manual";
+  // Cancelar es SOLO same-day (docs/arquitectura/edicion-y-cancelacion-de-
+  // pedidos.md §3.2 — un Flex vivo lo gobierna Mercado Envíos) y solo desde la
+  // ventana que la máquina de estados ya admite para 'interno'. Sin lista
+  // hardcodeada: si la máquina de estados cambia, este gate cambia con ella.
+  const puedeCancelar =
+    puedeAjustar && pedido.tipoPedido === "same_day" && esTransicionValida(pedido.estado, "cancelado", "interno");
 
   const incidenciasAbiertas = incidencias.filter(
     (i) => i.estado === "abierta" || i.estado === "en_gestion",
@@ -251,6 +278,40 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
 
       {/* Sección A.4 — Evidencias informativas (capa paralela a ML Flex) */}
       <VisorEvidencias evidencias={evidencias} />
+
+      {/* Sección A.5 — Cancelación (§6.1/§16): solo si el pedido ya está
+          cancelado. Estado neutral, nunca destructivo — no es una alarma. */}
+      {pedido.estado === "cancelado" && (
+        <section aria-labelledby="cancelacion-titulo">
+          <h2 id="cancelacion-titulo" className="mb-3 text-base font-semibold">
+            Cancelación
+          </h2>
+          <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-muted-foreground">Cancelado el</dt>
+                <dd className="mt-0.5 font-medium">
+                  {pedido.canceladoEn
+                    ? new Date(pedido.canceladoEn).toLocaleString("es-CL")
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Cancelado por</dt>
+                <dd className="mt-0.5 font-medium">
+                  {canceladoPorTexto ?? "Sincronización automática (Mercado Libre)"}
+                </dd>
+              </div>
+            </dl>
+            {pedido.motivoCancelacion && (
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">Motivo</p>
+                <p className="mt-0.5 italic">&ldquo;{pedido.motivoCancelacion}&rdquo;</p>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Sección B — Historial de estados */}
       <section aria-labelledby="historial-titulo">
@@ -373,6 +434,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
         puedeAsignar={puedeAsignar}
         puedeIncidencias={puedeIncidencias}
         puedeAjustar={puedeAjustar}
+        puedeCancelar={puedeCancelar}
         esTerminal={esTerminal}
         tenantId={tenantId}
         usuarioId={sesion.usuarioId}
@@ -567,6 +629,7 @@ function AccionesPedido({
   puedeAsignar,
   puedeIncidencias,
   puedeAjustar,
+  puedeCancelar,
   esTerminal,
   tenantId,
   usuarioId,
@@ -578,6 +641,7 @@ function AccionesPedido({
   puedeAsignar: boolean;
   puedeIncidencias: boolean;
   puedeAjustar: boolean;
+  puedeCancelar: boolean;
   esTerminal: boolean;
   tenantId: string;
   usuarioId: string;
@@ -591,14 +655,22 @@ function AccionesPedido({
     tieneAsignacion && esTransicionValida(pedido.estado, "pendiente_asignacion", "interno");
   // Flex requiere ml_shipment_id (etiqueta de ML); same-day genera su propia
   // etiqueta interna con QR y no depende de ningún campo de Mercado Libre.
+  // Nunca en estados terminales (§16): no tiene sentido imprimir la etiqueta
+  // de un pedido cancelado/entregado/devuelto.
   const puedeDescargarEtiqueta =
-    puedeAsignar && (!!pedido.mlShipmentId || pedido.tipoPedido === "same_day");
+    puedeAsignar && !esTerminal && (!!pedido.mlShipmentId || pedido.tipoPedido === "same_day");
 
-  // Sin ninguna acción visible: no renderizar nada
+  // Sin ninguna acción visible: no renderizar nada. `DrawerCambioEstado` (el
+  // único botón que gatea `puedeAjustar`) se auto-oculta cuando no hay ningún
+  // estado destino válido — y un pedido terminal NUNCA tiene uno (la máquina de
+  // estados no admite transiciones de salida desde un estado terminal). Sin el
+  // `&& !esTerminal` aquí, el título "Acciones" quedaba huérfano en cualquier
+  // pedido terminal cuando el usuario tenía `puedeAjustar` pero ninguna otra
+  // capacidad: el título se pintaba y no había ni un botón debajo.
   const hayAcciones =
     (puedeAsignar && (esPendiente || puedeReasignar)) ||
     (puedeIncidencias && !esTerminal) ||
-    puedeAjustar ||
+    (puedeAjustar && !esTerminal) ||
     puedeDescargarEtiqueta;
 
   if (!hayAcciones) return null;
@@ -644,6 +716,8 @@ function AccionesPedido({
         {puedeDescargarEtiqueta && (
           <BotonDescargarEtiqueta pedidoId={pedido.id} esSameDay={pedido.tipoPedido === "same_day"} />
         )}
+
+        {puedeCancelar && <DialogCancelarPedido pedidoId={pedido.id} />}
       </div>
     </section>
   );

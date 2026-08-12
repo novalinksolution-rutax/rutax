@@ -80,6 +80,55 @@ export async function mapaNombresSellers(
   );
 }
 
+/** Proyección mínima de `identidad.usuarios_perfil` para "quién hizo esto" en UI interna. */
+export interface UsuarioBasico {
+  id: string;
+  nombreCompleto: string;
+  tipoUsuario: "interno" | "seller" | "conductor" | "super_admin";
+}
+
+/**
+ * Mapa id → {nombre, tipoUsuario} de los usuarios indicados (cualquier tipo —
+ * `usuarios_perfil` es 1:1 con `auth.users` sin importar rol). Pensado para
+ * mostrar "cancelado por <nombre>" en el detalle interno del pedido
+ * (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §6.1): el actor de
+ * una cancelación puede ser un usuario interno O el propio seller, y el
+ * `tipoUsuario` es lo que permite distinguir "cancelado por tu equipo" de
+ * "cancelado por el seller" en el texto. Uso exclusivo de pantallas internas
+ * — el portal del seller NO debe llamar a esta función (expondría el nombre
+ * de un usuario interno a un tenant ajeno a su propia organización; el portal
+ * resuelve "quién" sin nombre, solo por `tipo_usuario`).
+ */
+export async function mapaNombresUsuarios(
+  cliente: SupabaseClient,
+  tenantId: string,
+  usuarioIds: string[],
+): Promise<Record<string, UsuarioBasico>> {
+  if (usuarioIds.length === 0) return {};
+
+  const { data, error } = await cliente
+    .schema("identidad")
+    .from("usuarios_perfil")
+    .select("id, nombre_completo, tipo_usuario")
+    .eq("tenant_id", tenantId)
+    .in("id", usuarioIds);
+
+  if (error) {
+    throw new Error(`Error al resolver nombres de usuarios: ${error.message}`);
+  }
+
+  return Object.fromEntries(
+    (data ?? []).map((fila: Record<string, unknown>) => [
+      fila.id as string,
+      {
+        id: fila.id as string,
+        nombreCompleto: fila.nombre_completo as string,
+        tipoUsuario: fila.tipo_usuario as UsuarioBasico["tipoUsuario"],
+      },
+    ]),
+  );
+}
+
 /**
  * Mapa id → nombre completo de los conductores indicados. Mismo propósito que
  * `mapaNombresSellers`: nombres legibles en vez de UUIDs en las pantallas.

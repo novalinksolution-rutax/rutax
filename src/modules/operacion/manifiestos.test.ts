@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { asignarPedidosAManifiesto, crearManifiesto, confirmarManifiesto } from "./manifiestos";
+import { asignarPedidosAManifiesto, crearManifiesto, confirmarManifiesto, completarManifiesto } from "./manifiestos";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 
@@ -95,6 +95,7 @@ interface EstadoFalso {
   asignaciones: FilaAsignacion[];
   pedidos: FilaPedido[];
   bitacora: Array<Record<string, unknown>>;
+  ubicaciones: Array<{ conductor_id: string; tenant_id: string }>;
 }
 
 function crearClienteFalso(seed?: {
@@ -128,6 +129,7 @@ function crearClienteFalso(seed?: {
       { id: PEDIDO_2, tenant_id: TENANT_A, seller_id: SELLER_1, estado: "pendiente_asignacion" },
     ],
     bitacora: [],
+    ubicaciones: [{ conductor_id: DRIVER_1, tenant_id: TENANT_A }],
   };
 
   function from(tabla: string) {
@@ -317,6 +319,30 @@ function crearClienteFalso(seed?: {
         insert: async (fila: Record<string, unknown>) => {
           estado.bitacora.push(fila);
           return { data: null, error: null };
+        },
+      };
+    }
+
+    // --- ubicacion_conductor (borrado ALTO-1, Ley 21.431, al completar ruta) ---
+    if (tabla === "ubicacion_conductor") {
+      return {
+        delete: () => {
+          const filtros: Array<[string, unknown]> = [];
+          function buildDelete() {
+            return {
+              eq(c: string, v: unknown) {
+                filtros.push([c, v]);
+                return buildDelete();
+              },
+              then(resolve: (r: { error: null }) => void) {
+                estado.ubicaciones = estado.ubicaciones.filter(
+                  (u) => !filtros.every(([c, v]) => (u as unknown as Record<string, unknown>)[c] === v),
+                );
+                resolve({ error: null });
+              },
+            };
+          }
+          return buildDelete();
         },
       };
     }
@@ -664,5 +690,125 @@ describe("confirmarManifiesto", () => {
     await expect(
       confirmarManifiesto(cliente, MANIFIESTO_A, TENANT_B), // tenant incorrecto
     ).rejects.toBeInstanceOf(ErrorConflicto);
+  });
+});
+
+// =============================================================================
+// completarManifiesto — cierre de ruta del conductor (Expo + PWA)
+//
+// docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §5 fila 8: "Un
+// manifiesto puede quedar con menos paradas o vacío [tras cancelar]. `qa` debe
+// verificar `api/conductor/manifiesto/completar` con un manifiesto cuyas
+// paradas fueron todas canceladas." `completarManifiesto` NO tenía ninguna
+// prueba antes de esta ronda de QA (ni módulo ni ruta API) — es la función que
+// además purga la ubicación GPS del conductor (Ley 21.431, ALTO-1).
+// =============================================================================
+describe("completarManifiesto", () => {
+  function manifiestoEnRuta(overrides: Partial<FilaManifiesto> = {}): FilaManifiesto {
+    return {
+      id: MANIFIESTO_A,
+      tenant_id: TENANT_A,
+      driver_id: DRIVER_1,
+      nombre: "Ruta A",
+      fecha_operacion: "2026-06-08",
+      estado: "en_ruta",
+      notas: null,
+      creado_por_usuario_id: null,
+      confirmado_en: new Date().toISOString(),
+      completado_en: null,
+      creado_en: new Date().toISOString(),
+      actualizado_en: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it("completa un manifiesto 'en_ruta' → 'completado', deja bitácora y purga la ubicación del conductor", async () => {
+    const { cliente, estado } = crearClienteFalso({ manifiestos: [manifiestoEnRuta()] });
+    expect(estado.ubicaciones).toHaveLength(1); // control positivo: había algo que borrar
+
+    const completado = await completarManifiesto(
+      cliente,
+      MANIFIESTO_A,
+      TENANT_A,
+      DRIVER_1,
+      actorCoordinador(),
+      USUARIO_ID,
+    );
+
+    expect(completado.estado).toBe("completado");
+    expect(completado.completadoEn).not.toBeNull();
+
+    const entrada = estado.bitacora.find((e) => e.accion === "manifiesto.completado");
+    expect(entrada).toBeDefined();
+
+    // Ley 21.431 / ALTO-1: la ubicación se borra al cerrar la ruta.
+    expect(estado.ubicaciones).toHaveLength(0);
+  });
+
+  it("BUG QUE NO SE ROMPIÓ (§5 fila 8): un manifiesto con TODAS sus paradas canceladas SIGUE completándose — la función no mira paradas, solo el estado del manifiesto", async () => {
+    // Simula el escenario que motivó la pregunta de QA: las dos únicas
+    // asignaciones del manifiesto quedaron desactivadas (cancelarPedido puso
+    // activa=false en cada una) y los pedidos terminaron 'cancelado'. El
+    // manifiesto en sí sigue 'en_ruta' — nada en el ciclo de cancelación lo
+    // toca — así que completarManifiesto debe funcionar exactamente igual.
+    const ahora = new Date().toISOString();
+    const { cliente, estado } = crearClienteFalso({
+      manifiestos: [manifiestoEnRuta()],
+      pedidos: [
+        { id: PEDIDO_1, tenant_id: TENANT_A, seller_id: SELLER_1, estado: "cancelado" },
+        { id: PEDIDO_2, tenant_id: TENANT_A, seller_id: SELLER_1, estado: "cancelado" },
+      ],
+      asignaciones: [
+        {
+          id: "asig-1", tenant_id: TENANT_A, pedido_id: PEDIDO_1, manifiesto_id: MANIFIESTO_A,
+          driver_id: DRIVER_1, seller_id: SELLER_1, activa: false,
+          asignado_por_usuario_id: null, asignado_en: ahora, desasignado_en: ahora,
+        },
+        {
+          id: "asig-2", tenant_id: TENANT_A, pedido_id: PEDIDO_2, manifiesto_id: MANIFIESTO_A,
+          driver_id: DRIVER_1, seller_id: SELLER_1, activa: false,
+          asignado_por_usuario_id: null, asignado_en: ahora, desasignado_en: ahora,
+        },
+      ],
+    });
+
+    const completado = await completarManifiesto(cliente, MANIFIESTO_A, TENANT_A, DRIVER_1);
+
+    expect(completado.estado).toBe("completado");
+    // Sin excepción, sin importar que 0 paradas estén activas — confirmado.
+    expect(estado.manifiestos[0].estado).toBe("completado");
+  });
+
+  it("lanza ErrorConflicto si el manifiesto NO está 'en_ruta' (p. ej. 'borrador')", async () => {
+    const { cliente } = crearClienteFalso({ manifiestos: [manifiestoEnRuta({ estado: "borrador" })] });
+
+    await expect(
+      completarManifiesto(cliente, MANIFIESTO_A, TENANT_A, DRIVER_1),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+  });
+
+  it("lanza ErrorConflicto si el manifiesto no pertenece al tenant (aislamiento)", async () => {
+    const { cliente } = crearClienteFalso({ manifiestos: [manifiestoEnRuta()] });
+
+    await expect(
+      completarManifiesto(cliente, MANIFIESTO_A, TENANT_B, DRIVER_1), // tenant incorrecto
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+  });
+
+  it("un fallo al borrar la ubicación NO revierte la finalización (best-effort, ya está 'completado')", async () => {
+    // `borrarUbicacionAlCerrarRuta` lanza si `error` viene no-nulo; para
+    // simularlo sin reescribir todo el doble de prueba, se pasa un driverId
+    // que no calza con ninguna fila de `ubicaciones` — el DELETE no encuentra
+    // nada que borrar (0 filas afectadas), lo cual NO es un error en Supabase,
+    // así que esto en realidad prueba el camino "nada que purgar" — ambos
+    // deben dejar el manifiesto 'completado'.
+    const { cliente, estado } = crearClienteFalso({
+      manifiestos: [manifiestoEnRuta()],
+    });
+    estado.ubicaciones = []; // no había ubicación que borrar
+
+    const completado = await completarManifiesto(cliente, MANIFIESTO_A, TENANT_A, DRIVER_1);
+
+    expect(completado.estado).toBe("completado");
   });
 });

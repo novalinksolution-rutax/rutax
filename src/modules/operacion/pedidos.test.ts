@@ -13,8 +13,8 @@
  * 9. filaAPedido mapea columnas de geocoding desde la fila de BD.
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { actualizarEstadoPedido, crearPedidoSameDay, asegurarCodigoInterno } from "./pedidos";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { actualizarEstadoPedido, cancelarPedido, crearPedidoSameDay, asegurarCodigoInterno } from "./pedidos";
 import { ErrorTransicionInvalida, ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
 import { PATRON_CODIGO_INTERNO } from "./codigo-interno";
@@ -28,7 +28,10 @@ import type { EstadoPedido } from "./tipos";
 const TENANT_A = "aaaa0000-0000-0000-0000-000000000010";
 const PEDIDO_1 = "bbbb0000-0000-0000-0000-000000000020";
 const SELLER_1 = "cccc0000-0000-0000-0000-000000000030";
+const SELLER_2 = "cccc0000-0000-0000-0000-000000000031";
 const TARIFA_1 = "dddd0000-0000-0000-0000-000000000040";
+const USUARIO_INTERNO_1 = "ffff0000-0000-0000-0000-000000000060";
+const USUARIO_SELLER_1 = "ffff0000-0000-0000-0000-000000000061";
 
 function actorSupervisor(): UsuarioActual {
   return {
@@ -48,6 +51,17 @@ function actorCoordinador(): UsuarioActual {
     sellerId: null,
     driverId: null,
     rol: "coordinador",
+    estado: "activo",
+  };
+}
+
+function actorSellerFixture(sellerId: string = SELLER_1): UsuarioActual {
+  return {
+    tenantId: TENANT_A,
+    tipoUsuario: "seller",
+    sellerId,
+    driverId: null,
+    rol: "seller",
     estado: "activo",
   };
 }
@@ -96,6 +110,22 @@ interface FilaPedido {
   sla_cumplido: boolean | null;
   // Código interno operativo para etiqueta con QR (same-day).
   codigo_interno?: string | null;
+  // Columnas de cancelación (migración 20260811000003).
+  cancelado_en?: string | null;
+  cancelado_por_usuario_id?: string | null;
+  motivo_cancelacion?: string | null;
+}
+
+interface FilaAsignacion {
+  id: string;
+  tenant_id: string;
+  pedido_id: string;
+  manifiesto_id: string;
+  driver_id: string;
+  seller_id: string;
+  activa: boolean;
+  asignado_en: string;
+  desasignado_en: string | null;
 }
 
 interface FilaIncidencia {
@@ -124,6 +154,7 @@ interface FilaTarifa {
 interface EstadoFalso {
   pedidos: FilaPedido[];
   incidencias: FilaIncidencia[];
+  asignaciones: FilaAsignacion[];
   bitacora: Array<Record<string, unknown>>;
 }
 
@@ -173,6 +204,7 @@ function pedidoBase(estadoActual: EstadoPedido = "en_ruta"): FilaPedido {
 function crearClienteFalso(opts?: {
   pedidos?: FilaPedido[];
   tarifas?: FilaTarifa[];
+  asignaciones?: FilaAsignacion[];
   fallarUpdate?: boolean;
 }) {
   let contadorInc = 0;
@@ -181,6 +213,7 @@ function crearClienteFalso(opts?: {
   const estado: EstadoFalso = {
     pedidos: opts?.pedidos ?? [pedidoBase()],
     incidencias: [],
+    asignaciones: opts?.asignaciones ?? [],
     bitacora: [],
   };
 
@@ -400,6 +433,34 @@ function crearClienteFalso(opts?: {
             }),
           }),
         }),
+      };
+    }
+
+    // --- asignaciones_pedido ---
+    if (tabla === "asignaciones_pedido") {
+      return {
+        update: (cambios: Record<string, unknown>) => {
+          const filtros: Array<[string, unknown]> = [];
+
+          function addEq(c: string, v: unknown) {
+            filtros.push([c, v]);
+            return chain;
+          }
+
+          const chain = {
+            eq: addEq,
+            then: (resolve: (r: { error: null }) => void) => {
+              estado.asignaciones.forEach((a, idx) => {
+                if (filtros.every(([c, v]) => (a as unknown as Record<string, unknown>)[c] === v)) {
+                  estado.asignaciones[idx] = { ...a, ...cambios } as FilaAsignacion;
+                }
+              });
+              resolve({ error: null });
+            },
+          };
+
+          return chain;
+        },
       };
     }
 
@@ -773,6 +834,703 @@ describe("actualizarEstadoPedido — pedido no encontrado", () => {
         ejecutor: "sistema",
       }),
     ).rejects.toBeInstanceOf(ErrorPedidoNoEncontrado);
+  });
+});
+
+// =============================================================================
+// actualizarEstadoPedido — proyección de sla_cumplido al cancelar (§5 fila 5,
+// docs/arquitectura/edicion-y-cancelacion-de-pedidos.md). Un pedido cancelado
+// no es un incumplimiento de SLA — es una entrega que nadie pidió. Por eso
+// sla_cumplido debe quedar `null` (no evaluable), forzado explícitamente aunque
+// la columna ya tuviera un valor de una transición anterior.
+// =============================================================================
+
+describe("actualizarEstadoPedido — sla_cumplido al cancelar", () => {
+  it("cancelado fuerza sla_cumplido=null aunque ya estuviera en true (fecha_compromiso_hora pasada)", async () => {
+    const fechaPasada = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // hace 1h
+    const pedido = pedidoBase("asignado");
+    pedido.fecha_compromiso_hora = fechaPasada;
+    pedido.sla_cumplido = true; // valor de una evaluación anterior — debe limpiarse
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "cancelado",
+      estadoEsperado: "asignado",
+      ejecutor: "sistema", // asignado→cancelado ya existe con ejecutor 'sistema'
+    });
+
+    expect(estado.pedidos[0].estado).toBe("cancelado");
+    expect(estado.pedidos[0].sla_cumplido).toBeNull();
+  });
+
+  it("cancelado desde 'fallido' (ejecutor interno) también fuerza sla_cumplido=null", async () => {
+    const fechaPasada = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const pedido = pedidoBase("fallido");
+    pedido.fecha_compromiso_hora = fechaPasada;
+    pedido.sla_cumplido = false; // el fallido previo ya lo había marcado incumplido
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "cancelado",
+        estadoEsperado: "fallido",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: "usuario-supervisor-1",
+        motivo: "Seller solicitó cancelar, no hay reintento posible",
+      },
+      actorSupervisor(),
+    );
+
+    expect(estado.pedidos[0].estado).toBe("cancelado");
+    expect(estado.pedidos[0].sla_cumplido).toBeNull();
+  });
+
+  it("cancelado sin fecha_compromiso_hora también queda en null (caso trivial, sin regresión)", async () => {
+    const pedido = pedidoBase("asignado");
+    pedido.fecha_compromiso_hora = null;
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "cancelado",
+      estadoEsperado: "asignado",
+      ejecutor: "sistema",
+    });
+
+    expect(estado.pedidos[0].sla_cumplido).toBeNull();
+  });
+
+  // Contraste deliberado: 'devuelto' NO cambia con este fix. A diferencia de
+  // 'cancelado', 'devuelto' solo es alcanzable desde 'en_ruta'/'fallido'/
+  // 'fallido_manual' (maquina-estados.ts) — siempre hubo un intento real de
+  // entrega que terminó devuelto al origen, así que sí es un incumplimiento
+  // genuino de SLA cuando había compromiso horario. Se deja documentado y sin
+  // tocar (decisión pendiente de confirmar con el equipo, ver entregable).
+  it("devuelto SIGUE marcando sla_cumplido=false si había fecha_compromiso_hora (sin cambios, a propósito)", async () => {
+    const fechaPasada = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const pedido = pedidoBase("en_ruta");
+    pedido.fecha_compromiso_hora = fechaPasada;
+
+    const { cliente, estado } = crearClienteFalso({ pedidos: [pedido] });
+
+    await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "devuelto",
+      estadoEsperado: "en_ruta",
+      ejecutor: "sistema",
+    });
+
+    expect(estado.pedidos[0].estado).toBe("devuelto");
+    expect(estado.pedidos[0].sla_cumplido).toBe(false);
+  });
+});
+
+// =============================================================================
+// cancelarPedido (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §7.1)
+// =============================================================================
+
+function pedidoSameDayCancelable(
+  estadoActual: EstadoPedido = "pendiente_asignacion",
+  overrides: Partial<FilaPedido> = {},
+): FilaPedido {
+  return {
+    ...pedidoBase(estadoActual),
+    tipo_pedido: "same_day",
+    ...overrides,
+  };
+}
+
+describe("cancelarPedido — camino feliz (interno)", () => {
+  it("cancela pendiente_asignacion→cancelado, escribe las 3 columnas y motivo, y una sola entrada de bitácora 'pedido.cancelado'", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    const pedido = await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "pendiente_asignacion",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: "El seller pidió cancelar: dirección duplicada",
+      },
+      actorSupervisor(),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+    expect(estado.pedidos[0].estado).toBe("cancelado");
+    expect(estado.pedidos[0].cancelado_en).toBeTruthy();
+    expect(estado.pedidos[0].cancelado_por_usuario_id).toBe(USUARIO_INTERNO_1);
+    expect(estado.pedidos[0].motivo_cancelacion).toBe("El seller pidió cancelar: dirección duplicada");
+
+    // Una entrada por acto: NO debe haber 'pedido.estado_corregido_manual'.
+    const entradasCancelacion = estado.bitacora.filter((b) => b.accion === "pedido.cancelado");
+    const entradasCorreccion = estado.bitacora.filter(
+      (b) => b.accion === "pedido.estado_corregido_manual",
+    );
+    expect(entradasCancelacion).toHaveLength(1);
+    expect(entradasCorreccion).toHaveLength(0);
+    expect(entradasCancelacion[0].actor_usuario_id).toBe(USUARIO_INTERNO_1);
+  });
+
+  it("cancela asignado→cancelado por interno (NUEVA transición) y desactiva la asignación activa", async () => {
+    const asignacion: FilaAsignacion = {
+      id: "asig-1",
+      tenant_id: TENANT_A,
+      pedido_id: PEDIDO_1,
+      manifiesto_id: "manifiesto-1",
+      driver_id: "driver-1",
+      seller_id: SELLER_1,
+      activa: true,
+      asignado_en: new Date().toISOString(),
+      desasignado_en: null,
+    };
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("asignado", { driver_id_asignado: "driver-1" })],
+      asignaciones: [asignacion],
+    });
+
+    await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "asignado",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: "Cliente ya no requiere el envío",
+      },
+      actorSupervisor(),
+    );
+
+    expect(estado.pedidos[0].estado).toBe("cancelado");
+    expect(estado.asignaciones[0].activa).toBe(false);
+    expect(estado.asignaciones[0].desasignado_en).toBeTruthy();
+  });
+
+  it("desde 'fallido' resuelve la incidencia abierta (mismo patrón que 'devuelto') con una sola bitácora por acto", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("fallido")],
+    });
+    // Simula que ya existe una incidencia abierta (abierta automáticamente al
+    // llegar a 'fallido' en un ciclo previo).
+    estado.incidencias.push({
+      id: "inc-abierta-1",
+      tenant_id: TENANT_A,
+      pedido_id: PEDIDO_1,
+      seller_id: SELLER_1,
+      tipo: "otro",
+      estado: "abierta",
+      afecta_cobro: true,
+      afecta_liquidacion: true,
+      descripcion: null,
+      notas_resolucion: null,
+      abierta_por_usuario_id: null,
+      resuelta_por_usuario_id: null,
+      abierta_en: new Date().toISOString(),
+      resuelta_en: null,
+      creado_en: new Date().toISOString(),
+      actualizado_en: new Date().toISOString(),
+    });
+
+    await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "fallido",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: "Sin reintento posible, cierre definitivo",
+      },
+      actorSupervisor(),
+    );
+
+    expect(estado.pedidos[0].estado).toBe("cancelado");
+    const resolucion = estado.bitacora.find((b) => b.accion === "incidencia.resuelta_por_cancelacion");
+    expect(resolucion).toBeDefined();
+    expect((resolucion!.detalle as Record<string, unknown>).incidencia_id).toBe("inc-abierta-1");
+  });
+
+  it("cancelar SIN incidencia abierta no escribe 'incidencia.resuelta_por_cancelacion' (sin falsos positivos)", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "pendiente_asignacion",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: "Nadie lo tomó todavía",
+      },
+      actorSupervisor(),
+    );
+
+    const resolucion = estado.bitacora.find((b) => b.accion === "incidencia.resuelta_por_cancelacion");
+    expect(resolucion).toBeUndefined();
+  });
+});
+
+describe("cancelarPedido — camino feliz (seller, ventana acotada)", () => {
+  it("el seller cancela SU pendiente_asignacion→cancelado y queda registrado con ejecutor='seller'", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    const pedido = await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "pendiente_asignacion",
+        ejecutor: "seller",
+        actuadoPorUsuarioId: USUARIO_SELLER_1,
+        motivo: "Dirección de entrega errónea, voy a recrearlo",
+        sellerId: SELLER_1,
+      },
+      actorSellerFixture(SELLER_1),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+    const entrada = estado.bitacora.find((b) => b.accion === "pedido.cancelado");
+    expect(entrada).toBeDefined();
+    expect((entrada!.detalle as Record<string, unknown>).ejecutor).toBe("seller");
+    expect(entrada!.actor_usuario_id).toBe(USUARIO_SELLER_1);
+  });
+
+  it("el seller cancela asignado→cancelado (dentro de su ventana, §3.1)", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("asignado")],
+    });
+
+    const pedido = await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "asignado",
+        ejecutor: "seller",
+        actuadoPorUsuarioId: USUARIO_SELLER_1,
+        motivo: "Ya no necesito el envío",
+        sellerId: SELLER_1,
+      },
+      actorSellerFixture(SELLER_1),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+  });
+
+  it("el seller NO puede cancelar en_ruta (fuera de su ventana) — ErrorTransicionInvalida", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("en_ruta")],
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "en_ruta",
+          ejecutor: "seller",
+          actuadoPorUsuarioId: USUARIO_SELLER_1,
+          motivo: "Ya no necesito el envío",
+          sellerId: SELLER_1,
+        },
+        actorSellerFixture(SELLER_1),
+      ),
+    ).rejects.toBeInstanceOf(ErrorTransicionInvalida);
+  });
+
+  it("un seller sin capacidad gestionar_pedidos_propios (tipoUsuario incorrecto) es rechazado con ErrorValidacion", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    // Actor con rol 'conductor' — no tiene gestionar_pedidos_propios.
+    const actorSinCapacidad: UsuarioActual = {
+      tenantId: TENANT_A,
+      tipoUsuario: "conductor",
+      sellerId: null,
+      driverId: "driver-x",
+      rol: "conductor",
+      estado: "activo",
+    };
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "seller",
+          actuadoPorUsuarioId: USUARIO_SELLER_1,
+          motivo: "Motivo con más de diez caracteres",
+          sellerId: SELLER_1,
+        },
+        actorSinCapacidad,
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+});
+
+describe("cancelarPedido — aislamiento: seller A no puede cancelar un pedido de seller B", () => {
+  it("responde ErrorPedidoNoEncontrado y NO muta el pedido de otro seller", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion", { seller_id: SELLER_2 })],
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "seller",
+          actuadoPorUsuarioId: USUARIO_SELLER_1,
+          motivo: "Intento de cancelar un pedido ajeno",
+          sellerId: SELLER_1, // el pedido real es de SELLER_2
+        },
+        actorSellerFixture(SELLER_1),
+      ),
+    ).rejects.toBeInstanceOf(ErrorPedidoNoEncontrado);
+
+    // Sin efecto: el pedido de SELLER_2 sigue intacto.
+    expect(estado.pedidos[0].estado).toBe("pendiente_asignacion");
+    expect(estado.bitacora).toHaveLength(0);
+  });
+});
+
+describe("cancelarPedido — motivo obligatorio (>= 10 caracteres)", () => {
+  it("motivo de menos de 10 caracteres ⇒ ErrorValidacion, sin tocar el pedido", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: "corto", // 5 caracteres
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+
+    expect(estado.pedidos[0].estado).toBe("pendiente_asignacion");
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  it("motivo vacío ⇒ ErrorValidacion", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: "   ",
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  // Bordes exactos del límite (busca lo que nadie miró — encargo QA).
+  it("motivo de EXACTAMENTE 9 caracteres (uno menos del mínimo) ⇒ ErrorValidacion", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const motivo9 = "123456789";
+    expect(motivo9).toHaveLength(9);
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: motivo9,
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(estado.pedidos[0].estado).toBe("pendiente_asignacion");
+  });
+
+  it("motivo de EXACTAMENTE 10 caracteres (el mínimo, inclusive) ⇒ SE ACEPTA", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const motivo10 = "1234567890";
+    expect(motivo10).toHaveLength(10);
+
+    const pedido = await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "pendiente_asignacion",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: motivo10,
+      },
+      actorSupervisor(),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+    expect(estado.pedidos[0].motivo_cancelacion).toBe(motivo10);
+  });
+
+  it("motivo hecho SOLO de espacios, aunque tenga 15 caracteres de largo aparente ⇒ ErrorValidacion (se valida el trim, no el largo bruto)", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const soloEspacios = " ".repeat(15);
+    expect(soloEspacios).toHaveLength(15);
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: soloEspacios,
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(estado.pedidos[0].estado).toBe("pendiente_asignacion");
+  });
+
+  it("motivo MUY largo (2000 caracteres) se acepta sin truncar — motivo_cancelacion es text libre", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    const motivoLargo = "El seller solicitó anular este pedido porque ".repeat(50); // ~2350 chars
+
+    const pedido = await cancelarPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoEsperado: "pendiente_asignacion",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: motivoLargo,
+      },
+      actorSupervisor(),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+    expect(estado.pedidos[0].motivo_cancelacion).toBe(motivoLargo);
+    expect((estado.pedidos[0].motivo_cancelacion as string).length).toBe(motivoLargo.length);
+  });
+});
+
+describe("cancelarPedido — carreras (busca lo que nadie miró, encargo QA)", () => {
+  it("cancelar con un estadoEsperado ya obsoleto (alguien reasignó el pedido mientras tanto) ⇒ ErrorConflicto, sin mutar el pedido", async () => {
+    // El llamador leyó 'pendiente_asignacion' hace un instante, pero el
+    // sistema (o el coordinador) ya lo movió a 'asignado' antes de que esta
+    // llamada llegara al UPDATE — la guarda .eq('estado', estadoEsperado) no
+    // encuentra la fila.
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("asignado")], // el estado REAL ya avanzó
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion", // stale
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: "Cancelar mientras alguien más asigna el pedido",
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+
+    // El pedido sigue 'asignado' — ni se movió a 'cancelado' a medias, ni
+    // quedó bitácora de una cancelación que no ocurrió.
+    expect(estado.pedidos[0].estado).toBe("asignado");
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  it("dos cancelaciones simultáneas del MISMO pedido: la primera gana, la segunda recibe ErrorConflicto — nunca doble bitácora ni doble anulación", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+
+    const entrada = {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoEsperado: "pendiente_asignacion" as const,
+      ejecutor: "interno" as const,
+      actuadoPorUsuarioId: USUARIO_INTERNO_1,
+      motivo: "Dos coordinadores cancelando el mismo pedido a la vez",
+    };
+
+    // Primera "hebra": gana, deja el pedido en 'cancelado'.
+    const primera = await cancelarPedido(cliente, entrada, actorSupervisor());
+    expect(primera.estado).toBe("cancelado");
+
+    // Segunda "hebra": leyó el mismo estadoEsperado ANTES de que la primera
+    // corriera (la carrera real), así que llega con el mismo valor stale.
+    await expect(
+      cancelarPedido(cliente, entrada, actorSupervisor()),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+
+    // Exactamente UNA entrada de bitácora 'pedido.cancelado' — la segunda
+    // hebra nunca llegó a escribir nada (falla en el UPDATE, no después).
+    const cancelaciones = estado.bitacora.filter((e) => e.accion === "pedido.cancelado");
+    expect(cancelaciones).toHaveLength(1);
+  });
+});
+
+describe("cancelarPedido — barrera por fuente: SOLO same_day (§3.2)", () => {
+  it("un Flex vivo (pendiente_asignacion) es rechazado con ErrorValidacion", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoBase("pendiente_asignacion")], // pedidoBase() = tipo_pedido 'flex'
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: "Intento de cancelar un Flex vivo",
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+
+    expect(estado.pedidos[0].estado).toBe("pendiente_asignacion");
+  });
+
+  it("un Flex en 'asignado' también es rechazado por cancelarPedido (aunque la transición exista para 'sistema')", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [pedidoBase("asignado")],
+    });
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "asignado",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: "Intento de cancelar un Flex vivo",
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
+  it("fallido→cancelado de un Flex SIGUE PERMITIDO — pero por la vía existente (actualizarEstadoPedido directo, sin pasar por cancelarPedido)", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      pedidos: [pedidoBase("fallido")], // tipo_pedido 'flex', sin cambios
+    });
+
+    const pedido = await actualizarEstadoPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "cancelado",
+        estadoEsperado: "fallido",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: "Válvula de escape: Flex atascado, sin reintento posible",
+      },
+      actorSupervisor(),
+    );
+
+    expect(pedido.estado).toBe("cancelado");
+    expect(estado.pedidos[0].tipo_pedido).toBe("flex");
+    // La barrera same_day es de cancelarPedido, NO de actualizarEstadoPedido:
+    // sin ella, este camino existente (válvula de escape para Flex atascado,
+    // §3.2) se seguiría rompiendo.
+  });
+});
+
+describe("cancelarPedido — regresión commit 0164a56: exige cliente service_role", () => {
+  const claveServiceRoleOriginal = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  afterEach(() => {
+    if (claveServiceRoleOriginal === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = claveServiceRoleOriginal;
+    }
+  });
+
+  it("con un cliente que NO es service_role (p. ej. la sesión del usuario), lanza error explícito de registrarEnBitacora", async () => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "clave-service-role";
+
+    const { cliente } = crearClienteFalso({
+      pedidos: [pedidoSameDayCancelable("pendiente_asignacion")],
+    });
+    // Cliente falso que se hace pasar por la sesión del usuario (clave anon).
+    (cliente as unknown as { supabaseKey: string }).supabaseKey = "clave-anon";
+
+    await expect(
+      cancelarPedido(
+        cliente,
+        {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "interno",
+          actuadoPorUsuarioId: USUARIO_INTERNO_1,
+          motivo: "Motivo con más de diez caracteres",
+        },
+        actorSupervisor(),
+      ),
+    ).rejects.toThrow(/no es service_role/i);
   });
 });
 

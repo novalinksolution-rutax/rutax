@@ -21,6 +21,7 @@ import {
   puedeMarcarEvidenciasPropias,
   puedeRevocarInvitaciones,
   puedeDescargarEtiquetaSameDay,
+  puedeGestionarPedidosPropios,
   puedeSolicitarSameDay,
   puedeVerBitacoraAuditoria,
   puedeVerConciliacion,
@@ -261,6 +262,10 @@ describe("rol seller — estrictamente acotado a sus datos (§4 levantamiento, P
     expect(puedeDescargarEtiquetaSameDay(seller)).toBe(true);
   });
 
+  it("puede gestionar (cancelar) sus propios pedidos same-day (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §4.3)", () => {
+    expect(puedeGestionarPedidosPropios(seller)).toBe(true);
+  });
+
   it("NO tiene ninguna capacidad interna del tenant", () => {
     expect(puedeGestionarUsuariosYRoles(seller)).toBe(false);
     expect(puedeGestionarTarifas(seller)).toBe(false);
@@ -275,6 +280,16 @@ describe("rol seller — estrictamente acotado a sus datos (§4 levantamiento, P
   it("NO tiene capacidades de conductor", () => {
     expect(puedeVerRutaPropia(seller)).toBe(false);
     expect(puedeVerLiquidacionPropia(seller)).toBe(false);
+  });
+});
+
+describe("gestionar_pedidos_propios — SOLO seller (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §4.3)", () => {
+  it("ningún rol interno ni conductor la tiene — coordinador explícitamente NO (decisión del fundador)", () => {
+    expect(puedeGestionarPedidosPropios(usuario({ rol: "dueno" }))).toBe(false);
+    expect(puedeGestionarPedidosPropios(usuario({ rol: "supervisor" }))).toBe(false);
+    expect(puedeGestionarPedidosPropios(usuario({ rol: "coordinador" }))).toBe(false);
+    expect(puedeGestionarPedidosPropios(usuario({ rol: "administracion" }))).toBe(false);
+    expect(puedeGestionarPedidosPropios(usuario({ rol: "conductor" }))).toBe(false);
   });
 });
 

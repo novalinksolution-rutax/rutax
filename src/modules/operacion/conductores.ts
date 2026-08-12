@@ -26,6 +26,7 @@ import {
   puedeGestionarLiquidacionesConductores,
 } from '@/modules/identidad/capacidades';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { ErrorValidacion } from '@/modules/identidad/errores';
 import { normalizarYValidarRut } from '@/modules/identidad/rut';
 import { verificarLimite } from '@/modules/plataforma/enforcement';
@@ -467,10 +468,22 @@ function enmascararRutBitacora(rutNormalizado: string): string {
  * `enmascararRutBitacora`/`obtenerInicialesNombre` más abajo, mismo criterio
  * que `numero_cuenta_mascara` en `actualizarDatosBancariosConductor`.
  *
- * Usa el cliente RLS recibido (NO service_role): la policy
- * `conductores_insert_interno` (migración 0002) ya exige
+ * Usa el cliente RLS recibido (NO service_role) para el INSERT del conductor:
+ * la policy `conductores_insert_interno` (migración 0002) ya exige
  * `tenant_id = claim_tenant_id() AND tipo_usuario = 'interno'` — el
  * aislamiento de tenant lo impone la base de datos, no esta función.
+ *
+ * PERO la bitácora NO se escribe con ese cliente: `bitacora_auditoria` es
+ * append-only y ningún rol de cliente (`authenticated`/`anon`) tiene privilegio
+ * de INSERT, ni sobre la tabla base ni sobre la vista espejo de `public`
+ * (migración 0004 §5 + prueba pgTAP `rls_aislamiento.test.sql`). Escribir la
+ * bitácora con la sesión del usuario fallaba SIEMPRE con
+ * "permission denied for view bitacora_auditoria" y bloqueaba el alta entera.
+ * El único rol que puede insertar ahí es `service_role`, así que la bitácora va
+ * por su propio cliente — mismo patrón que `dinero/acciones.ts`. Los dos
+ * clientes conviven a propósito: la auditoría no debe ampliar la superficie de
+ * escritura del usuario final, y el aislamiento del INSERT no debe delegarse a
+ * la aplicación.
  */
 export async function crearConductor(
   cliente: SupabaseClient,
@@ -518,7 +531,10 @@ export async function crearConductor(
 
   // Bitácora ANTES del INSERT. `detalle` minimizado: sin RUT completo ni
   // nombre completo — ver `enmascararRutBitacora`/`obtenerInicialesNombre`.
-  await registrarEnBitacora(cliente, {
+  // Cliente service_role: `bitacora_auditoria` no admite INSERT de ningún rol
+  // de cliente (append-only, migración 0004 §5). NO se reusa `cliente` (sesión
+  // del usuario) — ver el bloque de documentación de esta función.
+  await registrarEnBitacora(crearClienteServiceRole(), {
     tenantId,
     actorUsuarioId,
     actorTipo: 'usuario',

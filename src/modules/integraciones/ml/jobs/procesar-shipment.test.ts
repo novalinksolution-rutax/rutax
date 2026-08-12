@@ -292,6 +292,30 @@ describe("procesarShipmentActualizado — transición inválida (no reintentable
     expect(fnMock).toHaveBeenCalledOnce();
     expect(logs.some((l) => l.includes("no reintentable"))).toBe(true);
   });
+
+  // Busca lo que nadie miró (encargo QA): un pedido YA 'cancelado' — por
+  // ejemplo por el seller desde el portal — que después recibe un webhook de
+  // ML intentando moverlo (p. ej. 'delivered', tarde). `cancelado` está en
+  // ESTADOS_TERMINALES igual que cualquier otro terminal, así que el mismo
+  // mecanismo genérico de arriba lo cubre — se prueba explícito con
+  // 'cancelado' para que quede documentado que esta feature no lo rompió.
+  it("pedido 'cancelado' + ML reporta 'delivered' tarde → ErrorTransicionInvalida, se ignora sin reintento (el pedido queda cancelado)", async () => {
+    const fnMock = vi.fn().mockRejectedValue(new ErrorTransicionInvalidaFake());
+    const logs: string[] = [];
+
+    const resultado = await procesarActualizacionShipment(
+      { ...pedidoBase, estado: "cancelado", estadoMl: null },
+      "delivered",
+      fnMock,
+      (nivel, msg) => {
+        if (nivel === "warn") logs.push(msg);
+      },
+    );
+
+    expect(resultado.resultado).toBe("transicion_invalida");
+    expect(fnMock).toHaveBeenCalledOnce();
+    expect(logs.some((l) => l.includes("no reintentable"))).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

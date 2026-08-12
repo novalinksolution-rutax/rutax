@@ -134,7 +134,24 @@ export function FormularioInvitarSeller() {
       return;
     }
 
-    toast.success(`Invitamos a ${resultado.seller.razonSocial} — le llegará un correo a ${resultado.seller.emailContacto}.`);
+    // El mensaje refleja lo que REALMENTE pasó con el correo. Prometer un envío
+    // que no ocurrió deja al seller esperando y al courier sin saber por qué
+    // nunca entró — que es precisamente el problema que originó esta pantalla.
+    if (resultado.seller.emailEnviado) {
+      // "Enviamos", NO "le llegó": el proveedor ACEPTA el envío y devuelve un id;
+      // el rebote (dirección inexistente, buzón lleno) ocurre después y de forma
+      // asincrónica. Afirmar la entrega deja al courier creyendo que el seller
+      // recibió algo que nunca llegó — con un correo mal tipeado, sin una sola
+      // señal. La invitación queda pendiente y "Copiar enlace" es la salida.
+      toast.success(`Invitamos a ${resultado.seller.razonSocial}.`, {
+        description: `Enviamos el correo a ${resultado.seller.emailContacto}. Si no le llega, revisa que la dirección esté bien y usa “Copiar enlace” en Sellers.`,
+      });
+    } else {
+      toast.success(`Registramos a ${resultado.seller.razonSocial}.`, {
+        description:
+          "No pudimos enviarle el correo. Entra a Sellers y usa “Copiar enlace” para mandárselo tú.",
+      });
+    }
     // Limpia el formulario para seguir invitando sin recargar — "esta es una
     // acción que el courier repetirá varias veces" (mismo principio que la I).
     setCampos(CAMPOS_INICIALES);

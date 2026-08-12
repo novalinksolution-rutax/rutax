@@ -317,11 +317,18 @@ export type RespuestaCrearConductor =
   | { ok: false; motivo: "error"; mensaje: string };
 
 /**
- * Da de alta un conductor nuevo en el tenant. Usa el cliente RLS de la sesión
- * (NO service_role): `crearConductor` (operacion/conductores.ts) documenta que
- * el aislamiento de tenant en el INSERT lo impone la policy
+ * Da de alta un conductor nuevo en el tenant. Pasa el cliente RLS de la sesión
+ * (NO service_role) a propósito: `crearConductor` (operacion/conductores.ts)
+ * documenta que el aislamiento de tenant en el INSERT lo impone la policy
  * `conductores_insert_interno` de la base de datos, no esta capa — coherente
- * con el resto de altas de `(tenant)` que pasan por RLS.
+ * con el resto de altas de `(tenant)` que pasan por RLS. Es la diferencia
+ * deliberada con las otras acciones de este archivo, que van con service_role.
+ *
+ * OJO al "simplificar": la bitácora de esa alta NO se escribe con este cliente
+ * —`crearConductor` trae el suyo de service_role—, porque `bitacora_auditoria`
+ * es append-only y ningún rol de cliente tiene INSERT sobre ella. Pasar la
+ * sesión también para auditar fue el bug de producción del 2026-08-11
+ * ("permission denied for view bitacora_auditoria").
  */
 export async function actionCrearConductor(formData: FormData): Promise<RespuestaCrearConductor> {
   const sesion = await exigirSesionActual();

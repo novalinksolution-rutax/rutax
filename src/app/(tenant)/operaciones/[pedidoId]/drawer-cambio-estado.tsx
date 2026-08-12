@@ -40,10 +40,23 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // Construir lista de estados válidos dinámicamente (B-8)
-  const estadosValidos = ESTADOS_PEDIDO.filter(
-    (candidato) => candidato !== estadoActual && esTransicionValida(estadoActual, candidato, "interno"),
-  );
+  // Construir lista de estados válidos dinámicamente (B-8).
+  //
+  // 'cancelado' se EXCLUYE aquí desde 'pendiente_asignacion'/'asignado'/
+  // 'en_ruta': esas 3 transiciones son NUEVAS para 'interno' (docs/arquitectura/
+  // edicion-y-cancelacion-de-pedidos.md §3.3) y exigen tipo_pedido='same_day' —
+  // barrera que SOLO impone `cancelarPedido` (la envoltura de
+  // DialogCancelarPedido), nunca este drawer genérico ni `actualizarEstadoPedido`
+  // directo (§3.2). Mostrarlo aquí también dejaría cancelar un Flex vivo sin la
+  // barrera, y sin el preflight de dinero. Desde 'fallido'/'fallido_manual' NO
+  // se excluye: es la válvula de escape existente para un Flex atascado, sin
+  // cambios (ya funcionaba así antes de esta feature).
+  const SIN_CANCELADO_GENERICO: EstadoPedido[] = ["pendiente_asignacion", "asignado", "en_ruta"];
+  const estadosValidos = ESTADOS_PEDIDO.filter((candidato) => {
+    if (candidato === estadoActual) return false;
+    if (candidato === "cancelado" && SIN_CANCELADO_GENERICO.includes(estadoActual)) return false;
+    return esTransicionValida(estadoActual, candidato, "interno");
+  });
 
   const motivoValido = motivo.trim().length >= MOTIVO_MIN;
   const puedeConfirmar = estadoNuevo !== "" && motivoValido && !pending;

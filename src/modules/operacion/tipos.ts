@@ -209,6 +209,21 @@ export interface Pedido {
    * pedidos same-day antiguos, `asegurarCodigoInterno` hace backfill perezoso.
    */
   codigoInterno?: string | null;
+  // Columnas de cancelación (migración 20260811000003 — cancelación same-day).
+  /** Momento en que el pedido pasó a 'cancelado'. `null` mientras no lo esté. */
+  canceladoEn?: string | null;
+  /**
+   * UUID de auth.users que canceló el pedido (RNF-04). `null` cuando la
+   * cancelación no la hizo una persona (sincronización ML) o el pedido no está
+   * cancelado.
+   */
+  canceladoPorUsuarioId?: string | null;
+  /**
+   * ⚠️ VISIBLE PARA EL SELLER (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+   * §6.2) — `public.pedidos` es `select *` y P2 deja al seller leer sus propias
+   * filas completas. Nada de información comercial reservada.
+   */
+  motivoCancelacion?: string | null;
   // Situación de retiro (migración 20260812000002 — retiro en bodega, etapa 1).
   // Opcionales por la misma razón que las de arriba: hay proyecciones de `Pedido`
   // construidas a mano en pantallas que todavía no seleccionan estas columnas.
@@ -439,8 +454,11 @@ export interface PaginadoPedidos {
  *   'conductor' = conductor autenticado (SOLO pedidos same_day; la acotación
  *                 se impone en actualizarEstadoPedido, no aquí — la función pura
  *                 es agnóstica de tipo_pedido).
+ *   'seller'    = seller autenticado cancelando SU PROPIO pedido same_day
+ *                 (SOLO hasta `asignado`; la acotación de tipo_pedido y de
+ *                 pertenencia se impone en `cancelarPedido`, no aquí).
  */
-export type EjecutorTransicion = "sistema" | "interno" | "conductor";
+export type EjecutorTransicion = "sistema" | "interno" | "conductor" | "seller";
 
 export interface ActualizarEstadoEntrada {
   pedidoId: string;
@@ -452,15 +470,43 @@ export interface ActualizarEstadoEntrada {
    */
   estadoEsperado: EstadoPedido;
   ejecutor: EjecutorTransicion;
-  /** Requerido para ejecutor='interno': quién realiza el cambio. */
+  /** Requerido para ejecutor='interno'/'seller': quién realiza el cambio. */
   actuadoPorUsuarioId?: string;
-  /** Requerido para correcciones manuales (ejecutor='interno'). */
+  /** Requerido para correcciones manuales (ejecutor='interno') y cancelación (ejecutor='seller'). */
   motivo?: string;
   /**
    * Solo para ejecutor='conductor': tipo de incidencia que declara el conductor
    * al registrar un fallo (requerido cuando estadoNuevo='fallido').
    */
   tipoIncidenciaConductor?: TipoIncidencia;
+  /**
+   * Solo para ejecutor='seller' (cancelarPedido): guarda atómica en el WHERE
+   * del SELECT y del UPDATE contra la carrera entre lectura y escritura
+   * (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §4.2). Se ignora
+   * para cualquier otro ejecutor.
+   */
+  sellerId?: string;
+}
+
+/**
+ * Entrada de `cancelarPedido` (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md
+ * §7.1). Es la envoltura que valida ventana, `tipo_pedido='same_day'`, RBAC y
+ * motivo (≥10 caracteres) antes de delegar la escritura de estado a
+ * `actualizarEstadoPedido` (único camino de escritura de estado).
+ */
+export interface CancelarPedidoEntrada {
+  pedidoId: string;
+  tenantId: string;
+  /** Optimistic locking: el estado que el llamador leyó. */
+  estadoEsperado: EstadoPedido;
+  /** 'sistema' sigue yendo por actualizarEstadoPedido (ML reporta la cancelación). */
+  ejecutor: "interno" | "seller";
+  /** UUID de auth. Obligatorio: RNF-04 exige el "quién". */
+  actuadoPorUsuarioId: string;
+  /** Obligatorio, >= 10 caracteres. Va a bitácora Y a pedidos.motivo_cancelacion. */
+  motivo: string;
+  /** Solo para ejecutor='seller': guarda atómica en el WHERE. */
+  sellerId?: string;
 }
 
 export interface CrearPedidoSameDayEntrada {

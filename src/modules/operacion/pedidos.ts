@@ -23,6 +23,7 @@ import type {
   FiltrosPedidos,
   PaginadoPedidos,
   ActualizarEstadoEntrada,
+  CancelarPedidoEntrada,
   CrearPedidoSameDayEntrada,
   ResultadoCrearPedidoSameDay,
   EstadoPedido,
@@ -36,7 +37,11 @@ import { resolverZona } from "./zonas";
 import { resolverVentanaCorte } from "./ventanas-corte";
 import { ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
-import { puedeAjustarOperacionDiaria, puedeMarcarEvidenciasPropias } from "@/modules/identidad/capacidades";
+import {
+  puedeAjustarOperacionDiaria,
+  puedeMarcarEvidenciasPropias,
+  puedeGestionarPedidosPropios,
+} from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { validarTransicion } from "./maquina-estados";
 import { abrirIncidencia, actualizarIncidencia } from "./incidencias";
@@ -46,6 +51,14 @@ import { generarCodigoInterno } from "./codigo-interno";
 
 /** Máximo de intentos al generar `codigo_interno` ante colisión (unique_violation, 23505). */
 const MAX_INTENTOS_CODIGO_INTERNO = 5;
+
+/**
+ * Mínimo de caracteres del motivo de cancelación (docs/arquitectura/
+ * edicion-y-cancelacion-de-pedidos.md §7.1). La BD NO lo impone a propósito —
+ * ver comentario de la columna en la migración 20260811000003: la cancelación
+ * que llega por sincronización de ML no trae motivo humano.
+ */
+const MOTIVO_CANCELACION_MIN = 10;
 
 /**
  * Estados de pedido financieramente relevantes: al transicionar a cualquiera
@@ -109,6 +122,10 @@ function filaAPedido(fila: Record<string, any>): Pedido {
     trackingToken: fila.tracking_token ?? null,
     // Código interno operativo para etiqueta con QR (same-day).
     codigoInterno: fila.codigo_interno ?? null,
+    // Columnas de cancelación (migración 20260811000003).
+    canceladoEn: fila.cancelado_en ?? null,
+    canceladoPorUsuarioId: fila.cancelado_por_usuario_id ?? null,
+    motivoCancelacion: fila.motivo_cancelacion ?? null,
     // Situación de retiro (migración 20260812000002). El fallback a 'pendiente'
     // cuando la columna no viene en el SELECT es deliberado y falla CERRADO: un
     // pedido cuya tenencia se desconoce NO se ofrece para asignar. Caer a
@@ -257,15 +274,44 @@ export async function actualizarEstadoPedido(
     // leer el pedido (paso 2), ya que necesitamos tipo_pedido y driver_id_asignado.
   }
 
-  // 2. Leer estado actual del pedido — con aislamiento de tenant.
+  // 1b. Ejecutor 'seller': SOLO alcanzable hoy vía `cancelarPedido` (docs/
+  // arquitectura/edicion-y-cancelacion-de-pedidos.md §6.1) — la ventana, el
+  // tipo_pedido='same_day' y el motivo >= 10 caracteres los valida esa
+  // envoltura ANTES de llegar aquí. Esta capa es defensa en profundidad, no el
+  // diseño: si alguien llamara a esta función directamente con ejecutor='seller'
+  // sin pasar por cancelarPedido, sigue exigiendo capacidad y motivo.
+  if (entrada.ejecutor === "seller") {
+    if (!actor) {
+      throw new ErrorValidacion(
+        "Se requiere el actor (seller autenticado) para cancelar el pedido",
+      );
+    }
+    if (!puedeGestionarPedidosPropios(actor)) {
+      throw new ErrorValidacion(
+        "El usuario no tiene capacidad para gestionar sus propios pedidos",
+      );
+    }
+    if (!entrada.motivo || entrada.motivo.trim().length === 0) {
+      throw new ErrorValidacion(
+        "Se requiere un motivo para cancelar el pedido",
+      );
+    }
+  }
+
+  // 2. Leer estado actual del pedido — con aislamiento de tenant (y de seller,
+  // vía `entrada.sellerId`, cuando el ejecutor es 'seller': guarda atómica
+  // contra la carrera entre lectura y escritura — §4.2).
   // Se incluyen las columnas necesarias para el evento financiero post-commit
   // y para la proyección de sla_cumplido (fecha_compromiso_hora).
-  const { data: pedidoActual, error: errorLectura } = await cliente
+  let consultaLectura = cliente
     .from("pedidos")
     .select("id, estado, seller_id, tenant_id, driver_id_asignado, tipo_pedido, tarifa_aplicable_id, fecha_compromiso_hora, fecha_compromiso")
     .eq("id", entrada.pedidoId)
-    .eq("tenant_id", entrada.tenantId)
-    .maybeSingle();
+    .eq("tenant_id", entrada.tenantId);
+  if (entrada.sellerId) {
+    consultaLectura = consultaLectura.eq("seller_id", entrada.sellerId);
+  }
+  const { data: pedidoActual, error: errorLectura } = await consultaLectura.maybeSingle();
 
   if (errorLectura) {
     throw new Error(`Error al leer el pedido: ${errorLectura.message}`);
@@ -337,15 +383,27 @@ export async function actualizarEstadoPedido(
   // Al transicionar a un estado terminal se evalúa el SLA:
   //   - entregado / entregado_manual + fecha_compromiso_hora existe + entrega a tiempo
   //     → sla_cumplido = true
-  //   - cualquier terminal exitoso pero tardío, o estado fallido/devuelto/cancelado
+  //   - cualquier terminal exitoso pero tardío, o estado fallido/devuelto
   //     → sla_cumplido = false
+  //   - cancelado → sla_cumplido = null SIEMPRE (no evaluable): un pedido cancelado
+  //     no es un incumplimiento de SLA, es una entrega que nadie llegó a pedir.
+  //     Contarlo como fallo hundiría el % de cumplimiento por decisiones ajenas
+  //     al desempeño del courier. `slaGlobalPct` cuenta sobre
+  //     `sla_cumplido IS NOT NULL`, así que null es justo lo que lo saca del
+  //     denominador (ver §5 fila 5 de docs/arquitectura/edicion-y-cancelacion-de-pedidos.md).
   //   - sin fecha_compromiso_hora ni fecha_compromiso → null (no evaluable)
   // La proyección es barata: un campo en el mismo UPDATE — sin job nuevo.
   const ahora = new Date();
   let slaCumplido: boolean | null = null;
+  // true cuando hay que forzar la escritura de `sla_cumplido = null` aunque la
+  // columna ya tenga un valor de una transición anterior (p. ej. fallido→cancelado
+  // dejó sla_cumplido=false y hay que limpiarlo). Sin este flag, el UPDATE de más
+  // abajo omite el campo cuando slaCumplido es null y la columna conserva su
+  // valor viejo.
+  let forzarSlaNulo = false;
 
   const ESTADOS_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['entregado', 'entregado_manual']);
-  const ESTADOS_NO_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['fallido', 'fallido_manual', 'devuelto', 'cancelado']);
+  const ESTADOS_NO_EXITOSOS_TERMINALES = new Set<EstadoPedido>(['fallido', 'fallido_manual', 'devuelto']);
 
   if (ESTADOS_EXITOSOS_TERMINALES.has(entrada.estadoNuevo)) {
     const fechaCompromisoHora = pedidoActual.fecha_compromiso_hora as string | null;
@@ -359,25 +417,57 @@ export async function actualizarEstadoPedido(
     }
     // else: sin ninguna referencia → null
   } else if (ESTADOS_NO_EXITOSOS_TERMINALES.has(entrada.estadoNuevo)) {
-    // Estado no exitoso: SLA incumplido si había compromiso horario configurado.
+    // Estado no exitoso (fallido/fallido_manual/devuelto): SLA incumplido si
+    // había compromiso horario configurado. `devuelto` siempre llega desde un
+    // intento real de entrega (en_ruta/fallido/fallido_manual) que terminó
+    // devuelta al origen — es un incumplimiento genuino, a diferencia de
+    // `cancelado`.
     const fechaCompromisoHora = pedidoActual.fecha_compromiso_hora as string | null;
     slaCumplido = fechaCompromisoHora ? false : null;
+  } else if (entrada.estadoNuevo === 'cancelado') {
+    // No evaluable, siempre — y forzado: si el pedido venía de 'fallido' con
+    // sla_cumplido=false ya escrito, cancelar debe limpiarlo a null.
+    slaCumplido = null;
+    forzarSlaNulo = true;
   }
 
   // 5. Bitácora ANTES del UPDATE (CLAUDE.md: "bitácora antes que efectos externos").
   // Cualquier acción de usuario queda registrada incluso si el UPDATE posterior falla.
+  // Una entrada por acto (§6.1): cuando el destino es 'cancelado', la acción es
+  // 'pedido.cancelado' en vez de 'pedido.estado_corregido_manual' — nunca las dos.
   if (entrada.ejecutor === "interno" && actor) {
+    const esCancelacion = entrada.estadoNuevo === "cancelado";
     await registrarEnBitacora(cliente, {
       tenantId: entrada.tenantId,
       actorUsuarioId: entrada.actuadoPorUsuarioId ?? null,
       actorTipo: "usuario",
-      accion: "pedido.estado_corregido_manual",
+      accion: esCancelacion ? "pedido.cancelado" : "pedido.estado_corregido_manual",
       entidadTipo: "pedido",
       entidadId: entrada.pedidoId,
       detalle: {
         estado_anterior: estadoActual,
         estado_nuevo: entrada.estadoNuevo,
         motivo: entrada.motivo,
+        ...(esCancelacion ? { ejecutor: "interno" as const } : {}),
+      },
+    });
+  }
+
+  // 5b. Ejecutor 'seller': hoy solo alcanzable vía cancelarPedido → siempre
+  // 'pedido.cancelado'. Mismo invariante (bitácora ANTES del UPDATE, con autor).
+  if (entrada.ejecutor === "seller" && actor) {
+    await registrarEnBitacora(cliente, {
+      tenantId: entrada.tenantId,
+      actorUsuarioId: entrada.actuadoPorUsuarioId ?? null,
+      actorTipo: "usuario",
+      accion: "pedido.cancelado",
+      entidadTipo: "pedido",
+      entidadId: entrada.pedidoId,
+      detalle: {
+        estado_anterior: estadoActual,
+        estado_nuevo: entrada.estadoNuevo,
+        motivo: entrada.motivo,
+        ejecutor: "seller" as const,
       },
     });
   }
@@ -405,19 +495,35 @@ export async function actualizarEstadoPedido(
     actualizado_en: ahora.toISOString(),
   };
 
-  // Solo escribir sla_cumplido si se pudo evaluar (no dejar null sobre un valor ya evaluado).
-  if (slaCumplido !== null) {
+  // Solo escribir sla_cumplido si se pudo evaluar (no dejar null sobre un valor ya
+  // evaluado) — salvo que forzarSlaNulo lo exija explícitamente (cancelado).
+  if (slaCumplido !== null || forzarSlaNulo) {
     updatePayload.sla_cumplido = slaCumplido;
   }
 
-  const { data: pedidoActualizado, error: errorUpdate } = await cliente
+  // Las 3 columnas de cancelación (migración 20260811000003) se escriben en el
+  // MISMO UPDATE que mueve el estado — nunca en un UPDATE separado. `sistema`
+  // (sincronización ML) también pasa por aquí y no siempre trae actor humano:
+  // cancelado_por_usuario_id queda null en ese caso, a propósito.
+  if (entrada.estadoNuevo === "cancelado") {
+    updatePayload.cancelado_en = ahora.toISOString();
+    updatePayload.cancelado_por_usuario_id = entrada.actuadoPorUsuarioId ?? null;
+    updatePayload.motivo_cancelacion = entrada.motivo ?? null;
+  }
+
+  // Guarda atómica adicional contra la carrera entre lectura y escritura
+  // (§4.2): cuando el ejecutor es 'seller', `entrada.sellerId` también entra
+  // al WHERE del UPDATE, no solo del SELECT del paso 2.
+  let consultaUpdate = cliente
     .from("pedidos")
     .update(updatePayload)
     .eq("id", entrada.pedidoId)
     .eq("tenant_id", entrada.tenantId)
-    .eq("estado", entrada.estadoEsperado) // guarda adicional a nivel de BD
-    .select()
-    .single();
+    .eq("estado", entrada.estadoEsperado); // guarda adicional a nivel de BD
+  if (entrada.sellerId) {
+    consultaUpdate = consultaUpdate.eq("seller_id", entrada.sellerId);
+  }
+  const { data: pedidoActualizado, error: errorUpdate } = await consultaUpdate.select().single();
 
   if (errorUpdate) {
     throw new Error(`Error al actualizar estado del pedido: ${errorUpdate.message}`);
@@ -508,6 +614,56 @@ export async function actualizarEstadoPedido(
     }
   }
 
+  // 7c. Al CANCELAR, cualquier incidencia abierta deja de aplicar — mismo patrón
+  //     que la resolución por devolución (7b), pero sin restringir el estado
+  //     anterior: un pedido puede llegar a 'cancelado' con una incidencia abierta
+  //     desde 'fallido'/'fallido_manual' (apertura automática, 7a) o desde una
+  //     apertura manual en cualquier otro estado no terminal. Se consulta PRIMERO
+  //     si existe una incidencia abierta — a diferencia de 7b, no se escribe
+  //     bitácora si no hay ninguna que resolver (la mayoría de las cancelaciones,
+  //     p. ej. desde 'pendiente_asignacion', nunca tuvieron incidencia).
+  if (entrada.estadoNuevo === "cancelado") {
+    const { data: incidenciasAbiertasPorCancelacion } = await cliente
+      .from("incidencias")
+      .select("id, estado")
+      .eq("pedido_id", entrada.pedidoId)
+      .eq("tenant_id", entrada.tenantId)
+      .in("estado", ["abierta", "en_gestion"])
+      .limit(1);
+
+    if (incidenciasAbiertasPorCancelacion && incidenciasAbiertasPorCancelacion.length > 0) {
+      const incidencia = incidenciasAbiertasPorCancelacion[0];
+
+      // Bitácora de la resolución de incidencia ANTES del efecto (CLAUDE.md).
+      await registrarEnBitacora(cliente, {
+        tenantId: entrada.tenantId,
+        actorUsuarioId: entrada.actuadoPorUsuarioId ?? null,
+        actorTipo: entrada.ejecutor === "interno" || entrada.ejecutor === "seller" ? "usuario" : "sistema",
+        accion: "incidencia.resuelta_por_cancelacion",
+        entidadTipo: "pedido",
+        entidadId: entrada.pedidoId,
+        detalle: {
+          incidencia_id: incidencia.id,
+          estado_anterior: estadoActual,
+          motivo: "Pedido cancelado",
+        },
+      });
+
+      try {
+        await actualizarIncidencia(cliente, {
+          incidenciaId: incidencia.id as string,
+          tenantId: entrada.tenantId,
+          estado: "resuelta",
+          notasResolucion: "Pedido cancelado",
+          resueltaPorUsuarioId: entrada.actuadoPorUsuarioId ?? undefined,
+        });
+      } catch {
+        // Si ya estaba resuelta/cerrada (inmutable) — no-op.
+        // La bitácora ya quedó registrada arriba.
+      }
+    }
+  }
+
   // 8. Post-commit: publicar evento financiero si el nuevo estado es relevante.
   // Es best-effort — un fallo de Inngest NO debe bloquear la transición de estado.
   // El pedido ya está en el nuevo estado en BD independientemente del motor de dinero.
@@ -539,6 +695,158 @@ export async function actualizarEstadoPedido(
       // El evento es best-effort post-commit. Si falla, el job C6 lo detectará
       // por conciliación. NUNCA relanzar — el pedido ya está en su nuevo estado.
     }
+  }
+
+  return pedido;
+}
+
+// =============================================================================
+// cancelarPedido
+// =============================================================================
+
+/**
+ * Cancela un pedido same-day vivo (docs/arquitectura/edicion-y-cancelacion-de-
+ * pedidos.md §7.1). Es la ENVOLTURA que valida ventana (vía la máquina de
+ * estados, dentro de `actualizarEstadoPedido`), `tipo_pedido='same_day'`, RBAC
+ * y motivo (≥10 caracteres) — y que desactiva la asignación activa DESPUÉS de
+ * delegar la escritura de estado. `actualizarEstadoPedido` sigue siendo el
+ * único camino de escritura de estado: aquí NO se duplican optimistic locking,
+ * máquina de estados, incidencias ni evento financiero.
+ *
+ * `cliente` DEBE ser `service_role` — igual que el resto de este módulo.
+ * La pertenencia del pedido (para `ejecutor='seller'`) NO se decide aquí: la
+ * decide la lectura previa hecha con el cliente de la SESIÓN en la Server
+ * Action (RLS), que responde "Pedido no encontrado" antes de llegar a esta
+ * función. `entrada.sellerId` es una guarda ATÓMICA adicional contra la
+ * carrera entre esa lectura y esta escritura — no el mecanismo de autorización.
+ *
+ * Orden de efectos (§5 fila 2): la asignación se desactiva DESPUÉS de llamar a
+ * `actualizarEstadoPedido`, no antes — el evento financiero (publicado dentro
+ * de esa llamada) lleva `driverIdAsignado`, y ese valor se lee de la fila del
+ * pedido ANTES de que la desactivación de la asignación dispare el trigger
+ * `trg_asignaciones_sincronizar_driver_id` que la pondría en `null`. Si se
+ * desactivara primero, el evento financiero mentiría sobre quién llevaba el
+ * paquete.
+ *
+ * Lanza: ErrorValidacion (RBAC, tipo_pedido, motivo) · ErrorPedidoNoEncontrado ·
+ * ErrorTransicionInvalida (ventana) · ErrorConflicto (carrera).
+ */
+export async function cancelarPedido(
+  cliente: SupabaseClient,
+  entrada: CancelarPedidoEntrada,
+  actor: UsuarioActual,
+): Promise<Pedido> {
+  // 1. RBAC — mismo gate que la acción equivalente en la UI.
+  if (entrada.ejecutor === "interno") {
+    if (!puedeAjustarOperacionDiaria(actor)) {
+      throw new ErrorValidacion(
+        "El usuario no tiene capacidad para cancelar pedidos manualmente",
+      );
+    }
+  } else {
+    if (!puedeGestionarPedidosPropios(actor)) {
+      throw new ErrorValidacion(
+        "El usuario no tiene capacidad para cancelar sus propios pedidos",
+      );
+    }
+    if (!entrada.sellerId) {
+      throw new ErrorValidacion(
+        "Se requiere sellerId para cancelar un pedido como seller",
+      );
+    }
+  }
+
+  // 2. Motivo obligatorio, >= 10 caracteres. La BD NO lo impone a propósito
+  // (migración 20260811000003): la cancelación por sincronización de ML no
+  // trae motivo humano y entra por `actualizarEstadoPedido` directamente, sin
+  // pasar por esta envoltura.
+  if (!entrada.motivo || entrada.motivo.trim().length < MOTIVO_CANCELACION_MIN) {
+    throw new ErrorValidacion(
+      `El motivo de cancelación debe tener al menos ${MOTIVO_CANCELACION_MIN} caracteres`,
+    );
+  }
+
+  // 3. Leer el pedido — con guarda de tenant (y de seller, si corresponde).
+  // Nota: por diseño (§4.2) la existencia/pertenencia ya la decidió la lectura
+  // con el cliente de la SESIÓN en la Server Action; aquí, si no aparece, es
+  // una carrera genuina (o un error de programación) — ErrorPedidoNoEncontrado
+  // es la respuesta correcta en ambos casos.
+  let consulta = cliente
+    .from("pedidos")
+    .select("id, estado, tipo_pedido, seller_id, driver_id_asignado")
+    .eq("id", entrada.pedidoId)
+    .eq("tenant_id", entrada.tenantId);
+  if (entrada.ejecutor === "seller" && entrada.sellerId) {
+    consulta = consulta.eq("seller_id", entrada.sellerId);
+  }
+  const { data: pedidoActual, error: errorLectura } = await consulta.maybeSingle();
+
+  if (errorLectura) {
+    throw new Error(`Error al leer el pedido: ${errorLectura.message}`);
+  }
+  if (!pedidoActual) {
+    throw new ErrorPedidoNoEncontrado(entrada.pedidoId);
+  }
+
+  // 4. Barrera por fuente (§3.2): la cancelación humana es SOLO same_day. Un
+  // Flex vivo lo gobierna Mercado Envíos — Rutax orquesta alrededor, nunca
+  // escribe de vuelta un estado terminal que ML no pidió. (El camino existente
+  // `fallido → cancelado` para un Flex atascado sigue intacto: va directo por
+  // `actualizarEstadoPedido`, no por esta función.)
+  if (pedidoActual.tipo_pedido !== "same_day") {
+    throw new ErrorValidacion(
+      "Solo se pueden cancelar pedidos same-day desde aquí — un Flex vivo lo gobierna Mercado Envíos.",
+    );
+  }
+
+  // 5. Delegar la escritura de estado a actualizarEstadoPedido (único camino):
+  // optimistic locking, máquina de estados (impone la ventana por ejecutor),
+  // bitácora, resolución de incidencias, las 3 columnas de cancelación en el
+  // mismo UPDATE, y el evento financiero — con el driver_id_asignado ORIGINAL,
+  // porque la asignación todavía no se ha tocado en este punto.
+  const pedido = await actualizarEstadoPedido(
+    cliente,
+    {
+      pedidoId: entrada.pedidoId,
+      tenantId: entrada.tenantId,
+      estadoNuevo: "cancelado",
+      estadoEsperado: entrada.estadoEsperado,
+      ejecutor: entrada.ejecutor,
+      actuadoPorUsuarioId: entrada.actuadoPorUsuarioId,
+      motivo: entrada.motivo,
+      sellerId: entrada.ejecutor === "seller" ? entrada.sellerId : undefined,
+    },
+    actor,
+  );
+
+  // 6. Desactivar la asignación activa (si existe) — DESPUÉS del paso anterior
+  // (§5 fila 1, bloqueante): si no se desactiva, la parada cancelada sigue viva
+  // en la app Expo del conductor y, con la cola offline, puede cerrarse después.
+  // Sin error si no hay ninguna activa (p. ej. cancelando desde
+  // 'pendiente_asignacion', que nunca tuvo asignación) — 0 filas afectadas es
+  // el resultado esperado, no una falla.
+  const { error: errorDesasignar } = await cliente
+    .from("asignaciones_pedido")
+    .update({ activa: false, desasignado_en: new Date().toISOString() })
+    .eq("pedido_id", entrada.pedidoId)
+    .eq("tenant_id", entrada.tenantId)
+    .eq("activa", true);
+
+  if (errorDesasignar) {
+    // SE LANZA A PROPÓSITO — no lo conviertas en un log silencioso.
+    //
+    // El pedido YA está cancelado (paso 5 confirmado) y no se revierte: el
+    // estado operativo es correcto. Lo que quedó mal es la asignación, que
+    // sigue activa. Ese es exactamente el efecto colateral bloqueante de §5
+    // fila 1: la parada cancelada seguiría viva en la app Expo del conductor
+    // y, con la cola offline, podría cerrarse después.
+    //
+    // Tragarse este error dejaría esa inconsistencia sin un solo rastro. Al
+    // lanzar, el operador ve que la cancelación se aplicó pero la asignación
+    // no, y Sentry lo captura. El mensaje dice ambas cosas a propósito.
+    throw new Error(
+      `Pedido '${entrada.pedidoId}' cancelado, pero no se pudo desactivar su asignación activa: ${errorDesasignar.message}`,
+    );
   }
 
   return pedido;

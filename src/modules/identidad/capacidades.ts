@@ -126,6 +126,13 @@ export const CAPACIDADES = [
   // fila del levantamiento que "solicitar same-day" (RF-020/021) — el seller
   // que crea el envío es quien necesita imprimir su etiqueta.
   "descargar_etiqueta_same_day",
+  // Gestión del propio envío same-day ya creado: cancelarlo antes de que salga
+  // a ruta (docs/arquitectura/edicion-y-cancelacion-de-pedidos.md §4.3). Misma
+  // fila del levantamiento que "solicitar same-day" (RF-020/021): quien crea el
+  // envío es quien corrige su error. No se reusa `solicitar_same_day` — mentiría
+  // en el nombre (solicitar ≠ cancelar). Acotada a lo propio, como todas las del
+  // seller — RLS (P2) lo refuerza en BD.
+  "gestionar_pedidos_propios",
 
   // "Conductor: ver ruta, marcar evidencias internas, confirmar manifiesto ·
   // Solo sus propios datos". RF-042: visibilidad de su liquidación.
@@ -253,6 +260,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "ver_documentos_propios",
     "ver_incidencias_propias",
     "descargar_etiqueta_same_day",
+    "gestionar_pedidos_propios",
   ],
 
   // Plataforma, no tenant — ver nota arriba de la matriz. La capacidad
@@ -408,6 +416,11 @@ export function puedeSolicitarSameDay(usuario: UsuarioActual): boolean {
 
 export function puedeDescargarEtiquetaSameDay(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "descargar_etiqueta_same_day");
+}
+
+/** Cancelar (y, a futuro, editar) SU PROPIO pedido same-day mientras siga en ventana. */
+export function puedeGestionarPedidosPropios(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "gestionar_pedidos_propios");
 }
 
 export function puedeVerDocumentosPropios(usuario: UsuarioActual): boolean {

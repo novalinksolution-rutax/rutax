@@ -10,7 +10,7 @@ import { useCallback } from "react";
 import { MapPinOff } from "lucide-react";
 import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
-import { TEXTO_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
+import { TEXTO_ESTADO_PEDIDO, etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,7 @@ import {
 const TODOS = "__todos__";
 
 interface Props {
-  sellers: { id: string; nombre: string }[];
+  sellers: { id: string; nombre: string; estado: string }[];
   conductores: { id: string; nombre: string }[];
   filtroSeller: string;
   filtroEstado: string;
@@ -136,7 +136,7 @@ export function FiltrosPedidosForm({
               <SelectItem value={TODOS}>Todos los sellers</SelectItem>
               {sellers.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
-                  {s.nombre}
+                  {etiquetaSellerConEstado(s.nombre, s.estado)}
                 </SelectItem>
               ))}
             </SelectContent>

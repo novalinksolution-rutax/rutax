@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es-CL" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<!--
+  Rutax — Enlace de acceso sin contraseña (Supabase Auth · plantilla "Magic Link")
+  =============================================================================
+  COPIA CANÓNICA versionada. Supabase NO lee este archivo: hay que pegar su
+  contenido en el panel (Authentication → Email Templates → Magic Link).
+  Ver supabase/templates/README.md para el paso a paso, el asunto sugerido, la
+  URL exacta y contra qué se verificó. Deliberadamente NO se repite aquí la
+  sintaxis de variables de Supabase: ese motor de plantillas evalúa esas
+  variables donde sea que aparezcan en el documento, así que solo deben
+  escribirse una vez, en el cuerpo real del correo más abajo.
+
+  ESTADO DEL FEATURE: hoy NINGUNA pantalla de Rutax dispara un inicio de
+  sesión sin contraseña — no se encontró ningún llamador en `src/`. Esta
+  plantilla existe porque Supabase la trae por defecto y ya estaba
+  personalizada en el panel (sin versionar); se reconstruye por prolijidad y
+  para que un reseteo accidental no dañe el pipeline de correo aun sin uso
+  activo. Si en el futuro se activa este flujo, agrega un destino explícito al
+  enlace de abajo — hoy se omite a propósito (ver README.md para el porqué).
+-->
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>Tu enlace de acceso a Rutax</title>
+    <!--[if mso]>
+    <noscript>
+      <xml>
+        <o:OfficeDocumentSettings>
+          <o:PixelsPerInch>96</o:PixelsPerInch>
+        </o:OfficeDocumentSettings>
+      </xml>
+    </noscript>
+    <![endif]-->
+  </head>
+  <body style="margin:0; padding:0; background-color:#f5f5fa;">
+    <!-- Preheader (texto de previsualización en la bandeja de entrada; oculto en el cuerpo). -->
+    <span style="display:none; font-size:1px; color:#f5f5fa; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
+      Usa este botón para entrar a Rutax sin contraseña. El enlace es personal y de un solo uso.
+    </span>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5fa;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+            <!-- Encabezado de marca -->
+            <tr>
+              <td align="center" style="background-color:#2a3ca0; border-radius:12px 12px 0 0; padding:28px 40px;">
+                <span style="font-family:Arial, Helvetica, sans-serif; font-size:22px; font-weight:bold; color:#ffffff; letter-spacing:0.5px;">Rutax</span>
+              </td>
+            </tr>
+
+            <!-- Cuerpo -->
+            <tr>
+              <td style="background-color:#ffffff; border-radius:0 0 12px 12px; padding:40px; font-family:Arial, Helvetica, sans-serif; color:#172131;">
+                <h1 style="margin:0 0 16px 0; font-size:20px; line-height:28px; font-weight:bold; color:#172131;">
+                  Tu enlace de acceso a Rutax
+                </h1>
+
+                <p style="margin:0 0 16px 0; font-size:15px; line-height:23px; color:#172131;">
+                  Usa el siguiente botón para iniciar sesión en Rutax sin contraseña.
+                </p>
+
+                <!-- Botón (patrón "bulletproof": tabla + celda con fondo, no depende de CSS moderno) -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px 0;">
+                  <tr>
+                    <td align="center" style="border-radius:8px; background-color:#2a3ca0;">
+                      <a
+                        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink"
+                        target="_blank"
+                        style="display:inline-block; padding:14px 28px; font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold; color:#ffffff; text-decoration:none; border-radius:8px;"
+                      >
+                        Iniciar sesión
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <p style="margin:0 0 8px 0; font-size:13px; line-height:20px; color:#606a78;">
+                  Si el botón no funciona, copia y pega esta dirección en tu navegador:
+                </p>
+                <p style="margin:0 0 24px 0; font-size:13px; line-height:20px; color:#2a3ca0; word-break:break-all;">
+                  {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink
+                </p>
+
+                <p style="margin:0; font-size:13px; line-height:20px; color:#606a78;">
+                  Este enlace es personal, de un solo uso y vence pronto por tu seguridad. Si no fuiste tú quien lo pidió, ignora este correo.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Pie -->
+            <tr>
+              <td align="center" style="padding:24px 40px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#606a78;">
+                Este es un mensaje automático de Rutax — no respondas a este correo.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
