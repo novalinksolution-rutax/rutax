@@ -38,6 +38,9 @@ const CATEGORIA_POR_TIPO: Record<TipoDiferenciaConciliacion, CategoriaNegocioCon
   // es, de nuevo, un pago a conductor pendiente. Misma categoría/acción que
   // `pago_conductor_faltante`.
   payout_revertido_post_confirmacion: 'pagos_pendientes',
+  // Concierne directamente a qué conductor cobra por una entrega — mismo
+  // terreno que `pago_conductor_faltante`/`payout_revertido_post_confirmacion`.
+  liquidacion_atribuida_a_conductor_incorrecto: 'pagos_pendientes',
 
   // Todo lo demás → integridad_datos (espejo del `else` del backfill SQL).
   pedido_entregado_sin_linea_cobro: 'integridad_datos',
@@ -50,6 +53,16 @@ const CATEGORIA_POR_TIPO: Record<TipoDiferenciaConciliacion, CategoriaNegocioCon
   // datos que requiere revisión humana del status externo.
   payout_estado_no_reconocido: 'integridad_datos',
 };
+
+/**
+ * Todos los tipos de diferencia — única fuente de verdad derivada de
+ * `CATEGORIA_POR_TIPO`, que es un `Record<TipoDiferenciaConciliacion, …>` y por
+ * lo tanto no compila si falta un tipo. Evita listas paralelas a mano (el
+ * desplegable de la bandeja se desincronizó así, ago-2026).
+ */
+export const TIPOS_DIFERENCIA_CONCILIACION: TipoDiferenciaConciliacion[] = Object.keys(
+  CATEGORIA_POR_TIPO,
+) as TipoDiferenciaConciliacion[];
 
 /** Mapeo fijo `tipoDiferencia → categoriaNegocio` — espejo del backfill SQL §4.1. */
 export function categoriaNegocioPorTipo(tipo: TipoDiferenciaConciliacion): CategoriaNegocioConciliacion {
@@ -74,6 +87,9 @@ const ACCION_POR_TIPO: Record<TipoDiferenciaConciliacion, AccionSugeridaConcilia
   // Mismo remedio que `periodo_cerrado_con_lineas_sueltas`: la línea existe y es
   // correcta, lo que falta es colgarla de un período que se pueda facturar.
   linea_cobro_sin_periodo: 'reasignar_lineas_a_periodo',
+  // El remedio real: bono al conductor que entregó, penalización al que no,
+  // vía ajuste manual de liquidación (F16, `ajustarLiquidacion`).
+  liquidacion_atribuida_a_conductor_incorrecto: 'generar_ajuste_liquidacion',
 };
 
 /** Mapeo fijo `tipoDiferencia → accionSugerida` — espejo del backfill SQL §4.1. */

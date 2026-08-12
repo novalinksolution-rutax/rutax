@@ -66,7 +66,15 @@ export type TipoDiferenciaConciliacion =
   // que el paso anterior ya insertó la línea; Inngest memoiza los pasos
   // completados, así que la línea queda colgando. Es ingreso que no entra en
   // ninguna factura, de ahí `fuga_ingreso` y no `integridad_datos`.
-  | 'linea_cobro_sin_periodo';
+  | 'linea_cobro_sin_periodo'
+  // Migración 20260812000001: línea de liquidación activa atribuida al
+  // conductor equivocado tras una reasignación ("Pedro entrega, Juan cobra").
+  // El job C1 (`jobs/generar-lineas.ts`) SÍ re-atribuye la línea al conductor
+  // correcto cuando su liquidación de origen sigue en `borrador`; este tipo
+  // solo se genera cuando NO puede — la liquidación de origen ya está
+  // `emitida`/`pagada` (inmutable, compuerta humana) — y deja la discrepancia
+  // visible para resolución manual (bono/penalización vía F16).
+  | 'liquidacion_atribuida_a_conductor_incorrecto';
 
 /**
  * Estado de un evento de conciliación (bandeja de excepciones — §1.1 P1).

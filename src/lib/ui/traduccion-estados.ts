@@ -566,6 +566,8 @@ export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> =
   payout_estado_no_reconocido: "Estado de pago no reconocido",
   // Integridad estructural (migración 20260805000001)
   linea_cobro_sin_periodo: "Línea de cobro sin período (no se facturará)",
+  // Reasignación de conductor no propagada (migración 20260812000001)
+  liquidacion_atribuida_a_conductor_incorrecto: "Liquidación atribuida al conductor equivocado",
 };
 
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {

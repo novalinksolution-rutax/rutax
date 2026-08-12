@@ -28,7 +28,11 @@ import type {
   TipoDiferenciaConciliacion,
 } from "@/modules/dinero/tipos";
 import { listarUsuariosInternos, type UsuarioInterno } from "@/modules/identidad/consultas";
-import { TEXTO_CATEGORIA_NEGOCIO_CONCILIACION, CLASES_BADGE_VARIANTE } from "@/lib/ui/traduccion-estados";
+import {
+  TEXTO_CATEGORIA_NEGOCIO_CONCILIACION,
+  TEXTO_TIPO_DIFERENCIA,
+  CLASES_BADGE_VARIANTE,
+} from "@/lib/ui/traduccion-estados";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -55,22 +59,15 @@ const ESTADOS_CONCIL: EstadoEventoConciliacion[] = [
   "resuelta_auto",
 ];
 
-const TIPOS_DIFERENCIA: TipoDiferenciaConciliacion[] = [
-  // Tipos originales (C6)
-  "pedido_entregado_sin_linea_cobro",
-  "pedido_entregado_sin_linea_liquidacion",
-  "linea_cobro_sin_pedido_entregado",
-  "folio_consumido_sin_dte_persistido",
-  "periodo_cerrado_con_lineas_sueltas",
-  "monto_dte_difiere_de_lineas",
-  // Tipos nuevos (C7 / F17)
-  "pagado_conductor_sin_cobro_seller",
-  "cobrado_seller_no_pagado_conductor",
-  "reprogramacion_no_cobrada",
-  "minimo_omitido",
-  "pago_seller_faltante",
-  "pago_conductor_faltante",
-];
+// Deriva los tipos del propio mapa de traducción, igual que las categorías de
+// abajo. Antes era un arreglo a mano y quedó desincronizado: le faltaban 4 de
+// los 16 tipos (`payout_revertido_post_confirmacion`,
+// `payout_estado_no_reconocido`, `linea_cobro_sin_periodo` y
+// `liquidacion_atribuida_a_conductor_incorrecto`), así que esas excepciones de
+// dinero existían en la bandeja pero no se podían filtrar. `TEXTO_TIPO_DIFERENCIA`
+// es un `Record<TipoDiferenciaConciliacion, string>`: no compila si falta una
+// clave, y el orden de declaración fija el orden del desplegable.
+const TIPOS_DIFERENCIA = Object.keys(TEXTO_TIPO_DIFERENCIA) as TipoDiferenciaConciliacion[];
 
 // Deriva las 4 categorías del propio mapa de traducción — única fuente de
 // verdad, evita otra lista hardcodeada en paralelo.

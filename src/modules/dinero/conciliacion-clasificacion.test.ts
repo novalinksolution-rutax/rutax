@@ -13,6 +13,7 @@ import {
   esTransicionValida,
   esEstadoTerminal,
   ESTADOS_NO_TERMINALES_CONCILIACION,
+  TIPOS_DIFERENCIA_CONCILIACION,
 } from './conciliacion-clasificacion';
 import type {
   TipoDiferenciaConciliacion,
@@ -26,29 +27,37 @@ import type {
 // =============================================================================
 
 describe('categoriaNegocioPorTipo', () => {
-  const casos: Array<[TipoDiferenciaConciliacion, CategoriaNegocioConciliacion]> = [
-    ['folio_consumido_sin_dte_persistido', 'cumplimiento_dte'],
-    ['monto_dte_difiere_de_lineas', 'cumplimiento_dte'],
-    ['pagado_conductor_sin_cobro_seller', 'fuga_ingreso'],
-    ['reprogramacion_no_cobrada', 'fuga_ingreso'],
-    ['minimo_omitido', 'fuga_ingreso'],
-    ['pago_seller_faltante', 'pagos_pendientes'],
-    ['pago_conductor_faltante', 'pagos_pendientes'],
-    ['pedido_entregado_sin_linea_cobro', 'integridad_datos'],
-    ['pedido_entregado_sin_linea_liquidacion', 'integridad_datos'],
-    ['linea_cobro_sin_pedido_entregado', 'integridad_datos'],
-    ['periodo_cerrado_con_lineas_sueltas', 'integridad_datos'],
-    ['cobrado_seller_no_pagado_conductor', 'integridad_datos'],
-    ['payout_revertido_post_confirmacion', 'pagos_pendientes'],
-    ['payout_estado_no_reconocido', 'integridad_datos'],
-  ];
+  // `Record` exhaustivo, no un arreglo: si se agrega un tipo de diferencia y no
+  // se declara aquí, esto NO compila. Reemplaza al conteo hardcodeado que
+  // quedaba desactualizado en cada tipo nuevo.
+  const casos: Record<TipoDiferenciaConciliacion, CategoriaNegocioConciliacion> = {
+    folio_consumido_sin_dte_persistido: 'cumplimiento_dte',
+    monto_dte_difiere_de_lineas: 'cumplimiento_dte',
+    pagado_conductor_sin_cobro_seller: 'fuga_ingreso',
+    reprogramacion_no_cobrada: 'fuga_ingreso',
+    minimo_omitido: 'fuga_ingreso',
+    linea_cobro_sin_periodo: 'fuga_ingreso',
+    pago_seller_faltante: 'pagos_pendientes',
+    pago_conductor_faltante: 'pagos_pendientes',
+    payout_revertido_post_confirmacion: 'pagos_pendientes',
+    liquidacion_atribuida_a_conductor_incorrecto: 'pagos_pendientes',
+    pedido_entregado_sin_linea_cobro: 'integridad_datos',
+    pedido_entregado_sin_linea_liquidacion: 'integridad_datos',
+    linea_cobro_sin_pedido_entregado: 'integridad_datos',
+    periodo_cerrado_con_lineas_sueltas: 'integridad_datos',
+    cobrado_seller_no_pagado_conductor: 'integridad_datos',
+    payout_estado_no_reconocido: 'integridad_datos',
+  };
 
-  it.each(casos)('%s → %s', (tipo, categoriaEsperada) => {
-    expect(categoriaNegocioPorTipo(tipo)).toBe(categoriaEsperada);
-  });
+  it.each(Object.entries(casos) as Array<[TipoDiferenciaConciliacion, CategoriaNegocioConciliacion]>)(
+    '%s → %s',
+    (tipo, categoriaEsperada) => {
+      expect(categoriaNegocioPorTipo(tipo)).toBe(categoriaEsperada);
+    },
+  );
 
-  it('cubre los 14 tipos de diferencia sin caer al default', () => {
-    expect(casos).toHaveLength(14);
+  it('cubre todos los tipos de diferencia sin caer al default', () => {
+    expect(Object.keys(casos).sort()).toEqual([...TIPOS_DIFERENCIA_CONCILIACION].sort());
   });
 });
 
@@ -57,29 +66,35 @@ describe('categoriaNegocioPorTipo', () => {
 // =============================================================================
 
 describe('accionSugeridaPorTipo', () => {
-  const casos: Array<[TipoDiferenciaConciliacion, AccionSugeridaConciliacion]> = [
-    ['pedido_entregado_sin_linea_cobro', 'generar_cobro_manual'],
-    ['pedido_entregado_sin_linea_liquidacion', 'generar_ajuste_liquidacion'],
-    ['linea_cobro_sin_pedido_entregado', 'marcar_error_del_motor'],
-    ['folio_consumido_sin_dte_persistido', 'reenviar_o_verificar_dte'],
-    ['periodo_cerrado_con_lineas_sueltas', 'reasignar_lineas_a_periodo'],
-    ['monto_dte_difiere_de_lineas', 'reenviar_o_verificar_dte'],
-    ['pagado_conductor_sin_cobro_seller', 'generar_cobro_manual'],
-    ['cobrado_seller_no_pagado_conductor', 'generar_ajuste_liquidacion'],
-    ['reprogramacion_no_cobrada', 'generar_cobro_manual'],
-    ['minimo_omitido', 'confirmar_con_seller'],
-    ['pago_seller_faltante', 'gestionar_cobranza_seller'],
-    ['pago_conductor_faltante', 'gestionar_pago_conductor'],
-    ['payout_revertido_post_confirmacion', 'gestionar_pago_conductor'],
-    ['payout_estado_no_reconocido', 'revisar_estado_externo'],
-  ];
+  // Mismo patrón exhaustivo que arriba: el `Record` es la garantía de cobertura.
+  const casos: Record<TipoDiferenciaConciliacion, AccionSugeridaConciliacion> = {
+    pedido_entregado_sin_linea_cobro: 'generar_cobro_manual',
+    pedido_entregado_sin_linea_liquidacion: 'generar_ajuste_liquidacion',
+    linea_cobro_sin_pedido_entregado: 'marcar_error_del_motor',
+    folio_consumido_sin_dte_persistido: 'reenviar_o_verificar_dte',
+    periodo_cerrado_con_lineas_sueltas: 'reasignar_lineas_a_periodo',
+    monto_dte_difiere_de_lineas: 'reenviar_o_verificar_dte',
+    pagado_conductor_sin_cobro_seller: 'generar_cobro_manual',
+    cobrado_seller_no_pagado_conductor: 'generar_ajuste_liquidacion',
+    reprogramacion_no_cobrada: 'generar_cobro_manual',
+    minimo_omitido: 'confirmar_con_seller',
+    pago_seller_faltante: 'gestionar_cobranza_seller',
+    pago_conductor_faltante: 'gestionar_pago_conductor',
+    payout_revertido_post_confirmacion: 'gestionar_pago_conductor',
+    payout_estado_no_reconocido: 'revisar_estado_externo',
+    linea_cobro_sin_periodo: 'reasignar_lineas_a_periodo',
+    liquidacion_atribuida_a_conductor_incorrecto: 'generar_ajuste_liquidacion',
+  };
 
-  it.each(casos)('%s → %s', (tipo, accionEsperada) => {
-    expect(accionSugeridaPorTipo(tipo)).toBe(accionEsperada);
-  });
+  it.each(Object.entries(casos) as Array<[TipoDiferenciaConciliacion, AccionSugeridaConciliacion]>)(
+    '%s → %s',
+    (tipo, accionEsperada) => {
+      expect(accionSugeridaPorTipo(tipo)).toBe(accionEsperada);
+    },
+  );
 
-  it('cubre los 14 tipos de diferencia sin caer al default', () => {
-    expect(casos).toHaveLength(14);
+  it('cubre todos los tipos de diferencia sin caer al default', () => {
+    expect(Object.keys(casos).sort()).toEqual([...TIPOS_DIFERENCIA_CONCILIACION].sort());
   });
 });
 
