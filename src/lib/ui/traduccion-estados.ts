@@ -8,7 +8,7 @@
  * Fuente: tablas de traducción del documento docs/ux/fase-b-operacion.md (§B-1)
  */
 
-import type { EstadoPedido, TipoIncidencia, EstadoManifiesto, EstadoIncidencia, EstadoGeocoding, CoberturaEstado } from "@/modules/operacion/tipos";
+import type { EstadoPedido, TipoIncidencia, EstadoManifiesto, EstadoIncidencia, EstadoGeocoding, CoberturaEstado, SituacionRetiro } from "@/modules/operacion/tipos";
 import type {
   EstadoPeriodo,
   EstadoSii,
@@ -154,6 +154,42 @@ const VARIANTE_ESTADO_PEDIDO: Record<EstadoPedido, VarianteEstado> = {
 };
 export const COLOR_ESTADO_PEDIDO = clasesPorEstado(VARIANTE_ESTADO_PEDIDO);
 export const BADGE_ESTADO_PEDIDO = badgePorEstado(VARIANTE_ESTADO_PEDIDO);
+
+// =============================================================================
+// SituacionRetiro — ¿está el bulto en poder del courier? (migración 20260812000002)
+// =============================================================================
+// Eje PROPIO de Rutax, ORTOGONAL a EstadoPedido: un pedido puede estar
+// `pendiente_asignacion` y a la vez `retirado`, y esa combinación es justamente
+// la que la pantalla de asignación ofrece. Nunca mezclar los dos vocabularios en
+// un mismo badge — son dos preguntas distintas ("¿en qué punto del ciclo va?" y
+// "¿lo tenemos físicamente?").
+//
+// `Record<SituacionRetiro, …>` es intencional: si mañana el enum de Postgres gana
+// un cuarto valor y se refleja en SITUACIONES_RETIRO, estos mapas dejan de
+// compilar hasta que alguien decida qué texto y qué color le corresponden.
+
+export const TEXTO_SITUACION_RETIRO: Record<SituacionRetiro, string> = {
+  // "Por retirar" y no "Pendiente": `pendiente` a secas se confunde con
+  // `pendiente_asignacion` del estado del pedido, que es otra cosa.
+  pendiente: "Por retirar",
+  retirado: "Retirado",
+  no_procesado: "No procesado",
+};
+
+export function traducirSituacionRetiro(situacion: SituacionRetiro): string {
+  return TEXTO_SITUACION_RETIRO[situacion] ?? situacion;
+}
+
+// Sin rojo a propósito: ninguno de los tres es una incidencia. Que un candidato
+// no se retire es el desenlace NORMAL de los pedidos que despacha otro courier —
+// pintarlo de alarma sería gritar sobre la mitad del universo ingestado.
+const VARIANTE_SITUACION_RETIRO: Record<SituacionRetiro, VarianteEstado> = {
+  pendiente: "info",      // sigue en juego mientras dure la mañana de retiro
+  retirado: "exito",      // está en poder del courier: cuenta para el día
+  no_procesado: "neutral",// desenlace terminal sin acción pendiente
+};
+export const COLOR_SITUACION_RETIRO = clasesPorEstado(VARIANTE_SITUACION_RETIRO);
+export const BADGE_SITUACION_RETIRO = badgePorEstado(VARIANTE_SITUACION_RETIRO);
 
 // =============================================================================
 // TipoIncidencia

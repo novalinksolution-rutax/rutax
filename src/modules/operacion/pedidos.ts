@@ -28,6 +28,7 @@ import type {
   EstadoPedido,
   EstadoGeocoding,
   CoberturaEstado,
+  SituacionRetiro,
 } from "./tipos";
 import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
 import { ahoraEnSantiago, combinarFechaHoraSantiago, horaAMinutos } from "@/lib/fecha-santiago";
@@ -108,6 +109,12 @@ function filaAPedido(fila: Record<string, any>): Pedido {
     trackingToken: fila.tracking_token ?? null,
     // Código interno operativo para etiqueta con QR (same-day).
     codigoInterno: fila.codigo_interno ?? null,
+    // Situación de retiro (migración 20260812000002). El fallback a 'pendiente'
+    // cuando la columna no viene en el SELECT es deliberado y falla CERRADO: un
+    // pedido cuya tenencia se desconoce NO se ofrece para asignar. Caer a
+    // 'retirado' abriría la compuerta que este campo existe para cerrar.
+    situacionRetiro: (fila.situacion_retiro ?? 'pendiente') as SituacionRetiro,
+    retiradoEn: fila.retirado_en ?? null,
   };
 }
 

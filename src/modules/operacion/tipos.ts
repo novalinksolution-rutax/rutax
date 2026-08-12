@@ -39,6 +39,25 @@ export type TipoPedido = (typeof TIPOS_PEDIDO)[number];
 export const ORIGENES_PEDIDO = ["ml_ingesta", "same_day_manual", "backfill"] as const;
 export type OrigenPedido = (typeof ORIGENES_PEDIDO)[number];
 
+/**
+ * Situación de retiro — espejo de `operacion.situacion_retiro`
+ * (migración 20260812000002). Eje PROPIO de Rutax sobre la tenencia física del
+ * bulto, ORTOGONAL a `EstadoPedido` y a `estadoMl`: en Flex el ciclo del envío
+ * lo gobierna Mercado Libre, así que un valor propio no cabe en esa máquina.
+ *
+ * Existe porque un seller despacha con VARIOS couriers: la ingesta desde su
+ * cuenta de ML trae el universo de CANDIDATOS y solo el escaneo del conductor en
+ * la bodega dice cuáles son de este courier ese día. Es la reja de la pantalla de
+ * asignación — sin ella se generan cobros al seller por entregas ajenas.
+ * Ver docs/arquitectura/retiro-y-ruteo.md §2.1 y §13bis-1.3.
+ *
+ * - `pendiente`    : ingestado, nadie lo tocó. Default de toda fila nueva.
+ * - `retirado`     : escaneado en una bodega; está en poder del courier.
+ * - `no_procesado` : pasaron los días y nunca se retiró (lo despachó otro courier).
+ */
+export const SITUACIONES_RETIRO = ["pendiente", "retirado", "no_procesado"] as const;
+export type SituacionRetiro = (typeof SITUACIONES_RETIRO)[number];
+
 // =============================================================================
 // Enums de geocoding — espejan operacion.geo_estado y operacion.cobertura_estado
 // (migración 0013). Se declaran localmente para que operacion NO dependa de
@@ -190,6 +209,25 @@ export interface Pedido {
    * pedidos same-day antiguos, `asegurarCodigoInterno` hace backfill perezoso.
    */
   codigoInterno?: string | null;
+  // Situación de retiro (migración 20260812000002 — retiro en bodega, etapa 1).
+  // Opcionales por la misma razón que las de arriba: hay proyecciones de `Pedido`
+  // construidas a mano en pantallas que todavía no seleccionan estas columnas.
+  // En BD son NOT NULL con default (`pendiente`) y nullable respectivamente.
+  /**
+   * ¿Está el bulto en poder del courier? Eje propio de Rutax, independiente de
+   * `estado`. Es la reja de la pantalla de asignación: solo se ofrece `retirado`.
+   *
+   * ⚠️ El mapeo desde BD cae a `'pendiente'` cuando la columna no viene en el
+   * SELECT. Es a propósito y falla CERRADO: ante el dato ausente, el pedido no se
+   * ofrece para asignar. Lo contrario abriría la compuerta por descuido.
+   */
+  situacionRetiro?: SituacionRetiro;
+  /**
+   * Momento del escaneo que lo dejó en `retirado`. `null` mientras no se retire y
+   * también en los pedidos anteriores a la migración (el instante no se conoce y
+   * no se inventa).
+   */
+  retiradoEn?: string | null;
 }
 
 export interface Manifiesto {
