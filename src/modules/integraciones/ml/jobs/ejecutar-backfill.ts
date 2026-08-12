@@ -21,10 +21,15 @@
  *
  * API de ML para pedidos del seller:
  * GET /orders/search?seller={ml_user_id}&order.date_created.from={desde}&...
- * Los pedidos tienen envíos asociados — se accede a `shipments` via
- * `order.shipping.shipment_id` o el campo `shipping` del order.
- * Verificar el endpoint exacto contra documentación ML vigente antes de
- * producción — la paginación usa `offset` y `limit` (máx. 50 por página).
+ * El id del envío de una orden es **`order.shipping.id`** — NO existe un campo
+ * `shipping.shipment_id`. En la estructura nueva (`x-format-new: true`) el
+ * detalle del envío ya no viene embebido en la orden: solo el `id`, y el
+ * detalle se consulta aparte con `GET /shipments/{id}`. Verificado contra
+ * `docs/mercadolibre/04-ordenes-ventas.md` (filas «shipment_id en la orden» y
+ * nota «Estructura nueva confirmada»), extraído de la documentación oficial.
+ * `shipping.id` puede venir `null` cuando el envío todavía no se crea: es un
+ * caso ESPERADO (se omite en esta pasada y lo recoge la siguiente), no un
+ * error. La paginación usa `offset` y `limit` (máx. 50 por página).
  */
 
 import { inngest } from "@/lib/inngest/cliente";
@@ -64,11 +69,15 @@ interface FilaConexionBackfill {
 }
 
 /** Pedido de ML (campos mínimos para el backfill). */
-interface OrderMl {
+export interface OrderMl {
   id: number | string;
+  /**
+   * El envío de la orden. El id del shipment es `shipping.id` (ver la nota del
+   * encabezado): puede venir `null` mientras ML no crea el envío.
+   */
   shipping?: {
-    shipment_id?: number | string | null;
-  };
+    id?: number | string | null;
+  } | null;
   order_items?: Array<{
     item?: { title?: string };
   }>;
@@ -82,6 +91,26 @@ interface OrderMl {
   };
   date_created?: string;
   status?: string;
+}
+
+/**
+ * Extrae el id del envío de una orden de ML.
+ *
+ * **El campo es `order.shipping.id`.** Un `shipping.shipment_id` (que no existe
+ * en la API) devolvía `null` para el 100% de las órdenes y el backfill ingería
+ * cero pedidos marcando el intento como `completado` — falla muda. Esta función
+ * está exportada a propósito: el test debe ejercer ESTE código y no una copia
+ * espejo, que validaba el supuesto contra sí mismo.
+ *
+ * Devuelve `null` cuando el envío aún no existe (`shipping` ausente o
+ * `shipping.id` nulo). Eso NO es un error: es el caso «reintentar después»
+ * documentado por ML — la orden se recoge en una pasada posterior del backfill.
+ */
+export function extraerShipmentId(order: OrderMl): string | null {
+  const crudo = order.shipping?.id;
+  if (crudo === null || crudo === undefined || crudo === "") return null;
+  const texto = String(crudo).trim();
+  return texto === "" ? null : texto;
 }
 
 /**
@@ -305,6 +334,7 @@ export const jobEjecutarBackfill = inngest.createFunction(
       let offset = 0;
       let totalProcesados = 0;
       let totalOmitidosNoFlex = 0;
+      let totalSinEnvio = 0;
       let hayMas = true;
 
       // Inngest serializa el retorno de step.run a JSON — las fechas quedan
@@ -349,7 +379,7 @@ export const jobEjecutarBackfill = inngest.createFunction(
         // batch, para ingerir SOLO Flex (self_service) y descartar Full/Colecta/
         // Agencia, que ML despacha (no hay conductor del courier).
         const shipmentIdsPagina = orders
-          .map((o) => (o.shipping?.shipment_id ? String(o.shipping.shipment_id) : null))
+          .map((o) => extraerShipmentId(o))
           .filter((id): id is string => id !== null);
         // La misma llamada trae `receiver_address`, así que de paso nos quedamos
         // con la coordenada del destinatario cuando ML la tiene: es geocoding
@@ -357,11 +387,15 @@ export const jobEjecutarBackfill = inngest.createFunction(
         const mapaShipments = await obtenerDatosPorShipment(shipmentIdsPagina, accessToken);
 
         for (const order of orders) {
-          const shipmentId = order.shipping?.shipment_id
-            ? String(order.shipping.shipment_id)
-            : null;
+          const shipmentId = extraerShipmentId(order);
 
-          if (!shipmentId) continue;
+          // Envío aún no creado por ML (`shipping.id === null`): caso esperado,
+          // no error. Se omite en esta pasada — la ventana del backfill vuelve a
+          // cubrir la orden en la próxima corrida, y el pedido no se pierde.
+          if (!shipmentId) {
+            totalSinEnvio++;
+            continue;
+          }
 
           // Filtro de alcance: solo Flex. Si el tipo no es self_service
           // (Full/Colecta/Agencia) o no se pudo resolver, se omite — nunca se
@@ -484,6 +518,13 @@ export const jobEjecutarBackfill = inngest.createFunction(
         logger.info(
           `Backfill conexión ${conexionId}: ${totalOmitidosNoFlex} envíos omitidos ` +
             "por no ser Flex (self_service) — Full/Colecta/Agencia fuera de alcance.",
+        );
+      }
+
+      if (totalSinEnvio > 0) {
+        logger.info(
+          `Backfill conexión ${conexionId}: ${totalSinEnvio} órdenes sin envío creado ` +
+            "todavía (shipping.id null). Caso esperado — se recogen en la próxima pasada.",
         );
       }
 

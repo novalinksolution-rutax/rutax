@@ -10,14 +10,22 @@
  * 2. Ventana máxima de 7 días — si desconectada_desde es > 7 días se acota.
  * 3. Ventana exacta — si desconectada_desde es < 7 días se usa sin recortar.
  * 4. Idempotencia — si el intento ya está completado, se sale sin reprocesar.
- * 5. Pedidos sin shipment_id son ignorados (no se insertan).
+ * 5. Órdenes sin envío creado (`shipping.id` null) se ignoran (no se insertan).
  * 6. Token nunca aparece en parámetros públicos del job (seguridad).
+ *
+ * ⚠️ El extractor del id de envío se IMPORTA del módulo, nunca se reimplementa
+ * aquí. La versión anterior de este archivo tenía una copia espejo que leía
+ * `shipping.shipment_id` —campo que no existe en la API de ML— y mockeaba ese
+ * mismo campo: validaba el supuesto contra sí mismo y dejó pasar un backfill
+ * que ingería cero pedidos. Si el espejo vuelve, el bug vuelve.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
   obtenerLogisticTypePorShipment,
   coordenadasDeReceiver,
+  extraerShipmentId,
   LOGISTIC_TYPE_FLEX,
+  type OrderMl,
 } from "./ejecutar-backfill";
 
 // =============================================================================
@@ -160,70 +168,67 @@ describe("ejecutarBackfill — idempotencia de intento completado", () => {
 });
 
 // =============================================================================
-// Filtrado de pedidos sin shipment_id
+// extraerShipmentId — el campo real de ML es `shipping.id`
+// =============================================================================
+// Se ejerce la función EXPORTADA del job (no una copia). Fuente del campo:
+// docs/mercadolibre/04-ordenes-ventas.md — «campo `shipping` → `shipping.id` en
+// el JSON de GET /orders/{id} con x-format-new: true. El detalle de envío YA NO
+// viene embebido: solo el `id`», y «`shipping.id` puede ser null si el envío aún
+// no se creó» (caso esperado → reintentar después, no error).
 // =============================================================================
 
-describe("ejecutarBackfill — filtrado de órdenes ML sin shipment_id", () => {
-  interface OrderMl {
-    id: number | string;
-    shipping?: { shipment_id?: number | string | null };
-    status?: string;
+describe("extraerShipmentId — lee shipping.id (el campo que existe en ML)", () => {
+  /** Los `id` de shipment reales de ML son enteros grandes. */
+  function ordenConEnvio(id: number | string): OrderMl {
+    return { id: 999, shipping: { id } };
   }
 
-  /**
-   * Extrae los shipment IDs procesables de una lista de órdenes ML.
-   * Espejo fiel de la lógica dentro del loop for(order of orders) del job.
-   */
-  function extraerShipmentIds(orders: OrderMl[]): string[] {
-    const ids: string[] = [];
-    for (const order of orders) {
-      const shipmentId = order.shipping?.shipment_id
-        ? String(order.shipping.shipment_id)
-        : null;
-      if (!shipmentId) continue;
-      ids.push(shipmentId);
-    }
-    return ids;
-  }
-
-  it("órdenes sin shipping → se ignoran (shipment_id null)", () => {
-    const orders: OrderMl[] = [
-      { id: 1, shipping: undefined },
-      { id: 2, shipping: { shipment_id: null } },
-      { id: 3, shipping: {} },
-    ];
-    expect(extraerShipmentIds(orders)).toHaveLength(0);
+  it("shipping.id numérico → lo devuelve como string", () => {
+    expect(extraerShipmentId(ordenConEnvio(44012345678))).toBe("44012345678");
   });
 
-  it("órdenes con shipping.shipment_id válido → se incluyen", () => {
-    const orders: OrderMl[] = [
-      { id: 1, shipping: { shipment_id: 123456 } },
-      { id: 2, shipping: { shipment_id: "789012" } },
-    ];
-    const ids = extraerShipmentIds(orders);
-    expect(ids).toHaveLength(2);
-    expect(ids).toContain("123456");
-    expect(ids).toContain("789012");
+  it("shipping.id string → lo devuelve tal cual", () => {
+    expect(extraerShipmentId(ordenConEnvio("44012345678"))).toBe("44012345678");
   });
 
-  it("lista mixta → solo los que tienen shipment_id", () => {
-    const orders: OrderMl[] = [
-      { id: 1, shipping: { shipment_id: 111 } },
-      { id: 2, shipping: undefined },                    // sin shipping
-      { id: 3, shipping: { shipment_id: 333 } },
-      { id: 4, shipping: { shipment_id: null } },       // shipment_id null
-      { id: 5, shipping: { shipment_id: "555" } },
+  it("shipping.id null → null (envío aún no creado; se reintenta después)", () => {
+    expect(extraerShipmentId({ id: 1, shipping: { id: null } })).toBeNull();
+  });
+
+  it("orden sin shipping (undefined o null) → null", () => {
+    expect(extraerShipmentId({ id: 1 })).toBeNull();
+    expect(extraerShipmentId({ id: 1, shipping: undefined })).toBeNull();
+    expect(extraerShipmentId({ id: 1, shipping: null })).toBeNull();
+  });
+
+  it("shipping vacío o con id en blanco → null", () => {
+    expect(extraerShipmentId({ id: 1, shipping: {} })).toBeNull();
+    expect(extraerShipmentId({ id: 1, shipping: { id: "" } })).toBeNull();
+    expect(extraerShipmentId({ id: 1, shipping: { id: "   " } })).toBeNull();
+  });
+
+  it("REGRESIÓN: una orden con SOLO `shipping.shipment_id` no aporta id", () => {
+    // `shipment_id` no existe en la API de ML. Este test fija que el extractor
+    // no lo lee: si alguien lo reintroduce como fallback, la falla muda vuelve
+    // a quedar tapada (el job leía ese campo y omitía el 100% de las órdenes).
+    const ordenFalsa = { id: 1, shipping: { shipment_id: 44012345678 } } as unknown as OrderMl;
+    expect(extraerShipmentId(ordenFalsa)).toBeNull();
+  });
+
+  it("una página de órdenes reales rinde sus ids (el bug daba lista vacía)", () => {
+    const pagina: OrderMl[] = [
+      { id: 1, shipping: { id: 111 } },
+      { id: 2, shipping: undefined },        // sin envío
+      { id: 3, shipping: { id: 333 } },
+      { id: 4, shipping: { id: null } },     // envío no creado todavía
+      { id: 5, shipping: { id: "555" } },
     ];
-    const ids = extraerShipmentIds(orders);
-    expect(ids).toHaveLength(3);
-    expect(ids).toContain("111");
-    expect(ids).toContain("333");
-    expect(ids).toContain("555");
-    expect(ids).not.toContain("null");
+    const ids = pagina.map(extraerShipmentId).filter((v): v is string => v !== null);
+    expect(ids).toEqual(["111", "333", "555"]);
   });
 
   it("lista vacía → sin resultados", () => {
-    expect(extraerShipmentIds([])).toHaveLength(0);
+    expect([].map(extraerShipmentId)).toHaveLength(0);
   });
 });
 
@@ -353,16 +358,15 @@ describe("ejecutarBackfill — obtenerLogisticTypePorShipment (batch real)", () 
 });
 
 describe("ejecutarBackfill — decisión de filtro: solo se ingiere Flex", () => {
-  interface OrderMl {
-    id: number | string;
-    shipping?: { shipment_id?: number | string | null };
-  }
-
-  /** Espejo fiel de la decisión dentro del loop for(order of orders) del job. */
+  /**
+   * Decisión dentro del loop for(order of orders) del job. El extractor del id
+   * es el REAL (importado); lo único que se replica aquí es el `continue` del
+   * filtro por logistic_type.
+   */
   function shipmentsIngeridos(orders: OrderMl[], mapaLogistic: Map<string, string | null>): string[] {
     const out: string[] = [];
     for (const order of orders) {
-      const sid = order.shipping?.shipment_id ? String(order.shipping.shipment_id) : null;
+      const sid = extraerShipmentId(order);
       if (!sid) continue;
       if (mapaLogistic.get(sid) !== LOGISTIC_TYPE_FLEX) continue;
       out.push(sid);
@@ -371,16 +375,16 @@ describe("ejecutarBackfill — decisión de filtro: solo se ingiere Flex", () =>
   }
 
   it("Full (fulfillment) → omitido", () => {
-    const orders: OrderMl[] = [{ id: 1, shipping: { shipment_id: 222 } }];
+    const orders: OrderMl[] = [{ id: 1, shipping: { id: 222 } }];
     const mapa = new Map<string, string | null>([["222", "fulfillment"]]);
     expect(shipmentsIngeridos(orders, mapa)).toHaveLength(0);
   });
 
   it("mixto Flex + Full + Colecta → solo el Flex", () => {
     const orders: OrderMl[] = [
-      { id: 1, shipping: { shipment_id: 111 } },
-      { id: 2, shipping: { shipment_id: 222 } },
-      { id: 3, shipping: { shipment_id: 333 } },
+      { id: 1, shipping: { id: 111 } },
+      { id: 2, shipping: { id: 222 } },
+      { id: 3, shipping: { id: 333 } },
     ];
     const mapa = new Map<string, string | null>([
       ["111", "self_service"],
@@ -391,15 +395,15 @@ describe("ejecutarBackfill — decisión de filtro: solo se ingiere Flex", () =>
   });
 
   it("logistic_type ausente (null) → omitido (no se asume Flex)", () => {
-    const orders: OrderMl[] = [{ id: 1, shipping: { shipment_id: 444 } }];
+    const orders: OrderMl[] = [{ id: 1, shipping: { id: 444 } }];
     const mapa = new Map<string, string | null>([["444", null]]);
     expect(shipmentsIngeridos(orders, mapa)).toHaveLength(0);
   });
 
   it("todos Flex → todos ingeridos", () => {
     const orders: OrderMl[] = [
-      { id: 1, shipping: { shipment_id: 111 } },
-      { id: 2, shipping: { shipment_id: 222 } },
+      { id: 1, shipping: { id: 111 } },
+      { id: 2, shipping: { id: 222 } },
     ];
     const mapa = new Map<string, string | null>([
       ["111", "self_service"],
