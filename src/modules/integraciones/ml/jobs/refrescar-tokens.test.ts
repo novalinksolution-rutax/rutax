@@ -9,9 +9,10 @@
  * Se extrae y prueba la función de lógica interna directamente, inyectando
  * mocks del puerto ML y del cliente de BD.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConexionSellerMl } from "../tipos";
+import { construirFiltroConexionesCandidatas } from "./refrescar-tokens";
 
 // ---------------------------------------------------------------------------
 // Función de lógica extraída del job para prueba aislada
@@ -185,5 +186,81 @@ describe("jobRefrescarTokens — lógica del loop de refresco", () => {
     expect(resultado.fallidosTransitorios).toBe(0);
     expect(resultado.requierenRevinculacion).toBe(0);
     expect(fnMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Filtro de conexiones candidatas — el margen tiene que viajar como literal
+// ---------------------------------------------------------------------------
+// PostgREST NO evalúa SQL dentro de un filtro. El filtro anterior era
+// `token_expira_en.lt.now() + interval '2 hours'` dentro de un `.or(...)`:
+// PostgREST descartaba el `+ interval '2 hours'` EN SILENCIO (fuera de `or()`
+// el mismo filtro devuelve 22007) y comparaba contra `now()` a secas, así que
+// solo se refrescaban tokens YA vencidos. Con TTL de 6 h y cron cada 30 min eso
+// deja hasta media hora en que toda llamada a ML responde 401, y `sondeo-salud`
+// alcanza a desvincular la conexión: el seller se queda sin pedidos ese día.
+// Estas pruebas fijan que el instante límite se calcula en TypeScript.
+// ---------------------------------------------------------------------------
+
+describe("construirFiltroConexionesCandidatas", () => {
+  const AHORA = new Date("2026-08-12T10:00:00.000Z");
+  const DOS_HORAS_MS = 2 * 60 * 60 * 1000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("usa un literal ISO, nunca una expresión SQL", () => {
+    const filtro = construirFiltroConexionesCandidatas(AHORA);
+
+    // Lo que rompía: ninguna de estas piezas puede aparecer en el string.
+    expect(filtro).not.toContain("now()");
+    expect(filtro).not.toContain("interval");
+    expect(filtro).not.toContain("+");
+    expect(filtro).toContain("token_expira_en.lt.2026-08-12T12:00:00.000Z");
+  });
+
+  it("el instante límite es 'ahora + margen', no 'ahora'", () => {
+    const filtro = construirFiltroConexionesCandidatas(AHORA);
+    const limite = filtro.match(/token_expira_en\.lt\.([^,]+)/)?.[1];
+
+    expect(limite).toBeDefined();
+    const limiteMs = new Date(limite!).getTime();
+    expect(Number.isNaN(limiteMs)).toBe(false);
+    expect(limiteMs - AHORA.getTime()).toBe(DOS_HORAS_MS);
+    // Un token que vence en 1 h debe entrar; el filtro anterior lo dejaba fuera
+    // hasta que ya estaba vencido.
+    expect(new Date(AHORA.getTime() + 60 * 60 * 1000).getTime()).toBeLessThan(limiteMs);
+  });
+
+  it("el margen supera con holgura la cadencia del cron (30 min)", () => {
+    const filtro = construirFiltroConexionesCandidatas(AHORA);
+    const limiteMs = new Date(filtro.match(/token_expira_en\.lt\.([^,]+)/)![1]).getTime();
+    const margenMs = limiteMs - AHORA.getTime();
+
+    // Si el margen fuera ≤ 30 min habría ventana muerta con 401 garantizados.
+    expect(margenMs).toBeGreaterThan(30 * 60 * 1000);
+    // Y tampoco puede acercarse al TTL de 6 h: refrescar de más rota sin
+    // necesidad el refresh_token de un solo uso de ML.
+    expect(margenMs).toBeLessThan(6 * 60 * 60 * 1000);
+  });
+
+  it("conserva la segunda condición: estado_salud = 'atencion'", () => {
+    const filtro = construirFiltroConexionesCandidatas(AHORA);
+
+    expect(filtro.split(",")).toHaveLength(2);
+    expect(filtro.endsWith("estado_salud.eq.atencion")).toBe(true);
+    // 'sana' NO entra por sí sola: refrescarlas todas rotaba el refresh_token
+    // de cada conexión en cada corrida.
+    expect(filtro).not.toContain("estado_salud.eq.sana");
+  });
+
+  it("sin argumento toma la hora actual", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(AHORA);
+
+    expect(construirFiltroConexionesCandidatas()).toBe(
+      construirFiltroConexionesCandidatas(AHORA),
+    );
   });
 });
