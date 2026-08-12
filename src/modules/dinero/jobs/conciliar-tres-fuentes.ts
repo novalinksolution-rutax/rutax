@@ -627,13 +627,19 @@ async function detectorD4_MinimoOmitido(
     const montoTotalPeriodo = Math.round(Number(periodo.monto_total_clp ?? 0));
 
     // Obtener tarifa vigente del seller para este tenant.
+    // `identidad.tarifas` no tiene columna booleana `activa`: su estado vive en
+    // la columna `estado` (enum identidad.estado_tarifa: 'activa' | 'inactiva').
+    // Antes se filtraba por `.eq('activa', true)` — columna inexistente → 42703,
+    // el `throw` de la línea siguiente tumbaba el `step.run` completo del tenant
+    // (D5 y D6 tampoco corrían) y, tras 3 reintentos, todo el job C7 fallaba.
+    // Mismo patrón que el fix de `tenants.activo` en el paso 0 de este archivo.
     const { data: tarifa, error: errTarifa } = await supabase
       .schema('identidad')
       .from('tarifas')
       .select('id, minimo_facturacion_clp, minimo_retiro_clp')
       .eq('tenant_id', tenantId)
       .eq('seller_id', sellerId)
-      .eq('activa', true)
+      .eq('estado', 'activa')
       .maybeSingle();
 
     if (errTarifa) throw new Error(`D4 · Error al leer tarifa seller ${sellerId}: ${errTarifa.message}`);
