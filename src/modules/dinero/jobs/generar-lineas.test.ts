@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
 import type { EntradaMotor, TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
+import { decidirReatribucionLiquidacion } from '../reatribucion-liquidacion';
 
 describe('Job C1 — generar-lineas', () => {
   // =========================================================================
@@ -698,5 +699,84 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
         genera: true,
       }),
     ).not.toThrow();
+  });
+});
+
+// =============================================================================
+// BUG "Pedro entrega, Juan cobra" — re-atribución de la línea de liquidación
+// cuando el conductor del evento actual difiere del `driver_id` de la línea
+// ya existente (conflicto del UNIQUE(pedido_id) en `generar-linea-liquidacion`).
+//
+// Los 6 casos de `decidirReatribucionLiquidacion` en sí se prueban en
+// `../reatribucion-liquidacion.test.ts` (módulo puro, test dedicado — mismo
+// patrón que `motor.test.ts` para `motor.ts`). Aquí se prueba el CAMINO
+// COMPLETO reproducido con el código de hoy (`maquina-estados.ts:78` permite
+// fallido → asignado; `dialog-reasignacion.tsx` reasigna):
+//   1. Pedido llega a `fallido` con incidencia afecta_liquidacion=true,
+//      conductor A asignado → C1 genera línea de liquidación a nombre de A.
+//   2. El pedido vuelve a `asignado` (transición operativa, NO financiera —
+//      no dispara C1) y se reasigna al conductor B.
+//   3. B entrega → estado `entregado` → C1 vuelve a correr, choca con el
+//      UNIQUE(pedido_id): existe la línea de A.
+//   4. El job usa `decidirReatribucionLiquidacion` para resolver el conflicto.
+// =============================================================================
+describe('Camino completo fallido → asignado → reasignación → entregado', () => {
+  it('el motor genera liquidación al conductor A en el fallido, y el job re-atribuye a B cuando B entrega (liquidación de A en borrador)', () => {
+    // Paso 1: pedido `fallido`, incidencia afecta_liquidacion=true, conductor A.
+    const entradaFallido: EntradaMotor = {
+      estadoPedido: 'fallido',
+      afectaCobro: false,
+      afectaLiquidacion: true,
+      esGastoPropio: false,
+      tieneDriverAsignado: true, // conductor A
+    };
+    const resultadoFallido = evaluarElegibilidad(entradaFallido);
+    // El motor SÍ genera liquidación para el conductor A — esta es la línea
+    // que después queda "huérfana" si nadie la re-atribuye.
+    expect(resultadoFallido.generaLiquidacion).toBe(true);
+    expect(resultadoFallido.generaCobro).toBe(false);
+
+    // Paso 2: `asignado` no es un estado financieramente relevante — el job
+    // C1 no corre (no hay evaluarElegibilidad para `asignado`). El pedido se
+    // reasigna de A a B por fuera del motor de dinero (operacion/pedidos.ts).
+
+    // Paso 3: B entrega → `entregado`, con conductor B.
+    const entradaEntregado: EntradaMotor = {
+      estadoPedido: 'entregado',
+      afectaCobro: null,
+      afectaLiquidacion: null,
+      esGastoPropio: false,
+      tieneDriverAsignado: true, // conductor B
+    };
+    const resultadoEntregado = evaluarElegibilidad(entradaEntregado);
+    expect(resultadoEntregado.generaCobro).toBe(true);
+    expect(resultadoEntregado.generaLiquidacion).toBe(true);
+
+    // Paso 4: C1 vuelve a correr para el mismo pedido_id. El INSERT choca con
+    // la línea de A (UNIQUE pedido_id). La liquidación de A sigue en
+    // 'borrador' → el job SÍ puede corregir la atribución a B.
+    const decision = decidirReatribucionLiquidacion({
+      driverIdLineaExistente: 'conductor-A',
+      driverIdEvento: 'conductor-B',
+      liquidacionIdExistente: 'liquidacion-A-periodo-actual',
+      estadoLiquidacionExistente: 'borrador',
+    });
+    expect(decision).toBe('reatribuir');
+    // Con el código ANTERIOR al fix, este mismo conflicto devolvía la línea
+    // de A sin comparar driver_id — "B entrega, A cobra" quedaba en silencio.
+  });
+
+  it('si la liquidación de A ya se emitió antes de que B entregue, el job NO reatribuye — queda excepción', () => {
+    // Mismo camino que el test anterior, pero la liquidación de A alcanzó a
+    // emitirse (p.ej. cerró el período de liquidación) antes de que B
+    // entregara. La compuerta humana manda: ni se paga a B automáticamente,
+    // ni se le quita el pago a A en silencio.
+    const decision = decidirReatribucionLiquidacion({
+      driverIdLineaExistente: 'conductor-A',
+      driverIdEvento: 'conductor-B',
+      liquidacionIdExistente: 'liquidacion-A-emitida',
+      estadoLiquidacionExistente: 'emitida',
+    });
+    expect(decision).toBe('excepcion');
   });
 });

@@ -37,6 +37,9 @@ import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
 import type { TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
 import { obtenerOCrearPeriodoCobroAbierto, obtenerOCrearLiquidacionAbierta } from '../periodos';
+import { existeEventoConciliacion, insertarEventoConciliacion } from '../conciliacion-insercion';
+import { decidirReatribucionLiquidacion } from '../reatribucion-liquidacion';
+import type { EstadoLiquidacionConductor } from '../reatribucion-liquidacion';
 import type { EstadoPedido } from '@/modules/operacion/tipos';
 
 const TZ = 'America/Santiago';
@@ -654,17 +657,22 @@ export const jobGenerarLineas = inngest.createFunction(
 
       if (insertada) return insertada.id as string;
 
-      // Conflicto: si la línea existente está anulada (reclasificación B1), reactivarla.
+      // Conflicto: existe una línea con este pedido_id.
       const { data: existente } = await supabase
         .schema('dinero')
         .from('lineas_liquidacion')
-        .select('id, anulada')
+        .select('id, anulada, driver_id, liquidacion_id')
         .eq('pedido_id', pedidoId)
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
       if (!existente) return null;
 
+      // Rama 1: la línea existente está anulada (reclasificación B1) — reactivarla.
+      // Se fija driver_id al conductor del evento ACTUAL (puede haber cambiado
+      // desde que se anuló) y se limpia liquidacion_id para que el paso 5
+      // ("asignar-liquidacion") la cuelgue de la liquidación abierta del
+      // conductor correcto, nunca de la que tenía asignada antes de anularse.
       if (existente.anulada) {
         await supabase
           .schema('dinero')
@@ -673,6 +681,8 @@ export const jobGenerarLineas = inngest.createFunction(
             anulada: false,
             anulada_en: null,
             motivo_anulacion: null,
+            driver_id: driverIdAsignado,
+            liquidacion_id: null,
             monto_base_clp: montoBase,
             ajuste_incidencia_clp: ajuste,
             concepto,
@@ -685,6 +695,124 @@ export const jobGenerarLineas = inngest.createFunction(
           .eq('id', existente.id as string)
           .eq('tenant_id', tenantId)
           .eq('anulada', true); // idempotente
+
+        return existente.id as string;
+      }
+
+      // Rama 2: línea activa (anulada=false) — ¿sigue atribuida al mismo
+      // conductor del evento actual? Si no, es el caso "Pedro entrega, Juan
+      // cobra": un pedido fallido generó liquidación al conductor A
+      // (incidencia que afecta_liquidacion), se reasignó al conductor B, y B
+      // fue quien entregó. Sin este chequeo la línea de A quedaba tal cual.
+      const driverAnterior = existente.driver_id as string;
+      if (driverAnterior === driverIdAsignado) {
+        return existente.id as string;
+      }
+
+      // El conductor cambió. La decisión de si se puede re-atribuir (línea
+      // pura, testeada aparte) sigue la misma doctrina que la anulación
+      // pre-cierre de este archivo (línea ~350): solo se muta lo que sigue en
+      // estado mutable — 'emitida'/'pagada' son inmutables, la compuerta
+      // humana manda.
+      let estadoLiquidacionAnterior: EstadoLiquidacionConductor | null = null;
+      if (existente.liquidacion_id) {
+        const { data: liqAnterior } = await supabase
+          .schema('dinero')
+          .from('liquidaciones')
+          .select('estado')
+          .eq('id', existente.liquidacion_id as string)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+        estadoLiquidacionAnterior = (liqAnterior?.estado as EstadoLiquidacionConductor | null) ?? null;
+      }
+
+      const decision = decidirReatribucionLiquidacion({
+        driverIdLineaExistente: driverAnterior,
+        driverIdEvento: driverIdAsignado,
+        liquidacionIdExistente: (existente.liquidacion_id as string | null) ?? null,
+        estadoLiquidacionExistente: estadoLiquidacionAnterior,
+      });
+
+      if (decision === 'reatribuir') {
+        // Bitácora ANTES del efecto (invariante financiero CLAUDE.md): ambos
+        // conductores, la línea y la liquidación de origen.
+        await registrarEnBitacora(supabase, {
+          tenantId,
+          actorUsuarioId: null,
+          actorTipo: 'sistema',
+          accion: 'dinero.linea_liquidacion_reatribuida',
+          entidadTipo: 'pedido',
+          entidadId: pedidoId,
+          detalle: {
+            linea_liquidacion_id: existente.id,
+            driver_id_anterior: driverAnterior,
+            driver_id_nuevo: driverIdAsignado,
+            liquidacion_id_anterior: existente.liquidacion_id ?? null,
+            estado_liquidacion_anterior: estadoLiquidacionAnterior,
+            motivo: 'reasignacion_conductor_previa_a_entrega',
+            job_run_id: runId,
+          },
+        });
+
+        await supabase
+          .schema('dinero')
+          .from('lineas_liquidacion')
+          .update({
+            driver_id: driverIdAsignado,
+            // Se limpia para que el paso 5 la cuelgue de la liquidación
+            // abierta del conductor correcto, nunca de la de driverAnterior.
+            liquidacion_id: null,
+            monto_base_clp: montoBase,
+            ajuste_incidencia_clp: ajuste,
+            concepto,
+            fecha_entrega: fechaEntrega,
+            incidencia_id: incidencia?.id ?? null,
+            origen_generacion: 'motor_automatico',
+            snapshot_regla: snapshotLiquidacion,
+            actualizado_en: new Date().toISOString(),
+          })
+          .eq('id', existente.id as string)
+          .eq('tenant_id', tenantId)
+          .eq('driver_id', driverAnterior); // guarda optimista anti-carrera
+
+        return existente.id as string;
+      }
+
+      // No se puede mutar: la liquidación de driverAnterior ya no es
+      // mutable (emitida/pagada). NO se muta nada — la compuerta humana
+      // manda — y se deja la discrepancia visible en la bandeja de
+      // conciliación para resolución manual (bono/penalización vía F16,
+      // `ajustarLiquidacion`).
+      logger.warn(
+        `Pedido ${pedidoId}: entregó el conductor ${driverIdAsignado}, pero la línea de ` +
+        `liquidación (${existente.id}) sigue atribuida a ${driverAnterior} — su liquidación está ` +
+        `'${estadoLiquidacionAnterior}' (no mutable). Se registra excepción para resolución humana.`,
+      );
+
+      const yaExisteExcepcion = await existeEventoConciliacion(
+        supabase,
+        tenantId,
+        'liquidacion_atribuida_a_conductor_incorrecto',
+        { pedidoId },
+      );
+
+      if (!yaExisteExcepcion) {
+        await insertarEventoConciliacion(supabase, {
+          tenant_id: tenantId,
+          seller_id: sellerId,
+          pedido_id: pedidoId,
+          driver_id: driverAnterior,
+          liquidacion_id: (existente.liquidacion_id as string | null) ?? null,
+          tipo_diferencia: 'liquidacion_atribuida_a_conductor_incorrecto',
+          descripcion:
+            `Pedido ${pedidoId}: la entrega la hizo el conductor ${driverIdAsignado}, pero la línea de ` +
+            `liquidación (${existente.id}) sigue atribuida a ${driverAnterior} porque su liquidación ya ` +
+            `está '${estadoLiquidacionAnterior}' (no mutable). Requiere ajuste manual: bono al conductor ` +
+            `que entregó, penalización al que no, vía ajuste de liquidación (F16).`,
+          monto_diferencia_clp: Math.round(montoBase + ajuste),
+          estado: 'pendiente',
+          job_run_id: runId,
+        });
       }
 
       return existente.id as string;
