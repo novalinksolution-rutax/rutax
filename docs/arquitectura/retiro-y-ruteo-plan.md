@@ -25,19 +25,28 @@ mal**. El esfuerzo es en días de trabajo enfocado, no en calendario.
 
 ---
 
-# 🚨 Dos bloqueadores previos a todo
+# Los dos bloqueadores previos a todo — ✅ AMBOS RESUELTOS (2026-08-13)
 
-**B1 · El repo de la app del conductor no tiene remoto.** `git remote -v` en
-`Desktop/rutax-conductor` devuelve vacío; `master` no tiene upstream. **Todo el código de la app
-existe únicamente en el disco de esta máquina.** Son 6 commits sin respaldo, y el plan propone
-sumarle 8–10 días de trabajo encima. Darle un remoto es media hora y va antes que cualquier otra
-cosa. Aparte: su `.env` apunta a entorno local, así que hay que decidir cómo se apunta a producción.
+**B1 · ~~El repo de la app del conductor no tiene remoto~~ — RESUELTO (2026-08-13).** Los 6 commits
+están publicados en `novalinksolution-rutax/rutax-conductor` (privado, misma org que el repo web),
+con `master` rastreando `origin/master`. Se revisó el contenido completo de la historia antes de
+empujar: `.env` está en `.gitignore` y lo único trackeado es `.env.example`, con placeholders — sin
+secretos.
 
-**B2 · Nadie modela la bodega del courier, y sin ella la ruta no tiene origen.** El alcance dice
-"inicio en la bodega del coordinador" — la bodega **del courier**, que no es la del seller. La etapa
-2 modela dónde se *retira*; esto es de dónde se *sale a repartir*. Verificado: **no existe ninguna
-dirección del courier en todo el esquema** (`identidad.tenants` no la tiene, `identidad.sellers`
-tampoco). Ninguna etapa la creaba. Ver **Etapa 2b**.
+**Repo separado y no monorepo, a propósito.** Los ciclos de release son incompatibles (Vercel
+despliega en minutos; una app nativa pasa por EAS build y revisión de tienda), el CI del repo web ya
+corre typecheck + lint + ~2.700 pruebas + build de Next, y sobre todo **el acoplamiento real es por
+HTTP, no por código**: la app llega al backend por `EXPO_PUBLIC_API_URL` y no importa un solo archivo
+del otro repo. Un monorepo no habría eliminado la desincronización de contratos, solo la habría
+escondido — eso se ataja con pruebas de contrato a ambos lados.
+
+⚠️ **Cabo abierto:** el `.env` de la app apunta a entorno local. Para builds de EAS, las variables van
+en `eas.json` o en EAS Secrets, nunca en el repo. Se resuelve al armar el primer build, no antes.
+
+**B2 · ~~Nadie modela la bodega del courier~~ — RESUELTO (2026-08-13).** Era el origen de toda ruta y
+no existía: ninguna dirección del courier en todo el esquema (`identidad.tenants` no la tenía,
+`identidad.sellers` tampoco), y ninguna etapa la creaba. Hoy es `identidad.courier_bodegas`,
+migración `20260813000002`. Ver la sección de las etapas 2 y 2b.
 
 ---
 
