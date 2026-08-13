@@ -61,6 +61,18 @@ delete from operacion.asignaciones_pedido where id::text like 'a77c0000%';
 delete from operacion.pedidos           where id::text like '6d7c0000%';
 delete from operacion.manifiestos       where id::text like '7d7c0000%';
 
+-- Bodegas de ESTE bloque (§7). Prefijos propios: no tocan las de `seed.sql`
+-- (7b0…/7c0…) ni las de `seed-demo-full.sql` (7b1…/7c1…).
+--
+-- ⚠️ CUANDO LLEGUE LA ETAPA 3: la sesión/visita de retiro va a referenciar
+-- `seller_bodegas` por FK compuesta (tenant_id, bodega_id). Desde ese día, estos
+-- dos DELETE fallan con 23503 si hay visitas colgando de estas bodegas, y hay
+-- que borrarlas ANTES aquí mismo — igual que se hace arriba con los hijos de
+-- `pedidos`. No es hipotético: el §5 de la migración 20260813000002 ya declara
+-- esa FK como el motivo de existir de `seller_bodegas_tenant_id_id_uk`.
+delete from identidad.seller_bodegas  where id::text like '7b7c0000%';
+delete from identidad.courier_bodegas where id::text like '7c7c0000%';
+
 
 -- -----------------------------------------------------------------------------
 -- 1. El plan del día — una fila por pedido, antes de tocar ninguna tabla
@@ -454,6 +466,98 @@ where p.tipo = 'flex'
   and p.rol in ('entregado', 'incidencia');
 
 
+-- -----------------------------------------------------------------------------
+-- 7. Bodegas de HOY
+-- -----------------------------------------------------------------------------
+-- La Torre NO muestra bodegas y no las va a mostrar: es de solo lectura y su
+-- unidad es la comuna. Estas filas están acá por la otra propiedad de este
+-- archivo, la que ningún otro seed tiene — **es el único que se puede correr
+-- cualquier día y deja la carga anclada a HOY**.
+--
+-- Qué gana la demo con eso, en concreto:
+--   · `geocodificado_en` de esta mañana. Las bodegas de `seed.sql` y
+--     `seed-demo-full.sql` entran con `on conflict do nothing`, así que su fecha
+--     de geocodificación se congela en la primera corrida y meses después la
+--     pantalla dice "resuelta hace 4 meses" en TODAS. Sin una sola fila fresca,
+--     el caso "recién geocodificada" no existe en la demo ningún día.
+--   · Están en las tres comunas de mayor carga del día (Santiago 120, Maipú 88,
+--     Puente Alto 82). La jornada que describió el courier real —un conductor
+--     retirando en tres bodegas de sellers distintos, 30 + 30 + 70 bultos— se
+--     demuestra con bodegas donde de verdad hay pedidos hoy, no en cualquier
+--     comuna.
+--
+-- NINGUNA es principal, y no es una preferencia: la principal de cada seller y
+-- la del courier las marca `seed.sql`, y `seller_bodegas_principal_uk` /
+-- `courier_bodegas_principal_uk` admiten como máximo UNA. Marcar una aquí
+-- abortaría la transacción entera con 23505 — y este archivo se corre a diario.
+--
+-- Los nombres tampoco se repiten con los de los otros dos seeds dentro del mismo
+-- seller: `seller_bodegas_nombre_activa_uk` es único entre las ACTIVAS.
+insert into identidad.seller_bodegas (
+  id, tenant_id, seller_id, nombre, direccion, comuna,
+  instrucciones_acceso, contacto_nombre, contacto_telefono,
+  es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+)
+select
+  b.id::uuid,
+  '10000000-0000-0000-0000-000000000001',
+  b.seller_id::uuid,
+  b.nombre, b.direccion, b.comuna,
+  b.instrucciones, b.contacto_nombre, b.contacto_telefono,
+  false, true,
+  b.lat, b.lng, 'resuelto', b.confianza,
+  -- Las 06:20 de HOY en Santiago; nunca en el futuro si el seed se corre de
+  -- madrugada. Mismo criterio de reloj que el resto del archivo: la fecha civil
+  -- de Santiago, no `current_date` (que en la sesión de Postgres es UTC).
+  least(
+    ((h.d + time '06:20') at time zone 'America/Santiago'),
+    now() - interval '5 minutes'
+  )
+from (values
+  ('7b7c0000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000001',
+   'Bodega Matucana'::text, 'Av. Matucana 1030'::text, 'Santiago'::text,
+   'Carga por el pasaje lateral. Hay inspección municipal en la vereda: no dejar bultos en el suelo.'::text,
+   'Sandra Meneses'::text, '+56995620418'::text,
+   -33.4407::double precision, -70.6825::double precision, 0.930::numeric),
+  ('7b7c0000-0000-0000-0000-000000000002',
+   '30000000-0000-0000-0000-000000000002',
+   'Bodega Los Pajaritos', 'Av. Los Pajaritos 3195', 'Maipú',
+   null, null, '+56941780256',
+   -33.4886, -70.7449, 0.900),
+  ('7b7c0000-0000-0000-0000-000000000003',
+   '30000000-0000-0000-0000-000000000003',
+   'Bodega Camilo Henríquez', 'Av. Camilo Henríquez 3600', 'Puente Alto',
+   'Retiro solo antes de las 12:00; después ocupan el andén para recepción.',
+   null, null,
+   -33.5757, -70.5744, 0.880)
+) as b(id, seller_id, nombre, direccion, comuna, instrucciones,
+       contacto_nombre, contacto_telefono, lat, lng, confianza)
+cross join (select (now() at time zone 'America/Santiago')::date as d) h;
+
+-- Anexo del courier abierto para la carga de hoy. Activo y NO principal: es un
+-- segundo origen de ruta posible, que es lo que la etapa 7 tiene que poder
+-- elegir. La principal sigue siendo 'Central Cerrillos', de `seed.sql`.
+insert into identidad.courier_bodegas (
+  id, tenant_id, nombre, direccion, comuna,
+  instrucciones_acceso, es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+)
+select
+  '7c7c0000-0000-0000-0000-000000000001',
+  '10000000-0000-0000-0000-000000000001',
+  'Anexo Estación Central','Av. 5 de Abril 4120','Estación Central',
+  'Anexo de temporada. Se abre cuando la carga del día pasa de 900 bultos y se cierra al terminar la ola.',
+  false, true,
+  -33.4650, -70.7000, 'resuelto', 0.910,
+  least(
+    ((h.d + time '06:20') at time zone 'America/Santiago'),
+    now() - interval '5 minutes'
+  )
+from (select (now() at time zone 'America/Santiago')::date as d) h;
+
+
 drop table _torre_plan;
 
 commit;
@@ -473,6 +577,8 @@ commit;
 --   12 manifiestos en ruta, uno por conductor, con sus asignaciones activas
 --   Cierres de Rutax para los Flex entregados, la mitad de ellos con el pedido
 --     todavía en `en_ruta` → la Torre va por delante de `/operaciones`, a propósito
+--   4 bodegas geocodificadas HOY (3 de seller, en las comunas de mayor carga del
+--     día, + 1 anexo del courier). Ninguna principal: esas las marca `seed.sql`
 --
 -- Cruza 1.000 filas A PROPÓSITO: es el tope en que PostgREST trunca sin avisar,
 -- y contar pedidos por comuna es exactamente el patrón que ese tope arruina. Si

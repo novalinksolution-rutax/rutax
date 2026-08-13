@@ -51,6 +51,7 @@ import {
   Megaphone,
   ShieldCheck,
   Radar,
+  Warehouse,
   type LucideIcon,
 } from "lucide-react"
 
@@ -85,6 +86,8 @@ const ICONOS: Record<string, LucideIcon> = {
   "puesta-en-marcha": Rocket,
   integraciones: Plug,
   zonas: MapPinned,
+  // `Building2` ya está tomado por "couriers" en el panel de administración.
+  bodegas: Warehouse,
   "conexion-ml": Link2,
   couriers: Building2,
   metricas: LineChart,

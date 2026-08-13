@@ -25,3 +25,18 @@ export {
   ErrorGeocodingConfig,
   ErrorGeocodingProveedor,
 } from './errores';
+
+// Helper compartido de resolución de coordenadas con cache global (job de
+// pedidos Y Server Actions de bodegas — ver `resolver-coordenada.ts`). Los
+// hooks de inyección de puerto para tests (`setPuertoGeocoding`/
+// `resetPuertoGeocoding`) NO se exponen aquí a propósito: son de uso
+// exclusivo de pruebas y se importan directo desde `./resolver-coordenada`,
+// igual que antes se importaban directo desde `./jobs/geocodificar-pedido`.
+export {
+  resolverCoordenadaConCache,
+  TIMEOUT_GEOCODING_SINCRONO_MS,
+} from './resolver-coordenada';
+export type {
+  ArgsResolverCoordenadaConCache,
+  LoggerLigero,
+} from './resolver-coordenada';

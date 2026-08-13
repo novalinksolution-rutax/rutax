@@ -1131,9 +1131,21 @@ export async function crearPedidoSameDay(
       },
     });
   } catch {
-    // Evento best-effort post-commit. Si falla, el pedido ya fue creado con
-    // geo_estado = 'pendiente' y el job de geocoding lo procesará por barrido.
-    // NUNCA relanzar — no debe bloquear la creación del pedido.
+    // Evento best-effort post-commit. NUNCA relanzar — no debe bloquear la
+    // creación del pedido.
+    //
+    // ⚠️ OJO CON LO QUE PASA DESPUÉS. Una versión anterior de este comentario
+    // decía que "el job de geocoding lo procesará por barrido". Ese barrido NO
+    // EXISTE (verificado 2026-08-13): el registro de Inngest tiene un solo job
+    // de geocoding y su único disparo es este evento — no hay cron. Si el send
+    // falla, el pedido queda con `geo_estado = 'pendiente'` y `lat`/`long` en
+    // NULL INDEFINIDAMENTE, y nada automático lo detecta.
+    //
+    // El único desatasco es manual y pedido por pedido: el filtro "sin
+    // ubicación" de `/operaciones` los encuentra, y `accionReubicarPedido`
+    // resetea el estado y republica el evento. Importa para el ruteo: una ruta
+    // se calcula sobre coordenadas, así que un pedido sin ubicar es un pedido
+    // que no se puede secuenciar.
   }
 
   return { pedido, avisoCorte };

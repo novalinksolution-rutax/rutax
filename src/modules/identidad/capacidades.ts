@@ -77,6 +77,26 @@ export const CAPACIDADES = [
   "gestionar_incidencias",
   "ajustar_operacion_diaria",
 
+  // --- Bodegas: dónde se retira y de dónde sale la flota ---------------------
+  // Alta y edición de `identidad.seller_bodegas` (la bodega del seller, donde
+  // el conductor retira) y `identidad.courier_bodegas` (la del courier, origen
+  // de toda ruta). Alcance "retiro en bodega + ruteo".
+  //
+  // Capacidad propia, y no `gestionar_tarifas` — que fue el primer gate
+  // propuesto, por consistencia con el resto de `/configuracion`. Ese argumento
+  // es de UBICACIÓN, no de semántica: una bodega no es configuración financiera.
+  // Reusar `gestionar_tarifas` habría dejado el gate al revés en las dos
+  // puntas — se lo daba a `administracion`, que es "sin reasignación operativa"
+  // por diseño, y se lo negaba a quien vive en la operación del día.
+  // Tampoco se amplió `ajustar_operacion_diaria` al coordinador: eso habría
+  // cambiado de paso todas las pantallas que ya la usan como gate.
+  //
+  // Decisión del usuario (2026-08-13): dueño, supervisor y coordinador. El caso
+  // que la decide es de terreno — entra un seller nuevo, o el conductor está
+  // parado en una bodega que nadie cargó, y quien opera el día tiene que poder
+  // resolverlo sin ir a buscar al dueño.
+  "gestionar_bodegas",
+
   // --- Forzar la sincronización de una cuenta ML de un seller ----------------
   // Pedir "trae los pedidos de esta cuenta ahora" desde el panel del courier.
   // Capacidad propia y NO `asignar_y_reasignar_pedidos`, que fue el primer
@@ -206,6 +226,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "gestionar_bodegas",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
     "ver_reportes_ejecutivos",
@@ -222,6 +243,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "gestionar_bodegas",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
   ],
@@ -233,6 +255,12 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
   coordinador: [
     "asignar_y_reasignar_pedidos",
     "generar_manifiestos",
+    // Decisión del usuario (2026-08-13): el coordinador SÍ gestiona bodegas,
+    // pese a ser el rol más acotado. Es quien habla con los conductores durante
+    // el retiro, así que es el primero en enterarse de que falta una bodega —
+    // y hacerlo esperar al dueño detiene la operación de la mañana. No le
+    // concede nada financiero: una bodega no lleva tarifa.
+    "gestionar_bodegas",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
   ],
@@ -398,6 +426,23 @@ export function puedeGestionarIncidencias(usuario: UsuarioActual): boolean {
 
 export function puedeAjustarOperacionDiaria(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ajustar_operacion_diaria");
+}
+
+/**
+ * Alta y edición de bodegas — las del seller (donde se retira) y las del
+ * courier (de donde sale la flota). Los TRES roles operativos: dueño,
+ * supervisor y coordinador. `administracion` NO, pese a gestionar el resto de
+ * `/configuracion`: es el rol financiero "sin reasignación operativa", y una
+ * bodega es un lugar de la calle, no una cifra.
+ *
+ * Ojo al construir las etapas siguientes: esta capacidad gobierna ESCRIBIR. La
+ * lectura del catálogo de bodegas que necesitan el retiro (etapa 3) y la
+ * Preparación del día (etapa 5) es un gate propio de esas pantallas, y el
+ * conductor nunca llega por aquí — recibe su bodega dentro del DTO de su ruta,
+ * por endpoint Bearer, no como lista navegable.
+ */
+export function puedeGestionarBodegas(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "gestionar_bodegas");
 }
 
 /**

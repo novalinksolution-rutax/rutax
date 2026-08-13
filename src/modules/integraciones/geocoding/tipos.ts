@@ -43,6 +43,19 @@ export interface ParametrosGeocoding {
   comuna: string;
   /** Región. Por defecto la RM; el stub y el adaptador google asumen RM. */
   region?: string;
+  /**
+   * Techo de tiempo (ms) para la llamada de red del adaptador. Hoy solo lo
+   * respeta `GoogleGeocodingAdapter` (vía `AbortSignal.timeout`); el stub no
+   * hace I/O y lo ignora.
+   *
+   * `undefined` (default) = SIN límite — es el comportamiento histórico, el
+   * que sigue usando `jobs/geocodificar-pedido.ts` (protegido por
+   * `retries: 3` de Inngest, sin humano esperando el request). Los
+   * llamadores SÍNCRONOS (Server Actions, con un humano esperando) deben
+   * pasarlo explícitamente — ver `TIMEOUT_GEOCODING_SINCRONO_MS` en
+   * `resolver-coordenada.ts`.
+   */
+  timeoutMs?: number;
 }
 
 /**

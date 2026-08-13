@@ -17,6 +17,7 @@ import {
   puedeGestionarSuscripcion,
   puedeGestionarTarifas,
   puedeGestionarUsuariosYRoles,
+  puedeGestionarBodegas,
   puedeInvitarUsuarios,
   puedeMarcarEvidenciasPropias,
   puedeRevocarInvitaciones,
@@ -314,6 +315,40 @@ describe("sincronizar_conexiones_ml — los CUATRO roles internos (decisión del
     expect(puedeSincronizarConexionesMl(usuario({ rol: "seller" }))).toBe(false);
     expect(puedeSincronizarConexionesMl(usuario({ rol: "conductor" }))).toBe(false);
     expect(puedeSincronizarConexionesMl(usuario({ rol: "super_admin", tenantId: null }))).toBe(false);
+  });
+});
+
+describe("gestionar_bodegas — los TRES roles operativos (decisión del usuario, 2026-08-13)", () => {
+  it("administracion NO la tiene, aunque gestione el resto de /configuracion", () => {
+    // El contraste es el punto: administración configura tarifas y DTE, pero
+    // una bodega es un lugar de la calle, no una cifra. El levantamiento la
+    // define "sin reasignación operativa" y este gate respeta esa línea.
+    const admin = usuario({ rol: "administracion" });
+    expect(puedeGestionarTarifas(admin)).toBe(true);
+    expect(puedeGestionarBodegas(admin)).toBe(false);
+  });
+
+  it("el coordinador SÍ la tiene, pese a ser el rol interno más acotado", () => {
+    // Es quien habla con los conductores durante el retiro, así que es el
+    // primero en enterarse de que falta una bodega. Nótese que sigue SIN
+    // `ajustar_operacion_diaria`: se le concedió una capacidad, no un ascenso.
+    const coordinador = usuario({ rol: "coordinador" });
+    expect(puedeGestionarBodegas(coordinador)).toBe(true);
+    expect(puedeAjustarOperacionDiaria(coordinador)).toBe(false);
+    expect(puedeGestionarTarifas(coordinador)).toBe(false);
+  });
+
+  it("la tienen dueño y supervisor", () => {
+    expect(puedeGestionarBodegas(usuario({ rol: "dueno" }))).toBe(true);
+    expect(puedeGestionarBodegas(usuario({ rol: "supervisor" }))).toBe(true);
+  });
+
+  it("NO la tienen seller, conductor ni super_admin", () => {
+    // El conductor nunca gestiona bodegas: recibe la suya dentro del DTO de su
+    // ruta, por endpoint Bearer, jamás como catálogo navegable del tenant.
+    expect(puedeGestionarBodegas(usuario({ rol: "seller" }))).toBe(false);
+    expect(puedeGestionarBodegas(usuario({ rol: "conductor" }))).toBe(false);
+    expect(puedeGestionarBodegas(usuario({ rol: "super_admin", tenantId: null }))).toBe(false);
   });
 });
 

@@ -24,6 +24,15 @@
  * pero NUNCA se loguea, no se incluye en errores y no se imprime la URL con la
  * key. Regla dura del proyecto.
  *
+ * TIMEOUT: `args.timeoutMs` (opcional) se traduce a `AbortSignal.timeout(ms)`
+ * en el `fetch` — mismo patrón que el resto del repo para llamadas de red
+ * (`integraciones/contexto/http.ts`, `notificaciones/email/adaptadores/resend.ts`,
+ * `api-publica/jobs/entregar-webhook.ts`). Si no se pasa, el `fetch` NO lleva
+ * `signal` — sin límite, igual que siempre. Un timeout que dispara se propaga
+ * como fallo de red (rechazo de `fetch`) y cae en el mismo `catch` de abajo,
+ * así que sale como `ErrorGeocodingProveedor` reintentable, sin necesitar
+ * manejo especial.
+ *
  * REGLAS DE DEPENDENCIAS: solo importa de `../tipos`, `../errores` y el helper
  * de normalización + catálogo RM. No importa de módulos de negocio.
  */
@@ -93,7 +102,14 @@ export class GoogleGeocodingAdapter implements PuertoGeocoding {
 
     let respuesta: Response;
     try {
-      respuesta = await fetch(url, { method: 'GET' });
+      respuesta = await fetch(url, {
+        method: 'GET',
+        // Sin `args.timeoutMs` no se agrega `signal` — mismo comportamiento
+        // que antes de este campo (sin límite). Ver nota de TIMEOUT arriba.
+        ...(args.timeoutMs !== undefined
+          ? { signal: AbortSignal.timeout(args.timeoutMs) }
+          : {}),
+      });
     } catch (e) {
       // Error de red/timeout — transitorio, reintentable. NO incluir la URL
       // (lleva la API key) en el mensaje.

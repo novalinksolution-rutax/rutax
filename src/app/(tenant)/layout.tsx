@@ -17,6 +17,7 @@ import {
   puedeVerBitacoraAuditoria,
   puedeGestionarSuscripcion,
   puedeVerTorreControl,
+  puedeGestionarBodegas,
 } from "@/modules/identidad/capacidades";
 import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
@@ -128,6 +129,12 @@ export default async function LayoutTenant({ children }: { children: React.React
     itemsSettings.push({ href: "/configuracion/tarifas", etiqueta: "Tarifas", icono: "tarifas" });
     itemsSettings.push({ href: "/configuracion/api", etiqueta: "Integraciones", icono: "integraciones" });
     itemsSettings.push({ href: "/configuracion/zonas", etiqueta: "Zonas", icono: "zonas" });
+  }
+  // Bloque propio: `gestionar_bodegas` NO coincide con `gestionar_tarifas`. Se
+  // la tienen dueño, supervisor y coordinador, y NO administración — al revés
+  // que el resto de Configuración. Va junto a Zonas por afinidad geográfica.
+  if (puedeGestionarBodegas(u)) {
+    itemsSettings.push({ href: "/configuracion/bodegas", etiqueta: "Bodegas", icono: "bodegas" });
   }
   if (puedeGestionarUsuariosYRoles(u)) {
     itemsSettings.push({ href: "/equipo", etiqueta: "Equipo", icono: "equipo" });

@@ -212,6 +212,134 @@ values
 on conflict (id) do nothing;
 
 -- =============================================================================
+-- 3b. Bodegas — dónde se RETIRA (del seller) y de dónde SALE la flota (courier)
+-- =============================================================================
+-- Sin estas filas la sesión de retiro (etapa 3) no tiene dónde abrirse y la ruta
+-- (etapa 7) no tiene origen: son el lugar físico del día operativo, no un
+-- catálogo decorativo. Tablas: migración 20260813000002.
+--
+-- QUÉ CASOS SE SIEMBRAN A PROPÓSITO (el caso feliz solo no sirve — lo que no
+-- está en la demo, nadie lo ve hasta que un courier real lo reporta):
+--   · un seller con TRES bodegas y otro con DOS → el multi-bodega es el caso que
+--     hace realista la pantalla y el que destapa errores de agrupación;
+--   · una bodega DESACTIVADA (activa = false, es_principal = false) → la sección
+--     "Inactivas" de la pantalla tiene qué mostrar;
+--   · una bodega SIN GEOCODIFICAR (geo_estado = 'no_resuelto', lat/long NULL) →
+--     una dirección que el mapa no encuentra es cotidiano, y esa bodega no puede
+--     ser el primer punto de una ruta;
+--   · contacto e instrucciones POBLADOS en unas y VACÍOS en otras — la tarjeta
+--     oculta la línea de contacto entera cuando los dos campos vienen nulos
+--     (tarjeta-bodega.tsx), y con contacto en todas ese camino no se ejercita.
+--
+-- COORDENADAS: cada bodega tiene la SUYA, tomada de su sector real (Lo Echevers
+-- en Quilicura, ENEA en Pudahuel, Camino a Melipilla en Maipú…). Nunca el
+-- centroide de la comuna: `seed-torre-hoy.sql` existe, entre otras razones,
+-- porque un seed puso todos los pedidos de una comuna en el mismo punto y el
+-- mapa mentía. Un puñado de bodegas apiladas en el mismo píxel mentiría igual.
+--
+-- IDEMPOTENCIA: ids fijos + `on conflict (id) do nothing`, como el resto del
+-- archivo. Ningún id se deriva de la fecha, así que esto NO puede repetir el bug
+-- abierto de `seed-demo-full.sql` (ids con mes relativo que revientan la PK al
+-- re-aplicar el seed en otro mes).
+--
+-- ÍNDICES QUE MANDAN AQUÍ (romperlos aborta el seed entero, no falla en silencio):
+--   · seller_bodegas_principal_uk     → como máximo UNA principal por seller.
+--   · courier_bodegas_principal_uk    → como máximo UNA principal por tenant.
+--   · seller_bodegas_nombre_activa_uk → nombre único entre las ACTIVAS del seller.
+--   · principal_debe_estar_activa     → la desactivada NO puede ser principal.
+-- Las principales de los tres sellers y la del courier se marcan AQUÍ y en
+-- ningún otro seed: `seed-demo-full.sql` y `seed-torre-hoy.sql` solo agregan
+-- bodegas NO principales sobre este tenant, para no chocar con esos índices.
+insert into identidad.seller_bodegas (
+  id, tenant_id, seller_id, nombre, direccion, comuna,
+  instrucciones_acceso, contacto_nombre, contacto_telefono,
+  es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+) values
+  -- FalabellaTech — tres bodegas: la principal, un CD y un local dado de baja.
+  ('7b000000-0000-0000-0000-000000000001',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000001',
+   'Bodega Quilicura','Av. Lo Echevers 550','Quilicura',
+   'Portón 3 por Lo Echevers. El andén de carga está al fondo a la izquierda; estacionar en paralelo y no bloquear la rampa. Retiros de 08:00 a 13:00.',
+   'Marcos Villalobos','+56967214488',
+   true, true,
+   -33.3676, -70.7261, 'resuelto', 0.940, now() - interval '46 days'),
+
+  -- Contacto sí, instrucciones no: la tarjeta muestra la línea de contacto pero
+  -- no el bloque de acceso.
+  ('7b000000-0000-0000-0000-000000000002',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000001',
+   'CD ENEA Pudahuel','Av. El Retiro 1250, Parque ENEA','Pudahuel',
+   null,
+   'Paulina Cárdenas','+56954120987',
+   false, true,
+   -33.3948, -70.7871, 'resuelto', 0.910, now() - interval '46 days'),
+
+  -- DADA DE BAJA. `activa = false` obliga a `es_principal = false` (CHECK
+  -- principal_debe_estar_activa): una bodega que ya no opera no puede seguir
+  -- siendo el punto de retiro por defecto. Conserva su coordenada de cuando
+  -- operaba, que es lo que pasa de verdad al desactivar.
+  ('7b000000-0000-0000-0000-000000000003',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000001',
+   'Local Centro','Bandera 542','Santiago',
+   null, null, null,
+   false, false,
+   -33.4372, -70.6534, 'resuelto', 0.880, now() - interval '120 days'),
+
+  -- MercadoSur — dos bodegas: la principal y una que el geocoding no resolvió.
+  ('7b000000-0000-0000-0000-000000000004',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000002',
+   'Bodega Maipú','Camino a Melipilla 11500','Maipú',
+   'Entrada de camiones por el costado sur. Timbre en la caseta; el jefe de bodega llega a las 07:30.',
+   'Héctor Riquelme','+56988341265',
+   true, true,
+   -33.5108, -70.7883, 'resuelto', 0.920, now() - interval '31 days'),
+
+  -- SIN GEOCODIFICAR: lat/long y geo_confianza en NULL, y `geocodificado_en`
+  -- también — no hubo resolución que fechar (mismo criterio que los pedidos sin
+  -- ubicar de seed-torre-hoy.sql). Con instrucciones y un contacto a medias
+  -- (nombre sin teléfono), que es justo el caso en que hay que llamar y no se
+  -- puede: la dirección no la encuentra el mapa y el teléfono no está.
+  ('7b000000-0000-0000-0000-000000000005',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000002',
+   'Bodega Cerrillos','Camino Lo Errázuriz s/n, sitio 14','Cerrillos',
+   'La numeración no existe en el mapa: entrar por Lo Errázuriz frente al paradero 6 y seguir hasta el galpón gris.',
+   'Nelson Pizarro', null,
+   false, true,
+   null, null, 'no_resuelto', null, null),
+
+  -- TecnoHogar — una sola bodega, sin instrucciones NI contacto: la tarjeta
+  -- mínima, con la línea de contacto oculta entera.
+  ('7b000000-0000-0000-0000-000000000006',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000003',
+   'Bodega Renca','Av. Domingo Santa María 4750','Renca',
+   null, null, null,
+   true, true,
+   -33.4033, -70.7288, 'resuelto', 0.870, now() - interval '18 days')
+on conflict (id) do nothing;
+
+-- Bodega del courier: el punto de consolidación del cross-dock y el ORIGEN de
+-- toda ruta. NO es la del seller — son dos lugares distintos del mismo día.
+insert into identidad.courier_bodegas (
+  id, tenant_id, nombre, direccion, comuna,
+  instrucciones_acceso, es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+) values
+  ('7c000000-0000-0000-0000-000000000001',
+   '10000000-0000-0000-0000-000000000001',
+   'Central Cerrillos','Av. Américo Vespucio 1001','Cerrillos',
+   'Andenes 1 y 2 para descarga. El patio abre a las 07:00; la consolidación arranca a las 14:30 y la flota sale a las 16:00.',
+   true, true,
+   -33.4884, -70.7107, 'resuelto', 0.950, now() - interval '60 days')
+on conflict (id) do nothing;
+
+-- =============================================================================
 -- 4. Conductores (12)
 -- =============================================================================
 -- Conductores 001-005 llevan datos bancarios (tienen liquidaciones y entran al
@@ -1007,6 +1135,7 @@ do $$
 begin
   raise notice 'Seed completado. Tenant: Despachos del Centro SpA';
   raise notice '  Sellers: 3 | Conductores: 12 | Pedidos: 16';
+  raise notice '  Bodegas: 6 de seller (3+2+1, una inactiva y una sin geocodificar) + 1 del courier';
   raise notice '  Entregas: 12 cobros + 12 liquidaciones generadas';
   raise notice '  Incidencias: 3 | Manifiestos: 2 (1 completado + 1 en ruta)';
   raise notice '  Períodos de cobro: 3 (todos abiertos — cierralos desde la app)';

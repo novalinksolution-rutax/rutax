@@ -859,8 +859,14 @@ export async function guardarPedidoFlex(
   }
 
   // Gatillo de geocodificación. Best-effort: un fallo de Inngest no puede
-  // romper la ingesta — el pedido ya quedó con `geo_estado` y el job de
-  // geocoding barre por índice. El payload NO lleva nombre ni teléfono.
+  // romper la ingesta. El payload NO lleva nombre ni teléfono.
+  //
+  // ⚠️ Este evento es el ÚNICO camino a la coordenada. Una versión anterior de
+  // este comentario decía que "el job de geocoding barre por índice", y es
+  // falso (verificado 2026-08-13): no hay cron, solo este disparo. Un pedido
+  // Flex cuyo send falle queda sin ubicar indefinidamente y solo se recupera a
+  // mano desde `/operaciones`. Ver la nota extendida en
+  // `src/modules/operacion/pedidos.ts`, en el catch del mismo envío.
   try {
     await inngest.send({
       name: "operacion/pedido.ingestado",

@@ -25,63 +25,30 @@
  *
  * SEGURIDAD: la API key de geocoding (en el adaptador google) nunca aparece en
  * logs, errores ni en el payload del evento.
+ *
+ * PASO 2 (cache + puerto): vive en `../resolver-coordenada.ts`
+ * (`resolverCoordenadaConCache`), compartido con las Server Actions de
+ * bodegas (etapas 2/2b de retiro-y-ruteo) — un solo comportamiento, dos
+ * llamadores. Este job lo invoca SIN `timeoutMs`: sigue sin límite, protegido
+ * solo por `retries: 3`, igual que antes de esa extracción.
  */
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import type { EventoPedidoIngestado } from '@/lib/inngest/eventos';
-import { obtenerPuertoGeocoding, type PuertoGeocoding } from '../puerto';
-import { calcularClaveHash, resolverComunaCanonica } from '../normalizacion';
-import type {
-  CoberturaEstado,
-  EstadoGeocoding,
-  ProveedorGeocoding,
-  ResultadoGeocoding,
-} from '../tipos';
+import { resolverComunaCanonica } from '../normalizacion';
+import { resolverCoordenadaConCache } from '../resolver-coordenada';
+import type { CoberturaEstado, ResultadoGeocoding } from '../tipos';
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // ---------------------------------------------------------------------------
 // Inyección de dependencia del puerto (para tests sin red).
+//
+// El interruptor vive ahora en `../resolver-coordenada.ts` (compartido con
+// las Server Actions de bodegas). Se re-exporta con el MISMO nombre para no
+// romper los tests existentes de este job.
 // ---------------------------------------------------------------------------
-
-/** Fábrica del puerto, sobrescribible en tests. */
-let obtenerPuertoActual: () => PuertoGeocoding = obtenerPuertoGeocoding;
-
-/** Solo para tests: inyecta un puerto de geocoding doble. */
-export function setPuertoGeocoding(fn: () => PuertoGeocoding): void {
-  obtenerPuertoActual = fn;
-}
-
-/** Restaura la fábrica real del puerto. */
-export function resetPuertoGeocoding(): void {
-  obtenerPuertoActual = obtenerPuertoGeocoding;
-}
-
-// ---------------------------------------------------------------------------
-// Tipos internos
-// ---------------------------------------------------------------------------
-
-/** Fila de cache tal como Postgres la devuelve. */
-interface FilaCache {
-  lat: number | null;
-  long: number | null;
-  geo_estado: EstadoGeocoding;
-  confianza: number | null;
-  proveedor: ProveedorGeocoding;
-  comuna_norm: string;
-}
-
-/**
- * Resultado "efectivo" tras cache: o el del cache o el del proveedor. Incluye
- * la comuna canónica resuelta para el cálculo de cobertura.
- */
-interface ResultadoEfectivo {
-  lat: number | null;
-  long: number | null;
-  estado: EstadoGeocoding;
-  confianza: number | null;
-  comunaResuelta: string | null;
-}
+export { setPuertoGeocoding, resetPuertoGeocoding } from '../resolver-coordenada';
 
 // ---------------------------------------------------------------------------
 // Cálculo de cobertura (función pura, exportada para tests)
@@ -186,85 +153,19 @@ export const jobGeocodificarPedido = inngest.createFunction(
     const comunaEfectiva = pedido.destinatario_comuna ?? comuna;
 
     // -----------------------------------------------------------------------
-    // Paso 2 · Cache lookup por clave_hash. HIT → sin llamada al proveedor.
-    //          MISS → llamar al puerto y UPSERT en cache.
+    // Paso 2 · Resolver coordenadas con cache global. Compartido con las
+    // Server Actions de bodegas vía `resolverCoordenadaConCache`: mismo
+    // comportamiento (HIT por clave_hash → sin llamar al proveedor; MISS →
+    // llamar al puerto y UPSERT en cache), un solo lugar que lo implementa.
+    // Sin `timeoutMs`: este job no lo necesita (retries: 3, sin humano
+    // esperando) — comportamiento idéntico al de antes de la extracción.
     // -----------------------------------------------------------------------
-    const { claveHash, direccionNorm, comunaNorm } = calcularClaveHash(
-      direccion,
-      comunaEfectiva,
-    );
-
-    const resultado: ResultadoEfectivo = await step.run(
-      'resolver-geocoding',
-      async () => {
-        const supabase = crearClienteServiceRole();
-
-        // Lookup en cache global.
-        const { data: cacheData, error: cacheError } = await supabase
-          .schema('integraciones')
-          .from('geocoding_cache')
-          .select('lat, long, geo_estado, confianza, proveedor, comuna_norm')
-          .eq('clave_hash', claveHash)
-          .maybeSingle();
-
-        if (cacheError) {
-          throw new Error(`Error al leer geocoding_cache: ${cacheError.message}`);
-        }
-
-        if (cacheData) {
-          // HIT — usar el resultado cacheado SIN llamar al proveedor.
-          const fila = cacheData as FilaCache;
-          logger.info(`Cache HIT para pedido ${pedidoId}.`);
-          return {
-            lat: fila.lat,
-            long: fila.long,
-            estado: fila.geo_estado,
-            confianza: fila.confianza,
-            // Recuperar la comuna canónica desde la declarada (estable).
-            comunaResuelta: resolverComunaCanonica(comunaEfectiva),
-          } satisfies ResultadoEfectivo;
-        }
-
-        // MISS — llamar al proveedor a través del puerto.
-        const puerto = obtenerPuertoActual();
-        const res: ResultadoGeocoding = await puerto.geocodificar({
-          direccion,
-          comuna: comunaEfectiva,
-        });
-
-        // UPSERT en cache (on conflict clave_hash). Resultado compartido por
-        // toda la plataforma — una dirección se geocodifica una sola vez.
-        const { error: upsertError } = await supabase
-          .schema('integraciones')
-          .from('geocoding_cache')
-          .upsert(
-            {
-              clave_hash: claveHash,
-              direccion_norm: direccionNorm,
-              comuna_norm: comunaNorm,
-              lat: res.lat,
-              long: res.long,
-              geo_estado: res.estado,
-              confianza: res.confianza,
-              proveedor: res.proveedor,
-            },
-            { onConflict: 'clave_hash' },
-          );
-
-        if (upsertError) {
-          throw new Error(
-            `Error al upsert en geocoding_cache: ${upsertError.message}`,
-          );
-        }
-
-        return {
-          lat: res.lat,
-          long: res.long,
-          estado: res.estado,
-          confianza: res.confianza,
-          comunaResuelta: res.comunaResuelta,
-        } satisfies ResultadoEfectivo;
-      },
+    const resultado: ResultadoGeocoding = await step.run('resolver-geocoding', () =>
+      resolverCoordenadaConCache({
+        direccion,
+        comuna: comunaEfectiva,
+        logger: { info: (mensaje) => logger.info(`Pedido ${pedidoId}: ${mensaje}`) },
+      }),
     );
 
     // -----------------------------------------------------------------------

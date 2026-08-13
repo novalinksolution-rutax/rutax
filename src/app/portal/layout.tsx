@@ -52,6 +52,7 @@ export default async function LayoutPortal({
       titulo: "Operación",
       items: [
         { href: "/portal/pedidos", etiqueta: "Mis pedidos", icono: "pedidos" },
+        { href: "/portal/bodegas", etiqueta: "Bodegas", icono: "bodegas" },
         { href: "/portal/incidencias", etiqueta: "Incidencias", icono: "incidencias" },
       ],
     },

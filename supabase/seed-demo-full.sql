@@ -209,6 +209,134 @@ where id in ('40000000-0000-0000-0000-000000000011',
 
 
 -- =============================================================================
+-- 1b. Bodegas — el resto de la parrilla (seed.sql ya sembró las principales)
+-- =============================================================================
+-- `seed.sql` deja el caso base completo: 6 bodegas de seller (3 + 2 + 1, con una
+-- inactiva y una sin geocodificar) y 1 del courier, todas las PRINCIPALES
+-- incluidas. Este archivo agrega lo que le falta a una demo con volumen:
+--
+--   · los DOS estados de geocoding que no estaban — 'pendiente' (recién cargada,
+--     el job todavía no pasó: nace así según la migración) y 'fuera_cobertura'
+--     (la dirección se resolvió pero la comuna NO es de la RM, y por eso el
+--     adaptador descarta la coordenada — ver google.ts:194-204). Con esto la
+--     pantalla tiene los CUATRO valores del CHECK sembrados y ninguno se
+--     descubre en producción;
+--   · una segunda bodega del courier ACTIVA → el origen de ruta pasa a ser una
+--     elección y no un dato único, que es lo que la etapa 7 va a necesitar;
+--   · una tercera del courier DADA DE BAJA;
+--   · más multi-bodega: FalabellaTech queda con 5, MercadoSur con 4 y TecnoHogar
+--     con 3. Agrupar y ordenar bodegas se rompe con tres sellers desiguales,
+--     no con tres sellers de una bodega cada uno;
+--   · un contacto a medias en cada dirección (solo teléfono aquí; solo nombre en
+--     seed.sql) — la tarjeta imprime el separador " · " únicamente cuando están
+--     los dos, y ese camino hay que poder verlo roto y sano.
+--
+-- NINGUNA de estas es principal: la principal de cada seller y la del courier ya
+-- las marcó `seed.sql`, y los índices parciales (seller_bodegas_principal_uk,
+-- courier_bodegas_principal_uk) admiten como máximo una. Marcar otra aquí
+-- abortaría el seed con 23505.
+--
+-- IDEMPOTENTE: ids fijos (prefijos 7b1…/7c1…, distintos de los 7b0…/7c0… de
+-- seed.sql) + `on conflict (id) do nothing`. Sin componente de fecha en el id,
+-- así que este bloque NO participa del bug abierto de ids con mes relativo.
+insert into identidad.seller_bodegas (
+  id, tenant_id, seller_id, nombre, direccion, comuna,
+  instrucciones_acceso, contacto_nombre, contacto_telefono,
+  es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+) values
+  -- FalabellaTech (+2 → 5 en total)
+  -- Recién cargada: geo_estado 'pendiente' y sin coordenada. Es el estado con
+  -- que NACE toda bodega, y mientras dure no puede ser origen de una ruta.
+  ('7b100000-0000-0000-0000-000000000001',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000001',
+   'Bodega Colina','Ruta 5 Norte km 24, Lote 7','Colina',
+   'Camino interior sin numeración: pasar el peaje y doblar en el letrero de la planta. Avisar por teléfono al llegar.',
+   null, null,
+   false, true,
+   null, null, 'pendiente', null, null),
+
+  -- Contacto a medias en la otra dirección: teléfono sin nombre.
+  ('7b100000-0000-0000-0000-000000000002',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000001',
+   'Bodega Estación Central','Av. Ecuador 4650','Estación Central',
+   null,
+   null,'+56952330714',
+   false, true,
+   -33.4536, -70.6913, 'resuelto', 0.900, now() - interval '27 days'),
+
+  -- MercadoSur (+2 → 4 en total)
+  ('7b100000-0000-0000-0000-000000000003',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000002',
+   'Bodega Puente Alto','Av. Concha y Toro 2450','Puente Alto',
+   'Retiro por el patio trasero. Hay una sola bahía: si está ocupada, esperar en la calle y no bloquear el acceso vecino.',
+   'Ximena Bustos','+56977410352',
+   false, true,
+   -33.5901, -70.5872, 'resuelto', 0.890, now() - interval '22 days'),
+
+  -- FUERA DE COBERTURA: la dirección existe, pero la comuna no es de la RM y el
+  -- courier no opera ahí. El adaptador devuelve el estado SIN coordenada, así
+  -- que lat/long y confianza van NULL aunque la dirección se haya resuelto.
+  ('7b100000-0000-0000-0000-000000000004',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000002',
+   'Bodega Valparaíso','Av. Argentina 1200','Valparaíso',
+   'Fuera del radio de operación del courier. Se conserva para el traspaso de carga que hace el propio seller.',
+   'Iván Escobar','+56942088531',
+   false, true,
+   null, null, 'fuera_cobertura', null, now() - interval '9 days'),
+
+  -- TecnoHogar (+2 → 3 en total)
+  ('7b100000-0000-0000-0000-000000000005',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000003',
+   'Showroom Providencia','Av. Providencia 2124, local 3','Providencia',
+   null,
+   'Andrea Lillo','+56963275140',
+   false, true,
+   -33.4207, -70.6086, 'resuelto', 0.930, now() - interval '14 days'),
+
+  -- Segunda bodega DADA DE BAJA de la demo, y en otro seller que la de seed.sql:
+  -- la sección "Inactivas" no puede aparecer solo en una tarjeta del listado.
+  ('7b100000-0000-0000-0000-000000000006',
+   '10000000-0000-0000-0000-000000000001',
+   '30000000-0000-0000-0000-000000000003',
+   'Bodega Independencia','Av. Independencia 3210','Independencia',
+   'Arriendo terminado en marzo. No mandar conductores.',
+   'Rodrigo Alcaíno','+56986541209',
+   false, false,
+   -33.4028, -70.6638, 'resuelto', 0.860, now() - interval '210 days')
+on conflict (id) do nothing;
+
+-- Bodegas del courier: una satélite activa (segundo origen posible de ruta) y
+-- una antigua dada de baja. La principal sigue siendo 'Central Cerrillos', de
+-- seed.sql. Ojo: courier_bodegas_tenant_nombre_uk NO es parcial por `activa` —
+-- el nombre de un galpón del courier no se recicla ni después de darlo de baja.
+insert into identidad.courier_bodegas (
+  id, tenant_id, nombre, direccion, comuna,
+  instrucciones_acceso, es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+) values
+  ('7c100000-0000-0000-0000-000000000001',
+   '10000000-0000-0000-0000-000000000001',
+   'Satélite Puente Alto','Av. Gabriela Oriente 1450','Puente Alto',
+   'Bodega de apoyo para el sur. Solo se consolida acá cuando la carga de La Florida y Puente Alto pasa de 200 bultos.',
+   false, true,
+   -33.5975, -70.5788, 'resuelto', 0.910, now() - interval '38 days'),
+
+  ('7c100000-0000-0000-0000-000000000002',
+   '10000000-0000-0000-0000-000000000001',
+   'Antigua central Recoleta','Av. Dorsal 1980','Recoleta',
+   null,
+   false, false,
+   -33.3941, -70.6487, 'resuelto', 0.880, now() - interval '300 days')
+on conflict (id) do nothing;
+
+
+-- =============================================================================
 -- 2. Tarifas adicionales (por zona + recargos) — pantalla de tarifas
 -- =============================================================================
 insert into identidad.tarifas
@@ -1640,6 +1768,45 @@ values
   ('14000000-0000-0000-0000-000000000106','Courier Pacífico','Courier Pacifico SpA','78666777-8','onboarding','estandar')
 on conflict (id) do nothing;
 
+-- Una bodega principal por cada courier extra. No es relleno: hasta ahora las
+-- bodegas existían en UN solo tenant, y con un solo tenant poblado el
+-- aislamiento no se puede ver fallar — cualquier consulta que se olvidara del
+-- `tenant_id` devolvería exactamente lo mismo que la correcta. Con estas seis
+-- filas, un filtro mal escrito en la pantalla de bodegas muestra galpones de
+-- otro courier y salta a la vista en la demo, no en producción.
+--
+-- Estos tenants no tienen sellers ni usuarios (existen solo para el backstage),
+-- así que NO llevan seller_bodegas: colgar una de un seller inexistente lo
+-- rechazaría la FK compuesta (tenant_id, seller_id).
+--
+-- Cada una en su comuna y con su coordenada; el courier suspendido y el que está
+-- en onboarding también tienen la suya (dar de baja la suscripción no borra el
+-- galpón).
+insert into identidad.courier_bodegas (
+  id, tenant_id, nombre, direccion, comuna,
+  instrucciones_acceso, es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+) values
+  ('7c100000-0000-0000-0000-000000000101','14000000-0000-0000-0000-000000000101',
+   'Central Andes Express','Av. Américo Vespucio 2050','Huechuraba',
+   null, true, true, -33.3712, -70.6612, 'resuelto', 0.920, now() - interval '180 days'),
+  ('7c100000-0000-0000-0000-000000000102','14000000-0000-0000-0000-000000000102',
+   'Central LogiSur','Gran Avenida José Miguel Carrera 8450','La Cisterna',
+   null, true, true, -33.5301, -70.6619, 'resuelto', 0.900, now() - interval '95 days'),
+  ('7c100000-0000-0000-0000-000000000103','14000000-0000-0000-0000-000000000103',
+   'Central Rapidísimo','Camino Lo Boza 320','Pudahuel',
+   null, true, true, -33.4130, -70.7900, 'resuelto', 0.930, now() - interval '320 days'),
+  ('7c100000-0000-0000-0000-000000000104','14000000-0000-0000-0000-000000000104',
+   'Central Entrega Norte','Av. Presidente Eduardo Frei Montalva 9200','Quilicura',
+   null, true, true, -33.3745, -70.7092, 'resuelto', 0.890, now() - interval '60 days'),
+  ('7c100000-0000-0000-0000-000000000105','14000000-0000-0000-0000-000000000105',
+   'Central Última Milla','Av. Las Industrias 1450','San Bernardo',
+   null, true, true, -33.5851, -70.7042, 'resuelto', 0.880, now() - interval '140 days'),
+  ('7c100000-0000-0000-0000-000000000106','14000000-0000-0000-0000-000000000106',
+   'Central Pacífico','Camino a Melipilla 9000','Maipú',
+   null, true, true, -33.5052, -70.7712, 'resuelto', 0.910, now() - interval '3 days')
+on conflict (id) do nothing;
+
 insert into plataforma.suscripciones
   (id, tenant_id, plan_id, estado, trial_hasta, activa_desde, cancelada_en,
    periodicidad, auto_cobro_habilitado, mandato_estado, notas)
@@ -1893,6 +2060,8 @@ declare
   v_pedidos bigint;
   v_lc bigint;
   v_ll bigint;
+  v_sb bigint;
+  v_cb bigint;
 begin
   select count(*) into v_pedidos from operacion.pedidos
    where tenant_id = '10000000-0000-0000-0000-000000000001';
@@ -1900,6 +2069,11 @@ begin
    where tenant_id = '10000000-0000-0000-0000-000000000001';
   select count(*) into v_ll from dinero.lineas_liquidacion
    where tenant_id = '10000000-0000-0000-0000-000000000001';
+  select count(*) into v_sb from identidad.seller_bodegas
+   where tenant_id = '10000000-0000-0000-0000-000000000001';
+  select count(*) into v_cb from identidad.courier_bodegas;
   raise notice 'seed-demo-full listo — pedidos=% líneas_cobro=% líneas_liquidación=%',
     v_pedidos, v_lc, v_ll;
+  raise notice '  bodegas: % de seller (tenant demo) · % del courier (todos los tenants)',
+    v_sb, v_cb;
 end $$;
