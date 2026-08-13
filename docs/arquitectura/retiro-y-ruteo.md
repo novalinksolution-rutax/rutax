@@ -286,13 +286,26 @@ producto** (`:422`).
    (el geocoding con Google se encendió ese día). Necesitan backfill antes de rutear sobre ellos, y
    hoy no hay botón de UI para reprocesarlos.
 
-## 13bis. Revisión previa a construir (2026-08-12)
+## 13bis. Revisión previa a construir (2026-08-12) — ⚠️ LEVANTADA SOBRE CÓDIGO OBSOLETO
 
-Cinco revisiones en paralelo contra el código real: flujo operativo, reglas y datos personales,
-motor de dinero, integración ML, y escala. Resultado que cambia el encuadre: **no era una revisión
-de lo que falta construir — hay cosas rotas hoy, en producción, al volumen actual del piloto.**
+> 🚨 **NO ACTÚES SOBRE ESTA SECCIÓN SIN RE-VERIFICAR.** Las cinco revisiones se corrieron desde la
+> rama `feat/recuperar-contrasena`, que estaba **quince commits detrás de master**. Leyeron el código
+> de *antes* de una tanda de arreglos que ya estaba en producción.
+>
+> **Los cuatro hallazgos del Bloque 0 que se reportaron como "rotos hoy en producción" estaban los
+> cuatro ya resueltos en master** (backfill de Flex, refresco de tokens, filtro de conciliación y
+> atribución de la línea de liquidación). Se comprobó uno por uno contra `git show master:…`.
+>
+> El resto de los hallazgos **no se ha vuelto a comprobar**. Algunos seguirán en pie y otros estarán
+> igual de resueltos. Antes de tomar cualquiera como cierto, verifícalo contra el código actual.
+>
+> Se conserva la sección porque el método y varios hallazgos siguen siendo útiles — pero como
+> hipótesis a comprobar, no como diagnóstico.
 
-### Bloque 0 · Roto hoy, antes de tocar nada de este alcance
+Cinco revisiones en paralelo: flujo operativo, reglas y datos personales, motor de dinero,
+integración ML, y escala.
+
+### Bloque 0 · ~~Roto hoy~~ — RESUELTO EN MASTER ANTES DE ESTA REVISIÓN
 
 **0.1 🚨 El backfill de Flex ingesta CERO, siempre.** `ejecutar-backfill.ts:70` declara
 `shipping?: { shipment_id?: … }` y `:352`/`:360-364` leen `order.shipping?.shipment_id`. **Ese campo

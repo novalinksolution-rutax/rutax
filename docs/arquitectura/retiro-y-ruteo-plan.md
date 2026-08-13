@@ -2,7 +2,20 @@
 
 > Documento de **ejecución**. El alcance y las decisiones de producto viven en
 > `@docs/arquitectura/retiro-y-ruteo.md` — si algo se contradice, manda ese.
-> Última revisión: 2026-08-12.
+> Última revisión: **2026-08-13**.
+
+> ## ✅ Estado al 2026-08-13 — la etapa 1 está HECHA y DESPLEGADA
+>
+> La sesión del 12→13 de agosto cerró **la etapa 0 y la etapa 1 completas**, más el tope de cuentas
+> ML de la etapa 2. La ingesta Flex funciona en producción con datos reales por primera vez: **39
+> pedidos ingestados de 110 órdenes**, todos con su fecha de compromiso.
+>
+> **Lo que queda pendiente de la etapa 1 son solo dos puntos**, ninguno bloqueante para seguir:
+> el límite de concurrencia del job de **geocoding** (el de ML sí lo tiene) y el **backfill de
+> geocoding de los pedidos viejos**. Detalle punto por punto en la etapa 1.
+>
+> **La siguiente etapa real es la 2** — las bodegas del seller —, cuya otra mitad (el tope 3→10)
+> ya está hecha y desplegada.
 
 ## Cómo leer este plan
 
@@ -20,7 +33,10 @@ día o no funciona ninguna de las dos mitades.
 Cada etapa lleva: **qué incluye · qué se puede demostrar al terminarla · dónde · quién · esfuerzo ·
 qué puede salir mal.** El esfuerzo es en días de trabajo enfocado, no en calendario.
 
-## Punto de partida (2026-08-12)
+## Punto de partida (2026-08-12) — histórico, ya superado
+
+> Lo de abajo era el estado al escribir el plan. Al 2026-08-13 la suite va en **2.614 pruebas** y
+> todo esto está desplegado, junto con la etapa 1 entera.
 
 Ya arreglado y verificado — 2.246 pruebas verdes:
 
@@ -37,7 +53,10 @@ Ya arreglado y verificado — 2.246 pruebas verdes:
 
 # Las etapas
 
-## Etapa 0 · Apagar la auto-asignación
+## Etapa 0 · Apagar la auto-asignación — ✅ HECHA (2026-08-12, desplegada)
+
+> Commit `d0c08ab`. Ojo al detalle que apareció al hacerla: **había dos botones, no uno**. Sigue
+> vigente la definición 5: se ELIMINA del todo cuando la asignación en bloque (etapa 6) esté en uso.
 
 **Qué incluye.** Ocultar el botón de auto-asignación y desactivar su punto de entrada. No se borra
 código todavía — se apaga.
@@ -59,40 +78,69 @@ apagarla del todo; si hace falta, dejarla accesible con un aviso.
 
 ---
 
-## Etapa 1 · Ingesta diaria + el campo propio de Rutax
+## Etapa 1 · Ingesta diaria + el campo propio de Rutax — ✅ HECHA salvo 2 puntos (2026-08-13, desplegada)
 
 **La etapa que sostiene todo lo demás.** Sin ella, un escaneo devuelve un número suelto.
 
+> **Verificado en producción con datos reales el 2026-08-13:** 39 pedidos ingestados de 110 órdenes
+> en la ventana, `totalShipmentsIlegibles: 0` (ninguna consulta de envío falló), todos con
+> `fecha_compromiso`. Antes de esto `operacion.pedidos` tenía **cero** pedidos Flex históricos.
+
 **Qué incluye.**
 
-1. **Verificación en vivo contra una cuenta ML real** — antes de escribir la ingesta. Tres cosas:
-   el campo del envío en la orden, el formato en que responde la consulta de varios envíos a la vez,
-   y si el filtro incremental *realmente* filtra. ⚠️ **ML ignora en silencio los parámetros que no
-   conoce**, así que un filtro mal escrito parece funcionar y trae todo. La prueba de aceptación es
-   comparar el total con y sin el filtro.
-2. **El webhook pasa a crear pedidos.** Hoy, si el envío no está en la base, lo ignora en silencio
-   (`procesar-shipment.ts:161-168`). Ese es el cambio de mayor rendimiento por línea escrita: el
-   tópico de envíos ya avisa de los nuevos.
-3. **Barrido de respaldo** cada 10–15 min por conexión sana, troceado por página (el backfill actual
-   hace todo dentro de un solo paso: si expira, el reintento empieza de cero).
-4. **Suscribir el tópico de órdenes**, porque la búsqueda de ventas **oculta las canceladas** y sin
-   eso un pedido cancelado no se entera nunca.
-5. **`estado_ml` pasa a guardar el estado del envío**, no el de la orden. Viene en la misma respuesta
-   que ya se pide: **costo de cuota cero**. Falta la cabecera de formato nuevo — ojo, con ella el
-   bloque de dirección cambia de nombre y hay que ajustar el lector de coordenadas o se pierde el
-   geocoding gratis de Flex.
-6. **`destinatario_nombre` sale del envío**, no del título del producto. Hoy muestra *qué compró* el
-   destinatario en el portal, en el manifiesto y en la app: es peor que el nombre, no mejor.
-   El teléfono **no se trae** — ML lo entrega ofuscado.
-7. **El campo `situacion_retiro`** en `operacion.pedidos`: `pendiente | retirado | no_procesado`.
-   Campo **propio de Rutax, separado del estado del pedido** — en Flex el estado lo gobierna ML y
-   meterle estados propios choca con la sincronización.
-8. **Declarar `concurrency`/`throttle`** en los jobs de ML y de geocoding. Hoy ninguno lo declara: a
-   1.000 pedidos se disparan 1.000 ejecuciones concurrentes contra Google. Y es plata: ~US$150/mes
-   por courier si el caché no pega.
-9. **Backfill de geocoding de los pedidos viejos**: hay que **resetear su estado a pendiente** antes,
-   porque el job es no-op si ya está resuelto — y los anteriores al 11-ago guardan el centroide de la
-   comuna marcado como resuelto. Si no, todas las paradas de Maipú caen en el mismo punto.
+1. ✅ **Verificación en vivo contra una cuenta ML real** — HECHA, y desmintió dos supuestos del plan.
+   El campo del envío en la orden es `shipping.id` (se leía `shipping.shipment_id`, inexistente).
+   **La consulta de varios envíos a la vez NO EXISTE**: `GET /shipments?ids=` devuelve 404 — el batch
+   de 50 ids pertenece a `/shipment_labels`, otro recurso. Se resolvió con consultas individuales,
+   concurrencia 6, por el cliente con reintentos. Lo que **no** se hizo es la prueba de aceptación del
+   filtro incremental (comparar el total con y sin filtro): el cursor va con solapamiento de 1 h
+   porque ML redondea los filtros de fecha a la hora, pero esa comparación sigue sin ejecutarse.
+2. ✅ **El webhook pasa a crear pedidos.** HECHO. Y el razonamiento del comentario que había ahí
+   estaba al revés: ML solo notifica cuentas que autorizaron la app, así que "no está en la base"
+   significaba "nunca lo ingestamos", no "no es nuestro".
+3. ✅ **Barrido de respaldo.** HECHO, `TZ=America/Santiago */30 6-22 * * *` (34 corridas, 06:00 a
+   22:30). Cada 30 min y no 10–15: decisión del usuario, porque el webhook cubre lo inmediato. Dos
+   fases: órdenes nuevas desde un cursor propio (`ingesta_ml_cursor_en`) y repaso por id de los no
+   terminales de 7 días.
+4. ❌ **Suscribir el tópico de órdenes — DESCARTADO** (decisión del usuario, 2026-08-13). El motivo
+   del plan era detectar cancelaciones, y sigue siendo cierto que la búsqueda de ventas las oculta —
+   por eso existe la fase B del barrido, que es la única vía posible. Lo que el tópico de órdenes
+   agregaría es enterarse de una cancelación **anterior al envío**, y ese caso no aplica: Rutax
+   ingesta por envío, así que un pedido sin envío nunca entró.
+5. ✅ **`estado_ml` guarda el estado del envío.** HECHO, con `subestado_ml` de paso. Y la cabecera de
+   formato nuevo también: la advertencia del plan era correcta y se cumplió al pie — con ella el
+   bloque de dirección cambia de `receiver_address` a `destination.shipping_address` y `lead_time`
+   reemplaza a `shipping_option`. Sin ajustar el lector, **todo** pedido habría entrado con
+   "Dirección pendiente"/"Santiago" y sin coordenadas.
+6. ✅ **`destinatario_nombre` sale del envío.** HECHO (`destination.receiver_name`). El teléfono no se
+   trae, como estaba previsto.
+7. ✅ **El campo `situacion_retiro`.** HECHO (migración `20260812000002`), con los tres valores y como
+   campo propio separado del estado del pedido.
+8. ⚠️ **`concurrency`/`throttle`: HECHO a medias.** Los jobs de ML sí lo declaran (`concurrency:
+   {limit: 1}` en el cron, y por `conexionId` en la sincronización manual). **El job de geocoding
+   sigue sin declararlo** — `geocoding/geocodificarPedido` solo tiene `idempotency`, así que el riesgo
+   del plan sigue vivo: a 1.000 pedidos, 1.000 ejecuciones concurrentes contra Google.
+9. ⏳ **Backfill de geocoding de los pedidos viejos: PENDIENTE.** Sin cambios respecto del plan, y
+   ahora más urgente: los 38 pedidos Flex nuevos entraron con coordenada de ML (bien), pero los
+   anteriores al 11-ago siguen con el centroide de su comuna marcado como resuelto. Sigue haciendo
+   falta **resetear su estado a pendiente** antes de correr el job, o es no-op.
+
+**Lo que el plan no anticipaba y hubo que arreglar igual** (todo desplegado):
+
+- **El upsert reseteaba la operación del día.** Mandaba `estado: 'pendiente_asignacion'` en el payload
+  y PostgREST escribe todas las columnas del payload también en el UPDATE: cada re-pasada devolvía a
+  la bandeja cualquier pedido ya `asignado`/`en_ruta`. Inofensivo con un backfill que corre una vez;
+  **catastrófico con un barrido cada 30 min**. Es la regla más reutilizable que dejó esta etapa.
+- **La ingesta no traducía el estado.** Insertaba todo como `pendiente_asignacion` aunque ML dijera
+  `delivered`, la máquina de estados no permitía el reflejo, y **el motor entrega→dinero nunca
+  generaba la línea de cobro**: entregas reales sin facturar. Cerrado, con la regla de que un pedido
+  entregado o fallido **sin conductor asignado en Rutax** refleja el estado pero no cobra solo.
+- **`fecha_compromiso` no se escribía nunca en Flex**, y `/operaciones` filtra siempre por esa
+  columna: un pedido podía estar en la base y no verse jamás en el panel.
+- **Cancelaciones**: detectadas en el barrido y aplicadas por un único camino
+  (`operacion/pedido.cancelado-en-ml`), con incidencia si el bulto ya iba en la van.
+- **Botón "Sincronizar ahora"** en el portal del seller y en el panel del courier — no existía forma
+  de pedir la ingesta desde el producto.
 
 **Qué se demuestra.** El coordinador abre la pantalla a las 9:00 y **ve los pedidos de hoy**. Es la
 primera vez que el número de Rutax coincide con la realidad. Se demuestra solo, sin nada más.
@@ -111,14 +159,30 @@ no es el código: es observar 48 h de corrida real antes de confiar en el conteo
   del handler.
 - **Un envío puede cubrir varias órdenes** (carrito). El pedido se colapsa en uno — correcto para el
   retiro, 1 QR = 1 bulto — pero hay que decidirlo a propósito, no por efecto secundario.
+  ✅ **Confirmado en la corrida real**: 39 órdenes procesadas dejaron 38 filas. Es el carrito, y el
+  colapso por `(tenant_id, ml_shipment_id)` es deliberado.
 - **La "conexión representativa"**: tres lugares caen a *cualquier* cuenta del seller cuando falta el
   identificador de cuenta. Con 3 cuentas aciertas 1 de 3; con 10, 1 de 10, y el token equivocado da
   error. Regla dura: **todo pedido Flex nace con su cuenta estampada**, y donde no la haya, fallar
   explícito en vez de adivinar.
+  ⏳ **SIGUE VIVO, y ahora pesa más porque el tope subió a 10.** Lo que sí quedó cerrado es el camino
+  de ingesta: backfill, webhook y cron resuelven la conexión **concreta** (por el id del evento o por
+  el `user_id` que notifica ML), nunca por "la más saludable". Los otros usos de
+  `obtenerConexionPorSeller` (singular) no se auditaron — es trabajo de la etapa 2.
+
+**⚠️ Riesgo NUEVO que dejó esta etapa, y que no estaba en el plan.** ML documenta que si el endpoint
+del webhook falla repetidamente **desactiva el tópico entero, en silencio**, y lo perdido durante ese
+tiempo no se recupera: hay que volver a suscribirse a mano. El barrido de respaldo lo mitiga, pero
+nadie se entera de la desactivación salvo por la ausencia de notificaciones. **Falta una alerta de
+"hace N horas que no llega ningún aviso de ML"** — hoy no existe.
 
 ---
 
-## Etapa 2 · Las bodegas del seller
+## Etapa 2 · Las bodegas del seller — ⏳ PENDIENTE (su otra mitad, el tope 3→10, ya está hecha)
+
+> **Es la siguiente etapa real.** El tope de cuentas ML subió a 10 el 2026-08-12 y está desplegado
+> (migración `20260812000003`, función SQL `identidad.conexiones_seller_ml_tope_por_seller()`),
+> así que de este bloque solo quedan las bodegas y la auditoría de los fallbacks de conexión.
 
 **Qué incluye.** Tabla `identidad.seller_bodegas` — un seller tiene **varias**. Con `tenant_id`, RLS,
 y **clave foránea compuesta** `(tenant_id, seller_id)` para que un bug de app no pueda colgar una
@@ -135,8 +199,10 @@ adelante). Pantalla de alta y edición.
 **Qué puede salir mal.** Poco. Es la etapa más tranquila del plan, y sin ella el retiro no tiene lugar
 físico ni la ruta punto de partida.
 
-**También aquí:** subir el tope de cuentas ML de 3 a 10 (trigger, validación, textos y pruebas), y
-matar los fallbacks de conexión representativa del punto anterior.
+**También aquí:** ~~subir el tope de cuentas ML de 3 a 10~~ — ✅ **HECHO y desplegado el 2026-08-12**
+(trigger, textos y 21/21 pgTAP). Dato que ahorra búsquedas: **el tope nunca existió en TypeScript**,
+vive solo en la función SQL y en textos de interfaz. Sigue pendiente **matar los fallbacks de conexión
+representativa** del punto anterior — el camino de ingesta ya no los usa, pero el resto sí.
 
 ---
 
@@ -271,6 +337,11 @@ menores a los reales.
   "Vitacura + Lo Barnechea + Las Condes").
 - **Solo se ofrece lo que está `retirado`.** Esa es la reja: los pedidos de la competencia entraron
   por la ingesta, se quedaron en `pendiente` y **no aparecen nunca**.
+  ⚠️ **Desde el 2026-08-13 esto ya no es hipotético: la ingesta está viva y trayendo pedidos.** Un
+  pedido que despacha otro courier ahora entra y, si ML lo reporta entregado, **aparece como
+  "Entregado" en el panel** — no como pendiente. No genera cobro (la regla de "sin conductor asignado
+  no se factura solo" lo cubre), pero sí ensucia el conteo del día. La reja de `situacion_retiro`
+  sigue siendo la respuesta correcta; solo que ahora hay que construirla con datos reales encima.
 - Selección con casilla por fila, rango con mayúsculas+clic, y **"seleccionar los N del filtro"** —
   que manda un criterio, no 400 identificadores.
 - **La selección sobrevive al cambio de filtro y de página.** Hoy se vacía.
@@ -375,11 +446,16 @@ mueve el paquete solo, sin bloquear.
 - **Lista de cierre del día** para el coordinador: los no entregados, y su decisión — que es lo
   valioso. Sin eso, un pedido queda en `fallido` para siempre **con su línea de cobro viva**, y el
   watchdog de integridad **excluye los fallidos a propósito**, así que nadie lo levanta.
-- **Cancelación después del retiro.** Ya se aplica sola y la parada desaparece de la ruta. Falta:
-  aviso al coordinador con **qué conductor lo lleva encima**, y **rastro visible para el conductor** —
-  si la parada se evapora, cree que la app perdió un pedido y llama. Una línea tachada: *"cancelado
-  por el cliente, no lo entregues"*. El bulto físico queda marcado como *en poder del courier* y
-  aparece en la misma lista de cierre.
+- **Cancelación después del retiro.** ⚠️ **Parcialmente adelantado el 2026-08-13** al construir el
+  barrido. Ya está: la **detección** desde ML (fase B del cron, única vía posible porque la búsqueda
+  de ventas oculta las canceladas), un **único camino** que lleva el pedido a `cancelado`
+  (`operacion/pedido.cancelado-en-ml`), la desactivación de la parada activa para que no quede viva en
+  la app, la **incidencia automática si el bulto ya iba en la van**, y el dinero — se anulan las
+  líneas si el período sigue abierto, y si ya está cerrado no se toca nada y va a la bandeja de
+  excepciones. **Sigue faltando lo de la experiencia**: el aviso al coordinador diciendo *qué
+  conductor lo lleva encima*, y el rastro visible para el conductor (la línea tachada *"cancelado por
+  el cliente, no lo entregues"*, en vez de que la parada se evapore y crea que la app perdió un
+  pedido). Y el bulto marcado como *en poder del courier* en la lista de cierre.
 - **Retención**: `no procesado` se **archiva a los 7 días** y se **despersonaliza a los 30** (nombre,
   dirección, teléfono, coordenadas y el string del QR). **La fila no se elimina** — cuatro claves
   foráneas lo impiden y hay respaldo contable que no se puede destruir.
@@ -478,16 +554,28 @@ manual no es un lujo.
 que no publica límites claros, y que castiga con desactivar tópicos si el endpoint tarda. Hay que
 observarla, no darla por buena.
 
+> **Actualización 2026-08-13: este riesgo se materializó antes de escribir una línea de cron, y peor
+> de lo previsto.** La ingesta llevaba meses trayendo **cero** pedidos sin que nadie lo notara: eran
+> cinco bugs encadenados, y cada uno tapaba al siguiente, así que arreglar el primero solo movía el
+> punto de falla. La documentación de ML resultó ser parte del problema — se contradice consigo misma
+> sobre dónde vive `logistic_type`, y un endpoint que el código usaba (`/shipments?ids=`) sencillamente
+> no existe. **Lo que queda como método, no como anécdota:** cuando algo no llega y nadie se queja,
+> asumir cadena de bugs y no bug único; y no dar por buena la ingesta por un "completado" en verde —
+> mirar el conteo. Los tres números que aún nadie ha visto en un día real están instrumentados: el
+> contador de 404 al consultar envíos, el peso real de la fase B, y si el envío trae el id de la orden
+> con el formato nuevo.
+
 ---
 
 # Orden y dependencias
 
 ```
-0 Apagar auto-asignación
+0 Apagar auto-asignación                                    ✅ HECHA (12-ago, desplegada)
       │
-1 Ingesta diaria + campo situación_retiro  ← verificación en vivo con cuenta ML real
-      │
-2 Bodegas del seller (+ tope 3→10)
+1 Ingesta diaria + campo situación_retiro                   ✅ HECHA (13-ago, desplegada)
+      │                                                        ⏳ quedan 2 puntos: concurrency de
+      │                                                           geocoding + backfill de geocoding
+2 Bodegas del seller (+ tope 3→10)                          ⏳ SIGUIENTE · el tope ya está hecho
       │
 3 Retiro: base de datos y API ──────┐
       │                             │
@@ -512,3 +600,7 @@ nada. Las etapas 8 a 10 cierran el dinero y los bordes.
 
 **Esfuerzo total estimado:** 40–55 días de trabajo enfocado, sin contar terreno ni la observación de la
 ingesta.
+
+> **Restante al 2026-08-13:** descontadas la etapa 0 y la etapa 1 (que el plan estimaba en 4–6 días y
+> costó más, por los cinco bugs encadenados que nadie había visto), quedan **~34–48 días**. El camino
+> al "primer día útil para el courier" sigue siendo el mismo: etapas 2 → 7.
