@@ -1764,4 +1764,34 @@ Ya está reescrito arriba. Se añadió también la trampa de `current_date` en U
 
 ---
 
+## Bodegas del seller y del courier — etapas 2 y 2b de retiro y ruteo — 2026-08-13
+
+**Estado: verde en local. NO desplegado** — las migraciones `20260813000002` y `20260813000003` no están aplicadas en producción.
+
+### Base de datos y aislamiento
+- [x] **35 pgTAP de aislamiento** (`rls_aislamiento_bodegas.test.sql`). Cross-tenant **en las dos direcciones** (A no ve B *y* B no ve A: una condición mal escrita puede aislar en un sentido y filtrar en el otro). Seller ve sus bodegas, 0 de otro seller del mismo courier y **0 filas de `courier_bodegas`**. Conductor 0 en ambas — es la prueba que atrapa la forma `tipo_usuario <> 'seller'`.
+- [x] **Sin borrado.** `revoke delete` sobre tabla base y vista; seller INSERT/UPDATE/DELETE → 42501. La baja es `activa = false`.
+- [x] **Índices parciales de principal** al INSERT y al UPDATE, más `lives_ok` de que otro seller del mismo tenant sí puede tener la suya (demuestra que el alcance es `(tenant, seller)` y no `tenant`).
+- [x] **La FK compuesta rechaza** colgar una bodega del courier A de un seller del courier B (23503).
+- [x] **Aserción defensiva probada rompiendo cada barrera**: guard ausente, guard solo-UPDATE (`tgtype=18`), sin `force row level security`, `unique (tenant_id, id)` faltante en cada tabla, `grant delete` reintroducido, vista sin `security_invoker`. Las 7 abortan con mensaje propio.
+- [x] Suite completa de base: **644 pruebas, PASS**.
+
+### Verificado en navegador con datos sembrados
+- [x] **RBAC en vivo como coordinador**: en Configuración ve solo "Puesta en marcha" y "Bodegas" — nada de Tarifas, Zonas, Equipo ni Mi plan. Es la prueba de que `gestionar_bodegas` no arrastró `gestionar_tarifas`.
+- [x] Tarjeta con principal, contacto con `tel:`, instrucciones, y sección "Inactivas" aparte.
+- [x] **Contacto oculto entero** cuando nombre y teléfono vienen vacíos; visible con solo uno de los dos.
+- [x] **Pestaña "Mis bodegas"** sin campos de contacto (esa tabla no los tiene).
+- [x] **Portal del seller**: cero botones de acción, solo sus bodegas, ninguna del courier, y **ningún estado de ubicación** — no puede corregir la dirección, así que el aviso solo generaría una llamada al courier.
+
+### Bug encontrado y corregido en este pase
+- [x] **Los tres estados no-`resuelto` compartían el mismo texto.** `tarjeta-bodega.tsx:56` calculaba `noUbicada = geoEstado !== "resuelto"`, así que `fuera_cobertura` —donde la dirección es correcta— decía "conviene revisar que la dirección esté bien escrita", y `pendiente` mostraba "Ubicando dirección…" junto a ese mismo texto, contradiciéndose (uno dice *en curso*, el otro *falló*). Corregido: mensaje por estado, y `fuera_cobertura` ya no ofrece "Reintentar ubicación", que ahí no cambiaría nada porque la dirección sí se resolvió.
+
+### Pendiente
+- [ ] **Probar el alta real con geocoding contra Google.** Lo verificado en navegador es lectura sobre datos sembrados; el camino de escritura síncrona (incluido el fallo del proveedor, que no debe bloquear el guardado) no se ejercitó con la API real.
+- [ ] **"Promover y desactivar" no es atómica.** PostgREST no expone transacciones desde el cliente: son dos UPDATE ordenados para que un fallo intermedio deje estado válido (sin principal), nunca violando el CHECK. Si se quiere atomicidad real, va como función en Postgres.
+- [ ] **`seed.sql` no es re-ejecutable completo** (preexistente, ajeno a bodegas): los tres `insert into operacion.pedidos` de las líneas 517, 591 y 665 no llevan `on conflict`. No afecta el flujo normal porque `db reset` aplica sobre base limpia.
+- [ ] **Cabo para la etapa 3**: cuando la visita de retiro referencie `seller_bodegas` por FK compuesta, los dos `delete` del §0 de `seed-torre-hoy.sql` fallarán con 23503 si hay visitas colgando.
+
+---
+
 *Documento de trabajo · pruebas funcionales del MVP. Pensado para validar el lazo operación→dinero antes de las etapas de frontend y UX/UI.*
