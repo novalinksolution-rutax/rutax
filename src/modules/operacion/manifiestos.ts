@@ -405,6 +405,16 @@ export async function completarManifiesto(
     .select("*")
     .eq("id", manifiestoId)
     .eq("tenant_id", tenantId)
+    // El manifiesto debe ser del conductor indicado. Sin este filtro aislaba por
+    // tenant pero NO por conductor: cualquier conductor activo del mismo courier
+    // podia cerrar la ruta en_ruta de un colega en pleno reparto con solo
+    // conocer su id. Su hermana `manifiesto/iniciar` si lo filtraba.
+    //
+    // Corrige ademas el camino del courier, donde `driverId` llega del
+    // formulario: con un id equivocado, esta funcion registraba en bitacora al
+    // conductor equivocado y le borraba a EL la ubicacion GPS (Ley 21.431), en
+    // vez de al dueno real del manifiesto.
+    .eq("driver_id", driverId)
     .maybeSingle();
 
   if (errorLeer) {
@@ -412,7 +422,9 @@ export async function completarManifiesto(
   }
 
   if (!actual) {
-    throw new ErrorConflicto(`El manifiesto '${manifiestoId}' no existe o no pertenece al tenant`);
+    throw new ErrorConflicto(
+      `El manifiesto '${manifiestoId}' no existe, no pertenece al tenant o no es del conductor indicado`,
+    );
   }
 
   if (actual.estado !== "en_ruta") {

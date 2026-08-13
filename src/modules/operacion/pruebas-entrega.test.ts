@@ -28,13 +28,22 @@ const TENANT_A = "aaaa0000-0000-0000-0000-000000000010";
 const PEDIDO_1 = "bbbb0000-0000-0000-0000-000000000020";
 const SELLER_1 = "cccc0000-0000-0000-0000-000000000030";
 const CONDUCTOR_1 = "dddd0000-0000-0000-0000-000000000040";
+/**
+ * El id de `auth.users` del conductor, DELIBERADAMENTE distinto de
+ * `CONDUCTOR_1`. En la realidad nunca coinciden: `identidad.conductores.id` se
+ * genera con `crypto.randomUUID()` (`conductores.ts:530`) y no tiene relación
+ * con auth. Si aquí se usara el mismo valor para los dos, la prueba de abajo
+ * pasaría igual con el bug puesto — que es exactamente cómo sobrevivió.
+ */
+const USUARIO_AUTH_1 = "eeee0000-0000-0000-0000-000000000099";
 
 // Coordenadas de referencia: Plaza de Armas, Santiago
 const LAT_DESTINO = -33.4372;
 const LONG_DESTINO = -70.6506;
 
-function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual {
+function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual & { usuarioId: string } {
   return {
+    usuarioId: USUARIO_AUTH_1,
     tenantId: TENANT_A,
     tipoUsuario: "conductor",
     sellerId: null,
@@ -44,8 +53,9 @@ function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual {
   };
 }
 
-function actorSinCapacidad(): UsuarioActual {
+function actorSinCapacidad(): UsuarioActual & { usuarioId: string } {
   return {
+    usuarioId: USUARIO_AUTH_1,
     tenantId: TENANT_A,
     tipoUsuario: "seller",
     sellerId: SELLER_1,
@@ -232,7 +242,7 @@ describe("registrarPruebaEntrega — barreras de acceso y same-day", () => {
   // -------------------------------------------------------------------------
   it("conductor sin driverId lanza ErrorValidacion", async () => {
     const mock = construirClienteMock();
-    const actorSinId: UsuarioActual = { ...actorConductor(), driverId: null };
+    const actorSinId: UsuarioActual & { usuarioId: string } = { ...actorConductor(), driverId: null };
     await expect(
       registrarPruebaEntrega(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,5 +363,130 @@ describe("Lógica de geocerca y es_valido", () => {
     const tipoIncidencia = null;
     const esValido = !!tipoIncidencia;
     expect(esValido).toBe(false);
+  });
+});
+
+// =============================================================================
+// 5. Bitácora: el autor es el usuario de AUTH, nunca el conductor
+// =============================================================================
+
+/**
+ * La prueba que faltaba, y por la que un bug crítico sobrevivió meses.
+ *
+ * `bitacora_auditoria.actor_usuario_id` tiene FK a `auth.users(id)`. Durante un
+ * tiempo estas tres escrituras del conductor (POD same-day, cierre Flex y
+ * evidencias) pasaban `actor.driverId`, que es `identidad.conductores.id` —
+ * generado con `crypto.randomUUID()` y sin ninguna relación con auth. El INSERT
+ * fallaba con 23503 y, como la bitácora va ANTES del efecto por invariante del
+ * proyecto, **ninguna entrega llegaba a registrarse**.
+ *
+ * No lo vio nadie porque el doble de cliente resolvía la bitácora con
+ * `insert: () => Promise.resolve({ error: null })`, aceptando cualquier payload
+ * sin mirarlo. Un mock que no mira lo que recibe no prueba nada: por eso este
+ * caso captura el payload y lo afirma.
+ */
+describe("registrarPruebaEntrega — autor de la bitácora", () => {
+  it("escribe el usuarioId de auth como actor, y NO el driverId", async () => {
+    const asientos: Record<string, unknown>[] = [];
+
+    const mock = {
+      from: (tabla: string) => {
+        if (tabla === "pedidos") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({
+                      data: {
+                        id: PEDIDO_1,
+                        tenant_id: TENANT_A,
+                        seller_id: SELLER_1,
+                        tipo_pedido: "same_day",
+                        driver_id_asignado: CONDUCTOR_1,
+                        lat: LAT_DESTINO,
+                        long: LONG_DESTINO,
+                        geo_estado: "resuelto",
+                        estado: "en_ruta",
+                      },
+                      error: null,
+                    }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (tabla === "pruebas_entrega") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+                }),
+              }),
+            }),
+            insert: () => ({
+              select: () => ({
+                single: () =>
+                  Promise.resolve({
+                    data: {
+                      id: "ffff0000-0000-0000-0000-000000000001",
+                      tenant_id: TENANT_A,
+                      pedido_id: PEDIDO_1,
+                      seller_id: SELLER_1,
+                      conductor_id: CONDUCTOR_1,
+                      tipo_resultado: "entregado",
+                      tiene_foto: true,
+                      foto_object_path: "path/foto.jpg",
+                      tiene_firma: false,
+                      firma_object_path: null,
+                      otp_estado: "no_aplica",
+                      geo_lat: LAT_DESTINO,
+                      geo_long: LONG_DESTINO,
+                      geo_precision_m: 5,
+                      distancia_destino_m: 10,
+                      geocerca_resultado: "dentro",
+                      es_valido: true,
+                      tipo_incidencia: null,
+                      capturado_en: new Date().toISOString(),
+                      creado_en: new Date().toISOString(),
+                    },
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
+        if (tabla === "bitacora_auditoria") {
+          // A diferencia del doble genérico, éste SÍ mira lo que recibe.
+          return {
+            insert: (fila: Record<string, unknown>) => {
+              asientos.push(fila);
+              return Promise.resolve({ error: null });
+            },
+          };
+        }
+        return { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) };
+      },
+    };
+
+    await registrarPruebaEntrega(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mock as any,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        tipoResultado: "entregado",
+        fotoObjectPath: "path/foto.jpg",
+      },
+      actorConductor(),
+    );
+
+    expect(asientos.length).toBeGreaterThan(0);
+    const asiento = asientos[0];
+
+    // Lo que importa: el id de AUTH, no el del conductor.
+    expect(asiento.actor_usuario_id).toBe(USUARIO_AUTH_1);
+    expect(asiento.actor_usuario_id).not.toBe(CONDUCTOR_1);
   });
 });

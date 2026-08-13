@@ -49,6 +49,14 @@ const TENANT_B = "bbbb0000-0000-0000-0000-000000000011"; // tenant distinto (ais
 const PEDIDO_1 = "bbbb0000-0000-0000-0000-000000000020";
 const SELLER_1 = "cccc0000-0000-0000-0000-000000000030";
 const CONDUCTOR_1 = "dddd0000-0000-0000-0000-000000000040";
+/**
+ * Id de `auth.users` del conductor, DELIBERADAMENTE distinto de `CONDUCTOR_1`:
+ * `identidad.conductores.id` se genera con `crypto.randomUUID()` y nunca es un
+ * usuario de auth. Con el mismo valor en ambos, la prueba no distinguiría el
+ * bug que pasaba `driverId` donde va el id de auth.
+ */
+const USUARIO_AUTH_1 = "eeee0000-0000-0000-0000-000000000099";
+
 const CONDUCTOR_2 = "dddd0000-0000-0000-0000-000000000041"; // conductor ajeno
 const MANIFIESTO_1 = "eeee0000-0000-0000-0000-000000000050";
 const POD_ID_1 = "ffff0000-0000-0000-0000-000000000060";
@@ -57,8 +65,9 @@ const POD_ID_1 = "ffff0000-0000-0000-0000-000000000060";
 const LAT_DESTINO = -33.4372;
 const LONG_DESTINO = -70.6506;
 
-function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual {
+function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual & { usuarioId: string } {
   return {
+    usuarioId: USUARIO_AUTH_1,
     tenantId: TENANT_A,
     tipoUsuario: "conductor",
     sellerId: null,
@@ -68,8 +77,9 @@ function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual {
   };
 }
 
-function actorInterno(): UsuarioActual {
+function actorInterno(): UsuarioActual & { usuarioId: string } {
   return {
+    usuarioId: USUARIO_AUTH_1,
     tenantId: TENANT_A,
     tipoUsuario: "interno",
     sellerId: null,
@@ -79,8 +89,9 @@ function actorInterno(): UsuarioActual {
   };
 }
 
-function actorSeller(sellerId: string = SELLER_1): UsuarioActual {
+function actorSeller(sellerId: string = SELLER_1): UsuarioActual & { usuarioId: string } {
   return {
+    usuarioId: USUARIO_AUTH_1,
     tenantId: TENANT_A,
     tipoUsuario: "seller",
     sellerId,
@@ -1163,7 +1174,8 @@ describe("Aislamiento cross-tenant | obtenerUrlFirmadaPod", () => {
 
   it("seller de otro tenant NO puede obtener URL firmada del POD (aislamiento)", async () => {
     // El POD pertenece a TENANT_A; el actor es seller de TENANT_B.
-    const actorOtroTenant: UsuarioActual = {
+    const actorOtroTenant: UsuarioActual & { usuarioId: string } = {
+      usuarioId: USUARIO_AUTH_1,
       tenantId: TENANT_B,
       tipoUsuario: "seller",
       sellerId: "seller-b-1",
@@ -1243,7 +1255,8 @@ describe("Aislamiento cross-tenant | obtenerUrlFirmadaPod", () => {
       foto_object_path: "pod/foto.jpg",
     };
 
-    const actorOtro: UsuarioActual = {
+    const actorOtro: UsuarioActual & { usuarioId: string } = {
+      usuarioId: USUARIO_AUTH_1,
       tenantId: TENANT_A,
       tipoUsuario: "conductor",
       sellerId: null,

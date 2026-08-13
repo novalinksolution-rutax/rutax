@@ -126,7 +126,9 @@ function filaAEvidencia(fila: Record<string, any>): EvidenciaEntrega {
 export async function registrarEvidenciaEntrega(
   cliente: SupabaseClient,
   entrada: RegistrarEvidenciaEntrada,
-  actor: UsuarioActual,
+  // `& { usuarioId }`: escribe bitácora y necesita el id de AUTH, que
+  // `UsuarioActual` no expone. Ver la nota del INSERT más abajo.
+  actor: UsuarioActual & { usuarioId: string },
 ): Promise<EvidenciaEntrega> {
   // --- 1. RBAC + validación de actor ------------------------------------
   if (!puedeMarcarEvidenciasPropias(actor)) {
@@ -202,7 +204,11 @@ export async function registrarEvidenciaEntrega(
   // DATOS PERSONALES: NO incluir lat/long, foto_path en el detalle.
   await registrarEnBitacora(cliente, {
     tenantId: entrada.tenantId,
-    actorUsuarioId: actor.driverId, // el UUID de auth del conductor
+    // `usuarioId` (auth), NUNCA `driverId`: son espacios de UUID distintos y la
+    // columna tiene FK a `auth.users(id)`. El comentario que estaba aquí decía
+    // que `driverId` era "el UUID de auth del conductor" y era falso — el
+    // INSERT fallaba con 23503, antes del efecto.
+    actorUsuarioId: actor.usuarioId,
     actorTipo: "usuario",
     accion: "evidencia.capturada",
     entidadTipo: "pedido",

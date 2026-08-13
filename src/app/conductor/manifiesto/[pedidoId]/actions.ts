@@ -113,7 +113,7 @@ export async function actionEntregarPedido(formData: FormData): Promise<Resultad
         fotoObjectPath,
         geo,
       },
-      sesion.usuario,
+      { ...sesion.usuario, usuarioId: sesion.usuarioId },
     );
 
     // --- 4. Si el POD es válido, transicionar el estado ----------------------
@@ -221,7 +221,7 @@ export async function actionNoEntregarPedido(formData: FormData): Promise<Result
         fotoObjectPath,
         geo,
       },
-      sesion.usuario,
+      { ...sesion.usuario, usuarioId: sesion.usuarioId },
     );
 
     // --- 4. Transicionar estado a 'fallido' ---------------------------------
