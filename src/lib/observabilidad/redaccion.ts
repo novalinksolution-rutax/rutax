@@ -19,9 +19,23 @@
  * necesarios para triar y no son secretos ni PII directa.
  */
 
-/** Llaves cuyo valor es secreto (jamás sale) o PII directa (minimización). */
+/**
+ * Llaves cuyo valor es secreto (jamás sale) o PII directa (minimización).
+ *
+ * `hash[_-]?code|qr[_-]?payload|\bqr\b|codigo[_-]?bulto|security[_-]?digit|
+ * codigo[_-]?crudo` — retiro en bodega (etapa 3, docs/arquitectura/
+ * retiro-y-ruteo.md §1.5): el string del QR de la etiqueta Flex es
+ * credencial-símil (quien lo tenga puede reconstruir un QR escaneable, y ML
+ * no reimprime la etiqueta una vez retirado el bulto). El payload crudo es un
+ * JSON (`{"id":...,"hash_code":...}`), así que sus llaves NUNCA calzaban con
+ * este patrón por FORMA — las llaves con `{`, `"`, `:` caen fuera de la clase
+ * de caracteres de este regex — y un log crudo del body viajaría íntegro a
+ * observabilidad. `[_-]?` entre palabras compuestas cubre snake_case
+ * (`hash_code`), camelCase (`hashCode`, cero separador tras minúsculas) y
+ * kebab-case por igual, mismo criterio que `access[_-]?token` más abajo.
+ */
 const PATRON_LLAVE_SENSIBLE =
-  /(pass(word)?|contrase|secret|secreto|token|bearer|authorization|api[_-]?key|apikey|clave|caf|certificad|cookie|firma|signature|link[_-]?token|refresh|access[_-]?token|dsn|\brut\b|\bdni\b|email|correo|e-mail|telefono|tel[eé]fono|celular|direccion|direcci[oó]n|nombre_destinatario|destinatario)/i;
+  /(pass(word)?|contrase|secret|secreto|token|bearer|authorization|api[_-]?key|apikey|clave|caf|certificad|cookie|firma|signature|link[_-]?token|refresh|access[_-]?token|dsn|\brut\b|\bdni\b|email|correo|e-mail|telefono|tel[eé]fono|celular|direccion|direcci[oó]n|nombre_destinatario|destinatario|hash[_-]?code|qr[_-]?payload|\bqr\b|codigo[_-]?bulto|security[_-]?digit|codigo[_-]?crudo)/i;
 
 /** Forma de JWT: tres segmentos base64url separados por punto. */
 const PATRON_JWT = /^ey[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+$/;

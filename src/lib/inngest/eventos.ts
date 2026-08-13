@@ -579,6 +579,46 @@ export interface EventoComunicacionPublicada {
   };
 }
 
+/**
+ * Retiro en bodega (etapa 3) — un bulto se escaneó pero Rutax no pudo
+ * casarlo con ningún pedido ya ingestado: candidato ajeno (otro courier) o
+ * todavía no ingestado (docs/arquitectura/retiro-y-ruteo.md §2.1).
+ *
+ * Publicado por `operacion/retiro/escaneos.ts` (`registrarLoteEscaneos`)
+ * DESPUÉS de insertar el bulto como `no_procesado` (`pedido_id = null`) —
+ * nunca antes: si el INSERT falla, no hay bulto del que avisar. Solo se
+ * publica para `codigo_formato = 'flex_qr'`: es el único formato con un
+ * identificador (`ml_shipment_id`) contra el que ML puede resolverse más
+ * tarde. Un `desconocido` no trae shipment id — nada que re-consultar — y un
+ * `rutax_interno` sin match es un problema de datos propios (same-day, sin
+ * fuente externa que sincronizar), así que tampoco dispara este evento.
+ *
+ * ⚠️ El endpoint de escaneos NUNCA llama a ML directamente (CLAUDE.md: el
+ * núcleo no llama APIs externas directo, y la latencia de un tercero no puede
+ * meterse en el gesto que el conductor repite ~130 veces con el seller
+ * apurándolo). Este evento es el enganche para que `integraciones` construya
+ * el consumidor que reintenta la resolución — SIN CONSUMIDOR en esta entrega,
+ * a propósito: es trabajo de integración con ML, fuera del alcance de esta
+ * etapa (backend solo define y publica el contrato).
+ *
+ * `id` determinístico (`bulto-retiro-sin-pedido-${bultoId}`): un reintento
+ * del mismo lote (mismo `escaneoId`, fusionado contra el mismo bulto ya
+ * insertado) no debe disparar una segunda resolución diferida para el mismo
+ * bulto — la deduplicación de Inngest por `id` la absorbe.
+ */
+export interface EventoBultoRetiroSinPedido {
+  name: 'operacion/bulto-retiro.sin-pedido';
+  data: {
+    bultoId: string;
+    tenantId: string;
+    sesionRetiroId: string;
+    /** `ml_shipment_id` a re-consultar contra ML. Siempre presente — única razón de ser del evento. */
+    mlShipmentId: string;
+    /** Momento del escaneo (dispositivo) — para que el consumidor sepa cuánto lleva sin resolver. */
+    escaneadoEn: string;
+  };
+}
+
 // =============================================================================
 // `contexto` — Torre de control (anticipación operativa).
 //

@@ -36,6 +36,38 @@ describe('redactarSensible — redacción por llave', () => {
     expect(Object.values(salida).every((v) => v === MARCA_REDACTADO)).toBe(true);
   });
 
+  it('redacta las llaves del retiro en bodega (QR de Flex): hash_code, qr_payload, qr, codigo_bulto, security_digit, codigo_crudo — snake_case y camelCase', () => {
+    const entrada = {
+      hash_code: 'fwH77GO2qbT3SrRS/UKb14MN2s5JA3AhWG4Pen/l6WY=',
+      hashCode: 'fwH77GO2qbT3SrRS/UKb14MN2s5JA3AhWG4Pen/l6WY=',
+      qr_payload: '{"id":"44760788897"}',
+      qrPayload: '{"id":"44760788897"}',
+      qr: '{"id":"44760788897"}',
+      codigo_bulto: 'RX-7K2M-9PQR',
+      codigoBulto: 'RX-7K2M-9PQR',
+      security_digit: '0',
+      securityDigit: '0',
+      codigo_crudo: 'un garabato ilegible',
+      codigoCrudo: 'un garabato ilegible',
+    };
+    const salida = redactarSensible(entrada) as Record<string, unknown>;
+    for (const k of Object.keys(entrada)) {
+      expect(salida[k]).toBe(MARCA_REDACTADO);
+    }
+  });
+
+  it('el payload real de la etiqueta Flex, logueado por error bajo la llave `codigo`, NO se redacta por FORMA — por eso el endpoint de escaneos nunca lo loguea', () => {
+    // Documenta el motivo exacto por el que CLAUDE.md exige que el endpoint de
+    // escaneos nunca loguee el body: el JSON crudo trae `{`, `"`, `:`, que caen
+    // fuera de la clase de caracteres de PATRON_LLAVE_SENSIBLE, así que una
+    // llave inocua como `codigo` NO dispara la redacción por llave. La defensa
+    // real es no loguear el body en absoluto, no este helper.
+    const payloadRealFlex =
+      '{"id":"44760788897","sender_id":2114191787,"hash_code":"fwH77GO2qbT3SrRS/UKb14MN2s5JA3AhWG4Pen/l6WY=","security_digit":"0"}';
+    const salida = redactarSensible({ codigo: payloadRealFlex }) as Record<string, unknown>;
+    expect(salida.codigo).toBe(payloadRealFlex);
+  });
+
   it('preserva identificadores de negocio (no son secretos ni PII)', () => {
     const entrada = {
       tenantId: 't-1',
