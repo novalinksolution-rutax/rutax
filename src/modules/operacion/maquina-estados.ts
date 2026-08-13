@@ -47,6 +47,21 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
       // una solicitud: el estado se refleja siempre, sin barrera de tipo_pedido
       // (a diferencia de `cancelarPedido`, que es solo same-day).
       { destino: "cancelado", ejecutores: ["interno", "seller", "sistema"] },
+      // Reflejo de la realidad de ML en Flex (ago-2026, bug de facturación: un
+      // pedido que Rutax descubre tarde — o que nunca llegó a asignar — se
+      // quedaba congelado en 'pendiente_asignacion' aunque ML ya lo reportara
+      // shipped/delivered/not_delivered). En Flex el POD de Mercado Envíos es
+      // la verdad y el conductor puede entregar sin que Rutax lo haya asignado
+      // — Rutax orquesta alrededor de esa app, nunca la reemplaza (CLAUDE.md).
+      // La barrera tipo_pedido='flex' NO vive aquí (función pura, agnóstica de
+      // tipo_pedido): la impone `actualizarEstadoPedido`, mismo patrón que usa
+      // `cancelarPedido` para acotar sus transiciones por tipo de pedido en el
+      // llamador. En same-day el POD de Rutax es el autoritativo y el
+      // conductor SIEMPRE pasa primero por 'asignado', así que este camino no
+      // debería alcanzarlo — pero la puerta igual se cierra ahí, no aquí.
+      { destino: "en_ruta", ejecutores: ["sistema"] },
+      { destino: "entregado", ejecutores: ["sistema"] },
+      { destino: "fallido", ejecutores: ["sistema"] },
     ],
   ],
   [

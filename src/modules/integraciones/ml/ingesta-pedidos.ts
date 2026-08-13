@@ -45,6 +45,7 @@ import { ahoraEnSantiago, horaAMinutos, fechaLocalEnSantiago } from "@/lib/fecha
 import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
 import { resolverZona } from "@/modules/operacion/zonas";
 import { resolverVentanaCorte } from "@/modules/operacion/ventanas-corte";
+import { traducirEstadoMl } from "./traduccion-estados";
 
 // =============================================================================
 // Constantes del contrato con ML
@@ -770,6 +771,22 @@ export async function guardarPedidoFlex(
     comuna,
   );
 
+  // La ingesta SÍ traduce en el INSERT (a diferencia del UPDATE de un pedido
+  // existente — ver `actualizarPedidoFlex` más abajo, que NUNCA toca `estado`).
+  // Decisión del usuario: "el estado real de ML se refleja siempre en Rutax".
+  // Si ML ya reporta un estado avanzado (delivered/shipped/not_delivered/
+  // cancelled) al momento en que Rutax DESCUBRE el pedido —por definición
+  // tarde, sin conductor asignado todavía—, el pedido nace reflejando esa
+  // realidad en vez de nacer `pendiente_asignacion` y quedarse congelado ahí
+  // para siempre (el bug que se cierra con este cambio). Si `traducirEstadoMl`
+  // no resuelve nada (pre-despacho: ready_to_ship/pending/handling, o un
+  // subestado/estado nuevo de ML que aún no mapeamos) se OMITE la clave y
+  // manda el DEFAULT de la columna ('pendiente_asignacion'), que es lo
+  // correcto — mismo mecanismo de omisión que protegía el INSERT hasta ahora.
+  const estadoInsertado = datos.estadoMl
+    ? traducirEstadoMl(datos.estadoMl, datos.subestadoMl)
+    : null;
+
   const fila: Record<string, unknown> = {
     tenant_id: ctx.tenantId,
     seller_id: ctx.sellerId,
@@ -777,8 +794,7 @@ export async function guardarPedidoFlex(
     tipo_pedido: "flex",
     origen: ctx.origen,
     ml_shipment_id: entrada.shipmentId,
-    // `estado` se OMITE a propósito: la columna tiene default
-    // 'pendiente_asignacion'. Así jamás viaja en un UPDATE por accidente.
+    ...(estadoInsertado ? { estado: estadoInsertado } : {}),
     estado_ml: datos.estadoMl,
     subestado_ml: datos.subestadoMl,
     ultima_sync_ml_en: ahoraIso,

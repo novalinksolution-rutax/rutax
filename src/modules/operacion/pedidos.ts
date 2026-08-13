@@ -74,6 +74,17 @@ const ESTADOS_FINANCIEROS = new Set<EstadoPedido>([
   'cancelado',
 ]);
 
+/**
+ * Los 3 destinos que `maquina-estados.ts` habilitó para que 'sistema' refleje
+ * la realidad de ML desde 'pendiente_asignacion' (bug de facturación, ago-2026:
+ * un Flex que Rutax descubre tarde se quedaba congelado en 'pendiente_asignacion'
+ * pese a que ML ya lo reportaba shipped/delivered/not_delivered). La función
+ * pura es agnóstica de tipo_pedido; la barrera 'flex' se impone aquí, en el
+ * llamador — mismo patrón que usa `cancelarPedido` para acotar sus transiciones
+ * por tipo de pedido.
+ */
+const REFLEJO_ML_DESDE_PENDIENTE = new Set<EstadoPedido>(['en_ruta', 'entregado', 'fallido']);
+
 // =============================================================================
 // Mapper de fila de BD → interfaz Pedido
 // =============================================================================
@@ -364,6 +375,25 @@ export async function actualizarEstadoPedido(
         );
       }
     }
+  }
+
+  // 2c. FRONTERA DURA: el 'sistema' solo puede reflejar en_ruta/entregado/fallido
+  //     de ML desde 'pendiente_asignacion' para pedidos FLEX (ver el comentario
+  //     de `REFLEJO_ML_DESDE_PENDIENTE` y de la tabla en `maquina-estados.ts`).
+  //     En same-day el POD de Rutax es el autoritativo — no hay ML que mande, y
+  //     el conductor siempre pasa primero por 'asignado' — así que este camino
+  //     no debería alcanzarlo nunca; se cierra la puerta aquí de todos modos,
+  //     mismo patrón que usa `cancelarPedido` para acotar por tipo_pedido en el
+  //     llamador en vez de en la función pura.
+  if (
+    entrada.ejecutor === "sistema" &&
+    estadoActual === "pendiente_asignacion" &&
+    REFLEJO_ML_DESDE_PENDIENTE.has(entrada.estadoNuevo) &&
+    pedidoActual.tipo_pedido !== "flex"
+  ) {
+    throw new ErrorValidacion(
+      "Un pedido same-day no puede reflejar un estado de Mercado Libre sin haber sido asignado — el POD de Rutax es el autoritativo para same-day.",
+    );
   }
 
   // 3. Optimistic locking: el estado actual debe coincidir con el esperado.
@@ -669,7 +699,36 @@ export async function actualizarEstadoPedido(
   // El pedido ya está en el nuevo estado en BD independientemente del motor de dinero.
   // Si el evento no llega, el job C6 (conciliación) lo detectará y generará un
   // evento de conciliación para resolución manual.
-  if (ESTADOS_FINANCIEROS.has(entrada.estadoNuevo)) {
+  //
+  // EXCEPCIÓN (decisión del usuario, ago-2026): un pedido que llega a
+  // 'entregado' sin haber sido asignado a un conductor DENTRO de Rutax no
+  // dispara el cobro automático — pudo entregarlo el propio seller por su
+  // cuenta, y facturarlo sería cobrar una operación que Rutax no hizo. El
+  // ESTADO igual se refleja siempre (decisión #1: el estado real de ML manda);
+  // lo único que no ocurre es publicar el evento que dispara C1
+  // (`dinero/jobs/generar-lineas.ts`). La excepción queda visible SOLA, sin
+  // detector nuevo: C6 (`dinero/jobs/conciliar-periodo.ts`, check 1) ya busca
+  // "entregado sin línea de cobro" para todo pedido del período, sin filtrar
+  // por conductor asignado, así que aparecerá en `dinero.eventos_conciliacion`
+  // como `pedido_entregado_sin_linea_cobro` (acción sugerida
+  // `generar_cobro_manual`) cuando el período que cubre esta fecha cierre.
+  // Vale igual para 'fallido' (decisión del usuario, 2026-08-13): al abrir la
+  // puerta 'pendiente_asignacion'→'fallido' apareció la misma grieta por otro
+  // lado. Un pedido que llega a 'fallido' abre incidencia automática, cuyo
+  // default es `afecta_cobro=true`, y el motor de fallidos cobra con solo eso
+  // —sin mirar el conductor, a diferencia de la liquidación—. Sin esta guardia
+  // se facturaría un intento de entrega que Rutax no hizo… o que hizo OTRO
+  // courier: el mismo `ml_user_id` puede estar conectado a dos tenants
+  // distintos (ver `procesar-shipment.ts`) y un seller despacha con varios.
+  //
+  // Acotado a los estados automáticos: 'entregado_manual' y 'fallido_manual'
+  // son correcciones humanas deliberadas (RBAC + motivo) y siguen facturando
+  // como siempre — ahí SÍ hay alguien afirmando que la operación ocurrió.
+  const sinAsignacionEnRutax =
+    (entrada.estadoNuevo === 'entregado' || entrada.estadoNuevo === 'fallido') &&
+    !pedidoActual.driver_id_asignado;
+
+  if (ESTADOS_FINANCIEROS.has(entrada.estadoNuevo) && !sinAsignacionEnRutax) {
     try {
       await inngest.send({
         name: 'dinero/pedido.estado_financiero_relevante',

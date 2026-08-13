@@ -576,6 +576,91 @@ describe("fase B — repaso de estados", () => {
     ]);
   });
 
+  // ===========================================================================
+  // El cuarto agujero (bug de facturación Flex, ago-2026): un pedido histórico
+  // con `estado_ml` YA correcto (no cambia en este ciclo) pero `estado` interno
+  // congelado en 'pendiente_asignacion' — antes el repaso no veía diferencia
+  // (`estado_ml === estado_ml`) y nunca disparaba la corrección.
+  // ===========================================================================
+
+  it("detecta la INCOHERENCIA histórica (estado_ml correcto, estado interno congelado) y dispara igual, aunque estado_ml no haya cambiado", async () => {
+    const pedidoHistoricoIncoherente = {
+      id: "pedido-2",
+      ml_shipment_id: "111",
+      // `estado` NUNCA se tradujo al ingestar (bug ya cerrado) — se quedó en
+      // el default de la ingesta pese a que `estado_ml` ya decía 'delivered'.
+      estado: "pendiente_asignacion",
+      estado_ml: "delivered",
+      ultima_sync_ml_en: null,
+    };
+    const { cliente, registro } = crearSupabaseFalso({ pedidosRepaso: [pedidoHistoricoIncoherente] });
+    // ML reporta EXACTAMENTE lo mismo que ya teníamos guardado — sin esto el
+    // chequeo viejo (`datos.estadoMl !== pedido.estado_ml`) jamás dispararía.
+    stubMl([{ results: [], total: 0 }], { "111": shipmentFlex({ status: "delivered" }) });
+
+    const resumen = await sincronizarConexionMl(CONEXION, {
+      supabase: comoSupabase(cliente),
+      logger: crearLogger(),
+    });
+
+    expect(resumen.transicionesPublicadas).toBe(1);
+    expect(inngest.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "ml/shipment.actualizado",
+        data: expect.objectContaining({ shipmentId: "111", userId: "ml-user-99" }),
+      }),
+    );
+    // Mismo invariante que el cambio "normal": no se escribe `estado_ml` aquí
+    // — lo aplica el Job 3, dueño de la máquina de estados.
+    expect(registro.pedidoUpdate).toHaveLength(0);
+  });
+
+  it("NO marca como incoherente un pedido 'ready_to_ship' que sigue sin traducción (nada que corregir)", async () => {
+    const pedidoPendienteLegitimo = {
+      id: "pedido-3",
+      ml_shipment_id: "111",
+      estado: "pendiente_asignacion",
+      estado_ml: "ready_to_ship",
+      ultima_sync_ml_en: null,
+    };
+    const { cliente, registro } = crearSupabaseFalso({ pedidosRepaso: [pedidoPendienteLegitimo] });
+    stubMl([{ results: [], total: 0 }], { "111": shipmentFlex({ status: "ready_to_ship" }) });
+
+    const resumen = await sincronizarConexionMl(CONEXION, {
+      supabase: comoSupabase(cliente),
+      logger: crearLogger(),
+    });
+
+    expect(resumen.transicionesPublicadas).toBe(0);
+    expect(registro.pedidoUpdate).toEqual([{ ultima_sync_ml_en: expect.any(String) }]);
+  });
+
+  it("NO marca como incoherente un pedido 'fallido_manual' (corrección humana deliberada) aunque nunca vaya a traducir igual a un estado de ML", async () => {
+    // Guarda de falso positivo: 'fallido_manual' es un estado propio de Rutax
+    // que la API de ML JAMÁS produce — sin este acotamiento (a
+    // 'pendiente_asignacion') el repaso lo marcaría "incoherente" en cada
+    // ciclo, para siempre, gastando una llamada a ML por nada.
+    const pedidoCorreccionManual = {
+      id: "pedido-4",
+      ml_shipment_id: "111",
+      estado: "fallido_manual",
+      estado_ml: "not_delivered",
+      ultima_sync_ml_en: null,
+    };
+    const { cliente, registro } = crearSupabaseFalso({ pedidosRepaso: [pedidoCorreccionManual] });
+    stubMl([{ results: [], total: 0 }], {
+      "111": shipmentFlex({ status: "not_delivered", substatus: "receiver_absent" }),
+    });
+
+    const resumen = await sincronizarConexionMl(CONEXION, {
+      supabase: comoSupabase(cliente),
+      logger: crearLogger(),
+    });
+
+    expect(resumen.transicionesPublicadas).toBe(0);
+    expect(registro.pedidoUpdate).toEqual([{ ultima_sync_ml_en: expect.any(String) }]);
+  });
+
   it("no vuelve a preguntar por un envío consultado hace menos de la ventana de frescura", async () => {
     const ahora = new Date("2026-08-13T14:20:00.000Z");
     const hace10min = new Date(ahora.getTime() - 10 * 60 * 1000).toISOString();

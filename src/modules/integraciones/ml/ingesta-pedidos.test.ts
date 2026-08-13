@@ -299,6 +299,115 @@ describe("guardarPedidoFlex — INSERT de un pedido nuevo", () => {
 });
 
 // =============================================================================
+// INSERT — la ingesta TRADUCE el estado de ML (bug de facturación Flex,
+// ago-2026): un envío que Rutax descubre tarde nace reflejando la realidad de
+// ML en vez de nacer SIEMPRE 'pendiente_asignacion' y quedarse congelado ahí.
+// =============================================================================
+
+describe("guardarPedidoFlex — INSERT traduce estado_ml al insertar", () => {
+  it("'delivered' nace 'entregado' — el pedido que ML ya entregó no queda pendiente", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({ estadoMl: "delivered", subestadoMl: null }),
+      null,
+    );
+    expect(registro.insert[0].estado).toBe("entregado");
+    expect(registro.insert[0].estado_ml).toBe("delivered");
+  });
+
+  it("'shipped' nace 'en_ruta'", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({ estadoMl: "shipped", subestadoMl: null }),
+      null,
+    );
+    expect(registro.insert[0].estado).toBe("en_ruta");
+  });
+
+  it("'not_delivered' nace 'fallido'", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({ estadoMl: "not_delivered", subestadoMl: "receiver_absent" }),
+      null,
+    );
+    expect(registro.insert[0].estado).toBe("fallido");
+  });
+
+  it("'not_delivered' con subestado 'returning_to_sender' nace 'devuelto' (el subestado manda sobre el status)", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({ estadoMl: "not_delivered", subestadoMl: "returning_to_sender" }),
+      null,
+    );
+    expect(registro.insert[0].estado).toBe("devuelto");
+  });
+
+  it("'cancelled' nace 'cancelado'", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({ estadoMl: "cancelled", subestadoMl: null }),
+      null,
+    );
+    expect(registro.insert[0].estado).toBe("cancelado");
+  });
+
+  it("'ready_to_ship' (pre-despacho) sigue naciendo SIN `estado` — manda el default 'pendiente_asignacion'", async () => {
+    // No-regresión explícita del caso que ya cubría el describe de arriba:
+    // el default fixture (datosFlex()) usa 'ready_to_ship'.
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(comoSupabase(cliente), CTX, { shipmentId: "1" }, datosFlex(), null);
+    expect(Object.keys(registro.insert[0])).not.toContain("estado");
+  });
+
+  it("un pedido que nace 'entregado' NUNCA publica el evento financiero — solo el de geocodificación", async () => {
+    // Decisión #2 del usuario: un pedido entregado que Rutax NUNCA asignó a un
+    // conductor no dispara el cobro automático. Un pedido recién insertado por
+    // definición no tiene conductor asignado (la asignación es un paso
+    // posterior), así que el evento financiero JAMÁS debe salir de aquí — la
+    // excepción la levanta sola el detector C6 cuando el período cierre.
+    const { cliente } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({ estadoMl: "delivered", subestadoMl: null }),
+      null,
+    );
+
+    const nombresEventos = vi.mocked(inngest.send).mock.calls.map((c) => (c[0] as { name: string }).name);
+    expect(nombresEventos).toEqual(["operacion/pedido.ingestado"]);
+    expect(nombresEventos).not.toContain("dinero/pedido.estado_financiero_relevante");
+  });
+
+  it("un estado de ML desconocido (no mapeado) tampoco escribe `estado` — nunca lanza", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({ estadoMl: "un_estado_que_ml_inventa_manana", subestadoMl: null }),
+      null,
+    );
+    expect(Object.keys(registro.insert[0])).not.toContain("estado");
+  });
+});
+
+// =============================================================================
 // UPDATE — el bug que se está cerrando
 // =============================================================================
 
@@ -331,6 +440,29 @@ describe("guardarPedidoFlex — UPDATE de un pedido que ya existe", () => {
     expect(cambios).not.toHaveProperty("estado");
     expect(cambios.estado_ml).toBe("shipped");
     expect(registro.updateIds).toEqual(["pedido-viejo"]);
+  });
+
+  it("REGRESIÓN (caso exacto del bug reportado): un pedido YA asignado que ML reporta 'delivered' NO le pisa `estado` en el UPDATE", async () => {
+    // La ingesta SÍ traduce en el INSERT desde este arreglo — este test
+    // confirma que esa traducción se quedó SOLO ahí y no se filtró al UPDATE:
+    // un pedido ya 'asignado'/'en_ruta' en Rutax que ML ya reporta 'delivered'
+    // NUNCA debe volver a la bandeja de 'pendiente_asignacion' ni saltar
+    // directo a 'entregado' por esta vía — esa transición la aplica el ÚNICO
+    // camino de escritura de estado (`actualizarEstadoPedido`, vía el evento
+    // `ml/shipment.actualizado` del Job 3), nunca la ingesta.
+    const { cliente, registro } = crearSupabaseFalso({ existentes: [existente] });
+
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "44012345678" },
+      datosFlex({ estadoMl: "delivered", subestadoMl: null }),
+      null,
+    );
+
+    expect(registro.insert).toHaveLength(0);
+    expect(registro.update[0]).not.toHaveProperty("estado");
+    expect(registro.update[0].estado_ml).toBe("delivered");
   });
 
   it("tampoco toca `origen` ni `corte_riesgo` (describen el momento del alta)", async () => {

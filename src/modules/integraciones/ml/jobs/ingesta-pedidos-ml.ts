@@ -26,7 +26,13 @@
  *    de los últimos 7 días. Es la ÚNICA forma de ver una cancelación:
  *    `GET /orders/search?seller=` **no devuelve órdenes canceladas** (verificado
  *    contra la doc oficial) — la orden desaparece del resultado en vez de
- *    aparecer marcada, así que la fase A jamás podría detectarla.
+ *    aparecer marcada, así que la fase A jamás podría detectarla. La fase B
+ *    TAMBIÉN corrige la INCOHERENCIA histórica de la ingesta (bug de ago-2026,
+ *    ya cerrado): pedidos que nacieron `pendiente_asignacion` sin traducir
+ *    aunque `estado_ml` ya dijera 'delivered'/'shipped'/'not_delivered'. Para
+ *    esos, `estado_ml` no cambia en este ciclo (ya estaba "bien" desde antes),
+ *    así que el repaso compara la traducción de `estado_ml` contra el estado
+ *    INTERNO — no solo contra el `estado_ml` guardado — para encontrarlos.
  *
  * CANCELACIÓN: se DETECTA y se AVISA (`operacion/pedido.cancelado-en-ml`). Este
  * job no mueve el estado a `cancelado`, no abre incidencia y no toca dinero —
@@ -50,6 +56,7 @@ import { capturarMensaje } from "@/lib/observabilidad";
 import { descifrarSecreto } from "../../secretos";
 import { peticionMl, ErrorHttpMl } from "../cliente-http";
 import { esCancelacionMl, publicarCancelacionEnMl } from "../cancelacion-ml";
+import { traducirEstadoMl } from "../traduccion-estados";
 import {
   CONCURRENCIA_SHIPMENTS,
   extraerShipmentId,
@@ -659,11 +666,36 @@ async function faseBRepasoEstados(
       continue;
     }
 
-    if (datos.estadoMl && datos.estadoMl !== pedido.estado_ml) {
-      // Cambio no-cancelación: lo aplica el Job 3, dueño de la máquina de
-      // estados y del optimistic locking. Aquí NO se escribe `estado_ml`: si se
-      // escribiera sin haber aplicado la transición, el polling de 15 min
-      // dejaría de ver diferencia y nadie reintentaría.
+    const cambioDeEstadoMl = !!datos.estadoMl && datos.estadoMl !== pedido.estado_ml;
+
+    // El cuarto agujero (ago-2026): antes del arreglo de la ingesta, TODO
+    // pedido Flex nacía en 'pendiente_asignacion' sin traducir, aunque
+    // `estado_ml` ya dijera 'delivered'/'shipped'/'not_delivered'. Esos
+    // pedidos históricos tienen `estado_ml` CORRECTO — no cambia en este
+    // ciclo — así que `cambioDeEstadoMl` nunca ve diferencia y nunca dispara
+    // la corrección. Aquí se traduce lo que ML acaba de reportar y se compara
+    // contra el estado INTERNO (no contra `estado_ml`) para encontrar esos
+    // históricos.
+    //
+    // Acotado a 'pendiente_asignacion' a propósito: es el ÚNICO estado no
+    // terminal que la ingesta puede dejar "congelado" por defecto.
+    // 'asignado'/'en_ruta'/'fallido' son siempre el resultado de una
+    // transición REAL ya aplicada por `actualizarEstadoPedido`, nunca un
+    // default de la ingesta. Y 'fallido_manual' en particular es una
+    // corrección humana deliberada que JAMÁS va a traducir igual a un estado
+    // de ML (no existe ese status en su API) — sin este acotamiento el repaso
+    // lo marcaría "incoherente" en cada ciclo, para siempre.
+    const incoherenciaHistorica =
+      pedido.estado === "pendiente_asignacion" &&
+      !!datos.estadoMl &&
+      traducirEstadoMl(datos.estadoMl, datos.subestadoMl) !== null;
+
+    if (cambioDeEstadoMl || incoherenciaHistorica) {
+      // Cambio de estado_ml (o incoherencia histórica): lo aplica el Job 3,
+      // dueño de la máquina de estados y del optimistic locking. Aquí NO se
+      // escribe `estado_ml`: si se escribiera sin haber aplicado la
+      // transición, el polling de 15 min dejaría de ver diferencia y nadie
+      // reintentaría.
       await inngest.send({
         name: "ml/shipment.actualizado",
         data: {

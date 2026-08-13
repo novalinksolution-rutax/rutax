@@ -162,20 +162,12 @@ describe("validarTransicion — transiciones inválidas lanza ErrorTransicionInv
     ejecutor: EjecutorTransicion;
     desc: string;
   }> = [
-    // pendiente_asignacion no puede ir a en_ruta directamente
-    {
-      origen: "pendiente_asignacion",
-      destino: "en_ruta",
-      ejecutor: "sistema",
-      desc: "pendiente_asignacion → en_ruta (saltarse asignado)",
-    },
-    // pendiente_asignacion no puede ir a entregado
-    {
-      origen: "pendiente_asignacion",
-      destino: "entregado",
-      ejecutor: "sistema",
-      desc: "pendiente_asignacion → entregado (sin pasar por asignado/en_ruta)",
-    },
+    // NOTA: pendiente_asignacion → en_ruta/entregado/fallido por 'sistema' YA
+    // NO están aquí — se volvieron VÁLIDAS con el fix del bug de facturación
+    // Flex (ago-2026): ver el describe "reflejo de ML desde
+    // pendiente_asignacion (Flex)" más abajo, que cubre tanto el caso
+    // positivo (sistema) como el negativo (cualquier otro ejecutor sigue
+    // rechazado, y también rechazado el destino 'asignado' — ese ya existía).
     // El sistema no puede hacer correcciones manuales
     {
       origen: "asignado",
@@ -303,15 +295,68 @@ describe("validarTransicion — fallido → devuelto (nuevo en §3)", () => {
 describe("ErrorTransicionInvalida — propiedades del error", () => {
   it("contiene estadoActual y estadoNuevo", () => {
     try {
-      validarTransicion("pendiente_asignacion", "entregado", "sistema");
+      // asignado → entregado sigue inválida (saltarse en_ruta) — a diferencia
+      // de pendiente_asignacion → entregado, que desde el fix del bug de
+      // facturación Flex (ago-2026) SÍ es válida para ejecutor='sistema'.
+      validarTransicion("asignado", "entregado", "sistema");
       expect.fail("debería haber lanzado");
     } catch (e) {
       expect(e).toBeInstanceOf(ErrorTransicionInvalida);
       const err = e as ErrorTransicionInvalida;
-      expect(err.estadoActual).toBe("pendiente_asignacion");
+      expect(err.estadoActual).toBe("asignado");
       expect(err.estadoNuevo).toBe("entregado");
       expect(err.codigo).toBe("transicion_invalida");
     }
+  });
+});
+
+// =============================================================================
+// Reflejo de ML desde pendiente_asignacion (Flex) — bug de facturación,
+// ago-2026: un Flex que Rutax descubre tarde (o que ML entrega sin que Rutax
+// lo haya asignado nunca) se quedaba congelado en 'pendiente_asignacion' sin
+// importar que `estado_ml` ya dijera shipped/delivered/not_delivered. La
+// barrera tipo_pedido='flex' NO vive en esta función pura (agnóstica de
+// tipo_pedido) — la impone `actualizarEstadoPedido`, cubierto en
+// `pedidos.test.ts`. Aquí solo el par (origen, destino, ejecutor).
+// =============================================================================
+
+describe("validarTransicion — reflejo de ML desde pendiente_asignacion (Flex)", () => {
+  it("pendiente_asignacion → en_ruta por sistema: válida (NUEVA)", () => {
+    expect(validarTransicion("pendiente_asignacion", "en_ruta", "sistema")).toBe(true);
+  });
+
+  it("pendiente_asignacion → entregado por sistema: válida (NUEVA)", () => {
+    expect(validarTransicion("pendiente_asignacion", "entregado", "sistema")).toBe(true);
+  });
+
+  it("pendiente_asignacion → fallido por sistema: válida (NUEVA)", () => {
+    expect(validarTransicion("pendiente_asignacion", "fallido", "sistema")).toBe(true);
+  });
+
+  it("ningún otro ejecutor puede reflejar estos 3 destinos desde pendiente_asignacion", () => {
+    for (const destino of ["en_ruta", "entregado", "fallido"] as EstadoPedido[]) {
+      for (const ejecutor of ["interno", "conductor", "seller"] as EjecutorTransicion[]) {
+        expect(() => validarTransicion("pendiente_asignacion", destino, ejecutor)).toThrow(
+          ErrorTransicionInvalida,
+        );
+      }
+    }
+  });
+
+  // El destino 'devuelto' NO se agregó a propósito (fuera del alcance
+  // explícito de la tarea): una devolución detectada de entrada pasa primero
+  // por 'fallido' (progresión natural de los subestados de ML) y desde ahí
+  // 'fallido' → 'devuelto' por sistema ya era válida.
+  it("pendiente_asignacion → devuelto sigue sin existir (ni para sistema)", () => {
+    expect(() => validarTransicion("pendiente_asignacion", "devuelto", "sistema")).toThrow(
+      ErrorTransicionInvalida,
+    );
+  });
+
+  // pendiente_asignacion → asignado sigue siendo la ÚNICA vía de 'sistema'
+  // hacia una asignación real — no se toca ni se confunde con el reflejo de ML.
+  it("pendiente_asignacion → asignado sigue funcionando igual (sin cambios)", () => {
+    expect(validarTransicion("pendiente_asignacion", "asignado", "sistema")).toBe(true);
   });
 });
 

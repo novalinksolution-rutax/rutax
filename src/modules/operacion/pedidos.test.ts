@@ -13,7 +13,19 @@
  * 9. filaAPedido mapea columnas de geocoding desde la fila de BD.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock de Inngest: sin él, `actualizarEstadoPedido`/`cancelarPedido`/
+// `crearPedidoSameDay` llaman al cliente REAL (best-effort, siempre dentro de
+// un try/catch — ver pedidos.ts), así que ningún test existente dependía de
+// su comportamiento. Se agrega acá para poder ASERTAR si el evento
+// `dinero/pedido.estado_financiero_relevante` se publicó o no — el corazón
+// de la excepción "entregado sin conductor asignado no factura solo".
+vi.mock("@/lib/inngest/cliente", () => ({
+  inngest: { send: vi.fn().mockResolvedValue(undefined) },
+}));
+
+import { inngest } from "@/lib/inngest/cliente";
 import { actualizarEstadoPedido, cancelarPedido, crearPedidoSameDay, asegurarCodigoInterno } from "./pedidos";
 import { ErrorTransicionInvalida, ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
@@ -758,15 +770,18 @@ describe("actualizarEstadoPedido — corrección manual", () => {
 
 describe("actualizarEstadoPedido — transición inválida", () => {
   it("lanza ErrorTransicionInvalida para transición no permitida por la máquina", async () => {
-    // pendiente_asignacion → entregado es inválido (saltarse asignado + en_ruta)
-    const { cliente } = crearClienteFalso({ pedidos: [pedidoBase("pendiente_asignacion")] });
+    // asignado → entregado es inválido (saltarse en_ruta) — nótese que
+    // pendiente_asignacion → entregado por 'sistema' SÍ es válida desde el fix
+    // del bug de facturación Flex (ago-2026): ver el describe
+    // "reflejo de ML desde pendiente_asignacion (Flex)" más abajo.
+    const { cliente } = crearClienteFalso({ pedidos: [pedidoBase("asignado")] });
 
     await expect(
       actualizarEstadoPedido(cliente, {
         pedidoId: PEDIDO_1,
         tenantId: TENANT_A,
         estadoNuevo: "entregado",
-        estadoEsperado: "pendiente_asignacion",
+        estadoEsperado: "asignado",
         ejecutor: "sistema",
       }),
     ).rejects.toBeInstanceOf(ErrorTransicionInvalida);
@@ -2344,5 +2359,212 @@ describe("asegurarCodigoInterno", () => {
         codigoInterno: null,
       }),
     ).rejects.toThrow();
+  });
+});
+
+// =============================================================================
+// actualizarEstadoPedido — reflejo de ML sin asignación (bug de facturación
+// Flex, ago-2026)
+// =============================================================================
+// El diagnóstico: la ingesta nunca traducía `estado_ml`, así que un Flex que
+// ML ya reportaba delivered/shipped/not_delivered se quedaba congelado en
+// 'pendiente_asignacion' — y aunque se detectara, la máquina de estados
+// rechazaba la transición. Este bloque cubre las DOS piezas del arreglo que
+// viven en `actualizarEstadoPedido`:
+//   1. La puerta nueva: 'sistema' SÍ puede reflejar en_ruta/entregado/fallido
+//      desde 'pendiente_asignacion', pero SOLO para Flex (same-day rechaza).
+//   2. La excepción de dinero: 'entregado' sin `driver_id_asignado` NO
+//      publica el evento financiero (decisión #2 del usuario) — el estado
+//      SÍ se refleja igual (decisión #1).
+// =============================================================================
+
+const DRIVER_REFLEJO_ML = "eeee0000-0000-0000-0000-0000000000aa";
+
+function nombresEventosEnviados(): string[] {
+  return vi.mocked(inngest.send).mock.calls.map((c) => (c[0] as { name: string }).name);
+}
+
+describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (Flex)", () => {
+  // `inngest.send` es un mock COMPARTIDO por todo el archivo (declarado con
+  // `vi.mock` a nivel de módulo) — sin limpiarlo antes de cada test de este
+  // bloque, `nombresEventosEnviados()` arrastraría las llamadas de los tests
+  // de otros describes que corrieron antes.
+  beforeEach(() => {
+    vi.mocked(inngest.send).mockClear();
+  });
+
+  it("Flex: pendiente_asignacion → entregado por sistema transiciona, pero NO dispara el evento financiero (sin conductor asignado en Rutax)", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [
+        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "flex", driver_id_asignado: null },
+      ],
+    });
+
+    const pedido = await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "entregado",
+      estadoEsperado: "pendiente_asignacion",
+      ejecutor: "sistema",
+    });
+
+    // Decisión #1: el estado real de ML se refleja SIEMPRE.
+    expect(pedido.estado).toBe("entregado");
+    // Decisión #2: sin conductor asignado, NO se dispara el cobro automático.
+    expect(nombresEventosEnviados()).not.toContain("dinero/pedido.estado_financiero_relevante");
+  });
+
+  it("Flex: pendiente_asignacion → fallido por sistema tampoco dispara el cobro sin conductor asignado", async () => {
+    // Misma regla que 'entregado' (decisión del usuario, 2026-08-13). Sin esta
+    // guardia se cobraba igual: la incidencia automática de 'fallido' nace con
+    // `afecta_cobro=true` y el motor de fallidos cobra con solo eso, sin mirar
+    // el conductor. Se estaría facturando un intento que Rutax no hizo — o que
+    // hizo otro courier conectado a la misma cuenta de ML.
+    const { cliente } = crearClienteFalso({
+      pedidos: [
+        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "flex", driver_id_asignado: null },
+      ],
+    });
+
+    const pedido = await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "fallido",
+      estadoEsperado: "pendiente_asignacion",
+      ejecutor: "sistema",
+    });
+
+    expect(pedido.estado).toBe("fallido");
+    expect(nombresEventosEnviados()).not.toContain("dinero/pedido.estado_financiero_relevante");
+  });
+
+  it("Flex: pendiente_asignacion → en_ruta por sistema es una transición permitida (no es estado financiero)", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [
+        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "flex", driver_id_asignado: null },
+      ],
+    });
+
+    const pedido = await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "en_ruta",
+      estadoEsperado: "pendiente_asignacion",
+      ejecutor: "sistema",
+    });
+
+    expect(pedido.estado).toBe("en_ruta");
+    expect(nombresEventosEnviados()).not.toContain("dinero/pedido.estado_financiero_relevante");
+  });
+
+  it("Flex: 'fallido' CON conductor asignado sí dispara el evento financiero — la guardia es por conductor, no por estado", async () => {
+    // El contraste con el caso de arriba es el punto: si la operación de Rutax
+    // sí tocó el pedido, el intento fallido se factura como siempre y la
+    // incidencia decide con `afecta_cobro`. Lo que se corta es cobrar por algo
+    // que Rutax nunca hizo.
+    const { cliente } = crearClienteFalso({
+      pedidos: [
+        { ...pedidoBase("en_ruta"), tipo_pedido: "flex", driver_id_asignado: DRIVER_REFLEJO_ML },
+      ],
+    });
+
+    const pedido = await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "fallido",
+      estadoEsperado: "en_ruta",
+      ejecutor: "sistema",
+    });
+
+    expect(pedido.estado).toBe("fallido");
+    expect(nombresEventosEnviados()).toContain("dinero/pedido.estado_financiero_relevante");
+  });
+
+  it("same-day: pendiente_asignacion → entregado/en_ruta/fallido por sistema se rechaza — el POD de Rutax es el autoritativo, no ML", async () => {
+    for (const destino of ["entregado", "en_ruta", "fallido"] as const) {
+      const { cliente } = crearClienteFalso({
+        pedidos: [
+          { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "same_day", driver_id_asignado: null },
+        ],
+      });
+
+      await expect(
+        actualizarEstadoPedido(cliente, {
+          pedidoId: PEDIDO_1,
+          tenantId: TENANT_A,
+          estadoNuevo: destino,
+          estadoEsperado: "pendiente_asignacion",
+          ejecutor: "sistema",
+        }),
+      ).rejects.toBeInstanceOf(ErrorValidacion);
+    }
+  });
+
+  it("same-day sigue pudiendo pendiente_asignacion → asignado por sistema (auto-asignación, sin cambios)", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [
+        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "same_day", driver_id_asignado: null },
+      ],
+    });
+
+    const pedido = await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "asignado",
+      estadoEsperado: "pendiente_asignacion",
+      ejecutor: "sistema",
+    });
+
+    expect(pedido.estado).toBe("asignado");
+  });
+
+  it("con conductor YA asignado, en_ruta → entregado por sistema SÍ dispara el evento (no-regresión del caso normal)", async () => {
+    const { cliente } = crearClienteFalso({
+      pedidos: [
+        { ...pedidoBase("en_ruta"), tipo_pedido: "flex", driver_id_asignado: DRIVER_REFLEJO_ML },
+      ],
+    });
+
+    await actualizarEstadoPedido(cliente, {
+      pedidoId: PEDIDO_1,
+      tenantId: TENANT_A,
+      estadoNuevo: "entregado",
+      estadoEsperado: "en_ruta",
+      ejecutor: "sistema",
+    });
+
+    const evento = vi
+      .mocked(inngest.send)
+      .mock.calls.find(
+        (c) => (c[0] as { name: string }).name === "dinero/pedido.estado_financiero_relevante",
+      );
+    expect(evento).toBeDefined();
+    const datos = (evento![0] as { data: { driverIdAsignado: string | null } }).data;
+    expect(datos.driverIdAsignado).toBe(DRIVER_REFLEJO_ML);
+  });
+
+  it("'entregado_manual' sin conductor asignado SIGUE disparando el evento (la excepción es solo para 'entregado')", async () => {
+    // Corrección humana deliberada (RBAC + motivo, ejecutor='interno') — la
+    // excepción de "sin conductor" NO la alcanza, a propósito: acotada a
+    // `entradaNuevo === 'entregado'` en pedidos.ts.
+    const { cliente } = crearClienteFalso({
+      pedidos: [{ ...pedidoBase("asignado"), tipo_pedido: "flex", driver_id_asignado: null }],
+    });
+
+    await actualizarEstadoPedido(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        estadoNuevo: "entregado_manual",
+        estadoEsperado: "asignado",
+        ejecutor: "interno",
+        actuadoPorUsuarioId: USUARIO_INTERNO_1,
+        motivo: "Confirmado por el seller, POD fuera de banda",
+      },
+      actorSupervisor(),
+    );
+
+    expect(nombresEventosEnviados()).toContain("dinero/pedido.estado_financiero_relevante");
   });
 });
