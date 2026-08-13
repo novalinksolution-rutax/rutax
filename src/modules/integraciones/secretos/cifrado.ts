@@ -47,7 +47,12 @@
  *    estándar de la industria expuesto por la librería nativa de Node/Edge.
  *    Las primitivas puras viven en `cifrado-primitivas.ts` (sin dependencia
  *    de Supabase/entorno) para poder probar el round-trip y la detección de
- *    manipulación de forma aislada — ver `__tests__/cifrado.test.ts`.
+ *    manipulación de forma aislada — ver `__tests__/cifrado.test.ts`. La
+ *    resolución de la clave maestra (`resolverClave`/`KID_ACTIVO`) vive en
+ *    `clave-maestra.ts`, extraída para que otros consumidores de las mismas
+ *    primitivas (p. ej. el retiro en bodega, que cifra el `hash_code` del QR
+ *    de Flex con AAD) usen la misma clave y el mismo esquema de `kid` sin
+ *    duplicarlo.
  *
  * GARANTÍAS DE ESTE MÓDULO (no negociables, CLAUDE.md):
  * - `cifrarSecreto` jamás registra el valor en claro — ni en logs, ni en el
@@ -64,6 +69,7 @@
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 
 import { ALGORITMO_AEAD, cifrarPaquete, descifrarPaquete } from "./cifrado-primitivas";
+import { KID_ACTIVO, resolverClave } from "./clave-maestra";
 import {
   CLAVES_PROHIBIDAS_EN_METADATA,
   comoReferenciaSecreto,
@@ -74,46 +80,6 @@ import {
   type ReferenciaSecreto,
   type TipoSecreto,
 } from "./tipos";
-
-/**
- * Identificador de la versión/clave activa. Permite rotar claves: las filas
- * antiguas guardan su `kid` en `metadata` y `descifrarSecreto` elige la clave
- * correspondiente. En Fase A solo existe la clave activa.
- */
-const KID_ACTIVO = process.env.SECRETOS_CIFRADO_KID ?? "v1";
-
-/**
- * Resuelve la clave maestra de cifrado a partir de variables de entorno
- * gestionadas por `devops` (nunca en el repo, nunca en logs).
- *
- * Formato esperado: base64 de 32 bytes (256 bits) — `SECRETOS_CLAVE_CIFRADO_B64`.
- * Se permite registrar varias claves con sufijo `_<KID>` para soportar
- * rotación: `SECRETOS_CLAVE_CIFRADO_B64`, `SECRETOS_CLAVE_CIFRADO_B64_v2`, …
- */
-function resolverClave(kid: string): Buffer {
-  const nombreVariable =
-    kid === "v1" ? "SECRETOS_CLAVE_CIFRADO_B64" : `SECRETOS_CLAVE_CIFRADO_B64_${kid}`;
-
-  const claveB64 = process.env[nombreVariable];
-  if (!claveB64) {
-    // No incluir el VALOR de la variable — solo su nombre, jamás el contenido.
-    throw new Error(
-      `No hay clave de cifrado configurada para kid="${kid}" ` +
-        `(variable de entorno "${nombreVariable}" ausente). ` +
-        "Configúrala vía el gestor de secretos del despliegue — nunca en el repo.",
-    );
-  }
-
-  const clave = Buffer.from(claveB64, "base64");
-  if (clave.length !== 32) {
-    throw new Error(
-      `La clave de cifrado para kid="${kid}" debe decodificar a 32 bytes (AES-256); ` +
-        `se obtuvieron ${clave.length}. Revisa la variable de entorno (no se loguea su valor).`,
-    );
-  }
-
-  return clave;
-}
 
 /**
  * Valida que `metadata` no contenga ninguna de las claves prohibidas.
