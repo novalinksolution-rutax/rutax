@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Store } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeAsignarYReasignarPedidos, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
+import { puedeSincronizarConexionesMl, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -196,11 +196,12 @@ export default async function PaginaSellers() {
   // vacía permanente le cobra ancho a las demás sin dar nada a cambio.
   const mostrarColumnaInvitacion = puedeInvitar && sellers.some((s) => s.invitacionPendiente);
 
-  // "Sincronizar ahora": mismo gate que decide quién asigna/reasigna pedidos
-  // (dueño, supervisor, coordinador) — es el grupo operativo que necesita los
-  // pedidos AHORA para armar manifiestos, no el rol financiero. Igual que la
-  // columna de invitación, no aparece si no hay ninguna cuenta que sincronizar.
-  const puedeSincronizar = puedeAsignarYReasignarPedidos(sesion.usuario);
+  // "Sincronizar ahora": capacidad propia, los CUATRO roles internos. No se
+  // reusa el gate de asignar/reasignar porque ese excluye a `administracion`
+  // por diseño, y traer pedidos no asigna nada a nadie — administración los
+  // necesita para tener qué facturar y conciliar. Igual que la columna de
+  // invitación, no aparece si no hay ninguna cuenta que sincronizar.
+  const puedeSincronizar = puedeSincronizarConexionesMl(sesion.usuario);
   const mostrarColumnaSincronizar = puedeSincronizar && sellers.some((s) => s.conexiones.length > 0);
 
   return (

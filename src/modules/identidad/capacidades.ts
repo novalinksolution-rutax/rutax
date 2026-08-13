@@ -77,6 +77,17 @@ export const CAPACIDADES = [
   "gestionar_incidencias",
   "ajustar_operacion_diaria",
 
+  // --- Forzar la sincronización de una cuenta ML de un seller ----------------
+  // Pedir "trae los pedidos de esta cuenta ahora" desde el panel del courier.
+  // Capacidad propia y NO `asignar_y_reasignar_pedidos`, que fue el primer
+  // gate elegido: esa capacidad significa "decidir qué conductor lleva qué", y
+  // excluye a `administracion` por diseño. Sincronizar no decide nada de la
+  // calle — solo pide datos que ya son del tenant, y no mueve un pedido ni un
+  // peso. Administración la necesita: sin pedidos ingestados no hay líneas de
+  // cobro que conciliar ni facturar, que es exactamente su trabajo.
+  // Decisión del usuario (2026-08-13): los cuatro roles internos.
+  "sincronizar_conexiones_ml",
+
   // --- Torre de control: anticipación operativa ------------------------------
   // Módulo `contexto` (ver `docs/arquitectura/torre-de-control.md` §8). Cruza
   // señal externa (clima, aire, eventos, prensa) con la carga interna y la
@@ -195,6 +206,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "sincronizar_conexiones_ml",
     "ver_torre_control",
     "ver_reportes_ejecutivos",
     "ver_bitacora_auditoria",
@@ -210,6 +222,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "sincronizar_conexiones_ml",
     "ver_torre_control",
   ],
 
@@ -220,6 +233,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
   coordinador: [
     "asignar_y_reasignar_pedidos",
     "generar_manifiestos",
+    "sincronizar_conexiones_ml",
     "ver_torre_control",
   ],
 
@@ -232,6 +246,11 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
   administracion: [
     "gestionar_tarifas", // RF-009 lista "Dueño / admin" como usuario de la gestión de tarifas.
     "gestionar_configuracion_dte", // RF-007/008 lista "Dueño / admin".
+    // Decisión del usuario (2026-08-13): administración SÍ puede forzar la
+    // sincronización de una cuenta ML. No contradice el "sin reasignación
+    // operativa" del levantamiento — traer pedidos no asigna a nadie, y sin
+    // pedidos ingestados no hay nada que facturar ni conciliar.
+    "sincronizar_conexiones_ml",
     "aprobar_facturacion",
     "emitir_facturas",
     "ver_conciliacion",
@@ -379,6 +398,16 @@ export function puedeGestionarIncidencias(usuario: UsuarioActual): boolean {
 
 export function puedeAjustarOperacionDiaria(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ajustar_operacion_diaria");
+}
+
+/**
+ * Forzar "trae los pedidos de esta cuenta ahora" desde el panel del courier.
+ * Los CUATRO roles internos, `administracion` incluida — a diferencia de las
+ * demás capacidades de esta sección, esta no decide nada de la operación en
+ * calle: solo pide datos que ya son del tenant.
+ */
+export function puedeSincronizarConexionesMl(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "sincronizar_conexiones_ml");
 }
 
 // --- Torre de control (módulo `contexto`) -------------------------------------

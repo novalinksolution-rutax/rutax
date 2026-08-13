@@ -22,6 +22,7 @@ import {
   puedeRevocarInvitaciones,
   puedeDescargarEtiquetaSameDay,
   puedeGestionarPedidosPropios,
+  puedeSincronizarConexionesMl,
   puedeSolicitarSameDay,
   puedeVerBitacoraAuditoria,
   puedeVerConciliacion,
@@ -290,6 +291,29 @@ describe("gestionar_pedidos_propios — SOLO seller (docs/arquitectura/edicion-y
     expect(puedeGestionarPedidosPropios(usuario({ rol: "coordinador" }))).toBe(false);
     expect(puedeGestionarPedidosPropios(usuario({ rol: "administracion" }))).toBe(false);
     expect(puedeGestionarPedidosPropios(usuario({ rol: "conductor" }))).toBe(false);
+  });
+});
+
+describe("sincronizar_conexiones_ml — los CUATRO roles internos (decisión del usuario, 2026-08-13)", () => {
+  it("administracion SÍ la tiene, a diferencia del resto de capacidades operativas", () => {
+    const admin = usuario({ rol: "administracion" });
+    // El contraste es el punto de esta prueba: administración NO asigna
+    // pedidos, pero SÍ puede pedir que se traigan. Traer datos del propio
+    // tenant no es una acción de calle, y sin pedidos no hay qué facturar.
+    expect(puedeAsignarYReasignarPedidos(admin)).toBe(false);
+    expect(puedeSincronizarConexionesMl(admin)).toBe(true);
+  });
+
+  it("la tienen los otros tres roles internos", () => {
+    expect(puedeSincronizarConexionesMl(usuario({ rol: "dueno" }))).toBe(true);
+    expect(puedeSincronizarConexionesMl(usuario({ rol: "supervisor" }))).toBe(true);
+    expect(puedeSincronizarConexionesMl(usuario({ rol: "coordinador" }))).toBe(true);
+  });
+
+  it("NO la tienen seller, conductor ni super_admin — no es una capacidad de tenant ajeno", () => {
+    expect(puedeSincronizarConexionesMl(usuario({ rol: "seller" }))).toBe(false);
+    expect(puedeSincronizarConexionesMl(usuario({ rol: "conductor" }))).toBe(false);
+    expect(puedeSincronizarConexionesMl(usuario({ rol: "super_admin", tenantId: null }))).toBe(false);
   });
 });
 

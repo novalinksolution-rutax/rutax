@@ -21,7 +21,7 @@
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { solicitarSincronizacionMl } from "@/modules/integraciones/ml";
-import { puedeAsignarYReasignarPedidos, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
+import { puedeSincronizarConexionesMl, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 
 export type EnlaceInvitacionResultado =
@@ -122,9 +122,11 @@ export type ResultadoSolicitarSincronizacion = { ok: true } | { ok: false; mensa
 
 /**
  * Pide sincronizar UNA cuenta ML de un seller del tenant. Gate RBAC:
- * `asignar_y_reasignar_pedidos` (dueño, supervisor, coordinador) — el mismo
- * grupo operativo que ya decide qué pedidos entran a un manifiesto; no
- * `administracion`, que el levantamiento marca "sin reasignación operativa".
+ * `sincronizar_conexiones_ml` — los CUATRO roles internos, `administracion`
+ * incluida (decisión del usuario, 2026-08-13). El primer gate fue
+ * `asignar_y_reasignar_pedidos`, que dejaba fuera a administración por su
+ * "sin reasignación operativa"; pero traer pedidos no asigna a nadie, y sin
+ * pedidos ingestados administración no tiene qué facturar ni conciliar.
  */
 export async function solicitarSincronizacionMlSeller(
   conexionId: string,
@@ -133,7 +135,7 @@ export async function solicitarSincronizacionMlSeller(
   if (!sesion?.usuario.tenantId) {
     return { ok: false, mensaje: "No hay una sesión activa." };
   }
-  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+  if (!puedeSincronizarConexionesMl(sesion.usuario)) {
     return {
       ok: false,
       mensaje: "No tienes permiso para forzar una sincronización — contacta al dueño de la cuenta.",
