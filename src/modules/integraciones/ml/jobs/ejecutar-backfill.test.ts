@@ -509,7 +509,9 @@ describe("obtenerDatosPorShipment — el detalle de envío es SINGULAR", () => {
     expect(datos.size).toBe(2);
     expect(datos.has("111")).toBe(true);
     expect(datos.has("333")).toBe(true);
-    expect(fallidos).toEqual([{ shipmentId: "222", motivo: "HTTP 404" }]);
+    // `status` se conserva a propósito: el 404 tiene tratamiento propio (jamás
+    // se interpreta como cancelación) y hay que poder distinguirlo del resto.
+    expect(fallidos).toEqual([{ shipmentId: "222", motivo: "HTTP 404", status: 404 }]);
   });
 
   it("un 429 con Retry-After se reintenta solo (backoff de peticionMl)", async () => {
@@ -597,23 +599,45 @@ interface ConfigCliente {
   estadoIntento?: string;
   conexion?: Record<string, unknown> | null;
   errorConexion?: { message: string } | null;
-  errorUpsertPedido?: { message: string } | null;
+  /** Hace fallar el INSERT del pedido (antes era el upsert). */
+  errorUpsertPedido?: { message: string; code?: string } | null;
+  /** Pedidos que YA existen en BD, indexados por `ml_shipment_id`. */
+  pedidosExistentes?: Array<Record<string, unknown>>;
 }
 
+/**
+ * Doble de Supabase con memoria mínima de `operacion.pedidos`.
+ *
+ * Tiene que distinguir INSERT de UPDATE porque la ingesta ya no hace un `upsert`
+ * ciego: lee la fila por `(tenant_id, ml_shipment_id)` y decide. Ese cambio no es
+ * cosmético — el upsert anterior mandaba `estado: 'pendiente_asignacion'` en cada
+ * pasada y devolvía a la bandeja cualquier pedido ya asignado o en ruta que la
+ * ventana volviera a cubrir.
+ */
 function crearClienteFalso(config: ConfigCliente = {}) {
   const registro = {
     intentoUpsert: [] as Record<string, unknown>[],
     intentoUpdate: [] as Record<string, unknown>[],
-    pedidoUpsert: [] as Record<string, unknown>[],
+    pedidoInsert: [] as Record<string, unknown>[],
+    pedidoUpdate: [] as Record<string, unknown>[],
   };
+
+  const pedidosExistentes = new Map<string, Record<string, unknown>>(
+    (config.pedidosExistentes ?? []).map((p) => [String(p.ml_shipment_id), p]),
+  );
 
   function builder(schema: string, tabla: string) {
     const clave = `${schema}.${tabla}`;
+    const filtros: Record<string, unknown> = {};
     /* eslint-disable @typescript-eslint/no-explicit-any */
     const cadena: any = {};
     const self = () => cadena;
     cadena.select = vi.fn(self);
-    cadena.eq = vi.fn(self);
+    cadena.eq = vi.fn((columna: string, valor: unknown) => {
+      filtros[columna] = valor;
+      return cadena;
+    });
+    cadena.in = vi.fn(self);
 
     cadena.single = vi.fn(async () => {
       if (clave === "identidad.conexiones_seller_ml") {
@@ -633,9 +657,17 @@ function crearClienteFalso(config: ConfigCliente = {}) {
       return { data: null, error: null };
     });
 
+    // Lectura previa de la ingesta: ¿ya existe este pedido en este tenant?
+    cadena.maybeSingle = vi.fn(async () => {
+      if (clave === "operacion.pedidos") {
+        const shipmentId = String(filtros["ml_shipment_id"] ?? "");
+        return { data: pedidosExistentes.get(shipmentId) ?? null, error: null };
+      }
+      return { data: null, error: null };
+    });
+
     cadena.upsert = vi.fn((valores: Record<string, unknown>) => {
       if (clave === "operacion.intentos_backfill") registro.intentoUpsert.push(valores);
-      if (clave === "operacion.pedidos") registro.pedidoUpsert.push(valores);
 
       const cadenaUpsert: any = {};
       cadenaUpsert.select = vi.fn(() => cadenaUpsert);
@@ -648,23 +680,31 @@ function crearClienteFalso(config: ConfigCliente = {}) {
         },
         error: null,
       }));
-      cadenaUpsert.maybeSingle = vi.fn(async () => ({
+      return cadenaUpsert;
+    });
+
+    cadena.insert = vi.fn((valores: Record<string, unknown>) => {
+      if (clave === "operacion.pedidos") registro.pedidoInsert.push(valores);
+
+      const cadenaInsert: any = {};
+      cadenaInsert.select = vi.fn(() => cadenaInsert);
+      cadenaInsert.maybeSingle = vi.fn(async () => ({
         data: config.errorUpsertPedido
           ? null
           : {
-              id: "pedido-nuevo",
-              creado_en: "2026-08-12T12:00:00.000Z",
-              actualizado_en: "2026-08-12T12:00:00.000Z",
+              id: `pedido-${registro.pedidoInsert.length}`,
               destinatario_direccion: valores.destinatario_direccion,
               destinatario_comuna: valores.destinatario_comuna,
             },
         error: config.errorUpsertPedido ?? null,
       }));
-      return cadenaUpsert;
+      cadenaInsert.single = cadenaInsert.maybeSingle;
+      return cadenaInsert;
     });
 
     cadena.update = vi.fn((valores: Record<string, unknown>) => {
       if (clave === "operacion.intentos_backfill") registro.intentoUpdate.push(valores);
+      if (clave === "operacion.pedidos") registro.pedidoUpdate.push(valores);
       return { eq: vi.fn(async () => ({ error: null })) };
     });
     /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -744,9 +784,9 @@ describe("jobEjecutarBackfill — handler real", () => {
 
     expect(resultado.resultado).toBe("completado");
     expect(resultado.pedidosRecuperados).toBe(1);
-    expect(registro.pedidoUpsert).toHaveLength(1);
+    expect(registro.pedidoInsert).toHaveLength(1);
 
-    const pedido = registro.pedidoUpsert[0];
+    const pedido = registro.pedidoInsert[0];
     expect(pedido.ml_shipment_id).toBe("44012345678");
     expect(pedido.tipo_pedido).toBe("flex");
     expect(pedido.ml_user_id).toBe("ml-user-99");
@@ -797,7 +837,7 @@ describe("jobEjecutarBackfill — handler real", () => {
     expect(resultado.pedidosRecuperados).toBe(1);
     expect(resultado.omitidosNoFlex).toBe(1);
     expect(resultado.sinEnvio).toBe(1);
-    expect(registro.pedidoUpsert).toHaveLength(1);
+    expect(registro.pedidoInsert).toHaveLength(1);
     expect(logger.info.mock.calls.flat().join(" ")).toContain("no ser Flex");
   });
 
@@ -932,7 +972,7 @@ describe("jobEjecutarBackfill — handler real", () => {
 
     expect(resultado).toEqual({ resultado: "ya_completado", intentoId: "intento-1" });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(registro.pedidoUpsert).toHaveLength(0);
+    expect(registro.pedidoInsert).toHaveLength(0);
     expect(registro.intentoUpdate).toHaveLength(0);
   });
 

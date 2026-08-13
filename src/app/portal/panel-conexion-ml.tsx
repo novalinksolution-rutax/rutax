@@ -24,7 +24,7 @@
  */
 
 import { useState } from "react";
-import { CheckCircle2, Clock, Loader2, Plus, ShieldAlert, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, Plus, RefreshCw, ShieldAlert, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,9 +38,24 @@ import {
 } from "@/components/ui/dialog";
 import { EstadoError } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
+import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { MAX_CUENTAS_ML } from "./conectar-ml/compartido";
 import { iniciarConexionMl } from "./conectar-ml/actions";
-import { obtenerConexionesPropia, renombrarConexionMl, type ConexionMlSellerItem } from "./actions";
+import {
+  obtenerConexionesPropia,
+  renombrarConexionMl,
+  solicitarSincronizacionMlPropia,
+  type ConexionMlSellerItem,
+} from "./actions";
+
+/**
+ * Ventana de "enfriamiento" del botón tras cada intento: pura UX en el
+ * cliente (no persiste, se reinicia al recargar). La deduplicación real que
+ * evita machacar el backend vive en el servidor, en el `id` del evento
+ * Inngest (ver `solicitarSincronizacionMlPropia`) — esto es solo para que el
+ * botón no invite a apretarlo diez veces seguidas.
+ */
+const VENTANA_ENFRIAMIENTO_SYNC_MS = 60_000;
 
 interface Props {
   conexionesIniciales: ConexionMlSellerItem[];
@@ -59,6 +74,16 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
   const [valorEdit, setValorEdit] = useState("");
   const [errorEdit, setErrorEdit] = useState<string | null>(null);
   const [guardandoEdit, setGuardandoEdit] = useState(false);
+
+  // "Sincronizar ahora" — por conexión. `sincronizandoId` evita el doble
+  // disparo mientras la Server Action está en vuelo; `enEnfriamientoIds`
+  // mantiene el botón deshabilitado un rato después de terminar, para que no
+  // invite a apretarlo diez veces seguidas (RNF de anti-machaque).
+  const [sincronizandoId, setSincronizandoId] = useState<string | null>(null);
+  const [enEnfriamientoIds, setEnEnfriamientoIds] = useState<Set<string>>(new Set());
+  const [resultadoSyncPorId, setResultadoSyncPorId] = useState<
+    Record<string, { ok: boolean; mensaje: string }>
+  >({});
 
   async function recargar() {
     setCargando(true);
@@ -133,6 +158,58 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
     }
   }
 
+  /**
+   * Pide traer los pedidos de nuevo para UNA cuenta — el escape manual mientras
+   * "se sincronizan automáticamente" no sea del todo cierto (y el respaldo aun
+   * cuando sí lo sea: a veces hay que reintentar sin desvincular una cuenta
+   * sana). Es asíncrono: solo confirmamos que SE PIDIÓ, nunca prometemos una
+   * cantidad de pedidos nueva que todavía no conocemos.
+   */
+  async function sincronizarAhora(conexionId: string) {
+    if (sincronizandoId || enEnfriamientoIds.has(conexionId)) return;
+    setSincronizandoId(conexionId);
+    setResultadoSyncPorId((prev) => {
+      if (!(conexionId in prev)) return prev;
+      const copia = { ...prev };
+      delete copia[conexionId];
+      return copia;
+    });
+
+    try {
+      const resultado = await solicitarSincronizacionMlPropia(conexionId);
+      setResultadoSyncPorId((prev) => ({
+        ...prev,
+        [conexionId]: resultado.ok
+          ? { ok: true, mensaje: "Pedimos traer tus pedidos de nuevo — deberían aparecer en unos minutos." }
+          : { ok: false, mensaje: resultado.mensaje },
+      }));
+    } catch {
+      // Igual que en `iniciar()`: la Server Action puede rechazar (red caída,
+      // deploy nuevo) y el botón NO debe quedar colgado en el spinner sin
+      // mensaje — ese fue exactamente el problema que motivó este control.
+      setResultadoSyncPorId((prev) => ({
+        ...prev,
+        [conexionId]: {
+          ok: false,
+          mensaje: "No pudimos pedir la sincronización por un problema de conexión. Intenta de nuevo.",
+        },
+      }));
+    } finally {
+      setSincronizandoId(null);
+      // Enfriamiento: deja el botón deshabilitado un rato para que no invite
+      // a apretarlo de nuevo de inmediato (el mensaje de arriba ya confirmó
+      // que se pidió).
+      setEnEnfriamientoIds((prev) => new Set(prev).add(conexionId));
+      setTimeout(() => {
+        setEnEnfriamientoIds((prev) => {
+          const copia = new Set(prev);
+          copia.delete(conexionId);
+          return copia;
+        });
+      }, VENTANA_ENFRIAMIENTO_SYNC_MS);
+    }
+  }
+
   if (error && conexiones.length === 0) {
     return <EstadoError descripcion={error} onReintentar={recargar} reintentando={cargando} />;
   }
@@ -173,7 +250,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
             const enEdicion = editandoId === c.id;
             return (
               <li key={c.id} role="listitem">
-                <Card className={p.bordeTarjeta} aria-label={`Conexión: ${etiquetaCuenta(c)}`}>
+                <Card className={p.bordeTarjeta} aria-label={`Conexión: ${etiquetaConexionMl(c)}`}>
                   <CardContent className="flex flex-col gap-3 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start gap-3 text-left">
                       <div className={`flex size-10 shrink-0 items-center justify-center rounded-full ${p.fondoIcono}`}>
@@ -193,7 +270,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                               }}
                               className="w-full max-w-64 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
                               placeholder="Nombre de la cuenta"
-                              aria-label={`Editar nombre de ${etiquetaCuenta(c)}`}
+                              aria-label={`Editar nombre de ${etiquetaConexionMl(c)}`}
                             />
                             <div className="flex items-center gap-2">
                               <Button size="sm" onClick={() => void guardarAlias(c.id)} disabled={guardandoEdit}>
@@ -207,8 +284,8 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                             {errorEdit ? <p className="text-xs text-destructive">{errorEdit}</p> : null}
                           </div>
                         ) : (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <p className="font-medium text-foreground">{etiquetaCuenta(c)}</p>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <p className="font-medium text-foreground">{etiquetaConexionMl(c)}</p>
                             <button
                               type="button"
                               onClick={() => empezarEdicion(c)}
@@ -216,10 +293,35 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                             >
                               Editar nombre
                             </button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => void sincronizarAhora(c.id)}
+                              disabled={sincronizandoId !== null || enEnfriamientoIds.has(c.id)}
+                              loading={sincronizandoId === c.id}
+                              className="text-muted-foreground hover:text-foreground"
+                              aria-label={`Sincronizar ahora los pedidos de ${etiquetaConexionMl(c)}`}
+                            >
+                              {sincronizandoId === c.id ? null : (
+                                <RefreshCw className="size-3" aria-hidden="true" />
+                              )}
+                              Sincronizar ahora
+                            </Button>
                           </div>
                         )}
                         <p className="text-sm text-muted-foreground">{p.titulo}</p>
                         {p.detalle ? <p className="text-xs text-muted-foreground">{p.detalle}</p> : null}
+                        {resultadoSyncPorId[c.id] ? (
+                          <p
+                            role={resultadoSyncPorId[c.id].ok ? "status" : "alert"}
+                            className={`text-xs ${
+                              resultadoSyncPorId[c.id].ok ? "text-muted-foreground" : "text-destructive"
+                            }`}
+                          >
+                            {resultadoSyncPorId[c.id].mensaje}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
 
@@ -368,14 +470,6 @@ function prioridad(estado: ConexionMlSellerItem["estadoSalud"]): number {
     default:
       return 3;
   }
-}
-
-/** Nombre visible de la cuenta: alias → nickname de ML → últimos 4 del user_id. */
-function etiquetaCuenta(c: ConexionMlSellerItem): string {
-  if (c.alias && c.alias.trim().length > 0) return c.alias;
-  if (c.mlNickname && c.mlNickname.trim().length > 0) return c.mlNickname;
-  if (c.mlUserId && c.mlUserId.length >= 4) return `Cuenta ···${c.mlUserId.slice(-4)}`;
-  return "Cuenta de Mercado Libre";
 }
 
 interface Presentacion {

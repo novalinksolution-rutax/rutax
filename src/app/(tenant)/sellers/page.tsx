@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Store } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
+import { puedeAsignarYReasignarPedidos, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -23,7 +23,9 @@ import {
   type BadgeVariante,
   type EstadoSeller,
 } from "@/lib/ui/traduccion-estados";
+import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { BotonCopiarInvitacion } from "./boton-copiar-invitacion";
+import { ControlSincronizarMl, type ConexionMlResumen } from "./control-sincronizar-ml";
 
 export const metadata: Metadata = {
   title: "Sellers",
@@ -54,6 +56,8 @@ interface SellerFila {
   /** Qué sabemos de la ENTREGA del correo. `rebotado` es lo accionable. */
   invitacionEmailEstado: string | null;
   invitacionEmailMotivo: string | null;
+  /** Todas las cuentas ML del seller (0 a N) — para "Sincronizar ahora". */
+  conexiones: ConexionMlResumen[];
 }
 
 interface EstadoEnvioInvitacion {
@@ -96,13 +100,21 @@ async function cargarInvitacionesPendientes(
   return mapa;
 }
 
+interface ConexionMlFilaCruda {
+  id: string;
+  alias: string | null;
+  ml_nickname: string | null;
+  ml_user_id: string | null;
+  estado_salud: string;
+}
+
 async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
   const cliente = crearClienteServiceRole();
   const [{ data, error }, pendientes] = await Promise.all([
     cliente
       .from("sellers")
       .select(
-        "id, razon_social, rut, estado, conexiones_seller_ml!conexiones_seller_ml_seller_id_fkey(estado_salud)",
+        "id, razon_social, rut, estado, conexiones_seller_ml!conexiones_seller_ml_seller_id_fkey(id, alias, ml_nickname, ml_user_id, estado_salud)",
       )
       .eq("tenant_id", tenantId)
       .order("razon_social"),
@@ -112,8 +124,12 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
   if (error || !data) return [];
 
   return (data as Record<string, unknown>[]).map((s) => {
-    const conexion = s.conexiones_seller_ml as { estado_salud: string } | { estado_salud: string }[] | null;
-    const conexionUnica = Array.isArray(conexion) ? conexion[0] : conexion;
+    const conexionRaw = s.conexiones_seller_ml as ConexionMlFilaCruda | ConexionMlFilaCruda[] | null;
+    const listaConexiones = Array.isArray(conexionRaw) ? conexionRaw : conexionRaw ? [conexionRaw] : [];
+    // La salud mostrada en la columna "Conexión ML" sigue tomando la primera
+    // (comportamiento existente, sin cambios); "Sincronizar ahora" sí necesita
+    // TODAS las cuentas, así que se guardan aparte con su etiqueta ya resuelta.
+    const conexionUnica = listaConexiones[0] ?? null;
     const id = s.id as string;
     const envio = pendientes.get(id);
     return {
@@ -125,6 +141,10 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
       invitacionPendiente: pendientes.has(id),
       invitacionEmailEstado: envio?.emailEstado ?? null,
       invitacionEmailMotivo: envio?.emailMotivo ?? null,
+      conexiones: listaConexiones.map((c) => ({
+        id: c.id,
+        etiqueta: etiquetaConexionMl({ alias: c.alias, mlNickname: c.ml_nickname, mlUserId: c.ml_user_id }),
+      })),
     };
   });
 }
@@ -176,6 +196,13 @@ export default async function PaginaSellers() {
   // vacía permanente le cobra ancho a las demás sin dar nada a cambio.
   const mostrarColumnaInvitacion = puedeInvitar && sellers.some((s) => s.invitacionPendiente);
 
+  // "Sincronizar ahora": mismo gate que decide quién asigna/reasigna pedidos
+  // (dueño, supervisor, coordinador) — es el grupo operativo que necesita los
+  // pedidos AHORA para armar manifiestos, no el rol financiero. Igual que la
+  // columna de invitación, no aparece si no hay ninguna cuenta que sincronizar.
+  const puedeSincronizar = puedeAsignarYReasignarPedidos(sesion.usuario);
+  const mostrarColumnaSincronizar = puedeSincronizar && sellers.some((s) => s.conexiones.length > 0);
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -220,6 +247,9 @@ export default async function PaginaSellers() {
                 <TableHead className="hidden px-4 sm:table-cell">RUT</TableHead>
                 <TableHead className="px-4">Cuenta</TableHead>
                 <TableHead className="px-4">Conexión ML</TableHead>
+                {mostrarColumnaSincronizar && (
+                  <TableHead className="px-4 text-right">Sincronizar</TableHead>
+                )}
                 {mostrarColumnaInvitacion && (
                   <TableHead className="px-4 text-right">Invitación</TableHead>
                 )}
@@ -244,8 +274,16 @@ export default async function PaginaSellers() {
                       texto={TEXTO_SALUD_CONEXION[seller.estadoSalud] ?? seller.estadoSalud}
                     />
                   </TableCell>
+                  {mostrarColumnaSincronizar && (
+                    <TableCell className="px-4 text-right whitespace-normal">
+                      <ControlSincronizarMl
+                        razonSocial={seller.razonSocial}
+                        conexiones={seller.conexiones}
+                      />
+                    </TableCell>
+                  )}
                   {mostrarColumnaInvitacion && (
-                    <TableCell className="px-4 text-right">
+                    <TableCell className="px-4 text-right whitespace-normal">
                       {seller.invitacionPendiente ? (
                         <div className="flex flex-col items-end gap-1.5">
                           {avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)}

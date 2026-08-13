@@ -20,7 +20,8 @@
 
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
+import { solicitarSincronizacionMl } from "@/modules/integraciones/ml";
+import { puedeAsignarYReasignarPedidos, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 
 export type EnlaceInvitacionResultado =
@@ -102,4 +103,105 @@ export async function obtenerInvitacionPendienteSeller(
     email: data.email as string,
     expiraEn,
   };
+}
+
+// ---------------------------------------------------------------------------
+// "Sincronizar ahora" — el courier fuerza la ingesta de UNA cuenta ML de un
+// seller. Existe porque hoy no hay ninguna forma de pedir "trae mis pedidos"
+// desde el producto (la única vía era reejecutar un evento a mano en el panel
+// de Inngest), y el courier —no solo el seller— opera contra el reloj: el
+// despacho arranca a las 16:00 sin excepción.
+//
+// Esta acción NO trae los pedidos: solo verifica permiso + que la conexión sea
+// del tenant de la sesión, y publica `ml/sincronizacion.solicitada`. El
+// consumidor real (módulo `integraciones`, construido en paralelo) hace el
+// trabajo.
+// ---------------------------------------------------------------------------
+
+export type ResultadoSolicitarSincronizacion = { ok: true } | { ok: false; mensaje: string };
+
+/**
+ * Pide sincronizar UNA cuenta ML de un seller del tenant. Gate RBAC:
+ * `asignar_y_reasignar_pedidos` (dueño, supervisor, coordinador) — el mismo
+ * grupo operativo que ya decide qué pedidos entran a un manifiesto; no
+ * `administracion`, que el levantamiento marca "sin reasignación operativa".
+ */
+export async function solicitarSincronizacionMlSeller(
+  conexionId: string,
+): Promise<ResultadoSolicitarSincronizacion> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay una sesión activa." };
+  }
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return {
+      ok: false,
+      mensaje: "No tienes permiso para forzar una sincronización — contacta al dueño de la cuenta.",
+    };
+  }
+
+  const tenantId = sesion.usuario.tenantId;
+  const cliente = crearClienteServiceRole();
+
+  // El filtro por tenant_id es lo que impide operar sobre una conexión de otro
+  // courier: service_role salta RLS, así que el aislamiento aquí lo impone
+  // esta cláusula — no confiamos en más nada que venga del cliente.
+  const { data, error } = await cliente
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .select("id, seller_id, tenant_id")
+    .eq("id", conexionId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      mensaje: "No pudimos pedir la sincronización por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+    };
+  }
+  if (!data) {
+    return { ok: false, mensaje: "No encontramos esa cuenta de Mercado Libre." };
+  }
+
+  // Bitácora ANTES de publicar el evento (mismo patrón que
+  // `emitirFacturaPeriodo`/`cerrarPeriodoManualmente`, CLAUDE.md: "Bitácora
+  // antes que efectos externos, y con autor"). Si falla, no publicamos: sin
+  // registro no hay trazabilidad de quién pidió qué.
+  try {
+    await registrarEnBitacora(cliente, {
+      tenantId,
+      actorUsuarioId: sesion.usuarioId,
+      actorTipo: "usuario",
+      accion: "conexion_ml.sincronizacion_solicitada",
+      entidadTipo: "conexion_ml",
+      entidadId: data.id as string,
+      detalle: { seller_id: data.seller_id as string },
+    });
+  } catch {
+    return {
+      ok: false,
+      mensaje: "No pudimos pedir la sincronización por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+    };
+  }
+
+  // Por el PUERTO, no con `inngest.send` directo — ver la nota en
+  // `portal/actions.ts`: cuando cada pantalla armaba su propia llave de
+  // idempotencia, el portal y este panel dejaban de deduplicarse entre sí y
+  // apretar en ambos lanzaba dos barridos de la MISMA conexión.
+  try {
+    await solicitarSincronizacionMl({
+      conexionId: data.id as string,
+      sellerId: data.seller_id as string,
+      tenantId: data.tenant_id as string,
+      actorUsuarioId: sesion.usuarioId,
+    });
+  } catch {
+    return {
+      ok: false,
+      mensaje: "No pudimos pedir la sincronización por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+    };
+  }
+
+  return { ok: true };
 }

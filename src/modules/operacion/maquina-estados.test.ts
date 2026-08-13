@@ -427,6 +427,19 @@ describe("validarTransicion — ejecutor 'conductor' (Bloque 2 same-day)", () =>
 // La barrera tipo_pedido='same_day' NO vive aquí (función pura, agnóstica de
 // tipo_pedido) — la impone `cancelarPedido` en pedidos.ts. Estos tests cubren
 // SOLO el par (origen, destino, ejecutor).
+//
+// Segundo delta — consumidor de `operacion/pedido.cancelado-en-ml` (tarea
+// "cancelación detectada en ML", ago-2026): 'sistema' se agrega a las 3 filas
+// que todavía no lo tenían, para reflejar SIEMPRE el hecho consumado de una
+// cancelación reportada por ML, venga el pedido del estado que venga:
+//
+// pendiente_asignacion → cancelado    [..., 'sistema']  ← NUEVA (antes rechazada)
+// fallido              → cancelado    [..., 'sistema']  ← NUEVA
+// fallido_manual       → cancelado    [..., 'sistema']  ← NUEVA
+//
+// Sin barrera de tipo_pedido tampoco aquí: a diferencia de `cancelarPedido`
+// (solo same-day), el consumidor de ML actúa sobre cualquier tipo_pedido —
+// aunque en la práctica solo Flex trae mlShipmentId.
 // =============================================================================
 
 describe("validarTransicion — cancelación: los 5 casos EN POSITIVO (§3.3)", () => {
@@ -464,6 +477,20 @@ describe("validarTransicion — cancelación: los 5 casos EN POSITIVO (§3.3)", 
 
   it("fallido_manual → cancelado por interno: válida (NUEVA, por simetría con 'fallido')", () => {
     expect(validarTransicion("fallido_manual", "cancelado", "interno")).toBe(true);
+  });
+
+  // --- Segundo delta: consumidor de cancelación detectada en ML (ejecutor 'sistema') ---
+
+  it("pendiente_asignacion → cancelado por sistema: válida (NUEVA — cancelación detectada en ML)", () => {
+    expect(validarTransicion("pendiente_asignacion", "cancelado", "sistema")).toBe(true);
+  });
+
+  it("fallido → cancelado por sistema: válida (NUEVA — cancelación detectada en ML)", () => {
+    expect(validarTransicion("fallido", "cancelado", "sistema")).toBe(true);
+  });
+
+  it("fallido_manual → cancelado por sistema: válida (NUEVA — cancelación detectada en ML)", () => {
+    expect(validarTransicion("fallido_manual", "cancelado", "sistema")).toBe(true);
   });
 });
 
@@ -511,11 +538,13 @@ describe("validarTransicion — cancelación: negativos, sobre todo la ventana d
     );
   });
 
-  it("sistema NO puede pendiente_asignacion → cancelado (esa fila es solo 'interno'/'seller')", () => {
-    expect(() => validarTransicion("pendiente_asignacion", "cancelado", "sistema")).toThrow(
-      ErrorTransicionInvalida,
-    );
-  });
+  // NOTA: hasta el consumidor de cancelación-en-ML (ago-2026), esta fila era
+  // solo 'interno'/'seller' y 'sistema' se rechazaba aquí (había un test que lo
+  // afirmaba). Ya no: 'sistema' necesita reflejar una cancelación detectada en
+  // ML incluso antes de que el pedido sea asignado — ver el bloque "Segundo
+  // delta" más arriba, que cubre el caso en POSITIVO
+  // ("pendiente_asignacion → cancelado por sistema: válida"). `conductor` sigue
+  // sin acceso a ninguna fila de cancelado (cubierto por el test siguiente).
 
   it("conductor NO puede cancelar en ningún estado nuevo de la tabla", () => {
     expect(() => validarTransicion("pendiente_asignacion", "cancelado", "conductor")).toThrow(

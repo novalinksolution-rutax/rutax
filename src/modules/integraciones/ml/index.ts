@@ -19,6 +19,13 @@ export {
   ErrorCuentaMlYaConectada,
 } from "./puerto";
 
+/**
+ * Sincronización manual de una conexión. La UI llama a esto, no a `inngest.send`:
+ * el nombre del evento y el orquestador son detalle de `integraciones`.
+ */
+export { solicitarSincronizacionMl } from "./sincronizacion";
+export type { SolicitarSincronizacionMlEntrada } from "./sincronizacion";
+
 export type {
   ConexionSellerMl,
   DesenlaceIntercambioMl,

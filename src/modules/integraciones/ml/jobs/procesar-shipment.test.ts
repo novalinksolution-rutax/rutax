@@ -6,6 +6,11 @@
  * 2. Condición de carrera (ErrorConflicto) → captura y termina sin reintento.
  * 3. Traducción correcta: estado ML → estado interno.
  * 4. Estado sin traducción → salida limpia sin lanzar.
+ *
+ * Los dos caminos NUEVOS del job —ingestar el envío desconocido y avisar de la
+ * cancelación en vez de aplicarla— viven en `procesar-shipment-ingesta.test.ts`,
+ * que necesita mockear el cliente de Inngest y los secretos y por eso no puede
+ * compartir archivo con estas pruebas.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 

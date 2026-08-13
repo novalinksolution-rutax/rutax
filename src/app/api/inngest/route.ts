@@ -28,6 +28,13 @@ import { jobSondeoSaludConexiones } from "@/modules/integraciones/ml/jobs/sondeo
 import { jobProcesarShipmentActualizado } from "@/modules/integraciones/ml/jobs/procesar-shipment";
 import { jobPollingEstadosPedidos } from "@/modules/integraciones/ml/jobs/polling-estados";
 import { jobEjecutarBackfill } from "@/modules/integraciones/ml/jobs/ejecutar-backfill";
+// Ingesta continua de pedidos Flex: cron de respaldo (cada 30 min, 06:00–23:00
+// Santiago) + sincronización manual por conexión. Cierra el bloqueador raíz
+// "un pedido Flex nuevo no entra al sistema solo".
+import {
+  jobIngestaPedidosMl,
+  jobSincronizarConexionMl,
+} from "@/modules/integraciones/ml/jobs/ingesta-pedidos-ml";
 
 // Jobs de geocoding (F4 — ingesta → coordenadas + cobertura)
 import { jobGeocodificarPedido } from "@/modules/integraciones/geocoding/jobs/geocodificar-pedido";
@@ -38,6 +45,11 @@ import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaci
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
 import { jobPurgarEvidencias } from "@/modules/operacion/jobs/purgar-evidencias";
+// Consumidor de `operacion/pedido.cancelado-en-ml`: `integraciones` DETECTA la
+// cancelación en ML y avisa; este job es el que aplica estado, incidencia y el
+// cierre del cabo de dinero. Sin registrarlo, el evento no tendría quién lo
+// escuche y la cancelación se quedaría a mitad de camino.
+import { jobProcesarCancelacionMl } from "@/modules/operacion/jobs/procesar-cancelacion-ml";
 
 // Jobs de Dinero (Fase C — motor entrega→dinero)
 import { jobGenerarLineas } from "@/modules/dinero/jobs/generar-lineas";
@@ -97,12 +109,17 @@ const funciones = [
   jobProcesarShipmentActualizado,
   jobPollingEstadosPedidos,
   jobEjecutarBackfill,
+  // Ingesta continua Flex (webhook + cron de respaldo + botón manual)
+  jobIngestaPedidosMl,
+  jobSincronizarConexionMl,
   // Jobs de geocoding (F4)
   jobGeocodificarPedido,
   jobNotificacionConexionCaida,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
   jobPurgarEvidencias,
+  // Cancelación detectada en ML → estado + incidencia + cabo de dinero
+  jobProcesarCancelacionMl,
   // Jobs Dinero (Fase C)
   jobGenerarLineas,
   jobCerrarPeriodo,

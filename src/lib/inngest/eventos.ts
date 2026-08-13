@@ -134,6 +134,77 @@ export interface EventoPedidoIngestado {
 }
 
 /**
+ * Mercado Libre canceló un envío que nosotros ya teníamos como pedido vivo.
+ *
+ * Publicado por `integraciones/ml` desde los DOS caminos que pueden descubrirlo
+ * (el webhook, vía `jobs/procesar-shipment.ts`, y el barrido de estados del cron
+ * `jobs/ingesta-pedidos-ml.ts`), a través del único detector compartido en
+ * `integraciones/ml/cancelacion-ml.ts`.
+ *
+ * ⚠️ **`integraciones` detecta y avisa; NO aplica las consecuencias.** Quien
+ * consuma este evento es el dueño de moverlo a `cancelado`, abrir la incidencia
+ * si corresponde y cerrar el cabo de dinero. El adaptador no toca el estado del
+ * pedido ni las líneas de cobro/liquidación: si lo hiciera, la misma decisión
+ * viviría en dos módulos.
+ *
+ * Por qué hace falta un evento y no basta el webhook: `GET /orders/search?seller=`
+ * **no devuelve órdenes canceladas** (verificado contra la doc oficial de ML) —
+ * desaparecen del resultado en vez de aparecer marcadas. La cancelación solo se
+ * ve preguntando por el ENVÍO, y las notificaciones de ML se pierden (8 reintentos
+ * en 1 h y baja del topic en silencio). De ahí que el detector viva en dos sitios
+ * y publique un solo contrato.
+ *
+ * Idempotencia: `id` determinístico `pedido-cancelado-ml-${pedidoId}` — un pedido
+ * se cancela una vez, por mucho que webhook y cron lo descubran a la vez.
+ *
+ * NO viaja quién canceló ni el motivo (decisión del usuario, 2026-08-13): solo el
+ * estado. `substatusMl` es el `substatus` crudo del envío, útil para diagnóstico;
+ * no es un dato personal.
+ */
+export interface EventoPedidoCanceladoEnMl {
+  name: 'operacion/pedido.cancelado-en-ml';
+  data: {
+    pedidoId: string;
+    tenantId: string;
+    sellerId: string;
+    /** `ml_shipment_id` del pedido — no es dato personal (la Torre ya lo muestra). */
+    mlShipmentId: string;
+    /** Estado interno que tenía el pedido al detectarse la cancelación. */
+    estadoAnterior: string;
+    /** `substatus` que reportó ML, o `null` si no vino. */
+    substatusMl: string | null;
+  };
+}
+
+/**
+ * Un humano pidió sincronizar AHORA una conexión de Mercado Libre.
+ *
+ * Publicado por la acción de servidor detrás del botón «Sincronizar» del panel
+ * de conexiones; consumido por `jobSincronizarConexionMl`
+ * (`integraciones/ml/jobs/ingesta-pedidos-ml.ts`), que corre exactamente la
+ * misma rutina por-conexión que el cron de respaldo — misma ingesta de órdenes
+ * nuevas y mismo barrido de estados. No hay un segundo camino "manual" que
+ * pueda divergir del automático.
+ *
+ * `actorUsuarioId` es el UUID de auth de quien apretó el botón. Viaja para
+ * trazabilidad (RNF-04): la acción que publica el evento es la responsable de
+ * dejar la bitácora ANTES de publicarlo, según el patrón del proyecto.
+ *
+ * NO lleva tokens ni referencias a secretos: el job resuelve la conexión por su
+ * `conexionId` y descifra el token dentro del paso, nunca en el payload.
+ */
+export interface EventoSincronizacionMlSolicitada {
+  name: 'ml/sincronizacion.solicitada';
+  data: {
+    conexionId: string;
+    sellerId: string;
+    tenantId: string;
+    /** UUID de auth de quien la solicitó, o `null` si la disparó el sistema. */
+    actorUsuarioId: string | null;
+  };
+}
+
+/**
  * Capa "pagado" del motor entrega→dinero — cobranza courier→seller (Fintoc).
  *
  * Publicado por el endpoint de webhook `api/webhooks/fintoc/route.ts` DESPUÉS de:

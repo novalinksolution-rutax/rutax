@@ -41,7 +41,12 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
       // Cancelación antes de que nadie lo tome (docs/arquitectura/
       // edicion-y-cancelacion-de-pedidos.md §3.3). La barrera tipo_pedido='same_day'
       // la impone `cancelarPedido`, no esta función pura.
-      { destino: "cancelado", ejecutores: ["interno", "seller"] },
+      // 'sistema' se agrega para reflejar una cancelación DETECTADA en Mercado
+      // Libre (comprador/vendedor cancela allá) — consumidor en
+      // `operacion/jobs/procesar-cancelacion-ml.ts`. Es un hecho consumado, no
+      // una solicitud: el estado se refleja siempre, sin barrera de tipo_pedido
+      // (a diferencia de `cancelarPedido`, que es solo same-day).
+      { destino: "cancelado", ejecutores: ["interno", "seller", "sistema"] },
     ],
   ],
   [
@@ -91,7 +96,10 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
       { destino: "asignado", ejecutores: ["interno"] },
       // Sin reintento posible: cierre definitivo. SIN barrera de tipo_pedido —
       // es la válvula de escape existente para un Flex atascado (§3.2); no se toca.
-      { destino: "cancelado", ejecutores: ["interno"] },
+      // 'sistema' se agrega por la misma razón que en 'pendiente_asignacion':
+      // reflejar una cancelación detectada en Mercado Libre, aquí sobre un
+      // pedido que ya venía fallido (`operacion/jobs/procesar-cancelacion-ml.ts`).
+      { destino: "cancelado", ejecutores: ["interno", "sistema"] },
       // ML evoluciona el subestado: receiver_absent → returning_to_sender.
       // El sistema (job de webhook/polling) y un usuario interno pueden marcar
       // el devuelto. Las líneas ya generadas se anulan en el job C1 (pre-cierre).
@@ -106,7 +114,8 @@ const TRANSICIONES: ReadonlyMap<EstadoPedido, ReadonlyArray<TransicionValida>> =
       // Cancelación (§3.3, NUEVA por simetría): desde 'fallido' ya se podía
       // cerrar definitivamente; desde 'fallido_manual' faltaba y era una
       // asimetría sin motivo.
-      { destino: "cancelado", ejecutores: ["interno"] },
+      // 'sistema': misma razón que 'fallido' — cancelación detectada en ML.
+      { destino: "cancelado", ejecutores: ["interno", "sistema"] },
       // Devolución física desde fallo manual: mismo tratamiento que fallido.
       { destino: "devuelto", ejecutores: ["sistema", "interno"] },
     ],

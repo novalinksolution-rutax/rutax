@@ -9,10 +9,28 @@
  *    El UNIQUE es (tenant_id, ml_shipment_id), NO (ml_shipment_id) — un mismo
  *    shipment puede existir en >1 tenant; se desambigua por el `userId`
  *    (ml_user_id) del evento. Por eso NO se usa `.maybeSingle()`.
+ * 1b. **Si el envío NO está en BD, se INGESTA** (ver el bloque de abajo).
  * 2. Obtener el token del seller y leer GET /shipments/{id} (fuente de verdad)
  *    vía `peticionMl` (backoff/Retry-After) con header `x-format-new: true`.
  * 3. Traducir status + substatus de ML al estado interno.
- * 4. Delegar en `actualizarEstadoPedido` del módulo `operacion`.
+ * 4. Delegar en `actualizarEstadoPedido` del módulo `operacion` — salvo la
+ *    CANCELACIÓN, que se publica como evento y no se aplica aquí.
+ *
+ * ---------------------------------------------------------------------------
+ * EL ENVÍO DESCONOCIDO SE INGESTA (corrección de 2026-08-13)
+ * ---------------------------------------------------------------------------
+ * Antes, un shipment que no estaba en `operacion.pedidos` se descartaba en
+ * silencio con el comentario «puede ser de un seller no conectado». El
+ * razonamiento estaba al revés: **ML solo notifica cuentas que autorizaron
+ * nuestra app**, así que si el `user_id` de la notificación calza con una
+ * conexión nuestra, ese envío ES nuestro — y no está en la base porque nunca lo
+ * ingestamos. Ese descarte era la mitad del bloqueador raíz: un pedido Flex
+ * nuevo no entraba al sistema.
+ *
+ * Ahora: se resuelve la conexión por `ml_user_id`; si existe, se ingesta con la
+ * pieza compartida (`../ingesta-pedidos.ts`). Si el `user_id` NO corresponde a
+ * ninguna conexión, ahí sí se ignora — ese es el caso real de «seller no
+ * conectado» (y el webhook ya lo filtra antes de encolar).
  *
  * Idempotencia y no-reintento:
  * - Si el pedido ya está en el estado traducido → no-op.
@@ -30,6 +48,8 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { descifrarSecreto } from "../../secretos";
 import { peticionMl, ErrorHttpMl } from "../cliente-http";
 import { traducirEstadoMl } from "../traduccion-estados";
+import { esCancelacionMl, publicarCancelacionEnMl } from "../cancelacion-ml";
+import { ingestarShipmentsMl, type ContextoIngestaMl } from "../ingesta-pedidos";
 import { actualizarEstadoPedido } from "@/modules/operacion";
 import type {
   ActualizarEstadoEntrada,
@@ -112,6 +132,121 @@ export function resetFnActualizarEstado(): void {
   fnActualizarEstadoActual = actualizarEstadoPedidoReal;
 }
 
+/** Conexión candidata a ser dueña de un envío que todavía no está en BD. */
+interface FilaConexionDueña {
+  id: string;
+  tenant_id: string;
+  seller_id: string;
+  ml_user_id: string | null;
+  access_token_ref: string | null;
+  estado_salud: string;
+}
+
+/**
+ * Ingesta un envío que ML notificó y que NO existe en `operacion.pedidos`.
+ *
+ * Resuelve la(s) conexión(es) cuyo `ml_user_id` coincide con el de la
+ * notificación. **`ml_user_id` no es único globalmente** (la misma cuenta de ML
+ * puede estar conectada por dos couriers distintos; el UNIQUE es
+ * `(seller_id, ml_user_id)`), así que se ingesta para CADA conexión que calce:
+ * cada tenant tiene derecho a su propia fila y el UNIQUE de pedidos es
+ * `(tenant_id, ml_shipment_id)`.
+ *
+ * Si no calza ninguna conexión, el envío no es nuestro: se ignora sin llamar a
+ * ML ni escribir nada.
+ *
+ * Exportada para que la prueba ejerza ESTE código —incluida la de que un
+ * `user_id` ajeno no ingesta nada— y no una copia espejo.
+ */
+export async function ingestarShipmentDesconocido(
+  shipmentId: string,
+  userId: string,
+  logger: { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void },
+): Promise<{
+  resultado: "sin_conexion" | "ingestado" | "nada_que_ingestar";
+  insertados: number;
+  actualizados: number;
+  omitidosNoFlex: number;
+  noEncontrados: number;
+}> {
+  const vacio = { insertados: 0, actualizados: 0, omitidosNoFlex: 0, noEncontrados: 0 };
+  const supabase = crearClienteServiceRole();
+
+  const { data, error } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .select("id, tenant_id, seller_id, ml_user_id, access_token_ref, estado_salud")
+    .eq("ml_user_id", String(userId));
+
+  if (error) {
+    throw new Error(`Error al resolver la conexión del envío notificado: ${error.message}`);
+  }
+
+  const conexiones = ((data ?? []) as FilaConexionDueña[]).filter(
+    (c) => c.access_token_ref && c.estado_salud !== "desvinculada",
+  );
+
+  if (conexiones.length === 0) {
+    // Caso REAL de "seller no conectado": el user_id no es de ninguna cuenta
+    // vinculada a nosotros (o su conexión está caída y la gestiona el sondeo de
+    // salud). Ni una llamada a ML, ni una escritura.
+    logger.info(
+      `Shipment ${shipmentId}: la cuenta ML ${userId} no corresponde a ninguna conexión ` +
+        "activa. Se ignora sin ingestar.",
+    );
+    return { resultado: "sin_conexion", ...vacio };
+  }
+
+  const totales = { ...vacio };
+
+  for (const conexion of conexiones) {
+    let accessToken: string;
+    try {
+      const descifrado = await descifrarSecreto(conexion.access_token_ref!);
+      if (typeof descifrado.valor !== "string") throw new Error("no es texto");
+      accessToken = descifrado.valor;
+    } catch {
+      // El mensaje del error de descifrado no se propaga: podría llevar
+      // fragmentos del material cifrado.
+      logger.warn(
+        `Shipment ${shipmentId}: no se pudo obtener el token de la conexión ` +
+          `${conexion.id}. Se omite esa cuenta.`,
+      );
+      continue;
+    }
+
+    const ctx: ContextoIngestaMl = {
+      tenantId: conexion.tenant_id,
+      sellerId: conexion.seller_id,
+      mlUserId: String(conexion.ml_user_id),
+      origen: "ml_ingesta",
+    };
+
+    const resumen = await ingestarShipmentsMl(supabase, [{ shipmentId }], ctx, accessToken, {
+      logger,
+    });
+
+    totales.insertados += resumen.insertados;
+    totales.actualizados += resumen.actualizados;
+    totales.omitidosNoFlex += resumen.omitidosNoFlex;
+    totales.noEncontrados += resumen.noEncontrados.length;
+
+    if (resumen.noEncontrados.length > 0) {
+      // 404 en un envío que ML acaba de notificar: raro, pero NUNCA se
+      // interpreta como cancelación (la doc de ML no dice qué devuelve para un
+      // envío cancelado). Queda visible y sin efecto sobre ningún estado.
+      logger.error(
+        `Shipment ${shipmentId}: ML respondió 404 al consultarlo tras su propia ` +
+          "notificación. No se asume cancelación y no se toca ningún estado.",
+      );
+    }
+    // El token en claro sale de scope en cada vuelta.
+  }
+
+  const hizoAlgo = totales.insertados + totales.actualizados > 0;
+  return { resultado: hizoAlgo ? "ingestado" : "nada_que_ingestar", ...totales };
+}
+
 export const jobProcesarShipmentActualizado = inngest.createFunction(
   {
     id: "ml/procesarShipmentActualizado",
@@ -159,12 +294,10 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
       }>;
 
       if (filas.length === 0) {
-        // El shipment no existe en nuestro sistema — ignorar silenciosamente.
-        // Puede ocurrir si ML notifica un envío de un seller no conectado.
-        logger.info(
-          `Shipment ${shipmentId} no encontrado en BD. Puede ser de un seller no conectado.`,
-        );
-        return null;
+        // El envío NO está en `operacion.pedidos`. Antes se descartaba aquí en
+        // silencio; ahora se marca para ingestarlo (ver el bloque del
+        // encabezado): ML solo notifica cuentas que autorizaron nuestra app.
+        return { faltaEnBd: true as const };
       }
 
       let fila = filas[0];
@@ -216,7 +349,23 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
       } satisfies PedidoResumen;
     });
 
-    if (!pedido) return { resultado: "shipment_no_encontrado" };
+    // Colisión multi-tenant sin desambiguar: no se toca nada (ya se logueó).
+    if (!pedido) return { resultado: "shipment_ambiguo" };
+
+    // Paso 1b: el envío no está en BD → ingestarlo si es de una cuenta nuestra.
+    //
+    // No se intenta aplicar transición después: el pedido acaba de nacer con su
+    // `estado_ml` real y su `estado` por defecto. Si el envío ya venía en un
+    // estado avanzado (o incluso cancelado), el repaso del cron
+    // `ml/ingestaPedidos` lo encuentra en la próxima corrida —sigue no
+    // terminal— y publica lo que corresponda. Un camino, no dos.
+    if ("faltaEnBd" in pedido) {
+      const ingesta = await step.run("ingestar-shipment-desconocido", async () =>
+        ingestarShipmentDesconocido(shipmentId, String(userId), logger),
+      );
+      const { resultado, ...conteos } = ingesta;
+      return { resultado: `shipment_desconocido_${resultado}`, ...conteos };
+    }
 
     // Paso 2: obtener el token del seller y consultar ML.
     const estadoMl = await step.run("consultar-ml", async () => {
@@ -311,6 +460,39 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
         `Pedido ${pedido.id} ya está en estado '${estadoInterno}'. No-op idempotente.`,
       );
       return { resultado: "ya_en_estado", estado: estadoInterno };
+    }
+
+    // Paso 3b: CANCELACIÓN — se detecta y se avisa; NO se aplica aquí.
+    //
+    // Cancelar un pedido no es solo mover un enum: hay que cerrar la incidencia
+    // y el cabo de dinero (una línea de cobro viva sobre un pedido cancelado es
+    // plata mal facturada). Esa cadena tiene un dueño, y es el consumidor de
+    // `operacion/pedido.cancelado-en-ml` — no este adaptador. El resto de las
+    // transiciones se siguen aplicando como siempre.
+    //
+    // A propósito NO se escribe `estado_ml` en este camino: mientras el pedido
+    // siga en un estado no terminal, el polling y el repaso del cron vuelven a
+    // ver la diferencia y el aviso se reintenta solo. El `id` determinístico del
+    // evento hace que el consumidor corra una única vez igual.
+    if (esCancelacionMl(estadoMl.status, estadoMl.substatus)) {
+      await step.run("publicar-cancelacion", async () =>
+        publicarCancelacionEnMl(
+          {
+            pedidoId: pedido.id,
+            tenantId: pedido.tenantId,
+            sellerId: pedido.sellerId,
+            mlShipmentId: pedido.mlShipmentId,
+            estadoAnterior: pedido.estado,
+            substatusMl: estadoMl.substatus,
+          },
+          logger,
+        ),
+      );
+      logger.info(
+        `Pedido ${pedido.id}: ML reporta cancelación del envío. Evento publicado; ` +
+          "el estado y sus consecuencias las aplica el consumidor.",
+      );
+      return { resultado: "cancelacion_publicada", pedidoId: pedido.id };
     }
 
     // Helper: actualiza solo los METADATOS de ML del pedido (estado_ml,

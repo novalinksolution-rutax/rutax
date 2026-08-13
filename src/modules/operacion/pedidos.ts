@@ -822,17 +822,9 @@ export async function cancelarPedido(
   // 6. Desactivar la asignación activa (si existe) — DESPUÉS del paso anterior
   // (§5 fila 1, bloqueante): si no se desactiva, la parada cancelada sigue viva
   // en la app Expo del conductor y, con la cola offline, puede cerrarse después.
-  // Sin error si no hay ninguna activa (p. ej. cancelando desde
-  // 'pendiente_asignacion', que nunca tuvo asignación) — 0 filas afectadas es
-  // el resultado esperado, no una falla.
-  const { error: errorDesasignar } = await cliente
-    .from("asignaciones_pedido")
-    .update({ activa: false, desasignado_en: new Date().toISOString() })
-    .eq("pedido_id", entrada.pedidoId)
-    .eq("tenant_id", entrada.tenantId)
-    .eq("activa", true);
-
-  if (errorDesasignar) {
+  try {
+    await desactivarAsignacionActivaPedido(cliente, entrada.pedidoId, entrada.tenantId);
+  } catch (err) {
     // SE LANZA A PROPÓSITO — no lo conviertas en un log silencioso.
     //
     // El pedido YA está cancelado (paso 5 confirmado) y no se revierte: el
@@ -844,12 +836,49 @@ export async function cancelarPedido(
     // Tragarse este error dejaría esa inconsistencia sin un solo rastro. Al
     // lanzar, el operador ve que la cancelación se aplicó pero la asignación
     // no, y Sentry lo captura. El mensaje dice ambas cosas a propósito.
+    const detalle = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Pedido '${entrada.pedidoId}' cancelado, pero no se pudo desactivar su asignación activa: ${errorDesasignar.message}`,
+      `Pedido '${entrada.pedidoId}' cancelado, pero no se pudo desactivar su asignación activa: ${detalle}`,
     );
   }
 
   return pedido;
+}
+
+/**
+ * Desactiva la asignación activa de un pedido, si existe (docs/arquitectura/
+ * edicion-y-cancelacion-de-pedidos.md §5 fila 1). Se llama SIEMPRE DESPUÉS de
+ * mover el estado a 'cancelado' — nunca antes: si se desactivara primero, el
+ * evento financiero (publicado dentro de `actualizarEstadoPedido`) leería
+ * `driver_id_asignado` ya en null y mentiría sobre quién llevaba el paquete.
+ *
+ * Sin error si no hay ninguna asignación activa (p. ej. cancelando desde
+ * 'pendiente_asignacion', que nunca tuvo una) — 0 filas afectadas es el
+ * resultado esperado, no una falla.
+ *
+ * Compartido por `cancelarPedido` (cancelación humana, solo same-day) y por
+ * `operacion/jobs/procesar-cancelacion-ml.ts` (cancelación reportada por ML,
+ * cualquier tipo_pedido) — es el mismo efecto colateral bloqueante
+ * independientemente de quién disparó la cancelación: si el conductor lleva
+ * el bulto en la van, su app no debe seguir mostrando esa parada.
+ *
+ * `cliente` DEBE ser service_role, igual que el resto de este módulo.
+ */
+export async function desactivarAsignacionActivaPedido(
+  cliente: SupabaseClient,
+  pedidoId: string,
+  tenantId: string,
+): Promise<void> {
+  const { error } = await cliente
+    .from("asignaciones_pedido")
+    .update({ activa: false, desasignado_en: new Date().toISOString() })
+    .eq("pedido_id", pedidoId)
+    .eq("tenant_id", tenantId)
+    .eq("activa", true);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 // =============================================================================
