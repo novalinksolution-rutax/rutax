@@ -104,7 +104,10 @@ function filaACierre(fila: Record<string, any>): CierreConductor {
 export async function registrarCierreConductor(
   cliente: SupabaseClient,
   entrada: RegistrarCierreEntrada,
-  actor: UsuarioActual,
+  // `& { usuarioId }` porque esta función escribe bitácora y necesita el id de
+  // AUTH, que `UsuarioActual` no expone. Es lo que devuelve `autenticarBearer`;
+  // exigirlo aquí impide que un llamador vuelva a caer en pasar `driverId`.
+  actor: UsuarioActual & { usuarioId: string },
 ): Promise<CierreConductor> {
   // --- 1. RBAC + validación de actor ------------------------------------
   if (!puedeMarcarEvidenciasPropias(actor)) {
@@ -158,7 +161,13 @@ export async function registrarCierreConductor(
   // --- 4. Bitácora ANTES del upsert (sin datos personales) --------------
   await registrarEnBitacora(cliente, {
     tenantId: entrada.tenantId,
-    actorUsuarioId: actor.driverId,
+    // `usuarioId` (auth), NUNCA `driverId`. `bitacora_auditoria.actor_usuario_id`
+    // tiene FK a `auth.users(id)`, y `driverId` es `identidad.conductores.id`,
+    // que se genera con `crypto.randomUUID()` (`conductores.ts:530`) y jamás
+    // coincide con un usuario de auth. Pasarlo aquí hacía fallar el INSERT con
+    // 23503 — y como la bitácora va ANTES del efecto, tumbaba la operación
+    // entera. Los tests unitarios no lo veían porque mockean la bitácora.
+    actorUsuarioId: actor.usuarioId,
     actorTipo: "usuario",
     accion: "pedido.cierre_operativo",
     entidadTipo: "pedido",

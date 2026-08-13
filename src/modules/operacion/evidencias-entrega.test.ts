@@ -28,6 +28,14 @@ const TENANT_A = "aaaa0000-0000-0000-0000-000000000010";
 const PEDIDO_1 = "bbbb0000-0000-0000-0000-000000000020";
 const SELLER_1 = "cccc0000-0000-0000-0000-000000000030";
 const CONDUCTOR_1 = "dddd0000-0000-0000-0000-000000000040";
+/**
+ * Id de `auth.users` del conductor, DELIBERADAMENTE distinto de `CONDUCTOR_1`:
+ * `identidad.conductores.id` se genera con `crypto.randomUUID()` y nunca es un
+ * usuario de auth. Con el mismo valor en ambos, la prueba no distinguiría el
+ * bug que pasaba `driverId` donde va el id de auth.
+ */
+const USUARIO_AUTH_1 = "eeee0000-0000-0000-0000-000000000099";
+
 const EVIDENCIA_1 = "eeee0000-0000-0000-0000-000000000050";
 
 // Plaza de Armas, Santiago
@@ -36,8 +44,9 @@ const LONG_DESTINO = -70.6506;
 
 const FOTO_PATH = `${TENANT_A}/${PEDIDO_1}/evidencia/${EVIDENCIA_1}.jpg`;
 
-function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual {
+function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual & { usuarioId: string } {
   return {
+    usuarioId: USUARIO_AUTH_1,
     tenantId: TENANT_A,
     tipoUsuario: "conductor",
     sellerId: null,
@@ -47,8 +56,9 @@ function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual {
   };
 }
 
-function actorSeller(): UsuarioActual {
+function actorSeller(): UsuarioActual & { usuarioId: string } {
   return {
+    usuarioId: USUARIO_AUTH_1,
     tenantId: TENANT_A,
     tipoUsuario: "seller",
     sellerId: SELLER_1,
@@ -156,7 +166,7 @@ describe("registrarEvidenciaEntrega — barreras", () => {
 
   it("conductor sin driverId lanza ErrorValidacion", async () => {
     const mock = construirClienteMock();
-    const actorSinId: UsuarioActual = { ...actorConductor(), driverId: null };
+    const actorSinId: UsuarioActual & { usuarioId: string } = { ...actorConductor(), driverId: null };
     await expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       registrarEvidenciaEntrega(mock as any, ENTRADA_BASE, actorSinId),
