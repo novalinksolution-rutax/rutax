@@ -176,7 +176,40 @@ encogió la lista. Barrido de las 8 declaraciones históricas: **hubo una sola p
 sobre todo si hay líneas de liquidación vivas de pedidos cancelados con liquidación ya emitida o
 pagada — eso es plata que debió quedar bloqueada. La consulta está preparada.
 
-## Etapa 3 · Retiro: base de datos y API — **queda ~92%**
+## Etapa 3 · Retiro: base de datos y API — ✅ **HECHA (2026-08-13), sin desplegar**
+
+Migración `20260813000004` (3 tablas, 2 funciones, 62 pgTAP nuevas → 706 en total) y la capa de API
+en `src/modules/operacion/retiro/` + `src/app/api/conductor/retiros/` (116 pruebas). **`situacion_retiro`
+deja de ser un campo muerto**: las dos funciones `security definer` son sus únicos escritores.
+
+**Tres decisiones que se rompen fácil por descuido:**
+- **El QR va en tabla aparte deny-all** (`bultos_retiro_qr`), no como columna con permiso por
+  columna. El patrón de GRANT por columna ya filtró dos veces en este repo; `revoke all` es más
+  fuerte, más barato de verificar, y no se rompe cuando alguien agregue una columna en las etapas 8
+  o 10. Además el ciclo de vida difiere: el QR se purga, el acta sobrevive porque respalda un pago.
+- **AAD = `tenant_id + ':' + bulto_id`**, ambos inmutables. El alcance proponía `tenant_id||pedido_id`
+  y **no sirve**: `pedido_id` es nulo en el escaneo sin resolver y cambia cuando un job lo resuelve
+  — una AAD que muta deja el criptograma ilegible para siempre.
+- **No se tocó `pedidos_select`.** El conductor recibe un DTO de seis campos, ninguno personal.
+  Ampliar esa política habría puesto nombre, dirección y teléfono de los ~400 destinatarios del día
+  en manos de cada conductor.
+
+**Dos comportamientos de infraestructura MEDIDOS, no supuestos** (los dos sorprenden):
+1. `ignoreDuplicates: true` sin `onConflict` **no cubre los índices únicos secundarios**: PostgREST
+   arbitra por PRIMARY KEY. El segundo escaneo del mismo bulto llega con `escaneo_id` nuevo, no
+   choca por PK, y devuelve **409/23505** contra el índice de `(sesión, código)`. Capturar ese 23505
+   y re-buscar la fila es el ÚNICO camino que ocurre, y es lo que hace que un duplicado se fusione
+   sin error.
+2. **Un índice PARCIAL no sirve como árbitro de `ON CONFLICT`** sin repetir su predicado, sintaxis
+   que supabase-js no expone. Falla con 42P10 y falla SIEMPRE, no solo ante duplicado. Por eso abrir
+   una visita va por INSERT liso capturando 23505.
+
+**Lo que queda fuera a propósito**, para las etapas que corresponden: el consumidor del evento
+`operacion/bulto-retiro.sin-pedido` (resolución diferida contra ML — es de `integraciones`), la
+regeneración del QR y sus cinco controles, la purga del QR (etapa 10) y la publicación en vivo de
+las tablas nuevas (etapa 5).
+
+## ~~Etapa 3 · Retiro: base de datos y API~~ — lo que decía antes de construirse
 
 Tablas de sesión de retiro y bultos escaneados, modeladas sobre `cierres_conductor` (registro
 paralelo que **no** mueve la máquina de estados de Flex). El string del QR **cifrado** y con
@@ -193,8 +226,10 @@ escaneo.
 donde el patrón ya filtró dos veces), cifrado (`integraciones/secretos/cifrado.ts`) y redacción de
 logs (`lib/observabilidad/redaccion.ts`, donde entran `hash_code`, `qr_payload` y `qr`).
 
-**Encarece — y esto el plan anterior lo subestimaba:** de las **10 rutas Bearer del conductor que ya
-están en producción, ninguna tiene prueba de rechazo cruzado entre couriers.** Hay un solo archivo de
+**Encarece — y esto el plan anterior lo subestimaba:** ~~de las **10 rutas Bearer del conductor que ya
+están en producción, ninguna tiene prueba de rechazo cruzado entre couriers.**~~ **RESUELTO: son 9,
+no 10, y las nueve ya tienen su prueba de cruce (2026-08-13). Al escribirlas apareció un bug real de
+aislamiento —un conductor podía cerrar la ruta de un colega— ya corregido.** Hay un solo archivo de
 pruebas en toda esa carpeta y cubre 401/403, no cruce de tenant. Como esas rutas usan cliente de
 servicio y **saltan RLS**, el aislamiento de todas ellas descansa en un filtro que nadie verifica.
 El molde de prueba de cruce sí existe, en otras tres rutas de otra área.
