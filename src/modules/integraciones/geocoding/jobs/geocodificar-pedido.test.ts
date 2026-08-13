@@ -196,6 +196,11 @@ describe('geocodificarPedido — cache MISS', () => {
     expect(geocodificar).toHaveBeenCalledWith({
       direccion: eventoBase.direccion,
       comuna: 'Providencia',
+      // El job pasa un techo de tiempo propio (15 s), más holgado que el del
+      // camino síncrono de bodegas porque aquí nadie espera en pantalla: existe
+      // para que un fetch colgado no retenga su slot de concurrencia. Se afirma
+      // que VIAJA hasta el puerto, no solo que el job lo declara.
+      timeoutMs: 15_000,
     });
     // Se cachea el resultado del proveedor.
     expect(upsertCache).toHaveBeenCalledOnce();

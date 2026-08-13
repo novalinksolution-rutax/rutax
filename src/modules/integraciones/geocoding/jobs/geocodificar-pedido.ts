@@ -29,8 +29,9 @@
  * PASO 2 (cache + puerto): vive en `../resolver-coordenada.ts`
  * (`resolverCoordenadaConCache`), compartido con las Server Actions de
  * bodegas (etapas 2/2b de retiro-y-ruteo) — un solo comportamiento, dos
- * llamadores. Este job lo invoca SIN `timeoutMs`: sigue sin límite, protegido
- * solo por `retries: 3`, igual que antes de esa extracción.
+ * llamadores. Este job lo invoca con `timeoutMs` propio (15 s, más holgado que
+ * los 8 s del camino síncrono de bodegas) y con `concurrency: 5` — ver el
+ * porqué de ambos en la configuración de la función, más abajo.
  */
 
 import { inngest } from '@/lib/inngest/cliente';
@@ -40,6 +41,15 @@ import { resolverComunaCanonica } from '../normalizacion';
 import { resolverCoordenadaConCache } from '../resolver-coordenada';
 import type { CoberturaEstado, ResultadoGeocoding } from '../tipos';
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+
+/**
+ * Techo de tiempo por llamada al geocoder desde el JOB. Más alto que el del
+ * camino síncrono de bodegas (`TIMEOUT_GEOCODING_SINCRONO_MS`, 8 s) porque aquí
+ * nadie espera en pantalla: el objetivo no es responder rápido, es no retener un
+ * slot de concurrencia para siempre. Con `retries: 3`, el peor caso por pedido
+ * son ~45 s antes de darse por vencido.
+ */
+const TIMEOUT_GEOCODING_JOB_MS = 15_000;
 
 // ---------------------------------------------------------------------------
 // Inyección de dependencia del puerto (para tests sin red).
@@ -106,6 +116,27 @@ export const jobGeocodificarPedido = inngest.createFunction(
     retries: 3,
     // Dedupe: un solo run por pedido aunque el evento se reciba dos veces.
     idempotency: 'event.data.pedidoId',
+    // Un evento POR PEDIDO, publicado desde la ingesta de ML y desde same-day.
+    // El cron de ingesta puede traer cientos de golpe, así que sin este límite
+    // la ráfaga entra entera y a la vez.
+    //
+    // Ojo con el porqué, que no es el obvio: el adaptador YA clasifica 429 y
+    // OVER_QUERY_LIMIT como reintentables, y hay `retries: 3`, así que Google
+    // rechazando no rompe nada por sí solo. Lo que lo hace necesario es que si
+    // una ráfaga agota esos tres reintentos, el pedido se queda en `pendiente`
+    // PARA SIEMPRE — no existe ningún barrido que lo recupere (verificado
+    // 2026-08-13; el único disparo es este evento) y solo se desatasca a mano,
+    // pedido por pedido. Sin coordenada no hay ruta: el daño es silencioso y
+    // aparece recién al rutear.
+    //
+    // 5 concurrentes contra ~200-500 ms por llamada son ~10-25 req/s, holgado
+    // bajo el límite de Google, y 400 pedidos se resuelven en menos de un
+    // minuto — irrelevante para algo asíncrono. Y de paso deja de competir con
+    // los jobs de dinero por los slots de Inngest.
+    //
+    // Lo que este límite NO hace: ahorrar dinero. Se realizan exactamente las
+    // mismas llamadas facturables, solo más espaciadas.
+    concurrency: { limit: 5 },
   },
   async ({ event, step, logger }) => {
     const data = event.data as EventoPedidoIngestado['data'];
@@ -164,6 +195,14 @@ export const jobGeocodificarPedido = inngest.createFunction(
       resolverCoordenadaConCache({
         direccion,
         comuna: comunaEfectiva,
+        // Más holgado que el camino síncrono de bodegas (8 s), donde hay un
+        // humano mirando el formulario: aquí solo importa no quedarse colgado.
+        // Sin techo, un fetch que nunca responde retiene su slot de
+        // concurrencia indefinidamente y bloquea a los pedidos que vienen
+        // detrás — `retries: 3` no ayuda con eso, porque el intento jamás
+        // termina. El resto del repo ya tiene la convención de timeout
+        // explícito en todo fetch (`integraciones/contexto/http.ts`).
+        timeoutMs: TIMEOUT_GEOCODING_JOB_MS,
         logger: { info: (mensaje) => logger.info(`Pedido ${pedidoId}: ${mensaje}`) },
       }),
     );
