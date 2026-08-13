@@ -61,6 +61,16 @@ const CLAVES_PROHIBIDAS = new Set([
   "credenciales",
   "api_key",
   "apikey",
+  // Retiro en bodega (etapa 3): el string del QR de Flex es credencial-símil —
+  // quien lo tenga puede reconstruir un QR escaneable, y ML no reimprime la
+  // etiqueta una vez retirado el bulto. La base ya lo rechaza con 23514, pero
+  // eso tumba el asiento y con él la acción financiera que lo precede; aquí se
+  // sanea antes para que nunca llegue.
+  "hash_code",
+  "qr_payload",
+  "qr",
+  "security_digit",
+  "codigo_crudo",
 ]);
 
 /** Recorre el objeto y elimina recursivamente cualquier clave de la lista negra. */

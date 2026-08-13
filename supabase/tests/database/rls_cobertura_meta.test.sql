@@ -77,6 +77,11 @@ select results_eq($$
     join pg_namespace n on n.oid = c.relnamespace
    where (n.nspname || '.' || c.relname) in (
      'identidad.secretos_cifrados',
+     -- Deny-all como secretos_cifrados: guarda el string del QR de la etiqueta
+     -- (credencial-símil e IRRECUPERABLE — hash_code es una firma de ML que no se
+     -- puede recalcular y la etiqueta no se reimprime una vez retirado el bulto).
+     -- Alcance §1.7 la nombra explícitamente para este Test 3.
+     'operacion.bultos_retiro_qr',
      'dinero.lineas_cobro',
      'dinero.lineas_liquidacion',
      'dinero.documentos_dte',
