@@ -30,6 +30,60 @@ Estado: ✅ verificada · ⚠️ difiere/condicional en Chile · ❌ no disponib
 
 ## Notas de aplicabilidad MLC (diferencias vs MLA, límites de tasa, observaciones)
 
+### 🚨 NO existe `GET /shipments?ids=…` (re-verificado 2026-08-12)
+
+El detalle de envío es **singular y solo singular**: `GET /shipments/{id}`. La página oficial de
+envíos no documenta ninguna variante batch, y pedirla en producción devuelve **404**.
+
+El batch de «hasta 50 ids separados por coma» que se recuerda de ML pertenece a **otro recurso**:
+`GET /shipment_labels?shipment_ids=A,B,C&response_type=pdf|zpl2`, que genera etiquetas y **no**
+devuelve `logistic_type`, ni coordenadas, ni plazos. Confundirlos tiene precio: el backfill de
+Flex murió tres corridas seguidas con `ML respondió 404 para batch de shipments` e ingirió cero
+pedidos. Para N envíos van N llamadas, con concurrencia acotada y backoff.
+
+### Forma real de la respuesta con `x-format-new: true` (verificada 2026-08-12)
+
+La cabecera es **obligatoria** desde el 12/10/2025 (cita textual de la doc: «A partir del 12 de
+octubre de 2025 […] el envío del header `x-format-new: true` pasará a ser obligatorio en todas
+las solicitudes»), y con ella el JSON **cambia de forma**:
+
+| Dato | Formato nuevo (con header) | Legacy (sin header) |
+|---|---|---|
+| Tipo logístico | `logistic.type` (junto a `logistic.mode`, `logistic.direction`) | `logistic_type` plano |
+| Domicilio del destinatario | `destination.shipping_address` | `receiver_address` |
+| Nombre del destinatario | `destination.receiver_name` | — |
+| Plazos de entrega | `lead_time.*` | `shipping_option.*` |
+| `order_id` / `external_reference` | **descontinuados** (no se devuelven) | presentes |
+
+⚠️ **La doc de ML se contradice consigo misma en `logistic_type`**: la página de envíos muestra el
+nodo anidado, y la de Mercado Envíos 2 muestra el plano (en un ejemplo que llama a `/shipments/{id}`
+sin la cabecera). No está zanjado → **leer las dos ubicaciones, defensivamente**.
+
+⚠️ El domicilio en `destination` **se oculta hasta que el pago está confirmado**, y `receiver_phone`
+solo llega en ME1. Y ojo con la consecuencia de arrastre: como el JSON nuevo de **órdenes** ya no
+trae datos de envío, la dirección y la comuna del pedido Flex **tienen que salir del shipment**;
+si se leen de la orden quedan todas en «Dirección pendiente» / «Santiago».
+
+### Plazos: qué campo es la fecha de entrega (y cuál NO)
+
+Descripciones textuales de la doc oficial (sección «Plazos de entrega»):
+
+| Campo | Qué es de verdad | ¿Sirve como `fecha_compromiso`? |
+|---|---|---|
+| `estimated_delivery_time.date` | La promesa de entrega que ML le muestra al comprador | ✅ **primaria** |
+| `estimated_delivery_final.date` | «fecha final como plazo para que llegue el envío y se determine el status final» | ✅ respaldo |
+| `estimated_delivery_limit.date` | «fecha límite para que el comprador **pueda cancelar la compra y pedir la devolución de dinero**» | ❌ es plazo de reembolso, cae días después |
+| `estimated_delivery_extended.date` | Segunda promesa si la original no se cumple | ❌ describe el fracaso |
+| `estimated_handling_limit` | **Deprecado desde el 13/05/2025**; la info se consume en el recurso de SLA | ❌ |
+
+El nombre engaña: `estimated_delivery_limit` **no** es la fecha límite de entrega.
+
+### `/orders/search` NO lleva `x-format-new`
+
+El aviso de obligatoriedad está acotado a «los recursos de shipments». Todos los ejemplos de
+`/orders/search` en la doc de órdenes omiten la cabecera, y la respuesta de órdenes ya trae la
+forma nueva (`"shipping": { "id": … }`) sin ella.
+
 ### `/shipments/{id}` vs `/marketplace/shipments/{id}`
 - Ambos existen y **ambos exigen el header `x-format-new: true`** en el GET.
 - `/shipments/{id}` es el recurso clásico (un solo marketplace). `/marketplace/shipments/{id}`
