@@ -2,8 +2,10 @@
 -- Conciliación · tipo `linea_liquidacion_sin_pedido_entregado`
 -- Disponibilidad del tipo + idempotencia de la migración + aislamiento intacto
 -- =============================================================================
--- Cubre la migración 20260811000002. Demuestra, contra Postgres real (no mocks
--- de aplicación), tres cosas distintas:
+-- Cubre la migración 20260811000002 y su restitución 20260813000003 (el 12-ago
+-- una reposición del CHECK copió una lista vieja y borró este tipo; los subtests
+-- 1-2 y 9-10 de este archivo fueron precisamente lo que quedó en rojo). Demuestra,
+-- contra Postgres real (no mocks de aplicación), tres cosas distintas:
 --
 --   A · DISPONIBILIDAD — el valor nuevo se puede escribir en
 --       dinero.eventos_conciliacion con bloquea_pago = true, y el CHECK que lo
@@ -247,11 +249,21 @@ select throws_ok(
 
 -- =============================================================================
 -- BLOQUE B · Idempotencia de la migración
--- Se re-ejecuta aquí el DDL exacto de 20260811000002 (ADD VALUE + DROP/ADD del
--- CHECK). Si la migración no fuera re-aplicable, esto reventaría.
+-- Se re-ejecuta aquí el DDL VIGENTE del CHECK (ADD VALUE del enum + DROP/ADD del
+-- constraint). Si la migración no fuera re-aplicable, esto reventaría.
+--
+-- OJO — POR QUÉ AQUÍ VA LA LISTA DE 17 Y NO LA DE 20260811000002 (que es la
+-- migración que este archivo cubre): el 12-ago-2026, 20260812000001 repuso el
+-- CHECK copiando una lista anterior y perdió `linea_liquidacion_sin_pedido_
+-- entregado`; lo restituye 20260813000003, que hoy es la cabeza de este
+-- constraint. Reproducir aquí una lista vieja repetiría dentro del test el mismo
+-- error que el test existe para vigilar: encogería el CHECK a mitad de la
+-- transacción y dejaría de admitir tipos que la base sí admite. La regla es la
+-- misma en el test que en las migraciones — se copia la lista VIGENTE, nunca una
+-- anterior. La lista exacta la fija dinero_conciliacion_tipos_check.test.sql.
 -- =============================================================================
 
--- Test 5: el DDL de la migración corre por segunda vez sin errores.
+-- Test 5: el DDL vigente del CHECK corre por segunda vez sin errores.
 select lives_ok(
   $sql$
     do $blk$
@@ -267,6 +279,8 @@ select lives_ok(
           add value if not exists 'linea_cobro_sin_periodo';
         alter type dinero.tipo_diferencia_conciliacion
           add value if not exists 'linea_liquidacion_sin_pedido_entregado';
+        alter type dinero.tipo_diferencia_conciliacion
+          add value if not exists 'liquidacion_atribuida_a_conductor_incorrecto';
       end if;
 
       if exists (
@@ -293,13 +307,14 @@ select lives_ok(
             'payout_revertido_post_confirmacion',
             'payout_estado_no_reconocido',
             'linea_cobro_sin_periodo',
-            'linea_liquidacion_sin_pedido_entregado'
+            'linea_liquidacion_sin_pedido_entregado',
+            'liquidacion_atribuida_a_conductor_incorrecto'
           ));
       end if;
     end
     $blk$;
   $sql$,
-  'Idempotencia: el DDL de la migración se re-aplica sin error'
+  'Idempotencia: el DDL vigente del CHECK se re-aplica sin error'
 );
 
 -- Test 6: la re-aplicación no duplicó el constraint (sigue habiendo exactamente 1).
