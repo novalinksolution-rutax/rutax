@@ -77,6 +77,25 @@ export const CAPACIDADES = [
   "gestionar_incidencias",
   "ajustar_operacion_diaria",
 
+  // --- Preparación del día: el retiro llegando, en vivo ----------------------
+  // Pantalla `(tenant)/preparacion` (etapa 5 del alcance "retiro en bodega +
+  // ruteo"). Muestra las visitas a bodega en curso y el acumulado por comuna de
+  // lo que va entrando, para decidir cuántos conductores por zona ANTES de las
+  // 16:00. Hoy es LECTURA; la asignación en bloque llega en la etapa 6 y se
+  // gatea con `asignar_y_reasignar_pedidos`, que es la que decide de verdad.
+  //
+  // Capacidad propia y no una disyunción de las operativas existentes (el
+  // `esOperativo` del layout, que es `asignar || generar_manifiestos ||
+  // ajustar_operacion_diaria`): esa forma expresa "es alguien de operación", no
+  // "puede ver esta pantalla", y cambia de significado en silencio el día que
+  // cualquiera de las tres se reparta distinto. `ver_torre_control` sentó el
+  // precedente de la pantalla de lectura con gate propio.
+  //
+  // Dueño, supervisor y coordinador. NO `administracion`: es el rol financiero
+  // "sin reasignación operativa" y esta pantalla responde "¿qué hay en la bodega
+  // y a dónde va?", que no es su pregunta. Mismo corte que la Torre.
+  "ver_preparacion_dia",
+
   // --- Bodegas: dónde se retira y de dónde sale la flota ---------------------
   // Alta y edición de `identidad.seller_bodegas` (la bodega del seller, donde
   // el conductor retira) y `identidad.courier_bodegas` (la del courier, origen
@@ -226,6 +245,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "ver_preparacion_dia",
     "gestionar_bodegas",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
@@ -243,6 +263,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "generar_manifiestos",
     "gestionar_incidencias",
     "ajustar_operacion_diaria",
+    "ver_preparacion_dia",
     "gestionar_bodegas",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
@@ -255,6 +276,9 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
   coordinador: [
     "asignar_y_reasignar_pedidos",
     "generar_manifiestos",
+    // El rol que MÁS vive en la Preparación del día: es quien reparte los
+    // paquetes que van llegando y quien tiene que salir a las 16:00 en punto.
+    "ver_preparacion_dia",
     // Decisión del usuario (2026-08-13): el coordinador SÍ gestiona bodegas,
     // pese a ser el rol más acotado. Es quien habla con los conductores durante
     // el retiro, así que es el primero en enterarse de que falta una bodega —
@@ -426,6 +450,21 @@ export function puedeGestionarIncidencias(usuario: UsuarioActual): boolean {
 
 export function puedeAjustarOperacionDiaria(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ajustar_operacion_diaria");
+}
+
+/**
+ * Ver la Preparación del día: las visitas a bodega en curso y el acumulado por
+ * comuna de lo que va entrando. Dueño, supervisor y coordinador — mismo corte
+ * que la Torre de control, y por el mismo motivo: `administracion` es el rol
+ * financiero "sin reasignación operativa".
+ *
+ * Es LECTURA. Cuando la etapa 6 traiga la asignación en bloque a esta misma
+ * pantalla, la acción se gatea con `asignar_y_reasignar_pedidos` — que
+ * `administracion` no tiene y el coordinador sí. Tener esta capacidad no
+ * habilita mover un solo pedido.
+ */
+export function puedeVerPreparacionDia(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "ver_preparacion_dia");
 }
 
 /**

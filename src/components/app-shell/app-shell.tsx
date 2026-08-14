@@ -52,6 +52,7 @@ import {
   ShieldCheck,
   Radar,
   Warehouse,
+  Boxes,
   type LucideIcon,
 } from "lucide-react"
 
@@ -88,6 +89,10 @@ const ICONOS: Record<string, LucideIcon> = {
   zonas: MapPinned,
   // `Building2` ya está tomado por "couriers" en el panel de administración.
   bodegas: Warehouse,
+  // Bultos apilados = la carga consolidada esperando en el piso de la bodega.
+  // No `Package` (ya es "pedidos") ni `Warehouse` (ya es el catálogo de bodegas):
+  // la Preparación no es el lugar, es lo que se acumula dentro de él.
+  preparacion: Boxes,
   "conexion-ml": Link2,
   couriers: Building2,
   metricas: LineChart,

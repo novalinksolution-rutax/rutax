@@ -16,6 +16,7 @@ import {
   puedeVerConciliacion,
   puedeVerBitacoraAuditoria,
   puedeGestionarSuscripcion,
+  puedeVerPreparacionDia,
   puedeVerTorreControl,
   puedeGestionarBodegas,
 } from "@/modules/identidad/capacidades";
@@ -87,6 +88,16 @@ export default async function LayoutTenant({ children }: { children: React.React
   }
 
   const grupoOperacion: GrupoNav = { titulo: "Operación", items: [] };
+  // Primero del grupo, y no por orden alfabético: es el orden del DÍA. El retiro
+  // en bodega ocurre toda la mañana y la asignación tiene que estar terminada a
+  // las 16:00 — quien coordina abre esta pantalla antes que la de pedidos.
+  if (puedeVerPreparacionDia(u)) {
+    grupoOperacion.items.push({
+      href: "/preparacion",
+      etiqueta: "Preparación del día",
+      icono: "preparacion",
+    });
+  }
   if (esOperativo) {
     grupoOperacion.items.push({ href: "/operaciones", etiqueta: "Pedidos", icono: "pedidos" });
     grupoOperacion.items.push({ href: "/manifiestos", etiqueta: "Manifiestos", icono: "manifiestos" });

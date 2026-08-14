@@ -12,19 +12,21 @@
  *   - No se lee el payload; solo dispara el refetch. El aislamiento se mantiene
  *     en el servidor, como en el resto de la app.
  *
- * Los eventos se agrupan (debounce) para no refrescar en ráfaga durante la
- * ingesta masiva. Solo INSERT/UPDATE (DELETE no aplica RLS en Realtime).
+ * Los eventos se agrupan para no refrescar en ráfaga durante la ingesta masiva,
+ * pero **con tope máximo de espera**: un debounce puro se reprograma para
+ * siempre bajo flujo sostenido y deja la pantalla congelada diciendo "En vivo"
+ * (ver `programador-refresco.ts`, que es donde vive esa regla y su prueba).
+ * Solo INSERT/UPDATE (DELETE no aplica RLS en Realtime).
  *
  * Reutilizable: por defecto escucha `operacion.pedidos`; pásale otras tablas
  * (p. ej. incidencias) para otras superficies. Cada tabla que se escuche debe
  * estar en la publicación `supabase_realtime` (ver migraciones realtime_*).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-
-const DEBOUNCE_MS = 800;
+import { crearProgramadorRefresco } from "./programador-refresco";
 
 export interface TablaRealtime {
   schema: string;
@@ -42,7 +44,6 @@ export function IndicadorEnVivo({
 }) {
   const router = useRouter();
   const [enVivo, setEnVivo] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clave estable de las tablas para el array de dependencias (evita re-suscribir
   // en cada render cuando se pasa `tablas` como literal inline).
@@ -55,10 +56,8 @@ export function IndicadorEnVivo({
       return { schema, tabla };
     });
 
-    const programarRefresco = () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => router.refresh(), DEBOUNCE_MS);
-    };
+    const programador = crearProgramadorRefresco(() => router.refresh());
+    const programarRefresco = programador.programar;
 
     const filtro = `tenant_id=eq.${tenantId}`;
     let canal = supabase.channel(`en-vivo-${tenantId}-${clave}`);
@@ -70,7 +69,7 @@ export function IndicadorEnVivo({
     canal.subscribe((status) => setEnVivo(status === "SUBSCRIBED"));
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      programador.cancelar();
       void supabase.removeChannel(canal);
     };
   }, [tenantId, clave, router]);

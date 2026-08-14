@@ -1,9 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Rutax">
-  <rect width="512" height="512" rx="104" fill="#1e3a8a"/>
-  <!-- Marca provisional: ruta entre dos nodos sobre fondo navy (safe zone centrada para maskable) -->
-  <g fill="none" stroke="#ffffff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M168 350 C 168 230, 344 282, 344 162"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="rutax-icono-titulo">
+  <title id="rutax-icono-titulo">Rutax</title>
+  <!--
+    Rutax — ícono de app. Sirve favicon + PWA `any` + PWA `maskable` (manifest.ts).
+    Monograma R: la MISMA letra dibujada de logo-rutax.svg, no una versión aparte.
+    Cinco letras no sobreviven a 16 px; una R sí, y es de las capitales más legibles.
+
+    Zona segura maskable (círculo de radio 204,8 al centro): la caja de la R va de
+    (165,8 · 117) a (346,3 · 387); su esquina más lejana queda a 165,7 del centro. Cabe.
+
+    Navy de marca #2A3CA0 — corregido: el placeholder usaba #1e3a8a, que era el azul
+    por defecto de Tailwind y no el color de marca de globals.css.
+  -->
+  <rect width="512" height="512" rx="104" fill="#2A3CA0"/>
+  <g transform="translate(165.8 117) scale(.385714)">
+    <path fill="#FFFFFF" fill-rule="evenodd" d="M0 0 L296 0 C394 0 440 125 440 184 C440 309 342 368 296 368 L130 368 L468 700 L337 700 L92 459 L92 700 L0 700 Z M92 92 L296 92 C330 92 346 155 346 184 C346 247 312 276 296 276 L92 276 Z"/>
   </g>
-  <circle cx="168" cy="350" r="40" fill="#ffffff"/>
-  <circle cx="344" cy="162" r="40" fill="#1e3a8a" stroke="#ffffff" stroke-width="22"/>
 </svg>

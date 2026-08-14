@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -4 2442 711" role="img" aria-labelledby="rutax-wordmark-titulo">
+  <title id="rutax-wordmark-titulo">Rutax</title>
+  <!--
+    Rutax — wordmark horizontal, monocromo, sin filete y sin fondo.
+    Hereda `currentColor`, así que toma el color del contexto (sidebar, header,
+    footer, tema claro y oscuro) sin necesidad de una segunda versión.
+    Mismas letras que logo-rutax.svg; se le quita el filete porque a 24 px de
+    alto quedaría por debajo de medio píxel.
+  -->
+  <g fill="currentColor" fill-rule="evenodd">
+    <path d="M0 0 L296 0 C394 0 440 125 440 184 C440 309 342 368 296 368 L130 368 L468 700 L337 700 L92 459 L92 700 L0 700 Z M92 92 L296 92 C330 92 346 155 346 184 C346 247 312 276 296 276 L92 276 Z"/>
+    <path transform="translate(578 0)" d="M0 0 L0 480 C0 634 157 707 231 707 C305 707 462 553 462 480 L462 0 L370 0 L370 480 C370 570 276 613 231 613 C186 613 92 523 92 480 L92 0 Z"/>
+    <path transform="translate(1112 0)" d="M0 0 L440 0 L440 92 L266 92 L266 700 L174 700 L174 92 L0 92 Z"/>
+    <path transform="translate(1498 0)" d="M205 -4 L265 -4 L470 700 L370 700 L328 556 L134 556 L92 700 L0 700 Z M231 225 L305 478 L157 478 Z"/>
+    <path transform="translate(2030 0)" d="M0 0 L100 0 L206 238 L312 0 L412 0 L256 350 L412 700 L312 700 L206 462 L100 700 L0 700 L156 350 Z"/>
+  </g>
+</svg>

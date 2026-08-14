@@ -30,8 +30,10 @@ import {
   puedeVerDocumentosPropios,
   puedeVerIncidenciasPropias,
   puedeVerLiquidacionPropia,
+  puedeVerPreparacionDia,
   puedeVerReportesEjecutivos,
   puedeVerRutaPropia,
+  puedeVerTorreControl,
   tieneCapacidad,
 } from "./capacidades";
 import { ROLES, type Rol } from "./roles";
@@ -349,6 +351,46 @@ describe("gestionar_bodegas — los TRES roles operativos (decisión del usuario
     expect(puedeGestionarBodegas(usuario({ rol: "seller" }))).toBe(false);
     expect(puedeGestionarBodegas(usuario({ rol: "conductor" }))).toBe(false);
     expect(puedeGestionarBodegas(usuario({ rol: "super_admin", tenantId: null }))).toBe(false);
+  });
+});
+
+describe("ver_preparacion_dia — la pantalla del retiro llegando (etapa 5)", () => {
+  it("la tienen los tres roles operativos, con el mismo corte que la Torre", () => {
+    for (const rol of ["dueno", "supervisor", "coordinador"] as const) {
+      const u = usuario({ rol });
+      expect(puedeVerPreparacionDia(u)).toBe(true);
+      // El paralelo con la Torre no es casual: son las dos pantallas de lectura
+      // del día. Si algún día se separan, que sea a propósito.
+      expect(puedeVerTorreControl(u)).toBe(true);
+    }
+  });
+
+  it("administracion NO la tiene: la bodega no es su pregunta", () => {
+    const admin = usuario({ rol: "administracion" });
+    expect(puedeVerPreparacionDia(admin)).toBe(false);
+    expect(puedeVerTorreControl(admin)).toBe(false);
+    // El contraste: sigue teniendo lo suyo. No se le quitó nada.
+    expect(puedeVerConciliacion(admin)).toBe(true);
+  });
+
+  it("es de LECTURA: no arrastra la capacidad de asignar", () => {
+    // Es la trampa que hay que evitar cuando la etapa 6 traiga la asignación en
+    // bloque a esta misma pantalla — ver la pantalla y mover pedidos son dos
+    // permisos distintos, y el segundo es el que decide de verdad.
+    const admin = usuario({ rol: "administracion" });
+    expect(puedeAsignarYReasignarPedidos(admin)).toBe(false);
+
+    const coordinador = usuario({ rol: "coordinador" });
+    expect(puedeVerPreparacionDia(coordinador)).toBe(true);
+    expect(puedeAsignarYReasignarPedidos(coordinador)).toBe(true);
+    // Y sigue sin ascender: la capacidad nueva no le trajo nada más.
+    expect(puedeAjustarOperacionDiaria(coordinador)).toBe(false);
+  });
+
+  it("NO la tienen seller, conductor ni super_admin", () => {
+    expect(puedeVerPreparacionDia(usuario({ rol: "seller" }))).toBe(false);
+    expect(puedeVerPreparacionDia(usuario({ rol: "conductor" }))).toBe(false);
+    expect(puedeVerPreparacionDia(usuario({ rol: "super_admin", tenantId: null }))).toBe(false);
   });
 });
 

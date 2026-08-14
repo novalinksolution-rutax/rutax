@@ -1777,7 +1777,10 @@ on conflict (id) do nothing;
 --
 -- Estos tenants no tienen sellers ni usuarios (existen solo para el backstage),
 -- así que NO llevan seller_bodegas: colgar una de un seller inexistente lo
--- rechazaría la FK compuesta (tenant_id, seller_id).
+-- rechazaría la FK compuesta (tenant_id, seller_id). ÚNICA EXCEPCIÓN: Andes
+-- Express gana un seller/bodega/conductor headless en el §16b de más abajo,
+-- para poder sembrar una visita de retiro en un tenant distinto del principal
+-- (aislamiento) — ver el porqué ahí.
 --
 -- Cada una en su comuna y con su coordenada; el courier suspendido y el que está
 -- en onboarding también tienen la suya (dar de baja la suscripción no borra el
@@ -1806,6 +1809,68 @@ insert into identidad.courier_bodegas (
    'Central Pacífico','Camino a Melipilla 9000','Maipú',
    null, true, true, -33.5052, -70.7712, 'resuelto', 0.910, now() - interval '3 days')
 on conflict (id) do nothing;
+
+-- =============================================================================
+-- 16b. Andes Express gana UN seller headless — para poder probar aislamiento
+--      en el retiro en bodega (migración 20260813000004)
+-- =============================================================================
+-- Los seis tenants de arriba bastan para probar el aislamiento de
+-- `courier_bodegas` (P1 estricta), pero el retiro en bodega cuelga de
+-- `identidad.seller_bodegas`, que exige un SELLER real por FK compuesta
+-- (seller_bodegas_seller_pertenece_al_tenant), y `operacion.sesiones_retiro`
+-- exige además un CONDUCTOR real por su propia FK compuesta. Sin esas dos
+-- filas no hay forma de sembrar una visita de retiro en un tenant distinto del
+-- principal — y CLAUDE.md ya deja escrita la lección: con un solo tenant
+-- poblado, una consulta que se olvide del `tenant_id` devuelve lo mismo que la
+-- correcta.
+--
+-- Por eso Andes Express (y SOLO Andes Express, de los seis) gana un seller y
+-- un conductor headless: SIN fila en `usuarios_perfil` ni en `auth.users`, así
+-- que sigue sin poder iniciarse sesión en él — la afirmación de más arriba
+-- ("no tienen sellers ni usuarios") sigue siendo cierta para los otros cinco.
+--
+-- La bodega nace `es_principal = true`: es la primera y única de este seller,
+-- así que "principal" es un hecho y no una elección (mismo criterio que
+-- `seed.sql` con las bodegas de Despachos del Centro).
+--
+-- La VISITA de retiro de HOY sobre esta bodega vive en `seed-torre-hoy.sql`
+-- (id fijo, se re-siembra a diario); estas tres filas son infraestructura
+-- ESTABLE del tenant, así que van aquí con el mismo `on conflict (id) do
+-- nothing` que el resto de este archivo — no tendría sentido borrar y
+-- recrear un seller cada vez que se refresca "hoy".
+insert into identidad.sellers (id, tenant_id, razon_social, rut, nombre_contacto, email_contacto, estado)
+values (
+  '31000000-0000-0000-0000-000000000101',
+  '14000000-0000-0000-0000-000000000101',
+  'Ferretería Andina Ltda.','76901234-5','Osvaldo Lira','olira@ferreteriaandina.cl','activo'
+)
+on conflict (id) do nothing;
+
+insert into identidad.seller_bodegas (
+  id, tenant_id, seller_id, nombre, direccion, comuna,
+  instrucciones_acceso, contacto_nombre, contacto_telefono,
+  es_principal, activa,
+  lat, long, geo_estado, geo_confianza, geocodificado_en
+) values (
+  '7b100000-0000-0000-0000-000000000101',
+  '14000000-0000-0000-0000-000000000101',
+  '31000000-0000-0000-0000-000000000101',
+  'Bodega Huechuraba','Av. El Salto 3200','Huechuraba',
+  'Timbre en la reja verde; el guardia avisa por radio.',
+  'Osvaldo Lira','+56977213340',
+  true, true,
+  -33.3689, -70.6580, 'resuelto', 0.900, now() - interval '8 days'
+)
+on conflict (id) do nothing;
+
+insert into identidad.conductores (id, tenant_id, nombre_completo, rut, tipo_relacion, estado)
+values (
+  '41000000-0000-0000-0000-000000000101',
+  '14000000-0000-0000-0000-000000000101',
+  'Renato Ibáñez Cortés','24567890-1','independiente','activo'
+)
+on conflict (id) do nothing;
+
 
 insert into plataforma.suscripciones
   (id, tenant_id, plan_id, estado, trial_hasta, activa_desde, cancelada_en,

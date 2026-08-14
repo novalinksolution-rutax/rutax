@@ -44,7 +44,9 @@
 --   npx supabase db execute --file supabase/seed-torre-hoy.sql
 --
 -- Requiere `seed-demo-full.sql` aplicado antes: reutiliza su tenant, sus tres
--- sellers, sus doce conductores y sus tarifas.
+-- sellers, sus doce conductores y sus tarifas — y, para el retiro en bodega
+-- (§8), también el seller/bodega/conductor headless de Andes Express (§16b de
+-- ese archivo), único tenant extra que los tiene.
 -- =============================================================================
 
 begin;
@@ -52,6 +54,19 @@ begin;
 -- -----------------------------------------------------------------------------
 -- 0. Limpieza del bloque anterior (en orden de dependencia)
 -- -----------------------------------------------------------------------------
+-- Retiro en bodega (§8, etapa 3): PRIMERO de todo, y no es capricho de orden.
+-- `bultos_retiro.pedido_id` referencia `pedidos` `on delete restrict` (no
+-- cascade, a diferencia de cierres_conductor/pruebas_entrega/incidencias/
+-- asignaciones_pedido de abajo) y `sesiones_retiro.bodega_id` referencia
+-- `seller_bodegas` también `on delete restrict`. Si estas dos no se vacían
+-- ANTES, el `delete from operacion.pedidos` de más abajo y el
+-- `delete from identidad.seller_bodegas` del bloque de bodegas abortan con
+-- 23503 la segunda vez que se corre este archivo. `bultos_retiro` se borra por
+-- el prefijo de su SESIÓN (no tiene id propio determinista: escaneo_id y id se
+-- generan al azar porque nada más los referencia).
+delete from operacion.bultos_retiro   where sesion_retiro_id::text like '9a7c0000%';
+delete from operacion.sesiones_retiro where id::text like '9a7c0000%';
+
 -- Las FK de hijos a `pedidos` son `on delete cascade`, pero se borran explícito
 -- igual: depender de un cascade obliga a recordar cuál tabla lo tiene y cuál no.
 delete from operacion.cierres_conductor where id::text like '897c0000%';
@@ -64,12 +79,11 @@ delete from operacion.manifiestos       where id::text like '7d7c0000%';
 -- Bodegas de ESTE bloque (§7). Prefijos propios: no tocan las de `seed.sql`
 -- (7b0…/7c0…) ni las de `seed-demo-full.sql` (7b1…/7c1…).
 --
--- ⚠️ CUANDO LLEGUE LA ETAPA 3: la sesión/visita de retiro va a referenciar
--- `seller_bodegas` por FK compuesta (tenant_id, bodega_id). Desde ese día, estos
--- dos DELETE fallan con 23503 si hay visitas colgando de estas bodegas, y hay
--- que borrarlas ANTES aquí mismo — igual que se hace arriba con los hijos de
--- `pedidos`. No es hipotético: el §5 de la migración 20260813000002 ya declara
--- esa FK como el motivo de existir de `seller_bodegas_tenant_id_id_uk`.
+-- La sesión/visita de retiro (§8) referencia `seller_bodegas` por FK compuesta
+-- (tenant_id, bodega_id) — por eso el DELETE de `sesiones_retiro` de arriba va
+-- ANTES que este. No es hipotético: el §5 de la migración 20260813000002 ya
+-- declaraba esa FK como el motivo de existir de `seller_bodegas_tenant_id_id_uk`,
+-- y el §8 de más abajo es justamente quien la usa.
 delete from identidad.seller_bodegas  where id::text like '7b7c0000%';
 delete from identidad.courier_bodegas where id::text like '7c7c0000%';
 
@@ -558,6 +572,396 @@ select
 from (select (now() at time zone 'America/Santiago')::date as d) h;
 
 
+-- -----------------------------------------------------------------------------
+-- 8. Retiro en bodega de HOY (migración 20260813000004) — la Preparación del día
+-- -----------------------------------------------------------------------------
+-- La pantalla del coordinador (etapa 5) es EN VIVO y a media mañana: necesita
+-- ver el día a medio hacer, no un estado prolijo. Reutiliza las tres bodegas
+-- del §7 (Matucana/FalabellaTech, Los Pajaritos/MercadoSur, Camilo Henríquez/
+-- TecnoHogar) para el caso real que describió el courier — un conductor
+-- retirando en tres bodegas de sellers distintos en la misma mañana — más dos
+-- bodegas de `seed.sql` para un segundo y un tercer conductor. Todo por
+-- `operacion.cerrar_sesion_retiro()`, la función real (nunca a mano): es lo
+-- único que congela el acta Y marca `operacion.pedidos.situacion_retiro`
+-- coherente con lo que hizo el escaneo, en la MISMA transacción que usaría
+-- producción.
+--
+-- Qué caso cubre cada sesión (todas con `fecha_operacion` = hoy). El acta se
+-- anota como total/resueltos/sin_resolver, igual que las tres columnas de
+-- `sesiones_retiro`:
+--   S1 Matucana      (cond. A, CERRADA) — 27 resueltos + 2 ilegibles + 1
+--                     flex_qr que la ingesta no trajo → acta 30/27/3.
+--   S2 Los Pajaritos  (cond. A, CERRADA) — 29 resueltos propios + 1 bulto de
+--                     OTRO seller (FalabellaTech, no MercadoSur: el descuadre
+--                     que el retiro existe para destapar) → acta 30/30/0. Más
+--                     UN escaneo POSTERIOR AL CIERRE (bajo la van, 30 seg
+--                     después): los contadores vivos (31/30/1) ya no
+--                     coinciden con el acta congelada, a propósito.
+--   S3 Camilo Henríquez (cond. A, ABIERTA) — 49 resueltos + 1 ilegible, en
+--                     curso ahora mismo (último escaneo hace <1 min).
+--                     Contadores del acta en NULL: todavía no hay acta.
+--   S4 CD ENEA Pudahuel (cond. B, ABIERTA) — 16 resueltos, pero el último
+--                     escaneo fue hace EXACTAMENTE 25 minutos: la visita
+--                     "no reporta hace rato" mientras S3 sigue viva — dos
+--                     conductores retirando EN PARALELO ahora mismo.
+--   S5 Renca          (cond. C, CERRADA) — 22 resueltos, acta limpia 22/22/0.
+--                     Con S1 (cond. A / Matucana) demuestra el mínimo de DOS
+--                     cerradas de conductores Y bodegas distintos.
+--   S6 Bodega Huechuraba (cond. D, tenant AISLADO Andes Express, CERRADA) —
+--                     4 bultos, los cuatro sin resolver (Andes Express nunca
+--                     ingestó nada por ML): si alguna consulta de este módulo
+--                     se olvida del tenant_id, esta visita se filtra en la
+--                     pantalla de Despachos del Centro y se nota al instante.
+--
+-- NO se siembra `operacion.bultos_retiro_qr`: es deny-all y guarda credenciales
+-- cifradas — un seed con material de prueba ahí solo agrega superficie sin
+-- demostrar nada (la migración §5 lo deja explícito, "no se guardan filas").
+--
+-- Todos los relojes son RELATIVOS a `now()` (nunca una hora del día fija):
+-- así el archivo se puede correr a cualquier hora, sin nunca sembrar un
+-- escaneo en el futuro, y "hace 25 minutos" sigue siendo cierto sin importar
+-- cuándo se aplique. `cerrada_en` lo escribe `cerrar_sesion_retiro()` con su
+-- propio `now()` interno — no se puede ni se debe forzar desde aquí: es la
+-- función real, y su reloj es el que manda.
+
+-- 8.1 El pool de pedidos "retirables" de hoy — con una comuna DOMINANTE
+--     (Santiago, tope 22 por vendedor) y una cola REPARTIDA en las otras 22
+--     (tope 3 por comuna por vendedor). Sin este tope, tomar los primeros N
+--     pedidos de un vendedor por orden natural da 100 % Santiago (su bloque,
+--     de más de 40 por vendedor, es más grande que cualquier sesión) y el
+--     acumulado por comuna (operacion.preparacion_carga_por_comuna) no
+--     tendría nada que agregar aparte de una sola barra. Vive de `_torre_plan`
+--     — por eso este bloque corre ANTES del `drop table` de más abajo.
+create temporary table _retiro_pool as
+with candidatos as (
+  select
+    tp.pedido_id, tp.seller_id, tp.idx, tp.comuna, tp.tipo, tp.n,
+    p.ml_shipment_id, p.codigo_interno,
+    row_number() over (partition by tp.seller_id, tp.idx order by tp.n) as rn_comuna
+  from _torre_plan tp
+  join operacion.pedidos p on p.id = tp.pedido_id
+  where (tp.tipo = 'flex'     and p.ml_shipment_id is not null)
+     or (tp.tipo = 'same_day' and p.codigo_interno  is not null)
+),
+recortados as (
+  select *
+  from candidatos
+  where rn_comuna <= case when comuna = 'Santiago' then 22 else 3 end
+)
+select
+  pedido_id, seller_id, comuna, tipo, ml_shipment_id, codigo_interno,
+  row_number() over (
+    partition by seller_id
+    order by (comuna <> 'Santiago'), rn_comuna, n
+  ) as orden_seller
+from recortados;
+
+create index on _retiro_pool (seller_id, orden_seller);
+
+-- 8.2 Las seis sesiones. Todas nacen `abierta` — S1/S2/S5/S6 se cierran recién
+--     en el §8.9, con la función real, después de tener sus bultos adentro.
+insert into operacion.sesiones_retiro (
+  id, tenant_id, bodega_id, seller_id, conductor_id, fecha_operacion,
+  estado, abierta_en
+) values
+  -- S1 — cond. A (Juan Pablo Pérez), Bodega Matucana, FalabellaTech.
+  ('9a7c0000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001',
+   '7b7c0000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001',
+   '40000000-0000-0000-0000-000000000001', (now() at time zone 'America/Santiago')::date,
+   'abierta', now() - interval '40 minutes'),
+  -- S2 — cond. A, Bodega Los Pajaritos, MercadoSur.
+  ('9a7c0000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001',
+   '7b7c0000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000002',
+   '40000000-0000-0000-0000-000000000001', (now() at time zone 'America/Santiago')::date,
+   'abierta', now() - interval '15 minutes'),
+  -- S3 — cond. A, Bodega Camilo Henríquez, TecnoHogar. Su TERCERA visita hoy.
+  ('9a7c0000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000001',
+   '7b7c0000-0000-0000-0000-000000000003', '30000000-0000-0000-0000-000000000003',
+   '40000000-0000-0000-0000-000000000001', (now() at time zone 'America/Santiago')::date,
+   'abierta', now() - interval '12 minutes'),
+  -- S4 — cond. B (Carlos González), CD ENEA Pudahuel, FalabellaTech (2ª bodega del mismo seller).
+  ('9a7c0000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000001',
+   '7b000000-0000-0000-0000-000000000002', '30000000-0000-0000-0000-000000000001',
+   '40000000-0000-0000-0000-000000000002', (now() at time zone 'America/Santiago')::date,
+   'abierta', now() - interval '50 minutes'),
+  -- S5 — cond. C (Pedro Soto), Bodega Renca, TecnoHogar.
+  ('9a7c0000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001',
+   '7b000000-0000-0000-0000-000000000006', '30000000-0000-0000-0000-000000000003',
+   '40000000-0000-0000-0000-000000000003', (now() at time zone 'America/Santiago')::date,
+   'abierta', now() - interval '29 minutes'),
+  -- S6 — cond. D (Renato Ibáñez), Bodega Huechuraba, tenant AISLADO Andes Express.
+  ('9a7c0000-0000-0000-0000-000000000006', '14000000-0000-0000-0000-000000000101',
+   '7b100000-0000-0000-0000-000000000101', '31000000-0000-0000-0000-000000000101',
+   '41000000-0000-0000-0000-000000000101', (now() at time zone 'America/Santiago')::date,
+   'abierta', now() - interval '20 minutes');
+
+-- 8.3 S1 — 27 resueltos del pool de FalabellaTech (posiciones 1-27: Santiago
+--     dominante + una cola repartida en varias comunas).
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
+  posterior_al_cierre, escaneado_en, recibido_en, resuelto_en
+)
+select
+  '10000000-0000-0000-0000-000000000001',
+  '9a7c0000-0000-0000-0000-000000000001',
+  '40000000-0000-0000-0000-000000000001',
+  gen_random_uuid(),
+  case when rp.tipo = 'flex' then 'flex_qr' else 'rutax_interno' end::operacion.formato_codigo_bulto,
+  coalesce(rp.ml_shipment_id, rp.codigo_interno),
+  rp.ml_shipment_id,
+  rp.pedido_id,
+  rp.seller_id,
+  false,
+  ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
+from (
+  select *, row_number() over (order by orden_seller) as rn
+  from _retiro_pool
+  where seller_id = '30000000-0000-0000-0000-000000000001'
+    and orden_seller between 1 and 27
+) rp
+cross join lateral (
+  select (now() - interval '18 minutes') - ((27 - rp.rn) * interval '45 seconds') as valor
+) ts;
+
+-- Los 3 sin resolver de S1: dos ilegibles (con su `muestra_codigo`, cada uno
+-- con un crudo distinto para no chocar contra `bultos_retiro_sesion_codigo_uk`)
+-- y un `flex_qr` legítimo que Rutax no encontró en su ingesta.
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, muestra_codigo, ml_shipment_id,
+  posterior_al_cierre, escaneado_en, recibido_en
+) values
+  ('10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000001',
+   '40000000-0000-0000-0000-000000000001', gen_random_uuid(),
+   'desconocido', 'sha256:' || encode(digest('ticket-jumbo-48213-arrugado-sin-qr', 'sha256'), 'hex'),
+   left('ticket-jumbo-48213-arrugado-sin-qr', 24), null,
+   false, now() - interval '17 minutes', now() - interval '17 minutes' + interval '2 seconds'),
+  ('10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000001',
+   '40000000-0000-0000-0000-000000000001', gen_random_uuid(),
+   'desconocido', 'sha256:' || encode(digest('etiqueta-mojada-codigo-corrido-x92', 'sha256'), 'hex'),
+   left('etiqueta-mojada-codigo-corrido-x92', 24), null,
+   false, now() - interval '16 minutes', now() - interval '16 minutes' + interval '2 seconds'),
+  ('10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000001',
+   '40000000-0000-0000-0000-000000000001', gen_random_uuid(),
+   'flex_qr', '99887766554', null, '99887766554',
+   false, now() - interval '15 minutes', now() - interval '15 minutes' + interval '2 seconds');
+
+-- 8.4 S2 — 29 resueltos propios de MercadoSur (posiciones 1-29 de su pool).
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
+  posterior_al_cierre, escaneado_en, recibido_en, resuelto_en
+)
+select
+  '10000000-0000-0000-0000-000000000001',
+  '9a7c0000-0000-0000-0000-000000000002',
+  '40000000-0000-0000-0000-000000000001',
+  gen_random_uuid(),
+  case when rp.tipo = 'flex' then 'flex_qr' else 'rutax_interno' end::operacion.formato_codigo_bulto,
+  coalesce(rp.ml_shipment_id, rp.codigo_interno),
+  rp.ml_shipment_id,
+  rp.pedido_id,
+  rp.seller_id,
+  false,
+  ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
+from (
+  select *, row_number() over (order by orden_seller) as rn
+  from _retiro_pool
+  where seller_id = '30000000-0000-0000-0000-000000000002'
+    and orden_seller between 1 and 29
+) rp
+cross join lateral (
+  select (now() - interval '1 minute') - ((29 - rp.rn) * interval '25 seconds') as valor
+) ts;
+
+-- El bulto AJENO de S2: `seller_id` sale del PEDIDO (FalabellaTech, posición 44
+-- del SU pool), no de la bodega que se visita (MercadoSur) — exactamente el
+-- descuadre que el retiro existe para destapar. El trigger
+-- `bultos_retiro_validar_denormalizados` lo permite: solo exige que
+-- `seller_id` coincida con `pedidos.seller_id`, nunca con el dueño de la bodega.
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
+  posterior_al_cierre, escaneado_en, recibido_en, resuelto_en
+)
+select
+  '10000000-0000-0000-0000-000000000001',
+  '9a7c0000-0000-0000-0000-000000000002',
+  '40000000-0000-0000-0000-000000000001',
+  gen_random_uuid(),
+  case when rp.tipo = 'flex' then 'flex_qr' else 'rutax_interno' end::operacion.formato_codigo_bulto,
+  coalesce(rp.ml_shipment_id, rp.codigo_interno),
+  rp.ml_shipment_id,
+  rp.pedido_id,
+  rp.seller_id,
+  false,
+  now() - interval '30 seconds', now() - interval '28 seconds', now() - interval '28 seconds'
+from _retiro_pool rp
+where rp.seller_id = '30000000-0000-0000-0000-000000000001' and rp.orden_seller = 44;
+
+-- 8.5 S3 — ABIERTA: 49 resueltos de TecnoHogar (posiciones 1-49 de su pool) +
+--     1 ilegible. Último escaneo hace <1 minuto: es la visita "viva ahora".
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
+  posterior_al_cierre, escaneado_en, recibido_en, resuelto_en
+)
+select
+  '10000000-0000-0000-0000-000000000001',
+  '9a7c0000-0000-0000-0000-000000000003',
+  '40000000-0000-0000-0000-000000000001',
+  gen_random_uuid(),
+  case when rp.tipo = 'flex' then 'flex_qr' else 'rutax_interno' end::operacion.formato_codigo_bulto,
+  coalesce(rp.ml_shipment_id, rp.codigo_interno),
+  rp.ml_shipment_id,
+  rp.pedido_id,
+  rp.seller_id,
+  false,
+  ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
+from (
+  select *, row_number() over (order by orden_seller) as rn
+  from _retiro_pool
+  where seller_id = '30000000-0000-0000-0000-000000000003'
+    and orden_seller between 1 and 49
+) rp
+cross join lateral (
+  select (now() - interval '1 minute') - ((49 - rp.rn) * interval '12 seconds') as valor
+) ts;
+
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, muestra_codigo,
+  posterior_al_cierre, escaneado_en, recibido_en
+) values (
+  '10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000003',
+  '40000000-0000-0000-0000-000000000001', gen_random_uuid(),
+  'desconocido', 'sha256:' || encode(digest('codigo-barras-borroso-camara-sucia', 'sha256'), 'hex'),
+  left('codigo-barras-borroso-camara-sucia', 24),
+  false, now() - interval '30 seconds', now() - interval '30 seconds' + interval '2 seconds'
+);
+
+-- 8.6 S4 — ABIERTA y ESTALE: 16 resueltos de FalabellaTech (posiciones 28-43
+--     de su pool — SIGUEN a los 27 que ya tomó S1). El ÚLTIMO escaneo queda
+--     fijo en `now() - 25 minutos` EXACTO: es el caso "no reporta hace rato"
+--     que el aviso de la pantalla necesita, mientras S3 sigue viva — dos
+--     conductores retirando en paralelo en este mismo instante.
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
+  posterior_al_cierre, escaneado_en, recibido_en, resuelto_en
+)
+select
+  '10000000-0000-0000-0000-000000000001',
+  '9a7c0000-0000-0000-0000-000000000004',
+  '40000000-0000-0000-0000-000000000002',
+  gen_random_uuid(),
+  case when rp.tipo = 'flex' then 'flex_qr' else 'rutax_interno' end::operacion.formato_codigo_bulto,
+  coalesce(rp.ml_shipment_id, rp.codigo_interno),
+  rp.ml_shipment_id,
+  rp.pedido_id,
+  rp.seller_id,
+  false,
+  ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
+from (
+  select *, row_number() over (order by orden_seller) as rn
+  from _retiro_pool
+  where seller_id = '30000000-0000-0000-0000-000000000001'
+    and orden_seller between 28 and 43
+) rp
+cross join lateral (
+  select (now() - interval '25 minutes') - ((16 - rp.rn) * interval '90 seconds') as valor
+) ts;
+
+-- 8.7 S5 — 22 resueltos de TecnoHogar (posiciones 50-71 de su pool — SIGUEN a
+--     los 49 que ya tomó S3). Acta limpia, sin sin_resolver.
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
+  posterior_al_cierre, escaneado_en, recibido_en, resuelto_en
+)
+select
+  '10000000-0000-0000-0000-000000000001',
+  '9a7c0000-0000-0000-0000-000000000005',
+  '40000000-0000-0000-0000-000000000003',
+  gen_random_uuid(),
+  case when rp.tipo = 'flex' then 'flex_qr' else 'rutax_interno' end::operacion.formato_codigo_bulto,
+  coalesce(rp.ml_shipment_id, rp.codigo_interno),
+  rp.ml_shipment_id,
+  rp.pedido_id,
+  rp.seller_id,
+  false,
+  ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
+from (
+  select *, row_number() over (order by orden_seller) as rn
+  from _retiro_pool
+  where seller_id = '30000000-0000-0000-0000-000000000003'
+    and orden_seller between 50 and 71
+) rp
+cross join lateral (
+  select (now() - interval '9 minutes') - ((22 - rp.rn) * interval '50 seconds') as valor
+) ts;
+
+-- 8.8 S6 — tenant AISLADO (Andes Express): 4 bultos, los CUATRO sin resolver
+--     (2 ilegibles + 2 `flex_qr` sin match — realista: este tenant nunca
+--     conectó Mercado Libre, así que Rutax no tiene con qué casar nada).
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, muestra_codigo, ml_shipment_id,
+  posterior_al_cierre, escaneado_en, recibido_en
+) values
+  ('14000000-0000-0000-0000-000000000101', '9a7c0000-0000-0000-0000-000000000006',
+   '41000000-0000-0000-0000-000000000101', gen_random_uuid(),
+   'desconocido', 'sha256:' || encode(digest('andes-caja-sin-etiqueta-visible', 'sha256'), 'hex'),
+   left('andes-caja-sin-etiqueta-visible', 24), null,
+   false, now() - interval '18 minutes', now() - interval '18 minutes' + interval '2 seconds'),
+  ('14000000-0000-0000-0000-000000000101', '9a7c0000-0000-0000-0000-000000000006',
+   '41000000-0000-0000-0000-000000000101', gen_random_uuid(),
+   'desconocido', 'sha256:' || encode(digest('andes-sticker-despegado-solo-cinta', 'sha256'), 'hex'),
+   left('andes-sticker-despegado-solo-cinta', 24), null,
+   false, now() - interval '16 minutes', now() - interval '16 minutes' + interval '2 seconds'),
+  ('14000000-0000-0000-0000-000000000101', '9a7c0000-0000-0000-0000-000000000006',
+   '41000000-0000-0000-0000-000000000101', gen_random_uuid(),
+   'flex_qr', '77665544332', null, '77665544332',
+   false, now() - interval '14 minutes', now() - interval '14 minutes' + interval '2 seconds'),
+  ('14000000-0000-0000-0000-000000000101', '9a7c0000-0000-0000-0000-000000000006',
+   '41000000-0000-0000-0000-000000000101', gen_random_uuid(),
+   'flex_qr', '66554433221', null, '66554433221',
+   false, now() - interval '12 minutes', now() - interval '12 minutes' + interval '2 seconds');
+
+-- 8.9 Cierre — SIEMPRE por la función real, nunca a mano: es la única que
+--     congela el acta Y marca `situacion_retiro = 'retirado'` en los pedidos
+--     casados, en una sola transacción. S3 y S4 se quedan abiertas a propósito.
+select * from operacion.cerrar_sesion_retiro(
+  '10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000001',
+  '40000000-0000-0000-0000-000000000001');
+select * from operacion.cerrar_sesion_retiro(
+  '10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000002',
+  '40000000-0000-0000-0000-000000000001');
+select * from operacion.cerrar_sesion_retiro(
+  '10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000005',
+  '40000000-0000-0000-0000-000000000003');
+select * from operacion.cerrar_sesion_retiro(
+  '14000000-0000-0000-0000-000000000101', '9a7c0000-0000-0000-0000-000000000006',
+  '41000000-0000-0000-0000-000000000101');
+
+-- 8.10 El escaneo POSTERIOR AL CIERRE de S2 — llega después de §8.9, con la
+--     sesión ya `cerrada`: el trigger exige `posterior_al_cierre = true` para
+--     aceptarlo (si no, 23514). No mueve el acta (ya está firmada): los
+--     contadores VIVOS de S2 quedan en 31/30/1 mientras el acta sigue en
+--     30/30/0 — el mismo bulto sirve también de `flex_qr` sin resolver.
+insert into operacion.bultos_retiro (
+  tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
+  codigo_formato, codigo_normalizado, ml_shipment_id,
+  posterior_al_cierre, escaneado_en, recibido_en
+) values (
+  '10000000-0000-0000-0000-000000000001', '9a7c0000-0000-0000-0000-000000000002',
+  '40000000-0000-0000-0000-000000000001', gen_random_uuid(),
+  'flex_qr', '88776655443', '88776655443',
+  true, now(), now()
+);
+
+drop table _retiro_pool;
 drop table _torre_plan;
 
 commit;
@@ -579,6 +983,20 @@ commit;
 --     todavía en `en_ruta` → la Torre va por delante de `/operaciones`, a propósito
 --   4 bodegas geocodificadas HOY (3 de seller, en las comunas de mayor carga del
 --     día, + 1 anexo del courier). Ninguna principal: esas las marca `seed.sql`
+--   6 sesiones de retiro (§8): 4 CERRADAS por la función real
+--     (`operacion.cerrar_sesion_retiro`) + 2 ABIERTAS ahora mismo (dos
+--     conductores retirando en paralelo, uno de ellos "sin reportar hace
+--     25 min"). Un conductor con TRES visitas el mismo día (el caso real:
+--     30+30+~50 bultos en tres bodegas de sellers distintos). 153 bultos:
+--     resueltos + ilegibles + `flex_qr` sin match + UN bulto de un seller
+--     ajeno a la bodega visitada + UN escaneo posterior al cierre (los
+--     contadores vivos ya no coinciden con el acta). Comuna de destino
+--     Santiago dominante, repartida en el resto. Una sesión + sus 4 bultos
+--     (todos sin resolver) viven en Andes Express — tenant AISLADO del
+--     principal, para que una fuga de `tenant_id` se note en la pantalla.
+--     `operacion.pedidos.situacion_retiro` queda `retirado` para todo pedido
+--     casado con un bulto de una sesión CERRADA — nunca a mano, siempre por
+--     la función. `operacion.bultos_retiro_qr` NO se siembra (deny-all).
 --
 -- Cruza 1.000 filas A PROPÓSITO: es el tope en que PostgREST trunca sin avisar,
 -- y contar pedidos por comuna es exactamente el patrón que ese tope arruina. Si

@@ -62,18 +62,19 @@ migración `20260813000002`. Ver la sección de las etapas 2 y 2b.
 | **Campo `situacion_retiro`** | `20260812000002` — enum, columna, `retirado_en`, CHECK, índice parcial, pgTAP |
 | **Cancelación desde ML** | Detección, evento tipado, aplicación del estado, desactivación de la parada, incidencia y dinero: **todo hecho**. Faltan solo tres cosas (ver Etapa 10) |
 | **Re-atribución de línea de liquidación** | `reatribucion-liquidacion.ts` + `generar-lineas.ts:950-1037` + migración `20260812000001`. **La regla "quien entrega cobra la entrega" ya la impone el código** |
-| **Etapas 2 y 2b** — bodegas del seller y del courier | 2026-08-13, **sin desplegar**. Migración `20260813000002` + 35 pgTAP. Ver sección propia más abajo |
+| **Etapas 2 y 2b** — bodegas del seller y del courier | 2026-08-13, **desplegadas**. Migración `20260813000002` + 35 pgTAP. Ver sección propia más abajo |
 | **Regresión de conciliación** (encontrada al verificar la etapa 2) | `20260812000001` repuso el CHECK copiando la lista **anterior** al 11-ago y borró `linea_liquidacion_sin_pedido_entregado`. Restituida por `20260813000003`. Ver más abajo |
 | **Guardia contra cobro fantasma** | `pedidos.ts:727-731`: un pedido que llega a `entregado`/`fallido` **sin conductor asignado en Rutax** refleja el estado pero **no publica el evento de dinero**. Acotado a los estados automáticos; los manuales siguen facturando |
 
-## ⚠️ El campo `situacion_retiro` está instalado pero INERTE
+## ~~El campo `situacion_retiro` está instalado pero INERTE~~ — resuelto por las etapas 3, 4 y 5
 
-Esquema, índice, tipo y pgTAP existen. Pero **nadie lo escribe, ninguna consulta lo filtra y ninguna
-pantalla lo muestra** — los helpers de interfaz están escritos y no los importa nadie.
+Lo escriben las dos funciones `security definer` de `20260813000004` (`cerrar_sesion_retiro` y
+`resolver_bulto_retiro`, sus únicos escritores), la app del conductor lo produce escaneando, y desde
+la etapa 5 la pantalla de Preparación lo muestra. Quedaba un solo hueco —el escaneo posterior al
+cierre, que no llegaba a `retirado`— cerrado en el desvío de la etapa 5.
 
-Consecuencia que fija el orden de trabajo: los pedidos Flex reales nacieron en `pendiente` y **no hay
-ningún camino para llevarlos a `retirado`** hasta que exista la etapa 3. **La etapa 6 no se puede
-encender antes que la 3**, o la bandeja de asignación se ve vacía.
+Sigue en pie la dependencia de orden: **la etapa 6 no se puede encender sin la 3**, o la bandeja de
+asignación se ve vacía.
 
 ## Lo que queda de la etapa 1
 
@@ -97,8 +98,9 @@ encender antes que la 3**, o la bandeja de asignación se ve vacía.
    Corregidas en `1ac92ce` (logging), `c349cc6` (reintento que fuerza la consulta) y `b6861d2` (el
    `error_message` de Google, que nombra cuál de las cuatro causas de `REQUEST_DENIED` es).
 
-   ⚠️ **Queda pendiente:** poner un presupuesto con alerta en Google Cloud. Hoy son decenas de
-   llamadas, pero a 1.000 pedidos/día el alcance estima ~US$150/mes por courier si el caché no pega.
+   ✅ **Presupuesto con alerta en Google Cloud: puesto por el usuario (2026-08-13).** Era el último
+   cabo de este punto. Sigue en pie la aritmética que lo motivaba: hoy son decenas de llamadas, pero
+   a 1.000 pedidos/día el alcance estima ~US$150/mes por courier si el caché no pega.
 
 2. ~~**Límite de concurrencia del job de geocoding.**~~ **HECHO (2026-08-13, commit `6212740`):**
    `concurrency: 5` y `timeoutMs: 15_000`. Ojo con el porqué, que no es el que decía este plan: el
@@ -117,7 +119,7 @@ encender antes que la 3**, o la bandeja de asignación se ve vacía.
 
 # Las etapas
 
-## Etapas 2 y 2b · Bodegas — ✅ **HECHAS (2026-08-13), sin desplegar**
+## Etapas 2 y 2b · Bodegas — ✅ **HECHAS Y DESPLEGADAS (2026-08-13)**
 
 Se construyeron juntas. Migración `20260813000002_identidad_bodegas_seller_courier.sql`, aplicada
 desde cero tres veces y con **35 pgTAP** de aislamiento verdes.
@@ -204,7 +206,7 @@ encogió la lista. Barrido de las 8 declaraciones históricas: **hubo una sola p
 sobre todo si hay líneas de liquidación vivas de pedidos cancelados con liquidación ya emitida o
 pagada — eso es plata que debió quedar bloqueada. La consulta está preparada.
 
-## Etapa 3 · Retiro: base de datos y API — ✅ **HECHA (2026-08-13), sin desplegar**
+## Etapa 3 · Retiro: base de datos y API — ✅ **HECHA Y DESPLEGADA (2026-08-13)**
 
 Migración `20260813000004` (3 tablas, 2 funciones, 62 pgTAP nuevas → 706 en total) y la capa de API
 en `src/modules/operacion/retiro/` + `src/app/api/conductor/retiros/` (116 pruebas). **`situacion_retiro`
@@ -269,7 +271,7 @@ sus fotos. Y devuelve 403 ante cualquier error, enmascarando fallas internas.
 **Quién.** `arquitecto` → `base-datos-rls` → `backend` → `qa` · **Esfuerzo.** **7–9 días**
 (el plan decía 5–7; la diferencia es el andamiaje de pruebas por endpoint, que hay que armar igual).
 
-## Etapa 4 · El retiro en la app del conductor — ✅ **CONSTRUIDA (2026-08-13), sin probar en dispositivo**
+## Etapa 4 · El retiro en la app del conductor — ✅ **HECHA, DESPLEGADA Y PROBADA EN IPHONE REAL (2026-08-13)**
 
 Repo `rutax-conductor`, commits `821439b` (los cuatro arreglos de la cola) y `21a6561` (el módulo).
 44 pruebas verdes, typecheck limpio.
@@ -344,26 +346,102 @@ jamás.**
 funcionar sin capacitación. Probar el escaneo en un iPhone físico. Y ojo con la batería: desmontar la
 cámara entre bultos.
 
-## Etapa 5 · Preparación del día — **queda todo, y depende de la 3 y la 4**
+## Etapa 5 · Preparación del día — ✅ **CONSTRUIDA (2026-08-13/14), sin desplegar**
 
-Pantalla en vivo en `(tenant)`, dentro de `operacion` — **no** en `contexto`: la Torre es de solo
-lectura por regla dura y ésta escribe. Retiros en curso, acumulado por comuna creciendo solo, y la
-asignación ahí mismo.
+Pantalla en vivo en `(tenant)/preparacion`, dentro de `operacion` — **no** en `contexto`: la Torre
+es de solo lectura por regla dura y ésta escribe (en la etapa 6; hoy todavía no). Retiros en curso,
+acumulado por comuna creciendo solo, y el enlace a la asignación.
 
-**Tres arreglos obligatorios, los tres verificados:**
+Diseño completo en **`docs/ux/etapa-5-preparacion-del-dia.md`** — siete estados de pantalla, los
+textos exactos, los wireframes y los criterios de aceptación.
 
-- **Tope máximo de espera en el refresco en vivo.** `indicador-en-vivo.tsx:58-61` es un debounce puro
-  sin `maxWait`: cada evento cancela el anterior. Con lotes de escaneo entrando cada menos de 800 ms
-  sostenidos, no dispara nunca. *(Corrección al plan anterior: dije "congelada minutos" y era
-  dramatización — hace falta flujo sostenido. El defecto es real, el arreglo es el mismo.)* Son ~6
-  líneas y **arregla las seis pantallas que lo usan**.
-- **Migración de publicación en vivo para las tablas nuevas.** Hoy solo hay tres tablas publicadas
-  (`pedidos`, `incidencias`, `manifiestos`). Sin eso el "en vivo" no emite nada y **falla en
-  silencio**.
-- **Agregación por comuna en la base.** Hoy **no existe ninguna función de agregación**: todo se
-  cuenta en memoria. De paso elimina el truncamiento silencioso.
+**Los tres arreglos obligatorios: hechos.**
 
-**Quién.** `ux-ui` → `frontend` + `backend` · **Esfuerzo.** 5–6 días.
+- **Tope máximo de espera en el refresco en vivo.** `indicador-en-vivo.tsx` era un debounce puro:
+  cada evento cancelaba el anterior, así que bajo ráfaga sostenida —diez conductores escaneando— la
+  pantalla se quedaba congelada **diciendo "En vivo"**, que es la peor forma de fallar. Extraído a
+  `src/components/tiempo-real/programador-refresco.ts` con techo de 4 s. **Se sacó del componente a
+  un módulo propio por una razón que se repite:** Vitest corre en entorno `node` y solo recoge
+  `src/**/*.test.ts`, así que un defecto que viva dentro de un `.tsx` **no se puede probar**. Lleva
+  9 pruebas, una de ellas la **contraprueba** que reconstruye el comportamiento anterior (tope
+  infinito) y confirma que no dispara nunca — sin ese caso, la prueba de la ráfaga podría estar
+  pasando por vacuidad. Arregla las seis pantallas que lo usan.
+- **Publicación en vivo de las tablas nuevas.** `20260813000005`. Con tres aserciones permanentes:
+  que `bultos_retiro_qr` **nunca** entre a la publicación (es deny-all; publicarla filtraría el
+  payload del QR por WAL), que `authenticated` conserve el `SELECT` (sin él Realtime no entrega
+  eventos aunque la tabla esté publicada, y **falla mudo**), y un control positivo.
+- **Agregación en la base.** `20260813000006`: `operacion.preparacion_visitas_del_dia` y
+  `operacion.preparacion_carga_por_comuna`, ambas `security definer` con el tenant **por parámetro
+  y no por claim**, sin `EXECUTE` para ningún rol de cliente. 46 pgTAP nuevas (752 en total).
+  ⚠️ **La comuna se agrupa por `lower(btrim(...))`, no por el texto crudo**: los pedidos Flex
+  guardan la comuna tal como la manda ML, sin canonizar, así que un `group by` directo parte "Maipú"
+  y "MAIPU" en dos zonas. Los acentos los unifica la capa de lectura contra `COMUNAS_RM` — son ~30
+  filas, se fusionan exactas, y `unaccent` no está instalada en este proyecto.
+
+**Capacidad propia `ver_preparacion_dia`** (dueño, supervisor, coordinador; **NO** administración,
+mismo corte que la Torre). Se evaluó reusar `asignar_y_reasignar_pedidos`: da el mismo trío de
+roles, así que la discusión era de nombre — y por eso se resolvió a favor de la claridad, porque un
+gate llamado "asignar y reasignar pedidos" sobre una pantalla que hoy no deja mover un solo pedido
+miente sobre lo que concede. Descartada también la disyunción `esOperativo` del layout: significa
+"es alguien de operación", no "puede ver esta pantalla", y cambia de sentido en silencio si alguna
+de sus tres capacidades se reparte distinto.
+
+**La trampa central de la pantalla, y cómo se resolvió.** El aviso de "hace cuánto no reporta" NO
+se puede calcular en el servidor: la pantalla se refresca por señal de tiempo real, y el caso que
+hay que detectar —un conductor que dejó de escanear— es justamente **el que no genera ningún
+evento**. Calculado en servidor, el "hace 3 min" se congela en 3 min para siempre. El reloj corre
+en el cliente con su propio `setInterval`, umbral de 10 minutos, y mide sobre `recibido_en` (reloj
+del servidor) y no `escaneado_en` (reloj del dispositivo): un teléfono con la hora mal puesta no
+puede disparar una alarma falsa.
+
+**Los seeds ahora siembran retiro** (`seed-torre-hoy.sql` §8): 6 visitas y 153 bultos anclados a
+hoy, con visitas abiertas y cerradas, ambos tipos de bulto sin resolver, un bulto de seller ajeno,
+un conductor sin reportar hace 25 minutos, un escaneo posterior al cierre, y una visita en **otro
+tenant** como cable trampa. Las visitas se cierran llamando a la función real
+`cerrar_sesion_retiro()`, nunca calculando el acta a mano.
+
+**La franja de magnitudes cuenta lo VIVO, no el acta** — corregido al verificar la pantalla contra
+datos reales. La primera versión usaba el acta para las visitas cerradas, con el argumento correcto
+de que el acta es un documento firmado. Pero produce una contradicción **visible en la misma
+pantalla**: la franja decía "4 bultos no se pudieron identificar todavía" mientras "Carga por
+comuna", veinte líneas más abajo, mostraba "Sin comuna conocida · 5 bultos" — porque ese bloque
+cuenta bultos vivos. Son dos cifras de lo mismo discrepando a la vista, que es como se pierde la
+confianza en una pantalla. El acta manda donde le corresponde: en la tarjeta de la visita, con su
+línea "+ N escaneados después de cerrar · no se suman al acta".
+
+**Verificado contra datos reales en local**: el servidor renderiza la pantalla completa en ~530 ms;
+las cifras de la franja (149 bultos, 5 sin identificar) cuadran exactamente con la suma del bloque
+de comunas; las tres situaciones difíciles salen bien (acta con escaneo posterior, bulto de otro
+seller, bultos sin pedido); y `administracion` recibe el bloque de "sin permiso" **y** no ve el
+enlace en el menú — las dos capas. ⚠️ **No hubo QA visual**: el panel del navegador de esa sesión
+no se estaba mostrando, así que no compone frames y no se pudieron tomar capturas. Queda pendiente
+mirarla con ojos humanos, sobre todo en móvil.
+
+## Desvío · El escaneo posterior al cierre que dejaba el pedido en `pendiente`
+
+Encontrado al construir esta etapa, y confirmado en código. Un bulto que se casa con su pedido
+**después** de que la visita cerró quedaba con su `pedido_id` puesto y el pedido en
+`situacion_retiro = 'pendiente'` para siempre.
+
+`operacion.resolver_bulto_retiro()` existía desde `20260813000004` **exactamente para esto** —su
+propio comentario advierte que "sin ese segundo paso... eso se descubre en producción"— y **no la
+llamaba nadie**: su único llamador en todo el repo era su propia prueba.
+
+**Por qué importaba:** el bulto está arriba de la van y cuenta en la carga por comuna de la etapa 5,
+pero su pedido nunca llega a `retirado`, así que no aparece en la bandeja de asignación de la etapa
+6. Dos pantallas vecinas con números que no cuadran. Y el caso no es raro: la señal en bodega es
+mala, el conductor cierra la visita adentro y la cola sin conexión drena cuando sale a la calle —
+ese lote entero llega `posterior_al_cierre`.
+
+**Cableado en `escaneos.ts`, con dos decisiones que se rompen fácil al tocarlas:** la llamada va
+**fuera** del bloque de "solo el recién insertado", porque el reintento del lote entra siempre por
+la rama de fusión y ahí dentro un fallo no tendría segunda oportunidad; y es **best-effort**, porque
+el bulto ya está confirmado y devolver `rechazado` por algo que sí se escribió lo dejaría atascado
+en la cola del conductor sin arreglar el pedido igual.
+
+⚠️ **El doble de prueba de `escaneos.test.ts` no soportaba `.rpc()`**, así que el arreglo habría
+fallado en silencio con las pruebas en verde. Ahora **lanza ante cualquier RPC o esquema
+inesperado**, y se comprobó que los tres casos nuevos caen si se desactiva el arreglo.
 
 ## Etapa 6 · Asignación en bloque
 
@@ -490,6 +568,11 @@ emitida sin documento. Es el papel con el que el conductor discute su plata.
 
 **Dependencia dura:** **no se puede construir antes que la etapa 3** — la línea cuelga de la tabla de
 visitas, y el CHECK cruzado la necesita.
+
+⚠️ **Pendiente del usuario, no de código: cargar los datos bancarios de los conductores.** Anotado el
+2026-08-13 a petición suya. No bloquea escribir la etapa, pero **sí bloquea demostrarla**: una línea
+de liquidación que no se puede pagar no cierra el ciclo, y el payout a conductor ya mordió una vez
+por una columna faltante. Conviene tenerlos cargados antes de empezar, no al final.
 
 **Esfuerzo.** **6–8 días** (el plan decía 5–6).
 
