@@ -77,14 +77,28 @@ encender antes que la 3**, o la bandeja de asignación se ve vacía.
 
 ## Lo que queda de la etapa 1
 
-1. 🚨 **El geocoding de Google NUNCA funcionó en producción** (descubierto el 2026-08-13 al cargar
+1. ✅ **RESUELTO el 2026-08-13 — pero conviene saber que estuvo muerto todo este tiempo.** Se
+   habilitó la facturación en Google Cloud y la primera dirección se ubicó. Lo que sigue es el
+   registro de por qué nadie lo había notado. **El geocoding de Google NUNCA había funcionado en
+   producción** (descubierto el 2026-08-13 al cargar
    la primera bodega). Google responde `REQUEST_DENIED` con *"You must enable Billing on the Google
    Cloud Project"*: la Geocoding API exige facturación habilitada aunque se esté dentro del crédito
    gratuito. **Nadie lo había notado porque ningún camino de producción llamaba a Google**: los
    pedidos Flex traen coordenada de Mercado Libre, y el único consumidor real del geocoder eran las
    bodegas, que no existían hasta hoy. ⚠️ **Prerrequisito duro de la etapa 7**: sin esto, ni la
    bodega del courier tiene coordenada (y es el origen de toda ruta) ni los pedidos same-day se
-   pueden ubicar. Se arregla en Google Cloud, sin tocar código.
+   pueden ubicar.
+
+   **Lo que costó encontrarlo, porque el patrón se repite:** la pantalla decía "revisa que la
+   dirección esté bien escrita" y la dirección era correcta; el `catch` del geocoding estaba VACÍO,
+   así que no había error en ningún log; y al ponerle logging **seguía sin aparecer nada** — porque
+   el caché guarda también los `no_resuelto` y el botón de reintentar devolvía el fallo cacheado sin
+   llamar a nadie. Tres capas de silencio encima de un error que, una vez visible, se leía solo.
+   Corregidas en `1ac92ce` (logging), `c349cc6` (reintento que fuerza la consulta) y `b6861d2` (el
+   `error_message` de Google, que nombra cuál de las cuatro causas de `REQUEST_DENIED` es).
+
+   ⚠️ **Queda pendiente:** poner un presupuesto con alerta en Google Cloud. Hoy son decenas de
+   llamadas, pero a 1.000 pedidos/día el alcance estima ~US$150/mes por courier si el caché no pega.
 
 2. ~~**Límite de concurrencia del job de geocoding.**~~ **HECHO (2026-08-13, commit `6212740`):**
    `concurrency: 5` y `timeoutMs: 15_000`. Ojo con el porqué, que no es el que decía este plan: el
