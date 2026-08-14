@@ -79,6 +79,15 @@ encender antes que la 3**, o la bandeja de asignación se ve vacía.
 
 1. **Límite de concurrencia del job de geocoding.** Los jobs de ML sí lo declaran; el de geocoding
    solo tiene idempotencia. A 1.000 pedidos son 1.000 ejecuciones concurrentes contra Google.
+0. 🚨 **El geocoding de Google NUNCA funcionó en producción** (descubierto el 2026-08-13 al cargar
+   la primera bodega). Google responde `REQUEST_DENIED` con *"You must enable Billing on the Google
+   Cloud Project"*: la Geocoding API exige facturación habilitada aunque se esté dentro del crédito
+   gratuito. **Nadie lo había notado porque ningún camino de producción llamaba a Google**: los
+   pedidos Flex traen coordenada de Mercado Libre, y el único consumidor real del geocoder eran las
+   bodegas, que no existían hasta hoy. ⚠️ **Prerrequisito duro de la etapa 7**: sin esto, ni la
+   bodega del courier tiene coordenada (y es el origen de toda ruta) ni los pedidos same-day se
+   pueden ubicar. Se arregla en Google Cloud, sin tocar código.
+
 2. **Backfill de geocoding de los pedidos viejos.** ⬆️ **Sube a prerrequisito de la etapa 7.** Los
    Flex nuevos entran con coordenada de ML, pero los anteriores al 11-ago guardan el **centroide de
    su comuna marcado como resuelto**, y el job es no-op salvo que el estado sea `pendiente`: hay que
