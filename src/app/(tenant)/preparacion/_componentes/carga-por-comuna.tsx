@@ -10,8 +10,15 @@
  * otra vez acá duplicaría esa regla en dos capas que podrían desincronizarse.
  * Tampoco es un `reduce` sobre una consulta paginada (§16): el arreglo ya
  * llegó agregado y completo desde la base.
+ *
+ * Cada fila con comuna conocida enlaza a `/preparacion/asignar?comuna=X`
+ * (etapa-6-asignacion-en-bloque.md §2.2 — "se cierra un pendiente" de la
+ * etapa 5, que dejó esto sin destino porque esa ruta todavía no existía).
+ * "Sin comuna conocida" NO enlaza: no es un valor de filtro válido en la
+ * bandeja de asignación.
  */
 
+import Link from "next/link";
 import type { CargaComunaRetiro } from "@/modules/operacion/retiro/preparacion";
 import { pluralizar } from "../_lib/estado-preparacion";
 
@@ -44,8 +51,8 @@ export function CargaPorComuna({
         <ul className="divide-y divide-border rounded-lg border border-border">
           {filas.map((fila) => {
             const porAsignar = fila.bultosTotal - fila.bultosAsignados;
-            return (
-              <li key={fila.comuna ?? "__sin_comuna__"} className="px-3 py-2.5">
+            const contenido = (
+              <>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-sm font-medium">{fila.comuna ?? "Sin comuna conocida"}</span>
                   <span className="text-sm tabular-nums whitespace-nowrap">
@@ -61,6 +68,21 @@ export function CargaPorComuna({
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     No se identificaron contra ningún pedido.
                   </p>
+                )}
+              </>
+            );
+
+            return (
+              <li key={fila.comuna ?? "__sin_comuna__"}>
+                {fila.comuna !== null ? (
+                  <Link
+                    href={`/preparacion/asignar?comuna=${encodeURIComponent(fila.comuna)}`}
+                    className="block px-3 py-2.5 transition-colors hover:bg-muted/50"
+                  >
+                    {contenido}
+                  </Link>
+                ) : (
+                  <div className="px-3 py-2.5">{contenido}</div>
                 )}
               </li>
             );

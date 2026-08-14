@@ -10,12 +10,13 @@
  *   - Marcar no disponible + redistribuir paradas.
  *
  * El botón "Auto-asignar pendientes del día" que vivía aquí (duplicado del
- * de `../manifiestos/boton-auto-asignar.tsx`) se retiró el 2026-08-12 —
- * Etapa 0 de `docs/arquitectura/retiro-y-ruteo-plan.md`. Ver el comentario
- * de cabecera de `src/modules/operacion/auto-asignacion.ts` para el porqué.
- * "Marcar no disponible + redistribuir" es una función DISTINTA y sigue
- * activa: solo mueve las paradas de un conductor puntual, no barre pedidos
- * sueltos del día.
+ * que tenía la vista de manifiestos) se retiró el 2026-08-12 — Etapa 0 de
+ * `docs/arquitectura/retiro-y-ruteo-plan.md` — y todo el camino de
+ * auto-asignación en bloque se eliminó por completo el 2026-08-14. Ver el
+ * comentario de cabecera de `src/modules/operacion/auto-asignacion.ts` para
+ * el porqué. "Marcar no disponible + redistribuir" es una función DISTINTA y
+ * sigue activa: solo mueve las paradas de un conductor puntual, no barre
+ * pedidos sueltos del día.
  *
  * Patrón reutilizado de panel-zonas.tsx: estado local inicializado desde
  * server component, server actions para mutaciones, diseño de cards.
@@ -331,15 +332,16 @@ function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }
 }
 
 // =============================================================================
-// Botón auto-asignar pendientes del día — RETIRADO (2026-08-12)
+// Botón auto-asignar pendientes del día — RETIRADO (2026-08-12), y todo el
+// camino de auto-asignación en bloque ELIMINADO (2026-08-14)
 // =============================================================================
 //
-// Vivía aquí un botón duplicado del de `../manifiestos/boton-auto-asignar.tsx`
-// (mismo resultado, dos lugares). La auto-asignación se desactivó en la
-// Etapa 0 de docs/arquitectura/retiro-y-ruteo-plan.md — ver el comentario de
-// cabecera de src/modules/operacion/auto-asignacion.ts para el porqué. El
-// componente oficial se conservó apagado en el archivo de manifiestos; este
-// duplicado, al quedar sin consumidor, se retiró en vez de dejarlo muerto.
+// Vivía aquí un botón duplicado del que tenía la vista de manifiestos (mismo
+// resultado, dos lugares); se retiró primero por quedar sin consumidor. El
+// resto del camino (Server Action, guarda y motor) se desactivó en la
+// Etapa 0 de docs/arquitectura/retiro-y-ruteo-plan.md y se eliminó por
+// completo al quedar inalcanzable — ver el comentario de cabecera de
+// src/modules/operacion/auto-asignacion.ts para el porqué.
 
 // =============================================================================
 // Tarjeta de conductor — toggle disponibilidad, capacidad, zonas, redistribución

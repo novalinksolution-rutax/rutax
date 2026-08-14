@@ -547,19 +547,23 @@ se enlaza a `/manifiestos`. El enunciado original suponía conocer un `id` que h
 limpia de determinar desde esta pantalla, porque el flujo de creación de manifiesto es
 conductor-primero y no acepta comuna como parámetro.
 
-**C. ⚠️ Defecto real, confirmado en código (2026-08-13), no de diseño.** Un bulto que se resuelve
-contra un pedido **después** de que su visita cerró queda guardado (`posterior_al_cierre = true`,
-`pedido_id` puesto) — pero **nada llama a `operacion.resolver_bulto_retiro()`** para propagar eso a
-`operacion.pedidos.situacion_retiro`. Esa función existe exactamente para este caso (su propio
-comentario: *"un escaneo que se resuelve 20 minutos después del cierre... no pasa por
+**C. ✅ Defecto real, encontrado por este diseño y ARREGLADO el 2026-08-14.** Un bulto que se
+resuelve contra un pedido **después** de que su visita cerró quedaba guardado (`posterior_al_cierre
+= true`, `pedido_id` puesto) — pero **nada llamaba a `operacion.resolver_bulto_retiro()`** para
+propagar eso a `operacion.pedidos.situacion_retiro`. Esa función existía exactamente para este caso
+(su propio comentario: *"un escaneo que se resuelve 20 minutos después del cierre... no pasa por
 `cerrar_sesion_retiro` y su pedido se quedaría en `pendiente` para siempre"*) y su único llamador
-en todo el repo es su propia prueba.
+en todo el repo era **su propia prueba**.
 
-Consecuencia directa sobre esta pantalla y la siguiente: el bulto **sí** cuenta en "Carga por
-comuna" (cuelga del bulto), pero su pedido **no** llega nunca a `retirado`, así que no aparecerá en
-la bandeja de asignación de la Etapa 6, que se apoya en ese campo. Dos pantallas vecinas con
-números que no cuadran, y el caso no es raro: la señal en bodega es mala y la cola drena cuando el
-conductor sale. Se arregla en backend, no se disimula en el diseño.
+Consecuencia que tenía: el bulto **sí** contaba en "Carga por comuna" (cuelga del bulto), pero su
+pedido **no** llegaba nunca a `retirado`, así que no habría aparecido en la bandeja de asignación de
+la Etapa 6, que se apoya en ese campo. Dos pantallas vecinas con números que no cuadran, y el caso
+no es raro: la señal en bodega es mala y la cola drena cuando el conductor sale.
+
+Cableado en `escaneos.ts`, **fuera** del bloque de "solo el recién insertado" —el reintento del lote
+entra siempre por la rama de fusión, así que ahí dentro un fallo no tendría segunda oportunidad— y
+como best-effort, porque el bulto ya está confirmado y devolver `rechazado` por algo que sí se
+escribió lo dejaría atascado en la cola del conductor.
 
 **D. "Ya tiene conductor asignado" en Carga por comuna.** Resuelto usando
 `pedidos.driver_id_asignado`, la columna denormalizada, y **no** `asignaciones_pedido.activa`, que

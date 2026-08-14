@@ -1,36 +1,23 @@
 /**
- * Motor de auto-asignación heurístico (F6, ítem 1.3).
+ * Motor heurístico de asignación de pedidos a conductores (F6, ítem 1.3).
  *
- * ⚠️ DESACTIVADA desde 2026-08-12 (Etapa 0 de
- * `docs/arquitectura/retiro-y-ruteo-plan.md`). `autoAsignarPendientesDelDia`
- * barre TODOS los pedidos `pendiente_asignacion` del día sin saber nada de
- * retiros físicos. Está por construirse la ingesta diaria de Mercado Libre,
- * que también va a traer los pedidos que el seller despacha con OTROS
- * couriers; si esta función los mueve a `asignado`, el camino
- * `asignado → en_ruta → entregado` queda habilitado y ML mismo publica esos
- * dos eventos, así que el motor de dinero generaría cobro al seller por
- * entregas que hizo la competencia. Se apaga aquí antes de abrir esa puerta.
+ * Qué vive acá:
+ *   - La heurística pura `elegirConductor` (Sección A).
+ *   - La acción de servidor `marcarConductorNoDisponibleYRedistribuir`
+ *     (Sección B): redistribuye las paradas ABIERTAS de un conductor puntual
+ *     que cae (se marca no disponible) entre el resto del pool. NUNCA barre
+ *     pedidos sueltos del día sin dueño.
  *
- * Qué queda vivo y qué no:
- *   - El botón de la UI (`src/app/(tenant)/manifiestos/boton-auto-asignar.tsx`)
- *     ya no se importa desde ninguna pantalla.
- *   - La Server Action `actionAutoAsignarPendientes`
- *     (`src/app/(tenant)/manifiestos/actions.ts`) tiene una guarda que
- *     rechaza cualquier invocación, directa o no.
- *   - Esta función y la heurística `elegirConductor` quedan intactas debajo,
- *     sin guarda propia — la guarda vive en la Server Action porque hoy es
- *     el único punto de entrada real (no hay cron ni evento Inngest que
- *     dispare este módulo).
- *   - `marcarConductorNoDisponibleYRedistribuir`, más abajo en este mismo
- *     archivo, es una función DISTINTA y SIGUE ACTIVA: solo redistribuye las
- *     paradas que YA estaban asignadas a un conductor puntual que cae, nunca
- *     barre pedidos sueltos del día sin dueño — no reproduce el riesgo de
- *     arriba, así que no se desactiva.
- *
- * Destino: no es apagado permanente. Se ELIMINA (código incluido) cuando la
- * asignación en bloque (Etapa 6 del mismo plan) esté en uso — el
- * coordinador filtra y asigna a mano, la auto-asignación deja de tener
- * motivo de existir. Hasta entonces, queda como camino de vuelta.
+ * Histórico: también vivió acá `autoAsignarPendientesDelDia`, que sí barría
+ * TODOS los pedidos `pendiente_asignacion` del día. Se desactivó el
+ * 2026-08-12 (Etapa 0 de `docs/arquitectura/retiro-y-ruteo-plan.md`) porque
+ * no sabía nada de retiros físicos: con la ingesta diaria de ML habilitada,
+ * habría movido a `asignado` pedidos que el seller despacha con OTROS
+ * couriers, habilitando `asignado → en_ruta → entregado` (ML publica esos
+ * eventos igual) y generando cobro al seller por entregas de la competencia.
+ * Se ELIMINÓ por completo el 2026-08-14: ya era inalcanzable (guarda en la
+ * Server Action, botón sin importar en ninguna pantalla) y su reemplazo
+ * — selección masiva por filtros, Etapa 6 — es la vía que sigue.
  *
  * FRONTERA DURA — este módulo NO es ruteo:
  *   - Asigna pedidos → conductores por reglas discretas (zona, carga, disponibilidad).
@@ -42,8 +29,8 @@
  *
  * Estructura:
  *   - Sección A: función pura `elegirConductor` — heurística sin I/O.
- *   - Sección B: acciones de servidor `autoAsignarPendientesDelDia` y
- *                `marcarConductorNoDisponibleYRedistribuir`.
+ *   - Sección B: acción de servidor `marcarConductorNoDisponibleYRedistribuir`
+ *                y su helper `obtenerCargaPoolDelDia`.
  *
  * Regla de aislamiento: toda consulta filtra por `tenant_id` explícito.
  * El conductor NO se auto-asigna nada — siempre es acción del coordinador/supervisor.
@@ -59,13 +46,13 @@ import {
   crearManifiesto,
   asignarPedidosAManifiesto,
 } from './manifiestos';
+import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
 import { resolverZona } from './zonas';
-import { obtenerImpactoSlaDeReasignacion } from './metricas';
+import { obtenerImpactoSlaDeReasignacion, ESTADOS_TERMINALES_PEDIDO } from './metricas';
 import type {
   Conductor,
   MotivoSinAsignar,
   PedidoSinAsignar,
-  ResultadoAutoAsignacion,
   ResultadoRedistribucion,
   ImpactoSla,
 } from './tipos';
@@ -224,294 +211,62 @@ interface FilaManifiestoResumen {
 }
 
 // -----------------------------------------------------------------------------
-// autoAsignarPendientesDelDia
+// obtenerCargaPoolDelDia
 // -----------------------------------------------------------------------------
 
 /**
- * Auto-asigna los pedidos en estado `pendiente_asignacion` sin asignación
- * activa del día a los conductores disponibles usando la heurística de
- * `elegirConductor`.
+ * Carga actual de cada conductor: SOLO paradas de HOY (`fecha_compromiso`
+ * = `fecha`) que siguen realmente pendientes (pedido fuera de
+ * `ESTADOS_TERMINALES_PEDIDO` — el mismo conjunto que usa el resto del
+ * módulo para "pendientes/en curso", ver `metricas.ts`).
  *
- * Idempotente: re-ejecutar sin pedidos pendientes = no-op (devuelve vacío).
+ * `asignaciones_pedido.activa` NO significa "en curso": significa "esta es
+ * la asignación VIGENTE de este pedido" (lo impone el índice único parcial
+ * `(pedido_id) where activa = true`) y a propósito no se apaga al entregar
+ * — ver `docs/arquitectura/retiro-y-ruteo-plan.md`. Sin el filtro de fecha
+ * + estado, este conteo suma TODO el histórico de asignaciones activas del
+ * conductor, incluidas las de pedidos entregados hace días, y hace creer
+ * que el pool está saturado cuando no lo está.
  *
- * Flujo:
- *   1. RBAC `puedeAsignarYReasignarPedidos`.
- *   2. Lee pedidos del día en `pendiente_asignacion` sin asignación activa.
- *   3. Lee pool: conductores `activo + disponible`, zonas preferentes,
- *      capacidad y carga actual (asignaciones activas del día).
- *   4. Resuelve zona por pedido (RPC `resolver_zona`).
- *   5. Corre la heurística pedido a pedido, actualizando carga EN MEMORIA.
- *   6. Agrupa asignados por conductor → obtiene o CREA su manifiesto borrador
- *      → `asignarPedidosAManifiesto`. Solo manifiestos `borrador`; si el
- *      conductor ya tiene `confirmado`/`en_ruta` del día, es INELEGIBLE.
- *   7. Bitácora ANTES de devolver el resultado (acción de usuario con actor).
- *   8. Devuelve `ResultadoAutoAsignacion`.
- *
- * @param cliente         Cliente Supabase con service_role.
- * @param tenantId        Tenant del courier.
- * @param fecha           Fecha de operación ('YYYY-MM-DD').
- * @param actor           Usuario que dispara la acción (para RBAC).
- * @param actorUsuarioId  UUID de auth del usuario (`sesion.usuarioId`) — RNF-04.
+ * `pedidos!inner(...)` es obligatorio: sin él, el filtro sobre la tabla
+ * embebida NO poda las filas (PostgREST hace LEFT JOIN por defecto y solo
+ * anularía el campo embebido) — ver `manifiestos-same-day.ts:44-51`.
  */
-export async function autoAsignarPendientesDelDia(
+export async function obtenerCargaPoolDelDia(
   cliente: SupabaseClient,
   tenantId: string,
+  driverIds: readonly string[],
   fecha: string,
-  actor: UsuarioActual,
-  actorUsuarioId: string,
-): Promise<ResultadoAutoAsignacion> {
-  // 1. RBAC
-  if (!puedeAsignarYReasignarPedidos(actor)) {
-    throw new ErrorValidacion(
-      'El usuario no tiene capacidad para asignar y reasignar pedidos',
-    );
-  }
-
-  // 2. Pedidos del día en pendiente_asignacion sin asignación activa.
-  //    Usamos subconsulta: pedidos cuyo id NO aparece en asignaciones activas.
-  const { data: filasAsignacionesActivas, error: errAsigActivas } = await cliente
-    .schema('operacion')
-    .from('asignaciones_pedido')
-    .select('pedido_id')
-    .eq('tenant_id', tenantId)
-    .eq('activa', true);
-
-  if (errAsigActivas) {
-    throw new Error(`Error al leer asignaciones activas: ${errAsigActivas.message}`);
-  }
-
-  const idsYaAsignados = new Set(
-    (filasAsignacionesActivas ?? []).map((a: { pedido_id: string }) => a.pedido_id),
-  );
-
-  const { data: filasPedidos, error: errPedidos } = await cliente
-    .schema('operacion')
-    .from('pedidos')
-    .select('id, seller_id, destinatario_comuna')
-    .eq('tenant_id', tenantId)
-    .eq('estado', 'pendiente_asignacion')
-    .eq('fecha_compromiso', fecha);
-
-  if (errPedidos) {
-    throw new Error(`Error al leer pedidos pendientes del día: ${errPedidos.message}`);
-  }
-
-  const pedidosPendientes: FilaPedidoPendiente[] = (filasPedidos ?? []).filter(
-    (p: FilaPedidoPendiente) => !idsYaAsignados.has(p.id),
-  );
-
-  // No-op si no hay pedidos pendientes.
-  if (pedidosPendientes.length === 0) {
-    await _registrarAutoAsignacion(cliente, tenantId, actorUsuarioId, {
-      fecha,
-      pedidosProcesados: 0,
-      asignados: 0,
-      sinAsignar: 0,
-    });
-    return { asignados: [], sinAsignar: [], conductoresAfectados: [] };
-  }
-
-  // 3. Pool de conductores activos + disponibles.
-  const { data: filasConductores, error: errConductores } = await cliente
-    .schema('identidad')
-    .from('conductores')
-    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre')
-    .eq('tenant_id', tenantId)
-    .eq('estado', 'activo')
-    .eq('disponible', true);
-
-  if (errConductores) {
-    throw new Error(`Error al leer conductores disponibles: ${errConductores.message}`);
-  }
-
-  const conductoresRaw: FilaConductor[] = filasConductores ?? [];
-
-  // Zonas preferentes de todos los conductores del pool.
-  const idsConductores = conductoresRaw.map((c) => c.id);
-  const mapaZonas = new Map<string, Set<string>>();
-
-  if (idsConductores.length > 0) {
-    const { data: filasZonas, error: errZonas } = await cliente
-      .schema('identidad')
-      .from('conductor_zonas')
-      .select('conductor_id, zona_id')
-      .eq('tenant_id', tenantId)
-      .in('conductor_id', idsConductores);
-
-    if (errZonas) {
-      throw new Error(`Error al leer zonas de conductores: ${errZonas.message}`);
-    }
-
-    for (const fz of (filasZonas ?? []) as FilaConductorZona[]) {
-      if (!mapaZonas.has(fz.conductor_id)) {
-        mapaZonas.set(fz.conductor_id, new Set());
-      }
-      mapaZonas.get(fz.conductor_id)!.add(fz.zona_id);
-    }
-  }
-
-  // Manifiestos del día por conductor (para detectar confirmado/en_ruta = inelegible).
-  const { data: filasManifiestos, error: errManifiestos } = await cliente
-    .schema('operacion')
-    .from('manifiestos')
-    .select('id, driver_id, estado')
-    .eq('tenant_id', tenantId)
-    .eq('fecha_operacion', fecha)
-    .in('estado', ['borrador', 'confirmado', 'en_ruta']);
-
-  if (errManifiestos) {
-    throw new Error(`Error al leer manifiestos del día: ${errManifiestos.message}`);
-  }
-
-  const mapaManifiestosBorrador = new Map<string, string>(); // conductorId → manifiestoId
-  const conductoresConManifiestoActivo = new Set<string>(); // confirmado/en_ruta
-
-  for (const m of (filasManifiestos ?? []) as FilaManifiestoResumen[]) {
-    if (m.estado === 'confirmado' || m.estado === 'en_ruta') {
-      conductoresConManifiestoActivo.add(m.driver_id);
-    } else if (m.estado === 'borrador') {
-      // Guardar el manifiesto borrador más reciente del conductor (en caso de varios).
-      if (!mapaManifiestosBorrador.has(m.driver_id)) {
-        mapaManifiestosBorrador.set(m.driver_id, m.id);
-      }
-    }
-  }
-
-  // Carga actual de cada conductor (asignaciones activas de pedidos del día).
-  // Pedidos del día = los de este tenant con fecha_compromiso = fecha.
-  const { data: filasAsigActDia, error: errCargaDia } = await cliente
-    .schema('operacion')
-    .from('asignaciones_pedido')
-    .select('driver_id, pedido_id')
-    .eq('tenant_id', tenantId)
-    .eq('activa', true)
-    .in('driver_id', idsConductores.length > 0 ? idsConductores : ['__vacio__']);
-
-  if (errCargaDia) {
-    throw new Error(`Error al leer carga de conductores: ${errCargaDia.message}`);
-  }
-
-  // Cruzamos las asignaciones activas con los pedidos del día del tenant
-  // para obtener carga por conductor (solo paradas del día, no históricas).
-  const { data: filasPedidosDia, error: errPedDia } = await cliente
-    .schema('operacion')
-    .from('pedidos')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('fecha_compromiso', fecha);
-
-  if (errPedDia) {
-    throw new Error(`Error al leer pedidos del día para carga: ${errPedDia.message}`);
-  }
-
-  const idsPedidosDia = new Set((filasPedidosDia ?? []).map((p: { id: string }) => p.id));
+): Promise<Map<string, number>> {
   const mapaCarga = new Map<string, number>();
+  if (driverIds.length === 0) return mapaCarga;
 
-  for (const a of (filasAsigActDia ?? []) as { driver_id: string; pedido_id: string }[]) {
-    if (idsPedidosDia.has(a.pedido_id)) {
-      mapaCarga.set(a.driver_id, (mapaCarga.get(a.driver_id) ?? 0) + 1);
-    }
+  // Paginado, y no una consulta suelta: PostgREST corta en 1.000 filas SIN
+  // avisar, y esto es exactamente el patrón que ese tope arruina — una carga
+  // truncada subestima al conductor saturado y la redistribución le encaja
+  // todavía más. Es el mismo defecto que esta función acaba de arreglar, solo
+  // que apareciendo a mayor volumen: hoy son ~400 pedidos/día, el alcance
+  // apunta a 1.000+.
+  const filas = await leerTodasLasFilas<{ driver_id: string }>(
+    'carga del pool del día',
+    (desde, hasta) =>
+      cliente
+        .schema('operacion')
+        .from('asignaciones_pedido')
+        .select('driver_id, pedidos!inner(estado, fecha_compromiso)')
+        .eq('tenant_id', tenantId)
+        .eq('activa', true)
+        .in('driver_id', driverIds)
+        .eq('pedidos.fecha_compromiso', fecha)
+        .not('pedidos.estado', 'in', `(${ESTADOS_TERMINALES_PEDIDO.join(',')})`)
+        .range(desde, hasta),
+  );
+
+  for (const fila of filas) {
+    mapaCarga.set(fila.driver_id, (mapaCarga.get(fila.driver_id) ?? 0) + 1);
   }
 
-  // Construir el array de candidatos mutable (cargaActual se actualiza en memoria).
-  const candidatos: ConductorCandidato[] = conductoresRaw
-    .filter((c) => !conductoresConManifiestoActivo.has(c.id)) // excluir confirmado/en_ruta
-    .map((c) => ({
-      id: c.id,
-      tenantId: c.tenant_id,
-      estado: c.estado as 'activo' | 'inactivo',
-      disponible: c.disponible,
-      capacidadParadas: c.capacidad_paradas,
-      nombre: c.nombre,
-      cargaActual: mapaCarga.get(c.id) ?? 0,
-      zonasConductor: mapaZonas.get(c.id) ?? new Set(),
-    }));
-
-  // 4 + 5. Resolver zona por pedido y correr heurística.
-  const asignacionesPorConductor = new Map<string, string[]>(); // conductorId → [pedidoId]
-  const sinAsignar: PedidoSinAsignar[] = [];
-
-  for (const pedido of pedidosPendientes) {
-    // Resolver zona (RPC — puede devolver null si la comuna no está mapeada).
-    const zonaPedido = await resolverZona(cliente, tenantId, pedido.destinatario_comuna);
-
-    const pedidoConZona: PedidoConZona = {
-      pedidoId: pedido.id,
-      sellerId: pedido.seller_id,
-      comunaDestino: pedido.destinatario_comuna,
-      zonaPedido,
-    };
-
-    const resultado = elegirConductor(pedidoConZona, candidatos);
-
-    if (!resultado.ok) {
-      sinAsignar.push({
-        pedidoId: pedido.id,
-        sellerId: pedido.seller_id,
-        comunaDestino: pedido.destinatario_comuna,
-        motivo: resultado.motivo,
-      });
-      continue;
-    }
-
-    // Actualizar carga en memoria para el próximo pedido.
-    const candidato = candidatos.find((c) => c.id === resultado.conductor.id)!;
-    candidato.cargaActual += 1;
-
-    if (!asignacionesPorConductor.has(candidato.id)) {
-      asignacionesPorConductor.set(candidato.id, []);
-    }
-    asignacionesPorConductor.get(candidato.id)!.push(pedido.id);
-  }
-
-  // 6. Por conductor: obtener o crear manifiesto borrador → asignar pedidos.
-  const asignadosResultado = [];
-  const conductoresAfectados: string[] = [];
-
-  for (const [conductorId, pedidoIds] of asignacionesPorConductor.entries()) {
-    if (pedidoIds.length === 0) continue;
-
-    // Obtener manifiesto borrador existente o crear uno nuevo.
-    let manifiestoId = mapaManifiestosBorrador.get(conductorId);
-
-    if (!manifiestoId) {
-      const conductorInfo = conductoresRaw.find((c) => c.id === conductorId)!;
-      const nuevoManifiesto = await crearManifiesto(cliente, {
-        tenantId,
-        driverId: conductorId,
-        nombre: `Auto-asignación ${fecha} — ${conductorInfo.nombre}`,
-        fechaOperacion: fecha,
-        creadoPorUsuarioId: actorUsuarioId ?? undefined,
-      });
-      manifiestoId = nuevoManifiesto.id;
-      mapaManifiestosBorrador.set(conductorId, manifiestoId);
-    }
-
-    // Asignar pedidos al manifiesto (actor con usuarioId real — RNF-04).
-    await asignarPedidosAManifiesto(cliente, manifiestoId, pedidoIds, actor, actorUsuarioId);
-
-    asignadosResultado.push({
-      conductorId,
-      manifiestoId,
-      pedidosAsignados: pedidoIds,
-    });
-    conductoresAfectados.push(conductorId);
-  }
-
-  // 7. Bitácora ANTES de devolver (invariante CLAUDE.md: bitácora antes del efecto de retorno).
-  await _registrarAutoAsignacion(cliente, tenantId, actorUsuarioId, {
-    fecha,
-    pedidosProcesados: pedidosPendientes.length,
-    asignados: asignadosResultado.reduce((acc, a) => acc + a.pedidosAsignados.length, 0),
-    sinAsignar: sinAsignar.length,
-    conductoresAfectados: conductoresAfectados.length,
-  });
-
-  return {
-    asignados: asignadosResultado,
-    sinAsignar,
-    conductoresAfectados,
-  };
+  return mapaCarga;
 }
 
 // -----------------------------------------------------------------------------
@@ -754,25 +509,10 @@ export async function marcarConductorNoDisponibleYRedistribuir(
     }
   }
 
-  // Carga actual del pool (asignaciones activas, todos los pedidos).
-  const mapaCarga = new Map<string, number>();
-  if (idsConductores.length > 0) {
-    const { data: filasAsig, error: errCarga } = await cliente
-      .schema('operacion')
-      .from('asignaciones_pedido')
-      .select('driver_id')
-      .eq('tenant_id', tenantId)
-      .eq('activa', true)
-      .in('driver_id', idsConductores);
-
-    if (errCarga) {
-      throw new Error(`Error al leer carga del pool: ${errCarga.message}`);
-    }
-
-    for (const a of (filasAsig ?? []) as { driver_id: string }[]) {
-      mapaCarga.set(a.driver_id, (mapaCarga.get(a.driver_id) ?? 0) + 1);
-    }
-  }
+  // Carga actual del pool: SOLO paradas de hoy y realmente pendientes
+  // (ver `obtenerCargaPoolDelDia` — antes este conteo sumaba el histórico
+  // completo de asignaciones activas, incluidas las ya entregadas).
+  const mapaCarga = await obtenerCargaPoolDelDia(cliente, tenantId, idsConductores, fecha);
 
   // Construir candidatos (excluir los con manifiesto confirmado/en_ruta).
   const candidatos: ConductorCandidato[] = conductoresRaw
@@ -891,25 +631,4 @@ export async function marcarConductorNoDisponibleYRedistribuir(
     impactoSla,
     idempotente: false,
   };
-}
-
-// =============================================================================
-// C. Utilidad privada — registro de bitácora de auto-asignación
-// =============================================================================
-
-async function _registrarAutoAsignacion(
-  cliente: SupabaseClient,
-  tenantId: string,
-  actorUsuarioId: string | null,
-  detalle: Record<string, unknown>,
-): Promise<void> {
-  await registrarEnBitacora(cliente, {
-    tenantId,
-    actorUsuarioId,
-    actorTipo: 'usuario',
-    accion: 'operacion.auto_asignacion_ejecutada',
-    entidadTipo: 'tenant',
-    entidadId: tenantId,
-    detalle,
-  });
 }

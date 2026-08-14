@@ -364,26 +364,6 @@ export interface PedidoSinAsignar {
   motivo: MotivoSinAsignar;
 }
 
-/** Resumen de pedidos asignados a un conductor en esta ejecución. */
-export interface AsignacionPorConductor {
-  conductorId: string;
-  manifiestoId: string;
-  pedidosAsignados: string[];
-}
-
-/**
- * Resultado de `autoAsignarPendientesDelDia`.
- * Permite al frontend mostrar un resumen antes de confirmar manifiestos.
- */
-export interface ResultadoAutoAsignacion {
-  /** Pedidos asignados, agrupados por conductor. */
-  asignados: AsignacionPorConductor[];
-  /** Pedidos que no pudieron asignarse, con motivo estructurado. */
-  sinAsignar: PedidoSinAsignar[];
-  /** IDs de conductores que recibieron al menos un pedido en esta ejecución. */
-  conductoresAfectados: string[];
-}
-
 /** SLA impactado por conductor caído o pedidos sin asignar, por seller. */
 export interface ImpactoSla {
   sellerId: string;

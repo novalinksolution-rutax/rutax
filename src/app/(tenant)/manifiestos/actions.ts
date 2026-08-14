@@ -4,13 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { crearManifiesto, confirmarManifiesto, asignarPedidosAManifiesto, completarManifiesto } from "@/modules/operacion/manifiestos";
-import { puedeGenerarManifiestos, puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
-import {
-  autoAsignarPendientesDelDia,
-  marcarConductorNoDisponibleYRedistribuir,
-} from "@/modules/operacion/auto-asignacion";
-import type { ResultadoAutoAsignacion, ResultadoRedistribucion } from "@/modules/operacion/tipos";
+import { confirmarManifiesto, completarManifiesto } from "@/modules/operacion/manifiestos";
+import { puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
+import { marcarConductorNoDisponibleYRedistribuir } from "@/modules/operacion/auto-asignacion";
+import type { ResultadoRedistribucion } from "@/modules/operacion/tipos";
 import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
@@ -20,49 +17,6 @@ import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 type RespuestaOk<T> = { ok: true; datos: T };
 type RespuestaError = { ok: false; mensaje: string };
 type Respuesta<T> = RespuestaOk<T> | RespuestaError;
-
-// =============================================================================
-// Crear manifiesto
-// =============================================================================
-
-export async function actionCrearManifiesto(formData: FormData) {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId) redirect("/login");
-
-  if (!puedeGenerarManifiestos(sesion.usuario)) {
-    return { error: "No tienes permiso para crear manifiestos." };
-  }
-
-  const driverId = formData.get("driverId") as string;
-  const fechaOperacion = formData.get("fechaOperacion") as string;
-  const nombre = formData.get("nombre") as string;
-  const notas = (formData.get("notas") as string) || undefined;
-
-  if (!driverId || !fechaOperacion || !nombre?.trim()) {
-    return { error: "Conductor, fecha y nombre son obligatorios." };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    const manifiesto = await crearManifiesto(
-      cliente,
-      {
-        tenantId: sesion.usuario.tenantId,
-        driverId,
-        nombre: nombre.trim(),
-        fechaOperacion,
-        notas,
-        creadoPorUsuarioId: sesion.usuarioId,
-      },
-      sesion.usuario,
-    );
-    revalidatePath("/manifiestos");
-    redirect(`/manifiestos/${manifiesto.id}`);
-  } catch (err) {
-    if (err instanceof Error && err.message.includes("NEXT_REDIRECT")) throw err;
-    return { error: err instanceof Error ? err.message : "Error al crear el manifiesto." };
-  }
-}
 
 // =============================================================================
 // Confirmar manifiesto
@@ -86,41 +40,6 @@ export async function actionConfirmarManifiesto(formData: FormData) {
     return { exito: true };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Error al confirmar el manifiesto." };
-  }
-}
-
-// =============================================================================
-// Asignar pedidos al manifiesto
-// =============================================================================
-
-export async function actionAsignarPedidos(formData: FormData) {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId) return { error: "Sin sesión." };
-
-  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
-    return { error: "No tienes permiso para asignar pedidos." };
-  }
-
-  const manifiestoId = formData.get("manifiestoId") as string;
-  const pedidoIdsRaw = formData.get("pedidoIds") as string;
-
-  if (!manifiestoId || !pedidoIdsRaw) return { error: "Faltan datos requeridos." };
-
-  const pedidoIds = pedidoIdsRaw
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-
-  if (pedidoIds.length === 0) return { error: "Debes seleccionar al menos un pedido." };
-
-  try {
-    const cliente = crearClienteServiceRole();
-    await asignarPedidosAManifiesto(cliente, manifiestoId, pedidoIds, sesion.usuario, sesion.usuarioId);
-    revalidatePath(`/manifiestos/${manifiestoId}`);
-    revalidatePath(`/manifiestos/${manifiestoId}/asignar`);
-    return { exito: true };
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "Error al asignar los pedidos." };
   }
 }
 
@@ -197,65 +116,18 @@ export async function actionCompletarManifiesto(formData: FormData) {
 }
 
 // =============================================================================
-// Auto-asignación heurística (F6, ítem 1.3) — DESACTIVADA (2026-08-12)
-// =============================================================================
-//
-// Etapa 0 de docs/arquitectura/retiro-y-ruteo-plan.md: ver el comentario de
-// cabecera de src/modules/operacion/auto-asignacion.ts para el porqué. El
-// botón que llamaba a esta acción ya no se renderiza en ninguna pantalla;
-// esta guarda cubre que alguien la invoque por una ruta directa. No se borra
-// la acción ni el motor de abajo — se reactiva quitando la guarda.
-const AUTO_ASIGNACION_DESACTIVADA = true;
-
-/**
- * Dispara el motor heurístico para asignar los pedidos pendientes del día.
- * La fecha se obtiene del día actual en zona America/Santiago si no se pasa.
- */
-export async function actionAutoAsignarPendientes(
-  fecha?: string,
-): Promise<Respuesta<ResultadoAutoAsignacion>> {
-  if (AUTO_ASIGNACION_DESACTIVADA) {
-    return {
-      ok: false,
-      mensaje:
-        "La auto-asignación automática está desactivada. Asigna los pedidos manualmente desde el manifiesto.",
-    };
-  }
-
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId) {
-    return { ok: false, mensaje: "No hay sesión activa." };
-  }
-
-  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
-    return { ok: false, mensaje: "No tienes permiso para asignar pedidos." };
-  }
-
-  const fechaOperacion = fecha ?? ahoraEnSantiago().fecha;
-
-  try {
-    const cliente = crearClienteServiceRole();
-    const resultado = await autoAsignarPendientesDelDia(
-      cliente,
-      sesion.usuario.tenantId,
-      fechaOperacion,
-      sesion.usuario,
-      sesion.usuarioId,
-    );
-
-    revalidatePath("/manifiestos");
-
-    return { ok: true, datos: resultado };
-  } catch (err) {
-    const mensaje =
-      err instanceof Error ? err.message : "Error al ejecutar la auto-asignación.";
-    return { ok: false, mensaje };
-  }
-}
-
-// =============================================================================
 // Marcar conductor no disponible y redistribuir (F6, ítem 1.3)
 // =============================================================================
+//
+// La auto-asignación en bloque del día (`autoAsignarPendientesDelDia`) vivió
+// acá hasta el 2026-08-14: se desactivó el 2026-08-12 (Etapa 0 de
+// docs/arquitectura/retiro-y-ruteo-plan.md) porque barría pedidos sin saber
+// de retiros físicos, y se eliminó por completo al quedar inalcanzable y
+// reemplazada por la selección masiva por filtros (Etapa 6). Ver el
+// comentario de cabecera de src/modules/operacion/auto-asignacion.ts.
+// "Marcar no disponible + redistribuir" es una función DISTINTA que sigue
+// activa: solo mueve las paradas de un conductor puntual, no barre pedidos
+// sueltos del día.
 
 /**
  * Marca un conductor como no disponible y redistribuye sus paradas abiertas.

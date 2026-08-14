@@ -229,7 +229,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
           </h2>
           {esBorrador && puedeAsignar && (
             <Button asChild variant="outline" size="sm">
-              <Link href={`/manifiestos/${manifiestoId}/asignar`}>
+              <Link href={`/preparacion/asignar?conductor=${manifiesto.driverId}`}>
                 <Plus className="size-4" aria-hidden="true" />
                 Agregar pedidos
               </Link>
@@ -310,7 +310,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
             accion={
               esBorrador && puedeAsignar ? (
                 <Button asChild variant="outline" size="sm">
-                  <Link href={`/manifiestos/${manifiestoId}/asignar`}>Agregar pedidos</Link>
+                  <Link href={`/preparacion/asignar?conductor=${manifiesto.driverId}`}>Agregar pedidos</Link>
                 </Button>
               ) : undefined
             }
@@ -325,7 +325,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
 
           {puedeAsignar && (
             <Link
-              href={`/manifiestos/${manifiestoId}/asignar`}
+              href={`/preparacion/asignar?conductor=${manifiesto.driverId}`}
               className="inline-flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
             >
               <Plus className="size-4" aria-hidden="true" />

@@ -107,14 +107,11 @@ export default async function PaginaManifiestos({
           />
         </div>
         <div className="flex items-center gap-2">
-          {/* Auto-asignar pendientes del día: desactivado (2026-08-12, Etapa 0
-              de docs/arquitectura/retiro-y-ruteo-plan.md). El componente sigue
-              en ./boton-auto-asignar.tsx, sin usar. */}
           {puedeCrear && (
             <Button asChild>
-              <Link href="/manifiestos/nuevo">
+              <Link href="/preparacion/asignar">
                 <Plus className="size-4" aria-hidden="true" />
-                Nuevo manifiesto
+                Asignar pedidos
               </Link>
             </Button>
           )}
@@ -145,13 +142,13 @@ export default async function PaginaManifiestos({
           descripcion={
             filtroEstado || filtroFecha
               ? "Prueba cambiando el estado o la fecha."
-              : "Crea un manifiesto para organizar la ruta del día de un conductor."
+              : "Asigna pedidos ya retirados a un conductor: el manifiesto se arma solo, como parte de la asignación."
           }
           tono={filtroEstado || filtroFecha ? "filtro" : "arranque"}
           accion={
             puedeCrear ? (
               <Button asChild size="sm" variant={filtroEstado || filtroFecha ? "outline" : "default"}>
-                <Link href="/manifiestos/nuevo">Crear manifiesto</Link>
+                <Link href="/preparacion/asignar">Asignar pedidos</Link>
               </Button>
             ) : undefined
           }

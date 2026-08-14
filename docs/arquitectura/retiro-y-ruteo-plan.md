@@ -485,7 +485,60 @@ en la cola del conductor sin arreglar el pedido igual.
 fallado en silencio con las pruebas en verde. Ahora **lanza ante cualquier RPC o esquema
 inesperado**, y se comprobó que los tres casos nuevos caen si se desactiva el arreglo.
 
-## Etapa 6 · Asignación en bloque
+## Etapa 6 · Asignación en bloque — ✅ **CONSTRUIDA (2026-08-14)**
+
+Diseño completo en **`docs/ux/etapa-6-asignacion-en-bloque.md`**. La bandeja vive en
+`(tenant)/preparacion/asignar`, y **`/manifiestos/nuevo` y `/manifiestos/[id]/asignar` se
+retiraron**: el manifiesto pasó a ser subproducto de la asignación, no paso previo.
+
+**Los siete defectos que el plan atribuía a la pantalla vieja se confirmaron los siete**, más tres
+que no estaban listados: si el bucle falla a mitad **no queda ni un asiento de bitácora** (el
+registro iba después del bucle), el componente de selección **no tenía ni una prueba**, y
+`leerPorLotesDeIds` existe con su tope razonado y `operacion` no lo usaba en ninguna parte.
+
+**El peor, y cómo se hizo imposible.** La selección era un `Set` de ids: al cambiar de filtro el
+pedido marcado seguía seleccionado pero dejaba de verse, y la advertencia de reasignación se
+calculaba **solo sobre lo visible** mientras se enviaba **todo lo marcado** — así se reasignaba sin
+que apareciera ninguna advertencia. La raíz es que "qué está seleccionado" y "qué se está mostrando"
+eran la misma variable. Ahora la selección es un `Map<pedidoId, PedidoSeleccionado>` que guarda una
+**foto de cada pedido al marcarlo**: la barra, el panel y la advertencia leen del `Map`, nunca de la
+lista en pantalla. **Verificado en navegador de punta a punta**: se marcan dos pedidos ya asignados,
+se cambia el filtro hasta que desaparecen de la tabla, y la barra dice "2 fuera de este filtro"; al
+asignar, el diálogo los lista agrupados por conductor de origen. Antes, esa combinación exacta
+reasignaba en silencio.
+
+**La escritura es una función SQL transaccional** (`operacion.asignar_pedidos_en_bloque`,
+`20260814000001`): o se aplican todos o no se aplica ninguno, contra el bucle anterior que dejaba
+aplicados los 199 primeros si fallaba el 200. Los ids viajan como `uuid[]` **en el cuerpo del RPC**,
+lo que mata de raíz el `.in()` sin lotear. Cerrojo consultivo para que dos coordinadores simultáneos
+no abran dos manifiestos —probado con control negativo: sin él salen dos y la ruta queda partida— y
+`for update` sobre los pedidos para que un solo conflicto no tumbe el lote entero.
+
+⚠️ **Reutiliza el manifiesto del día aunque esté `confirmado` o `en_ruta`.** La primera versión creaba
+uno nuevo, y eso habría escondido paradas: las dos superficies del conductor toman el más reciente.
+Ver el desvío de más abajo.
+
+**La bitácora se escribe DENTRO de la transacción**, apartándose del patrón "bitácora antes del
+efecto". Esa regla existe porque un evento Inngest o una llamada externa no se pueden deshacer; aquí
+el efecto es atómico, y un asiento de una asignación que no ocurrió sería peor que no tenerlo.
+
+⚠️ **La bandeja acota `retirado_en` SOLO POR ARRIBA.** Con el rango cerrado `[hoy, mañana)` que tenía
+al principio, un pedido retirado ayer y nunca asignado quedaba **invisible para siempre** — en la
+bodega, `pendiente_asignacion`, y ninguna pantalla lo vuelve a ofrecer. Puede pasar hoy justamente
+porque el cierre de jornada (etapa 10) no existe. La segunda reja ya excluye lo que salió a la calle,
+así que abrir el rango no ensucia nada.
+
+## Desvío · El segundo manifiesto que escondía paradas — ✅ **ARREGLADO (2026-08-14)**
+
+Las **dos** superficies del conductor —la ruta de la app nativa y la PWA— tenían la misma consulta
+copiada, hasta el `.limit(1)`: tomaban el manifiesto más reciente del día y descartaban el resto. Con
+dos manifiestos vivos, las paradas del otro **desaparecían de su pantalla, en plena calle y sin
+aviso**. Copiada quiere decir además que arreglar una dejaba la otra rota, así que las dos pasan ahora
+por `obtenerManifiestoVigenteDelConductor`, que **delata** la anomalía en vez de esconderla.
+`completado` no cuenta como vivo: un completado más uno nuevo es la segunda vuelta legítima, y
+alarmar ahí entrenaría a ignorar la alarma.
+
+## ~~Etapa 6 · Asignación en bloque~~ — lo que decía antes de construirse
 
 Filtro de comuna **multi-selección** (hoy acepta una sola, y en la pantalla de asignar es texto libre
 con `ilike`). **Solo se ofrece lo que está `retirado`** — ésa es la reja, y el campo ya existe.

@@ -39,8 +39,6 @@ export type {
   ConductorZona,
   MotivoSinAsignar,
   PedidoSinAsignar,
-  AsignacionPorConductor,
-  ResultadoAutoAsignacion,
   ResultadoRedistribucion,
   ImpactoSla,
 } from "./tipos";
@@ -100,7 +98,6 @@ export { obtenerMetricasDelDia, obtenerImpactoSlaDeReasignacion } from "./metric
 // --- Auto-asignación heurística (F6, ítem 1.3) ----------------------------
 export {
   elegirConductor,
-  autoAsignarPendientesDelDia,
   marcarConductorNoDisponibleYRedistribuir,
 } from "./auto-asignacion";
 export type { PedidoConZona, ConductorCandidato } from "./auto-asignacion";

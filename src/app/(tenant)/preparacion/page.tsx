@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ShieldAlert, Boxes } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { puedeVerPreparacionDia } from "@/modules/identidad/capacidades";
+import { puedeAsignarYReasignarPedidos, puedeVerPreparacionDia } from "@/modules/identidad/capacidades";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import {
@@ -74,6 +74,12 @@ export default async function PaginaPreparacionDelDia() {
   const tenantId = sesion.usuario.tenantId;
   const fecha = fechaLocalEnSantiago(new Date());
   const cliente = crearClienteServiceRole();
+  // El bloque "Asignación" solo tiene sentido para quien de verdad puede
+  // asignar (etapa-6-asignacion-en-bloque.md §15: "condicionando el botón
+  // del bloque"). Hoy coincide con `ver_preparacion_dia` (dueño, supervisor,
+  // coordinador — nunca administración), pero se pasa explícito para no
+  // depender de que las dos matrices sigan coincidiendo por casualidad.
+  const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
 
   // Dos consultas INDEPENDIENTES (§5.3, §16): si "carga por comuna" se cae,
   // las visitas tienen que seguir viéndose, y al revés. Un solo `try`
@@ -152,7 +158,7 @@ export default async function PaginaPreparacionDelDia() {
 
             <div className="space-y-6">
               <CargaPorComuna errorCarga={errorCarga} filas={cargaPorComuna} />
-              <BloqueAsignacion />
+              {puedeAsignar && <BloqueAsignacion tenantId={tenantId} fecha={fecha} />}
             </div>
           </div>
         </>

@@ -574,6 +574,7 @@ from (select (now() at time zone 'America/Santiago')::date as d) h;
 
 -- -----------------------------------------------------------------------------
 -- 8. Retiro en bodega de HOY (migración 20260813000004) — la Preparación del día
+--    Y la bandeja de asignación (etapa 6, migración 20260814000001)
 -- -----------------------------------------------------------------------------
 -- La pantalla del coordinador (etapa 5) es EN VIVO y a media mañana: necesita
 -- ver el día a medio hacer, no un estado prolijo. Reutiliza las tres bodegas
@@ -586,26 +587,46 @@ from (select (now() at time zone 'America/Santiago')::date as d) h;
 -- coherente con lo que hizo el escaneo, en la MISMA transacción que usaría
 -- producción.
 --
+-- ⚠️ **Segundo lector, además de Preparación: la bandeja de asignación**
+-- (`/preparacion/asignar`, etapa 6). Su reja es `situacion_retiro = 'retirado'
+-- AND estado IN ('pendiente_asignacion','asignado')` — las DOS juntas
+-- (docs/ux/etapa-6-asignacion-en-bloque.md §3 y §15). El §8.1 de más abajo
+-- construye el pool con ESO en mente: no basta con cerrar sesiones, hay que
+-- cerrarlas sobre pedidos que además caigan dentro de esa reja, o la bandeja
+-- se queda vacía aunque "Preparación" se vea llena de bultos.
+--
 -- Qué caso cubre cada sesión (todas con `fecha_operacion` = hoy). El acta se
 -- anota como total/resueltos/sin_resolver, igual que las tres columnas de
--- `sesiones_retiro`:
---   S1 Matucana      (cond. A, CERRADA) — 27 resueltos + 2 ilegibles + 1
---                     flex_qr que la ingesta no trajo → acta 30/27/3.
---   S2 Los Pajaritos  (cond. A, CERRADA) — 29 resueltos propios + 1 bulto de
---                     OTRO seller (FalabellaTech, no MercadoSur: el descuadre
---                     que el retiro existe para destapar) → acta 30/30/0. Más
---                     UN escaneo POSTERIOR AL CIERRE (bajo la van, 30 seg
---                     después): los contadores vivos (31/30/1) ya no
---                     coinciden con el acta congelada, a propósito.
---   S3 Camilo Henríquez (cond. A, ABIERTA) — 49 resueltos + 1 ilegible, en
---                     curso ahora mismo (último escaneo hace <1 min).
---                     Contadores del acta en NULL: todavía no hay acta.
---   S4 CD ENEA Pudahuel (cond. B, ABIERTA) — 16 resueltos, pero el último
---                     escaneo fue hace EXACTAMENTE 25 minutos: la visita
---                     "no reporta hace rato" mientras S3 sigue viva — dos
---                     conductores retirando EN PARALELO ahora mismo.
---   S5 Renca          (cond. C, CERRADA) — 22 resueltos, acta limpia 22/22/0.
---                     Con S1 (cond. A / Matucana) demuestra el mínimo de DOS
+-- `sesiones_retiro`. Los conteos de resueltos salen del pool de §8.1 (varían
+-- según el reparto seller×comuna, no se fijan a mano) y se verifican al final
+-- de este archivo:
+--   S1 Matucana      (cond. A, CERRADA) — el pool de bandeja de FalabellaTech
+--                     (menos 1, prestado a S2 como bulto ajeno) + 2 ilegibles
+--                     + 1 flex_qr que la ingesta no trajo.
+--   S2 Los Pajaritos  (cond. A, CERRADA) — el pool de bandeja de MercadoSur +
+--                     1 bulto de OTRO seller (FalabellaTech, no MercadoSur: el
+--                     descuadre que el retiro existe para destapar). Más UN
+--                     escaneo POSTERIOR AL CIERRE (bajo la van, 30 seg
+--                     después): los contadores vivos ya no coinciden con el
+--                     acta congelada, a propósito.
+--   S3 Camilo Henríquez (cond. A, ABIERTA) — 49 pedidos YA entregados/en ruta/
+--                     con incidencia de TecnoHogar (nunca `pendiente_
+--                     asignacion` ni `asignado` — a propósito: esta sesión NO
+--                     cierra, así que nada de lo que escanea puede depender de
+--                     terminar en la bandeja) + 1 ilegible. En curso ahora
+--                     mismo (último escaneo hace <1 min). Contadores del acta
+--                     en NULL: todavía no hay acta.
+--   S4 CD ENEA Pudahuel (cond. B, ABIERTA) — 16 pedidos ya entregados/en ruta/
+--                     con incidencia de FalabellaTech (mismo motivo que S3:
+--                     esta sesión tampoco cierra). El último escaneo fue hace
+--                     EXACTAMENTE 25 minutos: la visita "no reporta hace rato"
+--                     mientras S3 sigue viva — dos conductores retirando EN
+--                     PARALELO ahora mismo.
+--   S5 Renca          (cond. C, CERRADA) — TODO el pool de bandeja de
+--                     TecnoHogar que ninguna otra sesión tomó (S3, la otra
+--                     visita del mismo seller, no cierra y por lo tanto no le
+--                     resta nada). Acta limpia, sin sin_resolver. Con S1
+--                     (cond. A / Matucana) demuestra el mínimo de DOS
 --                     cerradas de conductores Y bodegas distintos.
 --   S6 Bodega Huechuraba (cond. D, tenant AISLADO Andes Express, CERRADA) —
 --                     4 bultos, los cuatro sin resolver (Andes Express nunca
@@ -624,39 +645,120 @@ from (select (now() at time zone 'America/Santiago')::date as d) h;
 -- propio `now()` interno — no se puede ni se debe forzar desde aquí: es la
 -- función real, y su reloj es el que manda.
 
--- 8.1 El pool de pedidos "retirables" de hoy — con una comuna DOMINANTE
---     (Santiago, tope 22 por vendedor) y una cola REPARTIDA en las otras 22
---     (tope 3 por comuna por vendedor). Sin este tope, tomar los primeros N
---     pedidos de un vendedor por orden natural da 100 % Santiago (su bloque,
---     de más de 40 por vendedor, es más grande que cualquier sesión) y el
---     acumulado por comuna (operacion.preparacion_carga_por_comuna) no
---     tendría nada que agregar aparte de una sola barra. Vive de `_torre_plan`
---     — por eso este bloque corre ANTES del `drop table` de más abajo.
-create temporary table _retiro_pool as
+-- 8.1 El pool que SÍ tiene que terminar en la bandeja de asignación — y por
+--     qué NO es "los primeros N pedidos por comuna", como en la versión
+--     anterior de este bloque.
+--
+--     De los 1.048 pedidos de `_torre_plan` (§1), solo dos `rol` caen dentro
+--     de la reja de la etapa 6: `pendiente` (estado `pendiente_asignacion`,
+--     99 pedidos en 19 comunas) y `asignado` (estado `asignado`, 183 pedidos
+--     en 21 comunas). El resto (entregado/en_ruta/incidencia, ~68 %) puede
+--     quedar `retirado` sin que la bandeja lo note, así que traerlo a este
+--     pool sería solo ruido.
+--
+--     ⚠️ **La versión anterior tomaba "los primeros N por comuna" (Santiago
+--     22, el resto 3) SIN filtrar por `rol` primero, y eso vaciaba la
+--     bandeja.** Con un cupo de 3, ninguna comuna aparte de Santiago llegaba a
+--     pisar el tramo final del ciclo de 25 pedidos de `_torre_plan` donde
+--     viven 'asignado'/'pendiente' (ver el `case` del §1: son los últimos 8 de
+--     cada 25) — un cupo de 3 se agota siempre en 'incidencia'/'entregado'.
+--     Medido en producción local antes de este cambio: 11 pedidos elegibles
+--     para la bandeja, los 11 en Santiago (ver
+--     docs/arquitectura/retiro-y-ruteo-plan.md, etapa 6). Filtrar primero por
+--     `rol` invierte el problema: cada fila que entra a este pool YA cumple la
+--     reja completa, así que la conversión pool→bandeja es del 100 % en vez de
+--     una lotería por comuna.
+--
+--     Dos tramos:
+--       · TODO lo `pendiente` (99) — es lo que domina la bandeja real el día
+--         que esto corra en producción: la mayoría de lo retirado todavía no
+--         se tocó.
+--       · Una MUESTRA de lo `asignado`, deliberadamente desigual entre
+--         comunas para que el acumulado por comuna tenga una barra que
+--         domine: 13 en Santiago (idx 1, la comuna de más volumen del día) +
+--         1 en cada una de las 8 comunas que le siguen en carga (idx 2-9:
+--         Maipú, Puente Alto, La Florida, Las Condes, Ñuñoa, Providencia,
+--         Peñalolén, Pudahuel) = 21. Ni tan pocos que la advertencia de
+--         reasignación se quede sin con qué dispararse (hacen falta 2+
+--         conductores de origen — y como el conductor de un pedido `asignado`
+--         sale de `(n-1) % 12 + 1`, §1, 21 pedidos de `n` distintos ya
+--         garantizan varios), ni tantos que dejen de ser franca minoría
+--         dentro de la reja (21 de 120 = 17 %, cerca del "15-20" que pide el
+--         alcance).
+--
+--     Total: 120 pedidos, 19 comunas (todas las que tienen algo `pendiente`;
+--     las 4 restantes —Independencia, La Cisterna, San Joaquín, Conchalí—
+--     tienen tan poco volumen del día que su ciclo de 25 nunca llega a
+--     'asignado'/'pendiente', y por eso no aportan nada a esta bandeja: no es
+--     un descarte arbitrario, es la aritmética del §1). Santiago queda con 25
+--     (12 pendiente + 13 asignado), más del doble que la siguiente comuna
+--     (Maipú/Puente Alto/La Florida/Las Condes, 10 cada una) — el acumulado
+--     por comuna SÍ se lee. El resto de las comunas queda solo con su cuota
+--     `pendiente` (1 a 6 pedidos): la cola repartida y de poca carga que pide
+--     la etapa 6.
+--
+--     Vive de `_torre_plan` — por eso este bloque corre ANTES del
+--     `drop table` de más abajo.
+create temporary table _bandeja_pool as
 with candidatos as (
   select
-    tp.pedido_id, tp.seller_id, tp.idx, tp.comuna, tp.tipo, tp.n,
-    p.ml_shipment_id, p.codigo_interno,
-    row_number() over (partition by tp.seller_id, tp.idx order by tp.n) as rn_comuna
+    tp.pedido_id, tp.seller_id, tp.idx, tp.comuna, tp.tipo, tp.n, tp.rol,
+    p.ml_shipment_id, p.codigo_interno
   from _torre_plan tp
   join operacion.pedidos p on p.id = tp.pedido_id
-  where (tp.tipo = 'flex'     and p.ml_shipment_id is not null)
-     or (tp.tipo = 'same_day' and p.codigo_interno  is not null)
+  where tp.rol in ('pendiente', 'asignado')
+    and ((tp.tipo = 'flex'     and p.ml_shipment_id is not null)
+      or (tp.tipo = 'same_day' and p.codigo_interno  is not null))
 ),
-recortados as (
-  select *
-  from candidatos
-  where rn_comuna <= case when comuna = 'Santiago' then 22 else 3 end
+rankeados as (
+  select
+    c.*,
+    row_number() over (partition by c.idx, c.rol order by c.n) as rn
+  from candidatos c
 )
-select
-  pedido_id, seller_id, comuna, tipo, ml_shipment_id, codigo_interno,
-  row_number() over (
-    partition by seller_id
-    order by (comuna <> 'Santiago'), rn_comuna, n
-  ) as orden_seller
-from recortados;
+select pedido_id, seller_id, comuna, idx, tipo, ml_shipment_id, codigo_interno, rol
+from rankeados
+where rol = 'pendiente'
+   or (rol = 'asignado' and idx = 1            and rn <= 13)  -- Santiago: dominante
+   or (rol = 'asignado' and idx between 2 and 9 and rn = 1);  -- la cola con algo de carga
 
-create index on _retiro_pool (seller_id, orden_seller);
+create index on _bandeja_pool (seller_id);
+
+-- El bulto AJENO de S2 sale de ESTE pool, no de uno aparte: un pedido
+-- `pendiente_asignacion` de FalabellaTech (seller1) que en los hechos se
+-- escaneó en la bodega de MercadoSur — exactamente el descuadre que el retiro
+-- existe para destapar. `idx <> 1` para que no salga de Santiago (ya
+-- suficientemente representada) y `rol = 'pendiente'` para que, pese al
+-- traspié, el pedido siga siendo un caso normal de la bandeja (asignable, no
+-- ya asignado a nadie). Determinista por `pedido_id` para que la corrida sea
+-- estable.
+create temporary table _bandeja_ajeno as
+select *
+from _bandeja_pool
+where seller_id = '30000000-0000-0000-0000-000000000001'
+  and idx <> 1
+  and rol = 'pendiente'
+order by pedido_id
+limit 1;
+
+-- El relleno de las sesiones que NO cierran (S3 y S4): pedidos YA entregados,
+-- en ruta o con incidencia — cualquier `rol` FUERA de la reja de la bandeja.
+-- Es a propósito un pool DISTINTO del de arriba: como S3 y S4 nunca llaman a
+-- `cerrar_sesion_retiro`, lo que escaneen no puede mover `situacion_retiro` de
+-- ningún pedido de todas formas, así que usar aquí pedidos de la bandeja solo
+-- restaría claridad sin sumarle nada a la etapa 6.
+create temporary table _relleno_pool as
+select
+  tp.pedido_id, tp.seller_id, tp.comuna, tp.tipo,
+  p.ml_shipment_id, p.codigo_interno,
+  row_number() over (partition by tp.seller_id order by tp.n) as orden_seller
+from _torre_plan tp
+join operacion.pedidos p on p.id = tp.pedido_id
+where tp.rol not in ('pendiente', 'asignado')
+  and ((tp.tipo = 'flex'     and p.ml_shipment_id is not null)
+    or (tp.tipo = 'same_day' and p.codigo_interno  is not null));
+
+create index on _relleno_pool (seller_id, orden_seller);
 
 -- 8.2 Las seis sesiones. Todas nacen `abierta` — S1/S2/S5/S6 se cierran recién
 --     en el §8.9, con la función real, después de tener sus bultos adentro.
@@ -695,8 +797,9 @@ insert into operacion.sesiones_retiro (
    '41000000-0000-0000-0000-000000000101', (now() at time zone 'America/Santiago')::date,
    'abierta', now() - interval '20 minutes');
 
--- 8.3 S1 — 27 resueltos del pool de FalabellaTech (posiciones 1-27: Santiago
---     dominante + una cola repartida en varias comunas).
+-- 8.3 S1 — TODO el pool de bandeja de FalabellaTech (seller1) MENOS el bulto
+--     que se presta a S2 como ajeno (`_bandeja_ajeno`). Dominado por Santiago,
+--     con cola repartida en el resto de las comunas — ver §8.1.
 insert into operacion.bultos_retiro (
   tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
   codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
@@ -715,13 +818,15 @@ select
   false,
   ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
 from (
-  select *, row_number() over (order by orden_seller) as rn
-  from _retiro_pool
+  select *,
+         row_number() over (order by pedido_id) as rn,
+         count(*) over ()                       as total
+  from _bandeja_pool
   where seller_id = '30000000-0000-0000-0000-000000000001'
-    and orden_seller between 1 and 27
+    and pedido_id not in (select pedido_id from _bandeja_ajeno)
 ) rp
 cross join lateral (
-  select (now() - interval '18 minutes') - ((27 - rp.rn) * interval '45 seconds') as valor
+  select (now() - interval '18 minutes') - ((rp.total - rp.rn) * interval '45 seconds') as valor
 ) ts;
 
 -- Los 3 sin resolver de S1: dos ilegibles (con su `muestra_codigo`, cada uno
@@ -747,7 +852,7 @@ insert into operacion.bultos_retiro (
    'flex_qr', '99887766554', null, '99887766554',
    false, now() - interval '15 minutes', now() - interval '15 minutes' + interval '2 seconds');
 
--- 8.4 S2 — 29 resueltos propios de MercadoSur (posiciones 1-29 de su pool).
+-- 8.4 S2 — TODO el pool de bandeja de MercadoSur (seller2).
 insert into operacion.bultos_retiro (
   tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
   codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
@@ -766,18 +871,19 @@ select
   false,
   ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
 from (
-  select *, row_number() over (order by orden_seller) as rn
-  from _retiro_pool
+  select *,
+         row_number() over (order by pedido_id) as rn,
+         count(*) over ()                       as total
+  from _bandeja_pool
   where seller_id = '30000000-0000-0000-0000-000000000002'
-    and orden_seller between 1 and 29
 ) rp
 cross join lateral (
-  select (now() - interval '1 minute') - ((29 - rp.rn) * interval '25 seconds') as valor
+  select (now() - interval '1 minute') - ((rp.total - rp.rn) * interval '25 seconds') as valor
 ) ts;
 
--- El bulto AJENO de S2: `seller_id` sale del PEDIDO (FalabellaTech, posición 44
--- del SU pool), no de la bodega que se visita (MercadoSur) — exactamente el
--- descuadre que el retiro existe para destapar. El trigger
+-- El bulto AJENO de S2: `seller_id` sale del PEDIDO (FalabellaTech, prestado de
+-- `_bandeja_ajeno` — ver §8.1), no de la bodega que se visita (MercadoSur) —
+-- exactamente el descuadre que el retiro existe para destapar. El trigger
 -- `bultos_retiro_validar_denormalizados` lo permite: solo exige que
 -- `seller_id` coincida con `pedidos.seller_id`, nunca con el dueño de la bodega.
 insert into operacion.bultos_retiro (
@@ -797,11 +903,12 @@ select
   rp.seller_id,
   false,
   now() - interval '30 seconds', now() - interval '28 seconds', now() - interval '28 seconds'
-from _retiro_pool rp
-where rp.seller_id = '30000000-0000-0000-0000-000000000001' and rp.orden_seller = 44;
+from _bandeja_ajeno rp;
 
--- 8.5 S3 — ABIERTA: 49 resueltos de TecnoHogar (posiciones 1-49 de su pool) +
---     1 ilegible. Último escaneo hace <1 minuto: es la visita "viva ahora".
+-- 8.5 S3 — ABIERTA: 49 pedidos YA entregados/en ruta/con incidencia de
+--     TecnoHogar (relleno — ver §8.1: esta sesión no cierra, así que nada de
+--     lo que escanea puede aportar a la bandeja) + 1 ilegible. Último escaneo
+--     hace <1 minuto: es la visita "viva ahora".
 insert into operacion.bultos_retiro (
   tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
   codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
@@ -820,13 +927,13 @@ select
   false,
   ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
 from (
-  select *, row_number() over (order by orden_seller) as rn
-  from _retiro_pool
+  select *
+  from _relleno_pool
   where seller_id = '30000000-0000-0000-0000-000000000003'
     and orden_seller between 1 and 49
 ) rp
 cross join lateral (
-  select (now() - interval '1 minute') - ((49 - rp.rn) * interval '12 seconds') as valor
+  select (now() - interval '1 minute') - ((49 - rp.orden_seller) * interval '12 seconds') as valor
 ) ts;
 
 insert into operacion.bultos_retiro (
@@ -841,10 +948,12 @@ insert into operacion.bultos_retiro (
   false, now() - interval '30 seconds', now() - interval '30 seconds' + interval '2 seconds'
 );
 
--- 8.6 S4 — ABIERTA y ESTALE: 16 resueltos de FalabellaTech (posiciones 28-43
---     de su pool — SIGUEN a los 27 que ya tomó S1). El ÚLTIMO escaneo queda
---     fijo en `now() - 25 minutos` EXACTO: es el caso "no reporta hace rato"
---     que el aviso de la pantalla necesita, mientras S3 sigue viva — dos
+-- 8.6 S4 — ABIERTA y ESTALE: 16 pedidos YA entregados/en ruta/con incidencia
+--     de FalabellaTech (relleno — mismo motivo que S3: esta sesión tampoco
+--     cierra, y es un pool DISTINTO del que usó S1, así que no hay bulto
+--     compartido entre las dos visitas del mismo seller). El ÚLTIMO escaneo
+--     queda fijo en `now() - 25 minutos` EXACTO: es el caso "no reporta hace
+--     rato" que el aviso de la pantalla necesita, mientras S3 sigue viva — dos
 --     conductores retirando en paralelo en este mismo instante.
 insert into operacion.bultos_retiro (
   tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
@@ -864,17 +973,18 @@ select
   false,
   ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
 from (
-  select *, row_number() over (order by orden_seller) as rn
-  from _retiro_pool
+  select *
+  from _relleno_pool
   where seller_id = '30000000-0000-0000-0000-000000000001'
-    and orden_seller between 28 and 43
+    and orden_seller between 1 and 16
 ) rp
 cross join lateral (
-  select (now() - interval '25 minutes') - ((16 - rp.rn) * interval '90 seconds') as valor
+  select (now() - interval '25 minutes') - ((16 - rp.orden_seller) * interval '90 seconds') as valor
 ) ts;
 
--- 8.7 S5 — 22 resueltos de TecnoHogar (posiciones 50-71 de su pool — SIGUEN a
---     los 49 que ya tomó S3). Acta limpia, sin sin_resolver.
+-- 8.7 S5 — TODO el pool de bandeja de TecnoHogar (seller3) que le queda: S3 no
+--     cierra, así que no le "quita" nada a esta sesión (ver §8.1). Acta
+--     limpia, sin sin_resolver.
 insert into operacion.bultos_retiro (
   tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
   codigo_formato, codigo_normalizado, ml_shipment_id, pedido_id, seller_id,
@@ -893,13 +1003,14 @@ select
   false,
   ts.valor, ts.valor + interval '2 seconds', ts.valor + interval '2 seconds'
 from (
-  select *, row_number() over (order by orden_seller) as rn
-  from _retiro_pool
+  select *,
+         row_number() over (order by pedido_id) as rn,
+         count(*) over ()                       as total
+  from _bandeja_pool
   where seller_id = '30000000-0000-0000-0000-000000000003'
-    and orden_seller between 50 and 71
 ) rp
 cross join lateral (
-  select (now() - interval '9 minutes') - ((22 - rp.rn) * interval '50 seconds') as valor
+  select (now() - interval '9 minutes') - ((rp.total - rp.rn) * interval '50 seconds') as valor
 ) ts;
 
 -- 8.8 S6 — tenant AISLADO (Andes Express): 4 bultos, los CUATRO sin resolver
@@ -948,8 +1059,8 @@ select * from operacion.cerrar_sesion_retiro(
 -- 8.10 El escaneo POSTERIOR AL CIERRE de S2 — llega después de §8.9, con la
 --     sesión ya `cerrada`: el trigger exige `posterior_al_cierre = true` para
 --     aceptarlo (si no, 23514). No mueve el acta (ya está firmada): los
---     contadores VIVOS de S2 quedan en 31/30/1 mientras el acta sigue en
---     30/30/0 — el mismo bulto sirve también de `flex_qr` sin resolver.
+--     contadores VIVOS de S2 quedan en 42/41/1 mientras el acta sigue en
+--     41/41/0 — el mismo bulto sirve también de `flex_qr` sin resolver.
 insert into operacion.bultos_retiro (
   tenant_id, sesion_retiro_id, conductor_id, escaneo_id,
   codigo_formato, codigo_normalizado, ml_shipment_id,
@@ -961,7 +1072,9 @@ insert into operacion.bultos_retiro (
   true, now(), now()
 );
 
-drop table _retiro_pool;
+drop table _bandeja_pool;
+drop table _bandeja_ajeno;
+drop table _relleno_pool;
 drop table _torre_plan;
 
 commit;
@@ -987,16 +1100,24 @@ commit;
 --     (`operacion.cerrar_sesion_retiro`) + 2 ABIERTAS ahora mismo (dos
 --     conductores retirando en paralelo, uno de ellos "sin reportar hace
 --     25 min"). Un conductor con TRES visitas el mismo día (el caso real:
---     30+30+~50 bultos en tres bodegas de sellers distintos). 153 bultos:
---     resueltos + ilegibles + `flex_qr` sin match + UN bulto de un seller
---     ajeno a la bodega visitada + UN escaneo posterior al cierre (los
---     contadores vivos ya no coinciden con el acta). Comuna de destino
---     Santiago dominante, repartida en el resto. Una sesión + sus 4 bultos
---     (todos sin resolver) viven en Andes Express — tenant AISLADO del
+--     bultos de tres bodegas de sellers distintos). 194 bultos vivos en total
+--     (acta 43/40/3 en S1, 42/41/1 en S2 -contadores vivos ≠ acta, a
+--     propósito-, 50 en S3, 16 en S4, 39/39/0 en S5, 4/0/4 en S6): resueltos +
+--     ilegibles + `flex_qr` sin match + UN bulto de un seller ajeno a la
+--     bodega visitada + UN escaneo posterior al cierre. Una sesión + sus 4
+--     bultos (todos sin resolver) viven en Andes Express — tenant AISLADO del
 --     principal, para que una fuga de `tenant_id` se note en la pantalla.
 --     `operacion.pedidos.situacion_retiro` queda `retirado` para todo pedido
 --     casado con un bulto de una sesión CERRADA — nunca a mano, siempre por
 --     la función. `operacion.bultos_retiro_qr` NO se siembra (deny-all).
+--   **La bandeja de asignación (etapa 6, `/preparacion/asignar`) queda con
+--     120 pedidos** (`situacion_retiro = 'retirado' AND estado IN
+--     ('pendiente_asignacion','asignado')`, docs/ux/etapa-6-asignacion-en-
+--     bloque.md §3): 99 `pendiente_asignacion` + 21 `asignado` en 7
+--     conductores de origen distintos, repartidos en 19 comunas — Santiago
+--     dominante con 25 (más del doble que la siguiente, 10), el resto de 1 a
+--     10. Ver §8.1 para cómo se construye ese pool a propósito, y no como
+--     efecto colateral del muestreo por comuna.
 --
 -- Cruza 1.000 filas A PROPÓSITO: es el tope en que PostgREST trunca sin avisar,
 -- y contar pedidos por comuna es exactamente el patrón que ese tope arruina. Si

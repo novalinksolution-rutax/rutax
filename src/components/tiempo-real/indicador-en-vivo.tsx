@@ -21,9 +21,19 @@
  * Reutilizable: por defecto escucha `operacion.pedidos`; pásale otras tablas
  * (p. ej. incidencias) para otras superficies. Cada tabla que se escuche debe
  * estar en la publicación `supabase_realtime` (ver migraciones realtime_*).
+ *
+ * `onSenal` (opcional): si se entrega, se llama en vez de `router.refresh()`
+ * al recibir una señal (ya pasado el debounce/techo de `programador-refresco`).
+ * Existe para pantallas donde refrescar solo — mientras hay una selección
+ * activa bajo el dedo del usuario — sería dañino: las filas se recolocan y el
+ * clic siguiente cae sobre el elemento equivocado
+ * (docs/ux/etapa-6-asignacion-en-bloque.md §8: "aquí copiar ese patrón sería
+ * dañino"). El llamador decide cuándo refrescar de verdad (p. ej. un botón
+ * "Actualizar" en un aviso discreto). Sin `onSenal`, el comportamiento es
+ * IDÉNTICO al de siempre — ningún llamador existente cambia.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearClienteConRealtimeAutenticado } from "@/lib/supabase/client";
 import { crearProgramadorRefresco } from "./programador-refresco";
@@ -42,9 +52,11 @@ const PREDETERMINADO: TablaRealtime[] = [{ schema: "operacion", tabla: "pedidos"
 export function IndicadorEnVivo({
   tenantId,
   tablas = PREDETERMINADO,
+  onSenal,
 }: {
   tenantId: string;
   tablas?: TablaRealtime[];
+  onSenal?: () => void;
 }) {
   const router = useRouter();
   const [estadoCanal, setEstadoCanal] = useState<EstadoCanalRealtime | null>(null);
@@ -54,9 +66,22 @@ export function IndicadorEnVivo({
   // en cada render cuando se pasa `tablas` como literal inline).
   const clave = tablas.map((t) => `${t.schema}.${t.tabla}`).join(",");
 
+  // `onSenal` se lee por ref, NUNCA como dependencia del efecto de abajo: si el
+  // llamador la pasa como arrow function inline (`onSenal={() => setX(true)}`),
+  // su identidad cambia en cada render, y ponerla en el array de dependencias
+  // resuscribiría el canal Realtime completo en cada render — el mismo defecto
+  // de fondo que `programador-refresco.ts` ya documenta para el debounce.
+  const onSenalRef = useRef(onSenal);
+  useEffect(() => {
+    onSenalRef.current = onSenal;
+  }, [onSenal]);
+
   useEffect(() => {
     let desmontado = false;
-    const programador = crearProgramadorRefresco(() => router.refresh());
+    const programador = crearProgramadorRefresco(() => {
+      if (onSenalRef.current) onSenalRef.current();
+      else router.refresh();
+    });
     let limpiar: (() => void) | null = null;
 
     void (async () => {
