@@ -615,20 +615,42 @@ la secuencia va en tabla propia.**
 **Prerrequisitos duros y su estado al 2026-08-14:**
 
 1. ✅ **Etapa 2b** (bodega del courier, origen de la ruta) — hecha y desplegada.
-2. ⏳ **Backfill de geocoding** — **el corte del "11-ago" que decía este plan NO tiene respaldo en el
-   repo**: ninguna migración ni script escribió centroides masivamente. El único camino que produce
-   un centroide marcado `resuelto` es el **adaptador stub**, que se elige por defecto cuando
-   `GEOCODING_PROVIDER` no está puesta. La firma para identificarlos existe y es fuerte:
-   `geo_confianza = 0.500` exacto (constante del stub; Google devuelve 1.0/0.8/0.6/0.4 y ML siempre
-   1), o coordenada idéntica a una de las 52 constantes de `lib/geo/centroides-rm.ts`.
-   ⚠️ **Y el reset ingenuo empeora las cosas:** si la dirección quedó cacheada por el stub, resetear
-   el pedido y republicar el evento devuelve **el mismo centroide** desde `geocoding_cache` y lo
-   reescribe con `geocodificado_en` nuevo — el pedido queda igual de malo pero pareciendo recién
-   verificado. Hay que borrar las filas de caché con `proveedor = 'stub'`, no solo resetear pedidos.
-   **Pendiente de medición en producción** (`medir-geocoding.sql`) y de confirmar
-   `GEOCODING_PROVIDER` en Vercel — si está sin poner, lo primero es dejar de generar centroides
-   nuevos. Sospecha razonada de que la población es chica: los Flex traen coordenada de ML
-   (confianza 1) y el job ni siquiera corre para ellos, y de same-day no hay ninguno en producción.
+2. ✅ **Backfill de geocoding — MEDIDO EN PRODUCCIÓN el 2026-08-14: no hay backfill que hacer.**
+
+   **El corte del "11-ago" que decía este plan no tenía respaldo en el repo**: ninguna migración ni
+   script escribió centroides masivamente. El único camino que produce un centroide marcado
+   `resuelto` es el **adaptador stub**, que se elige por defecto si `GEOCODING_PROVIDER` no está
+   puesta. La firma para identificarlos es fuerte: `geo_confianza = 0.500` exacto (constante del
+   stub; Google devuelve 1.0/0.8/0.6/0.4 y ML siempre 1), o coordenada idéntica a una de las 52
+   constantes de `lib/geo/centroides-rm.ts`.
+
+   **La medición, con las dos firmas coincidiendo:**
+
+   | | |
+   |---|---|
+   | Pedidos en producción, todos `resuelto` y con coordenada | 46 |
+   | Con coordenada de Mercado Libre (confianza 1) | 45 |
+   | **Con centroide** | **1** |
+
+   Cero pedidos en `pendiente`, `no_resuelto` o `fuera_cobertura`. Y `GEOCODING_PROVIDER = google`
+   en Vercel desde el 11-ago: **no se están generando centroides nuevos**.
+
+   El único pedido con centroide es `same_day`, de Lampa, y está **cancelado** — nunca va a entrar
+   en una ruta, así que no se toca. Queda una fila de `geocoding_cache` con `proveedor = 'stub'`
+   para esa dirección, que conviene borrar para que un envío futuro a ese domicilio lo resuelva
+   Google.
+
+   **Por qué el riesgo era real aunque no se materializara:** los Flex traen coordenada de ML y el
+   job de geocoding ni siquiera corre para ellos; el único camino que llega al job es el same-day, y
+   de same-day hay exactamente un pedido en producción. El mecanismo vuelve a importar cuando el
+   same-day tenga volumen.
+
+   ⚠️ **Lo que sigue siendo cierto para ese día:** el reset ingenuo empeora las cosas. Si la
+   dirección quedó cacheada por el stub, resetear el pedido y republicar el evento devuelve **el
+   mismo centroide** desde `geocoding_cache` y lo reescribe con fecha nueva — el pedido queda igual
+   de malo pero pareciendo recién verificado. Hay que borrar las filas de caché del stub, no solo
+   resetear pedidos. Y **no hay cron ni barrido de geocoding**: el job se dispara solo por evento,
+   así que un pedido reseteado a `pendiente` sin republicar su evento se queda ahí para siempre.
 3. ✅ **Revisión de privacidad del punto de término** — hecha:
    `docs/seguridad/punto-de-termino-conductor.md`. Veredicto: **se puede construir**, con seis
    condiciones. Las dos que más condicionan el diseño: la coordenada se guarda **sin el texto de la
