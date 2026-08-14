@@ -38,6 +38,8 @@ function crearCliente(opts: {
   erroresInsertPorEscaneoId?: Record<string, { code?: string; message: string }>;
   /** Simula una excepción de infraestructura (no un `{error}` manejado) para este escaneo_id. */
   lanzarExcepcionParaEscaneoId?: string;
+  /** Fuerza que `resolver_bulto_retiro` devuelva error (para probar el best-effort). */
+  errorRpcResolver?: { code?: string; message: string };
 }) {
   const bultos: FilaFixture[] = [...(opts.bultosIniciales ?? [])];
   let contador = 0;
@@ -116,7 +118,36 @@ function crearCliente(opts: {
     throw new Error(`Tabla no soportada en el doble: ${tabla}`);
   });
 
-  return { cliente: { from } as never, from, bultos };
+  // Doble de `operacion.resolver_bulto_retiro`. LANZA ante cualquier otro RPC o
+  // esquema a propósito: un doble permisivo dejaría pasar una llamada mal
+  // dirigida sin que ninguna prueba se entere, que es exactamente cómo estos
+  // defectos sobreviven semanas en este repo.
+  const rpc = vi.fn(async (nombre: string, args: Record<string, unknown>) => {
+    if (nombre !== "resolver_bulto_retiro") {
+      throw new Error(`RPC no soportado en el doble: ${nombre}`);
+    }
+    if (opts.errorRpcResolver) return { data: null, error: opts.errorRpcResolver };
+    return {
+      data: [
+        {
+          bulto_resuelto_id: args.p_bulto_id,
+          pedido_resuelto_id: args.p_pedido_id,
+          seller_resuelto_id: SELLER_1,
+          resuelto_ts: new Date().toISOString(),
+          sesion_estaba_cerrada: true,
+          pedido_marcado_retirado: true,
+        },
+      ],
+      error: null,
+    };
+  });
+
+  const schema = vi.fn((nombre: string) => {
+    if (nombre !== "operacion") throw new Error(`Esquema no soportado en el doble: ${nombre}`);
+    return { rpc };
+  });
+
+  return { cliente: { from, schema } as never, from, schema, rpc, bultos };
 }
 
 function loteBase(entrada: {
@@ -424,5 +455,121 @@ describe("registrarLoteEscaneos — fallos best-effort no tumban el escaneo", ()
     );
 
     expect(resultados[0].estado).toBe("registrado");
+  });
+});
+
+/**
+ * El escaneo que llega DESPUÉS del cierre de la visita. Es el caso normal, no un
+ * borde: la señal en bodega es mala, el conductor cierra adentro, y la cola sin
+ * conexión drena cuando sale a la calle.
+ *
+ * Sin esta propagación el bulto queda con su `pedido_id` puesto y el pedido en
+ * `situacion_retiro = 'pendiente'` para siempre — arriba de la van, contado en la
+ * carga por comuna, y ausente de la bandeja de asignación.
+ */
+describe("registrarLoteEscaneos — bulto posterior al cierre", () => {
+  const escaneoFlex = () => ({
+    escaneoId: "esc-1",
+    codigo: PAYLOAD_FLEX_1,
+    escaneadoEn: new Date().toISOString(),
+  });
+
+  it("con la visita CERRADA y el bulto resuelto, marca el pedido como retirado", async () => {
+    const { cliente, rpc, schema } = crearCliente({
+      pedidos: [PEDIDO_FLEX_FIXTURE],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: "Comercial Andes" }],
+    });
+
+    const { resultados } = await registrarLoteEscaneos(
+      cliente,
+      loteBase({ sesionCerrada: true, escaneos: [escaneoFlex()] }),
+    );
+
+    expect(resultados[0].estado).toBe("registrado");
+    expect(schema).toHaveBeenCalledWith("operacion");
+    // Los argumentos EXACTOS: un RPC llamado con el pedido de otro sería
+    // marcar como retirado un pedido que nadie retiró.
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith("resolver_bulto_retiro", {
+      p_tenant_id: TENANT_A,
+      p_bulto_id: resultados[0].bultoId,
+      p_pedido_id: PEDIDO_1,
+    });
+  });
+
+  it("con la visita ABIERTA no lo llama: de eso se encarga el cierre", async () => {
+    const { cliente, rpc } = crearCliente({
+      pedidos: [PEDIDO_FLEX_FIXTURE],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: "Comercial Andes" }],
+    });
+
+    await registrarLoteEscaneos(cliente, loteBase({ sesionCerrada: false, escaneos: [escaneoFlex()] }));
+
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("con la visita cerrada pero el bulto SIN resolver, no lo llama", async () => {
+    // Sin pedido no hay nada que marcar, y llamarlo con un pedido inventado
+    // sería una atribución falsa.
+    const { cliente, rpc } = crearCliente({ pedidos: [], sellers: [] });
+
+    const { resultados } = await registrarLoteEscaneos(
+      cliente,
+      loteBase({ sesionCerrada: true, escaneos: [escaneoFlex()] }),
+    );
+
+    expect(resultados[0].estado).toBe("registrado");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("EN UNA FUSIÓN TAMBIÉN lo llama — es la única vía de recuperación", async () => {
+    // El reintento del lote entra siempre por la rama de fusión. Si la
+    // propagación viviera dentro del bloque de "solo el recién insertado", un
+    // fallo dejaría el pedido en `pendiente` sin segunda oportunidad.
+    const { cliente, rpc } = crearCliente({
+      pedidos: [PEDIDO_FLEX_FIXTURE],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: "Comercial Andes" }],
+      bultosIniciales: [
+        {
+          id: "bulto-preexistente",
+          tenant_id: TENANT_A,
+          sesion_retiro_id: SESION_1,
+          escaneo_id: "esc-anterior",
+          codigo_normalizado: "44760788897",
+          pedido_id: PEDIDO_1,
+        },
+      ],
+    });
+
+    const { resultados } = await registrarLoteEscaneos(
+      cliente,
+      loteBase({ sesionCerrada: true, escaneos: [escaneoFlex()] }),
+    );
+
+    expect(resultados[0].estado).toBe("duplicado_fusionado");
+    expect(rpc).toHaveBeenCalledWith("resolver_bulto_retiro", {
+      p_tenant_id: TENANT_A,
+      p_bulto_id: "bulto-preexistente",
+      p_pedido_id: PEDIDO_1,
+    });
+  });
+
+  it("si el RPC falla, el escaneo sigue 'registrado' — nunca se pierde un escaneo", async () => {
+    const { cliente, rpc } = crearCliente({
+      pedidos: [PEDIDO_FLEX_FIXTURE],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: "Comercial Andes" }],
+      errorRpcResolver: { code: "23514", message: "violación de CHECK simulada" },
+    });
+
+    const { resultados } = await registrarLoteEscaneos(
+      cliente,
+      loteBase({ sesionCerrada: true, escaneos: [escaneoFlex()] }),
+    );
+
+    // El bulto YA está guardado y confirmado: devolver `rechazado` lo dejaría
+    // atascado en la cola del conductor por algo que sí se escribió.
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(resultados[0].estado).toBe("registrado");
+    expect(resultados[0].bultoId).not.toBeNull();
   });
 });

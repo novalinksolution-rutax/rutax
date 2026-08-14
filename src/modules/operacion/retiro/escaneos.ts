@@ -57,6 +57,7 @@ import {
 } from "./dto-pedido";
 import { derivarResolucionBulto, parsearCodigoBulto, type CodigoBultoParseado, type ResolucionEscaneo } from "./parser-codigo";
 import { guardarCredencialQr } from "./qr-credencial";
+import { resolverBultoRetiroRpc } from "./rpc";
 
 /** Tope duro del lote — la ruta responde 400 para TODA la petición por encima de esto. */
 export const MAX_ESCANEOS_POR_LOTE = 50;
@@ -321,6 +322,12 @@ async function registrarUnBultoImpl(
     }
   }
 
+  // FUERA del bloque de "solo el recién insertado", a propósito — ver el porqué
+  // en el comentario de la función.
+  if (lote.sesionCerrada && candidato) {
+    await marcarPedidoRetiradoTrasCierre(cliente, lote, bultoFinal.id, candidato.pedidoId);
+  }
+
   return {
     escaneoId: escaneo.escaneoId,
     estado,
@@ -328,6 +335,61 @@ async function registrarUnBultoImpl(
     bultoId: bultoFinal.id,
     pedido: pedidoDto,
   };
+}
+
+/**
+ * Marca el pedido como `retirado` cuando el escaneo llegó DESPUÉS del cierre.
+ * =====================================================================
+ *
+ * EL AGUJERO QUE TAPA (encontrado el 2026-08-13, al construir la etapa 5). Un
+ * bulto que se casa con su pedido en el mismo INSERT no pasa por ningún lado que
+ * escriba `operacion.pedidos.situacion_retiro`: ese campo lo escriben SOLO
+ * `operacion.cerrar_sesion_retiro()` y `operacion.resolver_bulto_retiro()`.
+ * Mientras la visita sigue abierta da igual, porque el cierre barre todos los
+ * bultos de la sesión. Pero si la visita YA CERRÓ, el cierre ya pasó y no vuelve:
+ * el bulto queda con su `pedido_id` puesto y el pedido en `pendiente` **para
+ * siempre**.
+ *
+ * Y no es un caso raro: la señal en bodega es mala, el conductor cierra la visita
+ * adentro y la cola sin conexión drena cuando sale a la calle. Ese lote entero
+ * llega `posterior_al_cierre`. El bulto está arriba de la van, cuenta en la carga
+ * por comuna, y su pedido no aparece en la bandeja de asignación — dos pantallas
+ * vecinas mostrando números que no cuadran.
+ *
+ * La función SQL existía desde el día uno para esto (su propio comentario:
+ * "sin ese segundo paso... eso se descubre en producción") y **no la llamaba
+ * nadie**: su único llamador en todo el repo era su propia prueba.
+ *
+ * POR QUÉ VA FUERA DEL BLOQUE DE "solo el recién insertado". Los otros dos
+ * efectos —guardar la credencial y publicar la resolución diferida— no deben
+ * repetirse en una fusión. Éste sí: `resolver_bulto_retiro` es idempotente (su
+ * UPDATE lleva `situacion_retiro <> 'retirado'` y devuelve si marcó o no), y el
+ * reintento del lote es la ÚNICA vía de recuperación que existe. Si viviera
+ * dentro del bloque, un fallo dejaría el pedido en `pendiente` sin segunda
+ * oportunidad, porque el reintento entra siempre por la rama de fusión.
+ *
+ * BEST-EFFORT, y no es pereza: el bulto ya está guardado y confirmado. Lanzar
+ * aquí devolvería `rechazado` por algo que SÍ se guardó, dejando el escaneo
+ * atascado en la cola del conductor — y el reintento tampoco arreglaría el
+ * pedido. Se registra fuerte y se sigue: "nunca se pierde un escaneo" manda.
+ */
+async function marcarPedidoRetiradoTrasCierre(
+  cliente: SupabaseClient,
+  lote: RegistrarLoteEscaneosEntrada,
+  bultoId: string,
+  pedidoId: string,
+): Promise<void> {
+  try {
+    await resolverBultoRetiroRpc(cliente, { tenantId: lote.tenantId, bultoId, pedidoId });
+  } catch (err) {
+    // Con identificadores, porque sin ellos este log no sirve para reparar nada
+    // a mano. Ninguno es dato personal: son UUID internos.
+    console.error(
+      "[operacion/retiro] el pedido de un bulto posterior al cierre quedó SIN marcar como retirado",
+      { bultoId, pedidoId, sesionId: lote.sesionId },
+      err instanceof Error ? err.message : "error desconocido",
+    );
+  }
 }
 
 /** Best-effort — un fallo de Inngest no debe tumbar un escaneo que ya quedó guardado. */
