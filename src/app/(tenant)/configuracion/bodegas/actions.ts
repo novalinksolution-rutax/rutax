@@ -45,6 +45,7 @@ import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import {
   resolverCoordenadaConCache,
   TIMEOUT_GEOCODING_SINCRONO_MS,
+  ErrorGeocodingConfig,
 } from "@/modules/integraciones/geocoding";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import type { EstadoGeocoding } from "@/modules/operacion/tipos";
@@ -203,7 +204,26 @@ async function resolverGeoBodega(direccion: string, comuna: string): Promise<{
       geoConfianza: resultado.confianza,
       geocodificadoEn: ahora,
     };
-  } catch {
+  } catch (error) {
+    // No lanzar sigue siendo correcto —la bodega se guarda igual, y bloquear el
+    // alta por un hipo del proveedor sería peor—, pero tragarse el error sin
+    // dejar rastro no lo es: la pantalla dice "revisa que la dirección esté
+    // bien escrita" y el operador corrige una dirección que estaba perfecta,
+    // mientras la causa real (proveedor mal configurado, cuota agotada, red)
+    // no aparece en ninguna parte. Pasó en producción el 2026-08-13 con una
+    // dirección válida de Macul.
+    //
+    // `ErrorGeocodingConfig` se distingue a propósito: significa que el
+    // problema NO es la dirección sino el entorno —`GEOCODING_PROVIDER=google`
+    // sin `GOOGLE_MAPS_API_KEY`, o un proveedor no reconocido— y esa diferencia
+    // decide si el operador tiene algo que corregir o no tiene nada que hacer.
+    const esConfig = error instanceof ErrorGeocodingConfig;
+    console.error(
+      esConfig
+        ? "[bodegas] geocoding MAL CONFIGURADO — no es la dirección, es el entorno:"
+        : "[bodegas] geocoding falló:",
+      error,
+    );
     return { lat: null, long: null, geoEstado: "no_resuelto", geoConfianza: null, geocodificadoEn: ahora };
   }
 }
