@@ -183,7 +183,17 @@ function leerCamposBodega(
  * la migración de bodegas). `geocodificadoEn` se marca con el momento del
  * intento, resuelva o no.
  */
-async function resolverGeoBodega(direccion: string, comuna: string): Promise<{
+async function resolverGeoBodega(
+  direccion: string,
+  comuna: string,
+  /**
+   * Solo `true` cuando un humano aprieta "Reintentar ubicación". El caché
+   * guarda también los `no_resuelto`, así que sin esto el reintento leía el
+   * fallo cacheado y no volvía a preguntarle al proveedor jamás: el botón no
+   * hacía nada y, al no llamar a nadie, tampoco dejaba error que mirar.
+   */
+  forzarConsulta = false,
+): Promise<{
   lat: number | null;
   long: number | null;
   geoEstado: EstadoGeocoding;
@@ -196,6 +206,7 @@ async function resolverGeoBodega(direccion: string, comuna: string): Promise<{
       direccion,
       comuna,
       timeoutMs: TIMEOUT_GEOCODING_SINCRONO_MS,
+      forzarConsulta,
     });
     return {
       lat: resultado.lat,
@@ -510,7 +521,9 @@ async function reintentarUbicacionInterno(
   if (errorActual) throw new Error(errorActual.message);
   if (!actual) throw new Error("La bodega no existe.");
 
-  const geo = await resolverGeoBodega(actual.direccion as string, actual.comuna as string);
+  // `true`: esto es un reintento explícito del operador, tiene que llegar al
+  // proveedor aunque el caché ya tenga un `no_resuelto` para esa dirección.
+  const geo = await resolverGeoBodega(actual.direccion as string, actual.comuna as string, true);
 
   const { error } = await cliente
     .schema("identidad")

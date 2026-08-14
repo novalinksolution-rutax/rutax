@@ -119,6 +119,22 @@ export interface ArgsResolverCoordenadaConCache {
   timeoutMs?: number;
   /** Logger opcional, best-effort. Solo se usa para señalizar un cache HIT. */
   logger?: LoggerLigero;
+  /**
+   * Ignora el caché y consulta al proveedor sí o sí (el resultado se escribe
+   * igual, pisando la entrada anterior).
+   *
+   * Existe porque el caché guarda TAMBIÉN los `no_resuelto`, y eso es correcto
+   * para el camino automático —evita repetir llamadas facturables por una
+   * dirección que el proveedor ya dijo no conocer— pero convierte cualquier
+   * botón de "reintentar" en un adorno: lee el fallo cacheado y no vuelve a
+   * preguntar nunca. Mordió en producción el 2026-08-13: una bodega quedó en
+   * "Dirección no ubicada", cada reintento devolvía lo mismo al instante, y no
+   * había ni excepción ni log porque el proveedor no se llegaba a llamar.
+   *
+   * Úsalo SOLO cuando un humano pide explícitamente reintentar. Nunca en un
+   * job masivo: ahí saltarse el caché multiplica el costo sin ganar nada.
+   */
+  forzarConsulta?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,18 +158,22 @@ export interface ArgsResolverCoordenadaConCache {
 export async function resolverCoordenadaConCache(
   args: ArgsResolverCoordenadaConCache,
 ): Promise<ResultadoGeocoding> {
-  const { direccion, comuna, timeoutMs, logger } = args;
+  const { direccion, comuna, timeoutMs, logger, forzarConsulta } = args;
   const { claveHash, direccionNorm, comunaNorm } = calcularClaveHash(direccion, comuna);
 
   const supabase = crearClienteServiceRole();
 
-  // Lookup en cache global.
-  const { data: cacheData, error: cacheError } = await supabase
-    .schema('integraciones')
-    .from('geocoding_cache')
-    .select('lat, long, geo_estado, confianza, proveedor, comuna_norm')
-    .eq('clave_hash', claveHash)
-    .maybeSingle();
+  // Lookup en cache global. Se salta entero con `forzarConsulta` — ver la nota
+  // de esa opción: un reintento pedido por un humano tiene que llegar al
+  // proveedor, o no es un reintento.
+  const { data: cacheData, error: cacheError } = forzarConsulta
+    ? { data: null, error: null }
+    : await supabase
+        .schema('integraciones')
+        .from('geocoding_cache')
+        .select('lat, long, geo_estado, confianza, proveedor, comuna_norm')
+        .eq('clave_hash', claveHash)
+        .maybeSingle();
 
   if (cacheError) {
     throw new Error(`Error al leer geocoding_cache: ${cacheError.message}`);
