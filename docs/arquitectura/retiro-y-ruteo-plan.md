@@ -612,7 +612,32 @@ en ninguna parte**; no hay columna de secuencia en ninguna de las dos tablas can
 orden es por pedido. Pero esa tabla arrastra la deuda de `activa`. **Si la etapa 6 no paga esa deuda,
 la secuencia va en tabla propia.**
 
-**Prerrequisitos duros:** la etapa 2b (origen de la ruta) y el backfill de geocoding.
+**Prerrequisitos duros y su estado al 2026-08-14:**
+
+1. ✅ **Etapa 2b** (bodega del courier, origen de la ruta) — hecha y desplegada.
+2. ⏳ **Backfill de geocoding** — **el corte del "11-ago" que decía este plan NO tiene respaldo en el
+   repo**: ninguna migración ni script escribió centroides masivamente. El único camino que produce
+   un centroide marcado `resuelto` es el **adaptador stub**, que se elige por defecto cuando
+   `GEOCODING_PROVIDER` no está puesta. La firma para identificarlos existe y es fuerte:
+   `geo_confianza = 0.500` exacto (constante del stub; Google devuelve 1.0/0.8/0.6/0.4 y ML siempre
+   1), o coordenada idéntica a una de las 52 constantes de `lib/geo/centroides-rm.ts`.
+   ⚠️ **Y el reset ingenuo empeora las cosas:** si la dirección quedó cacheada por el stub, resetear
+   el pedido y republicar el evento devuelve **el mismo centroide** desde `geocoding_cache` y lo
+   reescribe con `geocodificado_en` nuevo — el pedido queda igual de malo pero pareciendo recién
+   verificado. Hay que borrar las filas de caché con `proveedor = 'stub'`, no solo resetear pedidos.
+   **Pendiente de medición en producción** (`medir-geocoding.sql`) y de confirmar
+   `GEOCODING_PROVIDER` en Vercel — si está sin poner, lo primero es dejar de generar centroides
+   nuevos. Sospecha razonada de que la población es chica: los Flex traen coordenada de ML
+   (confianza 1) y el job ni siquiera corre para ellos, y de same-day no hay ninguno en producción.
+3. ✅ **Revisión de privacidad del punto de término** — hecha:
+   `docs/seguridad/punto-de-termino-conductor.md`. Veredicto: **se puede construir**, con seis
+   condiciones. Las dos que más condicionan el diseño: la coordenada se guarda **sin el texto de la
+   dirección** (meterla en `geocoding_cache`, que es global, sin `tenant_id` y sin purga, haría falsa
+   la promesa de borrado — o sea el atajo de "reuso lo de bodegas" está prohibido), y **"nada delata
+   quién no lo definió" no se cumple escondiendo un campo**: si el ancla viaja al navegador, la
+   diferencia ya llegó. Hay 15 canales enumerados, incluidos el encuadre del mapa y los kilómetros
+   totales. Importa legalmente y no solo por cortesía: bajo subordinación laboral el consentimiento
+   solo es libre si negarse no queda a la vista del jefe.
 
 **Riesgo principal — y no es el algoritmo:** es la calidad del dato de entrada. Correr el backfill y
 medir cuántos pedidos quedan sin coordenada real **antes** de mostrarle una ruta a nadie.
