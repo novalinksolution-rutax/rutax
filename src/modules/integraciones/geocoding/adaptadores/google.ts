@@ -162,11 +162,33 @@ export class GoogleGeocodingAdapter implements PuertoGeocoding {
       default:
         // Config inválida / petición mal formada / key denegada. Lo tratamos
         // como error de proveedor (el job no debe reintentar indefinidamente).
-        // NO incluimos `error_message` de REQUEST_DENIED por si menciona la key.
+        //
+        // El `error_message` SÍ se incluye, y es lo que vuelve accionable al
+        // error: `REQUEST_DENIED` a secas no distingue entre cuatro causas muy
+        // distintas —API no habilitada, facturación apagada, key inválida, o
+        // una restricción de referrer que no aplica a llamadas de servidor— y
+        // sin ese detalle el operador no sabe cuál de las cuatro arreglar. Pasó
+        // en producción el 2026-08-13.
+        //
+        // La key se quita por coincidencia EXACTA de su valor, no por
+        // heurística: el redactor general marca credenciales por longitud (≥40
+        // caracteres) y una key de Google tiene 39, así que se le escaparía.
+        // Aquí conocemos el valor, de modo que la garantía es determinista.
         throw new ErrorGeocodingProveedor(
-          `Google status=${datos.status} (no reintentable)`,
+          `Google status=${datos.status} (no reintentable)` +
+            (datos.error_message ? `: ${this.sinApiKey(datos.error_message)}` : ''),
         );
     }
+  }
+
+  /**
+   * Quita la API key de un texto del proveedor, por coincidencia exacta de su
+   * valor. Google no la incluye en sus `error_message`, pero esto no depende de
+   * que eso siga siendo cierto: el texto viaja a los logs y a Sentry.
+   */
+  private sinApiKey(texto: string): string {
+    if (!this.apiKey) return texto;
+    return texto.split(this.apiKey).join('[redactado]');
   }
 
   /** Construye el resultado normalizado a partir de una respuesta OK. */
