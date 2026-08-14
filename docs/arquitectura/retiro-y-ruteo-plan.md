@@ -409,17 +409,47 @@ cuenta bultos vivos. Son dos cifras de lo mismo discrepando a la vista, que es c
 confianza en una pantalla. El acta manda donde le corresponde: en la tarjeta de la visita, con su
 línea "+ N escaneados después de cerrar · no se suman al acta".
 
-🚨 **EL "EN VIVO" NO FUNCIONA, Y NO ES DE ESTA ETAPA — es de toda la app** (medido en local el
-2026-08-14). El indicador se pone verde y **miente**: ninguna pantalla se refresca sola. Se
-reprodujo insertando un bulto con `/preparacion` abierta (20 s sin cambio; recargando a mano sí
-sube, o sea el servidor lee bien y lo que falta es la señal) **y moviendo un pedido con
-`/operaciones` abierta** — pantalla que lleva meses en producción. La pista principal:
-`realtime.subscription` tiene **cero filas** mientras el cliente reporta `SUBSCRIBED`, con los slots
-de replicación activos, las cinco tablas publicadas y el token del usuario válido y sin vencer.
-Hipótesis a verificar: el socket se autentica con la clave anónima en vez del token del usuario
-(`createBrowserClient` sin `realtime.setAuth()`), y como `anon` no tiene SELECT en esas tablas la
-suscripción se rechaza sin que el cliente reporte error. Reiniciar el contenedor de Realtime no lo
-arregla. Queda como trabajo aparte, con toda la evidencia recogida.
+## Desvío · El "En vivo" llevaba meses sin actualizar nada, en TODA la app — ✅ **ARREGLADO (2026-08-14)**
+
+Encontrado al hacer el QA visual de esta etapa, y **no era de esta etapa**: se reprodujo igual en
+`/operaciones`, que lleva meses en producción. El indicador se ponía verde y **mentía**; ninguna de
+las seis pantallas "en vivo" se refrescaba sola.
+
+**La causa, en una línea:** `supabase-js` propaga el token del usuario al socket de Realtime en un
+solo lugar (`_handleTokenChanged`), que reacciona a `TOKEN_REFRESHED`, `SIGNED_IN` y `SIGNED_OUT` —
+y **`INITIAL_SESSION` no está en esa lista** (no aparece ni una vez en todo el bundle de la 2.107).
+`INITIAL_SESSION` es justamente el evento de **cargar una página con la sesión ya establecida**, que
+es el caso normal: el coordinador entra en la mañana y no vuelve a autenticarse.
+
+Sin ese `setAuth`, el socket se queda con la **clave anónima**. Como `anon` no tiene `SELECT` sobre
+ninguna tabla de negocio, el servidor descarta la suscripción de `postgres_changes` —
+`realtime.subscription` en **cero filas**— y no llega ni un evento. El canal, mientras tanto,
+reporta `SUBSCRIBED`: sin error en consola, sin nada en los logs, con los slots de replicación
+activos y las tablas bien publicadas. Todo lo que se podía inspeccionar decía que estaba bien.
+
+**Por eso pareció funcionar cuando se verificó en julio:** justo después de iniciar sesión el evento
+SÍ es `SIGNED_IN`, así que en esa primera ventana el token se propaga y todo anda. Basta recargar
+para que se muera en silencio — y quien lo probó, lo probó recién entrando.
+
+**El arreglo:** `crearClienteConRealtimeAutenticado()` en `src/lib/supabase/client.ts` espera la
+sesión y llama a `realtime.setAuth(token)` **antes** de suscribir. El orden es el arreglo entero: la
+autorización de una suscripción se resuelve en el join del canal, así que un `setAuth` que llegue
+tarde deja el canal ya rechazado. ⚠️ **No se arregla con la opción `accessToken` de supabase-js**:
+esa es para autenticación de terceros y desactiva el módulo de auth propio, que es de donde sale la
+sesión de este proyecto.
+
+**Y el indicador dejó de mentir.** Se pintaba de verde con `status === "SUBSCRIBED"`, que **no
+significa que vayan a llegar eventos**. Ahora exige además que el token esté propagado, y los tres
+estados terminales (`CHANNEL_ERROR`, `TIMED_OUT`, `CLOSED`) dejan de disfrazarse de "Conectando…" —
+que dejaba al coordinador esperando para siempre algo que ya no iba a pasar— y muestran "Sin
+actualización automática" en ámbar, diciendo qué hacer. La lógica vive en
+`components/tiempo-real/estado-canal.ts`, fuera del `.tsx`, para poder probarla.
+
+**Verificado de punta a punta en el navegador, sin tocar la pantalla:** insertando un bulto,
+`/preparacion` pasó sola de 149 a 150, el conductor de 16 a 17 escaneados, su reloj a "Último
+escaneo hace instantes" y "Sin novedades" de 2 a 1. Moviendo un pedido, `/operaciones` pasó sola de
+25 a 23 pendientes y de 0 a 2 asignados. `realtime.subscription` pasó de **0 a 6 filas** (tres
+tablas por dos eventos).
 
 **Verificado contra datos reales en local**: el servidor renderiza la pantalla completa en ~530 ms;
 las cifras de la franja (149 bultos, 5 sin identificar) cuadran exactamente con la suma del bloque

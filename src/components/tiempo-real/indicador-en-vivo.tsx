@@ -25,8 +25,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { crearClienteConRealtimeAutenticado } from "@/lib/supabase/client";
 import { crearProgramadorRefresco } from "./programador-refresco";
+import {
+  interpretarEstadoCanal,
+  type EstadoCanalRealtime,
+} from "./estado-canal";
 
 export interface TablaRealtime {
   schema: string;
@@ -43,49 +47,75 @@ export function IndicadorEnVivo({
   tablas?: TablaRealtime[];
 }) {
   const router = useRouter();
-  const [enVivo, setEnVivo] = useState(false);
+  const [estadoCanal, setEstadoCanal] = useState<EstadoCanalRealtime | null>(null);
+  const [autenticado, setAutenticado] = useState(true);
 
   // Clave estable de las tablas para el array de dependencias (evita re-suscribir
   // en cada render cuando se pasa `tablas` como literal inline).
   const clave = tablas.map((t) => `${t.schema}.${t.tabla}`).join(",");
 
   useEffect(() => {
-    const supabase = createClient();
-    const pares = clave.split(",").map((s) => {
-      const [schema, tabla] = s.split(".");
-      return { schema, tabla };
-    });
-
+    let desmontado = false;
     const programador = crearProgramadorRefresco(() => router.refresh());
-    const programarRefresco = programador.programar;
+    let limpiar: (() => void) | null = null;
 
-    const filtro = `tenant_id=eq.${tenantId}`;
-    let canal = supabase.channel(`en-vivo-${tenantId}-${clave}`);
-    for (const { schema, tabla } of pares) {
-      canal = canal
-        .on("postgres_changes", { event: "INSERT", schema, table: tabla, filter: filtro }, programarRefresco)
-        .on("postgres_changes", { event: "UPDATE", schema, table: tabla, filter: filtro }, programarRefresco);
-    }
-    canal.subscribe((status) => setEnVivo(status === "SUBSCRIBED"));
+    void (async () => {
+      // ⚠️ SE ESPERA EL TOKEN ANTES DE SUSCRIBIR, y ese orden es el arreglo
+      // entero. La autorización de una suscripción se resuelve en el join del
+      // canal: si el socket todavía va con la clave anónima cuando se une, el
+      // servidor descarta la suscripción por RLS y ya no hay vuelta atrás —
+      // el canal igual reporta SUBSCRIBED. Ver el comentario largo en
+      // `src/lib/supabase/client.ts`.
+      const { cliente, autenticado: hayToken } = await crearClienteConRealtimeAutenticado();
+      if (desmontado) return;
+
+      setAutenticado(hayToken);
+      if (!hayToken) return; // Suscribirse sin token no traería un solo evento.
+
+      const pares = clave.split(",").map((s) => {
+        const [schema, tabla] = s.split(".");
+        return { schema, tabla };
+      });
+
+      const filtro = `tenant_id=eq.${tenantId}`;
+      let canal = cliente.channel(`en-vivo-${tenantId}-${clave}`);
+      for (const { schema, tabla } of pares) {
+        canal = canal
+          .on("postgres_changes", { event: "INSERT", schema, table: tabla, filter: filtro }, programador.programar)
+          .on("postgres_changes", { event: "UPDATE", schema, table: tabla, filter: filtro }, programador.programar);
+      }
+      canal.subscribe((status) => {
+        if (!desmontado) setEstadoCanal(status as EstadoCanalRealtime);
+      });
+
+      limpiar = () => {
+        void cliente.removeChannel(canal);
+      };
+    })();
 
     return () => {
+      desmontado = true;
       programador.cancelar();
-      void supabase.removeChannel(canal);
+      limpiar?.();
     };
   }, [tenantId, clave, router]);
+
+  const presentacion = interpretarEstadoCanal(estadoCanal, autenticado);
+  const esEnVivo = presentacion.estado === "en_vivo";
+  const esFallo = presentacion.estado === "sin_actualizacion";
 
   return (
     <span
       className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
-      title={enVivo ? "Actualización automática activa" : "Conectando…"}
+      title={presentacion.detalle}
     >
       <span
         className={`inline-block size-2 rounded-full ${
-          enVivo ? "animate-pulse bg-success" : "bg-muted-foreground/40"
+          esEnVivo ? "animate-pulse bg-success" : esFallo ? "bg-warning" : "bg-muted-foreground/40"
         }`}
         aria-hidden="true"
       />
-      <span aria-live="polite">{enVivo ? "En vivo" : "Conectando…"}</span>
+      <span aria-live="polite">{presentacion.etiqueta}</span>
     </span>
   );
 }
