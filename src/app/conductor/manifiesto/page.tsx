@@ -23,6 +23,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
+import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
 import { PingUbicacion } from "./ping-ubicacion";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
@@ -57,21 +58,22 @@ async function cargarManifiestoActivo(
   const cliente = crearClienteServiceRole();
   const hoy = fechaLocalEnSantiago(new Date());
 
-  // Buscar manifiesto del conductor para hoy, preferir confirmado/en_ruta sobre borrador
-  const { data: manifiestos } = await cliente
-    .from("manifiestos")
-    .select("id, nombre, fecha_operacion, estado")
-    .eq("driver_id", driverId)
-    .eq("tenant_id", tenantId)
-    .eq("fecha_operacion", hoy)
-    .in("estado", ["borrador", "confirmado", "en_ruta", "completado"])
-    .order("creado_en", { ascending: false })
-    .limit(1);
+  // Punto único de resolución, compartido con la ruta que alimenta la app
+  // nativa. Antes esta consulta estaba COPIADA en las dos pantallas, con el
+  // mismo `.limit(1)` — así que un segundo manifiesto vivo escondía paradas en
+  // ambas, y arreglarlo en una habría dejado la otra rota.
+  //
+  // (El comentario anterior decía "preferir confirmado/en_ruta sobre borrador",
+  // y la consulta nunca hizo eso: ordenaba por `creado_en`. Se corrige de paso.)
+  const m = await obtenerManifiestoVigenteDelConductor(cliente, {
+    tenantId,
+    driverId,
+    fecha: hoy,
+  });
 
-  if (!manifiestos || manifiestos.length === 0) return null;
+  if (!m) return null;
 
-  const m = manifiestos[0] as Record<string, unknown>;
-  const manifiestoId = m.id as string;
+  const manifiestoId = m.id;
 
   // Cargar pedidos asignados al manifiesto
   const { data: asignaciones } = await cliente
@@ -166,8 +168,8 @@ async function cargarManifiestoActivo(
 
   return {
     id: manifiestoId,
-    nombre: m.nombre as string,
-    fechaOperacion: m.fecha_operacion as string,
+    nombre: m.nombre,
+    fechaOperacion: m.fechaOperacion,
     estado: m.estado as EstadoManifiesto,
     pedidos: pedidosConOrden,
   };

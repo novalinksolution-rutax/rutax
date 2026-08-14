@@ -77,19 +77,22 @@ function crearClienteManifiesto(opts: {
     b.eq = vi.fn(self);
     b.in = vi.fn(self);
     b.order = vi.fn(self);
-    b.limit = vi.fn(async () => {
-      if (tabla === "manifiestos") {
-        return { data: opts.manifiesto ? [opts.manifiesto] : [], error: null };
-      }
-      return { data: [], error: null };
+    // `manifiestos` ya NO se lee con `.limit(1)`: pasa por
+    // `obtenerManifiestoVigenteDelConductor`, que trae TODOS los del día para
+    // poder detectar el caso de dos manifiestos vivos (que antes escondía
+    // paradas en silencio). Si alguien reintroduce el `.limit()`, esto revienta
+    // en vez de devolver un resultado plausible.
+    b.limit = vi.fn(() => {
+      throw new Error("La lectura de manifiestos ya no usa .limit(): ver manifiesto-vigente.ts");
     });
-    // asignaciones_pedido / incidencias / cierres_conductor resuelven vía `then`
-    // (el código real hace `const { data } = await cliente.from(...).select().eq().eq()`
-    // sin `.limit()` para estas tablas).
+    // Todas las tablas resuelven vía `then` (el código real hace
+    // `const { data } = await cliente.from(...).select().eq()...` sin `.limit()`).
     (b as unknown as { then: (resolve: (r: { data: unknown; error: null }) => void) => void }).then = (
       resolve,
     ) => {
-      if (tabla === "asignaciones_pedido") {
+      if (tabla === "manifiestos") {
+        resolve({ data: opts.manifiesto ? [opts.manifiesto] : [], error: null });
+      } else if (tabla === "asignaciones_pedido") {
         resolve({ data: opts.asignaciones, error: null });
       } else if (tabla === "incidencias") {
         resolve({ data: opts.incidencias ?? [], error: null });

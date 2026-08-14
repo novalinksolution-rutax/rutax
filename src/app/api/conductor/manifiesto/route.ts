@@ -3,6 +3,7 @@ import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { listarCierresPorPedidos } from "@/modules/operacion/cierre-conductor";
+import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { ESTADOS_TERMINALES, type EstadoPedido } from "@/modules/operacion/tipos";
 
@@ -34,22 +35,20 @@ export async function GET(request: NextRequest) {
   try {
     const cliente = crearClienteServiceRole();
 
-    const { data: manifiestos } = await cliente
-      .from("manifiestos")
-      .select("id, nombre, fecha_operacion, estado")
-      .eq("driver_id", driverId)
-      .eq("tenant_id", tenantId)
-      .eq("fecha_operacion", hoy)
-      .in("estado", ["borrador", "confirmado", "en_ruta", "completado"])
-      .order("creado_en", { ascending: false })
-      .limit(1);
+    // Punto único de resolución, compartido con la PWA: antes las dos pantallas
+    // tenían esta consulta copiada con su `.limit(1)`, así que un segundo
+    // manifiesto vivo escondía paradas en AMBAS y en silencio.
+    const m = await obtenerManifiestoVigenteDelConductor(cliente, {
+      tenantId,
+      driverId,
+      fecha: hoy,
+    });
 
-    if (!manifiestos || manifiestos.length === 0) {
+    if (!m) {
       return NextResponse.json({ manifiesto: null });
     }
 
-    const m = manifiestos[0] as Record<string, unknown>;
-    const manifiestoId = m.id as string;
+    const manifiestoId = m.id;
 
     const { data: asignaciones } = await cliente
       .from("asignaciones_pedido")
@@ -145,7 +144,7 @@ export async function GET(request: NextRequest) {
       manifiesto: {
         id: manifiestoId,
         nombre: m.nombre,
-        fechaOperacion: m.fecha_operacion,
+        fechaOperacion: m.fechaOperacion,
         estado: m.estado,
         paradas,
       },
