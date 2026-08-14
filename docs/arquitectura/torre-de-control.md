@@ -88,7 +88,7 @@ propio**: con el tiempo Rutax sabe cuánto le cuesta la lluvia a *ese* courier e
 | Zonas por tenant y mapeo comuna→zona | `src/modules/operacion/zonas.ts` | Unidad de agregación del mapa |
 | Ventanas de corte por zona | `identidad.ventanas_corte` | Tiempo restante por zona |
 | Conductores: disponibilidad + zonas preferentes | migración `..._conductor_disponibilidad_zonas` | Capacidad vs demanda |
-| Ping de ubicación del conductor | `src/app/conductor/manifiesto/ping-ubicacion.tsx` | Flota en vivo (F2) |
+| ~~Ping de ubicación del conductor~~ | ~~`src/app/conductor/manifiesto/ping-ubicacion.tsx`~~ — **retirado 2026-08-14**, ver `docs/seguridad/punto-de-termino-conductor.md` §1 | Flota en vivo (F2) — si se retoma, es una construcción nueva con consentimiento por finalidad, purga y revocación desde el día uno, no reconectar esto |
 | Catálogo `COMUNAS_RM` y `CENTROIDES_RM` | `src/lib/ui/comunas-rm.ts`, `.../geocoding/centroides-rm.ts` | Puntos de consulta meteorológica |
 | SLA, incidencias, líneas de cobro | `operacion`, `dinero` | Dinero en riesgo |
 | Inngest + crones | `src/lib/inngest/` | Ingesta externa fuera del request |

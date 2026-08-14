@@ -13,10 +13,17 @@
  *
  * Es minimización de verdad: se va lo invasivo y se queda lo que prueba.
  *
- * NO se purga `operacion.ubicacion_conductor` porque no hay nada que purgar: su
- * llave primaria es `conductor_id`, o sea una fila por conductor que se
- * sobrescribe. No existe rastro histórico, y por eso la minimización que exige la
- * Ley 21.431 sobre datos del repartidor ya estaba intacta.
+ * NO se purga `operacion.ubicacion_conductor` — y aquí la afirmación anterior de
+ * este comentario ("no hay nada que purgar") era FALSA y es justo la razón por
+ * la que el hallazgo H-1 de `docs/seguridad/punto-de-termino-conductor.md` pasó
+ * inadvertido: la tabla sí acumulaba filas (una por conductor, sin límite de
+ * tiempo si el manifiesto nunca se completaba), nada la purgaba, y la última
+ * posición del día era a menudo el domicilio del conductor. El 2026-08-14 se
+ * cortó la escritura (se retiró el ping de ubicación en vivo — nada la leía
+ * tampoco) y se vació la tabla en la migración
+ * `20260814000002_operacion_retirar_rastreo_ubicacion.sql`. Hoy la tabla existe,
+ * está vacía y ya no se alimenta desde ningún camino de la aplicación — por eso
+ * no hace falta un paso de purga aquí, no porque nunca hubiera nada que purgar.
  *
  * ## Retenciones legales (lo que NO se borra aunque cumpla la edad)
  *

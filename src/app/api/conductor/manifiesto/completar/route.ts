@@ -10,10 +10,6 @@ import { ErrorConflicto } from "@/modules/identidad/errores";
  * El conductor termina su ruta del día desde la app Expo: pasa su manifiesto
  * 'en_ruta' → 'completado'. Espejo de la Server Action `actionConductorTerminarRuta`.
  *
- * ALTO-1 (Ley 21.431): `completarManifiesto` borra la ubicación GPS del conductor
- * como efecto de minimización de datos. Garantizar el cierre desde la app nativa
- * asegura que el GPS se purgue aunque el conductor solo use el teléfono.
- *
  * Body JSON: { manifiestoId: string }
  */
 export async function POST(request: NextRequest) {

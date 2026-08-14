@@ -77,11 +77,6 @@ export async function actionCancelarManifiesto(formData: FormData) {
 
 /**
  * El coordinador o supervisor marca un manifiesto como 'completado'.
- *
- * ALTO-1: llama a `completarManifiesto` que, además de la transición de estado,
- * borra server-side la ubicación GPS del conductor (minimización — Ley 21.431).
- * Esto garantiza el borrado independientemente de si el conductor cierra o no
- * su sesión en la PWA.
  */
 export async function actionCompletarManifiesto(formData: FormData) {
   const sesion = await exigirSesionActual();

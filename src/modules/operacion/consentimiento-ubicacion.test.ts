@@ -1,18 +1,25 @@
 /**
  * Pruebas unitarias del módulo `consentimiento-ubicacion`.
  *
+ * Cubre el MECANISMO (tabla + otorgar/revocar/verificar vigencia), no un
+ * llamador concreto: desde 2026-08-14 este módulo no tiene ninguna Server
+ * Action que lo invoque (se retiró el ping de ubicación en vivo — ver el aviso
+ * al inicio de `consentimiento-ubicacion.ts` y
+ * `docs/seguridad/punto-de-termino-conductor.md` §1) y se conserva como molde
+ * para que la etapa 7 (punto de término del conductor) lo reuse con
+ * `finalidad`. Antes cubría también el gate de `actualizarUbicacionConductor`
+ * (los tests 5-6 de la numeración original); esa función ya no existe y esos
+ * dos tests se retiraron con ella.
+ *
  * Cubre:
  * 1. tieneConsentimientoVigente — sin filas → false.
  * 2. tieneConsentimientoVigente — última fila acepto=true, revocado_en=null → true.
  * 3. tieneConsentimientoVigente — última fila acepto=false → false.
  * 4. tieneConsentimientoVigente — última fila acepto=true, revocado_en SET → false.
- * 5. Gate en actualizarUbicacionConductor: manifiesto en_ruta pero SIN
- *    consentimiento → no-op (null), no llama UPSERT.
- * 6. Gate en actualizarUbicacionConductor: manifiesto en_ruta Y consentimiento
- *    vigente → escribe (UPSERT ejecutado).
- * 7. revocarConsentimientoUbicacion borra la ubicación vigente.
- * 8. registrarConsentimientoUbicacion: escribe en bitácora ANTES del INSERT.
- * 9. registrarConsentimientoUbicacion: acepto=false → acción _rechazado en bitácora.
+ * 5. revocarConsentimientoUbicacion marca revocado_en tras bitácora, sin tocar
+ *    ninguna otra tabla (ya no borra `ubicacion_conductor` — ver nota arriba).
+ * 6. registrarConsentimientoUbicacion: escribe en bitácora ANTES del INSERT.
+ * 7. registrarConsentimientoUbicacion: acepto=false → acción _rechazado en bitácora.
  */
 
 import { describe, expect, it } from "vitest";
@@ -22,8 +29,6 @@ import {
   revocarConsentimientoUbicacion,
   VERSION_TEXTO_CONSENTIMIENTO_UBICACION,
 } from "./consentimiento-ubicacion";
-import { actualizarUbicacionConductor } from "./ubicacion-conductor";
-import { hoyEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Fixtures
@@ -32,10 +37,6 @@ import { hoyEnSantiago } from "@/lib/fecha-santiago";
 const TENANT_A = "aaaa0000-0000-0000-0000-000000000001";
 const CONDUCTOR_1 = "dddd0000-0000-0000-0000-000000000010";
 const USUARIO_ID = "uuuu0000-0000-0000-0000-000000000001";
-// El día que ve el código bajo prueba es el de Santiago, no el de UTC.
-// Derivarlo con `toISOString()` hacía que este test se desincronizara solo
-// entre las 20:00 y la medianoche de Santiago.
-const HOY = hoyEnSantiago(); // YYYY-MM-DD
 
 // =============================================================================
 // Helpers de construcción de mocks
@@ -70,91 +71,6 @@ function clienteConsentimientoMock(filaResult: {
       return {};
     },
   } as unknown as Parameters<typeof tieneConsentimientoVigente>[0];
-}
-
-/**
- * Construye un mock del cliente que responde a:
- * - manifiestos (SELECT id — para la pre-condición de actualizarUbicacionConductor)
- * - consentimientos_ubicacion (SELECT id,acepto,revocado_en)
- * - ubicacion_conductor (UPSERT — cuenta cuántas veces se llama)
- *
- * Retorna el cliente y un contador de llamadas al UPSERT.
- */
-function clienteGateMock(opts: {
-  manifiestoActivo: boolean;
-  consentimientoVigente: boolean;
-}) {
-  let upsertLlamado = 0;
-
-  const cliente = {
-    from: (tabla: string) => {
-      if (tabla === "manifiestos") {
-        const filaManifiesto = opts.manifiestoActivo
-          ? { id: "man-1", conductor_id: CONDUCTOR_1, tenant_id: TENANT_A, estado: "en_ruta", fecha_operacion: HOY }
-          : null;
-        return {
-          select: (_cols: string) => buildEqChain({ data: filaManifiesto, error: null }),
-        };
-      }
-
-      if (tabla === "consentimientos_ubicacion") {
-        const filaConsentimiento = opts.consentimientoVigente
-          ? { id: "con-1", acepto: true, revocado_en: null }
-          : null;
-        return {
-          select: (_cols: string) => buildEqChain({ data: filaConsentimiento, error: null }),
-        };
-      }
-
-      if (tabla === "ubicacion_conductor") {
-        return {
-          upsert: (_payload: unknown, _opts: unknown) => {
-            upsertLlamado++;
-            return {
-              select: () => ({
-                single: async () => ({
-                  data: {
-                    conductor_id: CONDUCTOR_1,
-                    tenant_id: TENANT_A,
-                    lat: -33.4,
-                    long: -70.6,
-                    precision_m: 5,
-                    actualizado_en: new Date().toISOString(),
-                  },
-                  error: null,
-                }),
-              }),
-            };
-          },
-        };
-      }
-
-      return {};
-    },
-  } as unknown as Parameters<typeof actualizarUbicacionConductor>[0];
-
-  return { cliente, getUpsertLlamado: () => upsertLlamado };
-}
-
-/**
- * Construye una cadena de métodos eq+eq+... con maybeSingle o single al final.
- * Soporta hasta 4 niveles de .eq() encadenados.
- */
-function buildEqChain(
-  resultado: { data: unknown; error: null | { message: string } },
-) {
-  function chain(): Record<string, unknown> {
-    return {
-      eq: (_c: string, _v: unknown) => chain(),
-      is: (_c: string, _v: unknown) => chain(),
-      order: (_c: string, _o: unknown) => chain(),
-      limit: (_n: number) => chain(),
-      update: (_payload: unknown) => chain(),
-      maybeSingle: async () => resultado,
-      single: async () => resultado,
-    };
-  }
-  return chain();
 }
 
 // =============================================================================
@@ -197,58 +113,19 @@ describe("tieneConsentimientoVigente", () => {
 });
 
 // =============================================================================
-// 5-6. Gate en actualizarUbicacionConductor
-// =============================================================================
-
-describe("actualizarUbicacionConductor — gate de consentimiento", () => {
-  it("5. manifiesto en_ruta pero SIN consentimiento vigente → no-op (null, sin UPSERT)", async () => {
-    const { cliente, getUpsertLlamado } = clienteGateMock({
-      manifiestoActivo: true,
-      consentimientoVigente: false,
-    });
-
-    const resultado = await actualizarUbicacionConductor(
-      cliente,
-      CONDUCTOR_1,
-      TENANT_A,
-      { lat: -33.4, long: -70.6, precisionM: 5 },
-    );
-
-    expect(resultado).toBeNull();
-    expect(getUpsertLlamado()).toBe(0);
-  });
-
-  it("6. manifiesto en_ruta Y consentimiento vigente → escribe (UPSERT ejecutado)", async () => {
-    const { cliente, getUpsertLlamado } = clienteGateMock({
-      manifiestoActivo: true,
-      consentimientoVigente: true,
-    });
-
-    const resultado = await actualizarUbicacionConductor(
-      cliente,
-      CONDUCTOR_1,
-      TENANT_A,
-      { lat: -33.4, long: -70.6, precisionM: 5 },
-    );
-
-    expect(resultado).not.toBeNull();
-    expect(resultado?.conductorId).toBe(CONDUCTOR_1);
-    expect(getUpsertLlamado()).toBe(1);
-  });
-});
-
-// =============================================================================
-// 7. revocarConsentimientoUbicacion — borra la ubicación
+// 5. revocarConsentimientoUbicacion
 // =============================================================================
 
 describe("revocarConsentimientoUbicacion", () => {
-  it("7. revoca el consentimiento vigente y borra la ubicación del conductor", async () => {
+  it("5. revoca el consentimiento vigente (bitácora antes del UPDATE) sin tocar ninguna otra tabla", async () => {
     const bitacoraLlamadas: Array<Record<string, unknown>> = [];
     let updateLlamado = false;
-    let deleteLlamado = false;
+    const tablasConsultadas: string[] = [];
 
     const cliente = {
       from: (tabla: string) => {
+        tablasConsultadas.push(tabla);
+
         if (tabla === "bitacora_auditoria") {
           return {
             insert: (payload: Record<string, unknown>) => {
@@ -289,20 +166,11 @@ describe("revocarConsentimientoUbicacion", () => {
           };
         }
 
-        if (tabla === "ubicacion_conductor") {
-          return {
-            delete: () => ({
-              eq: (_c: string, _v: unknown) => ({
-                eq: (_c2: string, _v2: unknown) => {
-                  deleteLlamado = true;
-                  return { error: null };
-                },
-              }),
-            }),
-          };
-        }
-
-        return {};
+        // Cualquier otra tabla (en particular "ubicacion_conductor", que ya no
+        // se borra desde aquí — ver el aviso al inicio del módulo) no debería
+        // consultarse nunca: si algo la vuelve a llamar, este `from` no la
+        // reconoce y el mock explota, lo cual es la señal que queremos.
+        throw new Error(`Tabla inesperada en revocarConsentimientoUbicacion: ${tabla}`);
       },
     } as unknown as Parameters<typeof revocarConsentimientoUbicacion>[0];
 
@@ -319,13 +187,81 @@ describe("revocarConsentimientoUbicacion", () => {
     // El consentimiento fue marcado como revocado
     expect(updateLlamado).toBe(true);
 
-    // La ubicación fue borrada (minimización inmediata)
-    expect(deleteLlamado).toBe(true);
+    // Nunca se tocó "ubicacion_conductor" (ni ninguna tabla fuera de las dos
+    // esperadas: bitácora, y consentimientos_ubicacion dos veces — una vez
+    // para el SELECT que busca el vigente, otra para el UPDATE que lo marca
+    // revocado). La minimización de esa tabla ya no es responsabilidad de
+    // esta función, porque nada la alimenta desde 2026-08-14.
+    expect(tablasConsultadas).toEqual([
+      "bitacora_auditoria",
+      "consentimientos_ubicacion",
+      "consentimientos_ubicacion",
+    ]);
+  });
+
+  it("es idempotente: sin consentimiento vigente, no lanza y no intenta actualizar", async () => {
+    const bitacoraLlamadas: Array<Record<string, unknown>> = [];
+    let updateLlamado = false;
+
+    const cliente = {
+      from: (tabla: string) => {
+        if (tabla === "bitacora_auditoria") {
+          return {
+            insert: (payload: Record<string, unknown>) => {
+              bitacoraLlamadas.push(payload);
+              return { error: null };
+            },
+          };
+        }
+
+        if (tabla === "consentimientos_ubicacion") {
+          return {
+            select: (_cols: string) => ({
+              eq: (_c: string, _v: unknown) => ({
+                eq: (_c2: string, _v2: unknown) => ({
+                  eq: (_c3: string, _v3: unknown) => ({
+                    is: (_c4: string, _v4: unknown) => ({
+                      order: (_col: string, _opts: unknown) => ({
+                        limit: (_n: number) => ({
+                          // Sin consentimiento otorgado vigente.
+                          maybeSingle: async () => ({ data: null, error: null }),
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+            update: (_payload: unknown) => ({
+              eq: (_c: string, _v: unknown) => ({
+                eq: (_c2: string, _v2: unknown) => {
+                  updateLlamado = true;
+                  return { error: null };
+                },
+              }),
+            }),
+          };
+        }
+
+        throw new Error(`Tabla inesperada en revocarConsentimientoUbicacion: ${tabla}`);
+      },
+    } as unknown as Parameters<typeof revocarConsentimientoUbicacion>[0];
+
+    await expect(
+      revocarConsentimientoUbicacion(cliente, {
+        tenantId: TENANT_A,
+        conductorId: CONDUCTOR_1,
+        actorUsuarioId: USUARIO_ID,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(bitacoraLlamadas.length).toBeGreaterThanOrEqual(1);
+    expect(updateLlamado).toBe(false);
   });
 });
 
 // =============================================================================
-// 8-9. registrarConsentimientoUbicacion — bitácora antes del INSERT
+// 6-7. registrarConsentimientoUbicacion — bitácora antes del INSERT
 // =============================================================================
 
 describe("registrarConsentimientoUbicacion", () => {
@@ -360,7 +296,7 @@ describe("registrarConsentimientoUbicacion", () => {
     return { cliente, bitacoraLlamadas, insertLlamadas };
   }
 
-  it("8. acepto=true: bitácora con acción _otorgado ANTES del INSERT en tabla", async () => {
+  it("6. acepto=true: bitácora con acción _otorgado ANTES del INSERT en tabla", async () => {
     const orden: string[] = [];
     const bitacoraLlamadas: Array<Record<string, unknown>> = [];
     const insertLlamadas: Array<Record<string, unknown>> = [];
@@ -413,7 +349,7 @@ describe("registrarConsentimientoUbicacion", () => {
     expect(insertLlamadas[0].version_texto).toBe(VERSION_TEXTO_CONSENTIMIENTO_UBICACION);
   });
 
-  it("9. acepto=false → acción _rechazado en bitácora y acepto=false en tabla", async () => {
+  it("7. acepto=false → acción _rechazado en bitácora y acepto=false en tabla", async () => {
     const { cliente, bitacoraLlamadas, insertLlamadas } = clienteRegistroMock();
 
     await registrarConsentimientoUbicacion(cliente, {

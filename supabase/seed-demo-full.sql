@@ -866,7 +866,9 @@ where p.tenant_id = '10000000-0000-0000-0000-000000000001'
   and p.lat is not null
 on conflict do nothing;
 
--- Consentimiento de ubicación (Ley 21.431) y última posición de los conductores.
+-- Consentimiento de ubicación (Ley 21.431) — histórico legal, se conserva
+-- como demo del mecanismo aunque el rastreo en vivo que lo motivó ya no exista
+-- (ver el aviso de abajo).
 insert into operacion.consentimientos_ubicacion
   (id, tenant_id, conductor_id, acepto, version_texto, otorgado_en)
 select
@@ -877,15 +879,14 @@ select
 from generate_series(1,12) as k
 on conflict (id) do nothing;
 
-insert into operacion.ubicacion_conductor
-  (conductor_id, tenant_id, lat, long, precision_m, actualizado_en)
-select
-  ('40000000-0000-0000-0000-'||lpad(k::text,12,'0'))::uuid,
-  '10000000-0000-0000-0000-000000000001',
-  -33.42 - (k::numeric / 100), -70.60 - (k::numeric / 200), 18.0,
-  now() - (k * interval '3 minutes')
-from generate_series(1,12) as k
-on conflict (conductor_id) do nothing;
+-- NO se siembra `operacion.ubicacion_conductor` (2026-08-14): el rastreo en
+-- vivo que la alimentaba se retiró — ver
+-- docs/seguridad/punto-de-termino-conductor.md §1 y el `comment on table` de
+-- la migración 20260814000002_operacion_retirar_rastreo_ubicacion.sql. Antes
+-- este bloque insertaba 12 posiciones falsas (una por conductor) para que la
+-- tabla no se viera vacía; eso es exactamente el problema que se retiró
+-- (última posición del conductor, sin límite de tiempo, sin nada que la lea).
+-- Sembrar demo data ahí sería reintroducir el hallazgo a propósito.
 
 
 -- =============================================================================

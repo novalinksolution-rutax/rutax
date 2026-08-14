@@ -1,10 +1,23 @@
 /**
  * Módulo `consentimiento-ubicacion` — fuente de verdad autoritativa del
- * consentimiento del conductor para compartir su ubicación en vivo.
+ * consentimiento del conductor para compartir su ubicación.
  *
  * Cierra ALTO-2: el consentimiento ya no vive solo en localStorage/bitácora;
  * ahora tiene una tabla propia (`operacion.consentimientos_ubicacion`) con
  * histórico de otorgar/revocar (Ley 21.431 — trazabilidad legal).
+ *
+ * ⚠️ SIN INTERFAZ QUE LO INVOQUE DESDE 2026-08-14. El rastreo en vivo del
+ * conductor (`operacion.ubicacion_conductor`, el "ping" cada 90 s) se retiró
+ * — ver `docs/seguridad/punto-de-termino-conductor.md` §1: nada lo leía, no
+ * tenía purga y la última posición del día (a menudo el domicilio del
+ * conductor) sobrevivía sin límite de tiempo. Con el ping fuera, este módulo
+ * quedó sin ninguna Server Action que lo llame — y es a propósito: la tabla
+ * `consentimientos_ubicacion` y las funciones de abajo se CONSERVAN como
+ * mecanismo, porque la etapa 7 (punto de término del conductor) las reusa con
+ * una columna `finalidad` nueva (`'rastreo_en_ruta'` vs `'punto_termino_ruta'`)
+ * — no antes de que esa etapa se construya. No las borres ni las "reactives"
+ * cableando de vuelta el ping: si vuelve a hacer falta pedir consentimiento de
+ * ubicación, es para una finalidad distinta, con su propia interfaz.
  *
  * Reglas invariantes:
  * - Escritura exclusiva de service_role (sin política INSERT/UPDATE para
@@ -24,7 +37,6 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
-import { borrarUbicacionAlCerrarRuta } from "@/modules/operacion/ubicacion-conductor";
 
 // =============================================================================
 // Constante de versión del texto de consentimiento
@@ -122,11 +134,14 @@ export interface RevocarConsentimientoInput {
  * 1. Bitácora antes del efecto.
  * 2. Actualiza `revocado_en = now()` en el último registro otorgado vigente
  *    (acepto = true AND revocado_en IS NULL).
- * 3. Borra la ubicación vigente inmediatamente (minimización — Ley 21.431).
  *
  * Si no hay consentimiento vigente, es idempotente (no lanza error).
- * Si la actualización en BD falla, lanza — el borrado de ubicación NO ocurre
- * (la bitácora ya quedó).
+ *
+ * NO borra `operacion.ubicacion_conductor`: esa tabla ya no se alimenta desde
+ * ningún camino (el rastreo en vivo se retiró el 2026-08-14 — ver el aviso al
+ * inicio del módulo), así que no hay nada que minimizar aquí. Cuando la etapa
+ * 7 reuse esta función con `finalidad = 'punto_termino_ruta'`, el borrado que
+ * le corresponde es el de `operacion.punto_termino_conductor`, no este.
  *
  * @param cliente   Cliente service_role.
  * @param input     Parámetros de la operación.
@@ -181,11 +196,6 @@ export async function revocarConsentimientoUbicacion(
     }
   }
   // Si no hay vigente, la revocación es idempotente — no hay nada que revocar.
-
-  // --- 3. Minimización inmediata: borrar la ubicación vigente ------------------
-  // Aunque no haya consentimiento previo (idempotente), borramos igualmente
-  // como defensa en profundidad (el conductor no quiere ser rastreado).
-  await borrarUbicacionAlCerrarRuta(cliente, conductorId, tenantId);
 }
 
 // =============================================================================

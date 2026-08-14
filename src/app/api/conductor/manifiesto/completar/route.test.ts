@@ -3,34 +3,41 @@
  *
  * ANTES de esta ronda de QA esta ruta no tenía NINGÚN archivo de pruebas.
  *
- * Esta ruta delega TODO el trabajo (lectura + escritura + purga de GPS) en
- * `completarManifiesto` (`src/modules/operacion/manifiestos.ts:395-475`), sin
- * ninguna verificación propia de pertenencia — a diferencia de
+ * Esta ruta delega TODO el trabajo (lectura + escritura) en
+ * `completarManifiesto` (`src/modules/operacion/manifiestos.ts`), sin ninguna
+ * verificación propia de pertenencia — a diferencia de
  * `manifiesto/iniciar/route.ts`, que sí filtra por `driver_id` en su propia
  * consulta. Por eso estas pruebas NO mockean `completarManifiesto`: lo dejan
  * correr de verdad contra un doble de Supabase, para golpear la línea real
  * que sustituye a RLS.
  *
- * Esa línea es (manifiestos.ts:403-408):
+ * Esa línea es (manifiestos.ts, dentro de `completarManifiesto`):
  *
  *   cliente.from("manifiestos").select("*")
  *     .eq("id", manifiestoId)
  *     .eq("tenant_id", tenantId)      // ← aísla por TENANT. Funciona (ver test 1).
- *     .maybeSingle();                 // ← OJO: NO hay .eq("driver_id", driverId) aquí.
+ *     .eq("driver_id", driverId)      // ← y por CONDUCTOR (ver tests de más abajo).
+ *     .maybeSingle();
+ *
+ * Nota (2026-08-14): hasta esa fecha `completarManifiesto` también llamaba a
+ * `borrarUbicacionAlCerrarRuta` (purga de GPS, ALTO-1/Ley 21.431) tras el
+ * UPDATE. Ese borrado y su doble de `ubicacion_conductor` en este archivo se
+ * retiraron junto con todo el rastreo en vivo del conductor — ver
+ * `docs/seguridad/punto-de-termino-conductor.md` §1. El doble de Supabase de
+ * más abajo ya NO tiene caso para `"ubicacion_conductor"`: si algo la vuelve a
+ * consultar, `crearCliente` revienta con "Tabla no mockeada en esta prueba".
  *
  * 🚨 HALLAZGO DE AISLAMIENTO — REAL, VERIFICADO, NO CORREGIDO EN ESTE CAMBIO 🚨
  * ---------------------------------------------------------------------------
  * `completarManifiesto` aísla por `tenant_id` pero JAMÁS compara
  * `manifiesto.driver_id` contra el `driverId` de quien llama. El parámetro
- * `driverId` que SÍ recibe la función (`manifiestos.ts:399`) solo se usa
- * después, para el detalle de bitácora y para `borrarUbicacionAlCerrarRuta`
- * (borra la ubicación del ATACANTE, no la de la víctima — no hay fuga de GPS
- * ajeno por esta vía). Consecuencia: CUALQUIER conductor autenticado y activo
- * del mismo tenant puede terminar ("completado") el manifiesto `en_ruta` de
- * OTRO conductor con solo conocer/adivinar su `manifiestoId` (UUID) — algo
- * que hoy puede ser alcanzable, por ejemplo, si el `manifiestoId` circula por
- * el panel del coordinador o por otra respuesta de API. Compárese con el
- * mismo patrón en `manifiesto/iniciar/route.ts:54-60`, que SÍ agrega
+ * `driverId` que SÍ recibe la función solo se usa después, para el detalle de
+ * bitácora. Consecuencia: CUALQUIER conductor autenticado y activo del mismo
+ * tenant puede terminar ("completado") el manifiesto `en_ruta` de OTRO
+ * conductor con solo conocer/adivinar su `manifiestoId` (UUID) — algo que hoy
+ * puede ser alcanzable, por ejemplo, si el `manifiestoId` circula por el panel
+ * del coordinador o por otra respuesta de API. Compárese con el mismo patrón
+ * en `manifiesto/iniciar/route.ts:54-60`, que SÍ agrega
  * `.eq("driver_id", driverId)` a su propia consulta — esa es la corrección
  * que le falta a `completarManifiesto`.
  *
@@ -90,11 +97,13 @@ const usuarioConductor1 = {
 };
 
 /**
- * Doble de Supabase que deja correr la lógica REAL de `completarManifiesto`
- * y `borrarUbicacionAlCerrarRuta`. `manifiestoFila: null` simula "la consulta
- * no encontró nada" (id ajeno o tenant ajeno). Cualquier tabla no prevista
- * lanza — así una prueba de rechazo que "avanzara más de la cuenta" se nota
- * de inmediato en vez de pasar en falso.
+ * Doble de Supabase que deja correr la lógica REAL de `completarManifiesto`.
+ * `manifiestoFila: null` simula "la consulta no encontró nada" (id ajeno o
+ * tenant ajeno). Cualquier tabla no prevista lanza — así una prueba de rechazo
+ * que "avanzara más de la cuenta" se nota de inmediato en vez de pasar en
+ * falso; en particular, ya no hay caso para "ubicacion_conductor" (ver nota
+ * arriba) — si `completarManifiesto` volviera a consultarla, esta prueba lo
+ * detectaría con un throw, no en silencio.
  */
 function crearCliente(opts: { manifiestoFila: Record<string, unknown> | null }) {
   let payloadUpdate: Record<string, unknown> = {};
@@ -116,20 +125,8 @@ function crearCliente(opts: { manifiestoFila: Record<string, unknown> | null }) 
     return b;
   }
 
-  function builderUbicacion() {
-    const b: Record<string, unknown> = {};
-    const self = () => b;
-    b.delete = vi.fn(self);
-    b.eq = vi.fn(self);
-    (b as unknown as { then: (resolve: (r: { error: null }) => void) => void }).then = (resolve) => {
-      resolve({ error: null });
-    };
-    return b;
-  }
-
   const from = vi.fn((tabla: string) => {
     if (tabla === "manifiestos") return builderManifiestos();
-    if (tabla === "ubicacion_conductor") return builderUbicacion();
     throw new Error(`Tabla no mockeada en esta prueba: ${tabla}`);
   });
 

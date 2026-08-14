@@ -24,7 +24,6 @@ import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
-import { borrarUbicacionAlCerrarRuta } from "./ubicacion-conductor";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
@@ -380,15 +379,19 @@ export async function confirmarManifiesto(
 // =============================================================================
 
 /**
- * Marca un manifiesto como 'completado' (desde 'en_ruta') y borra server-side
- * la ubicación GPS del conductor (minimización de datos — Ley 21.431).
- *
- * ALTO-1: el borrado de ubicación se hace aquí, en el servidor, como garantía
- * de minimización independiente del ciclo de vida del componente React cliente.
- * La función `borrarUbicacionAlCerrarRuta` es idempotente: si ya no hay fila,
- * el DELETE es un no-op.
+ * Marca un manifiesto como 'completado' (desde 'en_ruta').
  *
  * Bitácora ANTES del UPDATE de estado (CLAUDE.md: "bitácora antes que efectos externos").
+ *
+ * Nota histórica (2026-08-14): esta función también borraba server-side la
+ * ubicación GPS del conductor al cerrar la ruta (ALTO-1, Ley 21.431). Ese
+ * borrado se retiró junto con todo el rastreo en vivo
+ * (`operacion.ubicacion_conductor`) — ver
+ * `docs/seguridad/punto-de-termino-conductor.md` §1: nada leía esa tabla, no
+ * tenía purga y la última posición del día sobrevivía sin límite de tiempo.
+ * Con la escritura cortada (`actualizarUbicacionConductor` ya no existe), no
+ * queda nada que borrar aquí — no reintroducir esta llamada sin antes releer
+ * ese documento.
  *
  * @param actorUsuarioId UUID de auth del usuario que dispara la acción (RNF-04).
  */
@@ -412,8 +415,7 @@ export async function completarManifiesto(
     //
     // Corrige ademas el camino del courier, donde `driverId` llega del
     // formulario: con un id equivocado, esta funcion registraba en bitacora al
-    // conductor equivocado y le borraba a EL la ubicacion GPS (Ley 21.431), en
-    // vez de al dueno real del manifiesto.
+    // conductor equivocado en vez de al dueno real del manifiesto.
     .eq("driver_id", driverId)
     .maybeSingle();
 
@@ -462,25 +464,6 @@ export async function completarManifiesto(
 
   if (errorUpdate || !completado) {
     throw new Error(`Error al completar el manifiesto: ${errorUpdate?.message ?? "sin datos"}`);
-  }
-
-  // Borrado server-side de la ubicación del conductor (ALTO-1 — Ley 21.431).
-  // Idempotente: si ya no hay fila de ubicación, el DELETE es un no-op.
-  // Se hace best-effort después del UPDATE: el manifiesto ya está 'completado'
-  // aunque el borrado de ubicación falle (el job de purga lo limpiaría).
-  // TODO: implementar job de purga de filas huérfanas (conductor sin manifiesto
-  // en_ruta hoy) como respaldo de este borrado, en caso de que esta llamada
-  // falle en un reintento parcial de la Server Action.
-  try {
-    await borrarUbicacionAlCerrarRuta(cliente, driverId, tenantId);
-  } catch (errBorrado) {
-    // No re-lanzar: el manifiesto ya está en 'completado'. El borrado fallido
-    // es un problema de minimización de datos, no de consistencia de negocio.
-    console.error(
-      `[completarManifiesto] No se pudo borrar la ubicación del conductor '${driverId}' ` +
-        `al completar el manifiesto '${manifiestoId}'. ` +
-        `Error: ${errBorrado instanceof Error ? errBorrado.message : "desconocido"}`,
-    );
   }
 
   return filaAManifiesto(completado);

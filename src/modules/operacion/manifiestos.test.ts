@@ -95,7 +95,6 @@ interface EstadoFalso {
   asignaciones: FilaAsignacion[];
   pedidos: FilaPedido[];
   bitacora: Array<Record<string, unknown>>;
-  ubicaciones: Array<{ conductor_id: string; tenant_id: string }>;
 }
 
 function crearClienteFalso(seed?: {
@@ -129,7 +128,6 @@ function crearClienteFalso(seed?: {
       { id: PEDIDO_2, tenant_id: TENANT_A, seller_id: SELLER_1, estado: "pendiente_asignacion" },
     ],
     bitacora: [],
-    ubicaciones: [{ conductor_id: DRIVER_1, tenant_id: TENANT_A }],
   };
 
   function from(tabla: string) {
@@ -323,30 +321,13 @@ function crearClienteFalso(seed?: {
       };
     }
 
-    // --- ubicacion_conductor (borrado ALTO-1, Ley 21.431, al completar ruta) ---
-    if (tabla === "ubicacion_conductor") {
-      return {
-        delete: () => {
-          const filtros: Array<[string, unknown]> = [];
-          function buildDelete() {
-            return {
-              eq(c: string, v: unknown) {
-                filtros.push([c, v]);
-                return buildDelete();
-              },
-              then(resolve: (r: { error: null }) => void) {
-                estado.ubicaciones = estado.ubicaciones.filter(
-                  (u) => !filtros.every(([c, v]) => (u as unknown as Record<string, unknown>)[c] === v),
-                );
-                resolve({ error: null });
-              },
-            };
-          }
-          return buildDelete();
-        },
-      };
-    }
-
+    // NOTA (2026-08-14): este doble tenía un caso "ubicacion_conductor" para el
+    // borrado de GPS que `completarManifiesto` hacía al cerrar la ruta (ALTO-1).
+    // Ese borrado se retiró junto con todo el rastreo en vivo del conductor —
+    // ver docs/seguridad/punto-de-termino-conductor.md §1. `completarManifiesto`
+    // ya no consulta esta tabla; por eso NO hay caso para ella aquí abajo, y
+    // por eso el `throw` de más abajo es la aserción: si algo la vuelve a
+    // llamar, este doble lo revienta en vez de dejarlo pasar en silencio.
     throw new Error(`Tabla no soportada en doble de prueba: ${tabla}`);
   }
 
@@ -700,8 +681,12 @@ describe("confirmarManifiesto", () => {
 // manifiesto puede quedar con menos paradas o vacío [tras cancelar]. `qa` debe
 // verificar `api/conductor/manifiesto/completar` con un manifiesto cuyas
 // paradas fueron todas canceladas." `completarManifiesto` NO tenía ninguna
-// prueba antes de esta ronda de QA (ni módulo ni ruta API) — es la función que
-// además purga la ubicación GPS del conductor (Ley 21.431, ALTO-1).
+// prueba antes de esta ronda de QA (ni módulo ni ruta API).
+//
+// Hasta 2026-08-14 esta función también purgaba la ubicación GPS del
+// conductor al cerrar la ruta (Ley 21.431, ALTO-1); ese borrado y sus pruebas
+// se retiraron junto con todo el rastreo en vivo — ver
+// docs/seguridad/punto-de-termino-conductor.md §1.
 // =============================================================================
 describe("completarManifiesto", () => {
   function manifiestoEnRuta(overrides: Partial<FilaManifiesto> = {}): FilaManifiesto {
@@ -722,9 +707,8 @@ describe("completarManifiesto", () => {
     };
   }
 
-  it("completa un manifiesto 'en_ruta' → 'completado', deja bitácora y purga la ubicación del conductor", async () => {
+  it("completa un manifiesto 'en_ruta' → 'completado' y deja bitácora", async () => {
     const { cliente, estado } = crearClienteFalso({ manifiestos: [manifiestoEnRuta()] });
-    expect(estado.ubicaciones).toHaveLength(1); // control positivo: había algo que borrar
 
     const completado = await completarManifiesto(
       cliente,
@@ -740,9 +724,6 @@ describe("completarManifiesto", () => {
 
     const entrada = estado.bitacora.find((e) => e.accion === "manifiesto.completado");
     expect(entrada).toBeDefined();
-
-    // Ley 21.431 / ALTO-1: la ubicación se borra al cerrar la ruta.
-    expect(estado.ubicaciones).toHaveLength(0);
   });
 
   it("BUG QUE NO SE ROMPIÓ (§5 fila 8): un manifiesto con TODAS sus paradas canceladas SIGUE completándose — la función no mira paradas, solo el estado del manifiesto", async () => {
@@ -793,22 +774,5 @@ describe("completarManifiesto", () => {
     await expect(
       completarManifiesto(cliente, MANIFIESTO_A, TENANT_B, DRIVER_1), // tenant incorrecto
     ).rejects.toBeInstanceOf(ErrorConflicto);
-  });
-
-  it("un fallo al borrar la ubicación NO revierte la finalización (best-effort, ya está 'completado')", async () => {
-    // `borrarUbicacionAlCerrarRuta` lanza si `error` viene no-nulo; para
-    // simularlo sin reescribir todo el doble de prueba, se pasa un driverId
-    // que no calza con ninguna fila de `ubicaciones` — el DELETE no encuentra
-    // nada que borrar (0 filas afectadas), lo cual NO es un error en Supabase,
-    // así que esto en realidad prueba el camino "nada que purgar" — ambos
-    // deben dejar el manifiesto 'completado'.
-    const { cliente, estado } = crearClienteFalso({
-      manifiestos: [manifiestoEnRuta()],
-    });
-    estado.ubicaciones = []; // no había ubicación que borrar
-
-    const completado = await completarManifiesto(cliente, MANIFIESTO_A, TENANT_A, DRIVER_1);
-
-    expect(completado.estado).toBe("completado");
   });
 });

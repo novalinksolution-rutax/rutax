@@ -82,11 +82,6 @@ export async function actionConductorListoParaSalir(formData: FormData) {
 
 /**
  * El conductor marca su manifiesto como 'completado' al terminar la ruta.
- *
- * ALTO-1: el borrado server-side de la ubicación GPS queda garantizado aquí
- * independientemente del ciclo de vida del componente React (unmount, PWA cerrada,
- * cierre de sesión). `completarManifiesto` llama a `borrarUbicacionAlCerrarRuta`
- * como efecto de minimización de datos (Ley 21.431).
  */
 export async function actionConductorTerminarRuta(formData: FormData) {
   const sesion = await exigirSesionActual();

@@ -17,12 +17,6 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarPruebaEntrega } from "@/modules/operacion/pruebas-entrega";
 import { actualizarEstadoPedido } from "@/modules/operacion/pedidos";
 import { obtenerUrlFirmadaPod } from "@/modules/operacion/pruebas-entrega";
-import { actualizarUbicacionConductor, borrarUbicacionAlCerrarRuta } from "@/modules/operacion/ubicacion-conductor";
-import {
-  registrarConsentimientoUbicacion,
-  revocarConsentimientoUbicacion,
-  VERSION_TEXTO_CONSENTIMIENTO_UBICACION,
-} from "@/modules/operacion/consentimiento-ubicacion";
 import type { TipoIncidencia } from "@/modules/operacion/tipos";
 
 // =============================================================================
@@ -250,79 +244,6 @@ export async function actionNoEntregarPedido(formData: FormData): Promise<Result
 }
 
 // =============================================================================
-// actionPingUbicacion
-// =============================================================================
-
-/**
- * El conductor envía su posición GPS periódicamente mientras está en ruta.
- * DATOS PERSONALES: lat/long nunca en logs del servidor.
- * No devuelve la ubicación al cliente — solo confirma el éxito.
- */
-export async function actionPingUbicacion(formData: FormData): Promise<{ exito?: boolean; error?: string }> {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId || !sesion.usuario.driverId) {
-    return { error: "Sin sesión de conductor." };
-  }
-
-  const latStr = formData.get("lat") as string | null;
-  const longStr = formData.get("long") as string | null;
-  const precisionStr = formData.get("precisionM") as string | null;
-
-  if (!latStr || !longStr) return { error: "Coordenadas inválidas." };
-
-  const lat = parseFloat(latStr);
-  const long = parseFloat(longStr);
-  if (isNaN(lat) || isNaN(long)) return { error: "Coordenadas inválidas." };
-
-  try {
-    const cliente = crearClienteServiceRole();
-    await actualizarUbicacionConductor(
-      cliente,
-      sesion.usuario.driverId,
-      sesion.usuario.tenantId,
-      {
-        lat,
-        long,
-        precisionM: precisionStr ? parseFloat(precisionStr) : undefined,
-      },
-    );
-    return { exito: true };
-  } catch (err) {
-    // Ping no crítico: no bloqueamos la UX si falla.
-    const mensaje = err instanceof Error ? err.message : "Error al actualizar ubicación.";
-    return { error: mensaje };
-  }
-}
-
-// =============================================================================
-// actionBorrarUbicacion
-// =============================================================================
-
-/**
- * Borra la ubicación del conductor al cerrar la ruta o cerrar sesión.
- * Minimización de datos (Ley 21.431).
- */
-export async function actionBorrarUbicacion(): Promise<{ exito?: boolean; error?: string }> {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId || !sesion.usuario.driverId) {
-    return { error: "Sin sesión de conductor." };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    await borrarUbicacionAlCerrarRuta(
-      cliente,
-      sesion.usuario.driverId,
-      sesion.usuario.tenantId,
-    );
-    return { exito: true };
-  } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error al borrar ubicación.";
-    return { error: mensaje };
-  }
-}
-
-// =============================================================================
 // actionObtenerUrlPod
 // =============================================================================
 
@@ -346,83 +267,15 @@ export async function actionObtenerUrlPod(podId: string): Promise<{ url?: string
   }
 }
 
-// =============================================================================
-// actionRegistrarConsentimientoUbicacion
-// =============================================================================
-
-/**
- * Registra el consentimiento (o rechazo) del conductor para compartir su
- * ubicación en vivo.
- *
- * Flujo (dentro del módulo `consentimiento-ubicacion`):
- *   1. Bitácora ANTES del efecto (acción _otorgado / _rechazado).
- *   2. INSERT en `operacion.consentimientos_ubicacion` (tabla autoritativa).
- *
- * La versión del texto se fija en VERSION_TEXTO_CONSENTIMIENTO_UBICACION.
- * El copywriter define el texto y bumpeará la versión cuando lo cambie.
- *
- * @param acepto true si el conductor otorga consentimiento; false si lo rechaza.
- * @param versionTexto Opcional — permite al frontend pasar una versión diferente
- *   si el texto fue bumpeado. Por defecto usa VERSION_TEXTO_CONSENTIMIENTO_UBICACION.
- */
-export async function actionRegistrarConsentimientoUbicacion(
-  acepto: boolean,
-  versionTexto: string = VERSION_TEXTO_CONSENTIMIENTO_UBICACION,
-): Promise<{ exito?: boolean; error?: string }> {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId || !sesion.usuario.driverId) {
-    return { error: "Sin sesión de conductor." };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    await registrarConsentimientoUbicacion(cliente, {
-      tenantId: sesion.usuario.tenantId,
-      conductorId: sesion.usuario.driverId,
-      actorUsuarioId: sesion.usuarioId,
-      acepto,
-      versionTexto,
-    });
-    return { exito: true };
-  } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error al registrar consentimiento.";
-    return { error: mensaje };
-  }
-}
-
-// =============================================================================
-// actionRevocarConsentimientoUbicacion
-// =============================================================================
-
-/**
- * Revoca el consentimiento de ubicación del conductor.
- *
- * Flujo (dentro del módulo `consentimiento-ubicacion`):
- *   1. Bitácora ANTES del efecto (acción conductor.ubicacion.consentimiento_revocado).
- *   2. Marca `revocado_en = now()` en el último consentimiento otorgado vigente.
- *   3. Borra la ubicación vigente inmediatamente (minimización — Ley 21.431).
- *
- * Es idempotente: si no hay consentimiento vigente, no lanza error.
- */
-export async function actionRevocarConsentimientoUbicacion(): Promise<{
-  exito?: boolean;
-  error?: string;
-}> {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId || !sesion.usuario.driverId) {
-    return { error: "Sin sesión de conductor." };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    await revocarConsentimientoUbicacion(cliente, {
-      tenantId: sesion.usuario.tenantId,
-      conductorId: sesion.usuario.driverId,
-      actorUsuarioId: sesion.usuarioId,
-    });
-    return { exito: true };
-  } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error al revocar consentimiento.";
-    return { error: mensaje };
-  }
-}
+// NOTA (2026-08-14): `actionRegistrarConsentimientoUbicacion` y
+// `actionRevocarConsentimientoUbicacion` vivían aquí y respaldaban el modal de
+// consentimiento de `ping-ubicacion.tsx`. Se retiraron junto con el rastreo en
+// vivo del conductor (`operacion.ubicacion_conductor`): ver
+// docs/seguridad/punto-de-termino-conductor.md §1. Pedirle permiso a alguien
+// para algo que ya no ocurre es peor que no pedírselo. El módulo
+// `consentimiento-ubicacion.ts` (registrar/revocar/vigente) se conserva sin
+// interfaz que lo invoque — es el "molde" que la etapa 7 (punto de término del
+// conductor) reutilizará con una columna `finalidad` nueva. No recablear estas
+// Server Actions para reintroducir el ping: si hace falta un
+// consentimiento de ubicación de nuevo, es para una finalidad distinta y con
+// su propia interfaz.

@@ -25,7 +25,6 @@ import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia
 import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
 import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
-import { PingUbicacion } from "./ping-ubicacion";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 
@@ -398,9 +397,6 @@ export default async function PaginaManifiestoActivo() {
           estaEnRuta={esEnRuta}
         />
       )}
-
-      {/* Ping de ubicación + consentimiento — solo cuando el manifiesto está en_ruta */}
-      <PingUbicacion manifiestoEnRuta={esEnRuta} />
     </div>
   );
 }

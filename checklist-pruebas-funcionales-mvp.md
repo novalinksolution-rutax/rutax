@@ -521,7 +521,10 @@ Suite: `src/modules/operacion/bloque2-adversarial.test.ts`.
 - [x] Sin asignaciones same_day activas → no-op sin error.
 - [x] Error de consulta a BD se propaga (no se silencia con ErrorConflicto).
 
-**Esc-10 — Ubicacion del conductor**
+**Esc-10 — Ubicacion del conductor** — ⚠️ **RETIRADO 2026-08-14, ver la sección al final del
+documento.** Los `[x]` de abajo eran ciertos el 2026-06-20: `actualizarUbicacionConductor` y
+`borrarUbicacionAlCerrarRuta` ya no existen, y con ellos sus pruebas. Se dejan aquí como registro
+histórico, no como estado actual.
 - [x] Sin manifiesto en_ruta hoy → devuelve null, UPSERT no se invoca (no acumula ubicaciones fuera de turno).
 - [x] Con manifiesto en_ruta hoy → realiza UPSERT y retorna la ubicacion.
 - [x] Conductor sin manifiesto propio (otro conductor tiene el manifiesto) → no-op.
@@ -1793,6 +1796,54 @@ Ya está reescrito arriba. Se añadió también la trampa de `current_date` en U
 - [ ] **"Promover y desactivar" no es atómica.** PostgREST no expone transacciones desde el cliente: son dos UPDATE ordenados para que un fallo intermedio deje estado válido (sin principal), nunca violando el CHECK. Si se quiere atomicidad real, va como función en Postgres.
 - [ ] **`seed.sql` no es re-ejecutable completo** (preexistente, ajeno a bodegas): los tres `insert into operacion.pedidos` de las líneas 517, 591 y 665 no llevan `on conflict`. No afecta el flujo normal porque `db reset` aplica sobre base limpia.
 - [ ] **Cabo para la etapa 3**: cuando la visita de retiro referencie `seller_bodegas` por FK compuesta, los dos `delete` del §0 de `seed-torre-hoy.sql` fallarán con 23503 si hay visitas colgando.
+
+---
+
+## Retiro del rastreo de ubicación del conductor — 2026-08-14
+
+**Motivo:** revisión de `seguridad-cumplimiento` previa a construir la etapa 7 de retiro-y-ruteo
+(`docs/seguridad/punto-de-termino-conductor.md` §1) encontró que el rastreo en vivo YA desplegado
+(`PingUbicacion`, cada 90 s mientras el manifiesto está `en_ruta`) no tenía finalidad efectiva:
+ninguna pantalla leía `operacion.ubicacion_conductor`, los tres caminos de borrado fallaban juntos
+en el escenario normal, ningún job la purgaba y el consentimiento no se podía revocar desde ninguna
+interfaz. La última posición del día sobrevivía sin límite de tiempo — con frecuencia, el domicilio
+del conductor. Decisión del usuario: **cortar la recolección entera**, no mitigarla.
+
+**RETIRADO (código):** `src/app/conductor/manifiesto/ping-ubicacion.tsx` (componente + modal de
+consentimiento) · `src/modules/operacion/ubicacion-conductor.ts` entero
+(`actualizarUbicacionConductor`, `borrarUbicacionAlCerrarRuta`) · las Server Actions
+`actionPingUbicacion`, `actionBorrarUbicacion`, `actionRegistrarConsentimientoUbicacion` y
+`actionRevocarConsentimientoUbicacion` (`src/app/conductor/manifiesto/[pedidoId]/actions.ts`) · la
+llamada a `borrarUbicacionAlCerrarRuta` dentro de `completarManifiesto`
+(`src/modules/operacion/manifiestos.ts`) y dentro de `revocarConsentimientoUbicacion`
+(`src/modules/operacion/consentimiento-ubicacion.ts`) · los tests que solo cubrían esos caminos
+(`Esc-10` y `borrarUbicacionAlCerrarRuta` de `bloque2-adversarial.test.ts`, el gate de
+`actualizarUbicacionConductor` en `consentimiento-ubicacion.test.ts`, y el test de "fallo al borrar
+la ubicación" de `manifiestos.test.ts`). Esto vuelve obsoletos los ítems `[x]` de **Esc-10 — Ubicación
+del conductor** en la sección "Bloque 2" de más arriba (2026-06-20): eran ciertos ese día, y la
+función que probaban ya no existe.
+
+**CONSERVADO a propósito (terreno preparado, no un olvido):**
+- `operacion.ubicacion_conductor` — tabla, columnas, RLS y GRANT intactos; se **vació** (no se
+  borró) en `supabase/migrations/20260814000002_operacion_retirar_rastreo_ubicacion.sql`, con
+  `comment on table` explicando el retiro.
+- `operacion.consentimientos_ubicacion` y el módulo `consentimiento-ubicacion.ts`
+  (`registrarConsentimientoUbicacion`/`revocarConsentimientoUbicacion`/`tieneConsentimientoVigente`)
+  — es histórico legal de consentimiento (Ley 21.431) y el "molde" que la etapa 7 (punto de término
+  del conductor) reusa con una columna `finalidad` nueva. Sin ninguna Server Action que lo invoque
+  hoy — a propósito, ver el aviso al inicio del módulo.
+- `expo-location` en la app nativa (`Desktop/rutax-conductor`) — confirmado que solo se usa para el
+  POD del punto de entrega (`capturarGps()` en `manifiesto/[pedidoId]/index.tsx` y `evidencia.tsx`,
+  una sola lectura puntual con `getCurrentPositionAsync`, sin `watchPositionAsync` ni tarea en
+  segundo plano). No pinguea y no se tocó.
+
+**Prueba nueva:** `src/modules/operacion/ubicacion-conductor-retirado.test.ts` — analiza
+estáticamente todo `src/` (excluidos los tests) y falla si algún archivo vuelve a mencionar
+`ubicacion_conductor`. Es el candado contra que esto vuelva por descuido.
+
+**Verificación:** `npm run typecheck`, `npm run lint`, `npm test`, `npx supabase db reset` +
+`npx supabase test db` para la migración nueva. `npm run build` no se corrió (falla localmente por
+`os error 1450`, preexistente — ver CLAUDE.md).
 
 ---
 
