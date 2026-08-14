@@ -22,7 +22,7 @@ import {
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
-import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
+import { ordenarParadasConSecuencia } from "@/modules/operacion/orden-paradas";
 import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
@@ -74,15 +74,25 @@ async function cargarManifiestoActivo(
 
   const manifiestoId = m.id;
 
-  // Cargar pedidos asignados al manifiesto
+  // Cargar pedidos asignados al manifiesto.
+  // `orden_ruta` es la secuencia persistida de la parada dentro del manifiesto
+  // (etapa 7): viaja en la MISMA consulta, sin viaje extra.
   const { data: asignaciones } = await cliente
     .from("asignaciones_pedido")
     .select(
-      "id, pedidos(id, tenant_id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en)",
+      "id, orden_ruta, pedidos(id, tenant_id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en)",
     )
     .eq("manifiesto_id", manifiestoId)
     .eq("tenant_id", tenantId)
     .eq("activa", true);
+
+  // pedido.id → orden_ruta. Las paradas sin secuencia no entran al mapa.
+  const ordenPorPedidoId = new Map<string, number | null>();
+  ((asignaciones ?? []) as Record<string, unknown>[]).forEach((a) => {
+    const p = a.pedidos as Record<string, unknown> | null;
+    if (!p?.id) return;
+    ordenPorPedidoId.set(p.id as string, (a.orden_ruta as number | null) ?? null);
+  });
 
   const pedidosBase: Pedido[] = ((asignaciones ?? []) as Record<string, unknown>[])
     .map((a) => {
@@ -157,7 +167,9 @@ async function cargarManifiestoActivo(
     });
   }
 
-  const pedidosOrdenados = ordenarParadasPorComunaYDireccion(pedidosBase);
+  // La secuencia persistida manda; el alfabético queda de respaldo para el
+  // manifiesto sin rutear y para las paradas que quedaron sin ubicar.
+  const pedidosOrdenados = ordenarParadasConSecuencia(pedidosBase, ordenPorPedidoId);
 
   const pedidosConOrden: PedidoEnManifiesto[] = pedidosOrdenados.map((pedido, idx) => ({
     orden: idx + 1,
@@ -246,8 +258,9 @@ export default async function PaginaManifiestoActivo() {
     );
   }
 
-  // Ruta completa multi-parada para abrir en Google Maps (el orden ya viene
-  // calculado por ordenarParadasPorComunaYDireccion).
+  // Ruta completa multi-parada para abrir en Google Maps. El orden ya viene
+  // resuelto por `ordenarParadasConSecuencia`: la secuencia persistida si el
+  // manifiesto está ruteado, el alfabético por comuna y dirección si no.
   const direccionesRuta = manifiesto.pedidos.map(({ pedido }) =>
     [pedido.destinatarioDireccion, pedido.destinatarioComuna, "Santiago"].filter(Boolean).join(", "),
   );

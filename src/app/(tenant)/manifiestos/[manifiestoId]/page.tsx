@@ -33,7 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Manifiesto, EstadoManifiesto, Pedido, EstadoPedido } from "@/modules/operacion/tipos";
-import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
+import { ordenarParadasConSecuencia } from "@/modules/operacion/orden-paradas";
 import { BotonConfirmarManifiesto } from "./boton-confirmar-manifiesto";
 import { BotonCancelarManifiesto } from "./boton-cancelar-manifiesto";
 import { BotonQuitarPedido } from "./boton-quitar-pedido";
@@ -45,6 +45,12 @@ import { BotonQuitarPedido } from "./boton-quitar-pedido";
 interface PedidoAsignado {
   asignacionId: string;
   pedido: Pedido;
+  /**
+   * Secuencia persistida de la parada dentro del manifiesto (etapa 7,
+   * `asignaciones_pedido.orden_ruta`). `null` = este manifiesto no está ruteado,
+   * o esta parada quedó sin ubicar.
+   */
+  ordenRuta: number | null;
 }
 
 // =============================================================================
@@ -89,7 +95,7 @@ async function cargarPedidosAsignados(
   const { data, error } = await cliente
     .from("asignaciones_pedido")
     .select(
-      "id, pedido_id, pedidos(id, tenant_id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en)",
+      "id, pedido_id, orden_ruta, pedidos(id, tenant_id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en)",
     )
     .eq("manifiesto_id", manifiestoId)
     .eq("tenant_id", tenantId)
@@ -103,6 +109,7 @@ async function cargarPedidosAsignados(
       if (!p) return null;
       return {
         asignacionId: row.id as string,
+        ordenRuta: (row.orden_ruta as number | null) ?? null,
         pedido: {
           id: p.id as string,
           tenantId: p.tenant_id as string,
@@ -173,11 +180,21 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
 
   if (!manifiesto) notFound();
 
-  // D-04 / RF-025: orden básico (sin IA, sin optimizador) por comuna y luego
-  // dirección — el mismo orden que verá el conductor en la PWA.
-  const pedidosAsignados = ordenarParadasPorComunaYDireccion(
+  // El MISMO orden que verá el conductor en la PWA y en la app nativa: la
+  // secuencia persistida (`orden_ruta`, etapa 7) si el manifiesto está ruteado,
+  // y el alfabético por comuna y dirección (D-04 / RF-025) como respaldo cuando
+  // no lo está. Las tres pantallas pasan por `ordenarParadasConSecuencia` para
+  // que no puedan volver a divergir.
+  const asignacionPorPedidoId = new Map(
+    pedidosAsignadosSinOrden.map((pa) => [pa.pedido.id, pa] as const),
+  );
+  const ordenPorPedidoId = new Map(
+    pedidosAsignadosSinOrden.map((pa) => [pa.pedido.id, pa.ordenRuta] as const),
+  );
+  const pedidosAsignados = ordenarParadasConSecuencia(
     pedidosAsignadosSinOrden.map((pa) => pa.pedido),
-  ).map((pedido) => pedidosAsignadosSinOrden.find((pa) => pa.pedido.id === pedido.id)!);
+    ordenPorPedidoId,
+  ).map((pedido) => asignacionPorPedidoId.get(pedido.id)!);
 
   const nombreConductor = await cargarNombreConductor(manifiesto.driverId, tenantId);
 

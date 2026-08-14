@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { ordenarParadasPorComunaYDireccion } from "@/modules/operacion/orden-paradas";
+import { ordenarParadasConSecuencia } from "@/modules/operacion/orden-paradas";
 import { listarCierresPorPedidos } from "@/modules/operacion/cierre-conductor";
 import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
@@ -50,14 +50,27 @@ export async function GET(request: NextRequest) {
 
     const manifiestoId = m.id;
 
+    // `orden_ruta` es la secuencia persistida de la parada dentro del manifiesto
+    // (etapa 7). Viaja en la MISMA consulta que ya se hacía: no hace falta un
+    // viaje extra para saber en qué orden va la ruta.
     const { data: asignaciones } = await cliente
       .from("asignaciones_pedido")
       .select(
-        "pedidos(id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, lat, long, geo_estado)",
+        "orden_ruta, pedidos(id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, lat, long, geo_estado)",
       )
       .eq("manifiesto_id", manifiestoId)
       .eq("tenant_id", tenantId)
       .eq("activa", true);
+
+    // pedido.id → orden_ruta. Las paradas sin secuencia (manifiesto sin rutear,
+    // o parada que el motor no pudo ubicar) simplemente no entran al mapa.
+    const ordenPorPedidoId = new Map<string, number | null>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((asignaciones ?? []) as Record<string, any>[]).forEach((a) => {
+      const p = a.pedidos as Record<string, unknown> | null;
+      if (!p?.id) return;
+      ordenPorPedidoId.set(p.id as string, (a.orden_ruta as number | null) ?? null);
+    });
 
     // Construir lista de pedidos con casts explícitos (igual que page.tsx conductor).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -125,8 +138,10 @@ export async function GET(request: NextRequest) {
         ? await listarCierresPorPedidos(cliente, pedidoIds, tenantId)
         : new Map();
 
+    // La secuencia persistida manda; el alfabético queda de respaldo para el
+    // manifiesto sin rutear y para las paradas que quedaron sin ubicar.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pedidosOrdenados = ordenarParadasPorComunaYDireccion(pedidosBase as any[]);
+    const pedidosOrdenados = ordenarParadasConSecuencia(pedidosBase as any[], ordenPorPedidoId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const paradas = pedidosOrdenados.map((pedido: any, idx: number) => {
       const cierre = cierresMap.get(pedido.id as string) ?? null;
