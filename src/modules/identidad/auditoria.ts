@@ -71,6 +71,22 @@ const CLAVES_PROHIBIDAS = new Set([
   "qr",
   "security_digit",
   "codigo_crudo",
+  // Punto de término del conductor (etapa 7): el asiento registra el HECHO
+  // (`conductor.punto_termino.definido` / `.revocado`), NUNCA la coordenada.
+  // La bitácora del courier la puede leer su dueño, así que una coordenada aquí
+  // sería la misma fuga que el §4 del documento de privacidad cierra por todos
+  // los demás canales. `lat`/`long`/`latitud`/`longitud` se agregan en general y
+  // no solo con prefijo: se comprobó por grep que ningún asiento legítimo del
+  // repo usa esas claves (el único lugar que las menciona es un comentario en
+  // `operacion/pedidos.ts` recordando NO incluirlas).
+  // Ver docs/seguridad/punto-de-termino-conductor.md §4.3 canal 9 y §8.8.
+  "punto_termino",
+  "punto_termino_lat",
+  "punto_termino_long",
+  "lat",
+  "long",
+  "latitud",
+  "longitud",
 ]);
 
 /** Recorre el objeto y elimina recursivamente cualquier clave de la lista negra. */

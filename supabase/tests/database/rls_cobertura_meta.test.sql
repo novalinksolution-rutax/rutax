@@ -82,6 +82,13 @@ select results_eq($$
      -- puede recalcular y la etiqueta no se reimprime una vez retirado el bulto).
      -- Alcance §1.7 la nombra explícitamente para este Test 3.
      'operacion.bultos_retiro_qr',
+     -- Dónde VIVE el conductor (punto de término de su ruta). Dato personal del
+     -- trabajador bajo la Ley 21.431, con consentimiento como única base de
+     -- licitud. Se nombra aquí porque su RLS es la más restrictiva del repo —
+     -- solo el propio conductor, sin rama interno ni super_admin— y porque un
+     -- `force` que se pierda no produce ningún síntoma visible.
+     -- Ver docs/seguridad/punto-de-termino-conductor.md §6.3, aserción 8.
+     'operacion.punto_termino_conductor',
      'dinero.lineas_cobro',
      'dinero.lineas_liquidacion',
      'dinero.documentos_dte',

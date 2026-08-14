@@ -88,6 +88,24 @@ saber dónde está un conductor— puede consultarla.
 | H-4 | El texto de consentimiento describe un uso inexistente | **MEDIA** | Corregir el texto y **subir** `VERSION_TEXTO_CONSENTIMIENTO_UBICACION` (hoy `"v1"`), que para eso existe |
 | H-5 | La RLS admite a cualquier `interno`, sin capacidad RBAC, y el `grant` está abierto a `authenticated` | **MEDIA** | **DIFERIDO a propósito (2026-08-14)** — ver abajo |
 
+### §6.3: cómo llega el conductor a su propio punto de término (resuelto 2026-08-14)
+
+Al implementar se detectó que §6.3 se contradecía: pedía a la vez que "el conductor ve su propia
+fila" y que "interno recibe `permission denied` porque no hay `grant`". Como el `grant` es por rol y
+conductor e interno comparten `authenticated`, sin grant **el conductor tampoco lee**.
+
+**No es una decisión pendiente: la respuesta ya estaba en la arquitectura.** La app del conductor
+**nunca usa PostgREST directo** — verificado, cero llamadas a `createClient()` en `src/app/conductor/`
+y en `src/app/api/conductor/`. La app nativa entra por rutas Bearer con cliente de `service_role`
+(`autenticarBearer` + `crearClienteServiceRole`), y la PWA lee en el servidor. Así que **no hace
+falta ningún `grant` a `authenticated`**: el conductor llega a su punto de término por una ruta de
+servidor, como a todo lo demás suyo.
+
+Consecuencia para quien construya esa ruta: el filtro por conductor lo pone **el código de la ruta**,
+igual que en las otras nueve rutas Bearer, y la política de RLS queda como segunda capa para el día
+que alguien sí exponga la tabla. Es la misma forma que ya tiene el resto de la superficie del
+conductor.
+
 ### H-5: por qué se deja el `grant` puesto
 
 Se intentó revocar el `SELECT` a `authenticated` junto con el retiro del ping, y **se revirtió**. El

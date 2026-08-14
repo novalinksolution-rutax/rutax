@@ -45,6 +45,10 @@ import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaci
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
 import { jobPurgarEvidencias } from "@/modules/operacion/jobs/purgar-evidencias";
+// Retención del punto de término del conductor (dónde vive). Se entrega junto
+// con la tabla, no después: el molde que se retiró el 2026-08-14 falló
+// exactamente por no tener este job.
+import { jobPurgarPuntoTermino } from "@/modules/operacion/jobs/purgar-punto-termino";
 // Consumidor de `operacion/pedido.cancelado-en-ml`: `integraciones` DETECTA la
 // cancelación en ML y avisa; este job es el que aplica estado, incidencia y el
 // cierre del cabo de dinero. Sin registrarlo, el evento no tendría quién lo
@@ -118,6 +122,7 @@ const funciones = [
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
   jobPurgarEvidencias,
+  jobPurgarPuntoTermino,
   // Cancelación detectada en ML → estado + incidencia + cabo de dinero
   jobProcesarCancelacionMl,
   // Jobs Dinero (Fase C)

@@ -250,6 +250,26 @@ const TABLAS_A_EXPORTAR: DefinicionTabla[] = [
     columnas: "id, conductor_id, zona_id, creado_en",
     columnaFiltro: "tenant_id",
   },
+  // ---------------------------------------------------------------------------
+  // EXCLUIDA A PROPÓSITO: operacion.punto_termino_conductor
+  // ---------------------------------------------------------------------------
+  // Es dónde VIVE cada conductor (el punto donde pide terminar su ruta). NO se
+  // agrega aquí, y no es un olvido — es el canal 8 de
+  // docs/seguridad/punto-de-termino-conductor.md §4.3.
+  //
+  // El motivo no es la sensibilidad genérica del dato: `conductores` sí se
+  // exporta y también es dato personal. Es que ESTA exportación se la lleva el
+  // DUEÑO del courier, en un JSON, y la condición que hace válido el
+  // consentimiento del conductor es que su jefe no pueda saber quién definió su
+  // punto y quién no. Un export con esta tabla dentro delata exactamente eso —
+  // incluso vacío para los que no lo definieron, la lista de los que sí ya es la
+  // fuga. Bajo subordinación laboral, un consentimiento que se puede auditar
+  // desde arriba deja de ser libre (Ley 21.431).
+  //
+  // La portabilidad del conductor sobre su propio dato es real y está pendiente:
+  // va en la exportación DEL CONDUCTOR cuando exista (deuda 2.14 de
+  // retiro-y-ruteo.md, con fecha relevante el 1-dic-2026, Ley 21.719). Nunca
+  // aquí.
 ];
 
 interface ResultadoTabla {
