@@ -241,7 +241,43 @@ sus fotos. Y devuelve 403 ante cualquier error, enmascarando fallas internas.
 **Quién.** `arquitecto` → `base-datos-rls` → `backend` → `qa` · **Esfuerzo.** **7–9 días**
 (el plan decía 5–7; la diferencia es el andamiaje de pruebas por endpoint, que hay que armar igual).
 
-## Etapa 4 · El retiro en la app del conductor
+## Etapa 4 · El retiro en la app del conductor — ✅ **CONSTRUIDA (2026-08-13), sin probar en dispositivo**
+
+Repo `rutax-conductor`, commits `821439b` (los cuatro arreglos de la cola) y `21a6561` (el módulo).
+44 pruebas verdes, typecheck limpio.
+
+**Entra por donde hoy hay un callejón sin salida:** a las 8 de la mañana la app muestra "Sin ruta
+asignada", porque el manifiesto de reparto no existe hasta las 16:00. Ese hueco es la tarjeta de
+retiro. **No se agregó un tab bar** — la app es 100% `Stack` y meter el primero para esto obligaría
+a aprender un concepto nuevo a un courier que hoy no usa ninguna app.
+
+**Lo que hace que la ráfaga funcione, y se rompe fácil al tocarlo:**
+- **Feedback en DOS capas temporales.** La primera es local y sin red (verde "Sumado" / ámbar "Ya lo
+  tenías"); la segunda llega cuando el servidor confirma el lote y actualiza la fila hacia atrás.
+  Esperar el roundtrip para dar feedback rompe el ritmo con el seller apurando.
+- **El cooldown es POR CÓDIGO, no global.** `onBarcodeScanned` dispara varias veces por segundo
+  mientras el código siga en cuadro, pero un bulto distinto medio segundo después no puede quedar
+  bloqueado — que es justo el caso de uso real. Hay prueba dedicada.
+- **La cola del retiro NO EXPONE ninguna forma de descartar.** No es disciplina, es la superficie del
+  módulo: no hay motivo de negocio legítimo para tirar un escaneo, porque un bulto no se puede volver
+  a escanear y ML no reimprime la etiqueta.
+- **`rechazado` ≠ `no_procesado`/`ilegible`.** El primero es fallo de guardado y se queda en la cola;
+  los otros dos son resoluciones normales y el bulto ya está a salvo. Probado que un `rechazado`
+  dentro de un lote 200 no sale de la cola mientras el resto sí se confirma.
+
+**Dos trampas encontradas al construir:**
+- Al cerrar la visita se actualizaba el estado y se abría el acta en el mismo evento; React aplica
+  ambos juntos, así que el render caía en la rama de solo lectura y el Sheet del acta —que vivía en
+  la otra rama— no se habría mostrado nunca. Lo atrapó la revisión, no el compilador.
+- **El prop `active` de `CameraView` es solo iOS** según sus propios tipos. El guardián del escaneo
+  se deriva del estado en un solo efecto para cubrir también Android.
+
+⚠️ **Nada se ejecutó en dispositivo real**: ni la cámara (ML Kit / AVFoundation), ni la detección de
+red, ni AsyncStorage. Y las dos pantallas no tienen prueba automatizada — el repo no tiene entorno de
+render y no se montó por cuenta propia. **Probar el escaneo en un iPhone físico sigue pendiente**, y
+es lo que decide si la etapa está realmente terminada.
+
+## ~~Etapa 4 · El retiro en la app del conductor~~ — lo que decía antes de construirse
 
 ### Los tres arreglos previos — **los tres siguen vivos, verificados**
 
