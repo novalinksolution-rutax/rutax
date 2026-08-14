@@ -409,6 +409,18 @@ cuenta bultos vivos. Son dos cifras de lo mismo discrepando a la vista, que es c
 confianza en una pantalla. El acta manda donde le corresponde: en la tarjeta de la visita, con su
 línea "+ N escaneados después de cerrar · no se suman al acta".
 
+🚨 **EL "EN VIVO" NO FUNCIONA, Y NO ES DE ESTA ETAPA — es de toda la app** (medido en local el
+2026-08-14). El indicador se pone verde y **miente**: ninguna pantalla se refresca sola. Se
+reprodujo insertando un bulto con `/preparacion` abierta (20 s sin cambio; recargando a mano sí
+sube, o sea el servidor lee bien y lo que falta es la señal) **y moviendo un pedido con
+`/operaciones` abierta** — pantalla que lleva meses en producción. La pista principal:
+`realtime.subscription` tiene **cero filas** mientras el cliente reporta `SUBSCRIBED`, con los slots
+de replicación activos, las cinco tablas publicadas y el token del usuario válido y sin vencer.
+Hipótesis a verificar: el socket se autentica con la clave anónima en vez del token del usuario
+(`createBrowserClient` sin `realtime.setAuth()`), y como `anon` no tiene SELECT en esas tablas la
+suscripción se rechaza sin que el cliente reporte error. Reiniciar el contenedor de Realtime no lo
+arregla. Queda como trabajo aparte, con toda la evidencia recogida.
+
 **Verificado contra datos reales en local**: el servidor renderiza la pantalla completa en ~530 ms;
 las cifras de la franja (149 bultos, 5 sin identificar) cuadran exactamente con la suma del bloque
 de comunas; las tres situaciones difíciles salen bien (acta con escaneo posterior, bulto de otro
