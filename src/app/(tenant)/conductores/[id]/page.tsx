@@ -18,7 +18,7 @@ import Link from "next/link";
 import { ChevronLeft, Wallet } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeGestionarLiquidacionesConductores } from "@/modules/identidad/capacidades";
+import { puedeGestionarLiquidacionesConductores, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { traducirEstadoLiquidacion, BADGE_ESTADO_LIQUIDACION } from "@/lib/ui/traduccion-estados";
 import type { EstadoLiquidacion } from "@/modules/dinero/tipos";
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { DialogAnular } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-corregir-dinero";
 import { accionAnularLiquidacionPedido } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-dinero";
+import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./acceso-app-conductor";
 
 type Bucket = "acumulando" | "por_pagar" | "pagado";
 
@@ -63,6 +64,75 @@ function clasificar(liqEstado: EstadoLiquidacion | null): Bucket {
   return "por_pagar"; // borrador | emitida
 }
 
+// -----------------------------------------------------------------------------
+// Acceso a la app — ¿tiene cuenta, invitación pendiente, o nada? El estado se
+// resuelve SIEMPRE en el servidor: invitar dos veces al mismo conductor, o no
+// saber si ya se invitó, es exactamente la fricción que la sección de abajo
+// viene a quitar (encargo).
+// -----------------------------------------------------------------------------
+
+async function resolverEstadoAccesoApp(
+  cliente: ReturnType<typeof crearClienteServiceRole>,
+  tenantId: string,
+  driverId: string,
+): Promise<EstadoAccesoAppConductor> {
+  const { data: perfil } = await cliente
+    .from("usuarios_perfil")
+    .select("estado")
+    .eq("driver_id", driverId)
+    .eq("tenant_id", tenantId)
+    .eq("tipo_usuario", "conductor")
+    .maybeSingle();
+
+  if (perfil) {
+    const estadoPerfil = perfil.estado as string;
+    return estadoPerfil === "activo" ? { tipo: "cuenta_activa" } : { tipo: "cuenta_suspendida" };
+  }
+
+  const { data: invitacionData } = await cliente
+    .from("invitaciones")
+    .select("email, estado, expira_en, email_estado, email_motivo")
+    .eq("driver_id", driverId)
+    .eq("tenant_id", tenantId)
+    .eq("tipo_usuario", "conductor")
+    .order("creado_en", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!invitacionData) {
+    return { tipo: "sin_acceso", ultimaInvitacionVencida: null };
+  }
+
+  const invitacion = invitacionData as {
+    email: string;
+    estado: string;
+    expira_en: string;
+    email_estado: string | null;
+    email_motivo: string | null;
+  };
+  const expiraEnMs = new Date(invitacion.expira_en).getTime();
+  const vigente = invitacion.estado === "pendiente" && expiraEnMs > Date.now();
+
+  if (vigente) {
+    return {
+      tipo: "invitacion_pendiente",
+      email: invitacion.email,
+      expiraEn: invitacion.expira_en,
+      emailEstado: invitacion.email_estado ?? null,
+      emailMotivo: invitacion.email_motivo ?? null,
+    };
+  }
+
+  // Sin cuenta ni invitación vigente: si la última invitación quedó vencida
+  // (pendiente cuyo plazo pasó, o ya marcada `expirada`) se lo decimos al
+  // courier en vez de aparentar que nunca se invitó — pero NO para una
+  // `revocada`, que es una decisión explícita, no un vencimiento.
+  const vencida =
+    (invitacion.estado === "pendiente" || invitacion.estado === "expirada") && expiraEnMs <= Date.now();
+
+  return { tipo: "sin_acceso", ultimaInvitacionVencida: vencida ? invitacion.expira_en : null };
+}
+
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -87,15 +157,19 @@ export default async function PaginaDetalleConductor({ params }: Props) {
 
   if (!conductor) notFound();
 
-  // Líneas de liquidación del conductor (no anuladas).
-  const { data: lineasData } = await cliente
-    .schema("dinero")
-    .from("lineas_liquidacion")
-    .select("id, pedido_id, liquidacion_id, monto_final_clp, monto_base_clp, fecha_entrega")
-    .eq("tenant_id", tenantId)
-    .eq("driver_id", driverId)
-    .eq("anulada", false)
-    .order("fecha_entrega", { ascending: false });
+  // Líneas de liquidación del conductor (no anuladas) + estado de acceso a la
+  // app, en paralelo — dos lecturas independientes sobre el mismo conductor.
+  const [{ data: lineasData }, estadoAccesoApp] = await Promise.all([
+    cliente
+      .schema("dinero")
+      .from("lineas_liquidacion")
+      .select("id, pedido_id, liquidacion_id, monto_final_clp, monto_base_clp, fecha_entrega")
+      .eq("tenant_id", tenantId)
+      .eq("driver_id", driverId)
+      .eq("anulada", false)
+      .order("fecha_entrega", { ascending: false }),
+    resolverEstadoAccesoApp(cliente, tenantId, driverId),
+  ]);
 
   const lineas = lineasData ?? [];
 
@@ -184,6 +258,13 @@ export default async function PaginaDetalleConductor({ params }: Props) {
           Ver liquidaciones
         </Link>
       </div>
+
+      <AccesoAppConductor
+        driverId={driverId}
+        nombreConductor={conductor.nombre_completo as string}
+        puedeInvitar={puedeInvitarUsuarios(sesion.usuario)}
+        estadoInicial={estadoAccesoApp}
+      />
 
       {/* Resumen por estado de pago */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="list" aria-label="Resumen de dinero por estado">
