@@ -77,9 +77,7 @@ encender antes que la 3**, o la bandeja de asignación se ve vacía.
 
 ## Lo que queda de la etapa 1
 
-1. **Límite de concurrencia del job de geocoding.** Los jobs de ML sí lo declaran; el de geocoding
-   solo tiene idempotencia. A 1.000 pedidos son 1.000 ejecuciones concurrentes contra Google.
-0. 🚨 **El geocoding de Google NUNCA funcionó en producción** (descubierto el 2026-08-13 al cargar
+1. 🚨 **El geocoding de Google NUNCA funcionó en producción** (descubierto el 2026-08-13 al cargar
    la primera bodega). Google responde `REQUEST_DENIED` con *"You must enable Billing on the Google
    Cloud Project"*: la Geocoding API exige facturación habilitada aunque se esté dentro del crédito
    gratuito. **Nadie lo había notado porque ningún camino de producción llamaba a Google**: los
@@ -88,7 +86,14 @@ encender antes que la 3**, o la bandeja de asignación se ve vacía.
    bodega del courier tiene coordenada (y es el origen de toda ruta) ni los pedidos same-day se
    pueden ubicar. Se arregla en Google Cloud, sin tocar código.
 
-2. **Backfill de geocoding de los pedidos viejos.** ⬆️ **Sube a prerrequisito de la etapa 7.** Los
+2. ~~**Límite de concurrencia del job de geocoding.**~~ **HECHO (2026-08-13, commit `6212740`):**
+   `concurrency: 5` y `timeoutMs: 15_000`. Ojo con el porqué, que no es el que decía este plan: el
+   adaptador ya clasificaba 429 y `OVER_QUERY_LIMIT` como reintentables, así que Google rechazando no
+   rompía nada solo. Lo que lo justifica es que si una ráfaga agota los 3 reintentos, el pedido queda
+   en `pendiente` para siempre — no hay barrido que lo recupere. Y **no ahorra dinero**: son las
+   mismas llamadas facturables, solo más espaciadas.
+
+3. **Backfill de geocoding de los pedidos viejos.** ⬆️ **Sube a prerrequisito de la etapa 7.** Los
    Flex nuevos entran con coordenada de ML, pero los anteriores al 11-ago guardan el **centroide de
    su comuna marcado como resuelto**, y el job es no-op salvo que el estado sea `pendiente`: hay que
    resetearlo primero. Rutear sobre eso produce rutas que visitan el centro de la comuna varias
