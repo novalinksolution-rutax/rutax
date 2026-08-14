@@ -53,7 +53,15 @@ export async function obtenerInvitacionPendienteSeller(
   // El filtro por `tenant_id` es lo que impide que un `sellerId` de otro courier
   // devuelva algo: `service_role` salta RLS, así que el aislamiento acá lo
   // impone esta cláusula y no la base. No quitarla.
+  //
+  // `.schema("identidad")` es OTRA barrera, obligatoria por otra razón: este
+  // SELECT pide `token`, columna que `public.invitaciones` (la vista PostgREST
+  // por defecto) omite a propósito desde la migración 20260807000001 — cerró
+  // una fuga real (cualquier interno podía leer tokens pendientes). Sin
+  // `.schema("identidad")` el SELECT apunta a la vista y falla con 42703;
+  // "Copiar enlace" del seller queda roto. No quitar esto.
   const { data, error } = await cliente
+    .schema("identidad")
     .from("invitaciones")
     .select("id, token, email, expira_en")
     .eq("seller_id", sellerId)

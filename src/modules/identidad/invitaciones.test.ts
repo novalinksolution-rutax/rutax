@@ -2,26 +2,28 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { aceptarInvitacion, crearInvitacion, revocarInvitacion } from "./invitaciones";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import type { UsuarioActual } from "./usuario-actual";
+import {
+  crearClienteInvitacionesFalso,
+  type FilaInvitacionFalsa,
+} from "./invitaciones-postgrest-falso";
 
 // -----------------------------------------------------------------------------
 // Doble de prueba del cliente service_role — modela `invitaciones`,
 // `usuarios_perfil` y `bitacora_auditoria` como tablas en memoria, suficiente
 // para probar las reglas de negocio (coherencia, expiración, un solo uso,
 // aislamiento por tenant, no-secretos-en-bitácora) sin tocar Supabase real.
+//
+// `invitaciones` en particular usa `crearClienteInvitacionesFalso`
+// (`invitaciones-postgrest-falso.ts`) y NO un mock ingenuo: modela la
+// diferencia real entre `public.invitaciones` (sin `token`) e
+// `identidad.invitaciones` (con `token`) — la migración 20260807000001. Es la
+// prueba que faltaba: `crearInvitacion`/`aceptarInvitacion` tocan `token`
+// (insertarlo / filtrar por él), y si algún día dejaran de usar
+// `.schema("identidad")`, estos tests fallarían con el mismo error 42703 que
+// rompió producción del 07-ago al 13-ago — no hace falta acordarse de nada.
 // -----------------------------------------------------------------------------
 
-interface FilaInvitacion {
-  id: string;
-  tenant_id: string;
-  email: string;
-  tipo_usuario: string;
-  rol: string;
-  seller_id: string | null;
-  driver_id: string | null;
-  token: string;
-  estado: string;
-  expira_en: string;
-}
+type FilaInvitacion = FilaInvitacionFalsa;
 
 interface EstadoFalso {
   invitaciones: FilaInvitacion[];
@@ -30,99 +32,53 @@ interface EstadoFalso {
 }
 
 function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[] }) {
-  const estado: EstadoFalso = {
-    invitaciones: seed?.invitaciones ? [...seed.invitaciones] : [],
-    perfiles: [],
-    bitacora: [],
-  };
-  let contador = 0;
-  const nuevoId = () => `inv-${++contador}`;
+  const perfiles: Array<Record<string, unknown>> = [];
+  const bitacora: Array<Record<string, unknown>> = [];
 
-  function from(tabla: string) {
-    if (tabla === "invitaciones") {
-      return {
-        insert: (fila: Record<string, unknown>) => ({
+  const { cliente, estado: estadoInvitaciones } = crearClienteInvitacionesFalso({
+    invitaciones: seed?.invitaciones,
+    otrasTablas: (tabla) => {
+      if (tabla === "usuarios_perfil") {
+        return {
+          upsert: async (fila: Record<string, unknown>) => {
+            const idx = perfiles.findIndex((p) => p.id === fila.id);
+            if (idx >= 0) perfiles[idx] = fila;
+            else perfiles.push(fila);
+            return { data: null, error: null };
+          },
+        };
+      }
+
+      // `crearInvitacion` lee el nombre del courier para el correo de invitación
+      // (ver notificaciones-invitacion.ts). Es cosmético — si no está, el correo
+      // sale con un nombre genérico — pero se modela igual para que el doble no
+      // dependa del `catch` de la función de producción.
+      if (tabla === "tenants") {
+        return {
           select: () => ({
-            single: async () => {
-              const id = nuevoId();
-              const completa = { id, ...fila } as FilaInvitacion;
-              estado.invitaciones.push(completa);
-              return { data: { id, token: completa.token, expira_en: completa.expira_en }, error: null };
-            },
+            eq: () => ({
+              maybeSingle: async () => ({ data: { nombre_fantasia: "Courier de Prueba" }, error: null }),
+            }),
           }),
-        }),
-        select: () => ({
-          eq: (campo: string, valor: string) => ({
-            maybeSingle: async () => {
-              const fila = estado.invitaciones.find((i) => (i as never as Record<string, unknown>)[campo] === valor);
-              return { data: fila ?? null, error: null };
-            },
-          }),
-        }),
-        // Doble simplificado de `.update(cambios).eq(a, x)[.eq(b, y)]`: cada
-        // `.eq` agrega un filtro; el builder es "thenable" para que `await`
-        // lo resuelva sin necesitar un `.then()` explícito en el código de
-        // producción (que solo hace `await cliente.from(...).update(...).eq(...)`).
-        update: (cambios: Record<string, unknown>) => {
-          function builder(filtros: Array<[string, string]>) {
-            return {
-              eq(campo: string, valor: string) {
-                return builder([...filtros, [campo, valor]]);
-              },
-              then(resolve: (v: { data: null; error: null }) => void) {
-                const idx = estado.invitaciones.findIndex((fila) =>
-                  filtros.every(([campo, valor]) => (fila as never as Record<string, unknown>)[campo] === valor),
-                );
-                if (idx >= 0) {
-                  estado.invitaciones[idx] = { ...estado.invitaciones[idx], ...cambios } as FilaInvitacion;
-                }
-                resolve({ data: null, error: null });
-              },
-            };
-          }
-          return builder([]);
-        },
-      };
-    }
+        };
+      }
 
-    if (tabla === "usuarios_perfil") {
-      return {
-        upsert: async (fila: Record<string, unknown>) => {
-          const idx = estado.perfiles.findIndex((p) => p.id === fila.id);
-          if (idx >= 0) estado.perfiles[idx] = fila;
-          else estado.perfiles.push(fila);
-          return { data: null, error: null };
-        },
-      };
-    }
+      if (tabla === "bitacora_auditoria") {
+        return {
+          insert: async (fila: Record<string, unknown>) => {
+            bitacora.push(fila);
+            return { data: null, error: null };
+          },
+        };
+      }
 
-    // `crearInvitacion` lee el nombre del courier para el correo de invitación
-    // (ver notificaciones-invitacion.ts). Es cosmético — si no está, el correo
-    // sale con un nombre genérico — pero se modela igual para que el doble no
-    // dependa del `catch` de la función de producción.
-    if (tabla === "tenants") {
-      return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: { nombre_fantasia: "Courier de Prueba" }, error: null }),
-          }),
-        }),
-      };
-    }
+      throw new Error(`Tabla no soportada en el doble de prueba: ${tabla}`);
+    },
+  });
 
-    if (tabla === "bitacora_auditoria") {
-      return {
-        insert: async (fila: Record<string, unknown>) => {
-          estado.bitacora.push(fila);
-          return { data: null, error: null };
-        },
-      };
-    }
+  const estado: EstadoFalso = { invitaciones: estadoInvitaciones.invitaciones, perfiles, bitacora };
 
-    throw new Error(`Tabla no soportada en el doble de prueba: ${tabla}`);
-  }
-
-  return { cliente: { auth: {}, from } as never, estado };
+  return { cliente, estado };
 }
 
 const TENANT_A = "11111111-1111-1111-1111-111111111111";

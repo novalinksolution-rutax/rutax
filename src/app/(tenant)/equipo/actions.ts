@@ -222,7 +222,13 @@ export async function reenviarInvitacion(invitacionId: string): Promise<AccionEq
 
   const cliente = crearClienteServiceRole();
   // El filtro por `tenant_id` es lo que aísla: `service_role` salta RLS.
+  // `.schema("identidad")` es obligatorio: este SELECT pide `token` para armar
+  // el enlace, y `token` NO existe en `public.invitaciones` (la vista PostgREST
+  // por defecto la omite desde la migración 20260807000001, a propósito, para
+  // que ningún interno la lea por PostgREST). Sin esto, el SELECT falla con
+  // 42703 y "Reenviar correo" queda roto. No quitar este `.schema(...)`.
   const { data: invitacion, error: errorBuscar } = await cliente
+    .schema("identidad")
     .from("invitaciones")
     .select("id, estado, email, tipo_usuario, token, expira_en")
     .eq("id", invitacionId)

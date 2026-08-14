@@ -51,7 +51,13 @@ export async function resolverInvitacionPorToken(token: string): Promise<EstadoI
   try {
     const cliente = crearClienteServiceRole();
 
+    // `.schema("identidad")` obligatorio: se filtra POR `token`, columna
+    // ausente en `public.invitaciones` (la vista PostgREST por defecto la
+    // omite a propósito desde la migración 20260807000001 — cerró una fuga
+    // real). Sin esto, `.eq("token", …)` falla con 42703 y esta pantalla
+    // pública ("¿mi invitación es válida?") nunca resuelve. No quitar esto.
     const { data: invitacion, error } = await cliente
+      .schema("identidad")
       .from("invitaciones")
       .select("id, tenant_id, email, rol, estado, expira_en")
       .eq("token", limpio)
@@ -145,7 +151,13 @@ export async function aceptarInvitacionComoPersonaNueva(
 
   // Releer la invitación para obtener el email exacto — nunca confiar en un
   // valor que el cliente pudo manipular en el formulario.
+  //
+  // `.schema("identidad")` obligatorio: se filtra POR `token`, ausente en
+  // `public.invitaciones` (vista sin `token` desde la migración
+  // 20260807000001, a propósito). Sin esto, el SELECT falla con 42703 y nadie
+  // puede activar su cuenta como "persona nueva". No quitar esto.
   const { data: invitacion, error: buscarError } = await cliente
+    .schema("identidad")
     .from("invitaciones")
     .select("email")
     .eq("token", entrada.token.trim())
@@ -204,7 +216,12 @@ export async function aceptarInvitacionComoPersonaExistente(
 ): Promise<AceptarInvitacionResultado | { ok: false; tipo: "requiere_inicio_sesion"; mensaje: string; email: string }> {
   const cliente = crearClienteServiceRole();
 
+  // `.schema("identidad")` obligatorio: se filtra POR `token`, ausente en
+  // `public.invitaciones` (vista sin `token` desde la migración
+  // 20260807000001, a propósito). Sin esto, el SELECT falla con 42703 y nadie
+  // puede confirmar la invitación como "persona ya existente". No quitar esto.
   const { data: invitacion, error: buscarError } = await cliente
+    .schema("identidad")
     .from("invitaciones")
     .select("email")
     .eq("token", entrada.token.trim())

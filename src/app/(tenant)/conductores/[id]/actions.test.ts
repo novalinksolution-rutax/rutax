@@ -49,6 +49,10 @@ import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
 import { invitarConductor, obtenerInvitacionPendienteConductor } from "./actions";
 import type { SesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import {
+  crearClienteInvitacionesFalso,
+  type FilaInvitacionFalsa,
+} from "@/modules/identidad/invitaciones-postgrest-falso";
 
 const TENANT_A = "10000000-0000-0000-0000-000000000001";
 const OTRO_TENANT = "20000000-0000-0000-0000-000000000002";
@@ -79,9 +83,14 @@ function crearSesion(overrides: Partial<UsuarioActual> = {}): SesionActual {
 // -----------------------------------------------------------------------------
 // Doble de prueba del cliente service_role — tres tablas en memoria
 // (`conductores`, `usuarios_perfil`, `invitaciones`), suficiente para probar
-// las reglas de esta capa sin tocar Supabase real. Mismo espíritu que el
-// doble de `invitaciones.test.ts`, generalizado para soportar cadenas
-// `.select().eq()...eq().order().limit().maybeSingle()`.
+// las reglas de esta capa sin tocar Supabase real.
+//
+// `invitaciones` usa `crearClienteInvitacionesFalso` (NO un mock ingenuo):
+// modela la diferencia real entre `public.invitaciones` (sin `token`) e
+// `identidad.invitaciones` (con `token`) — migración 20260807000001.
+// `obtenerInvitacionPendienteConductor` (abajo) SÍ pide `token`, así que debe
+// usar `.schema("identidad")`; si alguna vez dejara de hacerlo, estos tests
+// fallan con el mismo 42703 que rompió producción del 07-ago al 13-ago.
 // -----------------------------------------------------------------------------
 
 interface FilaConductor {
@@ -114,12 +123,19 @@ interface SeedFalso {
   invitaciones?: FilaInvitacion[];
 }
 
+/**
+ * `FilaInvitacionFalsa` (el doble schema-aware) exige `rol`/`seller_id` — son
+ * columnas reales de `invitaciones`. Estos tests de conductor no varían esos
+ * campos, así que se completan con el valor típico de una invitación de
+ * conductor en vez de repetirlos en cada literal de prueba.
+ */
+function conCamposCompletos(filas: FilaInvitacion[]): FilaInvitacionFalsa[] {
+  return filas.map((fila) => ({ rol: "conductor", seller_id: null, ...fila }));
+}
+
 function crearClienteFalso(seed: SeedFalso = {}) {
-  const estado = {
-    conductores: seed.conductores ?? [],
-    perfiles: seed.perfiles ?? [],
-    invitaciones: seed.invitaciones ?? [],
-  };
+  const conductores = seed.conductores ?? [];
+  const perfiles = seed.perfiles ?? [];
 
   function tablaGenerica<T extends object>(filas: T[]) {
     function builder(filtros: Array<[string, unknown]>) {
@@ -144,14 +160,18 @@ function crearClienteFalso(seed: SeedFalso = {}) {
     return { select: () => builder([]) };
   }
 
-  function from(tabla: string) {
-    if (tabla === "conductores") return tablaGenerica(estado.conductores);
-    if (tabla === "usuarios_perfil") return tablaGenerica(estado.perfiles);
-    if (tabla === "invitaciones") return tablaGenerica(estado.invitaciones);
-    throw new Error(`Tabla no soportada en el doble de prueba: ${tabla}`);
-  }
+  const { cliente, estado: estadoInvitaciones } = crearClienteInvitacionesFalso({
+    invitaciones: seed.invitaciones ? conCamposCompletos(seed.invitaciones) : undefined,
+    otrasTablas: (tabla) => {
+      if (tabla === "conductores") return tablaGenerica(conductores);
+      if (tabla === "usuarios_perfil") return tablaGenerica(perfiles);
+      throw new Error(`Tabla no soportada en el doble de prueba: ${tabla}`);
+    },
+  });
 
-  return { cliente: { from } as unknown as ReturnType<typeof crearClienteServiceRole>, estado };
+  const estado = { conductores, perfiles, invitaciones: estadoInvitaciones.invitaciones };
+
+  return { cliente: cliente as unknown as ReturnType<typeof crearClienteServiceRole>, estado };
 }
 
 function conductorFalso(overrides: Partial<FilaConductor> = {}): FilaConductor {

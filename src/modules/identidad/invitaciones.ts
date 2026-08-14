@@ -32,8 +32,15 @@ import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import { enviarEmailInvitacion, type MotivoNoEnviado } from "./notificaciones-invitacion";
 import type { Rol } from "./roles";
 
-/** Forma mínima del cliente service_role que estas funciones necesitan. */
-type ClienteServicio = Pick<SupabaseClient, "auth" | "from">;
+/**
+ * Forma mínima del cliente service_role que estas funciones necesitan.
+ * Incluye `schema` porque `token` SOLO existe en `identidad.invitaciones`
+ * (la tabla base) — la vista `public.invitaciones` la omite a propósito desde
+ * la migración 20260807000001 (fuga cerrada: cualquier interno podía leer el
+ * token por PostgREST). Ver el porqué completo junto a cada `.schema("identidad")`
+ * de este archivo.
+ */
+type ClienteServicio = Pick<SupabaseClient, "auth" | "from" | "schema">;
 
 /** Vigencia por defecto de una invitación — 7 días, igual al estándar de invitaciones de Supabase Auth. */
 const VIGENCIA_INVITACION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -142,7 +149,17 @@ export async function crearInvitacion(
   const vigenciaMs = input.vigenciaMs ?? VIGENCIA_INVITACION_MS;
   const expiraEn = new Date(Date.now() + vigenciaMs).toISOString();
 
+  // `.schema("identidad")` es obligatorio aquí: este INSERT escribe `token`, y
+  // `token` NO existe en `public.invitaciones` (la vista PostgREST por
+  // defecto) — la migración 20260807000001 la excluyó a propósito para cerrar
+  // una fuga (cualquier interno podía leerla). Sin este `.schema(...)`, el
+  // cliente apunta a la vista y el INSERT falla con PGRST204 "Could not find
+  // the 'token' column of 'invitaciones' in the schema cache" (verificado
+  // contra la base real, 2026-08-13): así se rompió "crear invitación" del
+  // 07-ago al 13-ago. NO "limpiar" este `.schema("identidad")` — es la
+  // barrera, no un descuido.
   const { data, error } = await cliente
+    .schema("identidad")
     .from("invitaciones")
     .insert({
       tenant_id: actor.tenantId,
@@ -257,7 +274,14 @@ export async function aceptarInvitacion(
     throw new ErrorValidacion("El nombre completo es obligatorio para aceptar la invitación.");
   }
 
+  // `.schema("identidad")` obligatorio: se filtra POR `token`, columna ausente
+  // en `public.invitaciones` (vista sin `token` desde la migración
+  // 20260807000001 — fuga cerrada a propósito). Sin esto, `.eq("token", …)`
+  // falla con 42703 igual que el INSERT de `crearInvitacion`: así se rompió
+  // "canjear invitación" — nadie podía activar su cuenta aunque la invitación
+  // existiera. No quitar este `.schema(...)` para "simplificar".
   const { data: invitacion, error: buscarError } = await cliente
+    .schema("identidad")
     .from("invitaciones")
     .select("id, tenant_id, email, tipo_usuario, rol, seller_id, driver_id, estado, expira_en")
     .eq("token", input.token.trim())
