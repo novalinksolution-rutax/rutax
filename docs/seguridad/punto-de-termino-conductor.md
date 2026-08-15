@@ -575,15 +575,28 @@ Esto es lo que no se puede hacer, dicho para que quede en el documento y no haya
 
 Ninguno de estos ítems es opcional. Si alguno queda abierto, la etapa 7 **no sale a producción**.
 
-- [ ] H-1 cerrado: job horario que purga ubicaciones rancias, y consulta de §1.5 corrida en producción.
-- [ ] H-2 decidido: el ping se apaga, o existe la pantalla que lo justifica con su capacidad RBAC.
-- [ ] H-3 cerrado: el conductor puede revocar desde la app.
-- [ ] Tabla `punto_termino_conductor` con la RLS de §6.1, sin vista en `public`, sin `grant` a `authenticated`.
-- [ ] Trigger de redondeo a 3 decimales, con su prueba.
-- [ ] `finalidad` en `consentimientos_ubicacion` **y** `tieneConsentimientoVigente` filtrando por ella, en la misma entrega, con el parámetro obligatorio.
-- [ ] Texto de consentimiento nuevo, con el residuo del §4.4 declarado, y versión subida.
-- [ ] Borrado al revocar y al desvincular, más los dos pasos de purga.
-- [ ] Los 15 canales del §4.3 revisados uno por uno contra el código que se escribió.
-- [ ] pgTAP (8 aserciones) y Vitest (2 pruebas), incluida la de los dos DTO idénticos.
-- [ ] `CLAVES_PROHIBIDAS` actualizada.
-- [ ] La tabla **no** está en `TABLAS_A_EXPORTAR`, y hay un comentario que explica por qué.
+- [x] H-1 cerrado: job horario que purga ubicaciones rancias. ⚠️ **La consulta de §1.5 sigue sin correrse en producción** — es lo único de esta lista que no depende de código.
+- [x] H-2 decidido: el ping se apagó entero (2026-08-14). No había pantalla que lo justificara.
+- [x] H-3 cerrado: el conductor revoca desde su app (`/conductor/punto-termino`, §3 del copy, un toque).
+- [x] Tabla `punto_termino_conductor` con la RLS de §6.1, sin vista en `public`, sin `grant` a `authenticated`.
+- [x] Trigger de redondeo a 3 decimales, con su prueba. **Verificado además en vivo**: un pin marcado en el mapa quedó guardado como `-33.47 / -70.65`.
+- [x] `finalidad` en `consentimientos_ubicacion` **y** `tieneConsentimientoVigente` filtrando por ella, con el parámetro obligatorio.
+- [x] Texto de consentimiento nuevo (`docs/ux/copy-consentimiento-punto-termino.md`), con el residuo del §4.4 declarado, y versión en `VERSION_TEXTO_CONSENTIMIENTO_PUNTO_TERMINO`.
+- [x] Borrado al revocar y al desvincular, más los dos pasos de purga.
+- [x] Los 15 canales del §4.3 revisados uno por uno contra el código que se escribió (2026-08-14, al construir la pantalla). Los que la etapa 7 podía abrir —DTO, totales, encuadre, bitácora, exportación— quedaron cerrados; polilínea, ETA, PDF y traspaso no existen todavía y heredan la regla escrita.
+- [x] pgTAP y Vitest, incluida la de los dos DTO idénticos (`src/modules/operacion/ruta-manifiesto.test.ts`). **Y una comprobación que no estaba pedida y vale más que la unitaria:** con un conductor que SÍ tiene ancla, se calculó su ruta desde la sesión del coordinador y se buscó la coordenada exacta del ancla en todo el HTML servido al navegador — **cero ocurrencias**.
+- [x] `CLAVES_PROHIBIDAS` actualizada.
+- [x] La tabla **no** está en `TABLAS_A_EXPORTAR`, y hay un comentario que explica por qué.
+
+### Lo que se aprendió al construir (2026-08-14)
+
+- **Un ancla corrupta no puede hacer fallar el cálculo.** No estaba en este documento. Si
+  `calcularRuta` lanzara por una coordenada inválida del ancla, el coordinador vería un error **solo
+  para los conductores que definieron su punto** — el §4 por la puerta de atrás. Por eso
+  `ruta-manifiesto.ts` valida el ancla antes de pasarla y, si no sirve, rutea sin ella.
+- **La guarda contra el otorgamiento duplicado.** `registrarConsentimientoUbicacion` siempre INSERTA
+  y `revocarConsentimientoUbicacion` cierra solo la fila **más reciente**. Registrar consentimiento
+  en cada guardado de pin dejaba una fila `acepto = true, revocado_en = null` abierta para siempre
+  tras la revocación. Hoy no rompe nada —`tieneConsentimientoVigente` mira solo la última— pero es la
+  trampa exacta para quien escriba `where acepto and revocado_en is null` en un job de purga o un
+  reporte de cumplimiento. Se cierra no creando el duplicado, en las dos superficies.

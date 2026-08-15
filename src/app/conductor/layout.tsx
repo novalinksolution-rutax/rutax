@@ -6,10 +6,13 @@
  */
 
 import { redirect } from "next/navigation";
+import { MapPin } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { obtenerPuntoTerminoPropio } from "@/modules/operacion/punto-termino-conductor";
 import { RegistrarSW } from "@/components/pwa/registrar-sw";
 import { SkipLink } from "@/components/app-shell/skip-link";
-import { MenuCuenta } from "@/components/app-shell/menu-cuenta";
+import { MenuCuenta, type EnlaceMenuCuenta } from "@/components/app-shell/menu-cuenta";
 import { ConductorNav } from "@/components/app-shell/conductor-nav";
 
 export default async function LayoutConductor({
@@ -35,9 +38,38 @@ export default async function LayoutConductor({
     redirect("/");
   }
 
-  if (!sesion.usuario.driverId) {
+  if (!sesion.usuario.driverId || !sesion.usuario.tenantId) {
     redirect("/login");
   }
+
+  // Estado corto del punto de término, para la fila del menú de cuenta (§4 del
+  // copy: "No configurado" / "Guardado en [Comuna]"). Un fallo acá NUNCA
+  // bloquea el shell: el enlace igual se muestra, solo sin subtítulo — es una
+  // comodidad de navegación, no una condición de acceso.
+  let subtituloPuntoTermino = "No configurado";
+  try {
+    const punto = await obtenerPuntoTerminoPropio(
+      crearClienteServiceRole(),
+      sesion.usuario.tenantId,
+      sesion.usuario.driverId,
+    );
+    if (punto) {
+      subtituloPuntoTermino = punto.comuna ? `Guardado en ${punto.comuna}` : "Guardado";
+    }
+  } catch {
+    subtituloPuntoTermino = "";
+  }
+
+  const enlacesCuenta: EnlaceMenuCuenta[] = [
+    {
+      href: "/conductor/punto-termino",
+      etiqueta: "Punto de término",
+      subtitulo: subtituloPuntoTermino || undefined,
+      // El ícono va RENDERIZADO, no como componente: esto es servidor y
+      // `MenuCuenta` es cliente. Ver la nota en `EnlaceMenuCuenta`.
+      icono: <MapPin className="size-4" aria-hidden="true" />,
+    },
+  ];
 
   return (
     <div className="min-h-svh bg-background">
@@ -48,7 +80,13 @@ export default async function LayoutConductor({
         <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-2">
           <p className="font-heading text-sm font-semibold text-foreground">Mis entregas</p>
           <div className="shrink-0">
-            <MenuCuenta nombre={sesion.nombreCompleto ?? "Conductor"} subtitulo="Conductor" colapsado lado="bottom" />
+            <MenuCuenta
+              nombre={sesion.nombreCompleto ?? "Conductor"}
+              subtitulo="Conductor"
+              colapsado
+              lado="bottom"
+              enlaces={enlacesCuenta}
+            />
           </div>
         </div>
       </header>

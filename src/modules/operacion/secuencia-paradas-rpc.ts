@@ -108,6 +108,25 @@ interface ErrorPostgrestMinimo {
   message: string;
 }
 
+/**
+ * La lista enviada ya no corresponde a las paradas activas del manifiesto
+ * (`P0001`): alguien reasignó, quitó o agregó un pedido mientras el coordinador
+ * ordenaba.
+ *
+ * Existe como TIPO y no solo como mensaje porque la pantalla tiene que
+ * comportarse distinto: **el remedio es RECARGAR, no reintentar.** Reintentar
+ * con la misma lista vuelve a fallar exactamente igual, y un botón de
+ * "reintentar" ahí es una trampa — el coordinador lo aprieta tres veces antes de
+ * entender que el problema no es la red. Distinguirlo por el texto del mensaje
+ * sería atarlo a una redacción que el copywriter puede cambiar mañana.
+ */
+export class ErrorSecuenciaDesincronizada extends Error {
+  constructor(mensaje: string) {
+    super(mensaje);
+    this.name = "ErrorSecuenciaDesincronizada";
+  }
+}
+
 function traducirErrorSecuencia(error: ErrorPostgrestMinimo): Error {
   switch (error.code) {
     case "22023":
@@ -130,8 +149,9 @@ function traducirErrorSecuencia(error: ErrorPostgrestMinimo): Error {
       // La lista no corresponde a las paradas activas del manifiesto: o venía un
       // pedido que no está en él, o la asignación cambió entre que la pantalla se
       // dibujó y el coordinador guardó. El mensaje pide RECARGAR, no reintentar:
-      // reintentar con la misma lista volvería a fallar igual.
-      return new Error(
+      // reintentar con la misma lista volvería a fallar igual. Va con TIPO propio
+      // para que la pantalla pueda ofrecer "recargar" en vez de "reintentar".
+      return new ErrorSecuenciaDesincronizada(
         "La lista de paradas cambió mientras ordenabas la ruta. Vuelve a cargar el manifiesto y ordénalo otra vez.",
       );
     case "23503":

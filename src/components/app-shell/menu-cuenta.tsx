@@ -14,6 +14,7 @@
 
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { ChevronsUpDown, LogOut } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -35,6 +36,29 @@ function inicialesDe(nombre: string): string {
   return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase()
 }
 
+/** Una fila de navegación adicional dentro del menú (p. ej. ajustes propios del conductor). */
+export interface EnlaceMenuCuenta {
+  href: string
+  etiqueta: string
+  /** Línea corta bajo la etiqueta — el estado actual de ese ajuste. */
+  subtitulo?: string
+  /**
+   * El ícono YA RENDERIZADO (`<MapPin className="size-4" />`), no el componente.
+   *
+   * ⚠️ No lo cambies de vuelta a `LucideIcon`. Este es un componente de CLIENTE y
+   * quien arma la lista es un layout de SERVIDOR: una función no cruza esa
+   * frontera y React tumba el render entero con *"Functions cannot be passed
+   * directly to Client Components"*. Un elemento ya renderizado sí cruza — se
+   * serializa como parte del payload RSC.
+   *
+   * Y cuando eso pasa no se cae solo esta fila: se cae **todo lo que envuelva el
+   * layout**. Así se rompió la PWA del conductor entera —manifiesto incluido— el
+   * 2026-08-14, sin que `typecheck` ni `lint` dijeran una palabra: para el
+   * compilador pasar `MapPin` era perfectamente válido.
+   */
+  icono?: React.ReactNode
+}
+
 interface MenuCuentaProps {
   nombre: string
   subtitulo?: string | null
@@ -46,9 +70,15 @@ interface MenuCuentaProps {
   colapsado?: boolean
   /** Lado de apertura del popover: `top` (sidebar) o `bottom` (header conductor). */
   lado?: "top" | "bottom"
+  /**
+   * Filas de navegación propias de la superficie que use el menú (hoy: la PWA
+   * del conductor, para su "Punto de término"). Vacío por defecto: no cambia
+   * nada en `(tenant)`, `portal` ni `admin`, que no pasan esta prop.
+   */
+  enlaces?: EnlaceMenuCuenta[]
 }
 
-export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, lado = "top" }: MenuCuentaProps) {
+export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, lado = "top", enlaces }: MenuCuentaProps) {
   const router = useRouter()
   const [cerrando, startCerrar] = useTransition()
 
@@ -101,6 +131,26 @@ export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, 
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <SubmenuTema />
+        {enlaces && enlaces.length > 0 ? (
+          <>
+            <DropdownMenuSeparator />
+            {enlaces.map((enlace) => {
+              return (
+                <DropdownMenuItem key={enlace.href} asChild>
+                  <Link href={enlace.href} className="flex w-full items-center gap-2">
+                    {enlace.icono ?? null}
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{enlace.etiqueta}</span>
+                      {enlace.subtitulo ? (
+                        <span className="truncate text-xs text-muted-foreground">{enlace.subtitulo}</span>
+                      ) : null}
+                    </span>
+                  </Link>
+                </DropdownMenuItem>
+              )
+            })}
+          </>
+        ) : null}
         <DropdownMenuSeparator />
         {accionSalir ? (
           <form action={accionSalir}>

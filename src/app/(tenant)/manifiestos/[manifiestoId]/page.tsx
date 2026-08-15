@@ -20,23 +20,14 @@ import {
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import { Badge } from "@/components/ui/badge";
-import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { DataTable } from "@/components/ui/data-table";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import type { Manifiesto, EstadoManifiesto, Pedido, EstadoPedido } from "@/modules/operacion/tipos";
 import { ordenarParadasConSecuencia } from "@/modules/operacion/orden-paradas";
+import { obtenerOrigenRutaDelCourier } from "@/modules/operacion/ruta-manifiesto";
 import { BotonConfirmarManifiesto } from "./boton-confirmar-manifiesto";
 import { BotonCancelarManifiesto } from "./boton-cancelar-manifiesto";
-import { BotonQuitarPedido } from "./boton-quitar-pedido";
+import { PanelRuta, type ParadaVista } from "./panel-ruta";
 
 // =============================================================================
 // Tipos auxiliares
@@ -95,7 +86,13 @@ async function cargarPedidosAsignados(
   const { data, error } = await cliente
     .from("asignaciones_pedido")
     .select(
-      "id, pedido_id, orden_ruta, pedidos(id, tenant_id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en)",
+      // ⚠️ `lat, long` y las demás columnas de geocoding NO estaban en esta
+      // lista, aunque el mapeo de abajo las leía desde el 2026 — así que
+      // llegaban siempre en `null`. No molestaba a nadie mientras esta pantalla
+      // solo mostrara direcciones; con la etapa 7 sí: sin ellas TODA parada se
+      // pinta como "sin ubicación" y el panel de ruta no puede medir un tramo.
+      // Si agregas una columna al mapeo, agrégala también aquí.
+      "id, pedido_id, orden_ruta, pedidos(id, tenant_id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en, lat, long, geo_estado, geo_confianza, geocodificado_en, cobertura_estado)",
     )
     .eq("manifiesto_id", manifiestoId)
     .eq("tenant_id", tenantId)
@@ -173,9 +170,13 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
   const { manifiestoId } = await params;
   const tenantId = sesion.usuario.tenantId;
 
-  const [manifiesto, pedidosAsignadosSinOrden] = await Promise.all([
+  const [manifiesto, pedidosAsignadosSinOrden, origenRuta] = await Promise.all([
     cargarManifiesto(manifiestoId, tenantId),
     cargarPedidosAsignados(manifiestoId, tenantId),
+    // La bodega desde la que sale la flota: origen de la ruta y punto desde el
+    // que se mide el primer tramo. Puede no estar configurada todavía — el panel
+    // lo dice y esconde las distancias en vez de inventarlas.
+    obtenerOrigenRutaDelCourier(crearClienteServiceRole(), tenantId),
   ]);
 
   if (!manifiesto) notFound();
@@ -203,6 +204,29 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
   const esBorrador = manifiesto.estado === "borrador";
   const esConfirmado = manifiesto.estado === "confirmado";
   const hayPedidos = pedidosAsignados.length > 0;
+
+  // Rutear NO se limita al borrador, a propósito: reordenar a media tarde —
+  // porque una calle se cortó o porque el motor mandó al conductor a cruzar el
+  // Mapocho dos veces — es el caso de uso, no la excepción. El único límite es
+  // el que impone la propia función SQL: un manifiesto `completado` o
+  // `cancelado` no se rutea, porque sería reescribir historia.
+  const manifiestoCerrado =
+    manifiesto.estado === "completado" || manifiesto.estado === "cancelado";
+  const puedeRutear = puedeAsignar && !manifiestoCerrado;
+
+  const paradas: ParadaVista[] = pedidosAsignados.map(({ asignacionId, pedido, ordenRuta }) => ({
+    pedidoId: pedido.id,
+    asignacionId,
+    destinatarioNombre: pedido.destinatarioNombre,
+    destinatarioComuna: pedido.destinatarioComuna,
+    destinatarioDireccion: pedido.destinatarioDireccion,
+    fechaCompromiso: pedido.fechaCompromiso,
+    estadoTexto: traducirEstadoPedido(pedido.estado),
+    estadoVariante: BADGE_ESTADO_PEDIDO[pedido.estado],
+    lat: pedido.lat,
+    long: pedido.long,
+    ruteada: ordenRuta !== null,
+  }));
 
   return (
     <div className="space-y-6">
@@ -237,103 +261,44 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
         </Badge>
       </div>
 
-      {/* Lista de pedidos */}
-      <section aria-labelledby="pedidos-titulo">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h2 id="pedidos-titulo" className="text-base font-semibold">
-            Pedidos asignados{" "}
-            <span className="text-muted-foreground font-normal">({pedidosAsignados.length})</span>
-          </h2>
+      {/* Paradas + ruta. El panel es un componente de cliente porque el
+          reordenamiento manual vive en el navegador: mover una parada recalcula
+          los tramos en el acto y solo se va al servidor al guardar, con la
+          secuencia completa. */}
+      {hayPedidos ? (
+        <div className="space-y-3">
           {esBorrador && puedeAsignar && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/preparacion/asignar?conductor=${manifiesto.driverId}`}>
-                <Plus className="size-4" aria-hidden="true" />
-                Agregar pedidos
-              </Link>
-            </Button>
+            <div className="flex justify-end">
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/preparacion/asignar?conductor=${manifiesto.driverId}`}>
+                  <Plus className="size-4" aria-hidden="true" />
+                  Agregar pedidos
+                </Link>
+              </Button>
+            </div>
           )}
-        </div>
-
-        {hayPedidos ? (
-          <DataTable
-            toolbar={
-              <span className="text-sm text-muted-foreground tabular-nums">
-                {pedidosAsignados.length} pedido{pedidosAsignados.length !== 1 ? "s" : ""}
-              </span>
-            }
-          >
-            <Table densidad="comfortable" aria-label="Pedidos asignados al manifiesto">
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead className="px-4 text-center" title="Orden de la ruta (por comuna y dirección)">
-                    #
-                  </TableHead>
-                  <TableHead className="px-4">Estado</TableHead>
-                  <TableHead className="px-4">Destinatario</TableHead>
-                  <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
-                  <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
-                  {esBorrador && puedeAsignar && (
-                    <TableHead className="px-4 text-right">
-                      <span className="sr-only">Acciones</span>
-                    </TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pedidosAsignados.map(({ asignacionId, pedido }, idx) => (
-                  <TableRow key={pedido.id}>
-                    <TableCell className="px-4 text-center font-semibold tabular-nums text-muted-foreground">
-                      {idx + 1}
-                    </TableCell>
-                    <TableCell className="px-4">
-                      <BadgeEstado variante={BADGE_ESTADO_PEDIDO[pedido.estado]} texto={traducirEstadoPedido(pedido.estado)} />
-                    </TableCell>
-                    <TableCell className="px-4">
-                      <Link
-                        href={`/operaciones/${pedido.id}`}
-                        className="font-medium hover:underline"
-                      >
-                        {pedido.destinatarioNombre}
-                      </Link>
-                      <span className="ml-1 text-xs text-muted-foreground">
-                        — {pedido.destinatarioComuna}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
-                      {pedido.destinatarioDireccion}
-                    </TableCell>
-                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
-                      {pedido.fechaCompromiso ?? "—"}
-                    </TableCell>
-                    {esBorrador && puedeAsignar && (
-                      <TableCell className="px-4 text-right">
-                        <BotonQuitarPedido
-                          asignacionId={asignacionId}
-                          manifiestoId={manifiestoId}
-                          nombreDestinatario={pedido.destinatarioNombre}
-                        />
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </DataTable>
-        ) : (
-          <EmptyState
-            icon={Package}
-            titulo="Este manifiesto no tiene pedidos todavía"
-            descripcion="Agrega pedidos pendientes para armar la ruta del conductor."
-            accion={
-              esBorrador && puedeAsignar ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/preparacion/asignar?conductor=${manifiesto.driverId}`}>Agregar pedidos</Link>
-                </Button>
-              ) : undefined
-            }
+          <PanelRuta
+            manifiestoId={manifiestoId}
+            paradas={paradas}
+            origen={origenRuta}
+            puedeRutear={puedeRutear}
+            puedeQuitar={esBorrador && puedeAsignar}
           />
-        )}
-      </section>
+        </div>
+      ) : (
+        <EmptyState
+          icon={Package}
+          titulo="Este manifiesto no tiene pedidos todavía"
+          descripcion="Agrega pedidos pendientes para armar la ruta del conductor."
+          accion={
+            esBorrador && puedeAsignar ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/preparacion/asignar?conductor=${manifiesto.driverId}`}>Agregar pedidos</Link>
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
 
       {/* Acciones según estado */}
       {(esBorrador && (puedeAsignar || puedeCrearManifiesto)) && (

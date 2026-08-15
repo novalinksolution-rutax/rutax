@@ -592,7 +592,37 @@ filtrar por estado. La app nativa ya se defiende sola. No descubrirlo en terreno
 
 **Esfuerzo.** 2–3 días, incluida la migración de respaldo para las históricas.
 
-## Etapa 7 · El ruteo
+## Etapa 7 · El ruteo — **CONSTRUIDA (2026-08-14)**
+
+> **Estado.** Motor, punto de término, persistencia de la secuencia **y la pantalla**: hechos. Lo que
+> quedaba al empezar esta última tanda era que `aplicarSecuenciaParadasRpc` **no tenía un solo
+> llamador** — toda la plomería puesta y ningún grifo. Lo que se agregó:
+>
+> | Pieza | Dónde |
+> |---|---|
+> | Orquestación motor → bodega de origen → ancla → RPC | `src/modules/operacion/ruta-manifiesto.ts` |
+> | Distancia por tramo (pura, la usa también el cliente) | `src/modules/operacion/distancias-tramo.ts` |
+> | Server Actions `motor` y `manual` | `(tenant)/manifiestos/[manifiestoId]/actions-ruta.ts` |
+> | Panel de ruta con reordenamiento manual | `(tenant)/manifiestos/[manifiestoId]/panel-ruta.tsx` |
+> | Pantallas del punto de término (consentimiento, mapa, quitar) | `src/app/conductor/punto-termino/` |
+> | Rutas Bearer para la app Expo | `src/app/api/conductor/punto-termino/` |
+>
+> **Medido en local con 87 paradas reales:** alfabético **390,1 km** → ruteado **185,3 km**.
+>
+> **Tres decisiones que se tomaron al construir y no estaban en el plan:**
+>
+> 1. **La pantalla muestra la distancia de CADA TRAMO, no solo el total.** El reordenamiento manual
+>    era obligatorio en el plan, pero nadie había dicho **cómo ve el coordinador el salto que tiene
+>    que corregir**: en una lista de treinta direcciones no se ve. Un "12,4 km" entre dos paradas
+>    seguidas sí. Los tramos se recalculan en el navegador mientras arrastra, con la misma función
+>    pura que usa el servidor, así que el número que ve es el que va a quedar guardado.
+> 2. **Un ancla con coordenada corrupta se descarta en silencio en vez de dejar que el motor lance.**
+>    No está en el documento de privacidad y cierra un canal que sí: un error que apareciera **solo**
+>    para los conductores que definieron su punto delataría exactamente lo que el diseño protege.
+> 3. **El `P0001` viaja con tipo propio** (`ErrorSecuenciaDesincronizada`), no distinguido por el
+>    texto del mensaje, para que la pantalla ofrezca **recargar** y no **reintentar** — reintentar con
+>    la misma lista falla igual, y un botón de reintentar ahí se aprieta tres veces antes de entender
+>    que el problema no es la red.
 
 Motor en **TypeScript puro** — vecino cercano + 2-opt + Or-opt. **US$0/mes.** Envuelto tras un
 puerto que imita a `PuertoGeocoding`, **asíncrono desde el día uno**.
