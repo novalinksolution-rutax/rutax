@@ -43,7 +43,7 @@
 
 begin;
 
-select plan(46);
+select plan(48);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (redefinidos aquí — cada .test.sql corre en su
@@ -724,6 +724,68 @@ select is_empty(
       where pubname = 'supabase_realtime'
         and schemaname = 'operacion' and tablename = 'bultos_retiro_qr' $$,
   'realtime: operacion.bultos_retiro_qr NO está publicada — es deny-all y guarda el string del QR cifrado; la réplica lógica no pregunta por GRANTs y sacaría el criptograma por el WAL'
+);
+
+-- =============================================================================
+-- La carga por comuna cuenta SOLO lo que queda por repartir
+-- =============================================================================
+-- Medido en producción por el usuario (2026-08-15): entregó un same-day y el
+-- pedido seguía contando como carga pendiente en la Preparación del día. La
+-- bandeja de asignación lo excluía bien (`estado in
+-- ('pendiente_asignacion','asignado')`), pero esta función no tenía filtro de
+-- estado: "Lampa · 5 bultos" contra 4 pedidos reales en la bandeja.
+--
+-- Este panel decide cuántos conductores mandar a cada zona; un pedido cerrado
+-- no es trabajo pendiente. El respaldo de lo retirado NO se toca: eso es el
+-- acta de la visita (`sesiones_retiro.bultos_total`).
+do $$
+declare
+  -- Mismos ids del bloque de fixtures de arriba. No se re-declaran "parecidos":
+  -- un uuid mal copiado acá crearía datos huérfanos y la prueba pasaría por
+  -- ausencia, que es la peor forma de pasar.
+  t_ea    uuid := 'eeeeeeee-0000-0000-0000-0000000000e1';
+  s_ea1   uuid := 'eeeeeeee-1111-0000-0000-0000000000e1';
+  d_ea1   uuid := 'eeeeeeee-2222-0000-0000-0000000000e1';
+  ses_ea1 uuid := 'eeeeeeee-7777-0000-0000-0000000000e1';
+  p_entregado uuid := 'eeeeeeee-6666-0000-0000-0000000000ff';
+begin
+  -- Un pedido a una comuna que NINGÚN otro caso usa, para que su desaparición
+  -- del resultado sea inequívoca y no se confunda con otra fila.
+  insert into operacion.pedidos (
+    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    driver_id_asignado, destinatario_nombre, destinatario_direccion,
+    destinatario_comuna, situacion_retiro)
+  values
+    (p_entregado, t_ea, s_ea1, 'same_day', 'same_day_manual', null, 'entregado',
+     d_ea1, 'Destinatario Entregado', 'Calle Entregada 1', 'Lampa', 'retirado');
+
+  -- Su bulto SÍ se escaneó hoy y su acta lo conserva: lo que cambia es que deja
+  -- de figurar como carga por repartir.
+  insert into operacion.bultos_retiro
+    (tenant_id, sesion_retiro_id, conductor_id, escaneo_id, codigo_formato,
+     codigo_normalizado, pedido_id, seller_id, escaneado_en, recibido_en, resuelto_en)
+  values
+    (t_ea, ses_ea1, d_ea1, 'eeeeeeee-4444-0000-0000-0000000000ff', 'rutax_interno',
+     'RX-ENTREGADO-1', p_entregado, s_ea1,
+     timestamptz '2026-08-13 10:00:00+00', timestamptz '2026-08-13 10:00:00+00',
+     timestamptz '2026-08-13 10:00:00+00');
+end $$;
+
+select is_empty(
+  $$ select 1 from operacion.preparacion_carga_por_comuna(
+       'eeeeeeee-0000-0000-0000-0000000000e1'::uuid, date '2026-08-13')
+      where comuna_clave = 'lampa' $$,
+  'carga: un pedido ENTREGADO no cuenta como carga por repartir — su comuna ni siquiera aparece'
+);
+
+-- La otra mitad, y la que impide "arreglarlo" con un INNER JOIN: los bultos sin
+-- pedido resuelto siguen contando. Son la excepción que el retiro existe para
+-- destapar, y esconderlos daría un total que no cuadra con el piso de la bodega.
+select isnt_empty(
+  $$ select 1 from operacion.preparacion_carga_por_comuna(
+       'eeeeeeee-0000-0000-0000-0000000000e1'::uuid, date '2026-08-13')
+      where comuna_clave is null and bultos_sin_resolver > 0 $$,
+  'carga: los bultos SIN pedido siguen contando en la fila de excepción (el filtro de estado no los barre)'
 );
 
 select * from finish();
