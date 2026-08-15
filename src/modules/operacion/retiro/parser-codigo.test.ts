@@ -90,6 +90,71 @@ describe("parsearCodigoBulto — rutax_interno", () => {
   });
 });
 
+describe("parsearCodigoBulto — flex_manual (el número tecleado a mano)", () => {
+  it("reconoce el shipment id pelado que el conductor teclea", () => {
+    const resultado = parsearCodigoBulto("44760788897");
+
+    expect(resultado.formato).toBe("flex_manual");
+    expect(resultado.mlShipmentId).toBe("44760788897");
+    // Sin hash_code no hay nada irrecuperable que preservar: ML no reimprime la
+    // etiqueta de un envío ya retirado, así que ese QR no existió nunca aquí.
+    expect(resultado.credencial).toBeNull();
+    expect(resultado.mlUserId).toBeNull();
+  });
+
+  it("tolera los separadores con que un humano agrupa dígitos de una etiqueta", () => {
+    for (const tecleado of ["4476 0788 897", "44760788897 ", "4476-0788-897", "44.760.788.897"]) {
+      const resultado = parsearCodigoBulto(tecleado);
+      expect(resultado.formato).toBe("flex_manual");
+      expect(resultado.codigoNormalizado).toBe("44760788897");
+    }
+  });
+
+  /**
+   * La propiedad que hace útil todo esto: teclear y escanear el MISMO bulto
+   * produce el MISMO `codigo_normalizado`, así que la unique
+   * (sesion_retiro_id, codigo_normalizado) los fusiona en una fila. Es un
+   * bulto, no dos — y si esto se rompiera, el conductor que teclea porque la
+   * etiqueta estaba rota y después logra escanearla contaría el paquete dos
+   * veces.
+   */
+  it("teclear y escanear el mismo bulto colapsan en la misma llave", () => {
+    const escaneado = parsearCodigoBulto(PAYLOAD_FLEX_REAL);
+    const tecleado = parsearCodigoBulto("4476 0788 897");
+
+    expect(tecleado.codigoNormalizado).toBe(escaneado.codigoNormalizado);
+    // Pero NO son el mismo formato: uno trae credencial y el otro no puede.
+    expect(tecleado.formato).not.toBe(escaneado.formato);
+    expect(escaneado.credencial).not.toBeNull();
+    expect(tecleado.credencial).toBeNull();
+  });
+
+  it("resuelve como los demás formatos con pedido, nunca como ilegible", () => {
+    expect(derivarResolucionBulto("flex_manual", "pedido-1")).toBe("resuelto");
+    expect(derivarResolucionBulto("flex_manual", null)).toBe("no_procesado");
+  });
+
+  it("un número demasiado corto NO se toma como shipment id", () => {
+    // Un dígito suelto tecleado por accidente no puede convertirse en una
+    // búsqueda contra pedidos.ml_shipment_id. Cae a desconocido, que se guarda
+    // igual: perder el escaneo sería el fallo irreversible.
+    const resultado = parsearCodigoBulto("12345");
+    expect(resultado.formato).toBe("desconocido");
+  });
+
+  it("cualquier letra lo saca de flex_manual: está leyendo otra cosa", () => {
+    for (const crudo of ["4476O788897", "ABC123456", "44760788897X"]) {
+      expect(parsearCodigoBulto(crudo).formato).toBe("desconocido");
+    }
+  });
+
+  it("un RX- válido sigue ganándole al detector numérico", () => {
+    // Hoy no compiten (un RX conserva letras), pero el orden de DETECTORES está
+    // fijado a propósito y esta prueba lo sostiene.
+    expect(parsearCodigoBulto("RX-7K2M-9PQR").formato).toBe("rutax_interno");
+  });
+});
+
 describe("parsearCodigoBulto — desconocido (la red de seguridad)", () => {
   it("nunca lanza, cualquiera sea el crudo", () => {
     expect(() => parsearCodigoBulto("")).not.toThrow();

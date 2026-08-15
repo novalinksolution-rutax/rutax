@@ -45,6 +45,12 @@ const COLUMNA_BUSQUEDA_POR_FORMATO: Partial<
   Record<FormatoCodigoBulto, "ml_shipment_id" | "codigo_interno">
 > = {
   flex_qr: "ml_shipment_id",
+  // Tecleado a mano, pero es el MISMO shipment id: se busca contra la misma
+  // columna. Sin esta entrada el código tecleado se guardaría sin encontrar
+  // jamás su pedido — y en silencio, porque un formato sin entrada aquí es un
+  // caso previsto (`desconocido`), no un error. Ese es exactamente el fallo mudo
+  // que el ingreso manual vino a evitar.
+  flex_manual: "ml_shipment_id",
   rutax_interno: "codigo_interno",
 };
 

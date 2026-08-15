@@ -285,10 +285,14 @@ select results_eq(
 select has_type('operacion', 'formato_codigo_bulto',
   'esquema: existe el tipo operacion.formato_codigo_bulto');
 
+-- Lista COMPLETA y en orden de declaración (`enum_range` respeta el orden del
+-- tipo, y `flex_manual` se agregó al final con `add value`, no con `before`).
+-- Se repone entera en cada cambio, copiada de la base: sumarle un valor a ojo
+-- desde una versión vieja es cómo se pierde otro sin que nada falle al migrar.
 select results_eq(
   $$ select enum_range(null::operacion.formato_codigo_bulto)::text[] $$,
-  $$ values (array['flex_qr', 'rutax_interno', 'desconocido']) $$,
-  'esquema: formato_codigo_bulto tiene los tres valores, y "desconocido" existe porque un código ilegible SE GUARDA IGUAL'
+  $$ values (array['flex_qr', 'rutax_interno', 'desconocido', 'flex_manual']) $$,
+  'esquema: formato_codigo_bulto tiene los cuatro valores — "desconocido" porque un código ilegible SE GUARDA IGUAL, y "flex_manual" porque un número tecleado no trae hash_code y eso hay que poder distinguirlo'
 );
 
 -- El alcance §2.1 la PROHÍBE: un seller despacha con varios couriers, la ingesta

@@ -107,6 +107,32 @@ describe("buscarPedidosPorCodigos", () => {
     expect(resultado.get("RX-7K2M-9PQR")?.codigoVisible).toBe("RX-7K2M-9PQR");
   });
 
+  /**
+   * `flex_manual` DEBE buscar contra `ml_shipment_id`, igual que `flex_qr`.
+   *
+   * Sin su entrada en `COLUMNA_BUSQUEDA_POR_FORMATO`, el código tecleado se
+   * guarda pero **no encuentra jamás su pedido, y en silencio**: un formato sin
+   * entrada ahí es un caso previsto (`desconocido`), no un error, así que nada
+   * falla — el bulto simplemente aparece como "no procesado" y el conductor
+   * cree que tecleó mal. Es exactamente el fallo mudo que el ingreso manual
+   * vino a evitar.
+   *
+   * Esta prueba existe porque la mutación lo destapó: quitar esa línea dejaba
+   * las 13 pruebas de este archivo en verde.
+   */
+  it("flex_manual resuelve por ml_shipment_id, igual que un QR escaneado", async () => {
+    const { cliente } = crearCliente({
+      pedidos: [{ ...FILA_PEDIDO_FLEX, tenant_id: TENANT_A }],
+    });
+
+    const resultado = await buscarPedidosPorCodigos(cliente, TENANT_A, [
+      { formato: "flex_manual", codigoNormalizado: "44760788897" },
+    ]);
+
+    expect(resultado.size).toBe(1);
+    expect(resultado.get("44760788897")?.pedidoId).toBe(PEDIDO_1);
+  });
+
   it("'desconocido' NUNCA dispara una consulta contra pedidos — nada que buscar", async () => {
     const { cliente, from } = crearCliente({ pedidos: [] });
 

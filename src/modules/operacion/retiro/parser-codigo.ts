@@ -32,8 +32,24 @@
 import { createHash } from "node:crypto";
 import { esCodigoInternoValido } from "../codigo-interno";
 
-/** Espejo de `operacion.formato_codigo_bulto` (migración 20260813000004 §1). */
-export const FORMATOS_CODIGO_BULTO = ["flex_qr", "rutax_interno", "desconocido"] as const;
+/**
+ * Espejo de `operacion.formato_codigo_bulto` (migración 20260813000004 §1, más
+ * `flex_manual` en 20260815000001).
+ *
+ * ⚠️ Lista COMPLETA, siempre. Si agregas un valor en SQL, agrégalo aquí en el
+ * mismo cambio y repón la lista entera en el `results_eq` de
+ * `rls_aislamiento_retiro.test.sql` — copiándola de la base, nunca de una
+ * versión vieja de otra migración. Es la disciplina que CLAUDE.md exige para
+ * toda lista espejada, y la que faltó en el incidente del CHECK de
+ * `tipo_diferencia`: 16 valores antes y 16 después, distinta lista, y el fallo
+ * apareció en ejecución dentro de un `step.run`.
+ */
+export const FORMATOS_CODIGO_BULTO = [
+  "flex_qr",
+  "flex_manual",
+  "rutax_interno",
+  "desconocido",
+] as const;
 export type FormatoCodigoBulto = (typeof FORMATOS_CODIGO_BULTO)[number];
 
 /** Espejo del CHECK `bultos_retiro_codigo_normalizado_largo` (1..128). */
@@ -121,6 +137,73 @@ function intentarFlexQr(crudo: string): CodigoBultoParseado | null {
 }
 
 // =============================================================================
+// flex_manual — el MISMO número de envío, pero tecleado por el conductor
+// =============================================================================
+
+/**
+ * Mínimo de dígitos para considerar que alguien tecleó un shipment id y no se le
+ * escapó un número suelto. El ejemplo verificado del alcance §3 tiene 11
+ * dígitos (`44760788897`); ML no publica un largo garantizado, así que el piso
+ * se pone bajo pero no en 1: un "5" tecleado por accidente no puede convertirse
+ * en una búsqueda contra `pedidos.ml_shipment_id`.
+ */
+const LARGO_MIN_SHIPMENT_ID_TECLEADO = 6;
+
+/**
+ * Número de envío de Flex TECLEADO a mano — la vía de excepción cuando la
+ * etiqueta no se puede escanear (rota, borrosa, ausente).
+ *
+ * ## Qué acepta, y por qué tan poco
+ *
+ * SOLO dígitos, tras quitar espacios, guiones y puntos: un conductor mirando una
+ * etiqueta arrugada teclea `4476 0788 897` o `44760788897` con la misma
+ * intención, y rechazarle el primero sería obligarlo a pelear con el separador
+ * en vez de con el paquete. Nada más se limpia — una letra suelta significa que
+ * está leyendo otra cosa, y eso debe caer a `desconocido`, que SE GUARDA IGUAL.
+ *
+ * ## Por qué comparte `codigoNormalizado` con `flex_qr`
+ *
+ * Es el shipment id pelado, exactamente el mismo valor que produce
+ * `intentarFlexQr` desde el campo `id` del JSON. Así el MISMO bulto tecleado y
+ * escaneado se fusiona por la unique `(sesion_retiro_id, codigo_normalizado)` —
+ * que es lo correcto: es un bulto, no dos. Y `dto-pedido.ts` lo busca contra la
+ * misma columna, así que encuentra su pedido igual que un escaneo.
+ *
+ * ## Por qué `credencial: null` y no es un olvido
+ *
+ * Tecleando no hay `hash_code`: es una firma de ML que no se puede calcular ni
+ * pedir después (ML no reimprime la etiqueta de un envío ya retirado). No hay
+ * nada que preservar, y **eso es justamente lo que el formato propio deja
+ * dicho**: este bulto nunca tuvo QR capturado, a diferencia de uno `flex_qr`.
+ *
+ * ## Orden dentro de `DETECTORES`
+ *
+ * Va DESPUÉS de `intentarRutaxInterno`. Hoy no compiten —un `RX-XXXX-XXXX`
+ * nunca queda en solo dígitos tras limpiar separadores, porque conserva letras—
+ * pero el orden se fija a propósito: si algún día un formato interno fuera
+ * numérico, el específico tiene que ganarle al genérico.
+ */
+function intentarFlexManual(crudo: string): CodigoBultoParseado | null {
+  // Solo separadores que un humano usa al agrupar dígitos de una etiqueta.
+  const limpio = crudo.trim().replace(/[\s.-]/g, "");
+  if (!/^\d+$/.test(limpio)) return null;
+  if (limpio.length < LARGO_MIN_SHIPMENT_ID_TECLEADO) return null;
+  if (limpio.length > LARGO_MAX_SHIPMENT_ID_PLAUSIBLE) return null;
+
+  return {
+    formato: "flex_manual",
+    codigoNormalizado: limpio,
+    muestraCodigo: null,
+    mlShipmentId: limpio,
+    // Tecleado: no se conoce la cuenta de ML de origen. Se deja null en vez de
+    // adivinarla — el pedido ya la trae, y una atribución inventada es peor que
+    // ninguna cuando el seller tiene varias cuentas conectadas.
+    mlUserId: null,
+    credencial: null,
+  };
+}
+
+// =============================================================================
 // rutax_interno — el codigo_interno que Rutax ya genera para same-day
 // =============================================================================
 
@@ -176,6 +259,9 @@ function comoDesconocido(crudo: string): CodigoBultoParseado {
 const DETECTORES: readonly ((crudo: string) => CodigoBultoParseado | null)[] = [
   intentarFlexQr,
   intentarRutaxInterno,
+  // El último de los que reconocen algo: es el más permisivo (cualquier ristra
+  // de dígitos plausible) y por eso no puede adelantarse a los específicos.
+  intentarFlexManual,
 ];
 
 /**
