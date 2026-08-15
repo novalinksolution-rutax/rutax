@@ -43,7 +43,7 @@
 
 begin;
 
-select plan(48);
+select plan(50);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (redefinidos aquí — cada .test.sql corre en su
@@ -786,6 +786,82 @@ select isnt_empty(
        'eeeeeeee-0000-0000-0000-0000000000e1'::uuid, date '2026-08-13')
       where comuna_clave is null and bultos_sin_resolver > 0 $$,
   'carga: los bultos SIN pedido siguen contando en la fila de excepción (el filtro de estado no los barre)'
+);
+
+-- =============================================================================
+-- Un bulto YA DESPACHADO deja de ser carga (manifiesto confirmado)
+-- =============================================================================
+-- Observado en producción por el usuario (2026-08-15): cuatro bultos de Lampa ya
+-- asignados —algunos en ruta— seguían apareciendo como carga por repartir. Este
+-- panel decide cuántos conductores mandar a cada zona; una vez que el bulto
+-- tiene conductor y el manifiesto está cerrado, esa decisión ya se tomó.
+--
+-- El corte es el manifiesto CONFIRMADO y no la simple asignación: mientras sigue
+-- en `borrador`, el coordinador todavía puede mover el pedido de conductor y por
+-- lo tanto sigue siendo parte de la decisión. Las dos mitades se prueban.
+do $$
+declare
+  t_ea  uuid := 'eeeeeeee-0000-0000-0000-0000000000e1';
+  s_ea1 uuid := 'eeeeeeee-1111-0000-0000-0000000000e1';
+  d_ea1 uuid := 'eeeeeeee-2222-0000-0000-0000000000e1';
+  ses_ea1 uuid := 'eeeeeeee-7777-0000-0000-0000000000e1';
+
+  p_borrador  uuid := 'eeeeeeee-6666-0000-0000-0000000000b1';
+  p_confirmado uuid := 'eeeeeeee-6666-0000-0000-0000000000c1';
+  m_borrador  uuid := 'eeeeeeee-aaaa-0000-0000-0000000000b1';
+  m_confirmado uuid := 'eeeeeeee-aaaa-0000-0000-0000000000c1';
+begin
+  -- Dos pedidos ASIGNADOS, a comunas propias para que su presencia/ausencia sea
+  -- inequívoca. Lo único que los distingue es el estado de su manifiesto.
+  insert into operacion.pedidos (
+    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    driver_id_asignado, destinatario_nombre, destinatario_direccion,
+    destinatario_comuna, situacion_retiro)
+  values
+    (p_borrador, t_ea, s_ea1, 'same_day', 'same_day_manual', null, 'asignado',
+     d_ea1, 'Dest Borrador', 'Calle B 1', 'Cerrillos', 'retirado'),
+    (p_confirmado, t_ea, s_ea1, 'same_day', 'same_day_manual', null, 'asignado',
+     d_ea1, 'Dest Confirmado', 'Calle C 1', 'Quilicura', 'retirado');
+
+  insert into operacion.manifiestos (id, tenant_id, driver_id, nombre, fecha_operacion, estado)
+  values
+    (m_borrador,   t_ea, d_ea1, 'Manifiesto borrador',   date '2026-08-13', 'borrador'),
+    (m_confirmado, t_ea, d_ea1, 'Manifiesto confirmado', date '2026-08-13', 'confirmado');
+
+  -- `seller_id` va explícito: un trigger valida que el denormalizado coincida
+  -- con `pedidos.seller_id` y rechaza el NULL.
+  insert into operacion.asignaciones_pedido
+    (tenant_id, pedido_id, manifiesto_id, driver_id, seller_id, activa)
+  values
+    (t_ea, p_borrador,   m_borrador,   d_ea1, s_ea1, true),
+    (t_ea, p_confirmado, m_confirmado, d_ea1, s_ea1, true);
+
+  insert into operacion.bultos_retiro
+    (tenant_id, sesion_retiro_id, conductor_id, escaneo_id, codigo_formato,
+     codigo_normalizado, pedido_id, seller_id, escaneado_en, recibido_en, resuelto_en)
+  values
+    (t_ea, ses_ea1, d_ea1, 'eeeeeeee-4444-0000-0000-0000000000b1', 'rutax_interno',
+     'RX-BORRADOR-1', p_borrador, s_ea1,
+     timestamptz '2026-08-13 10:30:00+00', timestamptz '2026-08-13 10:30:00+00',
+     timestamptz '2026-08-13 10:30:00+00'),
+    (t_ea, ses_ea1, d_ea1, 'eeeeeeee-4444-0000-0000-0000000000c1', 'rutax_interno',
+     'RX-CONFIRMADO-1', p_confirmado, s_ea1,
+     timestamptz '2026-08-13 10:31:00+00', timestamptz '2026-08-13 10:31:00+00',
+     timestamptz '2026-08-13 10:31:00+00');
+end $$;
+
+select isnt_empty(
+  $$ select 1 from operacion.preparacion_carga_por_comuna(
+       'eeeeeeee-0000-0000-0000-0000000000e1'::uuid, date '2026-08-13')
+      where comuna_clave = 'cerrillos' $$,
+  'carga: asignado con manifiesto en BORRADOR sigue contando — el coordinador todavía puede moverlo'
+);
+
+select is_empty(
+  $$ select 1 from operacion.preparacion_carga_por_comuna(
+       'eeeeeeee-0000-0000-0000-0000000000e1'::uuid, date '2026-08-13')
+      where comuna_clave = 'quilicura' $$,
+  'carga: asignado con manifiesto CONFIRMADO deja de contar — esa decisión ya se tomó'
 );
 
 select * from finish();
