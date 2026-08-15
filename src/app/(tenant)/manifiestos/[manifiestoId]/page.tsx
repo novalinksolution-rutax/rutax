@@ -25,8 +25,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import type { Manifiesto, EstadoManifiesto, Pedido, EstadoPedido } from "@/modules/operacion/tipos";
 import { ordenarParadasConSecuencia } from "@/modules/operacion/orden-paradas";
 import { obtenerOrigenRutaDelCourier } from "@/modules/operacion/ruta-manifiesto";
+import { ESTADOS_TERMINALES_PEDIDO } from "@/modules/operacion/metricas";
 import { BotonConfirmarManifiesto } from "./boton-confirmar-manifiesto";
 import { BotonCancelarManifiesto } from "./boton-cancelar-manifiesto";
+import { BotonCompletarManifiesto } from "./boton-completar-manifiesto";
 import { PanelRuta, type ParadaVista } from "./panel-ruta";
 
 // =============================================================================
@@ -214,6 +216,13 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
     manifiesto.estado === "completado" || manifiesto.estado === "cancelado";
   const puedeRutear = puedeAsignar && !manifiestoCerrado;
 
+  // Paradas que NO llegaron a un estado final. Es lo que el diálogo de cierre
+  // le advierte al coordinador: cerrar el manifiesto NO las entrega, y seguirán
+  // apareciendo para asignar hasta que alguien les dé estado.
+  const paradasAbiertas = pedidosAsignados.filter(
+    ({ pedido }) => !ESTADOS_TERMINALES_PEDIDO.includes(pedido.estado),
+  ).length;
+
   const paradas: ParadaVista[] = pedidosAsignados.map(({ asignacionId, pedido, ordenRuta }) => ({
     pedidoId: pedido.id,
     asignacionId,
@@ -342,6 +351,25 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
             Ver como lo ve el conductor
           </Link>
         </div>
+      )}
+
+      {/* Cerrar una ruta que quedó abierta. El conductor solo puede cerrar la de
+          HOY —su app resuelve el manifiesto vigente por `fecha_operacion`—, así
+          que un manifiesto de ayer todavía `en_ruta` no lo podía cerrar nadie:
+          él ya no lo ve y el coordinador no tenía botón. La Server Action
+          `actionCompletarManifiesto` existía desde antes, sin un solo llamador. */}
+      {manifiesto.estado === "en_ruta" && puedeAsignar && (
+        <section aria-labelledby="cerrar-titulo" className="space-y-2">
+          <h2 id="cerrar-titulo" className="sr-only">
+            Cerrar el manifiesto
+          </h2>
+          <BotonCompletarManifiesto
+            manifiestoId={manifiestoId}
+            driverId={manifiesto.driverId}
+            nombreConductor={nombreConductor}
+            paradasAbiertas={paradasAbiertas}
+          />
+        </section>
       )}
     </div>
   );
