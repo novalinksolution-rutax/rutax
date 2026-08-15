@@ -25,6 +25,7 @@ import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/module
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import { ESTADOS_TERMINALES_PEDIDO } from "./metricas";
 
 // =============================================================================
 // Mapper de fila de BD → interfaz Manifiesto
@@ -435,6 +436,24 @@ export async function completarManifiesto(
     );
   }
 
+  // Cuántas paradas quedaron SIN estado final. Es lo único que distingue "el
+  // conductor terminó su ruta" de "el coordinador cerró a la fuerza una ruta
+  // abandonada", y sin ese número los dos casos son idénticos en los datos.
+  //
+  // ⚠️ El estado del manifiesto NO los distingue: el enum solo tiene
+  // `completado` como terminal de "terminó" (`cancelado` significa otra cosa —
+  // que nunca salió). Mientras eso siga así, ESTE ASIENTO es la única fuente
+  // que puede responder "¿esta ruta se terminó o se cerró?". Si algún día se
+  // mide desempeño del conductor por rutas completadas, la distinción tendrá
+  // que subir al estado; hoy vive acá.
+  const { count: paradasAbiertas } = await cliente
+    .from("asignaciones_pedido")
+    .select("pedido_id, pedidos!inner(estado)", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("manifiesto_id", manifiestoId)
+    .eq("activa", true)
+    .not("pedidos.estado", "in", `(${ESTADOS_TERMINALES_PEDIDO.join(",")})`);
+
   // Bitácora ANTES del UPDATE (CLAUDE.md).
   await registrarEnBitacora(cliente, {
     tenantId,
@@ -446,6 +465,13 @@ export async function completarManifiesto(
     detalle: {
       driver_id: driverId,
       fecha_operacion: actual.fecha_operacion,
+      // 'conductor' = terminó su ruta desde la app. 'interno' = lo cerró el
+      // coordinador desde la web, que es el caso de una ruta que quedó abierta.
+      // `actor` es opcional en la firma (hay caminos de sistema sin sesión), asi
+      // que se registra "sistema" en vez de omitir la clave: un asiento sin ella
+      // no se distingue de uno viejo, anterior a este campo.
+      cerrado_por: actor?.tipoUsuario ?? "sistema",
+      paradas_abiertas: paradasAbiertas ?? 0,
     },
   });
 

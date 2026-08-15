@@ -105,7 +105,16 @@ const usuarioConductor1 = {
  * arriba) — si `completarManifiesto` volviera a consultarla, esta prueba lo
  * detectaría con un throw, no en silencio.
  */
-function crearCliente(opts: { manifiestoFila: Record<string, unknown> | null }) {
+function crearCliente(opts: {
+  manifiestoFila: Record<string, unknown> | null;
+  /**
+   * Paradas que quedan sin estado terminal. `completarManifiesto` las cuenta
+   * para el asiento de bitácora (`paradas_abiertas`), que es lo que distingue
+   * "el conductor terminó su ruta" de "se cerró con paradas vivas". Por defecto
+   * 0: el camino feliz de esta ruta es un conductor que cerró todo.
+   */
+  paradasAbiertas?: number;
+}) {
   let payloadUpdate: Record<string, unknown> = {};
 
   function builderManifiestos() {
@@ -125,8 +134,26 @@ function crearCliente(opts: { manifiestoFila: Record<string, unknown> | null }) 
     return b;
   }
 
+  /**
+   * Conteo de paradas abiertas. Es de SOLO LECTURA y no gobierna nada: si
+   * fallara, el manifiesto se cierra igual. Por eso el doble devuelve un número
+   * fijo en vez de simular el join — lo que estas pruebas custodian es el
+   * aislamiento entre conductores, no la aritmética del contador.
+   */
+  function builderAsignaciones() {
+    const b: Record<string, unknown> = {};
+    const self = () => b;
+    b.select = vi.fn(self);
+    b.eq = vi.fn(self);
+    b.not = vi.fn(self);
+    b.then = (resolve: (r: { data: null; count: number; error: null }) => void) =>
+      resolve({ data: null, count: opts.paradasAbiertas ?? 0, error: null });
+    return b;
+  }
+
   const from = vi.fn((tabla: string) => {
     if (tabla === "manifiestos") return builderManifiestos();
+    if (tabla === "asignaciones_pedido") return builderAsignaciones();
     throw new Error(`Tabla no mockeada en esta prueba: ${tabla}`);
   });
 

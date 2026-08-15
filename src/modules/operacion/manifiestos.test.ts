@@ -247,6 +247,11 @@ function crearClienteFalso(seed?: {
         select: (_cols?: string, _opts?: Record<string, unknown>) => {
           const filtros: Array<[string, unknown]> = [];
 
+          // Estados excluidos vía `.not('pedidos.estado', 'in', …)` — el filtro
+          // que usa `completarManifiesto` para contar las paradas abiertas del
+          // asiento de bitácora.
+          let estadosExcluidos: string[] = [];
+
           function buildChain() {
             return {
               eq(c: string, v: unknown) {
@@ -254,10 +259,30 @@ function crearClienteFalso(seed?: {
                 return buildChain();
               },
               in(_c: string, _vals: string[]) { return buildChain(); },
+              /**
+               * Se implementa DE VERDAD, resolviendo el join contra
+               * `estado.pedidos`: un doble que ignorara este filtro devolvería
+               * "todas las asignaciones activas" y la prueba pasaría con una
+               * cifra que no es la que el código pide.
+               */
+              not(columna: string, operador: string, valores: string) {
+                if (columna === "pedidos.estado" && operador === "in") {
+                  estadosExcluidos = valores.replace(/^\(|\)$/g, "").split(",");
+                }
+                return buildChain();
+              },
               then(resolve: (r: { data: FilaAsignacion[] | null; count: number; error: null }) => void) {
-                const filtradas = estado.asignaciones.filter((a) =>
-                  filtros.every(([c, v]) => (a as unknown as Record<string, unknown>)[c] === v),
-                );
+                const filtradas = estado.asignaciones
+                  .filter((a) =>
+                    filtros.every(([c, v]) => (a as unknown as Record<string, unknown>)[c] === v),
+                  )
+                  .filter((a) => {
+                    if (estadosExcluidos.length === 0) return true;
+                    const pedido = estado.pedidos.find((p) => p.id === a.pedido_id);
+                    // Sin pedido no se puede juzgar: el `!inner` del código real
+                    // lo dejaría fuera, así que acá también.
+                    return pedido ? !estadosExcluidos.includes(pedido.estado) : false;
+                  });
                 // Con head:true Supabase devuelve data=null y count=N.
                 // El mock devuelve ambos para que el código de producción funcione
                 // independientemente de si usa data o count.
@@ -724,6 +749,75 @@ describe("completarManifiesto", () => {
 
     const entrada = estado.bitacora.find((e) => e.accion === "manifiesto.completado");
     expect(entrada).toBeDefined();
+  });
+
+  it("la bitácora distingue QUIÉN cerró y CUÁNTAS paradas quedaron abiertas (coordinador forzando el cierre)", async () => {
+    // El enum de manifiestos solo tiene 'completado' como estado terminal de
+    // "terminó", así que en los datos un conductor que cerró su ruta entera y un
+    // coordinador que cerró a la fuerza una ruta de ayer con paradas vivas
+    // quedaban IDÉNTICOS. La distinción vive en el asiento de auditoría.
+    const ahora = new Date().toISOString();
+    const { cliente, estado } = crearClienteFalso({
+      manifiestos: [manifiestoEnRuta()],
+      pedidos: [
+        { id: PEDIDO_1, tenant_id: TENANT_A, seller_id: SELLER_1, estado: "en_ruta" }, // abierta
+        { id: PEDIDO_2, tenant_id: TENANT_A, seller_id: SELLER_1, estado: "entregado" }, // cerrada
+      ],
+      asignaciones: [
+        {
+          id: "asig-1", tenant_id: TENANT_A, pedido_id: PEDIDO_1, manifiesto_id: MANIFIESTO_A,
+          driver_id: DRIVER_1, seller_id: SELLER_1, activa: true,
+          asignado_por_usuario_id: null, asignado_en: ahora, desasignado_en: null,
+        },
+        {
+          id: "asig-2", tenant_id: TENANT_A, pedido_id: PEDIDO_2, manifiesto_id: MANIFIESTO_A,
+          driver_id: DRIVER_1, seller_id: SELLER_1, activa: true,
+          asignado_por_usuario_id: null, asignado_en: ahora, desasignado_en: null,
+        },
+      ],
+    });
+
+    await completarManifiesto(
+      cliente,
+      MANIFIESTO_A,
+      TENANT_A,
+      DRIVER_1,
+      actorCoordinador(),
+      USUARIO_ID,
+    );
+
+    const entrada = estado.bitacora.find((e) => e.accion === "manifiesto.completado");
+    expect(entrada?.detalle).toMatchObject({
+      cerrado_por: "interno",
+      paradas_abiertas: 1, // solo PEDIDO_1; 'entregado' es terminal y no cuenta
+    });
+  });
+
+  it("cerrado por el conductor con todo entregado → el asiento lo dice y no hay paradas abiertas", async () => {
+    const ahora = new Date().toISOString();
+    const { cliente, estado } = crearClienteFalso({
+      manifiestos: [manifiestoEnRuta()],
+      pedidos: [{ id: PEDIDO_1, tenant_id: TENANT_A, seller_id: SELLER_1, estado: "entregado" }],
+      asignaciones: [
+        {
+          id: "asig-1", tenant_id: TENANT_A, pedido_id: PEDIDO_1, manifiesto_id: MANIFIESTO_A,
+          driver_id: DRIVER_1, seller_id: SELLER_1, activa: true,
+          asignado_por_usuario_id: null, asignado_en: ahora, desasignado_en: null,
+        },
+      ],
+    });
+
+    await completarManifiesto(cliente, MANIFIESTO_A, TENANT_A, DRIVER_1, {
+      tenantId: TENANT_A,
+      tipoUsuario: "conductor",
+      sellerId: null,
+      driverId: DRIVER_1,
+      rol: "conductor",
+      estado: "activo",
+    });
+
+    const entrada = estado.bitacora.find((e) => e.accion === "manifiesto.completado");
+    expect(entrada?.detalle).toMatchObject({ cerrado_por: "conductor", paradas_abiertas: 0 });
   });
 
   it("BUG QUE NO SE ROMPIÓ (§5 fila 8): un manifiesto con TODAS sus paradas canceladas SIGUE completándose — la función no mira paradas, solo el estado del manifiesto", async () => {
