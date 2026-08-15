@@ -12,8 +12,12 @@
  * - Geocerca Haversine con radio POD_GEOCERCA_RADIO_M (1 km desde el 2026-08-15).
  * - es_valido = tiene_foto AND geocerca IN ('dentro','sin_referencia') para entregado.
  *   Para fallido: válido = tiene tipo_incidencia.
- * - Idempotente sobre idx_pruebas_entrega_entregado_uk (UNIQUE pedido_id WHERE entregado):
- *   on conflict do nothing + devuelve el existente.
+ * - Idempotente sobre idx_pruebas_entrega_entregado_uk (UNIQUE pedido_id WHERE
+ *   entregado), pero SOLO UN POD VÁLIDO ES DEFINITIVO: si ya existe uno válido
+ *   se devuelve intacto (es la evidencia de una entrega cerrada, de la que
+ *   cuelga la línea de cobro); si el que existe es INVÁLIDO, el reintento lo
+ *   COMPLETA en vez de rebotar. Sin eso, un primer intento sin foto dejaba el
+ *   pedido imposible de entregar desde la app para siempre.
  * - Bitácora ANTES del insert (patrón del proyecto: bitácora primero, efecto después).
  * - NO sube fotos; recibe foto_object_path ya subido por el frontend a Storage.
  *
@@ -262,7 +266,29 @@ export async function registrarPruebaEntrega(
 
   // --- 3. Idempotencia para tipo_resultado='entregado' ------------------
   //    El índice parcial (UNIQUE pedido_id WHERE tipo_resultado='entregado')
-  //    en BD garantiza la unicidad; aquí lo chequeamos para devolver el existente.
+  //    en BD garantiza la unicidad; aquí lo chequeamos para no chocar contra él.
+  //
+  // ⚠️ PERO SOLO UN POD **VÁLIDO** ES DEFINITIVO. Hasta el 2026-08-15 esta
+  // guarda devolvía el existente fuera cual fuera su estado, y eso convertía un
+  // intento fallido en una condena:
+  //
+  //   1. El conductor entrega sin foto → se crea un POD con `es_valido = false`
+  //      (la regla exige foto), el pedido NO pasa a `entregado` y queda
+  //      "pendiente de revisión".
+  //   2. El conductor vuelve, ahora CON foto → esta guarda encuentra la fila
+  //      vieja y la devuelve tal cual, sin mirar la foto nueva.
+  //   3. La respuesta sigue diciendo "sin foto", el estado sigue sin moverse, y
+  //      **ese pedido ya no se puede entregar desde la app nunca más**.
+  //
+  // Reproducido en producción por el usuario el 2026-08-15: foto tomada, vista
+  // en la miniatura, y de vuelta "Guardada sin foto".
+  //
+  // Un POD válido SÍ es inmutable y se sigue devolviendo intacto: es la
+  // evidencia real de una entrega ya cerrada, de la que cuelga la línea de
+  // cobro. Lo que se permite es COMPLETAR uno inválido — que por definición no
+  // cerró nada.
+  let podInvalidoAReintentar: string | null = null;
+
   if (entrada.tipoResultado === "entregado") {
     const { data: existente } = await cliente
       .from("pruebas_entrega")
@@ -272,8 +298,11 @@ export async function registrarPruebaEntrega(
       .eq("tipo_resultado", "entregado")
       .maybeSingle();
 
-    if (existente) {
+    if (existente?.es_valido) {
       return filaAPruebaEntrega(existente);
+    }
+    if (existente) {
+      podInvalidoAReintentar = existente.id as string;
     }
   }
 
@@ -331,6 +360,10 @@ export async function registrarPruebaEntrega(
       es_valido: esValido,
       // tipo_incidencia solo para fallido (no es dato personal).
       tipo_incidencia: entrada.tipoResultado === "fallido" ? entrada.tipoIncidencia : null,
+      // Distingue "primera captura" de "el conductor volvió a intentarlo sobre
+      // un POD que no había quedado válido". Sin esto, dos asientos idénticos
+      // sobre el mismo pedido no se pueden explicar al revisar la bitácora.
+      reintento_sobre_pod_invalido: podInvalidoAReintentar !== null,
     },
   });
 
@@ -354,6 +387,45 @@ export async function registrarPruebaEntrega(
     es_valido: esValido,
     tipo_incidencia: entrada.tipoResultado === "fallido" ? entrada.tipoIncidencia : null,
   };
+
+  // Si venimos de un POD inválido, se COMPLETA esa fila en vez de insertar otra
+  // —el índice parcial no admite dos 'entregado' del mismo pedido—.
+  //
+  // El `.eq("es_valido", false)` no es decorativo: es un compare-and-swap. Si
+  // entre la lectura del paso 3 y este UPDATE otra petición ya dejó el POD
+  // válido, esta no casa con ninguna fila y NO lo pisa. La evidencia de una
+  // entrega ya cerrada no se sobrescribe ni por una carrera.
+  if (podInvalidoAReintentar) {
+    const { data: actualizada, error: errorUpdate } = await cliente
+      .from("pruebas_entrega")
+      // `capturado_en` va explícito: su `default now()` solo corre en el INSERT,
+      // así que sin esto la fila conservaría la hora del intento fallido y la
+      // evidencia diría que la entrega se capturó a una hora en la que todavía
+      // no había foto.
+      .update({ ...payload, capturado_en: new Date().toISOString() })
+      .eq("id", podInvalidoAReintentar)
+      .eq("tenant_id", entrada.tenantId)
+      .eq("es_valido", false)
+      .select()
+      .maybeSingle();
+
+    if (errorUpdate) {
+      throw new Error(`Error al completar la prueba de entrega: ${errorUpdate.message}`);
+    }
+    if (actualizada) return filaAPruebaEntrega(actualizada);
+
+    // No casó: alguien lo dejó válido mientras tanto. Se devuelve lo que quedó
+    // guardado, que es lo correcto — no lo que esta petición quería escribir.
+    const { data: yaValida } = await cliente
+      .from("pruebas_entrega")
+      .select("*")
+      .eq("id", podInvalidoAReintentar)
+      .eq("tenant_id", entrada.tenantId)
+      .maybeSingle();
+
+    if (yaValida) return filaAPruebaEntrega(yaValida);
+    throw new Error("El POD que se intentaba completar desapareció.");
+  }
 
   const { data: nueva, error: errorInsert } = await cliente
     .from("pruebas_entrega")

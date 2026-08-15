@@ -119,6 +119,11 @@ function clientePodMock(opts: {
   pedido?: Record<string, unknown>;
   podExistente?: Record<string, unknown> | null;
   insertResult?: { data: Record<string, unknown> | null; error: { code?: string; message: string } | null };
+  /** Simula que el compare-and-swap del UPDATE no casó (otro dejó el POD válido). */
+  updateNoCasa?: boolean;
+  /** Espías para afirmar QUÉ camino se tomó: completar la fila o crear otra. */
+  onUpdate?: (payload: Record<string, unknown>) => void;
+  onInsert?: (payload: Record<string, unknown>) => void;
 }) {
   const pedidoBase: Record<string, unknown> = {
     id: PEDIDO_1,
@@ -174,24 +179,31 @@ function clientePodMock(opts: {
         };
       }
       if (tabla === "pruebas_entrega") {
-        return {
-          // Consulta de idempotencia (existente)
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                eq: () => ({
-                  maybeSingle: () => Promise.resolve({ data: podExistente, error: null }),
-                }),
-              }),
-            }),
-          }),
-          // INSERT
-          insert: () => ({
-            select: () => ({
-              single: () => Promise.resolve(insertData),
-            }),
-          }),
+        // Constructor ENCADENABLE (no anidado a profundidad fija): el módulo usa
+        // cadenas de distinto largo —3 `.eq()` para la idempotencia, 3 para el
+        // UPDATE, 2 para la relectura tras un compare-and-swap fallido— y un
+        // doble con anidación fija revienta en la que no previó.
+        let filaUpdate: Record<string, unknown> | null = null;
+        const b: Record<string, unknown> = {};
+        b.select = () => b;
+        b.eq = () => b;
+        b.update = (payload: Record<string, unknown>) => {
+          // `opts.updateNoCasa` simula el compare-and-swap perdido: otra
+          // petición dejó el POD válido entre la lectura y el UPDATE.
+          filaUpdate = opts.updateNoCasa
+            ? null
+            : { ...(podExistente ?? {}), ...payload, id: POD_ID_1 };
+          opts.onUpdate?.(payload);
+          return b;
         };
+        b.insert = (payload: Record<string, unknown>) => {
+          opts.onInsert?.(payload);
+          return { select: () => ({ single: () => Promise.resolve(insertData) }) };
+        };
+        b.maybeSingle = () =>
+          Promise.resolve({ data: filaUpdate ?? podExistente, error: null });
+        b.single = () => Promise.resolve(insertData);
+        return b;
       }
       if (tabla === "bitacora_auditoria") {
         return bitacoraMock();
@@ -619,6 +631,119 @@ describe("Esc-6 | registrarPruebaEntrega — idempotencia POD 'entregado'", () =
     // Devuelve el POD original, no el del segundo intento.
     expect(result.id).toBe(POD_ID_1);
     expect(result.fotoObjectPath).toBe("path/original.jpg");
+  });
+
+  // ---------------------------------------------------------------------
+  // El caso que NUNCA se probó, y por ese hueco vivió el bug
+  // ---------------------------------------------------------------------
+  /**
+   * La prueba de arriba usa un POD con `es_valido: true`. El camino del POD
+   * **inválido** no tenía cobertura, y ahí estaba el fallo: la guarda de
+   * idempotencia devolvía el existente fuera cual fuera su estado, así que un
+   * primer intento sin foto dejaba el pedido imposible de entregar desde la app
+   * para siempre — cada reintento chocaba con la fila vieja y respondía "sin
+   * foto" teniendo la foto delante. Reproducido en producción el 2026-08-15.
+   */
+  const POD_INVALIDO_SIN_FOTO: Record<string, unknown> = {
+    id: POD_ID_1,
+    tenant_id: TENANT_A,
+    pedido_id: PEDIDO_1,
+    seller_id: SELLER_1,
+    conductor_id: CONDUCTOR_1,
+    tipo_resultado: "entregado",
+    tiene_foto: false,
+    foto_object_path: null,
+    tiene_firma: false,
+    firma_object_path: null,
+    otp_estado: "no_aplica",
+    geo_lat: LAT_DESTINO,
+    geo_long: LONG_DESTINO,
+    geo_precision_m: 5,
+    distancia_destino_m: 10,
+    geocerca_resultado: "dentro",
+    es_valido: false,
+    tipo_incidencia: null,
+    capturado_en: new Date().toISOString(),
+    creado_en: new Date().toISOString(),
+  };
+
+  it("un POD INVÁLIDO se completa con la foto del reintento y pasa a válido", async () => {
+    const onUpdate = vi.fn();
+    const onInsert = vi.fn();
+    const cliente = clientePodMock({
+      podExistente: POD_INVALIDO_SIN_FOTO,
+      onUpdate,
+      onInsert,
+    });
+
+    const result = await registrarPruebaEntrega(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        tipoResultado: "entregado",
+        fotoObjectPath: "pod/reintento-con-foto.jpg",
+        geo: { lat: LAT_DESTINO, long: LONG_DESTINO },
+      },
+      actorConductor(),
+    );
+
+    // Se COMPLETA la fila que ya estaba; no se crea una segunda (el índice
+    // parcial no admite dos 'entregado' del mismo pedido).
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(onInsert).not.toHaveBeenCalled();
+
+    // Y ahora sí es válido: con foto y dentro de la geocerca. Esto es lo que
+    // permite que el pedido llegue por fin a 'entregado'.
+    expect(result.esValido).toBe(true);
+    expect(result.tieneFoto).toBe(true);
+    expect(result.fotoObjectPath).toBe("pod/reintento-con-foto.jpg");
+  });
+
+  it("al completar, `capturado_en` se refresca (el default only corre en INSERT)", async () => {
+    // Sin esto la evidencia diría que la entrega se capturó a la hora del
+    // intento fallido, cuando todavía no había foto.
+    const onUpdate = vi.fn();
+    const cliente = clientePodMock({ podExistente: POD_INVALIDO_SIN_FOTO, onUpdate });
+
+    await registrarPruebaEntrega(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        tipoResultado: "entregado",
+        fotoObjectPath: "pod/reintento.jpg",
+        geo: { lat: LAT_DESTINO, long: LONG_DESTINO },
+      },
+      actorConductor(),
+    );
+
+    const payload = onUpdate.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.capturado_en).toBeTruthy();
+    expect(payload.capturado_en).not.toBe(POD_INVALIDO_SIN_FOTO.capturado_en);
+  });
+
+  it("si el compare-and-swap no casa, devuelve lo GUARDADO y no lo que quería escribir", async () => {
+    // Carrera: otra petición dejó el POD válido entre la lectura y el UPDATE.
+    // La evidencia de una entrega ya cerrada no se pisa ni por una carrera.
+    const cliente = clientePodMock({
+      podExistente: POD_INVALIDO_SIN_FOTO,
+      updateNoCasa: true,
+    });
+
+    const result = await registrarPruebaEntrega(
+      cliente,
+      {
+        pedidoId: PEDIDO_1,
+        tenantId: TENANT_A,
+        tipoResultado: "entregado",
+        fotoObjectPath: "pod/perdedor-de-la-carrera.jpg",
+        geo: { lat: LAT_DESTINO, long: LONG_DESTINO },
+      },
+      actorConductor(),
+    );
+
+    expect(result.fotoObjectPath).not.toBe("pod/perdedor-de-la-carrera.jpg");
   });
 
   it("un segundo POD 'fallido' para el mismo pedido SÍ se registra (no hay unicidad parcial en fallido)", async () => {
