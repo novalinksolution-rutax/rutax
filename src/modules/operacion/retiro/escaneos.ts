@@ -175,6 +175,97 @@ interface FilaBultoRetiro {
   escaneo_id: string;
   codigo_normalizado: string;
   pedido_id: string | null;
+  /**
+   * Se lee SOLO en el camino de fusión, y para una cosa: saber si el bulto
+   * entró tecleado (`flex_manual`) y por lo tanto todavía no tiene su QR
+   * guardado. Ver `rescatarQrDeBultoTecleado`.
+   */
+  codigo_formato?: string;
+}
+
+/** Columnas que devuelve el INSERT y el SELECT de fusión. Una sola lista. */
+const COLUMNAS_BULTO_TRAS_ESCRIBIR = "id, escaneo_id, codigo_normalizado, pedido_id, codigo_formato";
+
+/**
+ * El bulto ya existía porque el conductor lo TECLEÓ, y ahora llega el escaneo
+ * del QR del mismo bulto. Guarda la credencial que la fila no tenía y asciende
+ * su formato a `flex_qr`.
+ *
+ * ## Por qué esto no es un adorno
+ *
+ * El `hash_code` de la etiqueta Flex es una firma de ML que no se puede
+ * calcular, y `GET /shipment_labels` exige `ready_to_ship`: una vez retirado el
+ * bulto, ML tampoco reimprime la etiqueta. **Este escaneo es la única
+ * oportunidad de capturarlo, y no vuelve.** Sin este rescate, el camino normal
+ * la descarta —la fila ya existe, así que el flujo la trata como
+ * `duplicado_fusionado` y se salta los efectos "solo del recién insertado"— y
+ * ese QR se pierde para siempre por haber tecleado primero.
+ *
+ * ## El orden de las dos escrituras NO es indiferente
+ *
+ * Primero la credencial, después el formato. Si fallara la segunda, queda un
+ * `flex_manual` CON credencial: inconsistente con el invariante
+ * (`flex_manual` ⟺ sin QR), pero **el dato irrecuperable está a salvo** y el
+ * próximo escaneo del mismo QR reintenta. Al revés —formato primero— un fallo
+ * dejaría un `flex_qr` SIN credencial: mentiría diciendo que el QR se capturó,
+ * y nadie volvería a intentarlo. Entre dos inconsistencias se elige la que
+ * conserva el dato y se puede reparar sola.
+ *
+ * ## La carrera entre dos lotes
+ *
+ * El UPDATE del formato lleva `codigo_formato = 'flex_manual'` en su WHERE: es
+ * un compare-and-swap. Si dos lotes traen el mismo QR a la vez, el segundo no
+ * casa con ninguna fila y no hace nada — y su intento de credencial choca
+ * contra la PK de `bultos_retiro_qr` (1:1 por esquema), que se traga aquí
+ * mismo. Nadie pisa nada.
+ *
+ * ## Best-effort, como el camino normal
+ *
+ * Nunca lanza. Perder SOLO la credencial es un problema menor que tumbar el
+ * ítem del lote: "nunca se pierde un escaneo" es el invariante duro y este
+ * bulto ya está registrado desde que se tecleó.
+ */
+async function rescatarQrDeBultoTecleado(
+  cliente: SupabaseClient,
+  lote: RegistrarLoteEscaneosEntrada,
+  bultoId: string,
+  parseo: CodigoBultoParseado,
+): Promise<void> {
+  try {
+    await guardarCredencialQr(cliente, {
+      tenantId: lote.tenantId,
+      bultoId,
+      credencial: parseo.credencial,
+    });
+  } catch (err) {
+    // Incluye el 23505 del segundo lote de una carrera: la credencial ya está,
+    // que es exactamente el resultado buscado. No se distingue del fallo real
+    // a propósito — en los dos casos lo correcto es no tocar el formato, y así
+    // un `flex_manual` con credencial nunca se convierte en un `flex_qr` sin ella.
+    console.error(
+      "[operacion/retiro] no se pudo rescatar el QR de un bulto tecleado",
+      bultoId,
+      err instanceof Error ? err.message : "error desconocido",
+    );
+    return;
+  }
+
+  // Ya hay QR: la fila deja de ser "tecleada sin QR". Se completa además
+  // `ml_user_id`, que el ingreso manual no podía conocer y el QR sí trae.
+  const { error } = await cliente
+    .from("bultos_retiro")
+    .update({ codigo_formato: "flex_qr", ml_user_id: parseo.mlUserId })
+    .eq("tenant_id", lote.tenantId)
+    .eq("id", bultoId)
+    .eq("codigo_formato", "flex_manual");
+
+  if (error) {
+    console.error(
+      "[operacion/retiro] credencial rescatada pero el formato quedó en flex_manual",
+      bultoId,
+      error.message,
+    );
+  }
 }
 
 /**
@@ -245,7 +336,7 @@ async function registrarUnBultoImpl(
   const { data: insertada, error: errorInsert } = await cliente
     .from("bultos_retiro")
     .upsert(fila, { ignoreDuplicates: true })
-    .select("id, escaneo_id, codigo_normalizado, pedido_id")
+    .select(COLUMNAS_BULTO_TRAS_ESCRIBIR)
     .maybeSingle();
 
   let bultoFinal = insertada as FilaBultoRetiro | null;
@@ -271,7 +362,7 @@ async function registrarUnBultoImpl(
 
     const { data: existente, error: errorSelect } = await cliente
       .from("bultos_retiro")
-      .select("id, escaneo_id, codigo_normalizado, pedido_id")
+      .select(COLUMNAS_BULTO_TRAS_ESCRIBIR)
       .eq("tenant_id", lote.tenantId)
       .eq("sesion_retiro_id", lote.sesionId)
       .eq("codigo_normalizado", parseo.codigoNormalizado)
@@ -290,6 +381,12 @@ async function registrarUnBultoImpl(
 
     bultoFinal = existente as FilaBultoRetiro;
     estado = "duplicado_fusionado";
+
+    // El bulto entró TECLEADO y ahora llega su QR: es la única oportunidad de
+    // capturarlo, y no vuelve. Ver `rescatarQrDeBultoTecleado`.
+    if (parseo.credencial && bultoFinal.codigo_formato === "flex_manual") {
+      await rescatarQrDeBultoTecleado(cliente, lote, bultoFinal.id, parseo);
+    }
   }
 
   // Efectos SOLO para el bulto recién insertado — uno fusionado ya pasó por

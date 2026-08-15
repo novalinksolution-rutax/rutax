@@ -68,6 +68,7 @@ function crearCliente(opts: {
   function tablaBultos() {
     let modoUpsert = false;
     let filaAInsertar: FilaFixture | null = null;
+    let payloadUpdate: FilaFixture | null = null;
     const filtrosEq: { columna: string; valor: unknown }[] = [];
 
     const b: Record<string, unknown> = {};
@@ -75,6 +76,22 @@ function crearCliente(opts: {
       modoUpsert = true;
       filaAInsertar = payload;
       return b;
+    };
+    // El UPDATE del rescate de QR (`flex_manual` → `flex_qr`). Aplica los
+    // filtros DE VERDAD sobre el fixture, incluido el compare-and-swap
+    // `codigo_formato = 'flex_manual'`: un doble que ignorara ese `.eq` haría
+    // pasar una prueba de idempotencia que en realidad no se cumple.
+    b.update = (payload: FilaFixture) => {
+      payloadUpdate = payload;
+      return b;
+    };
+    b.then = (resolve: (r: { data: null; error: null }) => void) => {
+      if (payloadUpdate) {
+        for (const f of bultos) {
+          if (filtrosEq.every((flt) => f[flt.columna] === flt.valor)) Object.assign(f, payloadUpdate);
+        }
+      }
+      resolve({ data: null, error: null });
     };
     b.select = () => b;
     b.eq = (columna: string, valor: unknown) => {
@@ -386,6 +403,108 @@ describe("registrarLoteEscaneos — idempotencia y fusión de duplicados", () =>
 
     expect(resultados[0].estado).toBe("duplicado_fusionado");
     expect(resultados[0].bultoId).toBe("bulto-original");
+  });
+});
+
+// =============================================================================
+// Rescate del QR de un bulto que entró TECLEADO
+// =============================================================================
+/**
+ * El conductor teclea el número porque la etiqueta no se deja escanear, y más
+ * tarde el QR sí se lee. Sin rescate ese `hash_code` se perdería para siempre:
+ * es una firma de ML que no se puede calcular y `GET /shipment_labels` exige
+ * `ready_to_ship`, así que una vez retirado el bulto la etiqueta no se
+ * reimprime. Es la única oportunidad, y no vuelve.
+ */
+describe("registrarLoteEscaneos — rescate del QR de un bulto tecleado", () => {
+  /** El bulto tal como lo dejó el ingreso manual: sin credencial, sin ml_user_id. */
+  const BULTO_TECLEADO: FilaFixture = {
+    id: "bulto-tecleado",
+    tenant_id: TENANT_A,
+    sesion_retiro_id: SESION_1,
+    escaneo_id: "esc-tecleado",
+    codigo_formato: "flex_manual",
+    codigo_normalizado: "44760788897",
+    ml_shipment_id: "44760788897",
+    ml_user_id: null,
+    pedido_id: PEDIDO_1,
+  };
+
+  it("al llegar el QR del mismo bulto, guarda la credencial y asciende el formato", async () => {
+    const fila = { ...BULTO_TECLEADO };
+    const { cliente } = crearCliente({
+      bultosIniciales: [fila],
+      pedidos: [PEDIDO_FLEX_FIXTURE],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: "Seller 1" }],
+    });
+
+    const { resultados } = await registrarLoteEscaneos(
+      cliente,
+      loteBase({
+        escaneos: [{ escaneoId: "esc-qr-tardio", codigo: PAYLOAD_FLEX_1, escaneadoEn: new Date().toISOString() }],
+      }),
+    );
+
+    // Sigue siendo UN bulto: es el mismo paquete físico.
+    expect(resultados[0].estado).toBe("duplicado_fusionado");
+    expect(resultados[0].bultoId).toBe("bulto-tecleado");
+
+    // El dato irrecuperable quedó a salvo…
+    expect(guardarCredencialQr).toHaveBeenCalledWith(
+      cliente,
+      expect.objectContaining({ bultoId: "bulto-tecleado", tenantId: TENANT_A }),
+    );
+    // …y la fila deja de decir "tecleado, sin QR", que sería falso.
+    expect(fila.codigo_formato).toBe("flex_qr");
+    // El sender_id lo trae el QR; tecleando no se podía conocer.
+    expect(fila.ml_user_id).toBe("2114191787");
+  });
+
+  it("si la credencial no se pudo guardar, el formato NO se toca", async () => {
+    // Entre dos inconsistencias se elige la que conserva el dato: un
+    // `flex_manual` sin credencial se puede reintentar con el próximo escaneo;
+    // un `flex_qr` sin credencial mentiría diciendo que el QR ya se capturó, y
+    // nadie volvería a intentarlo.
+    vi.mocked(guardarCredencialQr).mockRejectedValueOnce(new Error("fallo simulado"));
+
+    const fila = { ...BULTO_TECLEADO };
+    const { cliente } = crearCliente({
+      bultosIniciales: [fila],
+      pedidos: [PEDIDO_FLEX_FIXTURE],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: "Seller 1" }],
+    });
+
+    const { resultados } = await registrarLoteEscaneos(
+      cliente,
+      loteBase({
+        escaneos: [{ escaneoId: "esc-qr-tardio", codigo: PAYLOAD_FLEX_1, escaneadoEn: new Date().toISOString() }],
+      }),
+    );
+
+    // El escaneo NUNCA se pierde por esto: sigue siendo una fusión correcta.
+    expect(resultados[0].estado).toBe("duplicado_fusionado");
+    expect(fila.codigo_formato).toBe("flex_manual");
+  });
+
+  it("un bulto que ya entró por QR no se re-rescata (idempotente)", async () => {
+    const fila: FilaFixture = { ...BULTO_TECLEADO, codigo_formato: "flex_qr", ml_user_id: "2114191787" };
+    const { cliente } = crearCliente({
+      bultosIniciales: [fila],
+      pedidos: [PEDIDO_FLEX_FIXTURE],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: "Seller 1" }],
+    });
+
+    const { resultados } = await registrarLoteEscaneos(
+      cliente,
+      loteBase({
+        escaneos: [{ escaneoId: "esc-ráfaga", codigo: PAYLOAD_FLEX_1, escaneadoEn: new Date().toISOString() }],
+      }),
+    );
+
+    expect(resultados[0].estado).toBe("duplicado_fusionado");
+    // Su credencial ya está guardada desde la primera vez; reinsertarla
+    // chocaría contra la PK 1:1 de bultos_retiro_qr.
+    expect(guardarCredencialQr).not.toHaveBeenCalled();
   });
 });
 
