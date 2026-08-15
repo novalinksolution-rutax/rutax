@@ -177,7 +177,22 @@ export async function listarVisitasDelDia(
     throw new Error(`Error al listar las visitas de la Preparación del día: ${error.message}`);
   }
 
-  return normalizarFilasRpc<FilaVisitaRetiroCourier>(data).map(filaAVisitaResumen);
+  return normalizarFilasRpc<FilaVisitaRetiroCourier>(data)
+    // Una visita SIN UN SOLO BULTO no se muestra: no hay nada que respaldar ni
+    // nada que el coordinador pueda hacer con ella. Decisión del usuario
+    // (2026-08-15): "que sea en curso desde 1 pedido escaneado".
+    //
+    // Por qué el filtro va acá y no en el SQL: la sesión se crea al ABRIR la
+    // visita, antes de cualquier escaneo, porque la pantalla de escaneo necesita
+    // su `sesionId`. O sea que el hueco entre "el conductor llegó a la bodega" y
+    // "escaneó el primer bulto" existe por construcción y no se puede cerrar sin
+    // rehacer la navegación de la app. Lo que sí se puede es no mostrarlo.
+    //
+    // Cubre también las visitas vacías que quedaron CERRADAS antes de que el
+    // cierre empezara a descartarlas (`cerrarSesionRetiro`): sin este filtro
+    // seguirían apareciendo para siempre.
+    .filter((fila) => Number(fila.bultos_vivos) > 0)
+    .map(filaAVisitaResumen);
 }
 
 // =============================================================================

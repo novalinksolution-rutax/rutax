@@ -85,6 +85,12 @@ function crearCliente(fixtures: {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // `clearAllMocks` borra las LLAMADAS pero no las IMPLEMENTACIONES: sin esta
+  // línea, el `mockRejectedValue` de la prueba de "si la bitácora falla" se
+  // filtra a las que vienen después y las hace fallar por un motivo que no
+  // tiene nada que ver con lo que prueban. Mordió al agregar los casos de la
+  // visita vacía.
+  vi.mocked(registrarEnBitacora).mockResolvedValue(undefined);
 });
 
 describe("listarSesionesDeHoyDelConductor", () => {
@@ -239,6 +245,41 @@ describe("obtenerSesionRetiro", () => {
   });
 });
 
+/**
+ * Doble para `cerrarSesionRetiro`. Solo necesita dos cadenas:
+ *
+ *   · el conteo de bultos — `.from('bultos_retiro').select('id',{count,head}).eq().eq()`
+ *   · el borrado de la visita vacía — `.from('sesiones_retiro').delete().eq()×4`
+ *
+ * Registra los `.eq()` del DELETE para poder afirmar la guarda de carrera
+ * (`estado = 'abierta'`), que es lo único que impide borrar una visita que
+ * alcanzó a recibir bultos entre el conteo y el borrado.
+ */
+function clienteCierre(opts: { bultos: number; borrado?: { error: { message: string } | null } }) {
+  const filtrosDelete: { columna: string; valor: unknown }[] = [];
+  let huboDelete = false;
+
+  function tabla(nombre: string) {
+    const b: Record<string, unknown> = {};
+    b.select = () => b;
+    b.delete = () => {
+      huboDelete = true;
+      return b;
+    };
+    b.eq = (columna: string, valor: unknown) => {
+      if (huboDelete && nombre === "sesiones_retiro") filtrosDelete.push({ columna, valor });
+      return b;
+    };
+    b.then = (resolve: (r: Record<string, unknown>) => void) => {
+      if (nombre === "bultos_retiro") resolve({ count: opts.bultos, error: null });
+      else resolve(opts.borrado ?? { error: null });
+    };
+    return b;
+  }
+
+  return { cliente: { from: (n: string) => tabla(n) } as never, filtrosDelete };
+}
+
 describe("cerrarSesionRetiro", () => {
   it("escribe bitácora ANTES de llamar al RPC, con actorUsuarioId (id de AUTH, no driverId)", async () => {
     const orden: string[] = [];
@@ -259,7 +300,8 @@ describe("cerrarSesionRetiro", () => {
       };
     });
 
-    const cliente = {} as never;
+    // 3 bultos: es una visita con carga, así que se cierra por el camino normal.
+    const { cliente } = clienteCierre({ bultos: 3 });
     const resultado = await cerrarSesionRetiro(cliente, {
       tenantId: TENANT_A,
       sesionId: SESION_1,
@@ -289,9 +331,10 @@ describe("cerrarSesionRetiro", () => {
 
   it("si la bitácora falla, el RPC NUNCA se llama (la auditoría manda primero)", async () => {
     vi.mocked(registrarEnBitacora).mockRejectedValue(new Error("bitacora caída"));
+    const { cliente } = clienteCierre({ bultos: 3 });
 
     await expect(
-      cerrarSesionRetiro({} as never, {
+      cerrarSesionRetiro(cliente, {
         tenantId: TENANT_A,
         sesionId: SESION_1,
         conductorId: CONDUCTOR_1,
@@ -299,5 +342,66 @@ describe("cerrarSesionRetiro", () => {
       }),
     ).rejects.toThrow(/bitacora caída/);
     expect(cerrarSesionRetiroRpc).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // Visita SIN un solo bulto: se descarta, no se cierra
+  // -------------------------------------------------------------------------
+  /**
+   * Decisión del usuario (2026-08-15): cerrar una visita vacía dejaba un acta
+   * de ceros en la Preparación del coordinador para siempre — ruido puro, sin
+   * nada que respaldar. Es el ÚNICO caso en que una sesión se borra, y se puede
+   * justo porque no hay escaneos que perder: el invariante "nunca se pierde un
+   * escaneo" no se toca.
+   */
+  it("con 0 bultos la visita se DESCARTA: no se llama al RPC y la fila se borra", async () => {
+    const { cliente, filtrosDelete } = clienteCierre({ bultos: 0 });
+
+    const resultado = await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    expect(resultado.descartada).toBe(true);
+    expect(resultado.bultosTotal).toBe(0);
+    // No se cierra: no hay acta que congelar.
+    expect(cerrarSesionRetiroRpc).not.toHaveBeenCalled();
+    // Y queda el rastro de que el conductor estuvo ahí sin cargar nada.
+    expect(registrarEnBitacora).toHaveBeenCalledWith(
+      cliente,
+      expect.objectContaining({ accion: "retiro.sesion_descartada_sin_bultos" }),
+    );
+    // La guarda de carrera: si entre el conteo y el borrado alguien escaneó y
+    // cerró, el DELETE no debe casar. Sin este `.eq` se borraría una visita CON
+    // bultos, que es justo lo que nunca puede pasar.
+    expect(filtrosDelete).toContainEqual({ columna: "estado", valor: "abierta" });
+    expect(filtrosDelete).toContainEqual({ columna: "tenant_id", valor: TENANT_A });
+  });
+
+  it("con 1 bulto NO se descarta: se cierra por el camino normal", async () => {
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue({
+      sesionId: SESION_1,
+      estado: "cerrada",
+      bultosTotal: 1,
+      bultosResueltos: 1,
+      bultosSinResolver: 0,
+      cerradaEn: "2026-08-15T20:00:00.000Z",
+      yaEstabaCerrada: false,
+      pedidosMarcados: 1,
+    });
+    const { cliente, filtrosDelete } = clienteCierre({ bultos: 1 });
+
+    const resultado = await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    expect(resultado.descartada).toBeUndefined();
+    expect(cerrarSesionRetiroRpc).toHaveBeenCalled();
+    expect(filtrosDelete).toEqual([]); // no se borró nada
   });
 });

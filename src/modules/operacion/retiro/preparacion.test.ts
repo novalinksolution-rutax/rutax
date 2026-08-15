@@ -52,8 +52,12 @@ const FILA_VISITA_BASE = {
   seller_nombre: "Tienda Uno SpA",
   conductor_id: CONDUCTOR_1,
   conductor_nombre: "Juan Pérez",
-  bultos_vivos: 0,
-  bultos_resueltos_vivos: 0,
+  // No-cero A PROPÓSITO: desde el 2026-08-15 `listarVisitasDelDia` DESCARTA las
+  // visitas sin un solo bulto ("en curso desde 1 pedido escaneado"), así que un
+  // fixture en cero desaparecería de todos los casos que no hablan de eso. El
+  // cero tiene su propia prueba, más abajo.
+  bultos_vivos: 4,
+  bultos_resueltos_vivos: 4,
   bultos_sin_resolver_vivos: 0,
   bultos_de_otro_seller: 0,
   ultimo_escaneo_en: null,
@@ -117,6 +121,58 @@ describe("listarVisitasDelDia", () => {
     expect(resultado[0].acta).toBeNull();
     expect(resultado[1].estado).toBe("cerrada");
     expect(resultado[1].acta).toEqual({ total: 40, resueltos: 38, sinResolver: 2 });
+  });
+
+  /**
+   * Decisión del usuario (2026-08-15): "que sea en curso desde 1 pedido
+   * escaneado". Una visita sin un solo bulto no tiene nada que respaldar ni
+   * nada que el coordinador pueda hacer con ella — y la sesión se crea al
+   * ABRIR la visita, antes de cualquier escaneo, porque la pantalla de escaneo
+   * necesita su `sesionId`. Ese hueco existe por construcción; lo que sí se
+   * puede es no mostrarlo.
+   */
+  it("una visita SIN bultos no se muestra, esté abierta o cerrada", async () => {
+    const vaciaAbierta = { ...FILA_VISITA_BASE, sesion_id: SESION_1, bultos_vivos: 0, bultos_resueltos_vivos: 0 };
+    const vaciaCerrada = {
+      ...FILA_VISITA_BASE,
+      sesion_id: SESION_2,
+      estado: "cerrada" as const,
+      bultos_vivos: 0,
+      bultos_resueltos_vivos: 0,
+      acta_total: 0,
+      acta_resueltos: 0,
+      acta_sin_resolver: 0,
+    };
+    const conCarga = { ...FILA_VISITA_BASE, sesion_id: SESION_2, bultos_vivos: 1 };
+
+    const { cliente } = crearClienteRpc("preparacion_visitas_del_dia", {
+      data: [vaciaAbierta, vaciaCerrada, conCarga],
+      error: null,
+    });
+
+    const resultado = await listarVisitasDelDia(cliente, { tenantId: TENANT_A, fecha: FECHA });
+
+    // Solo sobrevive la que tiene carga. UN bulto ya basta: el umbral es 1.
+    expect(resultado).toHaveLength(1);
+    expect(resultado[0].vivos.total).toBe(1);
+  });
+
+  it("el conteo llega como string (bigint de Postgres) y el filtro igual funciona", async () => {
+    // `bultos_vivos` es bigint y PostgREST lo serializa como STRING según el
+    // valor; por eso el filtro normaliza con Number() en vez de comparar el
+    // crudo y depender de la coerción de JavaScript.
+    const { cliente } = crearClienteRpc("preparacion_visitas_del_dia", {
+      data: [
+        { ...FILA_VISITA_BASE, sesion_id: SESION_1, bultos_vivos: "0" },
+        { ...FILA_VISITA_BASE, sesion_id: SESION_2, bultos_vivos: "7" },
+      ],
+      error: null,
+    });
+
+    const resultado = await listarVisitasDelDia(cliente, { tenantId: TENANT_A, fecha: FECHA });
+
+    expect(resultado).toHaveLength(1);
+    expect(resultado[0].vivos.total).toBe(7);
   });
 
   it("propaga el error del RPC con mensaje propio, en vez de devolver una lista vacía silenciosa", async () => {

@@ -31,6 +31,14 @@ export interface ResultadoCerrarSesionRetiro {
   /** true si la sesión YA estaba cerrada (idempotencia): nada se recalculó. */
   yaEstabaCerrada: boolean;
   pedidosMarcados: number;
+  /**
+   * true si la visita se DESCARTÓ por no tener un solo bulto, en vez de
+   * cerrarse: la fila ya no existe. Lo decide `cerrarSesionRetiro`, nunca el
+   * RPC — de ahí que sea opcional y que el camino normal no lo traiga.
+   *
+   * La app lo necesita para no mostrar un acta de ceros de algo que se borró.
+   */
+  descartada?: boolean;
 }
 
 interface FilaCerrarSesionRetiro {

@@ -226,6 +226,68 @@ export async function cerrarSesionRetiro(
   cliente: SupabaseClient,
   entrada: { tenantId: string; sesionId: string; conductorId: string; actorUsuarioId: string },
 ): Promise<ResultadoCerrarSesionRetiro> {
+  // --- Visita SIN UN SOLO BULTO: se descarta, no se cierra ------------------
+  // Decisión del usuario (2026-08-15). Cerrarla dejaba un acta de ceros en la
+  // Preparación del coordinador para siempre: ruido puro, sin nada que
+  // respaldar. El invariante "nunca se pierde un escaneo" no se toca — aquí NO
+  // HAY escaneos que perder, y por eso este es el único caso en que una sesión
+  // se puede borrar.
+  //
+  // Se cuenta sobre `bultos_retiro`, la fuente real, no sobre los contadores
+  // denormalizados de la sesión (que están NULL mientras está abierta).
+  const { count, error: errorConteo } = await cliente
+    .from("bultos_retiro")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", entrada.tenantId)
+    .eq("sesion_retiro_id", entrada.sesionId);
+
+  if (errorConteo) {
+    throw new Error(`Error al contar los bultos de la visita: ${errorConteo.message}`);
+  }
+
+  if (count === 0) {
+    // Bitácora ANTES del efecto (invariante de CLAUDE.md). Queda el rastro de
+    // que el conductor abrió la visita y no cargó nada — que es información
+    // del día aunque la fila operativa no valga la pena conservarla.
+    await registrarEnBitacora(cliente, {
+      tenantId: entrada.tenantId,
+      actorUsuarioId: entrada.actorUsuarioId,
+      actorTipo: "usuario",
+      accion: "retiro.sesion_descartada_sin_bultos",
+      entidadTipo: "sesion_retiro",
+      entidadId: entrada.sesionId,
+      detalle: { conductor_id: entrada.conductorId },
+    });
+
+    // `eq("estado", "abierta")` es la guarda contra la carrera: si entre el
+    // conteo y este DELETE alguien alcanzó a escanear y cerrar, no casa ninguna
+    // fila y la visita sobrevive con sus bultos. Nunca se borra una visita que
+    // ya tiene respaldo.
+    const { error: errorBorrado } = await cliente
+      .from("sesiones_retiro")
+      .delete()
+      .eq("tenant_id", entrada.tenantId)
+      .eq("id", entrada.sesionId)
+      .eq("conductor_id", entrada.conductorId)
+      .eq("estado", "abierta");
+
+    if (errorBorrado) {
+      throw new Error(`Error al descartar la visita vacía: ${errorBorrado.message}`);
+    }
+
+    return {
+      sesionId: entrada.sesionId,
+      estado: "cerrada",
+      bultosTotal: 0,
+      bultosResueltos: 0,
+      bultosSinResolver: 0,
+      cerradaEn: new Date().toISOString(),
+      yaEstabaCerrada: false,
+      pedidosMarcados: 0,
+      descartada: true,
+    };
+  }
+
   await registrarEnBitacora(cliente, {
     tenantId: entrada.tenantId,
     actorUsuarioId: entrada.actorUsuarioId,
