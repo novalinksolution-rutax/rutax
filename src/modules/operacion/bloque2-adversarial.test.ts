@@ -210,7 +210,7 @@ describe("Esc-4 | registrarPruebaEntrega — es_valido según combinación foto+
   // 4a. Con foto + geocerca 'dentro' → es_valido=true (happy path)
   // -------------------------------------------------------------------------
   it("foto=sí, geocerca=dentro → registra POD con es_valido=true", async () => {
-    // Punto a ~50 m del destino (dentro del radio de 150 m)
+    // Punto a ~50 m del destino (dentro del radio de 1 km)
     const latCerca = LAT_DESTINO - 0.00045; // ≈ 50 m al norte
 
     const podInsertado: Record<string, unknown> = {
@@ -313,8 +313,8 @@ describe("Esc-4 | registrarPruebaEntrega — es_valido según combinación foto+
   // -------------------------------------------------------------------------
   // 4c. Con foto + geocerca 'fuera' → es_valido=false
   // -------------------------------------------------------------------------
-  it("foto=sí, geocerca=fuera (>150 m) → registra POD con es_valido=false", async () => {
-    const latLejos = LAT_DESTINO - 0.0027; // ≈ 300 m al norte
+  it("foto=sí, geocerca=fuera (>1 km) → registra POD con es_valido=false", async () => {
+    const latLejos = LAT_DESTINO - 0.0135; // ≈ 1,5 km al norte
 
     const distancia = haversineMetros(latLejos, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     expect(distancia).toBeGreaterThan(POD_GEOCERCA_RADIO_M); // pre-condición del test
@@ -428,14 +428,14 @@ describe("Esc-5 | haversineMetros — geocerca Haversine con coordenadas reales"
   // Cerro Santa Lucía:       -33.4403, -70.6441  (~398 m → fuera)
   // Paseo Estado 1 (aprox):  -33.4379, -70.6513  (~100 m → dentro)
 
-  it("Plaza de Armas → Catedral Metropolitana (~98 m) está DENTRO del radio de 150 m", () => {
+  it("Plaza de Armas → Catedral Metropolitana (~98 m) está DENTRO del radio de 1 km", () => {
     const dist = haversineMetros(-33.4372, -70.6506, -33.4380, -70.6511);
     expect(dist).toBeLessThan(POD_GEOCERCA_RADIO_M);
     expect(dist).toBeGreaterThan(80);  // sanity check: no puede ser 0
     expect(dist).toBeLessThan(120);    // ~98 m con tolerancia
   });
 
-  it("Plaza de Armas → Parque Balmaceda (~1.7 km real) está FUERA del radio de 150 m", () => {
+  it("Plaza de Armas → Parque Balmaceda (~1.7 km real) está FUERA del radio de 1 km", () => {
     // Haversine real: ~1730 m (estimación visual era errónea — el Parque Balmaceda
     // está a ~1.7 km, no 2.2 km, de la Plaza de Armas).
     const dist = haversineMetros(-33.4372, -70.6506, -33.4430, -70.6333);
@@ -444,31 +444,39 @@ describe("Esc-5 | haversineMetros — geocerca Haversine con coordenadas reales"
     expect(dist).toBeLessThan(2000);    // acotado para detectar regresiones
   });
 
-  it("Plaza de Armas → Cerro Santa Lucía (~695 m real) está FUERA del radio de 150 m", () => {
+  /**
+   * Con 150 m este caso era "FUERA". Con 1 km es "DENTRO", y se conserva
+   * justamente por eso: es la ilustración más concreta de qué compró y qué
+   * costó ensanchar el radio (2026-08-15). Un conductor parado en el Cerro
+   * Santa Lucía queda validado para una entrega en la Plaza de Armas — a siete
+   * cuadras. Si algún día alguien encuentra eso demasiado laxo, esta prueba es
+   * el lugar donde el intercambio está escrito.
+   */
+  it("Plaza de Armas → Cerro Santa Lucía (~695 m real) está DENTRO del radio de 1 km", () => {
     // Haversine real: ~695 m (estimación visual era errónea — el Cerro Santa Lucía
     // está a ~695 m de la Plaza de Armas, no 398 m).
     const dist = haversineMetros(-33.4372, -70.6506, -33.4403, -70.6441);
-    expect(dist).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
+    expect(dist).toBeLessThan(POD_GEOCERCA_RADIO_M);
     expect(dist).toBeGreaterThan(600);  // conservador: real ≈ 695 m
     expect(dist).toBeLessThan(800);     // acotado para detectar regresiones
   });
 
-  it("Punto exactamente en el límite (150 m) retorna DENTRO (≤ radio)", () => {
-    // 150 m al norte ≈ 0.00135 grados de latitud
-    const lat150m = LAT_DESTINO - 0.00135;
-    const dist = haversineMetros(lat150m, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
-    // El resultado real puede ser ligeramente menor de 150 m (≈148–152 m)
-    // según la convergencia de meridianos en lat -33. Verificamos que la
-    // distancia esté razonablemente cerca del radio límite.
-    expect(dist).toBeGreaterThan(130);
-    expect(dist).toBeLessThan(165);
+  it("Punto en el límite (1 km) retorna DENTRO (≤ radio)", () => {
+    // 1 km al norte ≈ 0.00899 grados de latitud (1° lat ≈ 111,19 km).
+    const lat1km = LAT_DESTINO - 0.00899;
+    const dist = haversineMetros(lat1km, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
+    // El resultado real puede desviarse unos metros según la convergencia de
+    // meridianos en lat -33; se comprueba que quede pegado al radio límite.
+    expect(dist).toBeGreaterThan(950);
+    expect(dist).toBeLessThan(1050);
   });
 
-  it("Punto a 149 m → dentro; punto a 151 m → fuera (discriminación límite)", () => {
-    // Ajuste fino para que la distancia caiga dentro/fuera del radio.
-    // 0.00134 grados ≈ 149 m; 0.00136 grados ≈ 151 m.
-    const latDentro = LAT_DESTINO - 0.00134;
-    const latFuera  = LAT_DESTINO - 0.00136;
+  it("Punto a ~989 m → dentro; punto a ~1011 m → fuera (discriminación límite)", () => {
+    // Ajuste fino para que la distancia caiga a cada lado del radio de 1 km,
+    // con margen suficiente para no depender del redondeo de haversine.
+    // 0.00890 grados ≈ 989 m; 0.00910 grados ≈ 1011 m.
+    const latDentro = LAT_DESTINO - 0.00890;
+    const latFuera  = LAT_DESTINO - 0.00910;
 
     const dDentro = haversineMetros(latDentro, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     const dFuera  = haversineMetros(latFuera,  LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
@@ -480,7 +488,7 @@ describe("Esc-5 | haversineMetros — geocerca Haversine con coordenadas reales"
     // Puede haber ligera variación numérica: lo que importa es que el punto
     // interior está más cerca que el exterior.
     expect(dDentro).toBeLessThan(dFuera);
-    // Y que el punto interior realmente está a menos de 150 m.
+    // Y que el punto interior realmente está a menos de 1 km.
     expect(dDentro).toBeLessThan(POD_GEOCERCA_RADIO_M);
     // Y el exterior a más.
     expect(dFuera).toBeGreaterThan(POD_GEOCERCA_RADIO_M);

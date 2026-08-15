@@ -9,7 +9,7 @@
  *
  * Reglas de negocio:
  * - Conductor autenticado dueño del pedido (driverId + pedido.driver_id_asignado).
- * - Geocerca Haversine con radio POD_GEOCERCA_RADIO_M (150 m).
+ * - Geocerca Haversine con radio POD_GEOCERCA_RADIO_M (1 km desde el 2026-08-15).
  * - es_valido = tiene_foto AND geocerca IN ('dentro','sin_referencia') para entregado.
  *   Para fallido: válido = tiene tipo_incidencia.
  * - Idempotente sobre idx_pruebas_entrega_entregado_uk (UNIQUE pedido_id WHERE entregado):
@@ -32,8 +32,34 @@ import type { TipoIncidencia } from "./tipos";
 // Constante de geocerca
 // =============================================================================
 
-/** Radio máximo aceptable entre la posición de captura del POD y el destino del pedido (metros). */
-export const POD_GEOCERCA_RADIO_M = 150;
+/**
+ * Radio máximo aceptable entre la posición de captura del POD y el destino del
+ * pedido (metros).
+ *
+ * **1.000 m desde el 2026-08-15** (decisión del usuario; antes eran 150 m).
+ *
+ * Qué compra y qué cuesta, para que quien lo lea sepa qué está mirando:
+ *
+ * - **Compra** tolerancia al dato de entrada. La geocerca compara contra
+ *   `pedidos.lat/long`, que sale del geocoding: una dirección mal resuelta —o
+ *   resuelta al centroide de la comuna, que el adaptador stub marcaba como
+ *   `resuelto`— hacía dar `fuera` a un conductor parado en la puerta. Con 150 m
+ *   el POD dependía tanto de la calidad del geocoding como de dónde estaba el
+ *   conductor, y la evidencia castigaba al conductor por un error de la
+ *   dirección.
+ * - **Cuesta** poder de prueba. 1 km en Santiago son ~3 km²: varias manzanas, a
+ *   veces media comuna. La geocerca deja de responder "estuvo en la puerta" y
+ *   pasa a responder "estuvo en el barrio". Sigue atajando lo que importa —
+ *   marcar entregado desde la casa o desde otra comuna— pero ya no distingue el
+ *   edificio de al lado.
+ *
+ * ⚠️ El radio se aplica a las TRES superficies que lo reusan: el POD autoritativo
+ * de same-day (este archivo), el cierre operativo de Flex (`cierre-conductor.ts`)
+ * y la evidencia informativa (`evidencias-entrega.ts`). Es a propósito: las tres
+ * responden la misma pregunta física. Si alguna vez una necesita un radio
+ * distinto, hay que darle constante propia, no cambiar ésta.
+ */
+export const POD_GEOCERCA_RADIO_M = 1000;
 
 // =============================================================================
 // Tipos de dominio del POD
@@ -102,8 +128,13 @@ export type RegistrarPruebaEntradaEntrada =
 
 /**
  * Devuelve la distancia en metros entre dos puntos {lat, long} usando la
- * fórmula de Haversine. Suficientemente precisa para radios de <1 km.
- * Función pura sin dependencias externas.
+ * fórmula de Haversine. Función pura sin dependencias externas.
+ *
+ * Precisión: es una distancia de círculo máximo sobre una esfera, así que su
+ * error frente al elipsoide real es del orden del 0,5% en el peor caso — a 1 km
+ * son metros. La nota anterior decía "suficientemente precisa para radios de
+ * <1 km" y se podía leer como que el radio de 1 km la deja al límite; no es así:
+ * la fórmula sirve de sobra a esta escala y a varias veces esta escala.
  */
 export function haversineMetros(
   lat1: number, long1: number,

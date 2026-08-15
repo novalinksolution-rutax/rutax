@@ -74,7 +74,7 @@ describe("haversineMetros — cálculo de distancia GPS", () => {
     expect(haversineMetros(LAT_DESTINO, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO)).toBe(0);
   });
 
-  it("distancia ~100 m hacia el norte está dentro del radio de 150 m", () => {
+  it("distancia ~100 m hacia el norte está dentro del radio de 1 km", () => {
     // ~0.0009 grados de latitud ≈ 100 m
     const latCerca = LAT_DESTINO - 0.0009; // 100 m al norte (latitud negativa → norte)
     const dist = haversineMetros(latCerca, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
@@ -82,9 +82,9 @@ describe("haversineMetros — cálculo de distancia GPS", () => {
     expect(dist).toBeGreaterThan(0);
   });
 
-  it("distancia ~200 m está fuera del radio de 150 m", () => {
-    // ~0.0018 grados de latitud ≈ 200 m
-    const latLejos = LAT_DESTINO - 0.0018;
+  it("distancia ~1,5 km está fuera del radio de 1 km", () => {
+    // ~0.0135 grados de latitud ≈ 1,5 km
+    const latLejos = LAT_DESTINO - 0.0135;
     const dist = haversineMetros(latLejos, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     expect(dist).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
   });
@@ -109,8 +109,18 @@ describe("haversineMetros — cálculo de distancia GPS", () => {
 // =============================================================================
 
 describe("POD_GEOCERCA_RADIO_M", () => {
-  it("es exactamente 150 metros", () => {
-    expect(POD_GEOCERCA_RADIO_M).toBe(150);
+  /**
+   * Esta prueba no comprueba una regla: comprueba que nadie mueva el radio sin
+   * darse cuenta. Es la única barrera que convierte "ensanchar la geocerca" en
+   * un acto deliberado — el radio decide si una entrega cierra sola o queda
+   * esperando a que el coordinador la revise a mano, y se aplica a las tres
+   * superficies que lo reusan (POD same-day, cierre Flex y evidencia).
+   *
+   * 1.000 m desde el 2026-08-15 (antes 150 m), por decisión del usuario. El
+   * porqué y el intercambio están escritos junto a la constante.
+   */
+  it("es exactamente 1.000 metros", () => {
+    expect(POD_GEOCERCA_RADIO_M).toBe(1000);
   });
 });
 
@@ -321,9 +331,9 @@ describe("Lógica de geocerca y es_valido", () => {
   });
 
   // Fuera del radio
-  it("punto a 300 m del destino está FUERA de la geocerca", () => {
-    const lat300m = LAT_DESTINO - 0.0027; // ~300 m
-    const dist = haversineMetros(lat300m, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
+  it("punto a 1,5 km del destino está FUERA de la geocerca", () => {
+    const latLejos = LAT_DESTINO - 0.0135; // ~1,5 km
+    const dist = haversineMetros(latLejos, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     expect(dist).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
     const geocercaResultado = dist <= POD_GEOCERCA_RADIO_M ? "dentro" : "fuera";
     // Con foto pero fuera → es_valido = false
