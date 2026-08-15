@@ -19,8 +19,36 @@ import { ErrorValidacion } from "@/modules/identidad/errores";
  *     de Mercado Envíos Flex (obligatoria, no integrable — CLAUDE.md). Foto opcional.
  *
  * Body JSON: { fotoObjectPath?, lat?, long?, precisionM? }
- * Responde:  { exito, esValido, avisoPendienteRevision? }
+ * Responde:  { exito, esValido, avisoPendienteRevision?, motivoRevision? }
+ *
+ * ⚠️ `motivoRevision` NO es un lujo. Un POD de entrega es válido solo si
+ * `tieneFoto && geocerca !== 'fuera'` (`pruebas-entrega.ts` §5), o sea que hay
+ * DOS causas distintas para quedar pendiente de revisión. Hasta el 2026-08-15 la
+ * respuesta no las distinguía y la app mostraba siempre *"la ubicación no
+ * coincidió exactamente"* — así que a un conductor que entregó parado en la
+ * puerta, sin foto, se le decía que su GPS estaba mal. Mandó a buscar un
+ * problema que no existía mientras el real —falta la foto— quedaba invisible.
  */
+/**
+ * Las causas por las que un POD de entrega queda pendiente de revisión. Espejo
+ * de la regla de `pruebas-entrega.ts` §5 (`tieneFoto && geocerca !== 'fuera'`),
+ * leída del POD ya guardado — nunca recalculada.
+ */
+export type MotivoRevisionEntrega = "sin_foto" | "fuera_de_geocerca" | "sin_foto_y_fuera";
+
+function motivoDeRevision(pod: {
+  tieneFoto: boolean;
+  geocercaResultado: string;
+}): MotivoRevisionEntrega {
+  const fuera = pod.geocercaResultado === "fuera";
+  if (!pod.tieneFoto && fuera) return "sin_foto_y_fuera";
+  // La foto primero: es la causa que el conductor puede resolver en el acto, y
+  // la que más veces se da (la geocerca solo puede decir "fuera" si el pedido
+  // tenía coordenada resuelta Y el teléfono entregó posición).
+  if (!pod.tieneFoto) return "sin_foto";
+  return "fuera_de_geocerca";
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ pedidoId: string }> },
@@ -107,6 +135,11 @@ export async function POST(
       exito: true,
       esValido: pod.esValido,
       avisoPendienteRevision: !pod.esValido,
+      // Por qué quedó pendiente. Se deriva de lo que el POD ya guardó, sin
+      // recalcular la regla: si se recalculara aquí, este mensaje y
+      // `pruebas-entrega.ts` podrían desfasarse y el conductor terminaría
+      // persiguiendo la causa equivocada — que es justo lo que pasaba.
+      motivoRevision: pod.esValido ? null : motivoDeRevision(pod),
     });
   } catch (err) {
     const mensaje =
