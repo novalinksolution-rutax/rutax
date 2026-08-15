@@ -39,6 +39,8 @@ interface TarifaExistente {
   modoCalculo: string;
   zona: string | null;
   montoClp: number;
+  /** Lo que el courier le paga al conductor por entrega. */
+  montoConductorClp: number;
   vigenteDesdeFecha: string;
   vigenteHasta: string | null;
   minimoFacturacionClp: number | null;
@@ -165,10 +167,10 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
             </div>
           </div>
 
-          {/* Monto y vigencia */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          {/* Los dos montos: lo que entra y lo que sale */}
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="monto_clp">Monto base neto (CLP)</Label>
+              <Label htmlFor="monto_clp">Le cobras al seller (CLP)</Label>
               <Input
                 id="monto_clp"
                 name="monto_clp"
@@ -181,6 +183,37 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
               />
               <p className="text-xs text-muted-foreground">Sin IVA — el 19% se agrega al facturar</p>
             </div>
+            {/*
+              El campo que faltaba, y el que dejaba TODAS las liquidaciones en
+              $0: la columna `monto_conductor_clp` existe en la base desde el
+              primer día con `default 0`, y ningún formulario la pedía. En los
+              datos de demo venía sembrada con valor, así que en local nunca se
+              vio; en producción cada tarifa nacía en 0 y el motor generaba
+              línea de liquidación por $0 sin quejarse de nada.
+
+              Va `required` a propósito, y pegado al cobro: los dos montos son
+              las dos mitades del mismo trato y el margen se lee de un vistazo.
+            */}
+            <div className="space-y-1.5">
+              <Label htmlFor="monto_conductor_clp">Le pagas al conductor (CLP)</Label>
+              <Input
+                id="monto_conductor_clp"
+                name="monto_conductor_clp"
+                type="number"
+                min={0}
+                step={1}
+                required
+                defaultValue={tarifa?.montoConductorClp ?? ""}
+                placeholder="ej. 1200"
+              />
+              <p className="text-xs text-muted-foreground">
+                Por entrega efectiva — es lo que se acumula en su liquidación
+              </p>
+            </div>
+          </div>
+
+          {/* Vigencia */}
+          <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="vigente_desde">Vigente desde</Label>
               <Input

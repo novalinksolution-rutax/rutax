@@ -32,6 +32,7 @@ import {
   requiereRevisionGeo,
 } from "@/lib/ui/traduccion-estados";
 import type { Pedido } from "@/modules/operacion/tipos";
+import { etiquetaConductorAusente } from "@/lib/ui/etiqueta-conductor-ausente";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -522,7 +523,7 @@ function FilaPedido({
         {pedido.driverIdAsignado ? (
           (conductorNombre ?? pedido.driverIdAsignado)
         ) : (
-          <span className="text-warning-subtle-foreground">Sin asignar</span>
+          <CeldaSinConductor pedido={pedido} />
         )}
       </TableCell>
       <TableCell className="px-4">
@@ -539,6 +540,24 @@ function FilaPedido({
         </TableCell>
       )}
     </TableRow>
+  );
+}
+
+/**
+ * Columna CONDUCTOR de un pedido sin conductor asignado. El texto y el tono los
+ * decide `etiquetaConductorAusente`, que vive aparte y con pruebas: acá solo
+ * queda pintarlo.
+ */
+function CeldaSinConductor({ pedido }: { pedido: Pedido }) {
+  const { texto, tono, detalle } = etiquetaConductorAusente(pedido.estado);
+
+  return (
+    <span
+      className={tono === "pendiente" ? "text-warning-subtle-foreground" : "text-muted-foreground"}
+      {...(detalle ? { title: detalle } : {})}
+    >
+      {texto}
+    </span>
   );
 }
 

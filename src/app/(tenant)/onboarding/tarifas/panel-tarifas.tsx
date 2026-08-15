@@ -138,12 +138,14 @@ function FormularioTarifaPorDefecto({
 }) {
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega | "">("");
   const [montoTexto, setMontoTexto] = useState("");
+  const [montoConductorTexto, setMontoConductorTexto] = useState("");
   const [vigenteDesde, setVigenteDesde] = useState(hoyEnSantiago());
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
   const [pendiente, iniciarTransicion] = useTransition();
 
   const montoNumerico = Number(soloDigitos(montoTexto)) || 0;
+  const montoConductorNumerico = Number(soloDigitos(montoConductorTexto)) || 0;
 
   function manejarEnvio(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -158,6 +160,14 @@ function FormularioTarifaPorDefecto({
       setError("Ingresa un monto en pesos chilenos mayor a cero.");
       return;
     }
+    if (montoConductorNumerico <= 0) {
+      setError("Ingresa cuánto le pagas al conductor por entrega.");
+      return;
+    }
+    if (montoConductorNumerico > montoNumerico) {
+      setError("Le pagarías al conductor más de lo que le cobras al seller. Revisa los dos montos.");
+      return;
+    }
     if (!vigenteDesde) {
       setError("Indica desde qué fecha rige esta tarifa.");
       return;
@@ -169,6 +179,7 @@ function FormularioTarifaPorDefecto({
         tipoEntrega,
         zona: null,
         montoClp: montoNumerico,
+        montoConductorClp: montoConductorNumerico,
         vigenteDesde,
       });
       if (!resultado.ok) {
@@ -182,6 +193,7 @@ function FormularioTarifaPorDefecto({
         tipoEntrega,
         zona: null,
         montoClp: montoNumerico,
+        montoConductorClp: montoConductorNumerico,
         vigenteDesde,
         vigenteHasta: null,
         estado: "activa",
@@ -189,6 +201,7 @@ function FormularioTarifaPorDefecto({
       setExito(`Tarifa por defecto de ${formatearClp(montoNumerico)} guardada para ${ETIQUETAS_TIPO_ENTREGA[tipoEntrega]}.`);
       setTipoEntrega("");
       setMontoTexto("");
+      setMontoConductorTexto("");
     });
   }
 
@@ -236,6 +249,21 @@ function FormularioTarifaPorDefecto({
                 />
               </div>
               <p className="text-xs text-muted-foreground">Sin IVA — el 19% se agrega al emitir la factura.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tarifa-defecto-monto-conductor">Le pagas al conductor (CLP)</Label>
+              <div className="relative">
+                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">$</span>
+                <Input
+                  id="tarifa-defecto-monto-conductor"
+                  inputMode="numeric"
+                  className="pl-6"
+                  placeholder="1.200"
+                  value={montoConductorTexto ? Number(soloDigitos(montoConductorTexto)).toLocaleString("es-CL") : ""}
+                  onChange={(evento) => setMontoConductorTexto(soloDigitos(evento.target.value))}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Por entrega efectiva — es lo que se acumula en su liquidación.</p>
             </div>
           </div>
 
@@ -327,11 +355,13 @@ function FormularioTarifaEspecifica({
   const [zona, setZona] = useState("");
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega | "">("");
   const [montoTexto, setMontoTexto] = useState("");
+  const [montoConductorTexto, setMontoConductorTexto] = useState("");
   const [vigenteDesde, setVigenteDesde] = useState(hoyEnSantiago());
   const [error, setError] = useState<string | null>(null);
   const [pendiente, iniciarTransicion] = useTransition();
 
   const montoNumerico = Number(soloDigitos(montoTexto)) || 0;
+  const montoConductorNumerico = Number(soloDigitos(montoConductorTexto)) || 0;
 
   function manejarEnvio(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
@@ -343,6 +373,14 @@ function FormularioTarifaEspecifica({
     }
     if (montoNumerico <= 0) {
       setError("Ingresa un monto en pesos chilenos mayor a cero.");
+      return;
+    }
+    if (montoConductorNumerico <= 0) {
+      setError("Ingresa cuánto le pagas al conductor por entrega.");
+      return;
+    }
+    if (montoConductorNumerico > montoNumerico) {
+      setError("Le pagarías al conductor más de lo que le cobras al seller. Revisa los dos montos.");
       return;
     }
     if (!vigenteDesde) {
@@ -364,6 +402,7 @@ function FormularioTarifaEspecifica({
         tipoEntrega,
         zona: zonaLimpia,
         montoClp: montoNumerico,
+        montoConductorClp: montoConductorNumerico,
         vigenteDesde,
       });
       if (!resultado.ok) {
@@ -377,6 +416,7 @@ function FormularioTarifaEspecifica({
         tipoEntrega,
         zona: zonaLimpia,
         montoClp: montoNumerico,
+        montoConductorClp: montoConductorNumerico,
         vigenteDesde,
         vigenteHasta: null,
         estado: "activa",
@@ -385,6 +425,7 @@ function FormularioTarifaEspecifica({
       setZona("");
       setTipoEntrega("");
       setMontoTexto("");
+      setMontoConductorTexto("");
       onListo();
     });
   }
@@ -436,7 +477,7 @@ function FormularioTarifaEspecifica({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="tarifa-especifica-monto">Monto neto por entrega (CLP)</Label>
+          <Label htmlFor="tarifa-especifica-monto">Le cobras al seller (CLP)</Label>
           <div className="relative">
             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">$</span>
             <Input
@@ -448,6 +489,21 @@ function FormularioTarifaEspecifica({
               onChange={(evento) => setMontoTexto(soloDigitos(evento.target.value))}
             />
           </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="tarifa-especifica-monto-conductor">Le pagas al conductor (CLP)</Label>
+          <div className="relative">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">$</span>
+            <Input
+              id="tarifa-especifica-monto-conductor"
+              inputMode="numeric"
+              className="pl-6"
+              placeholder="1.400"
+              value={montoConductorTexto ? Number(soloDigitos(montoConductorTexto)).toLocaleString("es-CL") : ""}
+              onChange={(evento) => setMontoConductorTexto(soloDigitos(evento.target.value))}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">Por entrega efectiva — es lo que se acumula en su liquidación.</p>
         </div>
       </div>
 

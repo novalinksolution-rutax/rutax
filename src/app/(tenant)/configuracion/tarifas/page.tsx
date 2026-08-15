@@ -23,6 +23,8 @@ interface TarifaFila {
   modoCalculo: "monto_fijo" | "por_zona";
   zona: string | null;
   montoClp: number;
+  /** Lo que el courier le paga al conductor por entrega. */
+  montoConductorClp: number;
   vigenteDesdeFecha: string;
   vigenteHasta: string | null;
   estado: "activa" | "inactiva";
@@ -86,6 +88,7 @@ export default async function PaginaTarifas() {
     modoCalculo: t.modo_calculo as "monto_fijo" | "por_zona",
     zona: (t.zona as string | null) ?? null,
     montoClp: Number(t.monto_clp),
+    montoConductorClp: Number(t.monto_conductor_clp ?? 0),
     vigenteDesdeFecha: t.vigente_desde as string,
     vigenteHasta: (t.vigente_hasta as string | null) ?? null,
     estado: t.estado as "activa" | "inactiva",
@@ -133,7 +136,8 @@ export default async function PaginaTarifas() {
                         <th className="px-4 py-2">Seller / Scope</th>
                         <th className="px-4 py-2">Tipo</th>
                         <th className="hidden px-4 py-2 sm:table-cell">Zona</th>
-                        <th className="px-4 py-2 text-right">Base (CLP)</th>
+                        <th className="px-4 py-2 text-right">Cobras (CLP)</th>
+                        <th className="px-4 py-2 text-right">Pagas al conductor</th>
                         <th className="hidden px-4 py-2 text-right md:table-cell">Mín. factura</th>
                         <th className="hidden px-4 py-2 text-right md:table-cell">Mín. retiro</th>
                         <th className="hidden px-4 py-2 text-right lg:table-cell">Recargo reprog.</th>
@@ -201,6 +205,7 @@ function FilaTarifa({ tarifa, sellers }: { tarifa: TarifaFila; sellers: { id: st
     modoCalculo: tarifa.modoCalculo,
     zona: tarifa.zona,
     montoClp: tarifa.montoClp,
+    montoConductorClp: tarifa.montoConductorClp,
     vigenteDesdeFecha: tarifa.vigenteDesdeFecha,
     vigenteHasta: tarifa.vigenteHasta,
     minimoFacturacionClp: tarifa.minimoFacturacionClp,
@@ -227,6 +232,22 @@ function FilaTarifa({ tarifa, sellers }: { tarifa: TarifaFila; sellers: { id: st
       </td>
       <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums">
         {formatearCLP(tarifa.montoClp)}
+      </td>
+      {/*
+        Un 0 acá NO es un dato: significa que esa tarifa le liquida $0 al
+        conductor por cada entrega. Se marca en ámbar porque durante meses fue
+        el valor de TODAS las tarifas en producción —la columna existía y
+        ningún formulario la pedía— y el síntoma aparecía lejos, en la
+        liquidación del conductor, sin nada que apuntara a la tarifa.
+      */}
+      <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums">
+        {tarifa.montoConductorClp > 0 ? (
+          formatearCLP(tarifa.montoConductorClp)
+        ) : (
+          <span className="text-warning-subtle-foreground" title="Esta tarifa liquida $0 al conductor. Edítala para fijar cuánto le pagas por entrega.">
+            Sin definir
+          </span>
+        )}
       </td>
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
         {tarifa.minimoFacturacionClp != null ? formatearCLP(tarifa.minimoFacturacionClp) : "—"}

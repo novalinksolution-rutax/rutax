@@ -28,6 +28,8 @@ export interface TarifaListado {
   tipoEntrega: TipoEntrega;
   zona: string | null;
   montoClp: number;
+  /** Lo que el courier le paga al conductor por entrega. */
+  montoConductorClp: number;
   vigenteDesde: string;
   vigenteHasta: string | null;
   estado: "activa" | "inactiva";
@@ -55,7 +57,7 @@ export async function obtenerEstadoTarifas(): Promise<
   const [{ data: filasTarifas, error: errorTarifas }, { data: filasSellers, error: errorSellers }] = await Promise.all([
     supabase
       .from("tarifas")
-      .select("id, seller_id, tipo_entrega, zona, monto_clp, vigente_desde, vigente_hasta, estado, sellers!tarifas_seller_id_fkey(razon_social)")
+      .select("id, seller_id, tipo_entrega, zona, monto_clp, monto_conductor_clp, vigente_desde, vigente_hasta, estado, sellers!tarifas_seller_id_fkey(razon_social)")
       .eq("tenant_id", sesion.usuario.tenantId)
       .order("estado", { ascending: true })
       .order("vigente_desde", { ascending: false }),
@@ -76,6 +78,7 @@ export async function obtenerEstadoTarifas(): Promise<
     tipo_entrega: TipoEntrega;
     zona: string | null;
     monto_clp: number;
+    monto_conductor_clp: number | null;
     vigente_desde: string;
     vigente_hasta: string | null;
     estado: "activa" | "inactiva";
@@ -91,6 +94,7 @@ export async function obtenerEstadoTarifas(): Promise<
       tipoEntrega: fila.tipo_entrega,
       zona: fila.zona,
       montoClp: Number(fila.monto_clp),
+      montoConductorClp: Number(fila.monto_conductor_clp ?? 0),
       vigenteDesde: fila.vigente_desde,
       vigenteHasta: fila.vigente_hasta,
       estado: fila.estado,
@@ -116,6 +120,12 @@ export interface CrearTarifaEntrada {
   tipoEntrega: TipoEntrega;
   zona: string | null;
   montoClp: number;
+  /**
+   * Lo que el courier le paga al conductor por entrega. Obligatorio: la
+   * columna nace en 0 y, mientras nadie la escribiera, toda linea de
+   * liquidacion se generaba en $0 sin que nada fallara.
+   */
+  montoConductorClp: number;
   vigenteDesde: string;
 }
 
@@ -139,6 +149,23 @@ export async function crearTarifa(entrada: CrearTarifaEntrada): Promise<AccionTa
   }
   if (!Number.isFinite(entrada.montoClp) || entrada.montoClp <= 0) {
     return { ok: false, tipo: "validacion", mensaje: "Ingresa un monto en pesos chilenos mayor a cero." };
+  }
+  // Cero se rechaza, no se acepta como "por ahora nada": una tarifa que liquida
+  // $0 no se distingue de una mal configurada, y el sintoma aparece lejos —en la
+  // liquidacion del conductor— sin nada que apunte de vuelta a la tarifa.
+  if (!Number.isFinite(entrada.montoConductorClp) || entrada.montoConductorClp <= 0) {
+    return {
+      ok: false,
+      tipo: "validacion",
+      mensaje: "Ingresa cuanto le pagas al conductor por entrega, en pesos chilenos y mayor a cero.",
+    };
+  }
+  if (entrada.montoConductorClp > entrada.montoClp) {
+    return {
+      ok: false,
+      tipo: "validacion",
+      mensaje: "Le pagarias al conductor mas de lo que le cobras al seller. Revisa los dos montos.",
+    };
   }
   if (!entrada.vigenteDesde || Number.isNaN(Date.parse(entrada.vigenteDesde))) {
     return { ok: false, tipo: "validacion", mensaje: "Ingresa la fecha desde la que esta tarifa empieza a regir." };
@@ -184,6 +211,7 @@ export async function crearTarifa(entrada: CrearTarifaEntrada): Promise<AccionTa
     tipo_entrega: entrada.tipoEntrega,
     zona: entrada.zona,
     monto_clp: Math.round(entrada.montoClp),
+    monto_conductor_clp: Math.round(entrada.montoConductorClp),
     vigente_desde: entrada.vigenteDesde,
     estado: "activa",
   });
@@ -201,6 +229,7 @@ export async function crearTarifa(entrada: CrearTarifaEntrada): Promise<AccionTa
     tipo_entrega: entrada.tipoEntrega,
     zona: entrada.zona,
     monto_clp: Math.round(entrada.montoClp),
+    monto_conductor_clp: Math.round(entrada.montoConductorClp),
     vigente_desde: entrada.vigenteDesde,
   });
 

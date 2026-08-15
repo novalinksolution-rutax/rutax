@@ -53,6 +53,14 @@ export async function accionCrearTarifa(formData: FormData): Promise<ResultadoAc
     const modoCalculo = formData.get("modo_calculo") as string;
     const zona = (formData.get("zona") as string | null)?.trim() || null;
     const montoClp = validarMonto(formData.get("monto_clp"), "Monto base");
+    // Lo que el courier le paga al CONDUCTOR por entrega. Es obligatorio y sin
+    // valor por defecto: la columna nace en 0 y, mientras nadie la escribiera,
+    // toda linea de liquidacion se generaba en $0 (ver el comentario del campo
+    // en dialog-tarifa.tsx).
+    const montoConductorClp = validarMonto(
+      formData.get("monto_conductor_clp"),
+      "Monto al conductor",
+    );
     const vigenteDesdeFecha = validarFecha(formData.get("vigente_desde"), "Vigente desde");
     const vigenteHastaRaw = (formData.get("vigente_hasta") as string | null)?.trim() || null;
     const vigenteHasta = vigenteHastaRaw ? validarFecha(vigenteHastaRaw, "Vigente hasta") : null;
@@ -87,6 +95,7 @@ export async function accionCrearTarifa(formData: FormData): Promise<ResultadoAc
         modo_calculo: modoCalculo,
         zona,
         monto_clp: montoClp,
+        monto_conductor_clp: montoConductorClp,
         vigente_desde: vigenteDesdeFecha,
         vigente_hasta: vigenteHasta,
         estado: "activa",
@@ -106,7 +115,12 @@ export async function accionCrearTarifa(formData: FormData): Promise<ResultadoAc
       accion: "identidad.tarifa_creada",
       entidadTipo: "tarifa",
       entidadId: tarifa.id as string,
-      detalle: { seller_id: sellerId, tipo_entrega: tipoEntrega, monto_clp: montoClp },
+      detalle: {
+        seller_id: sellerId,
+        tipo_entrega: tipoEntrega,
+        monto_clp: montoClp,
+        monto_conductor_clp: montoConductorClp,
+      },
     });
 
     revalidatePath("/configuracion/tarifas");
@@ -137,6 +151,14 @@ export async function accionEditarTarifa(
     const modoCalculo = formData.get("modo_calculo") as string;
     const zona = (formData.get("zona") as string | null)?.trim() || null;
     const montoClp = validarMonto(formData.get("monto_clp"), "Monto base");
+    // Lo que el courier le paga al CONDUCTOR por entrega. Es obligatorio y sin
+    // valor por defecto: la columna nace en 0 y, mientras nadie la escribiera,
+    // toda linea de liquidacion se generaba en $0 (ver el comentario del campo
+    // en dialog-tarifa.tsx).
+    const montoConductorClp = validarMonto(
+      formData.get("monto_conductor_clp"),
+      "Monto al conductor",
+    );
     const vigenteDesdeFecha = validarFecha(formData.get("vigente_desde"), "Vigente desde");
     const vigenteHastaRaw = (formData.get("vigente_hasta") as string | null)?.trim() || null;
     const vigenteHasta = vigenteHastaRaw ? validarFecha(vigenteHastaRaw, "Vigente hasta") : null;
@@ -165,6 +187,7 @@ export async function accionEditarTarifa(
         modo_calculo: modoCalculo,
         zona,
         monto_clp: montoClp,
+        monto_conductor_clp: montoConductorClp,
         vigente_desde: vigenteDesdeFecha,
         vigente_hasta: vigenteHasta,
         minimo_facturacion_clp: minimoFacturacion,
@@ -184,7 +207,7 @@ export async function accionEditarTarifa(
       accion: "identidad.tarifa_editada",
       entidadTipo: "tarifa",
       entidadId: tarifaId,
-      detalle: { monto_clp: montoClp },
+      detalle: { monto_clp: montoClp, monto_conductor_clp: montoConductorClp },
     });
 
     revalidatePath("/configuracion/tarifas");

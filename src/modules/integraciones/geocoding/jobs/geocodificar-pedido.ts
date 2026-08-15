@@ -114,8 +114,21 @@ export const jobGeocodificarPedido = inngest.createFunction(
     name: 'Geocoding · Geocodificar pedido ingestado',
     triggers: [{ event: 'operacion/pedido.ingestado' }],
     retries: 3,
-    // Dedupe: un solo run por pedido aunque el evento se reciba dos veces.
-    idempotency: 'event.data.pedidoId',
+    // Dedupe: un solo run por pedido Y POR DESTINO, aunque el evento se reciba
+    // dos veces (carrera webhook↔cron).
+    //
+    // La dirección entra en la clave A PROPÓSITO. Con `event.data.pedidoId` a
+    // secas, un pedido cuya dirección cambia —ML la revela al confirmarse el
+    // pago, o el destino cambia de verdad— NO podía volver a geocodificarse
+    // durante 24 h: Inngest descartaba el evento nuevo en silencio y el pedido
+    // se quedaba con la coordenada del domicilio anterior. El caso que esta
+    // clave protegía (mismo pedido, mismo destino, evento repetido) sigue
+    // deduplicado igual.
+    //
+    // CEL admite concatenar campos del evento (doc de Inngest, «Handling
+    // idempotency»: `event.data.userId + "-" + event.data.organizationId`). La
+    // ventana sigue siendo de 24 h.
+    idempotency: 'event.data.pedidoId + "|" + event.data.direccion + "|" + event.data.comuna',
     // Un evento POR PEDIDO, publicado desde la ingesta de ML y desde same-day.
     // El cron de ingesta puede traer cientos de golpe, así que sin este límite
     // la ráfaga entra entera y a la vez.

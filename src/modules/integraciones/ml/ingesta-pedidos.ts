@@ -42,7 +42,10 @@ import { inngest } from "@/lib/inngest/cliente";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { peticionMl, ErrorHttpMl } from "./cliente-http";
 import { ahoraEnSantiago, horaAMinutos, fechaLocalEnSantiago } from "@/lib/fecha-santiago";
-import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
+import {
+  normalizarDireccion,
+  resolverComunaCanonica,
+} from "@/modules/integraciones/geocoding/normalizacion";
 import { resolverZona } from "@/modules/operacion/zonas";
 import { resolverVentanaCorte } from "@/modules/operacion/ventanas-corte";
 import { traducirEstadoMl } from "./traduccion-estados";
@@ -695,11 +698,91 @@ async function calcularCorteRiesgoFlex(
   }
 }
 
+/**
+ * Texto que ocupa el lugar de la dirección mientras ML la mantiene oculta (la
+ * revela recién con el pago confirmado).
+ *
+ * **No es una dirección, y por eso no se geocodifica.** El stub resuelve por
+ * comuna e ignora la calle, así que "Dirección pendiente" + la comuna de
+ * respaldo devuelve el centroide de Santiago con `geo_estado='resuelto'`; y
+ * Google, con `components=administrative_area:Region Metropolitana`, tiende a
+ * caer en el centro de la comuna con `location_type=APPROXIMATE` — también
+ * resuelto. En los dos casos el pedido queda con una coordenada INVENTADA y,
+ * peor, esa coordenada se guarda en `integraciones.geocoding_cache`, que es
+ * GLOBAL: el mismo punto falso se le sirve después a todos los couriers.
+ */
+export const DIRECCION_PENDIENTE_ML = "Dirección pendiente";
+
+/** Comuna que se asume cuando ML todavía no revela el domicilio. */
+export const COMUNA_RESPALDO_ML = "Santiago";
+
+/** ¿Este texto es una dirección real, o el marcador de "ML aún no la revela"? */
+export function esDireccionGeocodificable(direccion: string): boolean {
+  return normalizarDireccion(direccion) !== normalizarDireccion(DIRECCION_PENDIENTE_ML);
+}
+
+/**
+ * Compara dos textos de dirección/comuna como los compararía una persona:
+ * ignorando mayúsculas, acentos y espacios de más. Sin esto, que ML reformatee
+ * "AV. PROVIDENCIA 1234" a "Av. Providencia 1234" se leería como una mudanza y
+ * dispararía una re-geocodificación (y una llamada facturable) por nada.
+ *
+ * Reusa la MISMA normalización que calcula la clave del caché de geocoding: si
+ * dos textos son iguales para el caché, tienen que serlo también aquí.
+ */
+function mismoDestino(a: string | null | undefined, b: string | null | undefined): boolean {
+  return normalizarDireccion(a ?? "") === normalizarDireccion(b ?? "");
+}
+
+/**
+ * Publica el gatillo de geocodificación. Best-effort: un fallo de Inngest NO
+ * puede romper la ingesta — el pedido ya está guardado.
+ *
+ * ⚠️ Este evento es el ÚNICO camino a la coordenada cuando ML no la manda: no
+ * hay cron que barra los `pendiente`. Un envío fallido deja el pedido sin
+ * ubicar hasta que alguien aprieta "Reubicar" en `/operaciones`.
+ *
+ * `idEvento` solo se pasa en el alta (dedupe de la carrera webhook↔cron). En la
+ * re-geocodificación por cambio de dirección se OMITE a propósito: reusar el id
+ * del alta haría que Inngest descartara el evento nuevo durante 24 h y el
+ * pedido se quedaría con la coordenada del domicilio anterior — justo lo que
+ * este camino existe para evitar.
+ *
+ * El payload NO lleva nombre ni teléfono (minimización, ver `EventoPedidoIngestado`).
+ */
+async function publicarGeocodificacionPedido(
+  pedidoId: string,
+  ctx: ContextoIngestaMl,
+  direccion: string,
+  comuna: string,
+  idEvento?: string,
+): Promise<void> {
+  try {
+    await inngest.send({
+      name: "operacion/pedido.ingestado",
+      ...(idEvento ? { id: idEvento } : {}),
+      data: {
+        pedidoId,
+        tenantId: ctx.tenantId,
+        sellerId: ctx.sellerId,
+        direccion,
+        comuna,
+        tipoPedido: "flex" as const,
+      },
+    });
+  } catch {
+    // Silencio deliberado (ver arriba).
+  }
+}
+
 /** Fila mínima que se lee antes de decidir INSERT vs UPDATE. */
 interface FilaPedidoExistente {
   id: string;
   ml_order_id: string | null;
   geo_estado: string | null;
+  /** Destino ya guardado — se compara contra el que trae ML para detectar cambios. */
+  destinatario_direccion?: string | null;
+  destinatario_comuna?: string | null;
 }
 
 export type ResultadoGuardado =
@@ -733,15 +816,15 @@ export async function guardarPedidoFlex(
 ): Promise<ResultadoGuardado> {
   const ahoraIso = new Date().toISOString();
   const direccion =
-    datos.destinatarioDireccion ?? entrada.direccionRespaldo ?? "Dirección pendiente";
-  const comuna = datos.destinatarioComuna ?? entrada.comunaRespaldo ?? "Santiago";
+    datos.destinatarioDireccion ?? entrada.direccionRespaldo ?? DIRECCION_PENDIENTE_ML;
+  const comuna = datos.destinatarioComuna ?? entrada.comunaRespaldo ?? COMUNA_RESPALDO_ML;
   const fechaCompromiso = derivarFechaCompromiso(datos.fechaEntregaIso, entrada.ordenCreadaIso);
   const mlOrderId = entrada.mlOrderId ?? mlOrderIdDelShipment;
 
   const { data: existenteData, error: errorLectura } = await supabase
     .schema("operacion")
     .from("pedidos")
-    .select("id, ml_order_id, geo_estado")
+    .select("id, ml_order_id, geo_estado, destinatario_direccion, destinatario_comuna")
     .eq("tenant_id", ctx.tenantId)
     .eq("ml_shipment_id", entrada.shipmentId)
     .maybeSingle();
@@ -753,13 +836,12 @@ export async function guardarPedidoFlex(
   const existente = (existenteData as FilaPedidoExistente | null) ?? null;
 
   if (existente) {
-    return actualizarPedidoFlex(supabase, existente, {
+    return actualizarPedidoFlex(supabase, existente, ctx, {
       datos,
       direccion,
       comuna,
       fechaCompromiso,
       mlOrderId,
-      mlUserId: ctx.mlUserId,
       ahoraIso,
     });
   }
@@ -833,19 +915,18 @@ export async function guardarPedidoFlex(
       const { data: reintento } = await supabase
         .schema("operacion")
         .from("pedidos")
-        .select("id, ml_order_id, geo_estado")
+        .select("id, ml_order_id, geo_estado, destinatario_direccion, destinatario_comuna")
         .eq("tenant_id", ctx.tenantId)
         .eq("ml_shipment_id", entrada.shipmentId)
         .maybeSingle();
       const fila2 = (reintento as FilaPedidoExistente | null) ?? null;
       if (fila2) {
-        return actualizarPedidoFlex(supabase, fila2, {
+        return actualizarPedidoFlex(supabase, fila2, ctx, {
           datos,
           direccion,
           comuna,
           fechaCompromiso,
           mlOrderId,
-          mlUserId: ctx.mlUserId,
           ahoraIso,
         });
       }
@@ -858,30 +939,20 @@ export async function guardarPedidoFlex(
     return { estado: "error", mensaje: "el INSERT no devolvió el id del pedido" };
   }
 
-  // Gatillo de geocodificación. Best-effort: un fallo de Inngest no puede
-  // romper la ingesta. El payload NO lleva nombre ni teléfono.
-  //
-  // ⚠️ Este evento es el ÚNICO camino a la coordenada. Una versión anterior de
-  // este comentario decía que "el job de geocoding barre por índice", y es
-  // falso (verificado 2026-08-13): no hay cron, solo este disparo. Un pedido
-  // Flex cuyo send falle queda sin ubicar indefinidamente y solo se recupera a
-  // mano desde `/operaciones`. Ver la nota extendida en
-  // `src/modules/operacion/pedidos.ts`, en el catch del mismo envío.
-  try {
-    await inngest.send({
-      name: "operacion/pedido.ingestado",
-      id: `pedido-ingestado-${pedidoId}`,
-      data: {
-        pedidoId,
-        tenantId: ctx.tenantId,
-        sellerId: ctx.sellerId,
-        direccion,
-        comuna,
-        tipoPedido: "flex" as const,
-      },
-    });
-  } catch {
-    // Silencio deliberado (ver arriba).
+  // Gatillo de geocodificación — salvo que ML todavía esté ocultando el
+  // domicilio. Geocodificar el marcador no devuelve "no encontrado": devuelve
+  // el centro de la comuna de respaldo marcado como RESUELTO, y a partir de ahí
+  // el pedido ya no vuelve a preguntar. Mientras la dirección sea el marcador,
+  // el pedido se queda en `pendiente` (que es la verdad) y lo despierta
+  // `actualizarPedidoFlex` cuando ML revele la dirección real.
+  if (esDireccionGeocodificable(direccion)) {
+    await publicarGeocodificacionPedido(
+      pedidoId,
+      ctx,
+      direccion,
+      comuna,
+      `pedido-ingestado-${pedidoId}`,
+    );
   }
 
   return { estado: "insertado", pedidoId };
@@ -890,13 +961,13 @@ export async function guardarPedidoFlex(
 async function actualizarPedidoFlex(
   supabase: ClienteSupabase,
   existente: FilaPedidoExistente,
+  ctx: ContextoIngestaMl,
   campos: {
     datos: DatosShipmentMl;
     direccion: string;
     comuna: string;
     fechaCompromiso: string | null;
     mlOrderId: string | null;
-    mlUserId: string;
     ahoraIso: string;
   },
 ): Promise<ResultadoGuardado> {
@@ -907,7 +978,7 @@ async function actualizarPedidoFlex(
     subestado_ml: datos.subestadoMl,
     ultima_sync_ml_en: campos.ahoraIso,
     // Estampa la cuenta de origen en pedidos legacy que entraron sin ella.
-    ml_user_id: campos.mlUserId,
+    ml_user_id: ctx.mlUserId,
   };
 
   // Nunca se pisa un id de orden conocido con un `null`.
@@ -922,10 +993,62 @@ async function actualizarPedidoFlex(
   if (datos.destinatarioNombre) cambios.destinatario_nombre = datos.destinatarioNombre;
   if (campos.fechaCompromiso) cambios.fecha_compromiso = campos.fechaCompromiso;
 
-  // La coordenada solo se rellena si todavía faltaba. Si ya está resuelta (por
-  // ML o por el geocodificador), no se re-escribe: `geocodificado_en` dejaría
-  // de significar «cuándo se resolvió».
-  if (datos.lat != null && existente.geo_estado !== "resuelto") {
+  // ---------------------------------------------------------------------------
+  // ¿El DESTINO cambió?
+  //
+  // Dos formas de que pase, y las dos son normales:
+  //   1. ML revela el domicilio al confirmarse el pago (el pedido entró con el
+  //      marcador "Dirección pendiente").
+  //   2. La dirección de destino cambia de verdad después.
+  //
+  // En ambas, la coordenada guardada describe el domicilio ANTERIOR. Hasta este
+  // arreglo no se actualizaba nunca —la condición era «rellena solo si falta»—,
+  // así que el pedido quedaba con la dirección nueva en el texto y el punto
+  // viejo en el mapa. Y eso es lo que leen el ruteo, el manifiesto del
+  // conductor y la Torre: el conductor iba a la dirección equivocada.
+  //
+  // Solo cuenta lo que ML MANDÓ: un campo ausente significa "no lo sé", nunca
+  // "cambió a nulo". La comparación es normalizada, así que un reformateo de
+  // ML no dispara una re-geocodificación (ni una llamada facturable) por nada.
+  // ---------------------------------------------------------------------------
+  const destinoCambio =
+    (datos.destinatarioDireccion != null &&
+      !mismoDestino(datos.destinatarioDireccion, existente.destinatario_direccion)) ||
+    (datos.destinatarioComuna != null &&
+      !mismoDestino(datos.destinatarioComuna, existente.destinatario_comuna));
+
+  // ¿Hay que despertar al geocodificador después de guardar? Solo cuando el
+  // destino cambió Y ML no trajo la coordenada nueva.
+  let regeocodificar = false;
+
+  if (destinoCambio) {
+    if (datos.lat != null) {
+      // ML manda la coordenada del domicilio nuevo: se adopta tal cual, sin
+      // llamar a ningún geocodificador. Es el camino normal en Flex.
+      cambios.lat = datos.lat;
+      cambios.long = datos.long;
+      cambios.geo_estado = "resuelto";
+      cambios.geo_confianza = 1;
+      cambios.geocodificado_en = campos.ahoraIso;
+    } else if (esDireccionGeocodificable(campos.direccion)) {
+      // Hay dirección nueva pero no coordenada: se BORRA la anterior en el
+      // mismo UPDATE y el pedido vuelve a la cola de geocodificación.
+      //
+      // Borrarla es deliberado, y tiene un costo asumido: un pedido ya
+      // asignado y secuenciado se cae del mapa hasta que se resuelva la nueva.
+      // Es preferible a lo contrario — mandar al conductor a la casa anterior
+      // con la dirección nueva en pantalla, sin que nada delate el desajuste.
+      cambios.lat = null;
+      cambios.long = null;
+      cambios.geo_estado = "pendiente";
+      cambios.geo_confianza = null;
+      cambios.geocodificado_en = null;
+      regeocodificar = true;
+    }
+  } else if (datos.lat != null && existente.geo_estado !== "resuelto") {
+    // El destino es el mismo y todavía faltaba la coordenada: se rellena. Si ya
+    // estaba resuelta no se re-escribe — `geocodificado_en` dejaría de
+    // significar «cuándo se resolvió».
     cambios.lat = datos.lat;
     cambios.long = datos.long;
     cambios.geo_estado = "resuelto";
@@ -940,6 +1063,14 @@ async function actualizarPedidoFlex(
     .eq("id", existente.id);
 
   if (error) return { estado: "error", mensaje: error.message };
+
+  // Solo DESPUÉS de que el UPDATE quedó firme: si el evento saliera antes, el
+  // job podría leer la fila con la dirección vieja y volver a resolver la
+  // coordenada que acabamos de invalidar.
+  if (regeocodificar) {
+    await publicarGeocodificacionPedido(existente.id, ctx, campos.direccion, campos.comuna);
+  }
+
   return { estado: "actualizado", pedidoId: existente.id };
 }
 
