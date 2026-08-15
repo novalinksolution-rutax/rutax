@@ -26,11 +26,26 @@ import { ErrorConflicto } from "@/modules/identidad/errores";
  *
  * NO toca pedidos Flex (filtro tipo_pedido='same_day').
  *
+ * ⚠️ **`actorUsuarioId` es el UUID de `auth.users`, NO el del conductor**, y es un
+ * parámetro propio precisamente porque `UsuarioActual` no lo tiene. Hasta el
+ * 2026-08-14 esta función pasaba `actor.driverId` —el id de
+ * `identidad.conductores`— como `actuadoPorUsuarioId`, y
+ * `bitacora_auditoria.actor_usuario_id` tiene FK contra `auth.users(id)`. O sea:
+ * el INSERT de bitácora violaba la FK, `actualizarEstadoPedido` lanzaba, y
+ * **ningún pedido same-day llegaba nunca a `en_ruta`**. El conductor veía su
+ * parada sin botón de "Entregar" y no había forma de destrabarla, porque
+ * reintentar exige el manifiesto en `confirmado` y ya había pasado a `en_ruta`.
+ *
+ * Va **obligatorio y sin valor por defecto** a propósito: uno opcional dejaría
+ * compilar a los llamadores viejos y el fallo volvería a aparecer en ejecución,
+ * que es exactamente como se escapó la primera vez.
+ *
  * @param cliente     Cliente service_role de Supabase.
  * @param manifiestoId UUID del manifiesto que pasó a 'en_ruta'.
  * @param tenantId    UUID del tenant (aislamiento).
  * @param driverId    UUID del conductor (para la barrera en actualizarEstadoPedido).
- * @param actor       UsuarioActual del conductor (para RBAC + bitácora).
+ * @param actor       UsuarioActual del conductor (para RBAC).
+ * @param actorUsuarioId UUID de `auth.users` — el "quién" de RNF-04 en bitácora.
  */
 export async function transicionarPedidosSameDayAEnRuta(
   cliente: SupabaseClient,
@@ -38,6 +53,7 @@ export async function transicionarPedidosSameDayAEnRuta(
   tenantId: string,
   driverId: string,
   actor: UsuarioActual,
+  actorUsuarioId: string,
 ): Promise<void> {
   // Leer los pedidos same-day del manifiesto que aún están en 'asignado'.
   // La JOIN va por asignaciones_pedido: la tabla que relaciona pedido↔manifiesto.
@@ -73,7 +89,10 @@ export async function transicionarPedidosSameDayAEnRuta(
           estadoNuevo: "en_ruta",
           estadoEsperado: "asignado",
           ejecutor: "conductor",
-          actuadoPorUsuarioId: actor.driverId ?? undefined,
+          // El id de `auth.users`, NUNCA `actor.driverId`: la FK de
+          // `bitacora_auditoria.actor_usuario_id` apunta a `auth.users(id)` y un
+          // id de conductor la viola. Ver el aviso del docstring.
+          actuadoPorUsuarioId: actorUsuarioId,
         },
         actor,
       );

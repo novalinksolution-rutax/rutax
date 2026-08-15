@@ -176,7 +176,17 @@ describe("POST /api/conductor/manifiesto/iniciar — control positivo", () => {
       TENANT_A,
       DRIVER_1,
       usuarioConductor,
+      // El 6.º argumento es el id de `auth.users`, y va aparte del conductor a
+      // propósito: `bitacora_auditoria.actor_usuario_id` tiene FK contra
+      // `auth.users(id)`, así que mandar `DRIVER_1` ahí hacía reventar el INSERT
+      // y NINGÚN pedido same-day llegaba a `en_ruta` (2026-08-14).
+      usuarioConductor.usuarioId,
     );
+
+    // Explícito: los dos ids son distintos y no se pueden confundir.
+    expect(usuarioConductor.usuarioId).not.toBe(DRIVER_1);
+    const args = vi.mocked(transicionarPedidosSameDayAEnRuta).mock.calls[0];
+    expect(args[5]).not.toBe(DRIVER_1);
   });
 
   it("manifiesto propio pero NO 'confirmado' → 409, no transiciona nada", async () => {

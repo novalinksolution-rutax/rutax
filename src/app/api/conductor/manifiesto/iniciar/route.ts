@@ -84,6 +84,9 @@ export async function POST(request: NextRequest) {
       tenantId,
       driverId,
       usuario,
+      // El UUID de `auth.users`, no el del conductor: es lo que exige la FK de
+      // la bitácora. `autenticarBearer` lo devuelve aparte justo para esto.
+      usuario.usuarioId,
     );
 
     return NextResponse.json({ exito: true });

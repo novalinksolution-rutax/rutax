@@ -67,6 +67,9 @@ export async function actionConductorListoParaSalir(formData: FormData) {
       sesion.usuario.tenantId,
       sesion.usuario.driverId,
       sesion.usuario,
+      // El UUID de `auth.users`, no el del conductor: la FK de
+      // `bitacora_auditoria.actor_usuario_id` apunta ahí.
+      sesion.usuarioId,
     );
 
     revalidatePath("/conductor/manifiesto");

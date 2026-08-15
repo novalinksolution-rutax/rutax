@@ -677,6 +677,14 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
     errorConsulta?: { message: string };
     /** Si true, la actualización del pedido lanza ErrorConflicto (ya se movió). */
     pedidoYaMovido?: boolean;
+    /**
+     * Recolector de los asientos que se intentan escribir en
+     * `bitacora_auditoria`. Existe para poder afirmar QUÉ va en
+     * `actor_usuario_id`: sin mirar el payload, el stub acepta cualquier cosa y
+     * la prueba pasa aunque ahí viaje un id de conductor — que es exactamente
+     * cómo se escapó el fallo del 2026-08-14 (FK contra `auth.users`).
+     */
+    asientos?: Record<string, unknown>[];
   }) {
     const estadosPedidos: Record<string, string> = {};
     for (const a of opts.asignaciones) {
@@ -816,7 +824,12 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
           };
         }
         if (tabla === "bitacora_auditoria") {
-          return { insert: vi.fn().mockResolvedValue({ error: null }) };
+          return {
+            insert: vi.fn((fila: Record<string, unknown>) => {
+              opts.asientos?.push(fila);
+              return Promise.resolve({ error: null });
+            }),
+          };
         }
         if (tabla === "incidencias") {
           return {
@@ -850,7 +863,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
     const cliente = clienteBatchMock({ asignaciones });
     // No debe lanzar
     await expect(
-      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor()),
+      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor(), USUARIO_AUTH_1),
     ).resolves.toBeUndefined();
   });
 
@@ -874,7 +887,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
 
     const cliente = clienteBatchMock({ asignaciones, pedidoYaMovido: true });
     await expect(
-      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor()),
+      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor(), USUARIO_AUTH_1),
     ).resolves.toBeUndefined();
   });
 
@@ -884,8 +897,63 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
   it("sin pedidos same_day asignados: retorna sin error (no-op)", async () => {
     const cliente = clienteBatchMock({ asignaciones: [] });
     await expect(
-      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor()),
+      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor(), USUARIO_AUTH_1),
     ).resolves.toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // 8c-bis. El asiento de bitácora lleva el id de auth.users, NO el del conductor
+  // -------------------------------------------------------------------------
+  /**
+   * La prueba que faltaba, y que costó la funcionalidad completa.
+   *
+   * Hasta el 2026-08-14 esta función pasaba `actor.driverId` —el id de
+   * `identidad.conductores`— como `actuadoPorUsuarioId`. La columna
+   * `bitacora_auditoria.actor_usuario_id` tiene **FK contra `auth.users(id)`**,
+   * así que el INSERT reventaba con 23503, `actualizarEstadoPedido` lanzaba, y
+   * **ningún pedido same-day llegaba jamás a `en_ruta`**: el conductor abría su
+   * parada y no había botón de "Entregar". Peor todavía, era irrecuperable —
+   * reintentar exige el manifiesto en `confirmado` y para entonces ya estaba en
+   * `en_ruta`.
+   *
+   * Las cuatro pruebas de este bloque pasaban en verde porque el doble de
+   * `bitacora_auditoria` aceptaba **cualquier** payload sin mirarlo. Un mock que
+   * no mira lo que le escriben no prueba nada de lo que importa aquí: el fallo
+   * vivía justo en el contenido de esa fila.
+   */
+  it("el asiento de bitácora lleva el id de auth.users, nunca el id del conductor", async () => {
+    const asientos: Record<string, unknown>[] = [];
+    const cliente = clienteBatchMock({
+      asignaciones: [
+        {
+          pedido_id: PEDIDO_1,
+          pedidos: {
+            id: PEDIDO_1,
+            estado: "asignado",
+            tipo_pedido: "same_day",
+            driver_id_asignado: CONDUCTOR_1,
+          },
+        },
+      ],
+      asientos,
+    });
+
+    await transicionarPedidosSameDayAEnRuta(
+      cliente,
+      MANIFIESTO_1,
+      TENANT_A,
+      CONDUCTOR_1,
+      actorConductor(),
+      USUARIO_AUTH_1,
+    );
+
+    expect(asientos.length).toBeGreaterThan(0);
+    for (const asiento of asientos) {
+      expect(asiento.actor_usuario_id).toBe(USUARIO_AUTH_1);
+      // Explícito y no redundante: es EL valor equivocado que estuvo puesto, y
+      // decirlo por su nombre deja claro qué se está defendiendo.
+      expect(asiento.actor_usuario_id).not.toBe(CONDUCTOR_1);
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -897,7 +965,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
       errorConsulta: { message: "fallo de conexión simulado" },
     });
     await expect(
-      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor()),
+      transicionarPedidosSameDayAEnRuta(cliente, MANIFIESTO_1, TENANT_A, CONDUCTOR_1, actorConductor(), USUARIO_AUTH_1),
     ).rejects.toThrow("fallo de conexión simulado");
   });
 });
