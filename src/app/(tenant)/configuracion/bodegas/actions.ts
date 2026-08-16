@@ -68,6 +68,14 @@ export interface BodegaFila {
   esPrincipal: boolean;
   activa: boolean;
   geoEstado: EstadoGeocoding;
+  /**
+   * Override de `identidad.courier_config_retiro.monto_visita_bodega_clp`
+   * para ESTA bodega. Siempre `null` para `tipo === "courier"` (esa tabla no
+   * tiene la columna — ahí no se retira nada de un seller). `null` en una
+   * bodega de seller significa "hereda el monto general del tenant", nunca
+   * cero — el CHECK `seller_bodegas_monto_visita_positivo` lo impone en BD.
+   */
+  montoVisitaClp: number | null;
 }
 
 type ResultadoAccion = { ok: true } | { ok: false; mensaje: string };
@@ -114,6 +122,9 @@ function mapearFila(fila: Record<string, unknown>): BodegaFila {
     esPrincipal: fila.es_principal as boolean,
     activa: fila.activa as boolean,
     geoEstado: ((fila.geo_estado as string | null) ?? "pendiente") as EstadoGeocoding,
+    // `undefined` en courier_bodegas (columna inexistente) cae a `null` igual
+    // que un NULL real de seller_bodegas — mismo significado: "sin override".
+    montoVisitaClp: fila.monto_visita_clp != null ? Number(fila.monto_visita_clp) : null,
   };
 }
 
@@ -133,6 +144,9 @@ function mensajeDeError(err: unknown, fallback: string): string {
     if (msg.includes("seller_bodegas_seller_pertenece_al_tenant")) {
       return "Ese seller no pertenece a tu courier.";
     }
+    if (msg.includes("seller_bodegas_monto_visita_positivo")) {
+      return "El monto por visita de esta bodega debe ser un entero en CLP mayor a cero (o vacío, para heredar el monto general).";
+    }
     return msg || fallback;
   }
   return fallback;
@@ -146,20 +160,28 @@ interface CamposBodegaForm {
   contactoNombre: string | null;
   contactoTelefono: string | null;
   esPrincipalSolicitado: boolean;
+  /** Solo aplica a `seller_bodegas` — `null` para courier (ver `BodegaFila`). */
+  montoVisitaClp: number | null;
 }
 
+/**
+ * `esSeller` gatea TODOS los campos que solo existen en `seller_bodegas`
+ * (contacto y el override de monto por visita) — `courier_bodegas` no tiene
+ * ninguna de esas columnas. Antes se llamaba `conContacto`; se renombró al
+ * agregar el monto para no sugerir que solo protegía los campos de contacto.
+ */
 function leerCamposBodega(
   formData: FormData,
-  opciones: { conContacto: boolean },
+  opciones: { esSeller: boolean },
 ): { ok: true; valores: CamposBodegaForm } | RespuestaError {
   const nombre = String(formData.get("nombre") ?? "").trim();
   const direccion = String(formData.get("direccion") ?? "").trim();
   const comuna = String(formData.get("comuna") ?? "").trim();
   const instruccionesAcceso = String(formData.get("instrucciones_acceso") ?? "").trim() || null;
-  const contactoNombre = opciones.conContacto
+  const contactoNombre = opciones.esSeller
     ? String(formData.get("contacto_nombre") ?? "").trim() || null
     : null;
-  const contactoTelefono = opciones.conContacto
+  const contactoTelefono = opciones.esSeller
     ? String(formData.get("contacto_telefono") ?? "").trim() || null
     : null;
   const esPrincipalSolicitado = formData.get("es_principal") === "true";
@@ -171,9 +193,37 @@ function leerCamposBodega(
     return { ok: false, mensaje: "La comuna seleccionada no es válida." };
   }
 
+  // Vacío = hereda el monto general del tenant (NUNCA cero — el CHECK
+  // `seller_bodegas_monto_visita_positivo` lo prohíbe en BD; se valida acá
+  // también para dar un mensaje que explique el porqué, no solo un 23514).
+  let montoVisitaClp: number | null = null;
+  if (opciones.esSeller) {
+    const montoVisitaRaw = String(formData.get("monto_visita_clp") ?? "").trim();
+    if (montoVisitaRaw) {
+      const n = Number(montoVisitaRaw);
+      if (!Number.isInteger(n) || n <= 0) {
+        return {
+          ok: false,
+          mensaje:
+            "El monto por visita de esta bodega debe ser un entero en CLP mayor a cero — o déjalo vacío para heredar el monto general del courier.",
+        };
+      }
+      montoVisitaClp = n;
+    }
+  }
+
   return {
     ok: true,
-    valores: { nombre, direccion, comuna, instruccionesAcceso, contactoNombre, contactoTelefono, esPrincipalSolicitado },
+    valores: {
+      nombre,
+      direccion,
+      comuna,
+      instruccionesAcceso,
+      contactoNombre,
+      contactoTelefono,
+      esPrincipalSolicitado,
+      montoVisitaClp,
+    },
   };
 }
 
@@ -323,6 +373,10 @@ async function crearBodegaInterno(
     payload.seller_id = args.sellerId;
     payload.contacto_nombre = args.contactoNombre;
     payload.contacto_telefono = args.contactoTelefono;
+    // `null` explícito (y no "omitir la clave") deja claro en el payload que
+    // "sin override" es una decisión, no un olvido — courier_bodegas jamás
+    // llega a esta rama, así que no hay riesgo de escribirla donde no existe.
+    payload.monto_visita_clp = args.montoVisitaClp;
   }
 
   const { data, error } = await cliente
@@ -393,6 +447,9 @@ async function editarBodegaInterno(
   if (args.tabla === "seller_bodegas") {
     payload.contacto_nombre = args.contactoNombre;
     payload.contacto_telefono = args.contactoTelefono;
+    // `null` = vuelve a heredar el monto general (borra un override previo a
+    // propósito si el operador vacía el campo).
+    payload.monto_visita_clp = args.montoVisitaClp;
   }
 
   const { error } = await cliente
@@ -587,7 +644,7 @@ export async function accionCrearBodegaSeller(sellerId: string, formData: FormDa
   if (!guardia.ok) return guardia;
   if (!sellerId) return { ok: false, mensaje: "Falta el seller." };
 
-  const campos = leerCamposBodega(formData, { conContacto: true });
+  const campos = leerCamposBodega(formData, { esSeller: true });
   if (!campos.ok) return campos;
 
   try {
@@ -620,7 +677,7 @@ export async function accionCrearBodegaCourier(formData: FormData): Promise<Resu
   const guardia = await exigirGestorDeBodegas();
   if (!guardia.ok) return guardia;
 
-  const campos = leerCamposBodega(formData, { conContacto: false });
+  const campos = leerCamposBodega(formData, { esSeller: false });
   if (!campos.ok) return campos;
 
   try {
@@ -656,7 +713,7 @@ export async function accionEditarBodegaSeller(id: string, formData: FormData): 
   const guardia = await exigirGestorDeBodegas();
   if (!guardia.ok) return guardia;
 
-  const campos = leerCamposBodega(formData, { conContacto: true });
+  const campos = leerCamposBodega(formData, { esSeller: true });
   if (!campos.ok) return campos;
 
   try {
@@ -684,7 +741,7 @@ export async function accionEditarBodegaCourier(id: string, formData: FormData):
   const guardia = await exigirGestorDeBodegas();
   if (!guardia.ok) return guardia;
 
-  const campos = leerCamposBodega(formData, { conContacto: false });
+  const campos = leerCamposBodega(formData, { esSeller: false });
   if (!campos.ok) return campos;
 
   try {

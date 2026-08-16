@@ -1770,6 +1770,113 @@ export async function anularLineaLiquidacionPedido(
 }
 
 // =============================================================================
+// anularLineaLiquidacion — por ID de línea (etapa 8)
+// =============================================================================
+
+/**
+ * Anula una línea de liquidación identificándola por SU PROPIO ID.
+ *
+ * POR QUÉ EXISTE, SI YA HAY `anularLineaLiquidacionPedido`. Porque aquella está
+ * cableada por `pedidoId` de punta a punta —la lee con `.eq('pedido_id', …)`,
+ * la audita contra la entidad `pedido` y al final marca `liquidacion_generada`
+ * en la fila del pedido— y una línea de RETIRO EN BODEGA no tiene pedido. Sin
+ * esta función no había ningún camino en el producto para anular el pago de una
+ * visita: quedaba escrita para siempre.
+ *
+ * El id de la línea es lo ÚNICO que las dos clases comparten, así que es la
+ * llave correcta. La de pedido no se retira: sigue siendo la que usa la ficha
+ * del pedido, donde el usuario no conoce el id de la línea.
+ *
+ * ⚠️ NO toca `operacion.pedidos.liquidacion_generada`: en una línea de retiro no
+ * hay pedido que marcar, y en una de entrega esa bandera la gobierna la función
+ * hermana. Duplicar la escritura acá crearía dos dueños del mismo campo.
+ *
+ * La visita en sí NO se borra ni se marca: lo que se anula es el PAGO, no el
+ * hecho. El conductor fue a la bodega igual, y el acta de retiro lo respalda.
+ */
+export async function anularLineaLiquidacion(
+  tenantId: string,
+  lineaId: string,
+  motivo: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeGestionarLiquidacionesConductores(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede anular líneas de liquidación.',
+    );
+  }
+
+  const motivoLimpio = validarMotivo(motivo);
+  const supabase = crearClienteServiceRole();
+
+  const { data: linea, error: errLinea } = await supabase
+    .schema('dinero')
+    .from('lineas_liquidacion')
+    .select('id, anulada, liquidacion_id, monto_final_clp, tipo_hecho, sesion_retiro_id, driver_id')
+    .eq('id', lineaId)
+    // El filtro de tenant NO es redundante con el id: sin él, conocer un uuid
+    // ajeno bastaría para anularle una línea a otro courier.
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errLinea) throw new Error(`Error al leer línea de liquidación: ${errLinea.message}`);
+  if (!linea) throw new ErrorValidacion('No existe esa línea de liquidación.');
+  if (linea.anulada) throw new ErrorValidacion('La línea de liquidación ya está anulada.');
+
+  if (linea.liquidacion_id) {
+    const { data: liq, error: errLiq } = await supabase
+      .schema('dinero')
+      .from('liquidaciones')
+      .select('estado')
+      .eq('id', linea.liquidacion_id as string)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (errLiq) throw new Error(`Error al leer liquidación: ${errLiq.message}`);
+    if (liq && liq.estado !== 'borrador') {
+      throw new ErrorValidacion(
+        `No se puede anular: la liquidación está '${liq.estado}'. Solo se anulan líneas de liquidaciones en borrador.`,
+      );
+    }
+  }
+
+  // Bitácora ANTES del efecto (invariante de CLAUDE.md), y con el autor: es una
+  // acción financiera de un humano.
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.linea_liquidacion_anulada_manual',
+    entidadTipo: 'linea_liquidacion',
+    entidadId: lineaId,
+    detalle: {
+      tipo_hecho: linea.tipo_hecho,
+      driver_id: linea.driver_id,
+      sesion_retiro_id: linea.sesion_retiro_id ?? null,
+      liquidacion_id: linea.liquidacion_id ?? null,
+      monto_final_clp: Math.round(Number(linea.monto_final_clp ?? 0)),
+      motivo: motivoLimpio,
+    },
+  });
+
+  // `.eq('anulada', false)` es compare-and-set: si otra sesión la anuló entre la
+  // lectura y esta escritura, no casa ninguna fila y no se pisa su motivo.
+  const { error: errUpdate } = await supabase
+    .schema('dinero')
+    .from('lineas_liquidacion')
+    .update({
+      anulada: true,
+      anulada_en: new Date().toISOString(),
+      motivo_anulacion: 'ajuste_manual',
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', lineaId)
+    .eq('tenant_id', tenantId)
+    .eq('anulada', false);
+  if (errUpdate) throw new Error(`Error al anular línea de liquidación: ${errUpdate.message}`);
+}
+
+// =============================================================================
 // registrarPreflightOmitido — override del preflight P0 (auditoría jul 2026)
 // =============================================================================
 

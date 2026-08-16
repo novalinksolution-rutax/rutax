@@ -18,7 +18,16 @@ import {
 } from "@react-pdf/renderer";
 
 interface LineaLiquidacionPdf {
-  pedidoId: string;
+  /**
+   * NULL en las lineas de retiro en bodega, que no cuelgan de ningun pedido.
+   *
+   * Antes decia `string` y ese tipo mentia: el `.slice(0, 8)` de mas abajo
+   * lanzaba con un pedido nulo, la excepcion caia dentro del `try` del job
+   * (generar-liquidacion-conductor.ts) que solo hace `logger.error`, y la
+   * liquidacion quedaba en `borrador` PARA SIEMPRE — sin totales y sin
+   * documento. Es el papel con el que el conductor discute su plata.
+   */
+  pedidoId: string | null;
   fechaEntrega: string;
   concepto: string;
   montoFinalClp: number;
@@ -187,7 +196,9 @@ function DocumentoLiquidacion({
 
           {lineas.map((l, i) => (
             <View key={i} style={estilos.filaTabla}>
-              <Text style={estilos.colPedido}>#{l.pedidoId.slice(0, 8)}</Text>
+              <Text style={estilos.colPedido}>
+                {l.pedidoId ? `#${l.pedidoId.slice(0, 8)}` : 'Retiro'}
+              </Text>
               <Text style={estilos.colFecha}>{formatearFecha(l.fechaEntrega)}</Text>
               <Text style={estilos.colConcepto}>{l.concepto}</Text>
               <Text style={estilos.colMonto}>{formatearCLP(l.montoFinalClp)}</Text>

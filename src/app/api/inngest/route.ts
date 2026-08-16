@@ -73,6 +73,7 @@ import { jobConsultarEstadoPayout } from "@/modules/dinero/jobs/consultar-estado
 // Jobs F19/Fase 3 — confirmación instantánea de payouts por webhook Fintoc
 import { jobAplicarActualizacionPayout } from "@/modules/dinero/jobs/aplicar-actualizacion-payout";
 import { jobConciliarPayoutConfirmado } from "@/modules/dinero/jobs/conciliar-payout-confirmado";
+import { jobGenerarLineaRetiro } from "@/modules/dinero/jobs/generar-linea-retiro";
 
 // Jobs de Plataforma (backstage Rutax — suscripciones de couriers)
 import { jobGenerarPeriodosSuscripcion } from "@/modules/plataforma/jobs/generar-periodos";
@@ -146,6 +147,8 @@ const funciones = [
   // Jobs F19/Fase 3: confirmación instantánea de payouts por webhook Fintoc
   jobAplicarActualizacionPayout,
   jobConciliarPayoutConfirmado,
+  // C8 — la linea de liquidacion por visita a bodega (etapa 8).
+  jobGenerarLineaRetiro,
   // Jobs Plataforma — suscripciones de couriers a Rutax (backstage financiero)
   jobGenerarPeriodosSuscripcion,
   jobAplicarCambiosPlan,

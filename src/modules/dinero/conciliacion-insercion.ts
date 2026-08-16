@@ -34,9 +34,32 @@ export async function existeEventoConciliacion(
   tenantId: string,
   tipoDiferencia: string,
   filtro: {
-    pedidoId?: string;
+    /**
+     * Tres estados distintos, y hay que distinguirlos (etapa 8, retiro en
+     * bodega, 20260815000004 — `lineas_liquidacion.pedido_id` pasó a NULLABLE):
+     *   - `undefined` — el caller no usa el pedido como clave de idempotencia
+     *     (p. ej. filtra solo por `liquidacionId`/`sesionRetiroId`): NO se
+     *     agrega condición sobre `pedido_id`.
+     *   - `string` — filtra por ESE pedido (`pedido_id = valor`).
+     *   - `null` — filtra EXPLÍCITAMENTE por hallazgos SIN pedido
+     *     (`pedido_id IS NULL`) — el caso de una excepción del lado
+     *     'retiro_bodega', que no tiene pedido.
+     * Antes de esto `pedidoId` solo aceptaba `string | undefined`, y el gate
+     * era `if (filtro.pedidoId)` — falsy tanto para `null` como para
+     * `undefined` por igual. Un caller que quisiera decir "sin pedido" no
+     * tenía forma de expresarlo: la condición sobre `pedido_id` simplemente NO
+     * se aplicaba, la consulta quedaba en `(tenant_id, tipo_diferencia)` y
+     * `.maybeSingle()` corría el riesgo de toparse con MÁS de una fila (error
+     * de PostgREST que esta función no comprueba — ver más abajo) o de
+     * encontrar el evento de OTRO pedido y suprimir un hallazgo legítimo.
+     */
+    pedidoId?: string | null;
     periodoCobroidId?: string;
     liquidacionId?: string;
+    /** Conductor — clave de idempotencia del lado 'retiro_bodega' (junto a `sesionRetiroId`). */
+    driverId?: string;
+    /** Visita a bodega — clave de idempotencia del lado 'retiro_bodega' (columna agregada por 20260815000005). */
+    sesionRetiroId?: string;
   },
 ): Promise<boolean> {
   let query = supabase
@@ -46,7 +69,9 @@ export async function existeEventoConciliacion(
     .eq('tenant_id', tenantId)
     .eq('tipo_diferencia', tipoDiferencia);
 
-  if (filtro.pedidoId) {
+  if (filtro.pedidoId === null) {
+    query = query.is('pedido_id', null);
+  } else if (filtro.pedidoId) {
     query = query.eq('pedido_id', filtro.pedidoId);
   }
   if (filtro.periodoCobroidId) {
@@ -54,6 +79,12 @@ export async function existeEventoConciliacion(
   }
   if (filtro.liquidacionId) {
     query = query.eq('liquidacion_id', filtro.liquidacionId);
+  }
+  if (filtro.driverId) {
+    query = query.eq('driver_id', filtro.driverId);
+  }
+  if (filtro.sesionRetiroId) {
+    query = query.eq('sesion_retiro_id', filtro.sesionRetiroId);
   }
 
   const { data } = await query.maybeSingle();
@@ -67,11 +98,26 @@ export interface EventoConciliacionPayload {
   pedido_id?: string | null;
   driver_id?: string | null;
   liquidacion_id?: string | null;
+  /** Visita a bodega — NULL salvo en hallazgos del lado 'retiro_bodega' (columna agregada por 20260815000005). */
+  sesion_retiro_id?: string | null;
   tipo_diferencia: TipoDiferenciaConciliacion;
   descripcion: string;
   monto_diferencia_clp?: number | null;
   estado: string;
   job_run_id: string;
+  /**
+   * Bloqueo de acciones financieras (§1.1 P1, migración 20260708000001).
+   * Omitidos → toman el DEFAULT de la columna (`false`/`false`/NULL), igual
+   * que el comportamiento histórico de esta función (C7 y el motor de payout
+   * nunca bloquean). `generar-linea-retiro.ts` (C8) SÍ los necesita: sin
+   * `bloquea_pago=true` la excepción 'retiro_sin_monto_configurado' quedaría
+   * como un aviso decorativo en vez de retener el pago, exactamente el
+   * mecanismo que el propio job existe para garantizar.
+   */
+  bloquea_facturacion?: boolean;
+  bloquea_pago?: boolean;
+  /** Obligatorio (CHECK eventos_conciliacion_bloqueo_motivo) cuando bloquea_facturacion o bloquea_pago es true. */
+  motivo_bloqueo?: string | null;
 }
 
 /**

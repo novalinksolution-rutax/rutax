@@ -80,13 +80,16 @@ const DRIVER_2 = "driver-2222-0000-0000-0000-000000000000";
 const VENTANA = { desde: "2026-06-01", hasta: "2026-06-30" };
 
 // Líneas de liquidación del tenant A.
+// `tipo_hecho: "entrega"` explícito en todas — desde la etapa 8 (retiro en
+// bodega, 20260815000004) la tabla también guarda líneas 'retiro_bodega' que
+// NO deben contarse como entrega (ver los describe() dedicados más abajo).
 const lineasLiqTenantA = [
   // Vigentes (anulada=false): DEBEN contarse.
-  { driver_id: DRIVER_1, monto_final_clp: "1500", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-10" },
-  { driver_id: DRIVER_1, monto_final_clp: "2000", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-15" },
-  { driver_id: DRIVER_2, monto_final_clp: "1800", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-20" },
+  { driver_id: DRIVER_1, monto_final_clp: "1500", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-10", tipo_hecho: "entrega" },
+  { driver_id: DRIVER_1, monto_final_clp: "2000", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-15", tipo_hecho: "entrega" },
+  { driver_id: DRIVER_2, monto_final_clp: "1800", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-20", tipo_hecho: "entrega" },
   // Anulada: NO DEBE contarse.
-  { driver_id: DRIVER_1, monto_final_clp: "9000", anulada: true, tenant_id: TENANT_A, fecha_entrega: "2026-06-12" },
+  { driver_id: DRIVER_1, monto_final_clp: "9000", anulada: true, tenant_id: TENANT_A, fecha_entrega: "2026-06-12", tipo_hecho: "entrega" },
 ];
 
 // Líneas de cobro del tenant A (al seller).
@@ -160,8 +163,8 @@ describe("F22-1 obtenerCostoPorEntrega", () => {
 
   it("calcula promedio correcto con datos limpios", async () => {
     const lineasVigentes = [
-      { monto_final_clp: "1500", anulada: false, driver_id: DRIVER_1 },
-      { monto_final_clp: "2500", anulada: false, driver_id: DRIVER_1 },
+      { monto_final_clp: "1500", anulada: false, driver_id: DRIVER_1, tipo_hecho: "entrega" },
+      { monto_final_clp: "2500", anulada: false, driver_id: DRIVER_1, tipo_hecho: "entrega" },
     ];
     const cliente = clienteConLineasLiq(lineasVigentes);
     const resultado = await obtenerCostoPorEntrega(cliente, TENANT_A, VENTANA);
@@ -174,9 +177,9 @@ describe("F22-1 obtenerCostoPorEntrega", () => {
   it("redondea el promedio a entero CLP", async () => {
     // 3 entregas con montos que dan promedio no entero.
     const lineas = [
-      { monto_final_clp: "1000", anulada: false, driver_id: DRIVER_1 },
-      { monto_final_clp: "1001", anulada: false, driver_id: DRIVER_1 },
-      { monto_final_clp: "1002", anulada: false, driver_id: DRIVER_1 },
+      { monto_final_clp: "1000", anulada: false, driver_id: DRIVER_1, tipo_hecho: "entrega" },
+      { monto_final_clp: "1001", anulada: false, driver_id: DRIVER_1, tipo_hecho: "entrega" },
+      { monto_final_clp: "1002", anulada: false, driver_id: DRIVER_1, tipo_hecho: "entrega" },
     ];
     const cliente = clienteConLineasLiq(lineas);
     const resultado = await obtenerCostoPorEntrega(cliente, TENANT_A, VENTANA);
@@ -185,6 +188,21 @@ describe("F22-1 obtenerCostoPorEntrega", () => {
     expect(resultado.costoTotalClp).toBe(3003);
     expect(resultado.costoPromedioClp).toBe(1001);
     expect(Number.isInteger(resultado.costoPromedioClp)).toBe(true);
+  });
+
+  it("§Etapa 8 (retiro en bodega): el costo total INCLUYE retiro_bodega, pero totalEntregas NO lo cuenta", async () => {
+    const lineas = [
+      { monto_final_clp: "1500", anulada: false, driver_id: DRIVER_1, tipo_hecho: "entrega" },
+      { monto_final_clp: "2000", anulada: false, driver_id: DRIVER_1, tipo_hecho: "entrega" },
+      // Visita a bodega: es plata que salió (debe sumar al costo) pero NO es una entrega.
+      { monto_final_clp: "5000", anulada: false, driver_id: DRIVER_1, tipo_hecho: "retiro_bodega" },
+    ];
+    const cliente = clienteConLineasLiq(lineas);
+    const resultado = await obtenerCostoPorEntrega(cliente, TENANT_A, VENTANA);
+
+    expect(resultado.totalEntregas).toBe(2); // solo las 2 de tipo_hecho='entrega'
+    expect(resultado.costoTotalClp).toBe(8500); // 1500 + 2000 + 5000, TODO lo pagado
+    expect(resultado.costoPromedioClp).toBe(4250); // 8500 / 2
   });
 });
 
@@ -203,9 +221,9 @@ describe("F22-2 obtenerIngresoYMargen", () => {
       { monto_final_clp: "3600" },
     ];
     const lineasLiqVigentes = [
-      { monto_final_clp: "1500" },
-      { monto_final_clp: "2000" },
-      { monto_final_clp: "1800" },
+      { monto_final_clp: "1500", tipo_hecho: "entrega" },
+      { monto_final_clp: "2000", tipo_hecho: "entrega" },
+      { monto_final_clp: "1800", tipo_hecho: "entrega" },
     ];
     const cliente = crearClienteMock({
       "dinero.lineas_cobro": lineasCobroVigentes,
@@ -221,7 +239,7 @@ describe("F22-2 obtenerIngresoYMargen", () => {
   it("margen puede ser negativo si costo supera ingreso", async () => {
     const cliente = crearClienteMock({
       "dinero.lineas_cobro": [{ monto_final_clp: "1000" }],
-      "dinero.lineas_liquidacion": [{ monto_final_clp: "2000" }],
+      "dinero.lineas_liquidacion": [{ monto_final_clp: "2000", tipo_hecho: "entrega" }],
     });
     const resultado = await obtenerIngresoYMargen(cliente, TENANT_A, VENTANA);
 
@@ -248,8 +266,8 @@ describe("F22-2 obtenerIngresoYMargen", () => {
         { monto_final_clp: "4000" },
       ],
       "dinero.lineas_liquidacion": [
-        { monto_final_clp: "2000" },
-        { monto_final_clp: "2000" },
+        { monto_final_clp: "2000", tipo_hecho: "entrega" },
+        { monto_final_clp: "2000", tipo_hecho: "entrega" },
       ],
     });
     const resultado = await obtenerIngresoYMargen(cliente, TENANT_A, VENTANA);
@@ -276,6 +294,23 @@ describe("F22-2 obtenerIngresoYMargen", () => {
     expect(resultado.ingresoTotalClp).toBe(10600); // 3000+4000+3600
     expect(resultado.costoTotalClp).toBe(5300);    // 1500+2000+1800
   });
+
+  it("§Etapa 8: costoTotalClp incluye retiro_bodega, pero totalEntregas (denominador del margen por entrega) no", async () => {
+    const cliente = crearClienteMock({
+      "dinero.lineas_cobro": [{ monto_final_clp: "10000" }],
+      "dinero.lineas_liquidacion": [
+        { monto_final_clp: "2000", tipo_hecho: "entrega" },
+        { monto_final_clp: "3000", tipo_hecho: "retiro_bodega" },
+      ],
+    });
+    const resultado = await obtenerIngresoYMargen(cliente, TENANT_A, VENTANA);
+
+    // costo = 2000 (entrega) + 3000 (retiro) = 5000 — TODO lo pagado al conductor.
+    expect(resultado.costoTotalClp).toBe(5000);
+    // margen = 10000 - 5000 = 5000; 1 sola entrega → margenPorEntregaClp = 5000/1.
+    expect(resultado.margenClp).toBe(5000);
+    expect(resultado.margenPorEntregaClp).toBe(5000);
+  });
 });
 
 // =============================================================================
@@ -285,9 +320,9 @@ describe("F22-2 obtenerIngresoYMargen", () => {
 describe("F22-3 obtenerCostoPorConductor", () => {
   it("agrupa por conductor y enriquece con nombre", async () => {
     const lineas = [
-      { driver_id: DRIVER_1, monto_final_clp: "1500" },
-      { driver_id: DRIVER_1, monto_final_clp: "2000" },
-      { driver_id: DRIVER_2, monto_final_clp: "1800" },
+      { driver_id: DRIVER_1, monto_final_clp: "1500", tipo_hecho: "entrega" },
+      { driver_id: DRIVER_1, monto_final_clp: "2000", tipo_hecho: "entrega" },
+      { driver_id: DRIVER_2, monto_final_clp: "1800", tipo_hecho: "entrega" },
     ];
     const cliente = crearClienteMock({
       "dinero.lineas_liquidacion": lineas,
@@ -310,9 +345,9 @@ describe("F22-3 obtenerCostoPorConductor", () => {
 
   it("ordena de mayor a menor costo total", async () => {
     const lineas = [
-      { driver_id: DRIVER_2, monto_final_clp: "1800" },
-      { driver_id: DRIVER_1, monto_final_clp: "1500" },
-      { driver_id: DRIVER_1, monto_final_clp: "2000" },
+      { driver_id: DRIVER_2, monto_final_clp: "1800", tipo_hecho: "entrega" },
+      { driver_id: DRIVER_1, monto_final_clp: "1500", tipo_hecho: "entrega" },
+      { driver_id: DRIVER_1, monto_final_clp: "2000", tipo_hecho: "entrega" },
     ];
     const cliente = crearClienteMock({
       "dinero.lineas_liquidacion": lineas,
@@ -337,7 +372,7 @@ describe("F22-3 obtenerCostoPorConductor", () => {
 
   it("usa 'Conductor' como nombre de fallback si el conductor no está en la tabla", async () => {
     const DRIVER_DESCONOCIDO = "driver-9999-0000-0000-0000-000000000000";
-    const lineas = [{ driver_id: DRIVER_DESCONOCIDO, monto_final_clp: "1000" }];
+    const lineas = [{ driver_id: DRIVER_DESCONOCIDO, monto_final_clp: "1000", tipo_hecho: "entrega" }];
     // Sin conductores en el mock.
     const cliente = crearClienteMock({
       "dinero.lineas_liquidacion": lineas,
@@ -346,6 +381,24 @@ describe("F22-3 obtenerCostoPorConductor", () => {
     const resultado = await obtenerCostoPorConductor(cliente, TENANT_A, VENTANA);
 
     expect(resultado[0].nombre).toBe("Conductor");
+  });
+
+  it("§Etapa 8: costoTotalClp del conductor incluye retiro_bodega, pero 'entregas' no lo cuenta", async () => {
+    const lineas = [
+      { driver_id: DRIVER_1, monto_final_clp: "1500", tipo_hecho: "entrega" },
+      { driver_id: DRIVER_1, monto_final_clp: "2000", tipo_hecho: "entrega" },
+      // Visita a bodega del mismo conductor: se le pagó, pero no es una entrega.
+      { driver_id: DRIVER_1, monto_final_clp: "4000", tipo_hecho: "retiro_bodega" },
+    ];
+    const cliente = crearClienteMock({
+      "dinero.lineas_liquidacion": lineas,
+      "identidad.conductores": conductoresTenantA,
+    });
+    const resultado = await obtenerCostoPorConductor(cliente, TENANT_A, VENTANA);
+
+    const driver1 = resultado.find((r) => r.driverId === DRIVER_1)!;
+    expect(driver1.entregas).toBe(2); // solo las de tipo_hecho='entrega'
+    expect(driver1.costoTotalClp).toBe(7500); // 1500 + 2000 + 4000, TODO lo pagado
   });
 });
 
@@ -484,8 +537,8 @@ describe("F22-5 obtenerResumenFinanciero", () => {
   it("agrega correctamente los tres módulos", async () => {
     const cliente = crearClienteMock({
       "dinero.lineas_liquidacion": [
-        { monto_final_clp: "1500", driver_id: DRIVER_1 },
-        { monto_final_clp: "2000", driver_id: DRIVER_1 },
+        { monto_final_clp: "1500", driver_id: DRIVER_1, tipo_hecho: "entrega" },
+        { monto_final_clp: "2000", driver_id: DRIVER_1, tipo_hecho: "entrega" },
       ],
       "dinero.lineas_cobro": [
         { monto_final_clp: "3000" },

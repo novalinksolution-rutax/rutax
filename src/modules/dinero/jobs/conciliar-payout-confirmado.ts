@@ -98,7 +98,15 @@ async function conciliarLiquidacionAcotada(
     .select('pedido_id, driver_id, monto_final_clp')
     .eq('tenant_id', tenantId)
     .eq('liquidacion_id', liquidacionId)
-    .eq('anulada', false);
+    .eq('anulada', false)
+    // Etapa 8 (retiro en bodega, 20260815000004): una liquidación puede traer
+    // líneas 'retiro_bodega' con pedido_id NULL — una visita a bodega no tiene
+    // línea de cobro al seller que conciliar (el retiro no se le cobra al
+    // seller todavía). Sin este filtro, `pedidoId` más abajo sería `null` y
+    // `.eq('pedido_id', pedidoId)` fallaría al castear 'null' a uuid; el error
+    // se relanza como `throw` y ABORTA el detector de fuga completo para TODA
+    // la liquidación (incluidas sus líneas de entrega legítimas).
+    .eq('tipo_hecho', 'entrega');
 
   if (error) {
     throw new Error(`Error al leer líneas de la liquidación ${liquidacionId}: ${error.message}`);

@@ -822,7 +822,16 @@ export async function preflightEmitirPago(
 
   // ⚠️ PAGINADO OBLIGATORIO — mismo motivo, del otro lado: es el resumen previo a
   // aprobar el PAGO a un conductor.
-  const lineasVigentes = await leerTodasLasFilas<{ pedido_id: string }>(
+  //
+  // Etapa 8 (retiro en bodega, 20260815000004): esta liquidación puede incluir
+  // líneas 'retiro_bodega' con pedido_id NULL. `vigentes.length` (más abajo,
+  // en `resumen.lineasIncluidas`) cuenta TODAS las líneas de la liquidación,
+  // entrega + retiro — a propósito: es el número de conceptos que este pago
+  // efectivamente va a liquidar, y una visita a bodega es uno de ellos tanto
+  // como una entrega. `pedidoIds` (más abajo) usa `.filter(Boolean)`, así que
+  // las líneas sin pedido quedan excluidas de las verificaciones que sí son
+  // por-pedido (incidencias abiertas) sin necesidad de tocar nada aquí.
+  const lineasVigentes = await leerTodasLasFilas<{ pedido_id: string | null }>(
     `líneas vigentes de la liquidación ${liquidacionId}`,
     (desde, hasta) =>
       supabase
@@ -847,7 +856,7 @@ export async function preflightEmitirPago(
     throw new Error(`Error al leer líneas de liquidación anuladas: ${errorAnuladas.message}`);
   }
 
-  const vigentes = (lineasVigentes ?? []) as Array<{ pedido_id: string }>;
+  const vigentes = (lineasVigentes ?? []) as Array<{ pedido_id: string | null }>;
   const lineasAnuladas = (lineasAnuladasData ?? []) as Array<{ motivo_anulacion: string | null }>;
 
   const itemAnuladas = itemLineasAnuladas(lineasAnuladas);
@@ -857,7 +866,9 @@ export async function preflightEmitirPago(
     ...(await evaluarDiscrepanciasConciliacion(supabase, tenantId, { liquidacionId })),
   );
 
-  const pedidoIds = vigentes.map((l) => l.pedido_id).filter(Boolean);
+  // `.filter(Boolean)` ya excluye las líneas 'retiro_bodega' (pedido_id NULL):
+  // una visita a bodega no tiene incidencia de pedido que revisar.
+  const pedidoIds = vigentes.map((l) => l.pedido_id).filter(Boolean) as string[];
   advertencias.push(...(await evaluarIncidenciasAbiertas(supabase, tenantId, pedidoIds)));
 
   const resultadoBloqueo = await bloqueaPago({
@@ -870,6 +881,12 @@ export async function preflightEmitirPago(
   const resumen: ResumenPago = {
     tipoAccion: 'emitir_pago',
     conductorNombre,
+    // `vigentes.length` cuenta TODAS las líneas de la liquidación (entrega +
+    // retiro_bodega) — ver el comentario junto a `lineasVigentes` más arriba.
+    // El campo se llama neutro ('líneas', no 'entregas') por eso mismo, aunque
+    // la UI del dialog de pago hoy lo muestre bajo el rótulo "Entregas
+    // liquidadas" (`dialog-emitir-pago.tsx`) — copy a revisar por
+    // frontend/copywriter ahora que un pago puede incluir líneas de retiro.
     lineasIncluidas: vigentes.length,
     lineasAnuladas: lineasAnuladas.length,
     montoBrutoClp: calculo.montoBrutoClp,

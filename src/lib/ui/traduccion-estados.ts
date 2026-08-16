@@ -650,6 +650,7 @@ export const TEXTO_TIPO_DIFERENCIA: Record<TipoDiferenciaConciliacion, string> =
   linea_liquidacion_sin_pedido_entregado: "Línea de liquidación sin pedido entregado",
   // Reasignación de conductor no propagada (migración 20260812000001)
   liquidacion_atribuida_a_conductor_incorrecto: "Liquidación atribuida al conductor equivocado",
+  retiro_sin_monto_configurado: "Retiro sin monto configurado",
 };
 
 export function traducirTipoDiferencia(tipo: TipoDiferenciaConciliacion): string {

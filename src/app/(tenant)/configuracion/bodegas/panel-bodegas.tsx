@@ -10,9 +10,19 @@ interface Props {
   sellers: SellerFiltro[];
   bodegasCourierIniciales: BodegaFila[];
   errorCourierInicial?: string | null;
+  /**
+   * Monto general del courier por visita — solo lo consume la pestaña de
+   * sellers (courier_bodegas no tiene override). `null` si no está configurado.
+   */
+  montoVisitaDefaultClp: number | null;
 }
 
-export function PanelBodegas({ sellers, bodegasCourierIniciales, errorCourierInicial = null }: Props) {
+export function PanelBodegas({
+  sellers,
+  bodegasCourierIniciales,
+  errorCourierInicial = null,
+  montoVisitaDefaultClp,
+}: Props) {
   return (
     <Tabs defaultValue="sellers">
       <TabsList>
@@ -20,7 +30,7 @@ export function PanelBodegas({ sellers, bodegasCourierIniciales, errorCourierIni
         <TabsTrigger value="courier">Mis bodegas</TabsTrigger>
       </TabsList>
       <TabsContent value="sellers" className="mt-4">
-        <SeccionBodegasSellers sellers={sellers} />
+        <SeccionBodegasSellers sellers={sellers} montoVisitaDefaultClp={montoVisitaDefaultClp} />
       </TabsContent>
       <TabsContent value="courier" className="mt-4">
         <SeccionMisBodegas bodegasIniciales={bodegasCourierIniciales} errorInicial={errorCourierInicial} />

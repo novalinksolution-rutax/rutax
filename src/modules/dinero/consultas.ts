@@ -93,7 +93,15 @@ function filaToLineaLiquidacion(f: Record<string, any>): LineaLiquidacion {
     id: f.id,
     tenantId: f.tenant_id,
     driverId: f.driver_id,
-    pedidoId: f.pedido_id,
+    // `?? null` y no pass-through: PostgREST devuelve `null` pero un `undefined`
+    // por una columna no seleccionada se propagaría como si fuera "sin pedido",
+    // que ahora es un estado con significado propio.
+    pedidoId: f.pedido_id ?? null,
+    sesionRetiroId: f.sesion_retiro_id ?? null,
+    // Sin default 'entrega': si la columna no viene, es que la consulta no la
+    // pidió, y adivinar acá haría que una línea de retiro se contara como
+    // entrega en silencio — justo el error que el discriminador viene a evitar.
+    tipoHecho: f.tipo_hecho,
     liquidacionId: f.liquidacion_id ?? null,
     montoBaseClp: Number(f.monto_base_clp),
     ajusteIncidenciaClp: Number(f.ajuste_incidencia_clp ?? 0),

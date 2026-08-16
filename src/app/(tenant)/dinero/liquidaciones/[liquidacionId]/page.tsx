@@ -24,6 +24,7 @@ import {
   BADGE_ESTADO_PAYOUT,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
+import { referenciaLineaLiquidacion } from "@/lib/ui/referencia-linea-liquidacion";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
@@ -297,17 +298,26 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
 
 function FilaLinea({ linea }: { linea: LineaLiquidacion }) {
   const ajuste = formatearAjuste(linea.ajusteIncidenciaClp);
+  const referencia = referenciaLineaLiquidacion(linea);
 
   return (
     <tr className="hover:bg-muted/30 transition-colors">
       <td className="px-4 py-3">
-        <Link
-          href={`/operaciones/${linea.pedidoId}`}
-          title={linea.pedidoId}
-          className="font-mono text-xs text-primary hover:underline"
-        >
-          {linea.pedidoId.slice(0, 8)}…
-        </Link>
+        {referencia.href ? (
+          <Link
+            href={referencia.href}
+            title={referencia.titulo ?? undefined}
+            className="font-mono text-xs text-primary hover:underline"
+          >
+            {referencia.etiqueta}
+          </Link>
+        ) : (
+          // Una línea de retiro no lleva a ningún pedido: no se pinta un enlace
+          // muerto ni un id que no existe.
+          <span title={referencia.titulo ?? undefined} className="text-xs text-muted-foreground">
+            {referencia.etiqueta}
+          </span>
+        )}
       </td>
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
         {formatearFechaCorta(linea.fechaEntrega)}

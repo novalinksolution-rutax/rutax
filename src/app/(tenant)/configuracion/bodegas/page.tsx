@@ -4,6 +4,7 @@ import { ShieldAlert } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarBodegas } from "@/modules/identidad/capacidades";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { obtenerMontoVisitaDefaultClp } from "@/lib/datos-tenant/config-retiro";
 import { accionListarBodegasCourier } from "./actions";
 import { PanelBodegas } from "./panel-bodegas";
 
@@ -31,9 +32,10 @@ export default async function PaginaBodegas() {
 
   const tenantId = sesion.usuario.tenantId;
 
-  const [sellers, bodegasCourierResultado] = await Promise.all([
+  const [sellers, bodegasCourierResultado, montoVisitaDefaultClp] = await Promise.all([
     obtenerSellersDelTenant(tenantId),
     accionListarBodegasCourier(),
+    obtenerMontoVisitaDefaultClp(tenantId),
   ]);
 
   const bodegasCourierIniciales = bodegasCourierResultado.ok ? bodegasCourierResultado.datos : [];
@@ -52,6 +54,7 @@ export default async function PaginaBodegas() {
         sellers={sellers}
         bodegasCourierIniciales={bodegasCourierIniciales}
         errorCourierInicial={errorCourierInicial}
+        montoVisitaDefaultClp={montoVisitaDefaultClp}
       />
     </div>
   );

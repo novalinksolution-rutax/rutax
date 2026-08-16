@@ -83,7 +83,14 @@ export type TipoDiferenciaConciliacion =
   // solo se genera cuando NO puede — la liquidación de origen ya está
   // `emitida`/`pagada` (inmutable, compuerta humana) — y deja la discrepancia
   // visible para resolución manual (bono/penalización vía F16).
-  | 'liquidacion_atribuida_a_conductor_incorrecto';
+  | 'liquidacion_atribuida_a_conductor_incorrecto'
+  /**
+   * Etapa 8: una visita a bodega se cerro y el courier no tiene configurado
+   * cuanto vale. El job C8 se NIEGA a escribir una linea de $0 y levanta esto
+   * con bloqueo de pago. Es la leccion del 2026-08-15 hecha mecanismo: un cero
+   * silencioso es peor que un error ruidoso.
+   */
+  | 'retiro_sin_monto_configurado';
 
 /**
  * Estado de un evento de conciliación (bandeja de excepciones — §1.1 P1).
@@ -211,20 +218,49 @@ export interface LineaCobro {
 }
 
 /**
+ * Qué HECHO generó una línea de dinero. Espeja el enum `dinero.tipo_hecho_linea`.
+ *
+ * `entrega` — un pedido llegó a su destinatario. La línea cuelga del pedido.
+ * `retiro_bodega` — un conductor visitó la bodega de un seller y cargó bultos.
+ *   La línea cuelga de la VISITA, no de ningún pedido: por eso traspasar un
+ *   pedido a otro conductor no puede tocarla, y una cancelación tampoco.
+ *
+ * ⚠️ Contar líneas NO es contar entregas. Todo consumidor que hable de
+ * "entregas" tiene que filtrar por este campo.
+ */
+export type TipoHechoLinea = "entrega" | "retiro_bodega";
+
+/**
  * Una fila de `dinero.lineas_liquidacion`.
- * Representa el monto que el courier paga al conductor por un pedido elegible.
+ * El monto que el courier le paga al conductor por un hecho: una entrega o una
+ * visita a bodega (ver `TipoHechoLinea`).
  */
 export interface LineaLiquidacion {
   id: string;
   tenantId: string;
   driverId: string;
-  pedidoId: string;
+  /**
+   * NULL en las líneas de retiro. Antes era `string` y por eso los `.slice(0,8)`
+   * de las pantallas y del PDF compilaban: el tipo mentía. Al volverlo nullable,
+   * el typecheck señala cada punto que hay que proteger.
+   */
+  pedidoId: string | null;
+  /** La visita de la que cuelga la línea. NULL en las líneas de entrega. */
+  sesionRetiroId: string | null;
+  tipoHecho: TipoHechoLinea;
   /** Asignado al agrupar líneas en una liquidación. */
   liquidacionId: string | null;
   montoBaseClp: number;
   ajusteIncidenciaClp: number;
   montoFinalClp: number;
   concepto: string;
+  /**
+   * La fecha del hecho: de la entrega, o de la visita a bodega.
+   * ⚠️ La columna todavía se llama `fecha_entrega` en la base. El nombre engaña
+   * desde la etapa 8 y se renombra a `fecha_hecho` en migración propia — se
+   * separó a propósito porque PostgREST la referencia por STRING en 14 sitios
+   * que el typecheck no ve.
+   */
   fechaEntrega: string;
   incidenciaId: string | null;
   origenGeneracion: OrigenGeneracion;

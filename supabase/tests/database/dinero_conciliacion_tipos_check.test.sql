@@ -102,16 +102,17 @@ select set_eq(
            ('payout_estado_no_reconocido'),
            ('linea_cobro_sin_periodo'),
            ('linea_liquidacion_sin_pedido_entregado'),
-           ('liquidacion_atribuida_a_conductor_incorrecto')
+           ('liquidacion_atribuida_a_conductor_incorrecto'),
+           ('retiro_sin_monto_configurado')
   $sql$,
-  'El CHECK admite EXACTAMENTE los 17 tipos de diferencia declarados (ni uno menos)'
+  'El CHECK admite EXACTAMENTE los 18 tipos de diferencia declarados (ni uno menos)'
 );
 
 -- =============================================================================
--- BLOQUE B · Comportamiento, no texto: los 17 se pueden escribir de verdad
+-- BLOQUE B · Comportamiento, no texto: los 18 se pueden escribir de verdad
 -- =============================================================================
 
--- Test 3: los 17 entran en una sola sentencia. Es el escenario que se rompió:
+-- Test 3: los 18 entran en una sola sentencia. Es el escenario que se rompió:
 -- un tipo ausente devuelve 23514 y aquí la sentencia entera falla nombrándolo.
 select lives_ok(
   $sql$
@@ -137,19 +138,20 @@ select lives_ok(
       'payout_estado_no_reconocido',
       'linea_cobro_sin_periodo',
       'linea_liquidacion_sin_pedido_entregado',
-      'liquidacion_atribuida_a_conductor_incorrecto'
+      'liquidacion_atribuida_a_conductor_incorrecto',
+      'retiro_sin_monto_configurado'
     ]) as tipo
   $sql$,
-  'Los 17 tipos se escriben de verdad en dinero.eventos_conciliacion'
+  'Los 18 tipos se escriben de verdad en dinero.eventos_conciliacion'
 );
 
--- Test 4: y quedaron las 17 filas, una por tipo (la negativa no es vacua).
+-- Test 4: y quedaron las 18 filas, una por tipo (la negativa no es vacua).
 select results_eq(
   $sql$ select count(distinct tipo_diferencia)::int
         from dinero.eventos_conciliacion
         where tenant_id = 'aaaaaaaa-0000-0000-0000-000000008133' $sql$,
-  $sql$ values (17) $sql$,
-  'Quedaron 17 tipos distintos escritos: ninguno se coló por un CHECK relajado'
+  $sql$ values (18) $sql$,
+  'Quedaron 18 tipos distintos escritos: ninguno se coló por un CHECK relajado'
 );
 
 -- Test 5: la lista sigue CERRADA. Un dominio que acepta cualquier cosa no es un
@@ -233,7 +235,8 @@ select lives_ok(
           'payout_estado_no_reconocido',
           'linea_cobro_sin_periodo',
           'linea_liquidacion_sin_pedido_entregado',
-          'liquidacion_atribuida_a_conductor_incorrecto'
+          'liquidacion_atribuida_a_conductor_incorrecto',
+          'retiro_sin_monto_configurado'
         ));
     end
     $blk$;
@@ -274,9 +277,10 @@ select set_eq(
            ('payout_estado_no_reconocido'),
            ('linea_cobro_sin_periodo'),
            ('linea_liquidacion_sin_pedido_entregado'),
-           ('liquidacion_atribuida_a_conductor_incorrecto')
+           ('liquidacion_atribuida_a_conductor_incorrecto'),
+           ('retiro_sin_monto_configurado')
   $sql$,
-  'Tras re-aplicar el DDL vigente, el CHECK sigue admitiendo los mismos 17 tipos'
+  'Tras re-aplicar el DDL vigente, el CHECK sigue admitiendo los mismos 18 tipos'
 );
 
 -- =============================================================================

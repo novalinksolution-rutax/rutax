@@ -580,6 +580,48 @@ export interface EventoComunicacionPublicada {
 }
 
 /**
+ * Retiro en bodega (etapa 8) — una visita a bodega se CERRÓ y hay que pagarla.
+ *
+ * Publicado por `operacion/retiro/sesiones.ts` (`cerrarSesionRetiro`) DESPUÉS
+ * de que el RPC de cierre confirma, y NUNCA para una visita descartada por
+ * llegar a cero bultos: esa se borra, no ocurrió como hecho económico.
+ * Consumido por `dinero/jobs/generar-linea-retiro.ts`.
+ *
+ * POR QUÉ ES UN EVENTO Y NO UNA ESCRITURA EN LÍNEA. El conductor cierra la
+ * visita de pie en la bodega, con el jefe de bodega esperando; hacerlo aguardar
+ * a que se resuelva un monto, se lea una configuración y se escriba una línea
+ * de dinero es meter la trastienda financiera dentro de su gesto operativo.
+ * Además CLAUDE.md lo pide explícitamente: los procesos de dinero corren como
+ * jobs idempotentes con reintentos, no en el request del usuario.
+ *
+ * El `id` determinístico (`linea-retiro-${sesionRetiroId}`) es la PRIMERA de
+ * las dos capas de idempotencia. La segunda es el índice
+ * `lineas_liq_sesion_retiro_uk` en la base: una visita, una línea, pase lo que
+ * pase con los reintentos.
+ *
+ * ⚠️ El evento NO lleva el monto. A propósito: si viajara en el payload, un
+ * reintento de Inngest horas más tarde podría escribir un monto que ya cambió,
+ * y peor, el monto quedaría registrado en la cola de eventos — que no es el
+ * lugar donde se audita la plata. El job lo resuelve al momento de generar.
+ */
+export interface EventoVisitaRetiroCerrada {
+  name: 'dinero/retiro.visita-cerrada';
+  data: {
+    sesionRetiroId: string;
+    tenantId: string;
+    /** El conductor que HIZO la visita — es a quien se le paga, y la FK compuesta de la línea lo impone en la base. */
+    conductorId: string;
+    /** Bodega visitada: de ella sale el override de monto, si lo tiene. */
+    bodegaId: string;
+    sellerId: string;
+    /** Fecha de operación de la visita — es la `fecha_entrega` de la línea (nombre heredado, ver el tipo LineaLiquidacion). */
+    fechaOperacion: string;
+    /** Bultos efectivamente cargados. NO determina el monto (se paga por visita); va al concepto y a la trazabilidad. */
+    bultosTotal: number;
+  };
+}
+
+/**
  * Retiro en bodega (etapa 3) — un bulto se escaneó pero Rutax no pudo
  * casarlo con ningún pedido ya ingestado: candidato ajeno (otro courier) o
  * todavía no ingestado (docs/arquitectura/retiro-y-ruteo.md §2.1).

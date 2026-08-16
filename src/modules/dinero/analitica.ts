@@ -34,13 +34,24 @@ export interface VentanaFechas {
   hasta: string; // 'YYYY-MM-DD'
 }
 
-/** F22-1: costo por entrega en la ventana. */
+/**
+ * F22-1: costo por entrega en la ventana.
+ *
+ * Etapa 8 (retiro en bodega, 20260815000004): `lineas_liquidacion` ahora tiene
+ * DOS hechos generadores — `entrega` (cuelga de un pedido) y `retiro_bodega`
+ * (cuelga de una visita, `pedido_id IS NULL`). Contar FILAS ya no es contar
+ * ENTREGAS. La convención de este módulo, documentada una sola vez aquí:
+ *   - `costoTotalClp` SIEMPRE suma TODAS las líneas vigentes (entrega + retiro):
+ *     es plata real que salió hacia el conductor, sin importar qué la generó.
+ *   - `totalEntregas` (y cualquier denominador "por entrega") cuenta SOLO
+ *     `tipo_hecho = 'entrega'`: una visita a bodega no es una entrega.
+ */
 export interface CostoPorEntrega {
-  /** Número de entregas con línea de liquidación vigente en la ventana. */
+  /** Número de LÍNEAS DE ENTREGA vigentes en la ventana (excluye retiro_bodega). */
   totalEntregas: number;
-  /** Suma de monto_final_clp de lineas_liquidacion vigentes. */
+  /** Suma de monto_final_clp de TODAS las lineas_liquidacion vigentes (entrega + retiro_bodega). */
   costoTotalClp: number;
-  /** costoTotalClp / totalEntregas — 0 si totalEntregas=0. */
+  /** costoTotalClp / totalEntregas — 0 si totalEntregas=0. Ver nota de la interfaz: el numerador incluye retiro, el denominador no. */
   costoPromedioClp: number;
 }
 
@@ -48,13 +59,14 @@ export interface CostoPorEntrega {
 export interface IngresoYMargen {
   /** Suma de monto_final_clp de lineas_cobro vigentes. */
   ingresoTotalClp: number;
-  /** Suma de monto_final_clp de lineas_liquidacion vigentes. */
+  /** Suma de monto_final_clp de TODAS las lineas_liquidacion vigentes (entrega + retiro_bodega) — ver `CostoPorEntrega`. */
   costoTotalClp: number;
   /** ingresoTotalClp − costoTotalClp. Puede ser negativo. */
   margenClp: number;
   /**
    * margenClp / totalEntregas. 0 si totalEntregas=0.
-   * totalEntregas = cuenta de lineas_liquidacion vigentes.
+   * totalEntregas = cuenta de lineas_liquidacion vigentes con tipo_hecho='entrega'
+   * (excluye retiro_bodega — ver `CostoPorEntrega`).
    */
   margenPorEntregaClp: number;
 }
@@ -63,7 +75,9 @@ export interface IngresoYMargen {
 export interface CostoConductor {
   driverId: string;
   nombre: string;
+  /** Cuenta SOLO líneas con tipo_hecho='entrega' — ver `CostoPorEntrega`. */
   entregas: number;
+  /** Suma TODAS las líneas del conductor (entrega + retiro_bodega): es lo que efectivamente se le pagó. */
   costoTotalClp: number;
 }
 
@@ -140,7 +154,7 @@ export async function obtenerCostoPorEntrega(
   const { data, error } = await cliente
     .schema("dinero")
     .from("lineas_liquidacion")
-    .select("monto_final_clp")
+    .select("monto_final_clp, tipo_hecho")
     .eq("tenant_id", tenantId)
     .eq("anulada", false)
     .gte("fecha_entrega", ventana.desde)
@@ -153,7 +167,10 @@ export async function obtenerCostoPorEntrega(
   }
 
   const filas = data ?? [];
-  const totalEntregas = filas.length;
+  // costoTotalClp: TODAS las líneas vigentes (entrega + retiro_bodega) — es
+  // plata real que salió hacia el conductor. totalEntregas: SOLO entrega —
+  // una visita a bodega no es una entrega (ver el comentario de `CostoPorEntrega`).
+  const totalEntregas = filas.filter((f) => f.tipo_hecho === "entrega").length;
   const costoTotalClp = filas.reduce(
     (acc, f) => acc + Math.round(Number(f.monto_final_clp ?? 0)),
     0,
@@ -194,7 +211,7 @@ export async function obtenerIngresoYMargen(
     cliente
       .schema("dinero")
       .from("lineas_liquidacion")
-      .select("monto_final_clp")
+      .select("monto_final_clp, tipo_hecho")
       .eq("tenant_id", tenantId)
       .eq("anulada", false)
       .gte("fecha_entrega", ventana.desde)
@@ -216,11 +233,14 @@ export async function obtenerIngresoYMargen(
     (acc, f) => acc + Math.round(Number(f.monto_final_clp ?? 0)),
     0,
   );
+  // costoTotalClp suma TODO lo pagado al conductor (entrega + retiro_bodega):
+  // el margen real descuenta también lo que costó ir a buscar los bultos.
+  // totalEntregas (denominador de margenPorEntregaClp) cuenta SOLO entrega.
   const costoTotalClp = (liqRes.data ?? []).reduce(
     (acc, f) => acc + Math.round(Number(f.monto_final_clp ?? 0)),
     0,
   );
-  const totalEntregas = (liqRes.data ?? []).length;
+  const totalEntregas = (liqRes.data ?? []).filter((f) => f.tipo_hecho === "entrega").length;
   const margenClp = ingresoTotalClp - costoTotalClp;
   const margenPorEntregaClp =
     totalEntregas > 0 ? Math.round(margenClp / totalEntregas) : 0;
@@ -250,7 +270,7 @@ export async function obtenerCostoPorConductor(
   const { data: lineas, error: errLineas } = await cliente
     .schema("dinero")
     .from("lineas_liquidacion")
-    .select("driver_id, monto_final_clp")
+    .select("driver_id, monto_final_clp, tipo_hecho")
     .eq("tenant_id", tenantId)
     .eq("anulada", false)
     .gte("fecha_entrega", ventana.desde)
@@ -265,14 +285,17 @@ export async function obtenerCostoPorConductor(
   const filas = lineas ?? [];
   if (filas.length === 0) return [];
 
-  // Agregar por driver_id en memoria.
+  // Agregar por driver_id en memoria. costoTotalClp suma TODO lo pagado al
+  // conductor (entrega + retiro_bodega: es lo que efectivamente recibió).
+  // `entregas` cuenta SOLO tipo_hecho='entrega' — ver `CostoPorEntrega`.
   const mapaAgregado = new Map<string, { entregas: number; costoTotalClp: number }>();
   for (const f of filas) {
     const driverId = f.driver_id as string;
     const monto = Math.round(Number(f.monto_final_clp ?? 0));
+    const esEntrega = f.tipo_hecho === "entrega";
     const actual = mapaAgregado.get(driverId) ?? { entregas: 0, costoTotalClp: 0 };
     mapaAgregado.set(driverId, {
-      entregas: actual.entregas + 1,
+      entregas: actual.entregas + (esEntrega ? 1 : 0),
       costoTotalClp: actual.costoTotalClp + monto,
     });
   }

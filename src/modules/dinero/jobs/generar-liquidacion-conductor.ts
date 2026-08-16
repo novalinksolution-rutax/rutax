@@ -88,7 +88,8 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
             // error y se le paga de menos. Un conductor con 40 entregas diarias
             // cruza las 1.000 líneas en un período mensual.
             const lineas = await leerTodasLasFilas<{
-              pedido_id: string;
+              pedido_id: string | null;
+              tipo_hecho: 'entrega' | 'retiro_bodega';
               fecha_entrega: string;
               concepto: string;
               monto_final_clp: number | string;
@@ -96,7 +97,7 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
               supabase
                 .schema('dinero')
                 .from('lineas_liquidacion')
-                .select('pedido_id, fecha_entrega, concepto, monto_final_clp')
+                .select('pedido_id, tipo_hecho, fecha_entrega, concepto, monto_final_clp')
                 .eq('tenant_id', tenantId)
                 .eq('liquidacion_id', liqId)
                 .eq('anulada', false)
@@ -104,7 +105,12 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
                 .range(desde, hasta),
             );
 
-            const totalEntregas = lineas.length;
+            // `lineas.length` ERA el conteo de entregas y dejo de serlo en la
+            // etapa 8: una liquidacion mezcla entregas con visitas a bodega. El
+            // numero va impreso en el PDF que recibe el conductor, asi que
+            // contar de mas no es un detalle de reporteria — es decirle que
+            // hizo entregas que no hizo.
+            const totalEntregas = lineas.filter((l) => l.tipo_hecho === 'entrega').length;
             const montoTotal = lineas.reduce(
               (acc, l) => acc + Math.round(Number(l.monto_final_clp)),
               0,
@@ -141,7 +147,7 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
               fechaInicio,
               fechaFin,
               lineas: lineas.map((l) => ({
-                pedidoId: l.pedido_id as string,
+                pedidoId: l.pedido_id ?? null,
                 fechaEntrega: (l.fecha_entrega as string) ?? '',
                 concepto: (l.concepto as string) ?? '',
                 montoFinalClp: Math.round(Number(l.monto_final_clp)),

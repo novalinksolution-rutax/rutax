@@ -48,6 +48,8 @@ const CATEGORIA_POR_TIPO: Record<TipoDiferenciaConciliacion, CategoriaNegocioCon
   // Concierne directamente a qué conductor cobra por una entrega — mismo
   // terreno que `pago_conductor_faltante`/`payout_revertido_post_confirmacion`.
   liquidacion_atribuida_a_conductor_incorrecto: 'pagos_pendientes',
+  // Es plata que el conductor devengo y todavia no puede cobrar.
+  retiro_sin_monto_configurado: 'pagos_pendientes',
 
   // Todo lo demás → integridad_datos (espejo del `else` del backfill SQL).
   pedido_entregado_sin_linea_cobro: 'integridad_datos',
@@ -101,6 +103,9 @@ const ACCION_POR_TIPO: Record<TipoDiferenciaConciliacion, AccionSugeridaConcilia
   // El remedio real: bono al conductor que entregó, penalización al que no,
   // vía ajuste manual de liquidación (F16, `ajustarLiquidacion`).
   liquidacion_atribuida_a_conductor_incorrecto: 'generar_ajuste_liquidacion',
+  // No hay ajuste que generar: falta CONFIGURAR el monto, y en cuanto se
+  // configure el job lo genera solo en el reintento.
+  retiro_sin_monto_configurado: 'gestionar_pago_conductor',
 };
 
 /** Mapeo fijo `tipoDiferencia → accionSugerida` — espejo del backfill SQL §4.1. */

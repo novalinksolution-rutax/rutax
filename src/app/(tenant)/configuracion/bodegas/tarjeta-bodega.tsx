@@ -8,7 +8,7 @@
  */
 
 import { useState, useTransition } from "react";
-import { MapPin, Phone, Warehouse } from "lucide-react";
+import { HandCoins, MapPin, Phone, Warehouse } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { traducirGeoEstado } from "@/lib/ui/traduccion-estados";
 import {
   accionDesactivarBodega,
@@ -42,11 +43,24 @@ interface Props {
   principalActual: { id: string; nombre: string } | null;
   /** Otras bodegas activas — opciones de reemplazo si esta es la principal. */
   alternativasActivas: { id: string; nombre: string }[];
+  /**
+   * Monto general del courier por visita — solo se usa (y se muestra) cuando
+   * `tipo === "seller"`. `null` = el courier todavía no lo configuró en
+   * Configuración → Retiro.
+   */
+  montoVisitaDefaultClp?: number | null;
   /** El padre vuelve a pedir la lista completa tras cualquier mutación. */
   onCambiado: () => void;
 }
 
-export function TarjetaBodega({ bodega, tipo, principalActual, alternativasActivas, onCambiado }: Props) {
+export function TarjetaBodega({
+  bodega,
+  tipo,
+  principalActual,
+  alternativasActivas,
+  montoVisitaDefaultClp = null,
+  onCambiado,
+}: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [mostrarConfirmarPrincipal, setMostrarConfirmarPrincipal] = useState(false);
@@ -54,6 +68,12 @@ export function TarjetaBodega({ bodega, tipo, principalActual, alternativasActiv
 
   const tieneContacto = !!(bodega.contactoNombre || bodega.contactoTelefono);
   const noUbicada = bodega.geoEstado !== "resuelto";
+
+  // Solo aplica a bodegas de seller — courier_bodegas no tiene la columna, así
+  // que `bodega.montoVisitaClp` siempre llega `null` para `tipo === "courier"`
+  // y esta sección no se renderiza.
+  const esHeredado = bodega.montoVisitaClp === null;
+  const montoVisitaEfectivo = bodega.montoVisitaClp ?? montoVisitaDefaultClp;
 
   // Los tres estados que no son `resuelto` significan cosas distintas y no
   // pueden compartir el mismo texto: decirle "revisa que la dirección esté bien
@@ -141,6 +161,30 @@ export function TarjetaBodega({ bodega, tipo, principalActual, alternativasActiv
             </div>
           )}
 
+          {tipo === "seller" && (
+            <div className="flex items-start gap-2 text-sm">
+              <HandCoins className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <div>
+                <p className="text-xs text-muted-foreground">Pago por visita</p>
+                {montoVisitaEfectivo !== null ? (
+                  <p className="text-foreground">
+                    {formatearCLP(montoVisitaEfectivo)}
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      {esHeredado ? "· monto general del courier" : "· monto propio de esta bodega"}
+                    </span>
+                  </p>
+                ) : (
+                  <span
+                    className="text-warning-subtle-foreground"
+                    title="Configura el monto general en Configuración → Retiro, o uno propio para esta bodega."
+                  >
+                    Sin configurar
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {bodega.instruccionesAcceso && (
             <p className="text-xs text-muted-foreground">{bodega.instruccionesAcceso}</p>
           )}
@@ -188,8 +232,10 @@ export function TarjetaBodega({ bodega, tipo, principalActual, alternativasActiv
                     contactoNombre: bodega.contactoNombre,
                     contactoTelefono: bodega.contactoTelefono,
                     esPrincipal: bodega.esPrincipal,
+                    montoVisitaClp: bodega.montoVisitaClp,
                   }}
                   principalActual={principalActual}
+                  montoVisitaDefaultClp={montoVisitaDefaultClp}
                   trigger={
                     <Button type="button" variant="ghost" size="sm">
                       Editar

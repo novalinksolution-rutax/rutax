@@ -53,6 +53,7 @@ import {
   Radar,
   Warehouse,
   Boxes,
+  HandCoins,
   type LucideIcon,
 } from "lucide-react"
 
@@ -93,6 +94,9 @@ const ICONOS: Record<string, LucideIcon> = {
   // No `Package` (ya es "pedidos") ni `Warehouse` (ya es el catálogo de bodegas):
   // la Preparación no es el lugar, es lo que se acumula dentro de él.
   preparacion: Boxes,
+  // Lo que el courier le paga al conductor por visita a bodega — distinto de
+  // "tarifas" (Tag, cobro al seller) y de "pagos" (Banknote, cobranza).
+  "retiro-bodega": HandCoins,
   "conexion-ml": Link2,
   couriers: Building2,
   metricas: LineChart,

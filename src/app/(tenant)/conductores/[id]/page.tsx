@@ -21,7 +21,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarLiquidacionesConductores, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { traducirEstadoLiquidacion, BADGE_ESTADO_LIQUIDACION } from "@/lib/ui/traduccion-estados";
-import type { EstadoLiquidacion } from "@/modules/dinero/tipos";
+import type { EstadoLiquidacion, TipoHechoLinea } from "@/modules/dinero/tipos";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
@@ -34,13 +34,18 @@ import {
 } from "@/components/ui/table";
 import { DialogAnular } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-corregir-dinero";
 import { accionAnularLiquidacionPedido } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-dinero";
+import { accionAnularLineaLiquidacion } from "./actions-linea";
 import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./acceso-app-conductor";
 
 type Bucket = "acumulando" | "por_pagar" | "pagado";
 
 interface EntregaConsolidada {
   lineaId: string;
-  pedidoId: string;
+  /** NULL en las lineas de retiro en bodega: no cuelgan de ningun pedido. */
+  pedidoId: string | null;
+  tipoHecho: TipoHechoLinea;
+  /** Texto de la linea. En un retiro dice la bodega; ahi no hay destinatario. */
+  concepto: string;
   fechaEntrega: string | null;
   montoClp: number;
   destinatarioNombre: string;
@@ -163,7 +168,7 @@ export default async function PaginaDetalleConductor({ params }: Props) {
     cliente
       .schema("dinero")
       .from("lineas_liquidacion")
-      .select("id, pedido_id, liquidacion_id, monto_final_clp, monto_base_clp, fecha_entrega")
+      .select("id, pedido_id, tipo_hecho, concepto, liquidacion_id, monto_final_clp, monto_base_clp, fecha_entrega")
       .eq("tenant_id", tenantId)
       .eq("driver_id", driverId)
       .eq("anulada", false)
@@ -175,7 +180,14 @@ export default async function PaginaDetalleConductor({ params }: Props) {
 
   // Pedidos y liquidaciones referenciados — dos consultas acotadas (evita joins
   // cross-schema en PostgREST) que luego se combinan en memoria.
-  const pedidoIds = Array.from(new Set(lineas.map((l) => l.pedido_id as string)));
+  // `.filter(Boolean)` NO es defensivo de mas: desde la etapa 8 una linea puede
+  // no tener pedido, y un `null` colandose a `.in("id", …)` sobre una columna
+  // uuid hace fallar la consulta ENTERA. El error no se revisa mas abajo
+  // (`pedidosRes.data ?? []`), asi que la tabla completa del conductor se
+  // quedaria sin nombres ni comunas — no solo la fila del retiro.
+  const pedidoIds = Array.from(
+    new Set(lineas.map((l) => l.pedido_id as string | null).filter((x): x is string => !!x)),
+  );
   const liqIds = Array.from(
     new Set(lineas.map((l) => l.liquidacion_id as string | null).filter((x): x is string => !!x)),
   );
@@ -198,11 +210,13 @@ export default async function PaginaDetalleConductor({ params }: Props) {
 
   const entregas: EntregaConsolidada[] = lineas.map((l) => {
     const liqEstado = l.liquidacion_id ? liqEstadoPorId.get(l.liquidacion_id as string) ?? null : null;
-    const ped = pedidoPorId.get(l.pedido_id as string);
+    const ped = l.pedido_id ? pedidoPorId.get(l.pedido_id as string) : undefined;
     const monto = Number(l.monto_final_clp ?? l.monto_base_clp ?? 0);
     return {
       lineaId: l.id as string,
-      pedidoId: l.pedido_id as string,
+      pedidoId: (l.pedido_id as string | null) ?? null,
+      tipoHecho: l.tipo_hecho as TipoHechoLinea,
+      concepto: (l.concepto as string | null) ?? "",
       fechaEntrega: (l.fecha_entrega as string | null) ?? null,
       montoClp: monto,
       destinatarioNombre: (ped?.destinatario_nombre as string) ?? "—",
@@ -309,10 +323,22 @@ export default async function PaginaDetalleConductor({ params }: Props) {
                       {formatearFechaCorta(e.fechaEntrega)}
                     </TableCell>
                     <TableCell className="px-4">
-                      <Link href={`/operaciones/${e.pedidoId}`} className="font-medium hover:underline">
-                        {e.destinatarioNombre}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">{e.destinatarioComuna}</p>
+                      {e.pedidoId ? (
+                        <>
+                          <Link href={`/operaciones/${e.pedidoId}`} className="font-medium hover:underline">
+                            {e.destinatarioNombre}
+                          </Link>
+                          <p className="text-xs text-muted-foreground">{e.destinatarioComuna}</p>
+                        </>
+                      ) : (
+                        // Un retiro no tiene destinatario: lo que identifica la
+                        // fila es la bodega, y eso ya viene escrito en el
+                        // concepto que dejó el generador.
+                        <>
+                          <span className="font-medium">{e.concepto || "Retiro en bodega"}</span>
+                          <p className="text-xs text-muted-foreground">Pago por visita a bodega</p>
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="px-4">
                       {e.liqEstado ? (
@@ -325,15 +351,28 @@ export default async function PaginaDetalleConductor({ params }: Props) {
                       {formatearCLP(e.montoClp)}
                     </TableCell>
                     <TableCell className="px-4 text-right">
-                      {e.anulable && (
-                        <DialogAnular
-                          pedidoId={e.pedidoId}
-                          titulo="Anular la liquidación de esta entrega"
-                          descripcion="La línea de liquidación al conductor se anulará y no se pagará. Solo aplica a entregas sin liquidar o en una liquidación en borrador."
-                          accion={accionAnularLiquidacionPedido}
-                          etiquetaBoton="Anular"
-                        />
-                      )}
+                      {e.anulable &&
+                        (e.pedidoId ? (
+                          <DialogAnular
+                            pedidoId={e.pedidoId}
+                            titulo="Anular la liquidación de esta entrega"
+                            descripcion="La línea de liquidación al conductor se anulará y no se pagará. Solo aplica a entregas sin liquidar o en una liquidación en borrador."
+                            accion={accionAnularLiquidacionPedido}
+                            etiquetaBoton="Anular"
+                          />
+                        ) : (
+                          // El camino de anulación de siempre está cableado por
+                          // `pedidoId` de punta a punta, y una línea de retiro no
+                          // tiene. Va por id de línea, que es lo único que las dos
+                          // clases comparten.
+                          <DialogAnular
+                            pedidoId={e.lineaId}
+                            titulo="Anular el pago de esta visita a bodega"
+                            descripcion="La línea de liquidación al conductor se anulará y no se pagará. La visita queda registrada igual: lo que se anula es el pago, no el hecho."
+                            accion={accionAnularLineaLiquidacion}
+                            etiquetaBoton="Anular"
+                          />
+                        ))}
                     </TableCell>
                   </TableRow>
                 ))}

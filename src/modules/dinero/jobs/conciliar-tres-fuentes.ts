@@ -253,6 +253,15 @@ async function detectorD1_PagadoConductorSinCobroSeller(
       .select('pedido_id, driver_id, liquidacion_id, monto_final_clp')
       .eq('tenant_id', tenantId)
       .eq('anulada', false)
+      // Etapa 8 (retiro en bodega, 20260815000004): excluye líneas
+      // 'retiro_bodega' (pedido_id NULL — una visita a bodega no tiene pedido
+      // que conciliar contra cobro al seller). Sin este filtro, `pedidoId` en
+      // el loop de abajo sería `null` y `.eq('pedido_id', pedidoId)` — línea
+      // 277 — se salvaba "por accidente": Postgres no puede castear el string
+      // 'null' a uuid, el error queda sin chequear, `data` llega `null` y el
+      // `if (!lineaCobroDelPedido) continue;` lo saltaba en silencio. Filtrar
+      // acá en vez de depender de ese accidente.
+      .eq('tipo_hecho', 'entrega')
       .order('id')
       .range(desde, hasta),
   );
@@ -402,6 +411,10 @@ async function detectorD2_CobradoSellerNoPagadoConductor(
   const pedidosConDriverSet = new Set(pedidosConDriver.map((p) => p.id));
 
   // Pedidos con línea de liquidación activa.
+  // Nota (etapa 8, retiro en bodega): el `.in('pedido_id', lote)` ya excluye
+  // por construcción las líneas 'retiro_bodega' (pedido_id NULL nunca calza
+  // contra una lista de UUID reales), pero se deja `tipo_hecho='entrega'`
+  // explícito para no depender de ese efecto colateral — mismo criterio que D1.
   const lineasLiq = await leerPorLotesDeIds<{ pedido_id: string }>(
     'D2 · líneas de liquidación por pedido',
     pedidoIdsConCobro,
@@ -411,6 +424,7 @@ async function detectorD2_CobradoSellerNoPagadoConductor(
       .select('pedido_id')
       .eq('tenant_id', tenantId)
       .eq('anulada', false)
+      .eq('tipo_hecho', 'entrega')
       .in('pedido_id', lote),
   );
 

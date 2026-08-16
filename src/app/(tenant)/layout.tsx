@@ -140,6 +140,10 @@ export default async function LayoutTenant({ children }: { children: React.React
     itemsSettings.push({ href: "/configuracion/tarifas", etiqueta: "Tarifas", icono: "tarifas" });
     itemsSettings.push({ href: "/configuracion/api", etiqueta: "Integraciones", icono: "integraciones" });
     itemsSettings.push({ href: "/configuracion/zonas", etiqueta: "Zonas", icono: "zonas" });
+    // Mismo gate que Tarifas — es la misma clase de dato: lo que se le paga al
+    // conductor por una unidad de trabajo (ver justificación en
+    // configuracion/retiro/actions.ts).
+    itemsSettings.push({ href: "/configuracion/retiro", etiqueta: "Retiro", icono: "retiro-bodega" });
   }
   // Bloque propio: `gestionar_bodegas` NO coincide con `gestionar_tarifas`. Se
   // la tienen dueño, supervisor y coordinador, y NO administración — al revés

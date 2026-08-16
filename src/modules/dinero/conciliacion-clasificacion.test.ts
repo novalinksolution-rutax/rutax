@@ -42,6 +42,7 @@ describe('categoriaNegocioPorTipo', () => {
     pago_conductor_faltante: 'pagos_pendientes',
     payout_revertido_post_confirmacion: 'pagos_pendientes',
     liquidacion_atribuida_a_conductor_incorrecto: 'pagos_pendientes',
+  retiro_sin_monto_configurado: 'pagos_pendientes',
     pedido_entregado_sin_linea_cobro: 'integridad_datos',
     pedido_entregado_sin_linea_liquidacion: 'integridad_datos',
     linea_cobro_sin_pedido_entregado: 'integridad_datos',
@@ -86,6 +87,7 @@ describe('accionSugeridaPorTipo', () => {
     linea_cobro_sin_periodo: 'reasignar_lineas_a_periodo',
     linea_liquidacion_sin_pedido_entregado: 'generar_ajuste_liquidacion',
     liquidacion_atribuida_a_conductor_incorrecto: 'generar_ajuste_liquidacion',
+  retiro_sin_monto_configurado: 'gestionar_pago_conductor',
   };
 
   it.each(Object.entries(casos) as Array<[TipoDiferenciaConciliacion, AccionSugeridaConciliacion]>)(

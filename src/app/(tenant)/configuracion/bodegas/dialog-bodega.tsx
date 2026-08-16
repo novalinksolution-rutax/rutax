@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 import {
   accionCrearBodegaCourier,
   accionCrearBodegaSeller,
@@ -41,6 +42,8 @@ export interface BodegaParaEditar {
   contactoNombre: string | null;
   contactoTelefono: string | null;
   esPrincipal: boolean;
+  /** Solo tiene sentido para `tipo === "seller"` — `null` = hereda el monto general. */
+  montoVisitaClp: number | null;
 }
 
 interface Props {
@@ -52,6 +55,13 @@ interface Props {
   esPrimera?: boolean;
   /** La OTRA bodega principal (si existe), para avisar "esto la reemplazará". */
   principalActual?: { id: string; nombre: string } | null;
+  /**
+   * Monto general del courier (`courier_config_retiro.monto_visita_bodega_clp`),
+   * solo para mostrarlo en el placeholder del override — nunca se envía en el
+   * formulario. `null` si el courier todavía no lo configuró. Ignorado cuando
+   * `tipo === "courier"` (esa tabla no tiene el campo).
+   */
+  montoVisitaDefaultClp?: number | null;
   trigger?: React.ReactNode;
   onGuardada: () => void;
 }
@@ -62,6 +72,7 @@ export function DialogBodega({
   bodegaExistente,
   esPrimera = false,
   principalActual = null,
+  montoVisitaDefaultClp = null,
   trigger,
   onGuardada,
 }: Props) {
@@ -195,6 +206,28 @@ export function DialogBodega({
                   disabled={isPending}
                 />
               </div>
+            </div>
+          )}
+
+          {conContacto && (
+            <div className="space-y-1.5">
+              <Label htmlFor="monto_visita_clp">Pago por visita a esta bodega (opcional)</Label>
+              <Input
+                id="monto_visita_clp"
+                name="monto_visita_clp"
+                type="number"
+                min={1}
+                step={1}
+                defaultValue={bodegaExistente?.montoVisitaClp ?? ""}
+                placeholder="Vacío = usa el monto general del courier"
+                disabled={isPending}
+              />
+              <p className="text-xs text-muted-foreground">
+                Lo que le pagas al conductor por cerrar una visita en ESTA bodega.{" "}
+                {montoVisitaDefaultClp !== null
+                  ? `Vacío = usa el monto general del courier (${formatearCLP(montoVisitaDefaultClp)}).`
+                  : "Vacío = usa el monto general del courier — todavía no lo configuras en Configuración → Retiro."}
+              </p>
             </div>
           )}
 

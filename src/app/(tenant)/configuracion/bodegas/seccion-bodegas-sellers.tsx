@@ -21,9 +21,11 @@ import { alternativasActivas, principalDistintaDe } from "./utilidades";
 
 interface Props {
   sellers: SellerFiltro[];
+  /** Monto general del courier por visita — `null` si todavía no lo configura. */
+  montoVisitaDefaultClp: number | null;
 }
 
-export function SeccionBodegasSellers({ sellers }: Props) {
+export function SeccionBodegasSellers({ sellers, montoVisitaDefaultClp }: Props) {
   const [sellerId, setSellerId] = useState("");
   const [bodegas, setBodegas] = useState<BodegaFila[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -92,6 +94,7 @@ export function SeccionBodegasSellers({ sellers }: Props) {
                   sellerId={sellerId}
                   esPrimera={bodegas.length === 0}
                   principalActual={principal ? { id: principal.id, nombre: principal.nombre } : null}
+                  montoVisitaDefaultClp={montoVisitaDefaultClp}
                   onGuardada={() => cargar(sellerId)}
                 />
               )}
@@ -121,6 +124,7 @@ export function SeccionBodegasSellers({ sellers }: Props) {
                     sellerId={sellerId}
                     esPrimera
                     principalActual={null}
+                    montoVisitaDefaultClp={montoVisitaDefaultClp}
                     onGuardada={() => cargar(sellerId)}
                   />
                 }
@@ -143,6 +147,7 @@ export function SeccionBodegasSellers({ sellers }: Props) {
                         tipo="seller"
                         principalActual={principalDistintaDe(bodegas, b.id)}
                         alternativasActivas={alternativasActivas(bodegas, b.id)}
+                        montoVisitaDefaultClp={montoVisitaDefaultClp}
                         onCambiado={() => cargar(sellerId)}
                       />
                     ))}
@@ -161,6 +166,7 @@ export function SeccionBodegasSellers({ sellers }: Props) {
                           tipo="seller"
                           principalActual={null}
                           alternativasActivas={[]}
+                          montoVisitaDefaultClp={montoVisitaDefaultClp}
                           onCambiado={() => cargar(sellerId)}
                         />
                       ))}
