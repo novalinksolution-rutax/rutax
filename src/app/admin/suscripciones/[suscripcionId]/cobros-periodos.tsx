@@ -14,14 +14,11 @@ import {
 import type { PeriodoConPago } from "@/modules/plataforma/consultas";
 import { TooltipSoloLectura } from "../../tooltip-solo-lectura";
 import { accionGenerarLinkCobro, accionRegistrarPagoManual } from "../acciones";
+import { formatearFecha as formatearFechaCl } from "@/lib/formato-cl";
 
 function formatearFecha(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-CL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatearFechaCl(iso);
 }
 
 function FilaPeriodo({ periodo, puedeEscribir }: { periodo: PeriodoConPago; puedeEscribir: boolean }) {

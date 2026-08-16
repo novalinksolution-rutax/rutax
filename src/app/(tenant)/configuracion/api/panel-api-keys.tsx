@@ -21,6 +21,7 @@ import {
   accionCrearApiKey,
   accionRevocarApiKey,
 } from "./acciones";
+import { formatearFecha } from "@/lib/formato-cl";
 
 export interface ApiKeyRow {
   id: string;
@@ -47,11 +48,6 @@ function formatearFechaRelativa(iso: string | null): string {
   if (dias < 30) return `Hace ${dias} días`;
   const meses = Math.floor(dias / 30);
   return `Hace ${meses} mes${meses > 1 ? "es" : ""}`;
-}
-
-function formatearFecha(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 interface AlertaClave {

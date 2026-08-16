@@ -37,6 +37,7 @@ import {
   accionSuspenderSuscripcion,
   accionCancelarSuscripcion,
 } from "./acciones";
+import { formatearFecha as formatearFechaCl } from "@/lib/formato-cl";
 
 interface TenantSinSuscripcion {
   id: string;
@@ -53,11 +54,7 @@ interface Props {
 
 function formatearFecha(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-CL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  return formatearFechaCl(iso);
 }
 
 function DialogNuevaSuscripcion({

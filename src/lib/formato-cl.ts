@@ -26,6 +26,16 @@ const FORMATEADOR_FECHA_HORA = new Intl.DateTimeFormat("es-CL", {
   year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
+  // Sin esto, `es-CL` en Chrome devuelve "01:12 p. m.". En Chile la hora se lee
+  // en 24h.
+  hour12: false,
+});
+
+const FORMATEADOR_HORA = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
 });
 
 /** `$ 2.500` — sin decimales, separador de miles chileno. Nunca `$2500.00`. */
@@ -45,6 +55,21 @@ export function formatearFechaHora(fecha: Date | string): string {
   const valor = typeof fecha === "string" ? new Date(fecha) : fecha;
   if (Number.isNaN(valor.getTime())) return "—";
   return FORMATEADOR_FECHA_HORA.format(valor);
+}
+
+/**
+ * `09:30` — solo la hora, en zona horaria de Santiago y en formato 24h.
+ *
+ * Existe para que nadie vuelva a escribir `toLocaleTimeString("es-CL", …)` a
+ * mano: ese camino olvida `timeZone` (y entonces la hora sale en la zona del
+ * servidor, que en Vercel es UTC) o olvida `hour12: false` (y entonces Chrome
+ * devuelve "01:12 p. m." en vez de "13:12"). Las dos cosas ya pasaron en este
+ * repo, en el mismo archivo y con dos líneas de diferencia.
+ */
+export function formatearHora(fecha: Date | string): string {
+  const valor = typeof fecha === "string" ? new Date(fecha) : fecha;
+  if (Number.isNaN(valor.getTime())) return "—";
+  return FORMATEADOR_HORA.format(valor);
 }
 
 /** "hace 5 minutos" / "hace 2 días" — relativo, en español de Chile, redondeado al tramo más legible. */

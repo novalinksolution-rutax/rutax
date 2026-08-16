@@ -10,6 +10,7 @@ import { useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { actionConductorListoParaSalir } from "./actions";
+import { formatearHora } from "@/lib/formato-cl";
 
 interface Props {
   manifiestoId: string;
@@ -28,14 +29,7 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
     // `hour12: false` explícito: sin él, es-CL en Chrome devuelve "01:12 p. m."
     // y en Chile la hora se lee en formato 24h (13:12). Zona horaria fijada a
     // Santiago para no depender del reloj del dispositivo.
-    const hora =
-      horaPartida ??
-      new Date().toLocaleTimeString("es-CL", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-        timeZone: "America/Santiago",
-      });
+    const hora = horaPartida ?? formatearHora(new Date());
     return (
       <div
         role="status"
@@ -61,7 +55,7 @@ export function BotonListoParaSalir({ manifiestoId, totalPedidos, estaEnRuta }: 
         setError(resultado.error);
         setAbierto(false);
       } else {
-        const ahora = new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+        const ahora = formatearHora(new Date());
         setHoraPartida(ahora);
         setAbierto(false);
       }

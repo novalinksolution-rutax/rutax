@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { BotonDescargaPdfLiquidacion } from "../boton-descarga-pdf-liquidacion";
+import { formatearFechaHora as formatearFechaHoraCl } from "@/lib/formato-cl";
 
 export const metadata: Metadata = {
   title: "Detalle de liquidación",
@@ -50,7 +51,7 @@ function formatearFechaHora(fechaIso: string | null): string | null {
   if (!fechaIso) return null;
   const fecha = new Date(fechaIso);
   if (Number.isNaN(fecha.getTime())) return fechaIso;
-  return fecha.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  return formatearFechaHoraCl(fecha);
 }
 
 interface PageProps {

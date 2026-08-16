@@ -18,13 +18,10 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatearCLP, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { traducirTipoIncidencia } from "@/lib/ui/traduccion-estados";
+import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
 import type { TipoIncidencia } from "@/modules/operacion/tipos";
 import { cn } from "@/lib/utils";
-
-const TIPO_ENTREGA_TEXTO: Record<string, string> = {
-  flex: "Flex",
-  same_day: "Same-day",
-};
+import { formatearFechaHora } from "@/lib/formato-cl";
 
 const MODO_CALCULO_TEXTO: Record<string, string> = {
   monto_fijo: "Monto fijo",
@@ -62,7 +59,7 @@ function fechaHoraONull(valor: unknown): string | null {
   if (typeof valor !== "string" || !valor) return null;
   const fecha = new Date(valor);
   if (Number.isNaN(fecha.getTime())) return valor;
-  return fecha.toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" });
+  return formatearFechaHora(fecha);
 }
 
 interface DatosSnapshot {
@@ -167,7 +164,7 @@ export function PopoverSnapshotRegla({ snapshotRegla, className, iconoSolo = fal
               <div>
                 <dt className="font-medium text-muted-foreground">Tarifa aplicada</dt>
                 <dd className="mt-0.5">
-                  {textoTraducido(TIPO_ENTREGA_TEXTO, tarifa.tipo_entrega)} ·{" "}
+                  {etiquetaTipoEntrega(typeof tarifa.tipo_entrega === "string" ? tarifa.tipo_entrega : null)} ·{" "}
                   {textoTraducido(MODO_CALCULO_TEXTO, tarifa.modo_calculo)} ·{" "}
                   <span className="font-medium tabular-nums">
                     {montoONull(tarifa.valor_base_clp) ?? "—"}

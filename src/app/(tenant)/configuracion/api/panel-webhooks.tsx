@@ -22,6 +22,7 @@ import {
   accionToggleWebhookEndpoint,
   accionEliminarWebhookEndpoint,
 } from "./acciones";
+import { formatearFecha } from "@/lib/formato-cl";
 
 export interface WebhookEndpointRow {
   id: string;
@@ -191,7 +192,7 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
 
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
         <span className="text-xs text-muted-foreground">
-          Reintentos: {endpoint.reintentoMax} · Creado {new Date(endpoint.creadoEn).toLocaleDateString("es-CL")}
+          Reintentos: {endpoint.reintentoMax} · Creado {formatearFecha(endpoint.creadoEn)}
         </span>
         <div className="flex items-center gap-2">
           <Button
