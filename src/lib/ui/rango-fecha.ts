@@ -11,7 +11,22 @@
  * día (medianoche UTC de un 12 es el 11 por la tarde en Santiago).
  */
 
-import { sumarDiasCalendario } from "@/lib/fecha-santiago";
+import { sumarDiasCalendario, diaSemanaCalendario } from "@/lib/fecha-santiago";
+
+const MESES_LARGOS = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
 
 const MESES_CORTOS = [
   "ene",
@@ -95,4 +110,49 @@ export function etiquetaSeleccionFecha({
   if (desde) return `Desde ${etiquetaFechaCivilCorta(desde)}`;
   if (hasta) return `Hasta ${etiquetaFechaCivilCorta(hasta)}`;
   return "Todas las fechas";
+}
+
+// ---------------------------------------------------------------------------
+// Utilidades del calendario de rango (mes 'YYYY-MM').
+// Todo pasa por `sumarDiasCalendario`/`diaSemanaCalendario` (fecha civil), sin
+// `new Date()` sobre strings — así el guard de fechas no se dispara y no hay
+// off-by-one de zona horaria.
+// ---------------------------------------------------------------------------
+
+/** Mes 'YYYY-MM' al que pertenece una fecha 'YYYY-MM-DD'. */
+export function mesDe(fecha: string): string {
+  return fecha.slice(0, 7);
+}
+
+/** `"agosto 2026"` a partir de 'YYYY-MM'. */
+export function etiquetaMes(mes: string): string {
+  const [anio, m] = mes.split("-");
+  return `${MESES_LARGOS[Number(m) - 1] ?? m} ${anio}`;
+}
+
+/** Mes siguiente: '2026-08' → '2026-09' (el 28 + 7 días siempre cae en el mes que viene). */
+export function mesSiguiente(mes: string): string {
+  return sumarDiasCalendario(`${mes}-28`, 7).slice(0, 7);
+}
+
+/** Mes anterior: '2026-08' → '2026-07' (el día 1 − 1 cae en el mes previo). */
+export function mesAnterior(mes: string): string {
+  return sumarDiasCalendario(`${mes}-01`, -1).slice(0, 7);
+}
+
+/**
+ * Grilla de un mes: los días como 'YYYY-MM-DD' y cuántas celdas vacías van antes
+ * del día 1 (semana con LUNES primero, como se usa en Chile).
+ */
+export function grillaMes(mes: string): { dias: string[]; desplazamiento: number } {
+  const primero = `${mes}-01`;
+  // diaSemanaCalendario: 0 = domingo … 6 = sábado → a lunes-primero.
+  const desplazamiento = (diaSemanaCalendario(primero) + 6) % 7;
+  const dias: string[] = [];
+  for (let i = 0; i < 31; i++) {
+    const d = sumarDiasCalendario(primero, i);
+    if (d.slice(0, 7) !== mes) break;
+    dias.push(d);
+  }
+  return { dias, desplazamiento };
 }

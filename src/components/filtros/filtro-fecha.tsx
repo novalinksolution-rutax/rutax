@@ -4,12 +4,11 @@
  * FiltroFecha — control de filtro por fecha, reutilizable en todas las barras de
  * filtros de la app (pedidos, manifiestos, incidencias, portal…).
  *
- * Reemplaza el `<input type="date">` suelto que solo permitía un día. Ofrece,
- * dentro de un popover minimalista (un botón que muestra la selección actual):
+ * Un botón compacto que muestra la selección actual y abre un popover con:
  *   - Atajos rápidos: Hoy · Ayer · Últimos 7 días · Últimos 30 días · Este mes ·
  *     Mes pasado.
- *   - Día exacto: un solo día.
- *   - Rango: entre dos fechas (desde–hasta).
+ *   - Un calendario de RANGO: primer clic fija el inicio, segundo clic la otra
+ *     fecha del rango y aplica. Dos clics en el mismo día = un solo día.
  *
  * Contrato de URL (retrocompatible): el día exacto viaja en `paramExacto`
  * (por defecto `fecha`, el nombre histórico — los deep-links de la Torre siguen
@@ -18,18 +17,23 @@
  *
  * Navega clonando los searchParams actuales (preserva los filtros hermanos) y
  * reseteando la paginación. La sanitización de cada valor vive en el servidor.
+ * Toda la aritmética de fecha es CIVIL (strings 'YYYY-MM-DD') vía los helpers de
+ * `rango-fecha.ts` / `fecha-santiago.ts` — nada de `new Date()` sobre strings.
  */
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
-import { CalendarDays, ChevronDown } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   calcularAtajosFecha,
   etiquetaSeleccionFecha,
+  etiquetaMes,
+  grillaMes,
+  mesAnterior,
+  mesDe,
+  mesSiguiente,
   type AtajoFecha,
 } from "@/lib/ui/rango-fecha";
 
@@ -52,6 +56,8 @@ interface Props {
   id?: string;
 }
 
+const DOW = ["L", "M", "M", "J", "V", "S", "D"];
+
 export function FiltroFecha({
   hoy,
   exacto,
@@ -69,11 +75,11 @@ export function FiltroFecha({
   const searchParams = useSearchParams();
 
   const [abierto, setAbierto] = useState(false);
-  // Modo del panel: rango si ya hay un rango puesto, si no día exacto.
-  const [modo, setModo] = useState<"dia" | "rango">(desde || hasta ? "rango" : "dia");
-  // Borradores del rango (para poder poner los dos extremos antes de navegar).
-  const [rangoDesde, setRangoDesde] = useState(desde);
-  const [rangoHasta, setRangoHasta] = useState(hasta);
+  const [mesVisible, setMesVisible] = useState(() => mesDe(hasta || exacto || desde || hoy));
+  // Primer clic del rango, a la espera del segundo (null = nada en curso).
+  const [inicioProv, setInicioProv] = useState<string | null>(null);
+  // Día bajo el cursor, para previsualizar el rango mientras se elige el segundo.
+  const [hover, setHover] = useState<string | null>(null);
 
   /** Escribe los tres params de fecha (limpiando los que no apliquen) y navega. */
   const navegar = useCallback(
@@ -89,6 +95,8 @@ export function FiltroFecha({
       if (valores.hasta) params.set(paramHasta, valores.hasta);
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
+      setInicioProv(null);
+      setHover(null);
       setAbierto(false);
     },
     [router, pathname, searchParams, paramExacto, paramDesde, paramHasta, paramPagina],
@@ -102,11 +110,38 @@ export function FiltroFecha({
     [navegar],
   );
 
+  /** Clic en un día del calendario: primero fija el inicio; el segundo aplica. */
+  function clicDia(d: string) {
+    if (inicioProv === null) {
+      setInicioProv(d);
+      setHover(d);
+      return;
+    }
+    const [a, b] = inicioProv <= d ? [inicioProv, d] : [d, inicioProv];
+    if (a === b) navegar({ exacto: a });
+    else navegar({ desde: a, hasta: b });
+  }
+
+  /** Estado visual de un día: extremo seleccionado o interior del rango. */
+  function estadoDia(d: string): { extremo: boolean; interior: boolean } {
+    if (inicioProv !== null) {
+      const otro = hover ?? inicioProv;
+      const a = inicioProv <= otro ? inicioProv : otro;
+      const b = inicioProv <= otro ? otro : inicioProv;
+      return { extremo: d === a || d === b, interior: d > a && d < b };
+    }
+    if (exacto) return { extremo: d === exacto, interior: false };
+    if (desde && hasta) return { extremo: d === desde || d === hasta, interior: d > desde && d < hasta };
+    if (desde) return { extremo: d === desde, interior: false };
+    if (hasta) return { extremo: d === hasta, interior: false };
+    return { extremo: false, interior: false };
+  }
+
   const atajos = calcularAtajosFecha(hoy);
   const etiqueta = etiquetaSeleccionFecha({ exacto, desde, hasta, hoy });
   const hayFecha = !!(exacto || desde || hasta);
+  const { dias, desplazamiento } = grillaMes(mesVisible);
 
-  /** Marca el atajo activo comparándolo con la selección vigente. */
   function atajoActivo(a: AtajoFecha): boolean {
     if (a.exacto) return exacto === a.exacto;
     return desde === a.desde && hasta === a.hasta;
@@ -121,11 +156,10 @@ export function FiltroFecha({
         open={abierto}
         onOpenChange={(o) => {
           setAbierto(o);
-          // Al abrir, sincroniza los borradores del rango con lo vigente.
           if (o) {
-            setModo(desde || hasta ? "rango" : "dia");
-            setRangoDesde(desde);
-            setRangoHasta(hasta);
+            setMesVisible(mesDe(hasta || exacto || desde || hoy));
+            setInicioProv(null);
+            setHover(null);
           }
         }}
       >
@@ -145,9 +179,9 @@ export function FiltroFecha({
             <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 p-3">
+        <PopoverContent align="start" className="w-auto p-3">
           {/* Atajos rápidos */}
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex max-w-[15rem] flex-wrap gap-1.5">
             {atajos.map((a) => (
               <button
                 key={a.clave}
@@ -166,80 +200,77 @@ export function FiltroFecha({
             ))}
           </div>
 
-          {/* Conmutador Día / Rango */}
-          <div className="mt-3 flex rounded-md bg-muted/60 p-0.5">
-            {(["dia", "rango"] as const).map((m) => (
+          {/* Calendario de rango */}
+          <div className="mt-3 border-t border-border pt-3">
+            {/* Cabecera del mes */}
+            <div className="mb-2 flex items-center justify-between">
               <button
-                key={m}
                 type="button"
-                onClick={() => setModo(m)}
-                aria-pressed={modo === m}
-                className={cn(
-                  "flex-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
-                  modo === m
-                    ? "bg-background text-foreground shadow-xs"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+                onClick={() => setMesVisible(mesAnterior(mesVisible))}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Mes anterior"
               >
-                {m === "dia" ? "Día exacto" : "Rango"}
+                <ChevronLeft className="size-4" aria-hidden="true" />
               </button>
-            ))}
-          </div>
-
-          {modo === "dia" ? (
-            <div className="mt-3 flex flex-col gap-1">
-              <label htmlFor={`${id ?? "filtro-fecha"}-dia`} className="text-xs text-muted-foreground">
-                Elige un día
-              </label>
-              <Input
-                id={`${id ?? "filtro-fecha"}-dia`}
-                type="date"
-                value={exacto}
-                onChange={(e) => e.target.value && navegar({ exacto: e.target.value })}
-                className="h-9"
-              />
-            </div>
-          ) : (
-            <div className="mt-3 space-y-2">
-              <div className="flex items-end gap-2">
-                <div className="flex flex-1 flex-col gap-1">
-                  <label htmlFor={`${id ?? "filtro-fecha"}-desde`} className="text-xs text-muted-foreground">
-                    Desde
-                  </label>
-                  <Input
-                    id={`${id ?? "filtro-fecha"}-desde`}
-                    type="date"
-                    value={rangoDesde}
-                    max={rangoHasta || undefined}
-                    onChange={(e) => setRangoDesde(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-                <div className="flex flex-1 flex-col gap-1">
-                  <label htmlFor={`${id ?? "filtro-fecha"}-hasta`} className="text-xs text-muted-foreground">
-                    Hasta
-                  </label>
-                  <Input
-                    id={`${id ?? "filtro-fecha"}-hasta`}
-                    type="date"
-                    value={rangoHasta}
-                    min={rangoDesde || undefined}
-                    onChange={(e) => setRangoHasta(e.target.value)}
-                    className="h-9"
-                  />
-                </div>
-              </div>
-              <Button
+              <span className="text-sm font-medium capitalize">{etiquetaMes(mesVisible)}</span>
+              <button
                 type="button"
-                size="sm"
-                className="w-full"
-                disabled={!rangoDesde || !rangoHasta}
-                onClick={() => navegar({ desde: rangoDesde, hasta: rangoHasta })}
+                onClick={() => setMesVisible(mesSiguiente(mesVisible))}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Mes siguiente"
               >
-                Aplicar rango
-              </Button>
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </button>
             </div>
-          )}
+
+            {/* Encabezados de día */}
+            <div className="grid grid-cols-7 gap-0.5">
+              {DOW.map((d, i) => (
+                <span key={i} className="py-1 text-center text-[11px] font-medium text-muted-foreground">
+                  {d}
+                </span>
+              ))}
+            </div>
+
+            {/* Días */}
+            <div
+              className="grid grid-cols-7 gap-0.5"
+              onMouseLeave={() => inicioProv !== null && setHover(inicioProv)}
+            >
+              {Array.from({ length: desplazamiento }).map((_, i) => (
+                <span key={`v-${i}`} aria-hidden="true" />
+              ))}
+              {dias.map((d) => {
+                const { extremo, interior } = estadoDia(d);
+                const esHoy = d === hoy;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => clicDia(d)}
+                    onMouseEnter={() => inicioProv !== null && setHover(d)}
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-md text-sm tabular-nums transition-colors",
+                      extremo
+                        ? "bg-primary font-semibold text-primary-foreground"
+                        : interior
+                          ? "bg-primary/15 text-foreground"
+                          : "text-foreground hover:bg-accent",
+                      !extremo && esHoy && "font-semibold text-primary ring-1 ring-inset ring-primary/40",
+                    )}
+                  >
+                    {Number(d.slice(8, 10))}
+                  </button>
+                );
+              })}
+            </div>
+
+            {inicioProv !== null ? (
+              <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                Elige la otra fecha del rango
+              </p>
+            ) : null}
+          </div>
 
           {hayFecha ? (
             <button
