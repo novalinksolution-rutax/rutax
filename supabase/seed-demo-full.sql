@@ -1086,7 +1086,7 @@ where p.tenant_id = '10000000-0000-0000-0000-000000000001'
   and p.estado in ('entregado','entregado_manual')
   and p.driver_id_asignado is not null
   and p.monto_liquidacion_clp is not null
-on conflict (pedido_id) do nothing;
+on conflict (pedido_id) where tipo_hecho = 'entrega' do nothing;
 
 -- Re-apuntar líneas a su período / liquidación por FECHA. Necesario tras el
 -- re-anclaje (§0): al desplazar el lote, una línea del día 1 o del último día

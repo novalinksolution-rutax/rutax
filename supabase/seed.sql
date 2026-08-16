@@ -1110,7 +1110,7 @@ insert into dinero.lineas_liquidacion (
    'b0000000-0000-0000-0000-000000000005',
    2200,0,'Entrega Flex – Recoleta','2026-06-06','motor_automatico')
 
-on conflict (pedido_id) do nothing;
+on conflict (pedido_id) where tipo_hecho = 'entrega' do nothing;
 
 -- =============================================================================
 -- Anclar el demo operativo a "hoy"

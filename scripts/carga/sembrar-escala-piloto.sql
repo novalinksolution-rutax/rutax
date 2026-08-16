@@ -171,7 +171,7 @@ join identidad.tarifas t on t.id = p.tarifa_aplicable_id
 where p.id::text like 'c2000000%'
   and p.estado in ('entregado','entregado_manual')
   and p.driver_id_asignado is not null
-on conflict (pedido_id) do nothing;
+on conflict (pedido_id) where tipo_hecho = 'entrega' do nothing;
 
 -- Flags coherentes con las líneas creadas (la lección del seed de demo).
 update operacion.pedidos p
