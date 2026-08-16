@@ -143,6 +143,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           guard que `cambiarPlanCourier`, ver `superficie-courier.ts`); el
           banner de arriba ya invita a contactar a Rutax para reactivarla. */}
       {miPlan.estado !== "cancelada" ? (
+        <div id="cambiar-plan" className="scroll-mt-24">
         <CambiarPlan
           planes={planes}
           planActual={plan}
@@ -154,10 +155,11 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           }
           cambioPendiente={miPlan.cambioPendiente}
         />
+        </div>
       ) : null}
 
       {/* 4. Historial de pagos */}
-      <section aria-labelledby="historial-pagos-titulo" className="space-y-3">
+      <section id="historial-pagos" aria-labelledby="historial-pagos-titulo" className="scroll-mt-24 space-y-3">
         <h2 id="historial-pagos-titulo" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Historial de pagos
         </h2>
@@ -222,7 +224,9 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
       </section>
 
       {/* 5. Cobro automático */}
-      <BloqueCobroAutomatico mandatoEstado={miPlan.mandatoEstado} />
+      <div id="cobro-automatico" className="scroll-mt-24">
+        <BloqueCobroAutomatico mandatoEstado={miPlan.mandatoEstado} />
+      </div>
 
       {/* 6. Nota de contacto */}
       <p className="text-center text-xs text-muted-foreground">

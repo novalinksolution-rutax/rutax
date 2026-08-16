@@ -23,6 +23,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ArrowLeft,
+  ArrowLeftRight,
   ChevronsUpDown,
   LayoutDashboard,
   Home,
@@ -60,6 +61,14 @@ import {
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { CentroAvisos } from "./centro-avisos"
 import { SkipLink } from "./skip-link"
 import { PaletaComando } from "./paleta-comando"
@@ -99,6 +108,7 @@ const ICONOS: Record<string, LucideIcon> = {
   "retiro-bodega": HandCoins,
   "conexion-ml": Link2,
   couriers: Building2,
+  "cambiar-plan": ArrowLeftRight,
   metricas: LineChart,
   salud: Activity,
   bitacora: ScrollText,
@@ -158,6 +168,18 @@ interface AppShellProps {
   hrefPrincipal?: string
   /** Ítem de plan/suscripción, renderizado como card "Free trial" (patrón Retell). */
   itemPlan?: ItemNav
+  /**
+   * Opciones del menú de la CUENTA/empresa (bloque de marca superior). Ya
+   * filtradas por capacidad en el servidor. Vacío → el bloque de marca queda
+   * estático (portal/admin/conductor no lo pasan).
+   */
+  opcionesCuenta?: ItemNav[]
+  /**
+   * Opciones del desplegable de la card de plan. Ya filtradas por capacidad.
+   * Vacío → la card de plan navega directo a `itemPlan.href` (comportamiento
+   * heredado).
+   */
+  opcionesPlan?: ItemNav[]
   /** Subtítulo del menú de cuenta (email o rol). */
   subtituloCuenta?: string | null
   /** Etiqueta del bloque de marca ("Courier", "Tienda"…). */
@@ -299,20 +321,24 @@ function Navegacion({
 }
 
 /**
- * Bloque de marca / workspace (arriba del sidebar) — patrón "workspace switcher"
- * de Retell: card con marco, avatar cuadrado con degradado (navy→morado) + label
- * de contexto + nombre. Identidad del courier/tienda (no un switcher: Rutax no
- * tiene multi-workspace por usuario todavía).
+ * Contenido visual del bloque de marca (avatar + etiqueta + nombre). Se comparte
+ * entre la variante estática y la variante con menú, para que ambas se vean
+ * idénticas y el degradado navy→morado no se duplique.
  */
-function BloqueMarca({ nombre, etiqueta, colapsado }: { nombre: string; etiqueta: string; colapsado?: boolean }) {
+function ContenidoMarca({
+  nombre,
+  etiqueta,
+  colapsado,
+  conChevron,
+}: {
+  nombre: string
+  etiqueta: string
+  colapsado?: boolean
+  conChevron?: boolean
+}) {
   const inicial = nombre.trim().charAt(0).toUpperCase() || "R"
   return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent p-1.5 shadow-xs",
-        colapsado && "border-0 bg-transparent p-0 shadow-none",
-      )}
-    >
+    <>
       <span
         className="flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-semibold text-brand-foreground shadow-xs"
         style={{ backgroundImage: "linear-gradient(135deg, var(--brand), var(--chart-3))" }}
@@ -326,7 +352,81 @@ function BloqueMarca({ nombre, etiqueta, colapsado }: { nombre: string; etiqueta
           <span className="truncate text-sm leading-tight font-semibold text-sidebar-foreground">{nombre}</span>
         </span>
       ) : null}
-    </div>
+      {conChevron && !colapsado ? (
+        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      ) : null}
+    </>
+  )
+}
+
+/**
+ * Bloque de marca / workspace (arriba del sidebar) — patrón "workspace switcher"
+ * de Retell: card con marco, avatar cuadrado con degradado (navy→morado) + label
+ * de contexto + nombre. Identidad del courier/tienda (no un switcher: Rutax no
+ * tiene multi-workspace por usuario todavía).
+ *
+ * Si recibe `opciones` (ya filtradas por capacidad en el servidor), se vuelve un
+ * menú de la CUENTA/empresa —distinto del menú de USUARIO del pie— con accesos a
+ * la configuración de la empresa, el equipo y la facturación. Sin opciones, cae
+ * al bloque estático de siempre (portal/admin/conductor no lo pasan).
+ */
+function BloqueMarca({
+  nombre,
+  etiqueta,
+  colapsado,
+  opciones = [],
+  onNavegar,
+}: {
+  nombre: string
+  etiqueta: string
+  colapsado?: boolean
+  opciones?: ItemNav[]
+  onNavegar?: () => void
+}) {
+  const clasesCard = cn(
+    "flex min-w-0 items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent p-1.5 shadow-xs",
+    colapsado && "border-0 bg-transparent p-0 shadow-none",
+  )
+
+  if (opciones.length === 0) {
+    return (
+      <div className={clasesCard}>
+        <ContenidoMarca nombre={nombre} etiqueta={etiqueta} colapsado={colapsado} />
+      </div>
+    )
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          clasesCard,
+          "w-full text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        )}
+        title={colapsado ? nombre : undefined}
+        aria-label="Cuenta de la empresa"
+      >
+        <ContenidoMarca nombre={nombre} etiqueta={etiqueta} colapsado={colapsado} conChevron />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="bottom" className="w-64">
+        <DropdownMenuLabel className="flex flex-col font-normal">
+          <span className="truncate text-sm font-medium text-foreground">{nombre}</span>
+          <span className="truncate text-xs text-muted-foreground">{etiqueta}</span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {opciones.map((item) => {
+          const Icono = item.icono ? ICONOS[item.icono] : undefined
+          return (
+            <DropdownMenuItem key={item.href} asChild>
+              <Link href={item.href} onClick={onNavegar} className="flex w-full items-center gap-2">
+                {Icono ? <Icono className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
+                <span className="truncate">{item.etiqueta}</span>
+              </Link>
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -338,6 +438,8 @@ export function AppShell({
   itemsSettings = [],
   hrefPrincipal = "/",
   itemPlan,
+  opcionesCuenta = [],
+  opcionesPlan = [],
   subtituloCuenta,
   etiquetaMarca = "Courier",
   densidad = "compacta",
@@ -388,8 +490,11 @@ export function AppShell({
       {!colapsadoLocal ? (
         <>
           <span className="flex-1 text-left">Buscar</span>
-          <kbd className="rounded border border-sidebar-border bg-sidebar px-1.5 text-[10px] font-medium text-muted-foreground">
-            ⌘K
+          {/* "F" de Find: una sola letra, grande y centrada, en vez del atajo
+              ⌘K. El disparo por teclado sigue siendo ⌘K (una "F" a secas
+              chocaría con la escritura normal). */}
+          <kbd className="flex size-5 items-center justify-center rounded border border-sidebar-border bg-sidebar text-sm leading-none font-semibold text-muted-foreground">
+            F
           </kbd>
         </>
       ) : null}
@@ -399,27 +504,69 @@ export function AppShell({
   const bloquePlan = (colapsadoLocal: boolean, onNavegar?: () => void) => {
     if (!itemPlan) return null
     const Icono = itemPlan.icono ? ICONOS[itemPlan.icono] : undefined
+    const clasesCard = cn(
+      "flex items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent px-2.5 py-2 text-sm font-medium text-sidebar-foreground shadow-xs transition-colors hover:bg-accent",
+      colapsadoLocal && "justify-center px-0",
+    )
+    const interior = (
+      <>
+        {Icono ? <Icono className="size-4 shrink-0 text-brand" aria-hidden="true" /> : null}
+        {!colapsadoLocal ? (
+          <>
+            <span className="flex-1 truncate">{itemPlan.etiqueta}</span>
+            <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </>
+        ) : null}
+      </>
+    )
+
+    // px-3 como el resto del shell (nav, buscador, cabecera): con px-2 este
+    // bloque sobresalía 4px a cada lado y rompía la línea vertical.
+
+    // Sin opciones: la card navega directo (comportamiento heredado).
+    if (opcionesPlan.length === 0) {
+      return (
+        <div className="px-3 pb-1">
+          <Link
+            href={itemPlan.href}
+            onClick={onNavegar}
+            title={colapsadoLocal ? itemPlan.etiqueta : undefined}
+            className={clasesCard}
+          >
+            {interior}
+          </Link>
+        </div>
+      )
+    }
+
+    // Con opciones: la card es un desplegable que abre hacia ARRIBA (vive al pie
+    // del sidebar), no un acceso directo a la pantalla del plan.
     return (
-      // px-3 como el resto del shell (nav, buscador, cabecera): con px-2 este
-      // bloque sobresalía 4px a cada lado y rompía la línea vertical.
       <div className="px-3 pb-1">
-        <Link
-          href={itemPlan.href}
-          onClick={onNavegar}
-          title={colapsadoLocal ? itemPlan.etiqueta : undefined}
-          className={cn(
-            "flex items-center gap-2.5 rounded-lg border border-sidebar-border bg-sidebar-accent px-2.5 py-2 text-sm font-medium text-sidebar-foreground shadow-xs transition-colors hover:bg-accent",
-            colapsadoLocal && "justify-center px-0",
-          )}
-        >
-          {Icono ? <Icono className="size-4 shrink-0 text-brand" aria-hidden="true" /> : null}
-          {!colapsadoLocal ? (
-            <>
-              <span className="flex-1 truncate">{itemPlan.etiqueta}</span>
-              <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            </>
-          ) : null}
-        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className={cn(clasesCard, "w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring")}
+            title={colapsadoLocal ? itemPlan.etiqueta : undefined}
+            aria-label={itemPlan.etiqueta}
+          >
+            {interior}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-56">
+            {opcionesPlan.map((item) => {
+              const IconoOpcion = item.icono ? ICONOS[item.icono] : undefined
+              return (
+                <DropdownMenuItem key={item.href} asChild>
+                  <Link href={item.href} onClick={onNavegar} className="flex w-full items-center gap-2">
+                    {IconoOpcion ? (
+                      <IconoOpcion className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    ) : null}
+                    <span className="truncate">{item.etiqueta}</span>
+                  </Link>
+                </DropdownMenuItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     )
   }
@@ -493,7 +640,13 @@ export function AppShell({
     <>
       <div className={cn("flex items-center gap-1 px-3 pt-4 pb-2", colapsadoLocal && "flex-col")}>
         <div className={cn("min-w-0", colapsadoLocal ? "" : "flex-1")}>
-          <BloqueMarca nombre={nombreFantasia} etiqueta={etiquetaMarca} colapsado={colapsadoLocal} />
+          <BloqueMarca
+            nombre={nombreFantasia}
+            etiqueta={etiquetaMarca}
+            colapsado={colapsadoLocal}
+            opciones={opcionesCuenta}
+            onNavegar={enSheet ? () => setMenuAbierto(false) : undefined}
+          />
         </div>
         {mostrarAvisos ? <CentroAvisos avisos={avisos} /> : null}
         {botonColapsar(colapsadoLocal, enSheet)}
@@ -545,7 +698,7 @@ export function AppShell({
             </SheetContent>
           </Sheet>
           <div className="min-w-0 flex-1">
-            <BloqueMarca nombre={nombreFantasia} etiqueta={etiquetaMarca} />
+            <BloqueMarca nombre={nombreFantasia} etiqueta={etiquetaMarca} opciones={opcionesCuenta} />
           </div>
           {mostrarBusqueda ? (
             <button

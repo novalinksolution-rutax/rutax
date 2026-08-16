@@ -173,6 +173,33 @@ export default async function LayoutTenant({ children }: { children: React.React
     ? { href: "/configuracion/plan", etiqueta: "Mi plan", icono: "plan" }
     : undefined;
 
+  // Desplegable de la card de plan: la card deja de ser un acceso directo a la
+  // pantalla y ofrece los saltos a cada sección (todas viven en la misma ruta,
+  // por ancla). Solo el dueño gestiona la suscripción.
+  const opcionesPlan: ItemNav[] = puedeGestionarSuscripcion(u)
+    ? [
+        { href: "/configuracion/plan", etiqueta: "Resumen del plan", icono: "plan" },
+        { href: "/configuracion/plan#cambiar-plan", etiqueta: "Cambiar de plan", icono: "cambiar-plan" },
+        { href: "/configuracion/plan#historial-pagos", etiqueta: "Historial de pagos", icono: "periodos" },
+        { href: "/configuracion/plan#cobro-automatico", etiqueta: "Cobro automático", icono: "pagos" },
+      ]
+    : [];
+
+  // Menú de la CUENTA/empresa (bloque de marca superior) — distinto del menú de
+  // USUARIO del pie (tema + cerrar sesión). Accesos de administración de la
+  // empresa, cada uno gated por su propia capacidad; un rol sin ninguna (p. ej.
+  // el coordinador) deja el bloque estático, sin desplegable.
+  const opcionesCuenta: ItemNav[] = [];
+  if (puedeGestionarConfiguracionDte(u)) {
+    opcionesCuenta.push({ href: "/onboarding", etiqueta: "Configuración de la empresa", icono: "puesta-en-marcha" });
+  }
+  if (puedeGestionarUsuariosYRoles(u)) {
+    opcionesCuenta.push({ href: "/equipo", etiqueta: "Equipo y roles", icono: "equipo" });
+  }
+  if (puedeGestionarSuscripcion(u)) {
+    opcionesCuenta.push({ href: "/configuracion/plan", etiqueta: "Mi plan y facturación", icono: "plan" });
+  }
+
   // Bloque inferior (ítems sobre la card de plan): entrada "Configuración" que
   // ABRE el Settings anidado.
   const itemsInferiores: ItemNav[] = [
@@ -207,6 +234,8 @@ export default async function LayoutTenant({ children }: { children: React.React
       itemsSettings={itemsSettings}
       hrefPrincipal={hrefPrincipal}
       itemPlan={itemPlan}
+      opcionesPlan={opcionesPlan}
+      opcionesCuenta={opcionesCuenta}
       // La Torre es la única pantalla ancha del backoffice: su mapa necesita más
       // que el `max-w-6xl` con que se lee bien todo lo demás. La excepción se
       // declara acá —donde viven las rutas— y no se le quita el ancho máximo a
