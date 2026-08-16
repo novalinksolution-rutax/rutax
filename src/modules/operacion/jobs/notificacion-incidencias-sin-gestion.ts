@@ -23,13 +23,17 @@
  * - El log y el detalle de bitácora incluyen SOLO: tenant_id, pedido_id,
  *   seller_id, incidencia.id, tipo de incidencia y horas_abierta.
  * - NUNCA datos personales del destinatario (nombre, dirección, teléfono).
- * - El envío real de notificación (email vía Resend) queda pendiente para
- *   Fase C/devops — ver TODO en el paso 2, igual que en `conexion-caida.ts`.
+ * - El aviso SÍ sale por correo (`../aviso-incidencia-envio.ts`), a los
+ *   internos con responsabilidad operativa del tenant. El correo lleva el
+ *   código del envío, la comuna, el motivo y un enlace — NUNCA el nombre, la
+ *   dirección ni el teléfono del destinatario: sale hacia una bandeja de
+ *   entrada, un lugar que Rutax no controla.
  */
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { enviarAvisoIncidencia } from '../aviso-incidencia-envio';
 
 const TZ = 'America/Santiago';
 
@@ -177,12 +181,23 @@ export const jobNotificacionIncidenciasSinGestion = inngest.createFunction(
           `tipo ${incidencia.tipo}) sin gestión hace ${horasAbierta.toFixed(1)}h.`,
         );
 
-        // TODO (Fase C/devops): implementar envío de email/notificación push
-        // con Resend al supervisor/dueño del tenant, igual que en
-        // `conexion-caida.ts`. Estructura lista — falta solo el llamado al
-        // proveedor de email (datos del destinatario interno se resuelven vía
-        // `identidad.usuarios_perfil` + `auth.admin.getUserById`, sin tokens
-        // ni secretos en el log).
+        // El aviso POR CORREO. Hasta hoy esto era un TODO y la alerta moría en
+        // la bitácora: o sea que "avisar al coordinador" consistía en que
+        // alguien fuera a leer la bitácora, que es justo lo que no ocurre
+        // cuando estás repartiendo.
+        //
+        // Va DESPUÉS del asiento y de forma best-effort, y ese orden es el
+        // invariante de CLAUDE.md aplicado al pie de la letra: el correo es un
+        // efecto externo que no se puede deshacer, así que primero queda el
+        // rastro. Si el envío falla, el aviso ya está registrado y el job sigue
+        // con las demás incidencias — una bandeja llena no puede tumbar la
+        // detección.
+        await enviarAvisoIncidencia(supabase, {
+          tenantId,
+          pedidoId: incidencia.pedido_id as string,
+          tipoIncidencia: incidencia.tipo as string,
+          horasAbierta,
+        });
 
         emitidas++;
       }
