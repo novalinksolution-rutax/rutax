@@ -156,7 +156,7 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
     vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
 
     const mockSupabase = crearMockSupabase({
-      data: { id: PEDIDO_ID, seller_id: SELLER_ID, ml_shipment_id: null },
+      data: { id: PEDIDO_ID, seller_id: SELLER_ID, fuente: "ml_flex", ml_shipment_id: null },
       error: null,
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
@@ -178,6 +178,7 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
       data: {
         id: PEDIDO_ID,
         seller_id: SELLER_ID,
+        fuente: "ml_flex",
         ml_shipment_id: ML_SHIPMENT_ID,
         ml_user_id: "999",
       },
@@ -228,6 +229,7 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
       data: {
         id: PEDIDO_ID,
         seller_id: SELLER_ID,
+        fuente: "ml_flex",
         ml_shipment_id: ML_SHIPMENT_ID,
         ml_user_id: "999",
       },
@@ -257,6 +259,7 @@ describe("GET /api/operaciones/:pedidoId/etiqueta (RF-021)", () => {
       data: {
         id: PEDIDO_ID,
         seller_id: SELLER_ID,
+        fuente: "ml_flex",
         ml_shipment_id: ML_SHIPMENT_ID,
         ml_user_id: "999",
       },
@@ -292,7 +295,7 @@ function pedidoSameDayFila(overrides: Record<string, unknown> = {}) {
     id: PEDIDO_ID,
     tenant_id: TENANT_ID,
     seller_id: SELLER_ID,
-    tipo_pedido: "same_day",
+    fuente: "rutax_manual", tipo_pedido: "same_day",
     ml_shipment_id: null,
     ml_user_id: null,
     codigo_interno: null,

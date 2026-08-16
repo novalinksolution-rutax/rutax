@@ -102,13 +102,13 @@ begin
   on conflict (id) do nothing;
 
   insert into operacion.pedidos
-    (id, tenant_id, seller_id, tipo_pedido, origen, estado, situacion_retiro,
+    (id, tenant_id, seller_id, tipo_pedido, fuente, origen, estado, situacion_retiro,
      destinatario_nombre, destinatario_direccion, destinatario_comuna, fecha_compromiso)
   values
-    (ped_1, t_a, s_a, 'same_day', 'same_day_manual', 'en_ruta',   'retirado', 'Dest 1','Calle 1','Maipú', current_date),
-    (ped_2, t_a, s_a, 'same_day', 'same_day_manual', 'entregado', 'retirado', 'Dest 2','Calle 2','Maipú', current_date),
-    (ped_3, t_a, s_a, 'same_day', 'same_day_manual', 'en_ruta',   'retirado', 'Dest 3','Calle 3','Maipú', current_date),
-    (ped_b, t_b, s_b, 'same_day', 'same_day_manual', 'en_ruta',   'retirado', 'Dest B','Calle B','Maipú', current_date)
+    (ped_1, t_a, s_a, 'same_day', 'rutax_manual', 'same_day_manual', 'en_ruta',   'retirado', 'Dest 1','Calle 1','Maipú', current_date),
+    (ped_2, t_a, s_a, 'same_day', 'rutax_manual', 'same_day_manual', 'entregado', 'retirado', 'Dest 2','Calle 2','Maipú', current_date),
+    (ped_3, t_a, s_a, 'same_day', 'rutax_manual', 'same_day_manual', 'en_ruta',   'retirado', 'Dest 3','Calle 3','Maipú', current_date),
+    (ped_b, t_b, s_b, 'same_day', 'rutax_manual', 'same_day_manual', 'en_ruta',   'retirado', 'Dest B','Calle B','Maipú', current_date)
   on conflict (id) do nothing;
 
   -- ped_1 y ped_2 son de Juan; ped_3 queda SIN asignación a propósito.

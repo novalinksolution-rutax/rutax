@@ -210,7 +210,7 @@ export default async function PaginaSellers() {
         <div className="space-y-1.5">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sellers</h1>
           <p className="text-sm text-muted-foreground">
-            Clientes de tu cuenta y el estado de su conexión con Mercado Libre.
+            Clientes de tu cuenta y el estado de su conexión con sus fuentes de pedidos.
           </p>
         </div>
         {puedeInvitar && (
@@ -224,7 +224,7 @@ export default async function PaginaSellers() {
         <EmptyState
           icon={Store}
           titulo="Todavía no tienes sellers"
-          descripcion="Invita a tus clientes para que conecten Mercado Libre y sus pedidos lleguen solos."
+          descripcion="Invita a tus clientes para que conecten sus cuentas de Mercado Libre o Shopify y sus pedidos lleguen solos."
           accion={
             puedeInvitar ? (
               <Button asChild size="sm">

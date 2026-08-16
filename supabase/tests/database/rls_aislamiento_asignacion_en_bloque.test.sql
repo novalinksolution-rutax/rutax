@@ -189,33 +189,33 @@ begin
   -- pedidos_retirado_en_coherente prohíbe una fecha de retiro en una fila que no
   -- está retirada.
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     destinatario_nombre, destinatario_direccion, destinatario_comuna,
     situacion_retiro, retirado_en)
   values
-    (p_a1, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA1', 'pendiente_asignacion',
+    (p_a1, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA1', 'pendiente_asignacion',
      'Destinatario A1', 'Calle Bloque A 1', 'Maipu', 'retirado',  now()),
-    (p_a2, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA2', 'pendiente_asignacion',
+    (p_a2, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA2', 'pendiente_asignacion',
      'Destinatario A2', 'Calle Bloque A 2', 'Maipu', 'retirado',  now()),
     -- LA REJA: ingestado desde la cuenta de ML del seller, pero nadie lo escaneó.
     -- Puede perfectamente ser de otro courier.
-    (p_a3, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA3', 'pendiente_asignacion',
+    (p_a3, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA3', 'pendiente_asignacion',
      'Destinatario A3', 'Calle Bloque A 3', 'Maipu', 'pendiente', null),
-    (p_a4, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA4', 'en_ruta',
+    (p_a4, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA4', 'en_ruta',
      'Destinatario A4', 'Calle Bloque A 4', 'Maipu', 'retirado',  now()),
-    (p_a5, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA5', 'asignado',
+    (p_a5, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA5', 'asignado',
      'Destinatario A5', 'Calle Bloque A 5', 'Maipu', 'retirado',  now()),
-    (p_a6, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA6', 'entregado',
+    (p_a6, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA6', 'entregado',
      'Destinatario A6', 'Calle Bloque A 6', 'Maipu', 'retirado',  now()),
-    (p_a7, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA7', 'pendiente_asignacion',
+    (p_a7, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA7', 'pendiente_asignacion',
      'Destinatario A7', 'Calle Bloque A 7', 'Maipu', 'retirado',  now()),
-    (p_a8, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA8', 'pendiente_asignacion',
+    (p_a8, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA8', 'pendiente_asignacion',
      'Destinatario A8', 'Calle Bloque A 8', 'Maipu', 'retirado',  now()),
-    (p_a9, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQA9', 'pendiente_asignacion',
+    (p_a9, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQA9', 'pendiente_asignacion',
      'Destinatario A9', 'Calle Bloque A 9', 'Maipu', 'retirado',  now()),
-    (p_aa, t_a, s_a1, 'flex', 'backfill', 'SHIPBLQAA', 'pendiente_asignacion',
+    (p_aa, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQAA', 'pendiente_asignacion',
      'Destinatario AA', 'Calle Bloque A 10', 'Maipu', 'retirado', now()),
-    (p_b1, t_b, s_b1, 'flex', 'backfill', 'SHIPBLQB1', 'pendiente_asignacion',
+    (p_b1, t_b, s_b1, 'flex', 'ml_flex', 'backfill', 'SHIPBLQB1', 'pendiente_asignacion',
      'Destinatario B1', 'Calle Bloque B 1', 'Vitacura', 'retirado', now())
   on conflict (id) do nothing;
 

@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     const { data: asignaciones } = await cliente
       .from("asignaciones_pedido")
       .select(
-        "orden_ruta, pedidos(id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, lat, long, geo_estado)",
+        "orden_ruta, pedidos(id, seller_id, tipo_pedido, fuente, origen, ml_order_id, ml_shipment_id, id_externo, referencia_externa, estado, estado_ml, subestado_ml, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, lat, long, geo_estado)",
       )
       .eq("manifiesto_id", manifiestoId)
       .eq("tenant_id", tenantId)
@@ -84,9 +84,16 @@ export async function GET(request: NextRequest) {
           tenantId,
           sellerId: p.seller_id as string,
           tipoPedido: p.tipo_pedido as string,
+          // Procedencia. Se AGREGA sin quitar `tipoPedido`: la app nativa del
+          // repo `rutax-conductor` todavía decide por ese campo, y el contrato
+          // no puede romperse desde este lado — la app se despliega por EAS y
+          // tienda, no en minutos como el backend.
+          fuente: p.fuente as string,
           origen: p.origen as string,
           mlOrderId: (p.ml_order_id as string | null) ?? null,
           mlShipmentId: (p.ml_shipment_id as string | null) ?? null,
+          idExterno: (p.id_externo as string | null) ?? null,
+          referenciaExterna: (p.referencia_externa as string | null) ?? null,
           estado: p.estado as string,
           estadoMl: (p.estado_ml as string | null) ?? null,
           subestadoMl: (p.subestado_ml as string | null) ?? null,

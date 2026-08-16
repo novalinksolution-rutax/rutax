@@ -202,25 +202,25 @@ begin
   -- Pedidos. driver_id_asignado se escribe directo (es denormalizada; el trigger
   -- que la sincroniza vive en asignaciones_pedido y aquí no hace falta).
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     driver_id_asignado, destinatario_nombre, destinatario_direccion,
     destinatario_comuna, situacion_retiro, retirado_en)
   values
-    (p_a1, t_a, s_a1, 'flex', 'backfill', 'SHIP-RET-A1', 'en_ruta',
+    (p_a1, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIP-RET-A1', 'en_ruta',
      d_a1, 'Destinatario A1', 'Calle Retiro A 1', 'Santiago',
      'retirado', timestamptz '2026-08-12 11:00:00-04'),
     -- El caso vivo del retiro: en poder del courier y sin asignar todavía.
-    (p_a2, t_a, s_a1, 'flex', 'backfill', 'SHIP-RET-A2', 'pendiente_asignacion',
+    (p_a2, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIP-RET-A2', 'pendiente_asignacion',
      null, 'Destinatario A2', 'Calle Retiro A 2', 'Providencia',
      'retirado', timestamptz '2026-08-12 12:30:00-04'),
     -- Candidato que este courier NO retiró: sigue en pendiente.
-    (p_a3, t_a, s_a2, 'flex', 'backfill', 'SHIP-RET-A3', 'pendiente_asignacion',
+    (p_a3, t_a, s_a2, 'flex', 'ml_flex', 'backfill', 'SHIP-RET-A3', 'pendiente_asignacion',
      null, 'Destinatario A3', 'Calle Retiro A 3', 'Las Condes',
      'pendiente', null),
-    (p_a4, t_a, s_a2, 'flex', 'backfill', 'SHIP-RET-A4', 'pendiente_asignacion',
+    (p_a4, t_a, s_a2, 'flex', 'ml_flex', 'backfill', 'SHIP-RET-A4', 'pendiente_asignacion',
      null, 'Destinatario A4', 'Calle Retiro A 4', 'Maipu',
      'no_procesado', null),
-    (p_b1, t_b, s_b1, 'flex', 'backfill', 'SHIP-RET-B1', 'pendiente_asignacion',
+    (p_b1, t_b, s_b1, 'flex', 'ml_flex', 'backfill', 'SHIP-RET-B1', 'pendiente_asignacion',
      d_b1, 'Destinatario B1', 'Calle Retiro B 1', 'Vitacura',
      'retirado', timestamptz '2026-08-12 10:15:00-04')
   on conflict (id) do nothing;
@@ -304,11 +304,11 @@ select results_eq(
 -- Un pedido nuevo que no menciona la columna nace `pendiente`. Es EL invariante
 -- de la compuerta: la ingesta no escribe situacion_retiro, y no debe.
 insert into operacion.pedidos (
-  id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+  id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
   destinatario_nombre, destinatario_direccion, destinatario_comuna)
 values (
   'eeeeeeee-6666-0000-0000-000000000009', 'eeeeeeee-0000-0000-0000-000000000001',
-  'eeeeeeee-1111-0000-0000-000000000001', 'flex', 'ml_ingesta', 'SHIP-RET-A9',
+  'eeeeeeee-1111-0000-0000-000000000001', 'flex', 'ml_flex', 'ml_ingesta', 'SHIP-RET-A9',
   'pendiente_asignacion', 'Destinatario A9', 'Calle Retiro A 9', 'Nunoa');
 
 select results_eq(

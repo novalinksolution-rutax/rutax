@@ -29,6 +29,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeDescargarEtiquetaSameDay } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { asegurarCodigoInterno } from "@/modules/operacion/pedidos";
+import { laFuenteProveeEtiqueta } from "@/modules/operacion/fuente";
 import {
   generarEtiquetaSameDayPdf,
   type FormatoEtiqueta,
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   const { data: pedido, error: errorLectura } = await cliente
     .from("pedidos")
     .select(
-      "id, tenant_id, seller_id, tipo_pedido, codigo_interno, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso",
+      "id, tenant_id, seller_id, tipo_pedido, fuente, codigo_interno, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso",
     )
     .eq("id", pedidoId)
     .eq("tenant_id", tenantId)
@@ -93,9 +94,12 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
     return NextResponse.json({ error: "Pedido no encontrado." }, { status: 404 });
   }
 
-  if (pedido.tipo_pedido !== "same_day") {
+  // El seller descarga la etiqueta solo cuando la imprime Rutax. Si la fuente
+  // trae la suya (Flex), la etiqueta se pide allá, no aquí — criterio de
+  // `laFuenteProveeEtiqueta`, que es una pregunta distinta a la del POD.
+  if (laFuenteProveeEtiqueta(pedido.fuente)) {
     return NextResponse.json(
-      { error: "Este pedido no es un envío same-day." },
+      { error: "La etiqueta de este pedido la emite Mercado Libre, no Rutax." },
       { status: 400 },
     );
   }

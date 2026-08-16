@@ -634,7 +634,11 @@ export async function obtenerResumenCortePorSeller(
     .from("pedidos")
     .select("seller_id, estado")
     .eq("tenant_id", tenantId)
-    .eq("tipo_pedido", "same_day")
+    // Pedidos cuyo POD gobierna Rutax (eje de `fuente`, no de `tipo_pedido`
+    // — ver src/modules/operacion/fuente.ts). Equivalente SQL de
+    // `podLoGobiernaLaFuente`: toda fuente salvo las de `FUENTES_CON_POD_EXTERNO`
+    // (hoy solo `ml_flex`).
+    .neq("fuente", "ml_flex")
     .eq("fecha_compromiso", fechaHoy)
     .in("estado", [...ESTADOS_NO_TERMINALES]);
 

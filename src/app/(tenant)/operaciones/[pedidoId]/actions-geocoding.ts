@@ -40,7 +40,7 @@ export async function accionReubicarPedido(
       .schema("operacion")
       .from("pedidos")
       .select(
-        "id, seller_id, tipo_pedido, destinatario_direccion, destinatario_comuna, geo_estado",
+        "id, seller_id, tipo_pedido, fuente, destinatario_direccion, destinatario_comuna, geo_estado",
       )
       .eq("id", pedidoId)
       .eq("tenant_id", tenantId)
@@ -78,6 +78,11 @@ export async function accionReubicarPedido(
         direccion: pedido.destinatario_direccion as string,
         comuna: (pedido.destinatario_comuna as string | null) ?? "",
         tipoPedido: pedido.tipo_pedido as "flex" | "same_day",
+        // Procedencia (migración 20260816000004). Se lee de la fila, no se
+        // deduce de `tipo_pedido`: Shopify y el alta manual comparten régimen
+        // `same_day` y NO comparten fuente. El fallback a 'ml_flex' solo cubre
+        // una fila anterior a la migración; la columna es NOT NULL.
+        fuente: (pedido.fuente as "ml_flex" | "rutax_manual" | "shopify" | null) ?? "ml_flex",
       },
     });
 

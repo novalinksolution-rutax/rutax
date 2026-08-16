@@ -768,6 +768,9 @@ async function publicarGeocodificacionPedido(
         direccion,
         comuna,
         tipoPedido: "flex" as const,
+        // Procedencia. `tipoPedido` es el régimen (y la clave de tarifa); desde
+        // que hay tres fuentes dejó de servir para saber de dónde salió el pedido.
+        fuente: "ml_flex" as const,
       },
     });
   } catch {
@@ -874,6 +877,10 @@ export async function guardarPedidoFlex(
     seller_id: ctx.sellerId,
     ml_user_id: ctx.mlUserId,
     tipo_pedido: "flex",
+    // Procedencia (migración 20260816000002). Va SOLO en el INSERT: como todo el
+    // resto de este payload, si viajara en el UPDATE PostgREST también la
+    // escribiría, y la fuente de un pedido no cambia nunca después de nacer.
+    fuente: "ml_flex",
     origen: ctx.origen,
     ml_shipment_id: entrada.shipmentId,
     ...(estadoInsertado ? { estado: estadoInsertado } : {}),

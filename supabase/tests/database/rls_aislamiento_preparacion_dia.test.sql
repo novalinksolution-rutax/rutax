@@ -196,24 +196,24 @@ begin
   -- camino Flex guarda lo que manda ML sin canonizar, así que esto no es un caso
   -- rebuscado: es el dato real.
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     driver_id_asignado, destinatario_nombre, destinatario_direccion,
     destinatario_comuna, situacion_retiro)
   values
-    (p_ea1, t_ea, s_ea1, 'flex', 'backfill', 'SHIPPREPA1', 'pendiente_asignacion',
+    (p_ea1, t_ea, s_ea1, 'flex', 'ml_flex', 'backfill', 'SHIPPREPA1', 'pendiente_asignacion',
      d_ea1, 'Destinatario A1', 'Calle Prep A 1', 'Maipu',       'pendiente'),
-    (p_ea2, t_ea, s_ea1, 'flex', 'backfill', 'SHIPPREPA2', 'pendiente_asignacion',
+    (p_ea2, t_ea, s_ea1, 'flex', 'ml_flex', 'backfill', 'SHIPPREPA2', 'pendiente_asignacion',
      null,  'Destinatario A2', 'Calle Prep A 2', 'MAIPU',       'pendiente'),
-    (p_ea3, t_ea, s_ea2, 'flex', 'backfill', 'SHIPPREPA3', 'pendiente_asignacion',
+    (p_ea3, t_ea, s_ea2, 'flex', 'ml_flex', 'backfill', 'SHIPPREPA3', 'pendiente_asignacion',
      null,  'Destinatario A3', 'Calle Prep A 3', 'Puente Alto', 'pendiente'),
-    (p_ea4, t_ea, s_ea2, 'flex', 'backfill', 'SHIPPREPA4', 'pendiente_asignacion',
+    (p_ea4, t_ea, s_ea2, 'flex', 'ml_flex', 'backfill', 'SHIPPREPA4', 'pendiente_asignacion',
      null,  'Destinatario A4', 'Calle Prep A 4', ' maipu ',     'pendiente'),
-    (p_ea5, t_ea, s_ea2, 'flex', 'backfill', 'SHIPPREPA5', 'pendiente_asignacion',
+    (p_ea5, t_ea, s_ea2, 'flex', 'ml_flex', 'backfill', 'SHIPPREPA5', 'pendiente_asignacion',
      null,  'Destinatario A5', 'Calle Prep A 5', 'Renca',       'pendiente'),
     -- Del seller S_A2, pero su bulto va a aparecer en la bodega de S_A1.
-    (p_ea6, t_ea, s_ea2, 'flex', 'backfill', 'SHIPPREPA6', 'pendiente_asignacion',
+    (p_ea6, t_ea, s_ea2, 'flex', 'ml_flex', 'backfill', 'SHIPPREPA6', 'pendiente_asignacion',
      null,  'Destinatario A6', 'Calle Prep A 6', 'Puente Alto', 'pendiente'),
-    (p_fb1, t_fb, s_fb1, 'flex', 'backfill', 'SHIPPREPB1', 'pendiente_asignacion',
+    (p_fb1, t_fb, s_fb1, 'flex', 'ml_flex', 'backfill', 'SHIPPREPB1', 'pendiente_asignacion',
      d_fb1, 'Destinatario B1', 'Calle Prep B 1', 'Vitacura',    'pendiente')
   on conflict (id) do nothing;
 
@@ -752,11 +752,11 @@ begin
   -- Un pedido a una comuna que NINGÚN otro caso usa, para que su desaparición
   -- del resultado sea inequívoca y no se confunda con otra fila.
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     driver_id_asignado, destinatario_nombre, destinatario_direccion,
     destinatario_comuna, situacion_retiro)
   values
-    (p_entregado, t_ea, s_ea1, 'same_day', 'same_day_manual', null, 'entregado',
+    (p_entregado, t_ea, s_ea1, 'same_day', 'rutax_manual', 'same_day_manual', null, 'entregado',
      d_ea1, 'Destinatario Entregado', 'Calle Entregada 1', 'Lampa', 'retirado');
 
   -- Su bulto SÍ se escaneó hoy y su acta lo conserva: lo que cambia es que deja
@@ -814,13 +814,13 @@ begin
   -- Dos pedidos ASIGNADOS, a comunas propias para que su presencia/ausencia sea
   -- inequívoca. Lo único que los distingue es el estado de su manifiesto.
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     driver_id_asignado, destinatario_nombre, destinatario_direccion,
     destinatario_comuna, situacion_retiro)
   values
-    (p_borrador, t_ea, s_ea1, 'same_day', 'same_day_manual', null, 'asignado',
+    (p_borrador, t_ea, s_ea1, 'same_day', 'rutax_manual', 'same_day_manual', null, 'asignado',
      d_ea1, 'Dest Borrador', 'Calle B 1', 'Cerrillos', 'retirado'),
-    (p_confirmado, t_ea, s_ea1, 'same_day', 'same_day_manual', null, 'asignado',
+    (p_confirmado, t_ea, s_ea1, 'same_day', 'rutax_manual', 'same_day_manual', null, 'asignado',
      d_ea1, 'Dest Confirmado', 'Calle C 1', 'Quilicura', 'retirado');
 
   insert into operacion.manifiestos (id, tenant_id, driver_id, nombre, fecha_operacion, estado)

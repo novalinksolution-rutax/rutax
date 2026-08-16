@@ -11,6 +11,7 @@ import {
   type ResumenLiquidacionSoporte,
 } from "@/modules/plataforma/vista-soporte";
 import { NoHaySesionSoporte } from "@/modules/plataforma/soporte";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import type { EstadoPeriodo, EstadoLiquidacion } from "@/modules/dinero/tipos";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -176,7 +177,7 @@ function SeccionUltimosPedidos({ pedidos }: { pedidos: PedidoOperativoSoporte[] 
                       <BadgeEstado variante={BADGE_ESTADO_PEDIDO[p.estado]} texto={traducirEstadoPedido(p.estado)} />
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant="neutral">{p.fuente === "flex" ? "Flex" : "Same-day"}</Badge>
+                      <Badge variant="neutral">{etiquetaFuentePedido(p.fuente)}</Badge>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
                       {formatearFecha(p.fecha)}

@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { obtenerConexionesPropia } from "./actions";
+import { obtenerConexionesShopifyPropia } from "./acciones-shopify";
 import { PanelConexionesMl } from "./panel-conexion-ml";
+import { PanelConexionesShopify } from "./panel-conexion-shopify";
 import { WidgetSlaSeller } from "./widget-sla-seller";
 import { TablaHistorialSla } from "./tabla-historial-sla";
 
@@ -27,7 +29,10 @@ export default async function PaginaPortalSeller() {
     redirect("/");
   }
 
-  const resultado = await obtenerConexionesPropia();
+  const [resultado, conexionesShopify] = await Promise.all([
+    obtenerConexionesPropia(),
+    obtenerConexionesShopifyPropia(),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -52,6 +57,8 @@ export default async function PaginaPortalSeller() {
         conexionesIniciales={resultado.ok ? resultado.conexiones : []}
         errorInicial={resultado.ok ? null : resultado.mensaje}
       />
+
+      <PanelConexionesShopify conexionesIniciales={conexionesShopify} />
     </div>
   );
 }

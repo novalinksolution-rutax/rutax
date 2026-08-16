@@ -4,6 +4,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarPruebaEntrega } from "@/modules/operacion/pruebas-entrega";
 import { registrarCierreConductor } from "@/modules/operacion/cierre-conductor";
 import { actualizarEstadoPedido } from "@/modules/operacion/pedidos";
+import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 
 /**
@@ -83,10 +84,10 @@ export async function POST(
   try {
     const cliente = crearClienteServiceRole();
 
-    // Determinar el tipo para enrutar POD autoritativo vs cierre operativo.
+    // Determinar la fuente para enrutar POD autoritativo vs cierre operativo.
     const { data: pedido } = await cliente
       .from("pedidos")
-      .select("tipo_pedido")
+      .select("fuente")
       .eq("id", pedidoId)
       .eq("tenant_id", usuario.tenantId)
       .maybeSingle();
@@ -95,8 +96,8 @@ export async function POST(
       return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
     }
 
-    // --- Flex: cierre operativo (no cambia el estado) -----------------------
-    if (pedido.tipo_pedido === "flex") {
+    // --- La fuente gobierna el POD: cierre operativo, no cambia el estado ----
+    if (podLoGobiernaLaFuente(pedido.fuente)) {
       const cierre = await registrarCierreConductor(
         cliente,
         { pedidoId, tenantId: usuario.tenantId, resultado: "entregado", fotoObjectPath: body.fotoObjectPath, geo },
@@ -109,7 +110,7 @@ export async function POST(
       });
     }
 
-    // --- same-day: POD autoritativo (cambia el estado) ----------------------
+    // --- POD autoritativo de Rutax (cambia el estado) -----------------------
     const pod = await registrarPruebaEntrega(
       cliente,
       { pedidoId, tenantId: usuario.tenantId, tipoResultado: "entregado", fotoObjectPath: body.fotoObjectPath, geo },

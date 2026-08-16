@@ -45,6 +45,7 @@ import {
   obtenerEtiquetaEnvio,
   ErrorConexionMlRequiereRevinculacion,
 } from "@/modules/integraciones/ml";
+import { laFuenteProveeEtiqueta } from "@/modules/operacion/fuente";
 
 function resolverFormato(request: NextRequest): FormatoEtiqueta {
   const valor = request.nextUrl.searchParams.get("formato");
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   const { data: pedido, error: errorLectura } = await cliente
     .from("pedidos")
     .select(
-      "id, tenant_id, seller_id, tipo_pedido, ml_shipment_id, ml_user_id, codigo_interno, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso",
+      "id, tenant_id, seller_id, tipo_pedido, fuente, ml_shipment_id, ml_user_id, codigo_interno, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso",
     )
     .eq("id", pedidoId)
     .eq("tenant_id", tenantId)
@@ -98,7 +99,9 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   }
 
   // --- Rama same-day: etiqueta interna Rutax con QR ---------------------------
-  if (pedido.tipo_pedido === "same_day") {
+  // Criterio: quién PROVEE la etiqueta, no el POD (`laFuenteProveeEtiqueta`,
+  // no `podLoGobiernaLaFuente` — ver docstring de `fuente.ts`).
+  if (!laFuenteProveeEtiqueta(pedido.fuente)) {
     const formato = resolverFormato(request);
 
     try {

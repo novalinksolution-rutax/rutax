@@ -155,7 +155,7 @@ describe("POST /api/conductor/pedidos/:pedidoId/no-entregar — RECHAZO CRUZADO 
   it("same-day asignado a OTRO CONDUCTOR → 422, nunca se registra el POD de fallo", async () => {
     vi.mocked(autenticarBearer).mockResolvedValue(usuarioConductor);
     const cliente = crearCliente({
-      pedido: pedidoFila({ tipo_pedido: "same_day", driver_id_asignado: OTRO_DRIVER }),
+      pedido: pedidoFila({ fuente: "rutax_manual", tipo_pedido: "same_day", driver_id_asignado: OTRO_DRIVER }),
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
 
@@ -169,7 +169,7 @@ describe("POST /api/conductor/pedidos/:pedidoId/no-entregar — RECHAZO CRUZADO 
   it("Flex asignado a OTRO CONDUCTOR → 422, nunca se registra el cierre operativo", async () => {
     vi.mocked(autenticarBearer).mockResolvedValue(usuarioConductor);
     const cliente = crearCliente({
-      pedido: pedidoFila({ tipo_pedido: "flex", driver_id_asignado: OTRO_DRIVER }),
+      pedido: pedidoFila({ fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: OTRO_DRIVER }),
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
 
@@ -185,7 +185,7 @@ describe("POST /api/conductor/pedidos/:pedidoId/no-entregar — control positivo
   it("same-day asignado al conductor autenticado → pasa la barrera y llega a tocar pruebas_entrega", async () => {
     vi.mocked(autenticarBearer).mockResolvedValue(usuarioConductor);
     const cliente = crearCliente({
-      pedido: pedidoFila({ tipo_pedido: "same_day", driver_id_asignado: DRIVER_1 }),
+      pedido: pedidoFila({ fuente: "rutax_manual", tipo_pedido: "same_day", driver_id_asignado: DRIVER_1 }),
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
 
@@ -199,7 +199,7 @@ describe("POST /api/conductor/pedidos/:pedidoId/no-entregar — control positivo
   it("Flex asignado al conductor autenticado → pasa la barrera y llega a tocar cierres_conductor", async () => {
     vi.mocked(autenticarBearer).mockResolvedValue(usuarioConductor);
     const cliente = crearCliente({
-      pedido: pedidoFila({ tipo_pedido: "flex", driver_id_asignado: DRIVER_1 }),
+      pedido: pedidoFila({ fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: DRIVER_1 }),
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
 

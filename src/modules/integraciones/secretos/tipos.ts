@@ -21,7 +21,13 @@ export type TipoSecreto =
   // `referencia_externa_id` opaca de este secreto; el id/token del mandato
   // Fintoc vive cifrado en secretos_cifrados, NUNCA en claro. Espejo del enum
   // SQL `identidad.tipo_secreto`.
-  | "mandato_suscripcion_fintoc";
+  | "mandato_suscripcion_fintoc"
+  // Shopify como fuente de pedidos (migración 20260816000003). El Admin API
+  // access token de la tienda del seller: da lectura de pedidos y escritura de
+  // cumplimientos, así que es un secreto de pleno derecho. A diferencia de ML no
+  // hay refresh ni expiración — el token vive hasta que el comerciante
+  // desinstala la app. Espejo del enum SQL `identidad.tipo_secreto`.
+  | "token_admin_shopify";
 
 /**
  * Referencia opaca devuelta tras cifrar: lo único que las tablas de negocio

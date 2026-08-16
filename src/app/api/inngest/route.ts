@@ -36,6 +36,19 @@ import {
   jobSincronizarConexionMl,
 } from "@/modules/integraciones/ml/jobs/ingesta-pedidos-ml";
 
+// Jobs de Shopify (segunda fuente de pedidos). Cada 15 min y no cada 30 como
+// ML: aquí NO hay webhook de respaldo — los webhooks de Shopify exigirían que el
+// seller pegue un segundo secreto (la API secret key de su custom app) y
+// quedaron fuera de la v1, así que el cron es la única puerta de entrada.
+import {
+  jobIngestaPedidosShopify,
+  jobSincronizarConexionShopify,
+} from "@/modules/integraciones/shopify/jobs/ingesta-pedidos-shopify";
+// Escritura de vuelta a Shopify al entregar: crea el Fulfillment con tracking
+// de Rutax, lo que dispara la notificación nativa de Shopify al comprador.
+// Consume el evento source-neutral `operacion/pedido.estado-terminal`.
+import { jobMarcarCumplidoShopify } from "@/modules/integraciones/shopify/jobs/marcar-cumplido-shopify";
+
 // Jobs de geocoding (F4 — ingesta → coordenadas + cobertura)
 import { jobGeocodificarPedido } from "@/modules/integraciones/geocoding/jobs/geocodificar-pedido";
 
@@ -55,6 +68,11 @@ import { jobPurgarPuntoTermino } from "@/modules/operacion/jobs/purgar-punto-ter
 // cierre del cabo de dinero. Sin registrarlo, el evento no tendría quién lo
 // escuche y la cancelación se quedaría a mitad de camino.
 import { jobProcesarCancelacionMl } from "@/modules/operacion/jobs/procesar-cancelacion-ml";
+// Consumidor de `operacion/pedido.cancelado-en-fuente` (Shopify hoy, cualquier
+// fuente con escritura de vuelta mañana). Comparte núcleo con el de arriba
+// (`cancelacion-fuente-compartida.ts`) — sin registrarlo, una cancelación en
+// Shopify se quedaba solo en el log del cron y el pedido seguía vivo en Rutax.
+import { jobProcesarCancelacionFuente } from "@/modules/operacion/jobs/procesar-cancelacion-fuente";
 
 // Jobs de Dinero (Fase C — motor entrega→dinero)
 import { jobGenerarLineas } from "@/modules/dinero/jobs/generar-lineas";
@@ -118,6 +136,13 @@ const funciones = [
   // Ingesta continua Flex (webhook + cron de respaldo + botón manual)
   jobIngestaPedidosMl,
   jobSincronizarConexionMl,
+  // Ingesta Shopify (cron cada 15 min + botón "Sincronizar ahora"). Misma
+  // rutina para los dos: no hay camino manual que pueda divergir del automático.
+  jobIngestaPedidosShopify,
+  jobSincronizarConexionShopify,
+  // Cumplimiento (Fulfillment) al entregar un pedido Shopify — evento
+  // operacion/pedido.estado-terminal
+  jobMarcarCumplidoShopify,
   // Jobs de geocoding (F4)
   jobGeocodificarPedido,
   jobNotificacionConexionCaida,
@@ -129,6 +154,8 @@ const funciones = [
   jobPurgarPuntoTermino,
   // Cancelación detectada en ML → estado + incidencia + cabo de dinero
   jobProcesarCancelacionMl,
+  // Cancelación detectada en una fuente externa (Shopify) → mismo tratamiento
+  jobProcesarCancelacionFuente,
   // Jobs Dinero (Fase C)
   jobGenerarLineas,
   jobCerrarPeriodo,

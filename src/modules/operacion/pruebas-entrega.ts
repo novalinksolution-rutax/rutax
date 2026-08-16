@@ -29,6 +29,7 @@ import { puedeMarcarEvidenciasPropias, puedeVerDocumentosPropios } from "@/modul
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import { ErrorPedidoNoEncontrado } from "./errores";
+import { podLoGobiernaLaFuente } from "./fuente";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { TipoIncidencia } from "./tipos";
 
@@ -235,10 +236,10 @@ export async function registrarPruebaEntrega(
     }
   }
 
-  // --- 2. Leer el pedido (solo same-day + asignado al conductor) --------
+  // --- 2. Leer el pedido (solo POD autoritativo + asignado al conductor) --------
   const { data: pedido, error: errorPedido } = await cliente
     .from("pedidos")
-    .select("id, tenant_id, seller_id, tipo_pedido, driver_id_asignado, lat, long, geo_estado, estado")
+    .select("id, tenant_id, seller_id, tipo_pedido, fuente, driver_id_asignado, lat, long, geo_estado, estado")
     .eq("id", entrada.pedidoId)
     .eq("tenant_id", entrada.tenantId)
     .maybeSingle();
@@ -250,10 +251,11 @@ export async function registrarPruebaEntrega(
     throw new ErrorPedidoNoEncontrado(entrada.pedidoId);
   }
 
-  // FRONTERA DURA: solo same-day.
-  if (pedido.tipo_pedido !== "same_day") {
+  // FRONTERA DURA: solo fuentes cuyo POD es autoritativo en Rutax. La otra mitad
+  // de esta misma regla es el trigger `trg_pruebas_entrega_solo_same_day`.
+  if (podLoGobiernaLaFuente(pedido.fuente)) {
     throw new ErrorValidacion(
-      "El POD/tracking propio es exclusivo de pedidos same-day; los Flex los reporta Mercado Libre.",
+      "El POD propio no aplica a este pedido: su prueba de entrega la reporta Mercado Libre.",
     );
   }
 

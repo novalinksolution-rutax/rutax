@@ -539,6 +539,25 @@ export function puedeGestionarConexionMlPropia(usuario: UsuarioActual): boolean 
   return tieneCapacidad(usuario, "gestionar_conexion_ml_propia");
 }
 
+/**
+ * El seller administra sus propias conexiones a FUENTES de pedidos —
+ * Mercado Libre, Shopify, y las que vengan.
+ *
+ * ⚠️ Se apoya en la misma capacidad `gestionar_conexion_ml_propia`, cuyo nombre
+ * quedó de cuando la única fuente era Mercado Libre. Se reusa a propósito en vez
+ * de crear una capacidad nueva: la semántica es idéntica —"el seller administra
+ * su propia conexión con la plataforma donde vende"— y una capacidad nueva
+ * exigiría una migración y otorgarla a cada rol de seller ya existente en cada
+ * tenant, que es más riesgo del que compra el nombre bonito.
+ *
+ * Este alias existe para que los sitios de llamada digan la verdad. Renombrar la
+ * capacidad en la base es trabajo aparte y consciente, no un efecto colateral de
+ * agregar una fuente.
+ */
+export function puedeGestionarConexionesFuentePropia(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "gestionar_conexion_ml_propia");
+}
+
 export function puedeSolicitarSameDay(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "solicitar_same_day");
 }

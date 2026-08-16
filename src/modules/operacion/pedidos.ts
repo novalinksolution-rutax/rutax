@@ -32,9 +32,11 @@ import type {
   SituacionRetiro,
 } from "./tipos";
 import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
-import { ahoraEnSantiago, combinarFechaHoraSantiago, horaAMinutos } from "@/lib/fecha-santiago";
+import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 import { resolverZona } from "./zonas";
-import { resolverVentanaCorte } from "./ventanas-corte";
+import { evaluarVentanaCorte } from "./ventanas-corte";
+import { resolverTarifaVigente } from "./tarifas";
+import { podEsAutoritativoEnRutax, podLoGobiernaLaFuente } from "./fuente";
 import { ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import {
@@ -96,9 +98,18 @@ function filaAPedido(fila: Record<string, any>): Pedido {
     tenantId: fila.tenant_id,
     sellerId: fila.seller_id,
     tipoPedido: fila.tipo_pedido,
+    // Procedencia (migración 20260816000002). En base es NOT NULL; el fallback
+    // solo cubre un SELECT que olvide la columna, y cae CERRADO a 'ml_flex' a
+    // propósito: de las dos maneras de equivocarse, esta bloquea al conductor con
+    // un error visible, y la otra dejaría aceptar un POD sobre un pedido cuya
+    // prueba de entrega gobierna Mercado Envíos. Mismo criterio que
+    // `situacionRetiro` más abajo.
+    fuente: fila.fuente ?? 'ml_flex',
     origen: fila.origen,
     mlOrderId: fila.ml_order_id ?? null,
     mlShipmentId: fila.ml_shipment_id ?? null,
+    idExterno: fila.id_externo ?? null,
+    referenciaExterna: fila.referencia_externa ?? null,
     estado: fila.estado,
     estadoMl: fila.estado_ml ?? null,
     subestadoMl: fila.subestado_ml ?? null,
@@ -205,6 +216,8 @@ export async function listarPedidos(
     // de este filtro.
     query = query.ilike("destinatario_comuna", filtros.comuna);
   }
+
+  if (filtros.fuente) query = query.eq("fuente", filtros.fuente);
 
   if (filtros.porRevisar) {
     // Bandeja de revisión geocoding: geo_estado problemático OR cobertura sin tarifa/revisión.
@@ -316,7 +329,7 @@ export async function actualizarEstadoPedido(
   // y para la proyección de sla_cumplido (fecha_compromiso_hora).
   let consultaLectura = cliente
     .from("pedidos")
-    .select("id, estado, seller_id, tenant_id, driver_id_asignado, tipo_pedido, tarifa_aplicable_id, fecha_compromiso_hora, fecha_compromiso")
+    .select("id, estado, seller_id, tenant_id, driver_id_asignado, tipo_pedido, fuente, id_externo, tarifa_aplicable_id, fecha_compromiso_hora, fecha_compromiso")
     .eq("id", entrada.pedidoId)
     .eq("tenant_id", entrada.tenantId);
   if (entrada.sellerId) {
@@ -335,12 +348,14 @@ export async function actualizarEstadoPedido(
   const estadoActual: EstadoPedido = pedidoActual.estado;
 
   // 2b. FRONTERA DURA: si el ejecutor es 'conductor', aplicar las restricciones
-  //     same-day ANTES de validarTransicion. El conductor NUNCA actúa sobre Flex.
+  //     de POD autoritativo ANTES de validarTransicion. El conductor NUNCA
+  //     cierra un pedido cuya prueba de entrega la gobierna la fuente.
   if (entrada.ejecutor === "conductor") {
-    // Solo pedidos same-day: los Flex los gobierna la app de Mercado Envíos Flex.
-    if (pedidoActual.tipo_pedido !== "same_day") {
+    // La pregunta es por la FUENTE, no por el tipo de servicio: Flex impone la
+    // app de Mercado Envíos, el resto de las fuentes no imponen ninguna.
+    if (podLoGobiernaLaFuente(pedidoActual.fuente)) {
       throw new ErrorValidacion(
-        "El conductor solo opera pedidos same-day; los Flex los reporta Mercado Libre.",
+        "El conductor no puede cerrar este pedido desde Rutax: su prueba de entrega la gobierna Mercado Libre.",
       );
     }
     // Solo pedidos asignados al propio conductor.
@@ -378,21 +393,21 @@ export async function actualizarEstadoPedido(
   }
 
   // 2c. FRONTERA DURA: el 'sistema' solo puede reflejar en_ruta/entregado/fallido
-  //     de ML desde 'pendiente_asignacion' para pedidos FLEX (ver el comentario
-  //     de `REFLEJO_ML_DESDE_PENDIENTE` y de la tabla en `maquina-estados.ts`).
-  //     En same-day el POD de Rutax es el autoritativo — no hay ML que mande, y
-  //     el conductor siempre pasa primero por 'asignado' — así que este camino
-  //     no debería alcanzarlo nunca; se cierra la puerta aquí de todos modos,
-  //     mismo patrón que usa `cancelarPedido` para acotar por tipo_pedido en el
+  //     desde 'pendiente_asignacion' cuando la fuente es la dueña del POD (ver el
+  //     comentario de `REFLEJO_ML_DESDE_PENDIENTE` y de la tabla en
+  //     `maquina-estados.ts`). Si el POD autoritativo es el de Rutax no hay
+  //     tercero que mande, y el conductor siempre pasa primero por 'asignado' —
+  //     así que este camino no debería alcanzarse nunca; se cierra la puerta aquí
+  //     de todos modos, mismo patrón que usa `cancelarPedido` de acotar en el
   //     llamador en vez de en la función pura.
   if (
     entrada.ejecutor === "sistema" &&
     estadoActual === "pendiente_asignacion" &&
     REFLEJO_ML_DESDE_PENDIENTE.has(entrada.estadoNuevo) &&
-    pedidoActual.tipo_pedido !== "flex"
+    podEsAutoritativoEnRutax(pedidoActual.fuente)
   ) {
     throw new ErrorValidacion(
-      "Un pedido same-day no puede reflejar un estado de Mercado Libre sin haber sido asignado — el POD de Rutax es el autoritativo para same-day.",
+      "Este pedido no puede reflejar un estado externo sin haber sido asignado — su prueba de entrega autoritativa es la que captura Rutax.",
     );
   }
 
@@ -756,6 +771,36 @@ export async function actualizarEstadoPedido(
     }
   }
 
+  // 8b. Post-commit: publicar el evento SOURCE-NEUTRAL de estado terminal —
+  // punto de extensión para que `integraciones` escriba de vuelta a la fuente
+  // que originó el pedido (hoy: Shopify marca el `Fulfillment` al entregar).
+  // Evento y try/catch INDEPENDIENTES del financiero de arriba, a propósito
+  // (ver el comentario de `EventoPedidoEstadoTerminal` en `lib/inngest/eventos.ts`):
+  // no es un contrato de `dinero`, y NO lleva la excepción `sinAsignacionEnRutax`
+  // — esa excepción existe para no facturar una entrega que Rutax no hizo, pero
+  // avisarle a la tienda que su pedido llegó a un estado terminal es correcto
+  // sin importar quién lo entregó.
+  if (ESTADOS_FINANCIEROS.has(entrada.estadoNuevo)) {
+    try {
+      await inngest.send({
+        name: 'operacion/pedido.estado-terminal',
+        id: `pedido-estado-terminal-${entrada.pedidoId}-${entrada.estadoNuevo}`,
+        data: {
+          pedidoId: entrada.pedidoId,
+          tenantId: entrada.tenantId,
+          sellerId: pedidoActual.seller_id as string,
+          fuente: pedidoActual.fuente as 'ml_flex' | 'rutax_manual' | 'shopify',
+          idExterno: (pedidoActual.id_externo as string | null) ?? null,
+          estadoNuevo: entrada.estadoNuevo as 'entregado' | 'entregado_manual' | 'fallido' | 'fallido_manual' | 'devuelto' | 'cancelado',
+          fechaTransicion: new Date().toISOString(),
+        },
+      });
+    } catch {
+      // Best-effort post-commit, igual que el evento financiero: nunca
+      // relanzar — el pedido ya está en su nuevo estado.
+    }
+  }
+
   return pedido;
 }
 
@@ -832,7 +877,7 @@ export async function cancelarPedido(
   // es la respuesta correcta en ambos casos.
   let consulta = cliente
     .from("pedidos")
-    .select("id, estado, tipo_pedido, seller_id, driver_id_asignado")
+    .select("id, estado, tipo_pedido, fuente, seller_id, driver_id_asignado")
     .eq("id", entrada.pedidoId)
     .eq("tenant_id", entrada.tenantId);
   if (entrada.ejecutor === "seller" && entrada.sellerId) {
@@ -847,14 +892,15 @@ export async function cancelarPedido(
     throw new ErrorPedidoNoEncontrado(entrada.pedidoId);
   }
 
-  // 4. Barrera por fuente (§3.2): la cancelación humana es SOLO same_day. Un
-  // Flex vivo lo gobierna Mercado Envíos — Rutax orquesta alrededor, nunca
-  // escribe de vuelta un estado terminal que ML no pidió. (El camino existente
-  // `fallido → cancelado` para un Flex atascado sigue intacto: va directo por
-  // `actualizarEstadoPedido`, no por esta función.)
-  if (pedidoActual.tipo_pedido !== "same_day") {
+  // 4. Barrera por fuente (§3.2): la cancelación humana solo alcanza a los
+  // pedidos cuyo ciclo de vida es de Rutax. Un Flex vivo lo gobierna Mercado
+  // Envíos — Rutax orquesta alrededor, nunca escribe de vuelta un estado
+  // terminal que ML no pidió. (El camino existente `fallido → cancelado` para un
+  // Flex atascado sigue intacto: va directo por `actualizarEstadoPedido`, no por
+  // esta función.)
+  if (podLoGobiernaLaFuente(pedidoActual.fuente)) {
     throw new ErrorValidacion(
-      "Solo se pueden cancelar pedidos same-day desde aquí — un Flex vivo lo gobierna Mercado Envíos.",
+      "Este pedido no se puede cancelar desde aquí — su ciclo de vida lo gobierna Mercado Envíos.",
     );
   }
 
@@ -968,31 +1014,19 @@ export async function crearPedidoSameDay(
   // --- 1. Tarifa vigente -------------------------------------------------------
   const { fecha: fechaHoy } = ahoraEnSantiago(); // 'YYYY-MM-DD' en Santiago
 
-  const { data: tarifas, error: errorTarifa } = await cliente
-    .from("tarifas")
-    .select("id")
-    .eq("tenant_id", entrada.tenantId)
-    .eq("tipo_entrega", "same_day")
-    .eq("estado", "activa")
-    .lte("vigente_desde", fechaHoy)
-    .or(`vigente_hasta.is.null,vigente_hasta.gte.${fechaHoy}`)
-    .or(`seller_id.eq.${entrada.sellerId},seller_id.is.null`)
-    .order("seller_id", { ascending: false, nullsFirst: false })
-    .order("vigente_desde", { ascending: false })
-    .limit(1);
+  const tarifaAplicableId = await resolverTarifaVigente(cliente, {
+    tenantId: entrada.tenantId,
+    sellerId: entrada.sellerId,
+    tipoEntrega: "same_day",
+    fecha: fechaHoy,
+  });
 
-  if (errorTarifa) {
-    throw new Error(`Error al buscar tarifa vigente: ${errorTarifa.message}`);
-  }
-
-  if (!tarifas || tarifas.length === 0) {
+  if (!tarifaAplicableId) {
     throw new ErrorValidacion(
       "El seller no tiene una tarifa configurada para entregas same-day — " +
         "configúrala en /onboarding/tarifas antes de crear pedidos",
     );
   }
-
-  const tarifaAplicableId: string = tarifas[0].id;
 
   // --- 2. Resolver zona de la comuna -----------------------------------------
   // Normalizar la comuna antes de llamar a resolver_zona (la función SQL compara
@@ -1002,64 +1036,48 @@ export async function crearPedidoSameDay(
     ? await resolverZona(cliente, entrada.tenantId, comunaCanonica)
     : null;
 
-  // --- 3. Resolver ventana de corte ------------------------------------------
-  const ventana = await resolverVentanaCorte(
-    cliente,
-    entrada.tenantId,
-    entrada.sellerId,
+  // --- 3-4. Resolver la ventana de corte y evaluarla en TZ Santiago -----------
+  // El cálculo vive en `evaluarVentanaCorte` (./ventanas-corte.ts) porque lo
+  // comparte con la ingesta de Shopify (`integraciones/shopify/ingesta-pedidos.ts`):
+  // dos altas distintas del mismo régimen same-day no pueden tener dos relojes.
+  // Lo que se queda AQUÍ es lo que solo tiene sentido con un humano delante: la
+  // bitácora con su actor y el `avisoCorte` de la pantalla.
+  const corte = await evaluarVentanaCorte(cliente, {
+    tenantId: entrada.tenantId,
+    sellerId: entrada.sellerId,
     zonaId,
-    'same_day',
-  );
+    tipoEntrega: 'same_day',
+  });
 
-  // --- 4. Evaluar hora de corte en TZ Santiago --------------------------------
-  const ahora = ahoraEnSantiago();
-  let fechaCompromisoHora: string | null = null;
-  let corteRiesgo = false;
+  const fechaCompromisoHora = corte.fechaCompromisoHora;
+  const corteRiesgo = corte.corteRiesgo;
   let avisoCorte: ResultadoCrearPedidoSameDay['avisoCorte'] | undefined;
 
-  if (ventana) {
-    const minutosAhora = horaAMinutos(ahora.hora);
-    const minutosCorte = horaAMinutos(ventana.horaCorte);
-
-    if (minutosAhora > minutosCorte) {
-      // Fuera de corte: crear con aviso, no rechazar.
-      corteRiesgo = true;
-
-      // Bitácora de creación fuera de corte (CLAUDE.md: bitácora ANTES de efectos).
-      if (entrada.actorUsuarioId) {
-        await registrarEnBitacora(cliente, {
-          tenantId: entrada.tenantId,
-          actorUsuarioId: entrada.actorUsuarioId,
-          actorTipo: 'usuario',
-          accion: 'pedido.creado_fuera_corte',
-          entidadTipo: 'pedido',
-          entidadId: null,
-          detalle: {
-            seller_id: entrada.sellerId,
-            hora_corte: ventana.horaCorte,
-            hora_actual: ahora.hora,
-            zona_id: zonaId,
-          },
-        });
-      }
-
-      avisoCorte = {
-        tipo: 'fuera_corte',
-        mensaje: `Pasó la hora de corte (${ventana.horaCorte}). El pedido se registró, pero la entrega para hoy está en riesgo.`,
-        horaCorte: ventana.horaCorte,
-        sugerencia: 'Avisa al destinatario sobre el posible retraso o reactiva el pedido para mañana.',
-      };
-    } else {
-      // Dentro de corte: calcular fecha_compromiso_hora.
-      const minutosCompromiso = minutosCorte + ventana.minutosPreparacion + ventana.minutosRutaEstimado;
-      const horasCompromiso = Math.floor(minutosCompromiso / 60) % 24;
-      const minsCompromiso = minutosCompromiso % 60;
-      const horaCompromiso = `${String(horasCompromiso).padStart(2, '0')}:${String(minsCompromiso).padStart(2, '0')}`;
-
-      // El instante de compromiso se refiere al DÍA de hoy en Santiago.
-      const instante = combinarFechaHoraSantiago(ahora.fecha, horaCompromiso);
-      fechaCompromisoHora = instante.toISOString();
+  if (corte.corteRiesgo && corte.ventana) {
+    // Bitácora de creación fuera de corte (CLAUDE.md: bitácora ANTES de efectos).
+    if (entrada.actorUsuarioId) {
+      await registrarEnBitacora(cliente, {
+        tenantId: entrada.tenantId,
+        actorUsuarioId: entrada.actorUsuarioId,
+        actorTipo: 'usuario',
+        accion: 'pedido.creado_fuera_corte',
+        entidadTipo: 'pedido',
+        entidadId: null,
+        detalle: {
+          seller_id: entrada.sellerId,
+          hora_corte: corte.ventana.horaCorte,
+          hora_actual: corte.horaEvaluada,
+          zona_id: zonaId,
+        },
+      });
     }
+
+    avisoCorte = {
+      tipo: 'fuera_corte',
+      mensaje: `Pasó la hora de corte (${corte.ventana.horaCorte}). El pedido se registró, pero la entrega para hoy está en riesgo.`,
+      horaCorte: corte.ventana.horaCorte,
+      sugerencia: 'Avisa al destinatario sobre el posible retraso o reactiva el pedido para mañana.',
+    };
   }
 
   // --- 5. Crear el pedido -----------------------------------------------------
@@ -1081,6 +1099,7 @@ export async function crearPedidoSameDay(
         tenant_id: entrada.tenantId,
         seller_id: entrada.sellerId,
         tipo_pedido: "same_day",
+        fuente: "rutax_manual",
         origen: "same_day_manual",
         estado: "pendiente_asignacion",
         destinatario_nombre: entrada.destinatarioNombre,
@@ -1128,6 +1147,9 @@ export async function crearPedidoSameDay(
         direccion: pedido.destinatarioDireccion,
         comuna: pedido.destinatarioComuna,
         tipoPedido: 'same_day',
+        // Procedencia: la escribe el INSERT de arriba como 'rutax_manual'. Se
+        // lee de la fila y no se repite el literal, para que no puedan divergir.
+        fuente: pedido.fuente,
       },
     });
   } catch {

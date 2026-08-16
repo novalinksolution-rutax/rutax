@@ -5,6 +5,7 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarTarifas } from "@/modules/identidad/capacidades";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -224,7 +225,7 @@ function FilaTarifa({ tarifa, sellers }: { tarifa: TarifaFila; sellers: { id: st
       </td>
       <td className="px-4 py-3">
         <Badge variant="outline" className="text-xs">
-          {tarifa.tipoEntrega === "flex" ? "Flex" : "Same-day"}
+          {etiquetaTipoEntrega(tarifa.tipoEntrega)}
         </Badge>
       </td>
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
@@ -293,7 +294,7 @@ function FilaTarifaInactiva({ tarifa }: { tarifa: TarifaFila }) {
         {tarifa.sellerNombre ?? <span className="italic">Tenant</span>}
       </td>
       <td className="px-4 py-2.5 text-xs">
-        {tarifa.tipoEntrega === "flex" ? "Flex" : "Same-day"}
+        {etiquetaTipoEntrega(tarifa.tipoEntrega)}
       </td>
       <td className="hidden px-4 py-2.5 sm:table-cell">{tarifa.zona ?? "—"}</td>
       <td className="px-4 py-2.5 text-right tabular-nums font-mono">

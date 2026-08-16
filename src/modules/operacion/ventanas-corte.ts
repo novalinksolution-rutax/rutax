@@ -22,6 +22,7 @@ import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import { puedeGestionarTarifas } from '@/modules/identidad/capacidades';
 import { ErrorValidacion } from '@/modules/identidad/errores';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { ahoraEnSantiago, combinarFechaHoraSantiago, horaAMinutos } from '@/lib/fecha-santiago';
 import type { VentanaCorte, GuardarVentanaCorteEntrada, TipoPedido } from './tipos';
 
 // =============================================================================
@@ -215,4 +216,102 @@ export async function resolverVentanaCorte(
   // 2. Fallback: ventana por defecto del seller (zona_id IS NULL).
   const porDefecto = ventanas.find((v) => v.zonaId === null);
   return porDefecto ?? null;
+}
+
+// =============================================================================
+// evaluarVentanaCorte — resolución + evaluación horaria, en un solo lugar
+// =============================================================================
+
+/** Lo que un pedido nuevo necesita saber del corte al momento de nacer. */
+export interface EvaluacionCorte {
+  /** La ventana aplicable, o `null` si el seller no tiene ninguna configurada. */
+  ventana: VentanaCorte | null;
+  /**
+   * Instante de compromiso (`operacion.pedidos.fecha_compromiso_hora`), o `null`
+   * cuando no hay ventana o cuando ya pasó el corte (ahí no se promete hora: se
+   * marca riesgo).
+   */
+  fechaCompromisoHora: string | null;
+  /** Marca INFORMATIVA de riesgo (F7). Nunca rechaza nada. */
+  corteRiesgo: boolean;
+  /** Hora local de Santiago con la que se evaluó ('HH:MM'), para el aviso al usuario. */
+  horaEvaluada: string;
+}
+
+/**
+ * Resuelve la ventana de corte del seller/zona y la evalúa contra el reloj de
+ * Santiago, devolviendo las DOS columnas que un pedido nuevo necesita:
+ * `fecha_compromiso_hora` y `corte_riesgo`.
+ *
+ * POR QUÉ EXISTE (y por qué está aquí y no en cada llamador). Este cálculo lo
+ * necesitan hoy dos caminos de alta que no comparten nada más: el alta manual
+ * same-day (`operacion/pedidos.ts`, `crearPedidoSameDay`) y la ingesta de
+ * Shopify (`integraciones/shopify/ingesta-pedidos.ts`). Vivía incrustado en el
+ * primero; copiarlo al segundo habría dejado dos relojes que se pueden
+ * desincronizar en silencio — y el modo de falla no es un error, es un pedido
+ * que promete una hora que el courier no va a cumplir.
+ *
+ * Lo que este helper NO hace, a propósito: no escribe bitácora ni compone el
+ * aviso al usuario. Eso es del llamador, porque solo el alta manual tiene un
+ * humano al que avisarle (`avisoCorte`) y un actor que registrar. Un job de
+ * ingesta no tiene ninguno de los dos.
+ *
+ * ⚠️ `corte_riesgo` describe el momento en que el pedido ENTRÓ y por eso se
+ * calcula SOLO al insertar. Recalcularlo en cada re-sincronización lo pondría en
+ * `true` para todo el padrón a partir de la hora de corte, que es falso.
+ *
+ * `ahora` se puede inyectar para pruebas; por defecto es el reloj de Santiago.
+ * Nunca `new Date()` crudo: Vercel corre en UTC y `hora_corte` es hora LOCAL.
+ */
+export async function evaluarVentanaCorte(
+  cliente: SupabaseClient,
+  entrada: {
+    tenantId: string;
+    sellerId: string;
+    zonaId: string | null;
+    tipoEntrega: TipoPedido;
+    /** Reloj inyectable — `{ fecha: 'YYYY-MM-DD', hora: 'HH:MM' }` en Santiago. */
+    ahora?: { fecha: string; hora: string };
+  },
+): Promise<EvaluacionCorte> {
+  const ahora = entrada.ahora ?? ahoraEnSantiago();
+
+  const ventana = await resolverVentanaCorte(
+    cliente,
+    entrada.tenantId,
+    entrada.sellerId,
+    entrada.zonaId,
+    entrada.tipoEntrega,
+  );
+
+  if (!ventana) {
+    // Sin regla configurada no hay corte que evaluar: el pedido nace sin
+    // compromiso horario y sin marca de riesgo. No es un error.
+    return { ventana: null, fechaCompromisoHora: null, corteRiesgo: false, horaEvaluada: ahora.hora };
+  }
+
+  const minutosAhora = horaAMinutos(ahora.hora);
+  const minutosCorte = horaAMinutos(ventana.horaCorte);
+
+  if (minutosAhora > minutosCorte) {
+    // Fuera de corte: se marca el riesgo y NO se promete hora. Nunca se rechaza
+    // el pedido — la decisión de producto es avisar, no bloquear.
+    return { ventana, fechaCompromisoHora: null, corteRiesgo: true, horaEvaluada: ahora.hora };
+  }
+
+  const minutosCompromiso =
+    minutosCorte + ventana.minutosPreparacion + ventana.minutosRutaEstimado;
+  const horasCompromiso = Math.floor(minutosCompromiso / 60) % 24;
+  const minsCompromiso = minutosCompromiso % 60;
+  const horaCompromiso = `${String(horasCompromiso).padStart(2, '0')}:${String(minsCompromiso).padStart(2, '0')}`;
+
+  // El instante de compromiso se refiere al DÍA de hoy en Santiago.
+  const instante = combinarFechaHoraSantiago(ahora.fecha, horaCompromiso);
+
+  return {
+    ventana,
+    fechaCompromisoHora: instante.toISOString(),
+    corteRiesgo: false,
+    horaEvaluada: ahora.hora,
+  };
 }

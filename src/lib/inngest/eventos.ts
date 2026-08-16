@@ -129,7 +129,29 @@ export interface EventoPedidoIngestado {
     direccion: string;
     /** Comuna declarada del destinatario. */
     comuna: string;
+    /**
+     * RÉGIMEN operativo y clave de tarifa — no la procedencia. Un pedido Shopify
+     * viaja con `tipoPedido: 'same_day'` y `fuente: 'shopify'`.
+     * `geocodificar-pedido.ts` lo usa tal cual para buscar `tarifas.tipo_entrega`,
+     * y por eso NO puede convertirse en el eje de procedencia.
+     */
     tipoPedido: 'flex' | 'same_day';
+    /**
+     * DE DÓNDE VIENE el pedido (`operacion.pedidos.fuente`, migración
+     * 20260816000003/4). Se agrega con la entrada de Shopify: desde que hay tres
+     * fuentes, `tipoPedido` dejó de responder "¿de dónde salió esto?" — Shopify y
+     * el alta manual comparten régimen `same_day` y no comparten procedencia.
+     *
+     * Espejo del enum SQL `operacion.fuente_pedido`. Se escribe inline y no se
+     * importa `FuentePedido` a propósito: `lib/inngest/eventos.ts` es el contrato
+     * entre módulos y no depende de ninguno (misma regla que el resto del archivo).
+     * Si el enum crece, esta unión crece con él.
+     *
+     * Hoy ningún consumidor ramifica por este campo — viaja para que el
+     * consumidor pueda hacerlo sin re-leer la fila, y para que el log del evento
+     * diga la verdad sobre el origen.
+     */
+    fuente: 'ml_flex' | 'rutax_manual' | 'shopify';
   };
 }
 
@@ -173,6 +195,86 @@ export interface EventoPedidoCanceladoEnMl {
     estadoAnterior: string;
     /** `substatus` que reportó ML, o `null` si no vino. */
     substatusMl: string | null;
+  };
+}
+
+/**
+ * Una FUENTE externa distinta de Mercado Libre canceló un pedido que Rutax
+ * tenía vivo. Hoy lo publica solo `integraciones/shopify` (repaso del cron, al
+ * ver `cancelledAt` en la orden).
+ *
+ * ⚠️ **SIN CONSUMIDOR, A PROPÓSITO.** `integraciones` DETECTA y AVISA; aplicar
+ * el estado, abrir la incidencia si el bulto ya iba en la van y cerrar el cabo
+ * de dinero es trabajo de `operacion` — exactamente el mismo reparto que rige
+ * para `operacion/pedido.cancelado-en-ml`. Mientras nadie lo consuma, una
+ * cancelación en Shopify queda registrada en el log del job y en el resumen de
+ * `infra.ejecuciones_job`, y el pedido sigue vivo en Rutax. Eso es deuda
+ * conocida, no un descuido: el consumidor es una entrega de `operacion`.
+ *
+ * ⚠️ **POR QUÉ NO SE REUTILIZÓ `operacion/pedido.cancelado-en-ml`.** Ese evento
+ * es de ML hasta en la forma: `mlShipmentId` es obligatorio, `substatusMl`
+ * también, y su consumidor (`operacion/jobs/procesar-cancelacion-ml.ts`) escribe
+ * `accion: 'pedido.cancelado_por_ml'` y `ml_shipment_id` en la bitácora. Un
+ * pedido Shopify no tiene shipment de ML: pasar por ahí obligaría a inventar un
+ * valor de relleno y dejaría en la auditoría financiera la frase «lo canceló
+ * Mercado Libre» sobre un pedido que Mercado Libre nunca vio. La auditoría es
+ * justamente lo que no se puede ensuciar.
+ *
+ * Es SOURCE-NEUTRAL a propósito (`fuente` + `idExterno`, no un campo por
+ * proveedor): la siguiente fuente con escritura de vuelta —WooCommerce,
+ * Falabella— publica este mismo contrato sin tocar nada. Migrar ML a él es una
+ * decisión aparte y no urgente: su camino ya está construido y probado.
+ *
+ * Idempotencia sugerida al publicar: `id` determinístico
+ * `pedido-cancelado-fuente-${pedidoId}` — un pedido se cancela una vez, por
+ * mucho que dos barridos lo descubran.
+ *
+ * NO viaja quién canceló ni el motivo: solo el hecho. Tampoco datos del
+ * destinatario.
+ */
+export interface EventoPedidoCanceladoEnFuente {
+  name: 'operacion/pedido.cancelado-en-fuente';
+  data: {
+    pedidoId: string;
+    tenantId: string;
+    sellerId: string;
+    /** Espejo de `operacion.pedidos.fuente`. Hoy siempre 'shopify'. */
+    fuente: 'shopify';
+    /** `operacion.pedidos.id_externo` — el id del pedido EN la fuente. No es dato personal. */
+    idExterno: string;
+    /** El número visible del pedido en la tienda (`#1001`), para el mensaje al humano. */
+    referenciaExterna: string | null;
+    /** Estado interno que tenía el pedido al detectarse la cancelación. */
+    estadoAnterior: string;
+    /** Instante ISO en que la fuente dice que se canceló, si lo informa. */
+    canceladoEnFuenteEn: string | null;
+  };
+}
+
+/**
+ * Un humano pidió sincronizar AHORA una conexión de Shopify (botón
+ * «Sincronizar ahora» del portal del seller / panel del courier).
+ *
+ * Consumido por `jobSincronizarConexionShopify`
+ * (`integraciones/shopify/jobs/ingesta-pedidos-shopify.ts`), que corre EXACTAMENTE
+ * la misma rutina por-conexión que el cron. No hay un camino manual que pueda
+ * divergir del automático — misma regla que en ML.
+ *
+ * `actorUsuarioId` es el UUID de auth de quien apretó el botón; viaja para
+ * trazabilidad (RNF-04) y la acción que publica el evento es la responsable de
+ * dejar la bitácora ANTES de publicarlo.
+ *
+ * NO lleva tokens ni referencias a secretos: el job resuelve la conexión por su
+ * `conexionId` y descifra el Admin API token dentro del paso.
+ */
+export interface EventoSincronizacionShopifySolicitada {
+  name: 'shopify/sincronizacion.solicitada';
+  data: {
+    conexionId: string;
+    sellerId: string;
+    tenantId: string;
+    /** UUID de auth de quien la solicitó, o `null` si la disparó el sistema. */
+    actorUsuarioId: string | null;
   };
 }
 
@@ -658,6 +760,59 @@ export interface EventoBultoRetiroSinPedido {
     mlShipmentId: string;
     /** Momento del escaneo (dispositivo) — para que el consumidor sepa cuánto lleva sin resolver. */
     escaneadoEn: string;
+  };
+}
+
+/**
+ * Un pedido llegó a un estado TERMINAL — evento SOURCE-NEUTRAL para que
+ * `integraciones` escriba de vuelta a la fuente que lo originó (Shopify hoy;
+ * Falabella u otra fuente futura mañana, sin tocar `operacion/pedidos.ts`).
+ *
+ * Publicado por `actualizarEstadoPedido` (`operacion/pedidos.ts`), en el MISMO
+ * punto post-commit donde ya se publica `dinero/pedido.estado_financiero_relevante`
+ * y para el MISMO conjunto de estados ('entregado' | 'entregado_manual' |
+ * 'fallido' | 'fallido_manual' | 'devuelto' | 'cancelado') — pero es un evento
+ * DISTINTO e independiente, con su propio `try/catch` best-effort. Publicarlo
+ * incondicionalmente (sin la excepción `sinAsignacionEnRutax` que sí aplica al
+ * evento financiero) es deliberado: esa excepción existe para no FACTURAR una
+ * entrega que Rutax no hizo, pero avisarle a la tienda que su pedido llegó a un
+ * estado terminal es correcto sin importar quién lo entregó — el comprador
+ * sigue esperando su notificación de envío.
+ *
+ * ⚠️ **NO ES `dinero/pedido.estado_financiero_relevante` REUSADO, A PROPÓSITO.**
+ * Ese evento es un CONTRATO DEL MÓDULO `dinero` (lo consume C1, y su forma
+ * cambia cuando cambian las reglas de facturación/liquidación). Colgar la
+ * escritura hacia una tienda externa de un evento que le pertenece a `dinero`
+ * ataría el adaptador de Shopify a cómo el motor de plata nombra sus cosas —
+ * el día que `dinero` le agregue un campo (ver la nota de `podValido` más
+ * arriba en este archivo), ese cambio no debería poder romper, ni siquiera
+ * rozar, la notificación al comprador.
+ *
+ * Consumido hoy por `integraciones/shopify/jobs/marcar-cumplido-shopify.ts`,
+ * que es no-op salvo `fuente === 'shopify'` y `estadoNuevo` de entrega
+ * ('entregado' | 'entregado_manual'): 'fallido' | 'devuelto' | 'cancelado' NO
+ * escriben nada en la tienda en la v1 (qué significan allá es una conversación
+ * aparte). El evento se publica igual para esos estados — el filtro es del
+ * consumidor, no del productor — para que un futuro consumidor (p. ej. un
+ * webhook saliente propio, F23) no tenga que esperar un segundo evento.
+ *
+ * `idExterno` es `operacion.pedidos.id_externo` — `null` para `ml_flex` y
+ * `rutax_manual` (ninguno de los dos lo puebla hoy). NO lleva datos personales
+ * del destinatario.
+ */
+export interface EventoPedidoEstadoTerminal {
+  name: 'operacion/pedido.estado-terminal';
+  data: {
+    pedidoId: string;
+    tenantId: string;
+    sellerId: string;
+    /** Espejo de `operacion.pedidos.fuente`. */
+    fuente: 'ml_flex' | 'rutax_manual' | 'shopify';
+    /** `operacion.pedidos.id_externo` — `null` en fuentes que no lo pueblan. */
+    idExterno: string | null;
+    estadoNuevo: 'entregado' | 'entregado_manual' | 'fallido' | 'fallido_manual' | 'devuelto' | 'cancelado';
+    /** ISO timestamptz zona America/Santiago. */
+    fechaTransicion: string;
   };
 }
 

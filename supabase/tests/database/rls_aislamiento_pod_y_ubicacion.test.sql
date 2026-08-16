@@ -171,14 +171,14 @@ begin
 
   -- Pedidos: same_day asignado (para el POD) + flex (para la FRONTERA)
   insert into operacion.pedidos
-    (id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    (id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
      destinatario_nombre, destinatario_direccion, destinatario_comuna)
   values
-    (pedido_a_sd,   t_a, s_a, 'same_day', 'same_day_manual', null,       'asignado',
+    (pedido_a_sd,   t_a, s_a, 'same_day', 'rutax_manual', 'same_day_manual', null,       'asignado',
      'Destinatario POD A',    'Calle POD A 1',   'Santiago'),
-    (pedido_a_flex, t_a, s_a, 'flex',     'ml_ingesta',      'SHP-POD-F', 'asignado',
+    (pedido_a_flex, t_a, s_a, 'flex',     'ml_flex',     'ml_ingesta',      'SHP-POD-F', 'asignado',
      'Destinatario POD Flex', 'Calle POD Flex 1','Providencia'),
-    (pedido_b_sd,   t_b, s_b, 'same_day', 'same_day_manual', null,       'asignado',
+    (pedido_b_sd,   t_b, s_b, 'same_day', 'rutax_manual', 'same_day_manual', null,       'asignado',
      'Destinatario POD B',    'Calle POD B 1',   'Vitacura')
   on conflict (id) do nothing;
 

@@ -22,6 +22,7 @@ import {
   BADGE_ESTADO_PEDIDO,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoManifiesto, EstadoPedido, Pedido, Incidencia, TipoIncidencia } from "@/modules/operacion/tipos";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { ordenarParadasConSecuencia } from "@/modules/operacion/orden-paradas";
 import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
 import { BotonListoParaSalir } from "./boton-listo-para-salir";
@@ -80,7 +81,7 @@ async function cargarManifiestoActivo(
   const { data: asignaciones } = await cliente
     .from("asignaciones_pedido")
     .select(
-      "id, orden_ruta, pedidos(id, tenant_id, seller_id, tipo_pedido, origen, ml_order_id, ml_shipment_id, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en)",
+      "id, orden_ruta, pedidos(id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_order_id, ml_shipment_id, id_externo, referencia_externa, estado, estado_ml, subestado_ml, ultima_sync_ml_en, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, tarifa_aplicable_id, notas_internas, creado_en, actualizado_en)",
     )
     .eq("manifiesto_id", manifiestoId)
     .eq("tenant_id", tenantId)
@@ -103,7 +104,10 @@ async function cargarManifiestoActivo(
         tenantId: p.tenant_id as string,
         sellerId: p.seller_id as string,
         tipoPedido: p.tipo_pedido as Pedido["tipoPedido"],
+        fuente: p.fuente as Pedido["fuente"],
         origen: p.origen as Pedido["origen"],
+        idExterno: (p.id_externo as string | null) ?? null,
+        referenciaExterna: (p.referencia_externa as string | null) ?? null,
         mlOrderId: (p.ml_order_id as string | null) ?? null,
         mlShipmentId: (p.ml_shipment_id as string | null) ?? null,
         estado: p.estado as EstadoPedido,
@@ -352,11 +356,8 @@ export default async function PaginaManifiestoActivo() {
 
                   {/* Estado + fuente — badges esquina superior derecha */}
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <Badge variant={pedido.tipoPedido === "same_day" ? "info" : "neutral"}>
-                      {/* "Same-day", no "SAME-DAY": iba en versalitas junto a
-                          "Flex" en capitalización normal, dos estilos para la
-                          misma etiqueta y en la misma esquina de la tarjeta. */}
-                      {pedido.tipoPedido === "same_day" ? "Same-day" : "Flex"}
+                    <Badge variant={pedido.fuente === "ml_flex" ? "neutral" : "info"}>
+                      {etiquetaFuentePedido(pedido.fuente)}
                     </Badge>
                     <BadgeEstado
                       variante={BADGE_ESTADO_PEDIDO[pedido.estado]}

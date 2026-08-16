@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
 import type { Zona, ZonaComuna, VentanaCorte } from "@/modules/operacion/tipos";
 import {
   actionCrearZona,
@@ -48,11 +49,6 @@ import {
 // =============================================================================
 // Tipos locales
 // =============================================================================
-
-const ETIQUETAS_TIPO: Record<"flex" | "same_day", string> = {
-  flex: "Flex",
-  same_day: "Same-day",
-};
 
 // =============================================================================
 // Panel principal
@@ -549,7 +545,7 @@ function SeccionVentanasCorte({
                           {ventanas.map((v) => (
                             <tr key={v.id}>
                               <td className="px-4 py-2 font-medium">
-                                {ETIQUETAS_TIPO[v.tipoEntrega]}
+                                {etiquetaTipoEntrega(v.tipoEntrega)}
                               </td>
                               <td className="px-4 py-2 text-muted-foreground">
                                 {v.zonaId

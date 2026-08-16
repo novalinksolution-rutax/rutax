@@ -139,14 +139,14 @@ begin
   on conflict do nothing;
 
   -- Pedidos con columnas de SLA pobladas (como postgres, bypassa RLS).
-  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, origen,
+  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, fuente, origen,
     ml_shipment_id, estado, destinatario_nombre, destinatario_direccion, destinatario_comuna,
     fecha_compromiso_hora, corte_riesgo, sla_cumplido)
   values
-    (pedido_a1, t_a, s_a,  'same_day', 'same_day_manual', null, 'pendiente_asignacion',
+    (pedido_a1, t_a, s_a,  'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
      'Destinatario A1', 'Calle A 1', 'Santiago',
      now() + interval '3 hours', true,  null),
-    (pedido_a3, t_a, s_a2, 'same_day', 'same_day_manual', null, 'pendiente_asignacion',
+    (pedido_a3, t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
      'Destinatario A3', 'Calle A 3', 'Las Condes',
      now() + interval '2 hours', false, false)
   on conflict (id) do nothing;

@@ -437,7 +437,7 @@ on conflict (id) do nothing;
 -- Estados: los días pasados quedan mayormente cerrados (tasa de entrega ~90%);
 -- HOY queda con la mezcla viva (pendiente/asignado/en_ruta/entregado/fallido).
 insert into operacion.pedidos (
-  id, tenant_id, seller_id, tipo_pedido, origen,
+  id, tenant_id, seller_id, tipo_pedido, fuente, origen,
   ml_order_id, ml_shipment_id, ml_user_id, codigo_interno,
   estado, estado_ml, subestado_ml, ultima_sync_ml_en,
   driver_id_asignado,
@@ -455,6 +455,11 @@ select
   '10000000-0000-0000-0000-000000000001',
   g.seller_id,
   g.tipo_pedido,
+  -- `fuente` NO tiene default (migración 20260816000004): todo escritor de
+  -- operacion.pedidos debe mandarla o el INSERT muere con 23502. El seed es
+  -- un escritor más. Mismo mapa determinista que el backfill de la migración.
+  case when g.tipo_pedido = 'flex' then 'ml_flex'::operacion.fuente_pedido
+       else 'rutax_manual'::operacion.fuente_pedido end,
   case when g.tipo_pedido = 'same_day' then 'same_day_manual'::operacion.origen_pedido
        when g.i % 61 = 0 then 'backfill'::operacion.origen_pedido
        else 'ml_ingesta'::operacion.origen_pedido end,

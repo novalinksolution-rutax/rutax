@@ -131,7 +131,7 @@ async function cargarDatosDashboard(tenantId: string) {
   const cliente = crearClienteServiceRole();
   const hoy = new Date();
 
-  const [metricas, incidenciasRaw, sellersRaw] = await Promise.all([
+  const [metricas, incidenciasRaw, sellersMlRaw, sellersShopifyRaw] = await Promise.all([
     obtenerMetricasDelDia(cliente, tenantId, hoy),
     cliente
       .schema("operacion")
@@ -147,6 +147,17 @@ async function cargarDatosDashboard(tenantId: string) {
       .select("id, seller_id, alias, ml_nickname, sellers!conexiones_seller_ml_seller_id_fkey(razon_social)")
       .eq("tenant_id", tenantId)
       .eq("estado_salud", "desvinculada"),
+    // Shopify entró como tercera fuente (2026-08-16): un seller con la tienda
+    // caída y ML sano no puede quedar invisible en este banner. `activa` SÍ se
+    // filtra aquí (a diferencia de ML, que no tiene esa columna): una conexión
+    // dada de baja a propósito no es una caída que alertar.
+    cliente
+      .schema("identidad")
+      .from("conexiones_seller_shopify")
+      .select("id, seller_id, alias, shop_domain, sellers!conexiones_seller_shopify_seller_id_fkey(razon_social)")
+      .eq("tenant_id", tenantId)
+      .eq("estado_salud", "desvinculada")
+      .eq("activa", true),
   ]);
 
   const incidenciasSinGestion: IncidenciaSinGestion[] = (incidenciasRaw.data ?? [])
@@ -160,11 +171,13 @@ async function cargarDatosDashboard(tenantId: string) {
       horasAbierta: Math.floor(horasDesde(inc.abierta_en)),
     }));
 
-  // Modelo 1:N — puede haber varias conexiones caídas por seller. La clave es
-  // el id de la CONEXIÓN y el nombre incluye la cuenta (alias/nickname) cuando
-  // el seller tiene más de una, para que el courier sepa cuál está caída.
+  // Modelo 1:N — puede haber varias conexiones caídas por seller, y de dos
+  // fuentes distintas (ML + Shopify). La clave sigue siendo el id de la
+  // CONEXIÓN (no el del seller): dos conexiones caídas del mismo seller son
+  // dos filas. El nombre incluye la cuenta (alias/nickname/dominio) cuando
+  // hace falta distinguir cuál está caída.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sellersCaidos: SellerCaido[] = (sellersRaw.data ?? []).map((row: any) => {
+  const sellersCaidosMl: SellerCaido[] = (sellersMlRaw.data ?? []).map((row: any) => {
     const cuenta: string | null = row.alias?.trim() || row.ml_nickname?.trim() || null;
     const nombreSeller: string = row.sellers?.razon_social ?? row.seller_id;
     return {
@@ -172,6 +185,16 @@ async function cargarDatosDashboard(tenantId: string) {
       nombre: cuenta ? `${nombreSeller} · ${cuenta}` : nombreSeller,
     };
   });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sellersCaidosShopify: SellerCaido[] = (sellersShopifyRaw.data ?? []).map((row: any) => {
+    const cuenta: string | null = row.alias?.trim() || row.shop_domain?.trim() || null;
+    const nombreSeller: string = row.sellers?.razon_social ?? row.seller_id;
+    return {
+      id: row.id,
+      nombre: cuenta ? `${nombreSeller} · ${cuenta}` : nombreSeller,
+    };
+  });
+  const sellersCaidos: SellerCaido[] = [...sellersCaidosMl, ...sellersCaidosShopify];
 
   return { metricas, incidenciasSinGestion, sellersCaidos };
 }
@@ -428,11 +451,11 @@ async function SeccionOperativa({
         <div
           role="alert"
           className="rounded-lg bg-destructive px-5 py-4 text-destructive-foreground"
-          aria-label="Conexiones de Mercado Libre caídas"
+          aria-label="Conexiones caídas"
         >
           <div className="mb-3 flex items-center gap-2 font-semibold">
             <AlertCircle className="size-5 shrink-0" aria-hidden="true" />
-            Conexiones de Mercado Libre caídas ({sellersCaidos.length})
+            Conexiones caídas ({sellersCaidos.length})
           </div>
           <ul className="space-y-2">
             {sellersCaidos.slice(0, 3).map((seller) => (

@@ -58,3 +58,28 @@ export function podLoGobiernaLaFuente(fuente: string | null | undefined): boolea
 export function esFuenteConocida(valor: string | null | undefined): valor is FuentePedido {
   return valor != null && (FUENTES_PEDIDO as readonly string[]).includes(valor);
 }
+
+/**
+ * Fuentes que emiten su propia etiqueta imprimible (con su propio código de
+ * envío / QR), a diferencia de las que dependen de que Rutax genere la
+ * etiqueta interna con QR propio.
+ *
+ * Hoy coincide con `FUENTES_CON_POD_EXTERNO`, pero es una lista PROPIA y a
+ * propósito: son dos preguntas distintas — "¿quién es dueño de la prueba de
+ * entrega?" vs. "¿quién imprime la etiqueta?". Una fuente futura podría traer
+ * su propia etiqueta sin imponer POD externo (o al revés), y mezclar ambas
+ * listas dejaría el código correcto por casualidad, no por diseño.
+ */
+const FUENTES_QUE_PROVEEN_ETIQUETA: readonly FuentePedido[] = ["ml_flex"];
+
+/**
+ * ¿Esta fuente trae su propia etiqueta imprimible (Rutax solo la descarga),
+ * o Rutax debe generar la etiqueta interna con QR propio?
+ *
+ * Falla CERRADO ante una fuente desconocida: devuelve `false` — Rutax genera
+ * su propia etiqueta antes que asumir que una fuente no reconocida la provee.
+ */
+export function laFuenteProveeEtiqueta(fuente: string | null | undefined): boolean {
+  if (!esFuenteConocida(fuente)) return false;
+  return FUENTES_QUE_PROVEEN_ETIQUETA.includes(fuente);
+}

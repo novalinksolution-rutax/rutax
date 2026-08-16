@@ -4,6 +4,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarPruebaEntrega } from "@/modules/operacion/pruebas-entrega";
 import { registrarCierreConductor } from "@/modules/operacion/cierre-conductor";
 import { actualizarEstadoPedido } from "@/modules/operacion/pedidos";
+import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import type { TipoIncidencia } from "@/modules/operacion/tipos";
 
@@ -64,7 +65,7 @@ export async function POST(
 
     const { data: pedido } = await cliente
       .from("pedidos")
-      .select("tipo_pedido")
+      .select("fuente")
       .eq("id", pedidoId)
       .eq("tenant_id", usuario.tenantId)
       .maybeSingle();
@@ -73,8 +74,8 @@ export async function POST(
       return NextResponse.json({ error: "Pedido no encontrado" }, { status: 404 });
     }
 
-    // --- Flex: cierre operativo (no cambia el estado) -----------------------
-    if (pedido.tipo_pedido === "flex") {
+    // --- La fuente gobierna el POD: cierre operativo, no cambia el estado ----
+    if (podLoGobiernaLaFuente(pedido.fuente)) {
       await registrarCierreConductor(
         cliente,
         {
@@ -90,7 +91,7 @@ export async function POST(
       return NextResponse.json({ exito: true });
     }
 
-    // --- same-day: POD autoritativo (cambia el estado) ----------------------
+    // --- POD autoritativo de Rutax (cambia el estado) -----------------------
     await registrarPruebaEntrega(
       cliente,
       {

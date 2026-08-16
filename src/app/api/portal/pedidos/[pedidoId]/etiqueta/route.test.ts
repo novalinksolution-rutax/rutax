@@ -81,7 +81,7 @@ function pedidoFila(overrides: Record<string, unknown> = {}) {
     id: PEDIDO_ID,
     tenant_id: TENANT_ID,
     seller_id: SELLER_ID,
-    tipo_pedido: "same_day",
+    fuente: "rutax_manual", tipo_pedido: "same_day",
     codigo_interno: null,
     destinatario_nombre: "Juan Pérez",
     destinatario_direccion: "Av. Providencia 123",
@@ -210,10 +210,10 @@ describe("GET /api/portal/pedidos/:pedidoId/etiqueta", () => {
     expect(eqMock).not.toHaveBeenCalledWith("seller_id", OTRO_SELLER_ID);
   });
 
-  it("400 si el pedido no es same_day", async () => {
+  it("400 si la etiqueta la emite la fuente y no Rutax", async () => {
     vi.mocked(obtenerSesionActual).mockResolvedValue(crearSesion());
     const mockSupabase = crearMockSupabase({
-      pedido: { data: pedidoFila({ tipo_pedido: "flex" }), error: null },
+      pedido: { data: pedidoFila({ fuente: "ml_flex", tipo_pedido: "flex" }), error: null },
     });
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockSupabase as never);
 
@@ -221,7 +221,9 @@ describe("GET /api/portal/pedidos/:pedidoId/etiqueta", () => {
     const cuerpo = await respuesta.json();
 
     expect(respuesta.status).toBe(400);
-    expect(cuerpo).toEqual({ error: "Este pedido no es un envío same-day." });
+    expect(cuerpo).toEqual({
+      error: "La etiqueta de este pedido la emite Mercado Libre, no Rutax.",
+    });
     expect(asegurarCodigoInterno).not.toHaveBeenCalled();
   });
 

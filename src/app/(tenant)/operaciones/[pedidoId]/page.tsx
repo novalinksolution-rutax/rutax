@@ -52,6 +52,7 @@ import {
 import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { Pedido, Incidencia } from "@/modules/operacion/tipos";
 import { esTransicionValida } from "@/modules/operacion/maquina-estados";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { DrawerCambioEstado } from "./drawer-cambio-estado";
 import { DrawerIncidencia } from "./drawer-incidencia";
 import { DialogReasignacion } from "./dialog-reasignacion";
@@ -62,6 +63,7 @@ import { VisorPod } from "./visor-pod";
 import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
 import { ACCIONES_HISTORIAL_ESTADO_PEDIDO } from "./historial-estados";
+import { formatearFechaHora } from "@/lib/formato-cl";
 
 // =============================================================================
 // Carga de datos
@@ -246,8 +248,8 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
 
         <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs text-muted-foreground">Tipo</dt>
-            <dd className="font-medium capitalize">{pedido.tipoPedido === "flex" ? "Flex" : "Same-day"}</dd>
+            <dt className="text-xs text-muted-foreground">Fuente</dt>
+            <dd className="font-medium">{etiquetaFuentePedido(pedido.fuente)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Seller</dt>
@@ -292,7 +294,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
                 <dt className="text-xs text-muted-foreground">Cancelado el</dt>
                 <dd className="mt-0.5 font-medium">
                   {pedido.canceladoEn
-                    ? new Date(pedido.canceladoEn).toLocaleString("es-CL")
+                    ? formatearFechaHora(pedido.canceladoEn)
                     : "—"}
                 </dd>
               </div>
@@ -342,7 +344,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
                     {entrada.actor_usuario_id && (
                       <p className="text-xs text-muted-foreground">
                         Cambiado manualmente el{" "}
-                        {new Date(entrada.creado_en).toLocaleString("es-CL")}
+                        {formatearFechaHora(entrada.creado_en)}
                       </p>
                     )}
                     {entrada.detalle?.motivo && (
@@ -535,7 +537,7 @@ function SeccionGeocoding({
             <div>
               <dt className="text-xs text-muted-foreground">Geocodificado</dt>
               <dd className="text-xs text-muted-foreground">
-                {new Date(pedido.geocodificadoEn).toLocaleString("es-CL")}
+                {formatearFechaHora(pedido.geocodificadoEn)}
               </dd>
             </div>
           )}

@@ -87,9 +87,12 @@ interface FilaPedido {
   tenant_id: string;
   seller_id: string;
   tipo_pedido: string;
+  fuente: string;
   origen: string;
   ml_order_id: string | null;
   ml_shipment_id: string | null;
+  id_externo?: string | null;
+  referencia_externa?: string | null;
   estado: EstadoPedido;
   estado_ml: string | null;
   subestado_ml: string | null;
@@ -176,7 +179,7 @@ function pedidoBase(estadoActual: EstadoPedido = "en_ruta"): FilaPedido {
     id: PEDIDO_1,
     tenant_id: TENANT_A,
     seller_id: SELLER_1,
-    tipo_pedido: "flex",
+    fuente: "ml_flex", tipo_pedido: "flex",
     origen: "ml_ingesta",
     ml_order_id: "ML-ORD-001",
     ml_shipment_id: "ML-SHP-001",
@@ -323,6 +326,7 @@ function crearClienteFalso(opts?: {
                 tenant_id: fila.tenant_id as string,
                 seller_id: fila.seller_id as string,
                 tipo_pedido: fila.tipo_pedido as string,
+                fuente: fila.fuente as string,
                 origen: fila.origen as string,
                 ml_order_id: null,
                 ml_shipment_id: null,
@@ -960,7 +964,7 @@ function pedidoSameDayCancelable(
 ): FilaPedido {
   return {
     ...pedidoBase(estadoActual),
-    tipo_pedido: "same_day",
+    fuente: "rutax_manual", tipo_pedido: "same_day",
     ...overrides,
   };
 }
@@ -1768,7 +1772,7 @@ function pedidoSameDay(
 ): FilaPedido {
   return {
     ...pedidoBase(estadoActual),
-    tipo_pedido: "same_day",
+    fuente: "rutax_manual", tipo_pedido: "same_day",
     driver_id_asignado: DRIVER_1,
     ...overrides,
   };
@@ -1853,7 +1857,7 @@ describe("actualizarEstadoPedido — barrera same-day del conductor (Bloque 2)",
   it("conductor no puede actuar sobre pedido Flex (frontera dura)", async () => {
     const pedidoFlex: FilaPedido = {
       ...pedidoBase("asignado"),
-      tipo_pedido: "flex",
+      fuente: "ml_flex", tipo_pedido: "flex",
       driver_id_asignado: DRIVER_1,
     };
     const { cliente } = crearClienteFalso({ pedidos: [pedidoFlex] });
@@ -2396,7 +2400,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
   it("Flex: pendiente_asignacion → entregado por sistema transiciona, pero NO dispara el evento financiero (sin conductor asignado en Rutax)", async () => {
     const { cliente } = crearClienteFalso({
       pedidos: [
-        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "flex", driver_id_asignado: null },
+        { ...pedidoBase("pendiente_asignacion"), fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: null },
       ],
     });
 
@@ -2422,7 +2426,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
     // hizo otro courier conectado a la misma cuenta de ML.
     const { cliente } = crearClienteFalso({
       pedidos: [
-        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "flex", driver_id_asignado: null },
+        { ...pedidoBase("pendiente_asignacion"), fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: null },
       ],
     });
 
@@ -2441,7 +2445,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
   it("Flex: pendiente_asignacion → en_ruta por sistema es una transición permitida (no es estado financiero)", async () => {
     const { cliente } = crearClienteFalso({
       pedidos: [
-        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "flex", driver_id_asignado: null },
+        { ...pedidoBase("pendiente_asignacion"), fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: null },
       ],
     });
 
@@ -2464,7 +2468,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
     // que Rutax nunca hizo.
     const { cliente } = crearClienteFalso({
       pedidos: [
-        { ...pedidoBase("en_ruta"), tipo_pedido: "flex", driver_id_asignado: DRIVER_REFLEJO_ML },
+        { ...pedidoBase("en_ruta"), fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: DRIVER_REFLEJO_ML },
       ],
     });
 
@@ -2484,7 +2488,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
     for (const destino of ["entregado", "en_ruta", "fallido"] as const) {
       const { cliente } = crearClienteFalso({
         pedidos: [
-          { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "same_day", driver_id_asignado: null },
+          { ...pedidoBase("pendiente_asignacion"), fuente: "rutax_manual", tipo_pedido: "same_day", driver_id_asignado: null },
         ],
       });
 
@@ -2503,7 +2507,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
   it("same-day sigue pudiendo pendiente_asignacion → asignado por sistema (auto-asignación, sin cambios)", async () => {
     const { cliente } = crearClienteFalso({
       pedidos: [
-        { ...pedidoBase("pendiente_asignacion"), tipo_pedido: "same_day", driver_id_asignado: null },
+        { ...pedidoBase("pendiente_asignacion"), fuente: "rutax_manual", tipo_pedido: "same_day", driver_id_asignado: null },
       ],
     });
 
@@ -2521,7 +2525,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
   it("con conductor YA asignado, en_ruta → entregado por sistema SÍ dispara el evento (no-regresión del caso normal)", async () => {
     const { cliente } = crearClienteFalso({
       pedidos: [
-        { ...pedidoBase("en_ruta"), tipo_pedido: "flex", driver_id_asignado: DRIVER_REFLEJO_ML },
+        { ...pedidoBase("en_ruta"), fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: DRIVER_REFLEJO_ML },
       ],
     });
 
@@ -2548,7 +2552,7 @@ describe("actualizarEstadoPedido — reflejo de ML desde pendiente_asignacion (F
     // excepción de "sin conductor" NO la alcanza, a propósito: acotada a
     // `entradaNuevo === 'entregado'` en pedidos.ts.
     const { cliente } = crearClienteFalso({
-      pedidos: [{ ...pedidoBase("asignado"), tipo_pedido: "flex", driver_id_asignado: null }],
+      pedidos: [{ ...pedidoBase("asignado"), fuente: "ml_flex", tipo_pedido: "flex", driver_id_asignado: null }],
     });
 
     await actualizarEstadoPedido(

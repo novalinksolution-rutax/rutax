@@ -131,15 +131,15 @@ begin
 
   -- Pedidos same-day con codigo_interno. pedido_a1 y pedido_b1 comparten código
   -- (distinto tenant) — la unicidad es por tenant, así que no colisionan.
-  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, origen,
+  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, fuente, origen,
     ml_shipment_id, estado, destinatario_nombre, destinatario_direccion,
     destinatario_comuna, codigo_interno)
   values
-    (pedido_a1, t_a, s_a,  'same_day', 'same_day_manual', null, 'pendiente_asignacion',
+    (pedido_a1, t_a, s_a,  'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
      'Destinatario A1', 'Calle A 1', 'Santiago',   'RX-AAAA-0001'),
-    (pedido_a3, t_a, s_a2, 'same_day', 'same_day_manual', null, 'pendiente_asignacion',
+    (pedido_a3, t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
      'Destinatario A3', 'Calle A 3', 'Las Condes', 'RX-AAAA-0003'),
-    (pedido_b1, t_b, s_b,  'same_day', 'same_day_manual', null, 'pendiente_asignacion',
+    (pedido_b1, t_b, s_b,  'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
      'Destinatario B1', 'Calle B 1', 'Vitacura',   'RX-AAAA-0001')
   on conflict (id) do nothing;
 end $$;
@@ -158,13 +158,13 @@ select results_eq(
 
 -- Repetir el código DENTRO del mismo tenant A es rechazado (23505).
 select throws_ok(
-  $$ insert into operacion.pedidos (tenant_id, seller_id, tipo_pedido, origen,
+  $$ insert into operacion.pedidos (tenant_id, seller_id, tipo_pedido, fuente, origen,
        estado, destinatario_nombre, destinatario_direccion, destinatario_comuna,
        codigo_interno)
      values
        ('aaaaaaaa-0000-0000-0000-000000000001',  -- t_a (mismo tenant que pedido_a1)
         'aaaaaaaa-1111-0000-0000-000000000001',  -- s_a
-        'same_day', 'same_day_manual', 'pendiente_asignacion',
+        'same_day', 'rutax_manual', 'same_day_manual', 'pendiente_asignacion',
         'Dup A', 'Calle Dup', 'Ñuñoa',
         'RX-AAAA-0001') $$,                        -- código ya usado en t_a
   '23505',  -- unique_violation

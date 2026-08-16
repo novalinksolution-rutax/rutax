@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   sanearFiltroEstadoPedido,
+  sanearFiltroFuentePedido,
   sanearFiltroUuid,
   sanearFiltroFechaCivil,
   sanearNumeroPagina,
@@ -25,6 +26,26 @@ describe("sanearFiltroEstadoPedido", () => {
     expect(sanearFiltroEstadoPedido(undefined)).toBe("");
     expect(sanearFiltroEstadoPedido(null)).toBe("");
     expect(sanearFiltroEstadoPedido("")).toBe("");
+  });
+});
+
+describe("sanearFiltroFuentePedido", () => {
+  it("acepta cada valor válido del enum de fuente", () => {
+    expect(sanearFiltroFuentePedido("ml_flex")).toBe("ml_flex");
+    expect(sanearFiltroFuentePedido("rutax_manual")).toBe("rutax_manual");
+    expect(sanearFiltroFuentePedido("shopify")).toBe("shopify");
+  });
+
+  it("ignora un valor que no está en FUENTES_PEDIDO (p. ej. un tipo_pedido colado por error)", () => {
+    expect(sanearFiltroFuentePedido("flex")).toBe("");
+    expect(sanearFiltroFuentePedido("same_day")).toBe("");
+    expect(sanearFiltroFuentePedido("todas")).toBe("");
+  });
+
+  it("ignora undefined/null/vacío sin lanzar", () => {
+    expect(sanearFiltroFuentePedido(undefined)).toBe("");
+    expect(sanearFiltroFuentePedido(null)).toBe("");
+    expect(sanearFiltroFuentePedido("")).toBe("");
   });
 });
 

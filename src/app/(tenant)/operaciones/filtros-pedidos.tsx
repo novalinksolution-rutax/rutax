@@ -8,10 +8,11 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useCallback } from "react";
 import { MapPinOff } from "lucide-react";
-import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
+import { ESTADOS_PEDIDO, FUENTES_PEDIDO } from "@/modules/operacion/tipos";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { TEXTO_ESTADO_PEDIDO, etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
-import type { EstadoPedido } from "@/modules/operacion/tipos";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
+import type { EstadoPedido, FuentePedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,6 +34,7 @@ interface Props {
   filtroFecha: string;
   filtroComuna: string;
   filtroConductor: string;
+  filtroFuente: string;
   filtroPorRevisar: boolean;
   hayFiltroActivo: boolean;
 }
@@ -45,6 +47,7 @@ export function FiltrosPedidosForm({
   filtroFecha,
   filtroComuna,
   filtroConductor,
+  filtroFuente,
   filtroPorRevisar,
   hayFiltroActivo,
 }: Props) {
@@ -62,6 +65,10 @@ export function FiltrosPedidosForm({
       // devolver al usuario a la ciudad entera.
       if (campo !== "comuna" && filtroComuna) params.set("comuna", filtroComuna);
       if (campo !== "conductor" && filtroConductor) params.set("conductor", filtroConductor);
+      // Fuente sobrevive igual que comuna/conductor: es un corte del mismo
+      // universo (con tres fuentes conviviendo en la bandeja, filtrar por
+      // estado no puede devolver a "todas las fuentes").
+      if (campo !== "fuente" && filtroFuente) params.set("fuente", filtroFuente);
       if (campo !== "por_revisar" && filtroPorRevisar) params.set("por_revisar", "1");
       if (valor) params.set(campo, valor);
       // Resetear a página 1 al cambiar filtros
@@ -75,6 +82,7 @@ export function FiltrosPedidosForm({
       filtroFecha,
       filtroComuna,
       filtroConductor,
+      filtroFuente,
       filtroPorRevisar,
     ],
   );
@@ -137,6 +145,31 @@ export function FiltrosPedidosForm({
               {sellers.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
                   {etiquetaSellerConEstado(s.nombre, s.estado)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Fuente — de dónde vino el pedido (ML Flex, Same-day propio, Shopify).
+            Con tres fuentes conviviendo en la misma bandeja hace falta poder
+            acotar. NO se oculta con "por revisar": mismo criterio que comuna. */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filtro-fuente" className="text-xs font-medium text-muted-foreground">
+            Fuente
+          </label>
+          <Select
+            value={filtroFuente || TODOS}
+            onValueChange={(v) => actualizar("fuente", v === TODOS ? "" : v)}
+          >
+            <SelectTrigger id="filtro-fuente" size="default" className="h-9 w-48">
+              <SelectValue placeholder="Todas las fuentes" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todas las fuentes</SelectItem>
+              {FUENTES_PEDIDO.map((fuente) => (
+                <SelectItem key={fuente} value={fuente}>
+                  {etiquetaFuentePedido(fuente as FuentePedido)}
                 </SelectItem>
               ))}
             </SelectContent>

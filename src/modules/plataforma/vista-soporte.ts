@@ -16,7 +16,7 @@
  * - Además, DOS lecturas nuevas y mínimas, acotadas a lo que un agente de
  *   soporte necesita para orientarse sin ver PII:
  *   - `ultimosPedidos`: los N pedidos más recientes del tenant, SOLO campos
- *     operativos (id, estado, fuente/tipo_pedido, código interno, fecha).
+ *     operativos (id, estado, fuente, código interno, fecha).
  *   - `resumenDinero`: totales agregados (conteo + montos) de períodos de
  *     cobro y liquidaciones, agrupados por estado — sin fila por pedido/línea
  *     ni por conductor.
@@ -25,8 +25,9 @@
  * qué se EXCLUYE a propósito, para que `seguridad-cumplimiento` audite el
  * whitelist:
  *   INCLUYE: ids (uuid), estados (enums), montos agregados (CLP), conteos,
- *     fechas, el `tipo_pedido` (flex/same_day) y `codigo_interno` (identificador
- *     operativo interno, no público, no personal).
+ *     fechas, la `fuente` del pedido (ml_flex/rutax_manual/shopify) y
+ *     `codigo_interno` (identificador operativo interno, no público, no
+ *     personal).
  *   EXCLUYE explícitamente: `destinatario_nombre`, `destinatario_direccion`,
  *     `destinatario_comuna`, `destinatario_telefono`, `instrucciones_entrega`
  *     (Ley 21.431 del destinatario) — NINGUNO de estos campos se selecciona en
@@ -40,7 +41,7 @@
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { exigirSoporteActivo, type SesionSoporte } from "./soporte";
 import { obtenerObservabilidadTenant, type ObservabilidadTenant } from "./observabilidad-tenant";
-import type { EstadoPedido, TipoPedido } from "@/modules/operacion/tipos";
+import type { EstadoPedido, FuentePedido } from "@/modules/operacion/tipos";
 import type { EstadoPeriodo, EstadoLiquidacion } from "@/modules/dinero/tipos";
 
 /** Cuántos pedidos recientes se muestran — acotado, es un vistazo, no un listado completo. */
@@ -54,8 +55,16 @@ const LIMITE_PEDIDOS_SOPORTE = 10;
 export interface PedidoOperativoSoporte {
   id: string;
   estado: EstadoPedido;
-  /** `tipo_pedido` (flex | same_day) — la "fuente" del pedido. */
-  fuente: TipoPedido;
+  /**
+   * Procedencia real del pedido (`ml_flex` | `rutax_manual` | `shopify`) —
+   * columna `operacion.pedidos.fuente`, el eje AUTORITATIVO. Antes de que
+   * Shopify entrara como fuente, este campo exponía `tipo_pedido` con el mismo
+   * nombre (`flex` | `same_day`), que es el régimen de tarifa, NO la
+   * procedencia — un pedido Shopify (tipo_pedido='same_day') salía rotulado
+   * "same_day" en vez de "shopify" en esta vista de soporte. Corregido
+   * 2026-08-16: se selecciona `fuente` directamente.
+   */
+  fuente: FuentePedido;
   /** Identificador operativo interno (QR de etiqueta same-day). `null` en Flex. */
   codigoInterno: string | null;
   /** `fecha_compromiso` si existe; si no, `creado_en` (ISO). */
@@ -102,7 +111,7 @@ async function obtenerUltimosPedidosSoporte(
     .from("pedidos")
     // Deliberadamente SIN destinatario_nombre/direccion/comuna/telefono ni
     // instrucciones_entrega — ver cabecera del módulo (minimización PII).
-    .select("id, estado, tipo_pedido, codigo_interno, fecha_compromiso, creado_en")
+    .select("id, estado, fuente, codigo_interno, fecha_compromiso, creado_en")
     .eq("tenant_id", tenantId)
     .order("creado_en", { ascending: false })
     .limit(LIMITE_PEDIDOS_SOPORTE);
@@ -112,7 +121,9 @@ async function obtenerUltimosPedidosSoporte(
   return (data ?? []).map((f) => ({
     id: f.id as string,
     estado: f.estado as EstadoPedido,
-    fuente: f.tipo_pedido as TipoPedido,
+    // Fail-closed a 'ml_flex' si la columna no vino en el SELECT — mismo
+    // criterio que `filaAPedido` en operacion/pedidos.ts.
+    fuente: (f.fuente as FuentePedido | null) ?? "ml_flex",
     codigoInterno: (f.codigo_interno as string | null) ?? null,
     fecha: (f.fecha_compromiso as string | null) ?? (f.creado_en as string),
   }));

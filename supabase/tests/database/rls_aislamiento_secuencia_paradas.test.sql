@@ -172,29 +172,29 @@ begin
   -- distinto del orden en que se van a rutear: así, si el respaldo se colara
   -- donde manda la secuencia persistida, la prueba lo vería.
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     destinatario_nombre, destinatario_direccion, destinatario_comuna,
     situacion_retiro, retirado_en)
   values
-    (p_a1, t_a, s_a1, 'flex', 'backfill', 'SHRTA1', 'asignado',
+    (p_a1, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHRTA1', 'asignado',
      'Destinatario A1', 'Zapadores 1',  'Vitacura',  'retirado', now()),
-    (p_a2, t_a, s_a1, 'flex', 'backfill', 'SHRTA2', 'asignado',
+    (p_a2, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHRTA2', 'asignado',
      'Destinatario A2', 'Yungay 2',     'Renca',     'retirado', now()),
-    (p_a3, t_a, s_a1, 'flex', 'backfill', 'SHRTA3', 'asignado',
+    (p_a3, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHRTA3', 'asignado',
      'Destinatario A3', 'Xerox 3',      'Maipu',     'retirado', now()),
-    (p_a4, t_a, s_a2, 'flex', 'backfill', 'SHRTA4', 'asignado',
+    (p_a4, t_a, s_a2, 'flex', 'ml_flex', 'backfill', 'SHRTA4', 'asignado',
      'Destinatario A4', 'Walker 4',     'La Florida','retirado', now()),
-    (p_a5, t_a, s_a1, 'flex', 'backfill', 'SHRTA5', 'asignado',
+    (p_a5, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHRTA5', 'asignado',
      'Destinatario A5', 'Vergara 5',    'Cerrillos', 'retirado', now()),
-    (p_a6, t_a, s_a1, 'flex', 'backfill', 'SHRTA6', 'asignado',
+    (p_a6, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHRTA6', 'asignado',
      'Destinatario A6', 'Ulises 6',     'Nunoa',     'retirado', now()),
-    (p_a7, t_a, s_a1, 'flex', 'backfill', 'SHRTA7', 'entregado',
+    (p_a7, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHRTA7', 'entregado',
      'Destinatario A7', 'Tobalaba 7',   'Penalolen', 'retirado', now()),
-    (p_a8, t_a, s_a1, 'flex', 'backfill', 'SHRTA8', 'pendiente_asignacion',
+    (p_a8, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHRTA8', 'pendiente_asignacion',
      'Destinatario A8', 'Simon 8',      'Quilicura', 'retirado', now()),
-    (p_b1, t_b, s_b1, 'flex', 'backfill', 'SHRTB1', 'asignado',
+    (p_b1, t_b, s_b1, 'flex', 'ml_flex', 'backfill', 'SHRTB1', 'asignado',
      'Destinatario B1', 'Recoleta 1',   'Recoleta',  'retirado', now()),
-    (p_b2, t_b, s_b1, 'flex', 'backfill', 'SHRTB2', 'asignado',
+    (p_b2, t_b, s_b1, 'flex', 'ml_flex', 'backfill', 'SHRTB2', 'asignado',
      'Destinatario B2', 'Providencia 2','Providencia','retirado', now())
   on conflict (id) do nothing;
 

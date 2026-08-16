@@ -2,9 +2,10 @@
  * Efectos same-day sobre el manifiesto — acciones que ocurren cuando
  * el conductor marca su manifiesto como 'en_ruta'.
  *
- * FRONTERA DURA: solo se actúa sobre pedidos tipo_pedido='same_day'.
- * Los pedidos Flex NO se tocan — sus transiciones de estado vienen de ML
- * (la app de Mercado Envíos Flex es obligatoria y no integrable — CLAUDE.md).
+ * FRONTERA DURA: solo se actúa sobre pedidos cuyo POD gobierna Rutax (eje de
+ * `fuente`, no de `tipo_pedido` — ver `./fuente.ts`). Los pedidos Flex NO se
+ * tocan — sus transiciones de estado vienen de ML (la app de Mercado Envíos
+ * Flex es obligatoria y no integrable — CLAUDE.md).
  *
  * Idempotente: los pedidos que ya están en 'en_ruta' (u otro estado) son
  * ignorados silenciosamente gracias al filtro de estado='asignado' en la
@@ -24,7 +25,7 @@ import { ErrorConflicto } from "@/modules/identidad/errores";
  * (carrera resuelta), el ErrorConflicto del optimistic locking se captura
  * y se ignora (no es un fallo real — el pedido ya avanzó).
  *
- * NO toca pedidos Flex (filtro tipo_pedido='same_day').
+ * NO toca pedidos Flex (filtro por `fuente`, ver docstring del archivo).
  *
  * ⚠️ **`actorUsuarioId` es el UUID de `auth.users`, NO el del conductor**, y es un
  * parámetro propio precisamente porque `UsuarioActual` no lo tiene. Hasta el
@@ -59,12 +60,18 @@ export async function transicionarPedidosSameDayAEnRuta(
   // La JOIN va por asignaciones_pedido: la tabla que relaciona pedido↔manifiesto.
   const { data: asignaciones, error } = await cliente
     .from("asignaciones_pedido")
-    .select("pedido_id, pedidos!inner(id, estado, tipo_pedido, driver_id_asignado)")
+    .select("pedido_id, pedidos!inner(id, estado, fuente, driver_id_asignado)")
     .eq("manifiesto_id", manifiestoId)
     .eq("tenant_id", tenantId)
     .eq("activa", true)
     .eq("pedidos.estado", "asignado")
-    .eq("pedidos.tipo_pedido", "same_day");
+    // Filtro de recurso embebido de PostgREST: no puede llamar a la función TS
+    // `podLoGobiernaLaFuente` de `./fuente`. El predicado equivalente es "toda
+    // fuente salvo las que tienen POD externo" — hoy solo `ml_flex`
+    // (`FUENTES_CON_POD_EXTERNO` en `./fuente.ts`). Si algún día se agrega una
+    // segunda fuente con POD externo, este `.neq` deja de ser equivalente y hay
+    // que revisarlo junto con esa lista.
+    .neq("pedidos.fuente", "ml_flex");
 
   if (error) {
     // Un fallo de lectura es un error de infraestructura — relanzar para que

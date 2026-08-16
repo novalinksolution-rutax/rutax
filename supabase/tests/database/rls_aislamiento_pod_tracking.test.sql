@@ -162,16 +162,16 @@ begin
   on conflict (id) do nothing;
 
   -- Pedidos. Los same_day se asignan a un conductor (necesario para el POD).
-  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, origen,
+  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, fuente, origen,
     ml_shipment_id, estado, destinatario_nombre, destinatario_direccion, destinatario_comuna)
   values
-    (pedido_a1,     t_a, s_a,  'same_day', 'same_day_manual', null,        'asignado',
+    (pedido_a1,     t_a, s_a,  'same_day', 'rutax_manual', 'same_day_manual', null,        'asignado',
      'Destinatario A1', 'Calle A 1', 'Santiago'),
-    (pedido_a3,     t_a, s_a2, 'same_day', 'same_day_manual', null,        'asignado',
+    (pedido_a3,     t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null,        'asignado',
      'Destinatario A3', 'Calle A 3', 'Las Condes'),
-    (pedido_a_flex, t_a, s_a,  'flex',     'ml_ingesta',      'SHP-A-FLX', 'asignado',
+    (pedido_a_flex, t_a, s_a,  'flex',     'ml_flex',     'ml_ingesta',      'SHP-A-FLX', 'asignado',
      'Destinatario AF', 'Calle A F', 'Providencia'),
-    (pedido_b1,     t_b, s_b,  'same_day', 'same_day_manual', null,        'asignado',
+    (pedido_b1,     t_b, s_b,  'same_day', 'rutax_manual', 'same_day_manual', null,        'asignado',
      'Destinatario B1', 'Calle B 1', 'Vitacura')
   on conflict (id) do nothing;
 

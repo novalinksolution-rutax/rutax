@@ -24,6 +24,7 @@ import {
   BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
+import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
@@ -522,7 +523,7 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
       </td>
       <td className="hidden px-4 py-3 md:table-cell">
         <Badge variant="neutral" className="capitalize">
-          {linea.tipoPedido === "flex" ? "Flex" : "Same-day"}
+          {etiquetaTipoEntrega(linea.tipoPedido)}
         </Badge>
       </td>
       <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">

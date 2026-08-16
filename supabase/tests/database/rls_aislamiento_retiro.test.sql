@@ -201,17 +201,17 @@ begin
   -- Todos los pedidos nacen `pendiente`: son candidatos hasta que un escaneo los
   -- ponga en poder del courier. Es la reja de 20260812000002.
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     destinatario_nombre, destinatario_direccion, destinatario_comuna,
     situacion_retiro)
   values
-    (p_a1, t_a, s_a1, 'flex', 'backfill', 'SHIPBODA1', 'pendiente_asignacion',
+    (p_a1, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBODA1', 'pendiente_asignacion',
      'Destinatario A1', 'Calle Bodega A 1', 'Santiago', 'pendiente'),
-    (p_a2, t_a, s_a2, 'flex', 'backfill', 'SHIPBODA2', 'pendiente_asignacion',
+    (p_a2, t_a, s_a2, 'flex', 'ml_flex', 'backfill', 'SHIPBODA2', 'pendiente_asignacion',
      'Destinatario A2', 'Calle Bodega A 2', 'Providencia', 'pendiente'),
-    (p_a3, t_a, s_a1, 'flex', 'backfill', 'SHIPBODA3', 'pendiente_asignacion',
+    (p_a3, t_a, s_a1, 'flex', 'ml_flex', 'backfill', 'SHIPBODA3', 'pendiente_asignacion',
      'Destinatario A3', 'Calle Bodega A 3', 'Renca', 'pendiente'),
-    (p_b1, t_b, s_b1, 'flex', 'backfill', 'SHIPBODB1', 'pendiente_asignacion',
+    (p_b1, t_b, s_b1, 'flex', 'ml_flex', 'backfill', 'SHIPBODB1', 'pendiente_asignacion',
      'Destinatario B1', 'Calle Bodega B 1', 'Vitacura', 'pendiente')
   on conflict (id) do nothing;
 

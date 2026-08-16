@@ -138,7 +138,7 @@ function construirClienteMock(overrides: Record<string, any> = {}) {
     id: PEDIDO_1,
     tenant_id: TENANT_A,
     seller_id: SELLER_1,
-    tipo_pedido: "same_day",
+    fuente: "rutax_manual", tipo_pedido: "same_day",
     driver_id_asignado: CONDUCTOR_1,
     lat: LAT_DESTINO,
     long: LONG_DESTINO,
@@ -267,7 +267,7 @@ describe("registrarPruebaEntrega — barreras de acceso y same-day", () => {
   // 6. FRONTERA: pedido Flex → ErrorValidacion
   // -------------------------------------------------------------------------
   it("pedido Flex lanza ErrorValidacion (frontera dura same-day)", async () => {
-    const mock = construirClienteMock({ pedido: { tipo_pedido: "flex" } });
+    const mock = construirClienteMock({ pedido: { fuente: "ml_flex", tipo_pedido: "flex" } });
     await expect(
       registrarPruebaEntrega(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -412,7 +412,7 @@ describe("registrarPruebaEntrega — autor de la bitácora", () => {
                         id: PEDIDO_1,
                         tenant_id: TENANT_A,
                         seller_id: SELLER_1,
-                        tipo_pedido: "same_day",
+                        fuente: "rutax_manual", tipo_pedido: "same_day",
                         driver_id_asignado: CONDUCTOR_1,
                         lat: LAT_DESTINO,
                         long: LONG_DESTINO,

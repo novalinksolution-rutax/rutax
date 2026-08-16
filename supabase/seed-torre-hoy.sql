@@ -246,7 +246,7 @@ join identidad.conductores c
 -- Torre declara — ella los cuenta entregados y `/operaciones` no —, que es
 -- comportamiento buscado y no un descuadre (alcance §5.7).
 insert into operacion.pedidos (
-  id, tenant_id, seller_id, tipo_pedido, origen,
+  id, tenant_id, seller_id, tipo_pedido, fuente, origen,
   ml_order_id, ml_shipment_id, codigo_interno,
   estado, estado_ml, driver_id_asignado,
   destinatario_nombre, destinatario_direccion, destinatario_comuna,
@@ -261,6 +261,10 @@ select
   '10000000-0000-0000-0000-000000000001',
   p.seller_id,
   p.tipo::operacion.tipo_pedido,
+  -- `fuente` NO tiene default (migración 20260816000004): todo escritor de
+  -- operacion.pedidos debe mandarla o el INSERT muere con 23502.
+  case when p.tipo = 'flex' then 'ml_flex'::operacion.fuente_pedido
+       else 'rutax_manual'::operacion.fuente_pedido end,
   case when p.tipo = 'same_day' then 'same_day_manual'::operacion.origen_pedido
        else 'ml_ingesta'::operacion.origen_pedido end,
   case when p.tipo = 'flex' then 'ML-ORD-' || to_char(p.fecha, 'YYYYMMDD') || '-' || lpad(p.n::text, 6, '0') end,

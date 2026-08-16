@@ -129,7 +129,7 @@ function clientePodMock(opts: {
     id: PEDIDO_1,
     tenant_id: TENANT_A,
     seller_id: SELLER_1,
-    tipo_pedido: "same_day",
+    fuente: "rutax_manual", tipo_pedido: "same_day",
     driver_id_asignado: CONDUCTOR_1,
     lat: LAT_DESTINO,
     long: LONG_DESTINO,
@@ -574,7 +574,7 @@ describe("Esc-6 | registrarPruebaEntrega — idempotencia POD 'entregado'", () =
                         id: PEDIDO_1,
                         tenant_id: TENANT_A,
                         seller_id: SELLER_1,
-                        tipo_pedido: "same_day",
+                        fuente: "rutax_manual", tipo_pedido: "same_day",
                         driver_id_asignado: CONDUCTOR_1,
                         lat: LAT_DESTINO,
                         long: LONG_DESTINO,
@@ -805,7 +805,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
   function clienteBatchMock(opts: {
     asignaciones: Array<{
       pedido_id: string;
-      pedidos: { id: string; estado: string; tipo_pedido: string; driver_id_asignado: string };
+      pedidos: { id: string; estado: string; tipo_pedido: string; fuente: string; driver_id_asignado: string };
     }>;
     errorConsulta?: { message: string };
     /** Si true, la actualización del pedido lanza ErrorConflicto (ya se movió). */
@@ -832,8 +832,10 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
               eq: () => ({
                 eq: () => ({
                   eq: () => ({
+                    // El cuarto `.eq` es `pedidos.estado`; el filtro final por
+                    // fuente es un `.neq` (todo salvo `ml_flex`), no un `.eq`.
                     eq: () => ({
-                      eq: () =>
+                      neq: () =>
                         Promise.resolve({
                           data: opts.errorConsulta ? null : opts.asignaciones,
                           error: opts.errorConsulta ?? null,
@@ -865,6 +867,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
                         tenant_id: TENANT_A,
                         driver_id_asignado: p.driver_id_asignado,
                         tipo_pedido: p.tipo_pedido,
+                        fuente: p.fuente,
                         tarifa_aplicable_id: null,
                         fecha_compromiso_hora: null,
                         fecha_compromiso: null,
@@ -893,7 +896,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
                             id: opts.asignaciones[0]?.pedido_id,
                             tenant_id: TENANT_A,
                             seller_id: SELLER_1,
-                            tipo_pedido: "same_day",
+                            fuente: "rutax_manual", tipo_pedido: "same_day",
                             driver_id_asignado: CONDUCTOR_1,
                             estado: "en_ruta",
                             tarifa_aplicable_id: null,
@@ -987,7 +990,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
         pedidos: {
           id: PEDIDO_1,
           estado: "asignado",
-          tipo_pedido: "same_day",
+          fuente: "rutax_manual", tipo_pedido: "same_day",
           driver_id_asignado: CONDUCTOR_1,
         },
       },
@@ -1012,7 +1015,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
         pedidos: {
           id: PEDIDO_1,
           estado: "asignado",
-          tipo_pedido: "same_day",
+          fuente: "rutax_manual", tipo_pedido: "same_day",
           driver_id_asignado: CONDUCTOR_1,
         },
       },
@@ -1063,7 +1066,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
           pedidos: {
             id: PEDIDO_1,
             estado: "asignado",
-            tipo_pedido: "same_day",
+            fuente: "rutax_manual", tipo_pedido: "same_day",
             driver_id_asignado: CONDUCTOR_1,
           },
         },
@@ -1342,7 +1345,7 @@ describe("Esc-1 | Frontera Flex — mensaje de error explícito", () => {
                         seller_id: SELLER_1,
                         tenant_id: TENANT_A,
                         driver_id_asignado: DRIVER_X,
-                        tipo_pedido: "flex",          // FRONTERA: Flex
+                        fuente: "ml_flex", tipo_pedido: "flex",          // FRONTERA: Flex
                         tarifa_aplicable_id: null,
                         fecha_compromiso_hora: null,
                         fecha_compromiso: null,

@@ -211,7 +211,12 @@ export async function descifrarSecreto(
     // (payment_method / subscription id, o un JSON compacto con ambos) es texto.
     // Sin esto se descifraría como binario (Uint8Array) y el adaptador no podría
     // usarlo como string en el header/cuerpo de la petición a Fintoc.
-    tipoSecreto === "mandato_suscripcion_fintoc";
+    tipoSecreto === "mandato_suscripcion_fintoc" ||
+    // Admin API access token de Shopify: viaja como string en el header
+    // `x-shopify-access-token`. Sin esta línea se descifraría como Uint8Array y
+    // el header saldría con "[object Uint8Array]" — la petición fallaría con un
+    // 401 que no explica nada.
+    tipoSecreto === "token_admin_shopify";
 
   return {
     valor: esTexto ? textoPlano.toString("utf8") : new Uint8Array(textoPlano),

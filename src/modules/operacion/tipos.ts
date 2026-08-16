@@ -458,6 +458,8 @@ export interface FiltrosPedidos {
    * buscar de nuevo, la pantalla no serviría.
    */
   comuna?: string;
+  /** Procedencia del pedido — eje AUTORITATIVO de fuente (ver `FuentePedido`). */
+  fuente?: FuentePedido;
   estado?: EstadoPedido;
   fecha?: string; // fecha_compromiso (ISO date)
   /**

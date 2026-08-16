@@ -1,9 +1,11 @@
 /**
- * Página pública de seguimiento de pedido same-day (Bloque 2 — F11/F12).
+ * Página pública de seguimiento de pedido (Bloque 2 — F11/F12).
  *
- * FRONTERA DURA: solo aplica a pedidos `tipo_pedido='same_day'`. En Flex el
- * comprador ve el seguimiento de Mercado Libre; esta página rechaza (404) cualquier
- * pedido que no sea same-day o cuyo token no exista.
+ * FRONTERA DURA: solo aplica a los pedidos cuyo seguimiento es de Rutax — hoy
+ * todos menos los de fuente `ml_flex`, donde el comprador ve el seguimiento de
+ * Mercado Libre. Esta página rechaza (404) cualquier otro pedido o token
+ * inexistente. La URL que Rutax devuelve a Shopify como `trackingInfo.url` es
+ * justamente esta.
  *
  * Ruta PÚBLICA (sin autenticación): se accede con un `tracking_token` opaco no
  * adivinable. Por minimización de datos personales, esta página muestra SOLO:
@@ -21,6 +23,7 @@ import { notFound } from "next/navigation";
 import { Package, Clock, CheckCircle2, Truck, AlertTriangle, RotateCcw } from "lucide-react";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { formatearEtaSameDay } from "@/modules/operacion/eta-same-day";
+import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
 
 // =============================================================================
@@ -108,12 +111,13 @@ async function cargarSeguimiento(token: string): Promise<DatosSeguimiento | null
 
   const { data: pedido } = await cliente
     .from("pedidos")
-    .select("estado, tipo_pedido, seller_id, destinatario_comuna, fecha_compromiso_hora")
+    .select("estado, tipo_pedido, fuente, seller_id, destinatario_comuna, fecha_compromiso_hora")
     .eq("tracking_token", token)
     .maybeSingle();
 
-  // [FRONTERA] Solo same-day: en Flex el comprador ve a Mercado Libre.
-  if (!pedido || pedido.tipo_pedido !== "same_day") return null;
+  // [FRONTERA] Solo las fuentes cuyo seguimiento es de Rutax. En Flex el
+  // comprador ve el de Mercado Libre y esta página no tiene nada que aportar.
+  if (!pedido || podLoGobiernaLaFuente(pedido.fuente)) return null;
 
   // Marca del seller (dato del seller, no del comprador).
   const { data: seller } = await cliente

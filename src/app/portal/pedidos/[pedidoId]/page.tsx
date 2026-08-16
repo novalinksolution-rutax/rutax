@@ -30,9 +30,10 @@ import { BotonCopiarTracking } from "./boton-copiar-tracking";
 import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
 import { BloqueEtiqueta } from "../bloque-etiqueta";
 import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
-import type { EstadoPedido } from "@/modules/operacion/tipos";
+import type { EstadoPedido, FuentePedido } from "@/modules/operacion/tipos";
 import { esTransicionValida } from "@/modules/operacion/maquina-estados";
 import { puedeGestionarPedidosPropios } from "@/modules/identidad/capacidades";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 
 export const metadata: Metadata = {
   title: "Detalle del pedido",
@@ -54,6 +55,7 @@ interface PedidoDetalle {
   fechaCompromisoHora: string | null;
   creadoEn: string;
   tipoPedido: "flex" | "same_day";
+  fuente: FuentePedido;
   destinatarioNombre: string;
   destinatarioTelefono: string | null;
   instruccionesEntrega: string | null;
@@ -187,7 +189,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
   const { data: filaPedido, error: errorPedido } = await cliente
     .from("pedidos")
     .select(
-      "id, tenant_id, seller_id, estado, ml_shipment_id, ml_user_id, destinatario_nombre, destinatario_telefono, destinatario_direccion, destinatario_comuna, instrucciones_entrega, fecha_compromiso_hora, creado_en, tipo_pedido, tracking_token, cancelado_en, cancelado_por_usuario_id, motivo_cancelacion",
+      "id, tenant_id, seller_id, estado, ml_shipment_id, ml_user_id, destinatario_nombre, destinatario_telefono, destinatario_direccion, destinatario_comuna, instrucciones_entrega, fecha_compromiso_hora, creado_en, tipo_pedido, fuente, tracking_token, cancelado_en, cancelado_por_usuario_id, motivo_cancelacion",
     )
     .eq("id", pedidoId)
     .eq("tenant_id", tenantId)
@@ -221,6 +223,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
     fechaCompromisoHora: (filaPedido.fecha_compromiso_hora as string | null) ?? null,
     creadoEn: filaPedido.creado_en as string,
     tipoPedido: filaPedido.tipo_pedido as "flex" | "same_day",
+    fuente: (filaPedido.fuente as FuentePedido | null) ?? "ml_flex",
     destinatarioNombre: filaPedido.destinatario_nombre as string,
     destinatarioTelefono: (filaPedido.destinatario_telefono as string | null) ?? null,
     instruccionesEntrega: (filaPedido.instrucciones_entrega as string | null) ?? null,
@@ -333,7 +336,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            {pedido.tipoPedido === "flex" ? "Flex (Mercado Libre)" : "Same-day"}
+            {etiquetaFuentePedido(pedido.fuente)}
           </p>
         </div>
         <BadgeEstado

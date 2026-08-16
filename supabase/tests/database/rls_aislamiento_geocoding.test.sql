@@ -116,17 +116,17 @@ begin
   on conflict (id) do nothing;
 
   -- Pedidos geocodificados (lat/long pobladas, geo_estado = resuelto).
-  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, origen,
+  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, fuente, origen,
     ml_shipment_id, estado, destinatario_nombre, destinatario_direccion, destinatario_comuna,
     lat, long, geo_estado, geo_confianza, geocodificado_en, cobertura_estado)
   values
-    (pedido_a1, t_a, s_a,  'flex',     'ml_ingesta',     'SHP-GEO-A-001', 'pendiente_asignacion',
+    (pedido_a1, t_a, s_a,  'flex',     'ml_flex',     'ml_ingesta',     'SHP-GEO-A-001', 'pendiente_asignacion',
      'Destinatario A1', 'Calle A 1', 'Santiago',
      -33.4489, -70.6693, 'resuelto', 0.950, now(), 'tarifada'),
-    (pedido_a3, t_a, s_a2, 'same_day', 'same_day_manual', null,           'pendiente_asignacion',
+    (pedido_a3, t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null,           'pendiente_asignacion',
      'Destinatario A3', 'Calle A 3', 'Las Condes',
      -33.4090, -70.5670, 'resuelto', 0.880, now(), 'tarifada'),
-    (pedido_b1, t_b, s_b,  'flex',     'ml_ingesta',     'SHP-GEO-B-001', 'pendiente_asignacion',
+    (pedido_b1, t_b, s_b,  'flex',     'ml_flex',     'ml_ingesta',     'SHP-GEO-B-001', 'pendiente_asignacion',
      'Destinatario B1', 'Calle B 1', 'Vitacura',
      -33.3900, -70.5400, 'resuelto', 0.910, now(), 'tarifada')
   on conflict (id) do nothing;

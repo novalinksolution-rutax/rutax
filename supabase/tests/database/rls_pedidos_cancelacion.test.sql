@@ -201,20 +201,20 @@ begin
   -- Pedidos. driver_id_asignado se escribe directo (la columna es denormalizada;
   -- el trigger que la sincroniza vive en asignaciones_pedido y aquí no hace falta).
   insert into operacion.pedidos (
-    id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id, estado,
+    id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id, estado,
     driver_id_asignado, destinatario_nombre, destinatario_direccion,
     destinatario_comuna, cancelado_en, cancelado_por_usuario_id, motivo_cancelacion)
   values
-    (p_a1, t_a, s_a1, 'same_day', 'same_day_manual', null, 'cancelado',
+    (p_a1, t_a, s_a1, 'same_day', 'rutax_manual', 'same_day_manual', null, 'cancelado',
      d_a1, 'Destinatario A1', 'Calle Cancel A 1', 'Santiago',
      now(), u_interno_a, 'MOTIVO-A1: el seller pidio anular, direccion duplicada'),
-    (p_a2, t_a, s_a1, 'same_day', 'same_day_manual', null, 'pendiente_asignacion',
+    (p_a2, t_a, s_a1, 'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
      null, 'Destinatario A2', 'Calle Cancel A 2', 'Providencia',
      null, null, null),
-    (p_a3, t_a, s_a2, 'same_day', 'same_day_manual', null, 'cancelado',
+    (p_a3, t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null, 'cancelado',
      null, 'Destinatario A3', 'Calle Cancel A 3', 'Las Condes',
      now(), u_interno_a, 'MOTIVO-A3: secreto del seller A2, el seller A1 no debe leerlo'),
-    (p_b1, t_b, s_b1, 'same_day', 'same_day_manual', null, 'cancelado',
+    (p_b1, t_b, s_b1, 'same_day', 'rutax_manual', 'same_day_manual', null, 'cancelado',
      d_b1, 'Destinatario B1', 'Calle Cancel B 1', 'Vitacura',
      now(), u_interno_b, 'MOTIVO-B1: secreto del courier B, el courier A no debe leerlo')
   on conflict (id) do nothing;

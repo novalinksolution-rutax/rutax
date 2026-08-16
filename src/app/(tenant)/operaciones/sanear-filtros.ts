@@ -18,9 +18,10 @@
  * verdad (con un filtro ya saneado), ese error sigue propagándose sin tocar —
  * no hay try/catch nuevo aquí.
  */
-import { ESTADOS_PEDIDO, type EstadoPedido } from "@/modules/operacion/tipos";
+import { ESTADOS_PEDIDO, type EstadoPedido, FUENTES_PEDIDO, type FuentePedido } from "@/modules/operacion/tipos";
 
 const ESTADOS_VALIDOS = new Set<string>(ESTADOS_PEDIDO);
+const FUENTES_VALIDAS = new Set<string>(FUENTES_PEDIDO);
 
 const REGEX_UUID =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -37,6 +38,12 @@ function esAnioBisiesto(anio: number): boolean {
 export function sanearFiltroEstadoPedido(valor: string | undefined | null): EstadoPedido | "" {
   if (!valor) return "";
   return ESTADOS_VALIDOS.has(valor) ? (valor as EstadoPedido) : "";
+}
+
+/** `filtros.fuente` va a `.eq("fuente", …)` sobre un enum de Postgres. */
+export function sanearFiltroFuentePedido(valor: string | undefined | null): FuentePedido | "" {
+  if (!valor) return "";
+  return FUENTES_VALIDAS.has(valor) ? (valor as FuentePedido) : "";
 }
 
 /** `filtros.sellerId` / `filtros.conductorId` van a `.eq(...)` sobre columnas uuid. */

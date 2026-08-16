@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EstadoError, EstadoVacio } from "@/components/onboarding/estado-pantalla";
 import { formatearClp, formatearFecha } from "@/lib/formato-cl";
+import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
 import {
   crearTarifa,
   desactivarTarifa,
@@ -43,11 +44,6 @@ import {
   type TarifaListado,
   type TipoEntrega,
 } from "./actions";
-
-const ETIQUETAS_TIPO_ENTREGA: Record<TipoEntrega, string> = {
-  flex: "Flex",
-  same_day: "Same-day",
-};
 
 function hoyEnSantiago(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" }); // YYYY-MM-DD
@@ -198,7 +194,7 @@ function FormularioTarifaPorDefecto({
         vigenteHasta: null,
         estado: "activa",
       });
-      setExito(`Tarifa por defecto de ${formatearClp(montoNumerico)} guardada para ${ETIQUETAS_TIPO_ENTREGA[tipoEntrega]}.`);
+      setExito(`Tarifa por defecto de ${formatearClp(montoNumerico)} guardada para ${etiquetaTipoEntrega(tipoEntrega)}.`);
       setTipoEntrega("");
       setMontoTexto("");
       setMontoConductorTexto("");
@@ -615,7 +611,7 @@ function FilaTarifa({
       <TableCell className="font-medium text-foreground">
         {tarifa.sellerId ? (tarifa.sellerNombre ?? "Seller") : "Todos — tarifa por defecto"}
       </TableCell>
-      <TableCell className="text-muted-foreground">{ETIQUETAS_TIPO_ENTREGA[tarifa.tipoEntrega]}</TableCell>
+      <TableCell className="text-muted-foreground">{etiquetaTipoEntrega(tarifa.tipoEntrega)}</TableCell>
       <TableCell className="text-muted-foreground">{tarifa.zona ?? "Todas"}</TableCell>
       <TableCell className="font-medium text-foreground">{formatearClp(tarifa.montoClp)}</TableCell>
       <TableCell className="text-muted-foreground">

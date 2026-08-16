@@ -177,16 +177,16 @@ begin
 
   -- Pedidos: pedido_a1 se asignará al conductor A; los demás sin conductor.
   -- driver_id_asignado se rellena después de insertar la asignación (trigger).
-  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, origen,
+  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, fuente, origen,
     ml_shipment_id, estado, destinatario_nombre, destinatario_direccion, destinatario_comuna)
   values
-    (pedido_a1, t_a, s_a,  'flex',     'ml_ingesta', 'SHP-A-001', 'pendiente_asignacion',
+    (pedido_a1, t_a, s_a,  'flex',     'ml_flex',     'ml_ingesta', 'SHP-A-001', 'pendiente_asignacion',
      'Destinatario A1', 'Calle A 1', 'Santiago'),
-    (pedido_a2, t_a, s_a,  'flex',     'ml_ingesta', 'SHP-A-002', 'pendiente_asignacion',
+    (pedido_a2, t_a, s_a,  'flex',     'ml_flex',     'ml_ingesta', 'SHP-A-002', 'pendiente_asignacion',
      'Destinatario A2', 'Calle A 2', 'Providencia'),
-    (pedido_a3, t_a, s_a2, 'same_day', 'same_day_manual', null,    'pendiente_asignacion',
+    (pedido_a3, t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null,    'pendiente_asignacion',
      'Destinatario A3', 'Calle A 3', 'Las Condes'),
-    (pedido_b1, t_b, s_b,  'flex',     'ml_ingesta', 'SHP-B-001', 'pendiente_asignacion',
+    (pedido_b1, t_b, s_b,  'flex',     'ml_flex',     'ml_ingesta', 'SHP-B-001', 'pendiente_asignacion',
      'Destinatario B1', 'Calle B 1', 'Vitacura')
   on conflict (id) do nothing;
 
@@ -586,12 +586,12 @@ select test_iniciar_sesion(
 
 select throws_ok(
   $$ insert into public.pedidos
-       (tenant_id, seller_id, tipo_pedido, origen, estado,
+       (tenant_id, seller_id, tipo_pedido, fuente, origen, estado,
         destinatario_nombre, destinatario_direccion, destinatario_comuna)
      values (
        'aaaaaaaa-0000-0000-0000-000000000001',
        'aaaaaaaa-1111-0000-0000-000000000001',
-       'same_day', 'same_day_manual', 'pendiente_asignacion',
+       'same_day', 'rutax_manual', 'same_day_manual', 'pendiente_asignacion',
        'Destinatario Falso', 'Calle Falsa 999', 'Santiago'
      ) $$,
   '42501',

@@ -204,13 +204,13 @@ begin
   on conflict (id) do nothing;
 
   -- Pedidos (mínimos para las FKs de lineas_cobro y lineas_liquidacion)
-  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, origen, ml_shipment_id,
+  insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, fuente, origen, ml_shipment_id,
     estado, destinatario_nombre, destinatario_direccion, destinatario_comuna)
   values
-    (pedido_a1, t_a, s_a,  'flex',     'ml_ingesta',     'SHP-D-A-001', 'entregado', 'Dest A1', 'Calle A1', 'Santiago'),
-    (pedido_a2, t_a, s_a2, 'same_day', 'same_day_manual', null,         'entregado', 'Dest A2', 'Calle A2', 'Providencia'),
-    (pedido_a3, t_a, s_a,  'flex',     'ml_ingesta',     'SHP-D-A-003', 'entregado', 'Dest A3', 'Calle A3', 'Las Condes'),
-    (pedido_b1, t_b, s_b,  'flex',     'ml_ingesta',     'SHP-D-B-001', 'entregado', 'Dest B1', 'Calle B1', 'Vitacura')
+    (pedido_a1, t_a, s_a,  'flex',     'ml_flex',     'ml_ingesta',     'SHP-D-A-001', 'entregado', 'Dest A1', 'Calle A1', 'Santiago'),
+    (pedido_a2, t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null,         'entregado', 'Dest A2', 'Calle A2', 'Providencia'),
+    (pedido_a3, t_a, s_a,  'flex',     'ml_flex',     'ml_ingesta',     'SHP-D-A-003', 'entregado', 'Dest A3', 'Calle A3', 'Las Condes'),
+    (pedido_b1, t_b, s_b,  'flex',     'ml_flex',     'ml_ingesta',     'SHP-D-B-001', 'entregado', 'Dest B1', 'Calle B1', 'Vitacura')
   on conflict (id) do nothing;
 
   -- Periodos de cobro

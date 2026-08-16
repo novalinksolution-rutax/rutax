@@ -33,6 +33,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import type { Pedido } from "@/modules/operacion/tipos";
 import { etiquetaConductorAusente } from "@/lib/ui/etiqueta-conductor-ausente";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -55,6 +56,7 @@ import { obtenerConductoresDelTenant } from "@/lib/datos-tenant/conductores";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import {
   sanearFiltroEstadoPedido,
+  sanearFiltroFuentePedido,
   sanearFiltroUuid,
   sanearFiltroFechaCivil,
   sanearNumeroPagina,
@@ -113,6 +115,8 @@ interface SearchParams {
   comuna?: string;
   /** Id del conductor — ídem. */
   conductor?: string;
+  /** Procedencia del pedido (ml_flex | rutax_manual | shopify). */
+  fuente?: string;
   por_revisar?: string;
   pagina?: string;
 }
@@ -142,6 +146,7 @@ export default async function PaginaOperaciones({
   const filtroFecha = sanearFiltroFechaCivil(params.fecha) || hoyIso;
   const filtroComuna = params.comuna || "";
   const filtroConductor = sanearFiltroUuid(params.conductor);
+  const filtroFuente = sanearFiltroFuentePedido(params.fuente);
   const filtroPorRevisar = params.por_revisar === "1";
   const pagina = sanearNumeroPagina(params.pagina);
   const LIMITE = 25;
@@ -151,6 +156,7 @@ export default async function PaginaOperaciones({
     filtroEstado ||
     filtroComuna ||
     filtroConductor ||
+    filtroFuente ||
     filtroPorRevisar ||
     filtroFecha !== hoyIso
   );
@@ -173,6 +179,7 @@ export default async function PaginaOperaciones({
       // exactamente lo que se quiere al llegar desde la Torre.
       comuna: filtroComuna || undefined,
       conductorId: filtroConductor || undefined,
+      fuente: filtroFuente || undefined,
       estado: filtroPorRevisar ? undefined : filtroEstado || undefined,
       fecha: filtroPorRevisar ? undefined : filtroFecha || undefined,
       porRevisar: filtroPorRevisar || undefined,
@@ -273,6 +280,7 @@ export default async function PaginaOperaciones({
   function hrefPagina(p: number): string {
     const sp = new URLSearchParams();
     if (filtroSeller) sp.set("seller", filtroSeller);
+    if (filtroFuente) sp.set("fuente", filtroFuente);
     if (filtroPorRevisar) {
       sp.set("por_revisar", "1");
     } else {
@@ -348,6 +356,7 @@ export default async function PaginaOperaciones({
         filtroFecha={filtroFecha}
         filtroComuna={filtroComuna}
         filtroConductor={filtroConductor}
+        filtroFuente={filtroFuente}
         filtroPorRevisar={filtroPorRevisar}
         hayFiltroActivo={hayFiltroActivo}
       />
@@ -384,8 +393,8 @@ export default async function PaginaOperaciones({
             titulo="Aún no hay pedidos para esta fecha"
             descripcion={
               puedeAjustar
-                ? "Se sincronizan automáticamente desde Mercado Libre. También puedes crear un pedido same-day desde el botón de arriba."
-                : "Se sincronizan automáticamente desde Mercado Libre."
+                ? "Se sincronizan automáticamente desde las fuentes conectadas (Mercado Libre, Shopify). También puedes crear un pedido same-day desde el botón de arriba."
+                : "Se sincronizan automáticamente desde las fuentes conectadas (Mercado Libre, Shopify)."
             }
           />
         )
@@ -420,7 +429,7 @@ export default async function PaginaOperaciones({
                   </TableHead>
                 )}
                 <TableHead className="hidden px-4 lg:table-cell">Conductor</TableHead>
-                <TableHead className="px-4">Tipo</TableHead>
+                <TableHead className="px-4">Fuente</TableHead>
                 {tieneAcciones && (
                   <TableHead className="px-4 text-right">
                     <span className="sr-only">Acciones</span>
@@ -527,7 +536,7 @@ function FilaPedido({
         )}
       </TableCell>
       <TableCell className="px-4">
-        <Badge variant="neutral">{pedido.tipoPedido === "flex" ? "Flex" : "Same-day"}</Badge>
+        <Badge variant="neutral">{etiquetaFuentePedido(pedido.fuente)}</Badge>
       </TableCell>
       {tieneAcciones && (
         <TableCell className="px-4 text-right">
