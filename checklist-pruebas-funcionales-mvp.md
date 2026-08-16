@@ -1849,3 +1849,58 @@ estáticamente todo `src/` (excluidos los tests) y falla si algún archivo vuelv
 ---
 
 *Documento de trabajo · pruebas funcionales del MVP. Pensado para validar el lazo operación→dinero antes de las etapas de frontend y UX/UI.*
+
+---
+
+## Shopify como segunda fuente de pedidos — 2026-08-16
+
+**Contexto:** la procedencia salió de `tipo_pedido` y pasó a `operacion.pedidos.fuente`; Shopify entró de punta a punta (ingesta, reparto, entrega y escritura de vuelta). Desplegado a producción el 2026-08-16 (commits `86b4545` + `611a1fa`, migraciones `20260816000003/4/5`).
+
+**Cómo leer esta sección:** `[x]` = verificado de verdad. Lo que está en `[ ]` **no falló** — no se ha podido probar, y la razón está anotada. La distinción importa: dar por buena una casilla que nadie ejercitó es peor que dejarla abierta.
+
+### Eje de fuente (esquema)
+
+- [x] **SH-01 — Backfill determinista.** Toda fila existente quedó `flex → ml_flex` y `same_day → rutax_manual`, sin nulos. *Verificado en local (15+1) y **en producción con datos reales: 49 + 10, solo dos combinaciones**.* **(Crítico)**
+- [x] **SH-02 — `fuente` es NOT NULL sin default.** Un INSERT que la omita falla con 23502 en vez de escribir una procedencia equivocada. **(Crítico)**
+- [x] **SH-03 — Idempotencia por fuente.** El índice único parcial `(tenant_id, fuente, id_externo)` rechaza el duplicado y permite varias filas con `id_externo` nulo. *Probado insertando y revirtiendo en la base local.* **(Crítico)**
+- [x] **SH-04 — El POD mira la fuente, no el tipo.** Un POD contra `fuente='shopify'` se acepta; contra `ml_flex` lo rechaza el trigger con mensaje explícito. *Probado en la base local.* **(Crítico)**
+- [x] **SH-05 — El predicado falla cerrado.** `podEsAutoritativoEnRutax` devuelve `false` ante `null`, `undefined` y valores inventados. *`src/modules/operacion/fuente.test.ts`.* **(Crítico)**
+
+### Conexión de la tienda (portal del seller)
+
+- [x] **SH-06 — Aislamiento de `conexiones_seller_shopify`.** Un seller ve solo las suyas; `token_ref` y `cursor_ingesta_en` no se alcanzan ni por la vista `public.*` ni por la tabla del esquema. *pgTAP, **con contraprueba**: al restituir el grant de tabla completa la suite se pone roja donde debe.* **(Crítico)**
+- [x] **SH-07 — Dominio de tienda validado antes de la red.** `evil.example.com` se rechaza sin emitir ninguna petición. *Probado en el portal en el navegador.* **(Crítico)**
+- [x] **SH-08 — Credencial inválida se reporta al seller.** Tienda inexistente → mensaje accionable en pantalla y detalle técnico **sin el token** en el log. *Probado en el navegador.* **(Alto)**
+- [ ] **SH-09 — Conexión exitosa de una tienda real.** Requiere una *development store* de Shopify (gratuita con cuenta de Partner). **No ejecutado.** **(Crítico)**
+- [ ] **SH-10 — Scopes faltantes se nombran uno por uno.** La pantalla lista el permiso que falta en vez de decir "faltan permisos". Requiere una tienda real con un scope desmarcado a propósito. **No ejecutado.** **(Alto)**
+
+### Ingesta
+
+- [ ] **SH-11 — Un pedido de la tienda entra a Rutax** con `fuente='shopify'`, `tipo_pedido='same_day'`, `codigo_interno` y `tracking_token` poblados, y `tarifa_aplicable_id` NO nulo. **No ejecutado** (necesita tienda real). **(Crítico)**
+- [ ] **SH-12 — Segunda pasada no duplica ni devuelve a la bandeja** un pedido ya asignado. Cubierto por pruebas unitarias; falta contra la API real. **(Crítico)**
+- [ ] **SH-13 — Fuera de cobertura y sin tarifa no se ingestan**, y quedan contados en el resumen del job. Cubierto por pruebas unitarias. **(Alto)**
+- [x] **SH-14 — El despacho parcial se descarta.** `PARTIALLY_FULFILLED` no entra: Rutax no modela líneas de pedido y no puede saber qué bultos quedan. **(Medio)**
+
+### Interfaz del courier
+
+- [x] **SH-15 — Badge de fuente.** Un pedido Shopify se rotula "Shopify", no "Same-day". *Verificado en el navegador con un pedido insertado a mano.* **(Crítico)**
+- [x] **SH-16 — Filtro por fuente en `/operaciones`.** Filtra correctamente, y **un valor inventado en la URL se ignora sin romper la pantalla**. *Verificado en el navegador.* **(Alto)**
+- [x] **SH-17 — Conexiones caídas cuentan Shopify.** Un seller con la tienda desvinculada y Mercado Libre sano aparece en el aviso del dashboard. *Verificado en el navegador.* **(Alto)**
+
+### Ciclo completo (lo que de verdad falta)
+
+- [ ] **SH-18 — Entrega → cumplimiento en la tienda.** Cerrar la entrega desde la app del conductor y comprobar que Shopify marca el pedido cumplido, con el número de seguimiento apuntando a `/tracking/[token]` y el correo al comprador disparado. **No ejecutado — es el hito que cierra el lazo.** **(Crítico)**
+- [ ] **SH-19 — Cancelación en la tienda se aplica en Rutax.** El pedido pasa a `cancelado`, se abre incidencia si el bulto ya iba en la van, y la bitácora **nombra la fuente real** (nunca "Mercado Libre"). Cubierto por pruebas unitarias; falta contra la API real. **(Crítico)**
+- [ ] **SH-20 — El bulto Shopify se escanea en el retiro** y resuelve como `rutax_interno` (etiqueta con QR de Rutax). **No ejecutado.** **(Medio)**
+
+### Regresión de lo que se tocó
+
+- [x] **SH-21 — Flex intacto.** 3.468 pruebas Vitest y 965 pgTAP en verde; el job de cancelación de ML se refactorizó a un núcleo compartido **sin tocar su archivo de pruebas**. **(Crítico)**
+- [x] **SH-22 — Ingesta Flex sana tras el despliegue.** Cron puntual cada 30 min, `erroresPersistencia: 0`, `totalNoEncontrados: 0`, y una orden no-Flex correctamente descartada. *Verificado en producción vía `infra.ejecuciones_job`.* **(Crítico)**
+- [ ] **SH-23 — El INSERT de Flex con `fuente` corre en producción.** Las corridas posteriores al despliegue dieron `insertados: 0` porque no entraron pedidos nuevos: **la línea modificada aún no se ejecuta en producción**. Se prueba sola con la próxima venta Flex. **(Crítico)**
+
+### Horas en horario de Chile — 2026-08-16
+
+- [x] **TZ-01 — El historial de estados muestra la hora chilena.** Un registro guardado como `21:47 UTC` se muestra como `17:47`. *Verificado en el navegador; era el bug reportado.* **(Alto)**
+- [x] **TZ-02 — Ningún formateo de fecha sin huso.** `src/lib/formato-cl.zona-horaria.test.ts` barre `src/` y falla si aparece un `toLocaleDateString` / `toLocaleTimeString` / `Intl.DateTimeFormat` sin `timeZone`. **(Alto)**
+- [x] **TZ-03 — Hora en 24h.** `formatearHora` no devuelve "p. m."; corregida la inconsistencia del botón "listo para salir" del conductor. **(Medio)**
