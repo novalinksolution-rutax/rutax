@@ -27,6 +27,7 @@ import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { obtenerPuertoEmail } from '@/modules/integraciones/notificaciones/email';
 import { formatearCLP } from '@/lib/ui/formato-moneda';
+import { EMAIL_SOPORTE_RUTAX } from '@/lib/contacto-rutax';
 import { ahoraEnSantiago, combinarFechaHoraSantiago, sumarDiasCalendario } from '@/lib/fecha-santiago';
 
 // =============================================================================
@@ -257,7 +258,7 @@ export function construirEmailTrialPorVencer(args: {
       `<p>Tu período de prueba termina el <strong>${fecha}</strong> (faltan ${args.diasRestantes} días).</p>` +
       `<p>Para seguir operando sin interrupciones, vincula un método de pago en tu panel: ` +
       `Configuración &gt; Plan y facturación.</p>` +
-      `<p>¿Dudas? Responde este correo o escríbenos a soporte@plataforma.cl.</p>` +
+      `<p>¿Dudas? Responde este correo o escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
     texto:
       `Tu período de prueba termina el ${fecha} (faltan ${args.diasRestantes} días). ` +
@@ -279,9 +280,9 @@ export function construirEmailSuscripcionCreada(args: {
     html:
       `<p>Hola ${args.nombreTenant},</p>` +
       `<p>Tu cuenta ya está lista. Entra a tu panel para empezar a operar.</p>${bloqueTrial}` +
-      `<p>¿Dudas? Responde este correo o escríbenos a soporte@plataforma.cl.</p>` +
+      `<p>¿Dudas? Responde este correo o escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
-    texto: `Tu cuenta ya está lista.${bloqueTrialTexto} Entra a tu panel para empezar a operar. ¿Dudas? Responde este correo o escríbenos a soporte@plataforma.cl.`,
+    texto: `Tu cuenta ya está lista.${bloqueTrialTexto} Entra a tu panel para empezar a operar. ¿Dudas? Responde este correo o escríbenos a ${EMAIL_SOPORTE_RUTAX}.`,
   };
 }
 
@@ -357,10 +358,10 @@ export function construirEmailPeriodoVencido(args: {
       `<p>Hola ${args.nombreTenant},</p>` +
       `<p>El período <strong>${periodo}</strong> de tu suscripción a Rutax, por <strong>${monto}</strong>, está vencido.</p>` +
       `<p>Regulariza tu pago ahora en tu panel (Configuración &gt; Plan y facturación) para mantener tu servicio activo.</p>` +
-      `<p>¿Problemas? Escríbenos a soporte@plataforma.cl.</p>` +
+      `<p>¿Problemas? Escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>` +
       `<p>Saludos,<br>Rutax</p>`,
     texto:
       `El período ${periodo} de tu suscripción a Rutax, por ${monto}, está vencido. ` +
-      `Regulariza tu pago en tu panel (Configuración > Plan y facturación). ¿Problemas? Escríbenos a soporte@plataforma.cl.`,
+      `Regulariza tu pago en tu panel (Configuración > Plan y facturación). ¿Problemas? Escríbenos a ${EMAIL_SOPORTE_RUTAX}.`,
   };
 }

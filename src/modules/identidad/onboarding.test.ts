@@ -254,8 +254,8 @@ describe("crearTenantConDueno — redirectTo de activación (no depender de la p
   });
 
   it("resolverRedirectToActivacionCuenta arma la URL sobre APP_PUBLIC_URL + /activar-cuenta", () => {
-    process.env.APP_PUBLIC_URL = "https://app.rutax.cl";
-    expect(resolverRedirectToActivacionCuenta()).toBe("https://app.rutax.cl/activar-cuenta");
+    process.env.APP_PUBLIC_URL = "https://rutax.io";
+    expect(resolverRedirectToActivacionCuenta()).toBe("https://rutax.io/activar-cuenta");
   });
 
   it("resolverRedirectToActivacionCuenta es undefined si el entorno no declara ninguna URL", () => {
@@ -263,17 +263,17 @@ describe("crearTenantConDueno — redirectTo de activación (no depender de la p
   });
 
   it("pasa redirectTo, no vacío, a inviteUserByEmail cuando hay URL pública declarada", async () => {
-    process.env.APP_PUBLIC_URL = "https://app.rutax.cl";
+    process.env.APP_PUBLIC_URL = "https://rutax.io";
     const { cliente, estado } = crearClienteFalso();
 
     await crearTenantConDueno(cliente, ENTRADA_VALIDA);
 
     expect(estado.opcionesInvitacion).toHaveLength(1);
-    expect(estado.opcionesInvitacion[0]?.redirectTo).toBe("https://app.rutax.cl/activar-cuenta");
+    expect(estado.opcionesInvitacion[0]?.redirectTo).toBe("https://rutax.io/activar-cuenta");
   });
 
   it("no manda un redirectTo vacío ni la ruta relativa sola — siempre absoluto sobre /activar-cuenta", async () => {
-    process.env.APP_PUBLIC_URL = "https://app.rutax.cl/";
+    process.env.APP_PUBLIC_URL = "https://rutax.io/";
     const { cliente, estado } = crearClienteFalso();
 
     await crearTenantConDueno(cliente, ENTRADA_VALIDA);

@@ -3,7 +3,7 @@ import { construirEmailInvitacion } from "./notificaciones-invitacion";
 
 const BASE = {
   nombreCourier: "Andes Express",
-  urlInvitacion: "https://app.rutax.cl/invitacion/tok-123",
+  urlInvitacion: "https://rutax.io/invitacion/tok-123",
   expiraEn: new Date("2026-08-14T12:00:00Z").toISOString(),
 };
 

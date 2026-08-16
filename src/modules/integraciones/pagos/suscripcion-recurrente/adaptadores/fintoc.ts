@@ -147,11 +147,16 @@ export class FintocSuscripcionRecurrenteAdapter implements PuertoSuscripcionRecu
 
   constructor(config: FintocSuscripcionConfig, baseUrl: string = FINTOC_SUSCRIPCION_BASE_URL) {
     this.secretKeyOrg = config.secretKeyOrg;
+    // `APP_PUBLIC_URL` va PRIMERO: es la canónica del proyecto y, en Vercel de
+    // producción, la única de las tres que está puesta. Sin ella en la cadena,
+    // esto caía siempre al literal — que además apuntaba a `app.rutax.cl`, un
+    // dominio de un tercero (rutax.cl es de otra empresa). Corregido 2026-08-16.
     this.appBaseUrl =
       config.appBaseUrl ??
+      process.env.APP_PUBLIC_URL ??
       process.env.APP_BASE_URL ??
       process.env.NEXT_PUBLIC_APP_URL ??
-      'https://app.rutax.cl';
+      'https://rutax.io';
     this.baseUrl = baseUrl;
   }
 

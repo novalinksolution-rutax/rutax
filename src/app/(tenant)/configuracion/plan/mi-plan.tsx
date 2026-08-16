@@ -34,6 +34,7 @@ import {
   traducirMetodoPago,
 } from "@/lib/ui/traduccion-estados";
 import type { VistaMiPlan, Entitlements, PlanPublico } from "@/modules/plataforma/superficie-courier";
+import { EMAIL_SOPORTE_RUTAX, MAILTO_SOPORTE_RUTAX } from "@/lib/contacto-rutax";
 import type { ConsumoTenant } from "@/modules/plataforma/consumo";
 import type { EstadoPago } from "@/modules/plataforma/tipos";
 import { BloqueCobroAutomatico } from "./bloque-cobro-automatico";
@@ -226,8 +227,8 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
       {/* 6. Nota de contacto */}
       <p className="text-center text-xs text-muted-foreground">
         ¿Necesitas ajustes de facturación, folios, datos de la factura, o un plan a medida? Escríbenos a{" "}
-        <a href="mailto:soporte@plataforma.cl" className="underline underline-offset-2">
-          soporte@plataforma.cl
+        <a href={MAILTO_SOPORTE_RUTAX} className="underline underline-offset-2">
+          {EMAIL_SOPORTE_RUTAX}
         </a>
         .
       </p>
@@ -257,7 +258,7 @@ function BannerEstadoNoActivo({ estado }: { estado: "suspendida" | "cancelada" }
               : "Si quieres reactivarla, contáctanos y te ayudamos a hacerlo."}
           </p>
           <Button asChild variant="outline" size="sm" className="w-fit bg-transparent">
-            <a href="mailto:soporte@plataforma.cl">Contactar a Rutax</a>
+            <a href={MAILTO_SOPORTE_RUTAX}>Contactar a Rutax</a>
           </Button>
         </div>
       </div>

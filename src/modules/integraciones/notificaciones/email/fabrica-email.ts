@@ -23,8 +23,16 @@ import { StubEmailAdapter } from './adaptadores/stub';
 import { ResendEmailAdapter } from './adaptadores/resend';
 import type { PuertoEmail } from './puerto-email';
 
-/** Remitente por defecto si `EMAIL_FROM_ADDRESS` no está configurado. */
-const REMITENTE_DEFAULT = 'Rutax <no-responder@rutax.app>';
+/**
+ * Remitente por defecto si `EMAIL_FROM_ADDRESS` no está configurado.
+ *
+ * DEBE ser un dominio verificado en Resend, o el proveedor rechaza TODO envío
+ * con un 4xx. Fue `rutax.app` hasta el 2026-08-16: un dominio que no es nuestro
+ * (resuelve a un wildcard ajeno, sin MX ni TXT), así que el default era una
+ * trampa — abrir el gate real sin `EMAIL_FROM_ADDRESS` no enviaba nada.
+ * El dominio de producción es `rutax.io`.
+ */
+const REMITENTE_DEFAULT = 'Rutax <no-responder@rutax.io>';
 
 /**
  * ¿El modo sandbox de email está activo? Default SÍ (sandbox): solo el valor
@@ -45,8 +53,14 @@ export function obtenerPuertoEmail(): PuertoEmail {
     return new StubEmailAdapter();
   }
 
+  // `EMAIL_REPLY_TO` es opcional: sin ella el correo sale sin `Reply-To` y una
+  // respuesta al remitente `no-responder@` se pierde. Con ella, aterriza en el
+  // buzón de administración. Vacía o con solo espacios cuenta como ausente.
+  const responderA = process.env.EMAIL_REPLY_TO?.trim();
+
   return new ResendEmailAdapter({
     apiKey: apiKey as string,
     remitente: process.env.EMAIL_FROM_ADDRESS ?? REMITENTE_DEFAULT,
+    ...(responderA ? { responderA } : {}),
   });
 }

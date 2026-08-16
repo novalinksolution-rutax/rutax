@@ -58,7 +58,7 @@ describe("reenviarCorreoActivacion — redirectTo (no depender de la plantilla d
   });
 
   it("pasa redirectTo apuntando a /activar-cuenta cuando hay URL pública declarada", async () => {
-    process.env.APP_PUBLIC_URL = "https://app.rutax.cl";
+    process.env.APP_PUBLIC_URL = "https://rutax.io";
     const { cliente, inviteUserByEmail } = crearClienteFalso({ id: "u-1", email: "dueno@rutax.cl" });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente as never);
 
@@ -68,7 +68,7 @@ describe("reenviarCorreoActivacion — redirectTo (no depender de la plantilla d
     expect(inviteUserByEmail).toHaveBeenCalledTimes(1);
     expect(inviteUserByEmail).toHaveBeenCalledWith(
       "dueno@rutax.cl",
-      expect.objectContaining({ redirectTo: "https://app.rutax.cl/activar-cuenta" }),
+      expect.objectContaining({ redirectTo: "https://rutax.io/activar-cuenta" }),
     );
   });
 

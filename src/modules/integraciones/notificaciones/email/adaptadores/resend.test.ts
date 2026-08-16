@@ -21,7 +21,7 @@ describe('ResendEmailAdapter', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const adaptador = new ResendEmailAdapter({ apiKey: 'sk_test_secreto', remitente: 'Rutax <no-responder@rutax.app>' });
+    const adaptador = new ResendEmailAdapter({ apiKey: 'sk_test_secreto', remitente: 'Rutax <no-responder@rutax.io>' });
     const resultado = await adaptador.enviarEmail(ARGS_BASE);
 
     expect(resultado).toEqual({ enviado: true, modo: 'real', proveedorId: 'resend_msg_123' });
@@ -41,7 +41,7 @@ describe('ResendEmailAdapter', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const adaptador = new ResendEmailAdapter({ apiKey: 'sk_test_secreto', remitente: 'Rutax <no-responder@rutax.app>' });
+    const adaptador = new ResendEmailAdapter({ apiKey: 'sk_test_secreto', remitente: 'Rutax <no-responder@rutax.io>' });
     const resultado = await adaptador.enviarEmail(ARGS_BASE);
 
     expect(resultado.enviado).toBe(false);
@@ -50,11 +50,42 @@ describe('ResendEmailAdapter', () => {
     expect(resultado.errorDescripcion).not.toContain('sk_test_secreto');
   });
 
+  it('con responderA → el body lleva reply_to; sin responderA → la clave NO aparece', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'resend_msg_123' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const conReply = new ResendEmailAdapter({
+      apiKey: 'sk_test_secreto',
+      remitente: 'Rutax <no-responder@rutax.io>',
+      responderA: 'Admin@rutax.io',
+    });
+    await conReply.enviarEmail(ARGS_BASE);
+
+    const [, initConReply] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(initConReply.body as string)).toMatchObject({
+      from: 'Rutax <no-responder@rutax.io>',
+      reply_to: 'Admin@rutax.io',
+    });
+
+    const sinReply = new ResendEmailAdapter({
+      apiKey: 'sk_test_secreto',
+      remitente: 'Rutax <no-responder@rutax.io>',
+    });
+    await sinReply.enviarEmail(ARGS_BASE);
+
+    // Ausente, no presente-y-vacío: Resend rechaza un reply_to vacío.
+    const [, initSinReply] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(initSinReply.body as string)).not.toHaveProperty('reply_to');
+  });
+
   it('fallo de red/timeout → enviado=false, NUNCA lanza', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('network error'));
     vi.stubGlobal('fetch', fetchMock);
 
-    const adaptador = new ResendEmailAdapter({ apiKey: 'sk_test_secreto', remitente: 'Rutax <no-responder@rutax.app>' });
+    const adaptador = new ResendEmailAdapter({ apiKey: 'sk_test_secreto', remitente: 'Rutax <no-responder@rutax.io>' });
     const resultado = await adaptador.enviarEmail(ARGS_BASE);
 
     expect(resultado).toEqual({

@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/modules/identidad/enlace-invitacion", () => ({
-  resolverUrlBaseApp: vi.fn(() => "https://rutax.app"),
+  resolverUrlBaseApp: vi.fn(() => "https://rutax.io"),
 }));
 
 import { resolverUrlBaseApp } from "@/modules/identidad/enlace-invitacion";
@@ -27,7 +27,7 @@ const BASE = {
 };
 
 beforeEach(() => {
-  vi.mocked(resolverUrlBaseApp).mockReturnValue("https://rutax.app");
+  vi.mocked(resolverUrlBaseApp).mockReturnValue("https://rutax.io");
 });
 
 describe("construirAvisoIncidencia", () => {
@@ -45,7 +45,7 @@ describe("construirAvisoIncidencia", () => {
 
   it("el enlace lleva a la ficha del pedido, que es donde están los botones", () => {
     const r = construirAvisoIncidencia(BASE);
-    const url = `https://rutax.app/operaciones/${BASE.pedidoId}`;
+    const url = `https://rutax.io/operaciones/${BASE.pedidoId}`;
     expect(r.html).toContain(url);
     expect(r.texto).toContain(url);
   });

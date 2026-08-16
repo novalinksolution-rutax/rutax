@@ -34,6 +34,7 @@ import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { formatearFecha } from "@/lib/formato-cl";
 import { ahoraEnSantiago, diferenciaEnDiasCalendario } from "@/lib/fecha-santiago";
 import { cn } from "@/lib/utils";
+import { EMAIL_SOPORTE_RUTAX, MAILTO_SOPORTE_RUTAX } from "@/lib/contacto-rutax";
 import { solicitarCambioDePlanAction } from "./actions";
 import type { PlanPublico, CambioPlanPendiente } from "@/modules/plataforma/superficie-courier";
 import type { Periodicidad } from "@/modules/plataforma/tipos";
@@ -190,7 +191,7 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
             Tienes un cambio programado: el <strong>{formatearFecha(cambioPendiente.efectivoDesde)}</strong> bajarás a{" "}
             <strong>{nombrePlanPendiente}</strong>. Hasta entonces sigues en tu plan {planActual.nombre}, sin cargo.
             Si quieres cancelarlo, elige un plan de igual o mayor valor. Para otros ajustes,{" "}
-            <a href="mailto:soporte@plataforma.cl" className="underline underline-offset-2">
+            <a href={MAILTO_SOPORTE_RUTAX} className="underline underline-offset-2">
               escríbenos
             </a>
             .
@@ -222,7 +223,7 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
         <EmptyState
           icon={ArrowUpCircle}
           titulo="No hay otros planes disponibles"
-          descripcion="No hay más planes activos en este momento. Si necesitas un plan diferente, escríbenos a soporte@plataforma.cl."
+          descripcion={`No hay más planes activos en este momento. Si necesitas un plan diferente, escríbenos a ${EMAIL_SOPORTE_RUTAX}.`}
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -5,14 +5,14 @@ const CLAVES = ["APP_PUBLIC_URL", "APP_BASE_URL", "NEXT_PUBLIC_APP_URL", "VERCEL
 
 describe("construirEnlaceInvitacion", () => {
   it("arma la URL de canje sobre la ruta real de la pantalla", () => {
-    expect(construirEnlaceInvitacion("https://app.rutax.cl", "abc123")).toBe(
-      "https://app.rutax.cl/invitacion/abc123",
+    expect(construirEnlaceInvitacion("https://rutax.io", "abc123")).toBe(
+      "https://rutax.io/invitacion/abc123",
     );
   });
 
   it("no duplica la barra cuando la base viene con barra final", () => {
-    expect(construirEnlaceInvitacion("https://app.rutax.cl/", "abc123")).toBe(
-      "https://app.rutax.cl/invitacion/abc123",
+    expect(construirEnlaceInvitacion("https://rutax.io/", "abc123")).toBe(
+      "https://rutax.io/invitacion/abc123",
     );
   });
 
@@ -60,16 +60,16 @@ describe("resolverUrlBaseApp", () => {
   // puesta en produccion. El correo habría caído a la URL efímera del deployment
   // teniendo el dominio real al lado.
   it("usa APP_PUBLIC_URL, la canónica del proyecto, por sobre todas las demás", () => {
-    process.env.APP_PUBLIC_URL = "https://app.rutax.cl";
+    process.env.APP_PUBLIC_URL = "https://rutax.io";
     process.env.APP_BASE_URL = "https://explicita.cl";
     process.env.NEXT_PUBLIC_APP_URL = "https://publica.cl";
     process.env.VERCEL_URL = "efimera.vercel.app";
-    expect(resolverUrlBaseApp()).toBe("https://app.rutax.cl");
+    expect(resolverUrlBaseApp()).toBe("https://rutax.io");
   });
 
   it("con solo APP_PUBLIC_URL puesta, resuelve igual", () => {
-    process.env.APP_PUBLIC_URL = "https://app.rutax.cl/";
-    expect(resolverUrlBaseApp()).toBe("https://app.rutax.cl");
+    process.env.APP_PUBLIC_URL = "https://rutax.io/";
+    expect(resolverUrlBaseApp()).toBe("https://rutax.io");
   });
 
   it("cae a VERCEL_URL y le agrega el protocolo que Vercel no incluye", () => {

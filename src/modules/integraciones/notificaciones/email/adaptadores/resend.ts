@@ -30,6 +30,15 @@ export interface ResendEmailConfig {
   apiKey: string;
   /** Remitente, formato `"Rutax <no-responder@dominio.cl>"` o dirección simple. */
   remitente: string;
+  /**
+   * Buzón al que va la respuesta si el destinatario contesta. Opcional.
+   *
+   * Vive en la CONFIG y no en `EnviarEmailArgs` a propósito: es una decisión de
+   * plataforma (todo el correo automático sale de `no-responder@` y se responde
+   * al buzón de administración), no algo que cada llamador deba recordar. Sin
+   * esto, una respuesta al remitente se pierde en silencio.
+   */
+  responderA?: string;
 }
 
 interface RespuestaResendOk {
@@ -51,11 +60,13 @@ function extraerErrorResend(cuerpo: unknown): string | null {
 export class ResendEmailAdapter implements PuertoEmail {
   private readonly apiKey: string;
   private readonly remitente: string;
+  private readonly responderA?: string;
   private readonly baseUrl: string;
 
   constructor(config: ResendEmailConfig, baseUrl: string = RESEND_BASE_URL) {
     this.apiKey = config.apiKey;
     this.remitente = config.remitente;
+    this.responderA = config.responderA;
     this.baseUrl = baseUrl;
   }
 
@@ -73,6 +84,7 @@ export class ResendEmailAdapter implements PuertoEmail {
           subject: args.asunto,
           html: args.html,
           ...(args.texto ? { text: args.texto } : {}),
+          ...(this.responderA ? { reply_to: this.responderA } : {}),
         }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

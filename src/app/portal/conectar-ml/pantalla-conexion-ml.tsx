@@ -31,6 +31,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { MAILTO_SOPORTE_RUTAX } from "@/lib/contacto-rutax";
 import { iniciarConexionMl } from "./actions";
 import { MAX_CUENTAS_ML, type ModoConexionMl, type ResultadoCallbackMl } from "./compartido";
 
@@ -217,7 +218,7 @@ function BotonIrAMisConexiones() {
 function BotonContactarSoporte() {
   return (
     <Button asChild variant="outline" className="w-full sm:w-auto">
-      <a href="mailto:soporte@plataforma.cl">
+      <a href={MAILTO_SOPORTE_RUTAX}>
         Contactar soporte
         <ExternalLink className="size-4" aria-hidden="true" />
       </a>

@@ -13,7 +13,7 @@ Guía paso a paso para dejar **un courier real** operando en producción, manten
 - **Inngest** — jobs en segundo plano. Free alcanza para 1 courier.
 - (Opcional) **Sentry** — errores. Free.
 - **Resend** — cuenta + dominio verificado. No es opcional aunque `EMAIL_SANDBOX_MODE` se quede en `true` durante el piloto: ese flag solo gobierna los correos propios de la app (invitación a sellers/equipo); el SMTP de Auth de Supabase (invite del dueño, recuperación de contraseña — §1.8) necesita Resend desde el día uno, porque el SMTP integrado de Supabase da 2 correos/hora y no está pensado para producción.
-- **Dominio** — p. ej. `app.rutax.cl` (~$12/año).
+- **Dominio** — en producción es **`rutax.io`**, registrado en Porkbun y sirviendo la app desde el **apex** (no hay `app.rutax.io`). El buzón `Admin@rutax.io` es Zoho Mail. El enrolamiento concreto del correo —qué registros DNS hay puestos, cuáles faltan y en qué orden— vive en [`correo-rutax-io.md`](./correo-rutax-io.md); esta guía se queda en el procedimiento genérico.
 
 ---
 
@@ -187,9 +187,14 @@ Pasos:
 5. **Contraseña**: la `RESEND_API_KEY` que ya está provisionada para el
    adaptador REST (mismo valor, dos usos).
 6. **Sender email**: una dirección del dominio que ya verificaste en Resend
-   (el mismo dominio de `EMAIL_FROM_ADDRESS`).
+   (el mismo dominio de `EMAIL_FROM_ADDRESS`). En producción:
+   `no-responder@rutax.io`.
 7. Guarda y envía un correo de prueba (p. ej. dispara un "reset password"
    desde `/login`) para confirmar que llega.
+8. **Sube el rate limit.** Con SMTP propio, Supabase pasa de 2 a **30
+   correos/hora** — mejor, pero sigue siendo un techo bajo: una tanda de
+   invitaciones se corta a la mitad **en silencio**. Súbelo en
+   Authentication → Rate Limits.
 
 ---
 
@@ -211,7 +216,7 @@ Pasos:
 > veces — ~150 ms por consulta en vez de ~40. Vercel no tiene región en Santiago, así
 > que `gru1` es lo más cerca que se llega de Chile. El razonamiento completo, con
 > costos y la alternativa chilena evaluada, está en `docs/ops/latencia-y-region.md`.
-3. **Environment Variables** (Production) — ver §5 (imprescindibles) y `.env.example` (la lista completa). **Clave:** `APP_PUBLIC_URL` = tu dominio real (`https://app.rutax.cl`).
+3. **Environment Variables** (Production) — ver §5 (imprescindibles) y `.env.example` (la lista completa). **Clave:** `APP_PUBLIC_URL` = tu dominio real (`https://rutax.io`).
 4. Deploy. Vercel te da una URL; conecta tu dominio en **Settings → Domains**.
 
 ---
