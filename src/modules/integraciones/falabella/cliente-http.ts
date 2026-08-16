@@ -73,6 +73,7 @@
 
 import {
   reintentarConBackoff,
+  ejecutarPeticionDeRed,
   type ErrorReintentable,
   type OpcionesReintento,
 } from "../resiliencia";
@@ -212,26 +213,14 @@ export class ErrorRespuestaFalabella extends Error implements Partial<ErrorReint
 }
 
 /**
- * La petición no llegó a salir o se cortó a mitad de camino (DNS, TLS, socket
- * cerrado, timeout del runtime). `fetch` lanza un `TypeError` pelado, que NO
- * está marcado como reintentable y por lo tanto aborta el intento entero.
+ * Los fallos de transporte (DNS, TLS, socket cerrado) los clasifica y marca
+ * `ejecutarPeticionDeRed` de `../resiliencia`, y lanzan `ErrorRedIntegracion`.
  *
- * ⚠️ Divergencia consciente respecto de `../ml` y `../shopify`: allá una caída
- * de red tumba la llamada sin reintentar. Aquí no, y la razón es propia de este
- * proveedor — no hay sandbox, la ingesta corre contra producción del seller, y
- * un socket cortado es exactamente el caso que el backoff existe para absorber.
- * Que los otros dos adaptadores tengan el mismo hueco es una deuda a revisar
- * aparte, no un motivo para repetirlo aquí.
+ * Este adaptador nació con una clase propia, `ErrorRedFalabella`, porque en ese
+ * momento ML y Shopify no cubrían el caso. Se unificó el 2026-08-16: tres
+ * adaptadores con dos criterios distintos para "¿esto se reintenta?" es
+ * exactamente lo que nadie recuerda seis meses después.
  */
-export class ErrorRedFalabella extends Error implements ErrorReintentable {
-  readonly reintentable = true;
-
-  constructor(action: string, causa: unknown) {
-    super(`No se pudo alcanzar Falabella para ${action}: ${(causa as Error)?.message ?? causa}`);
-    this.name = "ErrorRedFalabella";
-    this.cause = causa;
-  }
-}
 
 /**
  * ¿El fallo significa «la credencial de este seller ya no sirve»? Es la pregunta
@@ -402,17 +391,15 @@ export async function peticionFalabella<T>(
     };
     if (peticion.cuerpo) cabeceras["content-type"] = peticion.cuerpo.contentType;
 
-    let respuesta: Response;
-    try {
-      respuesta = await fetch(url, {
+    // La URL lleva la firma: el contexto que se pasa es la `Action`, nunca la
+    // URL, para que el mensaje del error de red no la repita.
+    const respuesta = await ejecutarPeticionDeRed("Falabella", peticion.action, () =>
+      fetch(url, {
         method: peticion.metodo ?? "GET",
         headers: cabeceras,
         body: peticion.cuerpo?.contenido,
-      });
-    } catch (causa) {
-      // La URL lleva la firma; el mensaje del error de red NO la repite.
-      throw new ErrorRedFalabella(peticion.action, causa);
-    }
+      }),
+    );
 
     const { texto, json } = await leerCuerpoSeguro(respuesta);
     const retryAfterMs = leerRetryAfterMs(respuesta.headers);

@@ -30,6 +30,7 @@
 
 import {
   reintentarConBackoff,
+  ejecutarPeticionDeRed,
   type ErrorReintentable,
   type OpcionesReintento,
 } from "../resiliencia";
@@ -219,17 +220,22 @@ export async function peticionShopify<T>(peticion: PeticionShopify): Promise<T> 
   return reintentarConBackoff(async () => {
     const url = `https://${peticion.shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
 
-    const respuesta = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        // Construido en el último momento posible; nunca en una variable de
-        // mayor vida ni dentro de un objeto de error.
-        "x-shopify-access-token": peticion.accessToken,
-      },
-      body: JSON.stringify({ query: peticion.consulta, variables: peticion.variables ?? {} }),
-    });
+    // El `fetch` va envuelto: un corte de red lo lanza como `TypeError` pelado,
+    // sin la marca de reintentable, y sin esto el job se rendía al primer
+    // intento (arreglado el 2026-08-16 — ver `../resiliencia.ts`).
+    const respuesta = await ejecutarPeticionDeRed("Shopify", peticion.shopDomain, () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          // Construido en el último momento posible; nunca en una variable de
+          // mayor vida ni dentro de un objeto de error.
+          "x-shopify-access-token": peticion.accessToken,
+        },
+        body: JSON.stringify({ query: peticion.consulta, variables: peticion.variables ?? {} }),
+      }),
+    );
 
     if (!respuesta.ok) {
       throw new ErrorHttpShopify(

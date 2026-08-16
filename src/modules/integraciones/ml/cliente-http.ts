@@ -27,6 +27,7 @@
 
 import {
   reintentarConBackoff,
+  ejecutarPeticionDeRed,
   type ErrorReintentable,
   type OpcionesReintento,
 } from "../resiliencia";
@@ -119,11 +120,16 @@ export async function peticionMl<T>(peticion: PeticionMl): Promise<T> {
       encabezados.authorization = `Bearer ${peticion.accessToken}`;
     }
 
-    const respuesta = await fetch(url, {
-      method: peticion.metodo,
-      headers: encabezados,
-      body: cuerpo,
-    });
+    // El `fetch` va envuelto: un corte de red lo lanza como `TypeError` pelado,
+    // sin la marca de reintentable, y sin esto el job se rendía al primer
+    // intento (arreglado el 2026-08-16 — ver `../resiliencia.ts`).
+    const respuesta = await ejecutarPeticionDeRed("Mercado Libre", peticion.ruta, () =>
+      fetch(url, {
+        method: peticion.metodo,
+        headers: encabezados,
+        body: cuerpo,
+      }),
+    );
 
     if (!respuesta.ok) {
       const cuerpoError = await leerCuerpoSeguro(respuesta);
@@ -170,10 +176,12 @@ export async function peticionBinariaMl(peticion: PeticionBinariaMl): Promise<Re
       authorization: `Bearer ${peticion.accessToken}`,
     };
 
-    const respuesta = await fetch(url, {
-      method: peticion.metodo,
-      headers: encabezados,
-    });
+    const respuesta = await ejecutarPeticionDeRed("Mercado Libre", peticion.ruta, () =>
+      fetch(url, {
+        method: peticion.metodo,
+        headers: encabezados,
+      }),
+    );
 
     if (!respuesta.ok) {
       const cuerpoError = await leerCuerpoSeguro(respuesta);

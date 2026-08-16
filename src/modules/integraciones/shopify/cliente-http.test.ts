@@ -17,6 +17,7 @@ import {
   ErrorGraphqlShopify,
   ErrorShopDomainInvalido,
 } from "./cliente-http";
+import { ErrorRedIntegracion, esErrorReintentable } from "../resiliencia";
 
 const SIN_REINTENTOS = { maxIntentos: 1 };
 const TIENDA = "mi-tienda.myshopify.com";
@@ -250,6 +251,48 @@ describe("peticionShopify", () => {
     expect((error as ErrorHttpShopify).status).toBe(401);
     expect((error as ErrorHttpShopify).reintentable).toBeUndefined();
     expect(fetchFalso).toHaveBeenCalledTimes(1);
+  });
+
+  it("un corte de red se reintenta y sale adelante cuando vuelve", async () => {
+    // Hasta el 2026-08-16 no se reintentaba: `fetch` lanza el fallo de
+    // transporte como un `TypeError` pelado, sin la marca que exige
+    // `reintentarConBackoff`, y el job se rendia al primer intento.
+    const causa = Object.assign(new Error("connect ECONNRESET"), { code: "ECONNRESET" });
+    const corte = Object.assign(new TypeError("fetch failed"), { cause: causa });
+
+    const fetchFalso = vi
+      .fn()
+      .mockRejectedValueOnce(corte)
+      .mockResolvedValueOnce(respuesta({ data: { ok: true } }));
+    vi.stubGlobal("fetch", fetchFalso);
+
+    const data = await peticionShopify<{ ok: boolean }>({
+      shopDomain: TIENDA,
+      accessToken: "t",
+      consulta: "{ x }",
+      opcionesReintento: { maxIntentos: 3, dormir: async () => {} },
+    });
+
+    expect(data.ok).toBe(true);
+    expect(fetchFalso).toHaveBeenCalledTimes(2);
+  });
+
+  it("si la red no vuelve, el error queda marcado como reintentable y no filtra el token", async () => {
+    const fetchFalso = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", fetchFalso);
+
+    const error = await peticionShopify({
+      shopDomain: TIENDA,
+      accessToken: "shpat_secreto",
+      consulta: "{ x }",
+      opcionesReintento: { maxIntentos: 2, dormir: async () => {} },
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ErrorRedIntegracion);
+    expect(esErrorReintentable(error)).toBe(true);
+    expect((error as Error).message).toContain(TIENDA);
+    expect((error as Error).message).not.toContain("shpat_secreto");
+    expect(fetchFalso).toHaveBeenCalledTimes(2);
   });
 
   it("un 429 respeta el Retry-After del proveedor", async () => {

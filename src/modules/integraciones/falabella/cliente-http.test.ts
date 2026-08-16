@@ -14,11 +14,11 @@ import {
   construirUserAgent,
   esCredencialInvalida,
   ErrorHttpFalabella,
-  ErrorRedFalabella,
   ErrorRespuestaFalabella,
   FALABELLA_API_URL,
   CODIGO_ERROR_FALABELLA,
 } from "./cliente-http";
+import { ErrorRedIntegracion } from "../resiliencia";
 
 const SIN_REINTENTOS = { maxIntentos: 1 };
 const SIN_DORMIR = { dormir: async () => {} };
@@ -432,14 +432,14 @@ describe("transporte", () => {
     const fetchFalso = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
     vi.stubGlobal("fetch", fetchFalso);
 
-    const error = await capturarFallo<ErrorRedFalabella>(
+    const error = await capturarFallo<ErrorRedIntegracion>(
       peticionFalabella({
         ...BASE,
         opcionesReintento: { maxIntentos: 2, ...SIN_DORMIR },
       }),
     );
 
-    expect(error).toBeInstanceOf(ErrorRedFalabella);
+    expect(error).toBeInstanceOf(ErrorRedIntegracion);
     expect(error.reintentable).toBe(true);
     expect(error.message).toContain("GetOrders");
     expect(error.message).not.toContain("Signature");
