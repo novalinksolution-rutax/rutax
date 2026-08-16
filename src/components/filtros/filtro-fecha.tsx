@@ -179,9 +179,9 @@ export function FiltroFecha({
             <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-3">
-          {/* Atajos rápidos */}
-          <div className="flex max-w-[15rem] flex-wrap gap-1.5">
+        <PopoverContent align="start" sideOffset={4} className="w-auto p-2">
+          {/* Atajos rápidos — compactos */}
+          <div className="flex max-w-[12.5rem] flex-wrap gap-1">
             {atajos.map((a) => (
               <button
                 key={a.clave}
@@ -189,10 +189,10 @@ export function FiltroFecha({
                 onClick={() => aplicarAtajo(a)}
                 aria-pressed={atajoActivo(a)}
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                  "rounded-md px-1.5 py-0.5 text-[11px] leading-tight font-medium transition-colors",
                   atajoActivo(a)
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-muted/40 text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                    ? "bg-primary/10 text-primary"
+                    : "bg-muted/50 text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
                 {a.etiqueta}
@@ -201,32 +201,32 @@ export function FiltroFecha({
           </div>
 
           {/* Calendario de rango */}
-          <div className="mt-3 border-t border-border pt-3">
+          <div className="mt-2 border-t border-border pt-2">
             {/* Cabecera del mes */}
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-1 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => setMesVisible(mesAnterior(mesVisible))}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 aria-label="Mes anterior"
               >
-                <ChevronLeft className="size-4" aria-hidden="true" />
+                <ChevronLeft className="size-3.5" aria-hidden="true" />
               </button>
-              <span className="text-sm font-medium capitalize">{etiquetaMes(mesVisible)}</span>
+              <span className="text-[13px] font-medium capitalize">{etiquetaMes(mesVisible)}</span>
               <button
                 type="button"
                 onClick={() => setMesVisible(mesSiguiente(mesVisible))}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 aria-label="Mes siguiente"
               >
-                <ChevronRight className="size-4" aria-hidden="true" />
+                <ChevronRight className="size-3.5" aria-hidden="true" />
               </button>
             </div>
 
             {/* Encabezados de día */}
-            <div className="grid grid-cols-7 gap-0.5">
+            <div className="grid grid-cols-7">
               {DOW.map((d, i) => (
-                <span key={i} className="py-1 text-center text-[11px] font-medium text-muted-foreground">
+                <span key={i} className="py-0.5 text-center text-[10px] font-medium text-muted-foreground">
                   {d}
                 </span>
               ))}
@@ -234,7 +234,7 @@ export function FiltroFecha({
 
             {/* Días */}
             <div
-              className="grid grid-cols-7 gap-0.5"
+              className="grid grid-cols-7"
               onMouseLeave={() => inicioProv !== null && setHover(inicioProv)}
             >
               {Array.from({ length: desplazamiento }).map((_, i) => (
@@ -250,13 +250,14 @@ export function FiltroFecha({
                     onClick={() => clicDia(d)}
                     onMouseEnter={() => inicioProv !== null && setHover(d)}
                     className={cn(
-                      "flex size-8 items-center justify-center rounded-md text-sm tabular-nums transition-colors",
+                      "flex size-7 items-center justify-center text-[13px] tabular-nums transition-colors",
+                      // El interior se pinta con fondo cuadrado (sin gap) para que
+                      // la barra del rango sea continua; los extremos van redondeados.
+                      interior && "bg-primary/10 text-foreground",
                       extremo
-                        ? "bg-primary font-semibold text-primary-foreground"
-                        : interior
-                          ? "bg-primary/15 text-foreground"
-                          : "text-foreground hover:bg-accent",
-                      !extremo && esHoy && "font-semibold text-primary ring-1 ring-inset ring-primary/40",
+                        ? "rounded-md bg-primary font-semibold text-primary-foreground"
+                        : !interior && "rounded-md text-foreground hover:bg-accent",
+                      !extremo && esHoy && "rounded-md font-semibold text-primary ring-1 ring-inset ring-primary/40",
                     )}
                   >
                     {Number(d.slice(8, 10))}
@@ -266,7 +267,7 @@ export function FiltroFecha({
             </div>
 
             {inicioProv !== null ? (
-              <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
                 Elige la otra fecha del rango
               </p>
             ) : null}
@@ -276,7 +277,7 @@ export function FiltroFecha({
             <button
               type="button"
               onClick={() => navegar({})}
-              className="mt-3 w-full text-center text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              className="mt-2 w-full text-center text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               Quitar filtro de fecha
             </button>
