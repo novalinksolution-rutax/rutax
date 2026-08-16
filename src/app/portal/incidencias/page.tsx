@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/table";
 import type { Incidencia, TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
 import { FiltrosIncidenciasSeller } from "./filtros-incidencias-seller";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { parsearRangoFecha, ventanaFechaSantiago } from "@/lib/filtros/fecha";
 
 export const metadata: Metadata = {
   title: "Mis incidencias",
@@ -44,6 +46,9 @@ const LIMITE = 25;
 interface SearchParams {
   tipo?: string;
   estado?: string;
+  fecha?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
   pagina?: string;
 }
 
@@ -62,6 +67,12 @@ export default async function PaginaIncidenciasSeller({
 
   const filtroTipo = (params.tipo as TipoIncidencia | "") ?? "";
   const filtroEstado = (params.estado as EstadoIncidencia | "") ?? "";
+  const rangoFecha = parsearRangoFecha({
+    exacto: params.fecha,
+    desde: params.fecha_desde,
+    hasta: params.fecha_hasta,
+  });
+  const hoyIso = hoyEnSantiago();
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
   const offset = (pagina - 1) * LIMITE;
 
@@ -81,6 +92,12 @@ export default async function PaginaIncidenciasSeller({
 
     if (filtroTipo) query = query.eq("tipo", filtroTipo);
     if (filtroEstado) query = query.eq("estado", filtroEstado);
+    if (rangoFecha.hayFecha) {
+      // `abierta_en` es `timestamptz`: se filtra por el día CIVIL de Santiago.
+      const { gte, lt } = ventanaFechaSantiago(rangoFecha);
+      if (gte) query = query.gte("abierta_en", gte);
+      if (lt) query = query.lt("abierta_en", lt);
+    }
 
     const { data, error, count } = await query;
     if (error) throw error;
@@ -108,13 +125,19 @@ export default async function PaginaIncidenciasSeller({
     errorCarga = true;
   }
 
-  const hayFiltros = !!(filtroTipo || filtroEstado);
+  const hayFiltros = !!(filtroTipo || filtroEstado || rangoFecha.hayFecha);
   const totalPaginas = Math.ceil(total / LIMITE);
 
   function urlConFiltros(overrides: Record<string, string>) {
     const sp = new URLSearchParams();
     if (filtroTipo) sp.set("tipo", filtroTipo);
     if (filtroEstado) sp.set("estado", filtroEstado);
+    if (rangoFecha.exacto) {
+      sp.set("fecha", rangoFecha.exacto);
+    } else {
+      if (rangoFecha.desde) sp.set("fecha_desde", rangoFecha.desde);
+      if (rangoFecha.hasta) sp.set("fecha_hasta", rangoFecha.hasta);
+    }
     if (pagina > 1) sp.set("pagina", String(pagina));
     Object.entries(overrides).forEach(([k, v]) => {
       if (v) sp.set(k, v);
@@ -135,8 +158,12 @@ export default async function PaginaIncidenciasSeller({
 
       {/* Filtros */}
       <FiltrosIncidenciasSeller
+        hoy={hoyIso}
         filtroTipo={filtroTipo}
         filtroEstado={filtroEstado}
+        filtroFecha={rangoFecha.exacto}
+        filtroFechaDesde={rangoFecha.desde}
+        filtroFechaHasta={rangoFecha.hasta}
         hayFiltros={hayFiltros}
       />
 

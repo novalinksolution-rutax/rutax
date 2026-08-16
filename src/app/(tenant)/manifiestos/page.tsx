@@ -13,7 +13,6 @@ import {
   traducirEstadoManifiesto,
   BADGE_ESTADO_MANIFIESTO,
 } from "@/lib/ui/traduccion-estados";
-import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -29,11 +28,15 @@ import {
 import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
 import { FiltrosManifiestos } from "./filtros-manifiestos";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { parsearRangoFecha } from "@/lib/filtros/fecha";
 
 interface SearchParams {
   estado?: string;
   conductor?: string;
   fecha?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
 }
 
 export default async function PaginaManifiestos({
@@ -50,7 +53,12 @@ export default async function PaginaManifiestos({
   const puedeCrear = puedeGenerarManifiestos(sesion.usuario);
 
   const filtroEstado = (params.estado as EstadoManifiesto | "") ?? "";
-  const filtroFecha = params.fecha ?? "";
+  const rangoFecha = parsearRangoFecha({
+    exacto: params.fecha,
+    desde: params.fecha_desde,
+    hasta: params.fecha_hasta,
+  });
+  const hoyIso = hoyEnSantiago();
 
   const cliente = crearClienteServiceRole();
   let manifiestos: Manifiesto[] = [];
@@ -65,7 +73,13 @@ export default async function PaginaManifiestos({
       .limit(50);
 
     if (filtroEstado) query = query.eq("estado", filtroEstado);
-    if (filtroFecha) query = query.eq("fecha_operacion", filtroFecha);
+    // `fecha_operacion` es columna `date`: día exacto o rango con gte/lte.
+    if (rangoFecha.exacto) {
+      query = query.eq("fecha_operacion", rangoFecha.exacto);
+    } else {
+      if (rangoFecha.desde) query = query.gte("fecha_operacion", rangoFecha.desde);
+      if (rangoFecha.hasta) query = query.lte("fecha_operacion", rangoFecha.hasta);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -120,9 +134,12 @@ export default async function PaginaManifiestos({
 
       {/* Filtros */}
       <FiltrosManifiestos
+        hoy={hoyIso}
         filtroEstado={filtroEstado}
-        filtroFecha={filtroFecha}
-        hayFiltros={!!(filtroEstado || filtroFecha)}
+        filtroFecha={rangoFecha.exacto}
+        filtroFechaDesde={rangoFecha.desde}
+        filtroFechaHasta={rangoFecha.hasta}
+        hayFiltros={!!(filtroEstado || rangoFecha.hayFecha)}
       />
 
       {errorCarga && (
@@ -135,19 +152,19 @@ export default async function PaginaManifiestos({
         <EmptyState
           icon={Truck}
           titulo={
-            filtroEstado || filtroFecha
+            filtroEstado || rangoFecha.hayFecha
               ? "Ningún manifiesto coincide"
               : "Aún no tienes manifiestos"
           }
           descripcion={
-            filtroEstado || filtroFecha
+            filtroEstado || rangoFecha.hayFecha
               ? "Prueba cambiando el estado o la fecha."
               : "Asigna pedidos ya retirados a un conductor: el manifiesto se arma solo, como parte de la asignación."
           }
-          tono={filtroEstado || filtroFecha ? "filtro" : "arranque"}
+          tono={filtroEstado || rangoFecha.hayFecha ? "filtro" : "arranque"}
           accion={
             puedeCrear ? (
-              <Button asChild size="sm" variant={filtroEstado || filtroFecha ? "outline" : "default"}>
+              <Button asChild size="sm" variant={filtroEstado || rangoFecha.hayFecha ? "outline" : "default"}>
                 <Link href="/preparacion/asignar">Asignar pedidos</Link>
               </Button>
             ) : undefined

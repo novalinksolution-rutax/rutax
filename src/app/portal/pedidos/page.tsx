@@ -33,6 +33,8 @@ import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
 import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
 import { BloqueEtiqueta } from "./bloque-etiqueta";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { parsearRangoFecha } from "@/lib/filtros/fecha";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
@@ -51,6 +53,8 @@ function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, m
 interface SearchParams {
   estado?: string;
   fecha?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
   pagina?: string;
   nuevo?: string;
 }
@@ -70,7 +74,12 @@ export default async function PaginaPedidosSeller({
   const pedidoNuevoId = params.nuevo ?? null;
 
   const filtroEstado = (params.estado as EstadoPedido | "") ?? "";
-  const filtroFecha = params.fecha ?? "";
+  const rangoFecha = parsearRangoFecha({
+    exacto: params.fecha,
+    desde: params.fecha_desde,
+    hasta: params.fecha_hasta,
+  });
+  const hoyIso = hoyEnSantiago();
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
   const offset = (pagina - 1) * LIMITE;
 
@@ -107,7 +116,13 @@ export default async function PaginaPedidosSeller({
       .range(offset, offset + LIMITE - 1);
 
     if (filtroEstado) query = query.eq("estado", filtroEstado);
-    if (filtroFecha) query = query.eq("fecha_compromiso", filtroFecha);
+    // `fecha_compromiso` es columna `date`: día exacto o rango con gte/lte.
+    if (rangoFecha.exacto) {
+      query = query.eq("fecha_compromiso", rangoFecha.exacto);
+    } else {
+      if (rangoFecha.desde) query = query.gte("fecha_compromiso", rangoFecha.desde);
+      if (rangoFecha.hasta) query = query.lte("fecha_compromiso", rangoFecha.hasta);
+    }
 
     const { data, error, count } = await query;
     if (error) throw error;
@@ -154,13 +169,18 @@ export default async function PaginaPedidosSeller({
     errorCarga = true;
   }
 
-  const hayFiltros = !!(filtroEstado || filtroFecha);
+  const hayFiltros = !!(filtroEstado || rangoFecha.hayFecha);
   const totalPaginas = Math.ceil(total / LIMITE);
 
   function urlConFiltros(overrides: Record<string, string>) {
     const sp = new URLSearchParams();
     if (filtroEstado) sp.set("estado", filtroEstado);
-    if (filtroFecha) sp.set("fecha", filtroFecha);
+    if (rangoFecha.exacto) {
+      sp.set("fecha", rangoFecha.exacto);
+    } else {
+      if (rangoFecha.desde) sp.set("fecha_desde", rangoFecha.desde);
+      if (rangoFecha.hasta) sp.set("fecha_hasta", rangoFecha.hasta);
+    }
     if (pagina > 1) sp.set("pagina", String(pagina));
     Object.entries(overrides).forEach(([k, v]) => {
       if (v) sp.set(k, v);
@@ -196,8 +216,11 @@ export default async function PaginaPedidosSeller({
 
       {/* Filtros */}
       <FiltrosPedidosSeller
+        hoy={hoyIso}
         filtroEstado={filtroEstado}
-        filtroFecha={filtroFecha}
+        filtroFecha={rangoFecha.exacto}
+        filtroFechaDesde={rangoFecha.desde}
+        filtroFechaHasta={rangoFecha.hasta}
         hayFiltros={hayFiltros}
       />
 

@@ -6,7 +6,8 @@ import {
   obtenerTodasSuscripciones,
   obtenerTodosLosTenantsSinSuscripcion,
 } from "@/modules/plataforma/consultas";
-import { combinarFechaHoraSantiago } from "@/lib/fecha-santiago";
+import { combinarFechaHoraSantiago, hoyEnSantiago } from "@/lib/fecha-santiago";
+import { parsearRangoFecha } from "@/lib/filtros/fecha";
 import { tieneSesionAdmin, obtenerSuperAdminsActivos } from "../sesion-admin";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,8 @@ interface SearchParams {
   tenant?: string;
   accion?: string;
   actor?: string;
+  /** Día exacto (excluyente con el rango). */
+  fecha?: string;
   desde?: string;
   hasta?: string;
   offset?: string;
@@ -49,20 +52,30 @@ export default async function PaginaBitacora({
   const filtroTenant = params.tenant ?? "";
   const filtroAccion = params.accion ?? "";
   const filtroActor = params.actor ?? "";
-  const filtroDesde = params.desde ?? "";
-  const filtroHasta = params.hasta ?? "";
+  // El filtro de fecha admite día exacto (`fecha`) o rango (`desde`/`hasta`,
+  // nombres históricos de esta pantalla). `parsearRangoFecha` los sanea y los
+  // deja excluyentes.
+  const rangoFecha = parsearRangoFecha({
+    exacto: params.fecha,
+    desde: params.desde,
+    hasta: params.hasta,
+  });
+  const hoyIso = hoyEnSantiago();
   const offset = Math.max(Number.parseInt(params.offset ?? "0", 10) || 0, 0);
 
   // Rango de fechas: los filtros son días en hora local Santiago; se convierten
   // al instante UTC del inicio/fin de ese día para que `gte`/`lte` comparen
   // correctamente contra `creado_en` (timestamptz) — ver CLAUDE.md, Chile-only.
+  // El día exacto abarca ese día completo (00:00:00–23:59:59).
   let desdeIso: string | undefined;
   let hastaIso: string | undefined;
   try {
-    if (filtroDesde) desdeIso = combinarFechaHoraSantiago(filtroDesde, "00:00:00").toISOString();
-    if (filtroHasta) hastaIso = combinarFechaHoraSantiago(filtroHasta, "23:59:59").toISOString();
+    const dInicio = rangoFecha.exacto || rangoFecha.desde;
+    const dFin = rangoFecha.exacto || rangoFecha.hasta;
+    if (dInicio) desdeIso = combinarFechaHoraSantiago(dInicio, "00:00:00").toISOString();
+    if (dFin) hastaIso = combinarFechaHoraSantiago(dFin, "23:59:59").toISOString();
   } catch {
-    // Fecha con formato inválido (no debería ocurrir vía <input type="date">) — se ignora el filtro.
+    // Fecha con formato inválido (ya saneada, no debería ocurrir) — se ignora.
     desdeIso = undefined;
     hastaIso = undefined;
   }
@@ -106,7 +119,7 @@ export default async function PaginaBitacora({
     errorCarga = true;
   }
 
-  const hayFiltroActivo = !!(filtroTenant || filtroAccion || filtroActor || filtroDesde || filtroHasta);
+  const hayFiltroActivo = !!(filtroTenant || filtroAccion || filtroActor || rangoFecha.hayFecha);
 
   // Query string sin `offset` — insumo para armar los links de paginación.
   const queryStringSinOffset = (() => {
@@ -114,8 +127,12 @@ export default async function PaginaBitacora({
     if (filtroTenant) sp.set("tenant", filtroTenant);
     if (filtroAccion) sp.set("accion", filtroAccion);
     if (filtroActor) sp.set("actor", filtroActor);
-    if (filtroDesde) sp.set("desde", filtroDesde);
-    if (filtroHasta) sp.set("hasta", filtroHasta);
+    if (rangoFecha.exacto) {
+      sp.set("fecha", rangoFecha.exacto);
+    } else {
+      if (rangoFecha.desde) sp.set("desde", rangoFecha.desde);
+      if (rangoFecha.hasta) sp.set("hasta", rangoFecha.hasta);
+    }
     return sp.toString();
   })();
 
@@ -132,11 +149,13 @@ export default async function PaginaBitacora({
       <FiltrosBitacora
         tenants={tenants}
         actores={actores}
+        hoy={hoyIso}
         filtroTenant={filtroTenant}
         filtroAccion={filtroAccion}
         filtroActor={filtroActor}
-        filtroDesde={filtroDesde}
-        filtroHasta={filtroHasta}
+        filtroFecha={rangoFecha.exacto}
+        filtroDesde={rangoFecha.desde}
+        filtroHasta={rangoFecha.hasta}
         hayFiltroActivo={hayFiltroActivo}
       />
 

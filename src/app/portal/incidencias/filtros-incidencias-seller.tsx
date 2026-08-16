@@ -13,6 +13,7 @@ import {
   TEXTO_ESTADO_INCIDENCIA,
 } from "@/lib/ui/traduccion-estados";
 import { Button } from "@/components/ui/button";
+import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
   Select,
   SelectContent,
@@ -24,12 +25,27 @@ import {
 const TODOS = "__todos__";
 
 interface Props {
+  /** "Hoy" civil de Santiago (para los atajos y la etiqueta del filtro de fecha). */
+  hoy: string;
   filtroTipo: string;
   filtroEstado: string;
+  /** Día exacto de apertura ("" si hay rango). */
+  filtroFecha: string;
+  /** Rango de apertura ("" si hay día exacto). */
+  filtroFechaDesde: string;
+  filtroFechaHasta: string;
   hayFiltros: boolean;
 }
 
-export function FiltrosIncidenciasSeller({ filtroTipo, filtroEstado, hayFiltros }: Props) {
+export function FiltrosIncidenciasSeller({
+  hoy,
+  filtroTipo,
+  filtroEstado,
+  filtroFecha,
+  filtroFechaDesde,
+  filtroFechaHasta,
+  hayFiltros,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -38,11 +54,19 @@ export function FiltrosIncidenciasSeller({ filtroTipo, filtroEstado, hayFiltros 
       const params = new URLSearchParams();
       if (campo !== "tipo" && filtroTipo) params.set("tipo", filtroTipo);
       if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
+      // La fecha se cambia por su propio control; aquí solo se PRESERVA la
+      // selección vigente (día exacto o rango) al tocar otro filtro.
+      if (filtroFecha) {
+        params.set("fecha", filtroFecha);
+      } else {
+        if (filtroFechaDesde) params.set("fecha_desde", filtroFechaDesde);
+        if (filtroFechaHasta) params.set("fecha_hasta", filtroFechaHasta);
+      }
       if (valor) params.set(campo, valor);
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
-    [router, pathname, filtroTipo, filtroEstado],
+    [router, pathname, filtroTipo, filtroEstado, filtroFecha, filtroFechaDesde, filtroFechaHasta],
   );
 
   return (
@@ -90,6 +114,15 @@ export function FiltrosIncidenciasSeller({ filtroTipo, filtroEstado, hayFiltros 
           </SelectContent>
         </Select>
       </div>
+
+      <FiltroFecha
+        id="f-fecha-i"
+        label="Fecha de apertura"
+        hoy={hoy}
+        exacto={filtroFecha}
+        desde={filtroFechaDesde}
+        hasta={filtroFechaHasta}
+      />
 
       {hayFiltros && (
         <Button

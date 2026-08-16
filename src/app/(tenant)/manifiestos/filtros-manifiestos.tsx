@@ -11,7 +11,7 @@ import { ESTADOS_MANIFIESTO } from "@/modules/operacion/tipos";
 import { TEXTO_ESTADO_MANIFIESTO } from "@/lib/ui/traduccion-estados";
 import type { EstadoManifiesto } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
   Select,
   SelectContent,
@@ -23,12 +23,25 @@ import {
 const TODOS = "__todos__";
 
 interface Props {
+  /** "Hoy" civil de Santiago (para los atajos y la etiqueta del filtro de fecha). */
+  hoy: string;
   filtroEstado: string;
+  /** Día exacto de fecha de operación ("" si hay rango). */
   filtroFecha: string;
+  /** Rango de fecha de operación ("" si hay día exacto). */
+  filtroFechaDesde: string;
+  filtroFechaHasta: string;
   hayFiltros: boolean;
 }
 
-export function FiltrosManifiestos({ filtroEstado, filtroFecha, hayFiltros }: Props) {
+export function FiltrosManifiestos({
+  hoy,
+  filtroEstado,
+  filtroFecha,
+  filtroFechaDesde,
+  filtroFechaHasta,
+  hayFiltros,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -36,12 +49,19 @@ export function FiltrosManifiestos({ filtroEstado, filtroFecha, hayFiltros }: Pr
     (campo: string, valor: string) => {
       const params = new URLSearchParams();
       if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
-      if (campo !== "fecha" && filtroFecha) params.set("fecha", filtroFecha);
+      // El filtro de fecha se cambia por su propio control; aquí solo se PRESERVA
+      // la selección vigente (día exacto o rango) al tocar otro filtro.
+      if (filtroFecha) {
+        params.set("fecha", filtroFecha);
+      } else {
+        if (filtroFechaDesde) params.set("fecha_desde", filtroFechaDesde);
+        if (filtroFechaHasta) params.set("fecha_hasta", filtroFechaHasta);
+      }
       if (valor) params.set(campo, valor);
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
-    [router, pathname, filtroEstado, filtroFecha],
+    [router, pathname, filtroEstado, filtroFecha, filtroFechaDesde, filtroFechaHasta],
   );
 
   return (
@@ -68,18 +88,14 @@ export function FiltrosManifiestos({ filtroEstado, filtroFecha, hayFiltros }: Pr
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="f-fecha-m" className="text-xs font-medium text-muted-foreground">
-          Fecha de operación
-        </label>
-        <Input
-          id="f-fecha-m"
-          type="date"
-          value={filtroFecha}
-          onChange={(e) => actualizar("fecha", e.target.value)}
-          className="h-9 w-44"
-        />
-      </div>
+      <FiltroFecha
+        id="f-fecha-m"
+        label="Fecha de operación"
+        hoy={hoy}
+        exacto={filtroFecha}
+        desde={filtroFechaDesde}
+        hasta={filtroFechaHasta}
+      />
 
       {hayFiltros && (
         <Button

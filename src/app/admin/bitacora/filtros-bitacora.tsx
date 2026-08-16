@@ -11,6 +11,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
   Select,
   SelectContent,
@@ -30,9 +31,14 @@ interface TenantOpcion {
 interface Props {
   tenants: TenantOpcion[];
   actores: SuperAdminListado[];
+  /** "Hoy" civil de Santiago (para los atajos y la etiqueta del filtro de fecha). */
+  hoy: string;
   filtroTenant: string;
   filtroAccion: string;
   filtroActor: string;
+  /** Día exacto ("" si hay rango). */
+  filtroFecha: string;
+  /** Rango de fechas ("" si hay día exacto). Params `desde`/`hasta` (histórico). */
   filtroDesde: string;
   filtroHasta: string;
   hayFiltroActivo: boolean;
@@ -41,9 +47,11 @@ interface Props {
 export function FiltrosBitacora({
   tenants,
   actores,
+  hoy,
   filtroTenant,
   filtroAccion,
   filtroActor,
+  filtroFecha,
   filtroDesde,
   filtroHasta,
   hayFiltroActivo,
@@ -59,6 +67,9 @@ export function FiltrosBitacora({
         tenant: filtroTenant,
         accion: filtroAccion,
         actor: filtroActor,
+        // La fecha se cambia por su propio control; aquí solo se PRESERVA la
+        // selección vigente (día exacto `fecha` o rango `desde`/`hasta`).
+        fecha: filtroFecha,
         desde: filtroDesde,
         hasta: filtroHasta,
         ...overrides,
@@ -70,7 +81,7 @@ export function FiltrosBitacora({
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
-    [router, pathname, filtroTenant, filtroAccion, filtroActor, filtroDesde, filtroHasta],
+    [router, pathname, filtroTenant, filtroAccion, filtroActor, filtroFecha, filtroDesde, filtroHasta],
   );
 
   return (
@@ -140,31 +151,17 @@ export function FiltrosBitacora({
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label htmlFor="f-desde" className="text-xs font-medium text-muted-foreground">
-          Desde
-        </label>
-        <Input
-          id="f-desde"
-          type="date"
-          value={filtroDesde}
-          onChange={(e) => navegar({ desde: e.target.value })}
-          className="h-9 w-40"
-        />
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <label htmlFor="f-hasta" className="text-xs font-medium text-muted-foreground">
-          Hasta
-        </label>
-        <Input
-          id="f-hasta"
-          type="date"
-          value={filtroHasta}
-          onChange={(e) => navegar({ hasta: e.target.value })}
-          className="h-9 w-40"
-        />
-      </div>
+      <FiltroFecha
+        id="f-fecha-bit"
+        label="Fecha"
+        hoy={hoy}
+        exacto={filtroFecha}
+        desde={filtroDesde}
+        hasta={filtroHasta}
+        paramDesde="desde"
+        paramHasta="hasta"
+        paramPagina="offset"
+      />
 
       {hayFiltroActivo && (
         <Button

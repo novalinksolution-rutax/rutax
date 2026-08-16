@@ -16,7 +16,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import type { TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
   Select,
   SelectContent,
@@ -30,19 +30,28 @@ const TODOS = "__todos__";
 
 interface Props {
   sellers: { id: string; nombre: string; estado: string }[];
+  /** "Hoy" civil de Santiago (para los atajos y la etiqueta del filtro de fecha). */
+  hoy: string;
   filtroSeller: string;
   filtroTipo: string;
   filtroEstado: string;
+  /** Día exacto de apertura ("" si hay rango). */
   filtroFecha: string;
+  /** Rango de apertura ("" si hay día exacto). */
+  filtroFechaDesde: string;
+  filtroFechaHasta: string;
   hayFiltro: boolean;
 }
 
 export function FiltrosIncidencias({
   sellers,
+  hoy,
   filtroSeller,
   filtroTipo,
   filtroEstado,
   filtroFecha,
+  filtroFechaDesde,
+  filtroFechaHasta,
   hayFiltro,
 }: Props) {
   const router = useRouter();
@@ -54,12 +63,19 @@ export function FiltrosIncidencias({
       if (campo !== "seller" && filtroSeller) params.set("seller", filtroSeller);
       if (campo !== "tipo" && filtroTipo) params.set("tipo", filtroTipo);
       if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
-      if (campo !== "fecha" && filtroFecha) params.set("fecha", filtroFecha);
+      // El filtro de fecha se cambia por su propio control; aquí solo se PRESERVA
+      // la selección vigente (día exacto o rango) al tocar otro filtro.
+      if (filtroFecha) {
+        params.set("fecha", filtroFecha);
+      } else {
+        if (filtroFechaDesde) params.set("fecha_desde", filtroFechaDesde);
+        if (filtroFechaHasta) params.set("fecha_hasta", filtroFechaHasta);
+      }
       if (valor) params.set(campo, valor);
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
-    [router, pathname, filtroSeller, filtroTipo, filtroEstado, filtroFecha],
+    [router, pathname, filtroSeller, filtroTipo, filtroEstado, filtroFecha, filtroFechaDesde, filtroFechaHasta],
   );
 
   return (
@@ -133,19 +149,14 @@ export function FiltrosIncidencias({
         </Select>
       </div>
 
-      {/* Desde fecha */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor="f-fecha" className="text-xs font-medium text-muted-foreground">
-          Desde fecha
-        </label>
-        <Input
-          id="f-fecha"
-          type="date"
-          value={filtroFecha}
-          onChange={(e) => actualizar("fecha", e.target.value)}
-          className="h-9 w-44"
-        />
-      </div>
+      <FiltroFecha
+        id="f-fecha"
+        label="Fecha de apertura"
+        hoy={hoy}
+        exacto={filtroFecha}
+        desde={filtroFechaDesde}
+        hasta={filtroFechaHasta}
+      />
 
       {hayFiltro && (
         <Button

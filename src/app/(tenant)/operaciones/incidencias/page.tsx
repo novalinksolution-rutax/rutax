@@ -25,7 +25,8 @@ import { PanelIncidencia } from "./panel-incidencia";
 import { FiltrosIncidencias } from "./filtros-incidencias";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerSellersDelTenant, type SellerFiltro } from "@/lib/datos-tenant/sellers";
-import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { parsearRangoFecha, ventanaFechaSantiago, type RangoFecha } from "@/lib/filtros/fecha";
 
 // =============================================================================
 // Carga de datos
@@ -35,7 +36,8 @@ interface FiltrosIncidencias {
   seller?: string;
   tipo?: TipoIncidencia;
   estado?: EstadoIncidencia;
-  fechaDesde?: string;
+  /** Rango de `abierta_en` (día exacto o entre dos fechas). */
+  rangoFecha?: RangoFecha;
 }
 
 async function cargarIncidencias(tenantId: string, filtros: FiltrosIncidencias) {
@@ -55,12 +57,14 @@ async function cargarIncidencias(tenantId: string, filtros: FiltrosIncidencias) 
     // Default: abierta + en_gestion
     query = query.in("estado", ["abierta", "en_gestion"]);
   }
-  if (filtros.fechaDesde) {
-    // El usuario elige una fecha en el calendario chileno, así que el borde va
-    // en Santiago. Pegar `T00:00:00.000Z` corría la ventana 3–4 h y colaba
-    // incidencias abiertas la noche anterior.
-    const { desde } = limitesDelDiaSantiago(filtros.fechaDesde);
-    query = query.gte("abierta_en", desde.toISOString());
+  if (filtros.rangoFecha?.hayFecha) {
+    // `abierta_en` es `timestamptz`: el filtro es por DÍA CIVIL de Santiago, así
+    // que se traduce a la ventana de instantes UTC de ese día (o del rango).
+    // Pegar `T00:00:00.000Z` correría la ventana 3–4 h y colaría incidencias de
+    // la noche anterior — por eso pasa por `ventanaFechaSantiago`.
+    const { gte, lt } = ventanaFechaSantiago(filtros.rangoFecha);
+    if (gte) query = query.gte("abierta_en", gte);
+    if (lt) query = query.lt("abierta_en", lt);
   }
 
   const { data, error } = await query;
@@ -113,6 +117,8 @@ interface SearchParams {
   tipo?: string;
   estado?: string;
   fecha?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
 }
 
 export default async function PaginaIncidencias({
@@ -131,8 +137,13 @@ export default async function PaginaIncidencias({
   const filtroSeller = params.seller ?? "";
   const filtroTipo = (params.tipo as TipoIncidencia | "") ?? "";
   const filtroEstado = (params.estado as EstadoIncidencia | "") ?? "";
-  const filtroFecha = params.fecha ?? "";
-  const hayFiltro = !!(filtroSeller || filtroTipo || filtroEstado || filtroFecha);
+  const rangoFecha = parsearRangoFecha({
+    exacto: params.fecha,
+    desde: params.fecha_desde,
+    hasta: params.fecha_hasta,
+  });
+  const hoyIso = hoyEnSantiago();
+  const hayFiltro = !!(filtroSeller || filtroTipo || filtroEstado || rangoFecha.hayFecha);
 
   // Incidencias y sellers son independientes entre sí: van en paralelo para no
   // pagar dos round-trips en fila. Cada una conserva su propio manejo de error —
@@ -143,7 +154,7 @@ export default async function PaginaIncidencias({
       seller: filtroSeller || undefined,
       tipo: (filtroTipo as TipoIncidencia) || undefined,
       estado: (filtroEstado as EstadoIncidencia) || undefined,
-      fechaDesde: filtroFecha || undefined,
+      rangoFecha: rangoFecha.hayFecha ? rangoFecha : undefined,
     }).catch(() => null),
     // Sellers para el filtro — lista cacheada por tenant (datos-tenant/sellers).
     obtenerSellersDelTenant(tenantId).catch(() => [] as SellerFiltro[]),
@@ -183,10 +194,13 @@ export default async function PaginaIncidencias({
       {/* Filtros */}
       <FiltrosIncidencias
         sellers={sellers}
+        hoy={hoyIso}
         filtroSeller={filtroSeller}
         filtroTipo={filtroTipo}
         filtroEstado={filtroEstado}
-        filtroFecha={filtroFecha}
+        filtroFecha={rangoFecha.exacto}
+        filtroFechaDesde={rangoFecha.desde}
+        filtroFechaHasta={rangoFecha.hasta}
         hayFiltro={hayFiltro}
       />
 
