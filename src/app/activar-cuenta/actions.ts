@@ -28,6 +28,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
+import { mensajeErrorContrasenaAccionable } from "@/modules/identidad/errores-contrasena";
 
 export interface DefinirContrasenaInicialEntrada {
   nombreCompleto: string;
@@ -68,6 +69,13 @@ export async function definirContrasenaInicial(
   });
 
   if (errorPassword) {
+    // Mismo criterio que `/restablecer-contrasena`: lo que la persona puede
+    // arreglar se le dice; lo demás es un fallo de sistema y así se nombra.
+    const accionable = mensajeErrorContrasenaAccionable(errorPassword);
+    if (accionable) {
+      return { ok: false, tipo: "validacion", mensaje: accionable };
+    }
+
     return {
       ok: false,
       tipo: "desconocido",

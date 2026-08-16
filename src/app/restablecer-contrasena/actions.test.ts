@@ -138,4 +138,27 @@ describe("fallo al guardar", () => {
     expect(r).toMatchObject({ ok: false, tipo: "desconocido" });
     expect(registrarEnBitacora).not.toHaveBeenCalled();
   });
+
+  // REGRESIÓN (encontrada probando en producción, 2026-08-16): reponer la
+  // MISMA contraseña mostraba "problema de nuestro sistema, intenta de nuevo
+  // en unos minutos" — y reintentar con la misma clave falla siempre igual.
+  it("misma contraseña → le dice que elija otra, no que espere", async () => {
+    mockSesion({ id: USUARIO_ID }, { code: "same_password", message: "New password should be different" });
+    const r = await restablecerContrasena({ contrasena: "unaClaveLarga1" });
+
+    expect(r).toMatchObject({ ok: false, tipo: "validacion" });
+    if (!r.ok) {
+      expect(r.mensaje).toMatch(/distinta/i);
+      expect(r.mensaje).not.toMatch(/minuto|nuestro sistema/i);
+    }
+    expect(registrarEnBitacora).not.toHaveBeenCalled();
+  });
+
+  it("un fallo que el usuario no puede resolver sigue siendo error de sistema", async () => {
+    mockSesion({ id: USUARIO_ID }, { code: "unexpected_failure", message: "boom" });
+    const r = await restablecerContrasena({ contrasena: "unaClaveLarga1" });
+
+    expect(r).toMatchObject({ ok: false, tipo: "desconocido" });
+    if (!r.ok) expect(r.mensaje).toMatch(/nuestro sistema/i);
+  });
 });

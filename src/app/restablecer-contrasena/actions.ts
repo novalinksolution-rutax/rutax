@@ -25,6 +25,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
+import { mensajeErrorContrasenaAccionable } from "@/modules/identidad/errores-contrasena";
 
 export interface RestablecerContrasenaEntrada {
   contrasena: string;
@@ -58,6 +59,14 @@ export async function restablecerContrasena(
   const { error: errorPassword } = await supabase.auth.updateUser({ password: entrada.contrasena });
 
   if (errorPassword) {
+    // Los fallos que la persona SÍ puede resolver (repuso la misma clave,
+    // eligió una muy débil) se le dicen tal cual. El resto cae al mensaje de
+    // sistema. Ver `errores-contrasena.ts` para por qué importa la distinción.
+    const accionable = mensajeErrorContrasenaAccionable(errorPassword);
+    if (accionable) {
+      return { ok: false, tipo: "validacion", mensaje: accionable };
+    }
+
     return {
       ok: false,
       tipo: "desconocido",
