@@ -477,7 +477,7 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
   const jobRunId = 'run-test-c1';
   const generadoEn = '2026-07-07T15:00:00.000Z';
   const fechaTransicion = '2026-07-07T14:30:00.000Z';
-  const fechaHechoLocal = '2026-07-07';
+  const fechaEntregaLocal = '2026-07-07';
 
   const tarifaFlex: TarifaSnapshotInput = {
     tarifaId: 'tarifa-flex-1',
@@ -518,7 +518,7 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
       ajusteIncidenciaClp: elegibilidad.ajusteCobroCLP,
       comunaDestinatario: 'Maipú',
       fechaTransicion,
-      fechaHechoLocal,
+      fechaEntregaLocal,
       estadoNuevo: 'entregado',
       estadoAnterior: 'en_ruta',
       tipoPedido: 'flex',
@@ -567,7 +567,7 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
       ajusteIncidenciaClp: elegibilidad.ajusteCobroCLP,
       comunaDestinatario: 'Maipú',
       fechaTransicion,
-      fechaHechoLocal,
+      fechaEntregaLocal,
       estadoNuevo: 'fallido',
       estadoAnterior: 'en_ruta',
       tipoPedido: 'flex',
@@ -614,7 +614,7 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
       ajusteIncidenciaClp: elegibilidad.ajusteLiquidacionCLP,
       comunaDestinatario: 'Maipú',
       fechaTransicion,
-      fechaHechoLocal,
+      fechaEntregaLocal,
       estadoNuevo: 'entregado',
       estadoAnterior: 'en_ruta',
       tipoPedido: 'flex',
@@ -662,7 +662,7 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
       ajusteIncidenciaClp: elegibilidad.ajusteLiquidacionCLP,
       comunaDestinatario: 'Maipú',
       fechaTransicion,
-      fechaHechoLocal,
+      fechaEntregaLocal,
       estadoNuevo: 'fallido',
       estadoAnterior: 'en_ruta',
       tipoPedido: 'flex',
@@ -707,7 +707,7 @@ describe('snapshot_regla — contenido escrito en los 4 caminos del job', () => 
         ajusteIncidenciaClp: 0,
         comunaDestinatario: null,
         fechaTransicion,
-        fechaHechoLocal,
+        fechaEntregaLocal,
         estadoNuevo: 'entregado',
         estadoAnterior: 'en_ruta',
         tipoPedido: 'flex',

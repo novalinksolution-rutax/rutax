@@ -269,7 +269,7 @@ export interface ConstruirSnapshotReglaInput {
   /** Comuna del destinatario del pedido — contexto geográfico, no determina el precio. */
   comunaDestinatario: string | null;
   fechaTransicion: string;
-  fechaHechoLocal: string;
+  fechaEntregaLocal: string;
   estadoNuevo: string;
   estadoAnterior: string;
   tipoPedido: string;
@@ -331,7 +331,7 @@ export function construirSnapshotRegla(input: ConstruirSnapshotReglaInput): Reco
     },
     fecha_efectiva: {
       fecha_transicion: input.fechaTransicion,
-      fecha_hecho_local: input.fechaHechoLocal,
+      fecha_entrega_local: input.fechaEntregaLocal,
     },
     estado_pedido: {
       estado_nuevo: input.estadoNuevo,

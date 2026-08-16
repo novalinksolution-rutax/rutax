@@ -283,6 +283,30 @@ describe("guardarPedidoFlex — INSERT de un pedido nuevo", () => {
     expect(registro.insert[0]).not.toHaveProperty("lat");
   });
 
+  it("NO geocodifica el marcador 'Dirección pendiente' (sería una coordenada inventada, y queda en el caché global)", async () => {
+    // El stub resuelve por comuna e ignora la calle, y Google con
+    // `components=…Region Metropolitana` cae en el centro de la comuna: el
+    // marcador NO devuelve "no encontrado", devuelve un punto falso marcado
+    // como 'resuelto'. A partir de ahí el pedido ya no vuelve a preguntar.
+    const { cliente, registro } = crearSupabaseFalso();
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "1" },
+      datosFlex({
+        destinatarioDireccion: null,
+        destinatarioComuna: null,
+        lat: null,
+        long: null,
+      }),
+      null,
+    );
+
+    expect(registro.insert[0].destinatario_direccion).toBe("Dirección pendiente");
+    expect(registro.insert[0]).not.toHaveProperty("geo_estado");
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
   it("un fallo del evento Inngest no rompe la ingesta (el pedido ya está guardado)", async () => {
     vi.mocked(inngest.send).mockRejectedValueOnce(new Error("Inngest caído"));
     const { cliente } = crearSupabaseFalso();
@@ -412,11 +436,15 @@ describe("guardarPedidoFlex — INSERT traduce estado_ml al insertar", () => {
 // =============================================================================
 
 describe("guardarPedidoFlex — UPDATE de un pedido que ya existe", () => {
+  // El destino guardado es el MISMO que trae `datosFlex()`: así, salvo que un
+  // test diga lo contrario, no hay cambio de dirección que detectar.
   const existente = {
     id: "pedido-viejo",
     ml_shipment_id: "44012345678",
     ml_order_id: "2000000001",
     geo_estado: "resuelto",
+    destinatario_direccion: CALLE_FIXTURE,
+    destinatario_comuna: "Las Condes",
   };
 
   it("REGRESIÓN: no toca `estado` — un pedido asignado no vuelve a la bandeja", async () => {
@@ -517,6 +545,95 @@ describe("guardarPedidoFlex — UPDATE de un pedido que ya existe", () => {
     expect(registro.update[0].destinatario_comuna).toBe("Ñuñoa");
   });
 
+  it("REGRESIÓN: si el destino CAMBIA, la coordenada se actualiza con la de ML (no se queda la del domicilio anterior)", async () => {
+    // El bug: la condición era «rellena la geo solo si falta». Un pedido ya
+    // 'resuelto' cuya dirección cambiaba se quedaba con el punto viejo — texto
+    // nuevo en pantalla, coordenada vieja en el mapa, y el conductor yendo a la
+    // dirección equivocada (el ruteo y el manifiesto leen lat/long, no el texto).
+    const { cliente, registro } = crearSupabaseFalso({ existentes: [existente] });
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "44012345678" },
+      datosFlex({
+        destinatarioDireccion: "Calle Nueva 123",
+        destinatarioComuna: "Ñuñoa",
+        lat: -33.4569,
+        long: -70.6011,
+      }),
+      null,
+    );
+
+    const cambios = registro.update[0];
+    expect(cambios.lat).toBe(-33.4569);
+    expect(cambios.long).toBe(-70.6011);
+    expect(cambios.geo_estado).toBe("resuelto");
+    expect(cambios.geo_confianza).toBe(1);
+    expect(cambios.geocodificado_en).toBeTruthy();
+    // ML ya trajo la coordenada: no hay nada que geocodificar.
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it("REGRESIÓN: destino nuevo SIN coordenada de ML → borra la coordenada vieja y vuelve a la cola de geocodificación", async () => {
+    const { cliente, registro } = crearSupabaseFalso({ existentes: [existente] });
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "44012345678" },
+      datosFlex({
+        destinatarioDireccion: "Calle Nueva 123",
+        destinatarioComuna: "Ñuñoa",
+        lat: null,
+        long: null,
+      }),
+      null,
+    );
+
+    const cambios = registro.update[0];
+    // Conservar la coordenada anterior sería mandar al conductor al domicilio
+    // viejo con la dirección nueva en pantalla: se borra.
+    expect(cambios.lat).toBeNull();
+    expect(cambios.long).toBeNull();
+    expect(cambios.geo_estado).toBe("pendiente");
+    expect(cambios.geo_confianza).toBeNull();
+    expect(cambios.geocodificado_en).toBeNull();
+
+    // Y se despierta al geocodificador, con la dirección NUEVA.
+    expect(inngest.send).toHaveBeenCalledTimes(1);
+    const enviado = vi.mocked(inngest.send).mock.calls[0][0] as {
+      id?: string;
+      data: { direccion: string; comuna: string; pedidoId: string };
+    };
+    expect(enviado.data.pedidoId).toBe("pedido-viejo");
+    expect(enviado.data.direccion).toBe("Calle Nueva 123");
+    expect(enviado.data.comuna).toBe("Ñuñoa");
+    // Sin el `id` del alta: reusarlo haría que Inngest descartara este evento
+    // durante 24 h y el pedido se quedaría sin ubicar.
+    expect(enviado.id).toBeUndefined();
+  });
+
+  it("un reformateo de ML (acentos/mayúsculas/espacios) NO cuenta como cambio de destino", async () => {
+    // Si contara, cada pasada del cron re-geocodificaría el padrón entero: una
+    // llamada facturable por pedido y por corrida.
+    const { cliente, registro } = crearSupabaseFalso({ existentes: [existente] });
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "44012345678" },
+      datosFlex({
+        destinatarioDireccion: `  ${CALLE_FIXTURE.toUpperCase()}  `,
+        destinatarioComuna: "LAS CÓNDES",
+        lat: null,
+        long: null,
+      }),
+      null,
+    );
+
+    expect(registro.update[0]).not.toHaveProperty("geo_estado");
+    expect(registro.update[0]).not.toHaveProperty("lat");
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
   it("NO escribe 'Dirección pendiente' encima de una dirección real", async () => {
     const { cliente, registro } = crearSupabaseFalso({ existentes: [existente] });
     await guardarPedidoFlex(
@@ -558,7 +675,7 @@ describe("guardarPedidoFlex — UPDATE de un pedido que ya existe", () => {
     expect(registro.update[0].lat).toBe(-33.4089);
   });
 
-  it("no publica el evento de geocodificación en un UPDATE", async () => {
+  it("no publica el evento de geocodificación en un UPDATE que no cambia el destino", async () => {
     const { cliente } = crearSupabaseFalso({ existentes: [existente] });
     await guardarPedidoFlex(
       comoSupabase(cliente),
@@ -568,6 +685,35 @@ describe("guardarPedidoFlex — UPDATE de un pedido que ya existe", () => {
       null,
     );
     expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it("el pedido que entró con 'Dirección pendiente' se ubica cuando ML revela el domicilio", async () => {
+    // Recorrido completo del caso real: el pedido entró sin domicilio (ML lo
+    // oculta hasta confirmar el pago) y por eso nunca se geocodificó. Al
+    // revelarse, la dirección y la coordenada tienen que entrar juntas.
+    const { cliente, registro } = crearSupabaseFalso({
+      existentes: [
+        {
+          ...existente,
+          destinatario_direccion: "Dirección pendiente",
+          destinatario_comuna: "Santiago",
+          geo_estado: "pendiente",
+        },
+      ],
+    });
+    await guardarPedidoFlex(
+      comoSupabase(cliente),
+      CTX,
+      { shipmentId: "44012345678" },
+      datosFlex(),
+      null,
+    );
+
+    const cambios = registro.update[0];
+    expect(cambios.destinatario_direccion).toBe(CALLE_FIXTURE);
+    expect(cambios.destinatario_comuna).toBe("Las Condes");
+    expect(cambios.lat).toBe(-33.4089);
+    expect(cambios.geo_estado).toBe("resuelto");
   });
 });
 

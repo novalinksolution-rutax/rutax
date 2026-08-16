@@ -400,7 +400,7 @@ describe("interpretarShipment — normaliza el shipment y NO filtra datos", () =
       long: -70.5678,
       estadoMl: "ready_to_ship",
       subestadoMl: "printed",
-      fechaHechoIso: "2026-08-13T01:30:00.000Z",
+      fechaEntregaIso: "2026-08-13T01:30:00.000Z",
       destinatarioNombre: NOMBRE_FIXTURE,
       destinatarioDireccion: CALLE_FIXTURE,
       destinatarioComuna: "Las Condes",

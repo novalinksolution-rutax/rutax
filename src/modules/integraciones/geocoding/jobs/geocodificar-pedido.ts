@@ -8,8 +8,8 @@
  * y persiste lat/long + geo_estado + cobertura_estado en `operacion.pedidos`.
  *
  * IDEMPOTENCIA (varias capas):
- *  - `id` de dedupe de Inngest: `geocode-${pedidoId}` → un solo run por pedido
- *    aunque el evento se publique dos veces.
+ *  - `idempotency` de la función: un solo run por (pedido, destino) en 24 h —
+ *    ver la nota extendida en la configuración, más abajo.
  *  - Paso 1: si `geo_estado != 'pendiente'` → no-op (ya geocodificado).
  *  - Paso 2: cache HIT por `clave_hash` → NO se llama al proveedor.
  *
