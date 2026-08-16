@@ -40,6 +40,7 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { fechaLocalEnSantiago } from '@/lib/fecha-santiago';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { existeEventoConciliacion, insertarEventoConciliacion } from '../conciliacion-insercion';
 
@@ -59,7 +60,7 @@ interface DatosVisitaCerrada {
  */
 export interface MontoResuelto {
   montoClp: number | null;
-  origen: 'bodega' | 'tenant' | 'sin_configurar';
+  origen: 'bodega' | 'tenant' | 'tarifa_entrega' | 'sin_configurar';
 }
 
 /**
@@ -70,13 +71,34 @@ export interface MontoResuelto {
  * copia, no el código: si mañana alguien cambia la precedencia acá, el test
  * seguiría verde sobre su duplicado. Con la función exportada, no.
  *
- * Precedencia: bodega → tenant → sin configurar. El override de la bodega gana
- * incluso si el tenant tiene monto: una bodega lejana vale lo que dice su
- * propia fila.
+ * Precedencia: bodega → tenant → **lo que se le paga por una ENTREGA** → sin
+ * configurar. El override de la bodega gana incluso si el tenant tiene monto:
+ * una bodega lejana vale lo que dice su propia fila.
+ *
+ * =============================================================================
+ * EL TERCER NIVEL: LA TARIFA DE ENTREGA COMO SEMILLA (decisión del usuario)
+ * =============================================================================
+ * Un courier que recién empieza a usar el retiro no tiene por qué quedarse sin
+ * pagarle a sus conductores mientras descubre que hay una pantalla nueva que
+ * llenar. Si no configuró cuánto vale una visita, se usa lo que YA declaró que
+ * le paga al conductor por una entrega (`identidad.tarifas.monto_conductor_clp`).
+ *
+ * ⚠️ Es una SEMILLA, no una equivalencia: visitar una bodega y entregar un
+ * paquete no son el mismo trabajo. La pantalla de configuración lo dice con
+ * todas sus letras para que la decisión de dejarlo así sea consciente.
+ *
+ * ⚠️⚠️ Y LA GUARDA QUE HACE QUE ESTO NO SEA EL BUG DE AYER OTRA VEZ: el valor de
+ * la tarifa solo se usa si es **mayor que cero**. `monto_conductor_clp` nació con
+ * `default 0` y ningún formulario la escribía, así que las tarifas que ya
+ * existen en producción siguen en 0 hasta que alguien las edite. Caer a ese cero
+ * sería exactamente el fallo que este job existe para impedir: pagar $0 en
+ * silencio. Un 0 en la tarifa NO es una tarifa — es una tarifa sin configurar, y
+ * cae al mismo `sin_configurar` que la ausencia total.
  */
 export function resolverMontoVisita(
   overrideBodegaClp: number | string | null | undefined,
   porDefectoTenantClp: number | string | null | undefined,
+  montoEntregaTarifaClp: number | string | null | undefined,
 ): MontoResuelto {
   // `!= null` y no un booleano: un 0 sería falsy y caería al siguiente nivel
   // como si no estuviera configurado. Los CHECK de la base prohíben el 0 en
@@ -88,7 +110,51 @@ export function resolverMontoVisita(
   if (porDefectoTenantClp != null) {
     return { montoClp: Math.round(Number(porDefectoTenantClp)), origen: 'tenant' };
   }
+
+  // `> 0` y no `!= null`: ver la guarda de la cabecera. Un cero acá es una
+  // tarifa sin configurar, no una tarifa de cero.
+  const desdeTarifa = Math.round(Number(montoEntregaTarifaClp ?? 0));
+  if (Number.isFinite(desdeTarifa) && desdeTarifa > 0) {
+    return { montoClp: desdeTarifa, origen: 'tarifa_entrega' };
+  }
+
   return { montoClp: null, origen: 'sin_configurar' };
+}
+
+/**
+ * Cuánto le paga este courier al conductor por una ENTREGA de este seller.
+ *
+ * Misma precedencia que `crearPedidoSameDay` (pedidos.ts): tarifa específica del
+ * seller antes que la del tenant, y entre varias la de vigencia más reciente. NO
+ * se filtra por `tipo_entrega`: una visita a bodega no es ni flex ni same-day, y
+ * lo que se busca es una referencia de "cuánto vale una unidad de trabajo para
+ * este courier", no la tarifa exacta de un pedido.
+ *
+ * Un fallo de lectura devuelve `null` y NO lanza: este es el nivel de respaldo,
+ * y hacerlo obligatorio convertiría un problema de la tarifa en un bloqueo del
+ * pago del retiro. Si devuelve null, el job levanta su excepción como siempre.
+ */
+async function leerMontoConductorDeTarifa(
+  supabase: ReturnType<typeof crearClienteServiceRole>,
+  tenantId: string,
+  sellerId: string,
+): Promise<number | null> {
+  const hoy = fechaLocalEnSantiago(new Date());
+  const { data } = await supabase
+    .schema('identidad')
+    .from('tarifas')
+    .select('monto_conductor_clp')
+    .eq('tenant_id', tenantId)
+    .eq('estado', 'activa')
+    .lte('vigente_desde', hoy)
+    .or(`vigente_hasta.is.null,vigente_hasta.gte.${hoy}`)
+    .or(`seller_id.eq.${sellerId},seller_id.is.null`)
+    .order('seller_id', { ascending: false, nullsFirst: false })
+    .order('vigente_desde', { ascending: false })
+    .limit(1);
+
+  const fila = data?.[0];
+  return fila?.monto_conductor_clp != null ? Number(fila.monto_conductor_clp) : null;
 }
 
 export const jobGenerarLineaRetiro = inngest.createFunction(
@@ -126,16 +192,22 @@ export const jobGenerarLineaRetiro = inngest.createFunction(
     }
 
     // -------------------------------------------------------------------------
-    // Paso 2 · Resolver el monto: override de la bodega → default del tenant.
+    // Paso 2 · Resolver el monto: bodega → tenant → tarifa de entrega del seller.
     //
-    // El override es NULLABLE y su NULL significa "hereda", nunca "gratis" — el
-    // CHECK de la columna prohíbe el 0 justamente para que "gratis" no se pueda
-    // expresar por accidente.
+    // El override de bodega es NULLABLE y su NULL significa "hereda", nunca
+    // "gratis" — el CHECK de la columna prohíbe el 0 justamente para que
+    // "gratis" no se pueda expresar por accidente.
+    //
+    // La tarifa entra como TERCER nivel (ver `resolverMontoVisita`): se busca la
+    // del seller de esta bodega con la MISMA precedencia que usa
+    // `crearPedidoSameDay` —tarifa específica del seller antes que la del
+    // tenant, y la de vigencia más reciente— para no inventar una tercera regla
+    // de resolución de tarifas en el repo.
     // -------------------------------------------------------------------------
     const monto = await step.run('resolver-monto', async (): Promise<MontoResuelto> => {
       const supabase = crearClienteServiceRole();
 
-      const [{ data: bodega, error: errorBodega }, { data: config, error: errorConfig }] =
+      const [{ data: bodega, error: errorBodega }, { data: config, error: errorConfig }, tarifaClp] =
         await Promise.all([
           supabase
             .schema('identidad')
@@ -150,6 +222,7 @@ export const jobGenerarLineaRetiro = inngest.createFunction(
             .select('monto_visita_bodega_clp')
             .eq('tenant_id', tenantId)
             .maybeSingle(),
+          leerMontoConductorDeTarifa(supabase, tenantId, sellerId),
         ]);
 
       // Un fallo de LECTURA no es "sin configurar": es un error transitorio, y
@@ -165,6 +238,7 @@ export const jobGenerarLineaRetiro = inngest.createFunction(
       return resolverMontoVisita(
         bodega?.monto_visita_clp as number | string | null | undefined,
         config?.monto_visita_bodega_clp as number | string | null | undefined,
+        tarifaClp,
       );
     });
 
