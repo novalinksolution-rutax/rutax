@@ -59,6 +59,18 @@ export interface InvitacionEquipo {
   estado: EstadoInvitacion;
   expiraEn: string;
   creadoEn: string;
+  /**
+   * Qué pasó con el correo DESPUÉS de que el proveedor lo aceptó — lo cuenta el
+   * webhook de Resend, no el envío. `null` mientras no haya vuelto ningún
+   * evento (o para invitaciones anteriores a que el webhook existiera).
+   *
+   * Sin esto, una dirección mal escrita se veía en esta pantalla EXACTAMENTE
+   * igual que una que llegó: "Enviada hace 1 minuto" y nada más. El dato ya
+   * estaba en la base desde el 7-ago; lo que faltaba era traerlo hasta el ojo
+   * de quien invita (verificado con un rebote real, 2026-08-16).
+   */
+  emailEstado: string | null;
+  emailMotivo: string | null;
 }
 
 export interface EstadoEquipo {
@@ -88,7 +100,7 @@ export async function obtenerEstadoEquipo(): Promise<
         .order("creado_en", { ascending: true }),
       supabase
         .from("invitaciones")
-        .select("id, email, rol, estado, expira_en, creado_en")
+        .select("id, email, rol, estado, expira_en, creado_en, email_estado, email_motivo")
         .eq("tenant_id", sesion.usuario.tenantId)
         .eq("tipo_usuario", "interno")
         .order("creado_en", { ascending: false }),
@@ -125,6 +137,8 @@ export async function obtenerEstadoEquipo(): Promise<
       estado: fila.estado as EstadoInvitacion,
       expiraEn: fila.expira_en as string,
       creadoEn: fila.creado_en as string,
+      emailEstado: (fila.email_estado as string | null) ?? null,
+      emailMotivo: (fila.email_motivo as string | null) ?? null,
     }));
 
   return { ok: true, estado: { usuarios, invitaciones } };

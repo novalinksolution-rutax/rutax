@@ -33,11 +33,57 @@ export const ESTADOS_TERMINALES: readonly EstadoPedido[] = [
   "devuelto",
 ];
 
+/**
+ * Régimen operativo y de tarifa del pedido — espejo de `operacion.tipo_pedido`.
+ *
+ * ⚠️ **NO es el eje de procedencia.** Lo fue mientras las únicas dos maneras de
+ * que naciera un pedido eran la ingesta de Mercado Libre y el alta manual, y por
+ * eso los valores llevan nombre de marketplace. Desde que existen más fuentes
+ * (Shopify, y luego Falabella), la procedencia vive en `FuentePedido` y este eje
+ * significa solo dos cosas:
+ *
+ * - `flex`     : el POD lo gobierna Mercado Envíos; Rutax solo registra un cierre
+ *                paralelo que NO mueve el estado.
+ * - `same_day` : el POD de Rutax es autoritativo, mueve el estado y dispara el
+ *                motor entrega→dinero. Es el régimen de todo pedido cuya fuente
+ *                no impone una app de escaneo externa — incluido Shopify.
+ *
+ * También es la clave de tarifa (`identidad.tarifas.tipo_entrega` usa el mismo par).
+ * Para decidir quién es dueño de la prueba de entrega usa
+ * `podEsAutoritativoEnRutax(fuente)` de `./fuente`, nunca este enum.
+ */
 export const TIPOS_PEDIDO = ["flex", "same_day"] as const;
 export type TipoPedido = (typeof TIPOS_PEDIDO)[number];
 
-export const ORIGENES_PEDIDO = ["ml_ingesta", "same_day_manual", "backfill"] as const;
+/**
+ * Modo de descubrimiento del pedido — espejo de `operacion.origen_pedido`.
+ *
+ * Columna HEREDADA: se escribe y se muestra, pero no se compara en ninguna parte
+ * del código de producción. Mezcla procedencia (`ml_ingesta`, `same_day_manual`)
+ * con modo de descubrimiento (`backfill`), que es justamente por lo que no sirve
+ * como eje de fuente. Se conserva por trazabilidad de cómo entró cada fila.
+ */
+export const ORIGENES_PEDIDO = [
+  "ml_ingesta",
+  "same_day_manual",
+  "backfill",
+  "shopify_ingesta",
+] as const;
 export type OrigenPedido = (typeof ORIGENES_PEDIDO)[number];
+
+/**
+ * Procedencia del pedido — espejo de `operacion.fuente_pedido`
+ * (migración 20260816000001). **Es el eje autoritativo de fuente.**
+ *
+ * - `ml_flex`      : ingestado desde una cuenta de Mercado Libre (Flex).
+ * - `rutax_manual` : creado a mano en Rutax (same-day ad-hoc).
+ * - `shopify`      : ingestado desde la tienda Shopify de un seller.
+ *
+ * Ortogonal a `TipoPedido`: `shopify` viaja con `tipo_pedido='same_day'` porque
+ * ese es su régimen de POD y de tarifa, no porque venga del alta manual.
+ */
+export const FUENTES_PEDIDO = ["ml_flex", "rutax_manual", "shopify"] as const;
+export type FuentePedido = (typeof FUENTES_PEDIDO)[number];
 
 /**
  * Situación de retiro — espejo de `operacion.situacion_retiro`
@@ -157,9 +203,14 @@ export interface Pedido {
   tenantId: string;
   sellerId: string;
   tipoPedido: TipoPedido;
+  fuente: FuentePedido;
   origen: OrigenPedido;
   mlOrderId: string | null;
   mlShipmentId: string | null;
+  /** Id del pedido en su fuente (gid de Shopify, etc.). `null` en Flex y same-day manual. */
+  idExterno: string | null;
+  /** Referencia que el humano ve en la fuente (p. ej. `#1001` de Shopify). */
+  referenciaExterna: string | null;
   estado: EstadoPedido;
   estadoMl: string | null;
   subestadoMl: string | null;

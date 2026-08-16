@@ -70,7 +70,10 @@ export function PanelEquipo({ estadoInicial, errorInicial, puedeInvitar, puedeRe
   function alInvitar(invitacion: InvitacionEnviada) {
     setEstado((anterior) =>
       anterior
-        ? { ...anterior, invitaciones: [{ ...invitacion }, ...anterior.invitaciones] }
+        ? {
+            ...anterior,
+            invitaciones: [{ ...invitacion, ...SIN_ESTADO_DE_ENTREGA }, ...anterior.invitaciones],
+          }
         : anterior,
     );
     setFormularioAbierto(false);
@@ -90,7 +93,7 @@ export function PanelEquipo({ estadoInicial, errorInicial, puedeInvitar, puedeRe
         ? {
             ...anterior,
             invitaciones: [
-              { ...nueva },
+              { ...nueva, ...SIN_ESTADO_DE_ENTREGA },
               ...anterior.invitaciones.map((inv) => (inv.id === idAnterior ? { ...inv } : inv)),
             ],
           }
@@ -373,7 +376,10 @@ function FilaInvitacion({
       <TableCell>
         <BadgeEstadoInvitacion estado={invitacion.estado} />
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">{copyDeApoyo(invitacion)}</TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {copyDeApoyo(invitacion)}
+        <AvisoEntrega estado={invitacion.emailEstado} motivo={invitacion.emailMotivo} />
+      </TableCell>
       <TableCell className="text-right">
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           {invitacion.estado === "pendiente" ? (
@@ -423,6 +429,49 @@ function BadgeEstadoInvitacion({ estado }: { estado: EstadoInvitacion }) {
       texto={TEXTO_INVITACION[estado] ?? estado}
     />
   );
+}
+
+/**
+ * Una invitación recién creada nace SIN estado de entrega, y eso es correcto:
+ * el webhook de Resend tarda segundos en volver con "entregado" o "rebotado".
+ * `null` significa "todavía no se sabe", NO "llegó bien" — por eso `AvisoEntrega`
+ * se queda callado hasta que hay algo que decir.
+ */
+const SIN_ESTADO_DE_ENTREGA = { emailEstado: null, emailMotivo: null } as const;
+
+/**
+ * Qué pasó con el correo después de enviarlo — lo cuenta el webhook de Resend.
+ *
+ * Va junto al "Enviada hace un minuto" y no en su lugar: son dos hechos
+ * distintos y los dos importan. Rutax entregó el correo al proveedor (eso es
+ * "enviada"), y el proveedor del destinatario lo aceptó o lo rechazó (esto).
+ * Hasta el 2026-08-16 esta pantalla solo mostraba el primero, así que una
+ * dirección mal escrita se veía idéntica a una que llegó.
+ *
+ * Silencioso cuando llegó bien o cuando todavía no se sabe: una fila que dice
+ * "entregado" en cada invitación exitosa es ruido que entrena a no mirar la
+ * columna. Solo habla cuando hay algo que hacer.
+ *
+ * Mismo criterio y mismos textos que `avisoEntrega` en `(tenant)/sellers/page.tsx`
+ * — si cambia uno, cambia el otro.
+ */
+function AvisoEntrega({ estado, motivo }: { estado: string | null; motivo: string | null }) {
+  if (estado === "rebotado") {
+    return (
+      <span className="mt-1 block text-xs font-medium text-destructive">
+        El correo rebotó — no llegó
+        {motivo ? <span className="block font-normal text-muted-foreground">{motivo}</span> : null}
+      </span>
+    );
+  }
+  if (estado === "marcado_spam") {
+    return (
+      <span className="mt-1 block text-xs font-medium text-warning">
+        Llegó, pero lo marcaron como spam
+      </span>
+    );
+  }
+  return null;
 }
 
 /** Copy de apoyo por estado — exactamente lo que pide la tabla de §2.2. */
