@@ -139,7 +139,7 @@ begin
   -- Una línea de retiro por conductor. `pedido_id` NULL — el caso nuevo.
   insert into dinero.lineas_liquidacion
     (tenant_id, driver_id, pedido_id, sesion_retiro_id, tipo_hecho,
-     monto_base_clp, concepto, fecha_entrega)
+     monto_base_clp, concepto, fecha_hecho)
   values
     (t_a, d_a1, null, ses_a1, 'retiro_bodega', 3000, 'Retiro bodega A · 10 bultos', current_date),
     (t_a, d_a2, null, ses_a2, 'retiro_bodega', 3000, 'Retiro bodega A · 5 bultos', current_date),
@@ -242,7 +242,7 @@ select test_iniciar_sesion(
 select throws_ok(
   $$insert into public.lineas_liquidacion
       (tenant_id, driver_id, pedido_id, sesion_retiro_id, tipo_hecho,
-       monto_base_clp, concepto, fecha_entrega)
+       monto_base_clp, concepto, fecha_hecho)
     values ('aaaaaaaa-0000-0000-0000-00000000ff01'::uuid,
             'aaaaaaaa-4444-0000-0000-00000000ff01'::uuid, null,
             'aaaaaaaa-7777-0000-0000-00000000ff01'::uuid, 'retiro_bodega',
@@ -277,7 +277,7 @@ select test_cerrar_sesion();
 select throws_ok(
   $$insert into dinero.lineas_liquidacion
       (tenant_id, driver_id, pedido_id, sesion_retiro_id, tipo_hecho,
-       monto_base_clp, concepto, fecha_entrega)
+       monto_base_clp, concepto, fecha_hecho)
     values ('aaaaaaaa-0000-0000-0000-00000000ff01'::uuid,
             'aaaaaaaa-4444-0000-0000-00000000ff01'::uuid, null, null, 'entrega',
             3000, 'entrega sin pedido', current_date)$$,
@@ -289,7 +289,7 @@ select throws_ok(
 select throws_ok(
   $$insert into dinero.lineas_liquidacion
       (tenant_id, driver_id, pedido_id, sesion_retiro_id, tipo_hecho,
-       monto_base_clp, concepto, fecha_entrega)
+       monto_base_clp, concepto, fecha_hecho)
     values ('aaaaaaaa-0000-0000-0000-00000000ff01'::uuid,
             'aaaaaaaa-4444-0000-0000-00000000ff01'::uuid, null,
             'aaaaaaaa-7777-0000-0000-00000000ff01'::uuid, 'retiro_bodega',
@@ -303,7 +303,7 @@ select throws_ok(
 select throws_ok(
   $$insert into dinero.lineas_liquidacion
       (tenant_id, driver_id, pedido_id, sesion_retiro_id, tipo_hecho,
-       monto_base_clp, concepto, fecha_entrega)
+       monto_base_clp, concepto, fecha_hecho)
     values ('aaaaaaaa-0000-0000-0000-00000000ff01'::uuid,
             'aaaaaaaa-4444-0000-0000-00000000ff02'::uuid, null,
             'aaaaaaaa-7777-0000-0000-00000000ff03'::uuid, 'retiro_bodega',

@@ -614,7 +614,7 @@ export interface EventoVisitaRetiroCerrada {
     /** Bodega visitada: de ella sale el override de monto, si lo tiene. */
     bodegaId: string;
     sellerId: string;
-    /** Fecha de operación de la visita — es la `fecha_entrega` de la línea (nombre heredado, ver el tipo LineaLiquidacion). */
+    /** Fecha de operación de la visita — es la `fecha_hecho` de la línea (nombre heredado, ver el tipo LineaLiquidacion). */
     fechaOperacion: string;
     /** Bultos efectivamente cargados. NO determina el monto (se paga por visita); va al concepto y a la trazabilidad. */
     bultosTotal: number;

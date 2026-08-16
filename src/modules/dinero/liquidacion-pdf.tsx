@@ -28,7 +28,7 @@ interface LineaLiquidacionPdf {
    * documento. Es el papel con el que el conductor discute su plata.
    */
   pedidoId: string | null;
-  fechaEntrega: string;
+  fechaHecho: string;
   concepto: string;
   montoFinalClp: number;
 }
@@ -199,7 +199,7 @@ function DocumentoLiquidacion({
               <Text style={estilos.colPedido}>
                 {l.pedidoId ? `#${l.pedidoId.slice(0, 8)}` : 'Retiro'}
               </Text>
-              <Text style={estilos.colFecha}>{formatearFecha(l.fechaEntrega)}</Text>
+              <Text style={estilos.colFecha}>{formatearFecha(l.fechaHecho)}</Text>
               <Text style={estilos.colConcepto}>{l.concepto}</Text>
               <Text style={estilos.colMonto}>{formatearCLP(l.montoFinalClp)}</Text>
             </View>

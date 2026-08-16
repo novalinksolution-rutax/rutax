@@ -232,7 +232,7 @@ begin
 
   -- Lineas de cobro
   insert into dinero.lineas_cobro (id, tenant_id, seller_id, pedido_id, periodo_cobro_id,
-    tarifa_id, monto_base_clp, ajuste_incidencia_clp, concepto, tipo_pedido, fecha_entrega,
+    tarifa_id, monto_base_clp, ajuste_incidencia_clp, concepto, tipo_pedido, fecha_hecho,
     origen_generacion)
   values
     (linea_cobro_a1, t_a, s_a,  pedido_a1, periodo_a1, tarifa_a, 2500, 0,
@@ -254,7 +254,7 @@ begin
 
   -- Lineas de liquidacion
   insert into dinero.lineas_liquidacion (id, tenant_id, driver_id, pedido_id,
-    liquidacion_id, monto_base_clp, ajuste_incidencia_clp, concepto, fecha_entrega,
+    liquidacion_id, monto_base_clp, ajuste_incidencia_clp, concepto, fecha_hecho,
     origen_generacion)
   values
     (linea_liq_a1, t_a, d_a, pedido_a3, liq_a1, 1200, 0,
@@ -512,7 +512,7 @@ select test_iniciar_sesion(
 select throws_ok(
   $$ insert into dinero.lineas_cobro
        (tenant_id, seller_id, pedido_id, tarifa_id, monto_base_clp, ajuste_incidencia_clp,
-        concepto, tipo_pedido, fecha_entrega, origen_generacion)
+        concepto, tipo_pedido, fecha_hecho, origen_generacion)
      values (
        'aaaaaaaa-0000-0000-0000-000000000001',
        'aaaaaaaa-1111-0000-0000-000000000001',
@@ -536,7 +536,7 @@ select test_iniciar_sesion(
 select throws_ok(
   $$ insert into dinero.lineas_liquidacion
        (tenant_id, driver_id, pedido_id, monto_base_clp, ajuste_incidencia_clp,
-        concepto, fecha_entrega, origen_generacion)
+        concepto, fecha_hecho, origen_generacion)
      values (
        'aaaaaaaa-0000-0000-0000-000000000001',
        'aaaaaaaa-2222-0000-0000-000000000001',

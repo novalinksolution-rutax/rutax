@@ -46,7 +46,7 @@ interface EntregaConsolidada {
   tipoHecho: TipoHechoLinea;
   /** Texto de la linea. En un retiro dice la bodega; ahi no hay destinatario. */
   concepto: string;
-  fechaEntrega: string | null;
+  fechaHecho: string | null;
   montoClp: number;
   destinatarioNombre: string;
   destinatarioComuna: string;
@@ -168,11 +168,11 @@ export default async function PaginaDetalleConductor({ params }: Props) {
     cliente
       .schema("dinero")
       .from("lineas_liquidacion")
-      .select("id, pedido_id, tipo_hecho, concepto, liquidacion_id, monto_final_clp, monto_base_clp, fecha_entrega")
+      .select("id, pedido_id, tipo_hecho, concepto, liquidacion_id, monto_final_clp, monto_base_clp, fecha_hecho")
       .eq("tenant_id", tenantId)
       .eq("driver_id", driverId)
       .eq("anulada", false)
-      .order("fecha_entrega", { ascending: false }),
+      .order("fecha_hecho", { ascending: false }),
     resolverEstadoAccesoApp(cliente, tenantId, driverId),
   ]);
 
@@ -217,7 +217,7 @@ export default async function PaginaDetalleConductor({ params }: Props) {
       pedidoId: (l.pedido_id as string | null) ?? null,
       tipoHecho: l.tipo_hecho as TipoHechoLinea,
       concepto: (l.concepto as string | null) ?? "",
-      fechaEntrega: (l.fecha_entrega as string | null) ?? null,
+      fechaHecho: (l.fecha_hecho as string | null) ?? null,
       montoClp: monto,
       destinatarioNombre: (ped?.destinatario_nombre as string) ?? "—",
       destinatarioComuna: (ped?.destinatario_comuna as string) ?? "—",
@@ -320,7 +320,7 @@ export default async function PaginaDetalleConductor({ params }: Props) {
                 {entregas.map((e) => (
                   <TableRow key={e.lineaId} className="group">
                     <TableCell className="px-4 tabular-nums text-muted-foreground">
-                      {formatearFechaCorta(e.fechaEntrega)}
+                      {formatearFechaCorta(e.fechaHecho)}
                     </TableCell>
                     <TableCell className="px-4">
                       {e.pedidoId ? (

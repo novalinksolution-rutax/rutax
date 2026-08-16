@@ -166,7 +166,7 @@ const TABLAS_A_EXPORTAR: DefinicionTabla[] = [
     tabla: "lineas_cobro",
     columnas:
       "id, seller_id, pedido_id, periodo_cobro_id, tarifa_id, monto_base_clp, " +
-      "ajuste_incidencia_clp, monto_final_clp, concepto, tipo_pedido, fecha_entrega, " +
+      "ajuste_incidencia_clp, monto_final_clp, concepto, tipo_pedido, fecha_hecho, " +
       "incidencia_id, origen_generacion, generado_por_usuario_id, notas, " +
       "creado_en, actualizado_en",
     columnaFiltro: "tenant_id",

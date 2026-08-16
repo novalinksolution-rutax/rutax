@@ -341,7 +341,7 @@ export const jobEjecutarBackfill = inngest.createFunction(
                 `plazos=[${d.clavesPlazos.join(",")}] ` +
                 `logistic_type=${d.ubicacionLogisticType} ` +
                 `direccion=${d.ubicacionDireccion} ` +
-                `fecha_entrega=${d.campoFechaEntrega ?? "ausente"}`,
+                `fecha_hecho=${d.campoFechaEntrega ?? "ausente"}`,
             );
           }
 

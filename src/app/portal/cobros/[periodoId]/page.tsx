@@ -279,7 +279,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
                       </span>
                     </TableCell>
                     <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
-                      {formatearFechaCorta(linea.fechaEntrega)}
+                      {formatearFechaCorta(linea.fechaHecho)}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate px-4 text-muted-foreground">
                       {linea.concepto}

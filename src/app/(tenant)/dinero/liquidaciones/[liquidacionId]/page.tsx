@@ -320,7 +320,7 @@ function FilaLinea({ linea }: { linea: LineaLiquidacion }) {
         )}
       </td>
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        {formatearFechaCorta(linea.fechaEntrega)}
+        {formatearFechaCorta(linea.fechaHecho)}
       </td>
       <td className="px-4 py-3 text-muted-foreground max-w-[220px] truncate">{linea.concepto}</td>
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground lg:table-cell">

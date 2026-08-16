@@ -201,7 +201,7 @@ export interface DatosShipmentMl {
   estadoMl: string | null;
   subestadoMl: string | null;
   /** Instante ISO del compromiso de entrega de ML, si vino. */
-  fechaEntregaIso: string | null;
+  fechaHechoIso: string | null;
   destinatarioNombre: string | null;
   destinatarioDireccion: string | null;
   destinatarioComuna: string | null;
@@ -400,10 +400,10 @@ export function leerFechaEntregaMl(shipment: ShipmentMl | null | undefined): {
  * siguiente y el pedido caería fuera del panel del día).
  */
 export function derivarFechaCompromiso(
-  fechaEntregaIso: string | null,
+  fechaHechoIso: string | null,
   ordenCreadaIso: string | null | undefined,
 ): string | null {
-  for (const candidato of [fechaEntregaIso, ordenCreadaIso]) {
+  for (const candidato of [fechaHechoIso, ordenCreadaIso]) {
     const texto = textoONull(candidato);
     if (!texto) continue;
     const instante = new Date(texto);
@@ -424,7 +424,7 @@ export function interpretarShipment(shipment: ShipmentMl): {
 } {
   const { valor: logisticType, ubicacion: ubicacionLogisticType } = leerLogisticType(shipment);
   const { direccion, ubicacion: ubicacionDireccion } = leerDireccionShipment(shipment);
-  const { iso: fechaEntregaIso, campo: campoFechaEntrega } = leerFechaEntregaMl(shipment);
+  const { iso: fechaHechoIso, campo: campoFechaEntrega } = leerFechaEntregaMl(shipment);
   const { lat, long } = coordenadasDeReceiver(direccion);
 
   const nodoPlazos = (shipment.lead_time ?? shipment.shipping_option ?? null) as Record<
@@ -439,7 +439,7 @@ export function interpretarShipment(shipment: ShipmentMl): {
       long,
       estadoMl: textoONull(shipment.status),
       subestadoMl: textoONull(shipment.substatus),
-      fechaEntregaIso,
+      fechaHechoIso,
       destinatarioNombre: textoONull(shipment.destination?.receiver_name),
       destinatarioDireccion: calleDeDireccion(direccion),
       destinatarioComuna:
@@ -818,7 +818,7 @@ export async function guardarPedidoFlex(
   const direccion =
     datos.destinatarioDireccion ?? entrada.direccionRespaldo ?? DIRECCION_PENDIENTE_ML;
   const comuna = datos.destinatarioComuna ?? entrada.comunaRespaldo ?? COMUNA_RESPALDO_ML;
-  const fechaCompromiso = derivarFechaCompromiso(datos.fechaEntregaIso, entrada.ordenCreadaIso);
+  const fechaCompromiso = derivarFechaCompromiso(datos.fechaHechoIso, entrada.ordenCreadaIso);
   const mlOrderId = entrada.mlOrderId ?? mlOrderIdDelShipment;
 
   const { data: existenteData, error: errorLectura } = await supabase

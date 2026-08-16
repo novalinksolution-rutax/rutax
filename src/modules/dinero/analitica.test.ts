@@ -85,20 +85,20 @@ const VENTANA = { desde: "2026-06-01", hasta: "2026-06-30" };
 // NO deben contarse como entrega (ver los describe() dedicados más abajo).
 const lineasLiqTenantA = [
   // Vigentes (anulada=false): DEBEN contarse.
-  { driver_id: DRIVER_1, monto_final_clp: "1500", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-10", tipo_hecho: "entrega" },
-  { driver_id: DRIVER_1, monto_final_clp: "2000", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-15", tipo_hecho: "entrega" },
-  { driver_id: DRIVER_2, monto_final_clp: "1800", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-20", tipo_hecho: "entrega" },
+  { driver_id: DRIVER_1, monto_final_clp: "1500", anulada: false, tenant_id: TENANT_A, fecha_hecho: "2026-06-10", tipo_hecho: "entrega" },
+  { driver_id: DRIVER_1, monto_final_clp: "2000", anulada: false, tenant_id: TENANT_A, fecha_hecho: "2026-06-15", tipo_hecho: "entrega" },
+  { driver_id: DRIVER_2, monto_final_clp: "1800", anulada: false, tenant_id: TENANT_A, fecha_hecho: "2026-06-20", tipo_hecho: "entrega" },
   // Anulada: NO DEBE contarse.
-  { driver_id: DRIVER_1, monto_final_clp: "9000", anulada: true, tenant_id: TENANT_A, fecha_entrega: "2026-06-12", tipo_hecho: "entrega" },
+  { driver_id: DRIVER_1, monto_final_clp: "9000", anulada: true, tenant_id: TENANT_A, fecha_hecho: "2026-06-12", tipo_hecho: "entrega" },
 ];
 
 // Líneas de cobro del tenant A (al seller).
 const lineasCobroTenantA = [
-  { monto_final_clp: "3000", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-10" },
-  { monto_final_clp: "4000", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-15" },
-  { monto_final_clp: "3600", anulada: false, tenant_id: TENANT_A, fecha_entrega: "2026-06-20" },
+  { monto_final_clp: "3000", anulada: false, tenant_id: TENANT_A, fecha_hecho: "2026-06-10" },
+  { monto_final_clp: "4000", anulada: false, tenant_id: TENANT_A, fecha_hecho: "2026-06-15" },
+  { monto_final_clp: "3600", anulada: false, tenant_id: TENANT_A, fecha_hecho: "2026-06-20" },
   // Anulada: NO DEBE contarse.
-  { monto_final_clp: "18000", anulada: true, tenant_id: TENANT_A, fecha_entrega: "2026-06-12" },
+  { monto_final_clp: "18000", anulada: true, tenant_id: TENANT_A, fecha_hecho: "2026-06-12" },
 ];
 
 // Conductores.

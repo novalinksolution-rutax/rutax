@@ -140,7 +140,7 @@ on conflict (id) do nothing;
 -- -----------------------------------------------------------------------------
 insert into dinero.lineas_cobro (
   id, tenant_id, seller_id, pedido_id, periodo_cobro_id, tarifa_id,
-  monto_base_clp, ajuste_incidencia_clp, concepto, tipo_pedido, fecha_entrega, origen_generacion
+  monto_base_clp, ajuste_incidencia_clp, concepto, tipo_pedido, fecha_hecho, origen_generacion
 )
 select
   ('c5000000-0000-0000-0000-'||substr(md5('lc-carga-'||p.id::text),1,12))::uuid,
@@ -159,7 +159,7 @@ on conflict (pedido_id) do nothing;
 
 insert into dinero.lineas_liquidacion (
   id, tenant_id, driver_id, pedido_id, monto_base_clp, ajuste_incidencia_clp,
-  concepto, fecha_entrega, origen_generacion
+  concepto, fecha_hecho, origen_generacion
 )
 select
   ('c6000000-0000-0000-0000-'||substr(md5('ll-carga-'||p.id::text),1,12))::uuid,

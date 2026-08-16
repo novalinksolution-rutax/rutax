@@ -139,7 +139,7 @@ const TIPOS_FUGA_REVENUE: readonly string[] = [
  * Calcula el costo de conductor por entrega para la ventana indicada.
  *
  * Usa `lineas_liquidacion` (lo que el courier paga al conductor) filtradas por
- * `anulada=false` y `fecha_entrega` dentro de la ventana.
+ * `anulada=false` y `fecha_hecho` dentro de la ventana.
  *
  * @param cliente  SupabaseClient con service_role (bypassa RLS; el filtro
  *                 `tenant_id` garantiza el aislamiento de código).
@@ -157,8 +157,8 @@ export async function obtenerCostoPorEntrega(
     .select("monto_final_clp, tipo_hecho")
     .eq("tenant_id", tenantId)
     .eq("anulada", false)
-    .gte("fecha_entrega", ventana.desde)
-    .lte("fecha_entrega", ventana.hasta);
+    .gte("fecha_hecho", ventana.desde)
+    .lte("fecha_hecho", ventana.hasta);
 
   if (error) {
     throw new Error(
@@ -189,7 +189,7 @@ export async function obtenerCostoPorEntrega(
  * Calcula ingreso (cobro al seller) y margen (ingreso − costo conductor)
  * para la ventana indicada.
  *
- * Ambas fuentes se filtran por `anulada=false` y `fecha_entrega` en la ventana.
+ * Ambas fuentes se filtran por `anulada=false` y `fecha_hecho` en la ventana.
  * Se cuentan las entregas desde `lineas_liquidacion` (lo entregado con conductor),
  * no desde `lineas_cobro`, porque un pedido same-day de gasto propio tendría
  * cobro=0 pero no habría línea de liquidación.
@@ -206,16 +206,16 @@ export async function obtenerIngresoYMargen(
       .select("monto_final_clp")
       .eq("tenant_id", tenantId)
       .eq("anulada", false)
-      .gte("fecha_entrega", ventana.desde)
-      .lte("fecha_entrega", ventana.hasta),
+      .gte("fecha_hecho", ventana.desde)
+      .lte("fecha_hecho", ventana.hasta),
     cliente
       .schema("dinero")
       .from("lineas_liquidacion")
       .select("monto_final_clp, tipo_hecho")
       .eq("tenant_id", tenantId)
       .eq("anulada", false)
-      .gte("fecha_entrega", ventana.desde)
-      .lte("fecha_entrega", ventana.hasta),
+      .gte("fecha_hecho", ventana.desde)
+      .lte("fecha_hecho", ventana.hasta),
   ]);
 
   if (cobroRes.error) {
@@ -273,8 +273,8 @@ export async function obtenerCostoPorConductor(
     .select("driver_id, monto_final_clp, tipo_hecho")
     .eq("tenant_id", tenantId)
     .eq("anulada", false)
-    .gte("fecha_entrega", ventana.desde)
-    .lte("fecha_entrega", ventana.hasta);
+    .gte("fecha_hecho", ventana.desde)
+    .lte("fecha_hecho", ventana.hasta);
 
   if (errLineas) {
     throw new Error(

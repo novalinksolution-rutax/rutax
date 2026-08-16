@@ -518,7 +518,7 @@ function FilaLinea({ linea }: { linea: LineaCobro }) {
         </Link>
       </td>
       <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        {formatearFechaCorta(linea.fechaEntrega)}
+        {formatearFechaCorta(linea.fechaHecho)}
       </td>
       <td className="hidden px-4 py-3 md:table-cell">
         <Badge variant="neutral" className="capitalize">

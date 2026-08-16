@@ -90,14 +90,14 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
             const lineas = await leerTodasLasFilas<{
               pedido_id: string | null;
               tipo_hecho: 'entrega' | 'retiro_bodega';
-              fecha_entrega: string;
+              fecha_hecho: string;
               concepto: string;
               monto_final_clp: number | string;
             }>(`líneas de la liquidación ${liqId}`, (desde, hasta) =>
               supabase
                 .schema('dinero')
                 .from('lineas_liquidacion')
-                .select('pedido_id, tipo_hecho, fecha_entrega, concepto, monto_final_clp')
+                .select('pedido_id, tipo_hecho, fecha_hecho, concepto, monto_final_clp')
                 .eq('tenant_id', tenantId)
                 .eq('liquidacion_id', liqId)
                 .eq('anulada', false)
@@ -148,7 +148,7 @@ export const jobGenerarLiquidacionConductor = inngest.createFunction(
               fechaFin,
               lineas: lineas.map((l) => ({
                 pedidoId: l.pedido_id ?? null,
-                fechaEntrega: (l.fecha_entrega as string) ?? '',
+                fechaHecho: (l.fecha_hecho as string) ?? '',
                 concepto: (l.concepto as string) ?? '',
                 montoFinalClp: Math.round(Number(l.monto_final_clp)),
               })),

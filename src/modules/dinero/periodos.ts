@@ -69,22 +69,22 @@ function domingoDeSemana(inicio: string): string {
 }
 
 /**
- * Calcula {fechaInicio, fechaFin} del período al que pertenece `fechaEntrega`,
+ * Calcula {fechaInicio, fechaFin} del período al que pertenece `fechaHecho`,
  * según el tipo de período configurado.
  *
  * Fallback: si no hay configuración, usa `mensual` y el mes calendario.
  */
 export function calcularRangoPeriodo(
-  fechaEntrega: Date,
+  fechaHecho: Date,
   tipoPeriodo: TipoPeriodoFacturacion,
 ): { fechaInicio: string; fechaFin: string } {
-  const [anioStr, mesStr, diaStr] = fechaLocalEnSantiago(fechaEntrega).split('-');
+  const [anioStr, mesStr, diaStr] = fechaLocalEnSantiago(fechaHecho).split('-');
   const diaLocal = parseInt(diaStr, 10);
 
   if (tipoPeriodo === 'mensual') {
     return {
       fechaInicio: `${anioStr}-${mesStr}-01`,
-      fechaFin: ultimoDiaMesStr(fechaEntrega),
+      fechaFin: ultimoDiaMesStr(fechaHecho),
     };
   }
 
@@ -97,13 +97,13 @@ export function calcularRangoPeriodo(
     } else {
       return {
         fechaInicio: `${anioStr}-${mesStr}-16`,
-        fechaFin: ultimoDiaMesStr(fechaEntrega),
+        fechaFin: ultimoDiaMesStr(fechaHecho),
       };
     }
   }
 
   if (tipoPeriodo === 'semanal') {
-    const inicio = lunesDeSemana(fechaEntrega);
+    const inicio = lunesDeSemana(fechaHecho);
     const fin = domingoDeSemana(inicio);
     return { fechaInicio: inicio, fechaFin: fin };
   }
@@ -111,7 +111,7 @@ export function calcularRangoPeriodo(
   // Fallback seguro — mensual
   return {
     fechaInicio: `${anioStr}-${mesStr}-01`,
-    fechaFin: ultimoDiaMesStr(fechaEntrega),
+    fechaFin: ultimoDiaMesStr(fechaHecho),
   };
 }
 
@@ -121,7 +121,7 @@ export function calcularRangoPeriodo(
 
 /**
  * Devuelve el ID del período de cobro abierto para el seller y rango de fechas
- * correspondiente a `fechaEntrega`. Si no existe, lo crea.
+ * correspondiente a `fechaHecho`. Si no existe, lo crea.
  *
  * Idempotente: el UNIQUE constraint (tenant_id, seller_id, fecha_inicio, fecha_fin)
  * absorbe el segundo intento con ON CONFLICT DO NOTHING. Luego se relée el ID.
@@ -134,9 +134,9 @@ export function calcularRangoPeriodo(
  */
 export async function obtenerOCrearPeriodoCobroAbierto(
   cliente: SupabaseClient,
-  params: { tenantId: string; sellerId: string; fechaEntrega: Date },
+  params: { tenantId: string; sellerId: string; fechaHecho: Date },
 ): Promise<string> {
-  const { tenantId, sellerId, fechaEntrega } = params;
+  const { tenantId, sellerId, fechaHecho } = params;
 
   // 1. Leer configuración de período: primero para el seller, luego para el tenant.
   const { data: configRows } = await cliente
@@ -153,7 +153,7 @@ export async function obtenerOCrearPeriodoCobroAbierto(
     (configRows?.[0]?.tipo_periodo as TipoPeriodoFacturacion | undefined) ?? 'mensual';
 
   // 2. Calcular rango del período.
-  const { fechaInicio, fechaFin } = calcularRangoPeriodo(fechaEntrega, tipoPeriodo);
+  const { fechaInicio, fechaFin } = calcularRangoPeriodo(fechaHecho, tipoPeriodo);
 
   // 3. UPSERT idempotente — ignoreDuplicates absorbe el conflicto del UNIQUE constraint.
   await cliente
@@ -220,7 +220,7 @@ export async function obtenerOCrearPeriodoCobroAbierto(
 
 /**
  * Devuelve el ID de la liquidación abierta (borrador) para el conductor y rango
- * de fechas correspondiente a `fechaEntrega`. Si no existe, la crea.
+ * de fechas correspondiente a `fechaHecho`. Si no existe, la crea.
  *
  * Idempotente: el UNIQUE constraint (tenant_id, driver_id, fecha_inicio, fecha_fin)
  * absorbe duplicados.
@@ -230,9 +230,9 @@ export async function obtenerOCrearPeriodoCobroAbierto(
  */
 export async function obtenerOCrearLiquidacionAbierta(
   cliente: SupabaseClient,
-  params: { tenantId: string; driverId: string; fechaEntrega: Date },
+  params: { tenantId: string; driverId: string; fechaHecho: Date },
 ): Promise<string> {
-  const { tenantId, driverId, fechaEntrega } = params;
+  const { tenantId, driverId, fechaHecho } = params;
 
   // 1. Leer configuración de período del tenant (las liquidaciones siguen el período del tenant).
   const { data: configRows } = await cliente
@@ -248,7 +248,7 @@ export async function obtenerOCrearLiquidacionAbierta(
     (configRows?.[0]?.tipo_periodo as TipoPeriodoFacturacion | undefined) ?? 'mensual';
 
   // 2. Calcular rango del período.
-  const { fechaInicio, fechaFin } = calcularRangoPeriodo(fechaEntrega, tipoPeriodo);
+  const { fechaInicio, fechaFin } = calcularRangoPeriodo(fechaHecho, tipoPeriodo);
 
   // 3. Leer tipo_relacion del conductor.
   const { data: conductorData } = await cliente

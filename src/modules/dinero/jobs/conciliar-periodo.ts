@@ -301,8 +301,8 @@ export const jobConciliarPeriodo = inngest.createFunction(
         .eq('tenant_id', tenantId)
         .eq('seller_id', sellerId)
         .is('periodo_cobro_id', null)
-        .gte('fecha_entrega', fechaInicio)
-        .lte('fecha_entrega', fechaFin);
+        .gte('fecha_hecho', fechaInicio)
+        .lte('fecha_hecho', fechaFin);
 
       if (errorSueltas) throw new Error(`Error al contar líneas sueltas: ${errorSueltas.message}`);
 

@@ -73,7 +73,7 @@ function filaToLineaCobro(f: Record<string, any>): LineaCobro {
     montoFinalClp: Number(f.monto_final_clp),
     concepto: f.concepto,
     tipoPedido: f.tipo_pedido,
-    fechaEntrega: f.fecha_entrega,
+    fechaHecho: f.fecha_hecho,
     incidenciaId: f.incidencia_id ?? null,
     origenGeneracion: f.origen_generacion,
     generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
@@ -107,7 +107,7 @@ function filaToLineaLiquidacion(f: Record<string, any>): LineaLiquidacion {
     ajusteIncidenciaClp: Number(f.ajuste_incidencia_clp ?? 0),
     montoFinalClp: Number(f.monto_final_clp),
     concepto: f.concepto,
-    fechaEntrega: f.fecha_entrega,
+    fechaHecho: f.fecha_hecho,
     incidenciaId: f.incidencia_id ?? null,
     origenGeneracion: f.origen_generacion,
     generadoPorUsuarioId: f.generado_por_usuario_id ?? null,
@@ -327,7 +327,7 @@ export async function listarLineasCobroPorPeriodo(
         .eq('tenant_id', tenantId)
         .eq('periodo_cobro_id', periodoId)
         .eq('anulada', false)
-        .order('fecha_entrega', { ascending: true })
+        .order('fecha_hecho', { ascending: true })
         .order('id')
         .range(desde, hasta),
   );
@@ -425,7 +425,7 @@ export async function obtenerLiquidacion(
         .eq('tenant_id', tenantId)
         .eq('liquidacion_id', liquidacionId)
         .eq('anulada', false)
-        .order('fecha_entrega', { ascending: true })
+        .order('fecha_hecho', { ascending: true })
         .order('id')
         .range(desde, hasta),
   );

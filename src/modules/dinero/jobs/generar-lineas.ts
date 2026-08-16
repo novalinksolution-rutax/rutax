@@ -383,7 +383,7 @@ export const jobGenerarLineas = inngest.createFunction(
       },
     );
 
-    const fechaEntrega = fechaLocalSantiago(fechaTransicion);
+    const fechaHecho = fechaLocalSantiago(fechaTransicion);
 
     // Paso 1b: Anulación pre-cierre (flujo fallido → devuelto).
     //
@@ -702,7 +702,7 @@ export const jobGenerarLineas = inngest.createFunction(
         ajusteIncidenciaClp: ajuste,
         comunaDestinatario,
         fechaTransicion,
-        fechaEntregaLocal: fechaEntrega,
+        fechaHechoLocal: fechaHecho,
         estadoNuevo,
         estadoAnterior,
         tipoPedido,
@@ -725,7 +725,7 @@ export const jobGenerarLineas = inngest.createFunction(
           ajuste_incidencia_clp: ajuste,
           concepto,
           tipo_pedido: tipoPedido,
-          fecha_entrega: fechaEntrega,
+          fecha_hecho: fechaHecho,
           incidencia_id: incidencia?.id ?? null,
           origen_generacion: 'motor_automatico',
           snapshot_regla: snapshotCobro,
@@ -762,7 +762,7 @@ export const jobGenerarLineas = inngest.createFunction(
             monto_base_clp: montoBase,
             ajuste_incidencia_clp: ajuste,
             concepto,
-            fecha_entrega: fechaEntrega,
+            fecha_hecho: fechaHecho,
             incidencia_id: incidencia?.id ?? null,
             origen_generacion: 'motor_automatico',
             snapshot_regla: snapshotCobro,
@@ -784,7 +784,7 @@ export const jobGenerarLineas = inngest.createFunction(
       const periodoId = await obtenerOCrearPeriodoCobroAbierto(supabase, {
         tenantId,
         sellerId,
-        fechaEntrega: new Date(fechaTransicion),
+        fechaHecho: new Date(fechaTransicion),
       });
 
       // UPDATE solo si la línea aún no tiene período asignado (idempotente).
@@ -844,7 +844,7 @@ export const jobGenerarLineas = inngest.createFunction(
         ajusteIncidenciaClp: ajuste,
         comunaDestinatario,
         fechaTransicion,
-        fechaEntregaLocal: fechaEntrega,
+        fechaHechoLocal: fechaHecho,
         estadoNuevo,
         estadoAnterior,
         tipoPedido,
@@ -864,7 +864,7 @@ export const jobGenerarLineas = inngest.createFunction(
           monto_base_clp: montoBase,
           ajuste_incidencia_clp: ajuste,
           concepto,
-          fecha_entrega: fechaEntrega,
+          fecha_hecho: fechaHecho,
           incidencia_id: incidencia?.id ?? null,
           origen_generacion: 'motor_automatico',
           snapshot_regla: snapshotLiquidacion,
@@ -907,7 +907,7 @@ export const jobGenerarLineas = inngest.createFunction(
             monto_base_clp: montoBase,
             ajuste_incidencia_clp: ajuste,
             concepto,
-            fecha_entrega: fechaEntrega,
+            fecha_hecho: fechaHecho,
             incidencia_id: incidencia?.id ?? null,
             origen_generacion: 'motor_automatico',
             snapshot_regla: snapshotLiquidacion,
@@ -986,7 +986,7 @@ export const jobGenerarLineas = inngest.createFunction(
             monto_base_clp: montoBase,
             ajuste_incidencia_clp: ajuste,
             concepto,
-            fecha_entrega: fechaEntrega,
+            fecha_hecho: fechaHecho,
             incidencia_id: incidencia?.id ?? null,
             origen_generacion: 'motor_automatico',
             snapshot_regla: snapshotLiquidacion,
@@ -1047,7 +1047,7 @@ export const jobGenerarLineas = inngest.createFunction(
       const liquidacionId = await obtenerOCrearLiquidacionAbierta(supabase, {
         tenantId,
         driverId: driverIdAsignado,
-        fechaEntrega: new Date(fechaTransicion),
+        fechaHecho: new Date(fechaTransicion),
       });
 
       await supabase

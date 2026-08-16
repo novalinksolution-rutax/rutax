@@ -400,7 +400,7 @@ describe("interpretarShipment — normaliza el shipment y NO filtra datos", () =
       long: -70.5678,
       estadoMl: "ready_to_ship",
       subestadoMl: "printed",
-      fechaEntregaIso: "2026-08-13T01:30:00.000Z",
+      fechaHechoIso: "2026-08-13T01:30:00.000Z",
       destinatarioNombre: NOMBRE_FIXTURE,
       destinatarioDireccion: CALLE_FIXTURE,
       destinatarioComuna: "Las Condes",
@@ -863,7 +863,7 @@ describe("jobEjecutarBackfill — handler real", () => {
     expect(todo).toContain("forma del shipment");
     expect(todo).toContain("logistic_type=anidado");
     expect(todo).toContain("direccion=destination");
-    expect(todo).toContain("fecha_entrega=lead_time.estimated_delivery_time.date");
+    expect(todo).toContain("fecha_hecho=lead_time.estimated_delivery_time.date");
     // Ni PII ni token, en ningún nivel de log.
     expect(todo).not.toContain(NOMBRE_FIXTURE);
     expect(todo).not.toContain(CALLE_FIXTURE);

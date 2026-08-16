@@ -305,7 +305,7 @@ export const jobEmitirNotaCredito = inngest.createFunction(
       const periodoDestinoId = await obtenerOCrearPeriodoCobroAbierto(supabase, {
         tenantId,
         sellerId,
-        fechaEntrega: new Date(),
+        fechaHecho: new Date(),
       });
 
       const { error } = await supabase

@@ -881,7 +881,7 @@ on conflict (id) do nothing;
 insert into dinero.lineas_cobro (
   id, tenant_id, seller_id, pedido_id, periodo_cobro_id, tarifa_id,
   monto_base_clp, ajuste_incidencia_clp,
-  concepto, tipo_pedido, fecha_entrega, origen_generacion
+  concepto, tipo_pedido, fecha_hecho, origen_generacion
 ) values
   -- FalabellaTech (3 líneas, período a1)
   ('c0000000-0000-0000-0000-000000000001',
@@ -1019,7 +1019,7 @@ on conflict (id) do nothing;
 insert into dinero.lineas_liquidacion (
   id, tenant_id, driver_id, pedido_id, liquidacion_id,
   monto_base_clp, ajuste_incidencia_clp,
-  concepto, fecha_entrega, origen_generacion
+  concepto, fecha_hecho, origen_generacion
 ) values
   -- Conductor 1 (liq b1): P01, P02, P14
   ('d0000000-0000-0000-0000-000000000001',

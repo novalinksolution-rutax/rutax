@@ -329,7 +329,7 @@ describe('obtenerOCrearPeriodoCobroAbierto — guarda de estado', () => {
     const periodos: FilaPeriodoTest[] = [];
     const cliente = crearFakeSupabasePeriodos(periodos);
     const id = await obtenerOCrearPeriodoCobroAbierto(cliente, {
-      tenantId: 't', sellerId: 's', fechaEntrega: new Date('2026-06-15T12:00:00-03:00'),
+      tenantId: 't', sellerId: 's', fechaHecho: new Date('2026-06-15T12:00:00-03:00'),
     });
     expect(id).toBeTruthy();
     expect(periodos[0].estado).toBe('abierto');
@@ -341,7 +341,7 @@ describe('obtenerOCrearPeriodoCobroAbierto — guarda de estado', () => {
     ];
     const cliente = crearFakeSupabasePeriodos(periodos);
     const id = await obtenerOCrearPeriodoCobroAbierto(cliente, {
-      tenantId: 't', sellerId: 's', fechaEntrega: new Date('2026-06-15T12:00:00-03:00'),
+      tenantId: 't', sellerId: 's', fechaHecho: new Date('2026-06-15T12:00:00-03:00'),
     });
     expect(id).toBe('per-existente');
     expect(periodos).toHaveLength(1); // no se creó otro
@@ -354,7 +354,7 @@ describe('obtenerOCrearPeriodoCobroAbierto — guarda de estado', () => {
     const cliente = crearFakeSupabasePeriodos(periodos);
     await expect(
       obtenerOCrearPeriodoCobroAbierto(cliente, {
-        tenantId: 't', sellerId: 's', fechaEntrega: new Date('2026-06-15T12:00:00-03:00'),
+        tenantId: 't', sellerId: 's', fechaHecho: new Date('2026-06-15T12:00:00-03:00'),
       }),
     ).rejects.toThrow(/no 'abierto'|facturado/);
   });
@@ -366,7 +366,7 @@ describe('obtenerOCrearPeriodoCobroAbierto — guarda de estado', () => {
     const cliente = crearFakeSupabasePeriodos(periodos);
     await expect(
       obtenerOCrearPeriodoCobroAbierto(cliente, {
-        tenantId: 't', sellerId: 's', fechaEntrega: new Date('2026-06-15T12:00:00-03:00'),
+        tenantId: 't', sellerId: 's', fechaHecho: new Date('2026-06-15T12:00:00-03:00'),
       }),
     ).rejects.toThrow(/cerrado|abierto/);
   });

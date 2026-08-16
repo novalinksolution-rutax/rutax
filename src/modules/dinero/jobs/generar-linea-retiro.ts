@@ -259,7 +259,7 @@ export const jobGenerarLineaRetiro = inngest.createFunction(
           // Columna heredada del nombre viejo: guarda la fecha del HECHO, que
           // acá es la de la visita. Se renombra a `fecha_hecho` en migración
           // aparte.
-          fecha_entrega: datos.fechaOperacion,
+          fecha_hecho: datos.fechaOperacion,
           incidencia_id: null,
           origen_generacion: 'motor_automatico',
           snapshot_regla: {

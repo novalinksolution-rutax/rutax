@@ -233,7 +233,7 @@ async function detectorD1_PagadoConductorSinCobroSeller(
   // por las mismas líneas de cobro para obtener el universo de pedidos del período.
   // Como la línea de liquidación puede existir aunque no haya cobro, buscamos
   // las liquidaciones vigentes asociadas a los periodos_cobro del tenant.
-  // Usamos la fecha_entrega para circunscribir al universo del período.
+  // Usamos la fecha_hecho para circunscribir al universo del período.
   // Estrategia: obtener todos los pedido_id con linea_liquidacion vigente del tenant,
   // luego cruzar contra los que NO tienen linea_cobro vigente en un periodo cerrado.
   // PAGINADO, y esta es la peor de todas: barre las líneas de liquidación de

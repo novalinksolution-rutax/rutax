@@ -516,7 +516,7 @@ async function faseAOrdenesNuevas(
       `Ingesta ML conexión ${conexion.id}: forma del shipment — ` +
         `claves=[${d.claves.join(",")}] plazos=[${d.clavesPlazos.join(",")}] ` +
         `logistic_type=${d.ubicacionLogisticType} direccion=${d.ubicacionDireccion} ` +
-        `fecha_entrega=${d.campoFechaEntrega ?? "ausente"}`,
+        `fecha_hecho=${d.campoFechaEntrega ?? "ausente"}`,
     );
   }
 }

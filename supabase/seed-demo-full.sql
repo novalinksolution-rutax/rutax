@@ -111,12 +111,12 @@ begin
 
   -- Dinero: se mueve con la operación para no romper el cruce entrega→dinero.
   update dinero.lineas_cobro
-  set fecha_entrega = fecha_entrega + v_delta,
+  set fecha_hecho = fecha_hecho + v_delta,
       creado_en     = creado_en + make_interval(days => v_delta)
   where tenant_id = v_tenant and id::text like 'cd000000%';
 
   update dinero.lineas_liquidacion
-  set fecha_entrega = fecha_entrega + v_delta,
+  set fecha_hecho = fecha_hecho + v_delta,
       creado_en     = creado_en + make_interval(days => v_delta)
   where tenant_id = v_tenant and id::text like 'dd000000%';
 
@@ -133,11 +133,11 @@ end $$;
 -- Se alinea el pedido a la fecha de SU entrega (la del dinero manda, porque es
 -- la que decide a qué período pertenece la línea).
 update operacion.pedidos p
-set fecha_compromiso = l.fecha_entrega
+set fecha_compromiso = l.fecha_hecho
 from dinero.lineas_cobro l
 where l.pedido_id = p.id
   and p.tenant_id = '10000000-0000-0000-0000-000000000001'
-  and p.fecha_compromiso is distinct from l.fecha_entrega;
+  and p.fecha_compromiso is distinct from l.fecha_hecho;
 
 
 -- =============================================================================
@@ -963,7 +963,7 @@ where men.tenant_id = '10000000-0000-0000-0000-000000000001'
   and q.tenant_id = men.tenant_id
   and q.seller_id = men.seller_id
   and q.tipo_periodo = 'quincenal'
-  and lc.fecha_entrega between q.fecha_inicio and q.fecha_fin;
+  and lc.fecha_hecho between q.fecha_inicio and q.fecha_fin;
 
 delete from dinero.periodos_cobro men
 where men.tenant_id = '10000000-0000-0000-0000-000000000001'
@@ -981,7 +981,7 @@ where men.tenant_id = '10000000-0000-0000-0000-000000000001'
 -- Y su línea de liquidación al conductor, con el mismo pedido_id de referencia.
 insert into dinero.lineas_cobro
   (id, tenant_id, seller_id, pedido_id, periodo_cobro_id, tarifa_id,
-   monto_base_clp, ajuste_incidencia_clp, concepto, tipo_pedido, fecha_entrega,
+   monto_base_clp, ajuste_incidencia_clp, concepto, tipo_pedido, fecha_hecho,
    origen_generacion, snapshot_regla, creado_en)
 select
   ('cd000000-0000-0000-0000-'||substr(md5('lc-'||p.id::text), 1, 12))::uuid,
@@ -1059,7 +1059,7 @@ where tenant_id = '10000000-0000-0000-0000-000000000001';
 
 insert into dinero.lineas_liquidacion
   (id, tenant_id, driver_id, pedido_id, liquidacion_id,
-   monto_base_clp, ajuste_incidencia_clp, concepto, fecha_entrega,
+   monto_base_clp, ajuste_incidencia_clp, concepto, fecha_hecho,
    origen_generacion, snapshot_regla, creado_en)
 select
   ('dd000000-0000-0000-0000-'||substr(md5('ll-'||p.id::text), 1, 12))::uuid,
@@ -1097,7 +1097,7 @@ set periodo_cobro_id = per.id
 from dinero.periodos_cobro per
 where per.tenant_id = lc.tenant_id
   and per.seller_id = lc.seller_id
-  and lc.fecha_entrega between per.fecha_inicio and per.fecha_fin
+  and lc.fecha_hecho between per.fecha_inicio and per.fecha_fin
   and per.estado <> 'anulado'
   and lc.tenant_id = '10000000-0000-0000-0000-000000000001'
   and lc.periodo_cobro_id is distinct from per.id;
@@ -1107,7 +1107,7 @@ set liquidacion_id = liq.id
 from dinero.liquidaciones liq
 where liq.tenant_id = ll.tenant_id
   and liq.driver_id = ll.driver_id
-  and ll.fecha_entrega between liq.fecha_inicio and liq.fecha_fin
+  and ll.fecha_hecho between liq.fecha_inicio and liq.fecha_fin
   and ll.tenant_id = '10000000-0000-0000-0000-000000000001'
   and ll.liquidacion_id is distinct from liq.id;
 
@@ -1175,7 +1175,7 @@ where id in (
   select id from dinero.lineas_cobro
   where tenant_id = '10000000-0000-0000-0000-000000000001'
     and anulada = false
-  order by fecha_entrega asc, id
+  order by fecha_hecho asc, id
   limit 2
 );
 

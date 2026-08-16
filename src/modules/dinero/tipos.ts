@@ -197,7 +197,7 @@ export interface LineaCobro {
   concepto: string;
   tipoPedido: 'flex' | 'same_day';
   /** Fecha de entrega en zona America/Santiago — formato 'YYYY-MM-DD'. */
-  fechaEntrega: string;
+  fechaHecho: string;
   incidenciaId: string | null;
   origenGeneracion: OrigenGeneracion;
   generadoPorUsuarioId: string | null;
@@ -256,12 +256,12 @@ export interface LineaLiquidacion {
   concepto: string;
   /**
    * La fecha del hecho: de la entrega, o de la visita a bodega.
-   * ⚠️ La columna todavía se llama `fecha_entrega` en la base. El nombre engaña
+   * ⚠️ La columna todavía se llama `fecha_hecho` en la base. El nombre engaña
    * desde la etapa 8 y se renombra a `fecha_hecho` en migración propia — se
    * separó a propósito porque PostgREST la referencia por STRING en 14 sitios
    * que el typecheck no ve.
    */
-  fechaEntrega: string;
+  fechaHecho: string;
   incidenciaId: string | null;
   origenGeneracion: OrigenGeneracion;
   generadoPorUsuarioId: string | null;
