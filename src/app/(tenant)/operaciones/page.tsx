@@ -110,7 +110,11 @@ function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, m
 interface SearchParams {
   seller?: string;
   estado?: string;
+  /** Día exacto de `fecha_compromiso` (nombre histórico; deep-links de la Torre). */
   fecha?: string;
+  /** Rango de `fecha_compromiso` — excluyente con `fecha`. */
+  fecha_desde?: string;
+  fecha_hasta?: string;
   /** Comuna de destino — destino de los enlaces profundos de la Torre (F11). */
   comuna?: string;
   /** Id del conductor — ídem. */
@@ -143,7 +147,17 @@ export default async function PaginaOperaciones({
   // rechazar.
   const filtroSeller = sanearFiltroUuid(params.seller);
   const filtroEstado = sanearFiltroEstadoPedido(params.estado);
-  const filtroFecha = sanearFiltroFechaCivil(params.fecha) || hoyIso;
+  // Fecha: día exacto (excluyente) o rango. Si viene un rango válido, manda el
+  // rango y NO se aplica el "hoy por defecto"; si no, cae al día exacto (o a hoy
+  // cuando la URL no trae fecha alguna). `fecha` gana sobre el rango, igual que
+  // en `listarPedidos`.
+  const fechaExactaParam = sanearFiltroFechaCivil(params.fecha);
+  const fechaDesdeParam = sanearFiltroFechaCivil(params.fecha_desde);
+  const fechaHastaParam = sanearFiltroFechaCivil(params.fecha_hasta);
+  const hayRangoFecha = !fechaExactaParam && !!(fechaDesdeParam || fechaHastaParam);
+  const filtroFecha = hayRangoFecha ? "" : fechaExactaParam || hoyIso;
+  const filtroFechaDesde = hayRangoFecha ? fechaDesdeParam : "";
+  const filtroFechaHasta = hayRangoFecha ? fechaHastaParam : "";
   const filtroComuna = params.comuna || "";
   const filtroConductor = sanearFiltroUuid(params.conductor);
   const filtroFuente = sanearFiltroFuentePedido(params.fuente);
@@ -158,6 +172,7 @@ export default async function PaginaOperaciones({
     filtroConductor ||
     filtroFuente ||
     filtroPorRevisar ||
+    hayRangoFecha ||
     filtroFecha !== hoyIso
   );
 
@@ -182,6 +197,8 @@ export default async function PaginaOperaciones({
       fuente: filtroFuente || undefined,
       estado: filtroPorRevisar ? undefined : filtroEstado || undefined,
       fecha: filtroPorRevisar ? undefined : filtroFecha || undefined,
+      fechaDesde: filtroPorRevisar ? undefined : filtroFechaDesde || undefined,
+      fechaHasta: filtroPorRevisar ? undefined : filtroFechaHasta || undefined,
       porRevisar: filtroPorRevisar || undefined,
       pagina,
       limite: LIMITE,
@@ -285,7 +302,12 @@ export default async function PaginaOperaciones({
       sp.set("por_revisar", "1");
     } else {
       if (filtroEstado) sp.set("estado", filtroEstado);
-      if (filtroFecha) sp.set("fecha", filtroFecha);
+      if (filtroFecha) {
+        sp.set("fecha", filtroFecha);
+      } else {
+        if (filtroFechaDesde) sp.set("fecha_desde", filtroFechaDesde);
+        if (filtroFechaHasta) sp.set("fecha_hasta", filtroFechaHasta);
+      }
     }
     if (p > 1) sp.set("pagina", String(p));
     const qs = sp.toString();
@@ -353,7 +375,10 @@ export default async function PaginaOperaciones({
         conductores={conductoresDisponibles}
         filtroSeller={filtroSeller}
         filtroEstado={filtroEstado}
+        hoy={hoyIso}
         filtroFecha={filtroFecha}
+        filtroFechaDesde={filtroFechaDesde}
+        filtroFechaHasta={filtroFechaHasta}
         filtroComuna={filtroComuna}
         filtroConductor={filtroConductor}
         filtroFuente={filtroFuente}

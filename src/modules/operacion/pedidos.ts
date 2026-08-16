@@ -227,7 +227,14 @@ export async function listarPedidos(
     );
   } else {
     if (filtros.estado) query = query.eq("estado", filtros.estado);
-    if (filtros.fecha) query = query.eq("fecha_compromiso", filtros.fecha);
+    // Día exacto (excluyente) o rango. `fecha` gana si vino: preserva el
+    // comportamiento histórico y los deep-links de la Torre (`?fecha=…`).
+    if (filtros.fecha) {
+      query = query.eq("fecha_compromiso", filtros.fecha);
+    } else {
+      if (filtros.fechaDesde) query = query.gte("fecha_compromiso", filtros.fechaDesde);
+      if (filtros.fechaHasta) query = query.lte("fecha_compromiso", filtros.fechaHasta);
+    }
   }
 
   query = query

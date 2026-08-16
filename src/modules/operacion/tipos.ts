@@ -461,7 +461,14 @@ export interface FiltrosPedidos {
   /** Procedencia del pedido — eje AUTORITATIVO de fuente (ver `FuentePedido`). */
   fuente?: FuentePedido;
   estado?: EstadoPedido;
-  fecha?: string; // fecha_compromiso (ISO date)
+  fecha?: string; // fecha_compromiso — día exacto (ISO date). Excluyente con el rango.
+  /**
+   * Rango de `fecha_compromiso` (ISO date). Se usan cuando NO viene `fecha`:
+   * filtran con `>= fechaDesde` y/o `<= fechaHasta`. Cualquiera de los dos puede
+   * venir solo (extremo abierto).
+   */
+  fechaDesde?: string;
+  fechaHasta?: string;
   /**
    * Si `true`, filtra pedidos que requieren revisión de dirección/cobertura:
    * geo_estado IN ('no_resuelto','fuera_cobertura') OR

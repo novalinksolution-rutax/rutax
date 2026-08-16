@@ -14,7 +14,7 @@ import { TEXTO_ESTADO_PEDIDO, etiquetaSellerConEstado } from "@/lib/ui/traduccio
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import type { EstadoPedido, FuentePedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
   Select,
   SelectContent,
@@ -31,7 +31,13 @@ interface Props {
   conductores: { id: string; nombre: string }[];
   filtroSeller: string;
   filtroEstado: string;
+  /** "Hoy" civil de Santiago (para los atajos y la etiqueta del filtro de fecha). */
+  hoy: string;
+  /** Día exacto de fecha comprometida ("" si hay rango). */
   filtroFecha: string;
+  /** Rango de fecha comprometida ("" si hay día exacto). */
+  filtroFechaDesde: string;
+  filtroFechaHasta: string;
   filtroComuna: string;
   filtroConductor: string;
   filtroFuente: string;
@@ -44,7 +50,10 @@ export function FiltrosPedidosForm({
   conductores,
   filtroSeller,
   filtroEstado,
+  hoy,
   filtroFecha,
+  filtroFechaDesde,
+  filtroFechaHasta,
   filtroComuna,
   filtroConductor,
   filtroFuente,
@@ -59,7 +68,15 @@ export function FiltrosPedidosForm({
       const params = new URLSearchParams();
       if (campo !== "seller" && filtroSeller) params.set("seller", filtroSeller);
       if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
-      if (campo !== "fecha" && filtroFecha) params.set("fecha", filtroFecha);
+      // El filtro de fecha se cambia por su propio control (FiltroFecha, que
+      // clona la URL); aquí solo se PRESERVA la selección vigente —día exacto o
+      // rango— para que tocar otro filtro no la borre.
+      if (filtroFecha) {
+        params.set("fecha", filtroFecha);
+      } else {
+        if (filtroFechaDesde) params.set("fecha_desde", filtroFechaDesde);
+        if (filtroFechaHasta) params.set("fecha_hasta", filtroFechaHasta);
+      }
       // Comuna y conductor sobreviven al cambio de cualquier otro filtro: se
       // llega desde la Torre con uno puesto y afinar por estado no puede
       // devolver al usuario a la ciudad entera.
@@ -80,6 +97,8 @@ export function FiltrosPedidosForm({
       filtroSeller,
       filtroEstado,
       filtroFecha,
+      filtroFechaDesde,
+      filtroFechaHasta,
       filtroComuna,
       filtroConductor,
       filtroFuente,
@@ -251,18 +270,14 @@ export function FiltrosPedidosForm({
 
         {/* Fecha — ocultar cuando "por revisar" está activo */}
         {!filtroPorRevisar && (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filtro-fecha" className="text-xs font-medium text-muted-foreground">
-              Fecha comprometida
-            </label>
-            <Input
-              id="filtro-fecha"
-              type="date"
-              value={filtroFecha}
-              onChange={(e) => actualizar("fecha", e.target.value)}
-              className="h-9 w-44"
-            />
-          </div>
+          <FiltroFecha
+            id="filtro-fecha"
+            label="Fecha comprometida"
+            hoy={hoy}
+            exacto={filtroFecha}
+            desde={filtroFechaDesde}
+            hasta={filtroFechaHasta}
+          />
         )}
 
         {/* Limpiar filtros — solo visible cuando hay filtros activos */}
