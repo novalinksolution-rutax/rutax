@@ -190,6 +190,21 @@ export const CAPACIDADES = [
   "confirmar_manifiesto_propio",
   "marcar_evidencias_propias",
   "ver_liquidacion_propia",
+  /**
+   * Etapa 9 — el conductor escanea bultos que otro conductor le pasa en la
+   * calle y quedan suyos.
+   *
+   * ES LA PRIMERA VEZ que un conductor mueve la atribución de dinero, y el
+   * nombre lo dice: `recibir_traspaso_propio`, no `asignar_*`. Solo puede
+   * recibir HACIA SÍ MISMO — el receptor no es un parámetro que elija, sale de
+   * su propio token — así que sigue siendo "lo propio", que es el límite
+   * declarado del rol unas líneas más abajo.
+   *
+   * No la tiene ningún rol interno: un coordinador que quiere mover pedidos usa
+   * `asignar_y_reasignar_pedidos`, que es otra cosa (repartir trabajo, no
+   * recibir un bulto que ya está en la calle).
+   */
+  "recibir_traspaso_propio",
 
   // --- Plataforma (super_admin — fuera del tenant, RF-001/006) ---------------
   // "Super-admin: crear/suspender couriers, configurar planes, soporte ·
@@ -320,6 +335,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "confirmar_manifiesto_propio",
     "marcar_evidencias_propias",
     "ver_liquidacion_propia",
+    "recibir_traspaso_propio",
   ],
 
   // "Estrictamente acotado a sus datos": conectar OAuth, solicitar same-day,
@@ -555,6 +571,17 @@ export function puedeConfirmarManifiestoPropio(usuario: UsuarioActual): boolean 
 
 export function puedeMarcarEvidenciasPropias(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "marcar_evidencias_propias");
+}
+
+/**
+ * ¿Puede recibir un traspaso de bultos de otro conductor? (etapa 9)
+ *
+ * Solo el rol `conductor`. Es capacidad de "lo propio" pese a mover dinero,
+ * porque el receptor siempre es quien llama: no hay forma de expresar
+ * "traspasar de A a B" desde acá.
+ */
+export function puedeRecibirTraspaso(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "recibir_traspaso_propio");
 }
 
 export function puedeVerLiquidacionPropia(usuario: UsuarioActual): boolean {
