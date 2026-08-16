@@ -45,6 +45,7 @@ import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaci
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
 import { jobPurgarEvidencias } from "@/modules/operacion/jobs/purgar-evidencias";
+import { jobPurgarQrRetiro } from "@/modules/operacion/jobs/purgar-qr-retiro";
 // Retención del punto de término del conductor (dónde vive). Se entrega junto
 // con la tabla, no después: el molde que se retiró el 2026-08-14 falló
 // exactamente por no tener este job.
@@ -123,6 +124,8 @@ const funciones = [
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
   jobPurgarEvidencias,
+  // Etapa 10 — el string del QR muere en estado terminal (+48 h de gracia).
+  jobPurgarQrRetiro,
   jobPurgarPuntoTermino,
   // Cancelación detectada en ML → estado + incidencia + cabo de dinero
   jobProcesarCancelacionMl,
