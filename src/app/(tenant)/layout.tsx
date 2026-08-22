@@ -188,20 +188,19 @@ export default async function LayoutTenant({ children }: { children: React.React
       ]
     : [];
 
-  // Menú de la CUENTA/empresa (bloque de marca superior) — distinto del menú de
-  // USUARIO del pie (tema + cerrar sesión). Accesos de administración de la
-  // empresa, cada uno gated por su propia capacidad; un rol sin ninguna (p. ej.
-  // el coordinador) deja el bloque estático, sin desplegable.
+  // El bloque de marca queda ESTÁTICO: solo dice de qué empresa es la cuenta.
+  //
+  // Tenía un desplegable con «Configuración de la empresa», «Equipo y roles» y
+  // «Mi plan y facturación» — y los tres destinos están, uno por uno, dentro de
+  // la navegación anidada que abre «Configuración» en el bloque de abajo. Eran
+  // una segunda puerta al mismo sitio, y el tablero P1 fija una: «la
+  // configuración es una navegación anidada que reemplaza a la principal al
+  // entrar, con retorno explícito».
+  //
+  // No se pierde ningún destino: los tres siguen en `itemsSettings`, a un clic.
+  // Lo que se pierde es la tercera vía —la segunda es la tarjeta de plan, que NO
+  // es una puerta sino anclas dentro de una misma pantalla, y por eso se queda.
   const opcionesCuenta: ItemNav[] = [];
-  if (puedeGestionarConfiguracionDte(u)) {
-    opcionesCuenta.push({ href: "/onboarding", etiqueta: "Configuración de la empresa", icono: "puesta-en-marcha" });
-  }
-  if (puedeGestionarUsuariosYRoles(u)) {
-    opcionesCuenta.push({ href: "/equipo", etiqueta: "Equipo y roles", icono: "equipo" });
-  }
-  if (puedeGestionarSuscripcion(u)) {
-    opcionesCuenta.push({ href: "/configuracion/plan", etiqueta: "Mi plan y facturación", icono: "plan" });
-  }
 
   // Bloque inferior (ítems sobre la card de plan): entrada "Configuración" que
   // ABRE el Settings anidado.

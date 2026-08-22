@@ -3,12 +3,18 @@
 /**
  * AppShell — shell del backoffice del courier `(tenant)` y del portal del seller.
  *
- * Rediseño Fase 3 (ADN de Retell, patrón A): sidebar ~256px sobre `--sidebar`
- * (lavanda), SIN borde derecho (el contraste lo da el color); bloque de marca /
- * workspace arriba; navegación AGRUPADA con headers `xs` uppercase muted; ítem
- * activo = **pill blanca** (`--sidebar-accent`) con `shadow-xs` e ícono en
- * `--brand` (navy); hover lavanda; bloque inferior con ítems de plan/config y el
- * **menú de cuenta** (avatar + tema + cerrar sesión). Colapsable a rail de íconos.
+ * Sidebar de 256 px con bloque de marca arriba, navegación agrupada, bloque
+ * inferior con plan y configuración, y el menú de cuenta al pie. Colapsable a
+ * rail de íconos, con la preferencia persistida.
+ *
+ * El ítem activo lleva **escalón de fondo (`bg-inset`) + regla de acento de 2 px
+ * a la izquierda + peso 600**, tal como lo fija el tablero `Rutax P1 Pedidos`.
+ * Las cabeceras de grupo van en mono de 9 px con tracking.
+ *
+ * ⚠️ La versión anterior de este comentario describía el «ADN de Retell» —
+ * pastilla blanca con `shadow-xs`, acento navy, lavanda—, que es el sistema de
+ * diseño **retirado** en el commit `234613d`. No es autoridad. Lo que manda son
+ * `docs/diseno/` y los tableros.
  *
  * El filtrado por capacidad RBAC ocurre en el servidor (layout) — este componente
  * solo pinta los `grupos` que recibe. Densidad `relajada` para el portal (seller).
@@ -177,17 +183,21 @@ function ItemLink({
       aria-current={activo ? "page" : undefined}
       title={colapsado ? item.etiqueta : undefined}
       className={cn(
-        "group flex items-center gap-2.5 rounded-lg text-sm font-medium transition-colors duration-(--motion-fast) ease-out",
-        relajado ? "px-2.5 py-2" : "px-2.5 py-1.5",
+        "group flex items-center gap-2.5 text-[13px] transition-colors duration-(--motion-fast) ease-out",
+        relajado ? "px-2.5 py-2" : "px-2.5 py-[9px]",
         colapsado && "justify-center px-0",
+        // El activo: escalón de fondo + regla de acento de 2 px a la izquierda,
+        // y peso 600. **Sin sombra y sin pastilla** — la regla 4 del sistema
+        // construye la elevación con fondo y borde, nunca con sombra. Antes
+        // llevaba `shadow-sm` y un `ring`, que es el ADN anterior.
         activo
-          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10"
-          : "text-muted-foreground hover:bg-foreground/5 hover:text-sidebar-foreground",
+          ? "border-l-2 border-primary bg-bg-inset font-semibold text-fg"
+          : "border-l-2 border-transparent font-normal text-fg-muted hover:bg-foreground/5 hover:text-fg",
       )}
     >
       {Icono ? (
         <Icono
-          className={cn("size-4 shrink-0", activo ? "text-brand" : "text-muted-foreground group-hover:text-sidebar-foreground")}
+          className={cn("size-4 shrink-0", activo ? "text-primary" : "text-fg-muted group-hover:text-fg")}
           aria-hidden="true"
         />
       ) : null}
@@ -217,7 +227,7 @@ function Navegacion({
         {grupos.map((grupo, i) => (
           <div key={grupo.titulo ?? `grupo-${i}`} className="flex flex-col gap-1">
             {grupo.titulo && !colapsado ? (
-              <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              <p className="px-2.5 pt-3 pb-1.5 font-mono text-[9px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
                 {grupo.titulo}
               </p>
             ) : null}
@@ -549,7 +559,7 @@ export function AppShell({
       </div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
         {!colapsadoLocal ? (
-          <p className="px-2.5 pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          <p className="px-2.5 pt-3 pb-1.5 font-mono text-[9px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
             Configuración
           </p>
         ) : null}

@@ -62,7 +62,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **2** | Estado | **hecha** — 8 de 10 · 25 ejes · 33 correcciones con prueba mecánica | los 4 vocabularios que faltan viven en la app del conductor (bloque 6) | — | *(no hizo falta)* |
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
-| **4** | **Marco** | **4 de 8 cerrados** · 4 más ya existían | re-estilo del rail · dedup de las 3 vías a configuración | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
+| **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | 16 componentes · **0 hechos** *(el preflight tiene su lógica, no su forma)* | 16 + las 4 anulaciones | #7 a #11 | `Rutax P4 Emitir factura` · `B2a` · `B2b` |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
@@ -242,13 +242,18 @@ bloques 4–8, cuando cada pantalla se toque.
 
 ## Componentes
 
-- [ ] **`navegación lateral colapsable`** · EXTENDER · **existe y ya colapsa** —
-      `src/components/app-shell/app-shell.tsx:125-142` (preferencia en `localStorage`
-      `"rutax:sidebar-colapsado"`, leída con `useSyncExternalStore`, SSR-safe) y `:586-597` (toggle,
-      `lg:w-64` ↔ `lg:w-16`). El filtrado RBAC ocurre 100% en el servidor
-      (`src/app/(tenant)/layout.tsx:76-207`): lo que no puedes, no aparece.
-      *Falta:* re-estilo del rail al sistema nuevo, y que el colapso exista por debajo de `lg`
-      (hoy `botonColapsar` devuelve `null` dentro del `Sheet`).
+- [x] **`navegación lateral colapsable`** · EXTENDER · **re-estilada al sistema** —
+      ya colapsaba a rail con la preferencia persistida; lo que faltaba era el aspecto. El ítem
+      activo llevaba **pastilla redondeada con `shadow-sm` y un `ring`**, que es el ADN retirado y
+      contradice la regla 4 («sin sombras: la elevación se construye con escalón de fondo + borde»).
+      Ahora es lo que fija el tablero P1: **`bg-inset` + regla de acento de 2 px a la izquierda +
+      peso 600**, sin sombra y sin redondeo. Las cabeceras de grupo pasan a mono de 9 px con
+      tracking `.12em`, también del tablero.
+      **Verificado contra los valores literales del tablero en oscuro**: fondo `#131C21`, borde
+      `#00D6B4`, texto `#E9F2F3`, `box-shadow: none`. Y el colapso sigue: 256 → 64 px, con la regla
+      de acento visible en el rail.
+      La cabecera del archivo describía el «ADN de Retell» —lavanda, navy, pastilla con sombra—;
+      queda corregida, porque era justo lo que advertía el commit del retiro.
 
 - [x] **`navegación inferior móvil`** · DE CERO · **construida** —
       `src/components/app-shell/nav-inferior.tsx`, montada por el shell en `(tenant)` y `portal`.
@@ -270,8 +275,13 @@ bloques 4–8, cuando cada pantalla se toque.
 - [ ] **`navegación anidada de configuración`** · el costo dice DE CERO · **existe** — el «Patrón H»
       de `app-shell.tsx:465-467` y `:600-637` reemplaza el sidebar entero al entrar a configuración,
       con «← Volver» arriba. Cubre las 9 rutas de configuración.
-      *Falta:* (a) ~~`/configuracion` a secas es 404~~ — **resuelto**: `configuracion/page.tsx`
-      redirige al hub real mientras el rediseño no le dé a configuración su propio índice (B3b); (b) hay **tres vías distintas** a los mismos destinos (el ítem del sidebar, el
+      **Hecho:** `/configuracion` ya no es 404, y **la segunda puerta se cerró**. El menú del bloque
+      de marca ofrecía «Configuración de la empresa», «Equipo y roles» y «Mi plan y facturación», y
+      los tres destinos están, uno por uno, dentro de la navegación anidada — era una segunda vía al
+      mismo sitio, contra la regla del tablero de que la configuración se entra por una. El bloque
+      de marca queda estático y **no se pierde ningún destino**. La tarjeta de plan se queda: sus
+      cuatro entradas son anclas dentro de una misma pantalla, no otra puerta.
+      *Falta:* (a) el índice propio de configuración (B3b), que hoy se suple redirigiendo; (b) hay **tres vías distintas** a los mismos destinos (el ítem del sidebar, el
       dropdown del bloque de marca en `layout.tsx:192-201`, y la card de plan en `:179-186`);
       (c) `(tenant)/dinero/layout.tsx` usa **otro patrón** —tabs horizontales— que duplica los mismos
       ítems que ya están en el grupo «Dinero» del sidebar. Una sola regla, no dos.
@@ -365,7 +375,10 @@ bloques 4–8, cuando cada pantalla se toque.
 
 - [ ] `src/components/app-shell/app-shell.tsx` — es el archivo del bloque (739 líneas).
 - [ ] `src/app/(tenant)/layout.tsx` · `src/app/portal/layout.tsx` · `src/app/admin/layout.tsx`
-- [ ] `src/app/(tenant)/dinero/layout.tsx` — resolver el segundo patrón de nav anidada.
+- [ ] `src/app/(tenant)/dinero/layout.tsx` — **pasa al bloque 5.** Sus pestañas horizontales son un
+      cuarto patrón de navegación para destinos que ya están en el sidebar, pero cargan el contador
+      de conciliación y el `BadgeModoDte`, que sí son reales. Resolverlo sin el tablero `B2a` sería
+      adivinar; va con el bloque de dinero.
 - [ ] Las 32 de `(tenant)`, 11 de `portal` y 13 de `admin` heredan sin tocarse.
 - [ ] **Falta `src/app/(tenant)/configuracion/page.tsx`** (hoy 404).
 - [ ] `src/app/error.tsx` — es raíz y **reemplaza el AppShell entero**: en un error el usuario
