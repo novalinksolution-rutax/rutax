@@ -236,7 +236,7 @@ export default async function PaginaIncidencias({
                     <tr key={inc.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3">
                         <BadgeEstado
-                          variante={BADGE_ESTADO_INCIDENCIA[inc.estado]}
+                          variante={BADGE_ESTADO_INCIDENCIA[inc.estado]} eje="incidencia" valor={inc.estado}
                           texto={traducirEstadoIncidencia(inc.estado)}
                         />
                       </td>

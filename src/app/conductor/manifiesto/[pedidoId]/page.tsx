@@ -178,7 +178,7 @@ export default async function PaginaDetallePedidoConductor({ params }: Props) {
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">{pedido.destinatarioNombre}</h1>
         <BadgeEstado
-          variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          variante={BADGE_ESTADO_PEDIDO[pedido.estado]} eje="pedido" valor={pedido.estado}
           texto={traducirEstadoPedido(pedido.estado)}
           className="shrink-0"
         />

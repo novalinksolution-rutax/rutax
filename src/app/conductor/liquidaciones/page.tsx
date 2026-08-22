@@ -123,7 +123,7 @@ function CardLiquidacion({ liquidacion }: { liquidacion: Liquidacion }) {
           {formatearFechaCorta(liquidacion.fechaFin)}
         </p>
         <BadgeEstado
-          variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}
+          variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} eje="liquidacion" valor={liquidacion.estado}
           texto={textoEstado}
           className="shrink-0"
         />

@@ -862,3 +862,191 @@ const TEXTO_METODO_PAGO: Record<MetodoPago, string> = {
 export function traducirMetodoPago(metodo: MetodoPago): string {
   return TEXTO_METODO_PAGO[metodo] ?? metodo;
 }
+
+// =============================================================================
+// Bloque 0.3 del rediseño — los vocabularios que vivían fuera de este archivo
+// =============================================================================
+//
+// Los seis de abajo estaban repartidos en archivos de pantalla: dos como mapas
+// sueltos y cuatro como `switch` con clases de color escritas a mano
+// (`border-success-subtle text-success`, `variant="destructive"`). Ninguno
+// pasaba por el sistema de tonos, así que ninguno recibía sus correcciones —y
+// cuatro de ellos ni siquiera usaban `BadgeEstado`.
+//
+// Los tipos van declarados acá como uniones de literales, no importados del
+// dominio: son el contrato de PRESENTACIÓN. Si el dominio agrega un valor, el
+// mapa devuelve `undefined`, el llamador cae en su valor por defecto, y la
+// prueba mecánica de `tonos-estado.test.ts` sigue cuadrando contra las claves
+// que sí existen acá.
+
+// --- Salud de la conexión con la fuente (§12.3 del registro) -----------------
+// Estaba en `(tenant)/sellers/page.tsx`.
+//
+// ⚠️ El registro distingue **caída** (`fault`) de **desconectada** (`inert`), y
+// el código NO las distingue: token vencido, permiso revocado y fallo de
+// descifrado terminan los tres en `desvinculada` con el mismo texto. Se deja en
+// `fault`, que es el caso que exige actuar, y separarlas es trabajo del `bloque
+// de falla externa` (bloque 9c).
+
+export type EstadoSaludConexion = "sana" | "atencion" | "desvinculada" | "pendiente";
+
+export const TEXTO_SALUD_CONEXION: Record<EstadoSaludConexion, string> = {
+  sana: "Conectado",
+  atencion: "Requiere atención",
+  desvinculada: "Desconectado",
+  pendiente: "Sin conectar",
+};
+
+const VARIANTE_SALUD_CONEXION: Record<EstadoSaludConexion, VarianteEstado> = {
+  sana: "exito",
+  atencion: "advertencia",
+  desvinculada: "error",
+  pendiente: "neutral",
+};
+export const BADGE_SALUD_CONEXION = badgePorEstado(VARIANTE_SALUD_CONEXION);
+
+export function traducirSaludConexion(estado: string): string {
+  return TEXTO_SALUD_CONEXION[estado as EstadoSaludConexion] ?? estado;
+}
+
+// --- Invitación a una persona del equipo (§9.3 del registro) -----------------
+// Estaba en `(tenant)/equipo/panel-equipo.tsx`.
+
+export type EstadoInvitacionEquipo = "pendiente" | "aceptada" | "expirada" | "revocada";
+
+export const TEXTO_INVITACION: Record<EstadoInvitacionEquipo, string> = {
+  pendiente: "Pendiente",
+  aceptada: "Aceptada",
+  expirada: "Expirada",
+  revocada: "Revocada",
+};
+
+const VARIANTE_INVITACION: Record<EstadoInvitacionEquipo, VarianteEstado> = {
+  pendiente: "advertencia",
+  aceptada: "exito",
+  expirada: "neutral",
+  revocada: "neutral",
+};
+export const BADGE_INVITACION = badgePorEstado(VARIANTE_INVITACION);
+
+export function traducirEstadoInvitacion(estado: string): string {
+  return TEXTO_INVITACION[estado as EstadoInvitacionEquipo] ?? estado;
+}
+
+// --- Folio CAF ---------------------------------------------------------------
+// Estaba en `(tenant)/onboarding/folios/panel-folios-caf.tsx`, como `switch`.
+//
+// El registro (Anexo A) dice que el folio NO es un objeto compartido: "es un
+// número consumible, no un objeto con estados propios más allá de
+// disponible/consumido". Por eso `vigente` va en `neutral` y no en verde: lo
+// que de verdad hay que mirar —"por agotarse"— lo calcula la fila con su barra
+// de consumo, y el bloqueo lo pone la verificación previa.
+
+export type EstadoFolioCaf = "vigente" | "agotado" | "vencido";
+
+export const TEXTO_FOLIO_CAF: Record<EstadoFolioCaf, string> = {
+  vigente: "Vigente",
+  agotado: "Agotado",
+  vencido: "Vencido",
+};
+
+const VARIANTE_FOLIO_CAF: Record<EstadoFolioCaf, VarianteEstado> = {
+  vigente: "neutral",
+  agotado: "neutral",
+  vencido: "error",
+};
+export const BADGE_FOLIO_CAF = badgePorEstado(VARIANTE_FOLIO_CAF);
+
+export function traducirEstadoFolioCaf(estado: string): string {
+  return TEXTO_FOLIO_CAF[estado as EstadoFolioCaf] ?? estado;
+}
+
+// --- Certificación ante el proveedor DTE -------------------------------------
+// Estaba en `(tenant)/onboarding/dte/formulario-configuracion-dte.tsx`.
+
+export type EstadoCertificacionDte = "activo" | "en_proceso" | "con_problemas" | "pendiente";
+
+export const TEXTO_CERTIFICACION_DTE: Record<EstadoCertificacionDte, string> = {
+  activo: "Activo",
+  en_proceso: "En proceso",
+  con_problemas: "Con problemas",
+  pendiente: "Pendiente",
+};
+
+const VARIANTE_CERTIFICACION_DTE: Record<EstadoCertificacionDte, VarianteEstado> = {
+  activo: "exito",
+  en_proceso: "info",
+  con_problemas: "error",
+  pendiente: "neutral",
+};
+export const BADGE_CERTIFICACION_DTE = badgePorEstado(VARIANTE_CERTIFICACION_DTE);
+
+export function traducirEstadoCertificacionDte(estado: string): string {
+  return TEXTO_CERTIFICACION_DTE[estado as EstadoCertificacionDte] ?? estado;
+}
+
+// --- Conexión bancaria de cobranza -------------------------------------------
+// Estaba en `(tenant)/onboarding/cobranza/formulario-conexion-cobranza.tsx`.
+
+export type EstadoConexionCobranza = "conectado" | "error" | "revocado" | "desconectado";
+
+export const TEXTO_CONEXION_COBRANZA: Record<EstadoConexionCobranza, string> = {
+  conectado: "Conectado",
+  error: "Con problemas",
+  revocado: "Revocado",
+  desconectado: "Desconectado",
+};
+
+const VARIANTE_CONEXION_COBRANZA: Record<EstadoConexionCobranza, VarianteEstado> = {
+  conectado: "exito",
+  error: "error",
+  revocado: "neutral",
+  desconectado: "neutral",
+};
+export const BADGE_CONEXION_COBRANZA = badgePorEstado(VARIANTE_CONEXION_COBRANZA);
+
+export function traducirEstadoConexionCobranza(estado: string): string {
+  return TEXTO_CONEXION_COBRANZA[estado as EstadoConexionCobranza] ?? estado;
+}
+
+// --- Salud de un job de infraestructura --------------------------------------
+// Estaba en `admin/salud/page.tsx`, dentro de un componente local llamado
+// `BadgeEstado` que SOMBREABA al del sistema con otra API. No está en el
+// registro de objetos —es infraestructura, no dominio— pero comparte tonos.
+
+export type EstadoSaludJob = "ok" | "error" | "ejecutando";
+
+export const TEXTO_SALUD_JOB: Record<EstadoSaludJob, string> = {
+  ok: "OK",
+  error: "Error",
+  ejecutando: "En curso",
+};
+
+const VARIANTE_SALUD_JOB: Record<EstadoSaludJob, VarianteEstado> = {
+  ok: "exito",
+  error: "error",
+  ejecutando: "info",
+};
+export const BADGE_SALUD_JOB = badgePorEstado(VARIANTE_SALUD_JOB);
+
+export function traducirEstadoSaludJob(estado: string): string {
+  return TEXTO_SALUD_JOB[estado as EstadoSaludJob] ?? estado;
+}
+
+// --- Respuesta del SII, como mapa ---------------------------------------------
+// `traducirEstadoSii` ya existía más arriba, pero con otra forma —devuelve
+// `{texto, variante, icono}` con las variantes escritas `neutro`, no `neutral`—
+// así que el sistema de tonos no lo veía. Este mapa lo expone como los demás,
+// sin tocar la función original, que sigue teniendo llamadores.
+
+const VARIANTE_ESTADO_SII_MAPA: Record<EstadoSii, VarianteEstado> = {
+  pendiente: "neutral",
+  aceptado: "exito",
+  rechazado: "error",
+  aceptado_con_discrepancias: "advertencia",
+};
+export const BADGE_ESTADO_SII = badgePorEstado(VARIANTE_ESTADO_SII_MAPA);
+
+export function traducirEstadoSiiTexto(estado: EstadoSii): string {
+  return traducirEstadoSii(estado).texto;
+}

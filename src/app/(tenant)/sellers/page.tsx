@@ -19,8 +19,10 @@ import {
 } from "@/components/ui/table";
 import {
   BADGE_ESTADO_SELLER,
+  BADGE_SALUD_CONEXION,
   traducirEstadoSeller,
-  type BadgeVariante,
+  traducirSaludConexion,
+  type EstadoSaludConexion,
   type EstadoSeller,
 } from "@/lib/ui/traduccion-estados";
 import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
@@ -31,19 +33,9 @@ export const metadata: Metadata = {
   title: "Sellers",
 };
 
-const TEXTO_SALUD_CONEXION: Record<string, string> = {
-  sana: "Conectado",
-  atencion: "Requiere atención",
-  desvinculada: "Desconectado",
-  pendiente: "Sin conectar",
-};
-
-const BADGE_SALUD_CONEXION: Record<string, BadgeVariante> = {
-  sana: "success",
-  atencion: "warning",
-  desvinculada: "error",
-  pendiente: "neutral",
-};
+// El vocabulario de salud de conexión vive en `traduccion-estados.ts` desde el
+// bloque 0.3 del rediseño: acá era un mapa suelto que no pasaba por el sistema
+// de tonos.
 
 interface SellerFila {
   id: string;
@@ -267,12 +259,16 @@ export default async function PaginaSellers() {
                     <BadgeEstado
                       variante={BADGE_ESTADO_SELLER[seller.estado as EstadoSeller] ?? "warning"}
                       texto={traducirEstadoSeller(seller.estado)}
+                      eje="seller"
+                      valor={seller.estado}
                     />
                   </TableCell>
                   <TableCell className="px-4">
                     <BadgeEstado
-                      variante={BADGE_SALUD_CONEXION[seller.estadoSalud] ?? "neutral"}
-                      texto={TEXTO_SALUD_CONEXION[seller.estadoSalud] ?? seller.estadoSalud}
+                      variante={BADGE_SALUD_CONEXION[seller.estadoSalud as EstadoSaludConexion] ?? "neutral"}
+                      texto={traducirSaludConexion(seller.estadoSalud)}
+                      eje="conexion"
+                      valor={seller.estadoSalud}
                     />
                   </TableCell>
                   {mostrarColumnaSincronizar && (

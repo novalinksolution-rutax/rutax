@@ -18,6 +18,14 @@ const eslintConfig = defineConfig([
     // importa. Lintearlo deja el proyecto en rojo por código que nadie va a
     // mantener.
     "docs/_historico/**",
+    // Tableros visuales del rediseño (`docs/diseno/pantallas/`): HTML autónomo
+    // exportado desde Claude Design, con el mismo runtime vendorizado
+    // `support.js` que el handoff archivado de arriba. Es la ESPECIFICACIÓN
+    // VISUAL, no código de producción: se abre en el navegador con doble clic,
+    // no se compila ni se importa. Sus 2 errores —`ReactDOM.render` de React 17
+    // y una asignación a `module`— son del exportador, no nuestros, y dejaban
+    // `npm run lint` en rojo permanente, que es como no tener compuerta.
+    "docs/diseno/pantallas/**",
     // Artefactos generados y fuera del repo (`.gitignore`): el basemap PMTiles
     // recortado y el prototipo navegable de la Torre v2, con su copia compilada
     // del estilo y sus vendorizados de MapLibre/PMTiles. Es andamiaje de

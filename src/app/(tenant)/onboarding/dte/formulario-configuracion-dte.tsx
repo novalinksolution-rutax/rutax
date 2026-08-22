@@ -25,7 +25,6 @@ import {
   Lock,
   RefreshCw,
   ShieldAlert,
-  ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -44,6 +43,12 @@ import {
   type EstadoConfiguracionDte,
 } from "./actions";
 import { PROVEEDORES_DTE, obtenerProveedorDte } from "./catalogo";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import {
+  BADGE_CERTIFICACION_DTE,
+  traducirEstadoCertificacionDte,
+  type EstadoCertificacionDte,
+} from "@/lib/ui/traduccion-estados";
 
 // Umbral de "vencimiento próximo" (§1.2: "p. ej. 30 días") — visible aquí
 // porque tanto el badge como la alerta lo necesitan para decidir su variante.
@@ -427,29 +432,17 @@ function diasHasta(fechaIso: string | null): number | null {
 }
 
 function BadgeEstadoCertificacion({ estado }: { estado: EstadoConfiguracionDte["estadoCertificacion"] }) {
-  switch (estado) {
-    case "activo":
-      return (
-        <Badge variant="outline" className="border-success-subtle text-success">
-          <ShieldCheck className="size-3" aria-hidden="true" /> Activo
-        </Badge>
-      );
-    case "en_proceso":
-      return (
-        <Badge variant="outline" className="border-warning text-warning">
-          En proceso
-        </Badge>
-      );
-    case "con_problemas":
-      return (
-        <Badge variant="destructive">
-          <ShieldAlert className="size-3" aria-hidden="true" /> Con problemas
-        </Badge>
-      );
-    case "pendiente":
-    default:
-      return <Badge variant="outline">Pendiente</Badge>;
-  }
+  // El estado puede venir nulo cuando todavía no se ha cargado el certificado:
+  // eso ES "pendiente", y tratarlo como tal evita un rótulo vacío.
+  const valor: EstadoCertificacionDte = (estado ?? "pendiente") as EstadoCertificacionDte;
+  return (
+    <BadgeEstado
+      variante={BADGE_CERTIFICACION_DTE[valor] ?? "neutral"}
+      texto={traducirEstadoCertificacionDte(valor)}
+      eje="certificacion"
+      valor={valor}
+    />
+  );
 }
 
 // -----------------------------------------------------------------------------

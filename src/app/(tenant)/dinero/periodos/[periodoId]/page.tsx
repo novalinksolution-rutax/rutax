@@ -8,7 +8,7 @@
 import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle, Clock, XCircle, Settings, PenLine } from "lucide-react";
+import { Settings, PenLine } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
@@ -16,10 +16,10 @@ import { obtenerPeriodoCobro, listarDocumentosDte } from "@/modules/dinero/index
 import { resolverModoDteTenant, type ModoDte } from "@/modules/dinero/modo-dte";
 import type { DocumentoDte, LineaCobro } from "@/modules/dinero/tipos";
 import {
+  BADGE_ESTADO_SII,
+  traducirEstadoSiiTexto,
   traducirEstadoPeriodoCobro,
   BADGE_ESTADO_PERIODO,
-  traducirEstadoSii,
-  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
   BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
@@ -162,9 +162,9 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               {formatearFechaCorta(periodo.fechaInicio)} – {formatearFechaCorta(periodo.fechaFin)}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
+              <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
               {periodo.estadoCobro !== "no_aplica" && (
-                <BadgeEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)} />
+                <BadgeEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} eje="cobro-periodo" valor={periodo.estadoCobro} texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)} />
               )}
             </div>
             <p className="text-3xl font-semibold tabular-nums">
@@ -483,24 +483,14 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 // =============================================================================
 
 function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
-  const trad = traducirEstadoSii(estadoSii);
-
   return (
-    <Badge variant={badgeEstadoSii(trad.variante)} className="gap-1.5 px-2.5">
-      {trad.variante === "advertencia" && (
-        <AlertTriangle className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "exito" && (
-        <CheckCircle className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "error" && (
-        <XCircle className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "neutro" && (
-        <Clock className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.texto}
-    </Badge>
+    <BadgeEstado
+      variante={BADGE_ESTADO_SII[estadoSii] ?? "neutral"}
+      texto={traducirEstadoSiiTexto(estadoSii)}
+      eje="sii"
+      valor={estadoSii}
+      className={"gap-1.5 px-2.5"}
+    />
   );
 }
 

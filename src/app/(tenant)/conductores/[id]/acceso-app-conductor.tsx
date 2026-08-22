@@ -23,7 +23,7 @@ import { Check, Copy, Loader2, ShieldAlert, Smartphone, UserPlus } from "lucide-
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { BadgeEstado } from "@/components/ui/badge-estado";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { formatearFecha } from "@/lib/formato-cl";
 import { invitarConductor, obtenerInvitacionPendienteConductor } from "./actions";
 
@@ -71,7 +72,7 @@ export function AccesoAppConductor({ driverId, nombreConductor, puedeInvitar, es
 
       {estado.tipo === "cuenta_activa" && (
         <div className="flex flex-wrap items-center gap-2">
-          <BadgeEstado variante="success" texto="Tiene cuenta activa" />
+          <DistintivoEstado tono="neutral" etiqueta="Tiene cuenta activa" />
           <span className="text-sm text-muted-foreground">
             Puede iniciar sesión en la app y ver su manifiesto del día.
           </span>
@@ -80,7 +81,7 @@ export function AccesoAppConductor({ driverId, nombreConductor, puedeInvitar, es
 
       {estado.tipo === "cuenta_suspendida" && (
         <div className="flex flex-wrap items-center gap-2">
-          <BadgeEstado variante="neutral" texto="Cuenta suspendida" />
+          <DistintivoEstado tono="inert" etiqueta="Cuenta suspendida" />
           <span className="text-sm text-muted-foreground">
             Tiene una cuenta creada, pero no puede iniciar sesión mientras esté suspendida.
           </span>
@@ -90,7 +91,7 @@ export function AccesoAppConductor({ driverId, nombreConductor, puedeInvitar, es
       {estado.tipo === "invitacion_pendiente" && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <BadgeEstado variante="warning" texto="Invitación pendiente" />
+            <DistintivoEstado tono="neutral" etiqueta="Invitación pendiente" />
             <span className="text-sm text-muted-foreground">
               Enviada a {estado.email} · vence el {formatearFecha(estado.expiraEn)}
             </span>

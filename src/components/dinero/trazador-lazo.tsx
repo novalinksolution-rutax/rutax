@@ -13,7 +13,9 @@ import {
 import { cn } from "@/lib/utils";
 import type { TrazaDineroPedido } from "@/modules/dinero";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
-import { Badge } from "@/components/ui/badge";
+
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import type { NombreEje } from "@/lib/ui/tonos-estado";
 import {
   traducirEstadoPeriodoCobro,
   BADGE_ESTADO_PERIODO,
@@ -44,12 +46,22 @@ import {
 
 export function EtiquetaEstado({
   variante,
+  eje,
+  valor,
   children,
 }: {
   variante: BadgeVariante;
+  /** Eje de estado. Sin él no se aplican las correcciones del sistema. */
+  eje?: NombreEje;
+  /** Valor literal del enum, tal como viene de la base. */
+  valor?: string;
   children: React.ReactNode;
 }) {
-  return <Badge variant={variante}>{children}</Badge>;
+  // Delega en `BadgeEstado`, que a su vez delega en `DistintivoEstado`: es el
+  // mismo puente que usa el resto del producto. Antes pintaba un `<Badge>`
+  // crudo y por eso los seis usos de este componente se quedaban fuera del
+  // sistema de tonos.
+  return <BadgeEstado variante={variante} texto={children} eje={eje} valor={valor} />;
 }
 
 /**

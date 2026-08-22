@@ -360,7 +360,7 @@ export default async function PaginaManifiestoActivo() {
                       {etiquetaFuentePedido(pedido.fuente)}
                     </Badge>
                     <BadgeEstado
-                      variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+                      variante={BADGE_ESTADO_PEDIDO[pedido.estado]} eje="pedido" valor={pedido.estado}
                       texto={traducirEstadoPedido(pedido.estado)}
                     />
                   </div>

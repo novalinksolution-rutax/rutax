@@ -58,10 +58,10 @@ Dinero, no «Marco y navegación» del catálogo.
 
 | # | Bloque de construcción | Estado de la capa | Lo que falta | Bloqueado | Tablero que traer |
 |---|---|---|---|---|---|
-| **1** | Tokens y primitivas | **hecha** — tokens, puente, fuentes, 8 re-estilos, selector de fecha | `interruptor` · `credencial de una sola vez` | — | *(no hizo falta)* |
-| **2** | Estado | **hecha** — 8 de 10 componentes | adopción: **0 pantallas** pasan `eje`+`valor` | — | *(no hizo falta)* |
+| **1** | Tokens y primitivas | **hecha** — tokens, puente, fuentes, 8 re-estilos, selector de fecha, `interruptor` | `credencial de una sola vez` | — | *(no hizo falta)* |
+| **2** | Estado | **hecha** — 8 de 10 · 25 ejes · 33 correcciones con prueba mecánica | los 4 vocabularios que faltan viven en la app del conductor (bloque 6) | — | *(no hizo falta)* |
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
-| **0** | **Cola de 1–3** | — | 4 ítems sistémicos | — | — |
+| **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | 8 componentes · **4 ya existen** | 4 nuevos + las brechas de los 4 que existen | #12 · #21 | `Rutax P1 Pedidos` |
 | **5** | **Dinero** | 16 componentes · **0 hechos** *(el preflight tiene su lógica, no su forma)* | 16 + las 4 anulaciones | #7 a #11 | `Rutax P4 Emitir factura` · `B2a` · `B2b` |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
@@ -99,7 +99,7 @@ propósito. Lo que falta de adopción está en el bloque 0 y repartido en los bl
       calendario y atajos en un mismo control. Lo construyó el trabajo de filtros (`d754316`),
       antes del rediseño; cumple el contrato del catálogo.
 - [x] **Los 8 re-estilos de formulario** — heredados por el puente, sin tocar archivo.
-- [ ] **`interruptor`** — DE CERO. **No se construyó.** Ver bloque 0.
+- [x] **`interruptor`** — DE CERO. Construido en el bloque 0 como `src/components/ui/interruptor.tsx`.
 - [ ] `credencial de una sola vez` — DE CERO. Sin bloque en §10, ver bloque 9.
 
 ## Bloque 2 · Estado
@@ -149,49 +149,83 @@ propósito. Lo que falta de adopción está en el bloque 0 y repartido en los bl
 barato va junto acá, adelante del bloque 4; la adopción pantalla por pantalla se reparte en los
 bloques 4–8, cuando cada pantalla se toque.
 
-**Desbloquea:** que las correcciones de tono del sistema **se vean** en producción. Hoy no se ven.
+**Desbloquea:** que las correcciones de tono del sistema **se vean** en producción.
 
-- [ ] **0.1 · Construir `interruptor`** — `src/components/ui/switch.tsx`. Es DE CERO: no existe
-      `switch.tsx` ni un solo `role="switch"` en `src/`. El catálogo le pide los nueve estados y
-      una **etiqueta de consecuencia**. Cubre 14 pantallas: banderas, disponibilidad del conductor,
-      cobro automático, notificaciones.
-      *Dependen de él:* `configuracion/plan/bloque-cobro-automatico.tsx`, conductores, preferencias
-      de la app.
+> **Corrección de conteo (22-08-2026).** La primera versión de este documento decía «41 llamadas
+> directas, 32 de producto». El número real es **50 en total y 46 de producto**: la búsqueda que lo
+> midió no veía los `<BadgeEstado` partidos en varias líneas. Los conteos de abajo son los buenos.
 
-- [ ] **0.2 · Pasar `eje` + `valor` en las 32 llamadas de producto a `BadgeEstado`.**
-      **Hoy son cero.** Los únicos 5 sitios que lo hacen viven en `/kitchen-sink`, y el sexto es el
-      ejemplo del comentario de `badge-estado.tsx`. Sin esos dos datos la variante heredada ya
-      perdió de qué eje venía, y las correcciones son por `eje:valor`: un `cancelado` y un
-      `pendiente` llegan indistinguibles, los dos como `neutral`, **y solo el primero tiene que ir
-      en `inert` con su trama**.
+- [x] **0.1 · `interruptor` construido** — `src/components/ui/interruptor.tsx`, sobre
+      `radix-ui`. **Se llama `interruptor`, no `switch`**: los nombres del catálogo se usan tal cual
+      en el código, y este documento decía `switch.tsx` por inercia de shadcn.
+      Trae lo que el catálogo le pide —los estados y la **etiqueta de consecuencia**— más
+      `motivoDeshabilitado`, que es la versión de «deshabilitado con motivo» para un control que
+      no se puede tocar. Sin sombras, riel en `--rx-radius-pill`, acento como relleno vía
+      `bg-primary`, y la duración por `--rx-dur-quick`, que bajo `prefers-reduced-motion` ya vale
+      `0ms` en `rx-tokens.css` — no hace falta una consulta de medios propia.
+      **Verificado en el navegador**, seis variantes en `/kitchen-sink`: `role="switch"` y
+      `aria-checked` correctos, `aria-describedby` colgando la consecuencia, `aria-busy` en el
+      estado cargando, el pulgar viajando de 2 px a 18 px, cero sombra, y los **cuatro temas**
+      respondiendo distinto (en `sun` el riel va en negro sólido pleno, regla 12).
 
-      | Superficie | Llamadas | Archivos |
-      |---|---|---|
-      | `(tenant)` | 21 | 15 |
-      | `admin` | 5 | 3 |
-      | `src/components` | 4 | 2 |
-      | `portal` | 2 | 2 |
-      | `conductor` (PWA) | 0 | — |
+- [x] **0.2 · `eje` + `valor` en las llamadas con vocabulario central** — **55 sitios en 33 archivos**, de 0 que había.
+      El `eje` va **tipado contra `NombreEje`**, así que un nombre inventado no compila: era la
+      única forma de que un typo no quedara como una corrección muerta en silencio.
+      Además, 7 sitios que no tenían enum ninguno —booleanos y cadenas escritas a mano— pasaron a
+      `DistintivoEstado` con su tono explícito, decidido por el registro de objetos. **Ahí es donde
+      `inert` aparece por primera vez en producción**: cuenta de conductor suspendida (§7.4), usuario
+      suspendido (§9.3), y plan y aviso inactivos (§11.3, mismo criterio). Antes eran el mismo gris
+      que algo pendiente.
 
-      Se puede hacer en tandas por superficie. Cada tanda es mecánica y verificable a ojo.
+- [ ] **0.2b · Las 5 llamadas de `operaciones/` — BLOQUEADAS.**
+      `(tenant)/operaciones/page.tsx` (3) y `(tenant)/operaciones/[pedidoId]/page.tsx` (2) están
+      **modificadas sin commitear** por trabajo en curso ajeno al rediseño. Tocarlas mezcla dos
+      cambios en un mismo diff. Se hacen cuando ese trabajo aterrice; los ejes son `pedido`, `geo`,
+      `cobertura` e `incidencia`, todos ya declarados.
 
-- [ ] **0.3 · Absorber los 10 envoltorios locales `BadgeEstadoXxx`.** Cada uno tiene su propia
-      lógica de color, fuera del sistema, y ninguno pasa por `tonoDeEstado`:
-      `BadgeEstadoMatch` (`dinero/cobranza/page.tsx:254`) · `BadgeEstadoSiiInline` y
-      `BadgeEstadoCobro` (`dinero/periodos/page.tsx:335, 357`) · `BadgeEstadoSii`
-      (`dinero/periodos/[periodoId]/page.tsx:485` y `portal/cobros/[periodoId]/page.tsx:341`) ·
-      `BadgeEstadoSiiCompacto` (`portal/cobros/page.tsx:219`) · `BadgeEstadoInvitacion`
-      (`equipo/panel-equipo.tsx:425`) · `BadgeEstadoConexion`
-      (`onboarding/cobranza/formulario-conexion-cobranza.tsx:368`) · `BadgeEstadoCertificacion`
-      (`onboarding/dte/formulario-configuracion-dte.tsx:429`) · `BadgeEstadoFolio`
-      (`onboarding/folios/panel-folios-caf.tsx:367`).
-      Cada uno es un vocabulario de estado que el registro ya define. Van a `tonos-estado.ts`.
+- [x] **0.3 · Los vocabularios que vivían fuera del sistema, absorbidos** — eran **13**, y ninguno
+      pasaba por `tonoDeEstado`. Seis se movieron a `traduccion-estados.ts` como vocabularios de
+      primera clase, con su tipo, su mapa, su texto y su `traducir*`: **salud de conexión de fuente**
+      (§12.3), **invitación** (§9.3), **folio CAF**, **certificación DTE**, **conexión bancaria de
+      cobranza** y **salud de jobs**. Más el **SII**, que ya estaba en el archivo pero con otra forma
+      —devolvía `{texto, variante, icono}` con las variantes escritas `neutro`, no `neutral`— y por
+      eso el sistema de tonos no lo veía; ahora se expone también como mapa.
+      `EJE` pasó de 18 a **25 ejes** y las correcciones de 24 a **33**.
+      Lo que cambia en pantalla: `invitacion:expirada` y `:revocada`, `folio:agotado` y `:vencido`,
+      y `conexion-cobranza:revocado` y `:desconectado` **pasan a `inert`** — antes eran el mismo gris
+      que algo pendiente, o rojo como si se hubieran roto. `invitacion:pendiente` deja el ámbar
+      (tiene 7 días por delante) y `sii:pendiente` sube a `progress` (el documento ya salió).
+      Los envoltorios ahora **delegan**: los cuatro que eran `switch` con clases de color a mano
+      (`border-success-subtle text-success`, `variant="destructive"`) y los cuatro del SII, que
+      repetían entre todos **dieciséis ramas de glifo** para conseguir lo que `DistintivoEstado` da
+      solo. `EtiquetaEstado` de la trazabilidad también delega, con sus 6 usos.
+      Y el `BadgeEstado` local de `admin/salud/page.tsx` —que **sombreaba al del sistema** con otra
+      API, así que ninguna búsqueda por `<BadgeEstado` lo encontraba— se llama `EstadoJob` y delega.
+      **Verificado en el navegador**: el distintivo `inert` renderiza con su
+      `repeating-linear-gradient` a 135°, su glifo y su etiqueta.
 
-- [ ] **0.4 · Cerrar los vocabularios de `traduccion-estados.ts` sin corrección declarada.**
-      El diseño define **29 vocabularios con ~147 valores**; `tonos-estado.ts` trae hoy **10
-      correcciones**. Revisar los ~14 mapas `BADGE_*` existentes contra
-      `RUTAX-REGISTRO-DE-OBJETOS.md` (18 objetos, §.4 de cada uno) y declarar la corrección donde
-      el sistema decida distinto — con su razón escrita, como las que ya están.
+- [x] **0.4 · Los vocabularios confrontados contra el registro de objetos** —
+      `src/lib/ui/tonos-estado.ts` pasó de **10 correcciones a 24** (y a 33 con el 0.3), cada una con su razón escrita
+      y agrupada por el criterio que la produce: lo que está fuera de juego va en `inert` · lo
+      normal no se celebra · lo normal tampoco se alarma. Se revisaron los 18 mapas `VARIANTE_*`
+      contra los §.4 de los 18 objetos.
+      Se agregó `EJE`, el catálogo tipado de los 18 ejes, y **`tonos-estado.test.ts`** con 15
+      pruebas que cierran las cuatro formas de que la tabla mienta en silencio: eje inexistente,
+      valor inexistente, tono fuera de los seis, y **corrección que no cambia nada**.
+      Esa última encontró algo en su primera corrida: `retiro:no_procesado`, de las 10 originales,
+      **ya salía `neutral` por la vía mecánica** — parecía una decisión y no decidía nada. Su razón
+      se movió al bloque de decisiones deliberadas, que es donde no miente.
+      También quedaron escritas **tres decisiones que NO son correcciones** —`incidencia:abierta`
+      se queda en `fault` porque es el único rojo de la Torre, `geo:pendiente` y `mandato:activo`—
+      y **lo que la tabla no puede expresar**: el registro pide que una excepción abierta sea
+      `fault` solo si es de las 3 categorías de fuga, y eso depende de dos ejes a la vez. Va con el
+      bloque 5.
+
+- [x] **0.5 · `npm run lint` vuelve a ser compuerta** — tenía **2 errores permanentes** de
+      `docs/diseno/pantallas/support.js`, el runtime vendorizado que Claude Design exporta con los
+      tableros (`ReactDOM.render` de React 17 y una asignación a `module`). Entraron con `6b6b9f0`.
+      Se excluye `docs/diseno/pantallas/**` en `eslint.config.mjs`, con el mismo criterio y al lado
+      de `docs/_historico/**`, que ya estaba excluido por exactamente lo mismo. **0 errores.**
 
 ---
 

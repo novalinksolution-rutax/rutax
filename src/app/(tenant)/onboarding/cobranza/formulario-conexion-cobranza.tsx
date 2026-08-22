@@ -20,7 +20,7 @@ import { useState, useTransition, useCallback, useRef } from "react";
 import Script from "next/script";
 import { Banknote, CheckCircle2, Landmark, RefreshCw, ShieldAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EstadoError } from "@/components/onboarding/estado-pantalla";
@@ -28,6 +28,12 @@ import {
   conectarBancoCobranza,
   type EstadoConfiguracionCobranza,
 } from "./actions";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import {
+  BADGE_CONEXION_COBRANZA,
+  traducirEstadoConexionCobranza,
+  type EstadoConexionCobranza,
+} from "@/lib/ui/traduccion-estados";
 
 // URL del widget de Fintoc (script oficial). El SDK expone `window.Fintoc`.
 const FINTOC_WIDGET_SRC = "https://js.fintoc.com/v1/";
@@ -366,23 +372,15 @@ function SeccionConexion({
 }
 
 function BadgeEstadoConexion({ estado }: { estado: EstadoConfiguracionCobranza["estadoConexion"] }) {
-  switch (estado) {
-    case "conectado":
-      return (
-        <Badge variant="outline" className="border-success-subtle text-success">
-          <CheckCircle2 className="size-3" aria-hidden="true" /> Conectado
-        </Badge>
-      );
-    case "error":
-      return (
-        <Badge variant="destructive">
-          <ShieldAlert className="size-3" aria-hidden="true" /> Con problemas
-        </Badge>
-      );
-    case "revocado":
-      return <Badge variant="outline">Revocado</Badge>;
-    case "desconectado":
-    default:
-      return <Badge variant="outline">Desconectado</Badge>;
-  }
+  // `revocado` y `desconectado` quedan en `inert`: la conexión existe, está
+  // fuera de juego y se arregla volviendo a conectar (registro §12.3). Antes
+  // eran el mismo gris de "todavía no se hizo".
+  return (
+    <BadgeEstado
+      variante={BADGE_CONEXION_COBRANZA[estado as EstadoConexionCobranza] ?? "neutral"}
+      texto={traducirEstadoConexionCobranza(estado)}
+      eje="conexion-cobranza"
+      valor={estado}
+    />
+  );
 }

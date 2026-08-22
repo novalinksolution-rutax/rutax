@@ -28,8 +28,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { BadgeEstado } from "@/components/ui/badge-estado";
+
 import { EmptyState } from "@/components/ui/empty-state";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { Plan } from "@/modules/plataforma/tipos";
 import { TooltipSoloLectura } from "../tooltip-solo-lectura";
@@ -353,9 +354,9 @@ export function TablaPlanes({ planes, puedeEscribir }: Props) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <BadgeEstado
-                        variante={p.activo ? "success" : "neutral"}
-                        texto={p.activo ? "Activo" : "Inactivo"}
+                      <DistintivoEstado
+                        tono={p.activo ? "neutral" : "inert"}
+                        etiqueta={p.activo ? "Activo" : "Inactivo"}
                       />
                     </td>
                     <td className="hidden px-4 py-3 tabular-nums font-mono sm:table-cell">

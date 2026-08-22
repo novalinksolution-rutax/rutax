@@ -11,9 +11,10 @@ import { useState, useTransition } from "react";
 import { HandCoins, MapPin, Phone, Warehouse } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { BadgeEstado } from "@/components/ui/badge-estado";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import {
   Dialog,
   DialogClose,
@@ -192,7 +193,7 @@ export function TarjetaBodega({
           {bodega.activa && noUbicada && (
             <div className="space-y-1.5 rounded-md bg-warning-subtle px-2.5 py-1.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <BadgeEstado variante="warning" texto={traducirGeoEstado(bodega.geoEstado)} />
+                <DistintivoEstado tono="attention" etiqueta={traducirGeoEstado(bodega.geoEstado)} />
                 {puedeReintentarUbicacion && (
                   <Button
                     type="button"

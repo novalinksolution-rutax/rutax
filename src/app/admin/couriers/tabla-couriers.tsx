@@ -127,7 +127,7 @@ export function TablaCouriers({ couriers }: Props) {
                       </td>
                       <td className="px-4 py-3">
                         <BadgeEstado
-                          variante={BADGE_ESTADO_SUSCRIPCION[c.estadoSuscripcion]}
+                          variante={BADGE_ESTADO_SUSCRIPCION[c.estadoSuscripcion]} eje="suscripcion" valor={c.estadoSuscripcion}
                           texto={traducirEstadoSuscripcion(c.estadoSuscripcion)}
                         />
                       </td>

@@ -342,7 +342,7 @@ export default async function PaginaDetalleConductor({ params }: Props) {
                     </TableCell>
                     <TableCell className="px-4">
                       {e.liqEstado ? (
-                        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[e.liqEstado]} texto={traducirEstadoLiquidacion(e.liqEstado)} />
+                        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[e.liqEstado]} eje="liquidacion" valor={e.liqEstado} texto={traducirEstadoLiquidacion(e.liqEstado)} />
                       ) : (
                         <Badge variant="neutral">Acumulando</Badge>
                       )}

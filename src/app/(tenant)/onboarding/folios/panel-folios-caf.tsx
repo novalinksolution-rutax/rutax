@@ -19,7 +19,6 @@ import Link from "next/link";
 import {
   CheckCircle2,
   FileText,
-  Lock,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -41,6 +40,12 @@ import {
   type FolioCaf,
 } from "./actions";
 import { TIPOS_DOCUMENTO_DTE, etiquetaTipoDocumento } from "./catalogo";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import {
+  BADGE_FOLIO_CAF,
+  traducirEstadoFolioCaf,
+  type EstadoFolioCaf,
+} from "@/lib/ui/traduccion-estados";
 
 interface Props {
   estadoInicial: EstadoFoliosCaf | null;
@@ -365,18 +370,16 @@ function FilaFolio({ folio }: { folio: FolioCaf }) {
 }
 
 function BadgeEstadoFolio({ estado }: { estado: FolioCaf["estado"] }) {
-  switch (estado) {
-    case "vigente":
-      return (
-        <Badge variant="outline" className="border-success-subtle text-success">
-          <Lock className="size-3" aria-hidden="true" /> Vigente
-        </Badge>
-      );
-    case "agotado":
-      return <Badge variant="outline">Agotado</Badge>;
-    case "vencido":
-      return <Badge variant="destructive">Vencido</Badge>;
-    default:
-      return <Badge variant="outline">{estado}</Badge>;
-  }
+  // `vigente` va en `neutral`, no en verde: que un CAF esté vigente es la
+  // condición para operar, no una buena noticia. Lo que sí hay que mirar
+  // —"por agotarse"— lo dice la barra de consumo de la fila, y el bloqueo lo
+  // pone la verificación previa. `agotado` y `vencido` quedan en `inert`.
+  return (
+    <BadgeEstado
+      variante={BADGE_FOLIO_CAF[estado as EstadoFolioCaf] ?? "neutral"}
+      texto={traducirEstadoFolioCaf(estado)}
+      eje="folio"
+      valor={estado}
+    />
+  );
 }

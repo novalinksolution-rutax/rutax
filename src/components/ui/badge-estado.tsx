@@ -1,5 +1,12 @@
+import * as React from "react"
 import { DistintivoEstado } from "@/components/ui/distintivo-estado"
-import { tonoDeEstado, tonoDesdeVariante, type TonoEstado, type VarianteHeredada } from "@/lib/ui/tonos-estado"
+import {
+  tonoDeEstado,
+  tonoDesdeVariante,
+  type NombreEje,
+  type TonoEstado,
+  type VarianteHeredada,
+} from "@/lib/ui/tonos-estado"
 import type { BadgeVariante } from "@/lib/ui/traduccion-estados"
 
 /**
@@ -16,18 +23,20 @@ import type { BadgeVariante } from "@/lib/ui/traduccion-estados"
  * un producto en producción con clientes reales. Migrar 42 archivos de una vez
  * es un cambio que nadie puede revisar.
  *
- * CÓMO SE MIGRA UNA LLAMADA
+ * POR QUÉ TODA LLAMADA LLEVA `eje` Y `valor`
  * ---------------------------------------------------------------------------
- * Pásale `eje` y `valor`, y el distintivo aplica las correcciones del sistema
- * de diseño en vez de la traducción mecánica:
+ * Sin esos dos datos las correcciones del sistema de diseño no se pueden
+ * aplicar: la variante heredada ya perdió de qué eje venía, y la tabla de
+ * correcciones es por `eje:valor`. Un `cancelado` y un `pendiente` llegan acá
+ * indistinguibles —los dos como `neutral`— y solo el primero tiene que ir en
+ * `inert` con su trama.
  *
- *   antes:  <BadgeEstado variante={BADGE_ESTADO_PEDIDO[p.estado]} texto={…} />
- *   ahora:  <BadgeEstado variante={…} texto={…} eje="pedido" valor={p.estado} />
+ *   <BadgeEstado variante={BADGE_ESTADO_PEDIDO[p.estado]} texto={…}
+ *                eje="pedido" valor={p.estado} />
  *
- * Sin esos dos datos no se puede: la variante heredada ya perdió de qué eje
- * venía, y las correcciones son por `eje:valor`. Un `cancelado` y un `pendiente`
- * llegan acá indistinguibles, los dos como `neutral`, y solo el primero tiene
- * que ir en `inert` con su trama.
+ * `eje` va tipado contra `NombreEje`, así que un nombre inventado no compila.
+ * Las llamadas de producto están todas migradas (bloque 0 del rediseño); si
+ * agregas una nueva, pásale los dos.
  */
 
 /**
@@ -55,12 +64,21 @@ export function BadgeEstado({
   className,
 }: {
   variante: BadgeVariante
-  texto: string
+  /** Casi siempre una cadena; `ReactNode` por los llamadores heredados que
+   *  pasan un fragmento con su propio marcado. */
+  texto: React.ReactNode
   /** Antes controlaba el punto de color; ahora controla el glifo, que es su
    *  reemplazo y cumple la misma función mejor: sobrevive al monocromo. */
   conPunto?: boolean
-  /** Eje de estado (`pedido`, `seller`, `liquidacion`…). Habilita las correcciones. */
-  eje?: string
+  /**
+   * Eje de estado. Habilita las correcciones del sistema de diseño.
+   *
+   * Va tipado contra `NombreEje` y no contra `string` a propósito: la clave de
+   * la tabla de correcciones es `eje:valor`, así que un `eje` mal escrito no
+   * rompe nada — simplemente no coincide nunca y el estado se sigue pintando
+   * como antes, **en silencio**. Tipado, no compila.
+   */
+  eje?: NombreEje
   /** Valor literal del enum, tal como viene de la base. */
   valor?: string
   className?: string

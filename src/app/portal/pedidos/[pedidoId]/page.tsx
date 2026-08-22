@@ -340,7 +340,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
           </p>
         </div>
         <BadgeEstado
-          variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+          variante={BADGE_ESTADO_PEDIDO[pedido.estado]} eje="pedido" valor={pedido.estado}
           texto={traducirEstadoPedido(pedido.estado)}
           className="px-3 py-1 text-sm"
         />

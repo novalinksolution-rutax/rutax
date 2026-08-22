@@ -383,7 +383,7 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
                     <td className="px-4 py-3">{s.plan.nombre}</td>
                     <td className="px-4 py-3">
                       <BadgeEstado
-                        variante={BADGE_ESTADO_SUSCRIPCION[s.estado]}
+                        variante={BADGE_ESTADO_SUSCRIPCION[s.estado]} eje="suscripcion" valor={s.estado}
                         texto={traducirEstadoSuscripcion(s.estado)}
                       />
                     </td>

@@ -253,6 +253,6 @@ function FilaPago({ pago, sellers }: { pago: PagoConSeller; sellers: { id: strin
 
 function BadgeEstadoMatch({ estado }: { estado: EstadoMatchPago }) {
   return (
-    <BadgeEstado variante={BADGE_ESTADO_MATCH_PAGO[estado]} texto={traducirEstadoMatchPago(estado)} />
+    <BadgeEstado variante={BADGE_ESTADO_MATCH_PAGO[estado]} eje="match-pago" valor={estado} texto={traducirEstadoMatchPago(estado)} />
   );
 }

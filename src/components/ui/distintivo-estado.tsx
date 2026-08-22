@@ -1,3 +1,4 @@
+import * as React from "react"
 import { AlertTriangle, ArrowRight, Check, Minus, Slash, XCircle } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -60,7 +61,9 @@ export function DistintivoEstado({
   className,
 }: {
   tono: TonoEstado
-  etiqueta: string
+  /** Casi siempre una cadena. Acepta `ReactNode` porque se renderiza como hijo
+   *  y algunos llamadores heredados pasan fragmentos con su propio marcado. */
+  etiqueta: React.ReactNode
   /** El glifo solo se apaga donde el ancho no da — nunca por gusto. */
   conGlifo?: boolean
   className?: string

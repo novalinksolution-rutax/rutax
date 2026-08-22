@@ -69,7 +69,7 @@ function FilaPeriodo({ periodo, puedeEscribir }: { periodo: PeriodoConPago; pued
       <td className="px-4 py-3 tabular-nums font-mono">{formatearCLP(periodo.montoClp)}</td>
       <td className="px-4 py-3">
         <BadgeEstado
-          variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodo.estado]}
+          variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodo.estado]} eje="periodo-suscripcion" valor={periodo.estado}
           texto={traducirEstadoPeriodoSuscripcion(periodo.estado)}
         />
       </td>

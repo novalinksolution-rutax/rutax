@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Activity, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { Activity } from "lucide-react";
 import { tieneSesionAdmin } from "../sesion-admin";
 import {
   obtenerSaludJobs,
   obtenerBacklogSistema,
   type SaludJob,
 } from "@/modules/plataforma/salud";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import {
+  BADGE_SALUD_JOB,
+  traducirEstadoSaludJob,
+  type EstadoSaludJob,
+} from "@/lib/ui/traduccion-estados";
 
 export const metadata: Metadata = {
   title: "Salud del sistema · Rutax Admin",
@@ -138,7 +144,7 @@ function FilaJob({ job }: { job: SaludJob }) {
     <tr className="border-t">
       <td className="px-3 py-2 font-mono text-xs">{job.jobId}</td>
       <td className="px-3 py-2">
-        <BadgeEstado estado={job.estado} />
+        <EstadoJob estado={job.estado} />
       </td>
       <td className="px-3 py-2 text-muted-foreground">{haceCuanto(job.iniciadoEn)}</td>
       <td className="px-3 py-2 text-muted-foreground">
@@ -161,18 +167,18 @@ function FilaJob({ job }: { job: SaludJob }) {
   );
 }
 
-function BadgeEstado({ estado }: { estado: SaludJob["estado"] }) {
-  const config = {
-    ok: { Icon: CheckCircle2, clase: "text-success", texto: "OK" },
-    error: { Icon: AlertTriangle, clase: "text-destructive", texto: "Error" },
-    ejecutando: { Icon: Clock, clase: "text-muted-foreground", texto: "En curso" },
-  }[estado];
-
+/**
+ * Se llamaba `BadgeEstado` y **sombreaba al del sistema** con otra API, así que
+ * ninguna búsqueda por `<BadgeEstado` lo encontraba. Renombrado y delegando.
+ */
+function EstadoJob({ estado }: { estado: SaludJob["estado"] }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-xs font-medium ${config.clase}`}>
-      <config.Icon className="size-3.5" aria-hidden="true" />
-      {config.texto}
-    </span>
+    <BadgeEstado
+      variante={BADGE_SALUD_JOB[estado as EstadoSaludJob] ?? "neutral"}
+      texto={traducirEstadoSaludJob(estado)}
+      eje="job"
+      valor={estado}
+    />
   );
 }
 

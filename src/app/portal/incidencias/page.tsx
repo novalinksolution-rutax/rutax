@@ -233,7 +233,7 @@ export default async function PaginaIncidenciasSeller({
                       <TableCell className="px-4">
                         <div className="flex flex-wrap items-center gap-1">
                           <BadgeEstado
-                            variante={BADGE_ESTADO_INCIDENCIA[inc.estado]}
+                            variante={BADGE_ESTADO_INCIDENCIA[inc.estado]} eje="incidencia" valor={inc.estado}
                             texto={traducirEstadoIncidencia(inc.estado)}
                           />
                           {sinGestion && (

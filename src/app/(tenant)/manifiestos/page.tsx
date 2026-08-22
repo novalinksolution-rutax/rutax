@@ -192,7 +192,7 @@ export default async function PaginaManifiestos({
                 {manifiestos.map((m) => (
                   <TableRow key={m.id}>
                     <TableCell className="px-4">
-                      <BadgeEstado variante={BADGE_ESTADO_MANIFIESTO[m.estado]} texto={traducirEstadoManifiesto(m.estado)} />
+                      <BadgeEstado variante={BADGE_ESTADO_MANIFIESTO[m.estado]} eje="manifiesto" valor={m.estado} texto={traducirEstadoManifiesto(m.estado)} />
                     </TableCell>
                     <TableCell className="px-4">
                       <Link href={`/manifiestos/${m.id}`} className="font-medium hover:underline">

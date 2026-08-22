@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Interruptor } from "@/components/ui/interruptor"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
@@ -104,6 +105,8 @@ const SWATCHES: { nombre: string; clase: string; borde?: boolean }[] = [
 export default function KitchenSinkPage() {
   const { setTheme } = useTheme()
   const [cajonActivo, setCajonActivo] = useState<string | null>(null)
+  const [cobroAuto, setCobroAuto] = useState(true)
+  const [disponible, setDisponible] = useState(false)
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -429,6 +432,49 @@ export default function KitchenSinkPage() {
             <div className="flex items-center gap-2 sm:col-span-2">
               <Checkbox id="ks-check" defaultChecked />
               <Label htmlFor="ks-check">Acepto emitir la factura al cierre del período</Label>
+            </div>
+          </div>
+        </Seccion>
+
+        {/* Interruptor · bloque 1 del rediseño, el único de cero de ese bloque */}
+        <Seccion titulo="Sistema nuevo · Bloque 1 · interruptor">
+          <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+            <Interruptor
+              etiqueta="Cobro automático"
+              consecuencia={{
+                encendido: "Te cobramos el plan el día 5 de cada mes.",
+                apagado: "Nadie te va a cobrar: tienes que pagar a mano cada mes.",
+              }}
+              checked={cobroAuto}
+              onCheckedChange={setCobroAuto}
+            />
+            <Interruptor
+              etiqueta="Disponible hoy"
+              consecuencia={{
+                encendido: "Entras al reparto de las 16:00 y puedes recibir pedidos.",
+                apagado: "No recibes asignaciones nuevas. Las que ya tienes siguen siendo tuyas.",
+              }}
+              checked={disponible}
+              onCheckedChange={setDisponible}
+            />
+            <Interruptor
+              etiqueta="Bloquea la facturación"
+              motivoDeshabilitado="Solo Administración puede cambiar las banderas de una excepción."
+              checked={true}
+            />
+            <Interruptor
+              etiqueta="Notificar al conductor"
+              consecuencia={{
+                encendido: "Le llega un aviso cuando su ruta queda lista.",
+                apagado: "No le llega nada; lo ve al abrir la app.",
+              }}
+              checked={true}
+              cargando
+            />
+            <div className="flex items-center gap-3 border-t border-border pt-4">
+              <span className="text-xs text-muted-foreground">Suelto, sin etiqueta</span>
+              <Interruptor aria-label="Ejemplo suelto" defaultChecked />
+              <Interruptor aria-label="Ejemplo suelto apagado" />
             </div>
           </div>
         </Seccion>

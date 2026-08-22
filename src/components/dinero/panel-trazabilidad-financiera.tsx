@@ -181,7 +181,7 @@ export function PanelTrazabilidadFinanciera({
         <span className="font-mono text-sm font-semibold tabular-nums">
           {formatearCLP(liquidacion.montoFinalClp)}
         </span>
-        <EtiquetaEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]}>
+        <EtiquetaEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} eje="liquidacion" valor={liquidacion.estado}>
           {traducirEstadoLiquidacion(liquidacion.estado)}
         </EtiquetaEstado>
         <Link
@@ -214,7 +214,7 @@ export function PanelTrazabilidadFinanciera({
         <span className="font-mono text-sm font-semibold tabular-nums">
           {formatearCLP(payout.montoLiquidoClp)}
         </span>
-        <EtiquetaEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]}>
+        <EtiquetaEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]} eje="payout" valor={payout.estado}>
           {traducirEstadoPayout(payout.estado)}
         </EtiquetaEstado>
       </div>
@@ -223,7 +223,7 @@ export function PanelTrazabilidadFinanciera({
     payoutTono = "atencion";
     payoutContenido = (
       <div className="space-y-1">
-        <EtiquetaEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]}>
+        <EtiquetaEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]} eje="payout" valor={payout.estado}>
           {traducirEstadoPayout(payout.estado)}
         </EtiquetaEstado>
         {payout.errorDescripcion && (
@@ -234,7 +234,7 @@ export function PanelTrazabilidadFinanciera({
   } else {
     payoutTono = "pendiente";
     payoutContenido = (
-      <EtiquetaEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]}>
+      <EtiquetaEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]} eje="payout" valor={payout.estado}>
         {traducirEstadoPayout(payout.estado)}
       </EtiquetaEstado>
     );
@@ -248,7 +248,7 @@ export function PanelTrazabilidadFinanciera({
             <span className="text-muted-foreground">Cobro:</span>
             {periodo ? (
               <BadgeEstado
-                variante={BADGE_ESTADO_PERIODO[periodo.estado]}
+                variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado}
                 texto={traducirEstadoPeriodoCobro(periodo.estado, factura?.folio)}
               />
             ) : (
@@ -258,7 +258,7 @@ export function PanelTrazabilidadFinanciera({
           <span className="flex items-center gap-1.5">
             <span className="text-muted-foreground">Liquidación:</span>
             {liquidacion ? (
-              <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} texto={traducirEstadoLiquidacion(liquidacion.estado)} />
+              <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} eje="liquidacion" valor={liquidacion.estado} texto={traducirEstadoLiquidacion(liquidacion.estado)} />
             ) : (
               <Badge variant="neutral">—</Badge>
             )}
@@ -322,7 +322,7 @@ export function PanelTrazabilidadFinanciera({
                       >
                         {periodo ? (
                           <div className="flex flex-wrap items-center gap-2">
-                            <EtiquetaEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]}>
+                            <EtiquetaEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado}>
                               {traducirEstadoPeriodoCobro(periodo.estado, factura?.folio)}
                             </EtiquetaEstado>
                             <Link
@@ -370,7 +370,7 @@ export function PanelTrazabilidadFinanciera({
                         ultimo={false}
                       >
                         {periodo ? (
-                          <EtiquetaEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}>
+                          <EtiquetaEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} eje="cobro-periodo" valor={periodo.estadoCobro}>
                             {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
                           </EtiquetaEstado>
                         ) : (
@@ -389,7 +389,7 @@ export function PanelTrazabilidadFinanciera({
                                 <span className="font-mono tabular-nums">
                                   {formatearCLP(p.montoClp)}
                                 </span>
-                                <BadgeEstado variante={BADGE_ESTADO_MATCH_PAGO[p.estadoMatch]} texto={traducirEstadoMatchPago(p.estadoMatch)} />
+                                <BadgeEstado variante={BADGE_ESTADO_MATCH_PAGO[p.estadoMatch]} eje="match-pago" valor={p.estadoMatch} texto={traducirEstadoMatchPago(p.estadoMatch)} />
                               </li>
                             ))}
                           </ul>

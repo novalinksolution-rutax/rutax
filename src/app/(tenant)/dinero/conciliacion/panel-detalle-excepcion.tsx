@@ -370,7 +370,7 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
               Estado
             </h3>
             <div className="flex flex-wrap items-center gap-2">
-              <BadgeEstado variante={BADGE_ESTADO_CONCILIACION[evento.estado]} texto={traducirEstadoConciliacion(evento.estado)} />
+              <BadgeEstado variante={BADGE_ESTADO_CONCILIACION[evento.estado]} eje="conciliacion" valor={evento.estado} texto={traducirEstadoConciliacion(evento.estado)} />
               {evento.resueltaEn && (
                 <span className="text-xs text-muted-foreground">
                   Cerrada {formatearTiempoRelativo(evento.resueltaEn)}

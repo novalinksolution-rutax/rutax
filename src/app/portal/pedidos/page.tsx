@@ -288,7 +288,7 @@ export default async function PaginaPedidosSeller({
                   <TableRow key={pedido.id}>
                     <TableCell className="px-4">
                       <BadgeEstado
-                        variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
+                        variante={BADGE_ESTADO_PEDIDO[pedido.estado]} eje="pedido" valor={pedido.estado}
                         texto={traducirEstadoPedido(pedido.estado)}
                       />
                     </TableCell>

@@ -24,7 +24,7 @@ import { obtenerMetricasNegocio, type MetricasNegocio } from "@/modules/platafor
 import { obtenerMetricasUsoPlataforma, type MetricasUsoPlataforma } from "@/modules/plataforma/metricas-uso";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { BADGE_ESTADO_SUSCRIPCION, TEXTO_ESTADO_SUSCRIPCION } from "@/lib/ui/traduccion-estados";
-import { Badge } from "@/components/ui/badge";
+
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
@@ -352,7 +352,7 @@ function BarrasCouriersPorEstado({
         return (
           <div key={estado} className="space-y-1">
             <div className="flex items-center justify-between text-sm">
-              <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[estado]} texto={TEXTO_ESTADO_SUSCRIPCION[estado]} />
+              <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[estado]} eje="suscripcion" valor={estado} texto={TEXTO_ESTADO_SUSCRIPCION[estado]} />
               <span className="tabular-nums text-muted-foreground">
                 {valor.toLocaleString("es-CL")} · {pct}%
               </span>

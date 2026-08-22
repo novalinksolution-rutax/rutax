@@ -8,21 +8,21 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle, Clock, XCircle, Receipt } from "lucide-react";
+import { Receipt } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarPeriodosCobro, listarDocumentosDte } from "@/modules/dinero/index";
 import type { PeriodoCobro, DocumentoDte } from "@/modules/dinero/tipos";
 import {
+  BADGE_ESTADO_SII,
+  traducirEstadoSiiTexto,
   traducirEstadoPeriodoCobro,
   BADGE_ESTADO_PERIODO,
-  traducirEstadoSii,
-  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
   BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import { Badge } from "@/components/ui/badge";
+
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -187,7 +187,7 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
         </Link>
       </TableCell>
       <TableCell className="px-4">
-        <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
+        <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
       </TableCell>
       <TableCell className="hidden px-4 text-right text-muted-foreground tabular-nums sm:table-cell">
         {periodo.totalLineas}
@@ -207,7 +207,7 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
           <span className="text-xs text-muted-foreground">—</span>
         ) : (
           <BadgeEstado
-            variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
+            variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} eje="cobro-periodo" valor={periodo.estadoCobro}
             texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)}
           />
         )}
@@ -221,23 +221,12 @@ function BadgeEstadoSiiCompacto({
 }: {
   estadoSii: DocumentoDte["estadoSii"];
 }) {
-  const trad = traducirEstadoSii(estadoSii);
-
   return (
-    <Badge variant={badgeEstadoSii(trad.variante)}>
-      {trad.variante === "advertencia" && (
-        <AlertTriangle className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "exito" && (
-        <CheckCircle className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "error" && (
-        <XCircle className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "neutro" && (
-        <Clock className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.texto}
-    </Badge>
+    <BadgeEstado
+      variante={BADGE_ESTADO_SII[estadoSii] ?? "neutral"}
+      texto={traducirEstadoSiiTexto(estadoSii)}
+      eje="sii"
+      valor={estadoSii}
+         />
   );
 }

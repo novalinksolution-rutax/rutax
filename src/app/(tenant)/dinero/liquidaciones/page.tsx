@@ -359,7 +359,7 @@ function FilaLiquidacion({
         </Link>
       </td>
       <td className="px-4 py-3">
-        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} texto={textoEstado} />
+        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} eje="liquidacion" valor={liquidacion.estado} texto={textoEstado} />
       </td>
       <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
         {liquidacion.totalEntregas}

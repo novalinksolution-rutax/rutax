@@ -8,7 +8,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle, Clock, XCircle } from "lucide-react";
+
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
@@ -18,15 +18,15 @@ import {
 } from "@/modules/dinero/index";
 import type { PeriodoCobro, DocumentoDte, EstadoPeriodo } from "@/modules/dinero/tipos";
 import {
+  BADGE_ESTADO_SII,
+  traducirEstadoSiiTexto,
   traducirEstadoPeriodoCobro,
   BADGE_ESTADO_PERIODO,
-  traducirEstadoSii,
-  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
   BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import { Badge } from "@/components/ui/badge";
+
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
 import { FiltrosPeriodosForm } from "./filtros-periodos";
@@ -333,24 +333,13 @@ export default async function PaginaPeriodosCobro({
 // =============================================================================
 
 function BadgeEstadoSiiInline({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
-  const trad = traducirEstadoSii(estadoSii);
-
   return (
-    <Badge variant={badgeEstadoSii(trad.variante)}>
-      {trad.variante === "advertencia" && (
-        <AlertTriangle className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "exito" && (
-        <CheckCircle className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "error" && (
-        <XCircle className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "neutro" && (
-        <Clock className="size-3 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.texto}
-    </Badge>
+    <BadgeEstado
+      variante={BADGE_ESTADO_SII[estadoSii] ?? "neutral"}
+      texto={traducirEstadoSiiTexto(estadoSii)}
+      eje="sii"
+      valor={estadoSii}
+         />
   );
 }
 
@@ -361,16 +350,20 @@ function BadgeEstadoCobro({ periodo }: { periodo: PeriodoConDte }) {
     return <span className="text-muted-foreground">—</span>;
   }
   return (
-    <Badge
-      variant={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
+    <span
       title={
         periodo.estadoCobro === "parcial"
           ? `Pagado: ${formatearCLPOGuion(periodo.montoPagadoClp)}`
           : undefined
       }
     >
-      {traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-    </Badge>
+      <BadgeEstado
+        variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
+        texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)}
+        eje="cobro-periodo"
+        valor={periodo.estadoCobro}
+      />
+    </span>
   );
 }
 
@@ -399,7 +392,7 @@ function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
 
       {/* Estado */}
       <td className="px-4 py-3">
-        <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
+        <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
       </td>
 
       {/* Líneas */}

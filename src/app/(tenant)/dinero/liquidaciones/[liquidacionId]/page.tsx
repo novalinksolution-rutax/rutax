@@ -25,7 +25,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { referenciaLineaLiquidacion } from "@/lib/ui/referencia-linea-liquidacion";
-import { Badge } from "@/components/ui/badge";
+
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { BotonDescargaPdfLiquidacion } from "../boton-descarga-pdf-liquidacion";
@@ -151,7 +151,7 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
             <p className="text-base text-muted-foreground">
               {formatearFechaCorta(liquidacion.fechaInicio)} – {formatearFechaCorta(liquidacion.fechaFin)}
             </p>
-            <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} texto={traducirEstadoLiquidacion(liquidacion.estado)} />
+            <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} eje="liquidacion" valor={liquidacion.estado} texto={traducirEstadoLiquidacion(liquidacion.estado)} />
             <p className="text-3xl font-semibold tabular-nums">{formatearCLPOGuion(montoConAjustes)}</p>
             {(liquidacion.bonoClp > 0 || liquidacion.penalizacionClp > 0) && (
               <p className="text-sm text-muted-foreground">
@@ -198,7 +198,7 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
-              <BadgeEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]} texto={traducirEstadoPayout(payout.estado)} />
+              <BadgeEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]} eje="payout" valor={payout.estado} texto={traducirEstadoPayout(payout.estado)} />
 
               <div className="flex flex-wrap gap-6 pt-1">
                 <div>

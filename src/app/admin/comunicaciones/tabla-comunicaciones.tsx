@@ -35,7 +35,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { BadgeEstado } from "@/components/ui/badge-estado";
+
 import {
   Select,
   SelectContent,
@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { TooltipSoloLectura } from "../tooltip-solo-lectura";
 import type { Comunicacion, TipoComunicacion } from "@/modules/plataforma/comunicaciones";
 import type { UrgenciaAviso } from "@/lib/avisos/obtener-avisos";
@@ -460,9 +461,9 @@ export function TablaComunicaciones({ comunicaciones, puedeEscribir }: Props) {
                       <Badge variant={VARIANTE_BADGE_NIVEL[c.nivel]}>{ETIQUETA_NIVEL[c.nivel]}</Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <BadgeEstado
-                        variante={c.activa ? "success" : "neutral"}
-                        texto={c.activa ? "Activa" : "Inactiva"}
+                      <DistintivoEstado
+                        tono={c.activa ? "neutral" : "inert"}
+                        etiqueta={c.activa ? "Activa" : "Inactiva"}
                       />
                     </td>
                     <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">

@@ -445,7 +445,7 @@ function badgePlan(estadoPlan: EstadoPasoPlan) {
   if (estadoPlan === "sin_suscripcion") {
     return <Badge variant="outline">Sin activar</Badge>;
   }
-  return <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[estadoPlan]} texto={TEXTO_ESTADO_SUSCRIPCION[estadoPlan]} />;
+  return <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[estadoPlan]} eje="suscripcion" valor={estadoPlan} texto={TEXTO_ESTADO_SUSCRIPCION[estadoPlan]} />;
 }
 
 function TarjetaPasoPlan({ estado, puedeGestionar }: { estado: EstadoOnboardingCourier; puedeGestionar: boolean }) {

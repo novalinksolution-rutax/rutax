@@ -174,7 +174,7 @@ function SeccionUltimosPedidos({ pedidos }: { pedidos: PedidoOperativoSoporte[] 
                       {p.codigoInterno ?? `${p.id.slice(0, 12)}…`}
                     </td>
                     <td className="px-4 py-3">
-                      <BadgeEstado variante={BADGE_ESTADO_PEDIDO[p.estado]} texto={traducirEstadoPedido(p.estado)} />
+                      <BadgeEstado variante={BADGE_ESTADO_PEDIDO[p.estado]} eje="pedido" valor={p.estado} texto={traducirEstadoPedido(p.estado)} />
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant="neutral">{etiquetaFuentePedido(p.fuente)}</Badge>
@@ -245,7 +245,7 @@ function SeccionResumenDinero({
                   return (
                     <tr key={estado}>
                       <td className="px-4 py-2.5">
-                        <BadgeEstado variante={BADGE_ESTADO_PERIODO[estado]} texto={traducirEstadoPeriodoCobro(estado)} />
+                        <BadgeEstado variante={BADGE_ESTADO_PERIODO[estado]} eje="periodo" valor={estado} texto={traducirEstadoPeriodoCobro(estado)} />
                       </td>
                       <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                         {fila.cantidad} período{fila.cantidad !== 1 ? "s" : ""}
@@ -289,7 +289,7 @@ function SeccionResumenDinero({
                   return (
                     <tr key={estado}>
                       <td className="px-4 py-2.5">
-                        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[estado]} texto={traducirEstadoLiquidacion(estado)} />
+                        <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[estado]} eje="liquidacion" valor={estado} texto={traducirEstadoLiquidacion(estado)} />
                       </td>
                       <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                         {fila.cantidad} liquidación{fila.cantidad !== 1 ? "es" : ""}

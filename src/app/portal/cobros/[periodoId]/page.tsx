@@ -8,21 +8,21 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle, Clock, XCircle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerPeriodoCobro, listarDocumentosDte } from "@/modules/dinero/index";
 import type { DocumentoDte, LineaCobro } from "@/modules/dinero/tipos";
 import {
+  BADGE_ESTADO_SII,
+  traducirEstadoSiiTexto,
   traducirEstadoPeriodoCobro,
   BADGE_ESTADO_PERIODO,
-  traducirEstadoSii,
-  badgeEstadoSii,
   traducirEstadoCobroPeriodo,
   BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import { Badge } from "@/components/ui/badge";
+
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { DataTable } from "@/components/ui/data-table";
 import {
@@ -123,10 +123,10 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             {formatearFechaCorta(periodo.fechaFin)}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} texto={textoBadge} />
+            <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
             {periodo.estadoCobro !== "no_aplica" && (
               <BadgeEstado
-                variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
+                variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} eje="cobro-periodo" valor={periodo.estadoCobro}
                 texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)}
               />
             )}
@@ -339,23 +339,13 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
 // =============================================================================
 
 function BadgeEstadoSii({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
-  const trad = traducirEstadoSii(estadoSii);
-
   return (
-    <Badge variant={badgeEstadoSii(trad.variante)} className="gap-1.5 px-2.5">
-      {trad.variante === "advertencia" && (
-        <AlertTriangle className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "exito" && (
-        <CheckCircle className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "error" && (
-        <XCircle className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.variante === "neutro" && (
-        <Clock className="size-3.5 flex-shrink-0" aria-hidden="true" />
-      )}
-      {trad.texto}
-    </Badge>
+    <BadgeEstado
+      variante={BADGE_ESTADO_SII[estadoSii] ?? "neutral"}
+      texto={traducirEstadoSiiTexto(estadoSii)}
+      eje="sii"
+      valor={estadoSii}
+      className={"gap-1.5 px-2.5"}
+    />
   );
 }

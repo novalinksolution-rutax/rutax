@@ -166,7 +166,7 @@ export function FilaEventoConciliacion({
 
         <TableCell className="hidden px-4 sm:table-cell">
           <BadgeEstado
-            variante={BADGE_ESTADO_CONCILIACION[evento.estado]}
+            variante={BADGE_ESTADO_CONCILIACION[evento.estado]} eje="conciliacion" valor={evento.estado}
             texto={traducirEstadoConciliacion(evento.estado)}
           />
         </TableCell>

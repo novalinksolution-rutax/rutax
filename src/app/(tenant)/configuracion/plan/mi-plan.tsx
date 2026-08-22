@@ -63,7 +63,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
         <div>
           <h1 className="text-2xl font-semibold">{plan.nombre}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[miPlan.estado]} texto={TEXTO_ESTADO_SUSCRIPCION[miPlan.estado]} />
+            <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[miPlan.estado]} eje="suscripcion" valor={miPlan.estado} texto={TEXTO_ESTADO_SUSCRIPCION[miPlan.estado]} />
             <span className="text-muted-foreground">
               {miPlan.periodicidad === "mensual" ? "Facturación mensual" : "Facturación anual"}
             </span>
@@ -103,7 +103,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
               </p>
               <p className="text-2xl font-semibold tabular-nums">{formatearCLPOGuion(periodoActual.montoClp)}</p>
               <div className="flex flex-wrap items-center gap-2">
-                <BadgeEstado variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} texto={TEXTO_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} />
+                <BadgeEstado variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} eje="periodo-suscripcion" valor={periodoActual.estado} texto={TEXTO_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} />
                 {periodoActual.estado === "pendiente" && periodoActual.venceEn ? (
                   <span className="text-xs text-muted-foreground">
                     Vence el {formatearFecha(periodoActual.venceEn)}
@@ -274,7 +274,7 @@ function EstadoPagoBadge({ estado }: { estado: EstadoPago | null }) {
   if (estado === null) {
     return <Badge variant="neutral">Sin pago registrado</Badge>;
   }
-  return <BadgeEstado variante={BADGE_ESTADO_PAGO_SUSCRIPCION[estado]} texto={TEXTO_ESTADO_PAGO_SUSCRIPCION[estado]} />;
+  return <BadgeEstado variante={BADGE_ESTADO_PAGO_SUSCRIPCION[estado]} eje="pago-suscripcion" valor={estado} texto={TEXTO_ESTADO_PAGO_SUSCRIPCION[estado]} />;
 }
 
 function BloqueConsumo({
