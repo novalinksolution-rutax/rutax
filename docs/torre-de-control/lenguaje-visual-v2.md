@@ -1,5 +1,15 @@
 # Torre de control v2 — lenguaje visual
 
+> ⚠️ **Superado en parte por el sistema de diseño v1.0 (22-08-2026), en `docs/diseno/`.**
+>
+> **Sus valores de color ya no rigen.** El tema del mapa vive ahora en `tokens.css`
+> (`--rx-map-*`, con sus dos temas y la rampa de carga por comuna) y su especificación en
+> `RUTAX-SISTEMA-DE-DISENO.md` §13. Donde este documento diga un color, gana el sistema.
+>
+> **Lo que sigue vigente es su parte de implementación**, que el sistema nuevo no cubre:
+> por qué MapLibre + PMTiles, los glifos, el pipeline de cartografía y las trampas
+> conocidas. Por eso no se dio de baja.
+
 **Fuente de verdad de cómo se ve la Torre.** Producto de la **Vía B** del
 rediseño (2026-08-03). Su documento hermano es `alcance-v2.md`, que manda sobre
 *qué* muestra la pantalla; éste manda sobre *cómo* se ve. Donde el handoff
