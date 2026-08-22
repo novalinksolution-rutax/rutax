@@ -201,6 +201,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               <DialogEmitirFactura
                 periodoId={periodo.id}
                 sellerNombre={sellerNombre}
+                autorNombre={sesion.nombreCompleto ?? "Tu cuenta"}
                 totalLineas={periodo.totalLineas}
                 montoTotalClp={periodo.montoTotalClp}
                 modoDte={modoDte}

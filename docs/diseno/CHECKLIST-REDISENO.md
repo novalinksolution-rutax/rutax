@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | 16 componentes · **0 hechos** *(el preflight tiene su lógica, no su forma)* | 16 + las 4 anulaciones | #7 a #11 | `Rutax P4 Emitir factura` · `B2a` · `B2b` |
+| **5** | **Dinero** | **2 de 16** · la ceremonia y su composición | 14 + las 4 anulaciones · 25 de 26 acciones sin migrar | #7 a #11 | `P4` ✅ · faltan `B2a` · `B2b` |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -399,150 +399,71 @@ bloques 4–8, cuando cada pantalla se toque.
 
 # Bloque 5 · Dinero
 
-**Desbloquea:** las 5 pantallas de dinero del bloque de diseño B2 y las 4 anulaciones.
-**Tableros a traer:** `Rutax P4 Emitir factura` (fija la escalera de fricción) · `Rutax B2a Periodos` ·
-`Rutax B2b Liquidaciones y cobranza`.
-**Depende de:** bloques 1, 2, 3 y 4.
+**Tablero traído:** `Rutax P4 Emitir factura` ✅ · faltan `B2a Periodos` y `B2b Liquidaciones y cobranza`.
 
-> **El estado de partida, medido.** De las **19 acciones** exportadas por
-> `src/modules/dinero/acciones.ts`, **solo 3 usan el diálogo canónico de fricción**. No existe
-> ningún subtotal por concepto en ninguna pantalla. `MontoCLP` y `KpiCard` existen y **no se usan
-> en una sola pantalla de `/dinero`**. Y hay **15 `toast.error`** en `(tenant)/dinero/`, contra la
-> regla 56.
+**Las seis decisiones que P4 fija para todo el producto**, y que valen más allá de dinero:
+1. **La verificación previa es una pantalla, no una validación** — tres desenlaces con tratamiento
+   propio, y el del medio («hay reparos, sigues dejando registro») es el que hoy no existe como tal.
+2. **Bloqueado se muestra deshabilitado CON MOTIVO, nunca oculto.** Un botón que desaparece hace
+   pensar que la pantalla está incompleta.
+3. **El acto explícito nombra a la contraparte** — escribir, no marcar. Solo en el peldaño 3.
+4. **El modal no se cierra: se convierte en comprobante.**
+5. **El modo de pruebas usa la trama, no un color** — sería un séptimo tono. Aparece en el marco
+   **y dentro del botón**.
+6. **Toda acción asíncrona dice «quedó en curso»** — corrige el tiempo verbal en ~140 acciones.
 
 ## Componentes
 
-- [ ] **`escalera de fricción`** · DE CERO · **33 acciones en 21 pantallas**. Es el componente
-      central del bloque. Hoy `src/components/ui/dialog-confirmacion-dinero.tsx` (157 líneas)
-      soporta **2 peldaños**: un checkbox de confirmación explícita (`:68, 79-82, 119-133`) y un
-      gate externo del padre (`confirmDeshabilitado`, `:81`); más cierre duro —Esc, clic fuera y X
-      deshabilitados (`:86-92`)—. **No soporta el peldaño 3: escribir para confirmar.**
-      *Los 33 textos ya están escritos* en `RUTAX-SISTEMA-DE-MENSAJES.md` §2, cada uno con su
-      peldaño (P2/P3) y si lleva motivo o 2FA. No hay que redactar nada.
-      **Los 6 llamadores de hoy:** `dialog-emitir-factura.tsx:146`, `dialog-emitir-nota-credito.tsx:157`,
-      `dialog-emitir-pago.tsx:149`, `configuracion/plan/cambiar-plan.tsx:244`,
-      `configuracion/plan/bloque-cobro-automatico.tsx:119`, `admin/comunicaciones/tabla-comunicaciones.tsx:270`.
-      **Las 16 acciones que hoy NO pasan por él** están en el anexo D.
-
-- [ ] **`verificación previa`** · DE CERO · **existe y está bien hecha** —
-      `src/modules/dinero/preflight.ts` (906 líneas, 100 % de lectura por contrato), con 16 códigos
-      en tres categorías (`bloquea` / `advierte` / `informativo`), el resumen verificado
-      (`ResumenCobro`, `ResumenPago`), y el escape con registro (`registrarPreflightOmitido`).
-      Más `preflight-lote.ts` y `preflight-cancelacion.ts`.
-      *Falta:* la parte visual. `SkeletonPreflight`, `BloquePreflightFallido` y `BandaItemsPreflight`
-      están **triplicados literalmente** (~100 líneas idénticas en cada uno de los tres diálogos).
-      Extraer a un componente del sistema y darle su forma.
-
-- [ ] **`tabla financiera`** · DE CERO · 14 pantallas. Subtotales por concepto, total con regla de
-      2 px, negativo con signo menos real y su causa en la misma fila, variante impresa.
-      *Hoy:* solo total general en el pie, calculado en cliente con `.reduce()`
-      (`periodos/[periodoId]/page.tsx:428-444`, `liquidaciones/[liquidacionId]/page.tsx:276-286`).
-      **Cero agrupación por concepto.** Regla 19: las tablas de dinero se agrupan por concepto con
-      subtotal, no línea por línea.
-
-- [ ] **Rótulo bruto/neto en cabecera y pie** · regla 18 · **NUEVO #8**. Hoy hay **tres
-      vocabularios distintos**: Neto/IVA/Total (bloque DTE), Monto bruto/Retención/Monto líquido
-      (bloque payout), y Monto base/Ajuste/Monto final (tablas de líneas). Uno solo.
-
-- [ ] **`bloque de composición`** · DE CERO · 12 pantallas. Regla 21: **obligatorio** junto a
-      cualquier cifra que no sea la suma trivial de una columna. Lo más cercano hoy es el texto
-      "base +bono −penalización" de `liquidaciones/page.tsx:375-381` y el preview del diálogo de
-      ajuste.
-
-- [ ] **`atribuidor de pago`** · DE CERO · `dinero/cobranza`. La lógica automática existe y es buena
-      (`src/modules/dinero/matching-pago.ts`, 168 líneas: calce total con tolerancia de 1 CLP,
-      luego abono parcial, luego sobrante, y **nunca adivina** con 0 o más de 1 candidato). Lo que
-      falta es la interfaz de calce manual: hoy es un popover artesanal en
-      `cobranza/menu-acciones-pago.tsx:196-286`, sin `Popover` del sistema, sin previsualización del
-      saldo resultante, y termina en `window.location.reload()` (`:113`).
-
-- [ ] **`panel de ajuste manual`** · DE CERO · existe como
-      `dinero/liquidaciones/dialog-ajustar.tsx` (176 líneas): bono, penalización, nota, con preview
-      en vivo. *Falta:* no es un panel de líneas —no permite ajustar una línea ni elegir concepto—,
-      no tiene fricción ni preflight, y **el motivo no viaja al PDF del conductor** (NUEVO #11).
-
-- [ ] **`indicador de folio disponible`** · DE CERO · P4, B2a, B3a. **Existe en 3 lugares con 3
-      cálculos distintos y ninguno está en `/dinero/periodos`, que es desde donde se factura:**
-
-      | Dónde | Cálculo | Umbral |
-      |---|---|---|
-      | `dashboard/page.tsx:109-128` | exclusivo, **sin filtrar por `tipo_documento`** | 50 hardcodeado |
-      | `onboarding/folios/panel-folios-caf.tsx:333-365` | muestra **usados**, no restantes | 85 % |
-      | `preflight.ts:137-210` | inclusivo, `hasta − actual + 1`, filtra 33 vs 61 | `UMBRAL_FOLIOS` |
-
-      El de `preflight.ts` es el correcto y tiene el comentario que explica por qué un cálculo
-      exclusivo produce un falso bloqueo. Los otros dos se alinean con él.
-
-- [ ] **`modal de acto explícito`** · EXTENDER sobre `dialog-confirmacion-dinero` · 16 pantallas.
-- [ ] **`botón de peldaño 3`** · EXTENDER sobre `button` · 14 pantallas.
-- [ ] **`campo de monto CLP`** · EXTENDER sobre `monto-clp` + `input` · 11 pantallas.
-      `src/components/ui/monto-clp.tsx` existe (47 líneas) y **se usa en 2 archivos**: `kitchen-sink`
-      y `dashboard`. Ninguna pantalla de `/dinero` lo usa: todas llaman `formatearCLP` directo y
-      repiten `tabular-nums` a mano.
-- [ ] **`tarjeta de trazabilidad`** · DE CERO · 11 pantallas. Base parcial:
-      `src/components/dinero/panel-trazabilidad-financiera.tsx`, `popover-snapshot-regla.tsx`,
-      `trazador-lazo.tsx`.
-- [ ] **`tarjeta de resultado en bloque`** · DE CERO · 6 pantallas. Base:
-      `preparacion/asignar/_componentes/dialogo-resultado.tsx` y `_lib/resultado.ts`.
-- [ ] **`mosaico de magnitudes`** · RE-ESTILO sobre `kpi-card` · 6 pantallas. `kpi-card.tsx` existe
-      y se usa en 2 archivos; **cero uso en `/dinero`** (los chips de resumen son enlaces y divs
-      artesanales en cada pantalla).
-- [ ] **`panel de detalle con zona de consecuencia`** · EXTENDER sobre `sheet` · 12 pantallas.
-      Base: `dinero/conciliacion/panel-detalle-excepcion.tsx` (805 líneas).
-- [ ] **`distintivo de modo de pruebas`** · EXTENDER · existe `BadgeModoDte` (38 líneas), sin
-      re-expresar al sistema. Aplica también al correo, que corre en sandbox y casi nunca lo dice.
+- [x] **`escalera de fricción` · 3 peldaños** · DE CERO — `src/components/ui/modal-acto-explicito.tsx`.
+      El anterior soportaba dos peldaños; faltaba el tercero. Ahora: 1 consecuencia · 2 + motivo ·
+      3 + **escribir el nombre de la contraparte**.
+      El peldaño 3 es escribir y no una casilla porque es lo único que obliga a leer **a quién**:
+      *el error real de este flujo no es emitir sin querer, es emitirle al seller equivocado en una
+      lista de diez.*
+      **Verificado en el navegador con sesión real**, sobre un período cerrado: sin X, escape y clic
+      fuera no cierran, «Volver» y no «Cancelar» (regla 59), el foco entra en el campo, y el botón
+      está deshabilitado **y fuera de la tabulación** (`tabIndex −1`) hasta que la frase calza —
+      tolerante con espacios de sobra, estricta con un seller equivocado.
+- [x] **`bloque de composición`** · DE CERO — `src/components/ui/bloque-composicion.tsx`, en mono y
+      con signo menos real. *Falta el dato:* el preflight devuelve `netoClp`/`ivaClp`/`totalClp`
+      pero **no el desglose por concepto**, así que el modal aún no puede mostrar «867.000 entregas
+      + 3.600 recargos − 2.900 ajustes». Es trabajo de backend, no de pantalla.
+- [ ] **`verificación previa`** — la lógica existe y es buena (`modules/dinero/preflight.ts`, 906
+      líneas, 16 códigos). Lo que falta es la **forma**: los tres desenlaces como pantalla, y
+      de-duplicar `SkeletonPreflight` / `BloquePreflightFallido` / `BandaItemsPreflight`, que están
+      **triplicados literalmente** (~100 líneas cada uno) en los tres diálogos.
+- [ ] **`tabla financiera`** · DE CERO — subtotales por concepto, rótulo bruto/neto en cabecera y
+      pie. **Hoy no hay subtotales en ninguna pantalla** y conviven tres vocabularios.
+- [ ] `panel de ajuste manual` · `atribuidor de pago` · `indicador de folio disponible` ·
+      `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
 
 ## Pantallas
 
-- [ ] `(tenant)/dinero/periodos` (490 líneas) — 5 chips, tabla cruda de 8 columnas,
-      panel `AprobacionLote`. **NUEVO #9: el cajón «Con problemas» tiene que filtrar de verdad.**
-- [ ] `(tenant)/dinero/periodos/[periodoId]` (567) — es la pantalla de la ceremonia de emisión.
-- [ ] `(tenant)/dinero/liquidaciones` (442) — 3 chips, **sin paginación**. **NUEVO #10: los chips
-      tienen que navegar, como los de los otros dos módulos.**
-- [ ] `(tenant)/dinero/liquidaciones/[liquidacionId]` (345) — 100 % lectura.
-- [ ] `(tenant)/dinero/conciliacion` (413) — bandeja de excepciones; **la única de dinero que usa
-      `DataTable`**. Es el arquetipo P6.
-- [ ] `(tenant)/dinero/cobranza` (258) — **ruta huérfana: no está en la nav de dinero.**
-- [ ] `(tenant)/operaciones/[pedidoId]` — anulaciones 2 y 3.
-- [ ] `(tenant)/conductores/[id]` — anulaciones 3 y 4.
-- [ ] `portal/cobros` y `portal/cobros/[periodoId]` — **NUEVO #7: se retira el «IVA 19 %»**, que era
-      el residuo entre total y líneas. Regla 22: la factura PDF es el único lugar del producto con IVA.
+- [x] **`dinero/periodos/[periodoId]` · emitir factura** — migrada al modal nuevo. Tres correcciones
+      de fondo, no de forma:
+      · **Mostraba `totalClp`, que incluye IVA**, bajo el rótulo «Monto total». La regla 22 dice que
+        Rutax no muestra impuestos —la factura PDF es el único lugar del producto con IVA— y el
+        tablero pide «Total neto». Ahora muestra `netoClp` con su rótulo. Es la brecha #4.
+      · **El aviso decía «Factura emitida» cuando solo se había encolado el trabajo** (brecha #6).
+        Ahora dice «La emisión quedó en curso» y qué pasó con el folio.
+      · **El fallo salía en notificación temporal**, contra la regla 56. Ahora es un aviso embebido
+        que se queda dentro del modal, con el modal abierto para reintentar. Verificado en vivo:
+        cero toasts. Quedan **14** `toast.error` en dinero.
+      *Pendiente en esta pantalla:* el mensaje del proveedor se filtra crudo al aviso («fetch
+      failed»). Un error de integración nunca muestra el texto del proveedor y siempre dice qué
+      sigue funcionando — se arregla en la Server Action, no acá.
+- [ ] Las otras 6 de `dinero/` y las 4 anulaciones.
+- [ ] `dinero/layout.tsx` — sus pestañas son un cuarto patrón de navegación (viene del bloque 4).
+      Necesita `B2a`.
+- [ ] **Un período abierto no tiene camino a su detalle**: `AccionesPeriodo` solo muestra «Cerrar
+      período» y el enlace «Ver detalle» aparece recién cuando está cerrado. La pantalla existe y es
+      inalcanzable. Encontrado al verificar; va con `B2a`.
 
-## Las cuatro anulaciones
+## Las 26 acciones irreversibles
 
-Existen las cuatro y **ninguna usa el diálogo canónico**. Tres comparten un `DialogAnular` genérico
-(`operaciones/[pedidoId]/acciones-corregir-dinero.tsx:22-90`), sin preflight y sin checkbox.
-Los cuatro textos ya están escritos en `RUTAX-SISTEMA-DE-MENSAJES.md` §2.
-
-- [ ] **Anular factura** (nota de crédito DTE 61) — `acciones.ts:328`, UI
-      `dialog-emitir-nota-credito.tsx`. La única con preflight. Solo anulación total (CodRef=1).
-- [ ] **Anular línea de cobro por pedido** — `acciones.ts:1594`, UI `acciones-corregir-dinero.tsx:111-119`.
-- [ ] **Anular línea de liquidación por pedido** — `acciones.ts:1691`, UI `:120-128` y
-      `conductores/[id]/page.tsx:353-360`.
-- [ ] **Anular línea de liquidación por `lineaId`** — `acciones.ts:1797`, UI
-      `conductores/[id]/page.tsx:361-373`. Existe porque las líneas de retiro no tienen `pedidoId`.
-
-## Brechas del inventario que cierra
-
-- [ ] **#3** — Cobranza afirma que todo se concilió solo aunque el banco nunca se conectó.
-- [ ] **#4** — las cifras de dinero no dicen qué son, y una de ellas no es lo que su rótulo afirma.
-- [ ] **#6** — el aviso dice «factura emitida» cuando solo se encoló el trabajo.
-- [ ] **#22** — diecinueve acciones del courier no confirman nada al terminar.
-- [ ] **#31** — los chips del módulo de dinero se comportan de tres formas distintas, y uno no filtra nada.
-- [ ] **#33** — desde el detalle del pedido no hay forma de anular una línea de dinero, aunque los
-      botones existen.
-
-## Bloqueado
-
-- [ ] **NUEVO #7** · Se retira el «IVA 19 %» del portal.
-- [ ] **NUEVO #8** · Rótulo bruto/neto obligatorio en cabecera y pie de toda tabla financiera.
-- [ ] **NUEVO #9** · El cajón «Con problemas» filtra de verdad.
-- [ ] **NUEVO #10** · Los chips de liquidaciones navegan.
-- [ ] **NUEVO #11** · El motivo del ajuste manual viaja al PDF del conductor.
-- [ ] *Decisión abierta:* **el unitario de la factura** — agrupado por comuna con unitario
-      redondeado y total exacto, o por tarifa real. La toma quien revise con el SII.
-
----
+`RUTAX-SISTEMA-DE-MENSAJES.md` §2 trae las 33 con su peldaño y su copy ya escritos.
+**1 de 26 migrada.** Las demás siguen en `DialogConfirmacionDinero` (2 peldaños) o, peor, en
+`<Dialog>` genérico: `dialog-cerrar-periodo` dice «Cancelar» y tiene X — verificado en vivo.
 
 # Bloque 6 · App del conductor
 

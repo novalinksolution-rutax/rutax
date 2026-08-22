@@ -33,12 +33,12 @@ import { AlertTriangle, FileText, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DialogConfirmacionDinero } from "@/components/ui/dialog-confirmacion-dinero";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 import { cn } from "@/lib/utils";
-import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { ModoDte } from "@/modules/dinero/modo-dte";
 import type { ItemPreflight, ResultadoPreflight } from "@/modules/dinero/preflight";
-import { BadgeModoDte } from "../../badge-modo-dte";
+import { formatearFechaHora } from "@/lib/formato-cl";
 import {
   accionEmitirFactura,
   accionPreflightEmitirFactura,
@@ -51,6 +51,12 @@ interface Props {
   totalLineas: number;
   montoTotalClp: number | null;
   modoDte: ModoDte;
+  /**
+   * Quién está firmando. Va DENTRO del modal, antes de actuar: el tablero P4 es
+   * explícito en que no es un dato de auditoría escondido, es parte de lo que se
+   * está firmando.
+   */
+  autorNombre: string;
 }
 
 type EstadoPreflight = "verificando" | "listo" | "error_preflight";
@@ -61,6 +67,7 @@ export function DialogEmitirFactura({
   totalLineas,
   montoTotalClp,
   modoDte,
+  autorNombre,
 }: Props) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
@@ -71,6 +78,11 @@ export function DialogEmitirFactura({
   const [preflight, setPreflight] = useState<ResultadoPreflight | null>(null);
   const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<string | null>(null);
   const [continuarSinVerificar, setContinuarSinVerificar] = useState(false);
+  // Regla 56: **ningún error de dinero va en notificación temporal.** Van
+  // embebidos y se quedan. Un toast de 4 segundos sobre una emisión fallida se
+  // lo pierde quien parpadea, y la pregunta que deja —¿se consumió el folio?—
+  // no tiene dónde leerse después.
+  const [errorEmision, setErrorEmision] = useState<string | null>(null);
 
   const cargarPreflight = useCallback(() => {
     setEstadoPreflight("verificando");
@@ -99,6 +111,7 @@ export function DialogEmitirFactura({
   }, [abierto, cargarPreflight]);
 
   function handleConfirmar() {
+    setErrorEmision(null);
     startTransition(async () => {
       if (estadoPreflight === "error_preflight") {
         try {
@@ -113,14 +126,19 @@ export function DialogEmitirFactura({
       const resultado = await accionEmitirFactura(periodoId);
       if (resultado.ok) {
         setAbierto(false);
-        toast.success(`Factura emitida para ${sellerNombre}`, {
+        // ⚠️ NO dice «factura emitida»: la emisión es asíncrona y acá solo se
+        // encoló el trabajo. Decirlo en pasado es la brecha #6 del inventario —
+        // alguien lee «emitida», va a buscar el folio y no está. El tablero P4
+        // fija el molde para las ~140 acciones de servidor: «quedó en curso», y
+        // dónde ver el desenlace.
+        toast.success(`La emisión quedó en curso · ${sellerNombre}`, {
           description: esReal
-            ? "El DTE se emitió al SII. El seller ya puede descargarla."
-            : "El DTE se generó en modo sandbox (no se envió al SII real). El seller ya puede descargarla.",
+            ? "Te avisamos cuando el SII responda. El folio ya quedó consumido."
+            : "Modo de pruebas: no se envía al SII. Te avisamos cuando termine.",
         });
         router.refresh();
       } else {
-        toast.error("No se pudo emitir la factura", { description: resultado.mensaje });
+        setErrorEmision(resultado.mensaje ?? "No pudimos emitir la factura.");
       }
     });
   }
@@ -130,6 +148,34 @@ export function DialogEmitirFactura({
   const itemLineasAnuladas = preflight?.informativos.find(
     (i) => i.codigo === "lineas_anuladas_excluidas",
   );
+
+  // Bloqueado se muestra DESHABILITADO CON MOTIVO, nunca oculto: un botón que
+  // desaparece hace pensar que la pantalla está incompleta.
+  const avisosModal: { tono: "attention" | "fault"; texto: React.ReactNode }[] = [];
+  if (errorEmision) {
+    avisosModal.push({
+      tono: "fault",
+      texto: (
+        <>
+          <strong>No pudimos emitir la factura.</strong> {errorEmision} El período sigue
+          cerrado y puedes volver a intentarlo.
+        </>
+      ),
+    });
+  }
+  if (estadoPreflight === "listo" && preflight && !preflight.ok) {
+    avisosModal.push({
+      tono: "fault",
+      texto: "Resuelve los bloqueos indicados arriba antes de continuar.",
+    });
+  }
+  if (estadoPreflight === "error_preflight" && continuarSinVerificar) {
+    avisosModal.push({
+      tono: "attention",
+      texto:
+        "Omitiste la verificación previa. Queda registrado a tu nombre que la saltaste.",
+    });
+  }
 
   const confirmDeshabilitado =
     estadoPreflight === "verificando" ||
@@ -143,34 +189,54 @@ export function DialogEmitirFactura({
         Emitir factura
       </Button>
 
-      <DialogConfirmacionDinero
+      <ModalActoExplicito
         open={abierto}
         onOpenChange={setAbierto}
-        titulo={`Emitir factura de ${sellerNombre}`}
+        // Peldaño 3: escribir el nombre del seller. El error real de este flujo
+        // no es emitir sin querer — es emitirle al seller equivocado en una
+        // lista de diez, y una casilla se marca sin mirar a quién.
+        peldano={3}
+        titulo={`Vas a emitir una factura electrónica a ${sellerNombre}`}
         consecuencia={
           esReal ? (
             <>
-              Se emitirá un DTE (factura electrónica) al SII bajo el RUT de tu
-              courier. Un documento emitido <strong>no se puede anular</strong>:
-              corregirlo después exige una nota de crédito.
+              Esto la envía al Servicio de Impuestos Internos y{" "}
+              <strong>no se puede deshacer</strong>: Rutax todavía no emite notas de
+              crédito. Revisa el detalle antes de continuar.
             </>
           ) : (
             <>
-              Se generará la factura en <strong>modo sandbox</strong>: no se envía
-              al SII. Es una simulación para probar el flujo; en producción este
-              paso es irreversible.
+              Se generará en <strong>modo de pruebas</strong>: no se envía al SII. Es
+              una simulación para probar el flujo; en producción este paso es
+              irreversible.
             </>
           )
         }
-        cargando={isPending}
-        textoConfirmar="Emitir factura"
-        requiereConfirmacionExplicita
-        etiquetaConfirmacion={
-          esReal
-            ? "Revisé el monto y las líneas. Entiendo que el DTE es irreversible ante el SII."
-            : "Revisé el monto y las líneas. (Modo sandbox: no se envía al SII.)"
+        modoPruebas={!esReal}
+        resumen={[
+          { etiqueta: "Seller", valor: sellerNombre },
+          {
+            etiqueta: "Líneas que se facturan",
+            valor: `${resumenCobro?.lineasIncluidas ?? totalLineas} entregas`,
+            mono: true,
+          },
+        ]}
+        total={
+          resumenCobro
+            ? { etiqueta: "Total neto", monto: resumenCobro.netoClp }
+            : montoTotalClp !== null
+              ? { etiqueta: "Total", monto: montoTotalClp }
+              : undefined
         }
+        avisos={avisosModal}
+        confirmacion={{ frase: sellerNombre }}
+        autor={{ nombre: autorNombre, cuando: formatearFechaHora(new Date()) }}
+        cargando={isPending}
         confirmDeshabilitado={confirmDeshabilitado}
+        textoConfirmar="Emitir la factura"
+        subtextoConfirmar={
+          resumenCobro ? formatearCLP(resumenCobro.netoClp) : undefined
+        }
         onConfirmar={handleConfirmar}
       >
         <div className="flex flex-col gap-3">
@@ -194,41 +260,16 @@ export function DialogEmitirFactura({
               {preflight.advertencias.length > 0 && (
                 <BandaItemsPreflight items={preflight.advertencias} tono="advierte" />
               )}
-
-              <BadgeModoDte modo={resumenCobro?.modoDte ?? modoDte} />
-              <dl className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">Líneas a facturar</dt>
-                  <dd className="font-mono font-medium tabular-nums">
-                    {resumenCobro?.lineasIncluidas ?? totalLineas}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">Monto total</dt>
-                  <dd className="font-mono text-base font-semibold tabular-nums">
-                    {resumenCobro
-                      ? formatearCLP(resumenCobro.totalClp)
-                      : formatearCLPOGuion(montoTotalClp)}
-                  </dd>
-                </div>
-              </dl>
-
               {itemLineasAnuladas && (
                 <p className="text-xs text-muted-foreground">
                   {itemLineasAnuladas.titulo}
                   {itemLineasAnuladas.detalle ? ` ${itemLineasAnuladas.detalle}` : ""}
                 </p>
               )}
-
-              {!preflight.ok && (
-                <p className="text-xs font-medium text-destructive">
-                  Resuelve los bloqueos indicados arriba antes de continuar.
-                </p>
-              )}
             </>
           )}
         </div>
-      </DialogConfirmacionDinero>
+      </ModalActoExplicito>
     </>
   );
 }
