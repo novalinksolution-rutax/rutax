@@ -27,7 +27,6 @@ import {
   traducirEstadoLiquidacion,
 } from "@/lib/ui/traduccion-estados";
 import { ContenidoDrillDown } from "../page";
-import { BannerSoporte } from "./banner-soporte";
 
 export const metadata: Metadata = {
   title: "Modo soporte · Rutax Admin",
@@ -91,12 +90,10 @@ export default async function PaginaSoporteCourier({
 
   return (
     <div className="space-y-6">
-      <BannerSoporte
-        tenantId={vista.tenantId}
-        nombreCourier={vista.observabilidad.nombreFantasia ?? vista.tenantId}
-        expiraEn={vista.sesion.expiraEn}
-      />
-
+      {/* El banner de sesión suplantada ya NO se pinta acá: lo pone el marco
+          (`admin/layout.tsx`) para todas las pantallas del backstage mientras la
+          ventana esté abierta. Mientras vivía en esta página desaparecía en la
+          rama de error de abajo, que es justo cuando más falta hace. */}
       <div className="space-y-1">
         <Link
           href={`/admin/couriers/${tenantId}`}

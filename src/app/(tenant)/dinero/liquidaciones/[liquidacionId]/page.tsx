@@ -29,7 +29,8 @@ import { referenciaLineaLiquidacion } from "@/lib/ui/referencia-linea-liquidacio
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { BotonDescargaPdfLiquidacion } from "../boton-descarga-pdf-liquidacion";
-import { formatearFechaHora as formatearFechaHoraCl } from "@/lib/formato-cl";
+import { formatearFechaHora as formatearFechaHoraCl } from "@/lib/formato-cl";
+import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
 export const metadata: Metadata = {
   title: "Detalle de liquidación",
@@ -56,15 +57,17 @@ function formatearFechaHora(fechaIso: string | null): string | null {
 
 interface PageProps {
   params: Promise<{ liquidacionId: string }>;
+  searchParams: Promise<{ volver?: string }>;
 }
 
-export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
+export default async function PaginaDetalleLiquidacion({ params, searchParams }: PageProps) {
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
   if (!puedeGestionarLiquidacionesConductores(sesion.usuario)) redirect("/dashboard");
 
   const { liquidacionId } = await params;
+  const { volver } = await searchParams;
   const tenantId = sesion.usuario.tenantId;
   const cliente = crearClienteServiceRole();
 
@@ -119,22 +122,9 @@ export default async function PaginaDetalleLiquidacion({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav aria-label="Migajas de pan" className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link href="/dinero/liquidaciones" className="hover:text-foreground hover:underline">
-          Liquidaciones
-        </Link>
-        <span aria-hidden="true">/</span>
-        <span className="text-foreground">Detalle</span>
-      </nav>
-
-      <Link
-        href="/dinero/liquidaciones"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Volver a liquidaciones
-      </Link>
+      {/* Una sola salida: antes había migas Y un «Volver» debajo, al mismo
+          destino. Con dos niveles de jerarquía las migas no agregan nada. */}
+      <Retorno href={destinoRetorno("/dinero/liquidaciones", volver)} etiqueta="Volver a liquidaciones" />
 
       {/* Sección A — Encabezado */}
       <section>

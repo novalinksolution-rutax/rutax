@@ -28,6 +28,7 @@ import { DialogAjustarLiquidacion } from "./dialog-ajustar";
 import { FiltrosLiquidacionesForm } from "./filtros-liquidaciones";
 import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
 import { accionPreflightLotePagos, accionEmitirPagosLote } from "./actions";
+import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 
 export const metadata: Metadata = {
   title: "Liquidaciones",
@@ -350,13 +351,13 @@ function FilaLiquidacion({
         </Link>
       </td>
       <td className="hidden px-4 py-3 sm:table-cell">
-        <Link
+        <EnlaceDetalle
           href={`/dinero/liquidaciones/${liquidacion.id}`}
           className="tabular-nums text-primary hover:underline"
         >
           {formatearFechaCorta(liquidacion.fechaInicio)} –{" "}
           {formatearFechaCorta(liquidacion.fechaFin)}
-        </Link>
+        </EnlaceDetalle>
       </td>
       <td className="px-4 py-3">
         <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} eje="liquidacion" valor={liquidacion.estado} texto={textoEstado} />

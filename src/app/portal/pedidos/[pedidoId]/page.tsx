@@ -34,6 +34,7 @@ import type { EstadoPedido, FuentePedido } from "@/modules/operacion/tipos";
 import { esTransicionValida } from "@/modules/operacion/maquina-estados";
 import { puedeGestionarPedidosPropios } from "@/modules/identidad/capacidades";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
+import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
 export const metadata: Metadata = {
   title: "Detalle del pedido",
@@ -168,9 +169,10 @@ const ESTADOS_CON_POD: EstadoPedido[] = [
 
 interface Props {
   params: Promise<{ pedidoId: string }>;
+  searchParams: Promise<{ volver?: string }>;
 }
 
-export default async function PaginaDetallePedidoSeller({ params }: Props) {
+export default async function PaginaDetallePedidoSeller({ params, searchParams }: Props) {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) redirect("/login");
   if (sesion.usuario.tipoUsuario !== "seller" || !sesion.usuario.sellerId) {
@@ -178,6 +180,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
   }
 
   const { pedidoId } = await params;
+  const { volver } = await searchParams;
   const sellerId = sesion.usuario.sellerId;
   const tenantId = sesion.usuario.tenantId;
 
@@ -318,13 +321,7 @@ export default async function PaginaDetallePedidoSeller({ params }: Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {/* Breadcrumb / Volver */}
-      <Link
-        href="/portal/pedidos"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Volver a mis pedidos
-      </Link>
+      <Retorno href={destinoRetorno("/portal/pedidos", volver)} etiqueta="Volver a mis pedidos" />
 
       {/* Encabezado */}
       <div className="flex flex-wrap items-start justify-between gap-3">

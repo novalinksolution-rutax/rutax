@@ -29,7 +29,8 @@ import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
 import { FiltrosManifiestos } from "./filtros-manifiestos";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
-import { parsearRangoFecha } from "@/lib/filtros/fecha";
+import { parsearRangoFecha } from "@/lib/filtros/fecha";
+import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 
 interface SearchParams {
   estado?: string;
@@ -195,9 +196,9 @@ export default async function PaginaManifiestos({
                       <BadgeEstado variante={BADGE_ESTADO_MANIFIESTO[m.estado]} eje="manifiesto" valor={m.estado} texto={traducirEstadoManifiesto(m.estado)} />
                     </TableCell>
                     <TableCell className="px-4">
-                      <Link href={`/manifiestos/${m.id}`} className="font-medium hover:underline">
+                      <EnlaceDetalle href={`/manifiestos/${m.id}`} className="font-medium hover:underline">
                         {m.nombre}
-                      </Link>
+                      </EnlaceDetalle>
                     </TableCell>
                     <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
                       {m.fechaOperacion}

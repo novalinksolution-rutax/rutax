@@ -1,30 +1,42 @@
 "use client";
 
 /**
- * Banner persistente del modo soporte — gap 4, F3-B.
+ * BannerSuplantacion — el aviso de que estás mirando la cuenta de otra empresa.
  *
- * Vive PEGADO arriba de todo el contenido de `/admin/couriers/[tenantId]/soporte`
- * (`sticky top-0`, con `-mx-6`/`px-6` para "sangrar" hasta los bordes del
- * `<main>` del backstage — ese layout no expone un slot de banner full-bleed
- * como `(tenant)/layout.tsx`, así que se logra el mismo efecto acá, por
- * página, sin tocar el layout compartido). Contador regresivo puramente
- * visual (recalculado en cliente desde `expiraEn`, sin volver a golpear al
- * servidor cada segundo); al llegar a 0 fuerza un `router.refresh()`, que
- * vuelve a correr `obtenerVistaSoporteTenant` en el servidor — como la cookie
- * ya expiró, `exigirSoporteActivo` lanza `NoHaySesionSoporte` y la página
- * redirige sola de vuelta al drill-down normal (ver `soporte/page.tsx`).
+ * POR QUÉ VIVE EN EL MARCO Y NO EN UNA PANTALLA
+ * ---------------------------------------------------------------------------
+ * Regla 7 del sistema de diseño: **vive en el marco; no se colapsa, no se
+ * oculta al hacer scroll, no se vuelve un ícono.** Antes vivía dentro de
+ * `/admin/couriers/[tenantId]/soporte/page.tsx` porque el layout del backstage
+ * no exponía un slot de banner — y eso tenía dos agujeros reales:
+ *
+ *   1. La propia rama de error de esa página retornaba **sin el banner**, así
+ *      que con la ventana de soporte todavía viva alguien podía quedarse sin el
+ *      contador y sin el botón de salir.
+ *   2. Cualquier excepción que escalara a `src/app/error.tsx` —que es raíz y
+ *      reemplaza el shell entero— lo borraba igual.
+ *
+ * Ahora lo pinta `admin/layout.tsx` para TODAS las pantallas del backstage
+ * mientras la ventana esté abierta, no solo para la de soporte.
+ *
+ * EL ÚNICO ELEMENTO QUE NO CAMBIA ENTRE TEMAS
+ * ---------------------------------------------------------------------------
+ * Usa `--rx-impersonation-*`, que `rx-tokens.css` declara **fuera de los cuatro
+ * temas** a propósito: si el equipo trabaja de noche y el banner se atenuara,
+ * dejaría de gritar justo cuando más cansado está quien lo mira.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { accionTerminarSoporte } from "../soporte-actions";
+
+import { accionTerminarSoporte } from "@/app/admin/couriers/[tenantId]/soporte-actions";
 
 const FORMATEADOR_HORA_SANTIAGO = new Intl.DateTimeFormat("es-CL", {
   timeZone: "America/Santiago",
   hour: "2-digit",
   minute: "2-digit",
+  hour12: false,
 });
 
 /** `mm:ss` restantes — nunca negativo (se satura en `0:00`). */
@@ -42,7 +54,7 @@ interface Props {
   expiraEn: string;
 }
 
-export function BannerSoporte({ tenantId, nombreCourier, expiraEn }: Props) {
+export function BannerSuplantacion({ tenantId, nombreCourier, expiraEn }: Props) {
   const router = useRouter();
   const expiraEnMs = new Date(expiraEn).getTime();
 
@@ -80,16 +92,28 @@ export function BannerSoporte({ tenantId, nombreCourier, expiraEn }: Props) {
     <div
       role="region"
       aria-label="Modo soporte activo"
-      className="sticky top-0 z-40 -mx-6 border-b-2 border-warning bg-warning-subtle px-6 py-2.5 text-warning-subtle-foreground shadow-sm"
+      // `top-14` en móvil porque ahí el shell tiene su cabecera de 56 px; en
+      // escritorio no hay cabecera y el banner es lo primero.
+      className="sticky top-14 z-30 border-b lg:top-0"
+      style={{
+        minHeight: "var(--rx-impersonation-h)",
+        background: "var(--rx-impersonation-bg)",
+        color: "var(--rx-impersonation-fg)",
+        borderColor: "var(--rx-impersonation-bg)",
+      }}
     >
-      <div className="mx-auto flex max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-2 px-4 py-2 sm:flex-row sm:items-center sm:justify-between lg:px-8">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
           <ShieldAlert className="size-4 shrink-0" aria-hidden="true" />
           <span>
-            Viendo como <strong>{nombreCourier}</strong> · modo soporte (solo lectura) · termina a las{" "}
-            {horaLimite}
+            Viendo como <strong>{nombreCourier}</strong> · modo soporte (solo lectura) · termina a
+            las {horaLimite}
           </span>
-          <span className="tabular-nums text-xs opacity-80" aria-hidden="true">
+          <span
+            className="font-mono text-xs tabular-nums"
+            style={{ color: "var(--rx-impersonation-soft)" }}
+            aria-hidden="true"
+          >
             ({expirado ? "0:00" : formatearRestante(msRestante)})
           </span>
           {/* Aviso accesible: solo se anuncia una vez, al cruzar el minuto final. */}
@@ -101,14 +125,16 @@ export function BannerSoporte({ tenantId, nombreCourier, expiraEn }: Props) {
         </div>
 
         <form action={accionTerminarSoporte.bind(null, tenantId)} className="shrink-0">
-          <Button
+          <button
             type="submit"
-            variant="outline"
-            size="sm"
-            className="w-fit border-warning bg-transparent text-warning-subtle-foreground hover:bg-warning-subtle"
+            className="rounded-ctrl border px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-80"
+            style={{
+              borderColor: "var(--rx-impersonation-soft)",
+              color: "var(--rx-impersonation-fg)",
+            }}
           >
             Salir del modo soporte
-          </Button>
+          </button>
         </form>
       </div>
     </div>

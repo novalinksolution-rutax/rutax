@@ -23,39 +23,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ArrowLeft,
-  ArrowLeftRight,
   ChevronsUpDown,
-  LayoutDashboard,
-  Home,
-  Package,
-  Truck,
-  TriangleAlert,
-  Receipt,
-  Wallet,
-  GitCompareArrows,
-  Banknote,
-  Settings,
-  Users,
-  Store,
-  Download,
-  UserCheck,
-  Tag,
-  CreditCard,
-  Rocket,
-  Plug,
-  MapPinned,
-  Link2,
-  Building2,
-  LineChart,
-  Activity,
-  ScrollText,
-  Megaphone,
-  ShieldCheck,
-  Radar,
-  Warehouse,
-  Boxes,
-  HandCoins,
-  type LucideIcon,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -70,52 +38,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { CentroAvisos } from "./centro-avisos"
+import { ICONOS, type GrupoNav, type ItemNav } from "./iconos-nav"
+import { NavInferior } from "./nav-inferior"
 import { SkipLink } from "./skip-link"
 import { PaletaComando } from "./paleta-comando"
 import { MenuCuenta } from "./menu-cuenta"
 import type { Aviso } from "@/lib/avisos/obtener-avisos"
 
 /** Catálogo de íconos referenciables por nombre desde el servidor. */
-const ICONOS: Record<string, LucideIcon> = {
-  dashboard: LayoutDashboard,
-  inicio: Home,
-  cobros: Wallet,
-  pedidos: Package,
-  manifiestos: Truck,
-  incidencias: TriangleAlert,
-  periodos: Receipt,
-  liquidaciones: Wallet,
-  conciliacion: GitCompareArrows,
-  pagos: Banknote,
-  configuracion: Settings,
-  equipo: Users,
-  sellers: Store,
-  exportar: Download,
-  conductores: UserCheck,
-  tarifas: Tag,
-  plan: CreditCard,
-  "puesta-en-marcha": Rocket,
-  integraciones: Plug,
-  zonas: MapPinned,
-  // `Building2` ya está tomado por "couriers" en el panel de administración.
-  bodegas: Warehouse,
-  // Bultos apilados = la carga consolidada esperando en el piso de la bodega.
-  // No `Package` (ya es "pedidos") ni `Warehouse` (ya es el catálogo de bodegas):
-  // la Preparación no es el lugar, es lo que se acumula dentro de él.
-  preparacion: Boxes,
-  // Lo que el courier le paga al conductor por visita a bodega — distinto de
-  // "tarifas" (Tag, cobro al seller) y de "pagos" (Banknote, cobranza).
-  "retiro-bodega": HandCoins,
-  "conexion-ml": Link2,
-  couriers: Building2,
-  "cambiar-plan": ArrowLeftRight,
-  metricas: LineChart,
-  salud: Activity,
-  bitacora: ScrollText,
-  comunicaciones: Megaphone,
-  seguridad: ShieldCheck,
-  "torre-de-control": Radar,
-}
+
 
 /**
  * Preferencia de colapso del sidebar como store externo (persistida en
@@ -141,16 +72,10 @@ function escribirColapso(valor: boolean): void {
   listenersColapso.forEach((l) => l())
 }
 
-export interface ItemNav {
-  href: string
-  etiqueta: string
-  icono?: keyof typeof ICONOS | string
-}
-
-export interface GrupoNav {
-  titulo: string | null
-  items: ItemNav[]
-}
+// `ItemNav`, `GrupoNav` e `ICONOS` viven en `iconos-nav.ts` desde que la barra
+// inferior del teléfono necesitó los mismos íconos. Se re-exportan acá para no
+// romper los ~10 archivos que ya los importaban desde este módulo.
+export type { ItemNav, GrupoNav } from "./iconos-nav"
 
 interface AppShellProps {
   nombreFantasia: string
@@ -209,6 +134,13 @@ interface AppShellProps {
   /** Buscador global ⌘K (por defecto sí; admin no lo usa). */
   mostrarBusqueda?: boolean
   banner?: React.ReactNode
+  /**
+   * Destinos de la barra inferior del teléfono. Los arma el layout con
+   * `destinosMovil()`, a partir de la navegación que la persona ya puede ver,
+   * así que salen del mismo gating RBAC que el sidebar. Sin ellos, la barra no
+   * se renderiza y el teléfono se queda como estaba.
+   */
+  destinosMovil?: ItemNav[]
   children: React.ReactNode
 }
 
@@ -449,6 +381,7 @@ export function AppShell({
   adornoCuenta,
   mostrarAvisos = true,
   mostrarBusqueda = true,
+  destinosMovil = [],
   banner,
   children,
 }: AppShellProps) {
@@ -719,7 +652,8 @@ export function AppShell({
           id="contenido"
           tabIndex={-1}
           className={cn(
-            "mx-auto w-full flex-1 px-4 pb-10 outline-none lg:px-8",
+            "mx-auto w-full flex-1 px-4 outline-none lg:px-8",
+            destinosMovil.length > 0 ? "pb-24 lg:pb-10" : "pb-10",
             ancho
               ? "max-w-[1600px] pt-5 lg:pt-6"
               : relajado
@@ -729,6 +663,11 @@ export function AppShell({
         >
           {children}
         </main>
+
+        {/* La barra vive fuera del <main> y el <main> le deja su alto libre:
+            un `fixed` no reserva espacio, y sin este colchón la última fila de
+            cualquier tabla queda debajo de la barra justo donde se toca. */}
+        <NavInferior items={destinosMovil} hrefActivo={activo} />
       </div>
 
       {mostrarBusqueda ? (

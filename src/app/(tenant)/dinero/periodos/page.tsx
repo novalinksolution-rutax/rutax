@@ -32,6 +32,7 @@ import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
 import { FiltrosPeriodosForm } from "./filtros-periodos";
 import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
 import { accionPreflightLoteFacturas, accionEmitirFacturasLote } from "./actions";
+import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 
 export const metadata: Metadata = {
   title: "Períodos de cobro",
@@ -443,12 +444,12 @@ function AccionesPeriodo({ periodo }: { periodo: PeriodoConDte }) {
 
   return (
     <div className="flex items-center justify-end gap-2 flex-wrap">
-      <Link
+      <EnlaceDetalle
         href={`/dinero/periodos/${periodo.id}`}
         className="text-xs font-medium text-primary hover:underline"
       >
         Ver detalle
-      </Link>
+      </EnlaceDetalle>
       {(periodo.estado === "facturado") && periodo.dte && (
         <>
           {periodo.dte.pdfRef && (

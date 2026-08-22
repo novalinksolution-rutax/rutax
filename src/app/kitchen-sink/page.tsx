@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Interruptor } from "@/components/ui/interruptor"
+import { NavInferior } from "@/components/app-shell/nav-inferior"
+import { destinosMovil } from "@/components/app-shell/destinos-movil"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
@@ -434,6 +436,25 @@ export default function KitchenSinkPage() {
               <Label htmlFor="ks-check">Acepto emitir la factura al cierre del período</Label>
             </div>
           </div>
+        </Seccion>
+
+        {/* Barra inferior · bloque 4. Solo se ve por debajo de `lg`: es fija y
+            vive al pie de la ventana, como en el producto. */}
+        <Seccion titulo="Sistema nuevo · Bloque 4 · navegación inferior (solo &lt;1024px)">
+          <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+            Reduce la ventana bajo 1024&nbsp;px para verla al pie. Los cuatro destinos salen del rol:
+            estos son los de quien coordina.
+          </div>
+          <NavInferior
+            items={destinosMovil([
+              { href: "/torre-de-control", etiqueta: "Torre", icono: "torre-de-control" },
+              { href: "/preparacion", etiqueta: "Preparación", icono: "preparacion" },
+              { href: "/operaciones", etiqueta: "Pedidos", icono: "pedidos" },
+              { href: "/manifiestos", etiqueta: "Manifiestos", icono: "manifiestos" },
+              { href: "/operaciones/incidencias", etiqueta: "Incidencias", icono: "incidencias", contador: 3 },
+            ])}
+            hrefActivo="/operaciones"
+          />
         </Seccion>
 
         {/* Interruptor · bloque 1 del rediseño, el único de cero de ese bloque */}

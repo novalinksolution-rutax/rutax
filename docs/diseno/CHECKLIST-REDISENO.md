@@ -62,7 +62,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **2** | Estado | **hecha** — 8 de 10 · 25 ejes · 33 correcciones con prueba mecánica | los 4 vocabularios que faltan viven en la app del conductor (bloque 6) | — | *(no hizo falta)* |
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
-| **4** | **Marco** | 8 componentes · **4 ya existen** | 4 nuevos + las brechas de los 4 que existen | #12 · #21 | `Rutax P1 Pedidos` |
+| **4** | **Marco** | **4 de 8 cerrados** · 4 más ya existían | re-estilo del rail · dedup de las 3 vías a configuración | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | 16 componentes · **0 hechos** *(el preflight tiene su lógica, no su forma)* | 16 + las 4 anulaciones | #7 a #11 | `Rutax P4 Emitir factura` · `B2a` · `B2b` |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
@@ -250,9 +250,19 @@ bloques 4–8, cuando cada pantalla se toque.
       *Falta:* re-estilo del rail al sistema nuevo, y que el colapso exista por debajo de `lg`
       (hoy `botonColapsar` devuelve `null` dentro del `Sheet`).
 
-- [ ] **`navegación inferior móvil`** · DE CERO · 4 destinos por rol, 32 pantallas en 390 px.
-      Hoy **solo existe en la PWA del conductor** (`app-shell/conductor-nav.tsx`, 3 tabs).
-      `(tenant)` y `portal` en móvil tienen únicamente el header de 56 px con hamburguesa → `Sheet`.
+- [x] **`navegación inferior móvil`** · DE CERO · **construida** —
+      `src/components/app-shell/nav-inferior.tsx`, montada por el shell en `(tenant)` y `portal`.
+      Cuatro destinos, y **derivados del rol por construcción**: `destinosMovil()` toma los primeros
+      cuatro de su orden de preferencia **entre los que la persona ya puede ver**, así que sale del
+      mismo gating RBAC que el sidebar y no de una lista aparte que se desincroniza. Quien coordina
+      recibe los cuatro del tablero P1 —Pedidos · Preparación · Torre · Incidencias— y Administración,
+      que no tiene ninguna capacidad de operación, recibe los de dinero. Sin ningún `if` por rol.
+      El dashboard cede su lugar a propósito: es una pantalla de sentarse a mirar y en el teléfono
+      pierde contra las cuatro que se abren en la bodega; sigue a un toque en el panel.
+      Nueve pruebas en `nav-inferior.test.ts` fijan la derivación.
+      **Verificado en el navegador a 375 px**: fija abajo, cuatro columnas iguales, **56 × 94 px de
+      área táctil**, el activo en acento con su regla superior —el color solo no alcanza en `sun`—,
+      el contador con su texto para lector de pantalla, y `display:none` a 1280 px.
       *Nota:* el tab «Inicio» del conductor apunta a `/conductor`, que redirige a
       `/conductor/manifiesto`, así que dos tabs llevan al mismo sitio y `aria-current` nunca cae en
       «Inicio». Se arregla o se retira con la PWA (bloque 6).
@@ -260,54 +270,85 @@ bloques 4–8, cuando cada pantalla se toque.
 - [ ] **`navegación anidada de configuración`** · el costo dice DE CERO · **existe** — el «Patrón H»
       de `app-shell.tsx:465-467` y `:600-637` reemplaza el sidebar entero al entrar a configuración,
       con «← Volver» arriba. Cubre las 9 rutas de configuración.
-      *Falta:* (a) **`/configuracion` a secas es 404** — no hay `page.tsx`; el hub de facto es
-      `/onboarding`; (b) hay **tres vías distintas** a los mismos destinos (el ítem del sidebar, el
+      *Falta:* (a) ~~`/configuracion` a secas es 404~~ — **resuelto**: `configuracion/page.tsx`
+      redirige al hub real mientras el rediseño no le dé a configuración su propio índice (B3b); (b) hay **tres vías distintas** a los mismos destinos (el ítem del sidebar, el
       dropdown del bloque de marca en `layout.tsx:192-201`, y la card de plan en `:179-186`);
       (c) `(tenant)/dinero/layout.tsx` usa **otro patrón** —tabs horizontales— que duplica los mismos
       ítems que ya están en el grupo «Dinero» del sidebar. Una sola regla, no dos.
 
-- [ ] **`migas o retorno explícito`** · EXTENDER · 34 pantallas. **No hay componente compartido**:
-      no existe `breadcrumb.tsx` y cada pantalla lo resuelve a mano. Hoy: 2 pantallas con migas
-      reales (`dinero/periodos/[periodoId]:140`, `dinero/liquidaciones/[liquidacionId]:122`) y ~10
-      con solo «← Volver». `liquidaciones/[liquidacionId]` tiene **las dos cosas apuntando al mismo
-      sitio** (`:122` y `:132-137`). Y 31 archivos de `(tenant)` declaran su propio `<h1>`.
+- [x] **`migas o retorno explícito`** · EXTENDER · **unificado** —
+      `src/components/app-shell/retorno.tsx` (`Retorno`, `Migas`, `destinoRetorno`) y
+      `enlace-detalle.tsx`. Había **tres tratamientos** conviviendo: migas reales en las dos
+      pantallas de dinero, «‹ Volver» suelto en diez, y en `liquidaciones/[liquidacionId]`
+      **las dos cosas al mismo destino**. Con dos niveles de jerarquía las migas no agregan nada,
+      así que las cinco pantallas de detalle quedan con **una sola salida nombrada**.
+      **La regla del tablero P1 —«volver de un detalle nunca pierde el filtro»— está puesta.** El
+      listado cuelga su URL en `?volver=` (`EnlaceDetalle`, que la lee de `usePathname` +
+      `useSearchParams` para no tener que enhebrar una prop por cada `FilaX`) y el detalle la usa
+      como destino.
+      ⚠️ **`volver` viene de la URL, así que es una redirección abierta si se usa tal cual.**
+      `destinoRetorno` solo acepta una barra inicial: `//evil.cl`, `/\evil.cl`, `https://…` y
+      `javascript:` caen al destino interno. Once pruebas lo fijan, y **se verificó en vivo**:
+      con `?volver=//sitio-malo.cl/phishing` el botón apunta a `/manifiestos`.
+      *Falta:* las de `operaciones/` (bloqueadas por el trabajo en curso) y `conductores/[id]`,
+      que aún no cuelga el retorno desde su listado. Y los 31 `<h1>` propios de `(tenant)` siguen
+      sin encabezado compartido.
 
 - [ ] **`buscador global con teclado`** · el costo dice DE CERO · **existe** —
       `app-shell/paleta-comando.tsx` (215 líneas, implementación propia sin `cmdk`): ⌘K/Ctrl+K,
       Esc, flechas, Enter, debounce 250 ms, `AbortController`, mínimo 2 letras. Backend real en
       `src/app/api/buscar/route.ts` (207 líneas) con scope por `tenant_id` y RBAC por tipo.
-      *Falta:* (a) **apagarlo en el portal** — `mostrarBusqueda` viene `true` por defecto y
-      `portal/layout.tsx` no lo desactiva, pero `/api/buscar` corta con
-      `tipoUsuario !== "interno"`, así que **el seller siempre ve «Sin resultados»**; regla 35, una
-      pantalla no promete una acción que la interfaz no ofrece; (b) **encenderlo en el backstage**
-      (`admin/layout.tsx:112` pasa `mostrarBusqueda={false}`); (c) el tipo `liquidacion` está
-      declarado en `src/lib/buscar/tipos.ts` y no implementado en el handler; (d) puerta táctil
-      propia en 390 px; (e) el `<kbd>` del sidebar dice **«F»** y el atajo real es ⌘K.
+      **Hecho:** apagado en el portal. `mostrarBusqueda` viene `true` por defecto y
+      `portal/layout.tsx` no lo desactivaba, pero `/api/buscar` corta con
+      `tipoUsuario !== "interno"` — **el seller veía el botón, abría ⌘K y siempre le decía «Sin
+      resultados»**. Regla 35: una pantalla no promete una acción que la interfaz no ofrece. Entra
+      el buscador local del portal con NUEVO #21.
+      *Falta:* (a) **el backstage** — se deja apagado a propósito: encenderlo sin backend propio
+      repite el mismo error, porque el super-admin tampoco es `interno`. Necesita búsqueda por
+      courier, y va con el bloque 9; (b) el tipo `liquidacion` está declarado en
+      `src/lib/buscar/tipos.ts` y no implementado en el handler; (c) puerta táctil propia en 390 px;
+      (d) el `<kbd>` del sidebar dice **«F»** y el atajo real es ⌘K.
 
 - [ ] **`centro de avisos`** · el costo dice DE CERO · **existe** — `app-shell/centro-avisos.tsx`
       (96 líneas) sobre `src/lib/avisos/obtener-avisos.ts` (447 líneas), con las 8 fuentes que pide
       el inventario: conexiones caídas, folios por agotarse, corte de seller próximo, incidencias
       sin gestionar, discrepancias de conciliación, excepciones vencidas, consumo de plan al
       80/100 %, comunicaciones de Rutax.
-      *Falta:* (a) **el estado leído no existe** — `sinLeer = avisos.length`, o sea el badge cuenta
-      cuántos calculó el servidor y nada se puede descartar (brecha #27); (b) la jerarquía de tres
-      urgencias, visible pero sin escalón real; (c) no existe en `admin` (apagado explícito) ni en
-      el conductor.
+      **Hecho (brecha #27):** el rótulo decía «N sin leer» y **no existía ningún estado leído** —
+      ni forma de marcar un aviso ni tabla donde guardarlo—, así que todos eran «sin leer» siempre
+      y la campana prometía un buzón que no hay. La corrección **no es construir el buzón**: es que
+      la cifra nunca fue de mensajes sin abrir. Un aviso no se lee, **se resuelve** — desaparece
+      solo cuando su causa deja de ser cierta. Ahora dice lo que de verdad cuenta: «N necesitan tu
+      atención».
+      *Decisión pendiente tuya:* si además un aviso debe poder **posponerse** —que es otra cosa que
+      «leerlo»—, eso sí necesita dónde guardarse. Los ids ya son estables (`conexiones-caidas`,
+      `corte-proximo-<seller>`), así que la mesa está puesta.
+      *Falta:* (a) la jerarquía de tres urgencias, visible pero sin escalón real; (b) no existe en
+      `admin` (apagado explícito) ni en el conductor.
 
-- [ ] **`banner de sesión suplantada`** · DE CERO · las 13 del backstage. Hoy existe como **modo
-      soporte de solo lectura** (no impersonation real): `admin/couriers/[tenantId]/soporte/banner-soporte.tsx`
-      (116 líneas) con motivo obligatorio, contador `mm:ss` y expulsión al llegar a 0.
-      *Falta, y es lo importante:* **vive dentro de la página, no en el layout** — el propio
-      comentario dice que es porque `admin/layout.tsx` no expone un slot full-bleed. Consecuencia:
-      desaparece en su propia rama de error (`soporte/page.tsx:72-89` retorna el bloque de error
-      **sin el banner**) y en cualquier excepción que escale a `src/app/error.tsx`. La regla 7 del
-      sistema es explícita: **vive en el marco, no se colapsa, no se oculta al hacer scroll**.
-      Los tokens ya están: `--rx-impersonation-*` en `rx-tokens.css` §5, **hoy sin consumidor**.
+- [x] **`banner de sesión suplantada`** · DE CERO · **movido al marco** —
+      `src/components/app-shell/banner-suplantacion.tsx`, pintado por `admin/layout.tsx` para **todas**
+      las pantallas del backstage mientras la ventana de soporte esté abierta, no solo para la de
+      soporte. Antes vivía dentro de `soporte/page.tsx` porque el layout no exponía un slot, y eso
+      tenía dos agujeros: **la propia rama de error de esa página retornaba sin el banner** —con la
+      ventana todavía viva, sin contador y sin botón de salir— y cualquier excepción que escalara a
+      `src/app/error.tsx` lo borraba igual.
+      Ahora consume los **`--rx-impersonation-*`**, que `rx-tokens.css` declara fuera de los cuatro
+      temas a propósito y que hasta ahora no tenía un solo consumidor: si el equipo trabaja de noche
+      y el banner se atenuara, dejaría de gritar justo cuando más cansado está quien lo mira.
+      Lo alimenta `leerSoporteActivo()`, una lectura **pasiva** nueva en `modules/plataforma/soporte.ts`
+      que —a diferencia de `exigirSoporteActivo`— **no escribe bitácora ni borra la cookie**: corre en
+      cada render de cada pantalla del backstage, y un registro de auditoría por render escondería los
+      hechos reales bajo el ruido.
 
 - [ ] **`aviso de configuración pendiente`** · EXTENDER · existe —
       `src/components/onboarding/banner-onboarding.tsx` (43 líneas), montado por el slot `banner`
       del AppShell (`(tenant)/layout.tsx:245-252`).
-      *Falta:* (a) es full-bleed y **no sticky**: desaparece al hacer scroll; (b) el conteo es
+      *Corrección a este documento:* la versión anterior decía que ser **no sticky** era un defecto.
+      No lo es. La regla 7 pide que no se oculte al hacer scroll **para el banner de sesión
+      suplantada**, no para éste; hacerlo fijo le robaría alto vertical a todas las pantallas de
+      forma permanente por un aviso que no es urgente al segundo.
+      *Falta:* (a) el conteo es
       `totalPasos: 2` hardcodeado en `(tenant)/onboarding/estado.ts:155-168` (solo DTE + tarifas),
       mientras el panel muestra cinco tarjetas — **NUEVO #12 pide un solo conteo del que lean el
       banner y el asistente**; (c) solo lo ve quien tiene `puedeGestionarConfiguracionDte`.

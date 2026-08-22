@@ -2,6 +2,9 @@ import { ShieldAlert } from "lucide-react";
 import { exigirSuperAdmin, type ActorSuperAdmin } from "@/modules/plataforma/autorizacion-admin";
 import { Badge } from "@/components/ui/badge";
 import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
+import { BannerSuplantacion } from "@/components/app-shell/banner-suplantacion";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { leerSoporteActivo } from "@/modules/plataforma/soporte";
 import { cerrarSesionAdmin } from "./acciones-sesion";
 import { FormularioLoginAdmin } from "./formulario-login-admin";
 import { PanelEnrolamientoTotp } from "./seguridad/panel-enrolamiento-totp";
@@ -96,6 +99,22 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   const esAdminTotal = actor.rolAdmin === "admin_total";
+
+  // El banner de sesión suplantada se pinta en el MARCO, no en la pantalla de
+  // soporte: la regla 7 del sistema pide que no se pueda perder de vista, y
+  // mientras vivía dentro de la página desaparecía en su propia rama de error.
+  // Lectura pasiva: no escribe bitácora ni toca la cookie (ver `leerSoporteActivo`).
+  const soporte = await leerSoporteActivo();
+  let nombreCourierSoporte: string | null = null;
+  if (soporte) {
+    const { data } = await crearClienteServiceRole()
+      .from("tenants")
+      .select("nombre_fantasia")
+      .eq("id", soporte.tenantId)
+      .maybeSingle();
+    nombreCourierSoporte = (data?.nombre_fantasia as string | undefined) ?? soporte.tenantId;
+  }
+
   return (
     <AppShell
       nombreFantasia="Rutax"
@@ -109,7 +128,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       }
       accionSalir={cerrarSesionAdmin}
       mostrarAvisos={false}
+      // El buscador global sigue apagado en el backstage a propósito: encenderlo
+      // sin backend propio repetiría el error que acaba de corregirse en el
+      // portal — `/api/buscar` corta por `tipoUsuario !== "interno"` y el
+      // super-admin no lo es, así que devolvería "sin resultados" siempre.
+      // Necesita su propia búsqueda por courier. Va con el bloque 9.
       mostrarBusqueda={false}
+      banner={
+        soporte && nombreCourierSoporte ? (
+          <BannerSuplantacion
+            tenantId={soporte.tenantId}
+            nombreCourier={nombreCourierSoporte}
+            expiraEn={soporte.expiraEn}
+          />
+        ) : null
+      }
     >
       {children}
     </AppShell>

@@ -19,6 +19,24 @@ import type { Aviso, UrgenciaAviso } from "@/lib/avisos/obtener-avisos"
  * de urgencia y acción directa por aviso.
  *
  * IMPORTANTE: el copy NUNCA promete correo (P6). Hoy todo es in-app.
+ *
+ * ⚠️ **ESTO NO ES UNA BANDEJA DE ENTRADA, Y EL COPY YA NO DICE QUE LO SEA.**
+ * La cifra decía «N sin leer» y no existía —ni existe— ningún estado leído: no
+ * hay forma de marcar un aviso, ni tabla donde guardarlo. Todos eran «sin leer»
+ * siempre, así que el rótulo prometía un buzón que no hay (brecha #27 del
+ * inventario).
+ *
+ * Y la corrección no es construir el buzón: es que **el número nunca fue de
+ * mensajes sin abrir**. Un aviso no se lee, se RESUELVE — desaparece solo
+ * cuando su causa deja de ser cierta, porque se reconectó la cuenta, se cargó
+ * el CAF o se gestionó la incidencia. Marcarlo como leído con el problema
+ * todavía vivo sería esconderlo. Por eso la cifra dice lo que de verdad cuenta:
+ * cuántas cosas necesitan atención ahora mismo.
+ *
+ * Si alguna vez se decide que un aviso se pueda posponer —que es otra cosa que
+ * «leer»— eso sí necesita dónde guardarse, y es una decisión de producto: los
+ * ids ya son estables (`conexiones-caidas`, `corte-proximo-<seller>`), así que
+ * la mesa está puesta.
  */
 
 const COLOR_URGENCIA: Record<UrgenciaAviso, string> = {
@@ -28,7 +46,7 @@ const COLOR_URGENCIA: Record<UrgenciaAviso, string> = {
 }
 
 export function CentroAvisos({ avisos = [] }: { avisos?: Aviso[] }) {
-  const sinLeer = avisos.length
+  const necesitanAtencion = avisos.length
 
   return (
     <DropdownMenu>
@@ -37,15 +55,19 @@ export function CentroAvisos({ avisos = [] }: { avisos?: Aviso[] }) {
           variant="ghost"
           size="icon-sm"
           className="relative"
-          aria-label={sinLeer > 0 ? `Avisos (${sinLeer} sin leer)` : "Avisos"}
+          aria-label={
+            necesitanAtencion > 0
+              ? `Avisos: ${necesitanAtencion} ${necesitanAtencion === 1 ? "necesita" : "necesitan"} tu atención`
+              : "Avisos: todo al día"
+          }
         >
           <Bell className="size-4" aria-hidden="true" />
-          {sinLeer > 0 ? (
+          {necesitanAtencion > 0 ? (
             <span
               className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground"
               aria-hidden="true"
             >
-              {sinLeer > 9 ? "9+" : sinLeer}
+              {necesitanAtencion > 9 ? "9+" : necesitanAtencion}
             </span>
           ) : null}
         </Button>
@@ -54,7 +76,7 @@ export function CentroAvisos({ avisos = [] }: { avisos?: Aviso[] }) {
         <div className="border-b border-border px-3 py-2.5">
           <p className="font-heading text-sm font-medium text-foreground">Avisos</p>
         </div>
-        {sinLeer === 0 ? (
+        {necesitanAtencion === 0 ? (
           <div className="flex flex-col items-center gap-1.5 px-4 py-8 text-center">
             <Bell className="size-5 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm font-medium text-foreground">Todo al día</p>

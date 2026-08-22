@@ -31,7 +31,8 @@ import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
 import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
-import { BotonDescargaDocumento } from "./boton-descarga-documento";
+import { BotonDescargaDocumento } from "./boton-descarga-documento";
+import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
 export const metadata: Metadata = {
   title: "Detalle de período",
@@ -47,7 +48,7 @@ const LIMITE_LINEAS = 50;
 
 interface PageProps {
   params: Promise<{ periodoId: string }>;
-  searchParams: Promise<{ pagina?: string }>;
+  searchParams: Promise<{ pagina?: string; volver?: string }>;
 }
 
 export default async function PaginaDetallePeriodo({ params, searchParams }: PageProps) {
@@ -57,6 +58,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   if (!puedeEmitirFacturas(sesion.usuario)) redirect("/dashboard");
 
   const { periodoId } = await params;
+  const { volver } = await searchParams;
   const sp = await searchParams;
   const pagina = Math.max(1, parseInt(sp.pagina ?? "1", 10));
   const tenantId = sesion.usuario.tenantId;
@@ -137,14 +139,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <nav aria-label="Migajas de pan" className="flex items-center gap-1 text-sm text-muted-foreground">
-        <Link href="/dinero/periodos" className="hover:text-foreground hover:underline">
-          Períodos de cobro
-        </Link>
-        <span aria-hidden="true">/</span>
-        <span className="text-foreground">Detalle</span>
-      </nav>
+      <Retorno href={destinoRetorno("/dinero/periodos", volver)} etiqueta="Volver a períodos" />
 
       {/* Sección A — Encabezado */}
       <section>

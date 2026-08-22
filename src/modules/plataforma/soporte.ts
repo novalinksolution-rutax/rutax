@@ -255,6 +255,37 @@ export async function iniciarSoporteTenant(opts: {
  * mutar cookies — se ignora en silencio, igual criterio que
  * `lib/supabase/server.ts`.
  */
+/**
+ * Lectura PASIVA de la ventana de soporte vigente, sin exigir un tenant.
+ *
+ * Existe para que el marco —y no cada pantalla— pueda pintar el banner de
+ * sesión suplantada. La regla 7 del sistema de diseño es explícita: ese banner
+ * vive en el marco, no se colapsa, no se oculta al hacer scroll. Mientras
+ * vivió dentro de la página, desaparecía en su propia rama de error y en
+ * cualquier excepción que escalara al boundary raíz — justo cuando alguien más
+ * necesita ver que está mirando la cuenta de otra empresa.
+ *
+ * ⚠️ **No escribe bitácora, a diferencia de `exigirSoporteActivo`.** Esto corre
+ * en CADA render de CADA pantalla del backstage: dejar un registro de auditoría
+ * por render llenaría la bitácora de ruido y escondería los hechos reales.
+ * Tampoco borra la cookie vencida — de eso se sigue encargando la vía que
+ * exige, que es la que sabe a nombre de qué tenant se está pidiendo.
+ */
+export async function leerSoporteActivo(): Promise<SesionSoporte | null> {
+  const almacenCookies = await cookies();
+  const cookie = almacenCookies.get(COOKIE_SOPORTE_TENANT);
+  if (!cookie?.value) return null;
+
+  const payload = verificarYExtraerPayload(cookie.value);
+  if (!payload || payload.exp <= Date.now()) return null;
+
+  return {
+    tenantId: payload.tenantId,
+    adminId: payload.adminId,
+    expiraEn: new Date(payload.exp).toISOString(),
+  };
+}
+
 export async function exigirSoporteActivo(tenantId: string): Promise<SesionSoporte> {
   const actor = await exigirSuperAdmin();
 

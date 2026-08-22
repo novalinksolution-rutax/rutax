@@ -29,7 +29,8 @@ import { ESTADOS_TERMINALES_PEDIDO } from "@/modules/operacion/metricas";
 import { BotonConfirmarManifiesto } from "./boton-confirmar-manifiesto";
 import { BotonCancelarManifiesto } from "./boton-cancelar-manifiesto";
 import { BotonCompletarManifiesto } from "./boton-completar-manifiesto";
-import { PanelRuta, type ParadaVista } from "./panel-ruta";
+import { PanelRuta, type ParadaVista } from "./panel-ruta";
+import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
 // =============================================================================
 // Tipos auxiliares
@@ -165,14 +166,16 @@ async function cargarNombreConductor(driverId: string, tenantId: string): Promis
 
 interface Props {
   params: Promise<{ manifiestoId: string }>;
+  searchParams: Promise<{ volver?: string }>;
 }
 
-export default async function PaginaDetalleManifiesto({ params }: Props) {
+export default async function PaginaDetalleManifiesto({ params, searchParams }: Props) {
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
 
   const { manifiestoId } = await params;
+  const { volver } = await searchParams;
   const tenantId = sesion.usuario.tenantId;
 
   const [manifiesto, pedidosAsignadosSinOrden, origenRuta] = await Promise.all([
@@ -243,13 +246,7 @@ export default async function PaginaDetalleManifiesto({ params }: Props) {
   return (
     <div className="space-y-6">
       {/* Volver */}
-      <Link
-        href="/manifiestos"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Volver a manifiestos
-      </Link>
+      <Retorno href={destinoRetorno("/manifiestos", volver)} etiqueta="Volver a manifiestos" />
 
       {/* Encabezado */}
       <div className="flex flex-wrap items-start justify-between gap-4">

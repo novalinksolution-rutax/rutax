@@ -35,6 +35,7 @@ import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
 import { BloqueEtiqueta } from "./bloque-etiqueta";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
+import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
@@ -316,12 +317,12 @@ export default async function PaginaPedidosSeller({
                           !ESTADOS_TERMINALES.includes(pedido.estado) && (
                             <BloqueEtiqueta pedidoId={pedido.id} compacto />
                           )}
-                        <Link
+                        <EnlaceDetalle
                           href={`/portal/pedidos/${pedido.id}`}
                           className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
                         >
                           Ver detalle
-                        </Link>
+                        </EnlaceDetalle>
                       </div>
                     </TableCell>
                   </TableRow>

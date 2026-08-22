@@ -35,7 +35,8 @@ import {
 import { DialogAnular } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-corregir-dinero";
 import { accionAnularLiquidacionPedido } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-dinero";
 import { accionAnularLineaLiquidacion } from "./actions-linea";
-import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./acceso-app-conductor";
+import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./acceso-app-conductor";
+import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
 type Bucket = "acumulando" | "por_pagar" | "pagado";
 
@@ -140,15 +141,17 @@ async function resolverEstadoAccesoApp(
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ volver?: string }>;
 }
 
-export default async function PaginaDetalleConductor({ params }: Props) {
+export default async function PaginaDetalleConductor({ params, searchParams }: Props) {
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
   if (!puedeGestionarLiquidacionesConductores(sesion.usuario)) redirect("/conductores");
 
   const { id: driverId } = await params;
+  const { volver } = await searchParams;
   const tenantId = sesion.usuario.tenantId;
   const cliente = crearClienteServiceRole();
 
@@ -248,13 +251,7 @@ export default async function PaginaDetalleConductor({ params }: Props) {
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/conductores"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Volver a conductores
-      </Link>
+      <Retorno href={destinoRetorno("/conductores", volver)} etiqueta="Volver a conductores" />
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

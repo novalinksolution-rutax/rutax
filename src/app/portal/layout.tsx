@@ -12,6 +12,7 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerAvisosSeller } from "@/lib/avisos/obtener-avisos-seller";
 import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
+import { destinosMovil } from "@/components/app-shell/destinos-movil";
 
 export default async function LayoutPortal({
   children,
@@ -71,6 +72,12 @@ export default async function LayoutPortal({
       densidad="relajada"
       grupos={grupos}
       avisos={avisos}
+      destinosMovil={destinosMovil(grupos.flatMap((g) => g.items))}
+      // El seller ve el botón de buscar y la paleta ⌘K, pero `/api/buscar` corta
+      // por `tipoUsuario !== "interno"` y le devuelve vacío SIEMPRE. Una pantalla
+      // no promete una acción que la interfaz no ofrece (regla 35), así que se
+      // apaga hasta que exista el buscador local del portal (NUEVO #21).
+      mostrarBusqueda={false}
     >
       {children}
     </AppShell>

@@ -21,6 +21,7 @@ import {
   puedeGestionarBodegas,
 } from "@/modules/identidad/capacidades";
 import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
+import { destinosMovil } from "@/components/app-shell/destinos-movil";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
 import { resolverEstadoOnboarding } from "@/app/(tenant)/onboarding/estado";
 import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
@@ -83,6 +84,7 @@ export default async function LayoutTenant({ children }: { children: React.React
     grupoPrincipal.items.push({
       href: "/torre-de-control",
       etiqueta: "Torre de control",
+      etiquetaCorta: "Torre",
       icono: "torre-de-control",
     });
   }
@@ -95,6 +97,7 @@ export default async function LayoutTenant({ children }: { children: React.React
     grupoOperacion.items.push({
       href: "/preparacion",
       etiqueta: "Preparación del día",
+      etiquetaCorta: "Preparación",
       icono: "preparacion",
     });
   }
@@ -224,6 +227,12 @@ export default async function LayoutTenant({ children }: { children: React.React
     obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId),
   ]);
 
+  // Los cuatro destinos del teléfono salen de la MISMA navegación que ya se
+  // filtró por capacidad arriba: no hay una segunda lista que se desincronice.
+  // Lo del coordinador no es lo de Administración porque sus capacidades no son
+  // las mismas, no porque haya un `if` por rol en alguna parte.
+  const destinos = destinosMovil(grupos.flatMap((g) => g.items));
+
   return (
     <AppShell
       nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
@@ -242,6 +251,7 @@ export default async function LayoutTenant({ children }: { children: React.React
       // ninguna otra pantalla.
       rutasAnchas={["/torre-de-control"]}
       avisos={avisos}
+      destinosMovil={destinos}
       banner={
         estadoOnboarding && !estadoOnboarding.completo ? (
           <BannerOnboarding
