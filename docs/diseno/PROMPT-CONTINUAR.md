@@ -1,47 +1,53 @@
 # Prompt para continuar el rediseño en otra sesión
 
 > Ejecutar en **modo plan**. Copiar el bloque completo.
+> Actualizado: 22-08-2026, con el checklist abierto.
 
 ```
-Vamos a continuar la bajada a código del rediseño completo de Rutax. Todo el trabajo de
-diseño ya está hecho y guardado; falta implementarlo.
+Seguimos con la bajada a código del rediseño de Rutax. El diseño está terminado; los bloques
+1 a 3 están aplicados y falta del 4 al 8.
 
-Antes de proponer nada, revisa en este orden:
+Empieza por acá, en este orden:
 
-1. `docs/diseno/RUTAX-FICHA-DE-CIERRE.md` — es el documento de entrada. Trae qué se diseñó,
-   las 80 reglas de sistema que rigen, lo marcado NUEVO sin aprobar, lo que quedó abierto y
-   lo que se decidió NO diseñar.
+1. `docs/diseno/CHECKLIST-REDISENO.md` — el documento de trabajo. Dice en qué va cada bloque,
+   qué falta, qué depende de qué y qué está bloqueado por una decisión mía. Su tablero de
+   estado se lee en un minuto. **Es el que se marca al terminar cada cosa.**
 
-2. `docs/diseno/RUTAX-COSTO-DE-IMPLEMENTACION.md` — los 100 componentes con su costo
-   (re-estilo / extender / de cero) y, en su §10, **el orden de dependencia en 8 bloques**.
-   Ese orden manda: no lo reordenes sin decir por qué.
+2. `git log --oneline -4` y `git status`. Lo que esté sin commitear fuera de `docs/diseno/`
+   es trabajo en curso ajeno al rediseño: NO lo toques.
 
-3. El resto de `docs/diseno/`: `tokens.css`, el registro de objetos, el sistema de diseño,
-   el sistema de mensajes y el sitio comercial. Y `pantallas/LEEME.md`, que explica cómo se
-   miran los tableros visuales y cuáles de los 31 todavía no están acá.
+3. Del bloque que vayamos a hacer, lee su sección del checklist entera y de ahí salta a lo que
+   cite: `RUTAX-SISTEMA-DE-DISENO.md` para las reglas, `RUTAX-REGISTRO-DE-OBJETOS.md` para los
+   estados de cada objeto, `RUTAX-SISTEMA-DE-MENSAJES.md` para los textos (ya están escritos,
+   no hay que redactar), `tokens.css` para los valores.
 
-4. `docs/rediseno-2026/` — el inventario de lo que el producto hace HOY, leído del código:
-   el maestro, ocho anexos por superficie con los textos literales, y `HALLAZGOS-TECNICOS.md`
-   con 36 defectos que no son de diseño.
+4. `docs/rediseno-2026/RUTAX-INVENTARIO.md` — lo que el producto hace HOY, leído del código.
+   Su §5 es el árbol de pantallas y su §13 las 35 brechas de diseño con su evidencia.
+   ⚠️ Cita ocho anexos (`ANEXO-A` a `ANEXO-H`) y un `HALLAZGOS-TECNICOS.md` que **NO EXISTEN**:
+   ni en el repo ni en el proyecto de Claude Design. No los busques. El maestro alcanza.
 
-5. El código ya tocado, para no repetirlo: `src/app/rx-tokens.css`, `src/app/rx-puente.css`,
-   `src/lib/ui/tonos-estado.ts`, `src/components/ui/distintivo-estado.tsx`,
-   `src/components/ui/barra-cajones.tsx`, `src/components/ui/barra-seleccion.tsx`,
-   `src/components/ui/cambios-pendientes.tsx`. Y mira `git status` y `git diff`.
+5. El código del sistema nuevo, para no repetirlo: `src/app/rx-tokens.css`,
+   `src/app/rx-puente.css`, `src/lib/ui/tonos-estado.ts`,
+   `src/components/ui/distintivo-estado.tsx`, `barra-cajones.tsx`, `barra-seleccion.tsx`
+   y `cambios-pendientes.tsx`. Y `/kitchen-sink`, que es donde se ven todos juntos.
 
-**Estado: los bloques 1, 2 y 3 están hechos y verificados en el navegador** (tokens y puente,
-sistema de estado, componentes de tabla). Faltan del 4 al 8.
+Tres cosas que hay que saber antes de tocar nada:
 
-**La regla de trabajo que ya está funcionando y hay que mantener:** se construye el componente
-nuevo y el viejo delega en él, para que las pantallas existentes hereden sin tocarlas. Esto se
-monta sobre un producto en producción: lo nuevo y lo viejo conviven meses.
+· El sistema de diseño ANTERIOR se retiró en el commit `234613d`. `DESIGN_SYSTEM.md` en la
+  raíz es ahora solo un redirector — no es autoridad, y lo que diga cualquier comentario
+  viejo de `src/` que lo cite tampoco.
 
-Los artboards que faltan se traen con la herramienta DesignSync desde el proyecto de Claude
-Design `184f328b-adb3-4f5a-93f5-69bf43becdb6`. Solo funciona en la sesión principal, no en
-subagentes.
+· La regla de trabajo que está funcionando: se construye el componente nuevo y el viejo
+  delega en él, para que las pantallas existentes hereden sin tocarlas. Esto se monta sobre
+  un producto en producción: lo nuevo y lo viejo conviven meses. `badge-estado` delegando en
+  `DistintivoEstado` es el molde.
 
-**Lo que quiero de esta sesión: el checklist completo del rediseño de Rutax**, del bloque 4 al
-8, con lo que ya está hecho marcado. Que sirva para trabajar contra él sesión tras sesión: por
-bloque, con sus componentes y pantallas, y señalando qué depende de qué y qué está bloqueado
-por una decisión mía pendiente.
+· Los tableros visuales se traen con la herramienta DesignSync (`get_file`) desde el proyecto
+  de Claude Design `184f328b-adb3-4f5a-93f5-69bf43becdb6`. Solo funciona en la sesión
+  principal, no en subagentes. Trae solo el del bloque en curso: el checklist dice cuál.
 ```
+
+## Los tableros que ya están locales
+
+En `pantallas/`: `Rutax Componentes.dc.html` y `Rutax B7b Autenticacion.dc.html`, más el
+`support.js` que necesitan. Los otros 29 se traen con DesignSync. Ver `pantallas/LEEME.md`.
