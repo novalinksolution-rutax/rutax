@@ -2,6 +2,14 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Sistema de diseño Rutax v1.0 (bloque 1 de la bajada a código).
+ * `rx-tokens.css` define los `--rx-*` en sus cuatro temas; `rx-puente.css`
+ * repunta los nombres de shadcn hacia ellos con `html:root`, así que gana sin
+ * depender del orden de importación. Para revertir todo: borra estas dos líneas.
+ * Ver `docs/diseno/RUTAX-COSTO-DE-IMPLEMENTACION.md`. */
+@import "./rx-tokens.css";
+@import "./rx-puente.css";
+
 @custom-variant dark (&:is(.dark *));
 
 /* =============================================================================

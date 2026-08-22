@@ -1,23 +1,35 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Chivo, Azeret_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-// ADN de Retell (§2.2): Inter self-hosted vía next/font, como fuente sans de
-// toda la UI. Es un archivo variable → cubre los pesos 400/500/600/700 que usa
-// la escala tipográfica sin cargar caras extra.
-const inter = Inter({
+// Sistema de diseño Rutax v1.0. Chivo self-hosted vía next/font como fuente
+// sans de toda la interfaz.
+//
+// Los cuatro pesos NO son negociables y están declarados explícitamente: el 500
+// sostiene los rótulos y el 600 los títulos. Subconjuntar de menos deja que el
+// navegador sintetice la negrita, y eso se nota justo donde más duele — en una
+// columna de cifras.
+//
+// Se conservan los nombres de variable heredados (`--font-sans-src`,
+// `--font-geist-mono`) a propósito: `globals.css` los mapea en `@theme inline`,
+// así que cambiar la cara no obliga a tocar el andamiaje ni ningún componente.
+const chivo = Chivo({
   variable: "--font-sans-src",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
-// Se conserva un mono para números y dinero (regla de Rutax: `tabular-nums`).
-const geistMono = Geist_Mono({
+// Azeret Mono sostiene TODAS las cifras del producto: montos en pesos, códigos
+// de envío, cantidades de bultos y horas. Tres pesos, por la misma razón.
+const azeretMono = Azeret_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -46,7 +58,7 @@ export default function RootLayout({
   return (
     <html
       lang="es-CL"
-      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${chivo.variable} ${azeretMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">

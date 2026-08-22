@@ -1,0 +1,226 @@
+/* =============================================================================
+ * rx-puente.css — el puente entre el sistema de diseño nuevo y shadcn/ui
+ * -----------------------------------------------------------------------------
+ * QUÉ HACE Y POR QUÉ EXISTE
+ *
+ * El sistema nuevo (`rx-tokens.css`) nombra sus tokens `--rx-*`. Los 30
+ * componentes de shadcn que ya están en 84 pantallas consumen los nombres de
+ * shadcn (`--background`, `--primary`, …), y `globals.css` los expone a Tailwind
+ * con `@theme inline`.
+ *
+ * Este archivo REPUNTA los nombres de shadcn hacia los tokens nuevos. Con eso,
+ * los 30 componentes y todas las utilidades de Tailwind se re-tiñen sin tocar
+ * un solo archivo de componente. Es el "bloque 1" de
+ * `docs/diseno/RUTAX-COSTO-DE-IMPLEMENTACION.md`, y es lo que hace posible que
+ * lo nuevo y lo viejo convivan los meses que dure la migración.
+ *
+ * CÓMO GANA
+ * Usa `html:root` (especificidad 0,0,1,1) en vez de `:root` (0,0,1,0), así que
+ * gana sobre las definiciones de `globals.css` sin depender del orden de
+ * importación — que en Tailwind 4 no se puede controlar, porque `@import` tiene
+ * que ir arriba.
+ *
+ * UN SOLO BLOQUE PARA LOS DOS TEMAS
+ * No hay versión clara y versión oscura acá. Los `--rx-*` ya cambian solos
+ * según `data-rx-theme` en `<html>`, que escribe `next-themes` junto con la
+ * clase `.dark`. Por eso este archivo no repite valores.
+ *
+ * CÓMO SE REVIERTE
+ * Borra la línea `@import "./rx-puente.css";` de `globals.css`. El producto
+ * vuelve exactamente a como estaba: este archivo no elimina nada, solo repunta.
+ * ========================================================================== */
+
+html:root {
+  /* --- Superficie ------------------------------------------------------- */
+  --background:            var(--rx-bg);
+  --foreground:            var(--rx-fg);
+  --card:                  var(--rx-bg-raised);
+  --card-foreground:       var(--rx-fg);
+  --popover:               var(--rx-bg-raised);
+  --popover-foreground:    var(--rx-fg);
+
+  /* --- Acción -----------------------------------------------------------
+   * En el sistema nuevo la acción primaria ES el acento (teal), no un neutro
+   * oscuro. Es el cambio más visible de esta capa. */
+  --primary:               var(--rx-accent);
+  --primary-foreground:    var(--rx-fg-on-accent);
+
+  --secondary:             var(--rx-bg-sunken);
+  --secondary-foreground:  var(--rx-fg);
+  --muted:                 var(--rx-bg-sunken);
+  --muted-foreground:      var(--rx-fg-muted);
+
+  /* `--accent` en shadcn es el fondo de hover, NO el acento de marca.
+   * El acento de marca de Rutax es `--brand`, más abajo. */
+  --accent:                var(--rx-bg-inset);
+  --accent-foreground:     var(--rx-fg);
+
+  /* --- Marca ------------------------------------------------------------ */
+  --brand:                 var(--rx-accent);
+  --brand-foreground:      var(--rx-fg-on-accent);
+
+  /* --- Línea y foco ----------------------------------------------------- */
+  --border:                var(--rx-line);
+  --input:                 var(--rx-line);
+  --ring:                  var(--rx-focus);
+
+  /* --- Estado ------------------------------------------------------------
+   * shadcn modela cada tono como solid + foreground + subtle + subtle-foreground.
+   * El sistema nuevo lo modela como fg + bg + line, que es un modelo distinto y
+   * más completo (agrega el borde, que shadcn no tiene).
+   *
+   * ⚠️ Este mapeo es una APROXIMACIÓN deliberada, no una equivalencia. Sirve
+   * para que lo existente no se vea roto mientras se migra. Los seis tonos
+   * reales del dominio —balanced · progress · attention · fault · neutral ·
+   * inert— se exponen abajo con sus nombres propios, y son los que hay que usar
+   * de aquí en adelante. `inert` no tiene equivalente en shadcn: es nuevo. */
+  --destructive:                    var(--rx-fault-fg);
+  --destructive-foreground:         var(--rx-bg);
+  --destructive-subtle:             var(--rx-fault-bg);
+  --destructive-subtle-foreground:  var(--rx-fault-fg-soft, var(--rx-fault-fg));
+
+  --success:                        var(--rx-balanced-fg);
+  --success-foreground:             var(--rx-fg-on-accent);
+  --success-subtle:                 var(--rx-balanced-bg);
+  --success-subtle-foreground:      var(--rx-balanced-fg);
+
+  --warning:                        var(--rx-attention-fg);
+  --warning-foreground:             var(--rx-bg);
+  --warning-subtle:                 var(--rx-attention-bg);
+  --warning-subtle-foreground:      var(--rx-attention-fg);
+
+  --info:                           var(--rx-progress-fg);
+  --info-foreground:                var(--rx-bg);
+  --info-subtle:                    var(--rx-progress-bg);
+  --info-subtle-foreground:         var(--rx-progress-fg);
+
+  /* --- Gráficos ----------------------------------------------------------
+   * La paleta nueva evita a propósito el matiz del rojo y del ámbar, para que
+   * una serie no se confunda con un tono de estado. */
+  --chart-1: var(--rx-chart-1);
+  --chart-2: var(--rx-chart-2);
+  --chart-3: var(--rx-chart-3);
+  --chart-4: var(--rx-chart-4);
+  --chart-5: var(--rx-chart-5);
+
+  /* --- Navegación lateral ----------------------------------------------- */
+  --sidebar:                     var(--rx-bg-sunken);
+  --sidebar-foreground:          var(--rx-fg);
+  --sidebar-primary:             var(--rx-accent);
+  --sidebar-primary-foreground:  var(--rx-fg-on-accent);
+  --sidebar-accent:              var(--rx-bg-raised);
+  --sidebar-accent-foreground:   var(--rx-fg);
+  --sidebar-border:              var(--rx-line-subtle);
+  --sidebar-ring:                var(--rx-focus);
+
+  /* --- Radio -------------------------------------------------------------
+   * De 10px a 3px. Es una decisión del sistema, no un descuido: un producto de
+   * trabajo con esquinas redondeadas en todas partes pierde la retícula. Las
+   * tablas y las secciones de página van a 0. */
+  --radius: var(--rx-radius-ctrl);
+
+  /* --- Sombras -----------------------------------------------------------
+   * El sistema nuevo NO tiene sombras: la elevación se construye con escalón de
+   * fondo (`--rx-bg-raised` sobre `--rx-bg`) más borde. Se anulan acá para que
+   * ningún componente existente siga proyectando una.
+   * La única excepción es el velo del modal, que no es una sombra y vive en
+   * `--rx-scrim`. */
+  --shadow-xs:       none;
+  --shadow-sm:       none;
+  --shadow-md:       none;
+  --shadow-lg:       none;
+  --shadow-dropdown: none;
+
+  /* --- Curvas y duraciones ----------------------------------------------
+   * Ninguna curva del sistema nuevo tiene rebote. `--ease-emphasis` era la
+   * única que lo tenía y se repunta a la curva de gravedad: un rebote en una
+   * confirmación de dinero es una falta de respeto al momento. */
+  --ease-standard: var(--rx-ease-standard);
+  --ease-out:      var(--rx-ease-entrada);
+  --ease-in:       var(--rx-ease-salida);
+  --ease-emphasis: var(--rx-ease-gravedad);
+}
+
+/* =============================================================================
+ * Los seis tonos del dominio, expuestos como utilidades de Tailwind
+ * -----------------------------------------------------------------------------
+ * Estos NO existen en shadcn. Son el vocabulario que resuelve los 29 ejes de
+ * estado con sus ~147 valores, y son los que hay que usar en el código nuevo:
+ *   bg-balanced-bg · text-balanced-fg · border-balanced-line   (y sus cinco hermanos)
+ *
+ * `inert` va SIEMPRE con su trama diagonal además del color — es lo que hace
+ * que "cancelado" e "inactivo" se distingan de "vacío" en monocromo y en la
+ * etiqueta térmica. La trama vive en `--rx-inert-fill`.
+ * ========================================================================== */
+@theme inline {
+  --color-balanced-fg:   var(--rx-balanced-fg);
+  --color-balanced-bg:   var(--rx-balanced-bg);
+  --color-balanced-line: var(--rx-balanced-line);
+
+  --color-progress-fg:   var(--rx-progress-fg);
+  --color-progress-bg:   var(--rx-progress-bg);
+  --color-progress-line: var(--rx-progress-line);
+
+  --color-attention-fg:   var(--rx-attention-fg);
+  --color-attention-bg:   var(--rx-attention-bg);
+  --color-attention-line: var(--rx-attention-line);
+
+  --color-fault-fg:       var(--rx-fault-fg);
+  --color-fault-bg:       var(--rx-fault-bg);
+  --color-fault-line:     var(--rx-fault-line);
+  --color-fault-fg-soft:  var(--rx-fault-fg-soft);
+
+  --color-neutralst-fg:   var(--rx-neutral-fg);
+  --color-neutralst-bg:   var(--rx-neutral-bg);
+  --color-neutralst-line: var(--rx-neutral-line);
+
+  --color-inert-fg:       var(--rx-inert-fg);
+  --color-inert-line:     var(--rx-inert-line);
+
+  /* Superficie y línea con sus nombres propios, para el código nuevo. */
+  --color-bg:         var(--rx-bg);
+  --color-bg-raised:  var(--rx-bg-raised);
+  --color-bg-sunken:  var(--rx-bg-sunken);
+  --color-bg-inset:   var(--rx-bg-inset);
+  --color-fg:         var(--rx-fg);
+  --color-fg-muted:   var(--rx-fg-muted);
+  --color-fg-subtle:  var(--rx-fg-subtle);
+  --color-line:       var(--rx-line);
+  --color-line-subtle:var(--rx-line-subtle);
+  --color-line-strong:var(--rx-line-strong);
+  --color-accent-text:var(--rx-accent-text);
+
+  /* Alto de fila por superficie: la misma tabla cambia de densidad según dónde
+   * se use. `h-row-touch` es la que hace que la asignación en bloque funcione
+   * con el dedo, de pie en la bodega. */
+  --spacing-row-backstage: var(--rx-row-backstage);
+  --spacing-row-desktop:   var(--rx-row-desktop);
+  --spacing-row-touch:     var(--rx-row-touch);
+  --spacing-row-portal:    var(--rx-row-portal);
+  --spacing-target-min:    var(--rx-target-min);
+  --spacing-target-app:    var(--rx-target-app);
+
+  --radius-badge: var(--rx-radius-badge);
+  --radius-ctrl:  var(--rx-radius-ctrl);
+}
+
+/* =============================================================================
+ * Utilidad para el relleno inerte
+ * `inert` es el único tono que no se puede expresar solo con color: necesita la
+ * trama. Se declara como utilidad para que no haya que repetir el degradado.
+ * ========================================================================== */
+@utility rx-inert {
+  background-image: var(--rx-inert-fill);
+  color: var(--rx-inert-fg);
+  border-color: var(--rx-inert-line);
+}
+
+@utility rx-inert-row {
+  background-image: var(--rx-inert-fill-row);
+}
+
+/* Cifras: toda columna de números va en tabular para poder compararse. */
+@utility rx-num {
+  font-variant-numeric: var(--rx-numeric);
+  font-family: var(--rx-font-mono);
+}

@@ -7,6 +7,7 @@
  * pasada. NO es parte del producto: es una superficie de diseño/QA visual.
  */
 
+import { useState } from "react"
 import { useTheme } from "next-themes"
 import { Plus, Download, Trash2, ChevronDown, Search, Sun, MoonStar, Monitor } from "lucide-react"
 import { toast } from "sonner"
@@ -53,6 +54,9 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { MontoCLP } from "@/components/ui/monto-clp"
 import { BadgeEstado } from "@/components/ui/badge-estado"
+import { BarraCajones } from "@/components/ui/barra-cajones"
+import { BarraSeleccion } from "@/components/ui/barra-seleccion"
+import { FranjaCambiosPendientes, MarcadorFilaActualizada } from "@/components/ui/cambios-pendientes"
 import { KpiCard } from "@/components/ui/kpi-card"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import { DataTable } from "@/components/ui/data-table"
@@ -99,6 +103,7 @@ const SWATCHES: { nombre: string; clase: string; borde?: boolean }[] = [
 
 export default function KitchenSinkPage() {
   const { setTheme } = useTheme()
+  const [cajonActivo, setCajonActivo] = useState<string | null>(null)
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -148,13 +153,65 @@ export default function KitchenSinkPage() {
           </div>
         </Seccion>
 
+        <Seccion titulo="Sistema nuevo · Bloque 3 · tablas">
+          <div className="space-y-6">
+            <BarraCajones
+              activo={cajonActivo}
+              onSeleccionar={setCajonActivo}
+              total={247}
+              cajones={[
+                { clave: "sin_asignar", etiqueta: "Sin asignar", conteo: 38 },
+                { clave: "asignado", etiqueta: "Asignado", conteo: 62 },
+                { clave: "en_ruta", etiqueta: "En ruta", conteo: 91 },
+                { clave: "entregado", etiqueta: "Entregado", conteo: 44 },
+                { clave: "con_problemas", etiqueta: "Con problemas", conteo: 3 },
+              ]}
+              excluido={{ clave: "cancelado", etiqueta: "Cancelado", conteo: 9 }}
+            />
+
+            <FranjaCambiosPendientes cantidad={7} onIncorporar={() => {}} />
+
+            <div className="rounded-ctrl border border-line">
+              <MarcadorFilaActualizada activo>
+                <div className="px-3 py-2 text-[13.5px]">
+                  M. Fuentes Aravena · <span className="rx-num text-fg-muted">RX-7K2M-9PQR</span> ·
+                  Ñuñoa <span className="text-fg-subtle">— cambió hace 3 s</span>
+                </div>
+              </MarcadorFilaActualizada>
+              <MarcadorFilaActualizada activo={false}>
+                <div className="px-3 py-2 text-[13.5px] text-fg-muted">
+                  R. Cárcamo Díaz · <span className="rx-num">RX-4B8N-2XQL</span> · Maipú
+                </div>
+              </MarcadorFilaActualizada>
+            </div>
+
+            <BarraSeleccion
+              cantidad={30}
+              onLimpiar={() => {}}
+              composicion={[
+                { etiqueta: "4 comunas" },
+                { etiqueta: "2 sellers" },
+                { etiqueta: "6 ya son de otro conductor", alerta: true },
+              ]}
+            >
+              <Button size="sm">Asignar a conductor</Button>
+            </BarraSeleccion>
+          </div>
+        </Seccion>
+
         <Seccion titulo="Dominio · BadgeEstado (punto + texto)">
           <Muestra nombre="Pedido">
-            <BadgeEstado variante="warning" texto="Pendiente de asignación" />
-            <BadgeEstado variante="info" texto="En ruta" />
-            <BadgeEstado variante="success" texto="Entregado" />
-            <BadgeEstado variante="error" texto="Fallido" />
-            <BadgeEstado variante="neutral" texto="Cancelado" />
+            {/* Estas cinco declaran su `eje` y su `valor`, así que reciben las
+                correcciones del sistema de diseño en vez de la traducción
+                mecánica: "Pendiente de asignación" baja de ámbar a neutro —el
+                punto de partida de todo pedido no es una advertencia— y
+                "Cancelado" sube a `inert` con su trama, que es lo que lo
+                distingue de un vacío cuando no hay color. */}
+            <BadgeEstado variante="warning" texto="Pendiente de asignación" eje="pedido" valor="pendiente_asignacion" />
+            <BadgeEstado variante="info" texto="En ruta" eje="pedido" valor="en_ruta" />
+            <BadgeEstado variante="success" texto="Entregado" eje="pedido" valor="entregado" />
+            <BadgeEstado variante="error" texto="Fallido" eje="pedido" valor="fallido" />
+            <BadgeEstado variante="neutral" texto="Cancelado" eje="pedido" valor="cancelado" />
           </Muestra>
           <Muestra nombre="Dinero / DTE">
             <BadgeEstado variante="info" texto="Abierto" />
