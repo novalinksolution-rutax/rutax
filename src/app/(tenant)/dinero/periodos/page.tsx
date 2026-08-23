@@ -469,14 +469,28 @@ function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
 function AccionesPeriodo({ periodo }: { periodo: PeriodoConDte }) {
   if (periodo.estado === "abierto") {
     return (
-      <DialogCerrarPeriodo
-        periodoId={periodo.id}
-        sellerNombre={periodo.sellerNombre}
-        fechaInicio={periodo.fechaInicio}
-        fechaFin={periodo.fechaFin}
-        totalLineas={periodo.totalLineas}
-        montoTotalClp={periodo.montoTotalClp}
-      />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* ⚠️ «Ver detalle» faltaba justo acá, y era el único camino a esa
+            pantalla: un período abierto solo ofrecía «Cerrar período», así que
+            el detalle —donde están las líneas, la tabla financiera y la
+            composición del total— era **inalcanzable hasta después de cerrar**.
+            O sea: lo que uno querría revisar ANTES de cerrar solo se podía ver
+            DESPUÉS. */}
+        <EnlaceDetalle
+          href={`/dinero/periodos/${periodo.id}`}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Ver detalle
+        </EnlaceDetalle>
+        <DialogCerrarPeriodo
+          periodoId={periodo.id}
+          sellerNombre={periodo.sellerNombre}
+          fechaInicio={periodo.fechaInicio}
+          fechaFin={periodo.fechaFin}
+          totalLineas={periodo.totalLineas}
+          montoTotalClp={periodo.montoTotalClp}
+        />
+      </div>
     );
   }
 

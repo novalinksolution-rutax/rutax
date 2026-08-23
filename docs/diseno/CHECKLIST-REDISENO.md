@@ -573,9 +573,11 @@ bloques 4–8, cuando cada pantalla se toque.
 - [ ] Las otras 5 de `dinero/` y las 4 anulaciones.
 - [ ] `dinero/layout.tsx` — sus pestañas son un cuarto patrón de navegación (viene del bloque 4).
       Necesita `B2a`.
-- [ ] **Un período abierto no tiene camino a su detalle**: `AccionesPeriodo` solo muestra «Cerrar
-      período» y el enlace «Ver detalle» aparece recién cuando está cerrado. La pantalla existe y es
-      inalcanzable. Encontrado al verificar; va con `B2a`.
+- [x] **Un período abierto no tenía camino a su detalle** — `AccionesPeriodo` solo mostraba «Cerrar
+      período», y «Ver detalle» aparecía recién con el período cerrado. La pantalla existía y era
+      **inalcanzable**: lo que uno querría revisar *antes* de cerrar —las líneas, la tabla
+      financiera, la composición del total— solo se podía ver *después*. Ahora el enlace está en
+      los dos estados. **Verificado en pantalla.**
 
 ## Las 26 acciones irreversibles
 
