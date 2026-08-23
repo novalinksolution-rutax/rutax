@@ -31,6 +31,8 @@ import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla
 import { BotonDescargaPdfLiquidacion } from "../boton-descarga-pdf-liquidacion";
 import { formatearFechaHora as formatearFechaHoraCl } from "@/lib/formato-cl";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
+import { TablaFinanciera } from "@/components/ui/tabla-financiera";
+import { agruparLiquidacion } from "@/modules/dinero/agrupacion-liquidacion";
 
 export const metadata: Metadata = {
   title: "Detalle de liquidación",
@@ -57,7 +59,7 @@ function formatearFechaHora(fechaIso: string | null): string | null {
 
 interface PageProps {
   params: Promise<{ liquidacionId: string }>;
-  searchParams: Promise<{ volver?: string }>;
+  searchParams: Promise<{ volver?: string; lineas?: string }>;
 }
 
 export default async function PaginaDetalleLiquidacion({ params, searchParams }: PageProps) {
@@ -67,7 +69,8 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
   if (!puedeGestionarLiquidacionesConductores(sesion.usuario)) redirect("/dashboard");
 
   const { liquidacionId } = await params;
-  const { volver } = await searchParams;
+  const { volver, lineas: vistaLineas } = await searchParams;
+  const verUnaPorUna = vistaLineas === "detalle";
   const tenantId = sesion.usuario.tenantId;
   const cliente = crearClienteServiceRole();
 
@@ -115,6 +118,11 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
   }
 
   const lineas: LineaLiquidacion[] = liquidacion.lineas ?? [];
+  const agrupacion = agruparLiquidacion(lineas, {
+    bonoClp: liquidacion.bonoClp,
+    penalizacionClp: liquidacion.penalizacionClp,
+    notaAjuste: liquidacion.notaAjuste,
+  });
   const montoConAjustes =
     liquidacion.montoTotalClp !== null
       ? liquidacion.montoTotalClp + liquidacion.bonoClp - liquidacion.penalizacionClp
@@ -229,12 +237,33 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
 
       {/* Sección C — Tabla de líneas */}
       <section aria-labelledby="lineas-titulo">
-        <h2
-          id="lineas-titulo"
-          className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          Entregas liquidadas ({lineas.length} línea{lineas.length !== 1 ? "s" : ""})
-        </h2>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2
+            id="lineas-titulo"
+            className="font-mono text-[10px] font-medium tracking-[0.1em] text-fg-subtle uppercase"
+          >
+            Lo que se le paga ·{" "}
+            {verUnaPorUna ? "una por una" : "agrupado por concepto"}
+          </h2>
+          {lineas.length > 0 ? (
+            <Link
+              href={
+                (() => {
+                  const q = new URLSearchParams({
+                    ...(volver ? { volver } : {}),
+                    ...(verUnaPorUna ? {} : { lineas: "detalle" }),
+                  }).toString();
+                  return q ? `?${q}` : `/dinero/liquidaciones/${liquidacion.id}`;
+                })()
+              }
+              className="text-xs font-medium text-accent-text hover:underline"
+            >
+              {verUnaPorUna
+                ? "← Volver a la vista agrupada"
+                : `Ver las ${lineas.length} una por una ›`}
+            </Link>
+          ) : null}
+        </div>
 
         {lineas.length === 0 ? (
           <div className="rounded-lg border bg-card px-6 py-10 text-center">
@@ -242,6 +271,66 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
               Esta liquidación no tiene líneas todavía. Se agregarán automáticamente a medida que
               se registren entregas del conductor.
             </p>
+          </div>
+        ) : !verUnaPorUna ? (
+          <div className="overflow-hidden rounded-lg border bg-card">
+            <TablaFinanciera
+              rotulo="neto"
+              cabeceras={["Concepto", "Cantidad", "Unitario", "Monto"]}
+              filas={[
+                ...agrupacion.entregas.map((f) => ({
+                  tipo: "linea" as const,
+                  concepto: f.concepto,
+                  entregas: f.cantidad,
+                  tarifa: f.unitario,
+                  monto: f.monto,
+                })),
+                // El subtotal de entregas solo aparece si hay algo más abajo con
+                // lo que confundirlo. Con una sola clase de línea y sin ajustes,
+                // un subtotal idéntico al total es ruido.
+                ...(agrupacion.entregas.length > 0 &&
+                (agrupacion.visitas.length > 0 || agrupacion.ajustes.length > 0)
+                  ? [
+                      {
+                        tipo: "subtotal" as const,
+                        concepto: "Subtotal de entregas",
+                        entregas: agrupacion.cantidadEntregas,
+                        monto: agrupacion.subtotalEntregas,
+                      },
+                    ]
+                  : []),
+                ...agrupacion.visitas.map((f) => ({
+                  tipo: "linea" as const,
+                  concepto: `Visitas a bodega · ${f.concepto}`,
+                  entregas: f.cantidad,
+                  tarifa: f.unitario,
+                  monto: f.monto,
+                })),
+                ...(agrupacion.visitas.length > 0
+                  ? [
+                      {
+                        tipo: "subtotal" as const,
+                        concepto: "Subtotal de visitas a bodega",
+                        entregas: agrupacion.cantidadVisitas,
+                        monto: agrupacion.subtotalVisitas,
+                      },
+                    ]
+                  : []),
+                ...agrupacion.ajustes.map((aj) => ({
+                  tipo: "ajuste" as const,
+                  concepto: aj.concepto,
+                  monto: aj.monto,
+                  // El motivo lo lee el conductor, en su liquidación y en su PDF.
+                  motivo: aj.motivo,
+                })),
+                {
+                  tipo: "total" as const,
+                  concepto: "Neto a pagar",
+                  entregas: agrupacion.cantidadEntregas + agrupacion.cantidadVisitas,
+                  monto: agrupacion.neto,
+                },
+              ]}
+            />
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border bg-card shadow-sm">

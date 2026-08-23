@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **3 de 16** · las tres, montadas en pantalla | 13 componentes · 21 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ · falta `B2b` |
+| **5** | **Dinero** | **4 de 16** · todas montadas en pantalla | 12 componentes · 21 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -399,7 +399,7 @@ bloques 4–8, cuando cada pantalla se toque.
 
 # Bloque 5 · Dinero
 
-**Tableros traídos:** `Rutax P4 Emitir factura` ✅ · `Rutax B2a Periodos` ✅ · falta `B2b Liquidaciones y cobranza`.
+**Tableros traídos:** `P4 Emitir factura` ✅ · `B2a Periodos` ✅ · `B2b Liquidaciones y cobranza` ✅ — el bloque 2 completo.
 
 **Las seis decisiones que P4 fija para todo el producto**, y que valen más allá de dinero:
 1. **La verificación previa es una pantalla, no una validación** — tres desenlaces con tratamiento
@@ -455,8 +455,17 @@ bloques 4–8, cuando cada pantalla se toque.
       un promedio sería un número que no existe en ninguna línea.
       La vista línea por línea no se perdió: pasa a estar detrás de «ver las N una por una», como
       pide el tablero.
-- [ ] `panel de ajuste manual` · `atribuidor de pago` · `indicador de folio disponible` ·
-      `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
+- [x] **`panel de ajuste manual`** · DE CERO — el formulario existía; lo que faltaba era la regla.
+      **El motivo era «Nota (opcional)» y la Server Action no lo validaba en absoluto**, así que se
+      podía aplicar una penalización de $8.000 sin escribir una palabra y el conductor veía un
+      descuento sin razón en su liquidación y en su PDF.
+      Ahora es obligatorio con mínimo de 10 caracteres —«error» no llega— **validado en el
+      servidor**, que es donde manda, y declarado en el formulario: «el conductor lee esto en su
+      liquidación y en su PDF. No es una nota interna» (regla 24). Con los dos ajustes en cero no se
+      exige: eso es limpiar un ajuste anterior, no aplicar uno.
+      6 pruebas para la regla del servidor. **Verificado en pantalla** en sus cuatro estados.
+- [ ] `atribuidor de pago` · `indicador de folio disponible` · `tarjeta de trazabilidad` ·
+      `tarjeta de resultado en bloque`.
 
 ## Pantallas
 
@@ -473,7 +482,15 @@ bloques 4–8, cuando cada pantalla se toque.
       *Pendiente en esta pantalla:* el mensaje del proveedor se filtra crudo al aviso («fetch
       failed»). Un error de integración nunca muestra el texto del proveedor y siempre dice qué
       sigue funcionando — se arregla en la Server Action, no acá.
-- [ ] Las otras 6 de `dinero/` y las 4 anulaciones.
+- [x] **`dinero/liquidaciones/[liquidacionId]`** — la tabla financiera con **las dos clases de
+      línea separadas y su subtotal**: una entrega se paga por tarifa y una visita a bodega por
+      bodega, así que el conductor que reclama pregunta por una de las dos y un solo subtotal lo
+      obliga a rehacer la suma. Y cada ajuste con **su motivo en la fila**, no en un tooltip.
+      `agrupacion-liquidacion.ts` con 8 pruebas, incluida la invariante a escala de 200 líneas.
+      ⚠️ El tablero también muestra **el autor del ajuste** («Aplicó M. Soto el 19-08») y
+      `dinero.liquidaciones` guarda la nota pero **no quién la aplicó**: el autor está en la
+      bitácora, no en la fila. No se inventa; mostrarlo exige una lectura extra.
+- [ ] Las otras 5 de `dinero/` y las 4 anulaciones.
 - [ ] `dinero/layout.tsx` — sus pestañas son un cuarto patrón de navegación (viene del bloque 4).
       Necesita `B2a`.
 - [ ] **Un período abierto no tiene camino a su detalle**: `AccionesPeriodo` solo muestra «Cerrar

@@ -51,6 +51,12 @@ export type FilaFinanciera =
       monto: number
       /** El objeto que lo originó: la incidencia, el pedido. */
       causa?: { texto: string; href?: string }
+      /**
+       * El motivo escrito, en segunda línea. **Lo lee el conductor** en su
+       * liquidación y en su PDF, así que no es una nota interna: es parte de la
+       * fila, no un tooltip ni un dato de auditoría.
+       */
+      motivo?: string
     }
   | { tipo: "total"; concepto: string; entregas?: number; monto: number }
 
@@ -141,6 +147,9 @@ function FilaTabla({ fila, rotulo }: { fila: FilaFinanciera; rotulo: "neto" | "b
       <tr className="border-b border-line-subtle">
         <td className="px-3 py-2 text-fg">
           {fila.concepto}
+          {fila.motivo ? (
+            <span className="mt-0.5 block text-xs text-fg-muted">Motivo: {fila.motivo}</span>
+          ) : null}
           {fila.causa ? (
             <>
               {" · "}

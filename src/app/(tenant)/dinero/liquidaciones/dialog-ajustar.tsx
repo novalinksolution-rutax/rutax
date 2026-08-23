@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { accionAjustarLiquidacion } from "./actions";
+import { MINIMO_MOTIVO_AJUSTE } from "@/modules/dinero/acciones";
 
 interface Props {
   liquidacionId: string;
@@ -52,6 +53,10 @@ export function DialogAjustarLiquidacion({
   const bonoNum = Math.max(0, Math.round(Number(bono) || 0));
   const penalizacionNum = Math.max(0, Math.round(Number(penalizacion) || 0));
   const montoFinal = (montoBaseClp ?? 0) + bonoNum - penalizacionNum;
+  // Con los dos en cero se está LIMPIANDO un ajuste anterior, no aplicando uno:
+  // ahí el motivo no se exige, o no habría forma de dejar la liquidación limpia.
+  const hayAjuste = bonoNum > 0 || penalizacionNum > 0;
+  const motivoListo = nota.trim().length >= MINIMO_MOTIVO_AJUSTE;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -142,15 +147,29 @@ export function DialogAjustarLiquidacion({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="nota">Nota (opcional)</Label>
+            <Label htmlFor="nota">
+              Motivo {hayAjuste ? <span className="text-fault-fg">·&nbsp;obligatorio</span> : null}
+            </Label>
             <Textarea
               id="nota"
               value={nota}
               onChange={(e) => setNota(e.target.value)}
-              placeholder="Motivo del ajuste..."
+              placeholder="Ej.: tomó 6 paradas extra el 14-08 cubriendo la ruta de J. Tapia."
               rows={2}
               maxLength={500}
             />
+            {/* Regla 24: un motivo escrito por un interno que un externo va a
+                leer se declara como tal en el formulario. Acá el externo es el
+                conductor, y lo ve en su liquidación y en su PDF. */}
+            <p className="text-xs text-fg-muted">
+              <strong className="text-fg">El conductor lee esto</strong> en su liquidación y en su
+              PDF. No es una nota interna.
+            </p>
+            {hayAjuste && !motivoListo ? (
+              <p className="text-xs text-attention-fg">
+                Faltan {MINIMO_MOTIVO_AJUSTE - nota.trim().length} caracteres.
+              </p>
+            ) : null}
           </div>
 
           {error && (
@@ -161,12 +180,18 @@ export function DialogAjustarLiquidacion({
 
           <DialogFooter>
             <DialogClose asChild>
+              {/* «Volver» y no «Cancelar»: en este dominio cancelar es cancelar
+                  un pedido (regla 59). */}
               <Button type="button" variant="outline" disabled={isPending}>
-                Cancelar
+                Volver
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Guardando..." : "Guardar ajuste"}
+            <Button
+              type="submit"
+              disabled={isPending || (hayAjuste && !motivoListo)}
+              tabIndex={hayAjuste && !motivoListo ? -1 : undefined}
+            >
+              {isPending ? "Guardando..." : "Guardar el ajuste"}
             </Button>
           </DialogFooter>
         </form>

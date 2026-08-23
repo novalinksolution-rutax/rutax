@@ -705,6 +705,12 @@ export async function marcarLiquidacionPagada(
  * Este cálculo es responsabilidad de la capa de presentación; aquí solo
  * persistimos los componentes del ajuste.
  */
+/**
+ * Mínimo del motivo de un ajuste manual. Lo fija el tablero B2b, y la razón es
+ * quién lo lee, no la prolijidad.
+ */
+export const MINIMO_MOTIVO_AJUSTE = 10;
+
 export async function ajustarLiquidacion(
   tenantId: string,
   liquidacionId: string,
@@ -724,6 +730,20 @@ export async function ajustarLiquidacion(
   }
   if (!Number.isInteger(penalizacionClp) || penalizacionClp < 0) {
     throw new ErrorValidacion('La penalización debe ser un entero CLP mayor o igual a cero.');
+  }
+  // El motivo es OBLIGATORIO cuando hay un ajuste, y se valida acá y no solo en
+  // la pantalla: **lo lee el conductor** en su liquidación y en su PDF, así que
+  // un descuento sin explicación es una pregunta que le llega a alguien por
+  // WhatsApp. Diez caracteres es el mínimo con el que un motivo dice algo —
+  // «error» no llega.
+  //
+  // Con los dos ajustes en cero NO se exige: eso es limpiar un ajuste anterior,
+  // no aplicar uno nuevo.
+  const hayAjuste = bonoClp > 0 || penalizacionClp > 0;
+  if (hayAjuste && (notaAjuste ?? '').trim().length < MINIMO_MOTIVO_AJUSTE) {
+    throw new ErrorValidacion(
+      `Un bono o una penalización necesitan un motivo de al menos ${MINIMO_MOTIVO_AJUSTE} caracteres: lo lee el conductor en su liquidación.`,
+    );
   }
 
   const supabase = crearClienteServiceRole();
