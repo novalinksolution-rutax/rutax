@@ -47,6 +47,7 @@ import {
   solicitarSincronizacionMlPropia,
   type ConexionMlSellerItem,
 } from "./actions";
+import { BloqueFallaExterna } from "@/components/ui/bloque-falla-externa";
 
 /**
  * Ventana de "enfriamiento" del botón tras cada intento: pura UX en el
@@ -337,6 +338,41 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                       </Button>
                     ) : null}
                   </CardContent>
+
+                  {/* ⚠️ REGLA 60 · UN ERROR DE INTEGRACION DICE SIEMPRE QUE
+                      SIGUE FUNCIONANDO. Es la parte que faltaba y la que mas
+                      calma: cuando el seller lee «tu cuenta se desconecto», lo
+                      que se pregunta no es que paso — es **si perdio los
+                      pedidos que ya tenia y si le van a cobrar igual**. Sin esa
+                      respuesta llama por telefono, y la llamada la contesta el
+                      courier, que tampoco sabe.
+                      Y no se inventa la causa: el sondeo de salud de ML **no
+                      distingue** token vencido de token revocado ni de un fallo
+                      al descifrar el secreto. Decir «tu token expiro» seria
+                      elegir una de las tres al azar. */}
+                  {c.estadoSalud === "desvinculada" ? (
+                    <div className="px-6 pb-6">
+                      <BloqueFallaExterna
+                        titulo="Dejamos de recibir tus pedidos nuevos de esta cuenta"
+                        queSabemos={
+                          <>
+                            Mercado Libre dejó de aceptar nuestro permiso. Puede ser que caducara
+                            solo, que lo revocaras desde tu cuenta o que algo fallara de nuestro
+                            lado: <strong>no podemos distinguir cuál de los tres</strong>, y
+                            reconectar arregla los tres igual.
+                          </>
+                        }
+                        sigueFuncionando={
+                          <>
+                            Los pedidos que ya entraron <strong>siguen en el sistema</strong> y se
+                            despachan normal. Nada de lo ya cobrado ni liquidado cambia. Lo único
+                            que se detuvo es la llegada de pedidos <em>nuevos</em> desde esta
+                            cuenta.
+                          </>
+                        }
+                      />
+                    </div>
+                  ) : null}
                 </Card>
               </li>
             );

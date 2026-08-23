@@ -1406,7 +1406,7 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
 | `credencial de una sola vez` | DE CERO | B3b Integraciones · 1 | 9b · regla 31 |
 | `formulario de alta con aviso en línea` | EXTENDER | B1c, B3b, B4, B6, B7 · 14 | 9b |
 | `tarjeta de salud de conexión` | DE CERO | P7, B3b Sellers, B4, B6 · 6 | **9c · Conectar cuentas (P7)** |
-| `bloque de falla externa` | DE CERO | P7, B4 Inicio · 4 | 9c · `alert` no alcanza: **tres causas indistinguibles** |
+| ✅ `bloque de falla externa` | DE CERO | P7, B4 Inicio · 4 | **hecho el 23-08** — ver abajo |
 | `fila de salud de conexión` | EXTENDER | B6 Salud · 1 | 9c |
 | `secuenciador de ruta` | DE CERO | B1b Manifiestos · 2 | **9d · Operación**, después del bloque 4 |
 | `redistribución por conductor no disponible` | DE CERO | B1b · 1 | 9d · **NUEVO #4** |
@@ -1415,6 +1415,29 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
 > vencido, revocado y fallo de descifrado terminan los tres en «desvinculada» con el mismo texto. El
 > `bloque de falla externa` existe precisamente para eso, y **regla 60: un error de integración dice
 > siempre qué sigue funcionando.**
+
+## 9c · Lo hecho
+
+- [x] **`bloque de falla externa`** · DE CERO — `src/components/ui/bloque-falla-externa.tsx`,
+      montado en el panel de cuentas de Mercado Libre del portal del seller.
+      **Un `alert` no alcanzaba, y el motivo es el que el propio checklist señalaba:** el sondeo de
+      salud de ML **no distingue causas**. Token vencido, token revocado por el seller y fallo al
+      descifrar el secreto terminan los tres en «desconectada», y desde afuera no hay forma de saber
+      cuál fue. Decir «tu token expiró» sería elegir una de las tres al azar; decir solo
+      «desconectada» deja a la persona sin saber qué se rompió ni qué sigue en pie.
+      Ahora lo dice: «puede ser que caducara solo, que lo revocaras desde tu cuenta o que algo
+      fallara de nuestro lado: **no podemos distinguir cuál de los tres**, y reconectar arregla los
+      tres igual».
+      ⚠️ **REGLA 60 · un error de integración dice SIEMPRE qué sigue funcionando**, y es la parte
+      que faltaba y la que más calma. Cuando un seller lee «tu cuenta se desconectó», lo que se
+      pregunta no es qué pasó: es **si perdió los pedidos que ya tenía y si le van a cobrar igual**.
+      Sin esa respuesta llama por teléfono — y la llamada la contesta el courier, que tampoco sabe.
+      Por eso `sigueFuncionando` **no es opcional** en el componente: si no se puede nombrar qué
+      sobrevive, este no es el componente correcto.
+      Y **no se muestra el mensaje del proveedor**: «invalid_grant» no le dice nada a nadie y sí
+      dice de más sobre cómo está armado el sistema por dentro. Va en `attention` y no en `fault`
+      porque nada se perdió y hay salida.
+      **Verificado en pantalla** con una conexión caída real de la semilla.
 
 ## Reglas de configuración que se verifican acá
 
