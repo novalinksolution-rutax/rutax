@@ -66,7 +66,8 @@ import { KpiCard } from "@/components/ui/kpi-card"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import { DataTable } from "@/components/ui/data-table"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { GraficoLinea, GraficoDona } from "@/components/ui/chart"
+import { GraficoLinea, GraficoDona, GraficoBarras } from "@/components/ui/chart"
+import { SemaforoCumplimiento } from "@/components/ui/semaforo-cumplimiento"
 import { formatearCLP } from "@/lib/ui/formato-moneda"
 import { Package, Truck as TruckIcon, Wallet, TriangleAlert } from "lucide-react"
 
@@ -278,6 +279,42 @@ export default function KitchenSinkPage() {
                     { nombre: "Kiosco Centro", valor: 254500 },
                   ]}
                 />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Entregas por comuna</CardTitle>
+                <CardDescription>
+                  Barras horizontales: entre dos comunas no hay camino, así que una línea
+                  dibujaría una relación que no existe
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <GraficoBarras
+                  ejeCategoria="comuna"
+                  series={[{ clave: "entregas", etiqueta: "Entregas" }]}
+                  datos={[
+                    { comuna: "Puente Alto", entregas: 142 },
+                    { comuna: "Maipú", entregas: 118 },
+                    { comuna: "La Florida", entregas: 96 },
+                    { comuna: "Las Condes", entregas: 61 },
+                    { comuna: "Lo Barnechea", entregas: 24 },
+                  ]}
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Semáforo de cumplimiento</CardTitle>
+                <CardDescription>
+                  La cifra no se puede leer sin su objetivo, y «sin datos» va en neutro
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <SemaforoCumplimiento pct={98.4} objetivo={97} conBarra />
+                <SemaforoCumplimiento pct={94.2} objetivo={97} conBarra />
+                <SemaforoCumplimiento pct={81.0} objetivo={97} conBarra />
+                <SemaforoCumplimiento pct={null} objetivo={97} />
               </CardContent>
             </Card>
           </div>

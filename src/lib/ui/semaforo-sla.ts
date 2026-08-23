@@ -15,11 +15,25 @@
  */
 
 import type { BadgeVariante } from "./traduccion-estados";
+import type { TonoEstado } from "./tonos-estado";
 
 export type ColorSemaforo = "verde" | "amarillo" | "rojo";
 
 export interface ResultadoSemaforo {
   color: ColorSemaforo;
+  /**
+   * El tono del sistema, que es lo que consume `SemaforoCumplimiento`.
+   *
+   * ⚠️ **No siempre coincide con `color`.** «Sin datos» era `amarillo` y ahora
+   * es `neutral`: no tener medición no es una advertencia — es el estado normal
+   * de un seller que empezó ayer, y pintarlo de ámbar hace que la pantalla se
+   * vea como un problema el primer día. Es el mismo criterio que
+   * `CORRECCIONES_TONO` aplica en el resto del producto: lo normal no se alarma.
+   *
+   * `color` se conserva porque cuatro pantallas ya lo consumen y el semáforo de
+   * tres luces sigue siendo el lenguaje del SLA; lo que cambia es cómo se pinta.
+   */
+  tono: TonoEstado;
   /** Texto corto legible por humanos: "Cumplido", "En riesgo" o "Incumplido". */
   etiqueta: string;
   /** Variante del componente <Badge> de shadcn/ui. */
@@ -41,6 +55,7 @@ export function semaforoSla(
   if (pct === null) {
     return {
       color: "amarillo",
+      tono: "neutral",
       etiqueta: "Sin datos",
       variant: "neutral",
       clasesColor: "bg-muted",
@@ -50,6 +65,7 @@ export function semaforoSla(
   if (pct >= objetivo) {
     return {
       color: "verde",
+      tono: "balanced",
       etiqueta: "Cumplido",
       variant: "success",
       clasesColor: "bg-success",
@@ -59,6 +75,7 @@ export function semaforoSla(
   if (pct >= objetivo - 5) {
     return {
       color: "amarillo",
+      tono: "attention",
       etiqueta: "En riesgo",
       variant: "warning",
       clasesColor: "bg-warning",
@@ -67,6 +84,7 @@ export function semaforoSla(
 
   return {
     color: "rojo",
+    tono: "fault",
     etiqueta: "Incumplido",
     variant: "error",
     clasesColor: "bg-destructive",

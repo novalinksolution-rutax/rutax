@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import { Clock, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { semaforoSla } from "@/lib/ui/semaforo-sla";
+import { SemaforoCumplimiento } from "@/components/ui/semaforo-cumplimiento";
 import type { SlaPorSeller, ResumenCorteSeller } from "@/modules/operacion/metricas";
 
 // =============================================================================
@@ -57,41 +57,27 @@ export function WidgetSlaPorSeller({ datos }: { datos: SlaPorSeller[] }) {
 
   return (
     <ul className="space-y-3" aria-label="SLA por seller esta semana">
-      {datos.map((seller) => {
-        const semaforo = semaforoSla(seller.slaPct, seller.objetivoPct);
-        const pctMostrado =
-          seller.slaPct !== null ? `${Math.round(seller.slaPct)}%` : "—";
-
-        return (
-          <li
-            key={seller.sellerId}
-            className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3 shadow-xs"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              {/* Indicador de color semáforo (no es el único portador de significado) */}
-              <span
-                className={`size-3 shrink-0 rounded-full ${semaforo.clasesColor}`}
-                aria-hidden="true"
-              />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {seller.sellerNombre}
-                </p>
-                <p className="text-xs text-muted-foreground tabular-nums">
-                  {seller.aTiempo} de {seller.totalTerminales} a tiempo
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-lg font-semibold tabular-nums text-foreground">
-                {pctMostrado}
-              </span>
-              <Badge variant={semaforo.variant}>{semaforo.etiqueta}</Badge>
-            </div>
-          </li>
-        );
-      })}
+      {datos.map((seller) => (
+        // ⚠️ La fila llevaba un punto de color suelto + la cifra + un badge, cada
+        // uno por su lado, y `shadow-xs` contra la regla 4. El punto además
+        // repetía lo que el badge ya decía, y **el objetivo no aparecía en
+        // ninguna parte**: «94 %» a secas no se puede leer — contra 90 es
+        // holgado y contra 97 es incumplimiento.
+        <li
+          key={seller.sellerId}
+          className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-line bg-card px-4 py-3"
+        >
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-foreground">
+              {seller.sellerNombre}
+            </p>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {seller.aTiempo} de {seller.totalTerminales} a tiempo
+            </p>
+          </div>
+          <SemaforoCumplimiento pct={seller.slaPct} objetivo={seller.objetivoPct} />
+        </li>
+      ))}
     </ul>
   );
 }

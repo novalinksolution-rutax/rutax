@@ -1025,14 +1025,47 @@ Ninguna pantalla de producto dibuja un gráfico: ni el dashboard, ni `admin/metr
 ícono `BarChart3` y no dibuja nada), ni dinero. Lo más cercano en producción es una barra de
 distribución con clases Tailwind (`dashboard/page.tsx:96`).
 
-- [ ] **`gráfico de barras`** · RE-ESTILO · B1c, B2b, B6 · 5 pantallas.
-- [ ] **`gráfico de líneas`** · RE-ESTILO · B1c, B6 · 4 pantallas.
-- [ ] **`paleta categórica de 5 series`** · EXTENDER · 9 pantallas. Los tokens ya están:
-      `--rx-chart-1..5`, `--rx-chart-grid`, `--rx-chart-axis`, `--rx-chart-target`. **Ninguna serie
-      usa el matiz del rojo ni del ámbar**, para no chocar con los tonos de estado. Hoy `chart.tsx`
-      lee los `--chart-*` de shadcn (azul, morado, verde, cian, amarillo).
-- [ ] **`semáforo de cumplimiento`** · DE CERO · B1c, B4 Inicio, B3b Sellers · 4 pantallas. Base:
-      `src/lib/ui/semaforo-sla.ts`.
+- [x] **`gráfico de barras`** · **construido** — no existía. Horizontal por defecto, porque las
+      categorías de este producto son **nombres** («Puente Alto», «Comercializadora Los Almendros
+      SpA») y en vertical se cortan o se giran 45°, que es la forma más rápida de volver ilegible un
+      gráfico. Radio 0: una barra es una magnitud medida desde el cero y una punta redondeada le
+      quita exactitud justo donde se lee el valor. La rejilla va **solo en el eje de la magnitud** —
+      en el de categorías no mide nada, y una línea entre dos nombres sugiere una escala que no
+      existe.
+      *Por qué barras y no líneas:* la línea afirma continuidad, dice que entre dos puntos hubo un
+      camino. Entre dos comunas no hay camino.
+- [x] **`paleta categórica de 5 series`** · EXTENDER — **el puente ya mapeaba `--chart-N` a
+      `--rx-chart-N`, así que los colores eran los nuevos y nadie lo había notado.** Lo que estaba
+      mal era lo de arriba:
+      🐞 `ORDEN_CHART` **reordenaba** las series —1, 3, 5, 2, 4— con sus colores anotados como
+      «azul · morado · verde · cian · amarillo». Los dos datos quedaron falsos al redefinirse la
+      paleta: hoy la serie 1 es teal y no hay ni morado ni amarillo. Un comentario que miente sobre
+      un color es peor que ninguno.
+      Y la reordenación tampoco correspondía: la justificaba la paleta anterior, que el validador
+      reprobó como set categórico. La nueva se eligió ya resuelta —**ninguna serie usa el matiz del
+      rojo ni del ámbar**— y su regla es explícita, «la serie 1 es siempre la serie 1».
+      La rejilla y el eje pasan a `--rx-chart-grid` y `--rx-chart-axis`, que antes eran `--border` y
+      el gris del texto: la rejilla es más tenue a propósito, porque una que compite con la serie
+      deja de ser referencia y pasa a ser ruido.
+      **Verificado en pantalla**: serie 1 `#00D6B4`, serie 2 `#43C9FF`, los valores exactos.
+- [x] **`semáforo de cumplimiento`** · DE CERO — `src/components/ui/semaforo-cumplimiento.tsx`,
+      montado en el widget de SLA del dashboard.
+      🐞 **«Sin datos» se pintaba de ámbar.** `semaforoSla` lo devolvía como `amarillo`, así que un
+      seller que empezó ayer aparecía en advertencia por no tener mediciones todavía. No tener
+      número no es un problema: es el estado normal de algo que aún no ocurre. Ahora es `neutral` —
+      el mismo criterio que `CORRECCIONES_TONO` aplica en el resto del producto.
+      🐞 **Y el objetivo no aparecía en ninguna parte.** «94 %» a secas **no se puede leer**: contra
+      90 es holgado y contra 97 es incumplimiento. Ahora van los dos números juntos, con el
+      veredicto en un distintivo que lleva glifo además de color — importa el doble acá, porque un
+      semáforo es el patrón que más se apoya en el color.
+      La barra opcional lleva la marca del objetivo **encima**, en `--rx-chart-target`: sin ella una
+      barra al 94 % se lee como «casi lleno», que es la lectura contraria a la correcta.
+      La fila del dashboard pierde además su punto de color suelto —repetía lo que el badge ya
+      decía— y su `shadow-xs`.
+- [x] **`gráfico de líneas`** · RE-ESTILO — hereda la paleta, la rejilla y el eje corregidos.
+      ⚠️ **Los tres gráficos siguen viviendo solo en `/kitchen-sink`**, y eso no se cerró acá: dónde
+      va cada uno lo fijan `B1c`, `B2b` y `B6`, que no se han traído. Inventar una ubicación sin el
+      tablero es adivinar. El semáforo sí bajó a una pantalla real.
 
 ## 7.3 · Impresos · 2 componentes
 
