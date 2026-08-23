@@ -29,6 +29,16 @@ import type { Manifiesto, EstadoManifiesto } from "@/modules/operacion/tipos";
 import { FiltrosManifiestos } from "./filtros-manifiestos";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { formatearFechaCorta, formatearHora } from "@/lib/formato-cl";
+import {
+  cargarContextoManifiestos,
+  contarManifiestosPorEstado,
+  obtenerCoberturaDelDia,
+  type ConteosManifiesto,
+  type ContextoManifiestos,
+} from "@/modules/operacion/listado-manifiestos";
+import { CajonesManifiestos, CeldaAvance } from "./piezas-listado";
+import { ChevronRight } from "lucide-react";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 
@@ -102,6 +112,37 @@ export default async function PaginaManifiestos({
     errorCarga = true;
   }
 
+  // Paradas, avance y destino de lo cancelado. Va aparte y con su propio
+  // manejo de error: si esta lectura falla, el listado sigue mostrando estado,
+  // conductor y salida — que es la mitad que la tabla de manifiestos sí sabe.
+  let contexto: ContextoManifiestos = { avance: {}, redistribucion: {} };
+  let conteos: ConteosManifiesto = {
+    borrador: 0,
+    confirmado: 0,
+    en_ruta: 0,
+    completado: 0,
+    cancelado: 0,
+  };
+  try {
+    [contexto, conteos] = await Promise.all([
+      cargarContextoManifiestos(cliente, tenantId, manifiestos),
+      contarManifiestosPorEstado(cliente, tenantId, {
+        fechaExacta: rangoFecha.exacto || undefined,
+        desde: rangoFecha.desde || undefined,
+        hasta: rangoFecha.hasta || undefined,
+      }),
+    ]);
+  } catch {
+    // best-effort, igual que los nombres de conductor.
+  }
+
+  // La hora de Santiago decide si un avance bajo es normal o es una alarma.
+  const horaActual = Number(formatearHora(new Date()).split(":")[0]);
+
+  // El subtítulo: lo primero que la pantalla dice, y lo que la convierte en una
+  // respuesta —«¿está toda la flota con ruta?»— en vez de un índice.
+  const cobertura = await obtenerCoberturaDelDia(cliente, tenantId, hoyIso).catch(() => null);
+
   // Nombres legibles para la columna Conductor (en vez del UUID).
   let nombreConductorPorId: Record<string, string> = {};
   try {
@@ -114,12 +155,21 @@ export default async function PaginaManifiestos({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="font-heading text-2xl font-semibold">Manifiestos</h1>
-          <IndicadorEnVivo
-            tenantId={tenantId}
-            tablas={[{ schema: "operacion", tabla: "manifiestos" }]}
-          />
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="font-heading text-2xl font-semibold">Manifiestos</h1>
+            <IndicadorEnVivo
+              tenantId={tenantId}
+              tablas={[{ schema: "operacion", tabla: "manifiestos" }]}
+            />
+          </div>
+          {cobertura ? (
+            <p className="rx-num mt-0.5 text-xs text-fg-muted">
+              {formatearFechaCorta(new Date())} · {cobertura.conRuta} de{" "}
+              {cobertura.disponibles}{" "}
+              {cobertura.disponibles === 1 ? "conductor" : "conductores"} con ruta
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {puedeCrear && (
@@ -155,7 +205,7 @@ export default async function PaginaManifiestos({
           titulo={
             filtroEstado || rangoFecha.hayFecha
               ? "Ningún manifiesto coincide"
-              : "Aún no tienes manifiestos"
+              : "Aún no hay manifiestos hoy"
           }
           descripcion={
             filtroEstado || rangoFecha.hayFecha
@@ -175,39 +225,104 @@ export default async function PaginaManifiestos({
         !errorCarga && (
           <DataTable
             toolbar={
-              <span className="text-sm text-muted-foreground tabular-nums">
-                {manifiestos.length} manifiesto{manifiestos.length !== 1 ? "s" : ""}
-              </span>
+              <CajonesManifiestos
+                cajones={[
+                  { clave: "en_ruta", etiqueta: "En ruta", conteo: conteos.en_ruta },
+                  {
+                    clave: "confirmado",
+                    etiqueta: "Listos para salir",
+                    conteo: conteos.confirmado,
+                  },
+                  { clave: "borrador", etiqueta: "Borrador", conteo: conteos.borrador },
+                  {
+                    clave: "completado",
+                    etiqueta: "Completados",
+                    conteo: conteos.completado,
+                  },
+                ]}
+                // `cancelado` no pertenece al conjunto operativo —no está en
+                // ruta, no está listo y no se completó—, así que va tras el
+                // separador y en tono inerte, fuera de la suma.
+                excluido={{
+                  clave: "cancelado",
+                  etiqueta: "Cancelados",
+                  conteo: conteos.cancelado,
+                }}
+                activo={filtroEstado || null}
+                total={Object.values(conteos).reduce((a, b) => a + b, 0)}
+              />
             }
           >
             <Table densidad="comfortable" aria-label="Lista de manifiestos">
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead className="px-4">Estado</TableHead>
-                  <TableHead className="px-4">Nombre</TableHead>
-                  <TableHead className="hidden px-4 sm:table-cell">Fecha</TableHead>
-                  <TableHead className="hidden px-4 md:table-cell">Conductor</TableHead>
+                  <TableHead className="px-4">Conductor</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Paradas</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell">Avance</TableHead>
+                  <TableHead className="hidden px-4 lg:table-cell">Salida</TableHead>
+                  <TableHead className="w-8 px-4">
+                    <span className="sr-only">Ver</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {manifiestos.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell className="px-4">
-                      <BadgeEstado variante={BADGE_ESTADO_MANIFIESTO[m.estado]} eje="manifiesto" valor={m.estado} texto={traducirEstadoManifiesto(m.estado)} />
-                    </TableCell>
-                    <TableCell className="px-4">
-                      <EnlaceDetalle href={`/manifiestos/${m.id}`} className="font-medium hover:underline">
-                        {m.nombre}
-                      </EnlaceDetalle>
-                    </TableCell>
-                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
-                      {m.fechaOperacion}
-                    </TableCell>
-                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
-                      {nombreConductorPorId[m.driverId] ?? m.driverId}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {manifiestos.map((m) => {
+                  const avance = contexto.avance[m.id] ?? null;
+                  const redis = contexto.redistribucion[m.id] ?? null;
+                  return (
+                    <TableRow key={m.id}>
+                      <TableCell className="px-4">
+                        <BadgeEstado
+                          variante={BADGE_ESTADO_MANIFIESTO[m.estado]}
+                          eje="manifiesto"
+                          valor={m.estado}
+                          texto={traducirEstadoManifiesto(m.estado)}
+                        />
+                      </TableCell>
+
+                      {/* La identidad de la fila es el CONDUCTOR, no el nombre
+                          del manifiesto. Nadie busca «Manifiesto 2026-08-21-03»:
+                          se busca a quién le tocó qué. El nombre queda debajo,
+                          que es donde sirve para hablar del documento. */}
+                      <TableCell className="px-4">
+                        <EnlaceDetalle
+                          href={`/manifiestos/${m.id}`}
+                          className="font-medium hover:underline"
+                        >
+                          {nombreConductorPorId[m.driverId] ?? m.driverId}
+                        </EnlaceDetalle>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {m.nombre}
+                        </span>
+                      </TableCell>
+
+                      <TableCell className="hidden px-4 tabular-nums sm:table-cell">
+                        {avance ? avance.paradas : "—"}
+                      </TableCell>
+
+                      <TableCell className="hidden px-4 md:table-cell">
+                        <CeldaAvance
+                          estado={m.estado}
+                          avance={avance}
+                          redistribucion={redis}
+                          horaActual={horaActual}
+                        />
+                      </TableCell>
+
+                      <TableCell className="hidden px-4 text-muted-foreground tabular-nums lg:table-cell">
+                        {m.confirmadoEn ? formatearHora(m.confirmadoEn) : "—"}
+                      </TableCell>
+
+                      {/* El chevrón es la afordancia de «esta fila entra»: sin
+                          él, solo el nombre parece pulsable y el resto de la
+                          fila se lee como texto. */}
+                      <TableCell className="px-4 text-muted-foreground">
+                        <ChevronRight className="size-4" aria-hidden="true" />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </DataTable>

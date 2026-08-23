@@ -1,0 +1,138 @@
+"use client";
+
+/**
+ * Las dos piezas de cliente del listado de manifiestos.
+ *
+ * La página es un Server Component y el filtro viaja por la URL, así que lo
+ * único que necesita cliente es el manejador del clic. Se aísla acá en vez de
+ * convertir la página entera en cliente: el resto se sigue renderizando en el
+ * servidor y no viaja al navegador.
+ */
+
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { BarraCajones, type Cajon } from "@/components/ui/barra-cajones";
+import type { EstadoManifiesto } from "@/modules/operacion/tipos";
+import {
+  avanceEnFalla,
+  type AvanceManifiesto,
+  type RedistribucionManifiesto,
+} from "@/modules/operacion/listado-manifiestos";
+
+export function CajonesManifiestos({
+  cajones,
+  excluido,
+  activo,
+  total,
+}: {
+  cajones: Cajon[];
+  excluido: Cajon;
+  activo: string | null;
+  total: number;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+
+  return (
+    <BarraCajones
+      cajones={cajones}
+      excluido={excluido}
+      activo={activo}
+      total={total}
+      onSeleccionar={(clave) => {
+        // Se conserva el resto de la URL: el cajón elige el estado y no puede
+        // llevarse por delante el filtro de fecha que alguien acaba de poner.
+        const siguiente = new URLSearchParams(params.toString());
+        if (clave) siguiente.set("estado", clave);
+        else siguiente.delete("estado");
+        const qs = siguiente.toString();
+        router.push(qs ? `${pathname}?${qs}` : pathname);
+      }}
+    />
+  );
+}
+
+/**
+ * La celda de avance, que dice tres cosas distintas según el estado de la fila.
+ *
+ * -----------------------------------------------------------------------------
+ * BORRADOR: QUÉ VE EL CONDUCTOR
+ * -----------------------------------------------------------------------------
+ * Una ruta en borrador no tiene avance que mostrar, y la celda quedaba vacía. Se
+ * usa para responder la pregunta que hoy llega por teléfono a las 15:50: **qué
+ * le aparece al conductor mientras su ruta no está confirmada**. Sin esto, el
+ * coordinador no tiene forma de saberlo desde ninguna pantalla.
+ *
+ * -----------------------------------------------------------------------------
+ * CANCELADO: DÓNDE QUEDARON SUS PARADAS
+ * -----------------------------------------------------------------------------
+ * Lo que uno quiere saber al ver un manifiesto cancelado no es que está
+ * cancelado —eso ya lo dice el distintivo— sino si sus paradas quedaron con
+ * alguien. Las huérfanas van en tono de atención: son bultos que nadie va a
+ * llevar y que no aparecen en la ruta de nadie.
+ */
+export function CeldaAvance({
+  estado,
+  avance,
+  redistribucion,
+  horaActual,
+}: {
+  estado: EstadoManifiesto;
+  avance: AvanceManifiesto | null;
+  redistribucion: RedistribucionManifiesto | null;
+  horaActual: number;
+}) {
+  if (estado === "borrador") {
+    return (
+      <span className="text-xs leading-snug text-muted-foreground">
+        Sin confirmar. El conductor ve «tu ruta todavía no está lista».
+      </span>
+    );
+  }
+
+  if (estado === "cancelado") {
+    if (!redistribucion || redistribucion.paradas === 0) {
+      return <span className="text-xs text-muted-foreground">Sin paradas que redistribuir.</span>;
+    }
+    return (
+      <span className="text-xs leading-snug text-muted-foreground">
+        Redistribuido · {redistribucion.paradas}{" "}
+        {redistribucion.paradas === 1 ? "parada" : "paradas"} a {redistribucion.conductores}{" "}
+        {redistribucion.conductores === 1 ? "conductor" : "conductores"}
+        {redistribucion.huerfanas > 0 ? (
+          <span className="block text-attention-fg">
+            {redistribucion.huerfanas}{" "}
+            {redistribucion.huerfanas === 1 ? "quedó" : "quedaron"} sin conductor
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  if (!avance || avance.porcentaje === null) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+
+  const enFalla = avanceEnFalla(avance.porcentaje, horaActual);
+
+  return (
+    <span className="flex items-center gap-2">
+      <span className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <span
+          className={`block h-full rounded-full ${enFalla ? "bg-destructive" : "bg-primary"}`}
+          style={{ width: `${avance.porcentaje}%` }}
+        />
+      </span>
+      {/* El porcentaje escrito, y el conteo debajo: la barra sola no se compara
+          entre dos filas de un vistazo, y el color no puede ser el único canal. */}
+      <span
+        className={`text-xs tabular-nums ${enFalla ? "text-destructive" : "text-muted-foreground"}`}
+      >
+        {avance.porcentaje}%
+        <span className="ms-1">
+          ({avance.cerradas}/{avance.paradas})
+        </span>
+      </span>
+    </span>
+  );
+}

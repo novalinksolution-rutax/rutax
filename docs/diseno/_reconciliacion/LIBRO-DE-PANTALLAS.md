@@ -60,7 +60,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 | Incidencias | `(tenant)/operaciones/incidencias` | ✅ **HECHA** — 23-08, ver abajo |
 | Torre de control | `(tenant)/torre-de-control` | ✅ **HECHA** — 23-08, ver abajo |
 | Preparación del día | `(tenant)/preparacion` | ✅ **HECHA** — 23-08, ver abajo |
-| Manifiestos · listado | `(tenant)/manifiestos` | FALTA PIEZA |
+| Manifiestos · listado | `(tenant)/manifiestos` | ✅ **HECHA** — 23-08, ver abajo |
 | Detalle del manifiesto | `(tenant)/manifiestos/[manifiestoId]` | FALTA PIEZA |
 
 **Lo que hay que resolver antes de construir:** cuatro cifras del tablero no existen en ninguna
@@ -339,6 +339,40 @@ del usuario.
 ⚠️ **Queda pendiente:** ante una falla de lectura la franja cae a guiones; el tablero pide que las
 cifras «se queden con su última hora conocida». Eso exige guardar el último valor conocido en
 alguna parte y no se construyó.
+
+
+### ✅ Manifiestos · hecho el 23-08-2026
+
+El listado no podía responder la pregunta con la que se entra a él —**«¿quién va atrasado?»**—
+porque **no consultaba ni una parada**: `operacion.manifiestos` guarda quién, cuándo y en qué
+estado, y las paradas viven en `asignaciones_pedido`. Sin paradas no hay avance, y sin avance el
+listado es un índice de documentos.
+
+**Lo que trajo:** cajones con su cuenta (`cancelado` como excluido, fuera de la suma), las tres
+columnas que faltaban —`PARADAS`, `AVANCE` y `SALIDA`—, el chevrón de fila, y el subtítulo
+«23-08 · 7 de 12 conductores con ruta». **La identidad de la fila pasó a ser el CONDUCTOR**, con el
+nombre del manifiesto debajo: nadie busca «Manifiesto 2026-08-21-03», se busca a quién le tocó qué.
+
+**El umbral de avance depende de la hora, y por eso significa algo.** Bajo 40 % es falla **solo
+desde las 18:00**: a las 16:15 todos van en 5 % y pintar la tabla de rojo ahí la deja sin significar
+nada a las 20:00, que es cuando importa. Cuatro pruebas lo fijan, incluida la que impide que un
+manifiesto en borrador se lea como atrasado — `null` es «nada que medir», no «cero por ciento».
+
+**Las dos filas especiales del tablero, construidas:**
+
+- `Borrador` usa su celda de avance —vacía de todas formas— para decir **qué ve el conductor**:
+  «Sin confirmar. El conductor ve “tu ruta todavía no está lista”». Cierra un callejón real: hoy esa
+  pregunta llega por teléfono a las 15:50 y el coordinador no tiene dónde mirarla.
+- `Cancelado` dice **dónde quedaron sus paradas**: «Redistribuido · 18 paradas a 3 conductores», y
+  en tono de atención las que quedaron sin nadie — que es lo único que de verdad hay que mirar.
+
+⚠️ **Y ahí una decisión que importa más de lo que parece:** eso se resuelve **con las asignaciones,
+no con la bitácora**. La bitácora lo registra, pero está indexada por conductor y por fecha —no por
+manifiesto—, no dice a cuántos conductores fueron, y sobre todo es un registro de auditoría: usarlo
+como fuente de datos lo convierte en un contrato que nadie sabe que está firmando, y se rompe
+callado el día que alguien cambie qué guarda ese `detalle`.
+
+**Queda pendiente:** el filtro por conductor y el patrón de filtros colapsados con cuenta.
 
 
 ## B2 · Dinero · 5 pantallas
