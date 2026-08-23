@@ -56,7 +56,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 |---|---|---|
 | Dashboard operativo | `(tenant)/dashboard` | ✅ **HECHA** — 23-08, ver abajo |
 | Conductores | `(tenant)/conductores` | ✅ **HECHA** — 23-08, ver abajo |
-| Crear pedido same-day | `(tenant)/operaciones` · modal, sin ruta propia | **PANTALLA DISTINTA** |
+| Crear pedido same-day | `(tenant)/operaciones/nuevo` | ✅ **HECHA** — 23-08, ver abajo |
 | Incidencias | `(tenant)/operaciones/incidencias` | **PANTALLA DISTINTA** |
 | Torre de control | `(tenant)/torre-de-control` | FALTA PIEZA |
 | Preparación del día | `(tenant)/preparacion` | FALTA PIEZA |
@@ -149,6 +149,50 @@ Traducido a conductores: distintivo + relación arriba, nombre a 16 px, y
 no tenían ni rastro en el código**. Queda hecho para los ~15 listados que vienen, en vez de que
 cada pantalla improvise su propio teléfono. No es interactiva a propósito: el enlace y el foco son
 de la fila que la contiene, o habría dos objetos tocables anidados.
+
+### ✅ Crear pedido same-day · hecho el 23-08-2026
+
+Pantalla propia en `(tenant)/operaciones/nuevo`, con los cuatro grupos del tablero en su orden,
+campos de 52 px y ayuda permanente bajo cada uno.
+
+**El tablero abre con la decisión entera: «Peldaño 1: no lleva modal.»** Y el modal se retiró **sin
+tocar `operaciones/page.tsx`**, que tiene trabajo en curso: `FormularioPedidoSameDay` conserva su
+nombre y su firma, y ahora es un enlace a la ruta nueva. Es el patrón de convivencia del proyecto,
+con el motivo extra de no pisarle el trabajo a nadie.
+
+**El patrón que da nombre a la pantalla, construido:** los dos avisos —fuera de hora de corte y
+seller sin tarifa— se resuelven **al elegir el seller**, viven pegados a su campo, no bloquean, y
+el de corte trae «Reagendar para mañana» como acción. Antes los dos llegaban *después* de enviar,
+y el de tarifa además impedía crear el pedido.
+
+**El geocoding cambió de forma, por decisión del usuario.** El tablero pedía «Ubicando la
+dirección…» con espera de 15 s dentro de la creación —lo que habría exigido tocar `pedidos.ts`, que
+es intocable—. En su lugar: **autocompletado mientras se escribe, restringido a Chile**. Al elegir
+de la lista, la dirección viene normalizada, **con su comuna y su coordenada**, y queda validada en
+ese momento. Piezas nuevas:
+
+- `integraciones/geocoding/autocompletado.ts` — puerto **aparte** de `PuertoGeocoding`: es otro
+  producto de Google (Places, no Geocoding), se factura por *sesión de tecleo*, y agregarle métodos
+  al puerto existente habría roto todos sus dobles de prueba.
+- `components/ui/campo-direccion.tsx` — el combobox. Conserva el texto libre a propósito: hay
+  direcciones que ningún proveedor conoce y bloquear el envío dejaría al courier sin crear el
+  pedido.
+- La coordenada elegida **se guarda después de crear**, y no hay carrera con el job: su primer paso
+  es «si `geo_estado != 'pendiente'` → no-op». La cobertura se calcula con `calcularCobertura`, la
+  misma función del job, no con una copia.
+
+**Lo que el tablero pedía y no se pudo comprobar en el navegador:** el aviso en línea exige elegir
+un seller, y el control de Radix no responde a interacción programática en este entorno (el foco
+queda en `BODY`). Se fijó la lógica con `reglas-alta.test.ts` —8 pruebas, verificadas por mutación—
+incluida la trampa de comparar horas como texto: `"9:30" > "16:00"` es **verdadero** en cadenas, y
+eso haría aparecer «se va mañana» a las nueve y media de la mañana.
+
+⚠️ **Antes de producción:** la llave de Google necesita **Places API (New)** habilitada además de
+Geocoding — son dos productos y se habilitan por separado. Si falta, el campo degrada a texto libre
+y el pedido se geocodifica como siempre.
+
+**Contradicción del tablero, resuelta:** decía «Colina no tiene tarifa» (por comuna) y el motor
+resuelve **por seller**. El aviso dice lo que el sistema sabe: «{Seller} no tiene tarifa vigente».
 
 ## B2 · Dinero · 5 pantallas
 
