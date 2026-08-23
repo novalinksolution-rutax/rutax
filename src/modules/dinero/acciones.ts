@@ -1736,6 +1736,85 @@ export async function descartarPago(
   if (errUpdate) throw new Error(`Error al descartar pago: ${errUpdate.message}`);
 }
 
+/**
+ * Devuelve a la bandeja un movimiento descartado.
+ *
+ * POR QUÉ EXISTE
+ * ---------------------------------------------------------------------------
+ * El copy de `cobranza.descartarMov.conf` promete «no se borra: queda
+ * descartado con tu motivo, y **se puede recuperar desde el cajón
+ * "Descartados"**». Hasta ahora eso era falso por partida doble — no había
+ * cajón y no había vuelta atrás—, así que descartar era **irreversible de
+ * hecho** mientras la pantalla decía lo contrario.
+ *
+ * El descarte no toca ningún período (ver `descartarPago`), así que recuperar
+ * es simplemente devolver el movimiento a `sin_atribuir`: no hay plata que
+ * revertir, solo una bandeja a la que volver. Por eso es peldaño 2 con motivo y
+ * no una ceremonia mayor.
+ *
+ * ⚠️ Vuelve a `sin_atribuir` y NO al estado que tenía antes, aunque la bitácora
+ * lo guarde. Un movimiento que estuvo `parcial` o `atribuido` y se descartó ya
+ * perdió su atribución; restaurar ese estado lo haría figurar imputado a un
+ * período sin que nada lo respalde. Volver a la bandeja es lo honesto: se
+ * vuelve a atribuir a mano.
+ */
+export async function recuperarPagoDescartado(
+  tenantId: string,
+  pagoId: string,
+  motivo: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeVerConciliacion(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede recuperar movimientos descartados.',
+    );
+  }
+
+  const motivoLimpio = validarMotivo(motivo);
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: pago, error: errPago } = await supabase
+    .schema('dinero')
+    .from('pagos_recibidos')
+    .select('id, tenant_id, estado_match')
+    .eq('id', pagoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errPago) throw new Error(`Error al leer pago: ${errPago.message}`);
+  if (!pago) throw new ErrorValidacion(`Pago ${pagoId} no encontrado en el tenant.`);
+  if (pago.estado_match !== 'descartado') {
+    throw new ErrorValidacion(
+      `Este movimiento no está descartado (estado actual: '${pago.estado_match}').`,
+    );
+  }
+
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.pago_recuperado',
+    entidadTipo: 'pago_recibido',
+    entidadId: pagoId,
+    detalle: { motivo: motivoLimpio },
+  });
+
+  const { error: errUpdate } = await supabase
+    .schema('dinero')
+    .from('pagos_recibidos')
+    .update({
+      estado_match: 'sin_atribuir',
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', pagoId)
+    .eq('tenant_id', tenantId)
+    // Guarda a nivel BD contra una carrera con otro recuperador.
+    .eq('estado_match', 'descartado');
+  if (errUpdate) throw new Error(`Error al recuperar el pago: ${errUpdate.message}`);
+}
+
 // =============================================================================
 // anularLineaCobroPedido — corrección manual del cobro (B2)
 // =============================================================================

@@ -11,7 +11,7 @@
  */
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { atribuirPagoManualmente, descartarPago } from "@/modules/dinero/acciones";
+import { atribuirPagoManualmente, descartarPago, recuperarPagoDescartado } from "@/modules/dinero/acciones";
 import { listarPeriodosCobro } from "@/modules/dinero/index";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeVerConciliacion } from "@/modules/identidad/capacidades";
@@ -56,6 +56,36 @@ export async function accionDescartarPago(
     return { ok: true };
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : "Error al descartar el pago.";
+    return { ok: false, mensaje };
+  }
+}
+
+/**
+ * Devuelve a la bandeja un movimiento descartado. Peldaño 2 con motivo.
+ *
+ * Existe porque el copy prometía «se puede recuperar desde el cajón
+ * Descartados» y hasta ahora no había ni cajón ni vuelta atrás.
+ */
+export async function accionRecuperarPagoDescartado(
+  pagoId: string,
+  motivo: string,
+): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+
+  try {
+    await recuperarPagoDescartado(
+      sesion.usuario.tenantId,
+      pagoId,
+      motivo,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    return { ok: true };
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : "Error al recuperar el movimiento.";
     return { ok: false, mensaje };
   }
 }

@@ -131,6 +131,8 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
     void (async () => {
       const resultado = await accionListarHistorialEvento(evento.id);
       if (resultado.ok) {
+        // Cargar el historial NO borra el error de una acción: que la lectura
+        // funcione no significa que la escritura que falló se haya arreglado.
         setHistorial(resultado.historial);
       } else {
         setErrorHistorial(resultado.mensaje);
@@ -147,6 +149,18 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
   // ---------------------------------------------------------------------
   // Estado / transiciones
   // ---------------------------------------------------------------------
+  /**
+   * El fallo de una acción, embebido y permanente (regla 56).
+   *
+   * ⚠️ Las **siete** acciones de este panel avisaban su fallo con una
+   * notificación temporal. En un panel que gobierna si un período se puede
+   * facturar y si a un conductor se le puede pagar, un aviso que se va en
+   * cuatro segundos deja al usuario creyendo que el bloqueo se levantó cuando
+   * no se levantó — y el control siguiente que va a mirar es el mismo que
+   * acaba de fallar, ya con su valor viejo de vuelta.
+   */
+  const [errorAccion, setErrorAccion] = useState<{ que: string; mensaje: string } | null>(null);
+
   const [isPendingTransicion, startTransicion] = useTransition();
   const [destinoEnConfirmacion, setDestinoEnConfirmacion] = useState<
     EstadoEventoConciliacion | "reabrir" | null
@@ -169,13 +183,14 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
     startTransicion(async () => {
       const resultado = await accionTransicionarEvento(evento.id, destino, comentario);
       if (resultado.ok) {
+        setErrorAccion(null);
         toast.success(`Excepción actualizada a "${traducirEstadoConciliacion(destino)}"`);
         setDestinoEnConfirmacion(null);
         setComentarioTransicion("");
         onMutated();
         cargarHistorial();
       } else {
-        toast.error("No se pudo actualizar la excepción", { description: resultado.mensaje });
+        setErrorAccion({ que: "cambiar el estado de la excepción", mensaje: resultado.mensaje });
       }
     });
   }
@@ -186,13 +201,14 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
     startTransicion(async () => {
       const resultado = await accionReabrirEvento(evento.id, comentario);
       if (resultado.ok) {
+        setErrorAccion(null);
         toast.success("Excepción reabierta");
         setDestinoEnConfirmacion(null);
         setComentarioTransicion("");
         onMutated();
         cargarHistorial();
       } else {
-        toast.error("No se pudo reabrir la excepción", { description: resultado.mensaje });
+        setErrorAccion({ que: "reabrir la excepción", mensaje: resultado.mensaje });
       }
     });
   }
@@ -214,11 +230,12 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
     startAsignar(async () => {
       const resultado = await accionAsignarEvento(evento.id, nuevo);
       if (resultado.ok) {
+        setErrorAccion(null);
         toast.success(nuevo ? "Excepción asignada" : "Excepción desasignada");
         onMutated();
         cargarHistorial();
       } else {
-        toast.error("No se pudo asignar la excepción", { description: resultado.mensaje });
+        setErrorAccion({ que: "cambiar a quién está asignada", mensaje: resultado.mensaje });
       }
     });
   }
@@ -228,11 +245,12 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
     startFecha(async () => {
       const resultado = await accionFijarFechaLimite(evento.id, valor || null);
       if (resultado.ok) {
+        setErrorAccion(null);
         toast.success("Fecha límite actualizada");
         onMutated();
         cargarHistorial();
       } else {
-        toast.error("No se pudo actualizar la fecha límite", { description: resultado.mensaje });
+        setErrorAccion({ que: "cambiar la fecha límite", mensaje: resultado.mensaje });
       }
     });
   }
@@ -271,11 +289,12 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
         motivoBloqueo: motivoBloqueoLocal.trim() || null,
       });
       if (resultado.ok) {
+        setErrorAccion(null);
         toast.success("Bloqueos actualizados");
         onMutated();
         cargarHistorial();
       } else {
-        toast.error("No se pudieron actualizar los bloqueos", { description: resultado.mensaje });
+        setErrorAccion({ que: "guardar los bloqueos", mensaje: resultado.mensaje });
       }
     });
   }
@@ -289,11 +308,12 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
     startAccion(async () => {
       const resultado = await accionCambiarAccionSugerida(evento.id, valor);
       if (resultado.ok) {
+        setErrorAccion(null);
         toast.success("Acción sugerida actualizada");
         onMutated();
         cargarHistorial();
       } else {
-        toast.error("No se pudo actualizar la acción sugerida", { description: resultado.mensaje });
+        setErrorAccion({ que: "cambiar la acción sugerida", mensaje: resultado.mensaje });
       }
     });
   }
@@ -310,11 +330,12 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
     startComentario(async () => {
       const resultado = await accionAgregarComentario(evento.id, texto);
       if (resultado.ok) {
+        setErrorAccion(null);
         setComentarioNuevo("");
         toast.success("Comentario agregado");
         cargarHistorial();
       } else {
-        toast.error("No se pudo agregar el comentario", { description: resultado.mensaje });
+        setErrorAccion({ que: "agregar el comentario", mensaje: resultado.mensaje });
       }
     });
   }
@@ -332,6 +353,17 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
         </SheetHeader>
 
         <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-6">
+          {/* El fallo se queda hasta que algo salga bien: no es un toast. */}
+          {errorAccion ? (
+            <div
+              role="alert"
+              className="border border-fault-line bg-fault-bg px-3 py-2.5 text-xs leading-relaxed text-fault-fg"
+            >
+              <strong>No se pudo {errorAccion.que}.</strong> {errorAccion.mensaje} Nada cambió:
+              lo que ves abajo sigue siendo el estado real.
+            </div>
+          ) : null}
+
           {/* Contexto rápido */}
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border bg-muted/30 p-3 text-sm sm:grid-cols-4">
             <div>
@@ -481,6 +513,20 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
                 ayuda: "Queda en el historial de la excepción, a tu nombre.",
                 minimo: 1,
               }}
+              avisos={
+                errorAccion
+                  ? [
+                      {
+                        tono: "fault" as const,
+                        texto: (
+                          <>
+                            <strong>No se pudo {errorAccion.que}.</strong> {errorAccion.mensaje}
+                          </>
+                        ),
+                      },
+                    ]
+                  : []
+              }
               cargando={isPendingTransicion}
               textoConfirmar={
                 destinoEnConfirmacion === "reabrir"

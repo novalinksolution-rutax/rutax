@@ -53,6 +53,7 @@ export const ACTO: Record<string, string> = {
   "dinero.preflight_omitido": "Siguió sin la verificación previa",
   "dinero.pago_atribuido_manual": "Atribuyó un pago a mano",
   "dinero.pago_descartado": "Descartó un movimiento",
+  "dinero.pago_recuperado": "Devolvió el movimiento a la bandeja",
 }
 
 function nombreDelActo(accion: string): string {

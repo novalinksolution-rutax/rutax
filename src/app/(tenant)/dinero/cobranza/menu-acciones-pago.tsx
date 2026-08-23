@@ -19,6 +19,7 @@ import { MoreHorizontal } from "lucide-react";
 import type { EstadoMatchPago } from "@/modules/dinero/tipos";
 import { Textarea } from "@/components/ui/textarea";
 import { CalcePago } from "@/components/ui/calce-pago";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 import {
   Select,
   SelectContent,
@@ -52,11 +53,19 @@ interface Props {
   sellers: SellerOpcion[];
   /** Lo que entró al banco. Sin esto no hay resta que mostrar. */
   montoClp: number;
+  /** Ya formateada: el cuadro de descartar nombra el movimiento por monto y día. */
+  fechaCorta: string;
 }
 
 type Vista = "menu" | "atribuir" | "descartar";
 
-export function MenuAccionesPago({ pagoId, estadoActual, sellers, montoClp }: Props) {
+export function MenuAccionesPago({
+  pagoId,
+  estadoActual,
+  sellers,
+  montoClp,
+  fechaCorta,
+}: Props) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [vista, setVista] = useState<Vista>("menu");
   const [error, setError] = useState<string | null>(null);
@@ -303,10 +312,20 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers, montoClp }: Pr
 
           {vista === "descartar" && (
             <div className="space-y-3 p-4">
-              <p className="text-sm font-medium">Descartar este pago</p>
+              {/* `cobranza.descartarMov.conf`. ⚠️ El texto anterior decía
+                  **cuándo usarlo**, no **qué pasa**: «úsalo si el movimiento no
+                  es una cobranza… quedará registrado en la bitácora». No decía
+                  el monto, no decía que sale de la bandeja, y no decía que se
+                  puede volver — porque hasta ahora no se podía. Ahora sí, y el
+                  copy escrito entra tal cual. */}
+              <p className="text-sm font-medium">
+                Vas a descartar {formatearCLP(montoClp)} del {fechaCorta}
+              </p>
               <p className="text-xs text-muted-foreground">
-                Úsalo si el movimiento no es una cobranza (una devolución, una transferencia ajena o un error).
-                Quedará registrado en la bitácora.
+                Sale de los movimientos por atribuir y deja de aparecer.{" "}
+                <strong className="font-medium text-foreground">No se borra</strong>: queda
+                descartado con tu motivo, y se puede devolver a la bandeja desde el cajón
+                «Descartados».
               </p>
               <div className="space-y-1">
                 <label htmlFor={`motivo-${pagoId}`} className="text-xs font-medium text-muted-foreground">

@@ -63,7 +63,7 @@ import { VisorPod } from "./visor-pod";
 import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
 import { ACCIONES_HISTORIAL_ESTADO_PEDIDO } from "./historial-estados";
-import { formatearFechaHora } from "@/lib/formato-cl";
+import { formatearFechaHora, formatearHora } from "@/lib/formato-cl";
 
 // =============================================================================
 // Carga de datos
@@ -246,201 +246,287 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
           />
         </div>
 
-        <dl className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="text-xs text-muted-foreground">Fuente</dt>
-            <dd className="font-medium">{etiquetaFuentePedido(pedido.fuente)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Seller</dt>
-            <dd className="font-medium">
-              <Link href={`/sellers/${pedido.sellerId}`} className="hover:underline">
-                {sellerNombre ?? pedido.sellerId}
-              </Link>
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">ID interno</dt>
-            <dd className="font-mono text-xs">{pedido.id}</dd>
-          </div>
-          {pedido.mlShipmentId && (
-            <div>
-              <dt className="text-xs text-muted-foreground">ML Shipment ID</dt>
-              <dd className="font-mono text-xs text-muted-foreground">{pedido.mlShipmentId}</dd>
-            </div>
-          )}
-        </dl>
       </div>
 
-      {/* Sección A.2 — Estado de geocoding (solo cuando es relevante) */}
-      <SeccionGeocoding pedido={pedido} pendienteRancio={geoRancio} puedeReubicar={puedeAjustar} />
-
-      {/* Sección A.3 — Prueba de entrega (POD) del ciclo same-day propio */}
-      {pod && <VisorPod pod={pod} />}
-
-      {/* Sección A.4 — Evidencias informativas (capa paralela a ML Flex) */}
-      <VisorEvidencias evidencias={evidencias} />
-
-      {/* Sección A.5 — Cancelación (§6.1/§16): solo si el pedido ya está
-          cancelado. Estado neutral, nunca destructivo — no es una alarma. */}
-      {pedido.estado === "cancelado" && (
-        <section aria-labelledby="cancelacion-titulo">
-          <h2 id="cancelacion-titulo" className="mb-3 text-base font-semibold">
-            Cancelación
-          </h2>
-          <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs text-muted-foreground">Cancelado el</dt>
-                <dd className="mt-0.5 font-medium">
-                  {pedido.canceladoEn
-                    ? formatearFechaHora(pedido.canceladoEn)
-                    : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Cancelado por</dt>
-                <dd className="mt-0.5 font-medium">
-                  {canceladoPorTexto ?? "Sincronización automática (Mercado Libre)"}
-                </dd>
-              </div>
-            </dl>
-            {pedido.motivoCancelacion && (
-              <div className="mt-3">
-                <p className="text-xs text-muted-foreground">Motivo</p>
-                <p className="mt-0.5 italic">&ldquo;{pedido.motivoCancelacion}&rdquo;</p>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Sección B — Historial de estados */}
-      <section aria-labelledby="historial-titulo">
-        <h2 id="historial-titulo" className="mb-3 text-base font-semibold">
-          Historial de estados
-        </h2>
-        <div className="rounded-lg border bg-card p-4">
-          {historial.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Estado actual:{" "}
-              <span className="font-medium">{traducirEstadoPedido(pedido.estado)}</span>
-              {" "}— Sincronización automática
-            </p>
-          ) : (
-            <ol className="space-y-3">
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {historial.map((entrada: any) => (
-                <li key={entrada.id} className="flex gap-3 text-sm">
-                  <div className="mt-0.5 flex-shrink-0">
-                    <div className="size-2 rounded-full bg-primary" aria-hidden="true" />
+      {/* =====================================================================
+       * DOS COLUMNAS.
+       * ---------------------------------------------------------------------
+       * Antes esta pantalla eran DIEZ bloques apilados en el orden en que se
+       * fueron construyendo (encabezado, geocoding, POD, evidencias,
+       * cancelación, historial, incidencias, asignación, dinero, acciones), y
+       * las acciones quedaban al final. Quien abre un pedido casi siempre viene
+       * a HACER algo —reasignar, cambiar estado, abrir incidencia— así que
+       * tenía que recorrer la pantalla entera para llegar a lo que buscaba.
+       *
+       * Izquierda: la historia del pedido, que se lee de arriba a abajo.
+       * Derecha: la ficha operativa y las acciones, fijas al hacer scroll.
+       * ================================================================== */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        {/* ---------------- Columna izquierda — la historia ---------------- */}
+        <div className="space-y-6">
+          {/* Cancelación: si el pedido está cancelado, es el titular de la
+              pantalla y va primero. Estado neutral, nunca destructivo — no es
+              una alarma (§6.1/§16). */}
+          {pedido.estado === "cancelado" && (
+            <section aria-labelledby="cancelacion-titulo">
+              <h2 id="cancelacion-titulo" className="mb-3 text-base font-semibold">
+                Cancelación
+              </h2>
+              <div className="rounded-lg border bg-muted/30 p-4 text-sm">
+                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Cancelado el</dt>
+                    <dd className="mt-0.5 font-medium">
+                      {pedido.canceladoEn
+                        ? formatearFechaHora(pedido.canceladoEn)
+                        : "—"}
+                    </dd>
                   </div>
                   <div>
-                    <p className="font-medium">
-                      {traducirEstadoPedido(entrada.detalle?.estado_anterior)}{" "}
-                      <span aria-hidden="true">→</span>{" "}
-                      {traducirEstadoPedido(entrada.detalle?.estado_nuevo)}
-                    </p>
-                    {entrada.actor_usuario_id && (
-                      <p className="text-xs text-muted-foreground">
-                        Cambiado manualmente el{" "}
-                        {formatearFechaHora(entrada.creado_en)}
-                      </p>
-                    )}
-                    {entrada.detalle?.motivo && (
-                      <p className="mt-0.5 text-xs text-muted-foreground italic">
-                        &ldquo;{entrada.detalle.motivo}&rdquo;
-                      </p>
-                    )}
+                    <dt className="text-xs text-muted-foreground">Cancelado por</dt>
+                    <dd className="mt-0.5 font-medium">
+                      {canceladoPorTexto ?? "Sincronización automática (Mercado Libre)"}
+                    </dd>
                   </div>
-                </li>
-              ))}
-            </ol>
+                </dl>
+                {pedido.motivoCancelacion && (
+                  <div className="mt-3">
+                    <p className="text-xs text-muted-foreground">Motivo</p>
+                    <p className="mt-0.5 italic">&ldquo;{pedido.motivoCancelacion}&rdquo;</p>
+                  </div>
+                )}
+              </div>
+            </section>
           )}
-        </div>
-      </section>
 
-      {/* Sección C — Incidencias abiertas */}
-      {incidenciasAbiertas.length > 0 && (
-        <section aria-labelledby="incidencias-titulo">
-          <h2 id="incidencias-titulo" className="mb-3 text-base font-semibold">
-            Incidencias activas
-          </h2>
-          <ul className="space-y-2">
-            {incidenciasAbiertas.map((inc) => (
-              <TargetaIncidencia
-                key={inc.id}
-                incidencia={inc}
-                pedidoId={pedidoId}
-                puedeReclasificar={puedeIncidencias}
+          {/* Entrega — NUEVO. La pantalla no mostraba la fecha comprometida en
+              ninguna parte, aunque el listado la lleva como columna y toda la
+              operación se juega contra el corte de las 21–22 h. Tampoco las
+              instrucciones de entrega ni el aviso de corte en riesgo, que
+              existían en el modelo y no se renderizaban.
+              Deliberadamente NO incluye el teléfono del destinatario: es dato
+              personal y agregarlo a una pantalla nueva es una decisión de
+              privacidad, no de maquetación. */}
+          <section aria-labelledby="entrega-titulo">
+            <h2 id="entrega-titulo" className="mb-3 text-base font-semibold">
+              Entrega
+            </h2>
+            <div className="rounded-lg border bg-card p-4 text-sm">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Fecha comprometida</dt>
+                  <dd className="mt-0.5 font-medium tabular-nums">
+                    {pedido.fechaCompromiso ?? "Sin fecha"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Hora comprometida</dt>
+                  <dd className="mt-0.5 font-medium tabular-nums">
+                    {pedido.fechaCompromisoHora
+                      ? formatearHora(pedido.fechaCompromisoHora)
+                      : "Sin hora de corte"}
+                  </dd>
+                </div>
+                {pedido.instruccionesEntrega && (
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs text-muted-foreground">Instrucciones</dt>
+                    <dd className="mt-0.5 italic">{pedido.instruccionesEntrega}</dd>
+                  </div>
+                )}
+              </dl>
+              {pedido.corteRiesgo && (
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-warning-subtle px-2.5 py-1 text-xs font-medium text-warning-subtle-foreground">
+                  Ingresó cerca del corte — el mismo día queda ajustado
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* Incidencias activas: es lo único accionable de la pantalla, así que
+              sube al primer lugar de la lectura. Antes iba enterrada entre el
+              historial y la asignación. */}
+          {incidenciasAbiertas.length > 0 && (
+            <section aria-labelledby="incidencias-titulo">
+              <h2 id="incidencias-titulo" className="mb-3 text-base font-semibold">
+                Incidencias activas
+              </h2>
+              <ul className="space-y-2">
+                {incidenciasAbiertas.map((inc) => (
+                  <TargetaIncidencia
+                    key={inc.id}
+                    incidencia={inc}
+                    pedidoId={pedidoId}
+                    puedeReclasificar={puedeIncidencias}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Historial de estados — la narración del pedido. */}
+          <section aria-labelledby="historial-titulo">
+            <h2 id="historial-titulo" className="mb-3 text-base font-semibold">
+              Historial de estados
+            </h2>
+            <div className="rounded-lg border bg-card p-4">
+              {historial.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Estado actual:{" "}
+                  <span className="font-medium">{traducirEstadoPedido(pedido.estado)}</span>
+                  {" "}— Sincronización automática
+                </p>
+              ) : (
+                <ol className="space-y-3">
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  {historial.map((entrada: any) => (
+                    <li key={entrada.id} className="flex gap-3 text-sm">
+                      <div className="mt-0.5 flex-shrink-0">
+                        <div className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <p className="font-medium">
+                          {traducirEstadoPedido(entrada.detalle?.estado_anterior)}{" "}
+                          <span aria-hidden="true">→</span>{" "}
+                          {traducirEstadoPedido(entrada.detalle?.estado_nuevo)}
+                        </p>
+                        {entrada.actor_usuario_id && (
+                          <p className="text-xs text-muted-foreground">
+                            Cambiado manualmente el{" "}
+                            {formatearFechaHora(entrada.creado_en)}
+                          </p>
+                        )}
+                        {entrada.detalle?.motivo && (
+                          <p className="mt-0.5 text-xs text-muted-foreground italic">
+                            &ldquo;{entrada.detalle.motivo}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </section>
+
+          {/* Prueba de entrega (POD) del ciclo same-day propio. */}
+          {pod && <VisorPod pod={pod} />}
+
+          {/* Evidencias informativas (capa paralela a ML Flex). */}
+          <VisorEvidencias evidencias={evidencias} />
+
+          {/* Estado de geocoding — es diagnóstico, así que baja hasta aquí. El
+              aviso corto ya vive en el encabezado; este bloque es el detalle
+              con la acción de reubicar, y solo aparece cuando hace falta. */}
+          <SeccionGeocoding pedido={pedido} pendienteRancio={geoRancio} puedeReubicar={puedeAjustar} />
+
+          {/* Dinero — trazabilidad financiera bidireccional (§1.1 P1 del audit).
+              Gateada a roles financieros: no se renderiza en el DOM para el
+              resto de roles (no basta con ocultar vía CSS). Va en esta columna
+              porque es material de lectura y necesita ancho. */}
+          {gateDinero && traza && (
+            <section aria-labelledby="dinero-titulo">
+              <h2 id="dinero-titulo" className="mb-3 text-base font-semibold">
+                Dinero
+              </h2>
+              <PanelTrazabilidadFinanciera
+                traza={traza}
+                pedidoId={pedido.id}
+                pedidoEntregado={pedidoEntregado}
+                abrirPorDefecto={sp.traza === "1"}
               />
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Sección D — Asignación actual */}
-      <section aria-labelledby="asignacion-titulo">
-        <h2 id="asignacion-titulo" className="mb-3 text-base font-semibold">
-          Asignación
-        </h2>
-        <div className="rounded-lg border bg-card p-4 text-sm">
-          {asignacion ? (
-            <dl className="grid grid-cols-2 gap-2">
-              <div>
-                <dt className="text-xs text-muted-foreground">Conductor</dt>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <dd className="font-medium">{conductorNombre ?? asignacion.driver_id}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Manifiesto</dt>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <dd className="font-medium">{(asignacion as any).manifiestos?.nombre ?? asignacion.manifiesto_id}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">Fecha de operación</dt>
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                <dd>{(asignacion as any).manifiestos?.fecha_operacion ?? "—"}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-muted-foreground">
-              Sin conductor asignado — pendiente de asignación.
-            </p>
+            </section>
           )}
         </div>
-      </section>
 
-      {/* Sección D.1 — Dinero (trazabilidad financiera bidireccional, §1.1 P1
-          del audit). Gateada a roles financieros — no se renderiza en el DOM
-          para el resto de roles (no basta con ocultar vía CSS). */}
-      {gateDinero && traza && (
-        <section aria-labelledby="dinero-titulo">
-          <h2 id="dinero-titulo" className="mb-3 text-base font-semibold">
-            Dinero
-          </h2>
-          <PanelTrazabilidadFinanciera
-            traza={traza}
-            pedidoId={pedido.id}
-            pedidoEntregado={pedidoEntregado}
-            abrirPorDefecto={sp.traza === "1"}
+        {/* ------ Columna derecha — ficha operativa y acciones, siempre a la
+                   vista al hacer scroll de la columna izquierda. ------------ */}
+        <div className="space-y-6 lg:sticky lg:top-6">
+          {/* Acciones primero: es lo que viene a hacer la mayoría de quienes
+              abren un pedido. Antes era el último bloque de la pantalla. */}
+          <AccionesPedido
+            pedido={pedido}
+            asignacion={asignacion}
+            conductorNombre={conductorNombre}
+            puedeAsignar={puedeAsignar}
+            puedeIncidencias={puedeIncidencias}
+            puedeAjustar={puedeAjustar}
+            puedeCancelar={puedeCancelar}
+            esTerminal={esTerminal}
+            tenantId={tenantId}
+            usuarioId={sesion.usuarioId}
           />
-        </section>
-      )}
 
-      {/* Sección E — Acciones disponibles según rol */}
-      <AccionesPedido
-        pedido={pedido}
-        asignacion={asignacion}
-        conductorNombre={conductorNombre}
-        puedeAsignar={puedeAsignar}
-        puedeIncidencias={puedeIncidencias}
-        puedeAjustar={puedeAjustar}
-        puedeCancelar={puedeCancelar}
-        esTerminal={esTerminal}
-        tenantId={tenantId}
-        usuarioId={sesion.usuarioId}
-      />
+          {/* Asignación: quién lo tiene. Justo bajo las acciones porque es el
+              contexto con el que se decide reasignar. */}
+          <section aria-labelledby="asignacion-titulo">
+            <h2 id="asignacion-titulo" className="mb-3 text-base font-semibold">
+              Asignación
+            </h2>
+            <div className="rounded-lg border bg-card p-4 text-sm">
+              {asignacion ? (
+                <dl className="grid gap-3">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Conductor</dt>
+                    <dd className="font-medium">{conductorNombre ?? asignacion.driver_id}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Manifiesto</dt>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <dd className="font-medium">{(asignacion as any).manifiestos?.nombre ?? asignacion.manifiesto_id}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Fecha de operación</dt>
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    <dd>{(asignacion as any).manifiestos?.fecha_operacion ?? "—"}</dd>
+                  </div>
+                </dl>
+              ) : (
+                <p className="text-muted-foreground">
+                  Sin conductor asignado — pendiente de asignación.
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* Ficha — los identificadores del pedido. Estaban en el encabezado,
+              como una rejilla de cuatro columnas que competía con el nombre del
+              destinatario. Aquí son lo que de verdad son: material de consulta
+              que se mira cuando hace falta cotejar un ID con Mercado Libre. */}
+          <section aria-labelledby="ficha-titulo">
+            <h2 id="ficha-titulo" className="mb-3 text-base font-semibold">
+              Ficha
+            </h2>
+            <div className="rounded-lg border bg-card p-4 text-sm">
+              <dl className="grid gap-3">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Fuente</dt>
+                  <dd className="font-medium">{etiquetaFuentePedido(pedido.fuente)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Seller</dt>
+                  <dd className="font-medium">
+                    <Link href={`/sellers/${pedido.sellerId}`} className="hover:underline">
+                      {sellerNombre ?? pedido.sellerId}
+                    </Link>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">ID interno</dt>
+                  <dd className="font-mono text-xs break-all">{pedido.id}</dd>
+                </div>
+                {pedido.mlShipmentId && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">ML Shipment ID</dt>
+                    <dd className="font-mono text-xs break-all text-muted-foreground">
+                      {pedido.mlShipmentId}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
@@ -682,11 +768,14 @@ function AccionesPedido({
       <h2 id="acciones-titulo" className="mb-3 text-base font-semibold">
         Acciones
       </h2>
-      <div className="flex flex-wrap gap-3">
+      {/* `grid` y no `flex flex-wrap`: en la columna lateral cada acción ocupa
+          su propia fila a ancho completo, en vez de partirse en dos columnas
+          desiguales según la longitud del texto. */}
+      <div className="grid gap-2">
         {puedeAsignar && esPendiente && (
           <Link
             href={`/manifiestos?asignarPedido=${pedido.id}`}
-            className="rounded-lg border bg-card px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+            className="rounded-lg border bg-card px-4 py-2 text-center text-sm font-medium hover:bg-muted transition-colors"
           >
             Asignar a manifiesto
           </Link>

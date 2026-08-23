@@ -18,7 +18,14 @@
  * verdad (con un filtro ya saneado), ese error sigue propagándose sin tocar —
  * no hay try/catch nuevo aquí.
  */
-import { ESTADOS_PEDIDO, type EstadoPedido, FUENTES_PEDIDO, type FuentePedido } from "@/modules/operacion/tipos";
+import {
+  ESTADOS_PEDIDO,
+  type EstadoPedido,
+  FUENTES_PEDIDO,
+  type FuentePedido,
+  GRUPOS_ESTADO_PEDIDO_CLAVES,
+  type GrupoEstadoPedido,
+} from "@/modules/operacion/tipos";
 
 const ESTADOS_VALIDOS = new Set<string>(ESTADOS_PEDIDO);
 const FUENTES_VALIDAS = new Set<string>(FUENTES_PEDIDO);
@@ -37,6 +44,33 @@ function esAnioBisiesto(anio: number): boolean {
 /** `filtros.estado` va a `.eq("estado", …)` sobre un enum de Postgres. */
 export function sanearFiltroEstadoPedido(valor: string | undefined | null): EstadoPedido | "" {
   if (!valor) return "";
+  return ESTADOS_VALIDOS.has(valor) ? (valor as EstadoPedido) : "";
+}
+
+const GRUPOS_VALIDOS = new Set<string>(GRUPOS_ESTADO_PEDIDO_CLAVES);
+
+/**
+ * `?estado=` de `/operaciones` acepta DOS vocabularios sobre el mismo eje:
+ *
+ *  - una clave de grupo de la barra (`entregado`, `con_problemas`,
+ *    `por_revisar`…), que es lo que emiten los contadores;
+ *  - un `EstadoPedido` suelto, que es lo que mandan los enlaces profundos que
+ *    ya existen (el dashboard apunta a `?estado=pendiente_asignacion`).
+ *
+ * Cuatro claves de grupo —`pendiente_asignacion`, `asignado`, `en_ruta`,
+ * `entregado`— coinciden con un estado real, y ahí gana la lectura de grupo:
+ * es la más amplia y la que el usuario espera al pulsar el cajón. La única
+ * diferencia práctica es `entregado`, que como grupo incluye también
+ * `entregado_manual` — que es justo lo que el contador ya sumaba, así que el
+ * cambio alinea el número con la tabla en vez de separarlos.
+ *
+ * Devuelve `""` para cualquier valor que no sea ninguna de las dos cosas.
+ */
+export function sanearGrupoEstadoPedido(
+  valor: string | undefined | null,
+): GrupoEstadoPedido | EstadoPedido | "" {
+  if (!valor) return "";
+  if (GRUPOS_VALIDOS.has(valor)) return valor as GrupoEstadoPedido;
   return ESTADOS_VALIDOS.has(valor) ? (valor as EstadoPedido) : "";
 }
 

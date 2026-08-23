@@ -23,7 +23,6 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { FileX2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +69,9 @@ export function DialogEmitirNotaCredito({
   const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [comprobante, setComprobante] = useState<ComprobanteActo | null>(null);
+  // Regla 56: el fallo de una acción de dinero NO va en notificación temporal.
+  // Se queda dentro del cuadro, que además sigue abierto para reintentar.
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const [estadoPreflight, setEstadoPreflight] = useState<EstadoVerificacion>("verificando");
@@ -109,10 +111,12 @@ export function DialogEmitirNotaCredito({
     if (!open) {
       setMotivo("");
       setComprobante(null);
+      setErrorAccion(null);
     }
   }
 
   function handleConfirmar() {
+    setErrorAccion(null);
     if (!motivoValido) return;
     startTransition(async () => {
       if (verificacionOmitida) {
@@ -122,9 +126,11 @@ export function DialogEmitirNotaCredito({
             codigos: preflight?.advertencias.map((r) => r.codigo) ?? [],
           });
         } catch (err) {
-          toast.error("No se pudo registrar la verificación omitida", {
-            description: err instanceof Error ? err.message : undefined,
-          });
+          setErrorAccion(
+            `No se pudo registrar que omitiste la verificación: ${
+              err instanceof Error ? err.message : "error desconocido"
+            }. No se anuló nada.`,
+          );
           return;
         }
       }
@@ -148,9 +154,7 @@ export function DialogEmitirNotaCredito({
         });
         router.refresh();
       } else {
-        toast.error("No se pudo emitir la nota de crédito", {
-          description: resultado.mensaje,
-        });
+        setErrorAccion(resultado.mensaje ?? "No pudimos emitir la nota de crédito.");
       }
     });
   }
@@ -206,6 +210,21 @@ export function DialogEmitirNotaCredito({
           ayuda: "Queda en la bitácora y en la propia nota de crédito, que el seller recibe.",
           minimo: 1,
         }}
+        avisos={
+          errorAccion
+            ? [
+                {
+                  tono: "fault" as const,
+                  texto: (
+                    <>
+                      <strong>No pudimos anular la factura.</strong> {errorAccion} El período
+                      sigue facturado y puedes volver a intentarlo.
+                    </>
+                  ),
+                },
+              ]
+            : []
+        }
         comprobante={comprobante}
         modoPruebas={(resumenCobro?.modoDte ?? modoDte) !== "real"}
         cargando={isPending}

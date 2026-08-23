@@ -608,7 +608,39 @@ bloques 4–8, cuando cada pantalla se toque.
       ⚠️ El tablero también muestra **el autor del ajuste** («Aplicó M. Soto el 19-08») y
       `dinero.liquidaciones` guarda la nota pero **no quién la aplicó**: el autor está en la
       bitácora, no en la fila. No se inventa; mostrarlo exige una lectura extra.
-- [ ] Las otras 5 de `dinero/` y las 4 anulaciones.
+- [x] **`dinero/conciliacion`** — **las siete acciones del panel avisaban su fallo con una
+      notificación temporal.** En un panel que gobierna si un período se puede facturar y si a un
+      conductor se le puede pagar, un aviso que se va en cuatro segundos deja al usuario creyendo
+      que el bloqueo se levantó cuando no se levantó, y el control que va a mirar es el mismo que
+      acaba de fallar con su valor viejo de vuelta. Ahora el error es embebido y **se queda hasta
+      que algo salga bien** — cargar el historial no lo borra: que la lectura funcione no significa
+      que la escritura se haya arreglado. El menú rápido de la fila se queda **abierto** con su
+      error adentro por lo mismo.
+      **De 13 `toast.error` en dinero quedan 1**, y es «asignarme una excepción», que no mueve ni
+      bloquea plata: la regla 56 habla de errores de dinero, y forzarlo ahí sería cumplir el
+      conteo, no la regla.
+- [x] **`dinero/liquidaciones`** (listado) — **el único camino al detalle era el rango de fechas**
+      de la columna «Período», que además es `hidden sm:table-cell`: en teléfono no existía, y en
+      escritorio nadie lee «01/06 – 30/06» como «abrir esto». Ahí están las líneas agrupadas, los
+      ajustes con su motivo y quién los aplicó — justo lo que se mira antes de pagarle a alguien.
+      Ahora «Ver detalle» está en la columna de acciones, visible siempre. Y la cabecera del monto
+      declara **neto** (regla 18).
+- [x] **`dinero/cobranza`** — el cajón «Descartados» **y la vuelta atrás**, que el copy prometía
+      desde el principio: «no se borra: queda descartado con tu motivo, y se puede recuperar desde
+      el cajón "Descartados"». Verificado: **no había cajón y no había forma de recuperar nada**,
+      así que descartar un movimiento era **irreversible de hecho** mientras la pantalla afirmaba
+      lo contrario (regla 35). *Decisión del usuario: se construyen las dos cosas.*
+      `recuperarPagoDescartado` con RBAC, motivo, bitácora antes del efecto y guarda de carrera en
+      la BD. ⚠️ **Vuelve a `sin_atribuir`, nunca al estado anterior** aunque la bitácora lo guarde:
+      un movimiento que estuvo `parcial` o `atribuido` y se descartó ya perdió su atribución, y
+      restaurarla lo haría figurar imputado a un período sin nada que lo respalde.
+      El cajón va en un `<details>` cerrado: es un archivo, no una bandeja de trabajo.
+      Y el copy de descartar decía **cuándo usarlo**, no **qué pasa** — «úsalo si el movimiento no
+      es una cobranza… quedará registrado en la bitácora»: sin monto, sin decir que sale de la
+      bandeja y sin la vuelta atrás. Ahora entra el texto escrito, tal cual, porque ya es cierto.
+      6 pruebas. **Verificado en pantalla de punta a punta**, con el movimiento volviendo a la
+      bandeja.
+- [ ] Las 4 anulaciones y el resto de `dinero/`.
 - [ ] `dinero/layout.tsx` — sus pestañas son un cuarto patrón de navegación (viene del bloque 4).
       Necesita `B2a`.
 - [x] **Un período abierto no tenía camino a su detalle** — `AccionesPeriodo` solo mostraba «Cerrar

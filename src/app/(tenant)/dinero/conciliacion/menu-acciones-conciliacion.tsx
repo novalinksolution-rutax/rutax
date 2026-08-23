@@ -43,6 +43,7 @@ interface Props {
 
 export function MenuAccionesConciliacion({ eventoId, estadoActual, onMutated }: Props) {
   const [abierto, setAbierto] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   // Reapertura (origen terminal) siempre exige nota → ninguna acción rápida.
@@ -58,17 +59,28 @@ export function MenuAccionesConciliacion({ eventoId, estadoActual, onMutated }: 
     startTransition(async () => {
       const resultado = await accionTransicionarEvento(eventoId, destino);
       if (resultado.ok) {
+        setError(null);
         setAbierto(false);
         toast.success(`Excepción actualizada a "${traducirEstadoConciliacion(destino)}"`);
         onMutated();
       } else {
-        toast.error("No se pudo actualizar la excepción", { description: resultado.mensaje });
+        // Regla 56: el fallo NO va en notificación temporal. El menú se queda
+        // abierto con el error adentro — si se cerrara, el usuario vería la
+        // fila con su estado viejo y un aviso que se va en cuatro segundos, y
+        // esta transición es la que decide si un período se puede facturar.
+        setError(resultado.mensaje);
       }
     });
   }
 
   return (
-    <DropdownMenu open={abierto} onOpenChange={setAbierto}>
+    <DropdownMenu
+      open={abierto}
+      onOpenChange={(v) => {
+        setAbierto(v);
+        if (!v) setError(null);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -86,6 +98,15 @@ export function MenuAccionesConciliacion({ eventoId, estadoActual, onMutated }: 
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        {error ? (
+          <div
+            role="alert"
+            className="mb-1 max-w-64 border-b border-fault-line bg-fault-bg px-2 py-2 text-xs leading-relaxed text-fault-fg"
+          >
+            <strong>No se pudo cambiar el estado.</strong> {error} La excepción sigue como
+            estaba.
+          </div>
+        ) : null}
         {destinosRapidos.map((destino) => (
           <DropdownMenuItem key={destino} disabled={isPending} onSelect={() => ejecutar(destino)}>
             {ETIQUETA_TRANSICION_RAPIDA[destino] ?? `Marcar como "${traducirEstadoConciliacion(destino)}"`}

@@ -15,7 +15,9 @@ import Link from "next/link";
 import { Inbox, SearchX, MapPinOff } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { listarPedidos } from "@/modules/operacion/pedidos";
+import { listarPedidos, contarPedidosPorGrupo } from "@/modules/operacion/pedidos";
+import { GRUPOS_ESTADO_PEDIDO } from "@/modules/operacion/tipos";
+import type { EstadoPedido, GrupoEstadoPedido } from "@/modules/operacion/tipos";
 import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import {
   puedeAsignarYReasignarPedidos,
@@ -35,7 +37,6 @@ import type { Pedido } from "@/modules/operacion/tipos";
 import { etiquetaConductorAusente } from "@/lib/ui/etiqueta-conductor-ausente";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -55,7 +56,7 @@ import { obtenerSellersDelTenant, type SellerFiltro } from "@/lib/datos-tenant/s
 import { obtenerConductoresDelTenant } from "@/lib/datos-tenant/conductores";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import {
-  sanearFiltroEstadoPedido,
+  sanearGrupoEstadoPedido,
   sanearFiltroFuentePedido,
   sanearFiltroUuid,
   sanearFiltroFechaCivil,
@@ -66,34 +67,59 @@ import {
 // Contadores de estado agrupados para los chips
 // =============================================================================
 
-function calcularContadores(pedidos: Pedido[]): Record<string, number> {
-  const contadores: Record<string, number> = {
-    pendiente_asignacion: 0,
-    asignado: 0,
-    en_ruta: 0,
-    entregado: 0,
-    con_problemas: 0,
-  };
-
-  for (const p of pedidos) {
-    if (p.estado === "pendiente_asignacion") contadores.pendiente_asignacion++;
-    else if (p.estado === "asignado") contadores.asignado++;
-    else if (p.estado === "en_ruta") contadores.en_ruta++;
-    else if (p.estado === "entregado" || p.estado === "entregado_manual") contadores.entregado++;
-    else if (p.estado === "fallido" || p.estado === "fallido_manual" || p.estado === "devuelto")
-      contadores.con_problemas++;
-  }
-
-  return contadores;
-}
-
-const CONTADORES = [
-  { key: "pendiente_asignacion", label: "Pendiente asignación", clases: "bg-warning-subtle text-warning-subtle-foreground" },
-  { key: "asignado", label: "Asignados", clases: "bg-info-subtle text-info-subtle-foreground" },
-  { key: "en_ruta", label: "En ruta", clases: "bg-info-subtle text-info-subtle-foreground" },
-  { key: "entregado", label: "Entregados", clases: "bg-success-subtle text-success-subtle-foreground" },
-  { key: "con_problemas", label: "Con problemas", clases: "bg-destructive-subtle text-destructive-subtle-foreground" },
-] as const;
+/**
+ * La barra de grupos es la NAVEGACIÓN de estado de la pantalla, no un adorno.
+ *
+ * Antes eran cinco tarjetas inertes que informaban un número y no llevaban a
+ * ningún lado, mientras el estado se elegía en un `<select>` aparte — dos
+ * controles para lo mismo. Ahora pulsar un cajón ES filtrar, que es como ya
+ * funcionaban los chips de `/dinero/periodos`.
+ *
+ * `por_revisar` entra como un cajón más: era un botón suelto que además
+ * secuestraba el `<h1>` de la pantalla y desactivaba los otros filtros, o sea
+ * se comportaba como una vista y no como un filtro.
+ *
+ * Las cifras vienen de `contarPedidosPorGrupo` (conteo en base sobre todo el
+ * conjunto). Las claves y su agrupación viven en `GRUPOS_ESTADO_PEDIDO`, del
+ * módulo — no se redefinen aquí, para que el número de arriba y la tabla de
+ * abajo no puedan volver a decir cosas distintas.
+ */
+const GRUPOS_BARRA: {
+  clave: GrupoEstadoPedido;
+  etiqueta: string;
+  clasesActivo: string;
+}[] = [
+  {
+    clave: "pendiente_asignacion",
+    etiqueta: "Pendiente asignación",
+    clasesActivo: "bg-warning-subtle text-warning-subtle-foreground ring-warning/40",
+  },
+  {
+    clave: "asignado",
+    etiqueta: "Asignados",
+    clasesActivo: "bg-info-subtle text-info-subtle-foreground ring-info/40",
+  },
+  {
+    clave: "en_ruta",
+    etiqueta: "En ruta",
+    clasesActivo: "bg-info-subtle text-info-subtle-foreground ring-info/40",
+  },
+  {
+    clave: "entregado",
+    etiqueta: "Entregados",
+    clasesActivo: "bg-success-subtle text-success-subtle-foreground ring-success/40",
+  },
+  {
+    clave: "con_problemas",
+    etiqueta: "Con problemas",
+    clasesActivo: "bg-destructive-subtle text-destructive-subtle-foreground ring-destructive/40",
+  },
+  {
+    clave: "por_revisar",
+    etiqueta: "Dirección por revisar",
+    clasesActivo: "bg-destructive-subtle text-destructive-subtle-foreground ring-destructive/40",
+  },
+];
 
 /** Nombre visible de la cuenta de origen: alias → nickname de ML → últimos 4. */
 function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, mlUserId: string | null): string {
@@ -146,7 +172,28 @@ export default async function PaginaOperaciones({
   // necesita saneo: es texto libre contra `ilike`, sin tipo que Postgres pueda
   // rechazar.
   const filtroSeller = sanearFiltroUuid(params.seller);
-  const filtroEstado = sanearFiltroEstadoPedido(params.estado);
+  // `?estado=` es el ÚNICO eje de estado: acepta una clave de grupo (lo que
+  // emiten los cajones de la barra) o un `EstadoPedido` suelto (lo que mandan
+  // los enlaces profundos que ya existen, como el del dashboard).
+  const filtroGrupo = sanearGrupoEstadoPedido(params.estado);
+  // `?por_revisar=1` era el parámetro del botón que se retiró. Se sigue leyendo
+  // para no romper un marcador guardado, pero la forma canónica es
+  // `?estado=por_revisar`.
+  const filtroPorRevisar = filtroGrupo === "por_revisar" || params.por_revisar === "1";
+  const grupoActivo: GrupoEstadoPedido | "" = filtroPorRevisar
+    ? "por_revisar"
+    : filtroGrupo && filtroGrupo in GRUPOS_ESTADO_PEDIDO
+      ? (filtroGrupo as GrupoEstadoPedido)
+      : "";
+  // Estado suelto: solo cuando lo que vino NO es una clave de grupo.
+  const filtroEstado: EstadoPedido | "" =
+    !filtroPorRevisar && filtroGrupo && !(filtroGrupo in GRUPOS_ESTADO_PEDIDO)
+      ? (filtroGrupo as EstadoPedido)
+      : "";
+  const estadosDelGrupo =
+    grupoActivo && grupoActivo !== "por_revisar"
+      ? GRUPOS_ESTADO_PEDIDO[grupoActivo]
+      : undefined;
   // Fecha: día exacto (excluyente) o rango. Si viene un rango válido, manda el
   // rango y NO se aplica el "hoy por defecto"; si no, cae al día exacto (o a hoy
   // cuando la URL no trae fecha alguna). `fecha` gana sobre el rango, igual que
@@ -161,20 +208,36 @@ export default async function PaginaOperaciones({
   const filtroComuna = params.comuna || "";
   const filtroConductor = sanearFiltroUuid(params.conductor);
   const filtroFuente = sanearFiltroFuentePedido(params.fuente);
-  const filtroPorRevisar = params.por_revisar === "1";
   const pagina = sanearNumeroPagina(params.pagina);
   const LIMITE = 25;
 
   const hayFiltroActivo = !!(
     filtroSeller ||
     filtroEstado ||
+    grupoActivo ||
     filtroComuna ||
     filtroConductor ||
     filtroFuente ||
-    filtroPorRevisar ||
     hayRangoFecha ||
     filtroFecha !== hoyIso
   );
+
+  // Filtros que NO son de estado. Son los que comparten el listado y la barra:
+  // la barra los respeta para contar lo mismo que la tabla muestra, y NO recibe
+  // el eje de estado porque si no, pulsar un cajón dejaría los otros en cero.
+  const filtrosBase = {
+    tenantId,
+    sellerId: filtroSeller || undefined,
+    // Comuna y conductor SÍ aplican junto a «dirección por revisar»: es un corte
+    // del mismo universo, y acotarlo a una comuna es exactamente lo que se
+    // quiere al llegar desde la Torre.
+    comuna: filtroComuna || undefined,
+    conductorId: filtroConductor || undefined,
+    fuente: filtroFuente || undefined,
+    fecha: filtroFecha || undefined,
+    fechaDesde: filtroFechaDesde || undefined,
+    fechaHasta: filtroFechaHasta || undefined,
+  };
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeIncidencias = puedeGestionarIncidencias(sesion.usuario);
@@ -185,24 +248,20 @@ export default async function PaginaOperaciones({
   // listarPedidos y la lista de sellers para los filtros no dependen entre sí:
   // se cargan en paralelo (antes la lista de sellers esperaba a que terminara
   // la carga de pedidos sin necesidad).
-  const [resPedidos, sellersDisponibles, conductoresDisponibles] = await Promise.all([
+  const [resPedidos, resContadores, sellersDisponibles, conductoresDisponibles] = await Promise.all([
     listarPedidos(cliente, {
-      tenantId,
-      sellerId: filtroSeller || undefined,
-      // Comuna y conductor SÍ aplican junto a «por revisar»: la bandeja de
-      // direcciones es un corte del mismo universo, y acotarla a una comuna es
-      // exactamente lo que se quiere al llegar desde la Torre.
-      comuna: filtroComuna || undefined,
-      conductorId: filtroConductor || undefined,
-      fuente: filtroFuente || undefined,
-      estado: filtroPorRevisar ? undefined : filtroEstado || undefined,
-      fecha: filtroPorRevisar ? undefined : filtroFecha || undefined,
-      fechaDesde: filtroPorRevisar ? undefined : filtroFechaDesde || undefined,
-      fechaHasta: filtroPorRevisar ? undefined : filtroFechaHasta || undefined,
+      ...filtrosBase,
+      estado: filtroEstado || undefined,
+      estados: estadosDelGrupo,
       porRevisar: filtroPorRevisar || undefined,
       pagina,
       limite: LIMITE,
     }).then(
+      (r) => ({ ok: true as const, datos: r }),
+      () => ({ ok: false as const }),
+    ),
+    // La barra se cae sola si falla: la tabla sigue sirviendo sin cifras arriba.
+    contarPedidosPorGrupo(cliente, filtrosBase).then(
       (r) => ({ ok: true as const, datos: r }),
       () => ({ ok: false as const }),
     ),
@@ -221,7 +280,7 @@ export default async function PaginaOperaciones({
   const pedidos = resultado.datos;
   const totalPedidos = resultado.total;
   const totalPaginas = Math.ceil(totalPedidos / LIMITE);
-  const contadores = calcularContadores(pedidos);
+  const contadores = resContadores.ok ? resContadores.datos : null;
   const tieneAcciones = puedeAsignar || puedeIncidencias || puedeAjustar;
 
   // Nombres legibles del seller para la columna (UUID → razón social).
@@ -294,25 +353,43 @@ export default async function PaginaOperaciones({
     })(),
   ]);
 
-  function hrefPagina(p: number): string {
+  /**
+   * Construye una URL de la pantalla conservando todo salvo lo que se pide
+   * cambiar. Un solo constructor para la paginación y para los cajones de la
+   * barra: cuando eran dos, la paginación olvidaba la comuna y el conductor.
+   */
+  function hrefCon({
+    estado,
+    pagina: paginaDestino,
+  }: {
+    estado?: GrupoEstadoPedido | EstadoPedido | "";
+    pagina?: number;
+  }): string {
     const sp = new URLSearchParams();
     if (filtroSeller) sp.set("seller", filtroSeller);
+    if (filtroComuna) sp.set("comuna", filtroComuna);
+    if (filtroConductor) sp.set("conductor", filtroConductor);
     if (filtroFuente) sp.set("fuente", filtroFuente);
-    if (filtroPorRevisar) {
-      sp.set("por_revisar", "1");
+
+    const estadoDestino = estado !== undefined ? estado : grupoActivo || filtroEstado;
+    if (estadoDestino) sp.set("estado", estadoDestino);
+
+    // La fecha se conserva SIEMPRE, también en «dirección por revisar». Antes se
+    // omitía en esa rama, y por eso ese cajón contaba la historia entera
+    // mientras los otros cinco contaban el día.
+    if (filtroFecha) {
+      sp.set("fecha", filtroFecha);
     } else {
-      if (filtroEstado) sp.set("estado", filtroEstado);
-      if (filtroFecha) {
-        sp.set("fecha", filtroFecha);
-      } else {
-        if (filtroFechaDesde) sp.set("fecha_desde", filtroFechaDesde);
-        if (filtroFechaHasta) sp.set("fecha_hasta", filtroFechaHasta);
-      }
+      if (filtroFechaDesde) sp.set("fecha_desde", filtroFechaDesde);
+      if (filtroFechaHasta) sp.set("fecha_hasta", filtroFechaHasta);
     }
-    if (p > 1) sp.set("pagina", String(p));
+
+    if (paginaDestino && paginaDestino > 1) sp.set("pagina", String(paginaDestino));
     const qs = sp.toString();
     return qs ? `/operaciones?${qs}` : "/operaciones";
   }
+
+  const hrefPagina = (p: number) => hrefCon({ pagina: p });
 
   return (
     <div className="space-y-6">
@@ -353,28 +430,38 @@ export default async function PaginaOperaciones({
         </div>
       )}
 
-      {/* Bloque 1 — Contadores de estado */}
-      <div
-        className="grid grid-cols-2 gap-2 sm:grid-cols-5"
-        role="list"
-        aria-label="Contadores por estado"
-      >
-        {CONTADORES.map(({ key, label, clases }) => (
-          <div key={key} role="listitem" className={`rounded-lg px-3 py-2 ${clases}`}>
-            <p className="text-lg font-semibold tabular-nums">
-              {errorCarga ? "—" : (contadores[key] ?? 0)}
-            </p>
-            <p className="text-xs font-medium">{label}</p>
-          </div>
-        ))}
-      </div>
+      {/* Bloque 1 — Barra de grupos: es el filtro de estado de la pantalla */}
+      <nav aria-label="Filtrar por estado" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {GRUPOS_BARRA.map(({ clave, etiqueta, clasesActivo }) => {
+          const activo = grupoActivo === clave;
+          return (
+            <Link
+              key={clave}
+              href={hrefCon({ estado: activo ? "" : clave })}
+              aria-current={activo ? "page" : undefined}
+              className={[
+                "rounded-lg px-3 py-2 text-left ring-1 transition-colors",
+                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                activo
+                  ? clasesActivo
+                  : "bg-card text-card-foreground ring-border hover:bg-accent",
+              ].join(" ")}
+            >
+              <p className="text-lg font-semibold tabular-nums">
+                {contadores ? contadores[clave] : "—"}
+              </p>
+              <p className="text-xs font-medium">{etiqueta}</p>
+            </Link>
+          );
+        })}
+      </nav>
 
       {/* Bloque 2 — Filtros */}
       <FiltrosPedidosForm
         sellers={sellersDisponibles}
         conductores={conductoresDisponibles}
         filtroSeller={filtroSeller}
-        filtroEstado={filtroEstado}
+        filtroEstado={grupoActivo || filtroEstado}
         hoy={hoyIso}
         filtroFecha={filtroFecha}
         filtroFechaDesde={filtroFechaDesde}
@@ -382,7 +469,6 @@ export default async function PaginaOperaciones({
         filtroComuna={filtroComuna}
         filtroConductor={filtroConductor}
         filtroFuente={filtroFuente}
-        filtroPorRevisar={filtroPorRevisar}
         hayFiltroActivo={hayFiltroActivo}
       />
 
@@ -454,7 +540,6 @@ export default async function PaginaOperaciones({
                   </TableHead>
                 )}
                 <TableHead className="hidden px-4 lg:table-cell">Conductor</TableHead>
-                <TableHead className="px-4">Fuente</TableHead>
                 {tieneAcciones && (
                   <TableHead className="px-4 text-right">
                     <span className="sr-only">Acciones</span>
@@ -523,6 +608,12 @@ function FilaPedido({
         </Link>
         <div className="flex flex-wrap items-center gap-1 mt-0.5">
           <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
+          {/* Fuente: era columna propia y ocupaba un ancho fijo para repetir el
+              mismo valor en casi todas las filas. Aquí acompaña a la comuna,
+              junto al resto de los distintivos de la fila. */}
+          <span className="rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground">
+            {etiquetaFuentePedido(pedido.fuente)}
+          </span>
           {/* Origen de cuenta ML — solo si el seller tiene más de una conexión */}
           {origen && (
             <span className="rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground">{origen}</span>
@@ -559,9 +650,6 @@ function FilaPedido({
         ) : (
           <CeldaSinConductor pedido={pedido} />
         )}
-      </TableCell>
-      <TableCell className="px-4">
-        <Badge variant="neutral">{etiquetaFuentePedido(pedido.fuente)}</Badge>
       </TableCell>
       {tieneAcciones && (
         <TableCell className="px-4 text-right">

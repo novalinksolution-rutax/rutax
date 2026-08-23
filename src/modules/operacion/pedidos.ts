@@ -17,10 +17,11 @@
  * NUNCA importa de `dinero`.
  */
 
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient, PostgrestFilterBuilder } from "@supabase/supabase-js";
 import type {
   Pedido,
   FiltrosPedidos,
+  ContadoresGrupoPedido,
   PaginadoPedidos,
   ActualizarEstadoEntrada,
   CancelarPedidoEntrada,
@@ -31,6 +32,7 @@ import type {
   CoberturaEstado,
   SituacionRetiro,
 } from "./tipos";
+import { GRUPOS_ESTADO_PEDIDO } from "./tipos";
 import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
 import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 import { resolverZona } from "./zonas";
@@ -196,10 +198,55 @@ export async function listarPedidos(
   const limite = filtros.limite ?? 50;
   const offset = (pagina - 1) * limite;
 
-  let query = cliente
-    .from("pedidos")
-    .select("*", { count: "exact" })
-    .eq("tenant_id", filtros.tenantId);
+  let query = aplicarFiltrosPedidos(
+    cliente.from("pedidos").select("*", { count: "exact" }),
+    filtros,
+  );
+
+  query = query
+    .order("creado_en", { ascending: false })
+    .range(offset, offset + limite - 1);
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    throw new Error(`Error al listar pedidos: ${error.message}`);
+  }
+
+  return {
+    datos: (data ?? []).map(filaAPedido),
+    total: count ?? 0,
+    pagina,
+    limite,
+  };
+}
+
+// =============================================================================
+// Filtros compartidos entre el listado y su barra de grupos
+// =============================================================================
+
+/**
+ * Aplica a una consulta sobre `pedidos` TODOS los filtros de `FiltrosPedidos`
+ * salvo orden y paginación.
+ *
+ * ⚠️ Existe para que `listarPedidos` y `contarPedidosPorGrupo` no puedan
+ * divergir. Cuando cada uno tenía su copia, la barra de arriba contaba una cosa
+ * y la tabla de abajo mostraba otra. Si agregas un filtro, agrégalo aquí y las
+ * dos mitades lo heredan.
+ */
+// El builder se tipa con los genéricos abiertos de PostgREST. Un genérico
+// estructural (`Q extends { eq(…): Q }`) parece más limpio pero hace que TS
+// compare recursivamente el tipo completo del builder contra la restricción y
+// aborte con TS2589 ("type instantiation is excessively deep"). Este cliente ya
+// es un `SupabaseClient` sin tipos de esquema, así que no se pierde precisión.
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+type ConsultaPedidos = PostgrestFilterBuilder<any, any, any, any>;
+
+function aplicarFiltrosPedidos(
+  consulta: ConsultaPedidos,
+  filtros: FiltrosPedidos,
+): ConsultaPedidos {
+  let query = consulta.eq("tenant_id", filtros.tenantId);
 
   if (filtros.sellerId) query = query.eq("seller_id", filtros.sellerId);
   if (filtros.conductorId) query = query.eq("driver_id_asignado", filtros.conductorId);
@@ -220,39 +267,90 @@ export async function listarPedidos(
   if (filtros.fuente) query = query.eq("fuente", filtros.fuente);
 
   if (filtros.porRevisar) {
-    // Bandeja de revisión geocoding: geo_estado problemático OR cobertura sin tarifa/revisión.
-    // Usamos .or() con la sintaxis de PostgREST (comas para AND dentro del grupo).
+    // Cajón de revisión de dirección: geo_estado problemático OR cobertura sin
+    // tarifa/revisión. `.or()` con sintaxis PostgREST (comas = AND dentro del
+    // grupo). Es ORTOGONAL al estado operativo, así que no se combina con
+    // `estados`/`estado` — pero sí con la fecha, ver más abajo.
     query = query.or(
       "geo_estado.in.(no_resuelto,fuera_cobertura),cobertura_estado.in.(requiere_revision,sin_tarifa_zona)",
     );
+  } else if (filtros.estados && filtros.estados.length > 0) {
+    // Grupo de estados (la barra de `/operaciones`). Manda sobre `estado`.
+    query = query.in("estado", filtros.estados);
+  } else if (filtros.estado) {
+    query = query.eq("estado", filtros.estado);
+  }
+
+  // La fecha se aplica SIEMPRE, también en el cajón de revisión. Antes vivía
+  // dentro del `else` y por eso la bandeja de direcciones ignoraba el día.
+  // Día exacto (excluyente) o rango. `fecha` gana si vino: preserva el
+  // comportamiento histórico y los deep-links de la Torre (`?fecha=…`).
+  if (filtros.fecha) {
+    query = query.eq("fecha_compromiso", filtros.fecha);
   } else {
-    if (filtros.estado) query = query.eq("estado", filtros.estado);
-    // Día exacto (excluyente) o rango. `fecha` gana si vino: preserva el
-    // comportamiento histórico y los deep-links de la Torre (`?fecha=…`).
-    if (filtros.fecha) {
-      query = query.eq("fecha_compromiso", filtros.fecha);
-    } else {
-      if (filtros.fechaDesde) query = query.gte("fecha_compromiso", filtros.fechaDesde);
-      if (filtros.fechaHasta) query = query.lte("fecha_compromiso", filtros.fechaHasta);
-    }
+    if (filtros.fechaDesde) query = query.gte("fecha_compromiso", filtros.fechaDesde);
+    if (filtros.fechaHasta) query = query.lte("fecha_compromiso", filtros.fechaHasta);
   }
 
-  query = query
-    .order("creado_en", { ascending: false })
-    .range(offset, offset + limite - 1);
+  return query;
+}
 
-  const { data, error, count } = await query;
+// =============================================================================
+// contarPedidosPorGrupo
+// =============================================================================
 
-  if (error) {
-    throw new Error(`Error al listar pedidos: ${error.message}`);
-  }
-
-  return {
-    datos: (data ?? []).map(filaAPedido),
-    total: count ?? 0,
-    pagina,
-    limite,
+/**
+ * Cuenta los pedidos de cada grupo sobre el CONJUNTO filtrado.
+ *
+ * BUG que corrige (2026-08-16): la barra de `/operaciones` calculaba sus cifras
+ * en memoria sobre `resultado.datos`, que es **una página de 25 filas**. Con los
+ * ~16 pedidos de la demo cuadraba por casualidad; con el volumen real de un día
+ * (~130 bultos) los cinco cajones sumaban 25 como mucho y cambiaban al pasar de
+ * página. Ahora cada cajón es un `count` en base sobre todo el conjunto.
+ *
+ * Son seis consultas `head: true` en paralelo (devuelven cifra, no filas): no
+ * hay tabla que traer, así que tampoco hay tope de 1000 filas de PostgREST que
+ * esquivar ni RPC nueva que migrar.
+ *
+ * Los filtros de estado que traiga `filtros` se IGNORAN — si no, pulsar un cajón
+ * dejaría los otros cinco en cero. El resto (seller, conductor, comuna, fuente,
+ * fecha) sí se respeta: la barra cuenta lo mismo que la tabla muestra.
+ */
+export async function contarPedidosPorGrupo(
+  cliente: SupabaseClient,
+  filtros: FiltrosPedidos,
+): Promise<ContadoresGrupoPedido> {
+  const base: FiltrosPedidos = {
+    ...filtros,
+    estado: undefined,
+    estados: undefined,
+    porRevisar: undefined,
   };
+
+  async function contar(extra: Partial<FiltrosPedidos>): Promise<number> {
+    const { count, error } = await aplicarFiltrosPedidos(
+      cliente.from("pedidos").select("id", { count: "exact", head: true }),
+      { ...base, ...extra },
+    );
+    if (error) {
+      throw new Error(`Error al contar pedidos: ${error.message}`);
+    }
+    return count ?? 0;
+  }
+
+  const claves = Object.keys(GRUPOS_ESTADO_PEDIDO) as (keyof typeof GRUPOS_ESTADO_PEDIDO)[];
+
+  const [porGrupo, porRevisar] = await Promise.all([
+    Promise.all(claves.map((clave) => contar({ estados: GRUPOS_ESTADO_PEDIDO[clave] }))),
+    contar({ porRevisar: true }),
+  ]);
+
+  const contadores = Object.fromEntries(
+    claves.map((clave, i) => [clave, porGrupo[i]]),
+  ) as ContadoresGrupoPedido;
+
+  contadores.por_revisar = porRevisar;
+  return contadores;
 }
 
 // =============================================================================

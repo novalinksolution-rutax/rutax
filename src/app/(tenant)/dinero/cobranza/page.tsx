@@ -24,6 +24,7 @@ import {
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { MenuAccionesPago } from "./menu-acciones-pago";
+import { BotonRecuperarPago } from "./boton-recuperar-pago";
 
 export const metadata: Metadata = {
   title: "Revisión de pagos",
@@ -62,6 +63,7 @@ export default async function PaginaBandejaCobranza() {
 
   let pagosRevision: PagoConSeller[] = [];
   let pagosConciliados: PagoConSeller[] = [];
+  let pagosDescartados: PagoConSeller[] = [];
   let sellers: { id: string; nombre: string }[] = [];
   let errorCarga = false;
 
@@ -88,9 +90,11 @@ export default async function PaginaBandejaCobranza() {
     }));
     const sellersMap = new Map(sellers.map((s) => [s.id, s.nombre]));
 
-    const [revision, conciliados] = await Promise.all([
+    const [revision, conciliados, descartados] = await Promise.all([
       listarPagosRecibidos(cliente, tenantId, ESTADOS_REVISION),
       listarPagosRecibidos(cliente, tenantId, ["conciliado"]),
+      // El cajón «Descartados», que el copy prometía y no existía.
+      listarPagosRecibidos(cliente, tenantId, ["descartado"]),
     ]);
 
     pagosRevision = revision.map((p) => ({
@@ -98,6 +102,10 @@ export default async function PaginaBandejaCobranza() {
       sellerNombre: p.sellerId ? (sellersMap.get(p.sellerId) ?? null) : null,
     }));
     pagosConciliados = conciliados.slice(0, LIMITE_CONCILIADOS).map((p) => ({
+      ...p,
+      sellerNombre: p.sellerId ? (sellersMap.get(p.sellerId) ?? null) : null,
+    }));
+    pagosDescartados = descartados.slice(0, LIMITE_CONCILIADOS).map((p) => ({
       ...p,
       sellerNombre: p.sellerId ? (sellersMap.get(p.sellerId) ?? null) : null,
     }));
@@ -258,6 +266,62 @@ export default async function PaginaBandejaCobranza() {
           </p>
         </section>
       )}
+
+      {/* ⚠️ EL CAJÓN QUE EL COPY PROMETÍA Y NO EXISTÍA.
+          «No se borra: queda descartado con tu motivo, y se puede recuperar
+          desde el cajón "Descartados"» — decía el sistema de mensajes, y era
+          falso por partida doble: no había cajón y no había vuelta atrás, así
+          que descartar un movimiento era **irreversible de hecho** mientras la
+          pantalla afirmaba lo contrario (regla 35).
+          Va en un `<details>` cerrado: es un archivo, no una bandeja de
+          trabajo, y abierto competiría con lo que sí hay que revisar. */}
+      {!errorCarga && pagosDescartados.length > 0 && (
+        <details className="group border border-line">
+          <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm text-fg-muted select-none">
+            <span className="font-medium text-fg">Descartados</span>
+            <span className="font-mono text-xs tabular-nums">
+              {pagosDescartados.length}
+            </span>
+            <span className="text-xs">— movimientos que marcaste como no cobranza</span>
+          </summary>
+          <div className="overflow-x-auto border-t border-line-subtle">
+            <table className="w-full text-sm" aria-label="Movimientos descartados">
+              <thead>
+                <tr className="border-b border-line-subtle bg-bg-sunken text-left text-xs font-medium tracking-wide text-fg-muted uppercase">
+                  <th className="px-4 py-2">Fecha</th>
+                  <th className="px-4 py-2 text-right">Monto</th>
+                  <th className="hidden px-4 py-2 sm:table-cell">Contraparte</th>
+                  <th className="px-4 py-2 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line-subtle">
+                {pagosDescartados.map((pago) => (
+                  <tr key={pago.id}>
+                    <td className="px-4 py-3 tabular-nums text-fg-muted">
+                      {formatearFechaCorta(pago.fechaMovimiento)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                      {formatearCLP(pago.montoClp)}
+                    </td>
+                    <td className="hidden px-4 py-3 text-fg-muted sm:table-cell">
+                      {pago.contraparteNombre ??
+                        formatearRut(pago.contraparteRutNormalizado) ??
+                        "Sin remitente"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <BotonRecuperarPago
+                        pagoId={pago.id}
+                        montoClp={pago.montoClp}
+                        fecha={formatearFechaCorta(pago.fechaMovimiento)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -298,6 +362,7 @@ function FilaPago({ pago, sellers }: { pago: PagoConSeller; sellers: { id: strin
           estadoActual={pago.estadoMatch}
           sellers={sellers}
           montoClp={pago.montoClp}
+          fechaCorta={formatearFechaCorta(pago.fechaMovimiento)}
         />
       </td>
     </tr>

@@ -28,7 +28,6 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -134,9 +133,13 @@ export function DialogEmitirFactura({
             codigos: preflight?.advertencias.map((r) => r.codigo) ?? [],
           });
         } catch (err) {
-          toast.error("No se pudo registrar la verificación omitida", {
-            description: err instanceof Error ? err.message : undefined,
-          });
+          // Regla 56: embebido, no en notificación temporal — y el cuadro sigue
+          // abierto, que es donde el usuario está mirando.
+          setErrorEmision(
+            `No se pudo registrar que omitiste la verificación: ${
+              err instanceof Error ? err.message : "error desconocido"
+            }. No se emitió nada.`,
+          );
           return;
         }
       }

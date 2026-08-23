@@ -290,7 +290,12 @@ export default async function PaginaLiquidaciones({
                   <th className="hidden px-4 py-2 sm:table-cell" style={{ width: "18%" }}>Período</th>
                   <th className="px-4 py-2" style={{ width: "10%" }}>Estado</th>
                   <th className="hidden px-4 py-2 text-right md:table-cell" style={{ width: "8%" }}>Entregas</th>
-                  <th className="hidden px-4 py-2 text-right lg:table-cell" style={{ width: "15%" }}>Monto total</th>
+                  {/* Regla 18: la cifra declara si es bruto o neto. Acá es
+                      neto — Rutax no muestra impuestos (regla 22), y una
+                      liquidación de conductor no lleva IVA. */}
+                  <th className="hidden px-4 py-2 text-right lg:table-cell" style={{ width: "15%" }}>
+                    Monto total <span className="font-normal normal-case">· neto</span>
+                  </th>
                   <th className="hidden px-4 py-2 text-center xl:table-cell" style={{ width: "8%" }}>PDF</th>
                   <th className="px-4 py-2 text-right" style={{ width: "19%" }}>
                     <span className="sr-only">Acciones</span>
@@ -397,6 +402,19 @@ function FilaLiquidacion({
         )}
       </td>
       <td className="px-4 py-3 text-right">
+        {/* ⚠️ «Ver detalle» faltaba en la columna de acciones. El único camino a
+            la pantalla de detalle era el **rango de fechas** de la columna
+            «Período» —que además es `hidden sm:table-cell`, o sea inexistente en
+            teléfono— y nadie lee «01/06 – 30/06» como «abrir esto». Ahí es donde
+            están las líneas agrupadas, los ajustes con su motivo y quién los
+            aplicó: justo lo que se mira antes de pagarle a alguien. */}
+        <div className="flex flex-col items-end gap-1.5">
+          <EnlaceDetalle
+            href={`/dinero/liquidaciones/${liquidacion.id}`}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Ver detalle
+          </EnlaceDetalle>
         {liquidacion.estado === "borrador" ? (
           <DialogAjustarLiquidacion
             liquidacionId={liquidacion.id}
@@ -442,6 +460,7 @@ function FilaLiquidacion({
             )}
           </div>
         ) : null}
+        </div>
       </td>
     </tr>
   );

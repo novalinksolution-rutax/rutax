@@ -34,6 +34,41 @@ export const ESTADOS_TERMINALES: readonly EstadoPedido[] = [
 ];
 
 /**
+ * Grupos de estado con los que el coordinador navega el listado de pedidos.
+ *
+ * ⚠️ **Esta es la ÚNICA definición de los grupos.** La barra de contadores de
+ * `/operaciones` y la consulta que los cuenta leen ambas de aquí, a propósito:
+ * mientras cada mitad tuvo su propia lista, el contador agrupaba
+ * `entregado`+`entregado_manual` y el filtro `?estado=entregado` traía solo el
+ * primero — el número de arriba y la tabla de abajo decían cosas distintas.
+ *
+ * `por_revisar` NO es un estado: es la condición de dirección/cobertura que
+ * define `listarPedidos` con `filtros.porRevisar`. Vive en esta lista porque
+ * para el coordinador es un cajón más de la misma barra, y la consulta lo
+ * resuelve por su rama propia.
+ *
+ * `cancelado` queda deliberadamente fuera: es terminal y no accionable, así que
+ * ocuparía un cajón que nadie pulsa. Consecuencia asumida — **la suma de los
+ * grupos no tiene por qué dar el total del listado**; el total real lo dice la
+ * cabecera de la tabla, no esta barra.
+ */
+export const GRUPOS_ESTADO_PEDIDO = {
+  pendiente_asignacion: ["pendiente_asignacion"],
+  asignado: ["asignado"],
+  en_ruta: ["en_ruta"],
+  entregado: ["entregado", "entregado_manual"],
+  con_problemas: ["fallido", "fallido_manual", "devuelto"],
+} as const satisfies Record<string, readonly EstadoPedido[]>;
+
+/** Clave de grupo de estado, más el cajón de revisión de dirección. */
+export type GrupoEstadoPedido = keyof typeof GRUPOS_ESTADO_PEDIDO | "por_revisar";
+
+export const GRUPOS_ESTADO_PEDIDO_CLAVES = [
+  ...(Object.keys(GRUPOS_ESTADO_PEDIDO) as (keyof typeof GRUPOS_ESTADO_PEDIDO)[]),
+  "por_revisar" as const,
+];
+
+/**
  * Régimen operativo y de tarifa del pedido — espejo de `operacion.tipo_pedido`.
  *
  * ⚠️ **NO es el eje de procedencia.** Lo fue mientras las únicas dos maneras de
@@ -461,6 +496,17 @@ export interface FiltrosPedidos {
   /** Procedencia del pedido — eje AUTORITATIVO de fuente (ver `FuentePedido`). */
   fuente?: FuentePedido;
   estado?: EstadoPedido;
+  /**
+   * Conjunto de estados a traer (`.in`). Es el eje que usa la barra de grupos
+   * de `/operaciones`, porque dos de sus cajones son grupos y no estados
+   * sueltos (`entregado` cubre también `entregado_manual`; `con_problemas`
+   * cubre `fallido`, `fallido_manual` y `devuelto`).
+   *
+   * Convive con `estado` en vez de reemplazarlo: los enlaces profundos que ya
+   * existen —el del dashboard a `?estado=pendiente_asignacion`, los de la
+   * Torre— siguen mandando un estado suelto. Si vienen los dos, manda `estados`.
+   */
+  estados?: readonly EstadoPedido[];
   fecha?: string; // fecha_compromiso — día exacto (ISO date). Excluyente con el rango.
   /**
    * Rango de `fecha_compromiso` (ISO date). Se usan cuando NO viene `fecha`:
@@ -473,12 +519,24 @@ export interface FiltrosPedidos {
    * Si `true`, filtra pedidos que requieren revisión de dirección/cobertura:
    * geo_estado IN ('no_resuelto','fuera_cobertura') OR
    * cobertura_estado IN ('requiere_revision','sin_tarifa_zona').
-   * Ignora `estado` y `fecha` cuando está activo (la bandeja no filtra por día).
+   *
+   * Ignora `estado`/`estados` —la revisión de dirección es ortogonal al estado
+   * operativo— pero **sí respeta el filtro de fecha** (cambio de 2026-08-16).
+   * Antes lo ignoraba, cuando era una bandeja aparte a la que se entraba por un
+   * botón propio. Desde que es un cajón más de la barra de grupos, ignorarlo
+   * dejaba cinco cajones contando el día y uno contando la historia entera: la
+   * barra mentía sobre lo que comparaba.
    */
   porRevisar?: boolean;
   pagina?: number;
   limite?: number;
 }
+
+/**
+ * Conteo por grupo de estado sobre el CONJUNTO filtrado, no sobre la página.
+ * Las claves son las de `GRUPOS_ESTADO_PEDIDO` más `por_revisar`.
+ */
+export type ContadoresGrupoPedido = Record<GrupoEstadoPedido, number>;
 
 export interface PaginadoPedidos {
   datos: Pedido[];

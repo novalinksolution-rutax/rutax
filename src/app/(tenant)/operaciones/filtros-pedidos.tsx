@@ -1,18 +1,23 @@
 "use client";
 
 /**
- * Barra de filtros de la lista de pedidos — Client Component.
- * Los filtros se envían como searchParams en la URL (GET navigation).
+ * Filtros de refinamiento de la lista de pedidos — Client Component.
+ * Se envían como searchParams en la URL (GET navigation).
+ *
+ * ⚠️ **El estado NO se filtra aquí.** Lo hace la barra de grupos de la página,
+ * que además muestra la cifra de cada cajón. Mientras existieron los dos, la
+ * pantalla tenía dos controles para lo mismo y podían contradecirse. Aquí queda
+ * solo el refinamiento, ordenado por frecuencia de uso: la fecha va primero
+ * porque es el único que SIEMPRE está puesto (cae a hoy por defecto).
  */
 
 import { useRouter, usePathname } from "next/navigation";
 import { useCallback } from "react";
-import { MapPinOff } from "lucide-react";
-import { ESTADOS_PEDIDO, FUENTES_PEDIDO } from "@/modules/operacion/tipos";
+import { FUENTES_PEDIDO } from "@/modules/operacion/tipos";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
-import { TEXTO_ESTADO_PEDIDO, etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
+import { etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
-import type { EstadoPedido, FuentePedido } from "@/modules/operacion/tipos";
+import type { FuentePedido } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
 import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
@@ -30,6 +35,10 @@ interface Props {
   sellers: { id: string; nombre: string; estado: string }[];
   conductores: { id: string; nombre: string }[];
   filtroSeller: string;
+  /**
+   * Grupo o estado vigente. NO se edita aquí —la barra de la página es su
+   * control— pero se recibe para PRESERVARLO al tocar cualquier otro filtro.
+   */
   filtroEstado: string;
   /** "Hoy" civil de Santiago (para los atajos y la etiqueta del filtro de fecha). */
   hoy: string;
@@ -41,7 +50,6 @@ interface Props {
   filtroComuna: string;
   filtroConductor: string;
   filtroFuente: string;
-  filtroPorRevisar: boolean;
   hayFiltroActivo: boolean;
 }
 
@@ -57,7 +65,6 @@ export function FiltrosPedidosForm({
   filtroComuna,
   filtroConductor,
   filtroFuente,
-  filtroPorRevisar,
   hayFiltroActivo,
 }: Props) {
   const router = useRouter();
@@ -86,7 +93,6 @@ export function FiltrosPedidosForm({
       // universo (con tres fuentes conviviendo en la bandeja, filtrar por
       // estado no puede devolver a "todas las fuentes").
       if (campo !== "fuente" && filtroFuente) params.set("fuente", filtroFuente);
-      if (campo !== "por_revisar" && filtroPorRevisar) params.set("por_revisar", "1");
       if (valor) params.set(campo, valor);
       // Resetear a página 1 al cambiar filtros
       router.push(`${pathname}?${params.toString()}`);
@@ -102,52 +108,25 @@ export function FiltrosPedidosForm({
       filtroComuna,
       filtroConductor,
       filtroFuente,
-      filtroPorRevisar,
     ],
   );
 
-  /** Activa/desactiva la bandeja "Por revisar"; es exclusiva con estado/fecha. */
-  const togglePorRevisar = useCallback(() => {
-    if (filtroPorRevisar) {
-      // Desactivar: volver a la vista sin filtros
-      router.push(pathname);
-    } else {
-      // Activar: solo seller + por_revisar (limpia estado y fecha para no confundir)
-      const params = new URLSearchParams();
-      if (filtroSeller) params.set("seller", filtroSeller);
-      params.set("por_revisar", "1");
-      router.push(`${pathname}?${params.toString()}`);
-    }
-  }, [router, pathname, filtroPorRevisar, filtroSeller]);
-
   return (
-    <div className="space-y-3">
-      {/* Chip "Por revisar" — bandeja de excepciones geocoding */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={togglePorRevisar}
-          aria-pressed={filtroPorRevisar}
-          className={[
-            "inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold transition-colors",
-            filtroPorRevisar
-              ? "border-destructive bg-destructive-subtle text-destructive-subtle-foreground"
-              : "border-border bg-muted/50 text-muted-foreground hover:border-destructive/60 hover:text-destructive-subtle-foreground",
-          ].join(" ")}
-        >
-          <MapPinOff className="size-3.5" aria-hidden="true" />
-          Direcciones por revisar
-        </button>
-        {filtroPorRevisar && (
-          <span className="text-xs text-muted-foreground">
-            Mostrando pedidos con dirección no ubicada, fuera de cobertura o sin tarifa de zona.
-          </span>
-        )}
-      </div>
+    <div className="flex flex-wrap items-end gap-3">
+      {/* Fecha — primero a propósito: es el único filtro que SIEMPRE está
+          puesto (cae a hoy cuando la URL no trae nada), así que es el que el
+          coordinador mira y cambia más. Los cuatro selects de abajo son
+          refinamiento ocasional. */}
+      <FiltroFecha
+        id="filtro-fecha"
+        label="Fecha comprometida"
+        hoy={hoy}
+        exacto={filtroFecha}
+        desde={filtroFechaDesde}
+        hasta={filtroFechaHasta}
+      />
 
-      {/* Filtros regulares (deshabilitados cuando "por revisar" está activo) */}
-      <div className="flex flex-wrap items-end gap-3">
-        {/* Seller */}
+      {/* Seller */}
         <div className="flex flex-col gap-1">
           <label htmlFor="filtro-seller" className="text-xs font-medium text-muted-foreground">
             Seller
@@ -243,56 +222,19 @@ export function FiltrosPedidosForm({
           </Select>
         </div>
 
-        {/* Estado — ocultar cuando "por revisar" está activo */}
-        {!filtroPorRevisar && (
-          <div className="flex flex-col gap-1">
-            <label htmlFor="filtro-estado" className="text-xs font-medium text-muted-foreground">
-              Estado
-            </label>
-            <Select
-              value={filtroEstado || TODOS}
-              onValueChange={(v) => actualizar("estado", v === TODOS ? "" : v)}
-            >
-              <SelectTrigger id="filtro-estado" size="default" className="h-9 w-48">
-                <SelectValue placeholder="Todos los estados" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={TODOS}>Todos los estados</SelectItem>
-                {ESTADOS_PEDIDO.map((estado) => (
-                  <SelectItem key={estado} value={estado}>
-                    {TEXTO_ESTADO_PEDIDO[estado as EstadoPedido]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {/* Fecha — ocultar cuando "por revisar" está activo */}
-        {!filtroPorRevisar && (
-          <FiltroFecha
-            id="filtro-fecha"
-            label="Fecha comprometida"
-            hoy={hoy}
-            exacto={filtroFecha}
-            desde={filtroFechaDesde}
-            hasta={filtroFechaHasta}
-          />
-        )}
-
-        {/* Limpiar filtros — solo visible cuando hay filtros activos */}
-        {hayFiltroActivo && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(pathname)}
-            className="h-9 text-muted-foreground"
-          >
-            Limpiar filtros
-          </Button>
-        )}
-      </div>
+      {/* Limpiar filtros — solo visible cuando hay filtros activos. Limpia
+          también el grupo de estado: es el único "volver al principio". */}
+      {hayFiltroActivo && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push(pathname)}
+          className="h-9 text-muted-foreground"
+        >
+          Limpiar filtros
+        </Button>
+      )}
     </div>
   );
 }
