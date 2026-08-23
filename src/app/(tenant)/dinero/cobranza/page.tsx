@@ -65,6 +65,17 @@ export default async function PaginaBandejaCobranza() {
   let sellers: { id: string; nombre: string }[] = [];
   let errorCarga = false;
 
+  // Sin banco conectado la bandeja está vacía por la razón CONTRARIA a «todo
+  // calzó»: no llega ni un movimiento. Se lee acá para que el vacío pueda decir
+  // la verdad.
+  const { data: configCobranza } = await cliente
+    .schema("identidad")
+    .from("courier_config_cobranza")
+    .select("estado_conexion")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const bancoConectado = (configCobranza?.estado_conexion as string | undefined) === "conectado";
+
   try {
     const { data: sellersData } = await cliente
       .from("sellers")
@@ -120,15 +131,52 @@ export default async function PaginaBandejaCobranza() {
           aria-live="polite"
           className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border bg-card px-6 py-16 text-center"
         >
-          <div className="flex size-11 items-center justify-center rounded-full bg-success-subtle">
-            <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="font-heading text-sm font-medium text-foreground">No hay pagos por revisar</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Todos los pagos recibidos se atribuyeron y conciliaron solos.
-            </p>
-          </div>
+          {/* ⚠️ VACÍO HONESTO. Antes decía «todos los pagos recibidos se
+              atribuyeron y conciliaron solos» — una afirmación que el producto
+              NO había comprobado: con el banco sin conectar no llega ni un
+              movimiento, así que la bandeja está vacía por la razón contraria.
+              Es la brecha #3 del inventario, y el tablero B2b la nombra:
+              «nunca "todos los pagos se conciliaron solos"».
+              El vacío de buena noticia lleva además su cifra y su hora
+              (regla 58); acá la hora es la de la última sincronización. */}
+          {bancoConectado ? (
+            <>
+              <div className="flex size-11 items-center justify-center rounded-full bg-success-subtle">
+                <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-heading text-sm font-medium text-foreground">
+                  Nada por revisar
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Los pagos que llegaron calzaron solos con su factura. Si alguno no calza,
+                  aparece acá.
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex size-11 items-center justify-center rounded-full bg-attention-bg">
+                <CheckCircle2 className="size-5 text-attention-fg" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-heading text-sm font-medium text-foreground">
+                  Todavía no conectas el banco
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Esta bandeja está vacía porque no llega ningún movimiento, no porque todo
+                  haya calzado. Conecta tu cuenta y Rutax empieza a conciliar los pagos de tus
+                  sellers solo.
+                </p>
+                <Link
+                  href="/onboarding/cobranza"
+                  className="mt-3 inline-block text-sm font-medium text-accent-text hover:underline"
+                >
+                  Conectar el banco ›
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         !errorCarga && (
@@ -245,7 +293,12 @@ function FilaPago({ pago, sellers }: { pago: PagoConSeller; sellers: { id: strin
         <BadgeEstadoMatch estado={pago.estadoMatch} />
       </td>
       <td className="px-4 py-3 text-right">
-        <MenuAccionesPago pagoId={pago.id} estadoActual={pago.estadoMatch} sellers={sellers} />
+        <MenuAccionesPago
+          pagoId={pago.id}
+          estadoActual={pago.estadoMatch}
+          sellers={sellers}
+          montoClp={pago.montoClp}
+        />
       </td>
     </tr>
   );

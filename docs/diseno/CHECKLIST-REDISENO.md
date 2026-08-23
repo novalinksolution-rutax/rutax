@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **4 de 16** · todas montadas en pantalla | 12 componentes · 15 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
+| **5** | **Dinero** | **5 de 16** | 11 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -464,8 +464,23 @@ bloques 4–8, cuando cada pantalla se toque.
       liquidación y en su PDF. No es una nota interna» (regla 24). Con los dos ajustes en cero no se
       exige: eso es limpiar un ajuste anterior, no aplicar uno.
       6 pruebas para la regla del servidor. **Verificado en pantalla** en sus cuatro estados.
-- [ ] `atribuidor de pago` · `indicador de folio disponible` · `tarjeta de trazabilidad` ·
-      `tarjeta de resultado en bloque`.
+- [x] **`atribuidor de pago` · su mitad nueva: el calce como RESTA** —
+      `src/components/ui/calce-pago.tsx`. Hoy la pantalla elige un período de una lista y aprieta
+      «Atribuir» **a ciegas**: si el monto no calza, uno se entera después por el estado que quedó.
+      Ahora se ve la resta —cuánto entró, cuánto se imputa, cuánto queda— y **los dos casos raros
+      llevan su nombre y su consecuencia escrita**: «pago parcial» deja el resto disponible para
+      otro período, «pagó de más» deja el excedente a favor del seller y visible en el próximo.
+      6 pruebas para la aritmética, incluida la que impide que resto y falta sean ambos > 0.
+      ⚠️ **Falta la otra mitad:** el tablero permite atribuir un movimiento a **varios períodos**
+      («paga dos períodos con una transferencia») y `atribuirPagoManualmente` acepta **uno**.
+      Es trabajo de dominio.
+      ⚠️ **No se pudo ejercitar en pantalla:** la semilla no tiene pagos por revisar.
+- [x] **El vacío de cobranza dejó de mentir** (brecha #3) — decía «todos los pagos recibidos se
+      atribuyeron y conciliaron solos», una afirmación que el producto **no había comprobado**: con
+      el banco sin conectar no llega ni un movimiento, así que la bandeja está vacía por la razón
+      contraria. El tablero B2b lo nombra explícitamente. Ahora distingue los dos casos y, sin
+      banco, ofrece conectarlo. **Verificado en pantalla.**
+- [ ] `indicador de folio disponible` · `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
 
 ## Pantallas
 

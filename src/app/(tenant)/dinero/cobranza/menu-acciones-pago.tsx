@@ -18,6 +18,7 @@ import { useState, useRef, useEffect, useTransition } from "react";
 import { MoreHorizontal } from "lucide-react";
 import type { EstadoMatchPago } from "@/modules/dinero/tipos";
 import { Textarea } from "@/components/ui/textarea";
+import { CalcePago } from "@/components/ui/calce-pago";
 import {
   Select,
   SelectContent,
@@ -49,11 +50,13 @@ interface Props {
   pagoId: string;
   estadoActual: EstadoMatchPago;
   sellers: SellerOpcion[];
+  /** Lo que entró al banco. Sin esto no hay resta que mostrar. */
+  montoClp: number;
 }
 
 type Vista = "menu" | "atribuir" | "descartar";
 
-export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
+export function MenuAccionesPago({ pagoId, estadoActual, sellers, montoClp }: Props) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [vista, setVista] = useState<Vista>("menu");
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +257,19 @@ export function MenuAccionesPago({ pagoId, estadoActual, sellers }: Props) {
                   </p>
                 )}
               </div>
+
+              {/* El calce como RESTA. Antes se elegía un período y se apretaba
+                  «Atribuir» a ciegas: si el monto no calzaba, uno se enteraba
+                  después, por el estado que quedó. */}
+              {periodoSel ? (
+                <CalcePago
+                  montoMovimiento={montoClp}
+                  montoPeriodo={
+                    periodos.find((p) => p.id === periodoSel)?.montoTotalClp ?? null
+                  }
+                  etiquetaPeriodo={periodos.find((p) => p.id === periodoSel)?.etiqueta}
+                />
+              ) : null}
 
               {error && (
                 <p className="text-xs text-destructive" role="alert">
