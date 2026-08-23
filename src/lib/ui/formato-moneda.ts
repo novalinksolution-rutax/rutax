@@ -21,8 +21,33 @@ const FORMATEADOR_CLP = new Intl.NumberFormat("es-CL", {
  * Criterio C-1: `$ 1.234.567` — sin decimales, sin coma, sin sufijo "CLP".
  * Si el monto es null o undefined: devuelve "—".
  */
+/**
+ * ⚠️ EL NEGATIVO NO LO DEJA `Intl`.
+ *
+ * `Intl.NumberFormat("es-CL", {style:"currency"})` devuelve **`$-1.000`**: el
+ * guion queda entre el símbolo y la cifra, donde no se lee como signo. Y es un
+ * guion (U+002D), no un signo menos.
+ *
+ * La regla 20 del sistema pide **signo menos real (U+2212), delante**. Nunca un
+ * paréntesis contable —que no lo lee quien no es contador— ni solo color, que
+ * se pierde al imprimir.
+ *
+ * Los componentes que ya lo hacían bien —la tabla financiera, el bloque de
+ * composición— pasan el valor absoluto y ponen el signo ellos, así que no se
+ * duplica. Este arreglo es para todo lo demás, que era la mayoría: el total de
+ * una liquidación con penalización mayor que la base salía `$-1.000` en el
+ * encabezado, en cuerpo 30.
+ */
 export function formatearCLP(monto: number): string {
-  return FORMATEADOR_CLP.format(Math.round(monto));
+  // El `|| 0` normaliza el CERO NEGATIVO, que no es una curiosidad: `Math.round`
+  // devuelve `-0` para todo lo que esté entre −0,5 y 0, `-0 < 0` es **false**, y
+  // entonces caía al camino positivo y `Intl` escupía «$-0». Un ajuste de −$0,4
+  // —o cualquier resta que dé casi cero— mostraba «menos cero» en pantalla.
+  const redondeado = Math.round(monto) || 0;
+  if (redondeado < 0) {
+    return `−${FORMATEADOR_CLP.format(Math.abs(redondeado))}`;
+  }
+  return FORMATEADOR_CLP.format(redondeado);
 }
 
 /**

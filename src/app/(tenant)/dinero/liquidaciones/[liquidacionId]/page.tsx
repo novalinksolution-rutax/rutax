@@ -14,6 +14,11 @@ import Link from "next/link";
 import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import {
+  obtenerTrazabilidad,
+  type HechoTrazable,
+} from "@/modules/identidad/trazabilidad";
+import { BloqueTrazabilidad } from "@/components/ui/bloque-trazabilidad";
 import { puedeGestionarLiquidacionesConductores } from "@/modules/identidad/capacidades";
 import { obtenerLiquidacion, obtenerPayoutPorLiquidacion } from "@/modules/dinero/index";
 import type { LineaLiquidacion, PayoutConductor, MetodoPayout } from "@/modules/dinero/tipos";
@@ -123,6 +128,18 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
     penalizacionClp: liquidacion.penalizacionClp,
     notaAjuste: liquidacion.notaAjuste,
   });
+  // Quién ajustó esta liquidación y por qué. Un fallo acá no puede tumbar la
+  // pantalla: el ajuste se sigue viendo, solo que sin autor.
+  let hechosAjuste: HechoTrazable[] = [];
+  try {
+    hechosAjuste = await obtenerTrazabilidad(cliente, tenantId, "liquidacion", liquidacionId, {
+      acciones: ["dinero.liquidacion_ajustada"],
+      limite: 1,
+    });
+  } catch {
+    hechosAjuste = [];
+  }
+
   const montoConAjustes =
     liquidacion.montoTotalClp !== null
       ? liquidacion.montoTotalClp + liquidacion.bonoClp - liquidacion.penalizacionClp
@@ -171,9 +188,22 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
                 )}
               </p>
             )}
-            {liquidacion.notaAjuste && (
-              <p className="text-sm text-muted-foreground italic">&ldquo;{liquidacion.notaAjuste}&rdquo;</p>
-            )}
+            {/* ⚠️ Acá había una cita suelta: el motivo del ajuste, sin autor y
+                sin fecha. Un descuento de $8.000 en la liquidación de un
+                conductor con un texto que no dice **quién** lo aplicó ni
+                **cuándo** no es una explicación, es una nota anónima — y el
+                autor sí existe, solo que en la bitácora.
+                `dinero.liquidaciones` guarda `nota_ajuste` y no el autor, y eso
+                está bien: la bitácora es el registro, la tabla es el estado. */}
+            {hechosAjuste.length > 0 ? (
+              <BloqueTrazabilidad hechos={hechosAjuste} forma="por fila" />
+            ) : liquidacion.notaAjuste ? (
+              // Respaldo para los ajustes anteriores a que esto se registrara
+              // con autor. Se muestra igual: perder el motivo sería peor.
+              <p className="text-sm text-muted-foreground italic">
+                &ldquo;{liquidacion.notaAjuste}&rdquo;
+              </p>
+            ) : null}
           </div>
 
           {liquidacion.pdfRef && (

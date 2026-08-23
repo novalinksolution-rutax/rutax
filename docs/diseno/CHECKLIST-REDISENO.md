@@ -545,7 +545,26 @@ bloques 4–8, cuando cada pantalla se toque.
       cifras **no eran la misma** —el resumen trae el neto del preflight y el período guarda el
       bruto—, así que quedaban $11.400 y $13.566 juntos sin que nada dijera cuál era cuál
       (regla 18). El comprobante ahora solo agrega lo que el resumen no dice.
-- [ ] `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
+- [x] **`bloque de trazabilidad`** · DE CERO — `src/components/ui/bloque-trazabilidad.tsx` más su
+      lectura, `src/modules/identidad/trazabilidad.ts`. «Autor, fecha, motivo; por fila y por
+      objeto», que es lo que pide la tabla del sistema.
+      **El producto ya exigía motivo y ya lo registraba con autor — y eso no se veía en ninguna
+      pantalla.** Para saber quién descontó $8.000 de la liquidación de un conductor había que ir a
+      la bitácora: otra pantalla, otro permiso. Un motivo que nadie lee es un trámite, no un
+      control. En el detalle de liquidación había literalmente **una cita suelta**, sin autor ni
+      fecha (brecha E.2, ahora cerrada).
+      *Lo que no se hizo, a propósito:* duplicar el autor en cada tabla de negocio. La bitácora es
+      el registro y la tabla es el estado; una columna espejo se desincroniza del registro que la
+      auditoría considera verdad. Y el motivo se guarda con **cuatro llaves distintas** según la
+      acción (`motivo`, `nota_ajuste`, `motivo_bloqueo`, `motivo_anulacion`): se normalizan en un
+      solo lugar en vez de en cada pantalla, y **no se reescriben en base** — retocar filas de
+      auditoría para que queden prolijas es justo lo que una bitácora no debe permitir.
+      ⚠️ **Red mecánica, y encontró seis.** El vocabulario de actos tenía **seis etiquetas para
+      acciones que el dominio no emite** (`dinero.pago_emitido`, `dinero.liquidacion_pagada`,
+      `dinero.nota_credito_solicitada`…), lo bastante parecidas a las reales como para no notarse
+      leyendo. `bloque-trazabilidad.test.ts` lee `modules/dinero/acciones.ts` y compara; verificado
+      por mutación, y con contraprueba para que un cambio de formato no deje el conjunto vacío.
+- [ ] `tarjeta de resultado en bloque`.
 
 ## Pantallas
 
@@ -1332,7 +1351,7 @@ código manda sobre *qué datos existen*. Cuando chocan, se dice — no se elige
       no hizo falta tocar el preflight.
       Solo se pasa cuando hay ajustes: sin ellos el neto **es** el subtotal, y una composición de un
       término es ruido — la regla 21 pide composición para lo que no es una suma trivial.
-- [ ] **`B2b` · el autor del ajuste manual** («Aplicó M. Soto el 19-08»). `dinero.liquidaciones`
+- [x] **`B2b` · el autor del ajuste manual** («Aplicó M. Soto el 19-08»). `dinero.liquidaciones`
       guarda `nota_ajuste` pero **no quién lo aplicó**: el autor está en la bitácora, no en la fila.
       *Para cerrarlo:* una lectura extra contra la bitácora, o una columna.
 
