@@ -69,11 +69,33 @@ export function RelojVisita({
   const estado = calcularEstadoReloj({ ultimoEscaneoEn, abiertaEn, ahoraMs });
   const etiquetaHora = ultimoEscaneoEn ? "Último escaneo" : "Llegó a la bodega";
 
+  // ⚠️ DOS relojes, no uno, y miden cosas distintas:
+  //
+  //   · **Cuánto lleva abierta la visita** — la cifra principal. Es la que pide
+  //     el tablero, y avisa sobre una hora: una visita larga puede ir bien, pero
+  //     pasada la hora ya compite con las 16:00.
+  //   · **Cuánto lleva sin escanear** — solo aparece cuando pasa su umbral. Es
+  //     la que detecta a alguien TRABADO mientras está pasando: una visita de 20
+  //     minutos que lleva 14 sin un escaneo es un problema, y el reloj de visita
+  //     no lo vería.
+  //
+  // Decisión del usuario, 23-08-2026, sobre quedarse con uno solo: ninguno
+  // reemplaza al otro.
+  const minutosAbierta = Math.max(0, Math.floor((ahoraMs - Date.parse(abiertaEn)) / 60_000));
+  const visitaLarga = minutosAbierta > MINUTOS_VISITA_LARGA;
+
   return (
     // Sin `aria-live`: el texto cambia cada 30 s y sería ruidoso para lector
     // de pantalla (§6, a diferencia de `IndicadorEnVivo`, que sí lo usa pero
     // para un cambio de estado infrecuente). El `title` da la hora exacta a
     // quien la necesite.
+    <>
+    <p
+      className={`text-xs tabular-nums ${visitaLarga ? "text-warning-subtle-foreground" : "text-muted-foreground"}`}
+    >
+      Abierta hace {textoDuracion(minutosAbierta)}
+      {visitaLarga ? " · lleva más de una hora" : ""}
+    </p>
     <p
       className="flex items-center gap-1.5 text-xs"
       title={`${etiquetaHora}: ${horaLocalEnSantiago(new Date(estado.senalEn))}`}
@@ -87,5 +109,17 @@ export function RelojVisita({
         {estado.texto}
       </span>
     </p>
+    </>
   );
+}
+
+/** Sobre esto, una visita a bodega ya compite con la salida de las 16:00. */
+export const MINUTOS_VISITA_LARGA = 60;
+
+/** `38 min` · `1 h 12`. */
+export function textoDuracion(minutos: number): string {
+  if (minutos < 60) return `${minutos} min`;
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  return resto === 0 ? `${horas} h` : `${horas} h ${String(resto).padStart(2, "0")}`;
 }

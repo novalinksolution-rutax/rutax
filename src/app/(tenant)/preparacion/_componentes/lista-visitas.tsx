@@ -15,10 +15,13 @@ export function ListaVisitas({
   errorVisitas,
   abiertas,
   cerradas,
+  esperadosPorSeller,
 }: {
   errorVisitas: boolean;
   abiertas: readonly VisitaRetiroResumenCourier[];
   cerradas: readonly VisitaRetiroResumenCourier[];
+  /** Bultos esperados hoy por seller, para el denominador de cada visita. */
+  esperadosPorSeller?: Record<string, number> | null;
 }) {
   return (
     <section aria-labelledby="visitas-de-hoy-heading" className="space-y-4">
@@ -44,24 +47,39 @@ export function ListaVisitas({
               <h3 className="text-sm font-medium">En bodega ahora ({abiertas.length})</h3>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {abiertas.map((v) => (
-                  <TarjetaVisita key={v.sesionId} visita={v} />
+                  <TarjetaVisita
+                    key={v.sesionId}
+                    visita={v}
+                    esperados={esperadosPorSeller?.[v.seller.id] ?? null}
+                  />
                 ))}
               </div>
             </div>
           )}
 
+          {/* Lo cerrado se COLAPSA a una línea. Una visita cerrada ya no es una
+              decisión: aportó sus bultos y se fue. Con tarjeta completa cada una,
+              a media tarde el bloque de lo terminado tapa el de lo que está
+              pasando — que es lo único sobre lo que se puede actuar. El detalle
+              de cada acta sigue en su visita, a un clic desde el pedido. */}
           {cerradas.length > 0 ? (
-            <div className="space-y-3">
-              <h3 className="text-sm font-medium">De vuelta ({cerradas.length})</h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {cerradas.map((v) => (
-                  <TarjetaVisita key={v.sesionId} visita={v} />
-                ))}
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              <strong className="font-medium text-foreground tabular-nums">
+                {cerradas.length}
+              </strong>{" "}
+              {cerradas.length === 1 ? "visita cerrada" : "visitas cerradas"} hoy ·{" "}
+              <span className="tabular-nums">{bultosCerrados(cerradas)}</span> bultos
+            </p>
           ) : null}
         </div>
       )}
     </section>
   );
+}
+
+/** Los bultos que aportaron las visitas ya cerradas, por su acta. */
+function bultosCerrados(cerradas: readonly VisitaRetiroResumenCourier[]): number {
+  // Por el ACTA y no por el conteo vivo: el acta es lo que el conductor firmó, y
+  // un escaneo que llegó después del cierre no se le suma (ver `tarjeta-visita`).
+  return cerradas.reduce((s, v) => s + (v.acta?.total ?? 0), 0);
 }

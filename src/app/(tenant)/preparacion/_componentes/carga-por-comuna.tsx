@@ -49,8 +49,12 @@ export function CargaPorComuna({
         <p className="text-sm text-muted-foreground">Todavía no hay bultos retirados.</p>
       ) : (
         <ul className="divide-y divide-border rounded-lg border border-border">
+          {/* El máximo de la lista es el 100 % de la barra. Es una comparación
+              ENTRE comunas —dónde se está acumulando la carga—, no contra un
+              objetivo: no existe un «debería haber N bultos en Maipú». */}
           {filas.map((fila) => {
             const porAsignar = fila.bultosTotal - fila.bultosAsignados;
+            const maximo = Math.max(...filas.map((f) => f.bultosTotal), 1);
             const contenido = (
               <>
                 <div className="flex items-baseline justify-between gap-2">
@@ -59,6 +63,17 @@ export function CargaPorComuna({
                     {fila.bultosTotal} {pluralizar(fila.bultosTotal, "bulto", "bultos")}
                   </span>
                 </div>
+                {/* La barra con su riel. El riel es lo único que cambia entre
+                    temas, y por eso va por token y no por un gris escrito. */}
+                <span
+                  className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-muted"
+                  aria-hidden="true"
+                >
+                  <span
+                    className="block h-full rounded-full bg-primary"
+                    style={{ width: `${Math.round((fila.bultosTotal / maximo) * 100)}%` }}
+                  />
+                </span>
                 {fila.comuna !== null ? (
                   <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
                     {fila.bultosAsignados} {pluralizar(fila.bultosAsignados, "asignado", "asignados")} ·{" "}

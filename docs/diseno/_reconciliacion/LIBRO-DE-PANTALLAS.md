@@ -59,7 +59,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 | Crear pedido same-day | `(tenant)/operaciones/nuevo` | ✅ **HECHA** — 23-08, ver abajo |
 | Incidencias | `(tenant)/operaciones/incidencias` | ✅ **HECHA** — 23-08, ver abajo |
 | Torre de control | `(tenant)/torre-de-control` | ✅ **HECHA** — 23-08, ver abajo |
-| Preparación del día | `(tenant)/preparacion` | FALTA PIEZA |
+| Preparación del día | `(tenant)/preparacion` | ✅ **HECHA** — 23-08, ver abajo |
 | Manifiestos · listado | `(tenant)/manifiestos` | FALTA PIEZA |
 | Detalle del manifiesto | `(tenant)/manifiestos/[manifiestoId]` | FALTA PIEZA |
 
@@ -290,6 +290,55 @@ consumidor — los estados de pantalla están repartidos a mano en `torre.tsx`.
 **No se pudo ejercitar en el navegador:** las pestañas de Radix no responden a interacción
 programática en este entorno. La ficha se verificó llegando al mismo estado por otra vía —elegir la
 comuna en la lista angosta y ensanchar sin recargar—, que es lo que la hizo comprobable.
+
+
+### ✅ Preparación del día · hecho el 23-08-2026
+
+La pantalla ya tenía el patrón exacto del tablero. Lo que le faltaba era **el otro lado de la
+conciliación**.
+
+**«128» no dice nada. «128 de ~190» dice que faltan 62 y que el despacho no puede salir.** El
+alcance define el retiro como «una conciliación de bodega: lo esperado vs. lo efectivamente
+cargado», y hasta hoy la pantalla solo sabía la mitad. Lo esperado se deriva de los pedidos del
+día —`src/modules/operacion/retiro/expectativa.ts`— y alimenta el denominador de la franja **y el
+de cada visita**.
+
+🐞 **Un bug que solo se vio en pantalla:** la primera versión contaba los pedidos *pendientes de
+retiro*, así que el denominador se encogía a medida que el numerador crecía. La tarjeta decía
+literalmente **«4 de ~1 escaneados»**. Lo esperado tiene que incluir lo ya retirado — es el
+denominador de una conciliación, no una cola de trabajo.
+
+**Las cuatro magnitudes son ahora las del tablero**: salieron «De vuelta» —complemento de «visitas
+en curso»— y «Sin novedades» —que ahora vive pegada a la visita que la provoca, que es donde se
+puede actuar—, y entraron «Comunas con carga» y «Sin tarifa».
+
+**El aviso de tarifa es la pieza que conecta esta pantalla con el dinero.** Un seller sin tarifa
+vigente genera entregas que se hacen y no se facturan; eso se descubre acá, con el bulto todavía en
+bodega, o no se descubre hasta el cierre del período. Lleva su acción pegada.
+*(Por SELLER y no por comuna: misma contradicción del tablero que en «Crear pedido same-day», y se
+resuelve igual — el aviso dice lo que el sistema puede verificar.)*
+
+**El cálculo de conductores necesarios** (`NUEVO`, aprobado): `ceil(bultos × 12 min ÷ minutos hasta
+las 21:00)`, con **sus supuestos declarados al lado**. Una estimación con los supuestos escondidos
+se lee como una instrucción. Cuatro pruebas, incluida la que impide que la fórmula escupa un número
+absurdo cuando la ventana ya se cerró.
+
+**Los dos relojes, no uno.** «Abierta hace 41 min» —la del tablero, avisa sobre una hora— **y**
+«sin escanear hace 14 min» —la que ya existía, detecta a alguien trabado mientras pasa—. Ninguna
+reemplaza a la otra: una visita larga puede ir bien, y una corta detenida no. Decisión del usuario.
+
+**Y el resto del delta:** jerarquía de la tarjeta invertida a **seller · bodega arriba** (el
+coordinador busca «¿ya llegó lo de Vega Norte?», no «¿dónde anda Muñoz?»), distintivo abierta /
+cerrada, visitas cerradas colapsadas a una línea, barras en la carga por comuna, cuenta regresiva
+al despacho en la cabecera, y el vacío con su acción.
+
+**Se conservó el bloque «Asignación»**, que el tablero no contempla: es la salida natural de esta
+pantalla hacia la carrera contra las 16:00, y el tablero no dibuja nada que lo reemplace. Decisión
+del usuario.
+
+⚠️ **Queda pendiente:** ante una falla de lectura la franja cae a guiones; el tablero pide que las
+cifras «se queden con su última hora conocida». Eso exige guardar el último valor conocido en
+alguna parte y no se construyó.
 
 
 ## B2 · Dinero · 5 pantallas

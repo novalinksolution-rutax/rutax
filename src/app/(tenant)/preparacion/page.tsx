@@ -15,6 +15,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { obtenerExpectativaDelDia } from "@/modules/operacion/retiro/expectativa";
+import { CierreDelDia } from "./_componentes/cierre-del-dia";
+import { CuentaRegresivaDespacho } from "./_componentes/cuenta-regresiva-despacho";
 import {
   agruparVisitas,
   calcularMagnitudes,
@@ -84,7 +87,7 @@ export default async function PaginaPreparacionDelDia() {
   // Dos consultas INDEPENDIENTES (§5.3, §16): si "carga por comuna" se cae,
   // las visitas tienen que seguir viéndose, y al revés. Un solo `try`
   // alrededor de ambas es justo el error a evitar acá.
-  const [resVisitas, resCarga] = await Promise.all([
+  const [resVisitas, resCarga, resExpectativa] = await Promise.all([
     listarVisitasDelDia(cliente, { tenantId, fecha }).then(
       (datos) => ({ ok: true as const, datos }),
       () => ({ ok: false as const, datos: [] as VisitaRetiroResumenCourier[] }),
@@ -93,12 +96,19 @@ export default async function PaginaPreparacionDelDia() {
       (datos) => ({ ok: true as const, datos }),
       () => ({ ok: false as const, datos: [] as CargaComunaRetiro[] }),
     ),
+    // Tercera consulta, igual de independiente: si falla, la pantalla pierde
+    // los denominadores y el aviso de tarifa, y no una sola visita.
+    obtenerExpectativaDelDia(cliente, { tenantId, fecha }).then(
+      (datos) => ({ ok: true as const, datos }),
+      () => ({ ok: false as const, datos: null }),
+    ),
   ]);
 
   const errorVisitas = !resVisitas.ok;
   const errorCarga = !resCarga.ok;
   const visitas = resVisitas.datos;
   const cargaPorComuna = resCarga.datos;
+  const expectativa = resExpectativa.datos;
 
   // `new Date().getTime()` y no `Date.now()`: mismo valor, pero `Date.now`
   // está en la lista de funciones impuras que `react-hooks/purity` (nueva
@@ -130,7 +140,13 @@ export default async function PaginaPreparacionDelDia() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-heading text-2xl font-semibold">Preparación del día</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{subtitulo}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+            <span>{subtitulo}</span>
+            {/* Todo lo de esta pantalla se juzga contra este reloj: 128 bultos a
+                las 11:40 es tranquilidad y a las 15:40 es un problema. */}
+            <span aria-hidden="true">·</span>
+            <CuentaRegresivaDespacho />
+          </p>
         </div>
         <IndicadorEnVivo
           tenantId={tenantId}
@@ -148,13 +164,40 @@ export default async function PaginaPreparacionDelDia() {
           tono="arranque"
           titulo="Todavía no hay retiros hoy"
           descripcion="Cuando un conductor abra una visita en la app, la vas a ver aquí, en vivo."
+          // Un vacío sin salida obliga a saber de memoria dónde se mira lo que
+          // viene. Éste lleva a los pedidos de hoy, que es lo que se va a
+          // retirar.
+          accion={
+            <Button asChild variant="outline" size="sm">
+              <Link href="/operaciones">Ver los pedidos de hoy</Link>
+            </Button>
+          }
         />
       ) : (
         <>
-          <FranjaMagnitudes magnitudes={magnitudes} />
+          <FranjaMagnitudes
+            magnitudes={magnitudes}
+            esperados={expectativa?.total ?? null}
+            visitasAbiertas={abiertas.length}
+            visitasTotales={abiertas.length + cerradas.length}
+            comunasConCarga={cargaPorComuna.filter((c) => c.comuna !== null).length}
+            bultosSinTarifa={expectativa?.bultosSinTarifa ?? 0}
+          />
+
+          {/* Las dos líneas de cierre del tablero. Van juntas y bajo la franja
+              porque las dos son consecuencias de lo que la franja dice. */}
+          <CierreDelDia
+            sinTarifa={expectativa?.sinTarifa ?? []}
+            bultosEnBodega={magnitudes?.bultosRetiradosHoy ?? 0}
+          />
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <ListaVisitas errorVisitas={errorVisitas} abiertas={abiertas} cerradas={cerradas} />
+            <ListaVisitas
+              errorVisitas={errorVisitas}
+              abiertas={abiertas}
+              cerradas={cerradas}
+              esperadosPorSeller={expectativa?.porSeller ?? null}
+            />
 
             <div className="space-y-6">
               <CargaPorComuna errorCarga={errorCarga} filas={cargaPorComuna} />
