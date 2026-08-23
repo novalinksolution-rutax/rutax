@@ -7,16 +7,9 @@
  */
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 import { accionMarcarLiquidacionPagada } from "./actions";
 
 interface Props {
@@ -41,16 +34,21 @@ export function DialogMarcarPagada({
   montoTotalClp,
 }: Props) {
   const [abierto, setAbierto] = useState(false);
+  const router = useRouter();
+  const [motivo, setMotivo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleConfirmar() {
     setError(null);
     startTransition(async () => {
-      const resultado = await accionMarcarLiquidacionPagada(liquidacionId);
+      const resultado = await accionMarcarLiquidacionPagada(liquidacionId, motivo);
       if (resultado.ok) {
         setAbierto(false);
-        window.location.reload();
+        // `router.refresh()` y no `window.location.reload()`: el reload duro
+        // pierde el aviso y vuelve a montar la aplicación entera para refrescar
+        // una fila.
+        router.refresh();
       } else {
         setError(resultado.mensaje);
       }
@@ -58,83 +56,69 @@ export function DialogMarcarPagada({
   }
 
   return (
-    <Dialog
-      open={abierto}
-      onOpenChange={(o) => {
-        if (isPending) return;
-        setAbierto(o);
-        if (!o) setError(null);
-      }}
-    >
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Marcar como pagada
-        </button>
-      </DialogTrigger>
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className="rounded-ctrl bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        Marcar como pagada
+      </button>
 
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Confirmar pago de liquidación</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Conductor:{" "}
-            <span className="font-medium text-foreground">{conductorNombre}</span>
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Período:{" "}
-            <span className="font-medium tabular-nums text-foreground">
-              {formatearFechaCorta(fechaInicio)} – {formatearFechaCorta(fechaFin)}
-            </span>
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Monto:{" "}
-            <span className="text-2xl font-semibold tabular-nums text-foreground">
-              {formatearCLPOGuion(montoTotalClp)}
-            </span>
-          </p>
-
-          <p className="text-sm text-muted-foreground">
-            Confirma que realizaste el pago de{" "}
-            <strong>{formatearCLPOGuion(montoTotalClp)}</strong> a{" "}
-            <strong>{conductorNombre}</strong>. Este cambio queda registrado en la
-            bitácora.
-          </p>
-
-          {error && (
-            <p
-              role="alert"
-              className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground"
-            >
-              {error}
-            </p>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setAbierto(false)}
-            disabled={isPending}
-          >
-            Cancelar
-          </Button>
-          <Button type="button" onClick={handleConfirmar} disabled={isPending}>
-            {isPending && (
-              <span
-                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-                aria-hidden="true"
-              />
-            )}
-            {isPending ? "Procesando..." : "Confirmar pago"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <ModalActoExplicito
+        open={abierto}
+        onOpenChange={(o) => {
+          if (isPending) return;
+          setAbierto(o);
+          if (!o) setError(null);
+        }}
+        peldano={2}
+        titulo={`Vas a marcar como pagada la liquidación de ${conductorNombre}`}
+        consecuencia={
+          <>
+            Esto <strong>no transfiere plata</strong>: solo registra que le pagaste por
+            fuera. Si no le pagaste, va a quedar como pagada sin estarlo.
+          </>
+        }
+        resumen={[
+          {
+            etiqueta: "Período",
+            valor: `${formatearFechaCorta(fechaInicio)} – ${formatearFechaCorta(fechaFin)}`,
+            mono: true,
+          },
+        ]}
+        total={
+          montoTotalClp !== null
+            ? { etiqueta: "Monto de la liquidación", monto: montoTotalClp }
+            : undefined
+        }
+        motivo={{
+          valor: motivo,
+          onCambio: setMotivo,
+          etiqueta: "Cómo y cuándo le pagaste",
+          ayuda: "Queda en la bitácora, con tu nombre. Es la única constancia de que el pago ocurrió fuera de Rutax.",
+          minimo: 10,
+        }}
+        avisos={
+          error
+            ? [
+                {
+                  tono: "fault",
+                  texto: (
+                    <>
+                      <strong>No pudimos marcarla como pagada.</strong> {error} Sigue
+                      emitida; puedes volver a intentarlo.
+                    </>
+                  ),
+                },
+              ]
+            : []
+        }
+        cargando={isPending}
+        textoConfirmar="Marcar como pagada"
+        subtextoConfirmar={formatearCLPOGuion(montoTotalClp)}
+        onConfirmar={handleConfirmar}
+      />
+    </>
   );
 }

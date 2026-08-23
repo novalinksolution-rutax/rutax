@@ -30,6 +30,7 @@ import { revalidatePath } from "next/cache";
 
 export async function accionMarcarLiquidacionPagada(
   liquidacionId: string,
+  motivo: string,
 ): Promise<{ ok: true } | { ok: false; mensaje: string }> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) {
@@ -40,6 +41,7 @@ export async function accionMarcarLiquidacionPagada(
     await marcarLiquidacionPagada(
       sesion.usuario.tenantId,
       liquidacionId,
+      motivo,
       sesion.usuario,
       sesion.usuarioId,
     );

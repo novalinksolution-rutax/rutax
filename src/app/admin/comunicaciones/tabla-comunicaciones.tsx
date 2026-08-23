@@ -49,6 +49,7 @@ import { TooltipSoloLectura } from "../tooltip-solo-lectura";
 import type { Comunicacion, TipoComunicacion } from "@/modules/plataforma/comunicaciones";
 import type { UrgenciaAviso } from "@/lib/avisos/obtener-avisos";
 import { accionCrearComunicacion, accionActivarDesactivar } from "./acciones";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 
 export interface ComunicacionConAutor extends Comunicacion {
   creadoPorNombre: string | null;
@@ -331,6 +332,9 @@ function BotonActivarDesactivar({
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // La ceremonia solo aparece al DESACTIVAR: activar es reversible en un clic,
+  // y pedir confirmación para encender algo gasta la fricción.
+  const [confirmando, setConfirmando] = useState(false);
 
   if (!puedeEscribir) {
     return (
@@ -343,12 +347,6 @@ function BotonActivarDesactivar({
   }
 
   function ejecutar() {
-    if (comunicacion.activa) {
-      const confirmado = window.confirm(
-        `¿Desactivar "${comunicacion.titulo}"? Deja de mostrarse como banner a los couriers de inmediato. No reenvía ni cancela ningún email ya despachado.`,
-      );
-      if (!confirmado) return;
-    }
     setError(null);
     startTransition(async () => {
       const resultado = await accionActivarDesactivar(comunicacion.id, !comunicacion.activa);
@@ -361,18 +359,43 @@ function BotonActivarDesactivar({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        variant={comunicacion.activa ? "ghost" : "outline"}
-        size="sm"
-        className={comunicacion.activa ? "text-destructive hover:text-destructive" : ""}
-        disabled={isPending}
-        onClick={ejecutar}
-      >
-        {isPending ? "..." : comunicacion.activa ? "Desactivar" : "Reactivar"}
-      </Button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
+    <>
+      <div className="flex flex-col items-end gap-1">
+        <Button
+          variant={comunicacion.activa ? "ghost" : "outline"}
+          size="sm"
+          className={comunicacion.activa ? "text-destructive hover:text-destructive" : ""}
+          disabled={isPending}
+          onClick={() => (comunicacion.activa ? setConfirmando(true) : ejecutar())}
+        >
+          {isPending ? "..." : comunicacion.activa ? "Desactivar" : "Reactivar"}
+        </Button>
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+
+      <ModalActoExplicito
+        open={confirmando}
+        onOpenChange={(o) => {
+          if (isPending) return;
+          setConfirmando(o);
+        }}
+        peldano={2}
+        titulo={`Vas a desactivar "${comunicacion.titulo}"`}
+        consecuencia={
+          <>
+            Deja de mostrarse como banner a los couriers <strong>de inmediato</strong>. No
+            reenvía ni cancela ningún correo ya despachado.
+          </>
+        }
+        variante="destructive"
+        cargando={isPending}
+        textoConfirmar="Desactivar el aviso"
+        onConfirmar={() => {
+          setConfirmando(false);
+          ejecutar();
+        }}
+      />
+    </>
   );
 }
 

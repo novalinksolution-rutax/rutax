@@ -35,6 +35,7 @@ import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { Plan } from "@/modules/plataforma/tipos";
 import { TooltipSoloLectura } from "../tooltip-solo-lectura";
 import { accionCrearPlan, accionActualizarPlan, accionActivarDesactivarPlan } from "./acciones";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 
 function conductoresMaxDePlan(plan?: Plan): string {
   const valor = plan?.caracteristicas?.["conductores_max"];
@@ -226,6 +227,9 @@ function BotonActivarDesactivar({
 }) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // La ceremonia solo aparece al DESACTIVAR: activar es reversible en un clic,
+  // y pedir confirmación para encender algo gasta la fricción.
+  const [confirmando, setConfirmando] = useState(false);
 
   if (!puedeEscribir) {
     return (
@@ -238,12 +242,6 @@ function BotonActivarDesactivar({
   }
 
   function ejecutar() {
-    if (plan.activo) {
-      const confirmado = window.confirm(
-        `¿Desactivar "${plan.nombre}"? Solo se saca del catálogo público (el alta self-serve dejará de ofrecerlo). Las suscripciones que ya lo usan siguen operando sin cambios.`,
-      );
-      if (!confirmado) return;
-    }
     setError(null);
     const fd = new FormData();
     fd.set("plan_id", plan.id);
@@ -259,18 +257,42 @@ function BotonActivarDesactivar({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <>
+      <ModalActoExplicito
+        open={confirmando}
+        onOpenChange={(o) => {
+          if (isPending) return;
+          setConfirmando(o);
+        }}
+        peldano={2}
+        titulo={`Vas a desactivar el plan "${plan.nombre}"`}
+        consecuencia={
+          <>
+            Solo se saca del catálogo público: el alta self-serve deja de ofrecerlo.{" "}
+            <strong>Las suscripciones que ya lo usan siguen operando sin cambios.</strong>
+          </>
+        }
+        variante="destructive"
+        cargando={isPending}
+        textoConfirmar="Desactivar el plan"
+        onConfirmar={() => {
+          setConfirmando(false);
+          ejecutar();
+        }}
+      />
+      <div className="flex flex-col items-end gap-1">
       <Button
         variant={plan.activo ? "ghost" : "outline"}
         size="sm"
         className={plan.activo ? "text-destructive hover:text-destructive" : ""}
         disabled={isPending}
-        onClick={ejecutar}
+        onClick={() => (plan.activo ? setConfirmando(true) : ejecutar())}
       >
         {isPending ? "..." : plan.activo ? "Desactivar" : "Reactivar"}
       </Button>
       {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
+      </div>
+    </>
   );
 }
 

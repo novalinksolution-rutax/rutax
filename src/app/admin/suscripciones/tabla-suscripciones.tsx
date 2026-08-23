@@ -38,6 +38,7 @@ import {
   accionCancelarSuscripcion,
 } from "./acciones";
 import { formatearFecha as formatearFechaCl } from "@/lib/formato-cl";
+import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 
 interface TenantSinSuscripcion {
   id: string;
@@ -231,17 +232,23 @@ function AccionesSuscripcion({
           ))}
         {(suscripcion.estado === "activa" || suscripcion.estado === "trial") &&
           (puedeEscribir ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isPending}
-              onClick={() => {
-                if (!window.confirm(`¿Suspender la suscripción de ${suscripcion.nombreFantasiaTenant ?? "este courier"}?`)) return;
-                ejecutar(accionSuspenderSuscripcion);
-              }}
-            >
-              Suspender
-            </Button>
+            <BotonConfirmado
+              etiqueta="Suspender"
+              deshabilitado={isPending}
+              cargando={isPending}
+              titulo={`Vas a suspender a ${suscripcion.nombreFantasiaTenant ?? "este courier"}`}
+              consecuencia={
+                <>
+                  Sus sellers y conductores <strong>dejan de poder entrar hoy mismo</strong>.
+                  Los pedidos en ruta siguen su curso y sus períodos no se tocan. No borra
+                  datos, no cancela pedidos, no anula documentos ya emitidos y no libera
+                  folios consumidos. La suspensión se levanta desde acá.
+                </>
+              }
+              textoConfirmar="Suspender el courier"
+              varianteModal="destructive"
+              onConfirmar={() => ejecutar(accionSuspenderSuscripcion)}
+            />
           ) : (
             <TooltipSoloLectura>
               <Button variant="outline" size="sm" disabled>
@@ -251,18 +258,24 @@ function AccionesSuscripcion({
           ))}
         {suscripcion.estado !== "cancelada" &&
           (puedeEscribir ? (
-            <Button
+            <BotonConfirmado
+              etiqueta="Cancelar la suscripción"
               variant="ghost"
-              size="sm"
               className="text-destructive hover:text-destructive"
-              disabled={isPending}
-              onClick={() => {
-                if (!window.confirm(`¿Cancelar definitivamente la suscripción de ${suscripcion.nombreFantasiaTenant ?? "este courier"}? Esta acción no se puede deshacer.`)) return;
-                ejecutar(accionCancelarSuscripcion);
-              }}
-            >
-              Cancelar
-            </Button>
+              deshabilitado={isPending}
+              cargando={isPending}
+              titulo={`Vas a cancelar definitivamente la suscripción de ${suscripcion.nombreFantasiaTenant ?? "este courier"}`}
+              consecuencia={
+                <>
+                  <strong>No se puede deshacer.</strong> A diferencia de suspender, esto
+                  cierra la relación comercial: el courier deja de tener plan y hay que
+                  darlo de alta otra vez para volver.
+                </>
+              }
+              textoConfirmar="Cancelar la suscripción"
+              varianteModal="destructive"
+              onConfirmar={() => ejecutar(accionCancelarSuscripcion)}
+            />
           ) : (
             <TooltipSoloLectura>
               <Button variant="ghost" size="sm" className="text-destructive" disabled>

@@ -15,6 +15,7 @@ import type { PeriodoConPago } from "@/modules/plataforma/consultas";
 import { TooltipSoloLectura } from "../../tooltip-solo-lectura";
 import { accionGenerarLinkCobro, accionRegistrarPagoManual } from "../acciones";
 import { formatearFecha as formatearFechaCl } from "@/lib/formato-cl";
+import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 
 function formatearFecha(iso: string | null): string {
   if (!iso) return "—";
@@ -46,7 +47,6 @@ function FilaPeriodo({ periodo, puedeEscribir }: { periodo: PeriodoConPago; pued
   }
 
   function marcarPagado() {
-    if (!window.confirm(`¿Marcar el período como pagado por transferencia manual?`)) return;
     setError(null);
     const fd = new FormData();
     fd.set("periodo_id", periodo.id);
@@ -104,9 +104,22 @@ function FilaPeriodo({ periodo, puedeEscribir }: { periodo: PeriodoConPago; pued
                 <Button variant="outline" size="sm" disabled={isPending} onClick={generarLink}>
                   {linkUrl ? "Regenerar link" : "Generar link"}
                 </Button>
-                <Button variant="ghost" size="sm" disabled={isPending} onClick={marcarPagado}>
-                  Marcar pagado
-                </Button>
+                <BotonConfirmado
+                  etiqueta="Marcar pagado"
+                  variant="ghost"
+                  deshabilitado={isPending}
+                  cargando={isPending}
+                  titulo="Vas a marcar este período como pagado"
+                  consecuencia={
+                    <>
+                      Esto <strong>no cobra nada</strong>: registra que el courier te pagó
+                      por transferencia, fuera de Rutax. Su deuda baja y deja de aparecer
+                      en morosidad. Si no te pagó, va a quedar como pagado sin estarlo.
+                    </>
+                  }
+                  textoConfirmar="Marcar como pagado"
+                  onConfirmar={marcarPagado}
+                />
               </div>
             ) : (
               <TooltipSoloLectura>

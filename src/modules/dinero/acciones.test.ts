@@ -340,31 +340,31 @@ describe('marcarLiquidacionPagada — RBAC', () => {
 
   it('rol supervisor → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('supervisor'), 'actor-001'),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', 'Transferí por el banco el 21-08.', usuarioConRol('supervisor'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol coordinador → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('coordinador'), 'actor-001'),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', 'Transferí por el banco el 21-08.', usuarioConRol('coordinador'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol seller → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('seller'), 'actor-001'),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', 'Transferí por el banco el 21-08.', usuarioConRol('seller'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('rol conductor → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioConRol('conductor'), 'actor-001'),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', 'Transferí por el banco el 21-08.', usuarioConRol('conductor'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
   it('usuario suspendido con rol dueno → lanza ErrorValidacion', async () => {
     await expect(
-      marcarLiquidacionPagada('tenant-a', 'liq-001', usuarioSuspendido('dueno'), 'actor-001'),
+      marcarLiquidacionPagada('tenant-a', 'liq-001', 'Transferí por el banco el 21-08.', usuarioSuspendido('dueno'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
@@ -387,7 +387,7 @@ describe('marcarLiquidacionPagada — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await marcarLiquidacionPagada('tenant-a', 'liq-001', usuario, 'actor-001');
+      await marcarLiquidacionPagada('tenant-a', 'liq-001', 'Transferí por el banco el 21-08.', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
@@ -406,7 +406,7 @@ describe('marcarLiquidacionPagada — RBAC', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
-      await marcarLiquidacionPagada('tenant-a', 'liq-001', usuario, 'actor-001');
+      await marcarLiquidacionPagada('tenant-a', 'liq-001', 'Transferí por el banco el 21-08.', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }

@@ -634,12 +634,24 @@ export async function emitirPagoLiquidacion(
 export async function marcarLiquidacionPagada(
   tenantId: string,
   liquidacionId: string,
+  /**
+   * Cómo y cuándo se pagó por fuera. **Obligatorio**, y no por prolijidad: esta
+   * acción no mueve un peso — solo AFIRMA que alguien pagó. Sin el cómo y el
+   * cuándo, la afirmación no se puede comprobar después, y lo que queda es una
+   * liquidación marcada como pagada que nadie sabe si se pagó.
+   */
+  motivo: string,
   usuario: UsuarioActual,
   actorUsuarioId: string,
 ): Promise<void> {
   if (!puedeGestionarLiquidacionesConductores(usuario)) {
     throw new ErrorValidacion(
       'Solo el dueño o administración puede marcar liquidaciones como pagadas.',
+    );
+  }
+  if (motivo.trim().length < MINIMO_MOTIVO_AJUSTE) {
+    throw new ErrorValidacion(
+      `Marcar como pagada exige registrar cómo y cuándo pagaste, con al menos ${MINIMO_MOTIVO_AJUSTE} caracteres: esta acción no transfiere plata, solo afirma que alguien lo hizo.`,
     );
   }
 
@@ -681,6 +693,8 @@ export async function marcarLiquidacionPagada(
     actorTipo: 'usuario',
     accion: 'dinero.liquidacion_marcada_pagada',
     entidadTipo: 'liquidacion',
+    // El motivo vive en la bitácora: es la única constancia de que el pago
+    // ocurrió fuera de Rutax, y de cómo.
     entidadId: liquidacionId,
     detalle: {
       driver_id: liq.driver_id,
