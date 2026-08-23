@@ -569,7 +569,7 @@ bloques 4–8, cuando cada pantalla se toque.
 ## Las 26 acciones irreversibles
 
 `RUTAX-SISTEMA-DE-MENSAJES.md` §2 trae las 33 con su peldaño y su copy ya escritos.
-**6 de 26 migradas**, todas verificadas en el navegador con datos reales:
+**7 de 26 migradas**, todas verificadas en el navegador con datos reales:
 
 - [x] `periodos.emitir` · **P3 · escribir** — el arquetipo.
 - [x] `periodos.cerrar` · **P2** — estaba en `<Dialog>` genérico, con «Cancelar» y X.
@@ -646,7 +646,17 @@ exige motivo escrito y queda a nombre de quien la hizo» — pero `suspenderSusc
 `cancelarSuscripcion` **no aceptan un motivo** en el dominio. Se pasó de `confirm()` a ceremonia
 con consecuencia escrita, que es la regla 37; el motivo exige tocar `modules/plataforma`.
 
-**Quedan 15 acciones.**
+- [x] `periodos.emitirNC` · **P2 · motivo** — última usuaria de `DialogConfirmacionDinero` en
+      dinero. Trae de paso el comprobante en sitio y el rótulo de modo de pruebas, que antes ponía
+      un `BadgeModoDte` suelto dentro del cuerpo en vez del marco.
+      El motivo declara **quién lo lee**: «queda en la bitácora y en la propia nota de crédito, que
+      el seller recibe» (regla 24). No sube a peldaño 3 porque el acto ya nombra la factura por su
+      folio: no hay «la factura equivocada de una lista de diez» que atajar.
+      **Verificado en pantalla, y con él el desenlace C de la verificación previa**, que hasta
+      ahora no se había podido ejercitar: sin CAF de tipo 61 el cuadro muestra la banda de bloqueo
+      y deja el botón **visible y deshabilitado**, con el motivo al lado.
+
+**Quedan 14 acciones.**
 
 ### ⚠️ Un agujero del propio modal, encontrado al migrar el pago
 
@@ -1318,6 +1328,17 @@ código manda sobre *qué datos existen*. Cuando chocan, se dice — no se elige
       evento y el job C3 reserva el folio después. *Qué se hizo:* el comprobante dice «se asigna al
       generarse el documento», que es lo cierto. Prometer un folio que nadie tomó es justo lo que
       hace que Administración lo salga a buscar.
+
+- [x] **`excepciones.omitirVerif.conf` está escrito como ceremonia APARTE, de peldaño 3** —
+      «Escribe **EMITIR IGUAL**», con «Revisar los 3 problemas» como salida. Acá vive **dentro del
+      mismo cuadro**, como acto marcado, porque en Rutax la verificación previa también vive
+      adentro: el flujo del tablero (pantalla de verificación → botón «Emitir igual» → ceremonia)
+      se colapsa en uno solo. *Qué se hizo:* se adoptaron sus **palabras** —«la verificación
+      encontró N problemas y voy a emitir igual · queda registrado que omití la verificación, con
+      mi nombre»— y la constancia en bitácora. Lo que no se duplicó es el segundo texto a escribir:
+      emitir factura y emitir pago **ya son peldaño 3**, así que quien sigue con reparos ya está
+      escribiendo el nombre de la contraparte. Pedir dos frases en el mismo cuadro gasta la
+      fricción en vez de agregarla.
 
 ## E.3 · El tablero permite algo que el dominio no soporta todavía
 

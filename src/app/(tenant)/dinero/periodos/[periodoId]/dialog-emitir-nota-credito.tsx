@@ -32,13 +32,13 @@ import {
   laVerificacionQuedaOmitida,
   type EstadoVerificacion,
 } from "@/components/ui/verificacion-previa";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { DialogConfirmacionDinero } from "@/components/ui/dialog-confirmacion-dinero";
+import {
+  ModalActoExplicito,
+  type ComprobanteActo,
+} from "@/components/ui/modal-acto-explicito";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import type { ModoDte } from "@/modules/dinero/modo-dte";
 import type { ResultadoPreflight } from "@/modules/dinero/preflight";
-import { BadgeModoDte } from "../../badge-modo-dte";
 import {
   accionEmitirNotaCredito,
   accionPreflightEmitirNotaCredito,
@@ -69,6 +69,7 @@ export function DialogEmitirNotaCredito({
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [motivo, setMotivo] = useState("");
+  const [comprobante, setComprobante] = useState<ComprobanteActo | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const [estadoPreflight, setEstadoPreflight] = useState<EstadoVerificacion>("verificando");
@@ -105,7 +106,10 @@ export function DialogEmitirNotaCredito({
 
   function manejarApertura(open: boolean) {
     setAbierto(open);
-    if (!open) setMotivo("");
+    if (!open) {
+      setMotivo("");
+      setComprobante(null);
+    }
   }
 
   function handleConfirmar() {
@@ -126,9 +130,21 @@ export function DialogEmitirNotaCredito({
       }
       const resultado = await accionEmitirNotaCredito(periodoId, motivo.trim());
       if (resultado.ok) {
-        manejarApertura(false);
-        toast.success("Nota de crédito en emisión", {
-          description: `La factura folio ${folioFactura} de ${sellerNombre} se anulará en unos segundos.`,
+        // El cuadro se queda y pasa a comprobante (decisión 4 de P4). Anular una
+        // factura consume un folio de nota de crédito: no es algo que se anuncie
+        // en un aviso de cuatro segundos.
+        setComprobante({
+          tono: "progress",
+          titulo: "La nota de crédito quedó en curso",
+          cuerpo: (
+            <>
+              Anula la factura folio {folioFactura} de {sellerNombre}. Te avisamos cuando
+              el SII responda; el resultado aparece en esta misma pantalla.
+            </>
+          ),
+          datos: [
+            { etiqueta: "Factura que se anula", valor: `Folio ${folioFactura}`, mono: true },
+          ],
         });
         router.refresh();
       } else {
@@ -166,20 +182,34 @@ export function DialogEmitirNotaCredito({
         Emitir nota de crédito
       </Button>
 
-      <DialogConfirmacionDinero
+      <ModalActoExplicito
         open={abierto}
         onOpenChange={manejarApertura}
         variante="destructive"
-        titulo={`Anular factura de ${sellerNombre}`}
+        // Peldaño 2: el motivo es obligatorio y viaja en la propia nota de
+        // crédito. No es 3 porque el acto ya nombra la factura por su folio —
+        // no hay «la factura equivocada de una lista de diez» que atajar.
+        peldano={2}
+        titulo={`Vas a anular la factura de ${sellerNombre}`}
         consecuencia={
           <>
-            Se emitirá una nota de crédito (documento tributario) que anula
-            completamente la factura. <strong>No se puede deshacer</strong>: todos los
-            montos del período se revertirán como si nunca se hubiera facturado.
+            Se emite una nota de crédito —documento tributario— que anula la factura
+            completa. <strong>No se puede deshacer</strong>: los montos del período se
+            revierten como si nunca se hubiera facturado.
           </>
         }
+        motivo={{
+          valor: motivo,
+          onCambio: setMotivo,
+          etiqueta: "Motivo de la anulación",
+          // Regla 24: quien lo lee no es interno, así que se declara.
+          ayuda: "Queda en la bitácora y en la propia nota de crédito, que el seller recibe.",
+          minimo: 1,
+        }}
+        comprobante={comprobante}
+        modoPruebas={(resumenCobro?.modoDte ?? modoDte) !== "real"}
         cargando={isPending}
-        textoConfirmar="Anular factura"
+        textoConfirmar="Anular la factura"
         confirmDeshabilitado={confirmDeshabilitado}
         onConfirmar={handleConfirmar}
       >
@@ -197,7 +227,6 @@ export function DialogEmitirNotaCredito({
           {estadoPreflight === "listo" && preflight && (
             <>
 
-              <BadgeModoDte modo={resumenCobro?.modoDte ?? modoDte} />
               <dl className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-4">
                   <dt className="text-muted-foreground">Factura a anular</dt>
@@ -228,24 +257,6 @@ export function DialogEmitirNotaCredito({
             </>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="nc-motivo">
-              Motivo de la anulación <span className="text-destructive">*</span>
-            </Label>
-            <Textarea
-              id="nc-motivo"
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              disabled={isPending}
-              required
-              rows={3}
-              placeholder="Ej.: monto incorrecto, entregas mal imputadas, factura emitida por error…"
-            />
-            <p className="text-xs text-muted-foreground">
-              Queda registrado en la auditoría y en la nota de crédito.
-            </p>
-          </div>
-
           {montoPagadoClp > 0 ? (
             <p className="rounded-md bg-warning-subtle px-3 py-2 text-xs text-warning-subtle-foreground">
               Hay <strong className="tabular-nums">{formatearCLP(montoPagadoClp)}</strong> ya
@@ -254,7 +265,7 @@ export function DialogEmitirNotaCredito({
             </p>
           ) : null}
         </div>
-      </DialogConfirmacionDinero>
+      </ModalActoExplicito>
     </>
   );
 }

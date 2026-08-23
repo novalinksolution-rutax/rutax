@@ -35,6 +35,7 @@
  * lo que se pasó por alto (regla 20: la causa viaja con el hecho).
  */
 
+import * as React from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,20 @@ export type EstadoVerificacion = "verificando" | "listo" | "no_verificable";
 
 /** El verbo de la acción, para lo que solo oye un lector de pantalla. */
 export type VerboAccion = "emitir" | "anular" | "pagar";
+
+/**
+ * El acto del desenlace del medio, en primera persona.
+ *
+ * Sale de `excepciones.omitirVerif.conf` del sistema de mensajes: «queda
+ * registrado que omitiste la verificación, con tu nombre». Ahí está escrito
+ * como ceremonia aparte de peldaño 3; acá vive dentro del mismo cuadro porque
+ * la verificación previa también vive adentro. Ver el anexo E del checklist.
+ */
+const VOY_A: Record<VerboAccion, string> = {
+  emitir: "voy a emitir",
+  anular: "voy a anular",
+  pagar: "voy a pagar",
+}
 
 const GERUNDIO: Record<VerboAccion, string> = {
   emitir: "Verificando antes de emitir…",
@@ -187,9 +202,14 @@ export function VerificacionPrevia({
           onMarcadoChange={onAceptadoChange}
           deshabilitado={deshabilitado}
           texto={
-            resultado.advertencias.length === 1
-              ? "Vi el reparo y sigo igual. Queda registrado a mi nombre."
-              : `Vi los ${resultado.advertencias.length} reparos y sigo igual. Queda registrado a mi nombre.`
+            <>
+              La verificación encontró{" "}
+              {resultado.advertencias.length === 1
+                ? "un problema"
+                : `${resultado.advertencias.length} problemas`}{" "}
+              y {VOY_A[verbo]} igual. <strong>Queda registrado que omití la verificación</strong>,
+              con mi nombre.
+            </>
           }
         />
       </div>
@@ -230,7 +250,7 @@ function ActoDeSeguirIgual({
   marcado: boolean;
   onMarcadoChange: (v: boolean) => void;
   deshabilitado: boolean;
-  texto: string;
+  texto: React.ReactNode;
 }) {
   return (
     <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm text-foreground">
