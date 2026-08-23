@@ -1403,7 +1403,7 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
 | `formulario de configuración` | EXTENDER | B3b · las 9 de configuración | **9b · Configuración**, con el bloque 4 |
 | `fila vigente / programada` | EXTENDER | tarifas, cortes, planes · 4 | 9b · regla 28 |
 | `bloque de capacidades` | DE CERO | B3b Equipo, B6 Equipo · 2 | 9b · **NUEVO #14** · regla 30 |
-| `credencial de una sola vez` | DE CERO | B3b Integraciones · 1 | 9b · regla 31 |
+| ✅ `credencial de una sola vez` | DE CERO | B3b Integraciones · 1 | **hecha el 23-08** — ver abajo |
 | `formulario de alta con aviso en línea` | EXTENDER | B1c, B3b, B4, B6, B7 · 14 | 9b |
 | ✅ `tarjeta de salud de conexión` | DE CERO | P7, B3b Sellers, B4, B6 · 6 | **hecha el 23-08** — ver abajo |
 | ✅ `bloque de falla externa` | DE CERO | P7, B4 Inicio · 4 | **hecho el 23-08** — ver abajo |
@@ -1461,6 +1461,24 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
       `pendiente` va en **neutro** y no en ámbar: una cuenta que todavía no sincronizó no es una
       advertencia, es el estado normal de algo que acaba de empezar.
       **Verificado en pantalla** en el portal del seller.
+
+- [x] **`credencial de una sola vez`** · DE CERO — `src/components/ui/credencial-una-sola-vez.tsx`,
+      en la creación de API keys. La regla 31 pide **«mostrada · copiada · advertencia previa»**; las
+      dos primeras estaban y la tercera no, que es la que importa:
+      🐞 **La advertencia llegaba DESPUÉS.** El aviso «copia esta clave ahora, no se mostrará de
+      nuevo» aparecía junto a la clave **ya generada**. Quien apretó «Crear» no sabía que estaba
+      abriendo una puerta de un solo sentido.
+      🐞 **Y se podía cerrar sin copiar.** «Entendido» estaba habilitado desde el primer instante: un
+      clic de más y la credencial se perdía para siempre, sin nada que lo impidiera. La única salida
+      es revocarla y crear otra, y cambiarla en todo lo que la use.
+      *Lo que NO se hizo, a propósito:* obligar a apretar «copiar». Sería hostil y además engañoso —
+      mucha gente la anota en su gestor a mano o la pega directo en el servidor. Lo que se exige es
+      **declarar que ya está guardada**, y copiar marca la casilla solo. Es el peldaño 2 aplicado a
+      una puerta de un solo sentido.
+      El valor va en un `<input readonly>` y no en un `<p>`: se selecciona con el teclado, el lector
+      de pantalla lo anuncia como valor y el gestor de contraseñas lo reconoce.
+      **Verificado en pantalla** la advertencia previa; *el revelado en sí no se pudo ejercitar en
+      vivo* — la casilla de permisos del formulario no responde a interacción programática.
 
 ## Reglas de configuración que se verifican acá
 

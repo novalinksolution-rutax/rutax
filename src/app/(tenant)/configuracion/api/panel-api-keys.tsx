@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Copy, Check, AlertTriangle } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ import {
   accionRevocarApiKey,
 } from "./acciones";
 import { formatearFecha } from "@/lib/formato-cl";
+import { CredencialUnaSolaVez } from "@/components/ui/credencial-una-sola-vez";
 
 export interface ApiKeyRow {
   id: string;
@@ -53,7 +54,6 @@ function formatearFechaRelativa(iso: string | null): string {
 
 interface AlertaClave {
   clave: string;
-  copiado: boolean;
 }
 
 function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
@@ -75,14 +75,7 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
         return;
       }
       formRef.current?.reset();
-      setAlerta({ clave: resultado.clave ?? '', copiado: false });
-    });
-  }
-
-  function handleCopiar() {
-    if (!alerta) return;
-    navigator.clipboard.writeText(alerta.clave).then(() => {
-      setAlerta((prev) => prev ? { ...prev, copiado: true } : prev);
+      setAlerta({ clave: resultado.clave ?? '' });
     });
   }
 
@@ -103,40 +96,33 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
         </DialogHeader>
 
         {alerta ? (
-          <div className="space-y-4">
-            <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-subtle p-4">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
-              <p className="text-sm font-medium text-warning-subtle-foreground">
-                Copia esta clave ahora — no se mostrará de nuevo.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                readOnly
-                value={alerta.clave}
-                className="font-mono text-sm"
-                aria-label="API key generada"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={handleCopiar}
-                aria-label="Copiar clave"
-              >
-                {alerta.copiado ? (
-                  <Check className="size-4 text-success" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-              </Button>
-            </div>
-            <DialogFooter>
-              <Button onClick={handleEntendido}>Entendido</Button>
-            </DialogFooter>
-          </div>
+          /* ⚠️ REGLA 31 · «mostrada · copiada · advertencia PREVIA».
+             Las dos primeras estaban; la tercera no. El aviso «copia esta
+             clave ahora» aparecía junto a la clave YA generada, así que quien
+             apretó «Crear» no sabía que abría una puerta de un solo sentido.
+             Ahora la advertencia va antes, en el formulario.
+             Y el botón de «Entendido» estaba habilitado desde el primer
+             instante: un clic de más y la credencial se perdía para siempre,
+             sin nada que lo impidiera. */
+          <CredencialUnaSolaVez
+            valor={alerta.clave}
+            etiqueta="Tu API key"
+            consecuencia={
+              <>
+                Si la pierdes no se puede recuperar: hay que revocar esta y crear otra, y
+                cambiarla en todo lo que la use.
+              </>
+            }
+            onConfirmar={handleEntendido}
+          />
         ) : (
           <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
+            {/* La advertencia PREVIA (regla 31): se dice antes de crear, no
+                después de tener la clave en pantalla. */}
+            <p className="border border-line bg-bg-sunken px-3 py-2.5 text-xs leading-relaxed text-fg-muted">
+              La clave se muestra <strong className="text-fg">una sola vez</strong>, al crearla.
+              Tenla a mano dónde vas a pegarla antes de continuar.
+            </p>
             <div className="space-y-1.5">
               <Label htmlFor="nombre-key">Nombre</Label>
               <Input
