@@ -938,13 +938,29 @@ vial, tres niveles de zoom— pero **pinta desde el sistema anterior**. Todo el 
 `src/app/(tenant)/torre-de-control/_lib/mapa/`: `paleta.ts` (~330 líneas, los colores),
 `estilo.ts` (798), `config.ts` (~80).
 
-- [ ] **`tema de mapa` claro y oscuro** · DE CERO · B1a · 2 pantallas.
-      `paleta.ts` define dos temas con **colores literales del ADN Retell viejo** (navy `#2a3ca0`,
-      periwinkle `#7080f5`, tierra `#f1f2f8` / `#131417`), mientras
-      **los 24 tokens `--rx-map-*` de `rx-tokens.css` (`:118-133` en oscuro, `:213-226` en claro) no
-      tienen un solo consumidor en todo el repo.** La tabla de destino está en
-      `RUTAX-SISTEMA-DE-DISENO.md` §13.1. Los temas `sun` y `night` no declaran mapa: la Torre es
-      del coordinador, no del conductor.
+- [x] **`tema de mapa` claro y oscuro** · DE CERO — **hecho el 23-08.** `paleta.ts` pintaba con el
+      ADN retirado (navy `#2a3ca0`, periwinkle `#7080f5`, tierra `#f1f2f8` / `#131417`, rojo
+      `#fb3748`) mientras **los 24 tokens `--rx-map-*` no tenían un solo consumidor en todo el
+      repo**: estaban escritos y eran inalcanzables. El mapa era la superficie más visible del
+      producto que seguía viéndose como el sistema anterior — y no por descuido: **MapLibre no lee
+      CSS**, así que el puente de tokens no lo alcanza y los valores hay que transcribirlos.
+      Cada línea del archivo lleva ahora anotado su token de origen.
+      Tres decisiones que no salen de la tabla:
+      · **La rampa de carga va SÓLIDA**, no con alfa embebido. El sistema la declara opaca porque
+        a zoom de comuna **el polígono es el contenido** y el plano es escenario (§13.1 y §13.3).
+      · **Tres escalones de vía, no cuatro.** El sistema declara `road-minor`, `road-major` y
+        `highway`; la vía local comparte color con la secundaria y se separa por **ancho**, que es
+        lo que `estilo.ts` ya hace. Inventar un cuarto color sería agregar un token que nadie
+        definió.
+      · **El punto entregado NO toma su tono de ciclo** (`balanced`) — ver anexo E.
+      Las 29 pruebas de `estilo.test.ts` siguen verdes, y son las que validan la elección: el
+      anillo ámbar mantiene su 3:1 sobre la tierra nueva, los cuatro pasos de la rampa se
+      distinguen (ΔE > 6, y > 3 atenuados al 45 %), y **el rojo lo usa una sola capa**.
+      🐞 De paso, su aplanador de color asumía siempre hex de 8 dígitos y con los sólidos devolvía
+      `NaN` **en silencio**: la prueba fallaba con «expected NaN», que no dice nada de lo que se
+      rompió.
+      **Verificado en pantalla, claro y oscuro**, con el basemap y los glifos publicados al bucket
+      local. Los temas `sun` y `night` no declaran mapa: la Torre es del coordinador.
 - [ ] **`polígono de comuna` con rampa de carga** · DE CERO · rampa de **cuatro pasos del acento**,
       sin escala de semáforo: `--rx-map-comuna-1..4`. **Cuando la celda lleva rótulo la rampa corta
       en `comuna-3`** y el texto va en `--rx-fg`; ningún gris sobre `comuna-4`. Seleccionado: borde
@@ -1463,6 +1479,16 @@ código manda sobre *qué datos existen*. Cuando chocan, se dice — no se elige
       emitir factura y emitir pago **ya son peldaño 3**, así que quien sigue con reparos ya está
       escribiendo el nombre de la contraparte. Pedir dos frases en el mismo cuadro gasta la
       fricción en vez de agregarla.
+
+- [x] **`B1a` §13.4 · «el punto de entrega lleva el tono de su estado de ciclo».** Para *entregado*
+      ese tono es `balanced`, que es **el mismo teal de la rampa de carga de comuna**: a las 21:00
+      el mapa sería una mancha teal donde no se distingue una comuna cargada de un punto ya
+      entregado. Y `inert`, que es lo semánticamente exacto para algo que ya no cuenta, **exige su
+      trama de 135°** — imposible en un círculo de 8 px.
+      *Qué se hizo:* el entregado toma el gris del propio plano (`--rx-map-label`). Un punto
+      entregado en una consola de monitoreo es escenario, no contenido — que es justo lo que dice
+      la regla 0 de la Torre. Pendiente y en ruta sí toman su tono (`neutral` y `progress`), igual
+      que en el resto del producto.
 
 ## E.3 · El tablero permite algo que el dominio no soporta todavía
 

@@ -10,10 +10,21 @@
  * anotado al lado. Si algún día cambia un token del producto, este archivo es la
  * lista de lo que hay que mover con él.
  *
- * De dónde sale cada valor: `src/app/globals.css` (ADN Retell + navy Rutax) y
- * `DESIGN_SYSTEM.md`. El módulo **ya no tiene lenguaje visual propio**: los 12
- * tokens `--tc-*` del handoff de la v1 se retiraron enteros el 2026-08-03 (Vía B
- * del rediseño). Detalle y justificación en
+ * De dónde sale cada valor: **los 24 tokens `--rx-map-*` de `rx-tokens.css`**
+ * (`:118-133` oscuro, `:213-226` claro) y los tonos de estado del mismo archivo.
+ * Cada línea de abajo lleva anotado su token de origen; si un token del producto
+ * cambia, este archivo es la lista de lo que hay que mover con él.
+ *
+ * ⚠️ Hasta el 23-08-2026 esto pintaba con el **ADN anterior**: navy `#2a3ca0`,
+ * periwinkle `#7080f5`, tierra `#f1f2f8` / `#131417`, rojo `#fb3748`. Al mismo
+ * tiempo, los 24 tokens de mapa del sistema nuevo **no tenían un solo consumidor
+ * en todo el repo**: estaban escritos y eran inalcanzables. El mapa era la
+ * superficie más visible del producto que seguía viéndose como el sistema
+ * retirado — y no por descuido, sino porque MapLibre no lee CSS y el puente de
+ * tokens no lo alcanza.
+ *
+ * El módulo **ya no tiene lenguaje visual propio**: los 12 tokens `--tc-*` del
+ * handoff de la v1 se retiraron enteros el 2026-08-03. Detalle en
  * `docs/torre-de-control/lenguaje-visual-v2.md`.
  *
  * -----------------------------------------------------------------------------
@@ -107,130 +118,104 @@ export interface PaletaMapa {
 }
 
 /**
- * TEMA CLARO. Base: el neutro cool del ADN (`--muted #f5f5fa`,
- * `--border #e6e6f3`, `--foreground #172131`).
+ * TEMA CLARO. Sale de `--rx-map-*` en `rx-tokens.css:213-226`, más los tonos de
+ * estado del mismo archivo para los datos.
  */
 const CLARO: PaletaMapa = {
   basemap: {
-    tierra: '#f1f2f8', //     un punto bajo --muted (#f5f5fa)
-    verde: '#e7eee7',
-    equipamiento: '#edeef5',
-    agua: '#ccd5ea',
-    aguaBorde: '#bfc9e2',
-    edificio: '#e7e8f0',
-    viaAutopista: '#ffffff',
-    viaTroncal: '#ffffff',
-    viaSecundaria: '#fafafd',
-    viaLocal: '#f7f7fc',
-    viaBorde: '#dedfeb', //   ≈ --border (#e6e6f3), un punto más oscuro
-    ferrocarril: '#d5d6e4',
-    textoLugar: '#172131', // = --foreground
-    textoVia: '#606a78', //   = --muted-foreground
-    textoAgua: '#8791b6',
-    halo: '#f1f2f8',
+    tierra: '#F1F6F6', //        --rx-map-land
+    verde: '#EAF2F0', //         --rx-map-park
+    equipamiento: '#EAF2F0', //  = parque; el suelo institucional no es una capa propia
+    agua: '#E6EEEF', //          --rx-map-water
+    aguaBorde: '#DCE7E8', //     --rx-map-road-minor, el escalón inmediato
+    edificio: '#EAF2F0', //      = parque
+    viaAutopista: '#BCCFD1', //  --rx-map-highway
+    viaTroncal: '#CDDCDE', //    --rx-map-road-major
+    viaSecundaria: '#DCE7E8', // --rx-map-road-minor
+    // El sistema declara TRES escalones de vía, no cuatro. La local comparte
+    // color con la secundaria y se separa por ANCHO, que es lo que `estilo.ts`
+    // ya hace. Inventar un cuarto color sería agregar un token que nadie definió.
+    viaLocal: '#DCE7E8', //      --rx-map-road-minor
+    viaBorde: '#C6D6D8', //      --rx-line
+    ferrocarril: '#CDDCDE', //   --rx-map-road-major
+    textoLugar: '#56666B', //    --rx-map-label-comuna
+    textoVia: '#7C8A88', //      --rx-map-label
+    textoAgua: '#7C8A88', //     --rx-map-label
+    halo: 'rgba(255, 255, 255, .7)', // --rx-map-label-halo
   },
   datos: {
-    // Navy de marca (#2a3ca0) a 4 opacidades: 4 / 13 / 24 / 36 %. En hex de 8
-    // dígitos para que el estilo no dependa de `fill-opacity` y la rampa conviva
-    // con el velo.
+    // Rampa de carga: cuatro pasos de UN solo tono, el acento. Sin escala de
+    // semáforo — codifica cuántos faltan, que es una magnitud, no un puntaje.
     //
-    // ⚠️ **Reequilibrada dos veces el mismo día, y las dos por medición.**
-    //
-    // Iba en 8/14/22/32 % y los dos primeros pasos daban ΔE76 4,5 entre sí:
-    // cuatro pasos declarados, tres a la vista. Dentro de una comuna la capa
-    // baja al 45 % de opacidad y ahí el escalón caía a ΔE 1,8 — bajo el umbral
-    // en que el ojo separa dos superficies contiguas.
-    //
-    // El primer arreglo (6/17/30/45) resolvió eso pero **subió el tope de 32 % a
-    // 45 %**, y la consecuencia se vio en pantalla antes que en el número: la
-    // comuna cargada quedaba tan azul que el relleno se leía como un velo puesto
-    // encima del plano en vez de como un dato. Se reportó, con razón, como «esa
-    // capa parece mal ubicada».
-    //
-    // 4/13/24/36 es el punto medio medido: ΔE 7,9 / 8,9 / 10,1 entre pasos
-    // —mejor separación que el original— y 3,7 / 3,7 / 4,2 atenuada, con el tope
-    // de vuelta cerca del 32 % que el diseño había elegido. **La separación se
-    // gana abriendo el extremo BAJO, no oscureciendo el alto**: es lo que deja
-    // leer el plano por debajo de la comuna más cargada.
-    cargaComuna: ['#2a3ca00a', '#2a3ca021', '#2a3ca03d', '#2a3ca05c'],
-    comunaBorde: '#c6c9de',
-    comunaBordeActiva: '#2a3ca0',
-    velo: '#f1f2f8b8',
-    agrupacionRelleno: '#ffffff',
-    agrupacionBorde: '#2f3a4b',
-    agrupacionTexto: '#172131',
-    puntoPendiente: '#2f3a4b', // = --primary
-    puntoEnRuta: '#2a3ca0', //    = --brand
-    puntoEntregado: '#a7aebd',
-    puntoIncidencia: '#fb3748', // = --destructive · ÚNICO ROJO
-    // Ámbar oscurecido del `--warning` (#ff8447 → #d9590a). El token del sistema
-    // daba **2,17:1** contra la tierra, bajo el mínimo de 3:1 que la WCAG 1.4.11
-    // pide para objetos gráficos: el anillo se perdía justo sobre el fondo que
-    // más se usa. Medido, no estimado (Vía C, 2026-08-04): así queda en 3,49:1.
-    //
-    // ⚠️ Se paró en 3,49 y no se siguió oscureciendo a propósito. Los ámbares
-    // con más contraste (#c2410c da 4,64:1) derivan hacia el rojo, y el rojo
-    // está reservado a la incidencia — un anillo rojizo alrededor de un punto
-    // sano diría «acá pasa algo» justo donde no pasa nada.
-    anilloCorte: '#d9590a', //     = --warning, oscurecido para cumplir 3:1
-    puntoHalo: '#ffffff',
-    // Sombra bajo el punto. Tinta del sistema al 22 %, no negro: un gris neutro
-    // sobre la tierra fría (#f1f2f8) se ve sucio. Es lo que asienta el punto
-    // sobre el plano en vez de dejarlo pegado encima.
-    puntoSombra: '#1e25364d',
+    // ⚠️ VAN SÓLIDOS, no con alfa. Antes eran hex de 8 dígitos sobre el plano;
+    // el sistema los declara opacos porque a zoom de comuna **el polígono ES el
+    // contenido** y el plano es escenario. Ver §13.1 y §13.3.
+    cargaComuna: ['#DBF8F2', '#97E8D9', '#00B89A', '#007D69'],
+    comunaBorde: '#C6D6D8', //        --rx-line
+    comunaBordeActiva: '#0B1114', //  --rx-map-comuna-sel = --rx-fg
+    velo: 'rgba(241, 246, 246, .78)', // tierra con alfa
+    agrupacionRelleno: '#FFFFFF', //  --rx-bg
+    agrupacionBorde: '#C6D6D8', //    --rx-line
+    agrupacionTexto: '#0B1114', //    --rx-fg
+    puntoPendiente: '#4C5F65', //     --rx-neutral-fg · `pedido:asignado` es neutral
+    puntoEnRuta: '#0075A8', //        --rx-progress-fg
+    // ⚠️ El entregado NO toma su tono de ciclo (`balanced`), y es a propósito:
+    // ese teal es el mismo de la rampa de carga, así que a las 21:00 el mapa
+    // sería una mancha teal donde no se distingue una comuna cargada de un punto
+    // ya entregado. Y `inert`, que sería lo semánticamente exacto, exige su
+    // trama de 135° — imposible en un círculo de 8 px. Así que toma el gris del
+    // propio plano: un entregado es escenario, no contenido.
+    puntoEntregado: '#7C8A88', //     --rx-map-label
+    puntoIncidencia: '#C2361F', //    --rx-fault-fg · ÚNICO ROJO
+    anilloCorte: '#8A5B00', //        --rx-attention-fg
+    puntoHalo: '#F1F6F6', //          = tierra
+    puntoSombra: 'rgba(11, 17, 20, .28)',
   },
 };
 
 /**
- * TEMA OSCURO. Base: `--background #161718`, `--card #24272e`. La tierra va por
- * debajo de las dos para que el panel y las placas floten; si la tierra queda
- * más clara que la card, el mapa «sube» y la pantalla pierde profundidad.
+ * TEMA OSCURO. Sale de `--rx-map-*` en `rx-tokens.css:118-133`. Es el tema base
+ * del sistema; el claro se deriva de él, no al revés.
  */
 const OSCURO: PaletaMapa = {
   basemap: {
-    tierra: '#131417',
-    verde: '#161d18',
-    equipamiento: '#181920',
-    agua: '#0d1119',
-    aguaBorde: '#141a26',
-    edificio: '#1b1d23',
-    viaAutopista: '#3b404c',
-    viaTroncal: '#33373f',
-    viaSecundaria: '#2a2d34',
-    viaLocal: '#232529',
-    viaBorde: '#0f1013',
-    ferrocarril: '#2a2d34',
-    textoLugar: '#eef0f4',
-    textoVia: '#9da3ad',
-    textoAgua: '#5d6b90',
-    halo: '#0d0e11',
+    tierra: '#0B1114', //        --rx-map-land
+    verde: '#0E1518', //         --rx-map-park
+    equipamiento: '#0E1518',
+    agua: '#070C0E', //          --rx-map-water
+    aguaBorde: '#16211E', //     --rx-map-road-minor
+    edificio: '#0E1518',
+    viaAutopista: '#2A3A41', //  --rx-map-highway
+    viaTroncal: '#1F2C31', //    --rx-map-road-major
+    viaSecundaria: '#16211E', // --rx-map-road-minor
+    viaLocal: '#16211E', //      = secundaria; la jerarquía la lleva el ancho
+    // En oscuro el borde de la vía va MÁS OSCURO que la tierra, no más claro:
+    // es lo que recorta la calle del suelo. Toma el agua, que es el punto más
+    // bajo de la escala.
+    viaBorde: '#070C0E', //      --rx-map-water
+    ferrocarril: '#1F2C31', //   --rx-map-road-major
+    textoLugar: '#7E9198', //    --rx-map-label-comuna
+    textoVia: '#5C6B6E', //      --rx-map-label
+    textoAgua: '#5C6B6E', //     --rx-map-label
+    halo: 'rgba(11, 17, 20, .7)', // --rx-map-label-halo
   },
   datos: {
-    // El navy sube a periwinkle (#7080f5, el `--brand` de dark) y las opacidades
-    // suben con él: sobre negro, el mismo alfa rinde menos. 7 / 18 / 31 / 46 %.
-    //
-    // Se mueve en paralelo a la del claro, y no por un defecto propio: el oscuro
-    // ya separaba bien. Es para conservar la relación que la línea de arriba
-    // declara — el tema que necesita más alfa tiene que seguir teniendo más.
-    // Bajar el tope de 58 % a 46 % además devuelve el plano: la vía sobre la
-    // comuna más cargada pasa de 1,31:1 a 1,43:1 de contraste.
-    cargaComuna: ['#7080f512', '#7080f52e', '#7080f54f', '#7080f575'],
-    comunaBorde: '#ffffff26',
-    comunaBordeActiva: '#7080f5',
-    velo: '#131417c4',
-    agrupacionRelleno: '#24272e', // = --card
-    agrupacionBorde: '#8b93a1',
-    agrupacionTexto: '#f7f8fa',
-    puntoPendiente: '#e6e9ef',
-    puntoEnRuta: '#7080f5',
-    puntoEntregado: '#5b6068',
-    puntoIncidencia: '#e93544', // = --destructive dark · ÚNICO ROJO
-    anilloCorte: '#e97135', //     = --warning dark
-    puntoHalo: '#0d0e11',
-    // En oscuro la sombra es negro puro y más opaca: sobre una tierra que ya es
-    // casi negra (#131417), una sombra tintada no se separa del fondo. Lo que da
-    // la profundidad acá es el contraste contra el halo oscuro del punto.
-    puntoSombra: '#00000080',
+    cargaComuna: ['#04302A', '#0A5F52', '#00B89A', '#00D6B4'],
+    comunaBorde: '#2A3A41', //        --rx-line
+    comunaBordeActiva: '#E9F2F3', //  --rx-map-comuna-sel = --rx-fg
+    velo: 'rgba(11, 17, 20, .78)',
+    agrupacionRelleno: '#0E1518', //  --rx-bg-elevated
+    agrupacionBorde: '#2A3A41', //    --rx-line
+    agrupacionTexto: '#E9F2F3', //    --rx-fg
+    puntoPendiente: '#9EB0B6', //     --rx-neutral-fg
+    puntoEnRuta: '#43C9FF', //        --rx-progress-fg
+    puntoEntregado: '#5C6B6E', //     --rx-map-label · ver la nota del tema claro
+    puntoIncidencia: '#FF6B57', //    --rx-fault-fg · ÚNICO ROJO
+    anilloCorte: '#FFC53D', //        --rx-attention-fg
+    puntoHalo: '#0B1114', //          = tierra
+    // En oscuro la sombra es negro puro: sobre una tierra casi negra, una
+    // sombra tintada no se separa del fondo.
+    puntoSombra: 'rgba(0, 0, 0, .5)',
   },
 };
 

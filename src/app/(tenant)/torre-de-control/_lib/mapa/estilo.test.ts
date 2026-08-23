@@ -101,11 +101,20 @@ function deltaE(a: string, b: string): number {
   return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
 }
 
-/** Aplana un `#rrggbbaa` sobre un fondo opaco, con un multiplicador de opacidad. */
-function sobre(color8: string, fondo: string, multiplicador = 1): string {
-  const alfa = (parseInt(color8.slice(7, 9), 16) / 255) * multiplicador;
+/**
+ * Aplana un color sobre un fondo opaco, con un multiplicador de opacidad.
+ *
+ * Acepta `#rrggbb` y `#rrggbbaa`. Desde que la rampa de carga toma los tokens
+ * `--rx-map-comuna-*` sus cuatro pasos son **sólidos**: el alfa dejó de venir
+ * embebido en el color y, cuando hay atenuación, la pone la capa. Antes esta
+ * función asumía siempre 8 dígitos y con 6 devolvía `NaN` en silencio — la
+ * prueba fallaba con «expected NaN», que no dice nada de lo que se rompió.
+ */
+function sobre(color: string, fondo: string, multiplicador = 1): string {
+  const tieneAlfa = color.length === 9;
+  const alfa = (tieneAlfa ? parseInt(color.slice(7, 9), 16) / 255 : 1) * multiplicador;
   const canal = (i: number) => {
-    const f = parseInt(color8.slice(i, i + 2), 16);
+    const f = parseInt(color.slice(i, i + 2), 16);
     const b = parseInt(fondo.slice(i, i + 2), 16);
     return Math.round(b + alfa * (f - b))
       .toString(16)
