@@ -11,7 +11,7 @@
 import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {

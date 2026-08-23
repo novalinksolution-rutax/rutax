@@ -640,9 +640,16 @@ bloques 4–8, cuando cada pantalla se toque.
       bandeja y sin la vuelta atrás. Ahora entra el texto escrito, tal cual, porque ya es cierto.
       6 pruebas. **Verificado en pantalla de punta a punta**, con el movimiento volviendo a la
       bandeja.
-- [ ] Las 4 anulaciones y el resto de `dinero/`.
-- [ ] `dinero/layout.tsx` — sus pestañas son un cuarto patrón de navegación (viene del bloque 4).
-      Necesita `B2a`.
+- [x] **`conductores/[id]`** — la pantalla donde se ve lo que se le debe a un conductor y donde
+      viven dos de las cuatro anulaciones. Sus tres tarjetas de resumen eran **superficies enteras
+      de color** —gris, azul y verde a sangre—, con el color como **único portador** del
+      significado: eso es la regla 5, y es lo que se pierde al imprimir o para quien no distingue
+      esos dos tonos. Ahora la superficie es neutra y el estado va en un `DistintivoEstado`, que
+      lleva glifo además de color. Fuera la sombra de la tabla (regla 4) y el monto declara
+      **neto** en la cabecera y en cada tarjeta (regla 18).
+      **Verificado en pantalla: cero elementos con sombra en toda la página.**
+      *Queda fuera `operaciones/[pedidoId]`*, donde vive la tercera anulación: tiene trabajo en
+      curso del usuario y no se toca.
 - [x] **Un período abierto no tenía camino a su detalle** — `AccionesPeriodo` solo mostraba «Cerrar
       período», y «Ver detalle» aparecía recién con el período cerrado. La pantalla existía y era
       **inalcanzable**: lo que uno querría revisar *antes* de cerrar —las líneas, la tabla

@@ -15,7 +15,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Wallet } from "lucide-react";
+import { Wallet } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarLiquidacionesConductores, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
@@ -24,6 +24,8 @@ import { traducirEstadoLiquidacion, BADGE_ESTADO_LIQUIDACION } from "@/lib/ui/tr
 import type { EstadoLiquidacion, TipoHechoLinea } from "@/modules/dinero/tipos";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
+import type { TonoEstado } from "@/lib/ui/tonos-estado";
 import {
   Table,
   TableBody,
@@ -243,10 +245,15 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
     resumen[e.bucket].totalClp += e.montoClp;
   }
 
-  const tarjetas: { bucket: Bucket; label: string; clases: string }[] = [
-    { bucket: "acumulando", label: "Acumulando (sin liquidar)", clases: "bg-muted text-muted-foreground" },
-    { bucket: "por_pagar", label: "Por pagar", clases: "bg-info-subtle text-info-subtle-foreground" },
-    { bucket: "pagado", label: "Pagado", clases: "bg-success-subtle text-success-subtle-foreground" },
+  // ⚠️ Estas tres tarjetas eran **superficies enteras de color**: gris, azul y
+  // verde a sangre. El color quedaba como único portador del significado, que es
+  // lo que la regla 5 prohíbe — y lo que se pierde al imprimir o para quien no
+  // distingue esos dos tonos. Ahora la superficie es neutra y el estado va en un
+  // distintivo, que lleva glifo además de color.
+  const tarjetas: { bucket: Bucket; label: string; tono: TonoEstado }[] = [
+    { bucket: "acumulando", label: "Acumulando", tono: "neutral" },
+    { bucket: "por_pagar", label: "Por pagar", tono: "progress" },
+    { bucket: "pagado", label: "Pagado", tono: "balanced" },
   ];
 
   return (
@@ -279,12 +286,18 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
 
       {/* Resumen por estado de pago */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="list" aria-label="Resumen de dinero por estado">
-        {tarjetas.map(({ bucket, label, clases }) => (
-          <div key={bucket} role="listitem" className={`rounded-lg px-4 py-3 ${clases}`}>
-            <p className="text-xs font-medium">{label}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">{formatearCLP(resumen[bucket].totalClp)}</p>
-            <p className="text-xs opacity-80 tabular-nums">
-              {resumen[bucket].cantidad} entrega{resumen[bucket].cantidad !== 1 ? "s" : ""}
+        {tarjetas.map(({ bucket, label, tono }) => (
+          <div
+            key={bucket}
+            role="listitem"
+            className="flex flex-col gap-1.5 border border-line bg-bg-sunken px-4 py-3"
+          >
+            <DistintivoEstado tono={tono} etiqueta={label} />
+            <p className="font-mono text-xl font-semibold text-fg tabular-nums">
+              {formatearCLP(resumen[bucket].totalClp)}
+            </p>
+            <p className="text-xs text-fg-muted tabular-nums">
+              {resumen[bucket].cantidad} entrega{resumen[bucket].cantidad !== 1 ? "s" : ""} · neto
             </p>
           </div>
         ))}
@@ -299,7 +312,8 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
+        // Sin sombra (regla 4): la elevación es escalón de fondo + borde.
+        <div className="overflow-hidden border border-line bg-card">
           <div className="overflow-x-auto">
             <Table aria-label={`Entregas liquidables de ${conductor.nombre_completo as string}`}>
               <TableHeader>
@@ -307,7 +321,8 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
                   <TableHead className="px-4">Fecha</TableHead>
                   <TableHead className="px-4">Destinatario</TableHead>
                   <TableHead className="px-4">Estado de pago</TableHead>
-                  <TableHead className="px-4 text-right">Monto</TableHead>
+                  {/* Regla 18: la cifra dice si es bruto o neto. */}
+                  <TableHead className="px-4 text-right">Monto · neto</TableHead>
                   <TableHead className="px-4 text-right">
                     <span className="sr-only">Acciones</span>
                   </TableHead>
