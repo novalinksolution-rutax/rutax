@@ -30,6 +30,7 @@ import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
+import { DialogReabrirPeriodo } from "./dialog-reabrir-periodo";
 import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
 import { BotonDescargaDocumento } from "./boton-descarga-documento";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
@@ -204,9 +205,29 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               ofrecer emitir la factura como acción humana deliberada. */}
           {periodo.estado === "cerrado" && !dte && (
             <div className="shrink-0">
+              {/* Reabrir va JUNTO a emitir, no escondido: son las dos salidas
+                  de un período cerrado. El dominio decide si se puede. */}
+              <DialogReabrirPeriodo periodoId={periodo.id} sellerNombre={sellerNombre} />
               <DialogEmitirFactura
                 periodoId={periodo.id}
                 sellerNombre={sellerNombre}
+                // Regla 21: el total del modal lleva su composición. Sale de la
+                // misma agrupación que alimenta la tabla financiera de abajo —
+                // no hay una segunda aritmética que se pueda desincronizar.
+                // Solo se pasa cuando hay ajustes: sin ellos el neto ES el
+                // subtotal, y una composición de un término es ruido.
+                composicion={
+                  agrupacion.ajustes.length > 0
+                    ? [
+                        { concepto: "entregas", monto: agrupacion.subtotalEntregas },
+                        ...agrupacion.ajustes.map((aj) => ({
+                          concepto: "ajustes",
+                          monto: Math.abs(aj.monto),
+                          resta: aj.monto < 0,
+                        })),
+                      ]
+                    : undefined
+                }
                 autorNombre={sesion.nombreCompleto ?? "Tu cuenta"}
                 totalLineas={periodo.totalLineas}
                 montoTotalClp={periodo.montoTotalClp}

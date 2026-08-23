@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
+import type { SumandoComposicion } from "@/components/ui/bloque-composicion";
 import { cn } from "@/lib/utils";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { ModoDte } from "@/modules/dinero/modo-dte";
@@ -52,6 +53,12 @@ interface Props {
   montoTotalClp: number | null;
   modoDte: ModoDte;
   /**
+   * El desglose del total, en mono, bajo la cifra. Regla 21 y tablero P4: «un
+   * total sin composición, en el punto de no retorno, es exactamente la cifra
+   * que Administración no puede rastrear — y por la que exportaría a Excel».
+   */
+  composicion?: SumandoComposicion[];
+  /**
    * Quién está firmando. Va DENTRO del modal, antes de actuar: el tablero P4 es
    * explícito en que no es un dato de auditoría escondido, es parte de lo que se
    * está firmando.
@@ -67,6 +74,7 @@ export function DialogEmitirFactura({
   totalLineas,
   montoTotalClp,
   modoDte,
+  composicion,
   autorNombre,
 }: Props) {
   const router = useRouter();
@@ -228,6 +236,7 @@ export function DialogEmitirFactura({
               ? { etiqueta: "Total", monto: montoTotalClp }
               : undefined
         }
+        composicion={composicion}
         avisos={avisosModal}
         confirmacion={{ frase: sellerNombre }}
         autor={{ nombre: autorNombre, cuando: formatearFechaHora(new Date()) }}

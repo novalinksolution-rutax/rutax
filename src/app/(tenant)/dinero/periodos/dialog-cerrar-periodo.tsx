@@ -3,15 +3,11 @@
 /**
  * Cerrar un período de cobro. Peldaño 2 de la escalera de fricción.
  *
- * ⚠️ **El copy del sistema de mensajes dice «se puede reabrir mientras no esté
- * facturado», y eso HOY ES FALSO.** No existe ninguna acción de reapertura de
- * período en el código —solo `reabrirEventoConciliacion`, que es de
- * conciliación y otra cosa—. El tablero B2a la dibuja como acción de peldaño 2,
- * así que es una brecha de producto, no de copy.
- *
- * Mientras no exista, esta pantalla NO la promete: la regla 35 dice que una
- * pantalla no promete una acción que la interfaz no ofrece. Cuando se construya,
- * la frase del sistema de mensajes entra tal cual.
+ * El copy dice «se puede volver a abrir mientras no esté facturado» y **ahora es
+ * cierto**: hasta el 22-08-2026 la reapertura no existía en el código, así que
+ * esta pantalla no la prometía (regla 35). Se construyó —`reabrirPeriodo`, con
+ * su botón en el detalle— y la frase entró tal como estaba escrita en el sistema
+ * de mensajes.
  */
 
 import { useState, useTransition } from "react";
@@ -94,7 +90,7 @@ export function DialogCerrarPeriodo({
           <>
             Después de cerrarlo, las entregas nuevas de este seller van al período
             siguiente. <strong>Todavía no se factura nada</strong>: eso es un paso
-            aparte.
+            aparte. Se puede volver a abrir mientras no esté facturado.
           </>
         }
         resumen={[

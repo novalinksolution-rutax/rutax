@@ -530,15 +530,24 @@ bloques 4–8, cuando cada pantalla se toque.
 ## Las 26 acciones irreversibles
 
 `RUTAX-SISTEMA-DE-MENSAJES.md` §2 trae las 33 con su peldaño y su copy ya escritos.
-**5 de 26 migradas**, todas verificadas en el navegador con datos reales:
+**6 de 26 migradas**, todas verificadas en el navegador con datos reales:
 
 - [x] `periodos.emitir` · **P3 · escribir** — el arquetipo.
 - [x] `periodos.cerrar` · **P2** — estaba en `<Dialog>` genérico, con «Cancelar» y X.
-      ⚠️ **Su copy del sistema de mensajes promete algo que no existe:** «se puede reabrir mientras
-      no esté facturado». **No hay ninguna acción de reapertura de período en el código** —solo
-      `reabrirEventoConciliacion`, que es de conciliación y otra cosa—. El tablero B2a la dibuja
-      como acción de peldaño 2, así que es una **brecha de producto**. Mientras no exista, la
-      pantalla no la promete (regla 35).
+      Su copy promete «se puede volver a abrir mientras no esté facturado», y **ahora es cierto**:
+      la reapertura se construyó el 22-08 (ver el ítem siguiente), así que la frase del sistema de
+      mensajes entró tal como estaba escrita.
+- [x] `periodos.reabrir` · **P2 · motivo** — *la acción no existía*: el copy la prometía, el tablero
+      B2a la dibujaba y el código no la tenía. `reabrirPeriodo` (`modules/dinero/acciones.ts`)
+      devuelve las líneas al período en curso y **limpia los totales**, porque el monto viejo ya no
+      corresponde a las líneas.
+      ⚠️ **La guarda que no es obvia:** `emitirFacturaPeriodo` **no cambia el estado** —publica el
+      evento y el período sigue `cerrado` hasta que el job C3 lo marca `facturado`—. Mirar solo el
+      estado dejaría reabrir un período cuya factura ya va camino al SII, y el folio se consumiría
+      igual contra un período otra vez abierto. Por eso además se consulta la bitácora por una
+      `dinero.emision_dte_solicitada`, y el `UPDATE` lleva su propio `.eq('estado','cerrado')`.
+      Nueve pruebas en `acciones-reabrir-periodo.test.ts`, con la guarda de carrera verificada por
+      mutación.
 - [x] `cobro.anular` · **P2 · motivo**
 - [x] `liq.anularLinea` · **P2 · motivo** — en el detalle del pedido y en el del conductor.
 - [x] `liq.anularVisita` · **P2 · motivo**
@@ -1231,22 +1240,22 @@ código manda sobre *qué datos existen*. Cuando chocan, se dice — no se elige
 
 ## E.1 · El tablero dibuja una acción que no existe en el código
 
-- [ ] **`B2a` · «Volver a abrir el período».** Aparece como acción de peldaño 2 en el detalle, y el
-      copy de `periodos.cerrar.conf` lo promete: «se puede reabrir mientras no esté facturado».
-      **No hay ninguna reapertura de período en el código** — solo `reabrirEventoConciliacion`, que
-      es de conciliación y otra cosa.
-      *Qué se hizo:* la pantalla **no lo promete** (regla 35). Cuando exista, la frase del sistema
-      de mensajes entra tal cual.
-      *Tu decisión:* ¿se construye la reapertura, o se retira del tablero y del copy?
+- [x] **`B2a` · «Volver a abrir el período».** *Resuelto el 22-08: se construyó.* El tablero la
+      dibujaba y el copy la prometía; el código no la tenía, y el cierre era irreversible **sin
+      ninguna razón técnica que lo justificara**. Ahora existe `reabrirPeriodo` con su botón en el
+      detalle del período, junto a emitir.
+      *Lo que se descubrió al construirla:* la ventana en la que el período está `cerrado` pero su
+      factura ya se encoló. Ver el detalle en «Las 26 acciones irreversibles».
 
 ## E.2 · El tablero muestra datos que el sistema no tiene
 
-- [ ] **`B2a` · la composición por concepto dentro del modal de emisión.** El tablero muestra
-      «867.000 entregas + 3.600 recargos − 2.900 ajustes − 3.600 mínimo no aplicado». La
-      verificación previa devuelve `netoClp`/`ivaClp`/`totalClp` pero **no el desglose**.
-      *Qué se hizo:* el `bloque de composición` está construido y se usa en la tabla financiera,
-      donde el desglose sí se puede calcular. En el modal no se inventa.
-      *Para cerrarlo:* que el preflight devuelva los sumandos. Es backend.
+- [x] **`B2a` · la composición por concepto dentro del modal de emisión.**
+      **RESUELTO (22-08-2026): se calcula en la pantalla.** La página del período ya carga todas las
+      líneas y ya las agrupa con `agruparLineasCobro` para su tabla financiera; el modal recibe esa
+      misma composición como prop. **No hay una segunda aritmética que se pueda desincronizar**, y
+      no hizo falta tocar el preflight.
+      Solo se pasa cuando hay ajustes: sin ellos el neto **es** el subtotal, y una composición de un
+      término es ruido — la regla 21 pide composición para lo que no es una suma trivial.
 - [ ] **`B2b` · el autor del ajuste manual** («Aplicó M. Soto el 19-08»). `dinero.liquidaciones`
       guarda `nota_ajuste` pero **no quién lo aplicó**: el autor está en la bitácora, no en la fila.
       *Para cerrarlo:* una lectura extra contra la bitácora, o una columna.
@@ -1260,11 +1269,11 @@ código manda sobre *qué datos existen*. Cuando chocan, se dice — no se elige
 
 ## E.4 · El tablero se contradice con las reglas escritas
 
-- [ ] **`P4` · el modal lleva `box-shadow: 0 18px 48px -12px` y la regla 4 dice «sin sombras».**
-      *Qué se hizo:* se mantuvo la sombra. La regla 4 habla de cómo se construye la **elevación de
-      una superficie** —escalón de fondo + borde—, y un modal flotando sobre un velo es otra cosa.
-      Además la sombra viene del `dialog.tsx` compartido: quitarla afectaría a las 28 modales.
-      *Tu decisión:* si la regla 4 es absoluta, esto cambia en un solo archivo.
+- [x] **`P4` · el modal lleva `box-shadow` y la regla 4 dice «sin sombras».**
+      **RESUELTO (22-08-2026): se mantiene la sombra**, y queda como excepción declarada. La regla 4
+      habla de cómo se eleva una **superficie** dentro de la página —escalón de fondo + borde—, y un
+      modal flotando sobre un velo es otra cosa; el propio tablero lo dibuja así. La excepción está
+      escrita en la cabecera de `dialog.tsx` para que no se relitigue.
 
 ## E.5 · Los documentos no concuerdan entre sí
 

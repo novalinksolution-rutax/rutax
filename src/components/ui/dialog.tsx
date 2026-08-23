@@ -47,6 +47,18 @@ function DialogOverlay({
   )
 }
 
+/**
+ * ⚠️ EXCEPCIÓN DECLARADA A LA REGLA 4 («sin sombras»), decidida el 22-08-2026.
+ *
+ * El sistema construye la elevación con escalón de fondo + borde, no con
+ * sombra. Este modal es la excepción y la lleva a propósito: la regla habla de
+ * cómo se eleva una SUPERFICIE dentro de la página, y un modal flotando sobre
+ * un velo es otra cosa. El propio tablero `P4` lo dibuja con
+ * `box-shadow: 0 18px 48px -12px`.
+ *
+ * Queda escrito acá para que no se relitigue: quitarla afectaría a las 28
+ * modales del producto de una vez.
+ */
 function DialogContent({
   className,
   children,

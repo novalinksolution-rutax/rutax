@@ -181,6 +181,142 @@ export async function cerrarPeriodoManualmente(
 // =============================================================================
 
 /**
+ * Cuánto rato una emisión recién pedida bloquea la reapertura.
+ *
+ * No es un plazo del SII: es cuánto puede tardar el job C3 en terminar o morir.
+ * Pasado eso, si el período sigue `cerrado` y sin documento, el job no está vivo.
+ */
+const VENTANA_EMISION_EN_CURSO_MIN = 30;
+
+/**
+ * Reabrir un período cerrado. Peldaño 2 de la escalera, con motivo.
+ *
+ * Devuelve las líneas al período en curso: mientras está `abierto`, las entregas
+ * nuevas del seller vuelven a caer acá. Es lo que el tablero `B2a` dibuja y lo
+ * que el copy de `periodos.cerrar.conf` promete —«se puede reabrir mientras no
+ * esté facturado»—, y hasta ahora no existía: el cierre era irreversible sin
+ * ninguna razón técnica que lo justificara.
+ *
+ * ⚠️ LA VENTANA DE CARRERA QUE HAY QUE TAPAR
+ * ---------------------------------------------------------------------------
+ * `emitirFacturaPeriodo` **no cambia el estado**: publica el evento y el período
+ * sigue `cerrado` hasta que el job C3 termina y lo marca `facturado`. En esa
+ * ventana, un `estado === 'cerrado'` a secas dejaría reabrir un período cuya
+ * factura ya va camino al SII — y el job emitiría, consumiendo un folio real,
+ * contra un período otra vez abierto.
+ *
+ * Por eso además del estado se mira la bitácora: si hay una
+ * `dinero.emision_dte_solicitada` para este período, hay una emisión en curso y
+ * no se reabre. El tablero resuelve esto con un estado propio, «en emisión»,
+ * que todavía no existe en la base; mientras tanto, esto falla cerrado.
+ */
+export async function reabrirPeriodo(
+  tenantId: string,
+  periodoId: string,
+  /** Por qué se reabre. Queda en la bitácora, a nombre de quien lo hizo. */
+  motivo: string,
+  usuario: UsuarioActual,
+  actorUsuarioId: string,
+): Promise<void> {
+  if (!puedeEmitirFacturas(usuario)) {
+    throw new ErrorValidacion(
+      'Solo el dueño o administración puede reabrir períodos de facturación.',
+    );
+  }
+  if (motivo.trim().length < MINIMO_MOTIVO_AJUSTE) {
+    throw new ErrorValidacion(
+      `Reabrir un período exige un motivo de al menos ${MINIMO_MOTIVO_AJUSTE} caracteres: queda en la bitácora a tu nombre.`,
+    );
+  }
+
+  const supabase = crearClienteServiceRole();
+
+  const { data: periodo, error: errorLectura } = await supabase
+    .schema('dinero')
+    .from('periodos_cobro')
+    .select('id, tenant_id, seller_id, estado, documento_dte_id')
+    .eq('id', periodoId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (errorLectura) throw new Error(`Error al leer período: ${errorLectura.message}`);
+  if (!periodo) throw new ErrorValidacion(`Período ${periodoId} no encontrado en el tenant.`);
+
+  if (periodo.estado !== 'cerrado') {
+    throw new ErrorValidacion(
+      periodo.estado === 'facturado'
+        ? 'Este período ya está facturado: reabrirlo exigiría anular el documento con una nota de crédito.'
+        : `Solo se puede reabrir un período cerrado. Estado actual: '${periodo.estado}'.`,
+    );
+  }
+  if (periodo.documento_dte_id) {
+    throw new ErrorValidacion(
+      'Este período ya tiene un documento tributario asociado y no se puede reabrir.',
+    );
+  }
+
+  // La guarda de la ventana de carrera: una emisión encolada deja el período en
+  // `cerrado` hasta que el job termina.
+  //
+  // ⚠️ Y VA ACOTADA EN EL TIEMPO, a propósito. Sin ventana, una solicitud de
+  // emisión cuyo job murió —y el período se queda `cerrado` para siempre— dejaría
+  // el período trabado sin salida: la bitácora es un registro histórico, no se
+  // borra, así que la guarda seguiría diciendo «espera al SII» el resto de la
+  // vida del período. Con la ventana, pasado el plazo el job ya no está vivo y
+  // reabrir vuelve a ser legítimo.
+  const desde = new Date(Date.now() - VENTANA_EMISION_EN_CURSO_MIN * 60_000).toISOString();
+  const { data: emisionEnCurso, error: errorBitacora } = await supabase
+    .from('bitacora_auditoria')
+    .select('id, creado_en')
+    .eq('tenant_id', tenantId)
+    .eq('entidad_id', periodoId)
+    .eq('accion', 'dinero.emision_dte_solicitada')
+    .gte('creado_en', desde)
+    .limit(1)
+    .maybeSingle();
+
+  if (errorBitacora) {
+    throw new Error(`Error al verificar emisiones en curso: ${errorBitacora.message}`);
+  }
+  if (emisionEnCurso) {
+    throw new ErrorValidacion(
+      `Se pidió emitir la factura de este período hace menos de ${VENTANA_EMISION_EN_CURSO_MIN} minutos y todavía no hay respuesta. Espera a que termine antes de reabrirlo: si se emite, el folio se consume igual.`,
+    );
+  }
+
+  // Bitácora ANTES del efecto: si la escritura de estado falla, la intención
+  // queda registrada igual.
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'dinero.periodo_reabierto',
+    entidadTipo: 'periodo_cobro',
+    entidadId: periodoId,
+    detalle: { seller_id: periodo.seller_id, motivo: motivo.trim() },
+  });
+
+  const { error: errorUpdate } = await supabase
+    .schema('dinero')
+    .from('periodos_cobro')
+    .update({
+      estado: 'abierto',
+      // Los totales se recalculan enteros en el próximo cierre; dejarlos con el
+      // valor viejo mostraría un monto que ya no corresponde a las líneas.
+      total_lineas: 0,
+      monto_total_clp: null,
+      cerrado_en: null,
+      cerrado_por_usuario_id: null,
+      actualizado_en: new Date().toISOString(),
+    })
+    .eq('id', periodoId)
+    .eq('tenant_id', tenantId)
+    .eq('estado', 'cerrado'); // guarda a nivel BD contra una carrera
+
+  if (errorUpdate) throw new Error(`Error al reabrir período: ${errorUpdate.message}`);
+}
+
+/**
  * Solicita la emisión del DTE de un período YA cerrado. Es la compuerta de
  * aprobación humana del motor entrega→dinero: ningún proceso automático (el
  * cron `cerrar-periodo`) emite un DTE; solo esta acción, disparada por una

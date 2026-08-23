@@ -11,7 +11,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { cerrarPeriodoManualmente, emitirFacturaPeriodo } from "@/modules/dinero/acciones";
+import { cerrarPeriodoManualmente, emitirFacturaPeriodo, reabrirPeriodo } from "@/modules/dinero/acciones";
 import { preflightLoteFacturas, type ResultadoPreflightLote } from "@/modules/dinero/preflight-lote";
 import { emitirFacturasLote, type ResultadoLote } from "@/modules/dinero/acciones-lote";
 
@@ -43,6 +43,39 @@ export async function accionCerrarPeriodo(
     return { ok: false, mensaje };
   }
 }
+/**
+ * Reabrir un período cerrado. Devuelve las líneas al período en curso.
+ *
+ * Solo desde `cerrado`, nunca desde `facturado`, y nunca con una emisión en
+ * curso — la guarda de esa ventana vive en el dominio.
+ */
+export async function accionReabrirPeriodo(
+  periodoId: string,
+  motivo: string,
+): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, mensaje: "No autenticado." };
+  }
+
+  try {
+    await reabrirPeriodo(
+      sesion.usuario.tenantId,
+      periodoId,
+      motivo,
+      sesion.usuario,
+      sesion.usuarioId,
+    );
+    revalidatePath("/dinero/periodos");
+    revalidatePath(`/dinero/periodos/${periodoId}`);
+    return { ok: true };
+  } catch (err) {
+    const mensaje =
+      err instanceof Error ? err.message : "Error desconocido al reabrir el período.";
+    return { ok: false, mensaje };
+  }
+}
+
 
 // =============================================================================
 // Emitir factura (DTE) — compuerta de aprobación humana (B1-1)
