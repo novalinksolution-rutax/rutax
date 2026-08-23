@@ -1,0 +1,691 @@
+/* ============================================================================
+   RUTAX · tokens.css
+   Sistema de diseño v1.0 · 22-08-2026
+   ----------------------------------------------------------------------------
+   Cuatro temas:
+     :root / [data-rx-theme="dark"]  · oscuro base — backoffice, backstage, app (día)
+     [data-rx-theme="light"]         · claro — primera clase, no derivado del oscuro
+     [data-rx-theme="sun"]           · app del conductor, sol directo sobre la pantalla
+     [data-rx-theme="night"]         · app del conductor, calle a oscuras
+
+   El tema se declara en <html data-rx-theme="…">. Nada en este archivo depende
+   de una preferencia del sistema: la app decide el tema con su propia lógica
+   (preferencia manual > sensor de luz con histéresis > hora).
+
+   REGLAS DURAS, para no tener que buscarlas en el documento:
+   · --rx-accent (#00B89A / #00D6B4) sirve para FONDO, BORDE y GLIFO.
+     Nunca para texto en tema claro. El teal como texto es --rx-accent-text.
+   · --rx-fg-subtle solo se usa sobre --rx-bg. Sobre bg-raised, bg-sunken o
+     cualquier rampa de mapa baja de 4,5:1 y ahí va --rx-fg-muted.
+   · El tema "night" tiene DOS niveles de texto, no tres: el tercer gris no
+     cumple AA sobre #05080A, así que no existe.
+   · --rx-text-9 solo para etiqueta mono en caja alta con tracking. Nunca cuerpo.
+   · Sin sombras. La elevación se construye con escalón de fondo + borde.
+   ========================================================================== */
+
+
+/* ============================================================================
+   1 · TEMA OSCURO — base del producto
+   ========================================================================== */
+
+:root,
+[data-rx-theme="dark"] {
+
+  /* --- Superficie ------------------------------------------------------- */
+  --rx-bg:              #0B1114;  /* fondo de página */
+  --rx-bg-raised:       #0E1518;  /* tarjeta, fila alternada, panel sobre bg */
+  --rx-bg-sunken:       #070C0E;  /* canal, fondo de columna lateral, hueco */
+  --rx-bg-inset:        #131C21;  /* cabecera de tabla, celda de subtotal */
+
+  /* --- Línea ------------------------------------------------------------ */
+  --rx-line-subtle:     #1B272C;  /* separador entre hermanos, riel de barra */
+  --rx-line:            #2A3A41;  /* borde de contenedor, borde de control */
+  --rx-line-strong:     #E9F2F3;  /* regla de 2px sobre un total */
+
+  /* --- Texto ------------------------------------------------------------ */
+  --rx-fg:              #E9F2F3;  /* 16,7:1 sobre bg */
+  --rx-fg-muted:        #9EB0B6;  /*  8,5:1 */
+  --rx-fg-subtle:       #7E9198;  /*  5,3:1 — SOLO sobre --rx-bg */
+  --rx-fg-on-accent:    #04231E;  /* texto sobre relleno de acento */
+
+  /* --- Acento ----------------------------------------------------------- */
+  --rx-accent:          #00D6B4;  /* relleno, borde, glifo */
+  --rx-accent-text:     #00D6B4;  /* en oscuro el acento sí sirve como texto */
+  --rx-accent-soft:     #5FE3CB;  /* texto de acento sobre accent-deep */
+  --rx-accent-deep:     #04302A;  /* fondo teñido de acento */
+  --rx-accent-line:     #0A5F52;  /* borde teñido de acento */
+  --rx-fg-link:         #5FE3CB;
+  --rx-focus:           #00D6B4;
+
+  /* --- Estado · balanced · terminó bien, cuadra ------------------------- */
+  --rx-balanced-fg:     #00D6B4;
+  --rx-balanced-bg:     #04302A;
+  --rx-balanced-line:   #0A5F52;
+
+  /* --- Estado · progress · en curso, avanzando ------------------------- */
+  --rx-progress-fg:     #43C9FF;
+  --rx-progress-bg:     #07293A;
+  --rx-progress-line:   #145273;
+
+  /* --- Estado · attention · míralo, no es error ------------------------- */
+  --rx-attention-fg:    #FFC53D;
+  --rx-attention-bg:    #33260A;
+  --rx-attention-line:  #66490F;
+
+  /* --- Estado · fault · se rompió, hay que actuar ---------------------- */
+  --rx-fault-fg:        #FF6B57;
+  --rx-fault-bg:        #35130F;
+  --rx-fault-line:      #66271E;
+  --rx-fault-fg-soft:   #FF9D8C;  /* cuerpo sobre fault-bg */
+
+  /* --- Estado · neutral · existe, sin juicio --------------------------- */
+  --rx-neutral-fg:      #9EB0B6;
+  --rx-neutral-bg:      #1A252A;
+  --rx-neutral-line:    #2A3A41;
+
+  /* --- Estado · inert · fuera de juego a propósito --------------------- */
+  /* Lleva SIEMPRE trama diagonal además del color: es lo que hace que
+     "cancelado" e "inactivo" se distingan de "vacío" en monocromo.        */
+  --rx-inert-fg:        #7E9198;  /* 5,26:1 */
+  --rx-inert-line:      #22333A;
+  --rx-inert-trama-a:   #1A252A;
+  --rx-inert-trama-b:   #131C21;
+  --rx-inert-fill:
+    repeating-linear-gradient(135deg,
+      var(--rx-inert-trama-a) 0 3px,
+      var(--rx-inert-trama-b) 3px 6px);
+  --rx-inert-fill-row:            /* variante de fila, paso más ancho */
+    repeating-linear-gradient(135deg, #0E1518 0 4px, #0B1114 4px 8px);
+
+  /* --- Bandera (COBRO/LIQ · FACT/PAGO) --------------------------------- */
+  --rx-flag-on:         var(--rx-accent);
+  --rx-flag-off:        #7E9198;
+
+  /* --- Visualización de datos ------------------------------------------ */
+  /* Cinco series. No usan el matiz del rojo ni del ámbar, así que no chocan
+     con los tonos de estado. La serie 1 es siempre la serie 1.            */
+  --rx-chart-1:         #00D6B4;
+  --rx-chart-2:         #43C9FF;
+  --rx-chart-3:         #9EB0B6;
+  --rx-chart-4:         #5FE3CB;
+  --rx-chart-5:         #7E9198;
+  --rx-chart-grid:      var(--rx-line-subtle);
+  --rx-chart-axis:      var(--rx-fg-muted);
+  --rx-chart-target:    var(--rx-fg);   /* marca del objetivo pactado, 2px */
+
+  /* --- Cartografía ----------------------------------------------------- */
+  /* La librería de mapas no lee CSS: estos valores se pasan a su estilo.  */
+  --rx-map-water:       #070C0E;
+  --rx-map-land:        #0B1114;
+  --rx-map-park:        #0E1518;
+  --rx-map-road-minor:  #16211E;
+  --rx-map-road-major:  #1F2C31;
+  --rx-map-highway:     #2A3A41;
+  --rx-map-label:       #5C6B6E;  /* rótulo de calle */
+  --rx-map-label-comuna:#7E9198;
+  --rx-map-label-halo:  rgba(11, 17, 20, .7);
+  /* Rampa de carga por comuna. Cuando la celda lleva rótulo, la rampa
+     CORTA en comuna-3 y el texto va en --rx-fg. Ningún gris sobre -4.     */
+  --rx-map-comuna-1:    #04302A;
+  --rx-map-comuna-2:    #0A5F52;
+  --rx-map-comuna-3:    #00B89A;
+  --rx-map-comuna-4:    #00D6B4;
+  --rx-map-comuna-sel:  var(--rx-fg);   /* borde de 2px del seleccionado */
+
+  /* --- Velo del modal -------------------------------------------------- */
+  --rx-scrim:           rgba(7, 12, 14, .72);
+}
+
+
+/* ============================================================================
+   2 · TEMA CLARO — primera clase, no derivado
+   Las pantallas de dinero abren acá; la preferencia se guarda por usuario.
+   ========================================================================== */
+
+[data-rx-theme="light"] {
+
+  --rx-bg:              #F1F6F6;
+  --rx-bg-raised:       #FFFFFF;
+  --rx-bg-sunken:       #E6EEEF;
+  --rx-bg-inset:        #E4EDEE;
+
+  --rx-line-subtle:     #DCE7E8;
+  --rx-line:            #C6D6D8;
+  --rx-line-strong:     #0B1114;
+
+  --rx-fg:              #0B1114;  /* 17,4:1 sobre bg */
+  --rx-fg-muted:        #4C5F65;  /*  6,2:1 */
+  --rx-fg-subtle:       #56666B;  /*  5,1:1 — SOLO sobre --rx-bg */
+  --rx-fg-on-accent:    #04231E;
+
+  --rx-accent:          #00B89A;  /* SOLO relleno, borde, glifo */
+  --rx-accent-text:     #007D69;  /* 4,7:1 — el teal cuando es texto */
+  --rx-accent-soft:     #007D69;
+  --rx-accent-deep:     #DBF8F2;
+  --rx-accent-line:     #97E8D9;
+  --rx-fg-link:         #007D69;
+  --rx-focus:           #007D69;
+
+  --rx-balanced-fg:     #007D69;  /* 4,53:1 dentro del distintivo */
+  --rx-balanced-bg:     #DBF8F2;
+  --rx-balanced-line:   #97E8D9;
+
+  --rx-progress-fg:     #0075A8;
+  --rx-progress-bg:     #E1F5FF;
+  --rx-progress-line:   #A9E0FA;
+
+  --rx-attention-fg:    #8A5B00;
+  --rx-attention-bg:    #FFF3D6;
+  --rx-attention-line:  #FFD98A;
+
+  --rx-fault-fg:        #C2361F;
+  --rx-fault-bg:        #FFE7E3;
+  --rx-fault-line:      #FFBCB0;
+  --rx-fault-fg-soft:   #8B2E1A;
+
+  --rx-neutral-fg:      #4C5F65;
+  --rx-neutral-bg:      #E6EEEF;
+  --rx-neutral-line:    #C9D8DA;
+
+  --rx-inert-fg:        #56666B;  /* 5,08:1 */
+  --rx-inert-line:      #DCE7E8;
+  --rx-inert-trama-a:   #DCE7E8;
+  --rx-inert-trama-b:   #E6EEEF;
+  --rx-inert-fill:
+    repeating-linear-gradient(135deg,
+      var(--rx-inert-trama-a) 0 3px,
+      var(--rx-inert-trama-b) 3px 6px);
+  --rx-inert-fill-row:
+    repeating-linear-gradient(135deg, #F7FBFB 0 4px, #FFFFFF 4px 8px);
+
+  --rx-flag-on:         var(--rx-accent);
+  --rx-flag-off:        #56666B;
+
+  --rx-chart-1:         #007D69;
+  --rx-chart-2:         #0075A8;
+  --rx-chart-3:         #4C5F65;
+  --rx-chart-4:         #00A388;
+  --rx-chart-5:         #56666B;
+  --rx-chart-grid:      var(--rx-line-subtle);
+  --rx-chart-axis:      var(--rx-fg-muted);
+  --rx-chart-target:    var(--rx-fg);
+
+  --rx-map-water:       #E6EEEF;
+  --rx-map-land:        #F1F6F6;
+  --rx-map-park:        #EAF2F0;
+  --rx-map-road-minor:  #DCE7E8;
+  --rx-map-road-major:  #CDDCDE;
+  --rx-map-highway:     #BCCFD1;
+  --rx-map-label:       #7C8A88;
+  --rx-map-label-comuna:#56666B;
+  --rx-map-label-halo:  rgba(255, 255, 255, .7);
+  --rx-map-comuna-1:    #DBF8F2;
+  --rx-map-comuna-2:    #97E8D9;
+  --rx-map-comuna-3:    #00B89A;
+  --rx-map-comuna-4:    #007D69;
+  --rx-map-comuna-sel:  var(--rx-fg);
+
+  --rx-scrim:           rgba(11, 17, 20, .58);
+}
+
+
+/* ============================================================================
+   3 · TEMA SOL — app del conductor, 16:00, sol directo
+   Único lugar del sistema con extremos puros. Bajo sol la pantalla pierde
+   ~40% de contraste percibido y el fondo teñido desaparece: acá los
+   distintivos van en SÓLIDO PLENO (fondo del tono, texto en blanco o negro
+   puro), nunca teñidos.
+   ========================================================================== */
+
+[data-rx-theme="sun"] {
+
+  --rx-bg:              #FFFFFF;
+  --rx-bg-raised:       #FFFFFF;
+  --rx-bg-sunken:       #F1F6F6;
+  --rx-bg-inset:        #F1F6F6;
+
+  --rx-line-subtle:     #DCE7E8;
+  --rx-line:            #000000;
+  --rx-line-strong:     #000000;
+
+  --rx-fg:              #000000;  /* 21:1 */
+  --rx-fg-muted:        #000000;  /* no hay gris: el gris se pierde con sol */
+  --rx-fg-subtle:       #000000;
+  --rx-fg-on-accent:    #FFFFFF;
+
+  --rx-accent:          #000000;
+  --rx-accent-text:     #000000;
+  --rx-accent-soft:     #000000;
+  --rx-accent-deep:     #000000;  /* sólido pleno */
+  --rx-accent-line:     #000000;
+  --rx-fg-link:         #000000;
+  --rx-focus:           #000000;
+
+  /* Los seis tonos en sólido pleno: fondo del tono, texto sobre él.       */
+  --rx-balanced-fg:     #FFFFFF;
+  --rx-balanced-bg:     #00694F;
+  --rx-balanced-line:   #00694F;
+
+  --rx-progress-fg:     #FFFFFF;
+  --rx-progress-bg:     #005B85;
+  --rx-progress-line:   #005B85;
+
+  --rx-attention-fg:    #000000;
+  --rx-attention-bg:    #FFC53D;
+  --rx-attention-line:  #000000;
+
+  --rx-fault-fg:        #FFFFFF;
+  --rx-fault-bg:        #A82A14;
+  --rx-fault-line:      #A82A14;
+
+  --rx-neutral-fg:      #FFFFFF;
+  --rx-neutral-bg:      #000000;
+  --rx-neutral-line:    #000000;
+
+  --rx-inert-fg:        #000000;
+  --rx-inert-line:      #000000;
+  --rx-inert-trama-a:   #C6D6D8;
+  --rx-inert-trama-b:   #FFFFFF;
+  --rx-inert-fill:
+    repeating-linear-gradient(135deg,
+      var(--rx-inert-trama-a) 0 3px,
+      var(--rx-inert-trama-b) 3px 6px);
+  --rx-inert-fill-row:
+    repeating-linear-gradient(135deg, #F1F6F6 0 4px, #FFFFFF 4px 8px);
+
+  --rx-flag-on:         #000000;
+  --rx-flag-off:        #56666B;
+
+  --rx-scrim:           rgba(0, 0, 0, .55);
+}
+
+
+/* ============================================================================
+   4 · TEMA NOCHE — app del conductor, 21:30, calle a oscuras
+   Blanco tope #B9C6C4 en vez de #E9F2F3: baja el pico de luminancia un 38%
+   y mantiene 11,4:1. No es el claro invertido ni el oscuro atenuado.
+   DOS niveles de texto, no tres.
+   ========================================================================== */
+
+[data-rx-theme="night"] {
+
+  --rx-bg:              #05080A;
+  --rx-bg-raised:       #0A1012;
+  --rx-bg-sunken:       #05080A;
+  --rx-bg-inset:        #101A1C;
+
+  --rx-line-subtle:     #16211E;
+  --rx-line:            #22333A;
+  --rx-line-strong:     #B9C6C4;
+
+  --rx-fg:              #B9C6C4;  /* 11,4:1 */
+  --rx-fg-muted:        #7C8A88;  /*  5,6:1 */
+  --rx-fg-subtle:       #7C8A88;  /* NO existe un tercer nivel: no cumple AA */
+  --rx-fg-on-accent:    #05080A;
+
+  --rx-accent:          #3E6B63;  /* teal desaturado: no deja rastro retiniano */
+  --rx-accent-text:     #5E9A8F;
+  --rx-accent-soft:     #5E9A8F;
+  --rx-accent-deep:     #0A1F1B;
+  --rx-accent-line:     #1C3A34;
+  --rx-fg-link:         #5E9A8F;
+  --rx-focus:           #5E9A8F;
+
+  --rx-balanced-fg:     #5E9A8F;
+  --rx-balanced-bg:     #0A1F1B;
+  --rx-balanced-line:   #1C3A34;
+
+  --rx-progress-fg:     #5FA8C4;
+  --rx-progress-bg:     #0A1F29;
+  --rx-progress-line:   #17414F;
+
+  --rx-attention-fg:    #C79A3C;
+  --rx-attention-bg:    #1F1808;
+  --rx-attention-line:  #46330C;
+
+  --rx-fault-fg:        #C4574A;
+  --rx-fault-bg:        #200C0A;
+  --rx-fault-line:      #4A1C16;
+  --rx-fault-fg-soft:   #A97A72;
+
+  --rx-neutral-fg:      #7C8A88;
+  --rx-neutral-bg:      #101A1C;
+  --rx-neutral-line:    #22333A;
+
+  --rx-inert-fg:        #7C8A88;
+  --rx-inert-line:      #16211E;
+  --rx-inert-trama-a:   #101A1C;
+  --rx-inert-trama-b:   #0A1012;
+  --rx-inert-fill:
+    repeating-linear-gradient(135deg,
+      var(--rx-inert-trama-a) 0 3px,
+      var(--rx-inert-trama-b) 3px 6px);
+  --rx-inert-fill-row:
+    repeating-linear-gradient(135deg, #0A1012 0 4px, #05080A 4px 8px);
+
+  --rx-flag-on:         #3E6B63;
+  --rx-flag-off:        #7C8A88;
+
+  --rx-scrim:           rgba(5, 8, 10, .8);
+}
+
+
+/* ============================================================================
+   5 · EXCEPCIÓN DE TEMA — banner de sesión suplantada
+   Único elemento del sistema que NO cambia entre temas. Si el equipo trabaja
+   de noche y el banner se atenuara, dejaría de gritar justo cuando más
+   cansado está quien lo mira. No se colapsa, no se oculta al hacer scroll,
+   no se vuelve un ícono, y vive en el marco — nunca dentro de una pantalla.
+   ========================================================================== */
+
+:root {
+  --rx-impersonation-bg:   #C2361F;
+  --rx-impersonation-fg:   #FFFFFF;
+  --rx-impersonation-soft: #FFE7E3;
+  --rx-impersonation-h:    38px;   /* alto permanente; el marco se ajusta */
+}
+
+
+/* ============================================================================
+   6 · TIPOGRAFÍA
+   Chivo 400/500/600/700 y Azeret Mono 400/500/600. Los cuatro y los tres
+   pesos no son negociables: el 500 sostiene los rótulos y el 600 mono
+   sostiene todas las cifras. Subconjuntar de menos deja negrita sintética
+   justo en una columna de números.
+   ========================================================================== */
+
+:root {
+  --rx-font-sans: Chivo, system-ui, -apple-system, sans-serif;
+  --rx-font-mono: "Azeret Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* --- Escala ----------------------------------------------------------- */
+  --rx-text-9:    9px;     /* SOLO etiqueta mono en caja alta con tracking:
+                              cabecera de tabla, rótulo de bandera. */
+  --rx-text-10:   10.5px;  /* código secundario, texto dentro de distintivo */
+  --rx-text-11:   11.5px;  /* metadato mono, pie de tarjeta */
+  --rx-text-12:   12.5px;  /* cuerpo denso: nota, descripción */
+  --rx-text-13:   13.5px;  /* cuerpo por defecto del backoffice */
+  --rx-text-14:   14px;    /* cuerpo del portal del seller y de los correos */
+  --rx-text-15:   15px;    /* cuerpo de la app del conductor */
+  --rx-text-16:   16px;    /* fila de la app, botón principal */
+  --rx-text-17:   17px;    /* título de tarjeta */
+  --rx-text-19:   19px;    /* título de panel */
+  --rx-text-21:   21px;    /* título de pantalla en móvil */
+  --rx-text-22:   22px;    /* título de página */
+  --rx-text-26:   26px;    /* cifra destacada, título de ceremonia */
+  --rx-text-30:   30px;    /* magnitud de mosaico */
+  --rx-text-34:   34px;    /* total de documento */
+  --rx-text-40:   40px;    /* código de envío en etiqueta térmica */
+  --rx-text-50:   50px;    /* titular del sitio comercial (solo ahí) */
+
+  /* --- Pesos ------------------------------------------------------------ */
+  --rx-weight-body:     400;
+  --rx-weight-label:    500;  /* rótulo, etiqueta de distintivo, fila destacada */
+  --rx-weight-strong:   600;  /* título, total, cifra */
+  --rx-weight-brand:    700;  /* logotipo y titular del sitio */
+
+  /* --- Interlineado ----------------------------------------------------- */
+  --rx-leading-flat:    1;      /* cifra aislada */
+  --rx-leading-tight:   1.25;   /* título */
+  --rx-leading-body:    1.55;   /* cuerpo */
+  --rx-leading-loose:   1.8;    /* bloque de composición en mono */
+
+  /* --- Tracking --------------------------------------------------------- */
+  --rx-track-display: -.036em;  /* 34px y más */
+  --rx-track-title:   -.024em;  /* 22–30px */
+  --rx-track-heading: -.012em;  /* 17–21px */
+  --rx-track-body:     0;
+  --rx-track-caps:     .1em;    /* rótulo mono en caja alta (.08–.16em) */
+
+  /* --- Cifras ----------------------------------------------------------- */
+  --rx-numeric: tabular-nums;   /* font-variant-numeric en toda cifra */
+
+  /* --- Escala de texto de la app del conductor -------------------------- */
+  /* Respeta el ajuste del sistema y lo puede subir. Escala cuerpo y
+     rótulos; los objetivos táctiles NO bajan de 56px y las cifras no se
+     reflotan: en 150% las tarjetas crecen en alto.                        */
+  --rx-app-scale: 1;            /* 1 · 1.15 · 1.3 · 1.5 */
+}
+
+
+/* ============================================================================
+   7 · ESPACIADO Y DENSIDAD
+   Base 4, con pasos impares donde el ritmo óptico lo pide.
+   Todo grupo de hermanos se dispone con flex/grid + gap. Nunca con márgenes
+   por elemento: el gap sobrevive a reordenar, borrar y duplicar.
+   ========================================================================== */
+
+:root {
+  --rx-space-1:   3px;
+  --rx-space-2:   5px;   /* entre elementos de una misma línea */
+  --rx-space-3:   7px;
+  --rx-space-4:   9px;   /* dentro de un control */
+  --rx-space-5:   11px;
+  --rx-space-6:   14px;  /* entre bloques hermanos */
+  --rx-space-7:   18px;
+  --rx-space-8:   22px;  /* entre secciones de un panel */
+  --rx-space-9:   26px;
+  --rx-space-10:  34px;  /* padding de página */
+  --rx-space-11:  44px;
+  --rx-space-12:  52px;
+
+  /* --- Alto de fila por superficie -------------------------------------- */
+  --rx-row-backstage:  32px;  /* uso interno: compara empresas entre sí */
+  --rx-row-desktop:    40px;  /* backoffice con puntero */
+  --rx-row-desktop-lg: 44px;
+  --rx-row-touch:      56px;  /* la misma tabla, de pie en la bodega */
+  --rx-row-portal:     52px;  /* portal del seller */
+  --rx-row-app:        60px;  /* app del conductor */
+  --rx-row-app-lg:     70px;  /* fila de parada en el manifiesto */
+
+  /* --- Objetivo táctil -------------------------------------------------- */
+  --rx-target-min:     44px;  /* mínimo general */
+  --rx-target-app:     56px;  /* app del conductor y uso de pie en bodega */
+  --rx-target-gap:      8px;  /* separación mínima entre objetivos */
+
+  /* --- Marco de la aplicación ------------------------------------------- */
+  --rx-nav-open:      212px;
+  --rx-nav-collapsed:  56px;
+  --rx-nav-bottom:     64px;  /* barra inferior móvil: 4 destinos por rol */
+  --rx-panel-sm:      380px;
+  --rx-panel-md:      430px;
+  --rx-panel-lg:      520px;
+
+  /* --- Medidas de lectura ---------------------------------------------- */
+  --rx-measure-body:  70ch;
+  --rx-measure-legal: 62ch;  /* términos, privacidad, PDF carta */
+
+  /* --- Puntos de quiebre ----------------------------------------------- */
+  --rx-bp-phone:   390px;
+  --rx-bp-tablet: 1024px;
+  --rx-bp-desk:   1440px;
+}
+
+
+/* ============================================================================
+   8 · RADIO Y ELEVACIÓN
+   Cuatro radios y ninguno más. Las tablas y las secciones de página van a 0:
+   un producto de trabajo con esquinas redondeadas en todas partes pierde la
+   retícula.
+
+   NO HAY SOMBRAS. La jerarquía se construye con escalón de fondo, borde, y
+   una regla de acento de 2px en el borde superior — el único subrayado del
+   sistema. La única excepción es el velo del modal, que no es una sombra.
+   ========================================================================== */
+
+:root {
+  --rx-radius-badge: 2px;    /* distintivo de estado, etiqueta */
+  --rx-radius-ctrl:  3px;    /* botón, campo, tarjeta, panel, modal */
+  --rx-radius-pill:  999px;  /* interruptor, punto de mapa, contador */
+  --rx-radius-flat:  0;      /* tabla, fila, cabecera, sección de página */
+
+  --rx-border-hair:  1px;    /* separador, borde de control */
+  --rx-border-mark:  2px;    /* pertenencia, regla sobre un total, foco */
+  --rx-border-loud:  3px;    /* borde de acento del logotipo impreso, térmica */
+
+  --rx-elev-flat:    none;
+  --rx-elev-raised:  none;   /* se usa --rx-bg-raised, no una sombra */
+  --rx-elev-overlay: none;   /* se usa --rx-scrim detrás */
+
+  --rx-focus-ring:   0 0 0 2px var(--rx-bg), 0 0 0 4px var(--rx-focus);
+}
+
+
+/* ============================================================================
+   9 · MOVIMIENTO
+   Postura: movimiento funcional, más una firma acotada a cuatro momentos.
+   Se anima lo que comunica algo. En una tabla de mil filas cualquier
+   animación es un impuesto que paga alguien que lleva diez horas ahí.
+
+   NINGUNA CURVA TIENE REBOTE. Un rebote en una confirmación de dinero es
+   una falta de respeto al momento.
+   ========================================================================== */
+
+:root {
+  /* --- Duraciones ------------------------------------------------------- */
+  --rx-dur-instant: 90ms;   /* acuse de toque, cambio de casilla */
+  --rx-dur-quick:   120ms;  /* hover, foco, tooltip */
+  --rx-dur-base:    200ms;  /* cambio de estado en sitio, cruce de tema */
+  --rx-dur-panel:   240ms;  /* apertura de panel, pulso de confirmación */
+  --rx-dur-grave:   320ms;  /* ceremonia irreversible */
+
+  /* --- Curvas ----------------------------------------------------------- */
+  --rx-ease-standard: cubic-bezier(.2, 0, .3, 1);    /* casi todo */
+  --rx-ease-entrada:  cubic-bezier(.16, 1, .3, 1);   /* llega y se queda */
+  --rx-ease-salida:   cubic-bezier(.4, 0, 1, 1);     /* se va */
+  --rx-ease-gravedad: cubic-bezier(.34, 0, .2, 1);   /* peldaño 3, sin rebote */
+
+  /* --- Compuestos de uso frecuente ------------------------------------- */
+  --rx-tr-state:  color var(--rx-dur-base) var(--rx-ease-standard),
+                  background-color var(--rx-dur-base) var(--rx-ease-standard),
+                  border-color var(--rx-dur-base) var(--rx-ease-standard);
+  --rx-tr-hover:  all var(--rx-dur-quick) var(--rx-ease-standard);
+  --rx-tr-panel:  transform var(--rx-dur-panel) var(--rx-ease-entrada),
+                  opacity var(--rx-dur-panel) var(--rx-ease-entrada);
+  --rx-tr-grave:  transform var(--rx-dur-grave) var(--rx-ease-gravedad),
+                  opacity var(--rx-dur-grave) var(--rx-ease-gravedad);
+
+  /* --- Momentos de firma ----------------------------------------------- */
+  --rx-sig-result-in:   240ms;  /* la selección se contrae hacia el resultado */
+  --rx-sig-panel-delay:  60ms;  /* el encabezado llega DESPUÉS del panel */
+  --rx-sig-stop-close:  440ms;  /* cierre de parada: 200 rótulo + 240 pulso */
+  --rx-sig-pulse:       240ms;  /* pulso de confirmación de lo pendiente */
+
+  /* --- Gestos de la app, con seguro contra el guante -------------------- */
+  --rx-gesture-swipe:   45%;    /* recorrido del ancho para soltar la acción */
+  --rx-gesture-pull:    72px;   /* tirar para actualizar */
+  --rx-scan-min-hold:   90s;    /* permanencia mínima antes de cambiar tema */
+}
+
+/* Con "reducir movimiento" NO se apaga la página: se sustituye el movimiento
+   por otra señal. La duración baja a cero y los patrones que dependían del
+   movimiento activan su señal alternativa (borde permanente, salto de foco,
+   fondo sostenido por 3s, anuncio para lector de pantalla, y una pausa de
+   600ms antes de habilitar el botón de una acción irreversible).           */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --rx-dur-instant: 0ms;
+    --rx-dur-quick:   0ms;
+    --rx-dur-base:    0ms;
+    --rx-dur-panel:   0ms;
+    --rx-dur-grave:   0ms;
+    --rx-sig-result-in:   0ms;
+    --rx-sig-panel-delay: 0ms;
+    --rx-sig-stop-close:  0ms;
+    --rx-sig-pulse:       0ms;
+    --rx-reduced-hold:  3000ms;  /* fondo sostenido en vez de pulso */
+    --rx-reduced-gate:   600ms;  /* pausa antes de habilitar peldaño 3 */
+  }
+}
+
+
+/* ============================================================================
+   10 · IMPRESO
+   El papel tiene UNA sola versión: lo que tiene claro y oscuro son los
+   controles que lo generan y el visor. Una térmica invertida se borra; un PDF
+   oscuro se imprime negro.
+   ========================================================================== */
+
+@media print {
+  :root {
+    --rx-bg:            #FFFFFF;
+    --rx-bg-raised:     #FFFFFF;
+    --rx-bg-sunken:     #F7FBFB;  /* fondo tenue de fila de subtotal */
+    --rx-bg-inset:      #F7FBFB;
+    --rx-line-subtle:   #DCE7E8;
+    --rx-line:          #C6D6D8;
+    --rx-line-strong:   #0B1114;
+    --rx-fg:            #0B1114;
+    --rx-fg-muted:      #3E4D53;  /* 7,4:1 — único gris de texto impreso */
+    --rx-fg-subtle:     #3E4D53;
+    --rx-scrim:         transparent;
+
+    /* Jerarquía de tabla financiera impresa: tres recursos y ninguno más. */
+    --rx-print-subtotal-bg: #F7FBFB;
+    --rx-print-total-rule:  2px;    /* regla sobre el total */
+    --rx-print-total-under: 3px;    /* doble regla bajo el total */
+    --rx-print-measure:     62ch;
+  }
+}
+
+/* Térmica monocroma, 10x15 cm a 203 ppp. Medio hostil: sin color, sin grises
+   confiables, con texto que tiene que leerse desde una camioneta.
+   Cero grises, cero tramas de fondo, ningún peso bajo 400, ningún texto bajo
+   15px. La separación se hace con reglas de 2 y 3px.                       */
+[data-rx-media="thermal"] {
+  --rx-bg:            #FFFFFF;
+  --rx-fg:            #000000;
+  --rx-fg-muted:      #000000;
+  --rx-fg-subtle:     #000000;
+  --rx-line:          #000000;
+  --rx-line-subtle:   #000000;
+  --rx-line-strong:   #000000;
+
+  --rx-thermal-rule:      2px;
+  --rx-thermal-rule-lead: 3px;   /* bajo la cabecera */
+  --rx-thermal-min-text:  15px;  /* piso absoluto */
+  --rx-thermal-code:      40px;  /* código partido en dos líneas, mono */
+  --rx-thermal-comuna:    24px;  /* la comuna es MÁS grande que el nombre */
+  --rx-thermal-name:      17px;
+  --rx-thermal-qr:        100px; /* 2,6 cm con borde de 4px de zona de silencio */
+  --rx-thermal-qr-quiet:  4px;
+}
+
+
+/* ============================================================================
+   11 · MAPEO A TAILWIND
+   Los nombres de token están en inglés porque conviven con Tailwind. Este
+   bloque es el puente: extiende el tema en vez de reemplazarlo, para que lo
+   nuevo y lo viejo puedan convivir los meses que dure la migración.
+
+   tailwind.config.js
+   ------------------
+   theme: { extend: {
+     colors: {
+       bg:        'var(--rx-bg)',
+       'bg-raised':'var(--rx-bg-raised)',
+       'bg-sunken':'var(--rx-bg-sunken)',
+       line:      'var(--rx-line)',
+       'line-subtle':'var(--rx-line-subtle)',
+       fg:        'var(--rx-fg)',
+       'fg-muted':'var(--rx-fg-muted)',
+       'fg-subtle':'var(--rx-fg-subtle)',
+       accent:    'var(--rx-accent)',
+       'accent-text':'var(--rx-accent-text)',
+       balanced:  { fg:'var(--rx-balanced-fg)',  bg:'var(--rx-balanced-bg)',  line:'var(--rx-balanced-line)' },
+       progress:  { fg:'var(--rx-progress-fg)',  bg:'var(--rx-progress-bg)',  line:'var(--rx-progress-line)' },
+       attention: { fg:'var(--rx-attention-fg)', bg:'var(--rx-attention-bg)', line:'var(--rx-attention-line)' },
+       fault:     { fg:'var(--rx-fault-fg)',     bg:'var(--rx-fault-bg)',     line:'var(--rx-fault-line)' },
+       neutralst: { fg:'var(--rx-neutral-fg)',   bg:'var(--rx-neutral-bg)',   line:'var(--rx-neutral-line)' },
+       inert:     { fg:'var(--rx-inert-fg)',     line:'var(--rx-inert-line)' },
+     },
+     fontFamily: { sans:['Chivo','system-ui','sans-serif'],
+                   mono:['"Azeret Mono"','ui-monospace','monospace'] },
+     borderRadius:{ badge:'var(--rx-radius-badge)', ctrl:'var(--rx-radius-ctrl)' },
+     transitionTimingFunction:{
+       standard:'var(--rx-ease-standard)', entrada:'var(--rx-ease-entrada)',
+       salida:'var(--rx-ease-salida)',     gravedad:'var(--rx-ease-gravedad)' },
+     transitionDuration:{
+       instant:'90ms', quick:'120ms', base:'200ms', panel:'240ms', grave:'320ms' },
+   }}
+   ========================================================================== */
