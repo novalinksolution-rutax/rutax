@@ -110,6 +110,8 @@ const conductor = z.object({
   rezagados: conteo.nullable(),
   ultimoRegistroEn: instante.nullable(),
   minutosSinRegistrar: conteo.nullable(),
+  // Hoy siempre `null`: el rastreo del conductor está apagado por privacidad.
+  posicion: coordenada.nullable(),
 });
 
 const ola = z.object({

@@ -36,6 +36,7 @@ import { ENCUADRE_RM, ZOOM_DESTINO, type NivelZoom, type TemaMapa } from '../_li
 import { ATRIBUCIONES, urlBasemap } from '../_lib/mapa/config';
 import { MapaTorre, type ControlesMapa } from './mapa';
 import { PlacasComuna } from './placas';
+import { MarcadoresConductor } from './marcadores-conductor';
 import { CapaFichas } from './ficha';
 import { PanelTorre, type PestanaPanel } from './panel';
 import { CifrasTorre } from './cifras';
@@ -225,6 +226,9 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
 
   const hayMapa = geometrias !== null && !fallaGeometria;
   const sinPedidos = estado.estado === 'sin_pedidos';
+  // Sin basemap publicado el mapa corre degradado: es un estado declarado en
+  // `config.ts`, no un error que atajar.
+  const sinPlanoUrbano = urlBasemap() === null;
 
   return (
     <div className="space-y-5">
@@ -296,6 +300,16 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                   comunas={estado.comunas}
                   visible={nivel === 'comuna'}
                   onComuna={entrarEnComuna}
+                />
+                {/* El marcador de conductor aparece en el nivel de punto, que es
+                    donde el tablero lo pone (§13.2): a zoom de comuna no aporta
+                    nada y compite con la rampa de carga.
+                    ⚠️ Hoy no dibuja ninguno — el rastreo está apagado por
+                    privacidad y `posicion` llega siempre en `null`. */}
+                <MarcadoresConductor
+                  mapa={mapa}
+                  conductores={estado.conductores}
+                  visible={nivel === 'punto'}
                 />
                 {nivel === 'punto' ? (
                   <CapaFichas
@@ -385,6 +399,30 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                   )}
                 </button>
 
+                {/* ⚠️ EL MODO DEGRADADO SE DECLARA, NO SE INSINÚA.
+                    Sin plano urbano el mapa se ve raro: comunas y puntos sobre
+                    un fondo liso. Es un **estado válido**, no un fallo — el
+                    basemap es un recorte auto-hospedado que puede no estar
+                    publicado — pero hasta ahora lo único que lo decía era un
+                    sufijo de once píxeles pegado a la atribución, abajo a la
+                    derecha, donde nadie mira. Quien abría la Torre así no tenía
+                    forma de saber si el mapa estaba roto.
+                    Va en `attention` y no en `fault`: nada se rompió, y el dato
+                    operativo —que es lo que la pantalla existe para contar—
+                    está completo. */}
+                {sinPlanoUrbano ? (
+                  <div
+                    role="status"
+                    className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-attention-line bg-attention-bg px-3 py-1.5 text-xs text-attention-fg"
+                  >
+                    <span className="font-medium">El plano urbano no cargó.</span>
+                    <span>
+                      Las comunas, los puntos y las cifras son reales; lo que falta es el mapa
+                      de calles de fondo.
+                    </span>
+                  </div>
+                ) : null}
+
                 {sinPedidos ? (
                   // La ciudad no desaparece porque sea domingo: las comunas
                   // siguen dibujadas y encima va una sola frase.
@@ -401,8 +439,9 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                   data-reserva-placas
                   className="pointer-events-none absolute right-2 bottom-1 text-[10px] text-muted-foreground"
                 >
+                  {/* El sufijo «· sin plano urbano» se fue de acá: lo dice la
+                      franja de arriba, entera y donde se ve. */}
                   {ATRIBUCIONES.map((a) => a.etiqueta).join(' · ')}
-                  {urlBasemap() === null ? ' · sin plano urbano' : ''}
                 </p>
               </>
             ) : fallaGeometria ? (

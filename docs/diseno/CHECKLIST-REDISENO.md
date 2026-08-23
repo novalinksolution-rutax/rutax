@@ -973,15 +973,34 @@ vial, tres niveles de zoom— pero **pinta desde el sistema anterior**. Todo el 
       2 px — **lo único rojo del mapa** (regla 67). Sobre zoom 14 los que caen a menos de 12 px se
       apilan con un contador; **nunca se dispersan artificialmente**. Hoy existen las capas
       `tc-punto-*` con el rojo en `#fb3748`.
-- [ ] **`marcador de conductor`** · DE CERO · **no existe**: no hay capa ni fuente de conductor en
-      `IDS_CAPAS` / `IDS_FUENTES`; `derivar.ts` solo lleva el conductor como **texto** en la ficha.
-      Cuadrado de 12 px rotado 45°, con la inicial, y **solo su última posición** — no hay recorrido
-      histórico y no se puede dibujar uno (reglas 63 y 205 de la Ley 21.431).
-- [ ] **`mapa degradado`** · DE CERO · **existe y es deliberado** — `config.ts` lo documenta y
-      `estilo.ts:178` dice literalmente que es «para que el modo degradado se vea deliberado y no
-      roto». *Falta la forma:* hoy se declara con un sufijo de texto en la atribución
-      (`torre.tsx:405`, «· sin plano urbano») y el diseño pide una **franja `attention`** con el
-      mensaje completo. Es un **estado válido, no un error** · NUEVO #3.
+- [x] **`marcador de conductor`** · DE CERO — **construido, y sin fuente que lo alimente.**
+      `src/app/(tenant)/torre-de-control/_componentes/marcadores-conductor.tsx`: cuadrado de 12 px
+      rotado 45° con la inicial, en HTML y no en una capa de MapLibre porque el estilo **no tiene
+      sprite** —no hay un solo icono en el mapa— y un cuadrado rotado a tamaño fijo no se dibuja sin
+      uno. Es **la única cosa del mapa que no es un círculo**: la forma lo distingue, no el color.
+      El contrato gana `posicion: Coordenada | null` y la agregación sabe recibirla.
+      🔒 **Y no se le conectó ninguna lectura, por una razón que apareció construyendo:** el rastreo
+      en vivo del conductor **se apagó el 2026-08-14** tras una revisión de privacidad que lo marcó
+      de **severidad ALTA** —alimentaba `operacion.ubicacion_conductor` cada 90 s sin que ninguna
+      pantalla la leyera, sin purga y sin límite de tiempo, y esa última posición «muchas veces era
+      el domicilio del conductor»—. La tabla existe con **cero filas**.
+      La primera versión de este marcador **la leía, y el candado la atajó**:
+      `ubicacion-conductor-retirado.test.ts` analiza todo `src/` y falla si algún archivo llama a
+      `.from("ubicacion_conductor")`, para leerla o para escribirla. Su comentario dice que existe
+      exactamente para esto: «quien la toque tendrá que leer este comentario primero».
+      *Decisión del usuario, 23-08:* se retira la lectura y se conserva la pieza. La fuente legítima
+      llega con la **etapa 7**, que crea `operacion.punto_termino_conductor` — **otra tabla**, con
+      su propia finalidad y su propio consentimiento (`docs/seguridad/punto-de-termino-conductor.md`).
+      Ahí se enchufa `posicion` y el marcador empieza a dibujar sin tocarse.
+- [x] **`mapa degradado`** · DE CERO — **hecho** *(NUEVO #3, aprobado por el usuario el 23-08)*.
+      El modo sin plano urbano ya era deliberado en el código; lo que faltaba era **decirlo**. Se
+      anunciaba con un sufijo de once píxeles pegado a la atribución, abajo a la derecha, donde
+      nadie mira: quien abría la Torre así no tenía forma de saber si el mapa estaba roto.
+      Ahora es una franja al tope del mapa: «El plano urbano no cargó. Las comunas, los puntos y las
+      cifras son reales; lo que falta es el mapa de calles de fondo.»
+      Va en `attention` y **no** en `fault` porque nada se rompió y el dato operativo —que es lo que
+      la pantalla existe para contar— está completo. **Verificado en pantalla** apagando el basemap:
+      fondo `#33260A` y texto `#FFC53D`, los valores exactos de los tokens.
 - [ ] **Los tres niveles de zoom semántico** se entienden de tres maneras a la vez: el rótulo del
       nivel cambia («9 comunas» → «34 grupos» → «112 entregas»), los racimos se abren con un cruce
       de 200 ms, y el control de zoom marca el tramo. **Sin las tres, el salto se lee como que el

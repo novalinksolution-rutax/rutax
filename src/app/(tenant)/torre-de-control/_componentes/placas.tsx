@@ -224,7 +224,13 @@ export function PlacasComuna({
             }
           }}
           onClick={() => onComuna(comuna.nombre)}
-          className="pointer-events-auto absolute top-0 left-0 flex items-center gap-1.5 rounded-md border border-border bg-card/90 px-2 py-1 text-left shadow-xs backdrop-blur-[2px] transition-[box-shadow,background-color] hover:bg-card hover:shadow-sm focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          // ⚠️ Llevaba `shadow-xs` y `hover:shadow-sm`, contra la regla 4 —
+          // la elevación se construye con escalón de fondo y borde, no con
+          // sombra. Acá además la sombra no separaba nada: la placa ya flota
+          // sobre el plano por su fondo opaco y su borde. Lo que sí necesita es
+          // que el hover se note, y eso lo da el fondo, que pasa de 90 % a
+          // opaco. Radio 3 px (`--rx-radius-ctrl`), no `rounded-md`.
+          className="pointer-events-auto absolute top-0 left-0 flex items-center gap-1.5 rounded-ctrl border border-line bg-card/90 px-2 py-1 text-left backdrop-blur-[2px] transition-colors hover:border-fg-muted hover:bg-card focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           // Arranca oculta: hasta que `colocar()` la proyecte, su posición es
           // (0,0) y se vería amontonada en la esquina durante un frame.
           style={{ display: 'none', willChange: 'transform' }}
@@ -232,7 +238,8 @@ export function PlacasComuna({
           <span className="text-xs font-medium whitespace-nowrap">{comuna.nombre}</span>
           {comuna.incidenciasAbiertas > 0 ? (
             <span
-              className="size-1.5 shrink-0 rounded-full bg-destructive"
+              // Regla 67: el rojo es de la incidencia abierta y de nada más.
+            className="size-1.5 shrink-0 rounded-full bg-fault-fg"
               aria-label={`${comuna.incidenciasAbiertas} con incidencia`}
             />
           ) : null}

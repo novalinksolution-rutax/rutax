@@ -346,6 +346,28 @@ export interface AvanceConductor {
   rezagados: number | null;
   ultimoRegistroEn: string | null;
   minutosSinRegistrar: number | null;
+  /**
+   * Última posición conocida, o `null`.
+   *
+   * ⚠️ **Hoy es `null` SIEMPRE**, y no es un defecto: el rastreo en vivo del
+   * conductor se apagó el 2026-08-14 tras una revisión de privacidad que lo
+   * marcó de severidad ALTA —podía estar guardando el domicilio del conductor
+   * sin consentimiento para esa finalidad y sin límite de tiempo— y
+   * `operacion.ubicacion_conductor` dejó de escribirse. La tabla sigue ahí, con
+   * cero filas.
+   *
+   * El marcador del mapa se construyó igual (decisión del usuario, 23-08-2026)
+   * y **nadie llena este campo hoy**: `ubicacion-conductor-retirado.test.ts` es
+   * un candado que impide que el código de aplicación vuelva a tocar esa tabla,
+   * para leerla o para escribirla.
+   *
+   * Cuando exista una fuente legítima —la etapa 7 crea
+   * `operacion.punto_termino_conductor`, que es OTRA tabla, con su propia
+   * finalidad y su propio consentimiento— se pasa por `posiciones` y el marcador
+   * empieza a dibujar sin tocar el mapa. Ver
+   * `docs/seguridad/punto-de-termino-conductor.md`.
+   */
+  posicion: { lat: number; long: number } | null;
 }
 
 /**
@@ -368,6 +390,8 @@ export function avanceDeConductores(params: {
   /** Instante de referencia, en milisegundos. */
   ahoraMs: number;
   diaCerrado: boolean;
+  /** Última posición por conductor. Vacío mientras no haya rastreo. */
+  posiciones?: ReadonlyMap<string, { lat: number; long: number }>;
 }): AvanceConductor[] {
   const { paradas, nombres, registros, pedidos, ahoraMs } = params;
 
@@ -416,6 +440,7 @@ export function avanceDeConductores(params: {
       minutosSinRegistrar: Number.isNaN(ultimoMs)
         ? null
         : Math.max(0, Math.floor((ahoraMs - ultimoMs) / 60_000)),
+      posicion: params.posiciones?.get(id) ?? null,
     });
   }
 

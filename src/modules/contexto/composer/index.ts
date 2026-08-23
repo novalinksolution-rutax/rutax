@@ -310,6 +310,18 @@ export const cargarTablero = cache(async function cargarTablero(
 
   // --- F13: avance por conductor ---------------------------------------------
   const cerrado = diaCerrado(ahoraMinutos);
+  // ⚠️ NO se lee ninguna posición de conductor, y no es un olvido.
+  //
+  // El marcador del mapa existe y sabe dibujarse (`marcadores-conductor.tsx`),
+  // pero **no hay de dónde alimentarlo**: `operacion.ubicacion_conductor` dejó
+  // de escribirse el 2026-08-14 al cortarse el rastreo en vivo, y
+  // `ubicacion-conductor-retirado.test.ts` es un candado que impide que el
+  // código de aplicación vuelva a tocar esa tabla — para leerla o escribirla.
+  //
+  // Cuando exista una fuente legítima (la etapa 7 crea
+  // `operacion.punto_termino_conductor`, que es OTRA tabla, con su propia
+  // finalidad y su propio consentimiento), se enchufa acá pasando `posiciones`.
+  // Ver `docs/seguridad/punto-de-termino-conductor.md`.
   const conductores = avanceDeConductores({
     paradas: paradasFilas.map((p) => ({ conductorId: p.driver_id, pedidoId: p.pedido_id })),
     nombres: nombresConductores,

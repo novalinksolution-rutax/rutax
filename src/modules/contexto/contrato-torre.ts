@@ -274,6 +274,15 @@ export interface ConductorEnTorre {
   /** Último cierre que subió, para F6 y para ordenar. */
   ultimoRegistroEn: string | null;
   minutosSinRegistrar: number | null;
+  /**
+   * Última posición conocida, para el marcador del mapa. **Hoy siempre `null`**:
+   * el rastreo se apagó por privacidad y la tabla no se escribe. Ver
+   * `AvanceConductor.posicion` en `agregacion.ts`, que lo explica entero.
+   *
+   * Del conductor viaja el nombre y su avance, **nunca su recorrido**: es una
+   * sola posición, sin histórico, y no se puede dibujar una traza.
+   */
+  posicion: Coordenada | null;
 }
 
 // =============================================================================
