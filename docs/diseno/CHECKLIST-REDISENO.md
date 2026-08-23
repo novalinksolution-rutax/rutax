@@ -1405,7 +1405,7 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
 | `bloque de capacidades` | DE CERO | B3b Equipo, B6 Equipo · 2 | 9b · **NUEVO #14** · regla 30 |
 | `credencial de una sola vez` | DE CERO | B3b Integraciones · 1 | 9b · regla 31 |
 | `formulario de alta con aviso en línea` | EXTENDER | B1c, B3b, B4, B6, B7 · 14 | 9b |
-| `tarjeta de salud de conexión` | DE CERO | P7, B3b Sellers, B4, B6 · 6 | **9c · Conectar cuentas (P7)** |
+| ✅ `tarjeta de salud de conexión` | DE CERO | P7, B3b Sellers, B4, B6 · 6 | **hecha el 23-08** — ver abajo |
 | ✅ `bloque de falla externa` | DE CERO | P7, B4 Inicio · 4 | **hecho el 23-08** — ver abajo |
 | `fila de salud de conexión` | EXTENDER | B6 Salud · 1 | 9c |
 | `secuenciador de ruta` | DE CERO | B1b Manifiestos · 2 | **9d · Operación**, después del bloque 4 |
@@ -1438,6 +1438,29 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
       dice de más sobre cómo está armado el sistema por dentro. Va en `attention` y no en `fault`
       porque nada se perdió y hay salida.
       **Verificado en pantalla** con una conexión caída real de la semilla.
+
+- [x] **`tarjeta de salud de conexión`** · DE CERO — `src/components/ui/tarjeta-salud-conexion.tsx`,
+      y con ella **el vocabulario unificado**.
+      🐞 **Los mismos cuatro estados se llamaban de tres formas distintas**, en tres archivos:
+
+      | estado | `traduccion-estados` | panel de ML | panel de Shopify |
+      |---|---|---|---|
+      | `sana` | Conectado | Conectada y sincronizando | Conectada |
+      | `atencion` | Requiere atención | Necesita atención | **Con problemas** |
+      | `desvinculada` | Desconectado | Desconectada — reconéctala… | Desconectada |
+      | `pendiente` | Sin conectar | Configurando… | Sin sincronizar todavía |
+
+      **Y el seller ve dos de ellos en la misma pantalla**: su cuenta de ML «necesita atención» y su
+      tienda Shopify está «con problemas» — dos nombres para lo mismo, uno al lado del otro, y nada
+      que le diga que son el mismo estado.
+      Gana la redacción **accionable** y vive en `traduccion-estados.ts`, que es el único sitio del
+      vocabulario. El componente **no tiene títulos propios** a propósito: tenerlos habría creado el
+      cuarto.
+      El tono sale de los seis del sistema, con su glifo — cada panel traía su propio mapa de
+      colores con alfas sueltos (`bg-success/15`, `border-warning/30`, `variant="error"`).
+      `pendiente` va en **neutro** y no en ámbar: una cuenta que todavía no sincronizó no es una
+      advertencia, es el estado normal de algo que acaba de empezar.
+      **Verificado en pantalla** en el portal del seller.
 
 ## Reglas de configuración que se verifican acá
 

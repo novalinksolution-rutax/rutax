@@ -890,11 +890,21 @@ export function traducirMetodoPago(metodo: MetodoPago): string {
 
 export type EstadoSaludConexion = "sana" | "atencion" | "desvinculada" | "pendiente";
 
+/**
+ * ⚠️ Los mismos cuatro estados tenían **tres vocabularios**: este, otro en el
+ * panel de ML y otro en el de Shopify. Y el seller veía dos de ellos en la
+ * misma pantalla — su cuenta de ML «necesita atención» y su tienda Shopify
+ * estaba «con problemas», dos nombres para lo mismo, uno al lado del otro.
+ *
+ * Gana la redacción **accionable**: dice qué pasa, no solo cómo se llama. El
+ * tono lo pone `tonoSaludConexion` en
+ * `components/ui/tarjeta-salud-conexion.tsx`.
+ */
 export const TEXTO_SALUD_CONEXION: Record<EstadoSaludConexion, string> = {
-  sana: "Conectado",
-  atencion: "Requiere atención",
-  desvinculada: "Desconectado",
-  pendiente: "Sin conectar",
+  sana: "Conectada y sincronizando",
+  atencion: "Necesita atención",
+  desvinculada: "Desconectada",
+  pendiente: "Configurando…",
 };
 
 const VARIANTE_SALUD_CONEXION: Record<EstadoSaludConexion, VarianteEstado> = {

@@ -48,6 +48,7 @@ import {
   type ConexionMlSellerItem,
 } from "./actions";
 import { BloqueFallaExterna } from "@/components/ui/bloque-falla-externa";
+import { TEXTO_SALUD_CONEXION } from "@/lib/ui/traduccion-estados";
 
 /**
  * Ventana de "enfriamiento" del botón tras cada intento: pura UX en el
@@ -524,7 +525,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
     case "sana":
       return {
         icono: <CheckCircle2 className="size-5" aria-hidden="true" />,
-        titulo: "Conectada y sincronizando",
+        titulo: TEXTO_SALUD_CONEXION.sana,
         detalle: c.ultimaSyncExitosaEn ? `Última sincronización: ${formatearTiempoRelativo(c.ultimaSyncExitosaEn)}` : null,
         fondoIcono: "bg-success/15 text-success",
         bordeTarjeta: "border-success/30",
@@ -534,7 +535,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
     case "pendiente":
       return {
         icono: <Clock className="size-5" aria-hidden="true" />,
-        titulo: "Configurando…",
+        titulo: TEXTO_SALUD_CONEXION.pendiente,
         detalle: "Esto es transitorio — no necesitas hacer nada por ahora.",
         fondoIcono: "bg-muted text-muted-foreground",
         bordeTarjeta: "border-border",
@@ -544,7 +545,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
     case "atencion":
       return {
         icono: <TriangleAlert className="size-5" aria-hidden="true" />,
-        titulo: "Necesita atención",
+        titulo: TEXTO_SALUD_CONEXION.atencion,
         detalle: "Es un problema operativo de nuestro lado o de Mercado Libre. Si persiste, reconéctala.",
         fondoIcono: "bg-warning/15 text-warning",
         bordeTarjeta: "border-warning/30",
@@ -555,7 +556,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
     default:
       return {
         icono: <ShieldAlert className="size-5" aria-hidden="true" />,
-        titulo: "Desconectada — reconéctala para seguir recibiendo tus pedidos",
+        titulo: TEXTO_SALUD_CONEXION.desvinculada,
         detalle: c.desconectadaDesde ? `Desde el ${formatearFecha(c.desconectadaDesde)}.` : null,
         fondoIcono: "bg-destructive/15 text-destructive",
         bordeTarjeta: "border-destructive/30",

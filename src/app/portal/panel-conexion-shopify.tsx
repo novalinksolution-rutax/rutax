@@ -16,7 +16,6 @@ import { CheckCircle2, Loader2, Plus, RefreshCw, Store, TriangleAlert } from "lu
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -34,20 +33,16 @@ import {
   reconectarTiendaShopify,
   type ConexionShopifySeller,
 } from "./acciones-shopify";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
+import { tonoSaludConexion } from "@/components/ui/tarjeta-salud-conexion";
+import { TEXTO_SALUD_CONEXION } from "@/lib/ui/traduccion-estados";
 
-const TEXTO_SALUD: Record<ConexionShopifySeller["estadoSalud"], string> = {
-  sana: "Conectada",
-  atencion: "Con problemas",
-  desvinculada: "Desconectada",
-  pendiente: "Sin sincronizar todavía",
-};
-
-const VARIANTE_SALUD: Record<ConexionShopifySeller["estadoSalud"], "success" | "warning" | "error" | "neutral"> = {
-  sana: "success",
-  atencion: "warning",
-  desvinculada: "error",
-  pendiente: "neutral",
-};
+// ⚠️ Acá vivían DOS mapas propios para los mismos cuatro estados que ya tenían
+// nombre en `traduccion-estados.ts` y otra redacción todavía en el panel de ML.
+// Tres vocabularios para cuatro estados, y el seller **ve dos de ellos en la
+// misma pantalla**: su cuenta de ML «necesita atención» y su tienda Shopify
+// está «con problemas» — dos nombres para lo mismo, uno al lado del otro.
+// Ahora los dos paneles usan `TarjetaSaludConexion`.
 
 export function PanelConexionesShopify({
   conexionesIniciales,
@@ -105,7 +100,10 @@ export function PanelConexionesShopify({
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Badge variant={VARIANTE_SALUD[c.estadoSalud]}>{TEXTO_SALUD[c.estadoSalud]}</Badge>
+                  <DistintivoEstado
+                    tono={tonoSaludConexion(c.estadoSalud)}
+                    etiqueta={TEXTO_SALUD_CONEXION[c.estadoSalud]}
+                  />
                   <Button
                     size="sm"
                     variant="ghost"
