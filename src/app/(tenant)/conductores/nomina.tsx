@@ -40,6 +40,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { ChevronRight, Minus, Plus, Users } from "lucide-react";
+import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
@@ -109,22 +110,16 @@ interface Props {
 const ANCHO_CAJON = "w-full sm:max-w-[352px]!";
 
 /**
- * Las seis columnas del tablero, en su proporción — **desde `sm` hacia arriba**.
+ * Las cinco columnas de datos del tablero, en su proporción — la sexta, el
+ * chevrón, va fuera de la grilla porque es del botón, no de los datos.
  *
- * En angosto la tabla NO se encoge: se rehace. Con seis columnas a 375 px la
- * primera colapsa a 24 px —el nombre deja de leerse— y el documento desborda a
- * lo ancho. El tablero no dibuja esta pantalla en teléfono, así que se aplica lo
- * que P1 fija para todo el producto: «el teléfono no es una reducción».
- *
- * Quedan las tres cosas que permiten reconocer y decidir —quién es, cómo está
- * hoy, y el paso al detalle—; cupo, relación y zonas viven en el cajón, que en
- * teléfono ocupa la pantalla entera.
+ * En angosto la tabla NO se encoge: se rehace en `ficha de fila 390`. Con seis
+ * columnas a 375 px la primera colapsa a 24 px —el nombre deja de leerse— y el
+ * documento desborda a lo ancho. El tablero no dibuja esta pantalla en teléfono,
+ * así que se aplica lo que P1 fija para todo el producto: «el teléfono no es una
+ * reducción», y lo que cae reaparece bajo el nombre, en mono.
  */
-const COLUMNAS =
-  "grid-cols-[1fr_auto_30px] sm:grid-cols-[1.5fr_1.05fr_.8fr_.9fr_1.3fr_30px]";
-
-/** Las celdas que solo existen de `sm` hacia arriba. */
-const SOLO_ANCHO = "hidden sm:block";
+const COLUMNAS_ANCHO = "grid-cols-[1.5fr_1.05fr_.8fr_.9fr_1.3fr]";
 
 export function PanelNomina({
   estadoInicial,
@@ -221,16 +216,20 @@ export function PanelNomina({
         />
       ) : (
         <div className="border border-line">
+          {/* La cabecera solo existe donde hay columnas: en la ficha de 390 cada
+              dato ya viene rotulado por su posición y su tipografía. */}
           <div
-            className={`grid ${COLUMNAS} border-b border-line bg-bg-sunken text-[10px] font-medium tracking-[0.08em] text-fg-muted uppercase`}
+            className={`hidden px-3 sm:flex sm:items-center sm:gap-2 border-b border-line bg-bg-sunken text-[10px] font-medium tracking-[0.08em] text-fg-muted uppercase`}
             role="row"
           >
-            <div className="px-3 py-2">Conductor</div>
-            <div className="px-3 py-2">Hoy</div>
-            <div className={`px-3 py-2 ${SOLO_ANCHO}`}>Capacidad</div>
-            <div className={`px-3 py-2 ${SOLO_ANCHO}`}>Relación</div>
-            <div className={`px-3 py-2 ${SOLO_ANCHO}`}>Zonas preferentes</div>
-            <div className="px-3 py-2" />
+            <span className={`flex-1 grid ${COLUMNAS_ANCHO}`}>
+              <span className="py-2 pr-3">Conductor</span>
+              <span className="py-2 pr-3">Hoy</span>
+              <span className="py-2 pr-3">Capacidad</span>
+              <span className="py-2 pr-3">Relación</span>
+              <span className="py-2 pr-3">Zonas preferentes</span>
+            </span>
+            <span className="w-4 shrink-0" />
           </div>
           {visibles.map((c) => (
             <FilaConductor
@@ -279,13 +278,16 @@ function FilaConductor({
   const nombresZona = conductor.zonaIds
     .map((id) => zonas.find((z) => z.id === id)?.nombre)
     .filter((n): n is string => Boolean(n));
+  const relacion = TEXTO_RELACION_CONDUCTOR[conductor.tipoRelacion] ?? conductor.tipoRelacion;
+  const textoZonas = nombresZona.length > 0 ? nombresZona.join(", ") : "Sin zonas";
+  const distintivo = <DistintivoEstado tono={hoy.tono} etiqueta={hoy.etiqueta} />;
 
   return (
     <button
       type="button"
       onClick={onSeleccionar}
       className={[
-        `grid ${COLUMNAS} w-full items-center border-b border-line-subtle text-left last:border-b-0`,
+        "flex w-full items-center gap-2 border-b border-line-subtle px-3 text-left last:border-b-0",
         "hover:bg-bg-sunken focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-text",
         // La trama es del tono `inert` y va en toda la fila: es el segundo
         // portador del estado «fuera de nómina», el que sobrevive en monocromo.
@@ -296,23 +298,37 @@ function FilaConductor({
         .join(" ")}
       aria-current={seleccionado ? "true" : undefined}
     >
-      <span className="min-w-0 px-3 py-2.5">
-        <span className="block truncate text-sm font-medium text-fg">{conductor.nombre}</span>
-        <span className="rx-num block truncate text-xs text-fg-muted">{conductor.rut}</span>
+      {/* En 390 la ficha; de `sm` hacia arriba, la grilla de columnas. Es el
+          MISMO botón: cambia la disposición del contenido, no el objeto
+          tocable. */}
+      <FichaFila390
+        className="flex-1 py-2 sm:hidden"
+        estado={distintivo}
+        clasificacion={relacion}
+        titulo={conductor.nombre}
+        detalle={
+          fueraDeNomina
+            ? conductor.rut
+            : `${conductor.rut} · ${conductor.capacidadParadas} paradas · ${textoZonas}`
+        }
+      />
+
+      <span className={`hidden flex-1 sm:grid ${COLUMNAS_ANCHO} sm:items-center`}>
+        <span className="min-w-0 py-2.5 pr-3">
+          <span className="block truncate text-sm font-medium text-fg">{conductor.nombre}</span>
+          <span className="rx-num block truncate text-xs text-fg-muted">{conductor.rut}</span>
+        </span>
+        <span className="py-2.5 pr-3">{distintivo}</span>
+        <span className="rx-num py-2.5 pr-3 text-sm">
+          {fueraDeNomina ? "—" : `${conductor.capacidadParadas} paradas`}
+        </span>
+        <span className="py-2.5 pr-3 text-sm">{relacion}</span>
+        <span className="min-w-0 truncate py-2.5 pr-3 text-sm text-fg-muted">
+          {fueraDeNomina ? "—" : textoZonas}
+        </span>
       </span>
-      <span className="px-3 py-2.5">
-        <DistintivoEstado tono={hoy.tono} etiqueta={hoy.etiqueta} />
-      </span>
-      <span className={`rx-num px-3 py-2.5 text-sm ${SOLO_ANCHO}`}>
-        {fueraDeNomina ? "—" : `${conductor.capacidadParadas} paradas`}
-      </span>
-      <span className={`px-3 py-2.5 text-sm ${SOLO_ANCHO}`}>
-        {TEXTO_RELACION_CONDUCTOR[conductor.tipoRelacion] ?? conductor.tipoRelacion}
-      </span>
-      <span className={`min-w-0 truncate px-3 py-2.5 text-sm text-fg-muted ${SOLO_ANCHO}`}>
-        {fueraDeNomina ? "—" : nombresZona.length > 0 ? nombresZona.join(" · ") : "Sin zonas"}
-      </span>
-      <span className="px-3 py-2.5 text-fg-subtle">
+
+      <span className="shrink-0 text-fg-subtle">
         <ChevronRight className="size-4" aria-hidden="true" />
       </span>
     </button>

@@ -134,9 +134,21 @@ Verificado en el navegador contra `B1c`: las proporciones de columna salen exact
   21.431— y hay un candado de regresión que hace fallar la suite si alguien vuelve a consultar esa
   tabla. El tablero se dibujó sin esa decisión a la vista. Volver a mostrarla es una decisión
   nueva.
-- El teléfono: el tablero no dibuja esta pantalla en 390 y a seis columnas es inservible —la
-  primera colapsa a 24 px y el documento desborda—. Se aplicó lo que P1 fija para todo el
-  producto: en angosto quedan nombre, estado y el paso al detalle; el resto vive en el cajón.
+**El teléfono, en su segunda pasada.** El tablero no dibuja esta pantalla en 390 y a seis columnas
+es inservible: la primera colapsa a 24 px y el documento desborda 79 px. La primera solución
+—esconder tres columnas— era justo la reducción que P1 prohíbe. Ahora aplica la regla al pie:
+
+> «La fila se convierte en **ficha de tres líneas**: estado y origen arriba, destinatario a 16 px,
+> y la línea mono con lo que se cayó. Lo que cae reaparece bajo el destinatario. **Destinatario y
+> código nunca caen.**»
+
+Traducido a conductores: distintivo + relación arriba, nombre a 16 px, y
+`19012345-6 · 30 paradas · Ñuñoa, Maipú` en mono. **Nada se esconde, se reacomoda.**
+
+✅ Y sale de ahí `src/components/ui/ficha-fila-390.tsx`, **uno de los nueve componentes de §8 que
+no tenían ni rastro en el código**. Queda hecho para los ~15 listados que vienen, en vez de que
+cada pantalla improvise su propio teléfono. No es interactiva a propósito: el enlace y el foco son
+de la fila que la contiene, o habría dos objetos tocables anidados.
 
 ## B2 · Dinero · 5 pantallas
 
