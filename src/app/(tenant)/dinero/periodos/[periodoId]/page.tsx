@@ -33,6 +33,8 @@ import { DialogEmitirFactura } from "./dialog-emitir-factura";
 import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
 import { BotonDescargaDocumento } from "./boton-descarga-documento";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
+import { TablaFinanciera } from "@/components/ui/tabla-financiera";
+import { agruparLineasCobro } from "@/modules/dinero/agrupacion-lineas";
 
 export const metadata: Metadata = {
   title: "Detalle de período",
@@ -48,7 +50,7 @@ const LIMITE_LINEAS = 50;
 
 interface PageProps {
   params: Promise<{ periodoId: string }>;
-  searchParams: Promise<{ pagina?: string; volver?: string }>;
+  searchParams: Promise<{ pagina?: string; volver?: string; lineas?: string }>;
 }
 
 export default async function PaginaDetallePeriodo({ params, searchParams }: PageProps) {
@@ -58,7 +60,10 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   if (!puedeEmitirFacturas(sesion.usuario)) redirect("/dashboard");
 
   const { periodoId } = await params;
-  const { volver } = await searchParams;
+  const { volver, lineas: vistaLineas } = await searchParams;
+  // La vista agrupada es la de por defecto: 285 filas no se auditan. La línea
+  // por línea sigue existiendo, un clic más allá.
+  const verUnaPorUna = vistaLineas === "detalle";
   const sp = await searchParams;
   const pagina = Math.max(1, parseInt(sp.pagina ?? "1", 10));
   const tenantId = sesion.usuario.tenantId;
@@ -128,6 +133,7 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   }
 
   const lineas: LineaCobro[] = periodo.lineas ?? [];
+  const agrupacion = agruparLineasCobro(lineas);
   const totalPaginas = Math.ceil(lineas.length / LIMITE_LINEAS);
   const offset = (pagina - 1) * LIMITE_LINEAS;
   const lineasPaginadas = lineas.slice(offset, offset + LIMITE_LINEAS);
@@ -384,12 +390,35 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
       {/* Sección C — Tabla de líneas */}
       <section aria-labelledby="lineas-titulo">
-        <h2
-          id="lineas-titulo"
-          className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          Líneas de cobro ({lineas.length} línea{lineas.length !== 1 ? "s" : ""})
-        </h2>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2
+            id="lineas-titulo"
+            className="font-mono text-[10px] font-medium tracking-[0.1em] text-fg-subtle uppercase"
+          >
+            Líneas de cobro ·{" "}
+            {verUnaPorUna ? "una por una" : "agrupadas por concepto"}
+          </h2>
+          {lineas.length > 0 ? (
+            <Link
+              // Sin parámetros el href queda en `?`, que funciona pero ensucia
+              // la barra: en ese caso se vuelve a la ruta pelada.
+              href={
+                (() => {
+                  const q = new URLSearchParams({
+                    ...(volver ? { volver } : {}),
+                    ...(verUnaPorUna ? {} : { lineas: "detalle" }),
+                  }).toString();
+                  return q ? `?${q}` : `/dinero/periodos/${periodo.id}`;
+                })()
+              }
+              className="text-xs font-medium text-accent-text hover:underline"
+            >
+              {verUnaPorUna
+                ? "← Volver a la vista agrupada"
+                : `Ver las ${lineas.length} una por una ›`}
+            </Link>
+          ) : null}
+        </div>
 
         {lineas.length === 0 ? (
           <div className="rounded-lg border bg-card px-6 py-10 text-center">
@@ -397,6 +426,47 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               Este período no tiene líneas todavía. Se agregarán automáticamente a medida que
               se registren entregas.
             </p>
+          </div>
+        ) : !verUnaPorUna ? (
+          <div className="overflow-hidden rounded-lg border bg-card">
+            <TablaFinanciera
+              // «neto» y no «bruto»: los impuestos los calcula y los muestra el
+              // documento tributario, no Rutax (regla 22).
+              rotulo="neto"
+              filas={[
+                ...agrupacion.conceptos.map((c) => ({
+                  tipo: "linea" as const,
+                  concepto: c.concepto,
+                  entregas: c.entregas,
+                  tarifa: c.tarifa,
+                  monto: c.monto,
+                })),
+                ...(agrupacion.ajustes.length > 0
+                  ? [
+                      {
+                        tipo: "subtotal" as const,
+                        concepto: "Subtotal de entregas",
+                        entregas: agrupacion.entregasTotales,
+                        monto: agrupacion.subtotalEntregas,
+                      },
+                    ]
+                  : []),
+                ...agrupacion.ajustes.map((aj) => ({
+                  tipo: "ajuste" as const,
+                  concepto: aj.concepto,
+                  monto: aj.monto,
+                  causa: aj.pedidoId
+                    ? { texto: "ver el pedido", href: `/operaciones/${aj.pedidoId}` }
+                    : undefined,
+                })),
+                {
+                  tipo: "total" as const,
+                  concepto: "Total del período",
+                  entregas: agrupacion.entregasTotales,
+                  monto: agrupacion.total,
+                },
+              ]}
+            />
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border bg-card shadow-sm">

@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **3 de 16** · ceremonia, composición y tabla financiera | montar la tabla en la pantalla (falta agregación) · 21 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ · falta `B2b` |
+| **5** | **Dinero** | **3 de 16** · las tres, montadas en pantalla | 13 componentes · 21 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ · falta `B2b` |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -444,9 +444,17 @@ bloques 4–8, cuando cada pantalla se toque.
       fila — nunca un paréntesis, que no lo lee quien no es contador, ni solo color, que se pierde
       al imprimir.
       **Verificada en el navegador** con los datos del tablero.
-      ⚠️ **Falta el dato para montarla en la pantalla real:** el detalle de período lista las líneas
-      una por una con paginación de 50, y agrupar por concepto en el cliente sería agrupar 50 de
-      285. Necesita una consulta agregada en `modules/dinero`. Es lo próximo del bloque.
+      **Montada en el detalle de período**, y sin consulta nueva: una versión anterior de este
+      documento decía que hacía falta una agregación en backend, y era **falso** —
+      `listarLineasCobroPorPeriodo` ya trae *todas* las líneas con `leerTodasLasFilas`, y la
+      paginación de 50 es solo del render. La agrupación es
+      `src/modules/dinero/agrupacion-lineas.ts`, con **9 pruebas** que fijan la invariante que
+      sostiene todo: **subtotal + Σ ajustes = total = Σ `montoFinalClp`**, verificada también a
+      escala de 285 líneas. Si no cuadra, la tabla miente, y quien la revisa se va a Excel.
+      La tarifa unitaria se muestra **solo si todas las líneas del concepto comparten monto base**:
+      un promedio sería un número que no existe en ninguna línea.
+      La vista línea por línea no se perdió: pasa a estar detrás de «ver las N una por una», como
+      pide el tablero.
 - [ ] `panel de ajuste manual` · `atribuidor de pago` · `indicador de folio disponible` ·
       `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
 
