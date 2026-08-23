@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **6 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
+| **5** | **Dinero** | **7 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -429,10 +429,29 @@ bloques 4–8, cuando cada pantalla se toque.
       `formato-moneda.ts`): un `$` en cada término compite con la resta, que es lo que hay que leer.
       *Falta el dato:* el preflight devuelve `netoClp`/`ivaClp`/`totalClp` pero **no el desglose por
       concepto**, así que el modal aún no puede mostrar la resta real. Es trabajo de backend.
-- [ ] **`verificación previa`** — la lógica existe y es buena (`modules/dinero/preflight.ts`, 906
-      líneas, 16 códigos). Lo que falta es la **forma**: los tres desenlaces como pantalla, y
-      de-duplicar `SkeletonPreflight` / `BloquePreflightFallido` / `BandaItemsPreflight`, que están
-      **triplicados literalmente** (~100 líneas cada uno) en los tres diálogos.
+- [x] **`verificación previa`** · DE CERO — `src/components/ui/verificacion-previa.tsx`. La lógica
+      ya existía y era buena (`modules/dinero/preflight.ts`, 906 líneas, 16 códigos); lo que
+      faltaba era la **forma**, y era la primera de las seis decisiones que P4 fija para todo el
+      producto: *la verificación es una pantalla, no una validación*.
+      **Se de-duplicaron 288 líneas.** `SkeletonPreflight` / `BloquePreflightFallido` /
+      `BandaItemsPreflight` estaban copiados **literalmente** en los tres cuadros de acciones
+      irreversibles —emitir factura, nota de crédito y pago—, 96 líneas cada uno, diferenciándose
+      **en una sola cadena** para lectores de pantalla («antes de emitir» / «anular» / «pagar»).
+      Tres copias de la regla que decide si se emite un DTE son tres oportunidades de que una se
+      quede atrás.
+      **Y el desenlace del medio no existía**, que es justo lo que el tablero dice: con reparos
+      —entregas sin tarifa, un mínimo de facturación no alcanzado— se emitía **sin fricción y sin
+      que quedara nada anotado**. Ahora exige un acto explícito y queda en la bitácora **con los
+      códigos de lo que se pasó por alto**: `registrarPreflightOmitido` distingue
+      `preflight_fallido` de `reparos_ignorados`, porque la pregunta que se hace después no es «¿la
+      omitió?» sino «¿qué decía?».
+      El desenlace A dejó de ser un silencio: dice «la verificación no encontró reparos», porque un
+      vacío no distingue *verificado y correcto* de *no se verificó nada*. El C ya estaba bien —
+      deshabilitado con motivo, nunca oculto— y **ninguna casilla lo levanta**: un reparo se asume,
+      un bloqueo se resuelve.
+      10 pruebas sobre las dos decisiones (`actoBloqueadoPorVerificacion`,
+      `laVerificacionQuedaOmitida`). **Verificado en pantalla** el desenlace A; el B y el C no se
+      pudieron ejercitar: la semilla no tiene un período con reparos ni con bloqueos.
 - [x] **`tabla financiera`** · DE CERO — `src/components/ui/tabla-financiera.tsx`. Agrupada por
       concepto y no línea por línea, porque **285 filas no se auditan**: tres conceptos con
       subtotal, los ajustes con su origen enlazado, y «ver las N una por una» para cuando hace

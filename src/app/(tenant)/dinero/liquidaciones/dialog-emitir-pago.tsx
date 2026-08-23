@@ -27,15 +27,18 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, Banknote, XCircle } from "lucide-react";
+import { Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
+import {
+  VerificacionPrevia,
+  actoBloqueadoPorVerificacion,
+  laVerificacionQuedaOmitida,
+  type EstadoVerificacion,
+} from "@/components/ui/verificacion-previa";
 import { formatearFechaHora } from "@/lib/formato-cl";
-import { cn } from "@/lib/utils";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import type { ItemPreflight, ResultadoPreflight } from "@/modules/dinero/preflight";
+import type { ResultadoPreflight } from "@/modules/dinero/preflight";
 import {
   accionEmitirPagoLiquidacion,
   accionPreflightEmitirPago,
@@ -51,8 +54,6 @@ interface Props {
   /** Quién firma. Va dentro del modal, antes de actuar. */
   autorNombre: string;
 }
-
-type EstadoPreflight = "verificando" | "listo" | "error_preflight";
 
 function formatearFechaCorta(fechaIso: string): string {
   if (!fechaIso || fechaIso.length < 10) return fechaIso;
@@ -72,7 +73,7 @@ export function DialogEmitirPago({
   const [abierto, setAbierto] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const [estadoPreflight, setEstadoPreflight] = useState<EstadoPreflight>("verificando");
+  const [estadoPreflight, setEstadoPreflight] = useState<EstadoVerificacion>("verificando");
   const [preflight, setPreflight] = useState<ResultadoPreflight | null>(null);
   const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<string | null>(null);
   const [continuarSinVerificar, setContinuarSinVerificar] = useState(false);
@@ -90,7 +91,7 @@ export function DialogEmitirPago({
       } else {
         setPreflight(null);
         setMensajeErrorPreflight(resultado.mensaje);
-        setEstadoPreflight("error_preflight");
+        setEstadoPreflight("no_verificable");
       }
     })();
   }, [liquidacionId]);
@@ -106,9 +107,12 @@ export function DialogEmitirPago({
   function handleConfirmar() {
     setErrorPago(null);
     startTransition(async () => {
-      if (estadoPreflight === "error_preflight") {
+      if (verificacionOmitida) {
         try {
-          await accionRegistrarPreflightOmitido("emitir_pago", liquidacionId);
+          await accionRegistrarPreflightOmitido("emitir_pago", liquidacionId, {
+            motivo: estadoPreflight === "no_verificable" ? "preflight_fallido" : "reparos_ignorados",
+            codigos: preflight?.advertencias.map((r) => r.codigo) ?? [],
+          });
         } catch (err) {
           toast.error("No se pudo registrar la verificación omitida", {
             description: err instanceof Error ? err.message : undefined,
@@ -150,6 +154,12 @@ export function DialogEmitirPago({
   // el total de la fila mientras tanto.
   const montoAPagar = resumenPago?.montoLiquidoClp ?? montoTotalClp;
 
+  const verificacionOmitida = laVerificacionQuedaOmitida({
+    estado: estadoPreflight,
+    resultado: preflight,
+    aceptado: continuarSinVerificar,
+  });
+
   const avisosModal: { tono: "attention" | "fault"; texto: React.ReactNode }[] = [];
   if (errorPago) {
     avisosModal.push({
@@ -168,17 +178,22 @@ export function DialogEmitirPago({
       texto: "Resuelve los bloqueos indicados arriba antes de continuar.",
     });
   }
-  if (estadoPreflight === "error_preflight" && continuarSinVerificar) {
+  if (verificacionOmitida) {
     avisosModal.push({
       tono: "attention",
-      texto: "Omitiste la verificación previa. Queda registrado a tu nombre que la saltaste.",
+      texto:
+        estadoPreflight === "no_verificable"
+          ? "Omitiste la verificación previa. Queda registrado a tu nombre que la saltaste."
+          : `Sigues con ${preflight?.advertencias.length} reparo${(preflight?.advertencias.length ?? 0) === 1 ? "" : "s"} sin resolver. Queda registrado a tu nombre, con cuáles eran.`,
     });
   }
 
   const confirmDeshabilitado =
-    estadoPreflight === "verificando" ||
-    (estadoPreflight === "listo" && !(preflight?.ok ?? false)) ||
-    (estadoPreflight === "error_preflight" && !continuarSinVerificar);
+    actoBloqueadoPorVerificacion({
+      estado: estadoPreflight,
+      resultado: preflight,
+      aceptado: continuarSinVerificar,
+    });
 
   return (
     <>
@@ -253,26 +268,18 @@ export function DialogEmitirPago({
         onConfirmar={handleConfirmar}
       >
         <div className="flex flex-col gap-3">
-          {estadoPreflight === "verificando" && <SkeletonPreflight />}
-
-          {estadoPreflight === "error_preflight" && (
-            <BloquePreflightFallido
-              mensaje={mensajeErrorPreflight}
-              reintentar={cargarPreflight}
-              deshabilitado={isPending}
-              marcado={continuarSinVerificar}
-              onMarcadoChange={setContinuarSinVerificar}
-            />
-          )}
-
+          <VerificacionPrevia
+            estado={estadoPreflight}
+            resultado={preflight}
+            verbo="pagar"
+            mensajeError={mensajeErrorPreflight}
+            onReintentar={cargarPreflight}
+            deshabilitado={isPending}
+            aceptado={continuarSinVerificar}
+            onAceptadoChange={setContinuarSinVerificar}
+          />
           {estadoPreflight === "listo" && preflight && (
             <>
-              {preflight.bloqueos.length > 0 && (
-                <BandaItemsPreflight items={preflight.bloqueos} tono="bloquea" />
-              )}
-              {preflight.advertencias.length > 0 && (
-                <BandaItemsPreflight items={preflight.advertencias} tono="advierte" />
-              )}
               {itemLineasAnuladas && (
                 <p className="text-xs text-muted-foreground">
                   {itemLineasAnuladas.titulo}
@@ -284,109 +291,5 @@ export function DialogEmitirPago({
         </div>
       </ModalActoExplicito>
     </>
-  );
-}
-
-// =============================================================================
-// Sub-componentes del preflight — mismo estilo que los diálogos de factura y
-// nota de crédito (diseño cerrado ux-ui, compartido en forma, no en código).
-// =============================================================================
-
-function SkeletonPreflight() {
-  return (
-    <div className="flex flex-col gap-2" role="status" aria-live="polite">
-      <span className="sr-only">Verificando antes de pagar…</span>
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-4 w-1/2" />
-      <Skeleton className="h-4 w-2/3" />
-      <Skeleton className="h-4 w-1/3" />
-    </div>
-  );
-}
-
-function BloquePreflightFallido({
-  mensaje,
-  reintentar,
-  deshabilitado,
-  marcado,
-  onMarcadoChange,
-}: {
-  mensaje: string | null;
-  reintentar: () => void;
-  deshabilitado: boolean;
-  marcado: boolean;
-  onMarcadoChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">No se pudo verificar automáticamente</p>
-        {mensaje && <p className="mt-1 text-xs">{mensaje}</p>}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="mt-2"
-          onClick={reintentar}
-          disabled={deshabilitado}
-        >
-          Reintentar
-        </Button>
-      </div>
-      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm text-foreground">
-        <Checkbox
-          checked={marcado}
-          onCheckedChange={(v) => onMarcadoChange(v === true)}
-          disabled={deshabilitado}
-          className="mt-0.5"
-        />
-        <span>El sistema no pudo verificar. Continúo igualmente bajo mi responsabilidad.</span>
-      </label>
-    </div>
-  );
-}
-
-function BandaItemsPreflight({
-  items,
-  tono,
-}: {
-  items: ItemPreflight[];
-  tono: "bloquea" | "advierte";
-}) {
-  const Icono = tono === "bloquea" ? XCircle : AlertTriangle;
-  const lista = (
-    <ul className="flex flex-col gap-1.5">
-      {items.map((item, i) => (
-        <li key={`${item.codigo}-${i}`} className="flex items-start gap-2">
-          <Icono className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span>
-            <span className="font-medium">{item.titulo}</span>
-            {item.detalle && <span className="block text-xs opacity-90">{item.detalle}</span>}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-
-  return (
-    <div
-      className={cn(
-        "rounded-md p-3 text-sm",
-        tono === "bloquea"
-          ? "bg-destructive-subtle text-destructive-subtle-foreground"
-          : "bg-warning-subtle text-warning-subtle-foreground",
-      )}
-    >
-      {tono === "advierte" && items.length > 2 ? (
-        <details>
-          <summary className="cursor-pointer font-medium">
-            {items.length} advertencias — ver detalle
-          </summary>
-          <div className="mt-2">{lista}</div>
-        </details>
-      ) : (
-        lista
-      )}
-    </div>
   );
 }

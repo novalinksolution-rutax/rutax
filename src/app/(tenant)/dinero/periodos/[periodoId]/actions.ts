@@ -194,6 +194,11 @@ export async function accionPreflightEmitirNotaCredito(periodoId: string): Promi
 export async function accionRegistrarPreflightOmitido(
   tipoAccion: TipoAccionDinero,
   entidadId: string,
+  /** Qué se pasó por alto: la falla de la verificación, o sus reparos. */
+  contexto: {
+    motivo: "preflight_fallido" | "reparos_ignorados";
+    codigos?: string[];
+  } = { motivo: "preflight_fallido" },
 ): Promise<void> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) {
@@ -205,5 +210,6 @@ export async function accionRegistrarPreflightOmitido(
     entidadId,
     sesion.usuario,
     sesion.usuarioId,
+    contexto,
   );
 }

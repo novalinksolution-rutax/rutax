@@ -2076,6 +2076,19 @@ export async function registrarPreflightOmitido(
   entidadId: string,
   usuario: UsuarioActual,
   actorUsuarioId: string,
+  /**
+   * QUÉ se pasó por alto. Sin esto la bitácora dice «omitió la verificación» y
+   * no sirve para nada: la pregunta que se hace después es *qué decía*.
+   *
+   * `preflight_fallido` es el caso degradado —no se pudo verificar—.
+   * `reparos_ignorados` es el desenlace del medio del tablero P4: la
+   * verificación sí corrió, encontró reparos, y el usuario siguió igual.
+   */
+  contexto: {
+    motivo: 'preflight_fallido' | 'reparos_ignorados';
+    /** Códigos de los reparos que se pasaron por alto. */
+    codigos?: string[];
+  } = { motivo: 'preflight_fallido' },
 ): Promise<void> {
   const esAccionDeFacturacion = tipoAccion === 'emitir_factura' || tipoAccion === 'emitir_nota_credito';
 
@@ -2098,6 +2111,8 @@ export async function registrarPreflightOmitido(
     entidadId,
     detalle: {
       tipo_accion: tipoAccion,
+      motivo: contexto.motivo,
+      ...(contexto.codigos?.length ? { codigos: contexto.codigos } : {}),
     },
   });
 }
