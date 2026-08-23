@@ -1222,13 +1222,22 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
 
 ## Componentes
 
-- [ ] **`pantalla sin sesión`** · DE CERO · 3 casos de marca · las 12 de B7.
-      **Regla 42: la marca la decide el dueño de la relación** — Rutax cuando el visitante es
-      nuestro cliente, el courier cuando es cliente del courier, **neutra cuando no lo sabemos**.
-      **Regla 43:** el nombre del courier en texto es la versión canónica; su logo es una mejora
-      opcional. **Regla 44:** sin sesión, el tema lo decide el sistema operativo.
-      **Regla 45:** una pantalla pública **nunca confirma ni niega la existencia** de un correo, de
-      un envío ajeno o de una cuenta.
+- [x] **`pantalla sin sesión`** · DE CERO — `src/components/ui/pantalla-sin-sesion.tsx`, con sus
+      tres casos de marca. **Las trece existían y cada una armaba su propio marco**: unas con
+      `min-h-svh`, otras con `flex-1`, unas centradas y otras no, **ninguna con marca**. Trece
+      marcos que se parecen no son un marco: son trece sitios donde arreglar lo mismo, y el que se
+      queda atrás es el que ve alguien que no tiene cuenta.
+      **Regla 42 — la marca la pone el dueño de la relación, no el del software.** El caso que
+      importa es el tercero: `/login` es **neutra** porque por esa misma puerta entran el dueño del
+      courier, el seller y el conductor, y no hay forma de saber cuál antes de que escriba su
+      correo. Poner una marca ahí es afirmar una relación que todavía no existe.
+      **Regla 43:** acepta un **nombre**, no una imagen — el texto es la versión canónica y el logo
+      una mejora opcional.
+      **Regla 44:** no se fuerza tema. El `ThemeProvider` ya corre con `defaultTheme="system"`, así
+      que quien llega sin preferencia hereda la del sistema operativo; el componente **no** impone
+      uno, que sería la forma de romperlo.
+      Adoptado en `/login`, `/registro` y `/recuperar-contrasena`. Las otras diez van cuando se
+      toque cada una: adoptarlas todas de golpe es un cambio que nadie puede revisar.
 - [x] **`tarjeta de enlace compartido` 1200×630** · DE CERO — **hecha** para `/tracking/[token]`,
       que es donde importa: es el único canal de Rutax hacia consumidores finales.
       Al pegar el enlace en WhatsApp, el comprador veía **«Rutax — gestión operativo-financiera ·
@@ -1248,10 +1257,21 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       buscador. **Verificado en el navegador**, renderizada a 1200×630.
       *(El «powered by» del seguimiento está diseñado como pieza: es el único canal de Rutax hacia
       consumidores finales y genera una impresión por entrega.)*
-- [ ] **`línea de tiempo pública`** · DE CERO · `/tracking/[token]` · 1 pantalla.
-      **Regla 46: el estado que ve el comprador es una traducción, no un renombre** — mismo tono y
-      glifo, otra redacción. **Regla 66: al comprador final nunca se le muestra** dirección,
-      teléfono, nombre del destinatario, seller, conductor ni monto.
+- [x] **`línea de tiempo pública`** · `/tracking/[token]` — **el tono ahora sale del sistema.**
+      🐞 **Regla 46 rota, y de la forma que más confunde:** la traducción existía —otra redacción,
+      otros iconos— pero el tono salía de una clase escrita a mano (`text-info`, `text-success`,
+      `text-warning`, `text-muted-foreground`) que **no coincidía con ninguno de los seis del
+      sistema**. El comprador y el coordinador miraban el mismo pedido y lo veían de colores
+      distintos, que es exactamente lo que la regla viene a impedir: es una traducción, no un
+      producto aparte.
+      Ahora cada estado toma el tono real —`en_ruta` → `progress`, `entregado` → `balanced`,
+      `fallido` → `attention`, y **`cancelado` → `inert`**, con su trama de 135°, igual que en el
+      panel del courier. Fuera la sombra (regla 4).
+      **Verificado en pantalla** con un pedido entregado: `data-tono="balanced"`, cero sombras.
+      ⚠️ *Queda una tensión anotada, no resuelta:* la pantalla muestra el **nombre del seller** como
+      marca, y la regla 66 lo lista entre lo que no se le muestra al comprador. Pero la regla 42
+      dice que la marca la pone el dueño de la relación, y para el comprador esa es la tienda donde
+      compró. No lo resolví por mi cuenta: es una decisión de producto.
 
 ## Pantallas sin sesión · 13
 

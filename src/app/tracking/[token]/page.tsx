@@ -25,6 +25,8 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { formatearEtaSameDay } from "@/modules/operacion/eta-same-day";
 import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
+import type { TonoEstado } from "@/lib/ui/tonos-estado";
 
 // =============================================================================
 // Estado público (amigable para el comprador — no expone estados internos)
@@ -34,7 +36,8 @@ interface EstadoPublico {
   etiqueta: string;
   descripcion: string;
   Icono: typeof Package;
-  clase: string;
+  /** El MISMO tono del sistema que ve el courier. Ver regla 46. */
+  tono: TonoEstado;
 }
 
 function estadoPublico(estado: EstadoPedido): EstadoPublico {
@@ -45,14 +48,14 @@ function estadoPublico(estado: EstadoPedido): EstadoPublico {
         etiqueta: "En preparación",
         descripcion: "Tu pedido está siendo preparado para el despacho.",
         Icono: Package,
-        clase: "text-muted-foreground",
+        tono: "neutral",
       };
     case "en_ruta":
       return {
         etiqueta: "En camino",
         descripcion: "Tu pedido va en ruta hacia la dirección de entrega.",
         Icono: Truck,
-        clase: "text-info",
+        tono: "progress",
       };
     case "entregado":
     case "entregado_manual":
@@ -60,7 +63,7 @@ function estadoPublico(estado: EstadoPedido): EstadoPublico {
         etiqueta: "Entregado",
         descripcion: "Tu pedido fue entregado.",
         Icono: CheckCircle2,
-        clase: "text-success",
+        tono: "balanced",
       };
     case "fallido":
     case "fallido_manual":
@@ -68,28 +71,30 @@ function estadoPublico(estado: EstadoPedido): EstadoPublico {
         etiqueta: "Con novedad",
         descripcion: "Hubo un inconveniente con la entrega. El despachador la reagendará o se contactará contigo.",
         Icono: AlertTriangle,
-        clase: "text-warning",
+        tono: "attention",
       };
     case "devuelto":
       return {
         etiqueta: "Devuelto",
         descripcion: "El pedido fue devuelto al remitente.",
         Icono: RotateCcw,
-        clase: "text-muted-foreground",
+        tono: "neutral",
       };
     case "cancelado":
       return {
         etiqueta: "Cancelado",
         descripcion: "Este pedido fue cancelado.",
         Icono: AlertTriangle,
-        clase: "text-muted-foreground",
+        // `inert`, igual que en el panel del courier: es el tono de lo que sale
+        // del juego, y trae su trama de 135° para que no dependa del color.
+        tono: "inert",
       };
     default:
       return {
         etiqueta: "En proceso",
         descripcion: "",
         Icono: Package,
-        clase: "text-muted-foreground",
+        tono: "neutral",
       };
   }
 }
@@ -174,7 +179,7 @@ export default async function PaginaSeguimiento({ params }: Props) {
   const datos = await cargarSeguimiento(token);
   if (!datos) notFound();
 
-  const { etiqueta, descripcion, Icono, clase } = estadoPublico(datos.estado);
+  const { etiqueta, descripcion, Icono, tono } = estadoPublico(datos.estado);
   const eta = formatearEtaSameDay({
     pedidoId: "",
     fechaCompromisoHora: datos.fechaCompromisoHora,
@@ -190,11 +195,18 @@ export default async function PaginaSeguimiento({ params }: Props) {
         <h1 className="mt-1 text-xl font-semibold">{datos.sellerNombre}</h1>
       </header>
 
-      {/* Estado actual */}
-      <section className="rounded-lg border bg-card p-6 text-center shadow-xs">
-        <Icono className={`mx-auto size-12 ${clase}`} aria-hidden="true" />
-        <h2 className="mt-3 text-lg font-semibold">{etiqueta}</h2>
-        {descripcion && <p className="mt-1 text-sm text-muted-foreground">{descripcion}</p>}
+      {/* Estado actual.
+          ⚠️ REGLA 46 · el estado que ve el comprador es una TRADUCCION, no un
+          renombre: **el mismo tono y el mismo glifo** que ve el courier, con
+          otra redaccion. Antes el tono salia de una clase escrita a mano
+          (`text-info`, `text-success`, `text-warning`) que no coincidia con
+          ninguno de los seis del sistema: el comprador y el coordinador miraban
+          el mismo pedido y lo veian de colores distintos.
+          Sin sombra (regla 4). */}
+      <section className="flex flex-col items-center gap-3 border border-line bg-card p-6 text-center">
+        <Icono className="size-12 text-fg-muted" aria-hidden="true" />
+        <DistintivoEstado tono={tono} etiqueta={etiqueta} />
+        {descripcion && <p className="text-sm text-fg-muted">{descripcion}</p>}
       </section>
 
       {/* ETA (solo si aún no se entregó y hay estimación) */}
