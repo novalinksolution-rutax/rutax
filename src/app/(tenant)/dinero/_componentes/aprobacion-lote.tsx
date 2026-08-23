@@ -29,6 +29,7 @@ import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { ResultadoPreflightLote } from "@/modules/dinero/preflight-lote";
 import type { ResultadoLote } from "@/modules/dinero/acciones-lote";
+import { TarjetaResultadoBloque } from "@/components/ui/tarjeta-resultado-bloque";
 
 export interface ItemLoteUI {
   id: string;
@@ -122,7 +123,15 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
         return;
       }
       setResultado(r.resultado);
-      router.refresh();
+      // ⚠️ ACÁ HABÍA UN `router.refresh()`, Y SE COMÍA EL RESULTADO.
+      //
+      // Este panel solo se renderiza si quedan elementos elegibles. Al refrescar
+      // en el mismo instante en que llega el resultado, los elementos recién
+      // aprobados dejan de ser elegibles, el panel desaparece **y se lleva el
+      // cuadro con él**: quien aprobó cinco pagos y vio fallar dos nunca se
+      // entera de cuáles. Verificado en pantalla — el cuadro se cerraba solo.
+      //
+      // El refresco va al cerrar, que es cuando el usuario ya leyó.
     });
   }
 
@@ -131,8 +140,28 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
     setPreflight(null);
     setResultado(null);
     setError(null);
-    if (resultado && resultado.exitosos > 0) setSeleccion(new Set());
+    if (resultado && resultado.exitosos > 0) {
+      setSeleccion(new Set());
+      // Ahora sí: la lista de abajo se pone al día una vez leído el resultado.
+      router.refresh();
+    }
   }
+
+  // El monto de lo que SÍ salió. Se calcula sobre los ids exitosos y no sobre
+  // el total de la revisión: si dos de cinco fallaron, el total de la revisión
+  // ya no corresponde a lo que ocurrió.
+  const composicionResultado = resultado
+    ? [
+        formatearCLP(
+          resultado.resultados
+            .filter((r) => r.ok)
+            .reduce((suma, r) => suma + (mapaItems.get(r.id)?.montoClp ?? 0), 0),
+        ) + " en total",
+        `${new Set(resultado.resultados.filter((r) => r.ok).map((r) => r.id)).size} de ${
+          resultado.resultados.length
+        } ${tipo === "factura" ? "períodos" : "liquidaciones"}`,
+      ]
+    : [];
 
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
@@ -184,7 +213,10 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
       </div>
 
       <Dialog open={abierto} onOpenChange={(v) => (v ? setAbierto(true) : cerrar())}>
-        <DialogContent className="sm:max-w-lg">
+        {/* Sin la X: el pie ya trae la salida en las dos fases —«Volver» al
+            revisar, «Cerrar» al leer el resultado— y una X que hace lo mismo
+            que un botón visible a diez centímetros es ruido. */}
+        <DialogContent className="sm:max-w-lg" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>
               {resultado
@@ -200,38 +232,31 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
             </p>
           )}
 
-          {/* Fase RESULTADOS */}
+          {/* Fase RESULTADOS — `tarjeta de resultado en bloque`.
+              ⚠️ Antes decía «N emitidos», y estaba mal por dos motivos: el lote
+              **encola** trabajos, así que en pasado promete folios que todavía
+              no existen (decisión 6 de P4y brecha #6 del inventario); y no
+              llevaba **el monto**, que es lo primero que se pregunta después de
+              aprobar plata en bloque (regla 57). Además decía «emitidos» tanto
+              para facturas como para pagos. */}
           {resultado ? (
-            <div className="space-y-3">
-              <p className="text-sm">
-                <span className="font-semibold text-success">
-                  {resultado.exitosos} emitido{resultado.exitosos !== 1 ? "s" : ""}
-                </span>
-                {resultado.fallidos > 0 && (
-                  <span className="text-destructive">
-                    {" · "}
-                    {resultado.fallidos} con error
-                  </span>
-                )}
-              </p>
-              <ul className="max-h-60 space-y-1 overflow-y-auto text-sm">
-                {resultado.resultados.map((r) => (
-                  <li key={r.id} className="flex items-start gap-2 rounded-md px-2 py-1">
-                    {r.ok ? (
-                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
-                    ) : (
-                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="truncate">{mapaItems.get(r.id)?.etiqueta ?? r.id}</span>
-                      {!r.ok && r.mensaje && (
-                        <span className="block text-xs text-destructive">{r.mensaje}</span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <TarjetaResultadoBloque
+              titulo={
+                resultado.exitosos === 0
+                  ? `No se pudo ${tipo === "factura" ? "emitir" : "pagar"} nada`
+                  : `${resultado.exitosos} ${
+                      resultado.exitosos === 1 ? t.nombreSingular : t.nombrePlural
+                    } ${resultado.exitosos === 1 ? "quedó" : "quedaron"} en curso`
+              }
+              composicion={composicionResultado}
+              exitosos={resultado.exitosos}
+              fallos={resultado.resultados
+                .filter((r) => !r.ok)
+                .map((r) => ({
+                  etiqueta: mapaItems.get(r.id)?.etiqueta ?? r.id,
+                  motivo: r.mensaje,
+                }))}
+            />
           ) : preflight ? (
             /* Fase REVISIÓN (resumen consolidado) */
             <div className="space-y-3">
@@ -301,7 +326,9 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
             ) : (
               <>
                 <Button variant="outline" onClick={cerrar} disabled={isPending}>
-                  Cancelar
+                  {/* «Volver», nunca «Cancelar» (regla 59): cancelar es lo
+                      que le pasa a un pedido. */}
+                  Volver
                 </Button>
                 <Button
                   onClick={confirmar}

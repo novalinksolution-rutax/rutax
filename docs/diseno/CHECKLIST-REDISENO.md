@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **8 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
+| **5** | **Dinero** | **11 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -564,7 +564,26 @@ bloques 4–8, cuando cada pantalla se toque.
       `dinero.nota_credito_solicitada`…), lo bastante parecidas a las reales como para no notarse
       leyendo. `bloque-trazabilidad.test.ts` lee `modules/dinero/acciones.ts` y compara; verificado
       por mutación, y con contraprueba para que un cambio de formato no deje el conjunto vacío.
-- [ ] `tarjeta de resultado en bloque`.
+- [x] **`tarjeta de resultado en bloque`** · DE CERO — `src/components/ui/tarjeta-resultado-bloque.tsx`,
+      montada en la aprobación por lotes de facturas y pagos. «Qué se hizo, qué no y por qué», que
+      es lo que pide la tabla del sistema, con la composición que describe la escena de las 15:50.
+      Lo que salió bien va como **cifra** y no como lista: veinte líneas verdes idénticas entierran
+      las tres rojas que importan. Lo que no se pudo **nunca se colapsa** — es la única parte
+      accionable, y esconderla convierte un lote parcial en uno que parece completo.
+      *Tres cosas que estaban mal en el resultado anterior:*
+      · decía «N emitidos», en pasado, para una acción que **encola** trabajos (decisión 6 de P4,
+        brecha #6 del inventario): quien lee «emitidas» va a buscar los folios y no están;
+      · decía «emitidos» también para los **pagos**;
+      · y **no llevaba el monto**, que es lo primero que se pregunta después de aprobar plata en
+        bloque (regla 57). Ahora se calcula sobre los que efectivamente salieron, no sobre el total
+        de la revisión — si dos de cinco fallan, ese total ya no describe lo que pasó.
+      🐞 **Y apareció uno peor, en pantalla:** `router.refresh()` corría en el mismo instante en que
+      llegaba el resultado. Como el panel solo se renderiza si quedan elementos elegibles, los
+      recién aprobados dejaban de serlo, **el panel desaparecía y se llevaba el cuadro con él**.
+      O sea: quien aprobaba cinco pagos y veía fallar dos **no se enteraba nunca de cuáles**. El
+      refresco pasó a ejecutarse al cerrar. Verificado en pantalla las dos veces.
+      De paso, «Cancelar» → «Volver» (regla 59) y fuera la X, que hacía lo mismo que un botón
+      visible a diez centímetros.
 
 ## Pantallas
 
