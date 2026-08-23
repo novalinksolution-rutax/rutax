@@ -13,6 +13,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -160,7 +161,6 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
   }
 
   function handleEliminar() {
-    if (!window.confirm(`¿Eliminar el endpoint "${endpoint.url}"? Esta acción no se puede deshacer.`)) return;
     startDelete(async () => {
       await accionEliminarWebhookEndpoint(endpoint.id);
       router.refresh();
@@ -203,15 +203,29 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
           >
             {isTogglePending ? "..." : endpoint.activo ? "Desactivar" : "Activar"}
           </Button>
-          <Button
+          {/* Regla 37. Y la consecuencia real no es «se borra un endpoint»:
+              es que los avisos dejan de llegar sin que nadie se entere, que es
+              distinto de desactivarlo —eso sí es reversible en un clic—. */}
+          <BotonConfirmado
             variant="ghost"
             size="sm"
             className="text-destructive hover:text-destructive"
-            disabled={isTogglePending || isDeletePending}
-            onClick={handleEliminar}
-          >
-            {isDeletePending ? "Eliminando..." : "Eliminar"}
-          </Button>
+            deshabilitado={isTogglePending || isDeletePending}
+            cargando={isDeletePending}
+            etiqueta="Eliminar"
+            titulo="Vas a eliminar este endpoint de webhooks"
+            consecuencia={
+              <>
+                Rutax <strong>deja de enviarle eventos</strong> y no queda registro del
+                endpoint. Si solo quieres cortar el envío por un rato,
+                <strong> desactívalo</strong>: eso se revierte en un clic.
+              </>
+            }
+            resumen={[{ etiqueta: "URL", valor: endpoint.url, mono: true }]}
+            textoConfirmar="Eliminar el endpoint"
+            varianteModal="destructive"
+            onConfirmar={handleEliminar}
+          />
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -192,7 +193,6 @@ function FilaApiKey({ row }: { row: ApiKeyRow }) {
   const [isPending, startTransition] = useTransition();
 
   function handleRevocar() {
-    if (!window.confirm(`¿Revocar la API key "${row.nombre}"? Esta acción no se puede deshacer.`)) return;
     startTransition(async () => {
       await accionRevocarApiKey(row.id);
       router.refresh();
@@ -221,15 +221,33 @@ function FilaApiKey({ row }: { row: ApiKeyRow }) {
         {formatearFecha(row.creadaEn)}
       </td>
       <td className="px-4 py-3 text-right">
-        <Button
+        {/* Regla 37: ninguna acción se confirma con un diálogo del navegador.
+            Un `confirm()` no puede decir la consecuencia —cabe una pregunta y
+            nada más— y sus botones dicen «Aceptar» y «Cancelar» en el idioma
+            del sistema operativo, donde «Cancelar» significa otra cosa. */}
+        <BotonConfirmado
           variant="ghost"
           size="sm"
           className="text-destructive hover:text-destructive"
-          disabled={isPending}
-          onClick={handleRevocar}
-        >
-          {isPending ? "Revocando..." : "Revocar"}
-        </Button>
+          deshabilitado={isPending}
+          cargando={isPending}
+          etiqueta="Revocar"
+          titulo={`Vas a revocar la API key ${row.nombre}`}
+          consecuencia={
+            <>
+              Todo lo que la esté usando <strong>deja de funcionar al instante</strong>: la
+              integración que la lleve empieza a recibir 401 sin aviso. No se puede volver a
+              activar — hay que crear una nueva y cambiarla donde esté escrita.
+            </>
+          }
+          resumen={[
+            { etiqueta: "Nombre", valor: row.nombre },
+            { etiqueta: "Prefijo", valor: `${row.prefijo}…`, mono: true },
+          ]}
+          textoConfirmar="Revocar la API key"
+          varianteModal="destructive"
+          onConfirmar={handleRevocar}
+        />
       </td>
     </tr>
   );

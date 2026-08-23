@@ -627,6 +627,20 @@ bloques 4–8, cuando cada pantalla se toque.
       `seguridad-cumplimiento`. Bajarle o subirle la fricción de pasada sería justamente lo que esa
       regla prohíbe.
 
+- [x] **Y aparecieron dos más, fuera del backstage** (22-08): `window.confirm` en
+      `(tenant)/configuracion/api/` para **revocar una API key** y **eliminar un endpoint de
+      webhooks**. El conteo original de la brecha #21 decía «6 en `src/app/admin/`» y se quedó
+      corto porque solo miró esa carpeta: eran **8**, y estos dos están en la configuración del
+      propio courier, no en el backstage.
+      Los dos son irreversibles y su `confirm()` no decía la consecuencia real. Revocar una key no
+      es «se borra un registro»: **todo lo que la use empieza a recibir 401 sin aviso** y no se
+      puede reactivar. Eliminar un endpoint no es lo mismo que desactivarlo —eso se revierte en un
+      clic—, y el copy ahora lo dice para que nadie use el irreversible por error.
+      Ambos pasan por `BotonConfirmado`, el mismo envoltorio del backstage. **Verificado en
+      pantalla**, revocación ejecutada de punta a punta.
+      **Con esto queda un solo `confirm()` en todo `src/app`**, y es el que está bloqueado a
+      propósito.
+
 ⚠️ **La regla 38 sigue sin cumplirse en el backstage.** «Toda acción sobre la cuenta de un tercero
 exige motivo escrito y queda a nombre de quien la hizo» — pero `suspenderSuscripcion` y
 `cancelarSuscripcion` **no aceptan un motivo** en el dominio. Se pasó de `confirm()` a ceremonia
@@ -1218,7 +1232,7 @@ se copian — los comandos están abajo.
 | Regla | Qué dice | Deuda hoy | Bloque |
 |---|---|---|---|
 | **56** | Ningún error de dinero va en notificación temporal. Van embebidos y se quedan | **15 `toast.error`** en `(tenant)/dinero/` | 5 |
-| **37** | Ninguna acción se confirma con un diálogo nativo del navegador | **6 `confirm()`** en `src/app/admin/` (brecha #21) | 4 y 9 |
+| **37** | Ninguna acción se confirma con un diálogo nativo del navegador | ~~6 en `admin/`~~ → **eran 8**: el conteo original solo miró `src/app/admin/` y se le escaparon dos en la configuración del propio courier. **Quedan 1**, y es el bloqueado a propósito. | 4, 5 y 9 |
 | **—** | La escalera de fricción es una, para las cinco superficies | **15 de 19 acciones** de `dinero/acciones.ts` no usan el diálogo canónico, más los 2 de lote sin checkbox | 5 |
 | **69** | Solo el eje de ciclo usa distintivo con color | **32 llamadas** a `BadgeEstado` sin `eje`+`valor`, más **10 envoltorios locales** con color propio | 0 |
 | **4** | Sin sombras: la elevación es escalón de fondo + borde | `rutax-conductor/src/theme.ts` define una escala de `shadow` | 6 |
