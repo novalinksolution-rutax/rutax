@@ -69,6 +69,7 @@ import {
   UMBRAL_INCIDENCIA_SIN_GESTION_HORAS,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
+import { contarFoliosDisponibles, nivelFolios } from "@/modules/dinero/folios-disponibles";
 
 // =============================================================================
 // Tipos locales de datos del dashboard
@@ -108,18 +109,30 @@ const FILL_ESTADO: Record<EstadoPedido, string> = {
 
 async function cargarAlertaFolios(tenantId: string): Promise<AlertaFolios | null> {
   const supabase = crearClienteServiceRole();
+  // ⚠️ FILTRA POR TIPO DE DOCUMENTO. Antes leía «un CAF vigente cualquiera» con
+  // `.limit(1)`, así que con dos CAF cargados podía estar alertando sobre el de
+  // notas de crédito (61) mientras el de facturas (33) estaba lleno — o al
+  // revés. El 33 es el que detiene la facturación.
   const { data: folios } = await supabase
     .schema("identidad")
     .from("folios_caf")
     .select("folio_actual, folio_hasta, estado")
     .eq("tenant_id", tenantId)
     .eq("estado", "vigente")
+    .eq("tipo_documento", 33)
+    .order("folio_actual", { ascending: true })
     .limit(1)
     .maybeSingle();
 
   if (!folios) return null;
-  const foliosRestantes = (folios.folio_hasta as number) - (folios.folio_actual as number);
-  if (foliosRestantes >= 50) return null; // Sin alerta — suficientes folios
+  // ⚠️ INCLUSIVO, por `contarFoliosDisponibles`. Antes restaba sin el `+1`, así
+  // que con `folio_actual === folio_hasta` decía «agotado» quedando un folio
+  // que la emisión real sí habría entregado.
+  const foliosRestantes = contarFoliosDisponibles({
+    folio_actual: folios.folio_actual as number,
+    folio_hasta: folios.folio_hasta as number,
+  });
+  if (nivelFolios(foliosRestantes) === "normal") return null;
   return {
     foliosRestantes,
     folioHasta: folios.folio_hasta as number,

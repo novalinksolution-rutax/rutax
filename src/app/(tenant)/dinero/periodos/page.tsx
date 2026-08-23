@@ -33,6 +33,8 @@ import { FiltrosPeriodosForm } from "./filtros-periodos";
 import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
 import { accionPreflightLoteFacturas, accionEmitirFacturasLote } from "./actions";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
+import { IndicadorFolio } from "@/components/ui/indicador-folio";
+import { contarFoliosDisponibles } from "@/modules/dinero/folios-disponibles";
 
 export const metadata: Metadata = {
   title: "Períodos de cobro",
@@ -86,6 +88,27 @@ export default async function PaginaPeriodosCobro({
   let contFacturados = 0;
   let contAnulados = 0;
   let contConProblemas = 0;
+
+  // El indicador de folios va acá y no solo en el dashboard: **esta es la
+  // pantalla desde donde se factura**. Hasta ahora el courier se enteraba de que
+  // se estaba quedando sin folios en otra pantalla, o al abrir el modal de
+  // emisión — o sea con la ceremonia ya empezada.
+  const { data: cafVigente } = await cliente
+    .schema("identidad")
+    .from("folios_caf")
+    .select("folio_actual, folio_hasta")
+    .eq("tenant_id", tenantId)
+    .eq("estado", "vigente")
+    .eq("tipo_documento", 33)
+    .order("folio_actual", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const foliosRestantes = cafVigente
+    ? contarFoliosDisponibles({
+        folio_actual: cafVigente.folio_actual as number,
+        folio_hasta: cafVigente.folio_hasta as number,
+      })
+    : null;
 
   try {
     // Las tres consultas son independientes entre sí (solo dependen de tenantId y
@@ -188,7 +211,22 @@ export default async function PaginaPeriodosCobro({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Períodos de cobro</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Períodos de cobro</h1>
+        {foliosRestantes !== null ? (
+          <IndicadorFolio
+            restantes={foliosRestantes}
+            accion={
+              <Link
+                href="/onboarding/folios"
+                className="text-xs font-medium text-accent-text hover:underline"
+              >
+                Subir un CAF ›
+              </Link>
+            }
+          />
+        ) : null}
+      </div>
 
       {/* Chips de resumen */}
       {!errorCarga && (

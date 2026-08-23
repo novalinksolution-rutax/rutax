@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **5 de 16** | 11 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
+| **5** | **Dinero** | **6 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -480,7 +480,22 @@ bloques 4–8, cuando cada pantalla se toque.
       el banco sin conectar no llega ni un movimiento, así que la bandeja está vacía por la razón
       contraria. El tablero B2b lo nombra explícitamente. Ahora distingue los dos casos y, sin
       banco, ofrece conectarlo. **Verificado en pantalla.**
-- [ ] `indicador de folio disponible` · `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
+- [x] **`indicador de folio disponible`** · DE CERO — y de paso se cerró un cluster de bugs: **el
+      mismo número se calculaba de tres formas distintas** y dos estaban mal.
+      · El **dashboard** contaba `folio_hasta − folio_actual` **sin el `+1`**, así que decía
+        «agotado» quedando un folio que la emisión real sí entrega (`reservarFolio` guarda contra
+        `>`, no `>=`). Y leía «un CAF vigente cualquiera» **sin filtrar por tipo de documento**: con
+        dos CAF cargados podía estar alertando sobre el de notas de crédito mientras el de facturas
+        estaba lleno.
+      · La **verificación previa** lo hacía bien. Su cálculo es ahora el canónico,
+        `modules/dinero/folios-disponibles.ts`, con 8 pruebas y el mismo umbral que usa el correo
+        de aviso — un tercer número volvería a partir la verdad en tres.
+      · El **panel de onboarding** muestra folios *usados* con umbral de 85 %: es otra pregunta y
+        está bien que difiera.
+      **Y el indicador se montó en `/dinero/periodos`, que es la pantalla desde donde se factura** y
+      donde no había ninguno: hasta ahora uno se enteraba por el dashboard —otra pantalla— o al
+      abrir el modal, con la ceremonia ya empezada. Verificado en pantalla.
+- [ ] `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
 
 ## Pantallas
 
@@ -1203,7 +1218,81 @@ grep -rn "window.location.reload" src/ | wc -l
 
 ---
 
-# Anexo E · Cómo se cierra un bloque
+# Anexo E · Dónde el código se aparta del tablero, y por qué
+
+Los tableros son la **autoridad visual**: sus valores exactos, su anatomía y su copy se siguen
+literalmente, y después se verifican en el navegador contra esos mismos valores. Pero un tablero es
+una maqueta con datos inventados, y hay cuatro clases de choque en las que **no se puede seguir al
+pie de la letra**. Esta lista existe para que las revises de una sentada y digas cuáles quieres que
+se fuercen igual.
+
+**La regla que se aplicó en todas:** el tablero manda sobre *cómo se ve* y sobre *por qué*; el
+código manda sobre *qué datos existen*. Cuando chocan, se dice — no se elige en silencio.
+
+## E.1 · El tablero dibuja una acción que no existe en el código
+
+- [ ] **`B2a` · «Volver a abrir el período».** Aparece como acción de peldaño 2 en el detalle, y el
+      copy de `periodos.cerrar.conf` lo promete: «se puede reabrir mientras no esté facturado».
+      **No hay ninguna reapertura de período en el código** — solo `reabrirEventoConciliacion`, que
+      es de conciliación y otra cosa.
+      *Qué se hizo:* la pantalla **no lo promete** (regla 35). Cuando exista, la frase del sistema
+      de mensajes entra tal cual.
+      *Tu decisión:* ¿se construye la reapertura, o se retira del tablero y del copy?
+
+## E.2 · El tablero muestra datos que el sistema no tiene
+
+- [ ] **`B2a` · la composición por concepto dentro del modal de emisión.** El tablero muestra
+      «867.000 entregas + 3.600 recargos − 2.900 ajustes − 3.600 mínimo no aplicado». La
+      verificación previa devuelve `netoClp`/`ivaClp`/`totalClp` pero **no el desglose**.
+      *Qué se hizo:* el `bloque de composición` está construido y se usa en la tabla financiera,
+      donde el desglose sí se puede calcular. En el modal no se inventa.
+      *Para cerrarlo:* que el preflight devuelva los sumandos. Es backend.
+- [ ] **`B2b` · el autor del ajuste manual** («Aplicó M. Soto el 19-08»). `dinero.liquidaciones`
+      guarda `nota_ajuste` pero **no quién lo aplicó**: el autor está en la bitácora, no en la fila.
+      *Para cerrarlo:* una lectura extra contra la bitácora, o una columna.
+
+## E.3 · El tablero permite algo que el dominio no soporta todavía
+
+- [ ] **`B2b` · atribuir un movimiento a VARIOS períodos** («paga dos períodos con una
+      transferencia»). `atribuirPagoManualmente` acepta **uno**.
+      *Qué se hizo:* el calce como resta está, con sus dos casos raros nombrados. El reparto entre
+      varios períodos, no.
+
+## E.4 · El tablero se contradice con las reglas escritas
+
+- [ ] **`P4` · el modal lleva `box-shadow: 0 18px 48px -12px` y la regla 4 dice «sin sombras».**
+      *Qué se hizo:* se mantuvo la sombra. La regla 4 habla de cómo se construye la **elevación de
+      una superficie** —escalón de fondo + borde—, y un modal flotando sobre un velo es otra cosa.
+      Además la sombra viene del `dialog.tsx` compartido: quitarla afectaría a las 28 modales.
+      *Tu decisión:* si la regla 4 es absoluta, esto cambia en un solo archivo.
+
+## E.5 · Los documentos no concuerdan entre sí
+
+- [ ] **La cuenta de componentes.** El resumen del costo dice **100** (31/27/42); sus ocho tablas
+      suman **108** (29/24/55); `RUTAX-SISTEMA-DE-DISENO.md` §8 dice **92**. El checklist enumera
+      contra las tablas, que son la única lista enumerada.
+- [ ] **Los correos son 11, no 16.** El costo habla de «los 16 correos»; en código hay 9
+      constructores que producen 11 correos distintos.
+- [ ] **Cuatro componentes del marco que el costo declara `DE CERO` ya existían** y funcionan: nav
+      colapsable, nav anidada de configuración, buscador global con backend real y centro de avisos.
+      El presupuesto los cobra como nuevos.
+
+## E.6 · Material citado que no existe
+
+- [ ] **Los ocho anexos (`ANEXO-A`..`H`) y `HALLAZGOS-TECNICOS.md`** que cita
+      `RUTAX-INVENTARIO.md` — «4.703 textos con archivo y línea», «36 defectos técnicos». No están
+      en el repo **ni** en el proyecto de Claude Design. Decidido el 22-08: seguir sin ellos.
+
+## E.7 · Una corrección a este mismo documento
+
+- [x] Una versión anterior decía que el **aviso de configuración pendiente** siendo no-sticky era un
+      defecto. **No lo es.** La regla 7 pide que no se oculte al hacer scroll **para el banner de
+      sesión suplantada**, no para éste; hacerlo fijo le robaría alto vertical a todas las pantallas
+      de forma permanente por un aviso que no es urgente al segundo.
+
+---
+
+# Anexo F · Cómo se cierra un bloque
 
 1. **Typecheck y lint limpios**, y la suite verde.
 2. **Verificación en el navegador contra estilos computados**, no contra capturas — es como se
