@@ -264,6 +264,15 @@ export interface IncidenciaEnTorre {
 export interface ConductorEnTorre {
   id: string;
   nombre: string;
+  /**
+   * `false` cuando el conductor está disponible hoy y **no tiene ni una parada**.
+   *
+   * Existe para que la fracción «7 de 9» sea accionable: los dos que faltan
+   * aparecen en la lista, apagados, en vez de ser una resta que hay que hacer de
+   * cabeza. Un conductor sin ruta es alguien a quien todavía se le puede asignar,
+   * y a las 15:40 esa es una decisión, no una estadística.
+   */
+  conRuta: boolean;
   /** Paradas del manifiesto de hoy. */
   asignados: number;
   /** Paradas que el conductor ya cerró en la app de Rutax. */
@@ -360,6 +369,31 @@ export interface ResumenTorre {
   pendientes: number;
   entregados: number;
   incidenciasAbiertas: number;
+  /**
+   * De esas, cuántas llevan más del umbral sin que nadie las tome.
+   *
+   * Es la segunda línea de la cifra («3 · 1 sin gestionar»). Sin ella, tres
+   * incidencias recién abiertas y tres olvidadas hace cinco horas se leen igual,
+   * y son cosas muy distintas.
+   */
+  incidenciasSinGestionar: number;
+  /**
+   * Paradas pendientes de conductores cuyo manifiesto ya salió.
+   *
+   * NO es «pendientes»: un pedido asignado a un manifiesto que todavía no sale
+   * está pendiente y no está en la calle. La diferencia entre las dos cifras es
+   * justo lo que todavía no arrancó, y a las 16:30 es la pregunta del día.
+   */
+  enRutaAhora: number;
+  /** Conductores con al menos una parada hoy. El «7» de «7 de 9». */
+  conductoresConRuta: number;
+  /**
+   * Conductores que se declararon disponibles hoy. El «9».
+   *
+   * El denominador son los DISPONIBLES, no los activos: alguien de licencia
+   * sigue en la nómina y no debería hacer parecer que falta gente por asignar.
+   */
+  conductoresDisponibles: number;
   /** Pendientes cerca del corte, sumados (F7). */
   enRiesgoDeCorte: number;
   /**

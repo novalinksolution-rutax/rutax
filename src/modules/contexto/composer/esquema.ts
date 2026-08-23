@@ -104,6 +104,7 @@ const incidencia = z.object({
 const conductor = z.object({
   id: z.string(),
   nombre: z.string(),
+  conRuta: z.boolean(),
   asignados: conteo,
   completados: conteo,
   pendientes: conteo,
@@ -134,6 +135,10 @@ const resumen = z.object({
   pendientes: conteo,
   entregados: conteo,
   incidenciasAbiertas: conteo,
+  incidenciasSinGestionar: conteo,
+  enRutaAhora: conteo,
+  conductoresConRuta: conteo,
+  conductoresDisponibles: conteo,
   enRiesgoDeCorte: conteo,
   sinUbicar: conteo,
 });

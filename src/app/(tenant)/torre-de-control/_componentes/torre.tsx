@@ -27,6 +27,7 @@ import { useTheme } from 'next-themes';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IndicadorEnVivo } from '@/components/tiempo-real/indicador-en-vivo';
+import { DistintivoEstado } from '@/components/ui/distintivo-estado';
 import { cn } from '@/lib/utils';
 import type { EstadoTorre } from '@/modules/contexto/contrato-torre';
 import { cargarGeometriaComunal, limitesDe, type MapaGeometrias } from '../_lib/geometria';
@@ -45,7 +46,10 @@ import { ListaComunas } from './lista-comunas';
 
 /** Qué pestaña sugiere cada nivel. Es un valor por defecto, no una imposición. */
 const PESTANA_POR_NIVEL: Record<NivelZoom, PestanaPanel> = {
-  comuna: 'incidencias',
+  // El nivel 1 sugería `incidencias`, que ya no es pestaña: su cifra vive
+  // arriba y su bandeja es una pantalla propia. Mirando la región completa, lo
+  // que informa es quién está trabajando.
+  comuna: 'conductores',
   agrupacion: 'conductores',
   punto: 'comunas',
 };
@@ -230,6 +234,23 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
   // `config.ts`, no un error que atajar.
   const sinPlanoUrbano = urlBasemap() === null;
 
+  // Dos derivados que el contrato no trae y la pantalla necesita, sacados de los
+  // puntos del mapa: no son dato nuevo, son la misma carga leída por otro eje.
+  const comunaPorConductor: Record<string, string> = {};
+  const conductoresPorComuna: Record<string, Set<string>> = {};
+  for (const punto of estado.puntos) {
+    if (!punto.comuna || !punto.conductorId) continue;
+    // La primera comuna con carga pendiente de ese conductor; los puntos vienen
+    // ordenados por el composer, así que es estable entre renders.
+    if (!comunaPorConductor[punto.conductorId]) {
+      comunaPorConductor[punto.conductorId] = punto.comuna;
+    }
+    (conductoresPorComuna[punto.comuna] ??= new Set()).add(punto.conductorId);
+  }
+  const conteoConductoresPorComuna = Object.fromEntries(
+    Object.entries(conductoresPorComuna).map(([comuna, ids]) => [comuna, ids.size]),
+  );
+
   return (
     <div className="space-y-5">
       {/* Cabecera: `h1` + una línea de resumen, igual que toda pantalla de
@@ -243,20 +264,29 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
               : `${estado.courier.nombre} · faltan ${estado.resumen.pendientes} de ${estado.resumen.total} por entregar`}
           </p>
         </div>
-        {/* F5: Realtime como SEÑAL → `router.refresh()`. El dato lo sigue
-            leyendo el servidor, así que el aislamiento por RLS no se toca. */}
-        <IndicadorEnVivo
-          tenantId={tenantId}
-          tablas={[
-            { schema: 'operacion', tabla: 'pedidos' },
-            { schema: 'operacion', tabla: 'incidencias' },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* SOLO LECTURA, con la trama del tono inerte. Es lo que explica por
+              qué esta pantalla no tiene un solo control que cambie algo: no es
+              que falten botones, es que la Torre lee y enlaza. Sin decirlo,
+              quien llega buscando reasignar cree que la pantalla está a medio
+              hacer. La trama importa — en monocromo el gris no distingue
+              «inerte» de «neutro» (regla 5). */}
+          <DistintivoEstado tono="inert" etiqueta="Solo lectura" />
+          {/* F5: Realtime como SEÑAL → `router.refresh()`. El dato lo sigue
+              leyendo el servidor, así que el aislamiento por RLS no se toca. */}
+          <IndicadorEnVivo
+            tenantId={tenantId}
+            tablas={[
+              { schema: 'operacion', tabla: 'pedidos' },
+              { schema: 'operacion', tabla: 'incidencias' },
+            ]}
+          />
+        </div>
       </div>
 
       <BandaOlas olas={estado.olas} />
 
-      <CifrasTorre resumen={estado.resumen} frescura={estado.frescura} corte={estado.corte} />
+      <CifrasTorre resumen={estado.resumen} frescura={estado.frescura} />
 
       {/* La región cartográfica. `< lg` el mapa se retira entero y manda la
           lista: con el panel de 340 px fijos el mapa caía a 124 px a 768, que no
@@ -471,11 +501,16 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
             <PanelTorre
               pestana={pestana}
               onPestana={setPestanaElegida}
-              incidencias={estado.incidencias}
               conductores={estado.conductores}
               comunas={estado.comunas}
-              ahora={estado.ahora}
               diaCerrado={estado.corte.diaCerrado}
+              comunaPorConductor={comunaPorConductor}
+              conductoresPorComuna={conteoConductoresPorComuna}
+              fichaComuna={
+                comunaActiva
+                  ? (estado.comunas.find((c) => c.nombre === comunaActiva) ?? null)
+                  : null
+              }
               comunaActiva={comunaActiva}
               onComuna={entrarEnComuna}
             />

@@ -520,16 +520,24 @@ export const obtenerSellers = cache(async function obtenerSellers(
 export const obtenerParadasDelDia = cache(async function obtenerParadasDelDia(
   tenantId: string,
   fecha: string,
-): Promise<{ driver_id: string; pedido_id: string }[]> {
+): Promise<{ driver_id: string; pedido_id: string; manifiestoEnRuta: boolean }[]> {
   const supabase = crearClienteServiceRole();
 
-  const manifiestos = await leerTodasLasFilas<{ id: string; driver_id: string }>(
+  // `estado` entra al select para poder distinguir «asignado» de «en la calle»:
+  // la magnitud «en ruta ahora» del tablero cuenta las paradas de los conductores
+  // que YA SALIERON, y el manifiesto es quien lo sabe — lo marca el propio
+  // conductor desde la app.
+  const manifiestos = await leerTodasLasFilas<{
+    id: string;
+    driver_id: string;
+    estado: string;
+  }>(
     'manifiestos del día',
     (desde, hasta) =>
       supabase
         .schema('operacion')
         .from('manifiestos')
-        .select('id, driver_id')
+        .select('id, driver_id, estado')
         .eq('tenant_id', tenantId)
         .eq('fecha_operacion', fecha)
         .neq('estado', 'cancelado')
@@ -553,10 +561,17 @@ export const obtenerParadasDelDia = cache(async function obtenerParadasDelDia(
         .range(desde, hasta),
   );
 
-  const conductorDeManifiesto = new Map(manifiestos.map((m) => [m.id, m.driver_id]));
+  const porManifiesto = new Map(manifiestos.map((m) => [m.id, m]));
   return asignaciones.flatMap((a) => {
-    const driverId = conductorDeManifiesto.get(a.manifiesto_id);
-    return driverId ? [{ driver_id: driverId, pedido_id: a.pedido_id }] : [];
+    const manifiesto = porManifiesto.get(a.manifiesto_id);
+    if (!manifiesto) return [];
+    return [
+      {
+        driver_id: manifiesto.driver_id,
+        pedido_id: a.pedido_id,
+        manifiestoEnRuta: manifiesto.estado === 'en_ruta',
+      },
+    ];
   });
 });
 

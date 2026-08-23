@@ -58,7 +58,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 | Conductores | `(tenant)/conductores` | ✅ **HECHA** — 23-08, ver abajo |
 | Crear pedido same-day | `(tenant)/operaciones/nuevo` | ✅ **HECHA** — 23-08, ver abajo |
 | Incidencias | `(tenant)/operaciones/incidencias` | ✅ **HECHA** — 23-08, ver abajo |
-| Torre de control | `(tenant)/torre-de-control` | FALTA PIEZA |
+| Torre de control | `(tenant)/torre-de-control` | 🟡 **CASI** — 23-08, ver abajo |
 | Preparación del día | `(tenant)/preparacion` | FALTA PIEZA |
 | Manifiestos · listado | `(tenant)/manifiestos` | FALTA PIEZA |
 | Detalle del manifiesto | `(tenant)/manifiestos/[manifiestoId]` | FALTA PIEZA |
@@ -231,6 +231,51 @@ desborde, con todo lo que cae reapareciendo en la línea mono.
 ⚠️ **Anotado, no construido:** reagendar mueve la fecha de compromiso, que es contra la que se mide
 el SLA de ese pedido. Está dicho en pantalla antes de apretar, pero **no hay una decisión tomada
 sobre qué debería pasar con el SLA de un pedido reagendado por incidencia**.
+
+### 🟡 Torre de control · 23-08-2026 — hecho lo que tocaba el contrato, falta el mapa
+
+Lo que se hizo es lo que ninguna pieza de pantalla podía resolver sola: **tres cifras que no
+existían en el contrato del composer**.
+
+**Las cuatro magnitudes son ahora las del tablero.** Salieron «Entregados hoy» —complemento de la
+primera, ya se lee ahí— y «Cerca del corte»; entraron «En ruta ahora» y «Conductores con ruta
+7 de 9». Verificado con datos: **«por entregar 2» y «en ruta ahora 1»**, o sea un pedido pendiente
+cuyo manifiesto todavía no salió. Esa diferencia es la pregunta de las 16:30 y antes no se podía
+ver. Y la cifra de incidencias trae su segunda línea: «1 · 1 sin gestionar».
+
+⚠️ **Con «cerca del corte» se fue la única señal de riesgo de la franja.** `enRiesgoDeCorte` sigue
+calculándose y sigue marcando comunas en el mapa y en la lista; lo que se retiró es su cifra
+agregada. Decisión del usuario.
+
+**El panel pasó de tres pestañas a dos**, con su cuenta en el rótulo. `Incidencias` salió: su cifra
+vive arriba y su bandeja es una pantalla propia — tenerla acá repetía la cifra y ofrecía media
+gestión en una pantalla que declara ser de solo lectura.
+
+**La fila de conductor está completa:** iniciales, porcentaje escrito junto a la barra, y «le queda
+carga en Providencia». Y aparecen **los conductores disponibles sin ruta, apagados** — eso es lo
+que hace accionable la fracción «1 de 12»: los que faltan se nombran en vez de ser una resta.
+
+*(El tablero muestra ahí «no disponible hoy»; se construyó al revés a propósito —disponible y sin
+ruta— porque ese es el conjunto que explica el denominador de la fracción, y es a quien todavía se
+le puede asignar.)*
+
+**La ficha del seleccionado** al pie del panel, con «Conductores acá» derivado de los puntos del
+mapa, y su salida a `/operaciones?comuna=…`. **La línea de discrepancia Torre ↔ Pedidos**, que
+hasta hoy solo vivía en comentarios de código. Y el distintivo **SOLO LECTURA** con trama en la
+cabecera, que es lo que explica por qué esta pantalla no tiene un solo control que cambie algo.
+
+**Lo que falta, y es todo del mapa:**
+
+- Leyenda del mapa (rampa de carga, incidencia abierta). *Sin* «última posición del conductor»: ese
+  dato está apagado desde el 14-08 por la revisión de privacidad, con candado de regresión.
+- Distintivo de nivel sobre el mapa (`NIVEL 1 · COMUNA · 52 comunas`), que hoy cubren las migas.
+- En 390 el mapa se retira entero en vez de plegarse tras `Ver el mapa ▾`.
+- `src/modules/contexto/mensajes-estado.ts` sigue sin consumidor.
+
+**No se pudo ejercitar en el navegador:** las pestañas de Radix no responden a interacción
+programática en este entorno. La ficha se verificó llegando al mismo estado por otra vía —elegir la
+comuna en la lista angosta y ensanchar sin recargar—, que es lo que la hizo comprobable.
+
 
 ## B2 · Dinero · 5 pantallas
 

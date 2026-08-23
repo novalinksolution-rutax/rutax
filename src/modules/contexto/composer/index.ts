@@ -79,6 +79,7 @@ import {
   type PedidoUbicable,
 } from './armado';
 import { validarEstadoTorre } from './esquema';
+import { UMBRAL_INCIDENCIA_SIN_GESTION_HORAS } from '@/lib/ui/traduccion-estados';
 
 // =============================================================================
 // Cabecera
@@ -329,7 +330,32 @@ export const cargarTablero = cache(async function cargarTablero(
     pedidos: pedidosPorId,
     ahoraMs,
     diaCerrado: cerrado,
+    // Los disponibles sin ruta entran apagados a la lista: son los que hacen
+    // accionable la fracción «7 de 9» de la cabecera.
+    disponibles: capacidad.conductores
+      .filter((c) => c.estado === 'activo' && c.disponible)
+      .map((c) => ({ id: c.id, nombre: c.nombre_completo })),
   });
+
+  // --- Las tres cifras del día que no salen de la carga por comuna ------------
+  //
+  // Viven acá y no en `armarResumen` porque no son de un territorio: son del día
+  // completo, y las fuentes que las producen —los manifiestos y la nómina— solo
+  // están a la vista en este punto.
+  const pedidosCerrados = new Set(registros.keys());
+  const enRutaAhora = paradasFilas.filter(
+    (p) => p.manifiestoEnRuta && !pedidosCerrados.has(p.pedido_id),
+  ).length;
+
+  const conductoresConRuta = new Set(paradasFilas.map((p) => p.driver_id)).size;
+
+  // «Sin gestionar» = abierta y por encima del umbral. Se mide contra el mismo
+  // umbral que usa la bandeja de incidencias; si algún día cambia, cambia en un
+  // solo lugar.
+  const umbralMs = UMBRAL_INCIDENCIA_SIN_GESTION_HORAS * 60 * 60 * 1000;
+  const incidenciasSinGestionar = incidenciasFilas.filter(
+    (i) => i.estado === 'abierta' && ahoraMs - new Date(i.abierta_en).getTime() > umbralMs,
+  ).length;
 
   // --- F9: las olas entrantes -------------------------------------------------
   // La capacidad de la ola la ponen los que van a estar: `activo` **y**
@@ -372,6 +398,13 @@ export const cargarTablero = cache(async function cargarTablero(
 
   // Última puerta antes de la pantalla: las columnas nullable y los numéricos que
   // llegan como string no los ve el typecheck.
+  // El resumen se completa con lo del día antes de validarse. `armarResumen`
+  // deja esas cuatro en cero a propósito: no tiene con qué llenarlas.
+  resumen.enRutaAhora = enRutaAhora;
+  resumen.conductoresConRuta = conductoresConRuta;
+  resumen.conductoresDisponibles = disponibles.length;
+  resumen.incidenciasSinGestionar = incidenciasSinGestionar;
+
   return validarEstadoTorre({
     courier: cabecera.courier,
     ahora: cabecera.ahoraIso,

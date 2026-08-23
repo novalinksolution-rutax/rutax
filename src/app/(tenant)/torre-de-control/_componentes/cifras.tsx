@@ -8,6 +8,16 @@
  *
  * DOS REGLAS QUE SE VEN ACÁ Y SE ROMPEN FÁCIL:
  *
+ * QUÉ CAMBIÓ EL 23-08-2026, contra el tablero B1a: salieron «Entregados hoy»
+ * —que es el complemento de la primera cifra y ya se lee ahí— y «Cerca del
+ * corte». Entraron «En ruta ahora» y «Conductores con ruta». Las cuatro de
+ * ahora responden la misma pregunta: **quién está trabajando y qué falta**.
+ *
+ * ⚠️ Con «cerca del corte» se retiró la única señal de riesgo de la franja.
+ * `resumen.enRiesgoDeCorte` sigue calculándose y sigue marcando comunas en el
+ * mapa y en la lista: lo que se fue es su cifra agregada arriba. Decisión del
+ * usuario, 23-08-2026.
+ *
  * · **La fracción va con la palabra «faltan».** No es decoración: sin ella,
  *   «38 de 120» se lee como «38 hechos de 120» tan fácil como al revés — le pasó
  *   al dueño del producto mirando su propia pantalla. Se evaluó invertirla a lo
@@ -20,7 +30,7 @@
  */
 
 import { cn } from '@/lib/utils';
-import type { EstadoTorre, FrescuraTorre, ResumenTorre } from '@/modules/contexto/contrato-torre';
+import type { FrescuraTorre, ResumenTorre } from '@/modules/contexto/contrato-torre';
 
 function Magnitud({
   etiqueta,
@@ -51,40 +61,45 @@ function Magnitud({
 export function CifrasTorre({
   resumen,
   frescura,
-  corte,
 }: {
   resumen: ResumenTorre;
   frescura: FrescuraTorre;
-  corte: EstadoTorre['corte'];
 }) {
   return (
     <div>
       <div className="flex flex-wrap items-start divide-x divide-border border-y border-border">
-        <Magnitud etiqueta="Faltan por entregar" destacada>
+        <Magnitud etiqueta="Por entregar hoy" destacada>
           {resumen.pendientes}
           <span className="text-base font-normal text-muted-foreground"> de {resumen.total}</span>
         </Magnitud>
 
-        <Magnitud etiqueta="Entregados hoy">{resumen.entregados}</Magnitud>
+        {/* «En ruta ahora» NO es «pendientes»: un pedido asignado a un
+            manifiesto que todavía no sale está pendiente y no está en la calle.
+            La diferencia entre las dos cifras es lo que aún no arrancó, y a las
+            16:30 esa es la pregunta del día. */}
+        <Magnitud etiqueta="En ruta ahora">{resumen.enRutaAhora}</Magnitud>
+
+        <Magnitud etiqueta="Conductores con ruta">
+          {resumen.conductoresConRuta}
+          <span className="text-base font-normal text-muted-foreground">
+            {' '}
+            de {resumen.conductoresDisponibles}
+          </span>
+        </Magnitud>
 
         <Magnitud etiqueta="Incidencias abiertas">
           <span className={resumen.incidenciasAbiertas > 0 ? 'text-destructive' : undefined}>
             {resumen.incidenciasAbiertas}
           </span>
-        </Magnitud>
-
-        {/* Pasada la hora, «cerca del corte» es una repetición muda de «faltan
-            por entregar»: `minutosHastaCorte` devuelve 0 y todo lo pendiente cae
-            dentro del margen. El número es correcto y no se toca; lo que cambia
-            es lo que dice, que pasa de anunciar un riesgo a declarar un atraso. */}
-        <Magnitud etiqueta={corte.vencido ? 'Pasadas del corte' : 'Cerca del corte'}>
-          <span
-            className={
-              resumen.enRiesgoDeCorte > 0 ? 'text-warning-subtle-foreground' : undefined
-            }
-          >
-            {resumen.enRiesgoDeCorte}
-          </span>
+          {/* La segunda línea no es adorno: tres recién abiertas y tres
+              olvidadas hace cinco horas se leen igual sin ella, y son cosas muy
+              distintas. */}
+          {resumen.incidenciasSinGestionar > 0 ? (
+            <span className="text-base font-normal text-destructive">
+              {' · '}
+              {resumen.incidenciasSinGestionar} sin gestionar
+            </span>
+          ) : null}
         </Magnitud>
       </div>
 

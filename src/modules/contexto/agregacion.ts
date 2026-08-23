@@ -339,6 +339,8 @@ export function diaCerrado(ahoraMinutos: number): boolean {
 export interface AvanceConductor {
   id: string;
   nombre: string;
+  /** `false` = disponible hoy y sin una sola parada. Ver `disponibles`. */
+  conRuta: boolean;
   asignados: number;
   completados: number;
   pendientes: number;
@@ -390,6 +392,15 @@ export function avanceDeConductores(params: {
   /** Instante de referencia, en milisegundos. */
   ahoraMs: number;
   diaCerrado: boolean;
+  /**
+   * Los que se declararon disponibles hoy, tengan paradas o no.
+   *
+   * Sin esto, un conductor disponible y sin ruta **no aparece en ninguna parte**:
+   * la fracción «7 de 9» de la cabecera queda como una resta que hay que hacer de
+   * cabeza, cuando esos dos son justamente a quienes todavía se les puede
+   * asignar. Se pasan como lista y no como conteo porque la lista los nombra.
+   */
+  disponibles?: readonly { id: string; nombre: string }[];
   /** Última posición por conductor. Vacío mientras no haya rastreo. */
   posiciones?: ReadonlyMap<string, { lat: number; long: number }>;
 }): AvanceConductor[] {
@@ -432,6 +443,7 @@ export function avanceDeConductores(params: {
     salida.push({
       id,
       nombre: nombres.get(id) ?? 'Conductor sin nombre',
+      conRuta: true,
       asignados: datos.asignados,
       completados: datos.completados,
       pendientes: datos.pendientes,
@@ -444,8 +456,30 @@ export function avanceDeConductores(params: {
     });
   }
 
+  // Los disponibles sin una sola parada entran apagados, al final. Van después
+  // del orden por pendientes a propósito: son los únicos que no están
+  // trabajando, y la lista existe para decidir a quién mirar primero.
+  for (const c of params.disponibles ?? []) {
+    if (acumulado.has(c.id)) continue;
+    salida.push({
+      id: c.id,
+      nombre: c.nombre,
+      conRuta: false,
+      asignados: 0,
+      completados: 0,
+      pendientes: 0,
+      rezagados: params.diaCerrado ? 0 : null,
+      ultimoRegistroEn: null,
+      minutosSinRegistrar: null,
+      posicion: null,
+    });
+  }
+
   return salida.sort(
-    (a, b) => b.pendientes - a.pendientes || a.nombre.localeCompare(b.nombre, 'es'),
+    (a, b) =>
+      Number(b.conRuta) - Number(a.conRuta) ||
+      b.pendientes - a.pendientes ||
+      a.nombre.localeCompare(b.nombre, 'es'),
   );
 }
 

@@ -275,6 +275,13 @@ export function armarResumen(carga: ReadonlyMap<string | null, CargaComuna>): Re
     pendientes: 0,
     entregados: 0,
     incidenciasAbiertas: 0,
+    // Las cuatro que siguen NO salen de la carga por comuna: son del día
+    // completo, no de un territorio. Las rellena el composer, que es quien tiene
+    // los manifiestos y la nómina a la vista.
+    incidenciasSinGestionar: 0,
+    enRutaAhora: 0,
+    conductoresConRuta: 0,
+    conductoresDisponibles: 0,
     enRiesgoDeCorte: 0,
     sinUbicar: 0,
   };
