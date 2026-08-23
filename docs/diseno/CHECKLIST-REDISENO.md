@@ -1255,9 +1255,28 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
 
 ## Pantallas sin sesión · 13
 
-- [ ] `/login` (`src/app/login/page.tsx` + `formulario-login.tsx`) — **login único de todo el
-      producto**: courier, seller y conductor entran por acá. **NUEVO #29: el semáforo del sistema.**
-      **NUEVO #30: «lo último que cambió», con su pantalla de origen.**
+- [x] `/login` — **brecha #7 cerrada.** Mostraba **una sola frase para todo**: «Email o contraseña
+      incorrectos». Daba igual que la cuenta estuviera suspendida, sin activar, bloqueada por
+      intentos o que el servicio no respondiera.
+      El daño no es de tono, es que **manda a la persona a arreglar lo único que no está mal**:
+      · a quien tiene la cuenta **suspendida** se le dice que revise cómo escribe, para siempre —
+        probará diez claves, usará «olvidé mi contraseña», la cambiará, y seguirá sin entrar;
+      · a quien está **bloqueado por intentos** se le invita a intentar de nuevo, que es
+        exactamente lo que alarga el bloqueo;
+      · y si el **servicio está caído**, se le dice a alguien con la clave correcta que la tiene
+        mal. Mucha gente la cambia. Ahora sí la tiene mal.
+      ⚠️ **Distinguir causas sin volverse un oráculo (regla 45):** la credencial equivocada
+      conserva **un solo mensaje**, idéntico exista o no el correo — probando correos no se
+      averigua cuáles están registrados. Solo se distinguen estados que **ya exigieron la
+      credencial correcta** (cuenta sin activar, suspendida) o que no hablan de la cuenta (429,
+      5xx, sin red).
+      🐞 **Y un caso que no se manejaba:** el cliente **lanza** cuando la petición no llega. La
+      excepción subía sin capturar y el formulario quedaba en «Ingresando…» para siempre, sin decir
+      nada. Ahora se atrapa y dice que no es la contraseña.
+      El botón **se apaga** cuando reintentar no ayuda: dejarlo activo invita a lo que empeora la
+      situación. 8 pruebas. **Verificado en pantalla** el caso de credencial.
+      *Sigue pendiente:* **NUEVO #29** (semáforo del sistema) y **NUEVO #30** («lo último que
+      cambió»), los dos bloqueados con el resto de los 30.
 - [ ] `/portal/login` — 6 líneas, solo `redirect("/login")`. No hay login propio del portal.
 - [ ] `/admin/login` — el formulario lo renderiza `admin/layout.tsx`, no la página. Con MFA/TOTP.
 - [ ] `/registro` + `/registro/revisa-tu-correo`
@@ -1283,9 +1302,15 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
         inicio acá. Debajo va lo único que de verdad puede hacer — pedirle el enlace a quien se lo
         mandó. Sin ilustración: sería varios cientos de KB para alguien con mala señal.
       **Verificado en el navegador**: cero inglés.
-- [ ] `src/app/error.tsx` y `src/app/global-error.tsx` — existen. `global-error.tsx` renderiza su
-      propio `html`/`body` con estilos **en línea**, así que **no ve ningún token**: hay que pasarle
-      los valores a mano, como al mapa y a los PDF.
+- [x] `src/app/error.tsx` y `src/app/global-error.tsx` — **al sistema.**
+      `global-error.tsx` reemplaza el `<html>` y el `<body>` del layout raíz —es lo que se ve cuando
+      el propio layout reventó—, así que **no hay hoja de estilos cargada**: ni `globals.css`, ni el
+      puente, ni las variables. Todo va en línea y con valores literales, como el mapa, los PDF y
+      los correos.
+      Los que había eran del ADN anterior (`#f8fafc`, `#0f172a`, `#e2e8f0`, `#64748b`, `#94a3b8`), y
+      ese último daba **2,5:1 sobre blanco** justo en el **código de error** — lo único que sirve
+      para que soporte encuentre nada.
+      `error.tsx` pierde su `shadow-xs` (regla 4) y baja el radio a 3 px.
 - [x] `/kitchen-sink` — **cerrada en producción** *(decisión del usuario, 23-08)*. Estaba servida
       sin ninguna protección —ni sesión, ni `NODE_ENV`, ni middleware—, devolviendo **200 a
       cualquiera** que adivinara la URL, y desplegada desde que se creó.
@@ -1323,10 +1348,10 @@ retirar.
 
 ## Brechas del inventario que cierra
 
-- [ ] **#7** — el inicio de sesión presenta toda causa de fallo como error de tipeo.
+- [x] **#7** — el inicio de sesión presentaba toda causa de fallo como error de tipeo. Cerrada.
 - [ ] **#9** — no hay página de inicio, y el registro no tiene un solo enlace entrante.
-- [ ] **#10** — el destinatario del paquete ve el 404 en inglés del framework, y la página de
-      seguimiento no tiene ni salidas ni marca.
+- [x] **#10** — el destinatario del paquete veía el 404 en inglés del framework. Cerrada esa
+      mitad; la página de seguimiento en sí es la `línea de tiempo pública`, que sigue pendiente.
 
 ## Bloqueado
 

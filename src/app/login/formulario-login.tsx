@@ -10,13 +10,18 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
+import { traducirErrorLogin, type LecturaErrorLogin } from "@/lib/identidad/error-login";
 
 export function FormularioLogin() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // ⚠️ Antes esto era un `string` y SIEMPRE decía lo mismo: «Email o contraseña
+  // incorrectos». Daba igual que la cuenta estuviera suspendida, sin activar,
+  // bloqueada por intentos o que el servicio no respondiera. Es la brecha #7, y
+  // su daño real es que manda a la persona a arreglar lo único que no está mal.
+  const [error, setError] = useState<LecturaErrorLogin | null>(null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -24,10 +29,22 @@ export function FormularioLogin() {
     setCargando(true);
 
     const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (authError) {
-      setError("Email o contraseña incorrectos. Verifica tus datos e intenta de nuevo.");
+    let authError: { code?: string | null; status?: number | null; message?: string | null } | null =
+      null;
+    let sinRed = false;
+    try {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      authError = err;
+    } catch {
+      // El cliente LANZA cuando la petición no llega. Antes esto no se
+      // capturaba: la excepción subía y el formulario quedaba «Ingresando…»
+      // para siempre, sin decir nada.
+      sinRed = true;
+    }
+
+    if (authError || sinRed) {
+      setError(traducirErrorLogin(authError, sinRed));
       setCargando(false);
       return;
     }
@@ -48,7 +65,7 @@ export function FormularioLogin() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{error.mensaje}</AlertDescription>
             </Alert>
           )}
 
@@ -97,7 +114,14 @@ export function FormularioLogin() {
             </div>
           </div>
 
-          <Button type="submit" className="w-full" disabled={cargando}>
+          {/* Cuando reintentar no ayuda —bloqueo por intentos, cuenta
+              suspendida— el boton se apaga. Dejarlo activo invita justo a lo
+              que empeora la situacion. */}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={cargando || (error?.reintentarNoAyuda ?? false)}
+          >
             {cargando ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
