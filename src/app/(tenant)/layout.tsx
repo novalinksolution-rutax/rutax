@@ -25,6 +25,8 @@ import { destinosMovil } from "@/components/app-shell/destinos-movil";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
 import { resolverEstadoOnboarding } from "@/app/(tenant)/onboarding/estado";
 import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { listarEventosConciliacion } from "@/modules/dinero/index";
 
 /**
  * Layout del área autenticada para roles internos del courier (dueño, supervisor,
@@ -112,6 +114,23 @@ export default async function LayoutTenant({ children }: { children: React.React
     grupoOperacion.items.push({ href: "/operaciones/incidencias", etiqueta: "Incidencias", icono: "incidencias" });
   }
 
+  // Excepciones de conciliación sin resolver. Se lee acá y no en el layout de
+  // dinero porque el destino vive en esta navegación, y porque así también la
+  // ve quien está en otra sección.
+  let excepcionesPendientes = 0;
+  if (puedeVerConciliacion(u) && u.tenantId) {
+    try {
+      const eventos = await listarEventosConciliacion(
+        crearClienteServiceRole(),
+        u.tenantId,
+        "pendiente",
+      );
+      excepcionesPendientes = eventos.length;
+    } catch {
+      // Un conteo que falla no puede tumbar la navegación entera.
+    }
+  }
+
   const grupoDinero: GrupoNav = { titulo: "Dinero", items: [] };
   if (puedeEmitirFacturas(u)) {
     grupoDinero.items.push({ href: "/dinero/periodos", etiqueta: "Períodos", icono: "periodos" });
@@ -120,7 +139,15 @@ export default async function LayoutTenant({ children }: { children: React.React
     grupoDinero.items.push({ href: "/dinero/liquidaciones", etiqueta: "Liquidaciones", icono: "liquidaciones" });
   }
   if (puedeVerConciliacion(u)) {
-    grupoDinero.items.push({ href: "/dinero/conciliacion", etiqueta: "Conciliación", icono: "conciliacion" });
+    // El contador vivía en las pestañas de /dinero, que se retiraron por repetir
+    // destinos que ya están acá. La cifra sí era real, así que se mudó al
+    // destino en vez de perderse: es el único sitio donde se ve sin entrar.
+    grupoDinero.items.push({
+      href: "/dinero/conciliacion",
+      etiqueta: "Conciliación",
+      icono: "conciliacion",
+      contador: excepcionesPendientes,
+    });
   }
   if (puedeVerConciliacion(u) || puedeGestionarCobranza(u)) {
     grupoDinero.items.push({ href: "/dinero/cobranza", etiqueta: "Cobranza", icono: "pagos" });

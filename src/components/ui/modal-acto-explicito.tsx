@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { FranjaModoPruebas } from "@/components/ui/franja-modo-pruebas"
 import { BloqueComposicion, type SumandoComposicion } from "@/components/ui/bloque-composicion"
 import { formatearCLP } from "@/lib/ui/formato-moneda"
 
@@ -376,22 +377,4 @@ export function ModalActoExplicito({
   )
 }
 
-/**
- * La franja de modo de pruebas. Usa la **trama** del tono fuera de juego, no un
- * color propio: un color nuevo para esto habría sido un séptimo tono, y la trama
- * ya significa «esto no cuenta».
- *
- * Usa `rx-inert-row` y no `rx-inert`: la primera tiene el paso más ancho, que es
- * el que corresponde a una franja de ancho completo. La del distintivo queda
- * apretada y vibra.
- */
-function FranjaModoPruebas() {
-  return (
-    <div className="rx-inert-row flex flex-wrap items-center gap-2 border-b border-line px-5 py-2">
-      <span className="border border-line bg-bg px-1.5 py-1 font-mono text-[10px] font-semibold tracking-[0.1em] text-fg">
-        MODO DE PRUEBAS
-      </span>
-      <span className="text-xs text-fg-muted">Nada de lo que emitas llega al SII todavía.</span>
-    </div>
-  )
-}
+

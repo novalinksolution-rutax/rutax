@@ -375,10 +375,21 @@ bloques 4–8, cuando cada pantalla se toque.
 
 - [ ] `src/components/app-shell/app-shell.tsx` — es el archivo del bloque (739 líneas).
 - [ ] `src/app/(tenant)/layout.tsx` · `src/app/portal/layout.tsx` · `src/app/admin/layout.tsx`
-- [ ] `src/app/(tenant)/dinero/layout.tsx` — **pasa al bloque 5.** Sus pestañas horizontales son un
-      cuarto patrón de navegación para destinos que ya están en el sidebar, pero cargan el contador
-      de conciliación y el `BadgeModoDte`, que sí son reales. Resolverlo sin el tablero `B2a` sería
-      adivinar; va con el bloque de dinero.
+- [x] `src/app/(tenant)/dinero/layout.tsx` — **resuelto: las pestañas se retiran** *(decisión del
+      usuario, 22-08)*. Eran un **cuarto patrón de navegación** para tres destinos que ya están en
+      el sidebar, **nunca marcaban el activo**, les faltaba Cobranza —que sí es ruta real— y
+      llevaban la pastilla redondeada del ADN retirado. El tablero B2a no las dibuja.
+      Lo que sí era real se conservó, y de hecho mejoró de sitio:
+      · el **contador de excepciones pendientes** se mudó al destino «Conciliación» del sidebar, que
+        es donde se ve **sin entrar a la sección** y desde cualquier pantalla. `ItemNav.contador` ya
+        existía en el tipo y solo lo pintaba la barra del teléfono; ahora también el sidebar, y
+        **colapsado se reduce a un punto** porque en el rail no cabe una cifra (la cantidad igual
+        viaja al lector de pantalla).
+      · el **modo de emisión** deja de ser un badge suelto y pasa a `FranjaModoPruebas`, el mismo
+        componente que usa la ceremonia — con la trama del tono fuera de juego, no un color propio
+        (decisión 5 de P4). Se muestra **solo a quien puede emitir**: a los demás no les dice nada.
+      Cae `badge-modo-dte.tsx`, que se quedó sin un solo consumidor. **Verificado en pantalla**,
+      expandido y colapsado.
 - [ ] Las 32 de `(tenant)`, 11 de `portal` y 13 de `admin` heredan sin tocarse.
 - [ ] **Falta `src/app/(tenant)/configuracion/page.tsx`** (hoy 404).
 - [ ] `src/app/error.tsx` — es raíz y **reemplaza el AppShell entero**: en un error el usuario

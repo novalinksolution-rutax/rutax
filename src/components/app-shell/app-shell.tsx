@@ -185,7 +185,7 @@ function ItemLink({
       className={cn(
         "group flex items-center gap-2.5 text-[13px] transition-colors duration-(--motion-fast) ease-out",
         relajado ? "px-2.5 py-2" : "px-2.5 py-[9px]",
-        colapsado && "justify-center px-0",
+        colapsado && "relative justify-center px-0",
         // El activo: escalón de fondo + regla de acento de 2 px a la izquierda,
         // y peso 600. **Sin sombra y sin pastilla** — la regla 4 del sistema
         // construye la elevación con fondo y borde, nunca con sombra. Antes
@@ -202,6 +202,28 @@ function ItemLink({
         />
       ) : null}
       {!colapsado ? <span className="truncate">{item.etiqueta}</span> : null}
+      {/* El contador del destino: excepciones que esperan, incidencias sin
+          gestionar. Solo si es > 0 — un contador en cero no es información, es
+          ruido, y gasta la señal del que sí importa.
+
+          Colapsado no cabe un número: se reduce a un punto, y el `title` del
+          enlace ya dice de qué destino se trata. La cifra igual viaja al lector
+          de pantalla. */}
+      {typeof item.contador === "number" && item.contador > 0 ? (
+        colapsado ? (
+          <span
+            aria-label={`${item.contador} sin resolver`}
+            className="absolute top-1.5 right-2 size-1.5 rounded-full bg-attention-fg"
+          />
+        ) : (
+          <span
+            aria-label={`${item.contador} sin resolver`}
+            className="ml-auto inline-flex min-w-4 items-center justify-center border border-attention-line bg-attention-bg px-1 font-mono text-[10px] font-medium text-attention-fg tabular-nums"
+          >
+            {item.contador > 99 ? "99+" : item.contador}
+          </span>
+        )
+      ) : null}
     </Link>
   )
 }
