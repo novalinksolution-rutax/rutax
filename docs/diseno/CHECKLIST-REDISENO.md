@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **11 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
+| **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
