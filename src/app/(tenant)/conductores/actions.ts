@@ -32,7 +32,13 @@ import {
   crearConductor,
   type DatosAltaConductor,
 } from "@/modules/operacion/conductores";
+import {
+  desactivarConductor,
+  reactivarConductor,
+  type ConductorEnNomina,
+} from "@/modules/operacion/conductores-nomina";
 import { listarZonas } from "@/modules/operacion/zonas";
+import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 import type { Conductor, ConductorZona, Zona } from "@/modules/operacion/tipos";
 
 // =============================================================================
@@ -375,5 +381,89 @@ export async function actionCrearConductor(formData: FormData): Promise<Respuest
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : "Error al crear el conductor.";
     return { ok: false, motivo: "error", mensaje };
+  }
+}
+
+// =============================================================================
+// Nómina — sacar y reincorporar
+// =============================================================================
+
+/**
+ * Saca a un conductor de la nómina.
+ *
+ * ⚠️ Gate DISTINTO al del resto de esta pantalla: `gestionar_liquidaciones_
+ * conductores` (dueño y administración), no `asignar_y_reasignar_pedidos`.
+ * Decisión del usuario (23-08-2026): la baja tiene consecuencia de dinero y de
+ * acceso, no es una decisión de terreno. El coordinador conserva «no disponible
+ * hoy» y la redistribución, que es lo que necesita en la bodega.
+ */
+export async function actionSacarDeNomina(
+  conductorId: string,
+  motivo: string,
+): Promise<Respuesta<ConductorEnNomina>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay sesión activa." };
+  }
+
+  if (!puedeGestionarLiquidacionesConductores(sesion.usuario)) {
+    return {
+      ok: false,
+      mensaje: "Solo el dueño o administración pueden sacar a alguien de la nómina.",
+    };
+  }
+
+  try {
+    const conductor = await desactivarConductor(
+      crearClienteServiceRole(),
+      sesion.usuario.tenantId,
+      conductorId,
+      motivo,
+      ahoraEnSantiago().fecha,
+      sesion.usuarioId,
+      sesion.usuario,
+    );
+    revalidatePath("/conductores");
+    revalidatePath("/manifiestos");
+    return { ok: true, datos: conductor };
+  } catch (err) {
+    return {
+      ok: false,
+      mensaje: err instanceof Error ? err.message : "Error al sacar de la nómina.",
+    };
+  }
+}
+
+/** Devuelve a un conductor a la nómina, no disponible. Mismo gate que la baja. */
+export async function actionReincorporarANomina(
+  conductorId: string,
+): Promise<Respuesta<ConductorEnNomina>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay sesión activa." };
+  }
+
+  if (!puedeGestionarLiquidacionesConductores(sesion.usuario)) {
+    return {
+      ok: false,
+      mensaje: "Solo el dueño o administración pueden reincorporar a alguien.",
+    };
+  }
+
+  try {
+    const conductor = await reactivarConductor(
+      crearClienteServiceRole(),
+      sesion.usuario.tenantId,
+      conductorId,
+      sesion.usuarioId,
+      sesion.usuario,
+    );
+    revalidatePath("/conductores");
+    return { ok: true, datos: conductor };
+  } catch (err) {
+    return {
+      ok: false,
+      mensaje: err instanceof Error ? err.message : "Error al reincorporar.",
+    };
   }
 }

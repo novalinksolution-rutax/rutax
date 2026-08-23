@@ -9,6 +9,7 @@
  */
 
 import type { EstadoPedido, TipoIncidencia, EstadoManifiesto, EstadoIncidencia, EstadoGeocoding, CoberturaEstado, SituacionRetiro } from "@/modules/operacion/tipos";
+import type { TonoEstado } from "./tonos-estado";
 import type {
   EstadoPeriodo,
   EstadoSii,
@@ -1060,3 +1061,42 @@ export const BADGE_ESTADO_SII = badgePorEstado(VARIANTE_ESTADO_SII_MAPA);
 export function traducirEstadoSiiTexto(estado: EstadoSii): string {
   return traducirEstadoSii(estado).texto;
 }
+
+// =============================================================================
+// El conductor: nómina y disponibilidad — DOS ejes, no uno
+// =============================================================================
+
+/**
+ * `identidad.conductores` tiene dos columnas que se parecen y no significan lo
+ * mismo:
+ *
+ *   · `estado` — **la nómina**: si alguien trabaja o no para este courier.
+ *   · `disponible` — **hoy**: si sale a repartir esta jornada.
+ *
+ * Hasta el 23-08-2026 la pantalla los dibujaba como dos distintivos pegados en
+ * la misma línea, que es justo lo que prohíbe la regla nº 4 del bloque: los ejes
+ * independientes de un objeto no se combinan en un distintivo.
+ *
+ * Ahora la columna muestra **un solo valor de tres**, y estar fuera de la nómina
+ * se lee además por la trama de toda la fila — que es la codificación secundaria
+ * que exige la regla 5, y la que hace que el estado sobreviva en monocromo.
+ */
+export function estadoDelDiaConductor(
+  estado: "activo" | "inactivo",
+  disponible: boolean,
+): { etiqueta: string; tono: TonoEstado } {
+  if (estado === "inactivo") {
+    // `inert` y no `neutral`: es lo único de la lista que está fuera de juego, y
+    // `inert` es el único tono que además de color trae trama.
+    return { etiqueta: "Fuera de nómina", tono: "inert" };
+  }
+  return disponible
+    ? { etiqueta: "Disponible", tono: "balanced" }
+    : { etiqueta: "No disponible", tono: "neutral" };
+}
+
+/** `dependiente` | `independiente` — Ley 21.431: se registra, no se infiere. */
+export const TEXTO_RELACION_CONDUCTOR: Record<string, string> = {
+  dependiente: "Dependiente",
+  independiente: "Independiente",
+};

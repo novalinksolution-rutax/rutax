@@ -28,21 +28,14 @@ import {
   AlertTriangle,
   Banknote,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   MapPin,
   RefreshCw,
   ShieldAlert,
-  ToggleLeft,
-  ToggleRight,
-  Truck,
   UserPlus,
-  Users,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogClose,
@@ -65,13 +58,10 @@ import { semaforoSla } from "@/lib/ui/semaforo-sla";
 import { esRutValido } from "@/modules/identidad/rut";
 import type { Conductor, ConductorZona, Zona, ImpactoSla } from "@/modules/operacion/tipos";
 import {
-  actionToggleDisponibilidadConductor,
-  actionActualizarCapacidadConductor,
   actionActualizarZonasConductor,
   actionActualizarDatosBancarios,
   actionCrearConductor,
   obtenerZonasConductor,
-  type EstadoConductores,
 } from "./actions";
 import { actionMarcarConductorNoDisponible } from "../manifiestos/actions";
 
@@ -79,70 +69,12 @@ import { actionMarcarConductorNoDisponible } from "../manifiestos/actions";
 // Panel principal
 // =============================================================================
 
-interface Props {
-  estadoInicial: EstadoConductores;
-  fechaHoy: string;
-  puedeEditarBanco: boolean;
-}
-
-export function PanelConductores({ estadoInicial, fechaHoy, puedeEditarBanco }: Props) {
-  const [conductores, setConductores] = useState<Conductor[]>(estadoInicial.conductores);
-  const zonas = estadoInicial.zonas;
-
-  function onConductorActualizado(c: Conductor) {
-    setConductores((prev) => prev.map((x) => (x.id === c.id ? c : x)));
-  }
-
-  function onConductorCreado(c: Conductor) {
-    setConductores((prev) =>
-      [...prev, c].sort((a, b) => a.nombre.localeCompare(b.nombre, "es-CL")),
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Nuevo conductor */}
-      <div className="flex justify-end">
-        <DialogNuevoConductor onCreado={onConductorCreado} />
-      </div>
-
-      {/* Lista de conductores */}
-      {conductores.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <Users className="size-10 text-muted-foreground" aria-hidden="true" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">Todavía no tienes conductores</p>
-              <p className="text-sm text-muted-foreground">
-                Crea el primero con &ldquo;Nuevo conductor&rdquo; arriba para empezar a armar tu
-                pool del día.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {conductores.map((conductor) => (
-            <TarjetaConductor
-              key={conductor.id}
-              conductor={conductor}
-              zonasTenant={zonas}
-              fechaHoy={fechaHoy}
-              puedeEditarBanco={puedeEditarBanco}
-              onActualizado={onConductorActualizado}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // =============================================================================
 // Dialog — Nuevo conductor (F2 "Ola 1", ítem G)
 // =============================================================================
 
-function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }) {
+export function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }) {
   const [open, setOpen] = useState(false);
   const [nombreCompleto, setNombreCompleto] = useState("");
   const [rut, setRut] = useState("");
@@ -220,12 +152,12 @@ function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }
       <DialogTrigger asChild>
         <Button size="sm">
           <UserPlus className="size-4" aria-hidden="true" />
-          Nuevo conductor
+          Crear conductor
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Nuevo conductor</DialogTitle>
+          <DialogTitle>Crear conductor</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={guardar} className="space-y-4">
@@ -347,236 +279,7 @@ function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }
 // Tarjeta de conductor — toggle disponibilidad, capacidad, zonas, redistribución
 // =============================================================================
 
-interface PropsTarjetaConductor {
-  conductor: Conductor;
-  zonasTenant: Zona[];
-  fechaHoy: string;
-  puedeEditarBanco: boolean;
-  onActualizado: (c: Conductor) => void;
-}
-
-function TarjetaConductor({
-  conductor,
-  zonasTenant,
-  fechaHoy,
-  puedeEditarBanco,
-  onActualizado,
-}: PropsTarjetaConductor) {
-  const [expandida, setExpandida] = useState(false);
-  const [pendienteToggle, iniciarToggle] = useTransition();
-  const [msgToggle, setMsgToggle] = useState<string | null>(null);
-
-  function toggleDisponibilidad() {
-    setMsgToggle(null);
-    iniciarToggle(async () => {
-      const resp = await actionToggleDisponibilidadConductor(
-        conductor.id,
-        !conductor.disponible,
-      );
-      if (!resp.ok) {
-        setMsgToggle(resp.mensaje);
-        return;
-      }
-      onActualizado(resp.datos);
-    });
-  }
-
-  return (
-    <Card>
-      <div className="flex items-center justify-between gap-4 px-5 py-4">
-        {/* Nombre + badges */}
-        <div className="flex items-center gap-3">
-          <Truck className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <div>
-            {puedeEditarBanco ? (
-              <Link
-                href={`/conductores/${conductor.id}`}
-                className="font-medium hover:underline"
-              >
-                {conductor.nombre}
-              </Link>
-            ) : (
-              <p className="font-medium">{conductor.nombre}</p>
-            )}
-            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-              <Badge variant={conductor.estado === "activo" ? "outline" : "neutral"}>
-                {conductor.estado === "activo" ? "Activo" : "Inactivo"}
-              </Badge>
-              <Badge variant={conductor.disponible ? "success" : "warning"}>
-                {conductor.disponible ? "Disponible" : "No disponible"}
-              </Badge>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                Cupo: {conductor.capacidadParadas} paradas
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Toggle disponibilidad rápida */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleDisponibilidad}
-            disabled={pendienteToggle}
-            aria-label={
-              conductor.disponible
-                ? `Marcar a ${conductor.nombre} como no disponible`
-                : `Marcar a ${conductor.nombre} como disponible`
-            }
-          >
-            {pendienteToggle ? (
-              <RefreshCw className="size-4 animate-spin" />
-            ) : conductor.disponible ? (
-              <ToggleRight className="size-5 text-success" />
-            ) : (
-              <ToggleLeft className="size-5 text-muted-foreground" />
-            )}
-          </Button>
-
-          {/* Expandir configuración */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpandida((v) => !v)}
-            aria-expanded={expandida}
-            aria-label={expandida ? "Cerrar configuración" : "Abrir configuración"}
-          >
-            {expandida ? (
-              <ChevronUp className="size-4" />
-            ) : (
-              <ChevronDown className="size-4" />
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {msgToggle && (
-        <div className="px-5 pb-2">
-          <p className="text-xs text-destructive">{msgToggle}</p>
-        </div>
-      )}
-
-      {expandida && (
-        <CardContent className="border-t pt-5 space-y-6">
-          {/* Capacidad */}
-          <EditorCapacidad
-            conductor={conductor}
-            onActualizado={onActualizado}
-          />
-
-          {/* Zonas preferentes */}
-          <EditorZonasConductor
-            conductor={conductor}
-            zonasTenant={zonasTenant}
-          />
-
-          {/* Datos bancarios */}
-          <EditorDatosBancarios
-            conductor={conductor}
-            puedeEditar={puedeEditarBanco}
-            onActualizado={onActualizado}
-          />
-
-          {/* Redistribución */}
-          {conductor.disponible && (
-            <SeccionRedistribucion
-              conductor={conductor}
-              fechaHoy={fechaHoy}
-              onActualizado={onActualizado}
-            />
-          )}
-        </CardContent>
-      )}
-    </Card>
-  );
-}
-
-// =============================================================================
-// Editor de capacidad de paradas
-// =============================================================================
-
-function EditorCapacidad({
-  conductor,
-  onActualizado,
-}: {
-  conductor: Conductor;
-  onActualizado: (c: Conductor) => void;
-}) {
-  const [valor, setValor] = useState(String(conductor.capacidadParadas));
-  const [pendiente, iniciarTransicion] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [exito, setExito] = useState<string | null>(null);
-
-  function guardar(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setExito(null);
-    const cap = parseInt(valor, 10);
-    if (isNaN(cap) || cap < 1) {
-      setError("La capacidad debe ser un número entero mayor a 0.");
-      return;
-    }
-    iniciarTransicion(async () => {
-      const resp = await actionActualizarCapacidadConductor(conductor.id, cap);
-      if (!resp.ok) {
-        setError(resp.mensaje);
-        return;
-      }
-      onActualizado(resp.datos);
-      setExito(`Capacidad actualizada a ${cap} paradas.`);
-    });
-  }
-
-  return (
-    <form onSubmit={guardar} className="space-y-3">
-      <div className="flex items-end gap-3">
-        <div className="space-y-2 flex-1 max-w-xs">
-          <Label htmlFor={`capacidad-${conductor.id}`}>
-            Cupo máximo de paradas por turno
-          </Label>
-          <Input
-            id={`capacidad-${conductor.id}`}
-            type="number"
-            min={1}
-            max={200}
-            value={valor}
-            onChange={(e) => {
-              setValor(e.target.value);
-              setError(null);
-              setExito(null);
-            }}
-            disabled={pendiente}
-          />
-        </div>
-        <Button type="submit" variant="outline" disabled={pendiente} className="shrink-0">
-          {pendiente ? (
-            <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
-          ) : null}
-          {pendiente ? "Guardando…" : "Guardar"}
-        </Button>
-      </div>
-      {error && (
-        <Alert variant="destructive">
-          <ShieldAlert />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      {exito && (
-        <Alert className="bg-success-subtle text-success-subtle-foreground">
-          <CheckCircle2 className="text-success" />
-          <AlertDescription>{exito}</AlertDescription>
-        </Alert>
-      )}
-    </form>
-  );
-}
-
-// =============================================================================
-// Editor de zonas preferentes del conductor
-// =============================================================================
-
-function EditorZonasConductor({
+export function EditorZonasConductor({
   conductor,
   zonasTenant,
 }: {
@@ -735,7 +438,7 @@ const ETIQUETAS_TIPO_CUENTA: Record<string, string> = {
   ahorro: "Cuenta de ahorro",
 };
 
-function EditorDatosBancarios({
+export function EditorDatosBancarios({
   conductor,
   puedeEditar,
   onActualizado,
@@ -969,7 +672,7 @@ function EditorDatosBancarios({
 // Sección redistribución — marcar no disponible + panel de impacto SLA
 // =============================================================================
 
-function SeccionRedistribucion({
+export function SeccionRedistribucion({
   conductor,
   fechaHoy,
   onActualizado,

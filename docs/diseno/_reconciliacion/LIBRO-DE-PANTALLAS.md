@@ -55,7 +55,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 | Pantalla | Ruta | Veredicto |
 |---|---|---|
 | Dashboard operativo | `(tenant)/dashboard` | ✅ **HECHA** — 23-08, ver abajo |
-| Conductores | `(tenant)/conductores` | **PANTALLA DISTINTA** |
+| Conductores | `(tenant)/conductores` | ✅ **HECHA** — 23-08, ver abajo |
 | Crear pedido same-day | `(tenant)/operaciones` · modal, sin ruta propia | **PANTALLA DISTINTA** |
 | Incidencias | `(tenant)/operaciones/incidencias` | **PANTALLA DISTINTA** |
 | Torre de control | `(tenant)/torre-de-control` | FALTA PIEZA |
@@ -102,6 +102,41 @@ en un día veía un total truncado, una tasa calculada sobre una muestra arbitra
 comunas incompleto, los tres sin un error en los logs. Con el mosaico colgando de esa función, el
 truncamiento pasaba de invisible a decisorio. Corregido, junto con el mismo patrón en
 `obtenerSlaPorSeller`, que ahora lee una ventana de un mes.
+
+### ✅ Conductores · hecho el 23-08-2026
+
+Tabla de seis columnas + cajón lateral de 352 px, donde había una pila de tarjetas-acordeón.
+Verificado en el navegador contra `B1c`: las proporciones de columna salen exactas, el cajón mide
+352 px, y en oscuro la fila seleccionada lleva su `inset 2px` en acento.
+
+**Lo que trajo de nuevo:**
+
+1. **RUT, relación y zonas en la fila.** Los tres datos ya estaban en base y la proyección no los
+   traía — las zonas, además, se pedían con una consulta por tarjeta al desplegarla, así que no
+   podían mostrarse en el listado. Ahora van en una sola consulta para todos.
+2. **Un eje por columna.** «En nómina» y «disponible hoy» eran dos `Badge` pegados, que es lo que
+   prohíbe la regla nº 4 del bloque. Ahora la columna `HOY` muestra un valor de tres y estar fuera
+   de la nómina se lee además por la **trama diagonal de 4 px a 135°** de toda la fila.
+3. **«Sacar de la nómina» y «Reincorporar», que no existían.** El estado `inactivo` se dibujaba
+   hace meses y **nada en el repo lo escribía**: un estado al que nadie podía llegar ni del que
+   nadie podía salir. Peldaño 2 de fricción —consecuencia dicha y motivo escrito—, bitácora con
+   autor antes del efecto, y **bloqueado con su motivo en pantalla** si tiene ruta de hoy sin
+   cerrar o liquidaciones sin pagar. Gate propio: `gestionar_liquidaciones_conductores`.
+4. **Estampador `− N +`** para el cupo, en vez de campo de texto con «Guardar».
+5. **Los datos bancarios no se renderizan** para quien no puede editarlos, en vez de mostrarse en
+   gris.
+
+**Lo que se dejó fuera, y no por descuido:**
+
+- ⛔ **«Última posición · 16:38 · Ñuñoa»** del cajón. `operacion.ubicacion_conductor` **dejó de
+  escribirse el 2026-08-14** por decisión del usuario tras una revisión de privacidad —la última
+  posición del día sobrevivía indefinidamente y muchas veces era el domicilio del conductor, Ley
+  21.431— y hay un candado de regresión que hace fallar la suite si alguien vuelve a consultar esa
+  tabla. El tablero se dibujó sin esa decisión a la vista. Volver a mostrarla es una decisión
+  nueva.
+- El teléfono: el tablero no dibuja esta pantalla en 390 y a seis columnas es inservible —la
+  primera colapsa a 24 px y el documento desborda—. Se aplicó lo que P1 fija para todo el
+  producto: en angosto quedan nombre, estado y el paso al detalle; el resto vive en el cajón.
 
 ## B2 · Dinero · 5 pantallas
 
