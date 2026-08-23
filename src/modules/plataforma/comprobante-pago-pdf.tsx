@@ -24,12 +24,12 @@ const estilos = StyleSheet.create({
     fontFamily: "Helvetica",
     fontSize: 10,
     padding: 40,
-    color: "#1a1a1a",
+    color: "#0B1114", // --rx-fg
   },
   encabezado: {
     marginBottom: 24,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: "#0B1114", // --rx-line-strong
     paddingBottom: 16,
   },
   titulo: {
@@ -39,7 +39,7 @@ const estilos = StyleSheet.create({
   },
   subtitulo: {
     fontSize: 11,
-    color: "#6b7280",
+    color: "#3E4D53", // --rx-fg-muted · el único gris de texto impreso
   },
   filaMetadata: {
     flexDirection: "row",
@@ -53,7 +53,7 @@ const estilos = StyleSheet.create({
   etiqueta: {
     fontSize: 8,
     fontFamily: "Helvetica-Bold",
-    color: "#6b7280",
+    color: "#3E4D53",
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 2,
@@ -64,27 +64,30 @@ const estilos = StyleSheet.create({
   bloqueMonto: {
     marginTop: 8,
     padding: "12 14",
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#F7FBFB", // --rx-print-subtotal-bg
     borderRadius: 4,
   },
-  montoLabel: { fontSize: 9, color: "#6b7280", marginBottom: 2 },
+  montoLabel: { fontSize: 9, color: "#3E4D53", marginBottom: 2 },
   montoValor: { fontSize: 20, fontFamily: "Helvetica-Bold" },
   avisoLegal: {
     marginTop: 28,
     padding: "10 12",
-    backgroundColor: "#fef9e7",
-    borderRadius: 4,
+    // El aviso va con el ámbar del sistema (`--rx-attention-*` en su versión
+    // clara), no con un beige propio. Y sin `borderRadius`: en papel no aporta.
+    backgroundColor: "#FFF6DE",
+    borderLeftWidth: 3,
+    borderLeftColor: "#8A5B00", // --rx-attention-fg
     fontSize: 9,
-    color: "#78350f",
+    color: "#8A5B00",
     lineHeight: 1.4,
   },
   pie: {
     marginTop: 24,
     paddingTop: 12,
-    borderTopWidth: 0.5,
-    borderTopColor: "#e5e7eb",
+    borderTopWidth: 2,
+    borderTopColor: "#DCE7E8", // --rx-line-subtle
     fontSize: 8,
-    color: "#9ca3af",
+    color: "#3E4D53", // era #9ca3af: 2,5:1 sobre blanco, se pierde con poco tóner
     flexDirection: "row",
     justifyContent: "space-between",
   },

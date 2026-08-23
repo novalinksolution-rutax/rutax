@@ -45,17 +45,41 @@ interface Props {
   emitidaEn: string;
 }
 
+/**
+ * Liquidación del conductor, carta.
+ * =============================================================================
+ * Los valores salen del bloque `@media print` de `rx-tokens.css:609-628`, que
+ * hasta hoy **no tenía un solo consumidor** — `@react-pdf` tampoco lee CSS, así
+ * que se transcriben con su token anotado al lado.
+ *
+ * A QUIÉN SE LE ENTREGA ESTO
+ * -----------------------------------------------------------------------------
+ * A alguien que **desconfía por defecto** de un descuento que no entiende. Su
+ * legibilidad es el problema de diseño, no su estética. De ahí las tres cosas
+ * que cambian:
+ *
+ * 1. **Un solo gris de texto.** Había TRES —`#374151`, `#6b7280`, `#9ca3af`— y
+ *    el más claro, en el pie, da 2,5:1 sobre blanco: se pierde en una impresora
+ *    con poco tóner, que es la que hay. El sistema define **uno**, `#3E4D53`,
+ *    medido en 7,4:1.
+ * 2. **Las reglas se ven.** Estaban en `0.5`, que muchas impresoras redondean a
+ *    cero o a un punto según la fila. El sistema pide 2 y 3, y los reserva para
+ *    la jerarquía del total.
+ * 3. **Sin esquinas redondeadas ni cajas grises decorativas.** En papel el
+ *    `borderRadius` no aporta nada y el fondo gris de la cabecera compite con
+ *    el fondo del subtotal, que sí significa algo.
+ */
 const estilos = StyleSheet.create({
   pagina: {
     fontFamily: "Helvetica",
     fontSize: 10,
     padding: 40,
-    color: "#1a1a1a",
+    color: "#0B1114", // --rx-fg
   },
   encabezado: {
     marginBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomWidth: 2, // --rx-print-total-rule
+    borderBottomColor: "#0B1114", // --rx-line-strong
     paddingBottom: 16,
   },
   titulo: {
@@ -65,7 +89,7 @@ const estilos = StyleSheet.create({
   },
   subtitulo: {
     fontSize: 11,
-    color: "#6b7280",
+    color: "#3E4D53", // --rx-fg-muted · el ÚNICO gris de texto impreso
   },
   seccion: {
     marginBottom: 16,
@@ -73,7 +97,7 @@ const estilos = StyleSheet.create({
   etiqueta: {
     fontSize: 8,
     fontFamily: "Helvetica-Bold",
-    color: "#6b7280",
+    color: "#3E4D53",
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 2,
@@ -89,32 +113,43 @@ const estilos = StyleSheet.create({
   bloqueMetadata: {
     flex: 1,
   },
+  // La cabecera se separa con una regla, no con una caja gris: el gris de fondo
+  // queda reservado para el subtotal, que es lo único que lo necesita.
   cabeceraTabla: {
     flexDirection: "row",
-    backgroundColor: "#f3f4f6",
     padding: "6 8",
-    borderRadius: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: "#0B1114",
     marginBottom: 2,
   },
   filaTabla: {
     flexDirection: "row",
     padding: "5 8",
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#e5e7eb",
+    borderBottomWidth: 2,
+    borderBottomColor: "#DCE7E8", // --rx-line-subtle
   },
-  colPedido: { width: "22%", fontSize: 9, fontFamily: "Helvetica-Bold", color: "#6b7280" },
-  colFecha: { width: "18%", fontSize: 9, color: "#6b7280" },
+  colPedido: { width: "22%", fontSize: 9, fontFamily: "Helvetica-Bold", color: "#3E4D53" },
+  colFecha: { width: "18%", fontSize: 9, color: "#3E4D53" },
   colConcepto: { flex: 1, fontSize: 9 },
   colMonto: { width: "18%", fontSize: 9, textAlign: "right" },
-  colPedidoHeader: { width: "22%", fontSize: 8, fontFamily: "Helvetica-Bold", color: "#374151" },
-  colFechaHeader: { width: "18%", fontSize: 8, fontFamily: "Helvetica-Bold", color: "#374151" },
-  colConceptoHeader: { flex: 1, fontSize: 8, fontFamily: "Helvetica-Bold", color: "#374151" },
-  colMontoHeader: { width: "18%", fontSize: 8, fontFamily: "Helvetica-Bold", color: "#374151", textAlign: "right" },
+  colPedidoHeader: { width: "22%", fontSize: 8, fontFamily: "Helvetica-Bold", color: "#0B1114" },
+  colFechaHeader: { width: "18%", fontSize: 8, fontFamily: "Helvetica-Bold", color: "#0B1114" },
+  colConceptoHeader: { flex: 1, fontSize: 8, fontFamily: "Helvetica-Bold", color: "#0B1114" },
+  colMontoHeader: {
+    width: "18%",
+    fontSize: 8,
+    fontFamily: "Helvetica-Bold",
+    color: "#0B1114",
+    textAlign: "right",
+  },
+  // El total: fondo tenue + regla de 2 arriba. Es la jerarquía de suma que el
+  // sistema le pide a toda tabla financiera, en papel igual que en pantalla.
   filaTotal: {
     flexDirection: "row",
     padding: "8 8",
-    backgroundColor: "#f9fafb",
-    borderRadius: 4,
+    backgroundColor: "#F7FBFB", // --rx-print-subtotal-bg
+    borderTopWidth: 2, // --rx-print-total-rule
+    borderTopColor: "#0B1114",
     marginTop: 4,
   },
   totalLabel: { flex: 1, fontSize: 11, fontFamily: "Helvetica-Bold" },
@@ -122,14 +157,24 @@ const estilos = StyleSheet.create({
   pie: {
     marginTop: 32,
     paddingTop: 12,
-    borderTopWidth: 0.5,
-    borderTopColor: "#e5e7eb",
+    borderTopWidth: 2,
+    borderTopColor: "#DCE7E8",
     fontSize: 8,
-    color: "#9ca3af",
+    color: "#3E4D53",
     flexDirection: "row",
     justifyContent: "space-between",
   },
 });
+
+/**
+ * Expuesto para `impresos-reglas.test.ts`: las reglas de tinta se comprueban
+ * sobre el objeto de estilo, porque a un PDF binario no se le puede preguntar
+ * si un color es demasiado claro.
+ */
+export const ESTILOS_LIQUIDACION_PARA_PRUEBAS = estilos as unknown as Record<
+  string,
+  Record<string, unknown>
+>;
 
 function formatearFecha(iso: string): string {
   if (!iso || iso.length < 10) return iso;

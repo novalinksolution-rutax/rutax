@@ -1074,19 +1074,43 @@ distribución con clases Tailwind (`dashboard/page.tsx:96`).
 `StyleSheet.create` con `fontFamily: "Helvetica"` y hex sueltos: **no consumen un solo token**, y
 los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen consumidor.
 
-- [ ] **`etiqueta térmica` 10×15** · DE CERO · `src/modules/operacion/etiqueta-same-day-pdf.tsx`
-      (288 líneas), con `FormatoEtiqueta = "termica" | "carta"` y 283,5 × 425,2 pt.
-      Reglas duras: **cero grises, cero tramas de fondo, ningún peso bajo 400, ningún texto bajo
-      15 px** · **todo código impreso aparece dos veces**, legible a distancia y en su forma
-      digitable sin guiones · **la comuna es más grande que el nombre** (`--rx-thermal-comuna: 24px`
-      contra `--rx-thermal-name: 17px`) · **una etiqueta no lleva montos, ni datos del conductor, ni
-      instrucciones de acceso**.
+- [x] **`etiqueta térmica` 10×15** · DE CERO — **hecha.** Los tokens
+      `[data-rx-media="thermal"]` no tenían un solo consumidor; ahora se transcriben con su nombre
+      anotado al lado (`@react-pdf` tampoco lee CSS).
+      Las cuatro reglas duras y qué rompía cada una:
+      · **Cero grises** — había `#6b7280` en los rótulos y `#9ca3af` en el pie. Una térmica no tiene
+        grises: los simula con una trama de puntos que a cuerpo 7 se vuelve una mancha.
+      · **Ningún texto bajo 15** — los rótulos de campo estaban en **7**, y el pie también. Eso no se
+        lee desde una camioneta, que es donde se lee una etiqueta.
+      · **Cero tramas de fondo** — el encabezado era un rectángulo `#111827` **sólido** con texto
+        blanco. En térmica el fondo lleno gasta cabezal, se corre con el calor y el texto invertido
+        es lo primero que se pierde. Ahora la separación es una regla de 3 px.
+      · **Reglas de 2 y 3, nunca de medio punto** — había bordes de `0.5`, que la impresora redondea
+        a cero o a uno según la fila.
+      **La comuna pasa al frente y más grande que el nombre** (24 contra 17): antes iba dentro de la
+      dirección, en cuerpo 10, **después** del nombre — quien clasifica en el piso de la bodega
+      tenía que leer una línea entera para saber a qué montón va el bulto.
+      **El código aparece dos veces**: partido y en cuerpo 40 para leerlo de lejos, y corrido sin
+      guiones para digitarlo. Un solo formato obliga a elegir entre dos lecturas que ocurren ambas
+      todos los días. Y el QR baja de 140 a 100 con su **zona de silencio** de 4 px, sin la cual el
+      lector engancha el texto vecino como parte del símbolo.
+      🔒 **Las instrucciones de entrega se retiran del papel** *(decisión del usuario, 23-08)*. La
+      etiqueta viaja pegada al bulto: «timbre 3B» o «dejar en conserjería» los lee el conserje, el
+      vecino del pasillo y cualquiera que pase. La instrucción no se pierde — el conductor la ve en
+      la app, que es donde solo la ve él.
+      **7 pruebas mecánicas** sobre el objeto de estilo (a un PDF binario no se le puede preguntar
+      si un color es gris), verificadas por mutación.
       ⚠️ Aplica a **same-day y Shopify**: en Flex la etiqueta la genera Mercado Envíos.
 - [ ] **`documento PDF carta`** · DE CERO · 3 piezas:
-      - [ ] **Liquidación del conductor** — `src/modules/dinero/liquidacion-pdf.tsx` (231 líneas).
-            La lee alguien que desconfía por defecto de un descuento que no entiende: **su
-            legibilidad es el problema de diseño, no su estética.** Regla 53: toda pieza impresa con
-            un total lleva su composición impresa al lado.
+      - [x] **Liquidación del conductor** — **hecha.** La lee alguien que **desconfía por defecto**
+            de un descuento que no entiende, así que su legibilidad es el problema de diseño.
+            🐞 **Tenía TRES grises de texto** —`#374151`, `#6b7280`, `#9ca3af`— y el más claro iba
+            en el pie, justo donde están el folio y la fecha: **2,5:1 sobre blanco**, o sea se
+            pierde en una impresora con poco tóner, que es la que hay. El sistema define **uno**,
+            `#3E4D53`, medido en 7,4:1.
+            Las reglas pasan de `0.5` —que muchas impresoras redondean a cero— a 2 y 3, y el gris de
+            fondo deja de decorar la cabecera para quedar reservado al total, que es lo único que lo
+            necesita. Fuera los `borderRadius`: en papel no aportan nada.
       - [ ] **Factura al seller** — **Rutax no la genera**: el PDF del DTE lo emite el proveedor
             externo y `portal/cobros` solo lo descarga. Es el **único lugar del producto con IVA**
             (regla 22). Decidir si se re-genera o se acepta la del proveedor.
@@ -1094,8 +1118,11 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
             hoja de ruta en papel para cuando el teléfono se queda sin batería a mitad de turno:
             **tiene que servir para trabajar**, con dónde escribir y la hora en que se imprimió
             (regla 54). Va en TÚ *(decisión cerrada, no reabrir)*.
-      - [ ] Comprobante de pago de suscripción — `src/modules/plataforma/comprobante-pago-pdf.tsx`.
+      - [x] Comprobante de pago de suscripción — **hecho**, mismo criterio: un solo gris, reglas de
+            2, y el aviso legal pasa del beige propio `#fef9e7`/`#78350f` al ámbar del sistema con
+            su barra lateral de 3 px.
 - [ ] **La marca «REIMPRESA» con fecha y hora** en la etiqueta reimpresa · NUEVO #27.
+      *Decisión del usuario (23-08): queda para la tanda de los 30 NUEVO, no se construye ahora.*
 - [ ] **Regla 55** — el error de generación **distingue el archivo del hecho**: «el PDF falló, la
       factura está emitida y su folio es el 1041».
 
