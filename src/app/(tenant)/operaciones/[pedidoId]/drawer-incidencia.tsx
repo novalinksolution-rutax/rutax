@@ -9,7 +9,10 @@ import { X, Info } from "lucide-react";
 import { TIPOS_INCIDENCIA } from "@/modules/operacion/tipos";
 import type { TipoIncidencia } from "@/modules/operacion/tipos";
 import { afectacionDeIncidencia } from "@/modules/operacion/afectacion-incidencia";
-import { traducirTipoIncidencia } from "@/lib/ui/traduccion-estados";
+import {
+  explicarAfectacionIncidencia,
+  traducirTipoIncidencia,
+} from "@/lib/ui/traduccion-estados";
 import { actionAbrirIncidencia } from "../actions";
 import {
   Select,
@@ -19,16 +22,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-/** Consecuencia financiera de un tipo de incidencia, en lenguaje del usuario (UX-9). */
+/**
+ * Consecuencia financiera del tipo de incidencia que se está por elegir.
+ *
+ * Se apoya en el texto compartido (`explicarAfectacionIncidencia`) en vez de
+ * tener el suyo: la bandeja de incidencias dice exactamente lo mismo, y dos
+ * redacciones de la misma regla de dinero divergen el día que alguien toque una.
+ * Acá la afectación sale del TIPO porque todavía no hay incidencia — se está
+ * creando; en la bandeja sale de la fila, que es la que el motor usa.
+ */
 function textoConsecuencia(tipo: TipoIncidencia): string {
   const { afectaCobro, afectaLiquidacion } = afectacionDeIncidencia(tipo);
-  if (afectaCobro && !afectaLiquidacion)
-    return "Afecta el cobro al seller, pero no la liquidación del conductor (igual salió a intentar la entrega).";
-  if (!afectaCobro && afectaLiquidacion)
-    return "Afecta la liquidación del conductor, pero no el cobro al seller.";
-  if (afectaCobro && afectaLiquidacion)
-    return "Afecta el cobro al seller y la liquidación del conductor.";
-  return "No afecta el cobro ni la liquidación.";
+  return explicarAfectacionIncidencia(afectaCobro, afectaLiquidacion);
 }
 
 interface Props {

@@ -419,3 +419,30 @@ export async function listarIncidenciasDePedido(
 
   return (data ?? []).map(filaAIncidencia);
 }
+
+/**
+ * Una incidencia por su id, dentro de su tenant.
+ *
+ * Existe porque las acciones de cierre del panel de caso necesitan saber a qué
+ * PEDIDO pertenece la incidencia antes de tocarlo, y el panel solo tiene el id
+ * de la incidencia. El filtro de tenant no es opcional aunque el id sea un
+ * UUID: la consulta va con `service_role`, que se salta RLS.
+ */
+export async function obtenerIncidencia(
+  cliente: SupabaseClient,
+  tenantId: string,
+  incidenciaId: string,
+): Promise<Incidencia | null> {
+  const { data, error } = await cliente
+    .from("incidencias")
+    .select("*")
+    .eq("id", incidenciaId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Error al obtener la incidencia: ${error.message}`);
+  }
+
+  return data ? filaAIncidencia(data) : null;
+}

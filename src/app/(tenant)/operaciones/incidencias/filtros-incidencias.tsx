@@ -8,13 +8,12 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useCallback } from "react";
-import { TIPOS_INCIDENCIA, ESTADOS_INCIDENCIA } from "@/modules/operacion/tipos";
+import { TIPOS_INCIDENCIA } from "@/modules/operacion/tipos";
 import {
   TEXTO_TIPO_INCIDENCIA,
-  TEXTO_ESTADO_INCIDENCIA,
   etiquetaSellerConEstado,
 } from "@/lib/ui/traduccion-estados";
-import type { TipoIncidencia, EstadoIncidencia } from "@/modules/operacion/tipos";
+import type { TipoIncidencia } from "@/modules/operacion/tipos";
 import { Button } from "@/components/ui/button";
 import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
@@ -34,7 +33,9 @@ interface Props {
   hoy: string;
   filtroSeller: string;
   filtroTipo: string;
-  filtroEstado: string;
+  /** El ESTADO ya no es un filtro de esta barra: lo eligen los cajones. */
+  filtroConductor: string;
+  conductores: { id: string; nombre: string }[];
   /** Día exacto de apertura ("" si hay rango). */
   filtroFecha: string;
   /** Rango de apertura ("" si hay día exacto). */
@@ -48,7 +49,8 @@ export function FiltrosIncidencias({
   hoy,
   filtroSeller,
   filtroTipo,
-  filtroEstado,
+  filtroConductor,
+  conductores,
   filtroFecha,
   filtroFechaDesde,
   filtroFechaHasta,
@@ -62,7 +64,11 @@ export function FiltrosIncidencias({
       const params = new URLSearchParams();
       if (campo !== "seller" && filtroSeller) params.set("seller", filtroSeller);
       if (campo !== "tipo" && filtroTipo) params.set("tipo", filtroTipo);
-      if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
+      if (campo !== "conductor" && filtroConductor) params.set("conductor", filtroConductor);
+      // El cajón de estado vive en la barra de cajones, no acá, pero viaja en
+      // la misma URL: tocar un filtro no puede tirarlo.
+      const cajon = new URLSearchParams(window.location.search).get("estado");
+      if (cajon) params.set("estado", cajon);
       // El filtro de fecha se cambia por su propio control; aquí solo se PRESERVA
       // la selección vigente (día exacto o rango) al tocar otro filtro.
       if (filtroFecha) {
@@ -75,7 +81,7 @@ export function FiltrosIncidencias({
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
-    [router, pathname, filtroSeller, filtroTipo, filtroEstado, filtroFecha, filtroFechaDesde, filtroFechaHasta],
+    [router, pathname, filtroSeller, filtroTipo, filtroConductor, filtroFecha, filtroFechaDesde, filtroFechaHasta],
   );
 
   return (
@@ -126,23 +132,26 @@ export function FiltrosIncidencias({
         </Select>
       </div>
 
-      {/* Estado */}
+      {/* Conductor — el tablero lo pide como filtro de la bandeja: «quién tuvo
+          el problema» es la segunda pregunta del supervisor, después de «cuánto
+          lleva esperando». La incidencia no guarda conductor; se resuelve por el
+          pedido, y por eso el filtro vive en el servidor y no acá. */}
       <div className="flex flex-col gap-1">
-        <label htmlFor="f-estado" className="text-xs font-medium text-muted-foreground">
-          Estado
+        <label htmlFor="f-conductor" className="text-xs font-medium text-muted-foreground">
+          Conductor
         </label>
         <Select
-          value={filtroEstado || TODOS}
-          onValueChange={(v) => actualizar("estado", v === TODOS ? "" : v)}
+          value={filtroConductor || TODOS}
+          onValueChange={(v) => actualizar("conductor", v === TODOS ? "" : v)}
         >
-          <SelectTrigger id="f-estado" size="default" className="h-9 w-52">
-            <SelectValue placeholder="Abiertas + en gestión" />
+          <SelectTrigger id="f-conductor" size="default" className="h-9 w-48">
+            <SelectValue placeholder="Todos los conductores" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={TODOS}>Abiertas + en gestión</SelectItem>
-            {ESTADOS_INCIDENCIA.map((e) => (
-              <SelectItem key={e} value={e}>
-                {TEXTO_ESTADO_INCIDENCIA[e as EstadoIncidencia]}
+            <SelectItem value={TODOS}>Todos los conductores</SelectItem>
+            {conductores.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.nombre}
               </SelectItem>
             ))}
           </SelectContent>

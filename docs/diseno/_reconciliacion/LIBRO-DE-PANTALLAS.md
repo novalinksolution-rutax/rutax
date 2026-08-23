@@ -57,7 +57,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 | Dashboard operativo | `(tenant)/dashboard` | ✅ **HECHA** — 23-08, ver abajo |
 | Conductores | `(tenant)/conductores` | ✅ **HECHA** — 23-08, ver abajo |
 | Crear pedido same-day | `(tenant)/operaciones/nuevo` | ✅ **HECHA** — 23-08, ver abajo |
-| Incidencias | `(tenant)/operaciones/incidencias` | **PANTALLA DISTINTA** |
+| Incidencias | `(tenant)/operaciones/incidencias` | ✅ **HECHA** — 23-08, ver abajo |
 | Torre de control | `(tenant)/torre-de-control` | FALTA PIEZA |
 | Preparación del día | `(tenant)/preparacion` | FALTA PIEZA |
 | Manifiestos · listado | `(tenant)/manifiestos` | FALTA PIEZA |
@@ -193,6 +193,44 @@ y el pedido se geocodifica como siempre.
 
 **Contradicción del tablero, resuelta:** decía «Colina no tiene tarifa» (por comuna) y el motor
 resuelve **por seller**. El aviso dice lo que el sistema sabe: «{Seller} no tiene tarifa vigente».
+
+### ✅ Incidencias · hecho el 23-08-2026
+
+La bandeja de P6, donde había un filtrado plano con un botón «Gestionar» por fila.
+
+**La decisión del tablero, construida: se agrupa por tiempo sin gestionar, no por tipo.** Al
+supervisor no le sirve saber que hay cuatro «no estaba en casa» — le sirve saber cuál lleva cinco
+horas sin que nadie la mire, porque **esa ya disparó un aviso** al centro de avisos y al correo, y
+es la que el seller va a reclamar. La cabecera del grupo lo dice, para que nadie tenga que saberlo
+de memoria. El umbral de 4 h ya existía; lo que no existía era usarlo para ordenar la pantalla.
+
+**El estado dejó de ser un `Select` y pasó a ser cajones con su cuenta**, con `cerradas` como cajón
+**excluido** — no pertenece al conjunto operativo. Verificado en pantalla: la barra declara «2 en
+los grupos de arriba · 1 cerradas · 3 en total», que es exactamente la regla de que *la interfaz no
+puede mentir sobre que la suma no cuadra*.
+
+**El panel de caso**, completo y verificado abierto: la cita textual del reporte, su autor y su
+hora, el conteo de fotos con enlace, las banderas **COBRO** y **LIQ** —nunca `FACT`/`PAGO`, que son
+de otro objeto— con su explicación leída **de la fila y no del tipo** (la fila puede haberse
+reclasificado, y es la que el motor usa), `PASAR A` con solo los destinos válidos **y el motivo de
+por qué falta el que falta**, y dos salidas de cierre.
+
+🔗 **Las dos salidas cierran el cabo suelto que CLAUDE.md tenía anotado.** «Devolver al seller» y
+«Reagendar para mañana» resuelven la incidencia **y mueven el pedido**: resolver la incidencia sin
+tocar el pedido es exactamente cómo se produce el caso documentado —queda en `fallido`, nunca llega
+a `devuelto`, y su línea de cobro sigue viva mientras el supervisor cree que cerró el caso—.
+Las dos piden motivo, dicen su consecuencia antes de apretarse y quedan en bitácora con su autor.
+
+**Reclasificar se reusa, no se duplica:** el mismo `DialogReclasificarIncidencia` del detalle del
+pedido, y la explicación del efecto en el dinero pasó a `explicarAfectacionIncidencia` compartido —
+dos redacciones de una regla de dinero divergen el día que alguien toque una.
+
+**El teléfono ya no costó nada:** segunda pantalla que usa `ficha de fila 390`. Tres líneas, sin
+desborde, con todo lo que cae reapareciendo en la línea mono.
+
+⚠️ **Anotado, no construido:** reagendar mueve la fecha de compromiso, que es contra la que se mide
+el SLA de ese pedido. Está dicho en pantalla antes de apretar, pero **no hay una decisión tomada
+sobre qué debería pasar con el SLA de un pedido reagendado por incidencia**.
 
 ## B2 · Dinero · 5 pantallas
 

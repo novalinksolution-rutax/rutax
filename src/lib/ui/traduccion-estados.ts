@@ -1100,3 +1100,33 @@ export const TEXTO_RELACION_CONDUCTOR: Record<string, string> = {
   dependiente: "Dependiente",
   independiente: "Independiente",
 };
+
+// =============================================================================
+// El efecto de una incidencia en el dinero — COBRO y LIQ
+// =============================================================================
+
+/**
+ * Qué pasa con la plata cuando una incidencia queda así.
+ *
+ * ⚠️ Recibe los DOS BOOLEANOS de la incidencia, no su tipo. El tipo trae un
+ * default (`afectacionDeIncidencia`), pero la fila puede haberse reclasificado o
+ * ajustado después: leer el tipo mostraría la regla general mientras la fila
+ * dice otra cosa, y esa fila es la que el motor va a usar.
+ *
+ * ⚠️ Y las banderas se llaman **COBRO** y **LIQ**, nunca `FACT`/`PAGO`: esas son
+ * las de la excepción de conciliación, que es otro objeto. Un vocabulario por
+ * objeto — dos etiquetas parecidas para cosas distintas es peor que dos
+ * etiquetas distintas.
+ */
+export function explicarAfectacionIncidencia(
+  afectaCobro: boolean,
+  afectaLiquidacion: boolean,
+): string {
+  if (afectaCobro && !afectaLiquidacion)
+    return "Afecta el cobro al seller, pero no la liquidación del conductor (igual salió a intentar la entrega).";
+  if (!afectaCobro && afectaLiquidacion)
+    return "Afecta la liquidación del conductor, pero no el cobro al seller.";
+  if (afectaCobro && afectaLiquidacion)
+    return "Afecta el cobro al seller y la liquidación del conductor.";
+  return "No afecta el cobro ni la liquidación.";
+}
