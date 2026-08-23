@@ -142,6 +142,33 @@ interface Props {
   params: Promise<{ token: string }>;
 }
 
+/**
+ * El titulo y la descripcion que ve quien recibe el enlace.
+ *
+ * Antes heredaba los del layout raiz: «Rutax - gestion operativo-financiera ·
+ * Plataforma para couriers de ultima milla». Copy escrito para el courier que
+ * contrata el software, mostrado al comprador que solo quiere saber donde esta
+ * su paquete.
+ *
+ * ⚠️ **Ni el titulo ni la descripcion dicen el estado** (regla 47): la
+ * previsualizacion se cachea en el chat y el estado cambia varias veces el mismo
+ * dia, asi que diria algo falso — y se ve sin abrir el enlace, que es justo lo
+ * que el token protege. Tampoco lleva nombre, comuna ni monto (regla 66).
+ *
+ * `robots: noindex` porque una URL con token no tiene por que terminar en un
+ * buscador: es un enlace personal, no una pagina publica.
+ */
+export const metadata = {
+  title: "Seguimiento de tu pedido",
+  description: "Mira donde va tu paquete. Solo lo ve quien tenga este enlace.",
+  robots: { index: false, follow: false },
+  openGraph: {
+    title: "Seguimiento de tu pedido",
+    description: "Mira donde va tu paquete. Solo lo ve quien tenga este enlace.",
+    type: "website" as const,
+  },
+};
+
 export default async function PaginaSeguimiento({ params }: Props) {
   const { token } = await params;
   const datos = await cargarSeguimiento(token);

@@ -1229,12 +1229,23 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       opcional. **Regla 44:** sin sesión, el tema lo decide el sistema operativo.
       **Regla 45:** una pantalla pública **nunca confirma ni niega la existencia** de un correo, de
       un envío ajeno o de una cuenta.
-- [ ] **`tarjeta de enlace compartido` 1200×630** · DE CERO · **cero absoluto**: no hay un solo
-      `openGraph`, `generateMetadata`, `opengraph-image` ni `twitter:` en todo `src/`, y **no existe
-      un solo raster en `public/`** (solo `icon.svg`, `logo-rutax.svg`, `logo-rutax-wordmark.svg`),
-      y `og:image` exige raster. Hoy, al pegar el enlace de seguimiento en WhatsApp, el comprador ve
-      el título genérico del layout raíz — copy dirigido al courier, no al destinatario del paquete.
-      **Regla 47: una previsualización de enlace no dice estados.**
+- [x] **`tarjeta de enlace compartido` 1200×630** · DE CERO — **hecha** para `/tracking/[token]`,
+      que es donde importa: es el único canal de Rutax hacia consumidores finales.
+      Al pegar el enlace en WhatsApp, el comprador veía **«Rutax — gestión operativo-financiera ·
+      Plataforma para couriers de última milla»**: el título del layout raíz, copy escrito para el
+      courier que contrata el software, mostrado a alguien que solo quiere saber dónde está su
+      paquete y que no sabe qué es un courier de última milla.
+      *El blocker del raster se resolvió sin comprar nada:* se genera con `ImageResponse` de
+      `next/og` en la petición, así que **no hay archivo que versionar** ni que mantener
+      sincronizado con los tokens. Todo tipografía sobre color plano — rinde en un teléfono con
+      mala señal, que es donde se abre.
+      ⚠️ **Regla 47, y las dos razones son duras:** WhatsApp **cachea** la previsualización, así que
+      una tarjeta que dice «en ruta» sobre un pedido ya entregado no es información vieja, es
+      **falsa**, y es lo primero que se ve. Y la previsualización **se ve sin abrir el enlace**:
+      cualquiera con acceso a ese chat vería el estado sin entrar, que es justo lo que el token
+      protege. Tampoco lleva nombre, comuna ni monto (regla 66).
+      La página gana además `robots: noindex`: una URL con token no tiene por qué terminar en un
+      buscador. **Verificado en el navegador**, renderizada a 1200×630.
       *(El «powered by» del seguimiento está diseñado como pieza: es el único canal de Rutax hacia
       consumidores finales y genera una impresión por entrega.)*
 - [ ] **`línea de tiempo pública`** · DE CERO · `/tracking/[token]` · 1 pantalla.
@@ -1257,13 +1268,31 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
 - [ ] `/terminos` y `/privacidad` (`(legal)/layout.tsx` propio) — **la pantalla está diseñada; el
       texto lo escribe un abogado**, en USTED, con su versión y su fecha de vigencia.
 - [ ] `/offline`
-- [ ] **`not-found.tsx` — NO EXISTE en ninguna parte del repo.** Todos los `notFound()` caen en la
-      404 por defecto de Next, **en inglés y sin marca**. La ve el destinatario del paquete
-      (brecha #10) · NUEVO #28.
+- [x] **`not-found.tsx`** — **hecha** *(NUEVO #28, aprobado por el usuario el 23-08)*. No existía
+      ninguna: todo `notFound()` caía en «404 · This page could not be found», **la única pantalla
+      del producto en inglés**.
+      Y no la ve solo un interno que se equivocó de URL: la ve **el destinatario de un paquete**
+      cuando el enlace de seguimiento no calza — token vencido, mal copiado, pedido purgado
+      (brecha #10). Esa persona no tiene cuenta ni sabe qué es Rutax.
+      Tres decisiones de copy:
+      · **No dice qué falló**, porque no se sabe: una 404 no distingue un enlace mal copiado de uno
+        vencido. Inventar una causa sería adivinar delante de alguien que no puede contradecirte.
+      · **No confirma ni niega** (regla 45): decir «este envío no existe» convierte la 404 en un
+        oráculo — probando tokens se averigua cuáles son válidos.
+      · **La salida no es «volver al inicio»**: quien llegó desde un enlace de seguimiento no tiene
+        inicio acá. Debajo va lo único que de verdad puede hacer — pedirle el enlace a quien se lo
+        mandó. Sin ilustración: sería varios cientos de KB para alguien con mala señal.
+      **Verificado en el navegador**: cero inglés.
 - [ ] `src/app/error.tsx` y `src/app/global-error.tsx` — existen. `global-error.tsx` renderiza su
       propio `html`/`body` con estilos **en línea**, así que **no ve ningún token**: hay que pasarle
       los valores a mano, como al mapa y a los PDF.
-- [ ] `/kitchen-sink` — decidir. Hoy no está protegida ni por sesión ni por `NODE_ENV`.
+- [x] `/kitchen-sink` — **cerrada en producción** *(decisión del usuario, 23-08)*. Estaba servida
+      sin ninguna protección —ni sesión, ni `NODE_ENV`, ni middleware—, devolviendo **200 a
+      cualquiera** que adivinara la URL, y desplegada desde que se creó.
+      No filtra datos —todo lo que muestra es inventado— pero enseña el producto por dentro: cada
+      primitiva, cada estado y cada patrón **antes de que exista la pantalla que lo usa**.
+      La puerta va en un `layout.tsx` y no en la página, porque la página es un Client Component:
+      así la comprobación corre en el servidor y en producción el HTML **no se genera nunca**.
 
 ## Sitio comercial · 6 páginas, ninguna construida
 
