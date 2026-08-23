@@ -29,7 +29,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
+import {
+  ModalActoExplicito,
+  type ComprobanteActo,
+} from "@/components/ui/modal-acto-explicito";
 import {
   VerificacionPrevia,
   actoBloqueadoPorVerificacion,
@@ -78,6 +81,7 @@ export function DialogEmitirPago({
   const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<string | null>(null);
   const [continuarSinVerificar, setContinuarSinVerificar] = useState(false);
   const [errorPago, setErrorPago] = useState<string | null>(null);
+  const [comprobante, setComprobante] = useState<ComprobanteActo | null>(null);
 
   const cargarPreflight = useCallback(() => {
     setEstadoPreflight("verificando");
@@ -122,13 +126,26 @@ export function DialogEmitirPago({
       }
       const resultado = await accionEmitirPagoLiquidacion(liquidacionId);
       if (resultado.ok) {
-        setAbierto(false);
-        // La transferencia es asíncrona: acá solo se encoló. Regla 57, además:
-        // todo éxito de dinero lleva monto y contraparte.
-        toast.success(
-          `La transferencia a ${conductorNombre} quedó en curso · ${formatearCLPOGuion(montoAPagar)}`,
-          { description: "Te avisamos cuando el banco responda." },
-        );
+        // El cuadro NO se cierra: se convierte en comprobante (decisión 4 de
+        // P4). Una transferencia encolada es plata que va en camino; el aviso
+        // de 4 segundos que había acá se lo perdía quien parpadeara.
+        //
+        // Regla 57: todo éxito de dinero lleva monto y contraparte, y acá van
+        // los dos en el comprobante, no en el título.
+        setComprobante({
+          tono: "progress",
+          titulo: "La transferencia quedó en curso",
+          cuerpo: (
+            <>
+              Te avisamos cuando el banco responda. Mientras tanto queda como pago
+              pendiente en la liquidación.
+            </>
+          ),
+          datos: [
+            { etiqueta: "Conductor", valor: conductorNombre },
+            { etiqueta: "Monto", valor: formatearCLPOGuion(montoAPagar), mono: true },
+          ],
+        });
         // El job Inngest crea el registro de payout ('pendiente') después de
         // que esta acción retorna — un pequeño retraso deja tiempo a que la
         // tabla lo refleje al recargar (mismo comportamiento que antes).
@@ -204,7 +221,13 @@ export function DialogEmitirPago({
 
       <ModalActoExplicito
         open={abierto}
-        onOpenChange={setAbierto}
+        onOpenChange={(o) => {
+          setAbierto(o);
+          if (!o) {
+            setComprobante(null);
+            setErrorPago(null);
+          }
+        }}
         // Peldaño 3. Es la única acción del producto que saca plata del banco y
         // no vuelve: «si te equivocas, hay que pedírselo de vuelta».
         peldano={3}
@@ -265,6 +288,7 @@ export function DialogEmitirPago({
         cargando={isPending}
         confirmDeshabilitado={confirmDeshabilitado}
         textoConfirmar={`Transferir ${formatearCLPOGuion(montoAPagar)}`}
+        comprobante={comprobante}
         onConfirmar={handleConfirmar}
       >
         <div className="flex flex-col gap-3">

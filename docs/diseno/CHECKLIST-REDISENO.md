@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **7 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
+| **5** | **Dinero** | **8 de 16** | 10 componentes · 15 de 26 acciones · multi-período del atribuidor | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -514,6 +514,26 @@ bloques 4–8, cuando cada pantalla se toque.
       **Y el indicador se montó en `/dinero/periodos`, que es la pantalla desde donde se factura** y
       donde no había ninguno: hasta ahora uno se enteraba por el dashboard —otra pantalla— o al
       abrir el modal, con la ceremonia ya empezada. Verificado en pantalla.
+- [x] **`comprobante en sitio`** · DE CERO — la decisión 4 de P4: **el cuadro no se cierra, se
+      convierte en comprobante**. Vive en `modal-acto-explicito.tsx` como prop `comprobante`:
+      apaga la verificación, el motivo y la confirmación, cambia el filo superior al tono del
+      desenlace y deja un solo botón, «Cerrar».
+      Antes, la única acción irreversible del producto terminaba con la pantalla desapareciendo y
+      un aviso temporal de 4 segundos. Es la regla 56 del otro lado: si un error de dinero no puede
+      ir en un toast, un éxito de dinero que dice «se consumió un folio» tampoco.
+      ⚠️ **Y se corrigió una frase que era falsa.** El aviso decía «el folio ya quedó consumido», y
+      `emitirFacturaPeriodo` **no reserva folio**: lo toma el job C3 al generar el documento. En
+      ese instante no se ha consumido ninguno. El comprobante dice lo que sí es cierto — «se asigna
+      al generarse el documento».
+      ⚠️ **Se aparta del tablero en un punto, y está en el anexo E:** P4 dibuja el comprobante con
+      el folio ya adentro («1042 · quedan 7 después»), porque supone la emisión síncrona. Acá no lo
+      es.
+      Montado en emitir factura y en emitir pago. **Verificado en pantalla con Inngest corriendo**,
+      de punta a punta: el cuadro queda abierto, el período pasa a `Facturado` detrás.
+      *Un bug propio, encontrado al mirarlo:* el comprobante repetía seller y total, y las dos
+      cifras **no eran la misma** —el resumen trae el neto del preflight y el período guarda el
+      bruto—, así que quedaban $11.400 y $13.566 juntos sin que nada dijera cuál era cuál
+      (regla 18). El comprobante ahora solo agrega lo que el resumen no dice.
 - [ ] `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
 
 ## Pantallas
@@ -1278,6 +1298,12 @@ código manda sobre *qué datos existen*. Cuando chocan, se dice — no se elige
 - [ ] **`B2b` · el autor del ajuste manual** («Aplicó M. Soto el 19-08»). `dinero.liquidaciones`
       guarda `nota_ajuste` pero **no quién lo aplicó**: el autor está en la bitácora, no en la fila.
       *Para cerrarlo:* una lectura extra contra la bitácora, o una columna.
+
+- [x] **`P4` · el comprobante con el folio adentro** («1042 · quedan 7 después»). El tablero supone
+      que emitir consume el folio en el acto; en Rutax **no**: `emitirFacturaPeriodo` publica el
+      evento y el job C3 reserva el folio después. *Qué se hizo:* el comprobante dice «se asigna al
+      generarse el documento», que es lo cierto. Prometer un folio que nadie tomó es justo lo que
+      hace que Administración lo salga a buscar.
 
 ## E.3 · El tablero permite algo que el dominio no soporta todavía
 

@@ -31,7 +31,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
+import {
+  ModalActoExplicito,
+  type ComprobanteActo,
+} from "@/components/ui/modal-acto-explicito";
 import {
   VerificacionPrevia,
   actoBloqueadoPorVerificacion,
@@ -92,6 +95,8 @@ export function DialogEmitirFactura({
   // lo pierde quien parpadea, y la pregunta que deja —¿se consumió el folio?—
   // no tiene dónde leerse después.
   const [errorEmision, setErrorEmision] = useState<string | null>(null);
+  // El comprobante en sitio: mientras exista, el cuadro deja de ser ceremonia.
+  const [comprobante, setComprobante] = useState<ComprobanteActo | null>(null);
 
   const cargarPreflight = useCallback(() => {
     setEstadoPreflight("verificando");
@@ -137,16 +142,38 @@ export function DialogEmitirFactura({
       }
       const resultado = await accionEmitirFactura(periodoId);
       if (resultado.ok) {
-        setAbierto(false);
-        // ⚠️ NO dice «factura emitida»: la emisión es asíncrona y acá solo se
+        // ⚠️ EL CUADRO NO SE CIERRA: se convierte en comprobante (decisión 4 de
+        // P4). Antes desaparecía y dejaba una notificación de 4 segundos sobre
+        // la única acción irreversible del producto.
+        //
+        // ⚠️ Y NO dice «factura emitida»: la emisión es asíncrona y acá solo se
         // encoló el trabajo. Decirlo en pasado es la brecha #6 del inventario —
-        // alguien lee «emitida», va a buscar el folio y no está. El tablero P4
-        // fija el molde para las ~140 acciones de servidor: «quedó en curso», y
-        // dónde ver el desenlace.
-        toast.success(`La emisión quedó en curso · ${sellerNombre}`, {
-          description: esReal
-            ? "Te avisamos cuando el SII responda. El folio ya quedó consumido."
-            : "Modo de pruebas: no se envía al SII. Te avisamos cuando termine.",
+        // alguien lee «emitida», va a buscar el folio y no está.
+        //
+        // ⚠️ Tampoco dice «el folio ya quedó consumido», que es lo que decía
+        // hasta ahora y **era falso**: `emitirFacturaPeriodo` no reserva folio
+        // —lo toma el job C3 al generar el documento—, así que en este instante
+        // no se ha consumido ninguno. Prometer un folio que nadie tomó es
+        // exactamente lo que hace que Administración lo salga a buscar.
+        setComprobante({
+          tono: "progress",
+          titulo: "La emisión quedó en curso",
+          cuerpo: esReal ? (
+            <>
+              Te avisamos cuando el SII responda. El resultado aparece en esta misma
+              pantalla.
+            </>
+          ) : (
+            <>
+              Modo de pruebas: <strong>no se envía al SII</strong>. Te avisamos cuando
+              termine.
+            </>
+          ),
+          // Solo lo que el resumen de arriba NO dice ya. Repetir seller y total
+          // acá los mostraba dos veces — y peor: el resumen trae el NETO del
+          // preflight y el período guarda el BRUTO, así que quedaban dos cifras
+          // distintas, juntas, sin que ninguna dijera cuál era cuál (regla 18).
+          datos: [{ etiqueta: "Folio", valor: "se asigna al generarse el documento" }],
         });
         router.refresh();
       } else {
@@ -208,7 +235,15 @@ export function DialogEmitirFactura({
 
       <ModalActoExplicito
         open={abierto}
-        onOpenChange={setAbierto}
+        onOpenChange={(o) => {
+          setAbierto(o);
+          // Al cerrar el comprobante, el cuadro vuelve a ser ceremonia: si no,
+          // el próximo clic en «Emitir factura» abriría el comprobante viejo.
+          if (!o) {
+            setComprobante(null);
+            setErrorEmision(null);
+          }
+        }}
         // Peldaño 3: escribir el nombre del seller. El error real de este flujo
         // no es emitir sin querer — es emitirle al seller equivocado en una
         // lista de diez, y una casilla se marca sin mirar a quién.
@@ -255,6 +290,7 @@ export function DialogEmitirFactura({
         subtextoConfirmar={
           resumenCobro ? formatearCLP(resumenCobro.netoClp) : undefined
         }
+        comprobante={comprobante}
         onConfirmar={handleConfirmar}
       >
         <VerificacionPrevia

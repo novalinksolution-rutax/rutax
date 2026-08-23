@@ -67,6 +67,29 @@ export interface AutorActo {
   cuando: string
 }
 
+/**
+ * El comprobante en sitio — decisión 4 del tablero P4: **el modal no se cierra,
+ * se convierte en comprobante**.
+ *
+ * Antes, toda acción irreversible terminaba con el cuadro desapareciendo y una
+ * notificación temporal de 4 segundos. En una emisión eso es exactamente el
+ * peor final posible: el folio YA se consumió, la pregunta siguiente de
+ * Administración es «¿cuál?», y la respuesta se acaba de esfumar. Es la misma
+ * regla 56 que prohíbe el error de dinero en un toast, del otro lado.
+ *
+ * El camino de vuelta se cierra al confirmar: ya no hay «Volver», hay «Cerrar».
+ */
+export interface ComprobanteActo {
+  /** `progress` para lo que quedó en curso; `balanced` para lo consumado. */
+  tono: "progress" | "balanced" | "attention" | "fault"
+  titulo: string
+  cuerpo: React.ReactNode
+  /** Lo que hay que poder leer después. El folio consumido va acá. */
+  datos?: FilaResumen[]
+  /** Dónde ver el desenlace, que toda acción asíncrona debe ofrecer. */
+  enlace?: { texto: string; href: string }
+}
+
 export function ModalActoExplicito({
   open,
   onOpenChange,
@@ -88,6 +111,7 @@ export function ModalActoExplicito({
   subtextoConfirmar,
   variante = "primary",
   children,
+  comprobante,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -130,6 +154,11 @@ export function ModalActoExplicito({
   subtextoConfirmar?: string
   variante?: "primary" | "destructive"
   children?: React.ReactNode
+  /**
+   * Cuando llega, el cuadro deja de ser ceremonia y pasa a ser comprobante: se
+   * apagan el motivo, la confirmación y el botón de confirmar.
+   */
+  comprobante?: ComprobanteActo | null
 }) {
   const [escrito, setEscrito] = React.useState("")
   const idConfirmacion = React.useId()
@@ -169,13 +198,24 @@ export function ModalActoExplicito({
         onPointerDownOutside={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
         className="max-h-[92svh] gap-0 overflow-y-auto p-0 sm:max-w-xl"
-        style={{ borderTopWidth: 2, borderTopColor: "var(--rx-fault-fg)" }}
+        style={{
+          borderTopWidth: 2,
+          // El filo de arriba cambia con el desenlace: rojo mientras es un acto
+          // por firmar, el tono del resultado una vez firmado.
+          borderTopColor: comprobante
+            ? `var(--rx-${comprobante.tono}-fg)`
+            : "var(--rx-fault-fg)",
+        }}
       >
         {modoPruebas ? <FranjaModoPruebas /> : null}
 
         <DialogHeader className="space-y-2 px-5 pt-5 text-left">
-          <DialogTitle className="text-xl leading-snug font-semibold">{titulo}</DialogTitle>
-          <DialogDescription className="text-sm leading-relaxed">{consecuencia}</DialogDescription>
+          <DialogTitle className="text-xl leading-snug font-semibold">
+            {comprobante ? comprobante.titulo : titulo}
+          </DialogTitle>
+          <DialogDescription className="text-sm leading-relaxed">
+            {comprobante ? comprobante.cuerpo : consecuencia}
+          </DialogDescription>
         </DialogHeader>
 
         {resumen.length > 0 || total ? (
@@ -209,7 +249,25 @@ export function ModalActoExplicito({
           </div>
         ) : null}
 
-        {children ? <div className="px-5 pt-4">{children}</div> : null}
+        {comprobante?.datos?.length ? (
+          <div className="mx-5 mt-4 border border-line bg-bg-sunken">
+            {comprobante.datos.map((f) => (
+              <div
+                key={f.etiqueta}
+                className="flex items-baseline justify-between gap-4 border-b border-line-subtle px-3 py-2 text-[12.5px] last:border-b-0"
+              >
+                <span className="text-fg-muted">{f.etiqueta}</span>
+                <span className={cn("text-right font-medium text-fg", f.mono && "font-mono")}>
+                  {f.valor}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* La verificación previa, el motivo y la confirmación son ceremonia:
+            una vez firmado el acto, no tienen nada que hacer en pantalla. */}
+        {children && !comprobante ? <div className="px-5 pt-4">{children}</div> : null}
 
         {avisos.map((a, i) => (
           <div
@@ -225,7 +283,7 @@ export function ModalActoExplicito({
           </div>
         ))}
 
-        {peldano >= 2 && motivo ? (
+        {peldano >= 2 && motivo && !comprobante ? (
           <div className="space-y-1.5 px-5 pt-4">
             <label htmlFor={idMotivo} className="block text-xs font-medium text-fg">
               {motivo.etiqueta}
@@ -241,7 +299,7 @@ export function ModalActoExplicito({
           </div>
         ) : null}
 
-        {peldano >= 3 && confirmacion ? (
+        {peldano >= 3 && confirmacion && !comprobante ? (
           <div className="space-y-1.5 px-5 pt-4">
             <label htmlFor={idConfirmacion} className="block text-xs font-medium text-fg-muted">
               {confirmacion.rotulo ?? (
@@ -266,29 +324,45 @@ export function ModalActoExplicito({
         ) : null}
 
         <div className="mt-5 flex flex-wrap items-start gap-2.5 border-t border-line-subtle bg-bg-sunken px-5 py-4">
-          <Button
-            variant={variante === "destructive" ? "destructive" : "default"}
-            onClick={onConfirmar}
-            disabled={!habilitado}
-            loading={cargando}
-            // No es destino de tabulación mientras no calce: tabular hasta acá y
-            // apretar enter es justo el accidente que esto existe para impedir.
-            tabIndex={habilitado ? undefined : -1}
-            className="h-auto flex-col items-start gap-0.5 py-2.5 text-left"
-          >
-            <span>
-              {textoConfirmar ?? "Confirmar"}
-              {modoPruebas ? " en modo de pruebas" : ""}
-            </span>
-            {subtextoConfirmar ? (
-              <span className="font-mono text-[11px] font-medium opacity-80">
-                {subtextoConfirmar}
-              </span>
-            ) : null}
-          </Button>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={cargando}>
-            Volver
-          </Button>
+          {comprobante ? (
+            <>
+              <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
+              {comprobante.enlace ? (
+                <Button variant="outline" asChild>
+                  <a href={comprobante.enlace.href}>{comprobante.enlace.texto}</a>
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Button
+                variant={variante === "destructive" ? "destructive" : "default"}
+                onClick={onConfirmar}
+                disabled={!habilitado}
+                loading={cargando}
+                // No es destino de tabulación mientras no calce: tabular hasta
+                // acá y apretar enter es justo el accidente que esto existe
+                // para impedir.
+                tabIndex={habilitado ? undefined : -1}
+                className="h-auto flex-col items-start gap-0.5 py-2.5 text-left"
+              >
+                <span>
+                  {textoConfirmar ?? "Confirmar"}
+                  {modoPruebas ? " en modo de pruebas" : ""}
+                </span>
+                {subtextoConfirmar ? (
+                  <span className="font-mono text-[11px] font-medium opacity-80">
+                    {subtextoConfirmar}
+                  </span>
+                ) : null}
+              </Button>
+              {/* «Volver», nunca «Cancelar» (regla 59): cancelar es lo que le
+                  pasa a un pedido, no lo que hace quien cierra un cuadro. */}
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={cargando}>
+                Volver
+              </Button>
+            </>
+          )}
           {autor ? (
             <span className="ml-auto pt-1 text-right font-mono text-[11px] leading-snug text-fg-subtle">
               {autor.nombre}
