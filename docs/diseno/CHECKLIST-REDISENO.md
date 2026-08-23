@@ -1128,15 +1128,46 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
 
 ## 7.4 · Correos · 1 componente, 11 piezas
 
-- [ ] **`plantilla de correo`** · DE CERO · el documento dice 16 correos; **en código hay 11**, y
-      todos son **strings HTML inline concatenados**: sin React Email, sin MJML, **sin layout
-      compartido, sin `<head>` y sin tabla contenedora**. Se escribieron en tres módulos con tres
+- [x] **`plantilla de correo`** · DE CERO — `src/lib/email/plantilla-email.ts`, y **los once
+      correos pasan por ella**. El documento dice 16; en código hay 11.
+      **Lo que estaba roto no era el estilo.** Cada constructor entregaba una cadena de `<p>`
+      sueltos directo al proveedor: **sin `<!doctype>`, sin `<head>`, sin tabla contenedora y sin
+      ancho declarado**. Un fragmento así lo renderiza cada cliente como quiere — Outlook lo estira
+      al ancho de la ventana, con líneas de 200 caracteres — y sin `<head>` no hay dónde declarar el
+      juego de caracteres, así que un «Ñuñoa» o un «$ 864.100» pueden llegar con caracteres rotos.
+      Las decisiones que no son obvias, todas de §9.1:
+      · **Tablas, no `div`.** Outlook usa el motor de Word: no implementa `max-width` ni `flex`. La
+        única caja que respeta es una `<table>` con `width` en **atributo**.
+      · **Blanco puro y negro de marca, nunca casi-blanco ni casi-negro.** Los clientes invierten
+        por su cuenta en modo oscuro y no se puede impedir; `#F1F6F6` invertido queda gris sucio.
+      · **El botón declara su fondo dos veces** —`bgcolor` y `style`— por lo mismo, y es una celda
+        de tabla con `padding`, no un `<a>` con `display:inline-block`, que Outlook ignora dejando
+        un enlace sin caja. Era justo lo que hacían los dos botones que existían.
+      · **El enlace de respaldo va siempre**, aunque haya botón: es lo único que queda al degradar.
+      · **Ningún correo depende de una imagen** (regla 61): la marca es texto.
+      🐞 **Y un agujero que abrí yo y atajó una prueba que ya existía.** La primera versión insertaba
+      `marca` y `titular` crudos, y `notificaciones-invitacion.test.ts` —«escapa el nombre del
+      courier»— lo detectó. Ahora **escapa la plantilla, no el llamador**: todo campo es texto plano
+      menos `cuerpoHtml`, que es el único declarado como HTML. Un llamador nuevo se olvida y nadie
+      lo nota.
+      14 pruebas sobre lo que de verdad rompe un correo. Se escribieron en tres módulos con tres
       criterios distintos y **nadie los ha revisado nunca como conjunto**.
-      Y llevan el navy viejo hardcodeado: `#1e3a5f` en `identidad/notificaciones-invitacion.ts:82`,
-      `#1E3A5F` en `operacion/aviso-incidencia-email.ts:91`. Los 7 de `plataforma/notificaciones.ts`
-      están rotulados en el propio código como *«placeholders funcionales (revisar con copywriter)»*
-      y no tienen ni botón: son párrafos pelados.
-      **Regla 61: ningún correo depende de una imagen.**
+      El navy viejo (`#1e3a5f`, `#1E3A5F`) se fue de los dos sitios donde estaba.
+      **Los 7 de `plataforma/notificaciones.ts`** —los que el propio código rotulaba como
+      *«placeholders funcionales (revisar con copywriter)»*— cambian tres cosas, de §9.1:
+      · **El asunto lleva el hecho y su número, y NO el nombre del producto.** Los siete terminaban
+        en «— Rutax», que es exactamente lo que el remitente ya dice: seis caracteres gastados de
+        los ~45 que se ven en el teléfono. Y los de dinero **llevan el monto**, que es lo que decide
+        si se abre ahora o después: «Pago recibido · $49.000», «No pudimos cobrar $49.000».
+      · **La plata va en el bloque de datos**, en mono, no enterrada en un párrafo.
+      · **Un botón**, que no tenían: mandaban al lector a navegar a mano hasta «Configuración > Plan
+        y facturación». Si no hay dominio configurado no se inventa uno — sale sin botón y el pie
+        dice dónde mirar.
+      Se fue también el «Hola X … Saludos, Rutax»: el titular dice el hecho, y saludar por nombre en
+      un correo de sistema no aporta.
+      ⚠️ El cuerpo de `construirEmailComunicacion` **lo escribe un super-admin** y entra como HTML,
+      así que se escapa en el llamador: es el único correo cuyo contenido no está en el código.
+      **Verificado en el navegador** con la invitación del seller renderizada de verdad.
 
       | Constructor | Archivo |
       |---|---|

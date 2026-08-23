@@ -21,6 +21,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { obtenerPuertoEmail } from "@/modules/integraciones/notificaciones/email";
 import { formatearFecha } from "@/lib/formato-cl";
+import { envolverEmail } from "@/lib/email/plantilla-email";
 import { registrarEnBitacora } from "./auditoria";
 import { construirEnlaceInvitacion, resolverUrlBaseApp } from "./enlace-invitacion";
 import type { TipoUsuarioInvitacion } from "./invitaciones";
@@ -72,67 +73,91 @@ export function construirEmailInvitacion(args: ArgsContenido): ContenidoEmailInv
   const vence = formatearFecha(args.expiraEn);
   const url = args.urlInvitacion;
 
-  const cierre =
-    `<p style="color:#666;font-size:13px">Este enlace es personal y vence el ${vence}. ` +
-    `Si no esperabas este correo, puedes ignorarlo.</p>`;
-  const cierreTexto =
-    `Este enlace es personal y vence el ${vence}. Si no esperabas este correo, puedes ignorarlo.`;
+  // El pie dice por qué le llega esto y qué hacer si no lo esperaba. Antes era
+  // un `<p>` gris al final del cuerpo; ahora es el pie de la plantilla, que es
+  // donde el lector lo busca.
+  const motivoRecepcion =
+    `Este enlace es personal y vence el ${vence}. ` +
+    `Si no esperabas este correo, puedes ignorarlo.`;
+  const cierreTexto = motivoRecepcion;
 
-  const boton =
-    `<p><a href="${url}" style="display:inline-block;background:#1e3a5f;color:#fff;` +
-    `padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600">` +
-    `Crear mi contraseña</a></p>` +
-    `<p style="color:#666;font-size:13px">Si el botón no funciona, copia y pega esta dirección:<br>${url}</p>`;
+  // ⚠️ El botón ya no se arma acá. Era un `<a>` con `display:inline-block` y
+  // `background:#1e3a5f` —el navy del sistema retirado—, y Outlook ignora ese
+  // `display`, así que llegaba como un enlace suelto sin caja. Lo pone la
+  // plantilla, con su fondo declarado dos veces y su enlace de respaldo.
+  const accion = { etiqueta: "Crear mi contraseña", url };
 
   if (args.tipoUsuario === "seller") {
     return {
       asunto: `${args.nombreCourier} te invitó a su portal de despachos`,
-      html:
-        `<p>Hola,</p>` +
-        `<p><strong>${courier}</strong> despacha tus pedidos y te está dando acceso a su portal. ` +
-        `Ahí vas a poder seguir tus envíos en tiempo real, revisar tu estado de cuenta y reportar ` +
-        `incidencias sin tener que escribirle a nadie por WhatsApp.</p>` +
-        `<p>Para entrar, crea tu contraseña:</p>` +
-        boton +
-        `<p>Una vez adentro, el primer paso es conectar tu cuenta de Mercado Libre para que tus ` +
-        `pedidos lleguen solos al portal.</p>` +
-        cierre,
+      html: envolverEmail({
+        marca: args.nombreCourier,
+        titular: `${args.nombreCourier} te dio acceso a su portal`,
+        preencabezado: "Crea tu contraseña y conecta tu cuenta de Mercado Libre.",
+        cuerpoHtml:
+          `<p style="margin:0 0 12px"><strong>${courier}</strong> despacha tus pedidos y te está ` +
+          `dando acceso a su portal. Ahí vas a poder seguir tus envíos en tiempo real, revisar tu ` +
+          `estado de cuenta y reportar incidencias sin tener que escribirle a nadie por WhatsApp.</p>` +
+          `<p style="margin:0">Una vez adentro, el primer paso es conectar tu cuenta de Mercado ` +
+          `Libre para que tus pedidos lleguen solos al portal.</p>`,
+        accion,
+        motivoRecepcion,
+      }),
       texto:
         `${args.nombreCourier} despacha tus pedidos y te está dando acceso a su portal. ` +
-        `Ahí vas a poder seguir tus envíos, revisar tu estado de cuenta y reportar incidencias.\n\n` +
-        `Crea tu contraseña aquí: ${url}\n\n` +
+        `Ahí vas a poder seguir tus envíos, revisar tu estado de cuenta y reportar incidencias.
+
+` +
+        `Crea tu contraseña aquí: ${url}
+
+` +
         `Una vez adentro, el primer paso es conectar tu cuenta de Mercado Libre para que tus ` +
-        `pedidos lleguen solos al portal.\n\n${cierreTexto}`,
+        `pedidos lleguen solos al portal.
+
+${cierreTexto}`,
     };
   }
 
   if (args.tipoUsuario === "conductor") {
     return {
       asunto: `${args.nombreCourier} te invitó a Rutax`,
-      html:
-        `<p>Hola,</p>` +
-        `<p><strong>${courier}</strong> te dio acceso a Rutax, donde vas a ver tu manifiesto del ` +
-        `día y tus liquidaciones.</p>` +
-        `<p>Para entrar, crea tu contraseña:</p>` +
-        boton +
-        cierre,
+      html: envolverEmail({
+        marca: args.nombreCourier,
+        titular: `${args.nombreCourier} te dio acceso a Rutax`,
+        preencabezado: "Crea tu contraseña para ver tu manifiesto del día.",
+        cuerpoHtml:
+          `<p style="margin:0"><strong>${courier}</strong> te dio acceso a Rutax, donde vas a ver ` +
+          `tu manifiesto del día y tus liquidaciones.</p>`,
+        accion,
+        motivoRecepcion,
+      }),
       texto:
         `${args.nombreCourier} te dio acceso a Rutax, donde vas a ver tu manifiesto del día y tus ` +
-        `liquidaciones.\n\nCrea tu contraseña aquí: ${url}\n\n${cierreTexto}`,
+        `liquidaciones.
+
+Crea tu contraseña aquí: ${url}
+
+${cierreTexto}`,
     };
   }
 
   return {
     asunto: `${args.nombreCourier} te invitó a su cuenta en Rutax`,
-    html:
-      `<p>Hola,</p>` +
-      `<p><strong>${courier}</strong> te sumó a su equipo en Rutax.</p>` +
-      `<p>Para entrar, crea tu contraseña:</p>` +
-      boton +
-      cierre,
+    html: envolverEmail({
+      marca: args.nombreCourier,
+      titular: `${args.nombreCourier} te sumó a su equipo`,
+      preencabezado: "Crea tu contraseña para entrar.",
+      cuerpoHtml: `<p style="margin:0"><strong>${courier}</strong> te sumó a su equipo en Rutax.</p>`,
+      accion,
+      motivoRecepcion,
+    }),
     texto:
-      `${args.nombreCourier} te sumó a su equipo en Rutax.\n\n` +
-      `Crea tu contraseña aquí: ${url}\n\n${cierreTexto}`,
+      `${args.nombreCourier} te sumó a su equipo en Rutax.
+
+` +
+      `Crea tu contraseña aquí: ${url}
+
+${cierreTexto}`,
   };
 }
 

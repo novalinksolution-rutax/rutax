@@ -216,7 +216,12 @@ describe('constructores de contenido — placeholders funcionales', () => {
       periodoInicio: '2026-07-01',
       periodoFin: '2026-07-31',
     });
-    expect(c.asunto).toContain('Rutax');
+    // El asunto YA NO lleva el nombre del producto: lo dice el remitente, y
+    // esos seis caracteres se comen el hecho en la bandeja del teléfono
+    // (sistema de mensajes §9.1, regla de asunto). Los de dinero llevan el
+    // monto, que es lo que decide si se abre ahora o después.
+    expect(c.asunto).toContain('$49.000');
+    expect(c.asunto).not.toContain('Rutax');
     expect(c.html).toContain('$49.000');
     expect(c.html).toContain('01-07-2026');
     expect(c.html).toContain('31-07-2026');
@@ -296,8 +301,11 @@ describe('constructores de contenido — placeholders funcionales', () => {
       titulo: 'Mantención programada',
       cuerpo: 'El sábado 20-07 habrá una ventana de mantención de 02:00 a 04:00.',
     });
-    expect(c.asunto).toBe('Mantención programada — Rutax');
-    expect(c.html).toContain('Hola Courier Uno');
+    // Sin «— Rutax» por lo mismo: el remitente ya lo dice.
+    expect(c.asunto).toBe('Mantención programada');
+    // El «Hola X» se fue con los placeholders: el titular dice el hecho, y
+    // saludar por nombre en un correo de sistema no aporta nada.
+    expect(c.html).toContain('Mantención programada');
     expect(c.html).toContain('El sábado 20-07 habrá una ventana de mantención de 02:00 a 04:00.');
     expect(c.texto).toContain('Mantención programada');
     expect(c.texto).toContain('El sábado 20-07 habrá una ventana de mantención de 02:00 a 04:00.');
@@ -309,7 +317,11 @@ describe('constructores de contenido — placeholders funcionales', () => {
       titulo: 'Novedad',
       cuerpo: 'Primera línea.\nSegunda línea.',
     });
-    expect(c.html).toContain('<p>Primera línea.</p>');
-    expect(c.html).toContain('<p>Segunda línea.</p>');
+    // Cada línea sigue siendo su propio párrafo; lo que cambió es que ahora
+    // lleva margen en línea (el correo no puede depender de una hoja de
+    // estilos) y que el texto se ESCAPA: este cuerpo lo escribe un super-admin
+    // en el backstage, así que es el único que no está en el código.
+    expect(c.html).toContain('>Primera línea.</p>');
+    expect(c.html).toContain('>Segunda línea.</p>');
   });
 });

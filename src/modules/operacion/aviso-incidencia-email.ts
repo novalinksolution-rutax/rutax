@@ -29,6 +29,7 @@
  */
 
 import { resolverUrlBaseApp } from "@/modules/identidad/enlace-invitacion";
+import { envolverEmail } from "@/lib/email/plantilla-email";
 
 export interface DatosAvisoIncidencia {
   /** `RX-XXXX-XXXX` en same-day o el `ml_shipment_id` en Flex. Nunca el token público. */
@@ -47,13 +48,6 @@ export interface ContenidoEmail {
   texto: string;
 }
 
-function escaparHtml(valor: string): string {
-  return valor
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 export function construirAvisoIncidencia(datos: DatosAvisoIncidencia): ContenidoEmail {
   const horas = Math.round(datos.horasAbierta);
@@ -76,23 +70,27 @@ export function construirAvisoIncidencia(datos: DatosAvisoIncidencia): Contenido
     `— Rutax, por ${datos.nombreCourier}`,
   ].join("\n");
 
-  const html = `
-<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;color:#0F172A">
-  <p style="font-size:16px;line-height:1.5;margin:0 0 16px">
-    Un pedido lleva <strong>${horas} horas</strong> con una incidencia abierta y nadie la ha tomado.
-  </p>
-  <table style="border-collapse:collapse;font-size:14px;margin:0 0 20px">
-    <tr><td style="padding:4px 16px 4px 0;color:#64748B">Envío</td><td style="padding:4px 0"><strong>${escaparHtml(datos.codigoEnvio)}</strong></td></tr>
-    <tr><td style="padding:4px 16px 4px 0;color:#64748B">Comuna</td><td style="padding:4px 0">${escaparHtml(datos.comuna)}</td></tr>
-    <tr><td style="padding:4px 16px 4px 0;color:#64748B">Motivo</td><td style="padding:4px 0">${escaparHtml(datos.tipoIncidencia)}</td></tr>
-  </table>
-  ${
-    enlace
-      ? `<p style="margin:0 0 20px"><a href="${escaparHtml(enlace)}" style="background:#1E3A5F;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;display:inline-block;font-size:14px">Ver el pedido</a></p>`
-      : `<p style="margin:0 0 20px;font-size:14px;color:#64748B">Búscalo en Rutax, en Operación → Pedidos.</p>`
-  }
-  <p style="font-size:12px;color:#94A3B8;margin:0">Rutax, por ${escaparHtml(datos.nombreCourier)}</p>
-</div>`.trim();
+  // Antes esto era un `<div>` con `max-width` —que Outlook ignora— y un botón
+  // `#1E3A5F`, el navy del sistema retirado, con `display:inline-block`, que
+  // Outlook también ignora. Ahora lo arma la plantilla común.
+  const html = envolverEmail({
+    marca: datos.nombreCourier,
+    titular: `Una incidencia lleva ${horas} horas sin gestionar`,
+    preencabezado: `${datos.codigoEnvio} · ${datos.comuna}`,
+    cuerpoHtml:
+      `<p style="margin:0">Un pedido lleva <strong>${horas} horas</strong> con una incidencia ` +
+      `abierta y nadie la ha tomado.</p>`,
+    datos: [
+      { etiqueta: "Envío", valor: datos.codigoEnvio, destacada: true },
+      { etiqueta: "Comuna", valor: datos.comuna },
+      { etiqueta: "Motivo", valor: datos.tipoIncidencia },
+    ],
+    ...(enlace ? { accion: { etiqueta: "Ver el pedido", url: enlace } } : {}),
+    motivoRecepcion: enlace
+      ? `Recibes este aviso porque gestionas incidencias en ${datos.nombreCourier}.`
+      : `Recibes este aviso porque gestionas incidencias en ${datos.nombreCourier}. ` +
+        `Búscalo en Rutax, en Operación → Pedidos.`,
+  });
 
   return { asunto, html, texto };
 }

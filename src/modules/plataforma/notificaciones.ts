@@ -28,6 +28,8 @@ import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { obtenerPuertoEmail } from '@/modules/integraciones/notificaciones/email';
 import { formatearCLP } from '@/lib/ui/formato-moneda';
 import { EMAIL_SOPORTE_RUTAX } from '@/lib/contacto-rutax';
+import { envolverEmail } from '@/lib/email/plantilla-email';
+import { resolverUrlBaseApp } from '@/modules/identidad/enlace-invitacion';
 import { ahoraEnSantiago, combinarFechaHoraSantiago, sumarDiasCalendario } from '@/lib/fecha-santiago';
 
 // =============================================================================
@@ -195,6 +197,44 @@ function formatearFechaCorta(fecha: string): string {
   return `${dia}-${mes}-${anio}`;
 }
 
+/**
+ * Los siete correos del backstage, sobre la plantilla comun.
+ * =============================================================================
+ * Estaban rotulados en este mismo archivo como «placeholders funcionales
+ * (revisar con copywriter)» y se notaba: parrafos pelados con «Hola X» y
+ * «Saludos, Rutax», **sin un solo boton**, mandando al lector a navegar a mano
+ * hasta «Configuracion > Plan y facturacion».
+ *
+ * Tres cosas cambian, y las tres salen del sistema de mensajes §9:
+ *
+ * 1. **El asunto lleva el hecho y su numero, y NO el nombre del producto.** Los
+ *    siete terminaban en «— Rutax», que es exactamente lo que el remitente ya
+ *    dice; gastaban seis caracteres de los ~45 que se ven en el telefono. Y los
+ *    de dinero **llevan el monto**: es lo que decide si se abre ahora o despues.
+ * 2. **La plata va en el bloque de datos**, en mono, no enterrada en un parrafo.
+ * 3. **Un boton**, con su enlace de respaldo. Si no hay dominio configurado no
+ *    se inventa uno: el correo sale sin boton y el pie dice donde mirar.
+ */
+
+/** Escapa texto que escribió una persona: el único correo con cuerpo libre. */
+function escaparTexto(valor: string): string {
+  return valor
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Acción del botón del backstage, o nada si no hay dominio declarado. */
+function accionPlan(etiqueta: string): { accion?: { etiqueta: string; url: string } } {
+  const base = resolverUrlBaseApp();
+  return base ? { accion: { etiqueta, url: `${base}/configuracion/plan` } } : {};
+}
+
+const PIE_PLAN =
+  'Recibes este correo porque administras la cuenta de Rutax de tu empresa. ' +
+  'Puedes revisar tu plan en Configuración → Plan y facturación.';
+
 /** plataforma/pago.confirmado → "pago recibido / comprobante disponible". */
 export function construirEmailPagoConfirmado(args: {
   nombreTenant: string;
@@ -205,12 +245,21 @@ export function construirEmailPagoConfirmado(args: {
   const monto = formatearCLP(args.montoClp);
   const periodo = `${formatearFechaCorta(args.periodoInicio)} al ${formatearFechaCorta(args.periodoFin)}`;
   return {
-    asunto: 'Pago recibido — Rutax',
-    html:
-      `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>Confirmamos el pago de <strong>${monto}</strong> correspondiente al período <strong>${periodo}</strong>.</p>` +
-      `<p>Descarga tu comprobante en tu panel: Configuración &gt; Plan y facturación.</p>` +
-      `<p>Saludos,<br>Rutax</p>`,
+    asunto: `Pago recibido · ${monto}`,
+    html: envolverEmail({
+      marca: 'Rutax',
+      titular: 'Recibimos tu pago',
+      preencabezado: `${monto} · período ${periodo}`,
+      cuerpoHtml:
+        '<p style="margin:0">Tu comprobante ya está disponible en el panel. No es un ' +
+        'documento tributario: es el respaldo del cobro de tu suscripción.</p>',
+      datos: [
+        { etiqueta: 'Período', valor: periodo },
+        { etiqueta: 'Monto', valor: monto, destacada: true },
+      ],
+      ...accionPlan('Descargar el comprobante'),
+      motivoRecepcion: PIE_PLAN,
+    }),
     texto:
       `Confirmamos el pago de ${monto} correspondiente al período ${periodo}. ` +
       `Descarga tu comprobante en tu panel: Configuración > Plan y facturación.`,
@@ -231,13 +280,19 @@ export function construirEmailCobroFallido(args: {
     ? 'Reintentaremos cobrar automáticamente en los próximos días. Si quieres anticiparte, puedes pagar ahora.'
     : 'Verifica tu método de pago en tu panel. Puede que necesites vincularlo nuevamente en Configuración &gt; Plan y facturación.';
   return {
-    asunto: 'Problema al procesar tu pago — Rutax',
-    html:
-      `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>Tuvimos un problema al procesar el pago de <strong>${monto}</strong> para el período <strong>${periodo}</strong> de tu suscripción.</p>` +
-      `<p>${accion}</p>` +
-      `<p>También puedes pagar manualmente desde tu panel: Configuración &gt; Plan y facturación.</p>` +
-      `<p>Saludos,<br>Rutax</p>`,
+    asunto: `No pudimos cobrar ${monto}`,
+    html: envolverEmail({
+      marca: 'Rutax',
+      titular: 'No pudimos cobrar tu suscripción',
+      preencabezado: `${monto} · período ${periodo}`,
+      cuerpoHtml: `<p style="margin:0">${accion}</p>`,
+      datos: [
+        { etiqueta: 'Período', valor: periodo },
+        { etiqueta: 'Monto', valor: monto, destacada: true },
+      ],
+      ...accionPlan('Pagar ahora'),
+      motivoRecepcion: PIE_PLAN,
+    }),
     texto:
       `Tuvimos un problema al procesar el pago de ${monto} para el período ${periodo} de tu suscripción. ${accion} ` +
       `También puedes pagar manualmente: Configuración > Plan y facturación.`,
@@ -252,14 +307,19 @@ export function construirEmailTrialPorVencer(args: {
 }): ContenidoEmail {
   const fecha = formatearFechaCorta(args.trialHasta);
   return {
-    asunto: `Tu prueba de Rutax termina en ${args.diasRestantes} días`,
-    html:
-      `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>Tu período de prueba termina el <strong>${fecha}</strong> (faltan ${args.diasRestantes} días).</p>` +
-      `<p>Para seguir operando sin interrupciones, vincula un método de pago en tu panel: ` +
-      `Configuración &gt; Plan y facturación.</p>` +
-      `<p>¿Dudas? Responde este correo o escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>` +
-      `<p>Saludos,<br>Rutax</p>`,
+    asunto: `Tu prueba termina en ${args.diasRestantes} días`,
+    html: envolverEmail({
+      marca: 'Rutax',
+      titular: 'Tu prueba está por terminar',
+      preencabezado: `Vence el ${fecha}. Vincula un metodo de pago para seguir operando.`,
+      cuerpoHtml:
+        '<p style="margin:0">Para seguir operando sin interrupciones, vincula un método de ' +
+        'pago antes de esa fecha. Si no lo haces, la cuenta se suspende y tu equipo deja de ' +
+        'poder entrar.</p>',
+      datos: [{ etiqueta: 'Vence el', valor: fecha, destacada: true }],
+      ...accionPlan('Vincular un método de pago'),
+      motivoRecepcion: PIE_PLAN,
+    }),
     texto:
       `Tu período de prueba termina el ${fecha} (faltan ${args.diasRestantes} días). ` +
       `Vincula un método de pago en tu panel (Configuración > Plan y facturación) para continuar sin interrupciones.`,
@@ -276,12 +336,30 @@ export function construirEmailSuscripcionCreada(args: {
     : '';
   const bloqueTrialTexto = args.trialHasta ? ` Tienes hasta el ${formatearFechaCorta(args.trialHasta)} para usar sin costo.` : '';
   return {
-    asunto: 'Bienvenido a Rutax',
-    html:
-      `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>Tu cuenta ya está lista. Entra a tu panel para empezar a operar.</p>${bloqueTrial}` +
-      `<p>¿Dudas? Responde este correo o escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>` +
-      `<p>Saludos,<br>Rutax</p>`,
+    asunto: 'Tu cuenta ya está lista',
+    html: envolverEmail({
+      marca: 'Rutax',
+      titular: 'Tu cuenta ya está lista',
+      preencabezado: args.trialHasta
+        ? `Sin costo hasta el ${formatearFechaCorta(args.trialHasta)}.`
+        : 'Entra al panel para empezar a operar.',
+      cuerpoHtml:
+        '<p style="margin:0">Entra al panel y empieza por conectar a tus sellers: los ' +
+        `pedidos llegan solos apenas lo hagan. ¿Dudas? Escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>`,
+      ...(args.trialHasta
+        ? {
+            datos: [
+              {
+                etiqueta: 'Sin costo hasta',
+                valor: formatearFechaCorta(args.trialHasta),
+                destacada: true,
+              },
+            ],
+          }
+        : {}),
+      ...accionPlan('Entrar al panel'),
+      motivoRecepcion: PIE_PLAN,
+    }),
     texto: `Tu cuenta ya está lista.${bloqueTrialTexto} Entra a tu panel para empezar a operar. ¿Dudas? Responde este correo o escríbenos a ${EMAIL_SOPORTE_RUTAX}.`,
   };
 }
@@ -305,12 +383,30 @@ export function construirEmailPlanCambiado(args: {
       ? ` Se aplicó un cargo prorrateado de ${formatearCLP(args.montoAjusteClp)}.`
       : '';
   return {
-    asunto: 'Tu plan cambió — Rutax',
-    html:
-      `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>${etiquetaTipo}, efectivo desde el <strong>${fecha}</strong>.</p>${bloqueAjuste}` +
-      `<p>Revisa los detalles en tu panel: Configuración &gt; Plan y facturación.</p>` +
-      `<p>Saludos,<br>Rutax</p>`,
+    asunto: `${etiquetaTipo} desde el ${fecha}`,
+    html: envolverEmail({
+      marca: 'Rutax',
+      titular: etiquetaTipo,
+      preencabezado: `Efectivo desde el ${fecha}`,
+      cuerpoHtml: bloqueAjuste
+        ? '<p style="margin:0">Se aplicó un cargo prorrateado por los días que quedaban del ' +
+          'ciclo actual. El próximo cobro ya va con el plan nuevo.</p>'
+        : '<p style="margin:0">El próximo cobro ya va con el plan nuevo.</p>',
+      datos: [
+        { etiqueta: 'Efectivo desde', valor: fecha },
+        ...(args.montoAjusteClp && args.montoAjusteClp > 0
+          ? [
+              {
+                etiqueta: 'Cargo prorrateado',
+                valor: formatearCLP(args.montoAjusteClp),
+                destacada: true,
+              },
+            ]
+          : []),
+      ],
+      ...accionPlan('Ver mi plan'),
+      motivoRecepcion: PIE_PLAN,
+    }),
     texto:
       `${etiquetaTipo}, efectivo desde el ${fecha}.${bloqueAjusteTexto} ` +
       `Revisa los detalles en tu panel: Configuración > Plan y facturación.`,
@@ -331,14 +427,19 @@ export function construirEmailComunicacion(args: {
   const cuerpoHtml = args.cuerpo
     .split('\n')
     .filter((linea) => linea.trim().length > 0)
-    .map((linea) => `<p>${linea}</p>`)
+    .map((linea) => `<p style="margin:0 0 12px">${escaparTexto(linea)}</p>`)
     .join('');
   return {
-    asunto: `${args.titulo} — Rutax`,
-    html:
-      `<p>Hola ${args.nombreTenant},</p>` +
-      (cuerpoHtml || `<p>${args.cuerpo}</p>`) +
-      `<p>Saludos,<br>Rutax</p>`,
+    // Sin «— Rutax»: el remitente ya lo dice, y esos seis caracteres se comen
+    // el título en la bandeja del teléfono.
+    asunto: args.titulo,
+    html: envolverEmail({
+      marca: 'Rutax',
+      titular: args.titulo,
+      cuerpoHtml: cuerpoHtml || `<p style="margin:0">${escaparTexto(args.cuerpo)}</p>`,
+      motivoRecepcion:
+        'Recibes este correo porque administras la cuenta de Rutax de tu empresa.',
+    }),
     texto: `${args.titulo}\n\n${args.cuerpo}`,
   };
 }
@@ -353,13 +454,22 @@ export function construirEmailPeriodoVencido(args: {
   const monto = formatearCLP(args.montoClp);
   const periodo = `${formatearFechaCorta(args.periodoInicio)} al ${formatearFechaCorta(args.periodoFin)}`;
   return {
-    asunto: 'Pago pendiente — Rutax',
-    html:
-      `<p>Hola ${args.nombreTenant},</p>` +
-      `<p>El período <strong>${periodo}</strong> de tu suscripción a Rutax, por <strong>${monto}</strong>, está vencido.</p>` +
-      `<p>Regulariza tu pago ahora en tu panel (Configuración &gt; Plan y facturación) para mantener tu servicio activo.</p>` +
-      `<p>¿Problemas? Escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>` +
-      `<p>Saludos,<br>Rutax</p>`,
+    asunto: `Pago vencido · ${monto}`,
+    html: envolverEmail({
+      marca: 'Rutax',
+      titular: 'Tu suscripción tiene un pago vencido',
+      preencabezado: `${monto} · período ${periodo}`,
+      cuerpoHtml:
+        '<p style="margin:0">Regulariza el pago para mantener el servicio activo. Si la ' +
+        'deuda sigue, la cuenta se suspende y tu equipo deja de poder entrar. ' +
+        `¿Problemas? Escríbenos a ${EMAIL_SOPORTE_RUTAX}.</p>`,
+      datos: [
+        { etiqueta: 'Período', valor: periodo },
+        { etiqueta: 'Monto vencido', valor: monto, destacada: true },
+      ],
+      ...accionPlan('Regularizar el pago'),
+      motivoRecepcion: PIE_PLAN,
+    }),
     texto:
       `El período ${periodo} de tu suscripción a Rutax, por ${monto}, está vencido. ` +
       `Regulariza tu pago en tu panel (Configuración > Plan y facturación). ¿Problemas? Escríbenos a ${EMAIL_SOPORTE_RUTAX}.`,
