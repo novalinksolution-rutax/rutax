@@ -29,6 +29,21 @@ export function formatearCLP(monto: number): string {
  * Formatea un monto nullable. Retorna "—" si es null.
  * Útil para períodos abiertos o liquidaciones en borrador sin monto calculado.
  */
+/**
+ * Solo los miles, **sin el símbolo**: `867.000`.
+ *
+ * Para el bloque de composición, donde repetir `$` en cada sumando compite con
+ * lo que de verdad hay que leer, que es la resta. El tablero B2a lo escribe así:
+ * «867.000 entregas + 3.600 recargos − 2.900 ajustes».
+ */
+const FORMATEADOR_MILES = new Intl.NumberFormat("es-CL", {
+  maximumFractionDigits: 0,
+});
+
+export function formatearMiles(monto: number): string {
+  return FORMATEADOR_MILES.format(Math.round(monto));
+}
+
 export function formatearCLPOGuion(monto: number | null | undefined): string {
   if (monto === null || monto === undefined) return "—";
   return formatearCLP(monto);

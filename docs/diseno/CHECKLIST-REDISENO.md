@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **2 de 16** · la ceremonia y su composición | 14 + las 4 anulaciones · 25 de 26 acciones sin migrar | #7 a #11 | `P4` ✅ · faltan `B2a` · `B2b` |
+| **5** | **Dinero** | **3 de 16** · ceremonia, composición y tabla financiera | montar la tabla en la pantalla (falta agregación) · 21 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ · falta `B2b` |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -399,7 +399,7 @@ bloques 4–8, cuando cada pantalla se toque.
 
 # Bloque 5 · Dinero
 
-**Tablero traído:** `Rutax P4 Emitir factura` ✅ · faltan `B2a Periodos` y `B2b Liquidaciones y cobranza`.
+**Tableros traídos:** `Rutax P4 Emitir factura` ✅ · `Rutax B2a Periodos` ✅ · falta `B2b Liquidaciones y cobranza`.
 
 **Las seis decisiones que P4 fija para todo el producto**, y que valen más allá de dinero:
 1. **La verificación previa es una pantalla, no una validación** — tres desenlaces con tratamiento
@@ -424,16 +424,29 @@ bloques 4–8, cuando cada pantalla se toque.
       fuera no cierran, «Volver» y no «Cancelar» (regla 59), el foco entra en el campo, y el botón
       está deshabilitado **y fuera de la tabulación** (`tabIndex −1`) hasta que la frase calza —
       tolerante con espacios de sobra, estricta con un seller equivocado.
-- [x] **`bloque de composición`** · DE CERO — `src/components/ui/bloque-composicion.tsx`, en mono y
-      con signo menos real. *Falta el dato:* el preflight devuelve `netoClp`/`ivaClp`/`totalClp`
-      pero **no el desglose por concepto**, así que el modal aún no puede mostrar «867.000 entregas
-      + 3.600 recargos − 2.900 ajustes». Es trabajo de backend, no de pantalla.
+- [x] **`bloque de composición`** · DE CERO — `src/components/ui/bloque-composicion.tsx`, en mono,
+      con signo menos real y **sin símbolo por sumando** (`formatearMiles`, nuevo en
+      `formato-moneda.ts`): un `$` en cada término compite con la resta, que es lo que hay que leer.
+      *Falta el dato:* el preflight devuelve `netoClp`/`ivaClp`/`totalClp` pero **no el desglose por
+      concepto**, así que el modal aún no puede mostrar la resta real. Es trabajo de backend.
 - [ ] **`verificación previa`** — la lógica existe y es buena (`modules/dinero/preflight.ts`, 906
       líneas, 16 códigos). Lo que falta es la **forma**: los tres desenlaces como pantalla, y
       de-duplicar `SkeletonPreflight` / `BloquePreflightFallido` / `BandaItemsPreflight`, que están
       **triplicados literalmente** (~100 líneas cada uno) en los tres diálogos.
-- [ ] **`tabla financiera`** · DE CERO — subtotales por concepto, rótulo bruto/neto en cabecera y
-      pie. **Hoy no hay subtotales en ninguna pantalla** y conviven tres vocabularios.
+- [x] **`tabla financiera`** · DE CERO — `src/components/ui/tabla-financiera.tsx`. Agrupada por
+      concepto y no línea por línea, porque **285 filas no se auditan**: tres conceptos con
+      subtotal, los ajustes con su origen enlazado, y «ver las N una por una» para cuando hace
+      falta. Es lo que permite cuadrar sin exportar — y exportar a Excel es el momento en que el
+      producto deja de ser la fuente de verdad.
+      `rotulo` («neto» | «bruto») **no tiene valor por defecto**: la regla 18 lo exige en cabecera y
+      pie, y hoy en el detalle de período la cifra grande es bruto, el pie es neto y nada lo dice.
+      Los negativos van con signo menos real (U+2212), tono `fault` y su causa enlazada en la misma
+      fila — nunca un paréntesis, que no lo lee quien no es contador, ni solo color, que se pierde
+      al imprimir.
+      **Verificada en el navegador** con los datos del tablero.
+      ⚠️ **Falta el dato para montarla en la pantalla real:** el detalle de período lista las líneas
+      una por una con paginación de 50, y agrupar por concepto en el cliente sería agrupar 50 de
+      285. Necesita una consulta agregada en `modules/dinero`. Es lo próximo del bloque.
 - [ ] `panel de ajuste manual` · `atribuidor de pago` · `indicador de folio disponible` ·
       `tarjeta de trazabilidad` · `tarjeta de resultado en bloque`.
 
@@ -462,8 +475,23 @@ bloques 4–8, cuando cada pantalla se toque.
 ## Las 26 acciones irreversibles
 
 `RUTAX-SISTEMA-DE-MENSAJES.md` §2 trae las 33 con su peldaño y su copy ya escritos.
-**1 de 26 migrada.** Las demás siguen en `DialogConfirmacionDinero` (2 peldaños) o, peor, en
-`<Dialog>` genérico: `dialog-cerrar-periodo` dice «Cancelar» y tiene X — verificado en vivo.
+**5 de 26 migradas**, todas verificadas en el navegador con datos reales:
+
+- [x] `periodos.emitir` · **P3 · escribir** — el arquetipo.
+- [x] `periodos.cerrar` · **P2** — estaba en `<Dialog>` genérico, con «Cancelar» y X.
+      ⚠️ **Su copy del sistema de mensajes promete algo que no existe:** «se puede reabrir mientras
+      no esté facturado». **No hay ninguna acción de reapertura de período en el código** —solo
+      `reabrirEventoConciliacion`, que es de conciliación y otra cosa—. El tablero B2a la dibuja
+      como acción de peldaño 2, así que es una **brecha de producto**. Mientras no exista, la
+      pantalla no la promete (regla 35).
+- [x] `cobro.anular` · **P2 · motivo**
+- [x] `liq.anularLinea` · **P2 · motivo** — en el detalle del pedido y en el del conductor.
+- [x] `liq.anularVisita` · **P2 · motivo**
+      Las tres anulaciones declaran **quién lee el motivo**: «lo lee el conductor, en su liquidación
+      y en su PDF» (regla 24). Y exigen 10 caracteres — «error» no llega, y verifiqué que el botón
+      sigue deshabilitado y fuera de la tabulación hasta que el motivo dice algo.
+
+**Quedan 21**, entre ellas los pagos (P3 · escribir), marcar pagada a mano y las del backstage.
 
 # Bloque 6 · App del conductor
 

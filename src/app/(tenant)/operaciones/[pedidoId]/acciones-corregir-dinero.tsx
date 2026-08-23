@@ -2,35 +2,40 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-  DialogClose,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 import { accionAnularCobroPedido, accionAnularLiquidacionPedido } from "./acciones-dinero";
 
 type Accion = (pedidoId: string, motivo: string) => Promise<{ ok: boolean; mensaje?: string }>;
 
+/**
+ * DialogAnular — anular una línea de dinero. Peldaño 2 · motivo.
+ *
+ * ⚠️ **El motivo lo va a leer alguien de afuera**, y la regla 24 pide que el
+ * formulario lo declare: el conductor ve el motivo de una línea de liquidación
+ * anulada en su liquidación y en su PDF. Escribir «error» ahí es escribírselo a
+ * él.
+ *
+ * Una línea anulada **no se borra**: queda con su autor y su motivo, en tono
+ * inerte con su trama (registro §16.4).
+ */
 export function DialogAnular({
   pedidoId,
   titulo,
   descripcion,
   accion,
   etiquetaBoton,
+  ayudaMotivo,
+  textoConfirmar,
 }: {
   pedidoId: string;
   titulo: string;
-  descripcion: string;
+  descripcion: React.ReactNode;
   accion: Accion;
   etiquetaBoton: string;
+  /** Quién va a leer el motivo. Se declara cuando es un externo. */
+  ayudaMotivo?: string;
+  textoConfirmar: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -38,8 +43,7 @@ export function DialogAnular({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  function handleConfirmar() {
     setError(null);
     startTransition(async () => {
       const r = await accion(pedidoId, motivo);
@@ -54,38 +58,51 @@ export function DialogAnular({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) setError(null); setOpen(v); }}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">{etiquetaBoton}</Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{titulo}</DialogTitle>
-          <DialogDescription>{descripcion}</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="motivo-anulacion">Motivo (queda en la bitácora)</Label>
-            <Textarea
-              id="motivo-anulacion"
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              placeholder="Ej: el fallido no es responsabilidad del seller; no corresponde cobrar."
-              required
-            />
-          </div>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="ghost" disabled={isPending}>Cancelar</Button>
-            </DialogClose>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Anulando…" : "Confirmar anulación"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        {etiquetaBoton}
+      </Button>
+
+      <ModalActoExplicito
+        open={open}
+        onOpenChange={(v) => {
+          if (isPending) return;
+          if (!v) setError(null);
+          setOpen(v);
+        }}
+        peldano={2}
+        variante="destructive"
+        titulo={titulo}
+        consecuencia={descripcion}
+        motivo={{
+          valor: motivo,
+          onCambio: setMotivo,
+          etiqueta: "Motivo",
+          ayuda: ayudaMotivo ?? "Queda en la bitácora, con tu nombre.",
+          // 10 caracteres: lo pide el copy de `cobro.anular.conf`. Es el mínimo
+          // con el que un motivo dice algo — «error» no lo alcanza.
+          minimo: 10,
+        }}
+        avisos={
+          error
+            ? [
+                {
+                  tono: "fault",
+                  texto: (
+                    <>
+                      <strong>No pudimos anularla.</strong> {error} Nada cambió; puedes
+                      volver a intentarlo.
+                    </>
+                  ),
+                },
+              ]
+            : []
+        }
+        cargando={isPending}
+        textoConfirmar={textoConfirmar}
+        onConfirmar={handleConfirmar}
+      />
+    </>
   );
 }
 
@@ -111,19 +128,35 @@ export function AccionesCorregirDinero({
       {puedeAnularCobro && (
         <DialogAnular
           pedidoId={pedidoId}
-          titulo="Anular el cobro de este pedido"
-          descripcion="La línea de cobro al seller se anulará y no se incluirá en la factura del período (solo si el período sigue abierto)."
+          titulo="Vas a anular el cobro de este pedido"
+          descripcion={
+            <>
+              La línea sale del período y el seller deja de verla. Queda registrada
+              como anulada con tu nombre y tu motivo, <strong>no se borra</strong>. Si
+              el período ya estuviera facturado, esto no se puede hacer.
+            </>
+          }
+          ayudaMotivo="Queda en la bitácora, con tu nombre."
           accion={accionAnularCobroPedido}
           etiquetaBoton="Anular cobro"
+          textoConfirmar="Anular el cobro"
         />
       )}
       {puedeAnularLiquidacion && (
         <DialogAnular
           pedidoId={pedidoId}
-          titulo="Anular la liquidación de este pedido"
-          descripcion="La línea de liquidación al conductor se anulará y no se pagará (solo si la liquidación está en borrador)."
+          titulo="Vas a quitarle esta línea a la liquidación del conductor"
+          descripcion={
+            <>
+              El conductor va a ver la línea anulada <strong>con tu motivo</strong> en su
+              liquidación y en su PDF. Si ya le pagaste este período, esto no lo
+              devuelve: hay que ajustarlo en el próximo.
+            </>
+          }
+          ayudaMotivo="Lo lee el conductor, en su liquidación y en su PDF."
           accion={accionAnularLiquidacionPedido}
           etiquetaBoton="Anular liquidación"
+          textoConfirmar="Anular la línea"
         />
       )}
     </div>

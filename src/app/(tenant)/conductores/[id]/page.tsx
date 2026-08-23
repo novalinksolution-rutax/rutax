@@ -352,10 +352,19 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
                         (e.pedidoId ? (
                           <DialogAnular
                             pedidoId={e.pedidoId}
-                            titulo="Anular la liquidación de esta entrega"
-                            descripcion="La línea de liquidación al conductor se anulará y no se pagará. Solo aplica a entregas sin liquidar o en una liquidación en borrador."
+                            titulo={`Vas a quitarle ${formatearCLP(e.montoClp)} a la liquidación de ${conductor.nombre_completo as string}`}
+                            descripcion={
+                              <>
+                                El conductor va a ver la línea anulada{" "}
+                                <strong>con tu motivo</strong> en su liquidación y en su
+                                PDF. Si ya le pagaste este período, esto no lo devuelve:
+                                hay que ajustarlo en el próximo.
+                              </>
+                            }
+                            ayudaMotivo="Lo lee el conductor, en su liquidación y en su PDF."
                             accion={accionAnularLiquidacionPedido}
                             etiquetaBoton="Anular"
+                            textoConfirmar="Anular la línea"
                           />
                         ) : (
                           // El camino de anulación de siempre está cableado por
@@ -364,10 +373,18 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
                           // clases comparten.
                           <DialogAnular
                             pedidoId={e.lineaId}
-                            titulo="Anular el pago de esta visita a bodega"
-                            descripcion="La línea de liquidación al conductor se anulará y no se pagará. La visita queda registrada igual: lo que se anula es el pago, no el hecho."
+                            titulo={`Vas a anular el pago de ${formatearCLP(e.montoClp)} por esta visita a bodega`}
+                            descripcion={
+                              <>
+                                <strong>El acta de retiro sigue existiendo</strong>; lo
+                                que se anula es el pago, no el hecho. {conductor.nombre_completo as string} va
+                                a ver el motivo en su liquidación.
+                              </>
+                            }
+                            ayudaMotivo="Lo lee el conductor, en su liquidación."
                             accion={accionAnularLineaLiquidacion}
                             etiquetaBoton="Anular"
+                            textoConfirmar="Anular el pago de la visita"
                           />
                         ))}
                     </TableCell>

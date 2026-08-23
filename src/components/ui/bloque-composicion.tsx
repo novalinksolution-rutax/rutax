@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import { formatearCLP } from "@/lib/ui/formato-moneda"
+import { formatearMiles } from "@/lib/ui/formato-moneda"
 
 /**
  * BloqueComposicion — la resta a la vista, en mono.
@@ -50,9 +50,10 @@ export function BloqueComposicion({
       {sumandos.map((s, i) => (
         <span key={`${s.concepto}-${i}`}>
           {i > 0 ? (s.resta ? " − " : " + ") : null}
-          {/* `formatearCLP` del valor absoluto: el signo lo pone el separador,
-              porque «+ −2.900» se lee peor que «− 2.900». */}
-          {formatearCLP(Math.abs(s.monto))} {s.concepto}
+          {/* Sin símbolo y en valor absoluto: el signo lo pone el separador,
+              porque «+ −2.900» se lee peor que «− 2.900», y un `$` por sumando
+              compite con la resta, que es lo que hay que leer. */}
+          {formatearMiles(Math.abs(s.monto))} {s.concepto}
         </span>
       ))}
     </p>

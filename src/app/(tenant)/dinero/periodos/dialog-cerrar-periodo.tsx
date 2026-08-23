@@ -1,25 +1,24 @@
 "use client";
 
 /**
- * Dialog de confirmación para cerrar un período de cobro (flujo D-1 y D-2).
+ * Cerrar un período de cobro. Peldaño 2 de la escalera de fricción.
  *
- * Criterio C-1: usa formatearCLP para el monto.
- * Al confirmar: llama a accionCerrarPeriodo. Muestra spinner y toast.
+ * ⚠️ **El copy del sistema de mensajes dice «se puede reabrir mientras no esté
+ * facturado», y eso HOY ES FALSO.** No existe ninguna acción de reapertura de
+ * período en el código —solo `reabrirEventoConciliacion`, que es de
+ * conciliación y otra cosa—. El tablero B2a la dibuja como acción de peldaño 2,
+ * así que es una brecha de producto, no de copy.
+ *
+ * Mientras no exista, esta pantalla NO la promete: la regla 35 dice que una
+ * pantalla no promete una acción que la interfaz no ofrece. Cuando se construya,
+ * la frase del sistema de mensajes entra tal cual.
  */
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 import { accionCerrarPeriodo } from "./actions";
 
 interface Props {
@@ -56,8 +55,10 @@ export function DialogCerrarPeriodo({
       const resultado = await accionCerrarPeriodo(periodoId);
       if (resultado.ok) {
         setAbierto(false);
-        toast.success("Período cerrado", {
-          description: "Ya puedes revisar el detalle y emitir la factura.",
+        // Regla 57: todo mensaje de éxito de dinero lleva monto y contraparte.
+        // «Período cerrado» a secas no dice de quién ni por cuánto.
+        toast.success(`Cerraste el período de ${sellerNombre}`, {
+          description: `${totalLineas} líneas por ${formatearCLPOGuion(montoTotalClp)}. Ya puedes revisar el detalle y emitir la factura.`,
         });
         // Refresco suave: re-renderiza la tabla con el nuevo estado SIN perder el
         // toast (un reload duro lo borraría).
@@ -69,83 +70,64 @@ export function DialogCerrarPeriodo({
   }
 
   return (
-    <Dialog
-      open={abierto}
-      onOpenChange={(o) => {
-        if (isPending) return;
-        setAbierto(o);
-        if (!o) setError(null);
-      }}
-    >
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Cerrar período
-        </button>
-      </DialogTrigger>
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className="rounded-ctrl bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        Cerrar período
+      </button>
 
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Cerrar período de {sellerNombre}</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Período:{" "}
-            <span className="font-medium tabular-nums text-foreground">
-              {formatearFechaCorta(fechaInicio)} – {formatearFechaCorta(fechaFin)}
-            </span>
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Total de líneas:{" "}
-            <span className="font-medium tabular-nums text-foreground">{totalLineas}</span>
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Monto total:{" "}
-            <span className="text-2xl font-semibold tabular-nums text-foreground">
-              {formatearCLPOGuion(montoTotalClp)}
-            </span>
-          </p>
-
-          <p className="rounded-lg bg-info-subtle px-4 py-3 text-sm text-info-subtle-foreground">
-            Cerrar el período consolida sus líneas y lo deja listo para revisar.
-            <strong> No emite la factura todavía:</strong> después podrás revisar el
-            detalle y emitir el DTE con el botón “Emitir factura”. El cierre no se puede
-            deshacer.
-          </p>
-
-          {error && (
-            <p
-              role="alert"
-              className="rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground"
-            >
-              {error}
-            </p>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setAbierto(false)}
-            disabled={isPending}
-          >
-            Cancelar
-          </Button>
-          <Button type="button" onClick={handleConfirmar} disabled={isPending}>
-            {isPending && (
-              <span
-                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent"
-                aria-hidden="true"
-              />
-            )}
-            {isPending ? "Cerrando..." : "Confirmar cierre"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <ModalActoExplicito
+        open={abierto}
+        onOpenChange={(o) => {
+          if (isPending) return;
+          setAbierto(o);
+          if (!o) setError(null);
+        }}
+        // Peldaño 2: tiene consecuencia y no es reversible, pero no mueve plata
+        // hacia afuera. El nombre escrito se reserva para el peldaño 3.
+        peldano={2}
+        titulo={`Vas a cerrar el período de ${sellerNombre}`}
+        consecuencia={
+          <>
+            Después de cerrarlo, las entregas nuevas de este seller van al período
+            siguiente. <strong>Todavía no se factura nada</strong>: eso es un paso
+            aparte.
+          </>
+        }
+        resumen={[
+          {
+            etiqueta: "Período",
+            valor: `${formatearFechaCorta(fechaInicio)} – ${formatearFechaCorta(fechaFin)}`,
+            mono: true,
+          },
+          { etiqueta: "Líneas que se consolidan", valor: totalLineas, mono: true },
+        ]}
+        total={
+          montoTotalClp !== null ? { etiqueta: "Total del período", monto: montoTotalClp } : undefined
+        }
+        avisos={
+          error
+            ? [
+                {
+                  tono: "fault",
+                  texto: (
+                    <>
+                      <strong>No pudimos cerrar el período.</strong> {error} Sigue abierto
+                      y puedes volver a intentarlo.
+                    </>
+                  ),
+                },
+              ]
+            : []
+        }
+        cargando={isPending}
+        textoConfirmar="Cerrar el período"
+        subtextoConfirmar={formatearCLPOGuion(montoTotalClp)}
+        onConfirmar={handleConfirmar}
+      />
+    </>
   );
 }

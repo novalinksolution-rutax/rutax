@@ -20,6 +20,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Interruptor } from "@/components/ui/interruptor"
 import { NavInferior } from "@/components/app-shell/nav-inferior"
+import { TablaFinanciera } from "@/components/ui/tabla-financiera"
+import { BloqueComposicion } from "@/components/ui/bloque-composicion"
 import { destinosMovil } from "@/components/app-shell/destinos-movil"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
@@ -434,6 +436,34 @@ export default function KitchenSinkPage() {
             <div className="flex items-center gap-2 sm:col-span-2">
               <Checkbox id="ks-check" defaultChecked />
               <Label htmlFor="ks-check">Acepto emitir la factura al cierre del período</Label>
+            </div>
+          </div>
+        </Seccion>
+
+        {/* Tabla financiera · bloque 5. Los datos son los del tablero B2a. */}
+        <Seccion titulo="Sistema nuevo · Bloque 5 · tabla financiera">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <TablaFinanciera
+              rotulo="neto"
+              filas={[
+                { tipo: "linea", concepto: "Entrega same-day · Ñuñoa", entregas: 184, tarifa: 2900, monto: 533600 },
+                { tipo: "linea", concepto: "Entrega same-day · Puente Alto", entregas: 97, tarifa: 3400, monto: 329800 },
+                { tipo: "linea", concepto: "Recargo por reprogramación", entregas: 3, tarifa: 1200, monto: 3600 },
+                { tipo: "subtotal", concepto: "Subtotal de entregas", entregas: 284, monto: 867000 },
+                { tipo: "ajuste", concepto: "Ajuste · bulto dañado", monto: -2900, causa: { texto: "incidencia RX-5M7T", href: "#" } },
+                { tipo: "ajuste", concepto: "Mínimo de facturación no alcanzado", monto: -3600 },
+                { tipo: "total", concepto: "Total del período", entregas: 285, monto: 864100 },
+              ]}
+            />
+            <div className="mt-3 border-t border-border pt-3">
+              <BloqueComposicion
+                sumandos={[
+                  { concepto: "entregas", monto: 867000 },
+                  { concepto: "recargos", monto: 3600 },
+                  { concepto: "ajustes", monto: 2900, resta: true },
+                  { concepto: "mínimo no aplicado", monto: 3600, resta: true },
+                ]}
+              />
             </div>
           </div>
         </Seccion>
