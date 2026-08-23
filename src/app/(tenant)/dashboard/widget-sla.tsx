@@ -49,14 +49,17 @@ function formatearCountdown(minutos: number): string {
 export function WidgetSlaPorSeller({ datos }: { datos: SlaPorSeller[] }) {
   if (datos.length === 0) {
     return (
+      // El vacío NO nombra la ventana: quien compone la pantalla decide si son
+      // 7 días o el mes, y este texto se quedó diciendo «esta semana» cuando el
+      // dashboard pasó a pedir el mes.
       <p className="text-sm text-muted-foreground">
-        No hay pedidos evaluados esta semana para calcular el SLA.
+        Todavía no hay pedidos con SLA evaluado en este período.
       </p>
     );
   }
 
   return (
-    <ul className="space-y-3" aria-label="SLA por seller esta semana">
+    <ul className="space-y-3" aria-label="Cumplimiento de SLA por seller">
       {datos.map((seller) => (
         // ⚠️ La fila llevaba un punto de color suelto + la cifra + un badge, cada
         // uno por su lado, y `shadow-xs` contra la regla 4. El punto además

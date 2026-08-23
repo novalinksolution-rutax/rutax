@@ -82,6 +82,7 @@ function buildQuery<T extends Record<string, unknown>>(
   opts?: { count?: "exact"; head?: boolean },
 ) {
   const filtros: Array<(f: T) => boolean> = [];
+  let rango: [number, number] | null = null;
 
   const chain = {
     eq(campo: string, valor: unknown) {
@@ -98,6 +99,12 @@ function buildQuery<T extends Record<string, unknown>>(
       filtros.push((f) => !lista.includes(String(f[campo])));
       return chain;
     },
+    // `range` no es adorno: `leerTodasLasFilas` pagina de verdad, y un doble
+    // que lo ignorara devolvería la página completa una y otra vez.
+    range(desde: number, hasta: number) {
+      rango = [desde, hasta];
+      return chain;
+    },
     or(_expr: string) {
       // Para los tests, la cláusula `.or(fecha_compromiso/creado_en)` se
       // resuelve usando los filtros previos (tenant_id) más una función
@@ -106,7 +113,8 @@ function buildQuery<T extends Record<string, unknown>>(
       return chain;
     },
     then(resolve: (r: { data: T[] | null; count: number | null; error: null }) => void) {
-      const filtradas = filas.filter((f) => filtros.every((fn) => fn(f)));
+      const todas = filas.filter((f) => filtros.every((fn) => fn(f)));
+      const filtradas = rango ? todas.slice(rango[0], rango[1] + 1) : todas;
       if (opts?.head) {
         resolve({ data: null, count: filtradas.length, error: null });
       } else {
@@ -470,6 +478,7 @@ function buildQuerySla<T extends Record<string, unknown>>(
   opts?: { count?: "exact"; head?: boolean },
 ) {
   const filtros: Array<(f: T) => boolean> = [];
+  let rangoSla: [number, number] | null = null;
 
   const chain = {
     select: (_cols: string, _opts?: object) => chain,
@@ -483,8 +492,13 @@ function buildQuerySla<T extends Record<string, unknown>>(
     gte(campo: string, valor: unknown) { filtros.push((f) => String(f[campo]) >= String(valor)); return chain; },
     lte(campo: string, valor: unknown) { filtros.push((f) => String(f[campo]) <= String(valor)); return chain; },
     order: () => chain,
+    range(desde: number, hasta: number) {
+      rangoSla = [desde, hasta];
+      return chain;
+    },
     then(resolve: (r: { data: T[] | null; count: number | null; error: null }) => void) {
-      const filtradas = filas.filter((f) => filtros.every((fn) => fn(f)));
+      const todas = filas.filter((f) => filtros.every((fn) => fn(f)));
+      const filtradas = rangoSla ? todas.slice(rangoSla[0], rangoSla[1] + 1) : todas;
       if (opts?.head) {
         resolve({ data: null, count: filtradas.length, error: null });
       } else {

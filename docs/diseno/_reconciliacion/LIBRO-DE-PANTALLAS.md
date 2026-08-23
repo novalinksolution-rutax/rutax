@@ -54,7 +54,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 
 | Pantalla | Ruta | Veredicto |
 |---|---|---|
-| Dashboard operativo | `(tenant)/dashboard` | **PANTALLA DISTINTA** |
+| Dashboard operativo | `(tenant)/dashboard` | ✅ **HECHA** — 23-08, ver abajo |
 | Conductores | `(tenant)/conductores` | **PANTALLA DISTINTA** |
 | Crear pedido same-day | `(tenant)/operaciones` · modal, sin ruta propia | **PANTALLA DISTINTA** |
 | Incidencias | `(tenant)/operaciones/incidencias` | **PANTALLA DISTINTA** |
@@ -66,6 +66,42 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 **Lo que hay que resolver antes de construir:** cuatro cifras del tablero no existen en ninguna
 capa de datos — «en ruta ahora» y «conductores con ruta» del contrato de la Torre, «paradas» y
 «avance» del listado de manifiestos, y los denominadores de Preparación.
+
+### ✅ Dashboard operativo · hecho el 23-08-2026
+
+El mosaico de ocho magnitudes, verificado en el navegador contra `B1c` en 1440 y 390, claro y
+oscuro. Componente nuevo: `src/components/ui/mosaico-magnitudes.tsx`.
+
+**Decisiones que se tomaron construyéndolo**, todas del usuario y todas con consecuencia:
+
+1. **El 68 % es entregados sobre el TOTAL del día**, no la tasa de éxito sobre lo ya cerrado, que
+   es lo que el código calculaba. A media tarde la segunda da 97 % con un cuarto del día hecho.
+2. **«Por cobrar» y «por pagar» son todo lo pendiente**, no lo que está en un estado. Un período
+   facturado y sin pagar es la deuda más urgente, no la menos.
+3. **«En ruta ahora» cuenta solo los pedidos de hoy**, para que las ocho cifras compartan universo
+   y ninguna se pise con «rezagados de ayer».
+4. **«Ayer a esta hora» sale de lo que declara la app** —`pruebas_entrega` y `cierres_conductor`,
+   la misma fuente que la Torre—, y **la línea se omite si no hay cierres**: nunca «ayer a esta
+   hora, 0 %», que se leería como desastre.
+5. **La franja de folios se queda como franja**, única excepción declarada al patrón: no es una
+   magnitud del día, es un bloqueo.
+6. **Se retiran** distribución por estado, paquetes por comuna, cortes próximos, accesos rápidos,
+   la franja de analítica financiera y la banda de la Torre.
+
+**Dos cosas que el tablero pide y el dato no da**, resueltas diciendo lo que el dato sí sabe:
+
+- «Despacho salió a las 16:02» → **«asignación lista a las 15:48»**. `operacion.manifiestos` tiene
+  `confirmado_en` y `completado_en` y **ninguna marca del paso a `en_ruta`**. La alternativa era
+  agregar la columna; el usuario eligió usar lo que hay.
+- «Vega Norte, desde el 19-08» → **«sin sincronizar desde el 19-08»**. No existe columna de cuándo
+  se cayó una conexión, solo `ultima_sync_exitosa_en`, que es la última vez que SÍ funcionó.
+
+🐞 **Y un defecto que se encontró debajo:** `obtenerMetricasDelDia` leía los pedidos del día **sin
+paginar**, así que PostgREST la cortaba en 1000 filas sin avisar. Un courier con más de mil pedidos
+en un día veía un total truncado, una tasa calculada sobre una muestra arbitraria y un top de
+comunas incompleto, los tres sin un error en los logs. Con el mosaico colgando de esa función, el
+truncamiento pasaba de invisible a decisorio. Corregido, junto con el mismo patrón en
+`obtenerSlaPorSeller`, que ahora lee una ventana de un mes.
 
 ## B2 · Dinero · 5 pantallas
 

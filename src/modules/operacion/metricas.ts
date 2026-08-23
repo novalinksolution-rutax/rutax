@@ -20,6 +20,7 @@ import {
   sumarDiasCalendario,
   diaSemanaCalendario,
 } from "@/lib/fecha-santiago";
+import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
 
 /**
  * Devuelve las métricas operativas del tenant para la fecha indicada.
@@ -74,23 +75,32 @@ export async function obtenerMetricasDelDia(
   // Pedidos del día (por fecha_compromiso o creados ese día).
   // service_role accede al esquema directo (las vistas `public` son para el
   // usuario autenticado vía RLS; service_role no tiene grant sobre ellas).
-  const { data: pedidosDia, error: errorPedidos } = await cliente
-    .schema("operacion")
-    .from("pedidos")
-    .select("id, estado, destinatario_comuna, sla_cumplido")
-    .eq("tenant_id", tenantId)
-    .or(
-      `fecha_compromiso.eq.${fechaStr},` +
-        `and(fecha_compromiso.is.null,` +
-        `creado_en.gte.${desde.toISOString()},` +
-        `creado_en.lt.${hasta.toISOString()})`,
-    );
+  // ⚠️ PAGINADO, y no por prolijidad: PostgREST corta en 1000 filas SIN avisar,
+  // y de acá salen TODOS los agregados del día. Un courier con más de mil
+  // pedidos en un día vería un total truncado, una tasa de entrega calculada
+  // sobre una muestra arbitraria y un top de comunas incompleto, los tres sin un
+  // solo error en los logs. Con el mosaico del dashboard leyendo de esta misma
+  // función, el truncamiento pasaría de invisible a decisorio.
+  const pedidos = await leerTodasLasFilas<{
+    id: string;
+    estado: EstadoPedido;
+    destinatario_comuna: string | null;
+    sla_cumplido: boolean | null;
+  }>("pedidos del día", (rangoDesde, rangoHasta) =>
+    cliente
+      .schema("operacion")
+      .from("pedidos")
+      .select("id, estado, destinatario_comuna, sla_cumplido")
+      .eq("tenant_id", tenantId)
+      .or(
+        `fecha_compromiso.eq.${fechaStr},` +
+          `and(fecha_compromiso.is.null,` +
+          `creado_en.gte.${desde.toISOString()},` +
+          `creado_en.lt.${hasta.toISOString()})`,
+      )
+      .range(rangoDesde, rangoHasta),
+  );
 
-  if (errorPedidos) {
-    throw new Error(`Error al obtener pedidos del día: ${errorPedidos.message}`);
-  }
-
-  const pedidos = pedidosDia ?? [];
   const totalPedidos = pedidos.length;
 
   // Distribución por estado.
@@ -247,6 +257,15 @@ export interface ResumenFinancieroMes {
   /** Períodos ya facturados (DTE emitido) / total del mes. */
   periodosFacturados: number;
   periodosTotal: number;
+  /**
+   * Períodos del mes que todavía tienen saldo — los que componen `porCobrarClp`.
+   *
+   * NO es «períodos abiertos». Un período `facturado` y sin pagar sigue debiendo
+   * plata, y es la deuda más urgente, no la menos: el seller ya recibió su
+   * factura. Contar solo los abiertos dejaría esa deuda fuera de la bajada del
+   * mosaico sin que nada lo dijera. Decisión del usuario, 23-08-2026.
+   */
+  periodosConSaldo: number;
 }
 
 export async function obtenerResumenFinancieroDelMes(
@@ -279,12 +298,16 @@ export async function obtenerResumenFinancieroDelMes(
   let montoPeriodoClp = 0;
   let cobradoClp = 0;
   let periodosFacturados = 0;
+  let periodosConSaldo = 0;
   const filas = data ?? [];
 
   for (const p of filas) {
-    montoPeriodoClp += Number(p.monto_total_clp ?? 0);
-    cobradoClp += Number(p.monto_pagado_clp ?? 0);
+    const monto = Number(p.monto_total_clp ?? 0);
+    const pagado = Number(p.monto_pagado_clp ?? 0);
+    montoPeriodoClp += monto;
+    cobradoClp += pagado;
     if (p.estado === "facturado") periodosFacturados += 1;
+    if (monto - pagado > 0) periodosConSaldo += 1;
   }
 
   return {
@@ -293,6 +316,7 @@ export async function obtenerResumenFinancieroDelMes(
     porCobrarClp: Math.max(0, montoPeriodoClp - cobradoClp),
     periodosFacturados,
     periodosTotal: filas.length,
+    periodosConSaldo,
   };
 }
 
@@ -323,7 +347,7 @@ export async function obtenerSlaPorSeller(
   cliente: SupabaseClient,
   tenantId: string,
   fecha: Date,
-  ventana: 'dia' | 'semana',
+  ventana: 'dia' | 'semana' | 'mes',
 ): Promise<SlaPorSeller[]> {
   const fechaStr = fechaLocalEnSantiago(fecha);
 
@@ -331,25 +355,39 @@ export async function obtenerSlaPorSeller(
   // expresada en Santiago (`fechaStr`), no sobre el instante: derivarla aparte
   // en UTC hacía que después de las 20:00 el extremo inferior se calculara
   // desde el día siguiente y la ventana "semana" durara 6 días en vez de 7.
-  const fechaDesde = ventana === 'semana' ? sumarDiasCalendario(fechaStr, -6) : fechaStr;
+  //
+  // 'mes' es el MES EN CURSO, del día 1 a hoy — no «los últimos 30 días». El
+  // tablero B1c lo dice al pie de la tarjeta: «Vega Hogar no ha despachado este
+  // mes». Una ventana móvil de 30 días no permitiría escribir esa frase.
+  const fechaDesde =
+    ventana === 'mes'
+      ? `${fechaStr.slice(0, 7)}-01`
+      : ventana === 'semana'
+        ? sumarDiasCalendario(fechaStr, -6)
+        : fechaStr;
 
   // Pedidos terminales con sla_cumplido evaluado, en la ventana.
   const TERMINALES_EXITOSOS = ['entregado', 'entregado_manual'];
   const TERMINALES = [...TERMINALES_EXITOSOS, 'fallido', 'fallido_manual', 'cancelado', 'devuelto'];
 
-  const { data: pedidos, error: errorPedidos } = await cliente
-    .schema("operacion")
-    .from("pedidos")
-    .select("seller_id, sla_cumplido")
-    .eq("tenant_id", tenantId)
-    .in("estado", TERMINALES)
-    .not("sla_cumplido", "is", null)
-    .gte("fecha_compromiso", fechaDesde)
-    .lte("fecha_compromiso", fechaStr);
-
-  if (errorPedidos) {
-    throw new Error(`Error al obtener SLA por seller: ${errorPedidos.message}`);
-  }
+  // Paginado por lo mismo que los pedidos del día: sobre una ventana de un mes,
+  // mil filas se pasan sin esfuerzo y el corte de PostgREST no avisa. El SLA
+  // saldría calculado sobre una muestra arbitraria, que es peor que no tenerlo.
+  const pedidos = await leerTodasLasFilas<{
+    seller_id: string;
+    sla_cumplido: boolean | null;
+  }>("SLA por seller", (rangoDesde, rangoHasta) =>
+    cliente
+      .schema("operacion")
+      .from("pedidos")
+      .select("seller_id, sla_cumplido")
+      .eq("tenant_id", tenantId)
+      .in("estado", TERMINALES)
+      .not("sla_cumplido", "is", null)
+      .gte("fecha_compromiso", fechaDesde)
+      .lte("fecha_compromiso", fechaStr)
+      .range(rangoDesde, rangoHasta),
+  );
 
   // Obtener sellers del tenant con sus nombres.
   const { data: sellers, error: errorSellers } = await cliente

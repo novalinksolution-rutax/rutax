@@ -65,6 +65,12 @@ function crearClienteEspia(): { cliente: SupabaseClient; llamadas: LlamadaCaptur
         registro.lt.push([campo, valor]);
         return chain;
       },
+      // El espía devuelve siempre página vacía, así que `leerTodasLasFilas`
+      // corta en la primera vuelta: acá `range` solo tiene que existir y
+      // encadenar. Lo que este test mide son los BORDES DE FECHA, no el
+      // paginado.
+      order: () => chain,
+      range: () => chain,
       maybeSingle: () => Promise.resolve({ data: null, error: null }),
       then: (resolve: (r: { data: never[]; count: number; error: null }) => void) =>
         resolve({ data: [], count: 0, error: null }),

@@ -236,6 +236,7 @@ export function GraficoBarras({
   formato,
   alto = 240,
   orientacion = "horizontal",
+  destacarUltima = false,
 }: {
   datos: Record<string, string | number>[]
   series: SerieBarra[]
@@ -243,6 +244,14 @@ export function GraficoBarras({
   formato?: (v: number) => string
   alto?: number
   orientacion?: "horizontal" | "vertical"
+  /**
+   * Pinta la última barra con la tinta del texto en vez del color de la serie.
+   *
+   * Es para las series temporales que terminan en HOY: el día en curso todavía
+   * está creciendo y no es comparable con los cerrados, así que se distingue.
+   * Solo aplica con una serie — con varias, el color ya significa otra cosa.
+   */
+  destacarUltima?: boolean
 }) {
   const horizontal = orientacion === "horizontal"
 
@@ -299,7 +308,20 @@ export function GraficoBarras({
             // punta redondeada le quita exactitud justo donde se lee el valor.
             radius={0}
             maxBarSize={22}
-          />
+          >
+            {destacarUltima && series.length === 1
+              ? datos.map((_, fila) => (
+                  <Cell
+                    key={fila}
+                    fill={
+                      fila === datos.length - 1
+                        ? "var(--rx-fg)"
+                        : colorSerie(i, s.color)
+                    }
+                  />
+                ))
+              : null}
+          </Bar>
         ))}
       </BarChart>
     </ResponsiveContainer>

@@ -38,6 +38,23 @@ const FORMATEADOR_HORA = new Intl.DateTimeFormat("es-CL", {
   hour12: false,
 });
 
+// Sin año a propósito: se usa para encabezar el día en curso («jueves 21 de
+// agosto»), donde el año es ruido — quien mira ya sabe en qué año está.
+const FORMATEADOR_FECHA_LARGA = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+
+// Para referirse a un día cercano dentro de una frase («sin cerrar desde el
+// 22-08»), donde el año no aporta y alarga la línea.
+const FORMATEADOR_FECHA_CORTA = new Intl.DateTimeFormat("es-CL", {
+  timeZone: "America/Santiago",
+  day: "2-digit",
+  month: "2-digit",
+});
+
 /** `$ 2.500` — sin decimales, separador de miles chileno. Nunca `$2500.00`. */
 export function formatearClp(monto: number): string {
   return FORMATEADOR_CLP.format(Math.round(monto)).replace(/ /g, " ");
@@ -70,6 +87,48 @@ export function formatearHora(fecha: Date | string): string {
   const valor = typeof fecha === "string" ? new Date(fecha) : fecha;
   if (Number.isNaN(valor.getTime())) return "—";
   return FORMATEADOR_HORA.format(valor);
+}
+
+/**
+ * `jueves 21 de agosto` — el día escrito, sin año, en zona horaria de Santiago.
+ *
+ * Para encabezar la jornada en curso. `es-CL` devuelve el día de la semana en
+ * minúscula, que es lo correcto en español; si va al principio de una frase,
+ * quien lo use pone la mayúscula.
+ *
+ * ⚠️ **Se arma por partes y no con `.format()` a secas.** `es-CL` mete una coma
+ * entre el día de la semana y el resto —«domingo, 23 de agosto»—, así que
+ * cualquier frase que ya traiga la suya termina en «Hoy, domingo, 23 de
+ * agosto». Se descartan los separadores literales que sean solo una coma y se
+ * unen las partes con espacio.
+ */
+export function formatearFechaLarga(fecha: Date | string): string {
+  const valor = typeof fecha === "string" ? new Date(fecha) : fecha;
+  if (Number.isNaN(valor.getTime())) return "—";
+  return FORMATEADOR_FECHA_LARGA.formatToParts(valor)
+    // La coma se cambia por espacio, no se borra: borrarla se lleva también el
+    // espacio que venía pegado a ella y el resultado es «domingo23 de agosto».
+    .map((p) => (p.type === "literal" ? p.value.replace(",", " ") : p.value))
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * `22-08` — día y mes, sin año, en zona horaria de Santiago.
+ *
+ * Se arma por partes en vez de dejar que `es-CL` decida: pidiéndole solo día y
+ * mes devuelve «22/8», con barra y sin rellenar, que no es el formato del resto
+ * del producto —`formatearFecha` da `22-08-2026`— y encima desalinea una columna
+ * de fechas.
+ */
+export function formatearFechaCorta(fecha: Date | string): string {
+  const valor = typeof fecha === "string" ? new Date(fecha) : fecha;
+  if (Number.isNaN(valor.getTime())) return "—";
+  const partes = FORMATEADOR_FECHA_CORTA.formatToParts(valor);
+  const dia = partes.find((p) => p.type === "day")?.value ?? "";
+  const mes = partes.find((p) => p.type === "month")?.value ?? "";
+  return `${dia.padStart(2, "0")}-${mes.padStart(2, "0")}`;
 }
 
 /** "hace 5 minutos" / "hace 2 días" — relativo, en español de Chile, redondeado al tramo más legible. */

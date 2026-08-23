@@ -90,6 +90,14 @@ export interface FugaPorTipo {
   recuperadaClp: number;
   /** Número de eventos. */
   conteo: number;
+  /**
+   * De esos, cuantos siguen ABIERTOS: los que componen `detectadaClp`.
+   *
+   * `conteo` cuenta todo lo que paso por el tipo, resuelto incluido, asi que
+   * no sirve para acompanar al monto detectado: la tarjeta del dashboard
+   * diria «$41.700 - 7 eventos» cuando cuatro de esos siete ya se cerraron.
+   */
+  conteoAbierto: number;
 }
 
 export interface ResumenFuga {
@@ -387,11 +395,21 @@ export async function obtenerFuga(
   // Acumular por tipo y separar detectada/recuperada.
   const mapaTipo = new Map<
     string,
-    { detectadaClp: number; recuperadaClp: number; conteo: number }
+    {
+      detectadaClp: number;
+      recuperadaClp: number;
+      conteo: number;
+      conteoAbierto: number;
+    }
   >();
 
   for (const tipo of TIPOS_FUGA_REVENUE) {
-    mapaTipo.set(tipo, { detectadaClp: 0, recuperadaClp: 0, conteo: 0 });
+    mapaTipo.set(tipo, {
+      detectadaClp: 0,
+      recuperadaClp: 0,
+      conteo: 0,
+      conteoAbierto: 0,
+    });
   }
 
   for (const ev of data ?? []) {
@@ -418,6 +436,7 @@ export async function obtenerFuga(
       entrada.recuperadaClp += monto;
     } else if (!esEstadoTerminal(estado)) {
       entrada.detectadaClp += monto;
+      entrada.conteoAbierto += 1;
     }
     entrada.conteo += 1;
   }
