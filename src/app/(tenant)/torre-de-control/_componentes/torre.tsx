@@ -24,7 +24,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type maplibregl from 'maplibre-gl';
 import { useTheme } from 'next-themes';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IndicadorEnVivo } from '@/components/tiempo-real/indicador-en-vivo';
 import { DistintivoEstado } from '@/components/ui/distintivo-estado';
@@ -33,7 +33,7 @@ import type { EstadoTorre } from '@/modules/contexto/contrato-torre';
 import { cargarGeometriaComunal, limitesDe, type MapaGeometrias } from '../_lib/geometria';
 import { limitesDeLaCarga } from '../_lib/derivar';
 import { claveComuna } from '../_lib/comunas';
-import { ENCUADRE_RM, ZOOM_DESTINO, type NivelZoom, type TemaMapa } from '../_lib/mapa/paleta';
+import { ENCUADRE_RM, ZOOM_DESTINO, type NivelZoom, type TemaMapa, paletaDe } from '../_lib/mapa/paleta';
 import { ATRIBUCIONES, urlBasemap } from '../_lib/mapa/config';
 import { MapaTorre, type ControlesMapa } from './mapa';
 import { PlacasComuna } from './placas';
@@ -43,6 +43,15 @@ import { PanelTorre, type PestanaPanel } from './panel';
 import { CifrasTorre } from './cifras';
 import { BandaOlas } from './banda-olas';
 import { ListaComunas } from './lista-comunas';
+import { LeyendaMapa } from './leyenda-mapa';
+
+/** El número del nivel, para el distintivo sobre el mapa. */
+const NUMERO_DE_NIVEL: Record<NivelZoom, number> = { comuna: 1, agrupacion: 2, punto: 3 };
+const NOMBRE_DE_NIVEL: Record<NivelZoom, string> = {
+  comuna: 'Comuna',
+  agrupacion: 'Agrupaciones',
+  punto: 'Puntos',
+};
 
 /** Qué pestaña sugiere cada nivel. Es un valor por defecto, no una imposición. */
 const PESTANA_POR_NIVEL: Record<NivelZoom, PestanaPanel> = {
@@ -56,6 +65,9 @@ const PESTANA_POR_NIVEL: Record<NivelZoom, PestanaPanel> = {
 
 export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: string }) {
   const { resolvedTheme } = useTheme();
+  // Plegado del mapa en teléfono. Arranca cerrado: quien entra desde el teléfono
+  // viene a ver cuántos faltan, no a navegar cartografía.
+  const [mapaAbiertoMovil, setMapaAbiertoMovil] = useState(false);
   const tema: TemaMapa = resolvedTheme === 'dark' ? 'oscuro' : 'claro';
 
   const [geometrias, setGeometrias] = useState<MapaGeometrias | null>(null);
@@ -247,6 +259,27 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
     }
     (conductoresPorComuna[punto.comuna] ??= new Set()).add(punto.conductorId);
   }
+  // Cuántos objetos hay dibujados en el nivel actual. Va en el distintivo de
+  // nivel: sin la cifra, «NIVEL 1 · COMUNA» dice dónde estás y no cuánto estás
+  // mirando, que es la mitad útil.
+  const conteoDelNivel =
+    nivel === 'comuna'
+      ? `${estado.comunas.length} comunas`
+      : nivel === 'punto'
+        ? `${estado.puntos.length} puntos`
+        : `${estado.puntos.length} en la comuna`;
+
+  // Los extremos REALES del día, para la leyenda. La rampa es de cuartiles, así
+  // que unos cortes escritos serían inventados; los extremos, en cambio, son
+  // una magnitud (regla 3) y se mueven solos con la operación.
+  const pendientesConCarga = estado.comunas
+    .map((c) => c.pendientes)
+    .filter((p) => p > 0);
+  const extremosDeCarga = {
+    min: pendientesConCarga.length > 0 ? Math.min(...pendientesConCarga) : 0,
+    max: pendientesConCarga.length > 0 ? Math.max(...pendientesConCarga) : 0,
+  };
+
   const conteoConductoresPorComuna = Object.fromEntries(
     Object.entries(conductoresPorComuna).map(([comuna, ids]) => [comuna, ids.size]),
   );
@@ -288,9 +321,13 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
 
       <CifrasTorre resumen={estado.resumen} frescura={estado.frescura} />
 
-      {/* La región cartográfica. `< lg` el mapa se retira entero y manda la
-          lista: con el panel de 340 px fijos el mapa caía a 124 px a 768, que no
-          es un mapa. El móvil se resuelve en la app nativa, fuera de este repo. */}
+      {/* La región cartográfica.
+          `< lg` **manda la lista y el mapa se pliega**, no se retira.
+          El motivo por el que antes se retiraba era el panel de 340 px fijos
+          aplastándolo a 124 px a 768 — pero bajo `lg` ese panel no se renderiza,
+          así que a ancho completo y con alto propio el mapa sí es un mapa. Se
+          abre a pedido («Ver el mapa») y no por omisión: quien entra desde el
+          teléfono viene a ver cuántos faltan, no a navegar cartografía. */}
       <div
         ref={region}
         className={cn(
@@ -307,7 +344,15 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
           }}
         >
           {/* --- Mapa --- */}
-          <div className="relative hidden min-w-0 flex-1 lg:block">
+          <div
+            className={cn(
+              'relative min-w-0 flex-1 lg:block',
+              // En teléfono el mapa tiene alto propio: dentro de un `flex-col`
+              // con `flex-1` compartido con la lista quedaría a la mitad de una
+              // mitad.
+              mapaAbiertoMovil ? 'h-[320px] shrink-0 lg:h-auto' : 'hidden',
+            )}
+          >
             {hayMapa ? (
               <>
                 <MapaTorre
@@ -368,8 +413,18 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                   // `data-reserva-placas` le dice al des-solape de las placas que
                   // este rectángulo ya está ocupado.
                   data-reserva-placas
-                  className="pointer-events-none absolute top-3 left-3 z-10 flex items-center gap-1 text-xs"
+                  className="pointer-events-none absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1 text-xs"
                 >
+                  {/* El distintivo de nivel va JUNTO a las migas, no en su
+                      lugar: el tablero pide decir en qué nivel se está y cuántos
+                      objetos hay dibujados, y las migas además NAVEGAN — que es
+                      algo que el tablero no dibuja y que no se puede perder. */}
+                  <span className="rounded-md border border-border bg-card/90 px-2 py-1 font-medium uppercase tracking-[0.08em] text-[10px] text-muted-foreground backdrop-blur-[2px]">
+                    Nivel {NUMERO_DE_NIVEL[nivel]} · {NOMBRE_DE_NIVEL[nivel]} ·
+                    <span className="ml-1.5 tabular-nums normal-case tracking-normal">
+                      {conteoDelNivel}
+                    </span>
+                  </span>
                   <button
                     type="button"
                     onClick={volverALaRegion}
@@ -440,6 +495,14 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                     Va en `attention` y no en `fault`: nada se rompió, y el dato
                     operativo —que es lo que la pantalla existe para contar—
                     está completo. */}
+                {/* La leyenda, al pie del mapa. Va dentro del contenedor del
+                    lienzo para que también acompañe en pantalla completa. */}
+                <LeyendaMapa
+                  paleta={paletaDe(tema)}
+                  minPendientes={extremosDeCarga.min}
+                  maxPendientes={extremosDeCarga.max}
+                />
+
                 {sinPlanoUrbano ? (
                   <div
                     role="status"
@@ -488,12 +551,29 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
           </div>
 
           {/* --- Lista de comunas: la superficie principal bajo `lg` --- */}
-          <div className="min-h-0 flex-1 overflow-y-auto lg:hidden">
-            <ListaComunas
-              comunas={estado.comunas}
-              comunaActiva={comunaActiva}
-              onComuna={setComunaActiva}
-            />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMapaAbiertoMovil((v) => !v)}
+              aria-expanded={mapaAbiertoMovil}
+              className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted/60"
+            >
+              {mapaAbiertoMovil ? 'Ocultar el mapa' : 'Ver el mapa'}
+              <ChevronDown
+                className={cn(
+                  'size-4 transition-transform',
+                  mapaAbiertoMovil && 'rotate-180',
+                )}
+                aria-hidden="true"
+              />
+            </button>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ListaComunas
+                comunas={estado.comunas}
+                comunaActiva={comunaActiva}
+                onComuna={setComunaActiva}
+              />
+            </div>
           </div>
 
           {/* --- Panel --- */}

@@ -58,7 +58,7 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 | Conductores | `(tenant)/conductores` | ✅ **HECHA** — 23-08, ver abajo |
 | Crear pedido same-day | `(tenant)/operaciones/nuevo` | ✅ **HECHA** — 23-08, ver abajo |
 | Incidencias | `(tenant)/operaciones/incidencias` | ✅ **HECHA** — 23-08, ver abajo |
-| Torre de control | `(tenant)/torre-de-control` | 🟡 **CASI** — 23-08, ver abajo |
+| Torre de control | `(tenant)/torre-de-control` | ✅ **HECHA** — 23-08, ver abajo |
 | Preparación del día | `(tenant)/preparacion` | FALTA PIEZA |
 | Manifiestos · listado | `(tenant)/manifiestos` | FALTA PIEZA |
 | Detalle del manifiesto | `(tenant)/manifiestos/[manifiestoId]` | FALTA PIEZA |
@@ -232,7 +232,7 @@ desborde, con todo lo que cae reapareciendo en la línea mono.
 el SLA de ese pedido. Está dicho en pantalla antes de apretar, pero **no hay una decisión tomada
 sobre qué debería pasar con el SLA de un pedido reagendado por incidencia**.
 
-### 🟡 Torre de control · 23-08-2026 — hecho lo que tocaba el contrato, falta el mapa
+### ✅ Torre de control · hecho el 23-08-2026
 
 Lo que se hizo es lo que ninguna pieza de pantalla podía resolver sola: **tres cifras que no
 existían en el contrato del composer**.
@@ -264,13 +264,28 @@ mapa, y su salida a `/operaciones?comuna=…`. **La línea de discrepancia Torre
 hasta hoy solo vivía en comentarios de código. Y el distintivo **SOLO LECTURA** con trama en la
 cabecera, que es lo que explica por qué esta pantalla no tiene un solo control que cambie algo.
 
-**Lo que falta, y es todo del mapa:**
+**El mapa, cerrado el mismo día:**
 
-- Leyenda del mapa (rampa de carga, incidencia abierta). *Sin* «última posición del conductor»: ese
-  dato está apagado desde el 14-08 por la revisión de privacidad, con candado de regresión.
-- Distintivo de nivel sobre el mapa (`NIVEL 1 · COMUNA · 52 comunas`), que hoy cubren las migas.
-- En 390 el mapa se retira entero en vez de plegarse tras `Ver el mapa ▾`.
-- `src/modules/contexto/mensajes-estado.ts` sigue sin consumidor.
+- **Leyenda** al pie del lienzo, dentro del contenedor para que acompañe también en pantalla
+  completa. La rampa **no lleva cortes escritos**: es de cuartiles del día —el paso 3 puede ser 14
+  pendientes un martes y 60 un CyberMonday—, así que dice los **extremos reales de hoy**. Es una
+  magnitud y no un índice (regla 3), y se duplica sola el día que la operación se duplique. Cuando
+  el mínimo y el máximo coinciden se muestra el número solo: «1 → 1» se lee como un rango roto.
+  ⛔ **Sin «última posición del conductor»**, que el tablero sí incluye: ese rastreo está apagado
+  desde el 14-08 con candado de regresión, y anunciar en la leyenda un símbolo que el mapa nunca
+  pinta sería hacerla mentir.
+- **Distintivo de nivel** —`NIVEL 1 · COMUNA · 12 comunas`— **junto a** las migas y no en su lugar:
+  las migas además navegan, y eso el tablero no lo dibuja.
+- **En teléfono el mapa se pliega, no se retira.** El motivo escrito para retirarlo era el panel de
+  340 px aplastándolo a 124 px; bajo `lg` ese panel no se renderiza, así que a ancho completo y con
+  alto propio sí es un mapa. Verificado: lienzo de 341×276 al abrirlo, sin desborde. Arranca
+  cerrado — quien entra desde el teléfono viene a ver cuántos faltan.
+
+Verificado en claro y en oscuro: la rampa cambia entera entre temas (`#DBF8F2→#007D69` contra
+`#04302A→#00D6B4`) y el rojo de incidencia a `#FF6B57`.
+
+**Queda pendiente, y no es del mapa:** `src/modules/contexto/mensajes-estado.ts` sigue sin
+consumidor — los estados de pantalla están repartidos a mano en `torre.tsx`.
 
 **No se pudo ejercitar en el navegador:** las pestañas de Radix no responden a interacción
 programática en este entorno. La ficha se verificó llegando al mismo estado por otra vía —elegir la
