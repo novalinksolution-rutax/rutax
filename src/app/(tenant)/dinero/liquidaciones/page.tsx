@@ -303,6 +303,7 @@ export default async function PaginaLiquidaciones({
                     key={liq.id}
                     liquidacion={liq}
                     payout={payoutPorLiquidacion.get(liq.id)}
+                    autorNombre={sesion.nombreCompleto ?? "Tu cuenta"}
                   />
                 ))}
               </tbody>
@@ -321,9 +322,12 @@ export default async function PaginaLiquidaciones({
 function FilaLiquidacion({
   liquidacion,
   payout,
+  autorNombre,
 }: {
   liquidacion: LiquidacionConNombre;
   payout?: PayoutResumen;
+  /** Quién firma el pago. Va dentro del modal, antes de actuar. */
+  autorNombre: string;
 }) {
   const textoEstado = traducirEstadoLiquidacion(liquidacion.estado);
 
@@ -413,6 +417,7 @@ function FilaLiquidacion({
               /* Sin payout, o payout fallido/rechazado → mostrar ambos botones */
               <>
                 <DialogEmitirPago
+                  autorNombre={autorNombre}
                   liquidacionId={liquidacion.id}
                   conductorNombre={liquidacion.conductorNombre}
                   fechaInicio={liquidacion.fechaInicio}

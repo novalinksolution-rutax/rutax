@@ -148,7 +148,16 @@ export function ModalActoExplicito({
   // Comparación tolerante con espacios de sobra, estricta con el resto: copiar
   // el nombre y que sobre un espacio no es el error que esto ataja.
   const frase = confirmacion?.frase?.trim() ?? ""
-  const confirmacionLista = peldano < 3 || !confirmacion || escrito.trim() === frase
+  // ⚠️ FALLA CERRADO. Antes, un peldaño 3 SIN `confirmacion` se daba por listo:
+  // `!confirmacion` devolvía `true` y el botón quedaba habilitado sin escribir
+  // nada. No es hipotético — el pago a conductor arma su frase con el monto, y
+  // el monto puede venir nulo mientras la verificación previa no ha respondido.
+  // O sea: la ceremonia más cara del producto se saltaba sola en el peor
+  // momento. Si alguien pide peldaño 3, tiene que dar la frase.
+  // Y una frase EN BLANCO tampoco es una frase: se normalizaría a "" y calzaría
+  // con el campo vacío, o sea un peldaño 3 que no gatea nada.
+  const confirmacionLista =
+    peldano < 3 || (frase.length > 0 && escrito.trim() === frase)
 
   const habilitado = !cargando && !confirmDeshabilitado && motivoListo && confirmacionLista
 

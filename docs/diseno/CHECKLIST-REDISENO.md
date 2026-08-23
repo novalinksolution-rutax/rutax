@@ -63,7 +63,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
-| **5** | **Dinero** | **4 de 16** · todas montadas en pantalla | 12 componentes · 21 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
+| **5** | **Dinero** | **4 de 16** · todas montadas en pantalla | 12 componentes · 20 de 26 acciones | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
 | **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
@@ -516,7 +516,28 @@ bloques 4–8, cuando cada pantalla se toque.
       y en su PDF» (regla 24). Y exigen 10 caracteres — «error» no llega, y verifiqué que el botón
       sigue deshabilitado y fuera de la tabulación hasta que el motivo dice algo.
 
-**Quedan 21**, entre ellas los pagos (P3 · escribir), marcar pagada a mano y las del backstage.
+- [x] `liquidaciones.pagar` · **P3 · escribir** — la única acción del producto que **saca plata del
+      banco y no vuelve**, y tenía una casilla. La frase que hay que escribir es **el monto sin
+      formato** (`323400`), porque obliga a leer la cifra: el error real no es transferir sin
+      querer, es transferir otra cantidad. Su fallo pasa de notificación temporal a aviso embebido,
+      y el éxito dice «quedó en curso», que es lo que de verdad pasó.
+      ⚠️ **No se pudo ver en pantalla:** las 10 liquidaciones de la semilla están en borrador y el
+      botón de pago solo aparece en las emitidas. Verificada por typecheck, lint y pruebas, y por
+      compartir el mismo modal ya verificado en vivo en otras dos pantallas — pero no la vi.
+
+**Quedan 20**, entre ellas marcar pagada a mano y las 6 del backstage con `confirm()` nativo.
+
+### ⚠️ Un agujero del propio modal, encontrado al migrar el pago
+
+El gate daba por lista la confirmación cuando el peldaño era 3 **pero no venía la frase**:
+`!confirmacion` devolvía `true` y el botón quedaba habilitado sin escribir nada.
+
+No era hipotético. El pago arma su frase con el monto líquido, y ese monto **puede venir nulo
+mientras la verificación previa responde** — o sea, la ceremonia más cara del producto se saltaba
+sola justo en la ventana en que todavía no se sabe cuánto se va a transferir. Una frase en blanco
+tenía el mismo efecto, porque se normalizaba a `""` y calzaba con el campo vacío.
+
+Ahora **falla cerrado**: si alguien pide peldaño 3, tiene que dar una frase no vacía. 8 pruebas.
 
 # Bloque 6 · App del conductor
 

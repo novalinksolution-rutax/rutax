@@ -31,7 +31,8 @@ import { AlertTriangle, Banknote, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DialogConfirmacionDinero } from "@/components/ui/dialog-confirmacion-dinero";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
+import { formatearFechaHora } from "@/lib/formato-cl";
 import { cn } from "@/lib/utils";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import type { ItemPreflight, ResultadoPreflight } from "@/modules/dinero/preflight";
@@ -47,6 +48,8 @@ interface Props {
   fechaInicio: string;
   fechaFin: string;
   montoTotalClp: number | null;
+  /** Quién firma. Va dentro del modal, antes de actuar. */
+  autorNombre: string;
 }
 
 type EstadoPreflight = "verificando" | "listo" | "error_preflight";
@@ -63,6 +66,7 @@ export function DialogEmitirPago({
   fechaInicio,
   fechaFin,
   montoTotalClp,
+  autorNombre,
 }: Props) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
@@ -72,6 +76,7 @@ export function DialogEmitirPago({
   const [preflight, setPreflight] = useState<ResultadoPreflight | null>(null);
   const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<string | null>(null);
   const [continuarSinVerificar, setContinuarSinVerificar] = useState(false);
+  const [errorPago, setErrorPago] = useState<string | null>(null);
 
   const cargarPreflight = useCallback(() => {
     setEstadoPreflight("verificando");
@@ -99,6 +104,7 @@ export function DialogEmitirPago({
   }, [abierto, cargarPreflight]);
 
   function handleConfirmar() {
+    setErrorPago(null);
     startTransition(async () => {
       if (estadoPreflight === "error_preflight") {
         try {
@@ -113,9 +119,12 @@ export function DialogEmitirPago({
       const resultado = await accionEmitirPagoLiquidacion(liquidacionId);
       if (resultado.ok) {
         setAbierto(false);
-        toast.success(`Pago iniciado a ${conductorNombre}`, {
-          description: "Se procesará en los próximos minutos.",
-        });
+        // La transferencia es asíncrona: acá solo se encoló. Regla 57, además:
+        // todo éxito de dinero lleva monto y contraparte.
+        toast.success(
+          `La transferencia a ${conductorNombre} quedó en curso · ${formatearCLPOGuion(montoAPagar)}`,
+          { description: "Te avisamos cuando el banco responda." },
+        );
         // El job Inngest crea el registro de payout ('pendiente') después de
         // que esta acción retorna — un pequeño retraso deja tiempo a que la
         // tabla lo refleje al recargar (mismo comportamiento que antes).
@@ -123,7 +132,10 @@ export function DialogEmitirPago({
           router.refresh();
         }, 2000);
       } else {
-        toast.error("No se pudo emitir el pago", { description: resultado.mensaje });
+        // Regla 56: ningún error de dinero va en notificación temporal. Y acá
+        // menos que en ninguna parte: la pregunta que deja —¿salió la plata o
+        // no?— tiene que poder leerse después de parpadear.
+        setErrorPago(resultado.mensaje ?? "No pudimos emitir el pago.");
       }
     });
   }
@@ -133,6 +145,35 @@ export function DialogEmitirPago({
   const itemLineasAnuladas = preflight?.informativos.find(
     (i) => i.codigo === "lineas_anuladas_excluidas",
   );
+
+  // El monto que de verdad sale: el líquido del preflight cuando ya verificó, y
+  // el total de la fila mientras tanto.
+  const montoAPagar = resumenPago?.montoLiquidoClp ?? montoTotalClp;
+
+  const avisosModal: { tono: "attention" | "fault"; texto: React.ReactNode }[] = [];
+  if (errorPago) {
+    avisosModal.push({
+      tono: "fault",
+      texto: (
+        <>
+          <strong>No pudimos emitir el pago.</strong> {errorPago} No salió plata; puedes
+          volver a intentarlo.
+        </>
+      ),
+    });
+  }
+  if (estadoPreflight === "listo" && preflight && !preflight.ok) {
+    avisosModal.push({
+      tono: "fault",
+      texto: "Resuelve los bloqueos indicados arriba antes de continuar.",
+    });
+  }
+  if (estadoPreflight === "error_preflight" && continuarSinVerificar) {
+    avisosModal.push({
+      tono: "attention",
+      texto: "Omitiste la verificación previa. Queda registrado a tu nombre que la saltaste.",
+    });
+  }
 
   const confirmDeshabilitado =
     estadoPreflight === "verificando" ||
@@ -146,22 +187,69 @@ export function DialogEmitirPago({
         Emitir pago
       </Button>
 
-      <DialogConfirmacionDinero
+      <ModalActoExplicito
         open={abierto}
         onOpenChange={setAbierto}
-        titulo={`Confirmar pago a ${conductorNombre}`}
+        // Peldaño 3. Es la única acción del producto que saca plata del banco y
+        // no vuelve: «si te equivocas, hay que pedírselo de vuelta».
+        peldano={3}
+        titulo={`Vas a transferirle ${formatearCLPOGuion(montoAPagar)} a ${conductorNombre}`}
         consecuencia={
           <>
-            Se iniciará una <strong>transferencia electrónica real</strong> a la
-            cuenta bancaria del conductor. El pago se procesará en los próximos
-            minutos y <strong>no se puede deshacer</strong> desde aquí una vez iniciado.
+            Sale de tu cuenta y <strong>no se puede revertir desde acá</strong>: si te
+            equivocas, hay que pedírselo de vuelta.
           </>
         }
+        resumen={[
+          {
+            etiqueta: "Período",
+            valor: `${formatearFechaCorta(fechaInicio)} – ${formatearFechaCorta(fechaFin)}`,
+            mono: true,
+          },
+          {
+            etiqueta: "Entregas liquidadas",
+            valor: resumenPago?.lineasIncluidas ?? "—",
+            mono: true,
+          },
+          ...(resumenPago && resumenPago.montoRetencionClp > 0
+            ? [
+                {
+                  etiqueta: "Monto bruto",
+                  valor: formatearCLP(resumenPago.montoBrutoClp),
+                  mono: true,
+                },
+                {
+                  etiqueta: "Retención",
+                  valor: `− ${formatearCLP(resumenPago.montoRetencionClp)}`,
+                  mono: true,
+                },
+              ]
+            : []),
+        ]}
+        total={
+          montoAPagar !== null
+            ? { etiqueta: "Monto líquido a pagar", monto: montoAPagar }
+            : undefined
+        }
+        // La frase es el MONTO sin formato. Obliga a leer la cifra, que es el
+        // error real: no transferir sin querer, sino transferir otra cantidad.
+        confirmacion={
+          montoAPagar !== null
+            ? {
+                frase: String(montoAPagar),
+                rotulo: (
+                  <>
+                    Escribe <strong className="text-fg">{montoAPagar}</strong> para confirmar
+                  </>
+                ),
+              }
+            : undefined
+        }
+        autor={{ nombre: autorNombre, cuando: formatearFechaHora(new Date()) }}
+        avisos={avisosModal}
         cargando={isPending}
-        textoConfirmar="Confirmar pago"
-        requiereConfirmacionExplicita
-        etiquetaConfirmacion="Revisé el monto y los datos bancarios. Entiendo que esto inicia una transferencia real."
         confirmDeshabilitado={confirmDeshabilitado}
+        textoConfirmar={`Transferir ${formatearCLPOGuion(montoAPagar)}`}
         onConfirmar={handleConfirmar}
       >
         <div className="flex flex-col gap-3">
@@ -185,62 +273,16 @@ export function DialogEmitirPago({
               {preflight.advertencias.length > 0 && (
                 <BandaItemsPreflight items={preflight.advertencias} tono="advierte" />
               )}
-
-              <dl className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">Período</dt>
-                  <dd className="font-medium">
-                    {formatearFechaCorta(fechaInicio)} – {formatearFechaCorta(fechaFin)}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">Entregas liquidadas</dt>
-                  <dd className="font-mono font-medium tabular-nums">
-                    {resumenPago?.lineasIncluidas ?? "—"}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">Monto bruto</dt>
-                  <dd className="font-mono tabular-nums">
-                    {resumenPago
-                      ? formatearCLP(resumenPago.montoBrutoClp)
-                      : formatearCLPOGuion(montoTotalClp)}
-                  </dd>
-                </div>
-                {resumenPago && resumenPago.montoRetencionClp > 0 && (
-                  <div className="flex items-center justify-between gap-4">
-                    <dt className="text-muted-foreground">Retención</dt>
-                    <dd className="font-mono tabular-nums text-destructive">
-                      −{formatearCLP(resumenPago.montoRetencionClp)}
-                    </dd>
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">Monto líquido a pagar</dt>
-                  <dd className="font-mono text-base font-semibold tabular-nums">
-                    {resumenPago
-                      ? formatearCLP(resumenPago.montoLiquidoClp)
-                      : formatearCLPOGuion(montoTotalClp)}
-                  </dd>
-                </div>
-              </dl>
-
               {itemLineasAnuladas && (
                 <p className="text-xs text-muted-foreground">
                   {itemLineasAnuladas.titulo}
                   {itemLineasAnuladas.detalle ? ` ${itemLineasAnuladas.detalle}` : ""}
                 </p>
               )}
-
-              {!preflight.ok && (
-                <p className="text-xs font-medium text-destructive">
-                  Resuelve los bloqueos indicados arriba antes de continuar.
-                </p>
-              )}
             </>
           )}
         </div>
-      </DialogConfirmacionDinero>
+      </ModalActoExplicito>
     </>
   );
 }
