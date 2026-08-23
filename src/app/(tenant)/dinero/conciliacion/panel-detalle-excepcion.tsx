@@ -46,6 +46,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -409,48 +410,92 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
               )}
             </div>
 
-            {destinoEnConfirmacion && (
-              <div className="mt-3 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
-                <label htmlFor="nota-transicion" className="text-xs font-medium text-foreground">
-                  {destinoEnConfirmacion === "reabrir"
-                    ? "Motivo de la reapertura (obligatorio)"
-                    : "Nota (obligatoria)"}
-                </label>
-                <Textarea
-                  id="nota-transicion"
-                  value={comentarioTransicion}
-                  onChange={(e) => setComentarioTransicion(e.target.value)}
-                  maxLength={500}
-                  rows={3}
-                  placeholder="Explica brevemente el motivo…"
-                  disabled={isPendingTransicion}
-                />
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={isPendingTransicion}
-                    onClick={() => setDestinoEnConfirmacion(null)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    loading={isPendingTransicion}
-                    disabled={!comentarioTransicion.trim()}
-                    onClick={() =>
-                      destinoEnConfirmacion === "reabrir"
-                        ? confirmarReapertura()
-                        : confirmarTransicion(destinoEnConfirmacion, comentarioTransicion.trim())
-                    }
-                  >
-                    Confirmar
-                  </Button>
-                </div>
-              </div>
-            )}
+            {/* `excepciones.reabrir.conf` · P2 · motivo.
+                ⚠️ Antes era un cuadro en línea que pedía el motivo y decía
+                «Confirmar», **sin nombrar la consecuencia**. Y la consecuencia
+                de reabrir una excepción cerrada es exactamente la que hay que
+                leer: si bloqueaba facturación, **vuelve a bloquearla**, y el
+                período de ese seller deja de poder facturarse hasta resolverla
+                otra vez. Eso no estaba escrito en ninguna parte de la pantalla. */}
+            <ModalActoExplicito
+              open={destinoEnConfirmacion !== null}
+              onOpenChange={(abierto) => {
+                if (isPendingTransicion) return;
+                if (!abierto) {
+                  setDestinoEnConfirmacion(null);
+                  setComentarioTransicion("");
+                }
+              }}
+              peldano={2}
+              variante={destinoEnConfirmacion === "reabrir" ? "destructive" : "primary"}
+              titulo={
+                destinoEnConfirmacion === "reabrir"
+                  ? "Vas a reabrir una excepción cerrada"
+                  : `Vas a marcar esta excepción como «${
+                      destinoEnConfirmacion
+                        ? traducirEstadoConciliacion(destinoEnConfirmacion)
+                        : ""
+                    }»`
+              }
+              consecuencia={
+                destinoEnConfirmacion === "reabrir" ? (
+                  evento.bloqueaFacturacion || evento.bloqueaPago ? (
+                    <>
+                      Bloqueaba{" "}
+                      {evento.bloqueaFacturacion && evento.bloqueaPago ? (
+                        <>
+                          la facturación y los pagos, y{" "}
+                          <strong>vuelve a bloquearlos</strong>
+                        </>
+                      ) : evento.bloqueaFacturacion ? (
+                        <>
+                          la facturación, y <strong>vuelve a bloquearla</strong>
+                        </>
+                      ) : (
+                        <>
+                          los pagos al conductor, y <strong>vuelve a bloquearlos</strong>
+                        </>
+                      )}{" "}
+                      hasta que se resuelva de nuevo.
+                    </>
+                  ) : (
+                    <>
+                      Vuelve a la bandeja como pendiente. No bloqueaba facturación ni pagos, así
+                      que nada se detiene por esto.
+                    </>
+                  )
+                ) : (
+                  <>
+                    Queda registrado en el historial de la excepción, con tu nombre y la nota que
+                    escribas.
+                  </>
+                )
+              }
+              motivo={{
+                valor: comentarioTransicion,
+                onCambio: setComentarioTransicion,
+                etiqueta:
+                  destinoEnConfirmacion === "reabrir"
+                    ? "Por qué la reabres"
+                    : "Nota del cambio",
+                ayuda: "Queda en el historial de la excepción, a tu nombre.",
+                minimo: 1,
+              }}
+              cargando={isPendingTransicion}
+              textoConfirmar={
+                destinoEnConfirmacion === "reabrir"
+                  ? "Reabrir la excepción"
+                  : "Guardar el cambio"
+              }
+              onConfirmar={() => {
+                if (!destinoEnConfirmacion) return;
+                if (destinoEnConfirmacion === "reabrir") {
+                  confirmarReapertura();
+                } else {
+                  confirmarTransicion(destinoEnConfirmacion, comentarioTransicion.trim());
+                }
+              }}
+            />
           </section>
 
           {/* 3. Asignado a + fecha límite */}

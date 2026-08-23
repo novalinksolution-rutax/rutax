@@ -273,7 +273,30 @@ export default async function PaginaConciliacion({
   // Estado de tranquilidad: 0 eventos en estados no-terminales = "todo
   // cuadra" (confianza, no ausencia). Se omite con un deep-link de pedido o
   // evento puntual: lo que motivó el link debe verse igual, no taparse.
-  if (!errorCarga && !filtroPedido && !filtroEventoId && totalNoTerminales === 0) {
+  //
+  // 🐞 Y SE OMITE TAMBIÉN CON CUALQUIER FILTRO PUESTO. Antes solo miraba
+  // `totalNoTerminales`, así que **filtrar por «Resuelta» devolvía «todo cuadra
+  // · no necesitas hacer nada»** y las filas resueltas quedaban inalcanzables —
+  // con ellas, el botón «Reabrir la excepción», que solo vive ahí. Dos errores
+  // a la vez: escondía justo lo que el usuario pidió ver, y afirmaba algo que
+  // no había comprobado, que es la misma familia del vacío mentiroso de
+  // cobranza. Encontrado verificando la ceremonia de reapertura, que no había
+  // forma de alcanzar.
+  const hayFiltroPuesto =
+    Boolean(filtroEstado) ||
+    Boolean(filtroCategoria) ||
+    Boolean(filtroTipo) ||
+    Boolean(filtroSeller) ||
+    Boolean(filtroAsignado) ||
+    filtroBloqueado;
+
+  if (
+    !errorCarga &&
+    !filtroPedido &&
+    !filtroEventoId &&
+    !hayFiltroPuesto &&
+    totalNoTerminales === 0
+  ) {
     return (
       <div className="space-y-6">
         <h1 className="font-heading text-2xl font-semibold">Conciliación</h1>

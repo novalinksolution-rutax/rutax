@@ -620,7 +620,7 @@ bloques 4–8, cuando cada pantalla se toque.
 ## Las 26 acciones irreversibles
 
 `RUTAX-SISTEMA-DE-MENSAJES.md` §2 trae las 33 con su peldaño y su copy ya escritos.
-**7 de 26 migradas**, todas verificadas en el navegador con datos reales:
+**12 de 26 migradas**, todas verificadas en el navegador con datos reales:
 
 - [x] `periodos.emitir` · **P3 · escribir** — el arquetipo.
 - [x] `periodos.cerrar` · **P2** — estaba en `<Dialog>` genérico, con «Cancelar» y X.
@@ -707,7 +707,41 @@ con consecuencia escrita, que es la regla 37; el motivo exige tocar `modules/pla
       ahora no se había podido ejercitar: sin CAF de tipo 61 el cuadro muestra la banda de bloqueo
       y deja el botón **visible y deshabilitado**, con el motivo al lado.
 
-**Quedan 14 acciones.**
+- [x] `periodos.emitirLote` · **P3 · escribir** · y `liquidaciones.pagarLote` · **P3 · escribir** —
+      **acá no había ceremonia ninguna.** Aprobar seis facturas —el mayor monto por clic de todo
+      el producto— era un `<Dialog>` genérico con un botón: sin escalera, sin nombrar la plata en
+      el título y con «Cancelar» de salida. La acción individual ya era peldaño 3, así que **el
+      lote pedía menos fricción que emitir una sola factura**.
+      Ahora el título lleva el monto («Vas a emitir 6 facturas por $4.128.400»), la revisión
+      consolidada es el cuerpo del cuadro, la frase es corta y en mayúsculas —«EMITIR 6», «PAGAR
+      2»— porque acá **no hay una contraparte única que nombrar**, y el resultado es el
+      comprobante en sitio. **Verificado de punta a punta en pantalla.**
+- [x] `config.desactivarCobroAuto` · **P2** — última usuaria de `DialogConfirmacionDinero` en
+      configuración. ⚠️ Su consecuencia decía la mitad: «deberás pagar tu plan manualmente cada
+      período» **no dice qué pasa si se te pasa**, que es lo único que importa — Rutax se suspende
+      y el equipo entero deja de poder entrar. El texto completo ya estaba escrito en el sistema
+      de mensajes. *(No se pudo ejercitar en pantalla: la semilla local no tiene suscripción
+      activa, así que el bloque no se renderiza.)*
+- [x] `excepciones.reabrir` · **P2 · motivo**, y con él las demás transiciones de la bandeja —
+      era un cuadro en línea que pedía el motivo y decía «Confirmar», **sin nombrar la
+      consecuencia**. Y la de reabrir es la que hay que leer: si bloqueaba facturación, **vuelve a
+      bloquearla**, y el período de ese seller deja de poder facturarse. La ceremonia ahora lo dice
+      leyendo las banderas reales del evento.
+      🐞 **Y para probarlo apareció uno peor:** el vacío «todo cuadra» de `/dinero/conciliacion`
+      se disparaba mirando **solo** el conteo de no-terminales, ignorando los filtros. Filtrar por
+      «Resuelta» devolvía «todo cuadra · no necesitas hacer nada» y **las excepciones resueltas
+      quedaban inalcanzables** — con ellas el botón «Reabrir», que solo vive ahí. Dos errores en
+      uno: escondía justo lo que se pidió ver, y afirmaba algo que no había comprobado. Misma
+      familia que el vacío mentiroso de cobranza.
+- [x] `integraciones.revocarClave` · **P3 · escribir** — *corrección de una decisión propia*: se
+      había construido en peldaño 2 y el sistema de mensajes lo tiene en 3. No alcanza con 2: el
+      error de este flujo no es «revocar sin querer», es **revocar la clave equivocada** de una
+      lista donde todas se llaman parecido y solo se ven cuatro caracteres del prefijo.
+
+**Quedan 9 acciones**, y de esas **4 no son migraciones sino construcción**: suspender a alguien
+del equipo y suspender a un conductor no existen todavía, y dos viven en la app del conductor
+(bloque 6). Las de `pedidos.cancelar*` quedan fuera por ahora: viven en `operaciones`, que tiene
+trabajo en curso sin commitear.
 
 ### ⚠️ Un agujero del propio modal, encontrado al migrar el pago
 

@@ -17,19 +17,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { ResultadoPreflightLote } from "@/modules/dinero/preflight-lote";
 import type { ResultadoLote } from "@/modules/dinero/acciones-lote";
 import { TarjetaResultadoBloque } from "@/components/ui/tarjeta-resultado-bloque";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 
 export interface ItemLoteUI {
   id: string;
@@ -55,6 +49,8 @@ const TEXTOS = {
     nombreSingular: "factura",
     nombrePlural: "facturas",
     confirmarVerbo: "Emitir",
+    /** Para la frase del peldaño 3: «EMITIR 6». */
+    fraseVerbo: "EMITIR",
   },
   pago: {
     panel: "Pagar en lote",
@@ -62,6 +58,7 @@ const TEXTOS = {
     nombreSingular: "pago",
     nombrePlural: "pagos",
     confirmarVerbo: "Solicitar",
+    fraseVerbo: "PAGAR",
   },
 } as const;
 
@@ -147,6 +144,47 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
     }
   }
 
+  // ── Los textos de la ceremonia, del sistema de mensajes §2 ──────────────
+  // `periodos.emitirLote.conf` y `liquidaciones.pagarLote.conf`. El molde del
+  // título es «Vas a [acción] N cosas por $X»: **el monto va en el título**, no
+  // escondido en el resumen — es la cifra que uno tiene que leer antes de
+  // apretar. La frase a escribir es corta y en mayúsculas («EMITIR 6»,
+  // «PAGAR 2») porque acá no hay una contraparte única que nombrar: son varias.
+  const cuantos = preflight?.emitibles ?? 0;
+  const montoLote = preflight?.totalMontoEmitibleClp ?? 0;
+  const frase = cuantos > 0 ? `${t.fraseVerbo} ${cuantos}` : "";
+
+  const tituloCeremonia =
+    tipo === "factura"
+      ? `Vas a emitir ${cuantos} ${cuantos === 1 ? "factura" : "facturas"} por ${formatearCLP(montoLote)}`
+      : `Vas a hacer ${cuantos} ${cuantos === 1 ? "transferencia" : "transferencias"} por ${formatearCLP(montoLote)}`;
+
+  const consecuenciaCeremonia =
+    tipo === "factura" ? (
+      <>
+        {cuantos === 1 ? "Se emite" : "Se emiten"} al Servicio de Impuestos Internos y{" "}
+        {cuantos === 1 ? "consume un folio" : `consumen ${cuantos} folios`}.{" "}
+        <strong>Ninguna se puede deshacer.</strong>
+      </>
+    ) : (
+      <>
+        {cuantos === 1 ? "Sale" : "Salen"} de tu cuenta a{" "}
+        {cuantos === 1 ? "la cuenta del conductor" : "las cuentas de los conductores"}.{" "}
+        <strong>Ninguna se puede revertir desde acá</strong>: si te equivocas, hay que pedirlo
+        de vuelta.
+      </>
+    );
+
+  // El resultado también cambia de verbo según el tipo. Antes decía «emitidos»
+  // para los dos, incluidos los pagos.
+  const tituloResultado = resultado
+    ? resultado.exitosos === 0
+      ? `No se pudo ${tipo === "factura" ? "emitir" : "pagar"} nada`
+      : `${resultado.exitosos} ${
+          resultado.exitosos === 1 ? t.nombreSingular : t.nombrePlural
+        } ${resultado.exitosos === 1 ? "quedó" : "quedaron"} en curso`
+    : "";
+
   // El monto de lo que SÍ salió. Se calcula sobre los ids exitosos y no sobre
   // el total de la revisión: si dos de cinco fallaron, el total de la revisión
   // ya no corresponde a lo que ocurrió.
@@ -212,52 +250,55 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
         </ul>
       </div>
 
-      <Dialog open={abierto} onOpenChange={(v) => (v ? setAbierto(true) : cerrar())}>
-        {/* Sin la X: el pie ya trae la salida en las dos fases —«Volver» al
-            revisar, «Cerrar» al leer el resultado— y una X que hace lo mismo
-            que un botón visible a diez centímetros es ruido. */}
-        <DialogContent className="sm:max-w-lg" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>
-              {resultado
-                ? "Resultado del lote"
-                : `${t.revisar} — resumen consolidado`}
-            </DialogTitle>
-          </DialogHeader>
-
-          {/* Estado de error del preflight/emisión */}
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-
-          {/* Fase RESULTADOS — `tarjeta de resultado en bloque`.
-              ⚠️ Antes decía «N emitidos», y estaba mal por dos motivos: el lote
-              **encola** trabajos, así que en pasado promete folios que todavía
-              no existen (decisión 6 de P4y brecha #6 del inventario); y no
-              llevaba **el monto**, que es lo primero que se pregunta después de
-              aprobar plata en bloque (regla 57). Además decía «emitidos» tanto
-              para facturas como para pagos. */}
-          {resultado ? (
-            <TarjetaResultadoBloque
-              titulo={
-                resultado.exitosos === 0
-                  ? `No se pudo ${tipo === "factura" ? "emitir" : "pagar"} nada`
-                  : `${resultado.exitosos} ${
-                      resultado.exitosos === 1 ? t.nombreSingular : t.nombrePlural
-                    } ${resultado.exitosos === 1 ? "quedó" : "quedaron"} en curso`
+      {/* ⚠️ ACÁ NO HABÍA CEREMONIA NINGUNA. Aprobar seis facturas —el mayor
+          monto por clic de todo el producto— era un `<Dialog>` genérico con un
+          botón: sin escalera de fricción, sin nombrar la plata en el título y
+          con «Cancelar» de salida. El sistema de mensajes lo tiene escrito como
+          **P3 · escribir** desde el principio (`periodos.emitirLote.conf`,
+          `liquidaciones.pagarLote.conf`), y la acción individual ya era P3: el
+          lote pedía MENOS fricción que emitir una sola. */}
+      <ModalActoExplicito
+        open={abierto}
+        onOpenChange={(v) => (v ? setAbierto(true) : cerrar())}
+        peldano={3}
+        titulo={tituloCeremonia}
+        consecuencia={consecuenciaCeremonia}
+        confirmacion={frase ? { frase } : undefined}
+        comprobante={
+          resultado
+            ? {
+                tono: resultado.fallidos > 0 ? "attention" : "progress",
+                titulo: tituloResultado,
+                cuerpo: (
+                  <TarjetaResultadoBloque
+                    sinMarco
+                    composicion={composicionResultado}
+                    exitosos={resultado.exitosos}
+                    fallos={resultado.resultados
+                      .filter((r) => !r.ok)
+                      .map((r) => ({
+                        etiqueta: mapaItems.get(r.id)?.etiqueta ?? r.id,
+                        motivo: r.mensaje,
+                      }))}
+                  />
+                ),
               }
-              composicion={composicionResultado}
-              exitosos={resultado.exitosos}
-              fallos={resultado.resultados
-                .filter((r) => !r.ok)
-                .map((r) => ({
-                  etiqueta: mapaItems.get(r.id)?.etiqueta ?? r.id,
-                  motivo: r.mensaje,
-                }))}
-            />
-          ) : preflight ? (
+            : null
+        }
+        avisos={error ? [{ tono: "fault", texto: error }] : []}
+        cargando={isPending}
+        textoConfirmar={`${t.confirmarVerbo} ${preflight?.emitibles ?? 0} ${
+          (preflight?.emitibles ?? 0) === 1 ? t.nombreSingular : t.nombrePlural
+        }`}
+        subtextoConfirmar={
+          preflight ? formatearCLP(preflight.totalMontoEmitibleClp) : undefined
+        }
+        confirmDeshabilitado={!preflight || preflight.emitibles === 0}
+        onConfirmar={confirmar}
+      >
+        <>
+
+          {preflight ? (
             /* Fase REVISIÓN (resumen consolidado) */
             <div className="space-y-3">
               <div className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
@@ -320,29 +361,8 @@ export function AprobacionLote({ items, tipo, accionPreflight, accionEmitir }: P
             </div>
           )}
 
-          <DialogFooter>
-            {resultado ? (
-              <Button onClick={cerrar}>Cerrar</Button>
-            ) : (
-              <>
-                <Button variant="outline" onClick={cerrar} disabled={isPending}>
-                  {/* «Volver», nunca «Cancelar» (regla 59): cancelar es lo
-                      que le pasa a un pedido. */}
-                  Volver
-                </Button>
-                <Button
-                  onClick={confirmar}
-                  disabled={isPending || !preflight || preflight.emitibles === 0}
-                >
-                  {isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-                  {t.confirmarVerbo} {preflight?.emitibles ?? 0}{" "}
-                  {(preflight?.emitibles ?? 0) === 1 ? t.nombreSingular : t.nombrePlural}
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </>
+      </ModalActoExplicito>
     </div>
   );
 }

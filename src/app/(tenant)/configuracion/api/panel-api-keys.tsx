@@ -232,19 +232,27 @@ function FilaApiKey({ row }: { row: ApiKeyRow }) {
           deshabilitado={isPending}
           cargando={isPending}
           etiqueta="Revocar"
-          titulo={`Vas a revocar la API key ${row.nombre}`}
+          // P3 · escribir, no P2: así lo tiene escrito el sistema de mensajes
+          // (`integraciones.revocarClave.conf`). Una primera versión la dejó en
+          // peldaño 2, y no alcanza — el error de este flujo no es «revocar sin
+          // querer», es **revocar la clave equivocada** de una lista donde
+          // todas se llaman parecido y solo se ven cuatro caracteres del
+          // prefijo. Escribir el nombre es lo único que obliga a leer cuál.
+          peldano={3}
+          confirmacion={{ frase: row.nombre }}
+          titulo={`Vas a revocar «${row.nombre}»`}
           consecuencia={
             <>
-              Todo lo que la esté usando <strong>deja de funcionar al instante</strong>: la
-              integración que la lleve empieza a recibir 401 sin aviso. No se puede volver a
-              activar — hay que crear una nueva y cambiarla donde esté escrita.
+              Todo lo que use esta clave <strong>deja de funcionar al instante</strong> y no se
+              puede reactivar: hay que crear otra y cambiarla donde esté puesta. Si no sabes qué
+              la usa, revisa antes.
             </>
           }
           resumen={[
             { etiqueta: "Nombre", valor: row.nombre },
             { etiqueta: "Prefijo", valor: `${row.prefijo}…`, mono: true },
           ]}
-          textoConfirmar="Revocar la API key"
+          textoConfirmar="Revocar la clave"
           varianteModal="destructive"
           onConfirmar={handleRevocar}
         />

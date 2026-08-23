@@ -35,18 +35,27 @@ export interface FalloBloque {
 }
 
 export function TarjetaResultadoBloque({
+  /**
+   * El titular. **Opcional a propósito**: dentro de un cuadro de acto explícito
+   * el título ya lo pone el propio cuadro —y tiene que ponerlo, porque es el
+   * nombre accesible del diálogo—, así que repetirlo acá lo mostraría dos
+   * veces. Suelta, en cambio, la tarjeta se titula sola.
+   */
   titulo,
   /** Cifras que se leen sin abrir nada: monto total, cuántas contrapartes. */
   composicion = [],
   fallos = [],
   /** Cuántos salieron bien. Se muestra como cifra, no como lista. */
   exitosos,
+  /** Sin borde ni filo superior: cuando ya vive dentro de un marco. */
+  sinMarco = false,
   className,
 }: {
-  titulo: string
+  titulo?: string
   composicion?: string[]
   fallos?: FalloBloque[]
   exitosos: number
+  sinMarco?: boolean
   className?: string
 }) {
   const hayFallos = fallos.length > 0
@@ -56,33 +65,50 @@ export function TarjetaResultadoBloque({
 
   return (
     <div
-      className={cn("border border-line bg-bg-sunken", className)}
-      style={{ borderTopWidth: 2, borderTopColor: `var(--rx-${tono}-fg)` }}
+      className={cn(!sinMarco && "border border-line bg-bg-sunken", className)}
+      style={
+        sinMarco ? undefined : { borderTopWidth: 2, borderTopColor: `var(--rx-${tono}-fg)` }
+      }
       role="status"
       aria-live="polite"
     >
-      <div className="flex flex-col gap-1 px-4 py-3">
-        <span className="flex items-start gap-2">
-          {hayFallos ? (
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-attention-fg" aria-hidden="true" />
-          ) : (
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-balanced-fg" aria-hidden="true" />
-          )}
-          <span className="font-heading text-[15px] leading-snug font-semibold text-fg">
-            {titulo}
-          </span>
-        </span>
-        {composicion.length > 0 ? (
-          // En mono y separada por puntos: son cifras, y se leen de un vistazo
-          // sin tener que abrir la lista.
-          <span className="pl-6 font-mono text-[11.5px] leading-relaxed text-fg-muted tabular-nums">
-            {composicion.join(" · ")}
-          </span>
-        ) : null}
-      </div>
+      {titulo || composicion.length > 0 ? (
+        <div className={cn("flex flex-col gap-1", !sinMarco && "px-4 py-3")}>
+          {titulo ? (
+            <span className="flex items-start gap-2">
+              {hayFallos ? (
+                <AlertTriangle
+                  className="mt-0.5 size-4 shrink-0 text-attention-fg"
+                  aria-hidden="true"
+                />
+              ) : (
+                <CheckCircle2
+                  className="mt-0.5 size-4 shrink-0 text-balanced-fg"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="font-heading text-[15px] leading-snug font-semibold text-fg">
+                {titulo}
+              </span>
+            </span>
+          ) : null}
+          {composicion.length > 0 ? (
+            // En mono y separada por puntos: son cifras, y se leen de un vistazo
+            // sin tener que abrir la lista.
+            <span
+              className={cn(
+                "font-mono text-[11.5px] leading-relaxed text-fg-muted tabular-nums",
+                titulo && "pl-6",
+              )}
+            >
+              {composicion.join(" · ")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {hayFallos ? (
-        <div className="border-t border-line-subtle px-4 py-3">
+        <div className={cn("border-t border-line-subtle py-3", !sinMarco && "px-4")}>
           <p className="text-xs font-medium text-fg">
             {fallos.length === 1
               ? "Uno no se pudo, y este es el motivo:"

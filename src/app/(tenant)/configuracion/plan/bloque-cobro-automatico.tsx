@@ -18,7 +18,7 @@ import { Landmark, ShieldAlert } from "lucide-react";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { DialogConfirmacionDinero } from "@/components/ui/dialog-confirmacion-dinero";
+import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 import { BADGE_ESTADO_MANDATO, TEXTO_ESTADO_MANDATO } from "@/lib/ui/traduccion-estados";
 import { activarAutoCobroAction, desactivarAutoCobroAction } from "./actions";
 import type { EstadoMandato } from "@/modules/plataforma/tipos";
@@ -116,14 +116,29 @@ export function BloqueCobroAutomatico({ mandatoEstado }: Props) {
         </Alert>
       ) : null}
 
-      <DialogConfirmacionDinero
+      {/* `config.desactivarCobroAuto.conf` · P2.
+          ⚠️ La consecuencia que estaba escrita era la mitad: «deberás pagar tu
+          plan manualmente cada período» no dice **qué pasa si se te pasa**, que
+          es lo único que importa acá — Rutax se suspende y el equipo entero
+          deja de poder entrar. Una consecuencia que omite el riesgo real no es
+          una advertencia, es un trámite. El texto sale del sistema de mensajes,
+          que ya lo tenía completo. */}
+      <ModalActoExplicito
         open={dialogoAbierto}
         onOpenChange={setDialogoAbierto}
-        titulo="Desactivar cobro automático"
-        consecuencia="Sin el cobro automático, deberás pagar tu plan manualmente cada período."
+        peldano={2}
+        variante="destructive"
+        titulo="Vas a desactivar el cobro automático"
+        consecuencia={
+          <>
+            Vas a tener que pagar tu plan a mano cada mes. Si se te pasa,{" "}
+            <strong>Rutax se suspende</strong> y tus conductores y sellers dejan de poder
+            entrar.
+          </>
+        }
         onConfirmar={desactivar}
         cargando={pendingDesactivar}
-        textoConfirmar="Desactivar"
+        textoConfirmar="Desactivar el cobro automático"
       />
     </section>
   );
