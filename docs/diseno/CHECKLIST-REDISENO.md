@@ -64,7 +64,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
-| **6** | **App del conductor** | **auditado y cerrado el 24-08** — 6.0 a 6.4 completos: los tres temas con histéresis, señales, push, escala de texto, captura, escaneo, consentimiento, progreso con pasos nombrados, B5b y el retiro de la PWA | lo que queda es **del repo web**: la casilla táctil y la hoja móvil en las pantallas que las piden. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
+| **6** | **App del conductor** | **cerrado el 24-08** — 6.0 a 6.5 completos, incluida la casilla táctil de 56 px y el barrido vertical en P2 · asignar | queda **la hoja móvil** en las pantallas del repo web que la piden. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
 | **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles · 6 cuerpos de correo por reescribir | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | 6 pantallas sin sesión (activar, registro, recuperar, legales, offline, `admin/login`) · 4 páginas del sitio, ninguna dibujada · tablet y teléfono del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
 | **9** | *(no está en §10)* | 12 componentes sin bloque asignado | 12, repartidos en 9a–9d | #4 · #5 · #6 · #13 a #20 | `B1b` · `B3a` · `B3b` · `P7` |
@@ -896,12 +896,41 @@ Ahora **falla cerrado**: si alguien pide peldaño 3, tiene que dar una frase no 
       Regla 13: **un permiso se pide en el momento en que se usa**, con una frase de para qué, y
       nunca al abrir la app.
 - [x] **`escala de texto de cuatro pasos`** · **hecho** — `src/tema/escala.ts` (100/115/130/150), con `tactil()` para que los objetivos crezcan con ella. · NUEVO #23
-- [x] **`casilla táctil de 56 px`** · **hecho en la app** — `TACTIL_MINIMO = 56` y `tactil()`.
-      ⚠️ *La mitad de P2 (asignar, en tablet y teléfono) es del repo web y NO está.*
-- [ ] **`selección táctil en tres niveles`** · DE CERO · fila, cabecera de grupo, barrido vertical ·
-      P2 en tablet y teléfono · 3 pantallas. Hoy solo hay clic y shift-clic.
+- [x] **`casilla táctil de 56 px`** · **hecho en los dos lados** — en la app, `TACTIL_MINIMO = 56` y
+      `tactil()`; en la web, `src/components/ui/casilla-tactil.tsx`, adoptada en P2 · asignar.
+      🐞 **El hueco no era el teléfono: era la tablet.** La pantalla tenía dos ramas —tabla en
+      escritorio, tarjetas en móvil— y parecía cubierta. **Un iPad en horizontal mide 1024 px**, así
+      que cae en la rama de escritorio: filas de 40 px y casillas de 16, hechas para un puntero. Y esa
+      es la situación real — el coordinador reparte 30 paquetes **de pie, con una tablet**, mientras
+      el camión descarga.
+      **Se decide por el dedo, no por el ancho:** el tamaño lo manda `@media (pointer: coarse)`, que
+      pregunta con qué se está apuntando. Un punto de corte por ancho se equivoca en los dos sentidos
+      —el iPad de 1024 con dedo y el portátil de 1024 con trackpad—.
+      El cuadro visible **no crece**; crece el área que responde, con un `::after` invisible. Agrandar
+      el dibujo desalinearía la columna sin que el dedo acertara mejor.
+      **Medido en el navegador:** `56 × 56` bajo dedo, y el área de ratón intacta en `-8/-12 px`.
+- [x] **`selección táctil en tres niveles`** · **hecho** — la fila y «todos los de esta página» ya
+      estaban; entra el **barrido vertical** (`src/lib/ui/barrido-seleccion.ts` + el gancho de
+      `casilla-tactil.tsx`). Es lo que convierte treinta toques en un gesto, y treinta toques de pie
+      en la bodega son parte de por qué la flota sale 16:40 en vez de 16:00.
+      **Tres decisiones que lo hacen funcionar, y ninguna es obvia:**
+      · ⚠️ **El barrido arranca en la casilla, no en la fila.** Arrastrar hacia abajo **ya significa
+        desplazar la lista**; si empezara en cualquier parte de la fila, seleccionar y hacer scroll
+        serían el mismo gesto y la lista quedaría intocable. `touch-action: none` va **solo** en la
+        banda de la casilla.
+      · **El sentido lo fija la primera fila y no alterna.** Alternar sería lo «obvio» y es lo
+        equivocado: el dedo pasa dos veces solo cuando tiembla o corrige el rumbo, y el coordinador
+        perdería pedidos sin darse cuenta. Volver a pasar por encima **no hace nada**.
+      · ⚠️ **Se rellena el tramo, porque el dedo va más rápido que los eventos.** El navegador emite
+        un `pointerenter` cada varios píxeles y **se salta filas enteras**: sin esto, un barrido
+        rápido deja huecos y el coordinador asigna 24 creyendo que asignó 30.
+      Trabaja sobre la API que ya existía (`onAlternarUno`), sin una segunda fuente de verdad de la
+      selección. 10 pruebas de la lógica pura.
+      **Verificado contra el componente real en el navegador:** salto de la fila 0 a la 4 → 5
+      marcadas; volver por encima → sigue en 5; rozar con el dedo levantado → no marca.
 - [x] **`hoja móvil`** · **hecha en la app** — `Sheet` de `src/components/ui.tsx`.
-      ⚠️ *Las pantallas del repo web que la piden siguen sin ella.*
+      ⚠️ *Las pantallas del repo web que la piden siguen sin ella.* Es lo único del bloque 6 que
+      queda abierto.
 
 ## 6.3 · Reglas del bloque que se verifican en pantalla
 

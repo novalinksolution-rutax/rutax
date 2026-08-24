@@ -13,7 +13,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import type { PedidoAsignable } from "@/modules/operacion/asignacion";
-import { Checkbox } from "@/components/ui/checkbox";
+import { CasillaTactil, useBarridoSeleccion } from "@/components/ui/casilla-tactil";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Table,
@@ -59,6 +59,22 @@ export function TablaPedidos({
   const algunosMarcados = !todosMarcados && pedidos.some((p) => seleccion.has(p.pedidoId));
   const estadoCabecera = todosMarcados ? true : algunosMarcados ? "indeterminate" : false;
 
+  /**
+   * El **tercer nivel de selección**: barrer con el dedo por la columna de
+   * casillas. Los otros dos —la fila suelta y «todos los de esta página»— ya
+   * estaban.
+   *
+   * Es lo que convierte treinta toques en un gesto. Y treinta toques de pie en
+   * la bodega, con el camión descargando al lado, no son una molestia: son parte
+   * de por qué la flota sale 16:40 en vez de 16:00.
+   */
+  const { propsDeCelda } = useBarridoSeleccion({
+    items: pedidos,
+    idDe: (p) => p.pedidoId,
+    estaMarcado: (p) => seleccion.has(p.pedidoId),
+    onAlternar: onAlternarUno,
+  });
+
   return (
     <>
       {/* Escritorio (≥1024px) */}
@@ -68,7 +84,7 @@ export function TablaPedidos({
             <TableHeader>
               <TableRow className="bg-muted/40">
                 <TableHead className="w-10 px-4">
-                  <Checkbox
+                  <CasillaTactil
                     checked={estadoCabecera}
                     onCheckedChange={(valor) => onAlternarPagina(valor === true)}
                     aria-label="Seleccionar todos los de esta página"
@@ -81,7 +97,7 @@ export function TablaPedidos({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pedidos.map((pedido) => {
+              {pedidos.map((pedido, indice) => {
                 const marcado = seleccion.has(pedido.pedidoId);
                 const origen = origenPorPedido[pedido.pedidoId];
                 return (
@@ -91,8 +107,12 @@ export function TablaPedidos({
                     className="cursor-pointer"
                     onClick={() => onAlternarUno(pedido)}
                   >
-                    <TableCell className="px-4" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
+                    <TableCell
+                      className="px-4"
+                      onClick={(e) => e.stopPropagation()}
+                      {...propsDeCelda(indice)}
+                    >
+                      <CasillaTactil
                         checked={marcado}
                         onCheckedChange={() => onAlternarUno(pedido)}
                         aria-label={`Seleccionar pedido ${pedido.codigoVisible}`}
@@ -120,7 +140,7 @@ export function TablaPedidos({
       {/* Móvil (<1024px) — lista de tarjetas, mismo criterio que /preparacion */}
       <div className="space-y-3 lg:hidden">
         <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Checkbox
+          <CasillaTactil
             checked={estadoCabecera}
             onCheckedChange={(valor) => onAlternarPagina(valor === true)}
             aria-label="Seleccionar todos los de esta página"
@@ -129,7 +149,7 @@ export function TablaPedidos({
         </label>
 
         <ul className="space-y-2">
-          {pedidos.map((pedido) => {
+          {pedidos.map((pedido, indice) => {
             const marcado = seleccion.has(pedido.pedidoId);
             const origen = origenPorPedido[pedido.pedidoId];
             return (
@@ -143,15 +163,23 @@ export function TablaPedidos({
                 <div
                   onClick={() => onAlternarUno(pedido)}
                   data-state={marcado ? "selected" : undefined}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-card p-3 shadow-xs transition-colors data-[state=selected]:border-primary data-[state=selected]:bg-primary/5"
+                  // Sin sombra y sin radio grande (regla 4): la tarjeta era del
+                  // ADN anterior — `rounded-lg` y `shadow-xs` — y en el sistema
+                  // nuevo lo que separa es la línea, no la elevación.
+                  className="flex cursor-pointer items-start gap-3 border border-line bg-bg-raised p-3 transition-colors data-[state=selected]:border-brand data-[state=selected]:bg-accent-deep"
                 >
-                  <Checkbox
-                    checked={marcado}
-                    onCheckedChange={() => onAlternarUno(pedido)}
+                  <span
                     onClick={(e) => e.stopPropagation()}
-                    aria-label={`Seleccionar pedido ${pedido.codigoVisible}`}
-                    className="mt-0.5"
-                  />
+                    {...propsDeCelda(indice)}
+                    className="-m-1 flex items-start p-1"
+                  >
+                    <CasillaTactil
+                      checked={marcado}
+                      onCheckedChange={() => onAlternarUno(pedido)}
+                      aria-label={`Seleccionar pedido ${pedido.codigoVisible}`}
+                      className="mt-0.5"
+                    />
+                  </span>
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <p className="font-mono text-sm font-medium">{pedido.codigoVisible}</p>
                     <p className="text-xs text-muted-foreground">
