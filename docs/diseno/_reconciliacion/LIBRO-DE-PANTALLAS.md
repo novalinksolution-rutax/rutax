@@ -857,6 +857,10 @@ encuentra. Queda como deuda para cuando se verifique la URL contra una cuenta re
 Las 12 pantallas viven en `Desktop/rutax-conductor`. Las 5 rutas de `/conductor` de este repo eran
 la PWA. **Ningún tablero cubre la PWA a propósito.**
 
+**Son dos tableros, no uno.** `Rutax B5 App del conductor` —el día a día, ya hecho— y
+`Rutax B5b Entrada del conductor`, que llegó el 24-08 después del censo y **está en cola**: la
+puerta de la app, que ningún tablero cubría.
+
 ### Hecho el 24-08-2026 — el cimiento y el retiro en bodega
 
 Decisiones del usuario: **construir los cinco NUEVO** (#22 a #26, «todo lo que está pendiente») ·
@@ -1124,6 +1128,82 @@ nativos nuevos. Lo verificado es `tsc`, las 184 pruebas del repo Expo y las 3.83
 
 **NUEVO #26** queda descartado con motivo (ver la pasada anterior): el flujo que pide ya está
 resuelto de otra forma.
+
+### ⏳ B5b · La entrada del conductor · EN COLA desde el 24-08-2026
+
+Tablero nuevo, traído de Claude Design el 24-08 y guardado en
+`docs/diseno/pantallas/Rutax B5b Entrada del conductor.dc.html` (41 KB). **No estaba en el censo del
+23-08:** los 31 tableros de entonces no cubrían la puerta de la app —B5 entra directo al manifiesto
+del día—, así que estas tres pantallas no están contadas en el recuento de arriba.
+
+Es **la cuarta puerta del producto**. Ya eran tres —backoffice, portal, backstage— y ésta es la
+única sin contraseña, la única con Google y la única que no vence por tiempo. Lleva marca **Rutax**,
+no del courier: de las cuatro, solo el portal del seller lleva la del courier.
+
+**Qué trae:** tres pantallas —la puerta con los dos caminos, el código de 6 dígitos, la entrada de
+1,4 s— más **seis estados**: cuenta de Google no registrada, código malo o vencido, correo no
+registrado, sin señal, suspendido, y el progreso con pasos nombrados. En tema **Sol** (la primera
+vez real es a las 16:00, en la bodega) y **Noche**. **Sin componentes nuevos:** reusa `pantalla sin
+sesión`, `progreso con pasos nombrados` y el campo de código de 6 casillas del backstage, con
+objetivos de 60 px.
+
+| Pantalla | Dónde vive hoy | Veredicto |
+|---|---|---|
+| La puerta · Google o correo | `rutax-conductor` → `app/login.tsx` | **PANTALLA DISTINTA** |
+| El código · 6 casillas | — | **NO EXISTE** |
+| La entrada · «Hola, Carlos» · 1,4 s | — | **NO EXISTE** |
+
+**Lo verificado en código — confirma el tablero y le agrega una mitad que la ficha no menciona:**
+
+- La app **sí pide contraseña hoy**: `useAuth.tsx:58` llama a `signInWithPassword`. No hay Google y
+  no hay código.
+- **Y el alta del conductor, en ESTE repo, está construida encima de esa contraseña.** El texto del
+  formulario dice literal «un enlace para que **defina su contraseña**»
+  (`src/app/(tenant)/conductores/[id]/acceso-app-conductor.tsx:235`). O sea que **#31 no es solo la
+  pantalla de la app**: se lleva por delante el flujo de invitación del backoffice y su copy. Eso
+  **sí es trabajo de este repo**, y el tablero no lo dice.
+
+**Tres marcados NUEVO — bloqueados por decisión tuya, como los otros treinta** (anexo A del
+checklist, que queda en 33):
+
+- **#31 · Entrar con Google, y correo con código como respaldo.** No necesita SMS: el envío de correo
+  ya existe en el producto.
+- **#32 · La sesión no vence por tiempo** — vence cuando el courier suspende al conductor o cuando
+  él sale. Es decisión de seguridad tanto como de diseño.
+- **#33 · La ayuda de campo del alta** tiene que decir que ese correo es el que va a usar para
+  entrar, y que si usa Gmail sea ese mismo. Es una **corrección al formulario de B1c**, no una
+  pantalla nueva — y es lo que evita el error más probable del día uno.
+
+**Cuatro reglas nuevas, 81 a 84** — hay que sumarlas a las 80 del anexo D antes de medir deuda
+contra ellas:
+
+- **81.** En la app del conductor no hay contraseñas: Google, o correo con código de un solo uso.
+- **82.** Un mensaje de error no ofrece un contacto que no tenemos: sin sesión no sabemos de qué
+  courier es, así que se nombra a quién buscar, no un teléfono que no existe.
+- **83.** Cuando una autenticación falla por identidad, **se muestra con qué identidad se intentó y
+  se fuerza el selector del proveedor externo**. Sin eso el siguiente intento repite el error solo.
+  Es el mismo problema que la segunda cuenta de Mercado Libre en el portal del seller — con la
+  diferencia de que ahí **ML no deja forzar el selector** y acá Google sí.
+- **84.** La app del conductor lleva marca Rutax, y es la excepción declarada a la regla 42: la marca
+  es del courier cuando la ve su cliente, y es nuestra cuando la superficie es una herramienta
+  interna.
+
+**Dos decisiones abiertas, y las dos van ANTES de construir:**
+
+1. **El conductor que no tiene ningún correo.** Pasa. Hoy el alta lo exige y todo el flujo cuelga de
+   él. La salida —que el coordinador le cree uno, o un identificador que el courier controle—
+   **cambia el formulario de alta**, así que no se puede dejar para después.
+2. **El cambio de teléfono.** El flujo funciona solo (entra con su misma cuenta en el aparato nuevo);
+   falta decidir si la sesión anterior **se cierra sola** —el tablero lo recomienda: un teléfono
+   perdido con la app abierta ve direcciones de clientes— y si el coordinador se entera.
+
+**No se diseñó, a propósito:** Apple ID (entra como tercer botón en la misma pantalla si el piloto
+muestra conductores con iPhone, sin rediseñarla), biometría (el teléfono ya tiene la del sistema) y
+registro autónomo (a esta app solo se entra si el courier te dio de alta; un conductor
+autoregistrado es un conductor sin tarifa y sin relación laboral declarada).
+
+⚠️ **La regla de cierre pesa más acá que en el resto del libro:** la app **no se ha visto nunca en
+pantalla** y ver estas tres exige un build de EAS. No se cierran con `tsc` y pruebas.
 
 ## B6 · Backstage · 16 pantallas
 

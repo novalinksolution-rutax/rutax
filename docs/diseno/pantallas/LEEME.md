@@ -4,7 +4,8 @@ Son la **especificación visual** del rediseño: layout, proporción, disposici�
 por qué cada decisión es como es. Los `.md` de la carpeta de arriba dan las reglas y el
 contrato de cada componente; **estos dan la pantalla**.
 
-**Están los 31.** Se terminaron de extraer el 23-08-2026. Ya no hay que traer nada de Claude
+**Están los 32.** Los 31 del 23-08-2026, más `B5b Entrada del conductor`, traído el 24-08.
+Ya no hay que traer nada de Claude
 Design para trabajar: la referencia visual completa está acá, versionada.
 
 ## Por dónde entrar
@@ -29,7 +30,7 @@ solas:
 |---|---|
 | **Fundamentos** | `Marca` · `Fundamentos` · `Paleta` · `Tipografia` · `Estados` · `Movimiento` · `Objetos y Voz` · `Mensajes` · `Componentes` · `Subsistemas` |
 | **Arquetipos** (fijan el patrón para las demás) | `P1 Pedidos` · `P2 Asignar` · `P3 Detalle` · `P4 Emitir factura` · `P5 Registrar entrega` · `P6 Conciliacion` · `P7 Conectar cuentas` |
-| **Bloques** (las pantallas, una a una) | `B1a` `B1b` `B1c` · `B2a` `B2b` · `B3a` `B3b` · `B4` · `B5` · `B6` · `B7` `B7b` · `B8` |
+| **Bloques** (las pantallas, una a una) | `B1a` `B1b` `B1c` · `B2a` `B2b` · `B3a` `B3b` · `B4` · `B5` `B5b` · `B6` · `B7` `B7b` · `B8` |
 | **Sitio** | `Sitio comercial` |
 | **Insumos** | `tokens.css` (los tokens tal como salieron del diseño) · `support.js` (el runtime que necesitan para renderizar) |
 

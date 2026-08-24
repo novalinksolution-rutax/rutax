@@ -1,8 +1,8 @@
-# Índice de los 31 tableros
+# Índice de los 32 tableros
 
 Generado desde los propios archivos de `docs/diseno/pantallas/` — no se escribe a mano.
 Da, por tablero, su título, su bajada y las secciones que contiene. Sirve para saber
-**qué tablero abrir** sin cargar 1,9 MB de HTML al contexto.
+**qué tablero abrir** sin cargar 2 MB de HTML al contexto.
 
 ## B1a · Torre de control y Preparación del día
 
@@ -111,6 +111,19 @@ Da, por tablero, su título, su bajada y las secciones que contiene. Sirve para 
 - PERMISOS · NOTIFICACIONES · DISPONIBILIDAD · SIN CONFIRMAR
 - LAS TRES QUE FALTABAN · PASO 2 · PARADA DE RETIRO · HISTÓRICO
 - FICHA DE CIERRE · BLOQUE 5 · APP DEL CONDUCTOR
+
+## B5b · La entrada del conductor
+
+`Rutax B5b Entrada del conductor.dc.html` · 40 KB
+
+> La puerta de la app nativa. Google primero, correo con código de respaldo. Sin contraseña.
+
+- LAS CUATRO DECISIONES, ANTES DE LAS PANTALLAS
+- LOS DOS CAMINOS · TEMA SOL · 16:00, PRIMERA VEZ
+- EL CASO NORMAL QUE PARECE UN ERROR · LA CUENTA DE GOOGLE EQUIVOCADA
+- EL MOVIMIENTO DE LA ENTRADA · 1,4 s · Y POR QUÉ NO ES UNA QUINTA FIRMA
+- LOS OTROS CINCO ESTADOS · TEMA NOCHE
+- FICHA · B5b · LA ENTRADA DEL CONDUCTOR
 
 ## B6 · Backstage de Rutax
 
