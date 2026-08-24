@@ -32,6 +32,7 @@ import {
 } from "@/modules/identidad/capacidades";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
+import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { PanelTrazabilidadFinanciera } from "@/components/dinero/panel-trazabilidad-financiera";
 import {
@@ -455,6 +456,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             pedido={pedido}
             asignacion={asignacion}
             conductorNombre={conductorNombre}
+            sellerNombre={sellerNombre}
             puedeAsignar={puedeAsignar}
             puedeIncidencias={puedeIncidencias}
             puedeAjustar={puedeAjustar}
@@ -727,6 +729,7 @@ function AccionesPedido({
   pedido,
   asignacion,
   conductorNombre,
+  sellerNombre,
   puedeAsignar,
   puedeIncidencias,
   puedeAjustar,
@@ -739,6 +742,8 @@ function AccionesPedido({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   asignacion: any;
   conductorNombre: string | null;
+  /** Para la consecuencia de cancelar: a quién deja de cobrársele. */
+  sellerNombre: string | null;
   puedeAsignar: boolean;
   puedeIncidencias: boolean;
   puedeAjustar: boolean;
@@ -821,7 +826,19 @@ function AccionesPedido({
           <BotonDescargarEtiqueta pedidoId={pedido.id} esSameDay={pedido.tipoPedido === "same_day"} />
         )}
 
-        {puedeCancelar && <DialogCancelarPedido pedidoId={pedido.id} />}
+        {puedeCancelar && (
+          <DialogCancelarPedido
+            pedidoId={pedido.id}
+            codigoVisible={pedido.codigoInterno ?? pedido.mlShipmentId ?? pedido.id.slice(0, 8)}
+            sellerNombre={sellerNombre}
+            conductorNombre={conductorNombre}
+            // ⚠️ En Flex el seguimiento del comprador lo gobierna Mercado Libre y
+            // nuestra página ni responde: prometer que «va a decir que se
+            // canceló» sería falso justo en la fuente que hoy es casi toda la
+            // operación.
+            seguimientoEsDeRutax={!podLoGobiernaLaFuente(pedido.fuente)}
+          />
+        )}
       </div>
     </section>
   );

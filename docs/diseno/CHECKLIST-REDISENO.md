@@ -317,7 +317,8 @@ bloques 4–8, cuando cada pantalla se toque.
       Ahora es el `Retorno` del sistema con `destinoRetorno`. **Verificado en el navegador las dos
       mitades:** con `?volver=/operaciones?estado=asignado` conserva el filtro, y con
       `?volver=//sitio-malo.cl/phishing` cae a `/operaciones`.
-      *Falta:* `conductores/[id]`,
+      ✅ **Y `conductores/[id]` ya lo tenía** (comprobado el 24-08; el checklist lo daba por
+      pendiente). *Falta:*
       que aún no cuelga el retorno desde su listado. Y los 31 `<h1>` propios de `(tenant)` siguen
       sin encabezado compartido.
 
@@ -392,7 +393,13 @@ bloques 4–8, cuando cada pantalla se toque.
       🐞 **`cancelado` no se contaba**: `contarPedidosPorGrupo` hacía seis consultas y ninguna era la
       suya, así que no había cifra con la que declarar el total real. Ahora son siete.
       **Verificado en pantalla:** «12 en los grupos de arriba · 1 cancelados · 13 en total».
-      *(La mitad de `preparacion/asignar` sigue pendiente.)*
+      ✅ **Y la mitad de `preparacion/asignar`, hecha el 24-08.** Ahí eran tres chips escritos a mano
+      dentro de «Filtros» —Todos · Sin asignar · Asignados— **sin una sola cifra**. Y el estado no es
+      un filtro más: es **la partición principal** de esa pantalla — el coordinador entra a ver qué
+      falta por asignar, y esa es la primera pregunta que debería contestarse sin abrir nada.
+      Sube a la barra con sus conteos, y el contador del botón «Filtros» deja de sumarlo.
+      **Verificado en pantalla:** «Todos 6 · Sin asignar 0 · Asignados 6», y el cajón navega
+      a `?estado=asignado` y queda marcado.
 - [x] **`FranjaCambiosPendientes` en `operaciones` — CABLEADA (24-08), y ver el aviso de abajo.**
       La pantalla se refrescaba sola por Realtime, y en ésta eso no es una virtud: **la lista se
       reordena bajo el cursor sin avisar**. El coordinador leía la fila 12, entraba un pedido, y la
@@ -407,7 +414,10 @@ bloques 4–8, cuando cada pantalla se toque.
       ✅ **Verificada de punta a punta** tras arreglar la causa raíz: llega, se acumula, se
       incorpora al pedirlo y la franja desaparece. Al cablearla se destapó que **Realtime estaba roto
       para todo el proyecto** — ver el aviso al final del bloque.
-      *(La mitad de `preparacion/asignar` sigue pendiente.)*
+      ✅ **Y la mitad de `preparacion/asignar`, hecha el 24-08.** Ahí el patrón **ya existía** —
+      `AvisoNovedades`, con su propio `onSenal`— pero decía «Hay pedidos nuevos disponibles»:
+      cierto y **sin peso**, porque uno y treinta se leen igual. Con la cifra el coordinador puede
+      decidir: «llegaron 2» se pospone, «llegaron 30» no. Se retira el componente local.
 - [ ] Unificar la `BarraSeleccion` local de `preparacion/asignar/_componentes/` con la del sistema.
 
 ## ✅ Realtime estaba roto para TODO el proyecto — causa raíz y arreglo (24-08)
@@ -862,10 +872,34 @@ con consecuencia escrita, que es la regla 37; el motivo exige tocar `modules/pla
       error de este flujo no es «revocar sin querer», es **revocar la clave equivocada** de una
       lista donde todas se llaman parecido y solo se ven cuatro caracteres del prefijo.
 
-**Quedan 9 acciones**, y de esas **4 no son migraciones sino construcción**: suspender a alguien
+**Quedan 8 acciones**, y de esas **4 no son migraciones sino construcción**: suspender a alguien
 del equipo y suspender a un conductor no existen todavía, y dos viven en la app del conductor
-(bloque 6). Las de `pedidos.cancelar*` quedan fuera por ahora: viven en `operaciones`, que tiene
-trabajo en curso sin commitear.
+(bloque 6).
+
+✅ **`pedidos.cancelar` migrada el 24-08.** Estaba fuera por el trabajo en curso de `operaciones`,
+que ya aterrizó. Preguntaba «¿estás seguro?» con una descripción genérica —«El pedido pasará a estado
+Cancelado. No se puede revertir»— correcta y **inútil**: no decía a quién deja sin cobrar, de qué ruta
+lo saca, ni qué NO hace.
+
+Ahora es la ceremonia con el texto que `RUTAX-SISTEMA-DE-MENSAJES.md` ya tenía escrito
+(`pedidos.cancelar.conf`, peldaño 2 con motivo), armado con datos reales:
+
+> **Vas a cancelar el pedido RX-BARR-0008**
+> Sale de la ruta de Francisco Javier Castro López, no se le va a cobrar a TecnoHogar Chile SpA y el
+> seguimiento del comprador va a decir que se canceló. Si el bulto está en tu bodega, queda ahí:
+> esto no organiza la devolución.
+
+⚠️ **Cada mitad de la frase se calla si su dato no existe**, y una de esas verificaciones importa: en
+**Flex el seguimiento lo gobierna Mercado Libre** y nuestra página ni responde a ese pedido, así que
+prometer que «va a decir que se canceló» sería falso. Hoy `puedeCancelar` exige `same_day`, o sea la
+rama de Flex no se alcanza — se deja igual, porque la barrera de arriba puede moverse y esta frase no
+debería mentir el día que lo haga.
+
+Se conserva el **preflight de dos pasos**: si hay líneas de dinero que no se anulan solas, el segundo
+clic dice «Cancelar de todos modos» sobre las advertencias, embebidas y persistentes (regla 56).
+
+**Verificado en pantalla:** el texto con datos reales, el botón bloqueado hasta los 10 caracteres de
+motivo, y **Escape no cierra** — que es lo que la ceremonia exige de una acción irreversible.
 
 ### ⚠️ Un agujero del propio modal, encontrado al migrar el pago
 

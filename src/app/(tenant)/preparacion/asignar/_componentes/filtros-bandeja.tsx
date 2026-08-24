@@ -96,7 +96,7 @@ export function FiltrosBandeja({
   }
 
   const nFiltrosEnSheet =
-    (comunasSeleccionadas.length > 0 ? 1 : 0) + (sellerId ? 1 : 0) + (estado ? 1 : 0);
+    (comunasSeleccionadas.length > 0 ? 1 : 0) + (sellerId ? 1 : 0);
 
   const controlesFiltro = (
     <>
@@ -131,23 +131,9 @@ export function FiltrosBandeja({
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted-foreground">Estado</span>
-        <div className="flex items-center gap-1" role="group" aria-label="Filtrar por estado">
-          <ChipEstado activo={estado === null} onClick={() => navegar({ estado: null })}>
-            Todos
-          </ChipEstado>
-          <ChipEstado
-            activo={estado === "pendiente_asignacion"}
-            onClick={() => navegar({ estado: "pendiente_asignacion" })}
-          >
-            Sin asignar
-          </ChipEstado>
-          <ChipEstado activo={estado === "asignado"} onClick={() => navegar({ estado: "asignado" })}>
-            Asignados
-          </ChipEstado>
-        </div>
-      </div>
+      {/* El estado ya NO vive acá: subió a la barra de cajones, que es donde el
+          sistema lo pone y donde además lleva su cifra. Dejarlo en «Filtros»
+          escondía la partición principal de la pantalla tras un botón. */}
     </>
   );
 
@@ -243,28 +229,3 @@ export function FiltrosBandeja({
   );
 }
 
-function ChipEstado({
-  activo,
-  onClick,
-  children,
-}: {
-  activo: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={activo}
-      className={[
-        "inline-flex h-9 items-center rounded-md border px-3 text-xs font-semibold transition-colors",
-        activo
-          ? "border-primary bg-primary/10 text-primary"
-          : "border-border bg-transparent text-muted-foreground hover:border-primary/40 hover:text-foreground",
-      ].join(" ")}
-    >
-      {children}
-    </button>
-  );
-}

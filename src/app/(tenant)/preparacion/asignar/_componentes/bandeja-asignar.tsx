@@ -45,7 +45,8 @@ import { clasificarResultado, idsQueSiguenSeleccionados, type ResultadoAsignacio
 import { textoCabecera, textoExitoSinOmisiones, textoSubLineaVeniaDeOtro } from "../_lib/textos";
 import { FiltrosBandeja, type SellerOpcion } from "./filtros-bandeja";
 import type { ComunaOpcion } from "./selector-comuna";
-import { AvisoNovedades } from "./aviso-novedades";
+import { FranjaCambiosPendientes } from "@/components/ui/cambios-pendientes";
+import { BarraCajones } from "@/components/ui/barra-cajones";
 import { AvisoTruncamiento } from "./aviso-truncamiento";
 import { TablaPedidos } from "./tabla-pedidos";
 import { BarraSeleccion, type ConductorOpcion } from "./barra-seleccion";
@@ -102,7 +103,15 @@ export function BandejaAsignar({
   const [dialogoReasignacionAbierto, setDialogoReasignacionAbierto] = useState(false);
   const [resultado, setResultado] = useState<ResultadoAsignacionEnBloque | null>(null);
   const [fotosDelUltimoEnvio, setFotosDelUltimoEnvio] = useState<Map<string, PedidoSeleccionado>>(new Map());
-  const [hayNovedades, setHayNovedades] = useState(false);
+  /**
+   * Cuántos cambios llegaron sin incorporar.
+   *
+   * Antes era un booleano y el aviso decía «Hay pedidos nuevos disponibles» —
+   * cierto y **sin peso**: uno y treinta se leían igual, y el coordinador no
+   * podía decidir si valía la pena reordenar la lista en la que está trabajando.
+   * Con la cifra sí: «llegaron 2» se pospone, «llegaron 30» no.
+   */
+  const [cambiosPendientes, setCambiosPendientes] = useState(0);
   const [idsCompletosDelFiltro, setIdsCompletosDelFiltro] = useState<string[] | null>(null);
   const [cargandoSeleccionCompleta, setCargandoSeleccionCompleta] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -120,7 +129,7 @@ export function BandejaAsignar({
   const [claveUrlPrevia, setClaveUrlPrevia] = useState(claveUrl);
   if (claveUrl !== claveUrlPrevia) {
     setClaveUrlPrevia(claveUrl);
-    setHayNovedades(false);
+    setCambiosPendientes(0);
     setIdsCompletosDelFiltro(null);
   }
 
@@ -292,9 +301,40 @@ export function BandejaAsignar({
             { schema: "operacion", tabla: "bultos_retiro" },
             { schema: "operacion", tabla: "pedidos" },
           ]}
-          onSenal={() => setHayNovedades(true)}
+          onSenal={() => setCambiosPendientes((n) => n + 1)}
         />
       </div>
+
+      {/* La barra de cajones del sistema. Antes eran tres chips escritos a mano
+          dentro de «Filtros» —Todos · Sin asignar · Asignados— **sin una sola
+          cifra**, y el estado no es un filtro más: es la partición principal de
+          esta pantalla. El coordinador entra a ver qué falta por asignar, y esa
+          es la primera pregunta que la pantalla debería contestar sin que él
+          abra nada.
+          Acá no hay excluido ni transversal: los dos cajones suman el total. */}
+      {totalRetiradosHoy > 0 && (
+        <BarraCajones
+          cajones={[
+            { clave: "pendiente_asignacion", etiqueta: "Sin asignar", conteo: totalSinAsignar },
+            {
+              clave: "asignado",
+              etiqueta: "Asignados",
+              conteo: Math.max(0, totalRetiradosHoy - totalSinAsignar),
+            },
+          ]}
+          activo={estado}
+          total={totalRetiradosHoy}
+          onSeleccionar={(clave) => {
+            const params = new URLSearchParams(searchParams.toString());
+            if (clave) params.set("estado", clave);
+            else params.delete("estado");
+            // Cambiar de cajón vuelve a la primera página: quedarse en la 3 de
+            // un conjunto que ya no existe deja la tabla vacía sin explicación.
+            params.delete("pagina");
+            router.push(`${pathname}?${params.toString()}`);
+          }}
+        />
+      )}
 
       {totalRetiradosHoy === 0 ? (
         <EmptyState
@@ -320,7 +360,13 @@ export function BandejaAsignar({
             hayFiltros={hayFiltros}
           />
 
-          {hayNovedades && <AvisoNovedades onActualizar={() => router.refresh()} />}
+          <FranjaCambiosPendientes
+            cantidad={cambiosPendientes}
+            onIncorporar={() => {
+              setCambiosPendientes(0);
+              router.refresh();
+            }}
+          />
 
           {pedidos.length === 0 ? (
             <EmptyState
