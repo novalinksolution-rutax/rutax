@@ -26,7 +26,7 @@ import { ChevronRight, MapPinOff } from "lucide-react";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { etiquetaFuenteCorta, etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { formatearFechaCivilCorta } from "@/lib/formato-cl";
 import {
   BADGE_COBERTURA_ESTADO,
@@ -179,8 +179,12 @@ export function FilaPedido({
         {pedido.fechaCompromiso ? formatearFechaCivilCorta(pedido.fechaCompromiso) : "Sin fecha"}
       </TableCell>
       <TableCell className="hidden px-4 xl:table-cell">
-        <span className="font-mono text-[11px] tracking-[0.06em] text-fg-muted uppercase">
-          {etiquetaFuenteCorta(pedido.fuente)}
+        {/* ⚠️ Texto normal, **no monoespaciada en versalitas**: ese tratamiento
+            era para un código de tres letras (`SD`), y aplicado a «Mercado
+            Libre Flex» lo vuelve un cartel que compite con el destinatario. Un
+            nombre propio se escribe como un nombre propio. */}
+        <span className="text-xs text-fg-muted">
+          {etiquetaFuentePedido(pedido.fuente)}
         </span>
         {/* La cuenta de ML solo si el seller tiene más de una conectada: con una
             sola, repetir su nombre en cada fila no informa de nada. */}

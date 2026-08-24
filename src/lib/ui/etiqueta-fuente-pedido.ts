@@ -21,7 +21,12 @@
 import type { FuentePedido, TipoPedido } from "@/modules/operacion/tipos";
 
 const TEXTO_FUENTE: Record<FuentePedido, string> = {
-  ml_flex: "Flex",
+  // ⚠️ **«Mercado Libre Flex», no «Flex» a secas.** Esta etiqueta contesta *de
+  // dónde vino el pedido*, y «Flex» solo nombra el régimen — quien recién entra
+  // a la pantalla no tiene por qué saber que Flex es de Mercado Libre. El
+  // «Flex» final se conserva porque sí carga información operativa: es la
+  // fuente cuyo POD lo gobierna la app de Mercado Envíos.
+  ml_flex: "Mercado Libre Flex",
   rutax_manual: "Same-day",
   shopify: "Shopify",
 };
@@ -52,26 +57,16 @@ export function etiquetaTipoEntrega(tipo: string | null | undefined): string {
   return TEXTO_TIPO_ENTREGA[tipo as TipoPedido] ?? tipo;
 }
 
-/** Forma corta para la columna «Origen» de una tabla densa. */
-const TEXTO_FUENTE_CORTA: Record<string, string> = {
-  ml_flex: "FLEX",
-  rutax_manual: "SD",
-  shopify: "SHOP",
-};
-
 /**
- * `FLEX` · `SD` · `SHOP` — la procedencia en una columna de tabla.
+ * ⚠️ **`etiquetaFuenteCorta` se retiró (24-08-2026, decisión del usuario).**
  *
- * ⚠️ **Existe porque «Mercado Libre Flex» no cabe en una columna densa**, no
- * porque el nombre largo esté mal: en el chip, en el filtro y en el detalle sigue
- * mandando `etiquetaFuentePedido`. Acá el ancho es el que manda, y tres letras se
- * barren de un vistazo por una lista de cincuenta filas.
+ * Devolvía `FLEX` · `SD` · `SHOP` para que la procedencia cupiera en una columna
+ * densa. El argumento del ancho era cierto y el del significado pesa más: **`SD`
+ * no le dice nada a nadie** que no lleve meses en el producto, y la columna
+ * existe justo para que la procedencia se lea sin pensar. Con tres fuentes
+ * conviviendo —y Falabella en camino— el problema solo iba a crecer.
  *
- * Ante un valor desconocido devuelve el crudo, igual que su hermana: si mañana
- * entra una fuente y alguien olvida esta tabla, la pantalla lo delata en vez de
- * mostrar un guion.
+ * Hay un solo nombre visible por fuente, y es `etiquetaFuentePedido`. Si en
+ * alguna superficie no cabe, se resuelve con el ancho de esa superficie, no
+ * inventando un segundo vocabulario que el courier tenga que aprender.
  */
-export function etiquetaFuenteCorta(fuente: string | null | undefined): string {
-  if (!fuente) return "—";
-  return TEXTO_FUENTE_CORTA[fuente] ?? fuente.toUpperCase();
-}

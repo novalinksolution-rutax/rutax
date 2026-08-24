@@ -68,7 +68,7 @@ import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { cn } from "@/lib/utils";
 import { formatearClp, formatearHora } from "@/lib/formato-cl";
-import { etiquetaFuenteCorta } from "@/lib/ui/etiqueta-fuente-pedido";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { BADGE_ESTADO_PEDIDO, traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
 import type { VistaPreviaPedido } from "@/modules/operacion/vista-previa";
 
@@ -311,8 +311,8 @@ function PanelContenido({
               eje="pedido"
               valor={datos.estado}
             />
-            <span className="rx-num font-mono text-[11px] tracking-[0.06em] text-fg-muted uppercase">
-              {etiquetaFuenteCorta(datos.fuente)}
+            <span className="text-xs text-fg-muted">
+              {etiquetaFuentePedido(datos.fuente)}
             </span>
             {datos.fechaCompromisoHora && (
               <span className="rx-num font-mono text-[11px] text-fg-muted">

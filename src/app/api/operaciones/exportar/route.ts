@@ -54,7 +54,7 @@ import {
   sanearGrupoEstadoPedido,
 } from "@/app/(tenant)/operaciones/sanear-filtros";
 import { formatearFechaCivilCorta } from "@/lib/formato-cl";
-import { etiquetaFuenteCorta } from "@/lib/ui/etiqueta-fuente-pedido";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
 
 /** Tope duro. Un filtro mal puesto falla; no descarga el tenant entero. */
@@ -203,7 +203,7 @@ function aCsv(
         f.destinatarioComuna ?? "",
         sellers[f.sellerId] ?? "",
         f.fechaCompromiso ? formatearFechaCivilCorta(f.fechaCompromiso) : "",
-        etiquetaFuenteCorta(f.fuente),
+        etiquetaFuentePedido(f.fuente),
         f.driverIdAsignado ? (conductores[f.driverIdAsignado] ?? "") : "",
         f.motivoCancelacion ?? "",
       ]

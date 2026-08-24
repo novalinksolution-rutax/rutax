@@ -39,7 +39,7 @@ import { ChevronRight } from "lucide-react";
 
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { cn } from "@/lib/utils";
-import { etiquetaFuenteCorta } from "@/lib/ui/etiqueta-fuente-pedido";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { BADGE_ESTADO_PEDIDO, traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
 import type { Pedido, TipoIncidencia } from "@/modules/operacion/tipos";
 
@@ -96,8 +96,10 @@ export function FichaPedidoMovil({
             eje="pedido"
             valor={pedido.estado}
           />
-          <span className="rx-num font-mono text-[11px] tracking-[0.06em] text-fg-muted uppercase">
-            {etiquetaFuenteCorta(pedido.fuente)}
+          {/* Nombre propio, no código: texto normal y `truncate`, porque a
+              390 px «Mercado Libre Flex» compite con el distintivo de estado. */}
+          <span className="truncate text-xs text-fg-muted">
+            {etiquetaFuentePedido(pedido.fuente)}
           </span>
           <MarcaFilaActualizada id={pedido.id} />
         </div>
