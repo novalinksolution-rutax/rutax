@@ -54,6 +54,52 @@ Dinero, no «Marco y navegación» del catálogo.
 
 ---
 
+## ⚠️ Auditoría del 24-08-2026 — el checklist iba por detrás del código, otra vez
+
+Se verificó **ítem por ítem contra el código**, no contra lo que este archivo declaraba. De los
+pendientes de los bloques 4, 7 y 8, **once ya estaban hechos**. La cuenta real quedó así:
+
+**Bloque 4 · Marco** — 3 de 5 pendientes eran falsos:
+- ~~`configuracion/page.tsx` (hoy 404)~~ → **existe**, con siete secciones colgando.
+- ~~#17: dos pantallas de «sin permiso» mandan a una ruta inexistente~~ → los cuatro destinos
+  (`/`, `/dashboard`, `/onboarding`, `/preparacion`) **existen**.
+- **Sigue vivo:** solo hay `error.tsx` en la raíz. Un error en cualquier pantalla **se lleva el
+  `AppShell` entero** y el usuario pierde el sidebar justo cuando algo ya salió mal. Faltan
+  boundaries por segmento.
+
+**Bloque 7 · Sub-sistemas** — 3 de los declarados eran falsos:
+- ~~`polígono de comuna` con rampa de carga~~ → **hecha**, con pruebas de los cuatro pasos en los
+  cuatro temas, incluida la contraprueba de que la rampa sigue distinguiéndose atenuada.
+- ~~`punto de entrega` con agrupación~~ → **hecha**, con el anillo del agrupado y su caso de
+  «no existe cuando sí hay glifos».
+- ~~«Los rebotes son invisibles»~~ → **`/equipo` sí muestra el estado de entrega** desde el 16-08,
+  con prueba de regresión. Queda por revisar si otras superficies lo muestran.
+- **Sigue vivo:** los glifos del basemap. `NEXT_PUBLIC_MAPA_GLIFOS_URL` está en `.env.example` y en
+  `.env.local`, y el código ya la lee; falta confirmar que los cuatro PBF estén publicados al bucket
+  y que la variable esté puesta en producción.
+
+**Bloque 8 · Sin sesión y sitio** — la lista de «6 pantallas» estaba mal en las dos direcciones:
+- **Ya adoptaron `PantallaSinSesion` (5):** `/login`, `/registro`, `/recuperar-contrasena`,
+  `/invitacion/[token]`, `/tracking/[token]`.
+- **Pendientes de verdad (8), y son más de las 6 declaradas:** `/registro/revisa-tu-correo`,
+  `/activar-cuenta`, `/restablecer-contrasena`, `/offline`, `/portal/login` *(6 líneas: solo
+  redirige)*, `/admin/login` *(el formulario lo renderiza el layout, no la página)*, y las dos
+  legales `(legal)/terminos` y `(legal)/privacidad`, que tienen **marco propio** de 160 y 237 líneas.
+- **El sitio comercial sí está como decía:** existen `/` y `(marketing)/agendar`; las cuatro páginas
+  —`integraciones/mercado-libre-flex`, `integraciones/shopify`, `cobros-y-liquidaciones`, `precios`—
+  **no existen**.
+
+### La regla que sale de acá, y ya es la quinta vez
+
+**Un ítem del checklist no es evidencia; es una hipótesis.** Antes de construir contra esta lista,
+comprobar contra el código — un `ls`, un `grep` del componente que debería estar adoptado. Las tres
+veces que se saltó ese paso se reconstruyó algo que ya existía o se dio por hecho algo que no.
+
+Y el corolario para escribir ítems nuevos: **un pendiente debe decir cómo se comprueba**. «Falta la
+adopción» no se verifica; «no importa `PantallaSinSesion`» sí, con un comando.
+
+---
+
 ## Tablero de estado
 
 | # | Bloque de construcción | Estado de la capa | Lo que falta | Bloqueado | Tablero que traer |
