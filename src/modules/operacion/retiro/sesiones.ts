@@ -22,6 +22,7 @@ import { cerrarSesionRetiroRpc, type ResultadoCerrarSesionRetiro } from "./rpc";
 import { inngest } from "@/lib/inngest/cliente";
 import type { EventoVisitaRetiroCerrada } from "@/lib/inngest/eventos";
 import type { SesionRetiroResumen } from "./bodegas";
+import { listarEsperadosDeSeller, type BultoEsperado } from "./expectativa";
 
 interface FilaSesionRetiro {
   id: string;
@@ -95,6 +96,22 @@ export interface BultoRetiroResumen {
 export interface SesionRetiroDetalle extends SesionRetiroResumen {
   bodega: { id: string; nombre: string; comuna: string };
   bultos: BultoRetiroResumen[];
+  /**
+   * Los bultos que la plataforma ya tiene esperando retiro para este seller hoy.
+   *
+   * Es el **denominador** de la visita: sin él la app solo sabe contar lo que
+   * escaneó, y «38» no dice si faltan cuatro o si ya está. Incluye lo que YA se
+   * escaneó — es una conciliación, no una cola de trabajo.
+   *
+   * Va como LISTA y no como número porque al cerrar con faltantes hay que
+   * nombrarlos: decir «4 sin escanear» sin decir cuáles manda al conductor a
+   * recorrer la bodega de nuevo.
+   *
+   * `null` = no se pudo leer. Es distinto de una lista vacía, que significa
+   * «este seller no tiene nada hoy»: con la lista vacía el conductor se va, con
+   * `null` la app le dice que escanee igual y se cuadra después.
+   */
+  esperados: BultoEsperado[] | null;
 }
 
 interface FilaBultoDetalle {
@@ -163,7 +180,15 @@ export async function obtenerSesionRetiro(
     };
   });
 
-  return { ...filaASesion(sesion), bodega, bultos };
+  // El denominador NO tumba la pantalla si falla: el retiro es lo que respalda
+  // el pago por visita y no se bloquea por una lectura de contexto.
+  const esperados = await listarEsperadosDeSeller(cliente, {
+    tenantId: entrada.tenantId,
+    sellerId: sesion.seller_id,
+    fecha: sesion.fecha_operacion,
+  }).catch(() => null);
+
+  return { ...filaASesion(sesion), bodega, bultos, esperados };
 }
 
 async function obtenerNombreYComunaBodega(

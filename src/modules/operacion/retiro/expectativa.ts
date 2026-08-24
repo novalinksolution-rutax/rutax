@@ -105,6 +105,61 @@ export async function obtenerExpectativaDelDia(
 }
 
 /**
+ * Lo esperado de UN seller, para el encabezado de su visita de retiro.
+ * -----------------------------------------------------------------------------
+ * La app del conductor solo sabía contar lo escaneado, y un conteo sin
+ * denominador no es una conciliación: es un contador. «38» no dice nada; «38 de
+ * 42» dice que faltan 4 y que hay que buscarlos antes de cerrar el acta.
+ *
+ * ⚠️ **Los criterios son EXACTAMENTE los de `obtenerExpectativaDelDia`** —misma
+ * fecha, mismo `situacion_retiro <> 'no_procesado'`— y por eso está en este
+ * archivo y no en el de sesiones. Si el panel del coordinador y la app del
+ * conductor contaran distinto, los dos verían un número y ninguno sabría cuál
+ * creer, justo cuando el conductor está decidiendo si se va o sigue buscando.
+ *
+ * No se usa `obtenerExpectativaDelDia` entera porque esa lee los pedidos de
+ * TODOS los sellers del día y además resuelve tarifas: para una cifra de un
+ * encabezado, es un barrido completo por cada apertura de pantalla.
+ */
+export interface BultoEsperado {
+  pedidoId: string;
+  /** El mismo código que produce un escaneo, para poder cruzarlos. */
+  codigoVisible: string;
+}
+
+export async function listarEsperadosDeSeller(
+  cliente: SupabaseClient,
+  entrada: { tenantId: string; sellerId: string; fecha: string },
+): Promise<BultoEsperado[]> {
+  // Se devuelve la LISTA y no un conteo porque al cerrar con faltantes hay que
+  // **nombrarlos**: «vas a cerrar con 4 sin escanear» sin decir cuáles obliga al
+  // conductor a recorrer la bodega entera de nuevo. El conteo sale del largo.
+  const filas = await leerTodasLasFilas<{
+    id: string;
+    ml_shipment_id: string | null;
+    codigo_interno: string | null;
+  }>("bultos esperados del seller", (desde, hasta) =>
+    cliente
+      .schema("operacion")
+      .from("pedidos")
+      .select("id, ml_shipment_id, codigo_interno")
+      .eq("tenant_id", entrada.tenantId)
+      .eq("seller_id", entrada.sellerId)
+      .eq("fecha_compromiso", entrada.fecha)
+      .neq("situacion_retiro", "no_procesado")
+      .range(desde, hasta),
+  );
+
+  // El mismo orden de preferencia que `construirDtoPedidoRetiro`: si acá saliera
+  // distinto, el cruce contra lo escaneado fallaría y todo bulto figuraría a la
+  // vez como escaneado y como faltante.
+  return filas.map((f) => ({
+    pedidoId: f.id,
+    codigoVisible: f.ml_shipment_id ?? f.codigo_interno ?? "",
+  }));
+}
+
+/**
  * Cuáles de los sellers con carga hoy no tienen tarifa vigente.
  *
  * Se consulta **solo por los que tienen carga**: preguntar por toda la cartera

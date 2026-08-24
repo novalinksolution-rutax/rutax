@@ -464,12 +464,16 @@ export default async function PaginaDetalleManifiesto({ params, searchParams }: 
             </section>
           ) : null}
 
+          {/* Acá había un enlace «Ver como lo ve el conductor», que abría la
+              PWA. La PWA se retiró el 24-08-2026 y el conductor trabaja en la
+              app nativa, que el coordinador no puede abrir desde su escritorio.
+              Se dice lo que SÍ ocurre en vez de ofrecer una vista que ya no
+              existe: un enlace roto en una pantalla de operación es peor que no
+              tener enlace. */}
           {esConfirmado ? (
             <p className="border border-line bg-bg-sunken px-3 py-2.5 text-sm text-fg-muted">
-              Manifiesto confirmado.{" "}
-              <Link href="/conductor/manifiesto" className="font-medium text-fg hover:underline">
-                Ver como lo ve el conductor
-              </Link>
+              Manifiesto confirmado. Sus paradas ya le aparecen al conductor en la app, en el
+              orden de la ruta.
             </p>
           ) : null}
 

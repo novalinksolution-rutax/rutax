@@ -51,9 +51,11 @@ export default async function LayoutTenant({ children }: { children: React.React
     redirect("/login");
   }
 
-  // Conductores → su PWA, no el backoffice.
+  // Conductores → la página que los manda a la app nativa. La PWA se retiró
+  // el 24-08-2026 y `/conductor/manifiesto` ya no existe: sin este cambio, un
+  // conductor que abra el backoffice aterriza en un 404.
   if (sesion.usuario.tipoUsuario === "conductor") {
-    redirect("/conductor/manifiesto");
+    redirect("/conductor");
   }
   // Sellers → su portal.
   if (sesion.usuario.tipoUsuario === "seller") {

@@ -854,8 +854,98 @@ encuentra. Queda como deuda para cuando se verifique la URL contra una cuenta re
 
 ## B5 · App del conductor · fuera de este repo
 
-Las 12 pantallas viven en `Desktop/rutax-conductor`. Las 5 rutas de `/conductor` de este repo son
-la PWA, marcada para retiro. **Ningún tablero cubre la PWA a propósito.**
+Las 12 pantallas viven en `Desktop/rutax-conductor`. Las 5 rutas de `/conductor` de este repo eran
+la PWA. **Ningún tablero cubre la PWA a propósito.**
+
+### Hecho el 24-08-2026 — el cimiento y el retiro en bodega
+
+Decisiones del usuario: **construir los cinco NUEVO** (#22 a #26, «todo lo que está pendiente») ·
+cortar el bloque por **el cimiento y el retiro en bodega** primero · y **retirar la PWA ya,
+asumiendo la pérdida**.
+
+#### El cimiento · repo `rutax-conductor`
+
+Lo primero del bloque y lo no negociable: **los dos sistemas de color eran dos productos**. El repo
+tenía el suyo, «Light Pro» — `primary` navy `#1E3A5F`, `accent` azul `#2563EB`, radios de 8 a 20 px
+y tres niveles de sombra— y **no compartía un solo valor** con el sistema de Rutax (teal, radio 3,
+cero sombras).
+
+- `src/tema/paletas.ts` — las **tres paletas** transcritas de `rx-tokens.css`: `sol` (blanco y negro
+  puros, 21:1), `dia` (el oscuro base del producto, 16,7:1) y `noche` (blanco tope `#B9C6C4`, que
+  baja el pico de luminancia un 38 %). Están **copiadas a mano y no se pueden importar**: los repos
+  están separados a propósito. La red es `paletas.test.ts`, que comprueba las *propiedades* que el
+  sistema declara —contrastes, «Noche tiene dos niveles de texto y no tres», «Sol no tiene
+  grises»— y no que los strings existan.
+- `src/tema/resolucion.ts` (+ 22 pruebas) — manual > sensor con histéresis > hora, con el mínimo de
+  permanencia de 90 s. **El caso que obliga a que sean tres temas está fijado como prueba**: el
+  subterráneo a las 17:00 cae en *Día*, no en *Noche*. El atardecer de Santiago **se calcula**
+  (NOAA): entre junio (17:44) y diciembre (20:53) se mueve más de tres horas, y una constante
+  dejaría la app en Noche a las 18:00 de un 21-dic con sol pleno.
+- `src/senales-vocabulario.ts` + `senales.ts` (+ 8 pruebas) — **las cuatro señales, que no existían
+  ninguna**: cero `Haptics`, cero audio en todo el repo. Se distinguen por **cantidad y duración de
+  pulsos**, no por tono: un tono distinto no se distingue con guantes ni con un montacargas al lado.
+  El tono se **sintetiza** como WAV en `data:` en vez de empaquetar cuatro archivos. Va por el
+  **canal de alerta**, no el de multimedia — si fuera multimedia bajaría con la radio del conductor
+  y desaparecería justo en la bodega ruidosa.
+- `src/tema/escala.ts` (+ 7 pruebas) — cuatro pasos (100/115/130/150 %). **Nunca reduce** y **los
+  objetivos táctiles nunca bajan de 56 px**: si el botón creciera con la letra, en 100 % quedaría
+  más chico que el mínimo.
+- `src/theme.ts` pasa a ser **puente**, apuntado al tema Día, porque sus nombres están en ~460
+  lugares de 22 pantallas. Es el patrón de convivencia del repo web. ⚠️ **El puente no cambia de
+  tema**: una pantalla que lea `colors` como constante se queda en Día. Migrar una es cambiar dos
+  líneas (`useColores` + `useEstilosCompat`), y lo que falta se lee de una.
+
+#### El retiro en bodega
+
+- **La mitad que faltaba**, y era la que convierte el escaneo en una conciliación: la app solo sabía
+  contar lo escaneado. `listarEsperadosDeSeller` (repo web, + 6 pruebas) devuelve la **lista** —no un
+  conteo— porque al cerrar con faltantes hay que **nombrarlos**. Sus criterios son los mismos que los
+  del panel del coordinador, a propósito y con prueba.
+- `retiro-conciliacion.ts` (+ 11 pruebas). 🐞 **«Te quedan» sale de los faltantes, NO de una resta**:
+  con una resta, escanear un bulto sorpresa bajaría el contador sin que ningún esperado apareciera, y
+  llegaría a cero con bultos todavía en el piso de la bodega.
+- Las **tres cifras** arriba (`Escaneados · Pendientes · Te quedan`), el **acuse de 34 px** que se lee
+  de reojo, y el **registro** con el repetido marcado y la hora en que se había escaneado antes.
+  Reemplazan un contador de un número y un *feed* de cinco filas que obligaba a **leer** para saber
+  si el bulto entró — 130 veces por bodega.
+- La hoja de **cerrar con faltantes** los lista. Un `Alert` del sistema no puede, y sin la lista el
+  conductor sale a recorrer la bodega sin saber qué busca.
+- El botón dice **el número**, no «cerrar»: lo que se firma es «38 de 42».
+
+🐞 **Seis `<StatusBar style="light" />` locales** pisaban la barra del tema en la pantalla de retiro.
+Bajo Sol el fondo es blanco: reloj y batería quedaban en blanco sobre blanco.
+
+#### El retiro de la PWA · repo web
+
+Se fueron las 5 rutas de `/conductor` (~1.900 líneas) y `conductor-nav.tsx`. **Las 18 rutas de
+`/api/conductor/*` no se tocaron.** Quedan corregidos los cuatro sitios que apuntaban a la PWA: el
+redirect de `(tenant)/layout.tsx`, el enlace «Ver como lo ve el conductor» del detalle de manifiesto,
+`manifest.ts` (`start_url` a la raíz, y deja de llamarse «Rutax — Conductor») y `page.tsx`.
+
+⚠️ **DEUDA ABIERTA, asumida por decisión del usuario.** Dos de las cinco pantallas retiradas **no
+existen todavía en la app nativa**:
+
+1. **Mis liquidaciones** (brecha #19) — el conductor vuelve a preguntar por WhatsApp cuánto le toca.
+2. **Punto de término** — el consentimiento de tres pasos ya no se puede *iniciar* desde ninguna
+   parte. Va en la app nativa, dentro de este mismo bloque.
+
+**Lo que NO se retiró, y por qué:** el botón de **borrar** el punto de término. Revocar no es una
+funcionalidad, es una condición: la Ley 21.431 exige que el dato personal que alguien entregó se
+pueda retirar cuando quiera. Quitar la pantalla que lo *captura* es una decisión de producto; quitar
+la que lo *borra* deja sin salida a quien ya dijo que sí. `DELETE /api/conductor/punto-termino` ya
+existía; `/conductor` es su único acceso humano hasta que la app nativa tenga el suyo. Verificado en
+el navegador: borra y deja **dos entradas en bitácora, las dos con autor**.
+
+🐞 Encontrado en pantalla: «Hola .» — `nombreCompleto` sale de `user_metadata` del JWT y el conductor
+de demo no lo tiene ahí.
+
+#### Lo que queda del bloque 6
+
+Las 12 pantallas de la app siguen pendientes salvo el retiro: manifiesto del día, detalle de parada,
+mis liquidaciones, punto de término (3 pasos), traspaso con aceptación del receptor (#26 sigue
+unilateral), permisos con explicación previa, notificaciones push (#25), marcarme disponible,
+guardado sin confirmar, parada de retiro e histórico de retiros. **20 de las 22 pantallas del repo
+Expo siguen leyendo `colors` como constante**, así que no cambian de tema todavía.
 
 ## B6 · Backstage · 16 pantallas
 

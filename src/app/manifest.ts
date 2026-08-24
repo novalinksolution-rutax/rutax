@@ -1,16 +1,26 @@
 import type { MetadataRoute } from "next";
 
 /**
- * Manifest de la PWA (T-4). Next.js enlaza este manifiesto automáticamente
- * (`<link rel="manifest">`). Pensado para el conductor: arranca en su ruta del
- * día, pantalla completa, identidad navy de Rutax.
+ * Manifest de la aplicación web.
+ * =============================================================================
+ *
+ * Nació como el manifiesto de la **PWA del conductor** y arrancaba en
+ * `/conductor`, su ruta del día. Esa PWA se retiró el 24-08-2026: el conductor
+ * trabaja en la app nativa, y este manifiesto quedaría prometiendo una
+ * aplicación instalable que al abrirse dice «tu trabajo está en la app».
+ *
+ * Ahora describe **el producto web**, que es del courier: arranca en la raíz y
+ * cada tipo de usuario aterriza donde le toca. Se conserva instalable porque un
+ * coordinador con Rutax anclado en su escritorio es exactamente el uso que
+ * tiene, y porque sin manifiesto se pierden el ícono y el color de la barra.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Rutax — Conductor",
+    name: "Rutax",
     short_name: "Rutax",
-    description: "Tu ruta del día y tus liquidaciones.",
-    start_url: "/conductor",
+    description: "La operación y la trastienda de dinero de tu courier.",
+    // La raíz, no `/conductor`: `src/app/page.tsx` reparte por tipo de usuario.
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
