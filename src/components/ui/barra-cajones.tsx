@@ -132,7 +132,9 @@ export function BarraCajones({
       {/* La declaración de que la suma no cuadra, y por qué. Sin esto, alguien
           va a sumar los cajones, no le va a dar, y va a reportar un bug que no
           existe. */}
-      {noCuadra || transversal ? (
+      {/* La aclaración del transversal solo si tiene contenido: «sus 0 ya están
+          contados a la izquierda» es una explicación de nada. */}
+      {noCuadra || (transversal && transversal.conteo > 0) ? (
         <p className="font-mono text-[10.5px] leading-snug text-fg-subtle">
           {noCuadra ? (
             <span className="block">
@@ -141,10 +143,13 @@ export function BarraCajones({
               <span className="text-fg-muted">{total.toLocaleString("es-CL")} en total</span>
             </span>
           ) : null}
-          {transversal ? (
+          {transversal && transversal.conteo > 0 ? (
             <span className="block">
-              «{transversal.etiqueta}» cruza los estados: sus{" "}
-              {transversal.conteo.toLocaleString("es-CL")} ya están contados a la izquierda.
+              «{transversal.etiqueta}» cruza los estados:{" "}
+              {transversal.conteo === 1
+                ? "el suyo ya está contado"
+                : `sus ${transversal.conteo.toLocaleString("es-CL")} ya están contados`}{" "}
+              a la izquierda.
             </span>
           ) : null}
         </p>

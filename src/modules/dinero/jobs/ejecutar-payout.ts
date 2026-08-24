@@ -104,7 +104,14 @@ export const jobEjecutarPayout = inngest.createFunction(
       if (payoutExistente) {
         const estadoPayout = payoutExistente.estado as string;
         // Si ya está confirmado o en curso, no hacer nada más.
-        if (estadoPayout === 'confirmado' || estadoPayout === 'enviado' || estadoPayout === 'procesando') {
+        //
+        // ⚠️ Acá había un tercer valor, `'procesando'`, que NO EXISTE en el enum
+        // `estado_payout` (`pendiente · enviado · confirmado · rechazado ·
+        // fallido`). Como comparación era código muerto e inofensivo, pero el
+        // mismo valor fantasma se copió a la pantalla de liquidaciones dentro de
+        // un `.in()`, donde PostgREST rechaza la consulta entera: ahí sí rompió,
+        // y en silencio.
+        if (estadoPayout === 'confirmado' || estadoPayout === 'enviado') {
           logger.info(`Payout ${payoutExistente.id} ya está en estado '${estadoPayout}' — nada que hacer.`);
           return { yaCompletado: true as const, liquidacion: liq, payoutExistente };
         }

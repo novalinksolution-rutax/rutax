@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * Barra de filtros de liquidaciones — Client Component.
- * Homologa los selects nativos a shadcn Select y auto-navega al cambiar
- * (sin botón "Filtrar"), siguiendo el patrón de filtros-pedidos.tsx.
- * El filtrado sigue viviendo server-side (searchParams / GET navigation).
+ * El filtro de la pantalla de liquidaciones — hoy solo el conductor.
+ *
+ * El selector de estado se fue por la misma razón que en períodos: los cajones
+ * de la tabla ya eligen el estado y además cuentan. Dos controles para lo mismo,
+ * uno de ellos sin contador y capaz de quedar desincronizado del otro, no es una
+ * comodidad: es una fuente de confusión.
+ *
+ * El filtro viaja como `searchParams` (navegación GET): el filtrado sigue
+ * viviendo en el servidor.
  */
 
 import { useRouter, usePathname } from "next/navigation";
 import { useCallback } from "react";
-import { TEXTO_ESTADO_LIQUIDACION } from "@/lib/ui/traduccion-estados";
-import type { EstadoLiquidacion } from "@/modules/dinero/tipos";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,55 +23,49 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-/** Sentinela para "sin filtro": Radix Select no admite items con value="". */
+/** Centinela para «sin filtro»: Radix Select no admite items con value="". */
 const TODOS = "__todos__";
 
 interface Props {
   conductores: { id: string; nombre: string }[];
-  estados: EstadoLiquidacion[];
   filtroConductor: string;
-  filtroEstado: string;
   hayFiltroActivo: boolean;
 }
 
 export function FiltrosLiquidacionesForm({
   conductores,
-  estados,
   filtroConductor,
-  filtroEstado,
   hayFiltroActivo,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
   const actualizar = useCallback(
-    (campo: string, valor: string) => {
+    (valor: string) => {
       const params = new URLSearchParams();
-      if (campo !== "conductor" && filtroConductor) params.set("conductor", filtroConductor);
-      if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
-      if (valor) params.set(campo, valor);
+      if (valor) params.set("conductor", valor);
+      // Se suelta el cajón al cambiar de conductor: el conjunto es otro.
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
-    [router, pathname, filtroConductor, filtroEstado],
+    [router, pathname],
   );
 
   return (
     <div className="flex flex-wrap items-end gap-3">
-      {/* Conductor */}
       <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-conductor-l" className="text-xs font-medium text-muted-foreground">
+        <label htmlFor="filtro-conductor-liq" className="text-xs font-medium text-fg-muted">
           Conductor
         </label>
         <Select
           value={filtroConductor || TODOS}
-          onValueChange={(v) => actualizar("conductor", v === TODOS ? "" : v)}
+          onValueChange={(v) => actualizar(v === TODOS ? "" : v)}
         >
-          <SelectTrigger id="filtro-conductor-l" size="default" className="h-9 w-56">
-            <SelectValue placeholder="Todos" />
+          <SelectTrigger id="filtro-conductor-liq" size="default" className="h-9 w-56">
+            <SelectValue placeholder="Todos los conductores" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={TODOS}>Todos</SelectItem>
+            <SelectItem value={TODOS}>Todos los conductores</SelectItem>
             {conductores.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.nombre}
@@ -78,37 +75,13 @@ export function FiltrosLiquidacionesForm({
         </Select>
       </div>
 
-      {/* Estado */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-estado-l" className="text-xs font-medium text-muted-foreground">
-          Estado
-        </label>
-        <Select
-          value={filtroEstado || TODOS}
-          onValueChange={(v) => actualizar("estado", v === TODOS ? "" : v)}
-        >
-          <SelectTrigger id="filtro-estado-l" size="default" className="h-9 w-44">
-            <SelectValue placeholder="Todos" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={TODOS}>Todos</SelectItem>
-            {estados.map((e) => (
-              <SelectItem key={e} value={e}>
-                {TEXTO_ESTADO_LIQUIDACION[e]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Limpiar filtros — solo visible cuando hay filtros activos */}
       {hayFiltroActivo && (
         <Button
           type="button"
           variant="ghost"
           size="sm"
           onClick={() => router.push(pathname)}
-          className="h-9 text-muted-foreground"
+          className="h-9 text-fg-muted"
         >
           Limpiar filtros
         </Button>
