@@ -1,16 +1,31 @@
 "use client";
 
 /**
- * Panel "Ver selección" (`Sheet` derecha) — agrupado por comuna (§6.3).
- * Cada fila con `[x]` individual para deseleccionar sin volver a la tabla.
- * `Con {conductor}` en tono advertencia si ya está asignado — el riesgo se
- * ve ANTES del diálogo de reasignación. `Fuera del filtro actual` en tono
- * neutro: la otra mitad de hacer visible lo invisible.
+ * Panel «Ver selección» — agrupado por comuna (§6.3).
+ *
+ * Cada fila con su `[x]` para deseleccionar sin volver a la tabla. `Con
+ * {conductor}` en tono advertencia si ya está asignado — el riesgo se ve ANTES
+ * del diálogo de reasignación. `Fuera del filtro actual` en tono neutro: la otra
+ * mitad de hacer visible lo invisible.
+ *
+ * -----------------------------------------------------------------------------
+ * PASA DE PANEL LATERAL A `hoja inferior`, Y GANA DOS COSAS
+ * -----------------------------------------------------------------------------
+ * Entraba desde la derecha ocupando la pantalla entera, que es un panel de
+ * escritorio al que le quitaron el ancho. Ahora es la `hoja inferior` del
+ * sistema — media · completa · con arrastre · con pie fijo:
+ *
+ * · **Media deja ver la bandeja de atrás.** Este panel existe para revisar qué
+ *   se lleva seleccionado, y revisar es comparar: a pantalla completa hay que
+ *   cerrarlo para mirar la lista y volver a abrirlo para seguir.
+ * · **El pie queda fijo.** «Vaciar toda la selección» vivía al final del
+ *   contenido: con treinta pedidos agrupados por comuna quedaba debajo del
+ *   pliegue, y había que desplazarse hasta el fondo para encontrarlo.
  */
 
 import { AlertTriangle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { HojaInferior } from "@/components/ui/hoja-inferior";
 import { agruparSeleccionPorComuna, type PedidoSeleccionado } from "../_lib/seleccion";
 
 interface Props {
@@ -27,14 +42,29 @@ export function PanelSeleccion({ abierto, onOpenChange, seleccion, idsVisibles, 
   const total = seleccion.size;
 
   return (
-    <Sheet open={abierto} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col sm:max-w-sm">
-        <SheetHeader>
-          <SheetTitle>Pedidos seleccionados</SheetTitle>
-          <SheetDescription className="tabular-nums">{total} en total</SheetDescription>
-        </SheetHeader>
-
-        <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
+    <HojaInferior
+      abierta={abierto}
+      onOpenChange={onOpenChange}
+      titulo="Pedidos seleccionados"
+      descripcion={<span className="rx-num">{total} en total</span>}
+      pie={
+        <div className="flex items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onVaciarTodo}
+            className="text-fg-muted"
+          >
+            Vaciar toda la selección
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            Cerrar
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-5">
           {grupos.map((grupo) => (
             <div key={grupo.comuna ?? "__sin_comuna__"} className="space-y-2">
               <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -42,7 +72,7 @@ export function PanelSeleccion({ abierto, onOpenChange, seleccion, idsVisibles, 
               </h3>
               <ul className="space-y-2">
                 {grupo.pedidos.map((pedido) => (
-                  <li key={pedido.pedidoId} className="rounded-lg border border-border p-2.5">
+                  <li key={pedido.pedidoId} className="border border-line p-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 space-y-0.5">
                         <p className="truncate font-mono text-sm font-medium">{pedido.codigoVisible}</p>
@@ -76,15 +106,6 @@ export function PanelSeleccion({ abierto, onOpenChange, seleccion, idsVisibles, 
           ))}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-border p-4">
-          <Button type="button" variant="ghost" size="sm" onClick={onVaciarTodo} className="text-muted-foreground">
-            Vaciar toda la selección
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-            Cerrar
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
+    </HojaInferior>
   );
 }

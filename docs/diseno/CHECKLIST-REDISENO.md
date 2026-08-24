@@ -64,7 +64,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
-| **6** | **App del conductor** | **cerrado el 24-08** — 6.0 a 6.5 completos, incluida la casilla táctil de 56 px y el barrido vertical en P2 · asignar | queda **la hoja móvil** en las pantallas del repo web que la piden. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
+| **6** | **App del conductor** | **CERRADO el 24-08** — 6.0 a 6.5 completos, incluidas la casilla táctil de 56 px, el barrido vertical y la hoja inferior | la adopción de la hoja en el resto de los paneles va **por pantalla**, con su bloque. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
 | **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles · 6 cuerpos de correo por reescribir | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | 6 pantallas sin sesión (activar, registro, recuperar, legales, offline, `admin/login`) · 4 páginas del sitio, ninguna dibujada · tablet y teléfono del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
 | **9** | *(no está en §10)* | 12 componentes sin bloque asignado | 12, repartidos en 9a–9d | #4 · #5 · #6 · #13 a #20 | `B1b` · `B3a` · `B3b` · `P7` |
@@ -928,9 +928,32 @@ Ahora **falla cerrado**: si alguien pide peldaño 3, tiene que dar una frase no 
       selección. 10 pruebas de la lógica pura.
       **Verificado contra el componente real en el navegador:** salto de la fila 0 a la 4 → 5
       marcadas; volver por encima → sigue en 5; rozar con el dedo levantado → no marca.
-- [x] **`hoja móvil`** · **hecha en la app** — `Sheet` de `src/components/ui.tsx`.
-      ⚠️ *Las pantallas del repo web que la piden siguen sin ella.* Es lo único del bloque 6 que
-      queda abierto.
+- [x] **`hoja móvil`** (la ficha la llama **`hoja inferior`**) · **hecha en los dos lados** — en la
+      app, `Sheet` de `src/components/ui.tsx`; en la web, `src/components/ui/hoja-inferior.tsx`,
+      adoptada en el panel de selección de P2.
+      Los tres rasgos que pide la ficha —**media · completa · con arrastre · con pie fijo**— y lo que
+      gana cada uno:
+      · **Media deja ver lo de atrás.** El panel existe para revisar qué se lleva seleccionado, y
+        revisar es comparar: a pantalla completa hay que cerrarlo para mirar la bandeja y volver a
+        abrirlo para seguir.
+      · **El arrastre es la salida que el pulgar alcanza.** La «X» vive arriba a la derecha; en un
+        teléfono grande sostenido con una mano, ese punto está fuera de alcance.
+      · **El pie fijo evita el peor error de esta familia:** «Vaciar toda la selección» vivía al final
+        del contenido, y con treinta pedidos agrupados por comuna quedaba debajo del pliegue.
+      **Dos decisiones que no son obvias:**
+      · ⚠️ **En escritorio vuelve a ser panel lateral, y el cambio va por CSS.** Una hoja que sube
+        desde abajo en una pantalla de 27 pulgadas es un gesto de teléfono fuera de lugar. Medir el
+        ancho en el cliente daría un primer render distinto al del servidor — aviso de hidratación y
+        parpadeo en cada apertura.
+      · **El arrastre solo vive en el asa.** Igual que el barrido: si empezara en cualquier parte,
+        desplazar el contenido y mover la hoja serían el mismo gesto.
+      🐞 **Y una trampa medida, no supuesta:** los `lg:` pelados **no le ganaban** a los
+      `data-[side=bottom]:` de la base — un selector de atributo pesa más que una consulta de medios,
+      que no suma especificidad ninguna. La mitad de las reglas no hacía nada y el panel quedaba a
+      medio pegar. Se arregló igualando el selector.
+      **Medido en el navegador, en las dos ramas:** teléfono `0,58` de alto con asa y el pie dentro
+      de la ventana, y `0,92` al expandir; escritorio `448 × 900` pegado arriba a la derecha, con
+      borde solo izquierdo y el asa oculta. 15 pruebas de la lógica de puntos y arrastre.
 
 ## 6.3 · Reglas del bloque que se verifican en pantalla
 
