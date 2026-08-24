@@ -22,14 +22,14 @@ export const metadata: Metadata = {
  * decisión del usuario (24-08-2026): el conductor trabaja en la app nativa, y
  * mantener dos superficies operativas es mantener dos veces cada regla.
  *
- * ⚠️ **Dos de esas cinco NO existen todavía en la app nativa**, y la decisión se
- * tomó sabiéndolo:
+ * ✅ **Los dos huecos que dejó el retiro ya están cerrados** (verificado el
+ * 24-08-2026 contra `Desktop/rutax-conductor`). Se anotan porque la nota
+ * anterior decía lo contrario y alguien podría creerle:
  *
- * · **Mis liquidaciones** (brecha #19) — el conductor vuelve a preguntar por
- *   WhatsApp cuánto le toca hasta que la pantalla exista en el repo Expo.
- * · **Punto de término** — el flujo de consentimiento de tres pasos ya no se
- *   puede iniciar desde ninguna parte. Está en el alcance del bloque B5 y va en
- *   la app nativa.
+ * · **Mis liquidaciones** (brecha #19) — existe: `app/(main)/liquidaciones/`,
+ *   con su detalle.
+ * · **Punto de término** — existe: `app/(main)/punto-termino.tsx`, con el
+ *   consentimiento de tres pasos **y el borrado**.
  *
  * -----------------------------------------------------------------------------
  * POR QUÉ ESTA PÁGINA SÍ EXISTE, Y POR QUÉ TIENE UN BOTÓN
@@ -41,9 +41,14 @@ export const metadata: Metadata = {
  * funcionalidad, es una condición**. La Ley 21.431 exige que el dato personal
  * que alguien entregó se pueda retirar cuando quiera; quitar la pantalla que lo
  * captura es una decisión de producto, quitar la que lo borra es dejar sin
- * salida a quien ya dijo que sí. El endpoint `DELETE
- * /api/conductor/punto-termino` ya existía: esto es su único acceso humano
- * mientras la app nativa no tenga el suyo.
+ * salida a quien ya dijo que sí.
+ *
+ * ⚠️ **Desde el 24-08-2026 ya NO es el único acceso humano**: la app nativa
+ * tiene su propio «Borrar mi punto de término». O sea que este botón pasó a ser
+ * un **segundo camino**, y se conserva a propósito: quitar una vía de revocación
+ * de un dato personal por ahorrar cien líneas es un cambio que se decide, no uno
+ * que se hace de paso. Si alguna vez se retira, que sea con
+ * `docs/seguridad/punto-de-termino-conductor.md` delante.
  */
 export default async function PaginaConductorRetirada() {
   const sesion = await obtenerSesionActual();

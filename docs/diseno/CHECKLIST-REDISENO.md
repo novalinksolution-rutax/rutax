@@ -64,7 +64,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
-| **6** | **App del conductor** | **construido en `rutax-conductor`** (6 commits: temas Sol/Día/Noche, señales, escala de texto, 20 pantallas migradas, **y B5b: la puerta con PIN, el candado y la entrada**) | ⚠️ **este checklist no lo refleja ítem por ítem** — la cuenta vive en el otro repo. Y **nada se ha visto en un teléfono real**: hacen falta 7 módulos nativos y un build de EAS | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
+| **6** | **App del conductor** | **auditado y cerrado el 24-08** — 6.0 a 6.4 completos: los tres temas con histéresis, señales, push, escala de texto, captura, escaneo, consentimiento, progreso con pasos nombrados, B5b y el retiro de la PWA | lo que queda es **del repo web**: la casilla táctil y la hoja móvil en las pantallas que las piden. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
 | **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles · 6 cuerpos de correo por reescribir | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | 6 pantallas sin sesión (activar, registro, recuperar, legales, offline, `admin/login`) · 4 páginas del sitio, ninguna dibujada · tablet y teléfono del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
 | **9** | *(no está en §10)* | 12 componentes sin bloque asignado | 12, repartidos en 9a–9d | #4 · #5 · #6 · #13 a #20 | `B1b` · `B3a` · `B3b` · `P7` |
@@ -800,6 +800,13 @@ Ahora **falla cerrado**: si alguien pide peldaño 3, tiene que dar una frase no 
 **Tableros a traer:** `Rutax B5 App del conductor` · `Rutax P5 Registrar entrega`.
 **Depende de:** bloques 1 y 2 (los tonos y el distintivo).
 
+> 🔴 **AUDITADO CONTRA EL CÓDIGO EL 24-08-2026, y estaba muy atrasado.** Casi todo lo que 6.0 a 6.3
+> listaban como pendiente **ya estaba construido** en el repo hermano: los tres temas con su
+> histéresis, las cuatro señales de sonido y vibración, el push, la escala de texto, el acuse de
+> escaneo, la hoja de consentimiento de tres pasos, la galería en el cierre de parada, y el retiro
+> de la PWA. Un checklist que declara pendiente lo hecho **hace reconstruir cosas que ya existen**,
+> que es peor que no tenerlo. Las casillas de abajo son el estado real, con la ruta que lo prueba.
+
 > ⚠️ **Este bloque se ejecuta casi entero en el repo hermano `C:\Users\jorge\Desktop\rutax-conductor`**
 > (Expo SDK 54 + expo-router, 12 pantallas, ~6.860 líneas). Los repos están separados **a
 > propósito**: los ciclos de release son incompatibles y el acoplamiento real es por HTTP, no por
@@ -807,7 +814,12 @@ Ahora **falla cerrado**: si alguien pide peldaño 3, tiene que dar una frase no 
 
 ## 6.0 · Lo primero, y no es negociable: los dos sistemas de color
 
-- [ ] **Unificar `rutax-conductor/src/theme.ts` con `rx-tokens.css`.** El repo Expo tiene su propio
+- [x] **Unificar `rutax-conductor/src/theme.ts` con `rx-tokens.css`.** — **hecho.** `src/theme.ts`
+      quedó como puente hacia `src/tema/paletas.ts`, que transcribe los tres temas; `radius` es 3 px
+      en todos sus escalones y `shadow` devuelve objetos vacíos. Lo vigila
+      `src/tema/adopcion.test.ts`, que falla si algún archivo vuelve a leer `colors` como constante,
+      usa `shadow.sm`, deja un hex suelto o pinta su propia barra de estado.
+      *Texto original, que ya no describe la realidad:* El repo Expo tiene su propio
       sistema, llamado *«Light Pro»*: `primary #1E3A5F`, `accent #2563EB`, `danger #DC2626`, más su
       escala de `spacing`, `radius`, `font` y **`shadow`**. **No comparte un solo valor** con el
       sistema nuevo (teal `#00B89A`, radio 3 px, **cero sombras**). `src/torre/estilos.ts` se apoya
@@ -815,70 +827,95 @@ Ahora **falla cerrado**: si alguien pide peldaño 3, tiene que dar una frase no 
 
 ## 6.1 · Los tres temas · NUEVO #22
 
-- [ ] **`sun`, `dark` y `night` son alcanzables.** Los tres están **declarados y completos** en
+- [x] **`sun`, `dark` y `night` son alcanzables.** — `src/tema/TemaProvider.tsx` + `app/(main)/preferencias.tsx`.
+      *Nota vieja, ya falsa:* Los tres están **declarados y completos** en
       `src/app/rx-tokens.css` (`:240` y `:310`) y **no los escribe ni los ofrece nada**: son tokens
       muertos. `src/components/app-shell/theme-switcher.tsx` ofrece exactamente tres opciones —
       claro, oscuro, sistema — y ninguna es `sun` ni `night`.
-- [ ] **Orden de autoridad del tema** (regla 9): preferencia manual > sensor de luz con histéresis >
+- [x] **Orden de autoridad del tema** (regla 9) — `src/tema/resolucion.ts`, con pruebas.: preferencia manual > sensor de luz con histéresis >
       hora. **La preferencia manual caduca al fin del turno.**
-- [ ] **Histéresis** (regla 10): entra a Sol sobre 8.000 lux, sale bajo 3.000, con **90 s mínimos de
+- [x] **Histéresis** (regla 10) — `LUX_ENTRA_SOL=8000`, `LUX_SALE_SOL=3000`, `PERMANENCIA_MINIMA_MS=90_000`, con 22 pruebas.
+      *Sigue abierto lo único que no se puede resolver en pantalla:*: entra a Sol sobre 8.000 lux, sale bajo 3.000, con **90 s mínimos de
       permanencia**. Eso resuelve el subterráneo a las 17:00: baja a *Día*, no a *Noche*.
       *Decisión abierta:* los umbrales se ajustan **en la calle, con un teléfono real, a las 16:00 y
       a las 21:30**. No se ajustan en pantalla.
-- [ ] **Los tres comparten disposición, glifos y posiciones** (regla 11). Solo cambian los valores
+- [x] **Los tres comparten disposición, glifos y posiciones** (regla 11) — solo cambian valores. Solo cambian los valores
       de color y el pico de luminancia.
-- [ ] **Bajo sol, los distintivos van en sólido pleno**, nunca en fondo teñido (regla 12).
-- [ ] **`night` tiene DOS niveles de texto, no tres** — el tercer gris no cumple AA sobre `#05080A`.
-- [ ] `selector de tema de tres estados` · DE CERO · nativo.
+- [x] **Bajo sol, los distintivos van en sólido pleno** — `Paleta.distintivoSolido`, que viaja con la paleta para que ninguna pantalla pueda olvidarlo., nunca en fondo teñido (regla 12).
+- [x] **`night` tiene DOS niveles de texto, no tres** — el tercer gris no cumple AA sobre `#05080A`.
+- [x] `selector de tema de tres estados` · nativo — en `preferencias.tsx`.
 
 ## 6.2 · Componentes
 
-- [ ] **`módulo de captura`** · DE CERO · cámara + galería múltiple · P5, B5 · 4 pantallas.
-      *Hoy son dos caminos con reglas distintas y la galería no está donde se necesita:*
+- [x] **`módulo de captura`** · **hecho** — la galería **ya está en el cierre de parada**
+      (`agregarFotos('camara' | 'galeria')`), que era el hueco. Base: `src/components/camara.tsx` +
+      `src/lib/fotos.ts`.
+      *Descripción del hueco, para entender qué se cerró:*
       en el flujo de entrega (`manifiesto/[pedidoId]/index.tsx`) van 1 foto de prueba + hasta 4
       evidencias = **5**, con cámara propia y **sin ninguna entrada a la galería**; en la pantalla
       de evidencias aparte (`evidencia.tsx`) el máximo es **10** y ahí sí hay galería con selección
       múltiple. O sea: la galería existe, pero no al cerrar la parada. El módulo unifica las dos.
       Base a conservar: `rutax-conductor/src/components/camara.tsx` (API imperativa `useCamara()`
       para evitar el «Usar foto / Repetir» de iOS) y `src/lib/fotos.ts`.
-- [ ] **`verificación por escaneo`** · DE CERO · retiro y traspaso · 3 pantallas. **La base existe y
+- [x] **`verificación por escaneo`** · **hecho** — `src/components/retiro/` + `src/lib/retiro-conciliacion.ts`, con el panel de registro y los repetidos marcados. **La base existe y
       es buena**: `expo-camera` con `CameraView` + `onBarcodeScanned`, `barcodeTypes: ['qr']`, con
       cooldown antirráfaga en `src/lib/retiro.ts`. Falta la forma del sistema: escaneados /
       pendientes / te quedan, **registro de escaneo con repetido marcado**, y cierre con faltantes.
       *(El panel inferior de registro con log de repetidos ya está aprobado e integrado.)*
-- [ ] **`distintivo de acuse de escaneo`** · DE CERO · 3 variantes.
-- [ ] **`progreso con pasos nombrados`** · DE CERO · P5, B5 · 5 pantallas. `progress` no nombra pasos.
-- [ ] **`bloque registrado sin confirmar`** · DE CERO · P5, B5 · 6 pantallas. Regla 17: **no hay
+- [x] **`distintivo de acuse de escaneo`** · **hecho** — `src/components/retiro/piezas.tsx`.
+- [x] **`progreso con pasos nombrados`** · **hecho el 24-08** — `src/components/progreso-pasos.tsx`.
+      **Era el único de 6.2 que faltaba de verdad.** Adoptado en la puerta (B5b) y en los dos cierres
+      de parada, donde había una rueda muda y «Registrando…».
+      **Por qué importa, y no es estético:** son dos esperas distintas que se veían iguales. El GPS
+      tardando veinte segundos entre edificios es normal; la red caída no lo es. Con una sola rueda
+      el conductor no puede distinguirlas, y **el que cierra la app creyendo que se colgó pierde la
+      evidencia que no alcanzó a subir**.
+      A los 8 s aparece «está tardando más de lo normal» **debajo del paso, sin quitarlo** — el aviso
+      dice que va lento, el paso sigue diciendo qué pasa, y eso es lo que sirve para decidir. El reloj
+      se reinicia con cada paso, o el tercero nacería ya avisando.
+- [x] **`bloque registrado sin confirmar`** · **hecho** — `src/components/guardado-sin-confirmar.tsx` sobre la cola offline. Regla 17: **no hay
       trabajo sin conexión**; hay reintento automático con aviso, y la advertencia de que cerrar la
       app pierde lo no confirmado. *(La cola offline del repo Expo —`src/lib/offline-queue.ts`,
       `offline-queue-retiro.ts` y `offline-queue-traspaso.ts`— existe; el diseño la reexpresa como
       reintento con aviso, no como trabajo sin conexión.)*
-- [ ] **`hoja de consentimiento`** · DE CERO · 3 pasos · punto de término. Regla 64: es dato
+- [x] **`hoja de consentimiento`** · **hecho** — `app/(main)/punto-termino.tsx`, con revocación de un toque. Regla 64: es dato
       personal bajo la Ley 21.431 — consentimiento en tres pasos, versionado, revocable, **y nada se
       guarda antes del último paso**.
-- [ ] **`vocabulario de sonido y vibración`** · DE CERO · 4 señales · **no existe ninguno**: cero
+- [x] **`vocabulario de sonido y vibración`** · **hecho** — `src/senales.ts` + `src/senales-vocabulario.ts`, cuatro patrones.
+      *Diagnóstico original:* **no existía ninguno**: cero
       `Vibration`, `Haptics`, `expo-av` o `expo-haptics` en el repo Expo; cero `navigator.vibrate` o
       `new Audio()` en este. Regla 14: **toda confirmación que el conductor no puede mirar tiene
       señal de oído y de mano, y la vibración sola tiene que bastar.** · NUEVO #24
-- [ ] **`notificación push`** · DE CERO · 3 momentos · **no existe ni en la app ni en el servidor**:
+- [x] **`notificación push`** · **hecho** — `src/lib/notificaciones.ts` + el registro de aparato.
+      ⚠️ *Solo 1 de los 3 momentos tiene disparador real*: el traspaso lo abre el receptor y los
+      retiros los abre el conductor, así que nadie le empuja trabajo.
+      *Diagnóstico original:* **no existía ni en la app ni en el servidor**:
       sin `expo-notifications`, y `public/sw.js` son 41 líneas sin `push` ni `notificationclick`. ·
       NUEVO #25
-- [ ] **`solicitud de permiso con explicación previa`** · DE CERO · 4 permisos · P5, B5 · 5 pantallas.
+- [x] **`solicitud de permiso con explicación previa`** · **hecho** — `src/components/permisos.tsx`.
       Regla 13: **un permiso se pide en el momento en que se usa**, con una frase de para qué, y
       nunca al abrir la app.
-- [ ] **`escala de texto de cuatro pasos`** · DE CERO · nativa · toda la app · NUEVO #23
-- [ ] **`casilla táctil de 56 px`** · EXTENDER · P2 en tablet y teléfono, B5 · 6 pantallas.
+- [x] **`escala de texto de cuatro pasos`** · **hecho** — `src/tema/escala.ts` (100/115/130/150), con `tactil()` para que los objetivos crezcan con ella. · NUEVO #23
+- [x] **`casilla táctil de 56 px`** · **hecho en la app** — `TACTIL_MINIMO = 56` y `tactil()`.
+      ⚠️ *La mitad de P2 (asignar, en tablet y teléfono) es del repo web y NO está.*
 - [ ] **`selección táctil en tres niveles`** · DE CERO · fila, cabecera de grupo, barrido vertical ·
       P2 en tablet y teléfono · 3 pantallas. Hoy solo hay clic y shift-clic.
-- [ ] **`hoja móvil`** · EXTENDER sobre `sheet` · P1, P3, B4, B5 · 14 pantallas.
+- [x] **`hoja móvil`** · **hecha en la app** — `Sheet` de `src/components/ui.tsx`.
+      ⚠️ *Las pantallas del repo web que la piden siguen sin ella.*
 
 ## 6.3 · Reglas del bloque que se verifican en pantalla
 
-- [ ] **Regla 15** — un traspaso entre personas necesita **las dos voluntades**. Hoy es unilateral
-      (`rutax-conductor/app/(main)/traspaso/index.tsx`, 612 líneas). · NUEVO #26
-- [ ] **Regla 16** — una preferencia del conductor **no se reporta a su coordinador**.
-- [ ] **Regla 68** — cuando la fuente del pedido gobierna parte del ciclo, la interfaz **lo dice y
-      cruza** en vez de ofrecer una acción que no manda. En Flex el registro es informativo y la
+- [x] **Regla 15** — **ya se cumple, y el tablero se equivocaba al describir el código.**
+      `crearTraspaso(conductorReceptorId, codigos)` **lo inicia el receptor**, así que las dos
+      voluntades ya están: quien entrega escanea y quien recibe confirma.
+      ⚠️ **NUEVO #26 se descartó con razón** *(no por falta de tiempo)*: el tablero dibuja una
+      aceptación del receptor **encima** de un flujo que el receptor ya inició. Construirlo
+      agregaría el paso unilateral que la regla 15 prohíbe.
+- [x] **Regla 16** — se cumple. El punto de término del conductor **nunca llega a la pantalla del
+      coordinador**; es condición de validez del consentimiento, no una cortesía
+      (`docs/seguridad/punto-de-termino-conductor.md` §4).
+- [x] **Regla 68** — hecha en `src/components/parada/cabecera.tsx`: cuando la fuente del pedido
+      gobierna parte del ciclo, la interfaz **lo dice y cruza** en vez de ofrecer una acción que no manda. En Flex el registro es informativo y la
       prueba oficial la gobierna Mercado Envíos: hoy el mismo botón dispara lo mismo en los dos
       regímenes y la diferencia se comunica solo con texto.
 
@@ -953,9 +990,22 @@ se revirtieron. Hace falta Expo Go en un teléfono.
       relaja una y no la otra**. Es el mismo patrón que ya mordió con el tope de cuentas de Mercado
       Libre.
 
-## 6.4 · Retiro de la PWA `/conductor` de este repo
+## 6.4 · Retiro de la PWA `/conductor` de este repo · **HECHO**
 
-El inventario la marca para retiro: sus capacidades **se funden en la app nativa**, no se pierden.
+De las cinco pantallas queda **un cartel** (`src/app/conductor/page.tsx`, 89 líneas) que dice «tu
+trabajo está en la app». Existe para que un conductor que entre a la web no caiga en un 404 ni en un
+bucle: `/` y el layout de `(tenant)` lo mandan ahí.
+
+🐞 **Ese cartel afirmaba dos cosas que hoy son falsas**, y se corrigieron el 24-08: decía que
+«mis liquidaciones» y «punto de término» **no existían todavía** en la app nativa. Existen las dos
+—`app/(main)/liquidaciones/` y `app/(main)/punto-termino.tsx`, esta última con borrado— así que la
+nota mandaba a buscar un hueco que ya estaba tapado.
+
+Se conserva el botón de borrar el punto de término, que ahora es un **segundo camino** y no el único:
+quitar una vía de revocación de un dato personal por ahorrar cien líneas se decide con
+`docs/seguridad/punto-de-termino-conductor.md` delante, no se hace de paso.
+
+*El inventario original la marcaba así:*
 
 - [ ] `src/app/conductor/page.tsx` (10) — solo redirige a `/conductor/manifiesto`.
 - [ ] `src/app/conductor/manifiesto/page.tsx` (416)
