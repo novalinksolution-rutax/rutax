@@ -23,6 +23,7 @@ import { ErrorAsignacionConflicto } from "./errores";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import { puedeAsignarYReasignarPedidos, puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
+import { notificarConductor } from "@/modules/integraciones/push/notificar";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { ESTADOS_TERMINALES_PEDIDO } from "./metricas";
@@ -370,6 +371,28 @@ export async function confirmarManifiesto(
       entidadId: manifiestoId,
       detalle: { driver_id: actual.driver_id, fecha_operacion: actual.fecha_operacion },
     });
+  }
+
+  // «Tu ruta está lista» — el primero de los tres avisos.
+  // ---------------------------------------------------------------------------
+  // Va DESPUÉS del update y de la bitácora, y su fallo no se propaga: el
+  // manifiesto ya está confirmado y no puede volver a borrador porque el
+  // servidor de Expo esté caído. `notificarConductor` no lanza, pero el `catch`
+  // se deja igual — es la última red si alguna vez eso cambia.
+  //
+  // Es apagable: el manifiesto tiene su propio estado de borrador con
+  // explicación, así que el conductor que la apaga entra a mirar y se entera
+  // igual. Y no se le avisa al coordinador que la apagó: eso sería vigilar una
+  // preferencia (regla 16).
+  try {
+    await notificarConductor(cliente, {
+      tenantId,
+      conductorId: actual.driver_id as string,
+      motivo: "ruta_lista",
+      datos: { paradas: cantidadAsignados },
+    });
+  } catch {
+    // Un aviso que no salió no cambia nada de lo ya guardado.
   }
 
   return filaAManifiesto(confirmado);

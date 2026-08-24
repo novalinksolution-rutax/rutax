@@ -939,13 +939,101 @@ el navegador: borra y deja **dos entradas en bitácora, las dos con autor**.
 🐞 Encontrado en pantalla: «Hola .» — `nombreCompleto` sale de `user_metadata` del JWT y el conductor
 de demo no lo tiene ahí.
 
+### Hecho el 24-08-2026 (segunda pasada) — las del día a día
+
+Decisiones del usuario: **las del día a día primero** · las **tres notificaciones con su mitad de
+servidor** · «marcarme disponible» **pasa a ser solo del conductor**.
+
+#### Las primitivas, primero
+
+`src/components/ui.tsx` sigue al tema. Es la migración de mayor palanca del bloque: la usan las
+once pantallas, así que un botón deja de ser azul en las once a la vez. Con ella se van las
+sombras, los radios bajan de 16–20 px a 3, y los botones pasan a 56 px mínimo creciendo con la
+escala de texto. Las variantes bajan de seis a cuatro: `accent` y `success` eran el mismo botón con
+dos azules, y un botón verde de acción choca con la gramática de estados, donde verde es «terminó
+bien». Los seis nombres se siguen aceptando para no romper las once pantallas.
+
+#### Manifiesto del día
+
+| Qué | Por qué |
+|---|---|
+| «73 %» → **«7 de 24 cerradas · 17 van»** | Un porcentaje no responde ninguna de las dos preguntas del conductor, y para sacarlas hay que multiplicar de cabeza |
+| Filas de 70 px con el número grande | Es lo que compara contra la etiqueta del bulto, de reojo |
+| Deslizar a la izquierda con **seguro del 45 % + vibración** | Un guante rozando la pantalla no llega a la mitad. Y **no ejecuta**: abre la parada con la hoja lista, porque un fallo exige motivo y evidencia |
+| **Borrador con salida** (brecha #18) | Decía «vuelve en unos minutos» y nada más. Ahora muestra lo asignado por comuna y las dos acciones que sí existen |
+| La falla de lectura, en orden | Primero «las que ya cerraste están guardadas», después el motivo. Era un `Alert` genérico que se cierra y deja la pantalla igual de vacía |
+| Esqueleto con el alto real | La lista no salta al llegar los datos |
+
+#### Detalle de parada · la jerarquía estaba invertida
+
+Abría con «Destinatario» en grande y la dirección debajo, en texto de cuerpo. Esa es la jerarquía
+de una ficha de cliente, no la de alguien manejando: **el conductor abre esta hoja para llegar**.
+Ahora la dirección va en el tamaño más grande de la pantalla con el botón de navegar debajo, después
+los bultos, y quien recibe **al final**.
+
+Y la **regla 68** deja de ser una nota al pie: en Flex el botón ya no dice «Entregar» sino
+**«Registrar mi entrega»**, porque eso es literalmente lo que hace — la prueba oficial la gobierna
+Mercado Envíos. Una interfaz que ofrece la misma acción en los dos regímenes promete algo que en uno
+no cumple.
+
+#### La asistencia pasa al conductor
+
+`conductores.disponible` decidía quién entra en la asignación y **solo el coordinador podía
+tocarlo**: se definía por WhatsApp y alguien lo transcribía, así que el campo describía una creencia.
+Ahora se marca desde la app. Se retiran el interruptor, su Server Action **y** la función del
+módulo — las tres, porque una Server Action sin llamador sigue siendo un endpoint.
+
+⚠️ **Contrapartida asumida:** si un conductor no se marca y no contesta, el coordinador no puede
+meterlo en la auto-asignación. Está dicho en la pantalla, donde estaba el interruptor.
+
+🐞 Y una contradicción que apareció al abrirla: tres líneas debajo del «desde acá no se puede marcar
+por él» seguía ofreciendo «Marcar como no disponible». La regla real es **asimétrica** y ahora está
+escrita: ponerse disponible es del conductor; sacarlo sigue siendo del coordinador, pero por el
+camino de «se cayó a mitad de ruta», que no es asistencia sino respuesta a un incidente.
+
+#### Las notificaciones · y las dos que no tienen disparador
+
+Se construyó la mitad de servidor completa: tabla `identidad.dispositivos_conductor` **deny-all con
+11 aserciones pgTAP**, el puerto de Expo aislado (+ 13 pruebas), `notificarConductor`, y las rutas
+`PUT/DELETE /api/conductor/dispositivo`. En la app: el permiso se pide **al cerrar la primera
+parada** y no al abrir (regla 13), el token se refresca si el sistema lo rota, el toque valida su
+destino contra lista blanca, y cerrar sesión da de baja el teléfono.
+
+🔎 **Hallazgo: de las tres del tablero, solo una tiene disparador en este sistema.**
+
+| Aviso | Estado |
+|---|---|
+| «Tu ruta está lista» | ✅ Conectado a `confirmarManifiesto` |
+| «Te traspasaron bultos» | ❌ **No hay quién lo dispare.** El traspaso es **del receptor**: Pedro escanea los bultos que Juan le pasa (`crearTraspaso(conductorReceptorId, codigos)`). Nadie empuja carga a nadie |
+| «Tienes un retiro nuevo» | ❌ **No hay quién lo dispare.** El coordinador nunca asigna una visita: el conductor abre la suya eligiendo bodega |
+
+Los textos y el envío de los tres están construidos y probados; lo que falta es el hecho que los
+origine.
+
+🔎 **Y con eso cae NUEVO #26.** El tablero dice que el traspaso «hoy es unilateral y el receptor se
+enteraba al ver bultos nuevos en su manifiesto». **En el código no es así**: el receptor escanea, o
+sea que las dos voluntades ya están presentes por construcción (regla 15 cumplida). Construir «el
+que entrega empuja y el que recibe acepta» no arreglaría nada — **agregaría** el flujo unilateral que
+la regla prohíbe. Se deja sin construir, con este motivo.
+
 #### Lo que queda del bloque 6
 
-Las 12 pantallas de la app siguen pendientes salvo el retiro: manifiesto del día, detalle de parada,
-mis liquidaciones, punto de término (3 pasos), traspaso con aceptación del receptor (#26 sigue
-unilateral), permisos con explicación previa, notificaciones push (#25), marcarme disponible,
-guardado sin confirmar, parada de retiro e histórico de retiros. **20 de las 22 pantallas del repo
-Expo siguen leyendo `colors` como constante**, así que no cambian de tema todavía.
+Hechas: retiro en bodega, manifiesto del día, detalle de parada, preferencias (tema, escala y
+acuse), marcarme disponible y las notificaciones.
+
+**Siguen pendientes, y son deuda con nombre:**
+
+- **Mis liquidaciones** (brecha #19) y **punto de término** de 3 pasos — las dos que dejó sin
+  superficie el retiro de la PWA. Son las de mayor prioridad del resto del bloque.
+- **Histórico de retiros** y **parada de retiro** (la hoja con pendientes y cómo entrar).
+- **Permisos denegados**, los cuatro con su salida.
+- **Guardado sin confirmar** — la cola existe; falta expresarla como reintento con aviso.
+- **NUEVO #26** queda descartado con motivo (ver arriba): el flujo que pide ya está resuelto de otra
+  forma.
+
+⚠️ **13 de las 22 pantallas del repo Expo siguen leyendo `colors` como constante** —las de la Torre
+móvil, login, evidencia, traspaso y el listado de retiros— así que **no cambian de tema todavía**.
+Migrar una es cambiar dos líneas (`useColores` + `useEstilosCompat`); lo que falta se lee de una.
 
 ## B6 · Backstage · 16 pantallas
 
