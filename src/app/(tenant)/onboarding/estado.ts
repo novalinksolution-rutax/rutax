@@ -31,10 +31,18 @@ export type EstadoPasoPlan = "sin_suscripcion" | "trial" | "activa" | "suspendid
 
 export interface EstadoOnboardingCourier {
   nombreFantasia: string;
-  /** `true` cuando DTE activo + al menos una tarifa vigente — "onboarding completo" (§1.3). */
+  /** `true` cuando el certificado está cargado + hay al menos una tarifa vigente. */
   completo: boolean;
   pasosCompletados: number;
   totalPasos: number;
+  /**
+   * Qué falta para operar, nombrado. `null` cuando no falta nada.
+   *
+   * Existe porque el aviso del marco tiene que nombrar el paso que falta y no
+   * un conteo: «te falta configurar la facturación» se puede accionar; «tienes
+   * 2 pasos pendientes» obliga a ir a buscar cuáles.
+   */
+  faltaParaOperar: string | null;
   dte: {
     estado: EstadoPasoDte;
     proveedorElegido: string | null;
@@ -147,25 +155,54 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
     estadoCobranza = "pendiente";
   }
 
-  // "Completo" (§1.3): DTE activo + al menos una tarifa vigente. Folios CAF
-  // NUNCA bloquea — puede depender 100% del proveedor (§1.2, decisión "qué
-  // bloquea qué").
-  const dteListo = estadoDte === "activo";
+  // "Completo": el certificado cargado + al menos una tarifa vigente.
+  //
+  // ⚠️ ANTES ESTO EXIGÍA `estado_certificacion = 'activo'`, Y NADIE ESCRIBE ESE
+  // VALOR. Los únicos escritores ponen `pendiente` (al elegir proveedor) y
+  // `en_proceso` (al cargar el certificado); no existe el job ni el endpoint que
+  // confirme con el proveedor. O sea: `completo` era `false` para siempre y **el
+  // aviso de configuración pendiente no desaparecía nunca, para ningún
+  // courier**, por muy configurado que estuviera.
+  //
+  // `en_proceso` cuenta como listo porque es verdad operativa: con el
+  // certificado cargado Rutax puede firmar. `activo` queda reservado para
+  // cuando exista la confirmación del proveedor, y mientras tanto no bloquea a
+  // nadie. Decisión del usuario, 23-08.
+  const dteListo = estadoDte === "activo" || estadoDte === "en_proceso";
   const tarifasListas = estadoTarifas === "configuradas";
   const completo = dteListo && tarifasListas;
 
-  const pasosCompletados = [dteListo, tarifasListas].filter(Boolean).length;
+  // Folios CAF NUNCA bloquea — puede depender 100% del proveedor (§1.2,
+  // decisión "qué bloquea qué"). Cobranza y Plan, igual.
+  const foliosListo = estadoFolios === "vigente" || estadoFolios === "no_aplica";
+  const cobranzaListo = estadoCobranza === "conectado";
 
-  // Plan (paso informativo/no bloqueante, como Folios/Cobranza): NO cuenta
-  // para `totalPasos`/"completo" — la suscripción de Rutax es independiente
-  // de si el courier ya puede operar/facturar.
+  // Plan (paso informativo/no bloqueante, como Folios/Cobranza): la suscripción
+  // de Rutax es independiente de si el courier ya puede operar/facturar.
   const estadoPlan: EstadoPasoPlan = miPlan ? miPlan.estado : "sin_suscripcion";
+  const planListo = estadoPlan === "activa" || estadoPlan === "trial";
+
+  // ⚠️ UN SOLO CONTEO, Y ES SOBRE LOS CINCO PASOS QUE SE VEN.
+  //
+  // Antes había DOS en la misma pantalla, a 25 px de distancia: `totalPasos: 2`
+  // alimentaba la barra de progreso y el aviso del marco, mientras el grid
+  // renderizaba cinco tarjetas. «1 de 2 pasos críticos» encima de cinco pasos.
+  //
+  // El conteo cuenta lo que se ve. Lo que decide si el courier puede operar es
+  // `completo`, que es OTRA pregunta y se dice con otras palabras — nunca con
+  // un número que compita con éste.
+  const pasosCompletados = [dteListo, foliosListo, tarifasListas, cobranzaListo, planListo].filter(
+    Boolean,
+  ).length;
 
   return {
     nombreFantasia,
     completo,
     pasosCompletados,
-    totalPasos: 2, // pasos CRÍTICOS para "completo" — folios es informativo/no-bloqueante
+    totalPasos: 5,
+    // Qué falta para poder operar, con NOMBRE. El aviso del marco decía «tienes
+    // 2 pasos pendientes», que no dice cuáles ni por qué importan.
+    faltaParaOperar: completo ? null : !dteListo ? "facturación" : "tarifas",
     dte: {
       estado: estadoDte,
       proveedorElegido: proveedorDte,

@@ -280,10 +280,7 @@ export default async function LayoutTenant({ children }: { children: React.React
       destinosMovil={destinos}
       banner={
         estadoOnboarding && !estadoOnboarding.completo ? (
-          <BannerOnboarding
-            pasosCompletados={estadoOnboarding.pasosCompletados}
-            totalPasos={estadoOnboarding.totalPasos}
-          />
+          <BannerOnboarding faltaParaOperar={estadoOnboarding.faltaParaOperar} />
         ) : null
       }
     >

@@ -617,9 +617,9 @@ financiera **no existe como línea**: el motor la detecta como excepción de con
 
 | Pantalla | Ruta | Veredicto |
 |---|---|---|
-| El asistente | `(tenant)/onboarding` | **PANTALLA DISTINTA** |
-| Final del asistente · «Ya puedes operar» | — | **NO EXISTE** |
-| El cuerpo del paso · DTE, folios, tarifas, cobranza | `(tenant)/onboarding/*` | FALTA PIEZA |
+| El asistente | `(tenant)/onboarding` | ✅ **HECHA** — 23-08, ver abajo |
+| Final del asistente · «Ya puedes operar» | `(tenant)/onboarding/listo` | ✅ **HECHA** — 23-08, ver abajo |
+| El cuerpo del paso · DTE, folios, tarifas, cobranza | `(tenant)/onboarding/*` | ✅ **HECHA** — 23-08, ver abajo |
 | Tarifas | `(tenant)/configuracion/tarifas` | FALTA PIEZA |
 | Zonas y ventanas de corte | `(tenant)/configuracion/zonas` | FALTA PIEZA |
 | Bodegas | `(tenant)/configuracion/bodegas` | FALTA PIEZA |
@@ -635,7 +635,79 @@ pendiente **no desaparece nunca, para ningún courier**. `completo` exige
 `estado_certificacion = 'activo'` (`onboarding/estado.ts:155`) y los únicos escritores de esa
 columna escriben `pendiente` y `en_proceso`. No existe el job ni el endpoint que la cierre.
 Además el conteo miente en dos lugares: `estado.ts:168` fija `totalPasos: 2` mientras la pantalla
-renderiza cinco tarjetas.
+renderiza cinco tarjetas. **Cerrado el 23-08 — ver abajo.**
+
+
+### ✅ Puesta en marcha · las tres fichas de B3a · hecho el 23-08-2026
+
+🐞 **El defecto que hacía que nada de esto sirviera: el aviso de configuración pendiente no
+desaparecía nunca, para ningún courier.** El asistente se cerraba con
+`estado_certificacion = 'activo'` y **nada en el sistema escribe ese valor**: los únicos escritores
+ponen `pendiente` (al elegir proveedor) y `en_proceso` (al cargar el certificado); no existe el job
+ni el endpoint que confirme con el proveedor. `completo` era `false` para siempre, por muy
+configurado que estuviera el courier.
+
+Se cierra tratando **el certificado cargado como listo** (decisión del usuario): con el certificado
+Rutax puede firmar, y eso es verdad operativa. `activo` queda reservado para cuando exista la
+confirmación del proveedor, y mientras tanto no bloquea a nadie.
+
+🐞 **Y el conteo doble, en la misma pantalla y a 25 px de distancia:** la barra decía «1 de 2 pasos
+críticos» mientras el grid dibujaba cinco tarjetas. Ahora hay **un solo conteo, sobre los cinco
+pasos que se ven**. Lo que decide si el courier puede operar es otra pregunta, y se dice con otras
+palabras — nunca con un número que compita con ése.
+
+**El asistente es lista + cuerpo en la misma pantalla.** Cinco pasos numerados del 1 al 5, cada uno
+con su **dato real** en vez de un rótulo de estado —«3 rangos vigentes», «sin tarifas: una entrega
+se hace y no se puede cobrar»—, y el paso elegido se abre debajo sin que la lista se vaya. El paso
+activo viaja en la URL (`?paso=folios`): así funciona el botón «atrás», el enlace se puede
+compartir, y guardar no manda al dueño de vuelta al principio.
+
+**Las cuatro rutas de paso pasan a redirigir al asistente.** Se conservan porque hay enlaces
+guardados —en correos, en documentación, en el historial— pero dejan de ser pantalla: mantener dos
+implementaciones del mismo formulario significa que la de menos tráfico se queda atrás sin que nadie
+lo note.
+
+**El marco del paso trae las tres cosas que faltaban en las cuatro pantallas:** «PASO 2 DE 5 ·
+depende del paso 1, que ya está listo» —la dependencia se declara esté cumplida o no; decirlo solo
+cuando falla convierte la ausencia en silencio—, el botón «Seguir con …» que permite avanzar sin
+cerrar el paso actual, y la promesa «se guarda solo, puedes salir cuando quieras».
+
+**El paso bloqueado muestra sus campos, atenuados.** Folios depende de DTE, y antes ese caso
+escondía todo detrás de un estado vacío. Ahora el dueño ve qué le van a pedir, con el motivo escrito
+y el enlace al paso que falta. 🐞 *Visto en pantalla:* el panel de folios repetía el mismo mensaje
+que el marco, uno debajo del otro; ahora enumera lo que se va a pedir, que es lo que el marco no
+puede decir.
+
+**«Ya puedes operar» es una pantalla, no una tarjeta verde.** Lo que había era una `Card` encima de
+las cinco tarjetas, que seguían ahí — el único momento en que se puede decir «terminaste» se veía
+igual que cualquier otro estado. La pantalla nueva trae el resumen con el dato de cada paso, el
+aviso de que **la emisión al SII sigue simulada** (un courier que cree que está emitiendo y no lo
+está se entera con el primer reclamo), y **los tres primeros trabajos reales** en el orden en que
+ocurren: invitar al primer seller, dar de alta conductores, ir al panel. No se entra sin haber
+terminado: si falta un paso crítico, redirige.
+
+**El aviso del marco nombra el paso.** Decía «tu cuenta tiene 2 pasos pendientes», un conteo que
+además no cuadraba con las cinco tarjetas de destino. Ahora dice «te falta configurar la facturación
+para poder operar»: se lee de paso, sin entrar, y es la misma regla que pide la pantalla de cierre
+para cuando un paso se rompe después.
+
+**`/configuracion` deja de redirigir y tiene su índice** (decisión del usuario). Antes era la 404
+del framework, después una redirección declarada provisional. La pregunta que trae a alguien acá no
+es «dónde están las tarifas» sino «qué me falta configurar», así que cada renglón lleva su dato
+real. 🐞 *Dos errores míos, vistos en pantalla:* contaba sobre `identidad.usuarios`, tabla que no
+existe —es `usuarios_perfil`—, y sin acotar a `tipo_usuario = 'interno'` habría contado también los
+perfiles de seller, conductor y super-admin como «personas con acceso».
+
+**Catorce pruebas** en `pasos.test.ts` fijan el orden, la numeración, qué pasos son críticos, el
+bloqueo de folios y su motivo, y el «siguiente pendiente» — incluida la vuelta a la lista, que es el
+caso real: el dueño abre el paso 4 por el medio y sin ella el botón «Seguir con…» desaparece justo
+ahí.
+
+**Queda anotado:** los estados `activo` y `con_problemas` del certificado siguen sin escritor. Ya no
+bloquean a nadie, pero el día que exista la confirmación del proveedor —y su espejo, el vencimiento
+del certificado— hay que escribirlos, y `dteListo` puede volver a exigir `activo`. Y las nueve
+pantallas de configuración siguen con sus cuatro dialectos de anatomía: es el delta transversal de
+B3b y no se tocó en esta pasada.
 
 ## B4 · Portal del seller · 10 pantallas
 

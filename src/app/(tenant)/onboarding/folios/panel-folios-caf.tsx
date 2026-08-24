@@ -87,17 +87,24 @@ export function PanelFoliosCaf({ estadoInicial, errorInicial }: Props) {
   }
 
   if (estado.caso === "sin_proveedor") {
+    // ⚠️ ACÁ HABÍA UN ESTADO VACÍO CON SU PROPIO TÍTULO, EXPLICACIÓN Y BOTÓN.
+    //
+    // Desde que el paso vive dentro del asistente, **el marco ya dice el motivo
+    // del bloqueo y ya ofrece el enlace al paso 1**, así que esto quedaba
+    // diciendo lo mismo dos veces, una debajo de la otra. Visto en pantalla.
+    //
+    // Lo que corresponde acá es lo que el marco NO puede decir: qué se va a
+    // pedir en este paso cuando se desbloquee. El marco lo atenúa; esto lo
+    // enumera.
     return (
-      <EstadoVacio
-        icono={<ShieldAlert className="size-8" aria-hidden="true" />}
-        titulo="Configura primero tu proveedor DTE"
-        descripcion="Tus folios dependen de qué proveedor de facturación elijas — algunos los gestionan ellos directo con el SII, otros piden que tú los cargues."
-        accion={
-          <Button asChild>
-            <Link href="/onboarding/dte">Ir a configuración DTE</Link>
-          </Button>
-        }
-      />
+      <div className="space-y-2 border border-line bg-bg-sunken px-4 py-3.5">
+        <p className="text-sm font-medium text-fg">Cuando elijas proveedor, acá vas a ver:</p>
+        <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-fg-muted">
+          <li>Si tu proveedor gestiona los folios con el SII, o si los cargas tú.</li>
+          <li>La carga del archivo CAF que descargas del SII.</li>
+          <li>Los rangos cargados, cuántos folios te quedan y cuáles ya consumiste.</li>
+        </ul>
+      </div>
     );
   }
 
