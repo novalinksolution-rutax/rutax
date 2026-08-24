@@ -3,14 +3,16 @@ import { CAPACIDADES } from "./capacidades";
 import { FRASE_CAPACIDAD, compararRoles, describirRol } from "./capacidades-legibles";
 
 describe("FRASE_CAPACIDAD", () => {
-  it("cubre las 33 capacidades del catálogo, sin faltar ninguna", () => {
+  it("cubre TODAS las capacidades del catálogo, sin faltar ninguna", () => {
     // Sin esto, agregar una capacidad al catálogo la haría aparecer en el
     // diálogo de cambio de rol como `gestionar_bodegas` a secas, en medio de
     // una lista escrita en castellano. El tipo `Record<Capacidad, string>` ya lo
     // impide al compilar; esto lo deja dicho por si el tipo se afloja.
     const sinFrase = CAPACIDADES.filter((c) => !FRASE_CAPACIDAD[c]);
     expect(sinFrase).toEqual([]);
-    expect(CAPACIDADES.length).toBe(33);
+    // El número no se clava: agregar una capacidad es normal; dejarla sin
+    // frase, no. Lo que se comprueba es la cobertura.
+    expect(CAPACIDADES.length).toBeGreaterThanOrEqual(33);
   });
 
   it("las frases son acciones, no rótulos de permiso", () => {

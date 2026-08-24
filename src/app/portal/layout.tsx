@@ -59,7 +59,10 @@ export default async function LayoutPortal({
     },
     {
       titulo: "Dinero",
-      items: [{ href: "/portal/cobros", etiqueta: "Estado de cuenta", icono: "cobros" }],
+      // «Mis cobros», igual que el `h1` y que la pestaña. «Estado de cuenta»
+      // es lenguaje de banco, y además no cabía en la barra inferior del
+      // teléfono: se cortaba en «Estado de cuen…».
+      items: [{ href: "/portal/cobros", etiqueta: "Mis cobros", icono: "cobros" }],
     },
   ];
 
@@ -76,7 +79,8 @@ export default async function LayoutPortal({
       // El seller ve el botón de buscar y la paleta ⌘K, pero `/api/buscar` corta
       // por `tipoUsuario !== "interno"` y le devuelve vacío SIEMPRE. Una pantalla
       // no promete una acción que la interfaz no ofrece (regla 35), así que se
-      // apaga hasta que exista el buscador local del portal (NUEVO #21).
+      // apaga hasta que exista el buscador global del portal (NUEVO #21). El
+      // buscador de «Mis pedidos» es local a esa pantalla, no éste.
       mostrarBusqueda={false}
     >
       {children}

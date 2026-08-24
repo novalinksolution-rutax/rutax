@@ -1,5 +1,5 @@
 /**
- * Pantalla S-1 — Estado de cuenta del seller.
+ * «Mis cobros» — los períodos de cobro del seller y sus facturas.
  *
  * Server Component. Solo lectura. RLS garantiza que el seller solo ve sus períodos.
  * Criterios C-1 (montos CLP), C-7 (badge facturado con folio).
@@ -12,6 +12,7 @@ import { Receipt } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarPeriodosCobro, listarDocumentosDte } from "@/modules/dinero/index";
+import { netoPorPeriodoDesdeLineas } from "@/modules/dinero/listado-periodos";
 import type { PeriodoCobro, DocumentoDte } from "@/modules/dinero/tipos";
 import {
   BADGE_ESTADO_SII,
@@ -36,8 +37,25 @@ import {
 } from "@/components/ui/table";
 
 export const metadata: Metadata = {
-  title: "Estado de cuenta",
+  // El mismo nombre que el `h1` y que el menú. La pestaña decía «Estado de
+  // cuenta» mientras la pantalla decía «Mis cobros».
+  title: "Mis cobros",
 };
+
+/**
+ * De qué se compone la lista, en una frase.
+ *
+ * Los períodos que no están abiertos ni facturados —cerrados, esperando la
+ * factura— eran invisibles en los dos contadores anteriores. Van con nombre.
+ */
+function resumenPeriodos(abiertos: number, facturados: number, otros: number): string {
+  const partes: string[] = [];
+  if (abiertos > 0) partes.push(`${abiertos} en curso`);
+  if (otros > 0) partes.push(`${otros} esperando la factura`);
+  if (facturados > 0) partes.push(`${facturados} ya ${facturados === 1 ? "facturado" : "facturados"}`);
+  if (partes.length === 0) return "Todavía no tienes períodos de cobro.";
+  return `Tus períodos de cobro: ${partes.join(" · ")}.`;
+}
 
 function formatearFechaCorta(fechaIso: string): string {
   if (!fechaIso || fechaIso.length < 10) return fechaIso;
@@ -47,6 +65,8 @@ function formatearFechaCorta(fechaIso: string): string {
 
 interface PeriodoConDte extends PeriodoCobro {
   dte: DocumentoDte | null;
+  /** Sumado desde las líneas vivas, NO el total guardado del período. */
+  netoClp: number;
 }
 
 export default async function PaginaCobrosPortal() {
@@ -61,6 +81,7 @@ export default async function PaginaCobrosPortal() {
   let periodosConDte: PeriodoConDte[] = [];
   let contAbiertos = 0;
   let contFacturados = 0;
+  let contOtros = 0;
   let errorCarga = false;
 
   try {
@@ -76,46 +97,47 @@ export default async function PaginaCobrosPortal() {
     for (const p of periodos) {
       if (p.estado === "abierto") contAbiertos++;
       else if (p.estado === "facturado") contFacturados++;
+      else contOtros++;
     }
+
+    // El total de cada fila se suma desde las líneas, igual que en el detalle.
+    // Con el guardado, la lista decía $13.566 y la hoja del mismo período
+    // $11.400 — dos cifras para el mismo período, a un clic de distancia.
+    const netos = await netoPorPeriodoDesdeLineas(
+      cliente,
+      tenantId,
+      periodos.map((p) => p.id),
+    );
 
     periodosConDte = periodos.map((p) => ({
       ...p,
       dte: dteMap.get(p.id) ?? null,
+      netoClp: netos[p.id] ?? 0,
     }));
   } catch {
     errorCarga = true;
   }
 
-  const chips = [
-    { label: "Abiertos", count: contAbiertos, clases: "bg-info-subtle text-info-subtle-foreground" },
-    { label: "Facturados", count: contFacturados, clases: "bg-success-subtle text-success-subtle-foreground" },
-  ];
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
+        {/* «Mis cobros» y no «Estado de cuenta»: es lo que el seller viene a
+            mirar —cuánto le van a cobrar— y es como se llama en el resto del
+            portal. «Estado de cuenta» es lenguaje de banco. */}
         <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
-          Estado de cuenta
+          Mis cobros
         </h1>
+        {/* La bajada dice de qué se compone la lista y cuántos hay, en una
+            frase. Antes había dos chips —«Abiertos: 0» y «Facturados: 0»—
+            encima de una tabla con una fila cerrada: los dos contadores en cero
+            y ninguno hablaba de lo que se estaba viendo. «Solo lectura» era la
+            otra mitad: es una restricción del sistema, no algo que el seller
+            haya venido a leer. */}
         <p className="mt-1 text-sm text-muted-foreground">
-          Tus períodos de cobro y facturas. Solo lectura.
+          {resumenPeriodos(contAbiertos, contFacturados, contOtros)}
         </p>
       </div>
-
-      {/* Chips de resumen */}
-      {!errorCarga && (
-        <div className="flex flex-wrap gap-2" role="list" aria-label="Resumen de períodos">
-          {chips.map((chip) => (
-            <div
-              key={chip.label}
-              role="listitem"
-              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium ${chip.clases}`}
-            >
-              {chip.label}: <span className="font-semibold tabular-nums">{chip.count}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Error */}
       {errorCarga && (
@@ -142,11 +164,10 @@ export default async function PaginaCobrosPortal() {
                 <TableRow className="bg-muted/40">
                   <TableHead className="px-4" style={{ width: "22%" }}>Período</TableHead>
                   <TableHead className="px-4" style={{ width: "18%" }}>Estado</TableHead>
-                  <TableHead className="hidden px-4 text-right sm:table-cell" style={{ width: "10%" }}>
-                    Líneas
-                  </TableHead>
+                  {/* Sin la columna «Líneas»: al seller no le dice nada cuántas
+                      filas tiene el período por dentro. La cifra y el estado sí. */}
                   <TableHead className="hidden px-4 text-right md:table-cell" style={{ width: "18%" }}>
-                    Monto total
+                    Total neto
                   </TableHead>
                   <TableHead className="px-4" style={{ width: "22%" }}>Factura</TableHead>
                   <TableHead className="px-4" style={{ width: "14%" }}>Pago</TableHead>
@@ -189,11 +210,8 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
       <TableCell className="px-4">
         <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
       </TableCell>
-      <TableCell className="hidden px-4 text-right text-muted-foreground tabular-nums sm:table-cell">
-        {periodo.totalLineas}
-      </TableCell>
       <TableCell className="hidden px-4 text-right font-medium tabular-nums md:table-cell">
-        {formatearCLPOGuion(periodo.montoTotalClp)}
+        {formatearCLPOGuion(periodo.netoClp)}
       </TableCell>
       <TableCell className="px-4">
         {periodo.dte ? (

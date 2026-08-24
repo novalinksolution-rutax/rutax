@@ -1,8 +1,35 @@
 /**
- * Lista de pedidos del seller — Pantalla portal/pedidos (Flujo 4, Fase B)
+ * «Mis pedidos» — la lista con la que el seller entra al portal.
+ * =============================================================================
  *
- * Server Component. Solo lectura. RLS garantiza el aislamiento por seller.
- * Filtros de estado y fecha. Paginación.
+ * -----------------------------------------------------------------------------
+ * LOS CAJONES REEMPLAZAN AL SELECTOR DE NUEVE ESTADOS
+ * -----------------------------------------------------------------------------
+ * El filtro de estado ofrecía los nueve estados del motor con el vocabulario del
+ * courier. El seller no distingue `pendiente_asignacion` de `asignado` —en los
+ * dos casos su paquete no salió— y para llegar a «los que tuvieron un problema»
+ * tenía que elegir tres veces, una por estado.
+ *
+ * Ahora son cuatro cajones con su contador (`GRUPOS_PEDIDO_PORTAL`), y
+ * `cancelado` va tras el separador porque no pertenece a la suma. La barra
+ * declara sola que la suma no da el total.
+ *
+ * -----------------------------------------------------------------------------
+ * EL BUSCADOR, QUE ERA LA ACCIÓN QUE FALTABA
+ * -----------------------------------------------------------------------------
+ * El seller entra a esta pantalla porque su cliente le escribió por UN pedido.
+ * Sin buscador, la única forma de encontrarlo era paginar de a 25 mirando
+ * nombres. Busca por código de envío o por destinatario, contra el conjunto
+ * completo — no contra la página cargada.
+ *
+ * -----------------------------------------------------------------------------
+ * SE RETIRA LA QUINTA COLUMNA
+ * -----------------------------------------------------------------------------
+ * Era «Ver detalle» repetido en cada fila más el botón de etiqueta. El nombre
+ * del destinatario ya es el enlace, y la etiqueta se imprime desde el detalle y
+ * desde la pantalla de recién creado, que son los dos momentos en que se
+ * necesita. Una columna entera para decir en cada fila lo que la fila entera ya
+ * hace es ruido.
  */
 
 import type { Metadata } from "next";
@@ -12,10 +39,7 @@ import { Inbox, SearchX, Plus } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerConexionesPorSeller } from "@/modules/integraciones/ml";
-import {
-  traducirEstadoPedido,
-  BADGE_ESTADO_PEDIDO,
-} from "@/lib/ui/traduccion-estados";
+import { BADGE_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -29,10 +53,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ESTADOS_TERMINALES } from "@/modules/operacion/tipos";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
+import {
+  estadoPedidoParaSeller,
+  textoLlegada,
+  GRUPOS_PEDIDO_PORTAL,
+  ETIQUETA_GRUPO_PORTAL,
+  normalizarGrupoPortal,
+} from "@/lib/ui/vocabulario-portal";
 import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
-import { BloqueEtiqueta } from "./bloque-etiqueta";
+import { CajonesPedidosSeller, BuscadorPedidosSeller } from "./piezas-listado-seller";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
@@ -51,8 +81,41 @@ function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, m
   return "Otra cuenta";
 }
 
+/**
+ * El término de búsqueda, limpio para PostgREST.
+ *
+ * El texto viaja dentro de `or=(col.ilike.*x*,…)`: una coma, un paréntesis o un
+ * asterisco lo parten y la consulta se convierte en otra. Se conservan letras
+ * —con tildes y ñ—, dígitos, espacios, guiones y puntos, que es todo lo que
+ * puede tener un código de envío o un nombre.
+ */
+function limpiarBusqueda(bruto: string | undefined): string {
+  if (!bruto) return "";
+  return bruto
+    .normalize("NFC")
+    .replace(/[^\p{L}\p{N}\s.\-]/gu, " ")
+    .trim()
+    .slice(0, 60);
+}
+
+/**
+ * Lo mínimo que `conFiltrosComunes` necesita de un constructor de consulta.
+ *
+ * Se escribe estructuralmente en vez de importar el tipo de PostgREST para que
+ * la misma función sirva a la consulta de filas y a las cinco de conteo, que son
+ * constructores distintos. El genérico devuelve `T`, así que el `.in()` que
+ * viene después conserva el tipo completo.
+ */
+interface FiltrablePedidos<T> {
+  eq(columna: string, valor: string): T;
+  gte(columna: string, valor: string): T;
+  lte(columna: string, valor: string): T;
+  or(filtro: string): T;
+}
+
 interface SearchParams {
   estado?: string;
+  q?: string;
   fecha?: string;
   fecha_desde?: string;
   fecha_hasta?: string;
@@ -74,7 +137,10 @@ export default async function PaginaPedidosSeller({
   const tenantId = sesion.usuario.tenantId;
   const pedidoNuevoId = params.nuevo ?? null;
 
-  const filtroEstado = (params.estado as EstadoPedido | "") ?? "";
+  // El cajón activo. Un `?estado=` con un estado crudo del motor —los enlaces
+  // que salen del inicio del portal— se sube a su grupo en vez de perderse.
+  const grupoActivo = normalizarGrupoPortal(params.estado);
+  const busqueda = limpiarBusqueda(params.q);
   const rangoFecha = parsearRangoFecha({
     exacto: params.fecha,
     desde: params.fecha_desde,
@@ -101,35 +167,83 @@ export default async function PaginaPedidosSeller({
   }
 
   const cliente = crearClienteServiceRole();
+
+  /**
+   * La consulta base: el seller, su tenant, y los filtros que NO son el cajón.
+   *
+   * `head` decide si trae filas o solo el conteo. Es un parámetro y no dos
+   * funciones porque así los contadores de los cajones se cuentan **sobre
+   * exactamente el mismo conjunto** que la tabla — mismo `select`, mismos
+   * filtros—, y no hay forma de que uno cuente algo que el otro no muestra.
+   *
+   * Los contadores cuentan sobre el conjunto filtrado, nunca sobre la página
+   * visible: un contador que cuenta la página es un contador que miente.
+   */
+  function consultaBase(head: boolean) {
+    let q = cliente
+      .from("pedidos")
+      .select("*", { count: "exact", head })
+      .eq("seller_id", sellerId)
+      .eq("tenant_id", tenantId);
+    if (rangoFecha.exacto) {
+      q = q.eq("fecha_compromiso", rangoFecha.exacto);
+    } else {
+      if (rangoFecha.desde) q = q.gte("fecha_compromiso", rangoFecha.desde);
+      if (rangoFecha.hasta) q = q.lte("fecha_compromiso", rangoFecha.hasta);
+    }
+    if (busqueda) {
+      q = q.or(
+        [
+          `destinatario_nombre.ilike.*${busqueda}*`,
+          `codigo_interno.ilike.*${busqueda}*`,
+          `ml_shipment_id.ilike.*${busqueda}*`,
+          `referencia_externa.ilike.*${busqueda}*`,
+        ].join(","),
+      );
+    }
+    return q;
+  }
+
   let pedidos: Pedido[] = [];
   const mlUserPorPedido: Record<string, string | null> = {};
   let total = 0;
   let errorCarga = false;
+  const conteos: Record<string, number> = {
+    en_camino: 0,
+    entregado: 0,
+    problema: 0,
+    cancelado: 0,
+  };
 
   try {
-    let query = cliente
-      .from("pedidos")
-      .select("*", { count: "exact" })
-      .eq("seller_id", sellerId)
-      .eq("tenant_id", tenantId)
+    let query = consultaBase(false)
       .order("fecha_compromiso", { ascending: false })
       .order("creado_en", { ascending: false })
       .range(offset, offset + LIMITE - 1);
+    if (grupoActivo) query = query.in("estado", [...GRUPOS_PEDIDO_PORTAL[grupoActivo]]);
 
-    if (filtroEstado) query = query.eq("estado", filtroEstado);
-    // `fecha_compromiso` es columna `date`: día exacto o rango con gte/lte.
-    if (rangoFecha.exacto) {
-      query = query.eq("fecha_compromiso", rangoFecha.exacto);
-    } else {
-      if (rangoFecha.desde) query = query.gte("fecha_compromiso", rangoFecha.desde);
-      if (rangoFecha.hasta) query = query.lte("fecha_compromiso", rangoFecha.hasta);
-    }
+    // Los cuatro contadores y el total, en paralelo con la página. Van en `head`
+    // —solo el conteo, sin filas— así que no traen los datos dos veces.
+    const [resultado, ...contados] = await Promise.all([
+      query,
+      ...(Object.keys(GRUPOS_PEDIDO_PORTAL) as (keyof typeof GRUPOS_PEDIDO_PORTAL)[]).map((g) =>
+        consultaBase(true).in("estado", [...GRUPOS_PEDIDO_PORTAL[g]]),
+      ),
+      consultaBase(true),
+    ]);
 
-    const { data, error, count } = await query;
-    if (error) throw error;
+    if (resultado.error) throw resultado.error;
 
-    total = count ?? 0;
-    pedidos = (data ?? []).map((p: Record<string, unknown>) => {
+    const claves = Object.keys(GRUPOS_PEDIDO_PORTAL);
+    claves.forEach((g, i) => {
+      conteos[g] = contados[i]?.count ?? 0;
+    });
+    // El total de la barra es el del conjunto SIN cajón: si dijera el del cajón
+    // activo, «281 de 284» pasaría a «6 de 6» al entrar a «En camino» y la
+    // referencia con la que se compara desaparecería justo al usarla.
+    total = contados[claves.length]?.count ?? 0;
+
+    pedidos = (resultado.data ?? []).map((p: Record<string, unknown>) => {
       mlUserPorPedido[p.id as string] = (p.ml_user_id as string | null) ?? null;
       return {
       id: p.id as string,
@@ -142,6 +256,9 @@ export default async function PaginaPedidosSeller({
       referenciaExterna: (p.referencia_externa as string | null) ?? null,
       mlOrderId: (p.ml_order_id as string | null) ?? null,
       mlShipmentId: (p.ml_shipment_id as string | null) ?? null,
+      // El código con que el seller identifica su envío. `select("*")` ya lo
+      // trae; lo que faltaba era mapearlo.
+      codigoInterno: (p.codigo_interno as string | null) ?? null,
       estado: p.estado as EstadoPedido,
       estadoMl: (p.estado_ml as string | null) ?? null,
       subestadoMl: (p.subestado_ml as string | null) ?? null,
@@ -170,12 +287,14 @@ export default async function PaginaPedidosSeller({
     errorCarga = true;
   }
 
-  const hayFiltros = !!(filtroEstado || rangoFecha.hayFecha);
-  const totalPaginas = Math.ceil(total / LIMITE);
+  const enCajon = grupoActivo ? conteos[grupoActivo] : total;
+  const hayFiltros = !!(grupoActivo || busqueda || rangoFecha.hayFecha);
+  const totalPaginas = Math.ceil(enCajon / LIMITE);
 
   function urlConFiltros(overrides: Record<string, string>) {
     const sp = new URLSearchParams();
-    if (filtroEstado) sp.set("estado", filtroEstado);
+    if (grupoActivo) sp.set("estado", grupoActivo);
+    if (busqueda) sp.set("q", busqueda);
     if (rangoFecha.exacto) {
       sp.set("fecha", rangoFecha.exacto);
     } else {
@@ -203,7 +322,7 @@ export default async function PaginaPedidosSeller({
         <Button asChild className="whitespace-nowrap">
           <Link href="/portal/pedidos/nuevo">
             <Plus className="size-4" aria-hidden="true" />
-            Solicitar envío same-day
+            Crear pedido same-day
           </Link>
         </Button>
       </div>
@@ -215,15 +334,35 @@ export default async function PaginaPedidosSeller({
         </div>
       )}
 
-      {/* Filtros */}
-      <FiltrosPedidosSeller
-        hoy={hoyIso}
-        filtroEstado={filtroEstado}
-        filtroFecha={rangoFecha.exacto}
-        filtroFechaDesde={rangoFecha.desde}
-        filtroFechaHasta={rangoFecha.hasta}
-        hayFiltros={hayFiltros}
-      />
+      {!errorCarga ? (
+        <div className="space-y-3">
+          <CajonesPedidosSeller
+            cajones={(["en_camino", "entregado", "problema"] as const).map((g) => ({
+              clave: g,
+              etiqueta: ETIQUETA_GRUPO_PORTAL[g],
+              conteo: conteos[g],
+            }))}
+            excluido={{
+              clave: "cancelado",
+              etiqueta: ETIQUETA_GRUPO_PORTAL.cancelado,
+              conteo: conteos.cancelado,
+            }}
+            activo={grupoActivo}
+            total={total}
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <BuscadorPedidosSeller inicial={busqueda} />
+            <FiltrosPedidosSeller
+              hoy={hoyIso}
+              filtroFecha={rangoFecha.exacto}
+              filtroFechaDesde={rangoFecha.desde}
+              filtroFechaHasta={rangoFecha.hasta}
+              hayFiltros={hayFiltros}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {/* Error */}
       {errorCarga && (
@@ -238,11 +377,15 @@ export default async function PaginaPedidosSeller({
           <EmptyState
             icon={SearchX}
             tono="filtro"
-            titulo="Ningún pedido coincide"
-            descripcion="No hay pedidos con estos filtros. Prueba cambiando el estado o la fecha."
+            titulo={busqueda ? `Nada coincide con «${busqueda}»` : "Ningún pedido coincide"}
+            descripcion={
+              busqueda
+                ? "Prueba con el código completo del envío, o con parte del nombre de quien recibe."
+                : "No hay pedidos con estos filtros. Prueba cambiando el cajón o la fecha."
+            }
             accion={
               <Button asChild variant="outline" size="sm">
-                <Link href="/portal/pedidos">Limpiar filtros</Link>
+                <Link href="/portal/pedidos">Ver todos mis pedidos</Link>
               </Button>
             }
           />
@@ -256,12 +399,6 @@ export default async function PaginaPedidosSeller({
       ) : (
         !errorCarga && (
           <DataTable
-            toolbar={
-              <span className="text-sm text-muted-foreground tabular-nums">
-                {total} pedido{total !== 1 ? "s" : ""}
-                {hayFiltros ? " con filtros" : ""}
-              </span>
-            }
             footer={
               totalPaginas > 1 ? (
                 <Pagination
@@ -278,23 +415,38 @@ export default async function PaginaPedidosSeller({
                   <TableHead className="px-4">Estado</TableHead>
                   <TableHead className="px-4">Destinatario</TableHead>
                   <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
-                  <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
-                  <TableHead className="px-4 text-right">
-                    <span className="sr-only">Acciones</span>
-                  </TableHead>
+                  {/* «Llega» y no «F. compromiso»: es la pregunta con la que el
+                      seller entra a esta pantalla, y la respuesta era una fecha
+                      ISO cruda impresa tal cual. */}
+                  <TableHead className="hidden px-4 md:table-cell">Llega</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pedidos.map((pedido) => (
                   <TableRow key={pedido.id}>
-                    <TableCell className="px-4">
+                    <TableCell className="px-4 align-top">
+                      {/* El idioma del seller: «Nadie recibió», no «Fallido».
+                          El TONO no cambia — sale del mismo eje y valor—, solo
+                          la palabra. */}
                       <BadgeEstado
                         variante={BADGE_ESTADO_PEDIDO[pedido.estado]} eje="pedido" valor={pedido.estado}
-                        texto={traducirEstadoPedido(pedido.estado)}
+                        texto={estadoPedidoParaSeller(pedido.estado)}
                       />
                     </TableCell>
-                    <TableCell className="px-4 whitespace-normal">
-                      <p className="font-medium">{pedido.destinatarioNombre}</p>
+                    <TableCell className="px-4 align-top whitespace-normal">
+                      {/* El nombre ES el enlace: la quinta columna con «Ver
+                          detalle» repetido en cada fila se retiró. */}
+                      <EnlaceDetalle
+                        href={`/portal/pedidos/${pedido.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {pedido.destinatarioNombre}
+                      </EnlaceDetalle>
+                      {/* El código de envío bajo el nombre: es con lo que el
+                          seller busca el pedido cuando su cliente le escribe. */}
+                      <p className="rx-num text-xs text-fg-muted">
+                        {pedido.codigoInterno ?? pedido.mlShipmentId ?? pedido.id.slice(0, 8)}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {pedido.destinatarioComuna}
                         {mostrarOrigen && etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] ? (
@@ -303,27 +455,19 @@ export default async function PaginaPedidosSeller({
                             {etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""]}
                           </span>
                         ) : null}
+                        {/* En teléfono no hay columna «Llega», y es la mitad de
+                            la pregunta. Baja acá en vez de desaparecer. */}
+                        <span className="md:hidden">
+                          {" · "}
+                          {textoLlegada(pedido.fechaCompromiso, hoyIso, pedido.estado)}
+                        </span>
                       </p>
                     </TableCell>
-                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
+                    <TableCell className="hidden px-4 align-top text-muted-foreground sm:table-cell">
                       {pedido.destinatarioDireccion}
                     </TableCell>
-                    <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
-                      {pedido.fechaCompromiso ?? "—"}
-                    </TableCell>
-                    <TableCell className="px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {pedido.tipoPedido === "same_day" &&
-                          !ESTADOS_TERMINALES.includes(pedido.estado) && (
-                            <BloqueEtiqueta pedidoId={pedido.id} compacto />
-                          )}
-                        <EnlaceDetalle
-                          href={`/portal/pedidos/${pedido.id}`}
-                          className="text-xs font-medium text-primary hover:underline whitespace-nowrap"
-                        >
-                          Ver detalle
-                        </EnlaceDetalle>
-                      </div>
+                    <TableCell className="hidden px-4 align-top text-muted-foreground md:table-cell">
+                      {textoLlegada(pedido.fechaCompromiso, hoyIso, pedido.estado)}
                     </TableCell>
                   </TableRow>
                 ))}

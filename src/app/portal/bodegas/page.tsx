@@ -47,6 +47,17 @@ export default async function PaginaBodegasSeller() {
   let bodegas: BodegaSeller[] = [];
   let errorCarga = false;
 
+  // El nombre del courier, para poder decir «Andes Express todavía no
+  // registró…» en vez de «tu courier». Un vacío que nombra a quien tiene que
+  // actuar se puede accionar; uno genérico, no.
+  const { data: tenantFila } = await supabase
+    .from("tenants")
+    .select("nombre_fantasia")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const nombreCourier =
+    (tenantFila?.nombre_fantasia as string | undefined) ?? "Tu empresa de despacho";
+
   try {
     const { data, error } = await supabase
       .schema("identidad")
@@ -94,11 +105,14 @@ export default async function PaginaBodegasSeller() {
       )}
 
       {!errorCarga && bodegas.length === 0 && (
+        /* El vacío nombra al courier y OFRECE LA SALIDA: sin bodega registrada
+           nadie va a pasar a retirar, así que quedarse esperando es lo peor que
+           puede hacer el seller. */
         <EmptyState
           icon={Warehouse}
           tono="arranque"
-          titulo="Tu courier todavía no registró ninguna bodega"
-          descripcion="Cuando lo haga, vas a ver aquí desde dónde retira tus pedidos."
+          titulo={`${nombreCourier} todavía no registró ninguna bodega`}
+          descripcion={`Mientras no haya una, no hay dónde ir a retirar tus pedidos. Escríbeles para coordinar desde dónde los recogen.`}
         />
       )}
 

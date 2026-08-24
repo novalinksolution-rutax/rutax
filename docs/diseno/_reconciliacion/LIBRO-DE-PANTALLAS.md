@@ -793,21 +793,64 @@ B3b y no se tocó en esta pasada.
 
 | Pantalla | Ruta | Veredicto |
 |---|---|---|
-| Inicio del portal | `portal` | **PANTALLA DISTINTA** |
-| Bienvenida | `portal/bienvenida` | **PANTALLA DISTINTA** |
-| Mis pedidos | `portal/pedidos` | **PANTALLA DISTINTA** |
-| Detalle del pedido · same-day | `portal/pedidos/[pedidoId]` | **PANTALLA DISTINTA** |
-| Mis cobros y su detalle | `portal/cobros` · `cobros/[periodoId]` | **PANTALLA DISTINTA** |
-| Mis incidencias | `portal/incidencias` | **PANTALLA DISTINTA** |
-| Pedido Flex · variante | misma ruta | FALTA PIEZA |
-| Cobro ya facturado · variante | misma ruta | FALTA PIEZA |
-| Nuevo pedido same-day | `portal/pedidos/nuevo` | FALTA PIEZA |
-| Bodegas | `portal/bodegas` | IGUAL |
+| Inicio del portal | `portal` | ✅ hecha 24-08 |
+| Bienvenida | `portal/bienvenida` | ✅ hecha 24-08 |
+| Mis pedidos | `portal/pedidos` | ✅ hecha 24-08 · cajones + buscador |
+| Detalle del pedido · same-day | `portal/pedidos/[pedidoId]` | ✅ hecha 24-08 |
+| Mis cobros y su detalle | `portal/cobros` · `cobros/[periodoId]` | ✅ hecha 24-08 |
+| Mis incidencias | `portal/incidencias` | ✅ hecha 24-08 · con «Reportar» |
+| Pedido Flex · variante | misma ruta | ✅ hecha 24-08 · aviso + n.º de venta |
+| Cobro ya facturado · variante | misma ruta | ✅ hecha 24-08 · dos acciones |
+| Nuevo pedido same-day | `portal/pedidos/nuevo` | ✅ hecha 24-08 |
+| Bodegas | `portal/bodegas` | ✅ hecha 24-08 |
 
-**Tres cosas del bloque:** «Reportar un problema» no existe pese a que la bienvenida lo promete ·
-`notas_resolucion` se lee de la base y se descarta (`portal/incidencias/page.tsx:114`) · el
-«IVA 19 %» que el tablero manda retirar sigue calculándose como residuo
-(`portal/cobros/[periodoId]/page.tsx:298`), contra la regla 22.
+### Hecho el 24-08-2026 — las diez, de corrido
+
+Decisiones del usuario en esta pasada: **las 10 pantallas de corrido** · los **siete tipos** de
+incidencia, en el idioma del seller (no una taxonomía propia: si el courier y el seller
+clasificaran distinto, la misma incidencia se contaría de dos formas) · el detalle del cobro
+**solo agrupado por concepto**, como el tablero, sin la lista de 285 filas.
+
+**Lo que se construyó de cero:**
+
+- `lib/ui/vocabulario-portal.ts` (+ 17 pruebas) — el idioma del seller. `estadoPedidoParaSeller`
+  funde los pares manual/automático y dice «Nadie recibió» donde el courier dice «Fallido»; el
+  **tono no cambia**, solo la palabra, así que el mismo hecho se pinta igual en las dos
+  superficies. Trae además `textoLlegada`, los **cuatro cajones** (`GRUPOS_PEDIDO_PORTAL`) y
+  `hitoLineaPortal`.
+- `portal/acciones-incidencias.ts` + `incidencias/dialogo-reportar.tsx` (+ 8 pruebas) —
+  **la promesa rota de la bienvenida, cumplida.** Tres barreras: sesión de seller · la capacidad
+  nueva `reportar_incidencias_propias` (un gate de lectura no autoriza un alta) · **el pedido es
+  suyo**, comprobado contra `seller_id` antes de abrir nada, porque `abrirIncidencia` valida
+  tenant y no seller. `esAccionManual: false`: ese flag exige la capacidad del supervisor.
+- `dinero/listado-periodos.ts::netoPorPeriodoDesdeLineas` (+ 4 pruebas) — el total de cada
+  período, sumado desde sus líneas vivas, en tandas de 100 ids.
+
+**Los defectos que salieron al mirar las pantallas, no al leer los tableros:**
+
+| Qué | Dónde |
+|---|---|
+| El «IVA 19 %» calculado como residuo del total guardado — podía imprimirse **negativo** | `cobros/[periodoId]` |
+| `notas_resolucion` leída de la base y descartada: el seller no veía cómo se resolvió su incidencia | `incidencias` |
+| **Dos totales para el mismo período**: $13.566 en la lista (el guardado, con la línea anulada dentro) y $11.400 al abrirlo | `cobros` |
+| El pie decía «cuando *cierre* y facture» sobre un período que el encabezado declaraba **Cerrado**: eran dos casos y los estados son tres | `cobros/[periodoId]` |
+| El aviso de corte vivía **dentro de un acordeón cerrado**: no se veía nunca. Sube junto al botón, que es donde ocurre la consecuencia | `pedidos/nuevo` |
+| «Entrega flex» y «Entrega same_day» — el identificador de la tarifa impreso crudo | `pedidos/[pedidoId]` |
+| «Sin respuesta hace 1813 h» | `incidencias` |
+| La línea de tiempo decía «Fallido» tres centímetros debajo de un distintivo que decía «Nadie recibió» | `pedidos/[pedidoId]` |
+| El propio nombre del seller repetido en cada fila de su propia tabla («Entrega Flex – FalabellaTech Ltda.») | `cobros/[periodoId]` |
+| Tres pestañas con un nombre y su `h1` con otro; «Estado de cuenta» se cortaba en «Estado de cuen…» en la barra del teléfono | `cobros` · `pedidos/nuevo` · layout |
+| Dos contadores en cero («Abiertos: 0 · Facturados: 0») encima de una tabla con una fila cerrada, que ninguno contaba | `cobros` |
+
+**Un texto que se retiró por regla, no por estilo:** el bloque de efecto en el cobro tenía un
+`sr-only` con la frase completa del sistema, que nombra **también la liquidación del conductor**.
+El texto para lectores de pantalla es la interfaz igual que el resto (regla 66), así que se
+recortó a la mitad que le corresponde al seller.
+
+**Lo que el tablero pedía y no se hizo, con su motivo:** el enlace directo «Ver en Mercado Libre».
+La URL de detalle de una venta no está documentada, y un enlace roto desde el portal es peor que
+no tenerlo — en su lugar la hoja da el **número de venta**, que es con lo que el seller la
+encuentra. Queda como deuda para cuando se verifique la URL contra una cuenta real.
 
 ## B5 · App del conductor · fuera de este repo
 

@@ -34,7 +34,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { BotonDescargaFacturaPdf } from "./boton-descarga-factura-pdf";
+import { TablaFinanciera } from "@/components/ui/tabla-financiera";
+import { BloqueComposicion } from "@/components/ui/bloque-composicion";
+import { agruparLineasCobro } from "@/modules/dinero/agrupacion-lineas";
 
 export const metadata: Metadata = {
   title: "Detalle de período",
@@ -103,13 +107,47 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
   );
 
   const lineas: LineaCobro[] = periodo.lineas ?? [];
+  // La misma agrupación que usa el detalle del período del courier: una sola
+  // aritmética para las dos pantallas. Si el seller y el courier sumaran por
+  // caminos distintos, un día darían cifras distintas del mismo período.
+  const agrupacion = agruparLineasCobro(lineas);
+
+  // El nombre del courier, para poder decir «cuando Andes Express cierre…» en
+  // vez de «cuando tu empresa de despacho…». Si falla, se cae a un genérico.
+  const { data: tenantFila } = await cliente
+    .from("tenants")
+    .select("nombre_fantasia")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const nombreCourier =
+    (tenantFila?.nombre_fantasia as string | undefined) ?? "tu empresa de despacho";
+
+  // El nombre del propio seller, para PODARLO del concepto de cada línea.
+  // El motor escribe «Entrega Flex – FalabellaTech Ltda.», que es correcto en la
+  // pantalla del courier —donde un período junta a varios sellers— y en el
+  // portal repite el nombre del que está mirando en cada fila de su propia
+  // tabla. Se poda solo si coincide: si no, el concepto queda tal cual.
+  const { data: sellerFila } = await cliente
+    .from("sellers")
+    .select("razon_social")
+    .eq("id", sellerId)
+    .maybeSingle();
+  const nombreSeller = (sellerFila?.razon_social as string | undefined) ?? "";
+  const podarNombreSeller = (concepto: string): string => {
+    if (!nombreSeller) return concepto;
+    for (const guion of [" – ", " - ", " — "]) {
+      const sufijo = `${guion}${nombreSeller}`;
+      if (concepto.endsWith(sufijo)) return concepto.slice(0, -sufijo.length);
+    }
+    return concepto;
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Breadcrumb */}
       <nav aria-label="Migajas de pan" className="flex items-center gap-1 text-sm text-muted-foreground">
         <Link href="/portal/cobros" className="hover:text-foreground hover:underline">
-          Estado de cuenta
+          Mis cobros
         </Link>
         <span aria-hidden="true">/</span>
         <span className="text-foreground">Detalle</span>
@@ -118,9 +156,24 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       {/* Sección A — Encabezado */}
       <section>
         <div className="space-y-2">
-          <p className="text-base text-muted-foreground">
-            {formatearFechaCorta(periodo.fechaInicio)} –{" "}
+          {/* El encabezado dice en qué estado está, hasta cuándo corre y
+              cuántas entregas lleva: las tres cosas que se preguntan antes de
+              mirar la cifra. Antes era solo el rango de fechas. */}
+          <h1 className="font-heading text-2xl font-semibold">
+            Período {formatearFechaCorta(periodo.fechaInicio)} –{" "}
             {formatearFechaCorta(periodo.fechaFin)}
+          </h1>
+          <p className="rx-num text-xs text-fg-muted">
+            {periodo.estado === "abierto"
+              ? `Abierto · cierra el ${formatearFechaCorta(periodo.fechaFin)}`
+              : periodo.estado === "cerrado"
+                ? "Cerrado · esperando la factura"
+                : periodo.estado === "facturado"
+                  ? "Facturado"
+                  : "Anulado"}
+            {" · "}
+            {agrupacion.entregasTotales}{" "}
+            {agrupacion.entregasTotales === 1 ? "entrega" : "entregas"}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
@@ -131,9 +184,16 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
               />
             )}
           </div>
-          <p className="text-3xl font-semibold tabular-nums">
-            {formatearCLPOGuion(periodo.montoTotalClp)}
-          </p>
+          {/* La cifra sale de las LÍNEAS, no de `monto_total_clp`, y va rotulada
+              (regla 18). Antes era un número pelado, y más abajo el pie decía
+              «Total (con IVA)» con otra cifra: dos números grandes distintos
+              para el mismo período. */}
+          <div>
+            <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
+              Total neto
+            </p>
+            <p className="rx-num text-3xl font-semibold">{formatearCLP(agrupacion.total)}</p>
+          </div>
           {periodo.estadoCobro === "parcial" && (
             <p className="text-sm text-muted-foreground">
               Pagado: <span className="font-medium tabular-nums">{formatearCLP(periodo.montoPagadoClp)}</span> · Saldo:{" "}
@@ -194,10 +254,13 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
       )}
 
       {/* Sección B — Bloque "Factura" (solo si hay DTE) */}
+      {/* La factura, en tono BUENA NOTICIA y no en tarjeta neutra: para el
+          seller, que su período quedara facturado es el desenlace bueno del
+          mes — sabe cuánto debe, contra qué documento y hasta cuándo. */}
       {dte && (
         <section
           aria-labelledby="factura-titulo"
-          className="rounded-lg border bg-card p-5 shadow-xs"
+          className="border border-balanced-line bg-balanced-bg p-5"
         >
           <h2
             id="factura-titulo"
@@ -209,8 +272,13 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
               <p className="text-2xl font-semibold tabular-nums">Folio {dte.folio}</p>
-              <p className="text-sm text-muted-foreground">
-                Emitida el {formatearFechaCorta(dte.fechaEmision)}
+              <p className="text-sm text-fg-muted">
+                Emitida el {formatearFechaCorta(dte.fechaEmision)} por {nombreCourier}
+                {/* «Aceptada por el SII» como frase y no solo como distintivo:
+                    es lo que el contador del seller necesita leer. */}
+                {dte.estadoSii === "aceptado"
+                  ? ` · aceptada por el Servicio de Impuestos Internos`
+                  : ""}
               </p>
               <p className="text-xl font-semibold tabular-nums">
                 {formatearCLP(dte.montoTotalClp)}
@@ -234,100 +302,129 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
               )}
             </div>
 
-            {/* Botón descarga — criterio C-3, solo PDF para el seller */}
-            {dte.pdfRef && (
-              <div className="shrink-0">
-                <BotonDescargaFacturaPdf pdfRef={dte.pdfRef} />
-              </div>
-            )}
+            {/* Las DOS acciones del bloque, no una.
+                --------------------------------------------------------------
+                Descargar el PDF era la única salida, y la pregunta que trae al
+                seller a esta pantalla no es «dame el PDF» sino «por qué me
+                cobras esto». El detalle está más abajo en la misma hoja: el
+                segundo botón lleva ahí y dice cuántas entregas va a encontrar,
+                para que se vea que hay algo que mirar. */}
+            <div className="flex shrink-0 flex-col gap-2">
+              {dte.pdfRef && <BotonDescargaFacturaPdf pdfRef={dte.pdfRef} />}
+              {agrupacion.entregasTotales > 0 ? (
+                <Button asChild variant="outline" size="sm">
+                  <a href="#lineas-titulo">
+                    Ver el detalle de las {agrupacion.entregasTotales}{" "}
+                    {agrupacion.entregasTotales === 1 ? "entrega" : "entregas"}
+                  </a>
+                </Button>
+              ) : null}
+            </div>
           </div>
         </section>
       )}
 
-      {/* Sección C — Lista de líneas (sin monto base ni ajuste — criterio C-2) */}
+      {/* Sección C — Lo que se te cobra, agrupado por concepto.
+          ------------------------------------------------------------------
+          🐞 ACÁ HABÍA UN «IVA 19 %» QUE NO ERA IVA: era el residuo entre
+          `monto_total_clp` y la suma de las líneas
+          (`const ivaClp = (periodo.montoTotalClp ?? 0) - netoClp`). Con el
+          período abierto —que es cuando el seller más lo mira— esa resta salía
+          **negativa**, y la pantalla mostraba un impuesto en negativo.
+
+          Rutax no muestra impuestos (regla 22): los calcula y los declara el
+          documento tributario. Acá va el neto, y punto.
+
+          Y la tabla pasó de una fila por PEDIDO a una fila por CONCEPTO
+          (decisión del usuario). Un listado de 285 filas con un `#12345678`
+          que al seller no le dice nada no se audita: se ignora. */}
       <section aria-labelledby="lineas-titulo">
         <h2
           id="lineas-titulo"
-          className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+          // Con el ancla de arriba, el título tiene que quedar despegado del
+          // borde superior al saltar; si no, aterriza pegado al marco.
+          className="mb-3 scroll-mt-6 font-mono text-[10px] font-medium tracking-[0.1em] text-fg-subtle uppercase"
         >
-          Detalle de entregas ({lineas.length} línea{lineas.length !== 1 ? "s" : ""})
+          Lo que se te cobra
         </h2>
 
         {lineas.length === 0 ? (
-          <div className="rounded-lg border bg-card px-6 py-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              Este período aún no tiene líneas registradas.
+          <div className="border border-line bg-bg-sunken px-6 py-10 text-center">
+            <p className="text-sm text-fg-muted">
+              Este período todavía no tiene entregas. Cada una que hagamos aparece acá.
             </p>
           </div>
         ) : (
-          <DataTable>
-            <Table densidad="relaxed" aria-label="Detalle de líneas del período">
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead className="px-4">Pedido</TableHead>
-                  <TableHead className="hidden px-4 sm:table-cell">Fecha entrega</TableHead>
-                  <TableHead className="px-4">Concepto</TableHead>
-                  <TableHead className="px-4 text-right">Monto</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lineas.map((linea) => (
-                  <TableRow key={linea.id}>
-                    <TableCell className="px-4">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        #{linea.pedidoId.slice(0, 8)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
-                      {formatearFechaCorta(linea.fechaHecho)}
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate px-4 text-muted-foreground">
-                      {linea.concepto}
-                    </TableCell>
-                    <TableCell className="px-4 text-right font-semibold tabular-nums">
-                      {formatearCLP(linea.montoFinalClp)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              <TableFooter>
-                {(() => {
-                  const netoClp = lineas
-                    .filter((l) => !l.anulada)
-                    .reduce((s, l) => s + (l.montoFinalClp ?? 0), 0);
-                  const ivaClp = (periodo.montoTotalClp ?? 0) - netoClp;
-                  return (
-                    <>
-                      <TableRow className="text-muted-foreground">
-                        <TableCell colSpan={3} className="px-4 text-xs">
-                          Subtotal neto
-                        </TableCell>
-                        <TableCell className="px-4 text-right text-xs tabular-nums">
-                          {formatearCLP(netoClp)}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow className="text-muted-foreground">
-                        <TableCell colSpan={3} className="px-4 text-xs">
-                          IVA 19%
-                        </TableCell>
-                        <TableCell className="px-4 text-right text-xs tabular-nums">
-                          {formatearCLP(ivaClp)}
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell colSpan={3} className="px-4 text-sm font-semibold">
-                          Total (con IVA)
-                        </TableCell>
-                        <TableCell className="px-4 text-right text-sm font-bold tabular-nums">
-                          {formatearCLPOGuion(periodo.montoTotalClp)}
-                        </TableCell>
-                      </TableRow>
-                    </>
-                  );
-                })()}
-              </TableFooter>
-            </Table>
-          </DataTable>
+          <>
+            <div className="overflow-hidden border border-line">
+              <TablaFinanciera
+                rotulo="neto"
+                cabeceras={["Concepto", "Entregas", "Tarifa", "Monto"]}
+                filas={[
+                  ...agrupacion.conceptos.map((c) => ({
+                    tipo: "linea" as const,
+                    concepto: podarNombreSeller(c.concepto),
+                    entregas: c.entregas,
+                    tarifa: c.tarifa,
+                    monto: c.monto,
+                  })),
+                  ...(agrupacion.ajustes.length > 0
+                    ? [
+                        {
+                          tipo: "subtotal" as const,
+                          concepto: "Subtotal de entregas",
+                          entregas: agrupacion.entregasTotales,
+                          monto: agrupacion.subtotalEntregas,
+                        },
+                      ]
+                    : []),
+                  ...agrupacion.ajustes.map((aj) => ({
+                    tipo: "ajuste" as const,
+                    concepto: aj.concepto,
+                    monto: aj.monto,
+                  })),
+                  {
+                    tipo: "total" as const,
+                    concepto: "Total del período",
+                    entregas: agrupacion.entregasTotales,
+                    monto: agrupacion.total,
+                  },
+                ]}
+              />
+            </div>
+
+            {/* La resta a la vista. Es lo que el seller reconstruye a mano en
+                una planilla cuando la pantalla no se la da. */}
+            {agrupacion.ajustes.length > 0 ? (
+              <BloqueComposicion
+                className="mt-2"
+                sumandos={[
+                  { concepto: "entregas", monto: agrupacion.subtotalEntregas },
+                  ...agrupacion.ajustes.map((aj) => ({
+                    concepto: "ajustes",
+                    monto: Math.abs(aj.monto),
+                    resta: aj.monto < 0,
+                  })),
+                ]}
+              />
+            ) : null}
+
+            {/* El pie: qué va a pasar, y de quién son los impuestos.
+                ----------------------------------------------------------------
+                Eran DOS casos y los estados son TRES. Un período `cerrado` sin
+                factura caía en el «cuando cierre y facture», con el encabezado
+                diciendo «Cerrado» tres líneas más arriba: la pantalla se
+                contradecía sola. El cerrado-sin-factura tiene su propia frase,
+                porque es el único estado en que la cifra ya no se mueve y el
+                documento todavía no existe. */}
+            <p className="mt-3 text-sm leading-relaxed text-fg-muted">
+              {dte
+                ? "Este período está cerrado: la factura de arriba es la definitiva y no se modifica. Si hubo un ajuste posterior, va con nota de crédito."
+                : periodo.estado === "abierto"
+                  ? `Este período sigue abierto: cada entrega que hagamos se suma acá. Cuando ${nombreCourier} lo cierre y lo facture, aparece la factura en PDF con su folio. Los impuestos los muestra el documento, no esta pantalla.`
+                  : `Este período ya está cerrado, así que la cifra no se mueve más. Falta que ${nombreCourier} emita la factura; cuando lo haga, el PDF con su folio aparece acá. Los impuestos los muestra el documento, no esta pantalla.`}
+            </p>
+          </>
         )}
       </section>
     </div>

@@ -20,10 +20,7 @@ import { Package, CheckCircle2 } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerConexionesPorSeller } from "@/modules/integraciones/ml";
-import {
-  traducirEstadoPedido,
-  BADGE_ESTADO_PEDIDO,
-} from "@/lib/ui/traduccion-estados";
+import { BADGE_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { VisorPodSeller, type PodSeller } from "./visor-pod-seller";
 import { BotonCopiarTracking } from "./boton-copiar-tracking";
@@ -34,6 +31,15 @@ import type { EstadoPedido, FuentePedido } from "@/modules/operacion/tipos";
 import { esTransicionValida } from "@/modules/operacion/maquina-estados";
 import { puedeGestionarPedidosPropios } from "@/modules/identidad/capacidades";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
+import {
+  estadoPedidoParaSeller,
+  hitoLineaPortal,
+  textoLlegada,
+} from "@/lib/ui/vocabulario-portal";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { DialogoReportar } from "../../incidencias/dialogo-reportar";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
 export const metadata: Metadata = {
@@ -50,7 +56,14 @@ interface PedidoDetalle {
   sellerId: string;
   estado: EstadoPedido;
   mlShipmentId: string | null;
+  mlOrderId: string | null;
   mlUserId: string | null;
+  /** El código con que el seller identifica el envío. */
+  codigoInterno: string | null;
+  /** Fecha civil comprometida ('YYYY-MM-DD'), para el «llega». */
+  fechaCompromiso: string | null;
+  /** La tarifa con la que se le va a cobrar esta entrega. */
+  tarifaAplicableId: string | null;
   direccionDestinatario: string;
   comunaDestinatario: string;
   fechaCompromisoHora: string | null;
@@ -69,8 +82,8 @@ interface PedidoDetalle {
 }
 
 // =============================================================================
-// Línea de tiempo simple (mismo vocabulario de `traducirEstadoPedido`, para
-// consistencia con la página pública de tracking — RF-020/021).
+// Línea de tiempo simple. Habla el idioma del seller, igual que el resto de la
+// hoja: los cuatro hitos salen de `hitoLineaPortal` (RF-020/021).
 // =============================================================================
 
 /** Pasos "felices" del ciclo de vida — se muestran siempre en este orden. */
@@ -192,7 +205,10 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
   const { data: filaPedido, error: errorPedido } = await cliente
     .from("pedidos")
     .select(
-      "id, tenant_id, seller_id, estado, ml_shipment_id, ml_user_id, destinatario_nombre, destinatario_telefono, destinatario_direccion, destinatario_comuna, instrucciones_entrega, fecha_compromiso_hora, creado_en, tipo_pedido, fuente, tracking_token, cancelado_en, cancelado_por_usuario_id, motivo_cancelacion",
+      // `codigo_interno` y `fecha_compromiso` para el encabezado; `tarifa_aplicable_id`
+      // para poder decir qué se le va a cobrar — el bloque de dinero que la hoja
+      // no tenía.
+      "id, tenant_id, seller_id, estado, ml_shipment_id, ml_order_id, ml_user_id, codigo_interno, destinatario_nombre, destinatario_telefono, destinatario_direccion, destinatario_comuna, instrucciones_entrega, fecha_compromiso, fecha_compromiso_hora, creado_en, tipo_pedido, fuente, tracking_token, tarifa_aplicable_id, cancelado_en, cancelado_por_usuario_id, motivo_cancelacion",
     )
     .eq("id", pedidoId)
     .eq("tenant_id", tenantId)
@@ -220,7 +236,11 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
     sellerId: filaPedido.seller_id as string,
     estado: filaPedido.estado as EstadoPedido,
     mlShipmentId: (filaPedido.ml_shipment_id as string | null) ?? null,
+    mlOrderId: (filaPedido.ml_order_id as string | null) ?? null,
     mlUserId: (filaPedido.ml_user_id as string | null) ?? null,
+    codigoInterno: (filaPedido.codigo_interno as string | null) ?? null,
+    fechaCompromiso: (filaPedido.fecha_compromiso as string | null) ?? null,
+    tarifaAplicableId: (filaPedido.tarifa_aplicable_id as string | null) ?? null,
     direccionDestinatario: filaPedido.destinatario_direccion as string,
     comunaDestinatario: filaPedido.destinatario_comuna as string,
     fechaCompromisoHora: (filaPedido.fecha_compromiso_hora as string | null) ?? null,
@@ -281,7 +301,95 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
   }
 
   // Identificador legible para el usuario
-  const idVisible = pedido.mlShipmentId ?? `#${idCorto(pedido.id)}`;
+  const idVisible = pedido.codigoInterno ?? pedido.mlShipmentId ?? `#${idCorto(pedido.id)}`;
+
+  // El nombre del courier, para hablar de él por su nombre y no como «tu
+  // empresa de despacho».
+  const { data: tenantFila } = await cliente
+    .from("tenants")
+    .select("nombre_fantasia")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const nombreCourier =
+    (tenantFila?.nombre_fantasia as string | undefined) ?? "tu empresa de despacho";
+
+  // -------------------------------------------------------------------------
+  // Lo que le van a cobrar por esta entrega.
+  // -------------------------------------------------------------------------
+  // 🐞 EL BLOQUE DE DINERO NO EXISTÍA. La consulta no traía tarifa ni período:
+  // el seller veía a dónde va su paquete y no cuánto le va a costar, que es la
+  // otra mitad de la pregunta. Y es la información que después reclama por
+  // teléfono al ver el total del mes.
+  //
+  // Se lee la LÍNEA DE COBRO si ya existe —es la cifra real, la que se va a
+  // facturar— y si todavía no (el pedido no se entregó), la tarifa vigente como
+  // estimación, dicha como estimación.
+  let cobro: {
+    montoClp: number;
+    concepto: string;
+    /** `true` cuando sale de la línea ya generada; `false` cuando es la tarifa. */
+    esDefinitivo: boolean;
+    periodoEtiqueta: string | null;
+    periodoAbierto: boolean;
+  } | null = null;
+
+  {
+    const { data: linea } = await cliente
+      .schema("dinero")
+      .from("lineas_cobro")
+      .select("monto_final_clp, concepto, periodo_cobro_id, anulada")
+      .eq("pedido_id", pedidoId)
+      .eq("tenant_id", tenantId)
+      .eq("anulada", false)
+      .maybeSingle();
+
+    if (linea) {
+      let periodoEtiqueta: string | null = null;
+      let periodoAbierto = false;
+      if (linea.periodo_cobro_id) {
+        const { data: per } = await cliente
+          .schema("dinero")
+          .from("periodos_cobro")
+          .select("fecha_inicio, fecha_fin, estado")
+          .eq("id", linea.periodo_cobro_id as string)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        if (per) {
+          periodoEtiqueta = etiquetaPeriodo(per.fecha_inicio as string, per.fecha_fin as string);
+          periodoAbierto = per.estado === "abierto";
+        }
+      }
+      cobro = {
+        montoClp: Number(linea.monto_final_clp),
+        concepto: (linea.concepto as string | null) ?? "Entrega",
+        esDefinitivo: true,
+        periodoEtiqueta,
+        periodoAbierto,
+      };
+    } else if (pedido.tarifaAplicableId) {
+      const { data: tarifa } = await cliente
+        .from("tarifas")
+        .select("monto_clp, tipo_entrega")
+        .eq("id", pedido.tarifaAplicableId)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (tarifa) {
+        cobro = {
+          montoClp: Number(tarifa.monto_clp),
+          // `tipo_entrega` es el identificador de la tarifa ('flex',
+          // 'same_day'): imprimirlo crudo daba «Entrega flex» y, peor,
+          // «Entrega same_day» con guion bajo a la vista.
+          concepto:
+            (tarifa.tipo_entrega as string) === "same_day"
+              ? "Entrega del día"
+              : "Entrega Flex",
+          esDefinitivo: false,
+          periodoEtiqueta: null,
+          periodoAbierto: false,
+        };
+      }
+    }
+  }
 
   // "Quién canceló" (§6.1/§16), sin exponer el nombre de un usuario interno al
   // portal (minimización — el seller no necesita saber cuál persona del
@@ -325,26 +433,90 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
 
       {/* Encabezado */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Package className="size-5 text-muted-foreground" aria-hidden="true" />
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">
-              {idVisible}
-            </h1>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {etiquetaFuentePedido(pedido.fuente)}
+        <div className="min-w-0 space-y-1">
+          {/* El titular es el DESTINATARIO, no el identificador del envío: el
+              seller entra acá porque su cliente le escribió, y lo busca por
+              nombre. El código queda debajo, que es donde sirve para citarlo. */}
+          <h1 className="font-heading text-xl font-semibold">{pedido.destinatarioNombre}</h1>
+          <p className="rx-num text-xs text-fg-muted">
+            {idVisible} · {etiquetaFuentePedido(pedido.fuente)}
+          </p>
+          <p className="text-sm text-fg-muted">
+            {textoLlegada(pedido.fechaCompromiso, hoyEnSantiago(), pedido.estado)}
           </p>
         </div>
         <BadgeEstado
           variante={BADGE_ESTADO_PEDIDO[pedido.estado]} eje="pedido" valor={pedido.estado}
-          texto={traducirEstadoPedido(pedido.estado)}
+          texto={estadoPedidoParaSeller(pedido.estado)}
           className="px-3 py-1 text-sm"
         />
       </div>
 
+      {/* El aviso de Flex, que faltaba entero.
+          ------------------------------------------------------------------
+          Un pedido Flex ya se veía distinto —sin seguimiento propio, sin
+          etiqueta, sin cancelar— pero **por omisión y sin decir nada**: el
+          seller abría la hoja, encontraba tres cosas menos que en un same-day y
+          cero explicación de por qué. */}
+      {pedido.tipoPedido === "flex" ? (
+        <div className="border border-line bg-bg-sunken px-4 py-3.5">
+          <p className="text-sm leading-relaxed text-fg-muted">
+            <strong className="font-medium text-fg">Este pedido lo sigue Mercado Libre.</strong>{" "}
+            Tu comprador recibe el seguimiento por ahí, no por nosotros, y la prueba de entrega
+            oficial también queda allá. Acá ves lo que registra el courier.
+          </p>
+          {/* El puente a la otra mitad. Si el seller necesita la prueba de
+              entrega oficial o el chat con su comprador, tiene que ir a Mercado
+              Libre — y hasta acá esta hoja no le decía ni eso ni con qué
+              número buscar. Se da el número de venta en vez de un enlace
+              directo: la URL de detalle de una venta no está documentada y un
+              enlace roto desde el portal es peor que no tenerlo. */}
+          {pedido.mlOrderId ? (
+            <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+              En Mercado Libre es la venta{" "}
+              <span className="rx-num font-medium text-fg">#{pedido.mlOrderId}</span>.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Línea de tiempo del estado */}
       <SeccionTimeline estado={pedido.estado} />
+
+      {/* Lo que te van a cobrar — el bloque que la hoja no tenía.
+          ------------------------------------------------------------------
+          El seller veía a dónde va su paquete y no cuánto le va a costar. Y es
+          justo la mitad que reclama por teléfono al ver el total del mes. */}
+      {cobro ? (
+        <section
+          aria-labelledby="cobro-titulo"
+          className="space-y-1.5 border border-line bg-bg-raised px-4 py-3.5"
+        >
+          <h2
+            id="cobro-titulo"
+            className="text-[10px] font-medium tracking-[0.12em] text-fg-muted uppercase"
+          >
+            Lo que te van a cobrar
+          </h2>
+          <p className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-sm text-fg">{cobro.concepto}</span>
+            <span className="rx-num text-lg font-semibold text-fg">
+              {formatearCLP(cobro.montoClp)}
+            </span>
+          </p>
+          {/* Estimación y cifra facturable NO se dicen igual: una entrega que
+              todavía no ocurrió puede terminar sin cobrarse. */}
+          <p className="text-xs leading-relaxed text-fg-muted">
+            {cobro.esDefinitivo
+              ? cobro.periodoEtiqueta
+                ? `Va en tu período ${cobro.periodoEtiqueta}, que ${
+                    cobro.periodoAbierto ? "todavía está abierto" : "ya está cerrado"
+                  }.`
+                : "Ya está registrada. Entra en tu próximo período de cobro."
+              : "Es la tarifa que aplica hoy. Se cobra solo si la entrega se hace: si no llega, no se te cobra."}
+          </p>
+        </section>
+      ) : null}
 
       {/* Cancelación (§6.1/§16): solo si el pedido ya está cancelado. Estado
           neutral — nunca en tono destructivo, no es una alarma. */}
@@ -443,19 +615,14 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
             </dd>
           </div>
 
-          {/* ID de referencia */}
-          <div>
-            <dt className="text-xs text-muted-foreground">Referencia interna</dt>
-            <dd className="mt-0.5 font-mono text-xs text-muted-foreground">
-              #{idCorto(pedido.id)}
-            </dd>
-          </div>
-
-          {/* ML Shipment ID (solo si existe) */}
-          {pedido.mlShipmentId && (
+          {/* Aquí vivían «Referencia interna» —un UUID cortado— y «N° de
+              seguimiento ML». El primero no significa nada para el seller; el
+              segundo ya encabeza la hoja como código del envío. Se dejan solo
+              si el código de arriba es OTRO, para no perder el dato. */}
+          {pedido.mlShipmentId && pedido.mlShipmentId !== idVisible && (
             <div>
               <dt className="text-xs text-muted-foreground">N° de seguimiento ML</dt>
-              <dd className="mt-0.5 font-mono text-xs text-muted-foreground">
+              <dd className="rx-num mt-0.5 text-xs text-muted-foreground">
                 {pedido.mlShipmentId}
               </dd>
             </div>
@@ -492,27 +659,46 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
         </section>
       )}
 
-      {/* Acciones — solo same-day, según la ventana del seller (§3.1). En
-          'en_ruta' no hay botón: el paquete ya va en el vehículo, y una
-          cancelación unilateral desde el portal desincroniza al conductor sin
-          que el courier se entere. */}
-      {(puedeCancelarSeller || yaSalioARuta) && (
-        <section aria-labelledby="acciones-titulo" className="rounded-lg border bg-card p-4 sm:p-5">
-          <h2
-            id="acciones-titulo"
-            className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-          >
-            Acciones
-          </h2>
-          {puedeCancelarSeller ? (
-            <DialogCancelarPedido pedidoId={pedido.id} />
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Este pedido ya salió a ruta. Si necesitas cancelarlo, contacta al courier.
-            </p>
-          )}
-        </section>
-      )}
+      {/* Acciones, todas juntas al pie.
+          ------------------------------------------------------------------
+          Antes estaban repartidas en tres secciones distintas —copiar el enlace
+          dentro de «Seguimiento en vivo», la etiqueta dentro de «Etiqueta con
+          QR», cancelar dentro de «Acciones»—, así que no se leían como lo que
+          son: las cosas que el seller puede hacer con este pedido.
+
+          «Reportar un problema» aparece SIEMPRE, y es la novedad: la bienvenida
+          la prometía desde antes de que existiera. */}
+      <section aria-labelledby="acciones-titulo" className="space-y-2 border-t border-line pt-4">
+        <h2
+          id="acciones-titulo"
+          className="text-[10px] font-medium tracking-[0.12em] text-fg-muted uppercase"
+        >
+          Qué puedes hacer
+        </h2>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <DialogoReportar
+            pedidos={[]}
+            nombreCourier={nombreCourier}
+            pedidoFijo={{ id: pedido.id, etiqueta: `${idVisible} · ${pedido.destinatarioNombre}` }}
+            variante="secundaria"
+          />
+          {puedeCancelarSeller ? <DialogCancelarPedido pedidoId={pedido.id} /> : null}
+        </div>
+
+        {/* Por qué NO se puede cancelar, dicho. Antes la sección simplemente no
+            se renderizaba para Flex, y el seller no sabía si el botón faltaba
+            o si no existía. */}
+        {!puedeCancelarSeller ? (
+          <p className="text-sm leading-relaxed text-fg-muted">
+            {pedido.tipoPedido === "flex"
+              ? "Este pedido no se puede cancelar desde acá: lo gobierna Mercado Libre."
+              : yaSalioARuta
+                ? "Este pedido ya salió a ruta y no se puede cancelar desde acá. Si necesitas detenerlo, escríbele al courier."
+                : "Este pedido ya no se puede cancelar."}
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }
@@ -609,7 +795,7 @@ function SeccionTimeline({ estado }: { estado: EstadoPedido }) {
                   paso.actual ? "font-semibold text-foreground" : "text-muted-foreground",
                 ].join(" ")}
               >
-                {traducirEstadoPedido(paso.estado)}
+                {hitoLineaPortal(paso.estado)}
               </p>
             </li>
           ))}
@@ -618,7 +804,11 @@ function SeccionTimeline({ estado }: { estado: EstadoPedido }) {
         {/* Estado de novedad — se muestra aparte, la línea feliz no lo representa */}
         {novedad && (
           <div className="mt-4 rounded-lg bg-warning-subtle px-3 py-2.5 text-sm text-warning-subtle-foreground">
-            Estado actual: <span className="font-semibold">{traducirEstadoPedido(estado)}</span>
+            {/* El mismo hecho, dicho igual que arriba. Decía «Fallido» —la
+                palabra del courier— tres centímetros debajo de un distintivo
+                que dice «Nadie recibió», y en la misma pantalla. */}
+            Este pedido se salió de la línea:{" "}
+            <span className="font-semibold">{estadoPedidoParaSeller(estado).toLowerCase()}</span>.
           </div>
         )}
       </div>

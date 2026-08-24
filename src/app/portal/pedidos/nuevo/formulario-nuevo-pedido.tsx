@@ -24,7 +24,17 @@ function campoError(estado: ResultadoCrearSameDay | null, campo: string) {
   return estado.mensaje;
 }
 
-export function FormularioNuevoPedido() {
+export interface AvisoCorteEnLinea {
+  horaCorte: string;
+  nombreCourier: string;
+}
+
+export function FormularioNuevoPedido({
+  avisoCorte,
+}: {
+  /** Se pasó la hora de corte del seller. `null` = todavía alcanza para hoy. */
+  avisoCorte: AvisoCorteEnLinea | null;
+}) {
   const [estado, accion, pendiente] = useActionState<ResultadoCrearSameDay | null, FormData>(
     crearSameDayAction,
     null,
@@ -270,6 +280,26 @@ export function FormularioNuevoPedido() {
             </div>
           )}
         </div>
+
+        {/* El aviso de corte, JUNTO AL BOTÓN que lo desencadena.
+            ------------------------------------------------------------------
+            Empezó adentro del acordeón «Agregar instrucciones», pegado al campo
+            de fecha — que es donde conceptualmente corresponde, pero el
+            acordeón nace cerrado, así que el aviso no se veía nunca. Se veía en
+            el navegador y no en el código.
+
+            Va acá porque esto es lo último que se lee antes de apretar, y lo
+            que dice es la consecuencia de apretar. La fecha se cambia abriendo
+            el acordeón, y el aviso lo dice. */}
+        {avisoCorte ? (
+          <div className="border border-attention-line bg-attention-bg px-4 py-3">
+            <p className="text-sm leading-relaxed text-attention-fg">
+              Ya pasó la hora de corte de {avisoCorte.nombreCourier} ({avisoCorte.horaCorte}).{" "}
+              <strong className="font-medium">Este pedido se crea igual, y sale mañana.</strong> Si
+              querías otra fecha, ábrela en «Agregar instrucciones para el conductor».
+            </p>
+          </div>
+        ) : null}
 
         {/* Acciones */}
         <div className="flex items-center justify-end gap-3 border-t pt-5">

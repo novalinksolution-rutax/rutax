@@ -55,10 +55,10 @@ export async function WidgetSlaSeller({ tenantId, sellerId }: Props) {
       <article className="rounded-lg border border-border bg-card p-5 shadow-xs">
         <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
           <TrendingUp className="size-4" aria-hidden="true" />
-          Cumplimiento de SLA — últimos 7 días
+          Tu cumplimiento
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          Aún no hay pedidos evaluados esta semana para calcular tu nivel de servicio.
+          Todavía no hay entregas suficientes esta semana para decirte cómo vas.
         </p>
       </article>
     );
@@ -71,11 +71,13 @@ export async function WidgetSlaSeller({ tenantId, sellerId }: Props) {
   return (
     <article
       className="rounded-lg border border-border bg-card p-5 shadow-xs"
-      aria-label="Tu nivel de cumplimiento de SLA"
+      aria-label="Tu cumplimiento de entregas a tiempo"
     >
       <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
         <TrendingUp className="size-4" aria-hidden="true" />
-        Cumplimiento de SLA — últimos 7 días
+        {/* «SLA» es la palabra del contrato, no la del seller. Lo que quiere
+            saber es qué proporción de sus entregas llegó a tiempo. */}
+        Tu cumplimiento · últimos 7 días
       </div>
 
       <div className="flex items-center gap-4">

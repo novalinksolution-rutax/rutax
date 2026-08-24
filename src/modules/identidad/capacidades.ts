@@ -172,6 +172,13 @@ export const CAPACIDADES = [
   "solicitar_same_day",
   "ver_documentos_propios", // DTE propios (seller) o liquidación propia (conductor) — ver nota en la matriz.
   "ver_incidencias_propias",
+  // El seller REPORTA un problema de un pedido suyo. Es una capacidad aparte de
+  // `ver_incidencias_propias` porque es una escritura: el catálogo ya separa
+  // leer de escribir en el resto de lo «propio» (`ver_documentos_propios` vs.
+  // `gestionar_pedidos_propios`), y un gate de lectura no puede autorizar un
+  // alta. La bienvenida del portal prometía esta acción desde antes de que
+  // existiera.
+  "reportar_incidencias_propias",
   // Etiqueta imprimible con QR interno para pedidos same-day propios. Misma
   // fila del levantamiento que "solicitar same-day" (RF-020/021) — el seller
   // que crea el envío es quien necesita imprimir su etiqueta.
@@ -346,6 +353,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "solicitar_same_day",
     "ver_documentos_propios",
     "ver_incidencias_propias",
+    "reportar_incidencias_propias",
     "descargar_etiqueta_same_day",
     "gestionar_pedidos_propios",
   ],
@@ -586,6 +594,10 @@ export function puedeGestionarPedidosPropios(usuario: UsuarioActual): boolean {
 
 export function puedeVerDocumentosPropios(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ver_documentos_propios");
+}
+
+export function puedeReportarIncidenciasPropias(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "reportar_incidencias_propias");
 }
 
 export function puedeVerIncidenciasPropias(usuario: UsuarioActual): boolean {

@@ -19,7 +19,7 @@
  * -----------------------------------------------------------------------------
  * LA RED QUE LO SOSTIENE
  * -----------------------------------------------------------------------------
- * `capacidades-legibles.test.ts` comprueba que **las 33 capacidades del catálogo
+ * `capacidades-legibles.test.ts` comprueba que **las capacidades del catálogo
  * tengan frase**. Sin eso, agregar una capacidad nueva la haría aparecer en el
  * diálogo como `gestionar_bodegas` a secas, en medio de una lista en castellano.
  */
@@ -62,6 +62,7 @@ export const FRASE_CAPACIDAD: Record<Capacidad, string> = {
   solicitar_same_day: "Pedir un envío same-day",
   ver_documentos_propios: "Descargar sus facturas",
   ver_incidencias_propias: "Ver las incidencias de sus pedidos",
+  reportar_incidencias_propias: "Reportar un problema con un pedido suyo",
   descargar_etiqueta_same_day: "Descargar la etiqueta de un same-day",
   gestionar_pedidos_propios: "Cancelar o editar sus pedidos",
   // --- Del conductor, en su app ---

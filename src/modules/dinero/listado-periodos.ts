@@ -176,3 +176,59 @@ export function etiquetaPeriodo(fechaInicio: string, fechaFin: string): string {
     ? `${di}–${df} ${corto(mi)}`
     : `${di} ${corto(mi)} – ${df} ${corto(mf)}`;
 }
+
+/**
+ * El neto real de cada período, sumado desde sus líneas.
+ * =============================================================================
+ *
+ * `periodos_cobro.monto_total_clp` es un total **guardado**, y un total guardado
+ * envejece: se escribe al cerrar y no se vuelve a tocar aunque después se anule
+ * una línea. En el detalle del período —del courier y del seller— la cifra ya se
+ * calcula desde las líneas, así que el listado que muestra el guardado enseña un
+ * número distinto del que aparece al abrir la fila. Dos totales para el mismo
+ * período, en dos pantallas contiguas.
+ *
+ * Esto suma lo mismo que el detalle: las líneas NO anuladas.
+ *
+ * ⚠️ Los ids van **en tandas de 100**. Un `.in()` con mil UUID revienta con
+ * `URI too long` — ya pasó en este repo— y acá el largo lo decide cuántos
+ * períodos tenga el seller, que crece con el tiempo sin que nadie lo note.
+ */
+export async function netoPorPeriodoDesdeLineas(
+  cliente: SupabaseClient,
+  tenantId: string,
+  periodoIds: readonly string[],
+): Promise<Record<string, number>> {
+  const netos: Record<string, number> = {};
+  if (periodoIds.length === 0) return netos;
+
+  const TANDA = 100;
+  for (let i = 0; i < periodoIds.length; i += TANDA) {
+    const tanda = periodoIds.slice(i, i + TANDA);
+    const filas = await leerTodasLasFilas<{
+      periodo_cobro_id: string | null;
+      monto_final_clp: number | null;
+      anulada: boolean | null;
+    }>("lineas_cobro del período", (desde, hasta) =>
+      cliente
+        .from("lineas_cobro")
+        .select("periodo_cobro_id, monto_final_clp, anulada")
+        .eq("tenant_id", tenantId)
+        .in("periodo_cobro_id", tanda)
+        .range(desde, hasta),
+    );
+
+    for (const f of filas) {
+      if (f.anulada) continue;
+      const id = f.periodo_cobro_id;
+      if (!id) continue;
+      netos[id] = (netos[id] ?? 0) + (f.monto_final_clp ?? 0);
+    }
+  }
+
+  // Un período sin líneas vivas vale 0, y tiene que decirlo: si se dejara sin
+  // entrada, quien lo consulte caería al total guardado y volvería el problema.
+  for (const id of periodoIds) if (!(id in netos)) netos[id] = 0;
+
+  return netos;
+}

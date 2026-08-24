@@ -4,6 +4,7 @@ import {
   contarBloqueosDeFacturacion,
   etiquetaPeriodo,
   proximoCierreAutomatico,
+  netoPorPeriodoDesdeLineas,
 } from "./listado-periodos";
 import { ESTADOS_NO_TERMINALES_CONCILIACION } from "./conciliacion-clasificacion";
 
@@ -165,5 +166,75 @@ describe("contarBloqueosDeFacturacion", () => {
     const r = await contarBloqueosDeFacturacion(cliente, "t1", [{ id: "p1", sellerId: "s1" }]);
     // Son DOS excepciones distintas, no una contada dos veces.
     expect(r).toEqual({ p1: 2 });
+  });
+});
+
+describe("netoPorPeriodoDesdeLineas", () => {
+  /** Cliente falso que registra qué ids pidió cada `.in()`. */
+  function clienteLineas(
+    filas: { periodo_cobro_id: string | null; monto_final_clp: number | null; anulada?: boolean }[],
+  ) {
+    const tandas: string[][] = [];
+    const cliente = {
+      from() {
+        let pedidos: string[] = [];
+        const q = {
+          select: () => q,
+          eq: () => q,
+          in: (_c: string, ids: string[]) => {
+            pedidos = ids;
+            tandas.push(ids);
+            return q;
+          },
+          range: (desde: number, hasta: number) => {
+            const propias = filas.filter(
+              (f) => f.periodo_cobro_id !== null && pedidos.includes(f.periodo_cobro_id),
+            );
+            return Promise.resolve({ data: propias.slice(desde, hasta + 1), error: null });
+          },
+        };
+        return q;
+      },
+    } as unknown as SupabaseClient;
+    return { cliente, tandas };
+  }
+
+  it("suma por período y descarta las anuladas", async () => {
+    const { cliente } = clienteLineas([
+      { periodo_cobro_id: "p1", monto_final_clp: 3800 },
+      { periodo_cobro_id: "p1", monto_final_clp: 3800 },
+      { periodo_cobro_id: "p1", monto_final_clp: 2166, anulada: true },
+      { periodo_cobro_id: "p2", monto_final_clp: 5000 },
+    ]);
+    // El caso real: la lista mostraba $13.566 —el total guardado, con la línea
+    // anulada dentro— y el detalle del mismo período $11.400.
+    expect(await netoPorPeriodoDesdeLineas(cliente, "t1", ["p1", "p2"])).toEqual({
+      p1: 7600,
+      p2: 5000,
+    });
+  });
+
+  it("un período sin líneas vivas vale 0 y lo dice", async () => {
+    // Si quedara sin entrada, quien lo consulte cae al total guardado con `??`
+    // y vuelve el mismo problema, solo que en una fila.
+    const { cliente } = clienteLineas([{ periodo_cobro_id: "p1", monto_final_clp: 1000 }]);
+    expect(await netoPorPeriodoDesdeLineas(cliente, "t1", ["p1", "p2"])).toEqual({
+      p1: 1000,
+      p2: 0,
+    });
+  });
+
+  it("parte los ids en tandas de 100", async () => {
+    // Un `.in()` con mil UUID revienta con `URI too long`; ya pasó en este repo.
+    const ids = Array.from({ length: 250 }, (_, i) => `p${i}`);
+    const { cliente, tandas } = clienteLineas([]);
+    await netoPorPeriodoDesdeLineas(cliente, "t1", ids);
+    expect(tandas.map((t) => t.length)).toEqual([100, 100, 50]);
+  });
+
+  it("no consulta nada si no hay períodos", async () => {
+    const { cliente, tandas } = clienteLineas([]);
+    expect(await netoPorPeriodoDesdeLineas(cliente, "t1", [])).toEqual({});
+    expect(tandas).toEqual([]);
   });
 });
