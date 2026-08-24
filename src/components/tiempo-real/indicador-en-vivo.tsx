@@ -37,6 +37,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { crearClienteConRealtimeAutenticado } from "@/lib/supabase/client";
 import { crearProgramadorRefresco } from "./programador-refresco";
+import { filtroTenant } from "./filtro-tenant";
 import {
   interpretarEstadoCanal,
   type EstadoCanalRealtime,
@@ -102,7 +103,20 @@ export function IndicadorEnVivo({
         return { schema, tabla };
       });
 
-      const filtro = `tenant_id=eq.${tenantId}`;
+      // 🔴 **Sin un tenant casteable a uuid NO se suscribe, y la razón es de
+      // disponibilidad, no de higiene.** Un `tenantId` nulo se interpola como la
+      // cadena «null»; del otro lado `walrus` la castea a uuid al evaluar RLS,
+      // revienta, y **se lleva el lote de cambios de todos los suscriptores del
+      // proyecto** — no solo el de esta pestaña. Nadie se entera, porque el canal
+      // sí queda suscrito y el indicador sigue diciendo «En vivo».
+      //
+      // Se corta acá y no en cada pantalla que monta el indicador: basta que una
+      // se olvide para tumbar el tiempo real de todos.
+      const filtro = filtroTenant(tenantId);
+      if (!filtro) {
+        setAutenticado(false);
+        return;
+      }
       let canal = cliente.channel(`en-vivo-${tenantId}-${clave}`);
       for (const { schema, tabla } of pares) {
         canal = canal

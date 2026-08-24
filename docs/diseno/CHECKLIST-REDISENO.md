@@ -404,36 +404,57 @@ bloques 4–8, cuando cada pantalla se toque.
       ⚠️ **El seguro de la selección NO se construyó** *(decisión del usuario)*: el tablero pide que
       con una selección activa ni los cambios en sitio se apliquen, pero **Pedidos no tiene
       selección** — esa vive en la bandeja de asignar. Entra cuando exista una acción en bloque acá.
-      🔴 **NO SE PUDO VER FUNCIONANDO, y el motivo es un hallazgo aparte:** en el entorno local
-      **Realtime no entrega un solo evento**. Se insertaron tres pedidos, se esperó 10 s (el rebote
-      es de 800 ms) y no llegó nada — **mientras el indicador seguía diciendo «En vivo»**. Las
-      suscripciones están autenticadas (`role: authenticated`, con `tenant_id`) y `operacion.pedidos`
-      está publicada, así que no es el token ni la publicación. **Es anterior a este cambio**: la
-      lista tampoco se refrescaba sola, que es lo que el código hacía antes. Ver el aviso al final
-      del bloque.
+      ✅ **Verificada de punta a punta** tras arreglar la causa raíz: llega, se acumula, se
+      incorpora al pedirlo y la franja desaparece. Al cablearla se destapó que **Realtime estaba roto
+      para todo el proyecto** — ver el aviso al final del bloque.
       *(La mitad de `preparacion/asignar` sigue pendiente.)*
 - [ ] Unificar la `BarraSeleccion` local de `preparacion/asignar/_componentes/` con la del sistema.
 
-## 🔴 Aviso: Realtime no entrega nada en local, y el indicador dice que sí
+## ✅ Realtime estaba roto para TODO el proyecto — causa raíz y arreglo (24-08)
 
-Encontrado el 24-08 al cablear la franja de Pedidos. **No es del rediseño y no se cerró acá**, pero
-es lo bastante grave para no dejarlo en un comentario de código.
+Encontrado al cablear la franja de Pedidos, y **resuelto**. Se anota entero porque el modo de fallo
+es de los que vuelven.
 
-**El síntoma:** se insertan pedidos en la base, se espera 10 s, y **no llega un solo evento**. El
-indicador de la cabecera sigue mostrando **«En vivo»** todo el rato.
+**El síntoma:** Realtime no entregaba un solo evento a nadie, y todas las pantallas seguían diciendo
+**«En vivo»**. El canal sí estaba suscrito; lo que no llegaban eran los datos.
 
-**Lo que ya se descartó:**
-· las suscripciones **están autenticadas** — `realtime.subscription` muestra `role: authenticated`
-  con `tenant_id`, así que no es el fallo de `INITIAL_SESSION` que ya está documentado;
-· `operacion.pedidos` **está en la publicación** `supabase_realtime`;
-· el rebote es de **800 ms**, así que no era falta de espera.
+**La causa, en el log del contenedor:**
 
-**Por qué importa más de lo que parece:** el tablero de operación, la bandeja de asignar y ahora
-Pedidos dicen «En vivo» y **prometen algo que no está pasando**. Un coordinador que confía en que la
-pantalla se actualiza sola no vuelve a recargar — y trabaja sobre una foto vieja sin saberlo. Un
-indicador de salud que no puede estar en rojo no es un indicador.
+```
+PoolingReplicationError: invalid input syntax for type uuid: "null"
+  en realtime.apply_rls(jsonb, integer) → walrus_rls_stmt
+```
 
-**Sin verificar:** si esto ocurre también en producción. Es lo primero que hay que mirar.
+Los claims que **Realtime** guarda en `realtime.subscription.claims` traen `"seller_id": "null"` y
+`"driver_id": "null"` — el **texto** `null`, no un nulo. ⚠️ **No es nuestro hook**: se comprobó
+llamándolo, y `jsonb_build_object` con un NULL produce un `null` de JSON correcto. La conversión a
+texto la hace Realtime al persistir.
+
+**Por qué no se notaba en ninguna otra parte.** La política de `operacion.pedidos` es
+`tenant_id = claim_tenant_id() AND (tipo='interno' OR (tipo='seller' AND …claim_seller_id()) OR …)`.
+En una consulta normal de un usuario interno la primera rama es verdadera y **Postgres nunca evalúa**
+`claim_seller_id()`. `walrus` evalúa la expresión completa contra la fila, sin ese cortocircuito — de
+ahí que fallara **solo** el tiempo real, que es justo donde nadie mira un log.
+
+⚠️ **Y no fallaba una suscripción: fallaba el LOTE.** `apply_rls` procesa los cambios de todos los
+suscriptores juntos, así que la excepción de uno **deja a todos sin eventos**.
+
+**El arreglo** (`20260824000001`): las tres funciones de claim que devuelven uuid tratan `'null'` y
+`'undefined'` como ausencia, igual que ya trataban `''`. No relaja ninguna barrera —el resultado
+esperado era NULL y sigue siéndolo—; lo único que cambia es que se obtiene sin lanzar.
+**Verificado:** con la migración puesta, la franja de Pedidos recibe, acumula, incorpora al pedirlo y
+desaparece.
+
+🔴 **PENDIENTE EN PRODUCCIÓN.** El hook, las políticas y Realtime son los mismos allá, así que **la
+presunción es que producción está igual de rota** — desde siempre, y sin que nadie lo note porque el
+indicador está en verde. No se pudo comprobar desde acá (haría falta una sesión real). **Aplicar la
+migración es el arreglo; comprobarlo después es mirar el log de Realtime del proyecto hosted.**
+
+**Y una barrera extra en el cliente** (`components/tiempo-real/filtro-tenant.ts`, 7 pruebas): el
+indicador **no se suscribe** si el tenant no es un uuid. No era la causa de esto, pero es la otra
+puerta al mismo desastre — `tenant_id=eq.${tenantId}` con un nulo interpola la cadena `"null"` en el
+filtro y rompe `apply_rls` igual. Se valida la **forma**, no la ausencia: un `if (!tenantId)` deja
+pasar `"null"` y `"undefined"`, que es exactamente lo que hay que atajar.
 
 ## Pantallas
 
