@@ -32,10 +32,16 @@ import { DialogCerrarPeriodo } from "../dialog-cerrar-periodo";
 import { DialogEmitirFactura } from "./dialog-emitir-factura";
 import { DialogReabrirPeriodo } from "./dialog-reabrir-periodo";
 import { DialogEmitirNotaCredito } from "./dialog-emitir-nota-credito";
-import { BotonDescargaDocumento } from "./boton-descarga-documento";
+import { BotonDescargaDocumento } from "./boton-descarga-documento";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { TablaFinanciera } from "@/components/ui/tabla-financiera";
 import { agruparLineasCobro } from "@/modules/dinero/agrupacion-lineas";
+import { BloqueComposicion } from "@/components/ui/bloque-composicion";
+import { BloqueTrazabilidad } from "@/components/ui/bloque-trazabilidad";
+import { obtenerTrazabilidad } from "@/modules/identidad/trazabilidad";
+import { loQueVeElSeller } from "@/modules/dinero/vista-seller-periodo";
+import { contarBloqueosDeFacturacion, etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
+import { mapaNombresUsuarios } from "@/modules/identidad/consultas";
 
 export const metadata: Metadata = {
   title: "Detalle de período",
@@ -85,6 +91,8 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   let dte: DocumentoDte | null = null;
   let notaCredito: DocumentoDte | null = null;
   let sellerNombre = "—";
+  let sellerRut: string | null = null;
+  let cerradoPor: string | null = null;
   let errorCarga = false;
 
   try {
@@ -94,11 +102,24 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
     // Obtener nombre del seller
     const { data: sellerData } = await cliente
       .from("sellers")
-      .select("razon_social")
+      .select("razon_social, rut")
       .eq("id", periodo.sellerId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     sellerNombre = (sellerData?.razon_social as string) ?? periodo.sellerId;
+    // El RUT va en la cabecera porque es lo que sale impreso en la factura: si
+    // está mal, se descubre acá o se descubre en el SII.
+    sellerRut = (sellerData?.rut as string | null) ?? null;
+
+    // Quién cerró el período. Un cierre lo puede hacer el cron de las 02:00 o
+    // una persona, y la diferencia importa cuando alguien pregunta por qué se
+    // cerró antes de tiempo.
+    if (periodo.cerradoPorUsuarioId) {
+      const nombres = await mapaNombresUsuarios(cliente, tenantId, [
+        periodo.cerradoPorUsuarioId,
+      ]).catch(() => ({}) as Record<string, { nombreCompleto: string }>);
+      cerradoPor = nombres[periodo.cerradoPorUsuarioId]?.nombreCompleto ?? null;
+    }
 
     // Obtener documentos del período: la factura (33) y, si el período fue
     // anulado, la nota de crédito (61) que la referencia.
@@ -122,16 +143,40 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
 
   const modoDte = await modoDtePromesa;
 
+  // ⚠️ FALLA DE LECTURA. Antes esto reemplazaba la pantalla entera por un
+  // `role="alert"`: se perdía el encabezado, el neto y el estado, o sea todo lo
+  // que permite decidir si hay que llamar a alguien. Cuando el período NO se
+  // pudo leer no hay nada que mostrar y esto es correcto; lo que cambia —más
+  // abajo— es la falla PARCIAL, donde la cabecera se conserva y lo que se
+  // deshabilita son las acciones, con su motivo escrito.
   if (errorCarga || !periodo) {
     return (
-      <div
-        role="alert"
-        className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
-      >
-        No se pudo cargar el período. Intenta recargar la página.
+      <div className="space-y-4">
+        <Retorno href={destinoRetorno("/dinero/periodos", volver)} etiqueta="Volver a períodos" />
+        <div
+          role="alert"
+          className="border border-fault-line bg-fault-bg px-4 py-3.5 text-sm leading-relaxed text-fault-fg"
+        >
+          <strong className="font-medium">No se pudo leer este período.</strong> Existe y puede
+          tener líneas: esta pantalla no las está viendo. No lo cierres, no lo factures y no lo
+          anules hasta poder verlas — recarga en unos segundos.
+        </div>
       </div>
     );
   }
+
+  // La bitácora del período y sus excepciones bloqueantes. Van después de tener
+  // el período: las dos cuelgan de él, y si el período no se leyó no hay nada
+  // que consultar.
+  const [bitacora, bloqueos] = await Promise.all([
+    obtenerTrazabilidad(cliente, tenantId, "periodo_cobro", periodoId, { limite: 8 }).catch(
+      () => [],
+    ),
+    contarBloqueosDeFacturacion(cliente, tenantId, [
+      { id: periodo.id, sellerId: periodo.sellerId },
+    ]).catch(() => ({}) as Record<string, number>),
+  ]);
+  const excepcionesBloqueantes = bloqueos[periodo.id] ?? 0;
 
   const lineas: LineaCobro[] = periodo.lineas ?? [];
   const agrupacion = agruparLineasCobro(lineas);
@@ -144,6 +189,32 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
     periodo.estado === "facturado" && dte ? dte.folio : undefined,
   );
 
+  // El código del pedido de cada ajuste. Sin esto la causa dice «ver el pedido»
+  // —el mismo texto en las cinco filas— y no se puede saber cuál sin abrirlas
+  // una por una. El tablero enlaza «incidencia RX-5M7T»: nombrar el pedido es lo
+  // más cerca que se puede estar hoy, porque no existe una ruta por incidencia.
+  const idsPedidosAjuste = [
+    ...new Set(agrupacion.ajustes.map((a) => a.pedidoId).filter((x): x is string => !!x)),
+  ];
+  const codigoPorPedido = new Map<string, string>();
+  if (idsPedidosAjuste.length > 0) {
+    const { data: pedidosAjuste } = await cliente
+      .from("pedidos")
+      .select("id, codigo_interno, ml_shipment_id")
+      .eq("tenant_id", tenantId)
+      .in("id", idsPedidosAjuste);
+    for (const p of (pedidosAjuste ?? []) as Record<string, unknown>[]) {
+      const codigo =
+        (p.codigo_interno as string | null) ?? (p.ml_shipment_id as string | null) ?? null;
+      if (codigo) codigoPorPedido.set(p.id as string, codigo);
+    }
+  }
+
+  const vistaSeller = loQueVeElSeller(periodo.estado, {
+    folio: dte?.folio ?? null,
+    tieneDocumento: Boolean(dte?.pdfRef),
+  });
+
   return (
     <div className="space-y-6">
       <Retorno href={destinoRetorno("/dinero/periodos", volver)} etiqueta="Volver a períodos" />
@@ -152,26 +223,95 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       <section>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              <Link
-                href="/sellers"
-                className="font-medium text-foreground hover:underline"
-              >
+            <h1 className="font-heading text-2xl font-semibold">
+              <Link href="/sellers" className="hover:underline">
                 {sellerNombre}
               </Link>
-            </p>
-            <p className="text-base text-muted-foreground">
-              {formatearFechaCorta(periodo.fechaInicio)} – {formatearFechaCorta(periodo.fechaFin)}
+            </h1>
+            {/* Período, RUT y quién cerró, en una línea. El RUT porque es lo que
+                sale impreso en la factura; el autor del cierre porque un cierre
+                lo puede hacer el cron de las 02:00 o una persona, y cuando
+                alguien pregunta «¿por qué se cerró antes?» esa es la respuesta. */}
+            <p className="rx-num text-xs text-fg-muted">
+              {etiquetaPeriodo(periodo.fechaInicio, periodo.fechaFin)}
+              {sellerRut ? ` · ${sellerRut}` : ""}
+              {" · "}
+              {periodo.totalLineas} {periodo.totalLineas === 1 ? "línea" : "líneas"}
+              {periodo.cerradoEn
+                ? ` · cerrado el ${formatearFechaCorta(periodo.cerradoEn)}${
+                    cerradoPor ? ` por ${cerradoPor}` : " automáticamente"
+                  }`
+                : ""}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
               {periodo.estadoCobro !== "no_aplica" && (
                 <BadgeEstado variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]} eje="cobro-periodo" valor={periodo.estadoCobro} texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)} />
               )}
+              {/* «Sin excepciones» es una afirmación, no un vacío: dice que se
+                  miró y no había nada. Sin ella, la ausencia de aviso se
+                  confunde con la ausencia de revisión. */}
+              {excepcionesBloqueantes > 0 ? (
+                <Link
+                  href="/dinero/conciliacion?bloqueo=si"
+                  className="rx-num border border-fault-line bg-fault-bg px-1.5 py-0.5 text-[10px] leading-none tracking-[0.1em] text-fault-fg uppercase hover:underline"
+                >
+                  {excepcionesBloqueantes}{" "}
+                  {excepcionesBloqueantes === 1 ? "excepción" : "excepciones"} ›
+                </Link>
+              ) : (
+                <span className="rx-num border border-line px-1.5 py-0.5 text-[10px] leading-none tracking-[0.1em] text-fg-muted uppercase">
+                  Sin excepciones
+                </span>
+              )}
             </div>
-            <p className="text-3xl font-semibold tabular-nums">
-              {formatearCLPOGuion(periodo.montoTotalClp)}
-            </p>
+
+            {/* ⚠️ LA CIFRA VA ROTULADA. Antes era un número pelado de 3xl: la
+                misma pantalla muestra más abajo el total CON IVA del documento
+                emitido, así que sin rótulo hay dos cifras grandes distintas
+                para el mismo período y ninguna dice cuál es cuál (regla 18). */}
+            <div className="pt-1">
+              <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
+                Total neto a facturar
+              </p>
+              {/* ⚠️ LA CIFRA SALE DE LAS LÍNEAS, NO DE `monto_total_clp`.
+                  Son dos números distintos y la pantalla mostraba el segundo
+                  mientras la tabla de abajo sumaba el primero — visto en
+                  pantalla: «$13.566» arriba y «$11.400» en el total del período.
+                  El que manda es el de las líneas: es el que va a la factura
+                  (el preflight arma el DTE desde ellas) y el que ya excluye las
+                  anuladas. `listarLineasCobroPorPeriodo` está paginada, así que
+                  no hay riesgo de sumar una página. */}
+              <p className="rx-num text-3xl font-semibold">
+                {formatearCLPOGuion(agrupacion.total)}
+              </p>
+              {/* Y si el total guardado quedó viejo se dice, porque es el que
+                  muestra el LISTADO: sin esta línea, dos pantallas del producto
+                  dan cifras distintas del mismo período y ninguna avisa. */}
+              {periodo.montoTotalClp !== null && periodo.montoTotalClp !== agrupacion.total ? (
+                <p className="mt-1 text-xs leading-relaxed text-attention-fg">
+                  El total guardado del período dice{" "}
+                  <span className="rx-num">{formatearCLP(periodo.montoTotalClp)}</span> y quedó
+                  viejo: el listado lo muestra así hasta que el motor lo recalcule. Lo que se
+                  factura es lo de arriba.
+                </p>
+              ) : null}
+              {/* Regla 21: la composición va junto a la cifra, no escondida
+                  dentro del modal de emisión — que es donde vivía. */}
+              {agrupacion.ajustes.length > 0 ? (
+                <BloqueComposicion
+                  className="mt-1"
+                  sumandos={[
+                    { concepto: "entregas", monto: agrupacion.subtotalEntregas },
+                    ...agrupacion.ajustes.map((aj) => ({
+                      concepto: "ajustes",
+                      monto: Math.abs(aj.monto),
+                      resta: aj.monto < 0,
+                    })),
+                  ]}
+                />
+              ) : null}
+            </div>
             {periodo.estadoCobro === "parcial" && (
               <p className="text-sm text-muted-foreground">
                 Pagado: <span className="font-medium tabular-nums">{formatearCLP(periodo.montoPagadoClp)}</span> ·
@@ -187,70 +327,6 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               </p>
             )}
           </div>
-
-          {periodo.estado === "abierto" && (
-            <div className="shrink-0">
-              <DialogCerrarPeriodo
-                periodoId={periodo.id}
-                sellerNombre={sellerNombre}
-                fechaInicio={periodo.fechaInicio}
-                fechaFin={periodo.fechaFin}
-                totalLineas={periodo.totalLineas}
-                montoTotalClp={periodo.montoTotalClp}
-              />
-            </div>
-          )}
-
-          {/* Compuerta de aprobación (B1-1): período cerrado y aún sin DTE →
-              ofrecer emitir la factura como acción humana deliberada. */}
-          {periodo.estado === "cerrado" && !dte && (
-            <div className="shrink-0">
-              {/* Reabrir va JUNTO a emitir, no escondido: son las dos salidas
-                  de un período cerrado. El dominio decide si se puede. */}
-              <DialogReabrirPeriodo periodoId={periodo.id} sellerNombre={sellerNombre} />
-              <DialogEmitirFactura
-                periodoId={periodo.id}
-                sellerNombre={sellerNombre}
-                // Regla 21: el total del modal lleva su composición. Sale de la
-                // misma agrupación que alimenta la tabla financiera de abajo —
-                // no hay una segunda aritmética que se pueda desincronizar.
-                // Solo se pasa cuando hay ajustes: sin ellos el neto ES el
-                // subtotal, y una composición de un término es ruido.
-                composicion={
-                  agrupacion.ajustes.length > 0
-                    ? [
-                        { concepto: "entregas", monto: agrupacion.subtotalEntregas },
-                        ...agrupacion.ajustes.map((aj) => ({
-                          concepto: "ajustes",
-                          monto: Math.abs(aj.monto),
-                          resta: aj.monto < 0,
-                        })),
-                      ]
-                    : undefined
-                }
-                autorNombre={sesion.nombreCompleto ?? "Tu cuenta"}
-                totalLineas={periodo.totalLineas}
-                montoTotalClp={periodo.montoTotalClp}
-                modoDte={modoDte}
-              />
-            </div>
-          )}
-
-          {/* Anulación total por nota de crédito (RF-038, B7): solo sobre un
-              período facturado con su DTE emitido. El gate `emitir_facturas`
-              lo valida la acción de dominio; la página ya filtra por capacidad. */}
-          {periodo.estado === "facturado" && dte && (
-            <div className="shrink-0">
-              <DialogEmitirNotaCredito
-                periodoId={periodo.id}
-                sellerNombre={sellerNombre}
-                folioFactura={dte.folio}
-                montoTotalClp={periodo.montoTotalClp}
-                montoPagadoClp={periodo.montoPagadoClp}
-                modoDte={modoDte}
-              />
-            </div>
-          )}
         </div>
       </section>
 
@@ -351,24 +427,36 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                 Emitida el {formatearFechaCorta(dte.fechaEmision)}
               </p>
 
-              <div className="flex flex-wrap gap-6 pt-1">
-                <div>
-                  <p className="text-xs text-muted-foreground">Neto</p>
-                  <p className="text-sm font-semibold tabular-nums">
-                    {formatearCLP(dte.montoNetoclp)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">IVA</p>
-                  <p className="text-sm font-semibold tabular-nums">
-                    {formatearCLP(dte.montoIvaClp)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Total</p>
-                  <p className="text-sm font-bold tabular-nums">
-                    {formatearCLP(dte.montoTotalClp)}
-                  </p>
+              {/* ⚠️ ACÁ SÍ APARECEN IMPUESTOS, Y NO CONTRADICE LA REGLA 22.
+                  «Rutax no muestra impuestos» significa que Rutax no CALCULA un
+                  IVA para mostrarlo: el neto de arriba es lo que factura el
+                  motor. Estas tres cifras son las del documento tributario ya
+                  emitido —las calculó y las declaró el proveedor DTE ante el
+                  SII—, y el courier las necesita para cuadrar su contabilidad.
+                  Van rotuladas como lo que son. Decisión del usuario, 23-08. */}
+              <div className="pt-1">
+                <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
+                  Según el documento emitido
+                </p>
+                <div className="mt-1 flex flex-wrap gap-6">
+                  <div>
+                    <p className="text-xs text-fg-muted">Neto</p>
+                    <p className="rx-num text-sm font-semibold">
+                      {formatearCLP(dte.montoNetoclp)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-fg-muted">IVA</p>
+                    <p className="rx-num text-sm font-semibold">
+                      {formatearCLP(dte.montoIvaClp)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-fg-muted">Total</p>
+                    <p className="rx-num text-sm font-bold">
+                      {formatearCLP(dte.montoTotalClp)}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -410,7 +498,12 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       )}
 
       {/* Sección C — Tabla de líneas */}
-      <section aria-labelledby="lineas-titulo">
+      {/* --- Las dos columnas ------------------------------------------------
+          Ancha: las líneas. Angosta: emisión, qué ve el seller y bitácora. Las
+          acciones vivían colgando del encabezado, apretadas contra el borde
+          derecho de una fila que también lleva la cifra grande. */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <section aria-labelledby="lineas-titulo" className="min-w-0">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2
             id="lineas-titulo"
@@ -438,6 +531,19 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                 ? "← Volver a la vista agrupada"
                 : `Ver las ${lineas.length} una por una ›`}
             </Link>
+          ) : null}
+          {/* Exportar, al lado de «ver una por una» y no escondido en un menú.
+              El sistema dice por qué existe: «un total sin composición es la
+              cifra que Administración no puede rastrear — y por la que
+              exportaría a Excel». Negar la exportación no evita el Excel; evita
+              que salga de una fuente confiable. */}
+          {lineas.length > 0 ? (
+            <a
+              href={`/dinero/periodos/${periodo.id}/exportar`}
+              className="text-xs font-medium text-fg-muted hover:text-fg hover:underline"
+            >
+              Exportar CSV
+            </a>
           ) : null}
         </div>
 
@@ -477,7 +583,10 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
                   concepto: aj.concepto,
                   monto: aj.monto,
                   causa: aj.pedidoId
-                    ? { texto: "ver el pedido", href: `/operaciones/${aj.pedidoId}` }
+                    ? {
+                        texto: codigoPorPedido.get(aj.pedidoId) ?? "ver el pedido",
+                        href: `/operaciones/${aj.pedidoId}`,
+                      }
                     : undefined,
                 })),
                 {
@@ -561,7 +670,120 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
           </div>
         )}
       </section>
+
+        <aside className="space-y-5">
+          {/* --- Emisión ------------------------------------------------------ */}
+          {periodo.estado === "abierto" ||
+          (periodo.estado === "cerrado" && !dte) ||
+          (periodo.estado === "facturado" && dte) ? (
+            <section className="flex flex-col items-stretch gap-2">
+              <RotuloAside>Emisión</RotuloAside>
+
+              {periodo.estado === "abierto" && (
+                <DialogCerrarPeriodo
+                  periodoId={periodo.id}
+                  sellerNombre={sellerNombre}
+                  fechaInicio={periodo.fechaInicio}
+                  fechaFin={periodo.fechaFin}
+                  totalLineas={periodo.totalLineas}
+                  montoTotalClp={periodo.montoTotalClp}
+                />
+              )}
+
+              {/* Compuerta de aprobación (B1-1): período cerrado y aún sin DTE →
+                  ofrecer emitir la factura como acción humana deliberada. */}
+              {periodo.estado === "cerrado" && !dte && (
+                <>
+                  {/* Reabrir va JUNTO a emitir, no escondido: son las dos salidas
+                      de un período cerrado. El dominio decide si se puede. */}
+                  <DialogReabrirPeriodo periodoId={periodo.id} sellerNombre={sellerNombre} />
+                  <DialogEmitirFactura
+                    periodoId={periodo.id}
+                    sellerNombre={sellerNombre}
+                    // Regla 21: el total del modal lleva su composición. Sale de la
+                    // misma agrupación que alimenta la tabla financiera de abajo —
+                    // no hay una segunda aritmética que se pueda desincronizar.
+                    // Solo se pasa cuando hay ajustes: sin ellos el neto ES el
+                    // subtotal, y una composición de un término es ruido.
+                    composicion={
+                      agrupacion.ajustes.length > 0
+                        ? [
+                            { concepto: "entregas", monto: agrupacion.subtotalEntregas },
+                            ...agrupacion.ajustes.map((aj) => ({
+                              concepto: "ajustes",
+                              monto: Math.abs(aj.monto),
+                              resta: aj.monto < 0,
+                            })),
+                          ]
+                        : undefined
+                    }
+                    autorNombre={sesion.nombreCompleto ?? "Tu cuenta"}
+                    totalLineas={periodo.totalLineas}
+                    montoTotalClp={periodo.montoTotalClp}
+                    modoDte={modoDte}
+                  />
+                  {/* El motivo por el que NO se puede emitir, escrito al lado del
+                      botón. Antes había que abrir la ceremonia para enterarse. */}
+                  {excepcionesBloqueantes > 0 ? (
+                    <p className="text-xs leading-relaxed text-fault-fg">
+                      Hay {excepcionesBloqueantes}{" "}
+                      {excepcionesBloqueantes === 1 ? "excepción abierta" : "excepciones abiertas"}{" "}
+                      que bloquean la emisión. Resuélvelas en la{" "}
+                      <Link href="/dinero/conciliacion?bloqueo=si" className="underline">
+                        bandeja de conciliación
+                      </Link>
+                      .
+                    </p>
+                  ) : null}
+                </>
+              )}
+
+              {/* Anulación total por nota de crédito (RF-038, B7): solo sobre un
+                  período facturado con su DTE emitido. El gate `emitir_facturas`
+                  lo valida la acción de dominio; la página ya filtra por capacidad. */}
+              {periodo.estado === "facturado" && dte && (
+                <DialogEmitirNotaCredito
+                  periodoId={periodo.id}
+                  sellerNombre={sellerNombre}
+                  folioFactura={dte.folio}
+                  montoTotalClp={periodo.montoTotalClp}
+                  montoPagadoClp={periodo.montoPagadoClp}
+                  modoDte={modoDte}
+                />
+              )}
+            </section>
+          ) : null}
+
+          {/* --- Qué ve el seller ---------------------------------------------
+              La pregunta que uno se hace antes de llamarlo. No es un espejo de
+              su pantalla: declara lo que esa pantalla muestra, que es una
+              decisión estable del producto. */}
+          <section className="space-y-1.5">
+            <RotuloAside>Qué ve el seller</RotuloAside>
+            <p className="text-sm leading-relaxed text-fg">{vistaSeller.ve}</p>
+            {vistaSeller.noVe ? (
+              <p className="text-sm leading-relaxed text-fg-muted">{vistaSeller.noVe}</p>
+            ) : null}
+          </section>
+
+          {/* --- Bitácora ----------------------------------------------------- */}
+          <section className="space-y-2 border-t border-line pt-4">
+            <RotuloAside>Bitácora</RotuloAside>
+            <BloqueTrazabilidad
+              hechos={bitacora}
+              vacio="Todavía no hay movimientos registrados en este período."
+            />
+          </section>
+        </aside>
+      </div>
     </div>
+  );
+}
+
+/** El rótulo en versalitas que encabeza cada región de la columna derecha. */
+function RotuloAside({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[10px] font-medium tracking-[0.12em] text-fg-muted uppercase">{children}</p>
   );
 }
 

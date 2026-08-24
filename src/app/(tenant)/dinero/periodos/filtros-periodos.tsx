@@ -1,17 +1,23 @@
 "use client";
 
 /**
- * Barra de filtros de períodos de cobro — Client Component.
- * Homologa los selects nativos a shadcn Select y auto-navega al cambiar
- * (sin botón "Filtrar"), siguiendo el patrón de filtros-pedidos.tsx.
- * Los filtros viajan como searchParams (GET navigation), la lógica de
- * filtrado sigue viviendo server-side.
+ * El filtro de la pantalla de períodos — hoy solo el seller.
+ *
+ * -----------------------------------------------------------------------------
+ * POR QUÉ SE FUE EL SELECTOR DE ESTADO
+ * -----------------------------------------------------------------------------
+ * Estaba duplicado. Los cajones de la tabla eligen el estado, con su contador a
+ * la vista; un `<Select>` que hace lo mismo, sin contador y dos centímetros más
+ * arriba, deja dos controles que pueden mostrar cosas distintas —el select
+ * conserva su valor cuando el cajón lo cambia— y ninguna razón para preferir
+ * uno. El cajón gana porque cuenta.
+ *
+ * El filtro viaja como `searchParams` (navegación GET): el filtrado sigue
+ * viviendo en el servidor.
  */
 
 import { useRouter, usePathname } from "next/navigation";
 import { useCallback } from "react";
-import { traducirEstadoPeriodoCobro } from "@/lib/ui/traduccion-estados";
-import type { EstadoPeriodo } from "@/modules/dinero/tipos";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,50 +27,41 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-/** Sentinela para "sin filtro": Radix Select no admite items con value="". */
+/** Centinela para «sin filtro»: Radix Select no admite items con value="". */
 const TODOS = "__todos__";
 
 interface Props {
   sellers: { id: string; nombre: string }[];
-  estados: EstadoPeriodo[];
   filtroSeller: string;
-  filtroEstado: string;
   hayFiltroActivo: boolean;
 }
 
-export function FiltrosPeriodosForm({
-  sellers,
-  estados,
-  filtroSeller,
-  filtroEstado,
-  hayFiltroActivo,
-}: Props) {
+export function FiltrosPeriodosForm({ sellers, filtroSeller, hayFiltroActivo }: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
   const actualizar = useCallback(
-    (campo: string, valor: string) => {
+    (valor: string) => {
       const params = new URLSearchParams();
-      if (campo !== "seller" && filtroSeller) params.set("seller", filtroSeller);
-      if (campo !== "estado" && filtroEstado) params.set("estado", filtroEstado);
-      if (valor) params.set(campo, valor);
-      // Al cambiar filtros se resetea a página 1 (no se arrastra 'pagina').
+      if (valor) params.set("seller", valor);
+      // Al cambiar el seller se vuelve a la página 1 y se suelta el cajón: el
+      // conjunto es otro, y «facturados» de un seller que ya no se está mirando
+      // no significa nada.
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
-    [router, pathname, filtroSeller, filtroEstado],
+    [router, pathname],
   );
 
   return (
     <div className="flex flex-wrap items-end gap-3">
-      {/* Seller */}
       <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-seller-pc" className="text-xs font-medium text-muted-foreground">
+        <label htmlFor="filtro-seller-pc" className="text-xs font-medium text-fg-muted">
           Seller
         </label>
         <Select
           value={filtroSeller || TODOS}
-          onValueChange={(v) => actualizar("seller", v === TODOS ? "" : v)}
+          onValueChange={(v) => actualizar(v === TODOS ? "" : v)}
         >
           <SelectTrigger id="filtro-seller-pc" size="default" className="h-9 w-48">
             <SelectValue placeholder="Todos los sellers" />
@@ -80,37 +77,13 @@ export function FiltrosPeriodosForm({
         </Select>
       </div>
 
-      {/* Estado */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor="filtro-estado-pc" className="text-xs font-medium text-muted-foreground">
-          Estado
-        </label>
-        <Select
-          value={filtroEstado || TODOS}
-          onValueChange={(v) => actualizar("estado", v === TODOS ? "" : v)}
-        >
-          <SelectTrigger id="filtro-estado-pc" size="default" className="h-9 w-48">
-            <SelectValue placeholder="Todos los estados" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={TODOS}>Todos los estados</SelectItem>
-            {estados.map((e) => (
-              <SelectItem key={e} value={e}>
-                {traducirEstadoPeriodoCobro(e)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Limpiar filtros — solo visible cuando hay filtros activos */}
       {hayFiltroActivo && (
         <Button
           type="button"
           variant="ghost"
           size="sm"
           onClick={() => router.push(pathname)}
-          className="h-9 text-muted-foreground"
+          className="h-9 text-fg-muted"
         >
           Limpiar filtros
         </Button>

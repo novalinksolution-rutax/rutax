@@ -38,6 +38,15 @@ export interface AjusteAgrupado {
   monto: number;
   /** El pedido que lo originó, cuando el ajuste viene de una sola línea. */
   pedidoId?: string;
+  /**
+   * La incidencia que lo provocó.
+   *
+   * El tablero enlaza el ajuste a «la incidencia», y esa es la causa real: el
+   * pedido es dónde se ve, la incidencia es por qué existe. Se arrastra desde
+   * `lineas_cobro.incidencia_id` para que la pantalla pueda nombrarla en vez de
+   * ofrecer un genérico «ver el pedido» sobre un UUID.
+   */
+  incidenciaId?: string;
 }
 
 export interface AgrupacionLineasCobro {
@@ -74,6 +83,7 @@ export function agruparLineasCobro(lineas: LineaCobro[]): AgrupacionLineasCobro 
         concepto: 'Ajuste por incidencia',
         monto: l.ajusteIncidenciaClp,
         pedidoId: l.pedidoId,
+        incidenciaId: l.incidenciaId ?? undefined,
       });
     }
   }

@@ -22,6 +22,17 @@ import { cn } from "@/lib/utils"
  * ⚠️ **La interfaz no puede mentir sobre esto.** Que la suma de los cajones no dé
  * el total es correcto, y hay que decirlo — no esconderlo.
  *
+ * EL CAJÓN TRANSVERSAL, QUE ES OTRA COSA QUE EL EXCLUIDO
+ * ---------------------------------------------------------------------------
+ * `excluido` está FUERA de los grupos: un pedido cancelado no está además
+ * pendiente. `transversal` los CRUZA: «Con problemas», en períodos, cuenta tanto
+ * uno cerrado con una excepción como uno ya facturado que el SII rechazó, así
+ * que sus filas **ya están contadas** en los grupos de la izquierda.
+ *
+ * Meterlo entre los demás daba un número mayor que el total y dejaba la
+ * declaración ilegible — «35 en los grupos de arriba» sobre 27 filas. Va después
+ * del separador, no suma, y la barra dice que cruza.
+ *
  * LOS CONTADORES CUENTAN SOBRE EL CONJUNTO FILTRADO
  * ---------------------------------------------------------------------------
  * No sobre la página visible. Si el coordinador filtró por comuna, los cajones
@@ -40,6 +51,7 @@ export interface Cajon {
 export function BarraCajones({
   cajones,
   excluido,
+  transversal,
   activo,
   onSeleccionar,
   total,
@@ -48,6 +60,12 @@ export function BarraCajones({
   cajones: Cajon[]
   /** El cajón que NO suma: `cancelado` en pedidos. Va tras el separador, en `inert`. */
   excluido?: Cajon
+  /**
+   * El cajón que CRUZA los grupos: «Con problemas», en períodos. Sus filas ya
+   * están contadas a la izquierda, así que no suma — y no va en `inert`, porque
+   * lo que agrupa sí está en juego.
+   */
+  transversal?: Cajon
   /** Clave del cajón activo, o `null` para «todos». */
   activo: string | null
   onSeleccionar: (clave: string | null) => void
@@ -82,7 +100,7 @@ export function BarraCajones({
           />
         ))}
 
-        {excluido ? (
+        {excluido || transversal ? (
           <>
             {/* El separador es la señal de que lo que sigue no pertenece a la
                 misma suma. Es un elemento de significado, no un adorno. */}
@@ -90,13 +108,23 @@ export function BarraCajones({
               aria-hidden="true"
               className="mx-1 w-px shrink-0 self-stretch bg-line-subtle"
             />
-            <BotonCajon
-              etiqueta={excluido.etiqueta}
-              conteo={excluido.conteo}
-              activo={activo === excluido.clave}
-              onClick={() => onSeleccionar(excluido.clave)}
-              inerte
-            />
+            {transversal ? (
+              <BotonCajon
+                etiqueta={transversal.etiqueta}
+                conteo={transversal.conteo}
+                activo={activo === transversal.clave}
+                onClick={() => onSeleccionar(transversal.clave)}
+              />
+            ) : null}
+            {excluido ? (
+              <BotonCajon
+                etiqueta={excluido.etiqueta}
+                conteo={excluido.conteo}
+                activo={activo === excluido.clave}
+                onClick={() => onSeleccionar(excluido.clave)}
+                inerte
+              />
+            ) : null}
           </>
         ) : null}
       </div>
@@ -104,11 +132,21 @@ export function BarraCajones({
       {/* La declaración de que la suma no cuadra, y por qué. Sin esto, alguien
           va a sumar los cajones, no le va a dar, y va a reportar un bug que no
           existe. */}
-      {noCuadra ? (
-        <p className="font-mono text-[10.5px] leading-none text-fg-subtle">
-          {sumaCajones.toLocaleString("es-CL")} en los grupos de arriba ·{" "}
-          {excluido!.conteo.toLocaleString("es-CL")} {excluido!.etiqueta.toLowerCase()} ·{" "}
-          <span className="text-fg-muted">{total.toLocaleString("es-CL")} en total</span>
+      {noCuadra || transversal ? (
+        <p className="font-mono text-[10.5px] leading-snug text-fg-subtle">
+          {noCuadra ? (
+            <span className="block">
+              {sumaCajones.toLocaleString("es-CL")} en los grupos de arriba ·{" "}
+              {excluido!.conteo.toLocaleString("es-CL")} {excluido!.etiqueta.toLowerCase()} ·{" "}
+              <span className="text-fg-muted">{total.toLocaleString("es-CL")} en total</span>
+            </span>
+          ) : null}
+          {transversal ? (
+            <span className="block">
+              «{transversal.etiqueta}» cruza los estados: sus{" "}
+              {transversal.conteo.toLocaleString("es-CL")} ya están contados a la izquierda.
+            </span>
+          ) : null}
         </p>
       ) : null}
     </div>

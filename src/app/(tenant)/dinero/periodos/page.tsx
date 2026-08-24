@@ -1,8 +1,28 @@
 /**
- * Pantalla D-1 — Dashboard de períodos de cobro.
+ * Períodos de cobro — el listado desde el que se factura.
+ * =============================================================================
  *
- * Server Component. Filtros por seller y estado via searchParams (GET).
- * Criterios C-1 (montos CLP), C-3 (signed URLs), C-7 (folio en badge facturado).
+ * -----------------------------------------------------------------------------
+ * QUÉ CAMBIÓ, Y NO ES COSMÉTICO
+ * -----------------------------------------------------------------------------
+ * La pantalla tenía **dos listas del mismo dato**: esta tabla, sin casillas, y
+ * el checklist del panel `AprobacionLote` encima. La selección de una no tenía
+ * relación con la otra. Ahora hay una sola: casillas en la fila, barra de
+ * selección al pie, y la ceremonia —peldaño 3, monto en el título, frase a
+ * escribir, preflight consolidado— colgando de ahí.
+ *
+ * -----------------------------------------------------------------------------
+ * EL CAJÓN «CON PROBLEMAS» AHORA FILTRA
+ * -----------------------------------------------------------------------------
+ * Existía, contaba, y al pulsarlo **limpiaba los filtros**: su `href` era la
+ * ruta pelada. Contaba, además, solo los DTE rechazados por el SII. Ahora es un
+ * cajón de verdad y cuenta lo que un courier llama un problema: **o el SII lo
+ * rechazó, o hay una excepción de conciliación que impide emitir**.
+ *
+ * Ese cajón cruza los estados —un período facturado puede tener problema— así
+ * que la suma de cajones NO da el total, y `BarraCajones` lo declara sola. Es
+ * correcto: esconderlo obligaría a elegir entre un cajón útil y una suma que
+ * cuadra.
  */
 
 import type { Metadata } from "next";
@@ -12,36 +32,30 @@ import Link from "next/link";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
-import {
-  listarPeriodosCobro,
-  listarDocumentosDte,
-} from "@/modules/dinero/index";
+import { listarPeriodosCobro, listarDocumentosDte } from "@/modules/dinero/index";
 import type { PeriodoCobro, DocumentoDte, EstadoPeriodo } from "@/modules/dinero/tipos";
 import {
-  BADGE_ESTADO_SII,
-  traducirEstadoSiiTexto,
-  traducirEstadoPeriodoCobro,
-  BADGE_ESTADO_PERIODO,
-  traducirEstadoCobroPeriodo,
-  BADGE_ESTADO_COBRO_PERIODO,
-} from "@/lib/ui/traduccion-estados";
-import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+  contarBloqueosDeFacturacion,
+  etiquetaPeriodo,
+  proximoCierreAutomatico,
+} from "@/modules/dinero/listado-periodos";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { etiquetaFechaCivilCorta } from "@/lib/ui/rango-fecha";
 
-import { BadgeEstado } from "@/components/ui/badge-estado";
-import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
 import { FiltrosPeriodosForm } from "./filtros-periodos";
-import { AprobacionLote, type ItemLoteUI } from "../_componentes/aprobacion-lote";
 import { accionPreflightLoteFacturas, accionEmitirFacturasLote } from "./actions";
-import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 import { IndicadorFolio } from "@/components/ui/indicador-folio";
 import { contarFoliosDisponibles } from "@/modules/dinero/folios-disponibles";
+import { TablaPeriodos, type ElegiblePeriodo, type FilaPeriodoVista } from "./tabla-periodos";
 
 export const metadata: Metadata = {
   title: "Períodos de cobro",
 };
 
-const ESTADOS_PERIODO: EstadoPeriodo[] = ["abierto", "cerrado", "facturado", "anulado"];
 const LIMITE = 20;
+
+/** Clave del cajón transversal: no es un estado del período. */
+const CAJON_PROBLEMAS = "problemas";
 
 interface SearchParams {
   seller?: string;
@@ -49,10 +63,12 @@ interface SearchParams {
   pagina?: string;
 }
 
-// Tipo enriquecido con datos del DTE y nombre del seller
-interface PeriodoConDte extends PeriodoCobro {
+interface PeriodoEnriquecido extends PeriodoCobro {
   dte: DocumentoDte | null;
   sellerNombre: string;
+  sellerRut: string | null;
+  excepcionesBloqueantes: number;
+  conProblema: boolean;
 }
 
 export default async function PaginaPeriodosCobro({
@@ -69,25 +85,10 @@ export default async function PaginaPeriodosCobro({
   const tenantId = sesion.usuario.tenantId;
 
   const filtroSeller = params.seller ?? "";
-  const filtroEstado = (params.estado as EstadoPeriodo | "") ?? "";
+  const filtroEstado = params.estado ?? "";
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
-  const hayFiltroActivo = !!(filtroSeller || filtroEstado);
 
   const cliente = crearClienteServiceRole();
-  let periodos: PeriodoCobro[] = [];
-  let periodosConDte: PeriodoConDte[] = [];
-  let sellersDisponibles: { id: string; nombre: string }[] = [];
-  // Elementos elegibles para la aprobación en lote: períodos 'cerrado' listos
-  // para facturar (de TODO el conjunto, no solo la página visible).
-  let itemsLoteFacturas: ItemLoteUI[] = [];
-  let errorCarga = false;
-
-  // Contadores para chips (siempre sin filtro de estado para mostrar totales reales)
-  let contAbiertos = 0;
-  let contCerrados = 0;
-  let contFacturados = 0;
-  let contAnulados = 0;
-  let contConProblemas = 0;
 
   // El indicador de folios va acá y no solo en el dashboard: **esta es la
   // pantalla desde donde se factura**. Hasta ahora el courier se enteraba de que
@@ -110,109 +111,175 @@ export default async function PaginaPeriodosCobro({
       })
     : null;
 
+  let enriquecidos: PeriodoEnriquecido[] = [];
+  let sellersDisponibles: { id: string; nombre: string }[] = [];
+  let errorCarga = false;
+
   try {
-    // Las tres consultas son independientes entre sí (solo dependen de tenantId y
-    // del filtro de seller), así que van en paralelo: encadenadas costaban tres
-    // round-trips a la base en vez de uno.
     const [{ data: sellersData }, todosPeriodos, todosDte] = await Promise.all([
-      // Sellers disponibles para el filtro
       cliente
         .from("sellers")
-        .select("id, razon_social")
+        .select("id, razon_social, rut")
         .eq("tenant_id", tenantId)
         .order("razon_social"),
-      // Todos los períodos (sin filtro de estado) para contadores
       listarPeriodosCobro(cliente, tenantId, filtroSeller || undefined),
-      // Documentos DTE para cruzar datos
       listarDocumentosDte(cliente, tenantId, filtroSeller || undefined),
     ]);
 
-    sellersDisponibles = (sellersData ?? []).map((s: Record<string, unknown>) => ({
+    const filasSellers = (sellersData ?? []) as Record<string, unknown>[];
+    sellersDisponibles = filasSellers.map((s) => ({
       id: s.id as string,
       nombre: s.razon_social as string,
     }));
+    const rutPorSeller = new Map(
+      filasSellers.map((s) => [s.id as string, (s.rut as string | null) ?? null]),
+    );
+    const nombrePorSeller = new Map(sellersDisponibles.map((s) => [s.id, s.nombre]));
 
-    const sellersMap = new Map(sellersDisponibles.map((s) => [s.id, s.nombre]));
     // Solo facturas (33): la nota de crédito (61) comparte periodo_cobro_id
     // con la factura que anula y no debe pisarla en este mapa.
-    const dteMap = new Map<string, DocumentoDte>(
-      todosDte
-        .filter((d) => d.tipoDocumento === 33)
-        .map((d) => [d.periodoCobroidId, d]),
+    const dtePorPeriodo = new Map<string, DocumentoDte>(
+      todosDte.filter((d) => d.tipoDocumento === 33).map((d) => [d.periodoCobroidId, d]),
     );
 
-    // Calcular contadores
-    for (const p of todosPeriodos) {
-      if (p.estado === "abierto") contAbiertos++;
-      else if (p.estado === "cerrado") contCerrados++;
-      else if (p.estado === "facturado") contFacturados++;
-      else if (p.estado === "anulado") contAnulados++;
+    // Las excepciones, en una consulta para todo el conjunto filtrado — no una
+    // por fila, y no solo por la página: el cajón «Con problemas» cuenta sobre
+    // el conjunto, así que necesita el dato de todos.
+    const excepciones = await contarBloqueosDeFacturacion(
+      cliente,
+      tenantId,
+      todosPeriodos.map((p) => ({ id: p.id, sellerId: p.sellerId })),
+    );
 
-      // "Con problemas" = DTE rechazado o aceptado_con_discrepancias
-      const dte = p.documentoDteId ? dteMap.get(p.id) : null;
-      if (
-        dte &&
-        (dte.estadoSii === "rechazado" || dte.estadoSii === "aceptado_con_discrepancias")
-      ) {
-        contConProblemas++;
-      }
-    }
-
-    // Filtrar para la tabla
-    periodos = filtroEstado
-      ? todosPeriodos.filter((p) => p.estado === filtroEstado)
-      : todosPeriodos;
-
-    // Paginar
-    const offset = (pagina - 1) * LIMITE;
-    const periodosPaginados = periodos.slice(offset, offset + LIMITE);
-
-    // Enriquecer con DTE y nombre seller
-    periodosConDte = periodosPaginados.map((p) => ({
-      ...p,
-      dte: dteMap.get(p.id) ?? null,
-      sellerNombre: sellersMap.get(p.sellerId) ?? p.sellerId,
-    }));
-
-    // Elegibles para facturar en lote: todos los 'cerrado' del conjunto filtrado.
-    itemsLoteFacturas = todosPeriodos
-      .filter((p) => p.estado === "cerrado")
-      .map((p) => ({
-        id: p.id,
-        etiqueta: sellersMap.get(p.sellerId) ?? p.sellerId,
-        sub: `${formatearFechaCorta(p.fechaInicio)}–${formatearFechaCorta(p.fechaFin)}`,
-        montoClp: p.montoTotalClp ?? 0,
-      }));
+    enriquecidos = todosPeriodos.map((p) => {
+      const dte = dtePorPeriodo.get(p.id) ?? null;
+      const bloqueantes = excepciones[p.id] ?? 0;
+      const siiEnProblema =
+        dte?.estadoSii === "rechazado" || dte?.estadoSii === "aceptado_con_discrepancias";
+      return {
+        ...p,
+        dte,
+        sellerNombre: nombrePorSeller.get(p.sellerId) ?? p.sellerId,
+        sellerRut: rutPorSeller.get(p.sellerId) ?? null,
+        excepcionesBloqueantes: bloqueantes,
+        conProblema: bloqueantes > 0 || siiEnProblema,
+      };
+    });
   } catch {
     errorCarga = true;
   }
 
-  const totalPaginas = Math.ceil(periodos.length / LIMITE);
+  // ── Cajones ──────────────────────────────────────────────────────────────
+  // Los contadores van sobre el conjunto filtrado MENOS el filtro de estado,
+  // que es justo lo que el cajón elige. Un contador que cuenta la página, o que
+  // se recalcula con el cajón puesto, es un contador que miente.
+  const conteo = (predicado: (p: PeriodoEnriquecido) => boolean) =>
+    enriquecidos.filter(predicado).length;
 
-  function urlConFiltros(overrides: Record<string, string>) {
+  const cajones = [
+    { clave: "abierto", etiqueta: "Abiertos", conteo: conteo((p) => p.estado === "abierto") },
+    { clave: "cerrado", etiqueta: "Cerrados", conteo: conteo((p) => p.estado === "cerrado") },
+    { clave: "facturado", etiqueta: "Facturados", conteo: conteo((p) => p.estado === "facturado") },
+  ];
+  // «Con problemas» CRUZA los estados —un cerrado con excepción y un facturado
+  // que el SII rechazó cuentan los dos—, así que no suma con los de arriba: sus
+  // filas ya están ahí. Va como transversal y la barra lo declara.
+  const cajonTransversal = {
+    clave: CAJON_PROBLEMAS,
+    etiqueta: "Con problemas",
+    conteo: conteo((p) => p.conProblema),
+  };
+  const cajonExcluido = {
+    clave: "anulado",
+    etiqueta: "Anulados",
+    conteo: conteo((p) => p.estado === "anulado"),
+  };
+
+  const visibles =
+    filtroEstado === CAJON_PROBLEMAS
+      ? enriquecidos.filter((p) => p.conProblema)
+      : filtroEstado
+        ? enriquecidos.filter((p) => p.estado === filtroEstado)
+        : enriquecidos;
+
+  const offset = (pagina - 1) * LIMITE;
+  const paginados = visibles.slice(offset, offset + LIMITE);
+  const totalPaginas = Math.ceil(visibles.length / LIMITE);
+
+  const filas: FilaPeriodoVista[] = paginados.map((p) => ({
+    id: p.id,
+    sellerNombre: p.sellerNombre,
+    sellerRut: p.sellerRut,
+    periodoEtiqueta: etiquetaPeriodo(p.fechaInicio, p.fechaFin),
+    fechaInicio: p.fechaInicio,
+    fechaFin: p.fechaFin,
+    estado: p.estado,
+    totalLineas: p.totalLineas,
+    montoTotalClp: p.montoTotalClp,
+    folio: p.dte?.folio ?? null,
+    estadoSii: p.dte?.estadoSii ?? null,
+    estadoCobro: p.estadoCobro,
+    montoPagadoClp: p.montoPagadoClp,
+    excepcionesBloqueantes: p.excepcionesBloqueantes,
+    tienePdf: Boolean(p.dte?.pdfRef),
+    tieneXml: Boolean(p.dte?.xmlDteRef),
+  }));
+
+  // Los elegibles del CONJUNTO FILTRADO, no de la página: es lo que hace posible
+  // el tercer nivel de selección («seleccionar los 34 del filtro completo»).
+  const elegiblesDelFiltro: ElegiblePeriodo[] = visibles
+    .filter((p) => p.estado === "cerrado" && p.excepcionesBloqueantes === 0)
+    .map((p) => ({
+      id: p.id,
+      etiqueta: p.sellerNombre,
+      sub: etiquetaPeriodo(p.fechaInicio, p.fechaFin),
+      montoClp: p.montoTotalClp ?? 0,
+      lineas: p.totalLineas,
+    }));
+
+  // ── La bajada del encabezado ─────────────────────────────────────────────
+  const abiertos = enriquecidos.filter((p) => p.estado === "abierto");
+  const cierre = proximoCierreAutomatico(abiertos, hoyEnSantiago());
+  const sellersConPeriodo = new Set(enriquecidos.map((p) => p.sellerId)).size;
+
+  function urlPagina(n: number) {
     const sp = new URLSearchParams();
     if (filtroSeller) sp.set("seller", filtroSeller);
     if (filtroEstado) sp.set("estado", filtroEstado);
-    Object.entries(overrides).forEach(([k, v]) => {
-      if (v) sp.set(k, v);
-      else sp.delete(k);
-    });
+    if (n > 1) sp.set("pagina", String(n));
     const s = sp.toString();
     return `/dinero/periodos${s ? `?${s}` : ""}`;
   }
 
-  const chips = [
-    { key: "abierto", label: "Abiertos", count: contAbiertos, color: "bg-info-subtle text-info-subtle-foreground" },
-    { key: "cerrado", label: "Cerrados", count: contCerrados, color: "bg-muted text-muted-foreground" },
-    { key: "facturado", label: "Facturados", count: contFacturados, color: "bg-success-subtle text-success-subtle-foreground" },
-    { key: "anulado", label: "Anulados", count: contAnulados, color: "bg-destructive-subtle text-destructive-subtle-foreground" },
-    { key: "", label: "Con problemas", count: contConProblemas, color: "bg-destructive-subtle text-destructive-subtle-foreground" },
-  ];
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Períodos de cobro</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="font-heading text-2xl font-semibold">Períodos de cobro</h1>
+          {/* La bajada dice lo que va a pasar solo. El tablero escribe «cierre
+              sugerido», pero acá no hay nada que sugerir: el cron corre a las
+              02:00 y cierra todo período cuya fecha de fin ya pasó. */}
+          {!errorCarga ? (
+            <p className="rx-num mt-0.5 text-xs text-fg-muted">
+              {sellersConPeriodo} {sellersConPeriodo === 1 ? "seller" : "sellers"}
+              {cierre ? (
+                cierre.vencido ? (
+                  <>
+                    {" · "}
+                    {cierre.cuantos} {cierre.cuantos === 1 ? "período venció" : "períodos vencieron"}{" "}
+                    y cierran en la próxima pasada
+                  </>
+                ) : (
+                  <>
+                    {" · "}
+                    {cierre.cuantos} {cierre.cuantos === 1 ? "cierra solo" : "cierran solos"} el{" "}
+                    {etiquetaFechaCivilCorta(cierre.fecha)}
+                  </>
+                )
+              ) : null}
+            </p>
+          ) : null}
+        </div>
         {foliosRestantes !== null ? (
           <IndicadorFolio
             restantes={foliosRestantes}
@@ -228,309 +295,73 @@ export default async function PaginaPeriodosCobro({
         ) : null}
       </div>
 
-      {/* Chips de resumen */}
-      {!errorCarga && (
-        <div className="flex flex-wrap gap-2" role="list" aria-label="Resumen de períodos">
-          {chips.map((chip) => {
-            const estaActivo = filtroEstado === chip.key && chip.key !== "";
-            return (
-              <Link
-                key={`chip-${chip.key || "problemas"}`}
-                href={
-                  chip.key === ""
-                    ? "/dinero/periodos"
-                    : estaActivo
-                    ? "/dinero/periodos"
-                    : urlConFiltros({ estado: chip.key, pagina: "" })
-                }
-                role="listitem"
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-all ${chip.color} ${
-                  estaActivo ? "ring-2 ring-current ring-offset-1" : "hover:opacity-80"
-                }`}
-              >
-                {chip.label}: <span className="font-semibold tabular-nums">{chip.count}</span>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Filtros */}
       <FiltrosPeriodosForm
         sellers={sellersDisponibles}
-        estados={ESTADOS_PERIODO}
         filtroSeller={filtroSeller}
-        filtroEstado={filtroEstado}
-        hayFiltroActivo={hayFiltroActivo}
+        hayFiltroActivo={Boolean(filtroSeller || filtroEstado)}
       />
 
-      {/* Error de carga */}
-      {errorCarga && (
+      {errorCarga ? (
         <div
           role="alert"
-          className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
+          className="border border-fault-line bg-fault-bg px-4 py-3.5 text-sm leading-relaxed text-fault-fg"
         >
-          No pudimos cargar los períodos. Intenta recargar la página.
+          <strong className="font-medium">No se pudieron leer los períodos.</strong> No emitas
+          nada hasta poder verlos — recarga en unos segundos.
         </div>
-      )}
-
-      {/* Aprobación por lotes — facturar varios períodos cerrados de una vez */}
-      {!errorCarga && itemsLoteFacturas.length > 0 && (
-        <AprobacionLote
-          items={itemsLoteFacturas}
-          tipo="factura"
-          accionPreflight={accionPreflightLoteFacturas}
-          accionEmitir={accionEmitirFacturasLote}
-        />
-      )}
-
-      {/* Tabla */}
-      {!errorCarga && periodosConDte.length === 0 ? (
-        <div className="rounded-lg border bg-card px-6 py-12 text-center">
-          {hayFiltroActivo ? (
+      ) : visibles.length === 0 ? (
+        <div className="border border-line bg-bg-sunken px-6 py-12 text-center">
+          {filtroSeller || filtroEstado ? (
             <>
-              <p className="text-muted-foreground">
-                No hay períodos que coincidan con los filtros aplicados.
-              </p>
+              <p className="text-fg-muted">Ningún período cae en este filtro.</p>
               <Link
                 href="/dinero/periodos"
-                className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
+                className="mt-3 inline-block text-sm font-medium text-accent-text hover:underline"
               >
-                Limpiar filtros
+                Ver todos
               </Link>
             </>
           ) : (
-            <p className="text-muted-foreground">
-              Aún no tienes períodos de cobro. Se generan automáticamente cuando tus sellers registran entregas.
+            <p className="text-fg-muted">
+              Todavía no hay períodos de cobro. Se abren solos con la primera entrega de cada
+              seller.
             </p>
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Períodos de cobro">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2" style={{ width: "20%" }}>Seller</th>
-                  <th className="hidden px-4 py-2 sm:table-cell" style={{ width: "20%" }}>Período</th>
-                  <th className="px-4 py-2" style={{ width: "12%" }}>Estado</th>
-                  <th className="hidden px-4 py-2 text-right md:table-cell" style={{ width: "8%" }}>Líneas</th>
-                  <th className="hidden px-4 py-2 text-right lg:table-cell" style={{ width: "13%" }}>Monto total</th>
-                  <th className="hidden px-4 py-2 lg:table-cell" style={{ width: "11%" }}>Cobro</th>
-                  <th className="hidden px-4 py-2 xl:table-cell" style={{ width: "11%" }}>Estado SII</th>
-                  <th className="px-4 py-2 text-right" style={{ width: "12%" }}>
-                    <span className="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {periodosConDte.map((periodo) => (
-                  <FilaPeriodo key={periodo.id} periodo={periodo} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Footer con conteo */}
-          <div className="flex items-center justify-between border-t bg-muted/20 px-4 py-2">
-            <span className="text-xs text-muted-foreground">
-              Mostrando {periodosConDte.length} de {periodos.length} período{periodos.length !== 1 ? "s" : ""}
-            </span>
-
-            {totalPaginas > 1 && (
-              <div className="flex gap-2">
-                {pagina > 1 && (
-                  <Link
-                    href={urlConFiltros({ pagina: String(pagina - 1) })}
-                    className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
-                  >
-                    Anterior
-                  </Link>
-                )}
-                <span className="flex items-center text-xs text-muted-foreground">
-                  {pagina} / {totalPaginas}
-                </span>
-                {pagina < totalPaginas && (
-                  <Link
-                    href={urlConFiltros({ pagina: String(pagina + 1) })}
-                    className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
-                  >
-                    Siguiente
-                  </Link>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// =============================================================================
-// Componentes auxiliares
-// =============================================================================
-
-function BadgeEstadoSiiInline({ estadoSii }: { estadoSii: DocumentoDte["estadoSii"] }) {
-  return (
-    <BadgeEstado
-      variante={BADGE_ESTADO_SII[estadoSii] ?? "neutral"}
-      texto={traducirEstadoSiiTexto(estadoSii)}
-      eje="sii"
-      valor={estadoSii}
-         />
-  );
-}
-
-function BadgeEstadoCobro({ periodo }: { periodo: PeriodoConDte }) {
-  // El cobro solo aplica a períodos facturados; mientras no lo estén, no hay
-  // nada que cobrar todavía.
-  if (periodo.estadoCobro === "no_aplica") {
-    return <span className="text-muted-foreground">—</span>;
-  }
-  return (
-    <span
-      title={
-        periodo.estadoCobro === "parcial"
-          ? `Pagado: ${formatearCLPOGuion(periodo.montoPagadoClp)}`
-          : undefined
-      }
-    >
-      <BadgeEstado
-        variante={BADGE_ESTADO_COBRO_PERIODO[periodo.estadoCobro]}
-        texto={traducirEstadoCobroPeriodo(periodo.estadoCobro)}
-        eje="cobro-periodo"
-        valor={periodo.estadoCobro}
-      />
-    </span>
-  );
-}
-
-function FilaPeriodo({ periodo }: { periodo: PeriodoConDte }) {
-  const textoBadge = traducirEstadoPeriodoCobro(
-    periodo.estado,
-    periodo.estado === "facturado" && periodo.dte ? periodo.dte.folio : undefined,
-  );
-
-  const fechaInicio = formatearFechaCorta(periodo.fechaInicio);
-  const fechaFin = formatearFechaCorta(periodo.fechaFin);
-
-  return (
-    <tr className="group hover:bg-muted/30 transition-colors">
-      {/* Seller */}
-      <td className="px-4 py-3">
-        <p className="font-medium truncate max-w-[160px]">{periodo.sellerNombre}</p>
-      </td>
-
-      {/* Período */}
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        <span className="tabular-nums">
-          {fechaInicio} – {fechaFin}
-        </span>
-      </td>
-
-      {/* Estado */}
-      <td className="px-4 py-3">
-        <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
-      </td>
-
-      {/* Líneas */}
-      <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
-        {periodo.totalLineas}
-      </td>
-
-      {/* Monto total */}
-      <td className="hidden px-4 py-3 text-right tabular-nums font-medium lg:table-cell">
-        {formatearCLPOGuion(periodo.montoTotalClp)}
-      </td>
-
-      {/* Estado de cobro */}
-      <td className="hidden px-4 py-3 lg:table-cell">
-        <BadgeEstadoCobro periodo={periodo} />
-      </td>
-
-      {/* Estado SII */}
-      <td className="hidden px-4 py-3 xl:table-cell">
-        {periodo.dte ? (
-          <BadgeEstadoSiiInline estadoSii={periodo.dte.estadoSii} />
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>
-
-      {/* Acciones */}
-      <td className="px-4 py-3 text-right">
-        <AccionesPeriodo periodo={periodo} />
-      </td>
-    </tr>
-  );
-}
-
-function AccionesPeriodo({ periodo }: { periodo: PeriodoConDte }) {
-  if (periodo.estado === "abierto") {
-    return (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {/* ⚠️ «Ver detalle» faltaba justo acá, y era el único camino a esa
-            pantalla: un período abierto solo ofrecía «Cerrar período», así que
-            el detalle —donde están las líneas, la tabla financiera y la
-            composición del total— era **inalcanzable hasta después de cerrar**.
-            O sea: lo que uno querría revisar ANTES de cerrar solo se podía ver
-            DESPUÉS. */}
-        <EnlaceDetalle
-          href={`/dinero/periodos/${periodo.id}`}
-          className="text-xs font-medium text-primary hover:underline"
-        >
-          Ver detalle
-        </EnlaceDetalle>
-        <DialogCerrarPeriodo
-          periodoId={periodo.id}
-          sellerNombre={periodo.sellerNombre}
-          fechaInicio={periodo.fechaInicio}
-          fechaFin={periodo.fechaFin}
-          totalLineas={periodo.totalLineas}
-          montoTotalClp={periodo.montoTotalClp}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center justify-end gap-2 flex-wrap">
-      <EnlaceDetalle
-        href={`/dinero/periodos/${periodo.id}`}
-        className="text-xs font-medium text-primary hover:underline"
-      >
-        Ver detalle
-      </EnlaceDetalle>
-      {(periodo.estado === "facturado") && periodo.dte && (
         <>
-          {periodo.dte.pdfRef && (
-            <form action={`/dinero/periodos/${periodo.id}`}>
-              <Link
-                href={`/dinero/periodos/${periodo.id}?descargar=pdf`}
-                className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-              >
-                Ver PDF
-              </Link>
-            </form>
-          )}
-          {periodo.dte.xmlDteRef && (
-            <Link
-              href={`/dinero/periodos/${periodo.id}?descargar=xml`}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-            >
-              Ver XML
-            </Link>
-          )}
+          <TablaPeriodos
+            filas={filas}
+            elegiblesDelFiltro={elegiblesDelFiltro}
+            cajones={cajones}
+            cajonExcluido={cajonExcluido}
+            cajonTransversal={cajonTransversal}
+            cajonActivo={filtroEstado || null}
+            totalFiltrado={visibles.length}
+            puedeCerrar
+            accionPreflight={accionPreflightLoteFacturas}
+            accionEmitir={accionEmitirFacturasLote}
+          />
+
+          {totalPaginas > 1 ? (
+            <div className="flex items-center justify-end gap-3 text-sm">
+              {pagina > 1 ? (
+                <Link href={urlPagina(pagina - 1)} className="text-accent-text hover:underline">
+                  Anterior
+                </Link>
+              ) : null}
+              <span className="rx-num text-fg-muted">
+                {pagina} / {totalPaginas}
+              </span>
+              {pagina < totalPaginas ? (
+                <Link href={urlPagina(pagina + 1)} className="text-accent-text hover:underline">
+                  Siguiente
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </>
       )}
     </div>
   );
-}
-
-// Formatea 'YYYY-MM-DD' → 'DD/MM/AAAA'
-function formatearFechaCorta(fechaIso: string): string {
-  if (!fechaIso || fechaIso.length < 10) return fechaIso;
-  const [anio, mes, dia] = fechaIso.slice(0, 10).split("-");
-  return `${dia}/${mes}/${anio}`;
 }
