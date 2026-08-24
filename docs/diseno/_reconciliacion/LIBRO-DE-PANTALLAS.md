@@ -1086,9 +1086,38 @@ Revocar es **un toque**, sin confirmación en cadena y sin preguntar por qué (�
 
 Las doce pantallas están construidas.
 
-⚠️ **9 de las 22 pantallas del repo Expo siguen leyendo `colors` como constante** —Torre móvil,
-login, evidencia, traspaso y el listado de retiros— así que **no cambian de tema todavía**. Migrar
-una es cambiar dos líneas (`useColores` + `useEstilosCompat`); lo que falta se lee de una.
+### La adopción del tema, terminada el 24-08-2026
+
+**Ninguna pantalla del repo Expo lee ya `colors` como constante.** Se migraron los 16 archivos que
+quedaban —Torre móvil, login, splash, evidencia, traspaso, listado de retiros, cámara y el layout
+del stack— y con ellos se fueron **todas las sombras** y **todos los hexadecimales sueltos**.
+
+Lo que apareció al barrer, y no era solo color:
+
+- **El login y el splash estaban construidos sobre un supuesto que ya no vale**: fondo navy con
+  texto blanco. Por eso tenían `#ffffff22`, `#ffffff33`, `#ffffffb0` y `#ffffff99` — blancos
+  translúcidos que solo funcionan sobre un fondo oscuro fijo. Con el sistema nuevo el fondo es el
+  del tema, y **bajo Sol es blanco**: el texto habría quedado blanco sobre blanco.
+- **La cabecera del stack seguía en navy**, y es lo que el conductor ve en *todas* las pantallas.
+- **`ESTADO_PUNTO` de la Torre era una constante de módulo** con los colores pegados: se resolvía
+  una vez al importar el archivo y se quedaba en el tema que hubiera entonces. Pasa a ser función de
+  la paleta, y se parte en dos: la **palabra** de cada estado no depende del tema —`etiquetaDePunto`
+  arma el texto del lector de pantalla y no tiene color— y obligarla a pedir una paleta la habría
+  convertido en un hook por nada.
+- **Cuatro azules de «Light Pro»** (`#BFDBFE`, `#1D4ED8`) repartidos en cuatro pantallas, que en
+  Noche pintaban celeste claro sobre `#05080A`.
+- **`color="#fff"` sobre rellenos de color.** Un blanco fijo sobre el teal de Sol queda en 2,4:1.
+  Ahora es `fgOnAccent`, que es el texto que el sistema define para ir encima del acento.
+
+**Dos excepciones, las dos con motivo escrito:** el negro del visor de la cámara —un fondo de tema
+alrededor de una imagen de cámara delata el recorte y, bajo Sol, el marco blanco arruina la
+exposición— y **la sombra del marcador del mapa**, la única que queda en la app: sobre un mapa no hay
+escalón de fondo ni borde que sirvan de elevación, porque el fondo es el plano de la ciudad y cambia
+bajo el marcador.
+
+**La red que impide que vuelva:** `src/tema/adopcion.test.ts` barre `app/` y `src/` y falla si
+aparece un `import { colors }`, un `shadow.sm`, un hexadecimal suelto o un `<StatusBar>` de pantalla.
+No comprueba estética — comprueba que el mecanismo siga enchufado.
 
 ⚠️ **Nada de la app se ha visto en pantalla.** Necesita un build de EAS con los siete módulos
 nativos nuevos. Lo verificado es `tsc`, las 184 pruebas del repo Expo y las 3.839 del web.
