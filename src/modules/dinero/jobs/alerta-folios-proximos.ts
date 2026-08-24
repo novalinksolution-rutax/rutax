@@ -21,6 +21,12 @@ import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { UMBRAL_FOLIOS } from '../folios';
 import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
+import {
+  resolverDestinatarioCourier,
+  enviarNotificacionEmail,
+} from '@/modules/plataforma/notificaciones';
+import { construirEmailFoliosPorAgotarse } from '../notificaciones-dinero';
+import { resolverUrlBaseApp } from '@/modules/identidad/enlace-invitacion';
 
 const TZ = 'America/Santiago';
 
@@ -118,6 +124,48 @@ export const jobAlertaFoliosProximos = inngest.createFunction(
           `Tenant ${tenantId}: folios CAF próximos a agotarse. ` +
           `Restantes: ${foliosRestantes} (hasta folio ${folioHasta}).`,
         );
+
+        // El correo, después de la bitácora.
+        // ---------------------------------------------------------------------
+        // Hasta hoy la alerta se quedaba EN LA BITÁCORA: se registraba y no
+        // salía de la base. El courier se enteraba de que no le quedaban folios
+        // el día que intentó facturar y no pudo.
+        //
+        // La deduplicación es la misma —una alerta por tenant por día— y por eso
+        // el envío va acá dentro y no en un paso aparte: el que decide si hay
+        // algo que avisar es el mismo bucle que ya lo decidió.
+        //
+        // ⚠️ Envuelto: un correo que no sale no puede tumbar el job que detecta
+        // que un courier está por quedarse sin poder facturar.
+        try {
+          const base = resolverUrlBaseApp();
+          const destinatario = await resolverDestinatarioCourier(supabase, tenantId);
+          const contenido = construirEmailFoliosPorAgotarse({
+            // `nombreTenant` puede venir `null` (courier sin nombre de
+            // fantasía). No se deja vacío: el correo firma igual.
+            nombreCourier: destinatario.nombreTenant ?? 'tu courier',
+            foliosRestantes,
+            folioHasta,
+            urlFolios: base ? `${base}/configuracion/facturacion` : null,
+          });
+          const envio = await enviarNotificacionEmail({
+            para: destinatario.email,
+            asunto: contenido.asunto,
+            html: contenido.html,
+            texto: contenido.texto,
+          });
+          if (!envio.enviado) {
+            logger.warn(
+              `Tenant ${tenantId}: alerta de folios registrada pero NO enviada por correo ` +
+              `(modo=${envio.modo}). La bitácora sí quedó.`,
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            `Tenant ${tenantId}: falló el correo de folios — ` +
+            `${err instanceof Error ? err.message : 'error desconocido'}. La alerta quedó en bitácora.`,
+          );
+        }
 
         emitidas++;
       }

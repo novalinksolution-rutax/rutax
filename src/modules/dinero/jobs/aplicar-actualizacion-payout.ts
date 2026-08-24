@@ -26,6 +26,8 @@
  */
 
 import { inngest } from '@/lib/inngest/cliente';
+import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import { avisarLiquidacionPagada, avisarPagoRechazado } from '../avisos-payout';
 import { aplicarTransicionPayout } from './transicion-payout';
 
 interface DatosActualizacionExternaPayout {
@@ -73,6 +75,59 @@ export const jobAplicarActualizacionPayout = inngest.createFunction(
             driverId: resultado.driverId,
           },
         });
+      });
+
+      // «Te transferimos» → al conductor.
+      // -----------------------------------------------------------------------
+      // Hasta hoy el conductor no se enteraba por ningún canal de que le habían
+      // pagado: miraba su cuenta o preguntaba por WhatsApp.
+      //
+      // Solo si la transición se APLICÓ de verdad. Un webhook repetido —Fintoc
+      // reintenta— llega acá con `transicionAplicada: false`, y sin esta
+      // condición el conductor recibiría el mismo correo tres veces.
+      if (resultado.transicionAplicada) {
+        await step.run('avisar-conductor-pagado', async () => {
+          const r = await avisarLiquidacionPagada(crearClienteServiceRole(), {
+            tenantId: datos.tenantId,
+            liquidacionId: resultado.liquidacionId,
+          });
+          if (!r.enviado) {
+            logger.warn(
+              `Payout ${resultado.payoutId} confirmado pero el conductor NO recibió aviso ` +
+                `(${r.motivo}). El pago sí quedó registrado.`,
+            );
+          }
+          return r;
+        });
+      }
+    }
+
+    // «El banco rechazó el pago» → al COURIER, no al conductor.
+    // -------------------------------------------------------------------------
+    // Es quien puede arreglarlo: los datos bancarios están en la ficha del
+    // conductor. Avisarle al conductor de un rechazo que no puede resolver lo
+    // deja llamando sin nada que hacer.
+    //
+    // `fallido` va junto con `rechazado`: para el courier los dos significan lo
+    // mismo —esa persona no cobró y hay que hacer algo— y separarlos obligaría a
+    // explicar una distinción del proveedor que no cambia qué hacer.
+    if (
+      (resultado.resultado === 'rechazado' || resultado.resultado === 'fallido') &&
+      resultado.transicionAplicada
+    ) {
+      await step.run('avisar-courier-rechazo', async () => {
+        const r = await avisarPagoRechazado(crearClienteServiceRole(), {
+          tenantId: datos.tenantId,
+          liquidacionId: resultado.liquidacionId,
+          motivoBanco: datos.motivo,
+        });
+        if (!r.enviado) {
+          logger.warn(
+            `Payout ${resultado.payoutId} rechazado y el courier NO recibió aviso ` +
+              `(${r.motivo}). La liquidación volvió a pendiente igual.`,
+          );
+        }
+        return r;
       });
     }
 

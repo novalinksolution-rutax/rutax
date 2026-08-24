@@ -4,10 +4,23 @@
  * Trigger: evento `notificacion/conexion-caida`
  * (publicado por `sondeo-salud.ts` cuando una conexión escala a 'desvinculada')
  *
- * MVP: loguea la notificación y la registra en bitácora de auditoría para
- * deduplicación. El envío de email real (Resend) se configura en Fase C/devops.
- * La estructura del job está lista para que la única pieza faltante sea el
- * llamado al proveedor de email — ver TODO marcado abajo.
+ * -----------------------------------------------------------------------------
+ * EL CORREO QUE LLEVABA UN AÑO COMENTADO
+ * -----------------------------------------------------------------------------
+ * Este job registraba la caída en bitácora, la escribía en el log y **ahí se
+ * quedaba**: el envío estaba comentado, apuntando a una `plantillaConexionCaida`
+ * que nunca existió. O sea que una conexión de Mercado Libre se caía, los
+ * pedidos de ese seller dejaban de entrar, y nadie se enteraba hasta que alguien
+ * abría el panel.
+ *
+ * Ahora se envía de verdad, por la plantilla común (`envolverEmail`) y por el
+ * mismo puerto que el resto del producto. La deduplicación no cambia: una por
+ * `(seller, día)`, registrada antes del envío.
+ *
+ * ⚠️ **Va al COURIER, no al seller.** El seller ve el aviso en su portal —y
+ * puede reconectar desde ahí—, pero quien pierde plata mientras la conexión está
+ * caída es el courier: son entregas que no va a hacer. Es él quien tiene que
+ * llamar.
  *
  * Deduplicación: máximo una notificación por `(seller_id, fecha)` por día.
  * Usa la bitácora de auditoría de identidad para registrar y verificar.
@@ -20,6 +33,52 @@
 import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { hoyEnSantiago, limitesDelDiaSantiago } from "@/lib/fecha-santiago";
+import { envolverEmail } from "@/lib/email/plantilla-email";
+import { enviarNotificacionEmail } from "@/modules/plataforma/notificaciones";
+import { resolverUrlBaseApp } from "@/modules/identidad/enlace-invitacion";
+
+/**
+ * El correo de conexión caída.
+ *
+ * Dice **la consecuencia antes que el hecho**: «conexión desvinculada» es
+ * vocabulario de OAuth y no le dice a nadie que dejó de entrar trabajo.
+ *
+ * Y **no promete un diagnóstico que el sistema no tiene**: token vencido,
+ * revocado y fallo de descifrado terminan los tres en el mismo estado y no se
+ * pueden distinguir desde acá. Reconectar arregla los tres, así que el correo
+ * dice eso en vez de aventurar cuál fue.
+ */
+export function construirEmailConexionCaida(args: {
+  nombreSeller: string;
+  urlPanel: string | null;
+}): { asunto: string; html: string; texto: string } {
+  return {
+    asunto: `Dejaron de entrar los pedidos de ${args.nombreSeller}`,
+    html: envolverEmail({
+      marca: "Rutax",
+      titular: `Se cayó la conexión de ${args.nombreSeller} con Mercado Libre`,
+      preencabezado: "Sus pedidos nuevos no están entrando",
+      cuerpoHtml:
+        "<p style=\"margin:0\"><strong>Sus pedidos nuevos dejaron de entrar a Rutax.</strong> " +
+        "Los que ya estaban siguen en el sistema y se despachan normal; lo que se detuvo es " +
+        "la llegada de los nuevos.</p>" +
+        "<p style=\"margin:12px 0 0\">Mercado Libre dejó de aceptar el permiso. Puede ser que " +
+        "caducara solo, que el seller lo revocara o que algo fallara de nuestro lado: no se " +
+        "puede distinguir cuál de los tres, y reconectar arregla los tres igual.</p>" +
+        "<p style=\"margin:12px 0 0\">El seller también lo ve en su portal y puede reconectar " +
+        "desde ahí. Si no lo hace hoy, conviene llamarlo.</p>",
+      datos: [{ etiqueta: "Seller", valor: args.nombreSeller, destacada: true }],
+      ...(args.urlPanel ? { accion: { etiqueta: "Ver sus conexiones", url: args.urlPanel } } : {}),
+      motivoRecepcion:
+        "Recibes este correo porque administras la operación de tu courier en Rutax. " +
+        "El estado de las conexiones está en Clientes → el seller.",
+    }),
+    texto:
+      `Se cayó la conexión de ${args.nombreSeller} con Mercado Libre y sus pedidos nuevos ` +
+      `dejaron de entrar. Los que ya estaban se despachan normal. Reconectar lo arregla; ` +
+      `el seller puede hacerlo desde su portal.`,
+  };
+}
 
 interface EventoConexionCaida {
   sellerId: string;
@@ -140,8 +199,6 @@ export const jobNotificacionConexionCaida = inngest.createFunction(
 
       const nombreTenant = tenantData?.nombre_fantasia ?? "Courier";
 
-      // En MVP: solo loguear con los datos necesarios para el humano que revise.
-      // En Fase C/devops: descomentar el llamado a Resend y eliminar el TODO.
       logger.info(
         `[NOTIFICACION] Conexión ML caída para seller '${nombreSeller}' ` +
           `(tenant: ${nombreTenant}). ` +
@@ -149,29 +206,45 @@ export const jobNotificacionConexionCaida = inngest.createFunction(
           "Acción requerida: reconectar la cuenta ML del seller.",
       );
 
-      // TODO (Fase C/devops): implementar envío de email con Resend.
-      // Estructura lista para ser completada:
-      //
-      // if (emailDestino) {
-      //   await resend.emails.send({
-      //     from: "noreply@tu-dominio.cl",
-      //     to: emailDestino,
-      //     subject: `Conexión ML caída — ${nombreSeller}`,
-      //     html: plantillaConexionCaida({
-      //       nombreSeller,
-      //       nombreTenant,
-      //       urlReconectar: `${process.env.NEXT_PUBLIC_APP_URL}/portal/conectar-ml`,
-      //     }),
-      //   });
-      // }
-      //
-      // Resend se configura en Fase C (ver docs/arquitectura/fase-c-dinero.md
-      // y skill pagos-chile para variables de entorno necesarias).
+      // El envío, que hasta hoy era un TODO comentado.
+      // ---------------------------------------------------------------------
+      // ⚠️ Envuelto: un correo que no sale no puede tumbar el job que registra
+      // la caída. La bitácora ya quedó escrita más arriba, así que la
+      // deduplicación se sostiene aunque el envío falle — y el siguiente sondeo
+      // NO va a reintentar el correo, porque la caída ya está marcada como
+      // avisada hoy. Es el precio de deduplicar por hecho y no por envío, y se
+      // acepta: la alternativa es que un proveedor de correo intermitente
+      // mande el mismo aviso cinco veces.
+      let notificado = false;
+      if (emailDestino) {
+        try {
+          const base = resolverUrlBaseApp();
+          const contenido = construirEmailConexionCaida({
+            nombreSeller,
+            urlPanel: base ? `${base}/sellers/${sellerId}` : null,
+          });
+          const envio = await enviarNotificacionEmail({
+            para: emailDestino,
+            asunto: contenido.asunto,
+            html: contenido.html,
+            texto: contenido.texto,
+          });
+          notificado = envio.enviado;
+          if (!envio.enviado) {
+            logger.warn(
+              `Seller ${sellerId}: conexión caída registrada pero NO avisada por correo ` +
+                `(modo=${envio.modo}).`,
+            );
+          }
+        } catch (err) {
+          logger.warn(
+            `Seller ${sellerId}: falló el correo de conexión caída — ` +
+              `${err instanceof Error ? err.message : "error desconocido"}.`,
+          );
+        }
+      }
 
-      return {
-        emailDestino,
-        notificado: false, // true cuando Resend esté implementado
-      };
+      return { emailDestino, notificado };
     });
 
     return {

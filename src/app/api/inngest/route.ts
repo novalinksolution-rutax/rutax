@@ -82,6 +82,7 @@ import { jobGenerarLiquidacionConductor } from "@/modules/dinero/jobs/generar-li
 import { jobPollingEstadoDte } from "@/modules/dinero/jobs/polling-estado-dte";
 import { jobConciliarPeriodo } from "@/modules/dinero/jobs/conciliar-periodo";
 import { jobAlertaFoliosProximos } from "@/modules/dinero/jobs/alerta-folios-proximos";
+import { jobAlertaCertificadoPorVencer } from "@/modules/identidad/jobs/alerta-certificado-por-vencer";
 import { jobConciliarPago } from "@/modules/dinero/jobs/conciliar-pago";
 import { jobAlertaMorosidad } from "@/modules/dinero/jobs/alerta-morosidad";
 import { jobEmitirNotaCredito } from "@/modules/dinero/jobs/emitir-nota-credito";
@@ -164,6 +165,7 @@ const funciones = [
   jobPollingEstadoDte,
   jobConciliarPeriodo,
   jobAlertaFoliosProximos,
+  jobAlertaCertificadoPorVencer,
   // Jobs de cobranza (capa "pagado" — Fintoc)
   jobConciliarPago,
   jobAlertaMorosidad,

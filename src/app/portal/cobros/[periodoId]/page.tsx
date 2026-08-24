@@ -311,6 +311,18 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
                 para que se vea que hay algo que mirar. */}
             <div className="flex shrink-0 flex-col gap-2">
               {dte.pdfRef && <BotonDescargaFacturaPdf pdfRef={dte.pdfRef} />}
+              {/* El detalle de entregas, aparte de la factura.
+                  --------------------------------------------------------------
+                  Decisión del usuario (24-08): la factura oficial sigue siendo
+                  la del proveedor DTE —es el documento válido ante el SII y
+                  Rutax no compite con él— y acá va lo que el seller reclama
+                  cuando el total no le calza: qué entrega es cada peso.
+                  Todas las cifras son NETO; el IVA lo declara el documento. */}
+              {agrupacion.entregasTotales > 0 ? (
+                <Button asChild variant="outline" size="sm">
+                  <a href={`/portal/cobros/${periodoId}/detalle`}>Descargar el detalle (CSV)</a>
+                </Button>
+              ) : null}
               {agrupacion.entregasTotales > 0 ? (
                 <Button asChild variant="outline" size="sm">
                   <a href="#lineas-titulo">

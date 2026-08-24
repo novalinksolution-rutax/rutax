@@ -21,7 +21,7 @@
  * ventana — los tres producen el mismo lienzo desalineado.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type maplibregl from 'maplibre-gl';
 import { useTheme } from 'next-themes';
 import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
@@ -31,7 +31,7 @@ import { DistintivoEstado } from '@/components/ui/distintivo-estado';
 import { cn } from '@/lib/utils';
 import type { EstadoTorre } from '@/modules/contexto/contrato-torre';
 import { cargarGeometriaComunal, limitesDe, type MapaGeometrias } from '../_lib/geometria';
-import { limitesDeLaCarga } from '../_lib/derivar';
+import { limitesDeLaCarga, celdaDe, cuentaComoPendiente } from '../_lib/derivar';
 import { claveComuna } from '../_lib/comunas';
 import { ENCUADRE_RM, ZOOM_DESTINO, type NivelZoom, type TemaMapa, paletaDe } from '../_lib/mapa/paleta';
 import { ATRIBUCIONES, urlBasemap } from '../_lib/mapa/config';
@@ -262,12 +262,31 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
   // Cuántos objetos hay dibujados en el nivel actual. Va en el distintivo de
   // nivel: sin la cifra, «NIVEL 1 · COMUNA» dice dónde estás y no cuánto estás
   // mirando, que es la mitad útil.
+  // 🐞 En el nivel 2 contaba PUNTOS y no grupos, que es lo que está dibujado.
+  // El distintivo decía «Nivel 2 · Agrupaciones · 112 en la comuna» mirando 34
+  // burbujas: la cifra no correspondía a un solo objeto de la pantalla.
+  //
+  // El grupo se cuenta con `celdaDe` —la misma función que arma las burbujas—
+  // y con el mismo filtro de pendiente. Si se contaran por otro camino, la
+  // cifra del distintivo y la cantidad de burbujas se separarían el día que
+  // alguien cambie el tamaño de celda.
+  const gruposEnComuna = useMemo(() => {
+    if (!comunaActiva) return 0;
+    const celdas = new Set<string>();
+    for (const p of estado.puntos) {
+      if (p.comuna !== comunaActiva) continue;
+      if (!p.pedidos.some((q) => cuentaComoPendiente(q.estado))) continue;
+      celdas.add(celdaDe(p.posicion));
+    }
+    return celdas.size;
+  }, [estado.puntos, comunaActiva]);
+
   const conteoDelNivel =
     nivel === 'comuna'
-      ? `${estado.comunas.length} comunas`
+      ? `${estado.comunas.length} ${estado.comunas.length === 1 ? 'comuna' : 'comunas'}`
       : nivel === 'punto'
-        ? `${estado.puntos.length} puntos`
-        : `${estado.puntos.length} en la comuna`;
+        ? `${estado.puntos.length} ${estado.puntos.length === 1 ? 'punto' : 'puntos'}`
+        : `${gruposEnComuna} ${gruposEnComuna === 1 ? 'grupo' : 'grupos'}`;
 
   // Los extremos REALES del día, para la leyenda. La rampa es de cuartiles, así
   // que unos cortes escritos serían inventados; los extremos, en cambio, son

@@ -1001,17 +1001,25 @@ vial, tres niveles de zoom— pero **pinta desde el sistema anterior**. Todo el 
       Va en `attention` y **no** en `fault` porque nada se rompió y el dato operativo —que es lo que
       la pantalla existe para contar— está completo. **Verificado en pantalla** apagando el basemap:
       fondo `#33260A` y texto `#FFC53D`, los valores exactos de los tokens.
-- [ ] **Los tres niveles de zoom semántico** se entienden de tres maneras a la vez: el rótulo del
-      nivel cambia («9 comunas» → «34 grupos» → «112 entregas»), los racimos se abren con un cruce
-      de 200 ms, y el control de zoom marca el tramo. **Sin las tres, el salto se lee como que el
-      mapa perdió datos.**
+- [~] **Los tres niveles de zoom semántico** — el rótulo, corregido el 24-08.
+      🐞 **En el nivel 2 el distintivo contaba PUNTOS y no grupos**, que es lo que está dibujado:
+      decía «Nivel 2 · Agrupaciones · 112 en la comuna» mirando 34 burbujas. La cifra no
+      correspondía a ningún objeto de la pantalla. Ahora cuenta con `celdaDe` —la misma función que
+      arma las burbujas— y con el mismo filtro de pendiente, para que la cifra y la cantidad de
+      burbujas no puedan separarse el día que alguien cambie el tamaño de celda.
+      ⚠️ **No se pudo ver en pantalla en los niveles 2 y 3**: la base local no tiene pedidos con
+      compromiso para hoy y `seed-torre-hoy.sql` falla contra este entorno (referencia un tenant que
+      no existe acá). El nivel 1 sí se verificó.
+      Quedan **el cruce de 200 ms al abrir un racimo** y **el control de zoom marcando el tramo**.
 - [ ] **Encender las etiquetas del basemap.** La v2 las enciende (calle y comuna) porque la Torre
       muestra el código de envío y **no** la dirección, así que el nombre de calle del plano es lo
       único que ubica el punto. Requiere glifos: **4 archivos PBF (~410 KB)** de Noto Sans Regular y
       Medium del build público de Protomaps — no hay pipeline que construir. Falta publicarlos al
       bucket y poner `NEXT_PUBLIC_MAPA_GLIFOS_URL`. Sin ellos, `estilo.ts:508` degrada a un anillo
       en vez del `+N`.
-- [ ] **Se retiran las tramas de riesgo de 45°** — sin puntaje no hay escala que pintar.
+- [x] **Las tramas de riesgo de 45° — verificado el 24-08: no existen.** Sin puntaje no hay escala
+      que pintar, y el mapa nunca llegó a dibujarlas: no hay un solo `fill-pattern` ni sprite en
+      `estilo.ts`. El ítem se cierra por ausencia comprobada, no por trabajo hecho.
 
 > ⚠️ `maplibre-gl` está clavado en **`5.24.0` exacto — no subir a 6.x**: la 6.0.0 carga su Web
 > Worker como archivo suelto y Turbopack no lo resuelve dentro de `node_modules`. Falla mudo:
@@ -1111,13 +1119,23 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
             Las reglas pasan de `0.5` —que muchas impresoras redondean a cero— a 2 y 3, y el gris de
             fondo deja de decorar la cabecera para quedar reservado al total, que es lo único que lo
             necesita. Fuera los `borderRadius`: en papel no aportan nada.
-      - [ ] **Factura al seller** — **Rutax no la genera**: el PDF del DTE lo emite el proveedor
-            externo y `portal/cobros` solo lo descarga. Es el **único lugar del producto con IVA**
-            (regla 22). Decidir si se re-genera o se acepta la del proveedor.
-      - [ ] **Manifiesto impreso** — **NO EXISTE.** `(tenant)/manifiestos/` es solo pantalla. Es la
-            hoja de ruta en papel para cuando el teléfono se queda sin batería a mitad de turno:
-            **tiene que servir para trabajar**, con dónde escribir y la hora en que se imprimió
-            (regla 54). Va en TÚ *(decisión cerrada, no reabrir)*.
+      - [x] **Factura al seller — resuelto el 24-08, y no como PDF.**
+            *Decisión del usuario:* la factura oficial **sigue siendo la del proveedor DTE** —es el
+            documento válido ante el SII y Rutax no compite con él ni lo re-genera— y se agrega
+            **un detalle de entregas descargable**, que es lo que el seller reclama cuando el total
+            no le calza: `GET /portal/cobros/[periodoId]/detalle`, en CSV.
+            Es la misma respuesta que el backoffice le da a Administración con
+            `/dinero/periodos/[id]/exportar`, del otro lado del mostrador.
+            Las columnas están escritas **para el seller**: código de envío, destinatario, comuna —
+            no `pedido_id`, que es un UUID que no le dice nada. El total va como última fila, porque
+            abre esto para cuadrar contra un número. **Todas las cifras son neto**: el IVA lo declara
+            el documento tributario, y calcularlo en dos lugares es cómo terminan discrepando.
+            ⚠️ La barrera que importa es la segunda: `obtenerPeriodoCobro` filtra por tenant y **no
+            por seller**, así que la ruta comprueba `periodo.sellerId` — sin eso, un seller con el id
+            de otro se descarga sus entregas. **Verificado en el navegador**: el propio da 200 y el
+            ajeno 404 (no 403, que permitiría enumerar ids).
+      - [x] **Manifiesto impreso** — *decisión del usuario (24-08): no se construye.* El conductor
+            que se queda sin batería llama al coordinador, como hoy. Queda como deuda escrita.
       - [x] Comprobante de pago de suscripción — **hecho**, mismo criterio: un solo gris, reglas de
             2, y el aviso legal pasa del beige propio `#fef9e7`/`#78350f` al ámbar del sistema con
             su barra lateral de 3 px.
@@ -1181,19 +1199,56 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       | `construirEmailComunicacion` | `…:326` |
       | `construirEmailPeriodoVencido` | `…:347` |
 
-- [ ] **Los 10 correos que el diseño escribió y no existen** (`RUTAX-SISTEMA-DE-MENSAJES.md` §9.2):
-      `mail.periodoCerrado` · `mail.facturaEmitida` · `mail.liqEmitida` · `mail.liqPagada` ·
-      `mail.pagoRechazado` · `mail.foliosPorAgotarse` · `mail.certificadoPorVencer` ·
-      `mail.morosidad` · `mail.excedente` · `mail.seguimiento`.
-      **Ningún evento de dinero envía hoy un correo. Ni uno.** El seller no se entera por correo de
-      que le facturaron; el conductor no se entera de que le pagaron. Es una decisión de producto
-      que el rediseño puede mantener o cambiar, **pero no puede ignorar**.
+- [x] **Los correos de dinero — 5 de los 10, construidos y enchufados el 24-08.**
+      *Decisión del usuario: los que cierran un hecho de dinero.* El criterio es que alguien esté
+      esperando ese hecho, o que algo se rompa si nadie actúa.
+
+      | Correo | Se dispara en | Va a | Por qué |
+      |---|---|---|---|
+      | `facturaEmitida` | `emitir-dte-periodo` | el seller | llamaba a preguntar por su factura |
+      | `liqPagada` | `aplicar-actualizacion-payout` | el conductor | preguntaba por WhatsApp si le llegó |
+      | `pagoRechazado` | idem | **el courier** | el conductor quedaba sin pagar y nadie lo sabía |
+      | `foliosPorAgotarse` | `alerta-folios-proximos` | el courier | **deja de poder facturar** |
+      | `certificadoPorVencer` | job **nuevo** | el courier | **deja de poder facturar** |
+
+      Tres decisiones que no salen de la tabla:
+      · **El rechazo va al COURIER, no al conductor.** Es quien puede arreglarlo —los datos
+        bancarios están en la ficha— y avisarle a alguien de un problema que no puede resolver lo
+        deja llamando sin nada que hacer. El correo lo dice: «él no recibió este aviso».
+      · **La factura es el único correo del producto que nombra el IVA**, y no por excepción: la
+        regla 22 dice que Rutax no muestra impuestos **en sus pantallas**; esto es el aviso de un
+        documento del SII, y esconderlo haría que el total del correo no cuadrara con el papel.
+      · **El aviso de certificado va a 30, 7 y 1 día, y solo esos días.** Un `<=` mandaría treinta
+        correos seguidos, y treinta correos enseñan a archivar sin leer — que es justo lo que no
+        puede pasar con el último. Renovar es un trámite con proveedor acreditado: un solo aviso a
+        7 días llega tarde.
+      🐞 **Y un bug que casi entra:** el correo del conductor se leía desde
+      `identidad.conductores.usuario_id`, **una columna que no existe** — el vínculo va al revés
+      (`usuarios_perfil.driver_id`), porque un conductor de la nómina puede no tener cuenta todavía.
+      Habría devuelto `undefined` en silencio y ningún conductor habría recibido nunca su aviso.
+      🐞 `diasHasta` lleva las dos fechas a **mediodía UTC** antes de restar: desde medianoche, 30
+      días que cruzan el cambio de horario dan 29,96 y `Math.floor` devolvería 29 — el aviso del
+      hito 30 no saldría nunca.
+      **24 + 10 pruebas.** Los otros cinco —período cerrado, liquidación emitida, morosidad,
+      excedente, seguimiento— avisan de algo que el portal ya muestra y que nadie está esperando en
+      ese instante. **Quedan como decisión, no como olvido.**
 - [ ] **Los 6 cuerpos que ya existen, reescritos al molde** (`…-MENSAJES.md` §9.3). Quedaron con
       asunto, acción y la regla que los cambia; los cuerpos completos están **pendientes de escribir**.
 - [ ] **Los rebotes son invisibles.** Vuelven por `webhook-resend.ts` y no se muestran en ninguna
       parte. Una invitación que rebota es una invitación que nadie sabe que nunca llegó.
-- [ ] `src/modules/integraciones/notificaciones/conexion-caida.ts:159-160` tiene un envío de correo
-      **comentado**: `plantillaConexionCaida` no existe.
+- [x] **El correo de conexión caída, que llevaba un año comentado** — hecho el 24-08.
+      El job registraba la caída en bitácora, la escribía en el log y **ahí se quedaba**: el envío
+      estaba comentado apuntando a una `plantillaConexionCaida` que nunca existió. Una conexión de
+      ML se caía, los pedidos de ese seller dejaban de entrar, y nadie se enteraba hasta que alguien
+      abría el panel.
+      **Va al courier y no al seller**: el seller lo ve en su portal y puede reconectar, pero quien
+      pierde plata mientras tanto es el courier — son entregas que no va a hacer.
+      Dice **la consecuencia antes que el hecho** («dejaron de entrar los pedidos de X», no
+      «conexión desvinculada») y **no promete un diagnóstico que el sistema no tiene**: token
+      vencido, revocado y fallo de descifrado terminan los tres igual y no se distinguen desde acá.
+      ⚠️ La deduplicación es por HECHO, no por envío: si el correo falla, la bitácora ya marcó el día
+      como avisado y no se reintenta. Es el precio de no mandar el mismo aviso cinco veces con un
+      proveedor intermitente.
 
 ## Brechas del inventario que cierra
 

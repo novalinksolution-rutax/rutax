@@ -37,6 +37,9 @@ import { leerTodasLasFilas } from '@/lib/supabase/leer-paginado';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { obtenerPuertoDte } from '@/modules/integraciones/dte';
 import { reservarFolio } from '../folios';
+import { enviarNotificacionEmail } from '@/modules/plataforma/notificaciones';
+import { construirEmailFacturaEmitida } from '../notificaciones-dinero';
+import { resolverUrlBaseApp } from '@/modules/identidad/enlace-invitacion';
 
 const TZ = 'America/Santiago';
 
@@ -57,7 +60,7 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
     retries: 4,
   },
   async ({ event, step, logger, runId }) => {
-    const { periodoCobroidId, tenantId, sellerId } = event.data as {
+    const { periodoCobroidId, tenantId, sellerId, fechaInicio, fechaFin } = event.data as {
       periodoCobroidId: string;
       tenantId: string;
       sellerId: string;
@@ -165,7 +168,13 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
             .range(desde, hasta),
       );
 
-      return lineas.reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0);
+      // El conteo sale del MISMO paso que suma: con dos consultas, el total y
+      // la cantidad de entregas podrían quedar de lecturas distintas y el
+      // correo diría «227 entregas» sobre un monto de 226.
+      return {
+        neto: lineas.reduce((acc, l) => acc + Math.round(Number(l.monto_final_clp)), 0),
+        entregas: lineas.length,
+      };
     });
 
     // Step 4: Llamar al proveedor DTE.
@@ -186,7 +195,7 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
           {
             nombre: `Servicios de delivery período ${periodoCobroidId}`,
             cantidad: 1,
-            precioUnitarioNetoCLP: netoTotal,
+            precioUnitarioNetoCLP: netoTotal.neto,
           },
         ],
       });
@@ -285,6 +294,49 @@ export const jobEmitirDtePeriodo = inngest.createFunction(
       });
 
       return dteIdFinal;
+    });
+
+    // El aviso al seller — el correo que no existía.
+    // -------------------------------------------------------------------------
+    // Hasta hoy el seller no se enteraba por ningún canal de que le habían
+    // facturado: tenía que entrar al portal a mirar. Llamaba a preguntar, y esa
+    // llamada la contesta Administración.
+    //
+    // Va en su propio `step.run` y NO dentro de `persistir-dte`: si el correo
+    // fallara ahí, Inngest reintentaría el paso entero y se re-ejecutaría el
+    // update del período. Acá, un fallo se queda en su paso y ya está.
+    //
+    // ⚠️ El envío va envuelto igual: **una factura emitida no se desemite porque
+    // el proveedor de correo esté caído**, y ante el SII ya existe.
+    await step.run('avisar-al-seller', async () => {
+      try {
+        const base = resolverUrlBaseApp();
+        const contenido = construirEmailFacturaEmitida({
+          nombreCourier: datosSeller.razonSocialEmisor,
+          folio: resultadoDte.folio,
+          fechaEmision: fechaLocalSantiago(),
+          periodoInicio: fechaInicio,
+          periodoFin: fechaFin,
+          netoClp: resultadoDte.montoNeto,
+          ivaClp: resultadoDte.montoIva,
+          totalClp: resultadoDte.montoTotal,
+          entregas: netoTotal.entregas,
+          urlPortal: base ? `${base}/portal/cobros/${periodoCobroidId}` : null,
+        });
+        const envio = await enviarNotificacionEmail({
+          para: datosSeller.emailReceptor,
+          asunto: contenido.asunto,
+          html: contenido.html,
+          texto: contenido.texto,
+        });
+        return { enviado: envio.enviado, modo: envio.modo };
+      } catch (err) {
+        logger.warn(
+          `Período ${periodoCobroidId}: DTE emitido pero falló el correo al seller — ` +
+          `${err instanceof Error ? err.message : 'error desconocido'}.`,
+        );
+        return { enviado: false, modo: 'error' as const };
+      }
     });
 
     logger.info(
