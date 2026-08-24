@@ -47,7 +47,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2a3ca0",
+  // La tinta de la marca nueva. Antes era `#2a3ca0`, el navy de la identidad
+  // anterior: pintaba la barra del navegador en móvil de un color que ya no
+  // existe en ninguna parte del producto.
+  themeColor: "#0B1114",
 };
 
 export default function RootLayout({

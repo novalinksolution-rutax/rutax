@@ -48,6 +48,52 @@ que nadie miró. El tablero sigue siendo la autoridad visual; este libro solo di
 
 ---
 
+# La marca · hecha el 23-08-2026
+
+**No estaba en ninguna parte del producto**, y lo levantó una pregunta del usuario en medio del
+bloque 1. Vale la pena dejar escrito qué se encontró, porque es transversal y no de una pantalla:
+
+- El sidebar dibujaba un **cuadrado con degradado navy→morado** y la inicial del courier — patrón
+  del sistema anterior, que rompía dos reglas del nuevo a la vez: «fuera de los seis tonos de estado
+  el producto es tinta y papel, no hay acento decorativo» y la sombra en algo que no flota.
+- El avatar del usuario tenía **el mismo degradado**. Un avatar no es un estado: no tiene color que
+  gastar.
+- La pantalla sin sesión ponía la marca como **texto plano**.
+- Y sí existían assets, pero **de la identidad anterior**: un monograma «R» de favicon y un wordmark
+  sin usar, con `themeColor: #2a3ca0` — el navy viejo pintando la barra del navegador en móvil.
+
+**El símbolo es «dos reglas que calzan»** (ruta de marca 1a): dos barras de 15×5 sobre retícula de
+24, una desde cada eje, traslapadas ocho unidades en el centro. Ese traslape es el cuadre.
+
+Lo notable es que **el producto ya había heredado todas las consecuencias de la marca sin haber
+puesto nunca la marca**: «el símbolo son dos reglas que calzan, así que el producto separa con
+reglas, no con tarjetas ni sombras» — de esa frase vienen el radio de 0 a 4 px, la sombra solo en lo
+que flota y que una tabla de mil filas no tenga un borde redondeado que dibujar.
+
+**Lo construido** — `src/components/ui/marca-rutax.tsx`:
+
+- `SimboloRutax` con la geometría exacta del manual. La tinta va por `currentColor`, así que hereda
+  del contexto; el acento por token, así que cambia con el tema.
+- Las tres versiones: `completa` (símbolo + logotipo + descriptor, mín. 148 px), `reducida`
+  (mín. 84 px) y `simbolo` (mín. 16 px). No hay una cuarta: si no cabe la reducida cabe el símbolo,
+  y si no cabe el símbolo a 16 px ese sitio no lleva marca.
+- `FirmadoPorRutax` — la fila de cierre de las superficies que firma el courier.
+
+**La regla 42, aplicada:** Rutax firma el backoffice; el courier firma la pantalla sin sesión que le
+toca y **el seguimiento del comprador**, donde Rutax entra abajo como fila de cierre — «la misma
+barra que cierra una liquidación cierra la pantalla. Es un lugar estructural, no un pie de página, y
+por eso no compite con la marca de arriba».
+
+*Sin logo del courier —el caso real de hoy— el nombre de fantasía es el titular. No hay hueco ni
+caja vacía; el día que se pueda subir un logo, entra y nada más se mueve.*
+
+**Verificado en pantalla:** el símbolo sale con su geometría exacta, en claro tinta `#0B1114` +
+acento `#00B89A`, y en oscuro la tinta baja a `#E9F2F3` — **no sube a blanco puro**, que es regla
+del manual y no un descuido. Cero degradados en toda la página.
+
+⚠️ **No se pudo ejercitar** la firma del seguimiento público: los datos de demo no tienen ningún
+pedido con `tracking_token` —son todos Flex, y esa pantalla tiene frontera dura contra Flex—.
+
 # La cola, por bloque
 
 ## B1 · Operación del courier · 8 pantallas

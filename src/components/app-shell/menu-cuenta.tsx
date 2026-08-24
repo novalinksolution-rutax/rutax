@@ -102,10 +102,13 @@ export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, 
         aria-label="Cuenta"
       >
         <Avatar size="sm">
-          <AvatarFallback
-            className="text-[11px] font-medium text-brand-foreground"
-            style={{ backgroundImage: "linear-gradient(135deg, var(--brand), var(--chart-3))" }}
-          >
+          {/* Las iniciales van sobre superficie neutra, sin degradado.
+              El degradado navy→morado que había acá es del sistema anterior, y
+              rompe la misma regla que rompía el cuadrado de la marca: «fuera de
+              los seis tonos de estado y la paleta de gráficos, el producto es
+              tinta y papel». Un avatar de usuario no es un estado, así que no
+              tiene color que gastar. */}
+          <AvatarFallback className="bg-bg-inset text-[11px] font-medium text-fg-muted">
             {inicialesDe(nombre)}
           </AvatarFallback>
         </Avatar>

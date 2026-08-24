@@ -27,6 +27,7 @@ import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import type { TonoEstado } from "@/lib/ui/tonos-estado";
+import { FirmadoPorRutax } from "@/components/ui/marca-rutax";
 
 // =============================================================================
 // Estado público (amigable para el comprador — no expone estados internos)
@@ -224,8 +225,17 @@ export default async function PaginaSeguimiento({ params }: Props) {
         <p className="text-center text-xs text-muted-foreground">Destino: {datos.comuna}</p>
       )}
 
-      <footer className="mt-auto pt-6 text-center text-xs text-muted-foreground">
-        Despacho gestionado por tu courier de última milla.
+      {/* Regla 42 + manual de marca: **esta pantalla la firma el courier**.
+          «Rutax» no le dice nada a alguien que compró en una tienda y espera un
+          paquete; la relación es con quien le despacha.
+
+          Rutax entra como FILA DE CIERRE, y el manual es específico sobre por
+          qué: «la misma barra que cierra una liquidación cierra la pantalla. Es
+          un lugar estructural, no un pie de página, y por eso no compite con la
+          marca de arriba». Su logotipo no pasa de 15 px acá y nunca toma color
+          de acento en el texto. */}
+      <footer className="mt-auto pt-6">
+        <FirmadoPorRutax />
       </footer>
     </main>
   );

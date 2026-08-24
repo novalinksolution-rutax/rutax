@@ -14,8 +14,10 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#ffffff",
-    theme_color: "#1e3a8a",
+    // El papel del tema claro, no blanco puro: es el fondo real del producto.
+    background_color: "#F1F6F6",
+    // Tinta de la marca nueva. Antes `#1e3a8a`, navy de la identidad anterior.
+    theme_color: "#0B1114",
     lang: "es-CL",
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },

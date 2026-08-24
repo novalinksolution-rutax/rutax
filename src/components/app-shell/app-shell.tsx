@@ -50,6 +50,7 @@ import { SkipLink } from "./skip-link"
 import { PaletaComando } from "./paleta-comando"
 import { MenuCuenta } from "./menu-cuenta"
 import type { Aviso } from "@/lib/avisos/obtener-avisos"
+import { SimboloRutax } from "@/components/ui/marca-rutax"
 
 /** Catálogo de íconos referenciables por nombre desde el servidor. */
 
@@ -300,16 +301,17 @@ function ContenidoMarca({
   colapsado?: boolean
   conChevron?: boolean
 }) {
-  const inicial = nombre.trim().charAt(0).toUpperCase() || "R"
   return (
     <>
-      <span
-        className="flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-semibold text-brand-foreground shadow-xs"
-        style={{ backgroundImage: "linear-gradient(135deg, var(--brand), var(--chart-3))" }}
-        aria-hidden="true"
-      >
-        {inicial}
-      </span>
+      {/* ⚠️ Acá había un cuadrado con DEGRADADO navy→morado y la inicial del
+          courier — un patrón heredado del sistema anterior que contradecía dos
+          reglas del nuevo a la vez: «fuera de los seis tonos de estado el
+          producto es tinta y papel, no hay acento decorativo» y la sombra en algo
+          que no flota.
+          Ahora va el símbolo de Rutax. La identidad del courier ya está dicha
+          con su nombre al lado, que es su lugar: la marca de arriba es del dueño
+          del software, y el nombre del courier es de quién es este espacio. */}
+      <SimboloRutax className="size-8 shrink-0 p-0.5" titulo="Rutax" />
       {!colapsado ? (
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-[11px] leading-tight text-muted-foreground">{etiqueta}</span>

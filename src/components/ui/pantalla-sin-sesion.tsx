@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { MarcaRutax } from "@/components/ui/marca-rutax"
 
 /**
  * PantallaSinSesion — el marco común de las 13 pantallas públicas.
@@ -71,9 +72,16 @@ export function PantallaSinSesion({
         className,
       )}
     >
-      {marca.tipo !== "neutra" ? (
+      {/* Rutax lleva su SÍMBOLO; el courier lleva su nombre.
+          No es una asimetría por descuido: hoy ningún courier tiene logo cargado
+          en el sistema, y el manual es explícito — «sin logo del courier, el
+          nombre de fantasía es el titular. No hay hueco, no hay caja vacía». El
+          día que se pueda subir un logo, entra acá y nada más se mueve. */}
+      {marca.tipo === "rutax" ? (
+        <MarcaRutax version="reducida" />
+      ) : marca.tipo === "courier" ? (
         <p className="font-heading text-sm font-semibold tracking-[0.08em] text-fg-muted uppercase">
-          {marca.tipo === "rutax" ? "Rutax" : marca.nombre}
+          {marca.nombre}
         </p>
       ) : null}
 
