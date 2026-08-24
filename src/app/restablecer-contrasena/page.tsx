@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { FormularioRestablecer } from "./formulario-restablecer";
+import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
 
 export const metadata: Metadata = {
   title: "Crea tu contraseña nueva",
@@ -34,8 +35,9 @@ export default async function PaginaRestablecerContrasena({ searchParams }: Page
   const enlaceInvalido = error === "enlace_invalido" || !user;
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-muted/40 px-4 py-12">
+    // Marca Rutax, igual que recuperar: es la misma persona, en el paso siguiente.
+    <PantallaSinSesion marca={{ tipo: "rutax" }}>
       <FormularioRestablecer enlaceInvalido={enlaceInvalido} />
-    </div>
+    </PantallaSinSesion>
   );
 }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { FormularioActivacion } from "./formulario-activacion";
+import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
 
 export const metadata: Metadata = {
   title: "Define tu contraseña",
@@ -34,9 +35,11 @@ export default async function PaginaActivarCuenta({ searchParams }: PageProps) {
 
   if (enlaceInvalido) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-muted/40 px-4 py-12">
+      // Marca Rutax: quien activa su cuenta es el dueño de un courier — cliente
+      // nuestro, y sabe qué es Rutax (regla 42).
+      <PantallaSinSesion marca={{ tipo: "rutax" }}>
         <FormularioActivacion enlaceInvalido nombreFantasia={null} nombreSugerido={null} />
-      </div>
+      </PantallaSinSesion>
     );
   }
 
@@ -68,12 +71,12 @@ export default async function PaginaActivarCuenta({ searchParams }: PageProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-muted/40 px-4 py-12">
+    <PantallaSinSesion marca={{ tipo: "rutax" }}>
       <FormularioActivacion
         enlaceInvalido={false}
         nombreFantasia={nombreFantasia}
         nombreSugerido={sesion.nombreCompleto}
       />
-    </div>
+    </PantallaSinSesion>
   );
 }
