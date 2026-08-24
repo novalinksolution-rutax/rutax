@@ -595,15 +595,47 @@ pasar `"null"` y `"undefined"`, que es exactamente lo que hay que atajar.
       expandido y colapsado.
 - [ ] Las 32 de `(tenant)`, 11 de `portal` y 13 de `admin` heredan sin tocarse.
 - [ ] **Falta `src/app/(tenant)/configuracion/page.tsx`** (hoy 404).
-- [ ] `src/app/error.tsx` — es raíz y **reemplaza el AppShell entero**: en un error el usuario
-      pierde sidebar, avisos y toda forma de navegar. Necesita boundary por segmento.
+- [x] **Boundaries de error por área — HECHO (24-08).** `error.tsx` estaba solo en la raíz, y en el
+      App Router un boundary **reemplaza todo lo que cuelga de su propio layout**: una falla en
+      cualquier pantalla se llevaba el `AppShell` entero. El usuario se quedaba sin sidebar, sin
+      avisos y **sin ninguna forma de ir a otra pantalla**, justo cuando más falta le hace: lo único
+      que le quedaba era «Reintentar» sobre la pantalla que acababa de fallar.
+      Ahora hay uno por área —`(tenant)`, `portal`, `admin`, `conductor`— y el marco sobrevive.
+      **Verificado provocando una falla real en Manifiestos:** el panel sale en el contenido y los
+      **11 destinos del sidebar siguen ahí**.
+      El de la raíz **se conserva y no sobra**: un boundary no cubre a su propio layout, así que
+      sigue siendo la red de lo que revienta en un `layout` de área y de todo lo que no cuelga de
+      ninguna —`/login`, `/tracking`, `/invitacion`, las legales, el sitio—.
+      El copy lo pone cada área, y no por adorno: contesta **qué NO pasó**, que es la pregunta que
+      casi siempre queda sin respuesta. Al conductor —de pie en la calle, entre dos entregas— lo
+      primero que le dice es que lo que acaba de marcar está guardado; sin eso, la reacción
+      razonable es volver a marcarlo, que es justo lo que duplica registros.
+- [x] **Las 404 por área — HECHO (24-08), y salió de mirar lo anterior.** Solo había
+      `not-found.tsx` en la raíz, escrita —con cuidado— para **quien no tiene cuenta**: el
+      destinatario cuyo enlace de seguimiento no calza. No afirma nada, no confirma ni niega que el
+      envío exista (regla 45) y ofrece «Ir a Rutax».
+      Esa misma pantalla le salía **al coordinador** que tecleó mal el id de un manifiesto: se le
+      decía que fuera al sitio donde ya está, y se le preguntaba si estaba siguiendo un envío.
+      ⚠️ **La vaguedad de la raíz no era un defecto: es correcta ahí**, porque ahí de verdad no se
+      sabe quién mira. Dentro de un área con sesión sí se sabe, y entonces callar deja de ser
+      prudencia y pasa a ser desorientación. Se comparte la forma (`PanelNoEncontrada`) y cada área
+      pone su texto. En `(tenant)` se nombra la causa que **sí** se puede afirmar sin adivinar: lo
+      que buscaba pudo existir y haber sido eliminado por plazo.
+      **Verificadas las dos:** la de `(tenant)` con el sidebar intacto y sin la nota de seguimiento;
+      la pública sin sidebar y con su texto original.
 
 ## Brechas del inventario que cierra
 
 - [ ] **#17** — las pantallas de «sin permiso» son callejones sin salida, y dos mandan a una ruta
       inexistente.
-- [ ] **#27** — el centro de avisos cuenta «sin leer» y el estado leído no existe en ninguna parte.
-- [ ] **#30** — la búsqueda del portal del seller siempre responde «sin resultados».
+- [x] **#27 — ya estaba resuelto** *(verificado 24-08)*. `centro-avisos.tsx` dejó de prometer un
+      buzón: la cifra ya no dice «sin leer» sino cuántas cosas necesitan atención ahora. Y la
+      corrección de fondo está escrita ahí — **un aviso no se lee, se RESUELVE**: desaparece cuando
+      su causa deja de ser cierta. Marcarlo como leído con el problema vivo sería esconderlo.
+- [x] **#30 — ya estaba resuelto** *(verificado 24-08)*. `portal/layout.tsx` pasa
+      `mostrarBusqueda={false}`: `/api/buscar` corta por `tipoUsuario !== "interno"` y le devolvía
+      vacío SIEMPRE, así que el botón prometía una acción que no existe (regla 35). Se enciende
+      cuando exista el buscador del portal (NUEVO #21, bloqueado).
 
 ## Bloqueado
 

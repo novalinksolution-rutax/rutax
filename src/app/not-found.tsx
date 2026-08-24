@@ -1,8 +1,7 @@
-import Link from "next/link";
-import { FileQuestion } from "lucide-react";
+import { PanelNoEncontrada } from "@/components/ui/panel-no-encontrada";
 
 /**
- * La 404 del producto. NUEVO #28.
+ * La 404 pública. NUEVO #28.
  * =============================================================================
  *
  * **No existía ninguna.** Todo `notFound()` del repo caía en la página por
@@ -33,42 +32,17 @@ import { FileQuestion } from "lucide-react";
  * arriba para quien tiene cuenta, y debajo la única indicación que le sirve a
  * quien no la tiene: pedirle el enlace a quien se lo mandó.
  *
- * Sin ilustración a propósito: sería una imagen de varios cientos de KB en la
- * pantalla que ve alguien con mala señal esperando un paquete.
+ * ⚠️ **Esta vaguedad es correcta ACÁ y solo acá.** Dentro de un área con sesión
+ * sí se sabe quién mira, y esta misma pantalla se leía absurda: al coordinador
+ * que tecleó mal el id de un manifiesto se le decía «Ir a Rutax» y se le
+ * preguntaba si estaba siguiendo un envío. Cada área tiene ahora la suya.
  */
 export default function NoEncontrada() {
   return (
-    <div className="flex min-h-[70svh] items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md border border-line bg-card p-8 text-center">
-        <div className="mx-auto flex size-11 items-center justify-center bg-bg-inset">
-          <FileQuestion className="size-5 text-fg-muted" aria-hidden="true" />
-        </div>
-
-        <h1 className="mt-4 font-heading text-xl font-semibold text-fg">
-          Esta página no está
-        </h1>
-
-        <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-          El enlace puede estar mal copiado o ya no estar disponible. No podemos saber cuál de
-          las dos.
-        </p>
-
-        <div className="mt-6 flex flex-col gap-3">
-          <Link
-            href="/"
-            className="inline-flex h-10 items-center justify-center rounded-ctrl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:opacity-90"
-          >
-            Ir a Rutax
-          </Link>
-
-          {/* Para quien llegó siguiendo un paquete y no tiene cuenta: es lo
-              único que de verdad puede hacer. */}
-          <p className="text-xs leading-relaxed text-fg-subtle">
-            ¿Estabas siguiendo un envío? Pídele el enlace otra vez a quien te lo mandó: los
-            enlaces de seguimiento dejan de funcionar cuando el pedido se cierra.
-          </p>
-        </div>
-      </div>
-    </div>
+    <PanelNoEncontrada
+      cuerpo="El enlace puede estar mal copiado o ya no estar disponible. No podemos saber cuál de las dos."
+      salida={{ href: "/", texto: "Ir a Rutax" }}
+      nota="¿Estabas siguiendo un envío? Pídele el enlace otra vez a quien te lo mandó: los enlaces de seguimiento dejan de funcionar cuando el pedido se cierra."
+    />
   );
 }

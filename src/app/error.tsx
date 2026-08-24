@@ -1,20 +1,28 @@
 "use client";
 
 /**
- * Error boundary de la app (App Router).
- * =====================================================================
- * Atrapa las excepciones no manejadas de cualquier segmento hijo del layout
- * raíz (área del courier, portal del seller, conductor, admin) y muestra una
- * recuperación amable en vez de la página cruda de error de Next.
+ * El boundary de la RAÍZ — la última red, no la primera.
+ * =============================================================================
  *
- * Reporte: los errores de render en SERVIDOR ya los captura
- * `instrumentation.ts` (onRequestError). Aquí reportamos además los de CLIENTE
- * (hidratación, interacción) al endpoint interno, fire-and-forget.
+ * ⚠️ **Ya no es el único, y ese era el defecto.** Un `error.tsx` en la raíz
+ * reemplaza el árbol entero, así que hasta ahora cualquier falla se llevaba
+ * también el `AppShell`: sidebar, avisos y barra inferior. El usuario se quedaba
+ * sin ninguna forma de ir a otra pantalla justo cuando más falta le hacía.
+ *
+ * Ahora cada área tiene el suyo —`(tenant)`, `portal`, `admin`, `conductor`— y
+ * éste queda para lo que ellos **no pueden** atrapar:
+ *
+ * · un error dentro del propio `layout` de un área (la sesión, el `AppShell`),
+ *   porque un boundary no cubre a su propio layout;
+ * · las rutas que no viven bajo ninguna de esas áreas — `/login`, `/tracking`,
+ *   `/invitacion`, las legales, el sitio.
+ *
+ * En esos casos **no hay marco que preservar**, así que tampoco hay a dónde
+ * mandar al usuario dentro de la aplicación: el panel va sin salida y con las
+ * dos acciones que siempre sirven, reintentar y recargar.
  */
 
-import { useEffect } from "react";
-import { AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { PanelError } from "@/components/ui/panel-error";
 
 export default function ErrorApp({
   error,
@@ -23,56 +31,11 @@ export default function ErrorApp({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    try {
-      void fetch("/api/observabilidad/cliente", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mensaje: error.message,
-          stack: error.stack,
-          digest: error.digest,
-          ruta: typeof window !== "undefined" ? window.location.pathname : undefined,
-        }),
-        keepalive: true,
-      });
-    } catch {
-      // El reporte nunca puede romper la recuperación.
-    }
-  }, [error]);
-
   return (
-    <div className="flex min-h-[60svh] items-center justify-center px-4">
-      {/* Sin sombra (regla 4): la elevación es escalón de fondo + borde. */}
-      <div className="w-full max-w-md rounded-ctrl border border-line bg-card p-6 text-center">
-        <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-destructive-subtle">
-          <AlertTriangle
-            className="size-5 text-destructive-subtle-foreground"
-            aria-hidden="true"
-          />
-        </div>
-        <h1 className="mt-4 font-heading text-lg font-bold">Algo salió mal</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Tuvimos un problema al mostrar esta pantalla. Ya quedó registrado.
-          Puedes reintentar; si vuelve a ocurrir, recarga la página.
-        </p>
-        {error.digest && (
-          <p className="mt-3 font-mono text-xs text-muted-foreground/70">
-            Código: {error.digest}
-          </p>
-        )}
-        <div className="mt-5 flex items-center justify-center gap-2">
-          <Button onClick={reset}>Reintentar</Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (typeof window !== "undefined") window.location.reload();
-            }}
-          >
-            Recargar
-          </Button>
-        </div>
-      </div>
-    </div>
+    <PanelError
+      error={error}
+      reset={reset}
+      cuerpo="Tuvimos un problema al mostrar esta pantalla y ya quedó registrado. Reintenta; si vuelve a ocurrir, recarga la página."
+    />
   );
 }
