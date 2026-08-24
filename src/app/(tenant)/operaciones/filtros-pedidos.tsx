@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { ChipsFiltro, type ChipFiltro } from "@/components/filtros/chips-filtro";
 import { HojaInferior } from "@/components/ui/hoja-inferior";
 import { FiltroFecha } from "@/components/filtros/filtro-fecha";
-import { formatearFechaCorta } from "@/lib/formato-cl";
+import { formatearFechaCivilCorta } from "@/lib/formato-cl";
 import {
   Select,
   SelectContent,
@@ -255,9 +255,9 @@ export function FiltrosPedidosForm({
     filtroFecha === hoy
       ? "Hoy"
       : filtroFecha
-        ? formatearFechaCorta(filtroFecha)
+        ? formatearFechaCivilCorta(filtroFecha)
         : filtroFechaDesde || filtroFechaHasta
-          ? `${filtroFechaDesde ? formatearFechaCorta(filtroFechaDesde) : "…"} a ${filtroFechaHasta ? formatearFechaCorta(filtroFechaHasta) : "…"}`
+          ? `${filtroFechaDesde ? formatearFechaCivilCorta(filtroFechaDesde) : "…"} a ${filtroFechaHasta ? formatearFechaCivilCorta(filtroFechaHasta) : "…"}`
           : "Hoy";
 
   const chips: ChipFiltro[] = [

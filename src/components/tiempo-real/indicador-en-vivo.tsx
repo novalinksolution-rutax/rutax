@@ -9,7 +9,7 @@
  * es SOLO una señal:
  *   - La RLS de cada tabla ya filtra los eventos al tenant del usuario, así que
  *     nunca llegan cambios de otro courier.
- *   - No se lee el payload; solo dispara el refetch. El aislamiento se mantiene
+ *   - Del payload solo se leen el `id` y el tipo de evento. El aislamiento se mantiene
  *     en el servidor, como en el resto de la app.
  *
  * Los eventos se agrupan para no refrescar en ráfaga durante la ingesta masiva,
@@ -43,6 +43,24 @@ import {
   type EstadoCanalRealtime,
 } from "./estado-canal";
 
+/**
+ * Lo que cambió, para que la pantalla decida qué hacer con ello.
+ *
+ * ⚠️ **El payload se lee, pero solo el `id` y el tipo de evento.** Nunca los
+ * campos de la fila: el aislamiento entre couriers lo impone RLS del lado del
+ * servidor, y construir la pantalla con datos que llegaron por el socket sería
+ * abrir una segunda fuente de verdad que RLS no vuelve a mirar. Con el `id` basta
+ * para lo único que hace falta acá — distinguir **una fila que ya está en
+ * pantalla** de **una que entraría nueva**—, y los datos siguen viniendo del
+ * servidor.
+ */
+export interface SenalRealtime {
+  tipo: "INSERT" | "UPDATE";
+  tabla: string;
+  /** `id` de la fila. `null` si el payload no lo trae. */
+  id: string | null;
+}
+
 export interface TablaRealtime {
   schema: string;
   tabla: string;
@@ -50,14 +68,27 @@ export interface TablaRealtime {
 
 const PREDETERMINADO: TablaRealtime[] = [{ schema: "operacion", tabla: "pedidos" }];
 
-export function IndicadorEnVivo({
+/**
+ * La conexión, sin pintura.
+ *
+ * ⚠️ **Está separada del indicador a propósito, y no por prolijidad.** El canal
+ * tiene que vivir **por encima del límite de Suspense**: si se monta dentro de
+ * una página que tiene `loading.tsx`, cada `router.refresh()` la suspende, el
+ * canal se cierra y se vuelve a unir, y **lo que ocurra en esa ida y vuelta no
+ * llega nunca** — mudo, con el indicador diciendo «En vivo».
+ *
+ * El punto verde, en cambio, se dibuja donde tenga sentido leerlo (la cabecera).
+ * Por eso son dos piezas: `useCanalEnVivo` donde sobrevive, `IndicadorEnVivo`
+ * donde se ve.
+ */
+export function useCanalEnVivo({
   tenantId,
   tablas = PREDETERMINADO,
   onSenal,
 }: {
   tenantId: string;
   tablas?: TablaRealtime[];
-  onSenal?: () => void;
+  onSenal?: (senales: SenalRealtime[]) => void;
 }) {
   const router = useRouter();
   const [estadoCanal, setEstadoCanal] = useState<EstadoCanalRealtime | null>(null);
@@ -79,10 +110,22 @@ export function IndicadorEnVivo({
 
   useEffect(() => {
     let desmontado = false;
+    // Las señales de la ráfaga se juntan y se entregan de una vez, en el mismo
+    // disparo que ya estaba debounceado. Sin esto habría que elegir entre avisar
+    // por cada evento —y renderizar cincuenta veces— o perder cuál cambió.
+    let acumuladas: SenalRealtime[] = [];
     const programador = crearProgramadorRefresco(() => {
-      if (onSenalRef.current) onSenalRef.current();
+      const lote = acumuladas;
+      acumuladas = [];
+      if (onSenalRef.current) onSenalRef.current(lote);
       else router.refresh();
     });
+    const anotar = (tipo: "INSERT" | "UPDATE", tabla: string) => (payload: unknown) => {
+      const fila = (payload as { new?: { id?: unknown } } | null)?.new;
+      const id = typeof fila?.id === "string" ? fila.id : null;
+      acumuladas.push({ tipo, tabla, id });
+      programador.programar();
+    };
     let limpiar: (() => void) | null = null;
 
     void (async () => {
@@ -120,8 +163,8 @@ export function IndicadorEnVivo({
       let canal = cliente.channel(`en-vivo-${tenantId}-${clave}`);
       for (const { schema, tabla } of pares) {
         canal = canal
-          .on("postgres_changes", { event: "INSERT", schema, table: tabla, filter: filtro }, programador.programar)
-          .on("postgres_changes", { event: "UPDATE", schema, table: tabla, filter: filtro }, programador.programar);
+          .on("postgres_changes", { event: "INSERT", schema, table: tabla, filter: filtro }, anotar("INSERT", tabla))
+          .on("postgres_changes", { event: "UPDATE", schema, table: tabla, filter: filtro }, anotar("UPDATE", tabla));
       }
       canal.subscribe((status) => {
         if (!desmontado) setEstadoCanal(status as EstadoCanalRealtime);
@@ -139,13 +182,24 @@ export function IndicadorEnVivo({
     };
   }, [tenantId, clave, router]);
 
-  const presentacion = interpretarEstadoCanal(estadoCanal, autenticado);
+  return interpretarEstadoCanal(estadoCanal, autenticado);
+}
+
+/** El punto y su etiqueta. Solo pinta; no sabe de canales. */
+export function PuntoEnVivo({
+  presentacion,
+}: {
+  presentacion: ReturnType<typeof interpretarEstadoCanal>;
+}) {
   const esEnVivo = presentacion.estado === "en_vivo";
   const esFallo = presentacion.estado === "sin_actualizacion";
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+      // `shrink-0` y `whitespace-nowrap`: en un encabezado apretado el punto
+      // quedaba encima del texto y «En vivo» se partía en dos líneas — el
+      // indicador de que la pantalla está viva, ilegible.
+      className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium whitespace-nowrap text-muted-foreground"
       title={presentacion.detalle}
     >
       <span
@@ -157,4 +211,19 @@ export function IndicadorEnVivo({
       <span aria-live="polite">{presentacion.etiqueta}</span>
     </span>
   );
+}
+
+/**
+ * El indicador completo: se conecta y se dibuja en el mismo sitio.
+ *
+ * Sirve para las pantallas **sin `loading.tsx`** en su segmento. Donde lo haya,
+ * usa `useCanalEnVivo` arriba (en el layout) y `PuntoEnVivo` abajo.
+ */
+export function IndicadorEnVivo(props: {
+  tenantId: string;
+  tablas?: TablaRealtime[];
+  onSenal?: (senales: SenalRealtime[]) => void;
+}) {
+  const presentacion = useCanalEnVivo(props);
+  return <PuntoEnVivo presentacion={presentacion} />;
 }

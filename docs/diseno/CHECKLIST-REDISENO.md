@@ -418,7 +418,69 @@ bloques 4–8, cuando cada pantalla se toque.
       `AvisoNovedades`, con su propio `onSenal`— pero decía «Hay pedidos nuevos disponibles»:
       cierto y **sin peso**, porque uno y treinta se leen igual. Con la cifra el coordinador puede
       decidir: «llegaron 2» se pospone, «llegaron 30» no. Se retira el componente local.
+- [x] **P1 Pedidos COMPLETA (24-08) — la pantalla entera contra su tablero, no solo sus mecánicas.**
+      Se cerró antes «por mecánicas» —ejes del distintivo, aritmética de cajones, franja, táctil— sin
+      comparar nunca la pantalla completa con el dibujo. La objeción fue correcta. Lo que entró:
+      - **Refresco en sitio con marca de 8 s**, medida en el navegador: aparece, la fila **no se
+        mueve**, y se retira a los 8,0 s exactos. La franja queda para lo que entraría nuevo, ahora
+        con **dos cifras** —«llegaron 6 nuevos y 2 cambiaron de estado»—, porque con un solo número
+        había que incorporar para saber cuál de los dos ocurrió.
+      - **Caída de columnas en el orden del tablero** (procedencia → motivo → seller → fecha): siete
+        columnas en escritorio, **tres a 1024** —estado, destinatario, conductor— y **ficha de tres
+        líneas bajo `md`**. Verificado en los tres anchos.
+      - **Columna MOTIVO arreglada**: mostraba solo los distintivos de geocodificación, así que las
+        dos filas que el tablero dibuja con motivo —«Nadie recibió», «Seller canceló»— salían vacías.
+        Ahora contesta la pregunta entera: cancelación › incidencia viva › problema de dirección.
+      - **Los cinco estados**, con el copy real y cifras que no se inventan. El de «no hay
+        direcciones por revisar» **dejaba de ser cierto de mañana** —decía «quedaron ubicadas»
+        cuando ninguna se había geocodificado aún—; ahora dice cuántas siguen ubicándose.
+      - **Los cajones no se ponen en cero ante una lectura fallida**: conservan su último valor y
+        dicen de qué hora es, o muestran rayas. Probado cortando las dos consultas.
+      - **Pie de truncamiento con sus dos salidas.** La segunda no existía: se construyó
+        `GET /api/operaciones/exportar` (CSV con `;`, BOM, fórmulas neutralizadas, mismo saneo de
+        filtros que la pantalla y bitácora antes de entregar el archivo).
+      - **Vista previa lateral al tocar la fila** *(feature nuevo del tablero, traído el 24-08)*:
+        430 px en escritorio, 380 en tablet, hoja inferior al 85 % arrastrable en teléfono; la lista
+        se atenúa **sin velo** y tocar otra fila cambia el contenido sin cerrar. Sin acciones de
+        consecuencia adentro, a propósito.
+      ⚠️ **Lo que NO se hizo, y por qué:** la casilla de selección que el tablero dibuja en la ficha
+      de teléfono. Pedidos **no tiene ninguna acción en bloque**, así que sería una casilla que
+      selecciona y no lleva a ninguna parte.
+      ⚠️ **El seller no reaparece en la línea monoespaciada** aunque la regla en prosa lo nombre: los
+      dos dibujos lo omiten, y la razón lo sostiene — el seller es un **eje de filtro**, no un
+      identificador de fila. La procedencia sí reaparece: son tres letras que cambian cómo se trata
+      el pedido.
+
 - [ ] Unificar la `BarraSeleccion` local de `preparacion/asignar/_componentes/` con la del sistema.
+
+## 🐞 Cuatro defectos que P1 destapó y que valen para todo el producto (24-08)
+
+**1 · El orden de la lista no era determinista.** `listarPedidos` ordenaba solo por `creado_en`, que
+empata con facilidad —una ingesta escribe decenas de pedidos en la misma transacción—, y **con la
+clave empatada Postgres no garantiza ningún orden**. Se veía como un fantasma: un pedido cambia de
+estado, la pantalla se refresca y otras siete filas se mueven sin que nada les pasara. Con el
+refresco en sitio, cuya regla entera es «la fila no se mueve», deja de ser fantasma. Desempate por
+`id`. **También rompía la paginación**: dos filas empatadas podían salir en la página 1 y en la 2.
+
+**2 · Una fecha civil formateada como instante retrocede un día.** `formatearFechaCorta("2026-08-24")`
+hace `new Date(...)`, que la norma manda leer como **medianoche UTC**; en Santiago eso son las 20:00
+del 23. La columna FECHA y el chip del filtro decían **23-08 con el filtro puesto en el 24**. Pasa
+desapercibido porque el número se ve razonable. Helper nuevo `formatearFechaCivilCorta`, que **no
+convierte**: parte la cadena. Red en `formato-cl.fecha-civil.test.ts`, con contraprueba.
+Es el hermano del defecto que ya cubría `formato-cl.zona-horaria.test.ts`, y muerde justo cuando
+aquél está bien resuelto.
+
+**3 · Una utilidad de Tailwind que no existe no emite nada, y nada falla.** Mordió **tres veces en
+una sesión**: `bg-fault-subtle`, `h-row` y `opacity-55`. La clase queda en el nodo, el estilo
+calculado no cambia, y no hay error en consola ni en el build. `opacity-[0.55]` tampoco se generó.
+**Solo se caza midiendo el estilo calculado en el navegador.** Donde importa, se declara la utilidad
+en `rx-puente.css` en vez de confiar en que exista.
+
+**4 · Un `loading.tsx` desmonta la página en cada `router.refresh()`.** Se llevaba por delante los
+relojes de la marca —duraba un fotograma en vez de 8 s— y, peor y en silencio, **tiraba el canal de
+Realtime y lo reunía de cero en cada cambio**, perdiendo lo que llegara en medio. Regla que sale de
+acá: **el estado que debe sobrevivir a un refresco vive en el `layout`, no en la página.** Ahí están
+ahora el proveedor de cambios en vivo, la vista previa y la memoria de los cajones.
 
 ## ✅ Realtime estaba roto para TODO el proyecto — causa raíz y arreglo (24-08)
 

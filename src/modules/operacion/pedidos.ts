@@ -203,8 +203,22 @@ export async function listarPedidos(
     filtros,
   );
 
+  // ⚠️ **El desempate por `id` no es cosmético: sin él la lista se baraja sola.**
+  // `creado_en` empata con facilidad —una ingesta escribe decenas de pedidos en
+  // la misma transacción y todos comparten el instante— y con la clave empatada
+  // Postgres **no garantiza ningún orden**: puede devolver las filas distinto en
+  // cada ejecución de la misma consulta.
+  //
+  // Se veía como un fantasma: un pedido cambia de estado, la pantalla se refresca
+  // y **otras siete filas se mueven de sitio** sin que nada les haya pasado. Con
+  // el refresco en sitio del tablero —cuya regla entera es «la fila no se mueve»—
+  // deja de ser un fantasma y pasa a ser el defecto principal.
+  //
+  // Y también rompe la paginación: dos filas empatadas pueden salir en la página
+  // 1 y en la 2, o en ninguna.
   query = query
     .order("creado_en", { ascending: false })
+    .order("id", { ascending: false })
     .range(offset, offset + limite - 1);
 
   const { data, error, count } = await query;

@@ -38,10 +38,28 @@ export function FormularioPedidoSameDay(_props: {
   tenantId?: string;
 }) {
   return (
-    <Button asChild>
+    <Button asChild className="shrink-0">
       <Link href="/operaciones/nuevo">
-        <Plus className="size-4" aria-hidden="true" />
-        Crear pedido same-day
+        <Plus className="size-4 shrink-0" aria-hidden="true" />
+        {/* ⚠️ **La etiqueta se acorta por ancho; NO se deja desbordar.**
+            «Crear pedido same-day» son 21 caracteres y en un encabezado con
+            título, indicador en vivo y un segundo botón **rompía la fila
+            entera**: empujaba el ancho por encima del contenedor y la pantalla
+            aparecía con desplazamiento horizontal.
+
+            Se resuelve acortando el rótulo, no encogiendo la letra ni cortando
+            con puntos suspensivos: «Crear» dice lo mismo cuando el botón está
+            en una pantalla donde ya se sabe que se está en Pedidos. El nombre
+            accesible se conserva entero para quien no ve el botón. */}
+        <span className="hidden xl:inline">Crear pedido same-day</span>
+        <span className="hidden sm:inline xl:hidden">Crear</span>
+        {/* En 390 px es **solo el signo**: el tablero dibuja el encabezado del
+            teléfono en una sola fila —`☰ Pedidos`— y cualquier rótulo la parte
+            en dos. El nombre accesible se conserva entero, así que para un
+            lector de pantalla el botón sigue diciendo lo mismo en los tres
+            anchos. */}
+        <span className="sr-only sm:hidden">Crear pedido same-day</span>
+        <span className="sr-only hidden sm:inline xl:hidden">pedido same-day</span>
       </Link>
     </Button>
   );

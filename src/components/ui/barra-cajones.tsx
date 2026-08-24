@@ -95,7 +95,8 @@ export interface Cajon {
   clave: string
   etiqueta: string
   /** Sobre el conjunto filtrado completo, nunca sobre la página. */
-  conteo: number
+  /** `null` = **no se pudo leer**. NO es lo mismo que 0, que es una afirmación. */
+  conteo: number | null
 }
 
 export function BarraCajones({
@@ -120,11 +121,13 @@ export function BarraCajones({
   activo: string | null
   onSeleccionar: (clave: string | null) => void
   /** Total real del conjunto filtrado, incluido el excluido. */
-  total: number
+  /** `null` = no se pudo leer. Ver el comentario de `conteo`. */
+  total: number | null
   className?: string
 }) {
-  const sumaCajones = cajones.reduce((acc, c) => acc + c.conteo, 0)
-  const noCuadra = excluido !== undefined && sumaCajones !== total
+  const sumaCajones = cajones.reduce((acc, c) => acc + (c.conteo ?? 0), 0)
+  // Sin total leído no se puede afirmar que algo «no cuadra»: se calla.
+  const noCuadra = total !== null && excluido !== undefined && sumaCajones !== total
   const { ref: refTira, fuera } = useCajonesFuera()
 
   return (
@@ -212,21 +215,21 @@ export function BarraCajones({
           existe. */}
       {/* La aclaración del transversal solo si tiene contenido: «sus 0 ya están
           contados a la izquierda» es una explicación de nada. */}
-      {noCuadra || (transversal && transversal.conteo > 0) ? (
+      {noCuadra || (transversal && (transversal.conteo ?? 0) > 0) ? (
         <p className="font-mono text-[10.5px] leading-snug text-fg-subtle">
           {noCuadra ? (
             <span className="block">
               {sumaCajones.toLocaleString("es-CL")} en los grupos de arriba ·{" "}
-              {excluido!.conteo.toLocaleString("es-CL")} {excluido!.etiqueta.toLowerCase()} ·{" "}
-              <span className="text-fg-muted">{total.toLocaleString("es-CL")} en total</span>
+              {(excluido!.conteo ?? 0).toLocaleString("es-CL")} {excluido!.etiqueta.toLowerCase()} ·{" "}
+              <span className="text-fg-muted">{(total ?? 0).toLocaleString("es-CL")} en total</span>
             </span>
           ) : null}
-          {transversal && transversal.conteo > 0 ? (
+          {transversal && (transversal.conteo ?? 0) > 0 ? (
             <span className="block">
               «{transversal.etiqueta}» cruza los estados:{" "}
               {transversal.conteo === 1
                 ? "el suyo ya está contado"
-                : `sus ${transversal.conteo.toLocaleString("es-CL")} ya están contados`}{" "}
+                : `sus ${(transversal.conteo ?? 0).toLocaleString("es-CL")} ya están contados`}{" "}
               a la izquierda.
             </span>
           ) : null}
@@ -244,7 +247,7 @@ function BotonCajon({
   inerte = false,
 }: {
   etiqueta: string
-  conteo: number
+  conteo: number | null
   activo: boolean
   onClick: () => void
   inerte?: boolean
@@ -274,7 +277,10 @@ function BotonCajon({
           activo ? "text-fg" : "text-fg-subtle"
         )}
       >
-        {conteo.toLocaleString("es-CL")}
+        {/* 🔴 La raya no es un adorno: **es la diferencia entre «no lo sé» y
+            «cero»**. Un cajón que dice 0 a las 15:50 se lee como trabajo
+            terminado y hace que alguien deje de asignar. */}
+        {conteo === null ? "—" : conteo.toLocaleString("es-CL")}
       </span>
     </button>
   )

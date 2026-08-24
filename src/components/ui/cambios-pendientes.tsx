@@ -33,18 +33,27 @@ import { cn } from "@/lib/utils"
 
 export function FranjaCambiosPendientes({
   cantidad,
+  cambiados = 0,
   onIncorporar,
   compacta = false,
   className,
 }: {
-  /** Cuántos cambios se acumularon sin insertarse. */
+  /** Filas NUEVAS acumuladas sin insertarse. */
   cantidad: number
+  /**
+   * Filas que ya existían y **cambiaron fuera de la vista** (otro filtro, otra
+   * página). Se cuentan aparte porque no son lo mismo: «llegaron 6 pedidos» y
+   * «2 salieron a ruta» son dos hechos distintos, y juntarlos en un solo número
+   * obliga a incorporar para saber cuál de los dos ocurrió.
+   */
+  cambiados?: number
   onIncorporar: () => void
   /** Versión corta para 390 px, donde no cabe la frase completa. */
   compacta?: boolean
   className?: string
 }) {
-  if (cantidad === 0) return null
+  const total = cantidad + cambiados
+  if (total === 0) return null
 
   return (
     <div
@@ -61,17 +70,18 @@ export function FranjaCambiosPendientes({
     >
       <span className="flex items-center gap-2">
         <ArrowUp className="size-3.5 shrink-0" aria-hidden="true" />
+        {/* ⚠️ **La frase se parte en dos por ancho, no se recorta.** A 390 px
+            «Llegaron 6 pedidos nuevos y 2 salieron a ruta» no entra, y cortarla
+            a la mitad dejaría media afirmación. La corta dice la magnitud —«8
+            cambios esperando»— que es lo que hace falta para decidir si tocar el
+            botón; la larga dice de qué se trata. */}
         {compacta ? (
           <>
-            <span className="rx-num font-medium tabular-nums">{cantidad}</span> nuevos
+            <span className="rx-num font-medium tabular-nums">{total}</span>{" "}
+            {total === 1 ? "cambio esperando" : "cambios esperando"}
           </>
         ) : (
-          <>
-            <span className="rx-num font-medium tabular-nums">
-              {cantidad.toLocaleString("es-CL")}
-            </span>{" "}
-            {cantidad === 1 ? "pedido nuevo desde que empezaste" : "pedidos nuevos desde que empezaste"}
-          </>
+          <span>{fraseLarga(cantidad, cambiados)}</span>
         )}
       </span>
 
@@ -84,10 +94,34 @@ export function FranjaCambiosPendientes({
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--rx-focus)]"
         )}
       >
-        {compacta ? "Mostrar" : "Mostrarlos"}
+        {compacta ? "Incorporar" : `Incorporar ${total}`}
       </button>
     </div>
   )
+}
+
+/**
+ * «Llegaron 6 pedidos nuevos y 2 salieron a ruta.»
+ *
+ * Se construye con las dos cifras por separado y **se omite la mitad que vale
+ * cero**: «llegaron 6 pedidos nuevos y 0 cambiaron» hace pensar que falta algo.
+ *
+ * El segundo hecho se dice como «cambiaron de estado» y no como «salieron a
+ * ruta»: no sabemos a qué estado fueron —solo que la fila cambió estando fuera
+ * de la vista— y afirmar el destino sería inventar.
+ */
+function fraseLarga(nuevos: number, cambiados: number): string {
+  const partes: string[] = []
+  if (nuevos > 0) {
+    partes.push(`llegaron ${nuevos.toLocaleString("es-CL")} ${nuevos === 1 ? "pedido nuevo" : "pedidos nuevos"}`)
+  }
+  if (cambiados > 0) {
+    partes.push(
+      `${cambiados.toLocaleString("es-CL")} ${cambiados === 1 ? "cambió de estado" : "cambiaron de estado"}`,
+    )
+  }
+  const hechos = partes.join(" y ")
+  return `${hechos.charAt(0).toUpperCase()}${hechos.slice(1)}. No los incorporamos solos para no moverte la lista.`
 }
 
 /**

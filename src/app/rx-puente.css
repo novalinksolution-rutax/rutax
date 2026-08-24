@@ -235,6 +235,28 @@ html:root {
   background-image: var(--rx-inert-fill-row);
 }
 
+/* =============================================================================
+ * La lista atenuada tras la vista previa
+ * -----------------------------------------------------------------------------
+ * ⚠️ **Existe porque `opacity-55` NO EMITE NADA.** No está en la escala de
+ * Tailwind, y `opacity-[0.55]` tampoco se generó en este proyecto: la clase
+ * quedaba puesta en el nodo y la opacidad calculada seguía en 1 — la lista sin
+ * atenuar, sin un solo error en consola ni en el build. Solo se caza midiendo el
+ * estilo calculado en el navegador.
+ *
+ * Declarada acá deja de depender de que una utilidad exista.
+ *
+ * Los dos valores son distintos a propósito: **el 45 % que funciona sobre fondo
+ * oscuro se lee como «deshabilitado» sobre papel**, así que en claro sube a 55.
+ * ========================================================================== */
+@utility rx-lista-atenuada {
+  opacity: 0.55;
+}
+
+.dark .rx-lista-atenuada {
+  opacity: 0.45;
+}
+
 /* Cifras: toda columna de números va en tabular para poder compararse. */
 @utility rx-num {
   font-variant-numeric: var(--rx-numeric);

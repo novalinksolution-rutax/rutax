@@ -131,6 +131,33 @@ export function formatearFechaCorta(fecha: Date | string): string {
   return `${dia.padStart(2, "0")}-${mes.padStart(2, "0")}`;
 }
 
+/**
+ * `2026-08-24` → `24-08`. Para una fecha **civil**, no para un instante.
+ *
+ * -----------------------------------------------------------------------------
+ * 🔴 POR QUÉ NO SIRVE `formatearFechaCorta` PARA ESTO
+ * -----------------------------------------------------------------------------
+ * `formatearFechaCorta("2026-08-24")` hace `new Date("2026-08-24")`, que la
+ * norma manda interpretar como **medianoche UTC**. Formateada en Santiago —cuatro
+ * horas atrás— eso son las 20:00 del **23**. O sea: la pantalla dice un día
+ * menos, siempre.
+ *
+ * No es teórico. El chip del filtro de Pedidos mostraba `23-08` estando el
+ * filtro puesto en el 24, y el vacío decía «Estás filtrando por … y 23-08».
+ * Pasa desapercibido porque **el número se ve razonable**: es un día, del mes
+ * correcto, cerca de hoy.
+ *
+ * La corrección no es elegir mejor la zona horaria: es **no convertir**. Un
+ * `YYYY-MM-DD` que viene de la URL o de una columna `date` ya es una fecha civil
+ * —no tiene hora ni huso—, así que se parte y se reordena. Sin `Date` de por
+ * medio no hay nada que pueda correrse.
+ */
+export function formatearFechaCivilCorta(fecha: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha.trim());
+  if (!m) return "—";
+  return `${m[3]}-${m[2]}`;
+}
+
 /** "hace 5 minutos" / "hace 2 días" — relativo, en español de Chile, redondeado al tramo más legible. */
 export function formatearTiempoRelativo(fecha: Date | string, ahora: Date = new Date()): string {
   const valor = typeof fecha === "string" ? new Date(fecha) : fecha;
