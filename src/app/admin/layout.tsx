@@ -1,4 +1,4 @@
-import { ShieldAlert } from "lucide-react";
+
 import { exigirSuperAdmin, type ActorSuperAdmin } from "@/modules/plataforma/autorizacion-admin";
 import { Badge } from "@/components/ui/badge";
 import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
@@ -7,6 +7,8 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { leerSoporteActivo } from "@/modules/plataforma/soporte";
 import { cerrarSesionAdmin } from "./acciones-sesion";
 import { FormularioLoginAdmin } from "./formulario-login-admin";
+import { DistintivoBackstage } from "./distintivo-backstage";
+import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
 import { PanelEnrolamientoTotp } from "./seguridad/panel-enrolamiento-totp";
 import { PanelStepUpTotp } from "./seguridad/panel-step-up-totp";
 
@@ -95,7 +97,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   if (actor.aal !== "aal2") {
-    return <PromptMfa actor={actor} />;
+    // ⚠️ **La cifra se cuenta, no se escribe a mano.** El tablero dice «tu
+    // credencial vale por 27 empresas», y 27 era el dato del día en que se
+    // dibujó. Un número puesto a mano en una advertencia de seguridad envejece
+    // solo, y el día que deje de coincidir la advertencia deja de tener peso.
+    // Si la consulta falla, la frase se dice sin número: sigue siendo cierta.
+    let couriers: number | null = null;
+    try {
+      const { count } = await crearClienteServiceRole()
+        .from("tenants")
+        .select("id", { count: "exact", head: true });
+      couriers = count ?? null;
+    } catch {
+      couriers = null;
+    }
+    return <PromptMfa actor={actor} couriers={couriers} />;
   }
 
   const esAdminTotal = actor.rolAdmin === "admin_total";
@@ -155,33 +171,66 @@ export default async function AdminLayout({ children }: { children: React.ReactN
  * cabecera del archivo). Es una superficie de seguridad: sobria, sin nav ni
  * distracciones, con una única salida siempre visible (cerrar sesión).
  */
-function PromptMfa({ actor }: { actor: ActorSuperAdmin }) {
+function PromptMfa({ actor, couriers }: { actor: ActorSuperAdmin; couriers: number | null }) {
   // `aalSiguiente === 'aal1'` (igual al actual) ⇒ no hay NINGÚN factor
   // enrolado todavía (falta enrolar). `aalSiguiente === 'aal2'` ⇒ ya hay un
   // factor verificado de una sesión anterior, falta el step-up de ESTA sesión.
   const sinFactorEnrolado = actor.aalSiguiente !== "aal2";
 
+  const alcance =
+    couriers && couriers > 0
+      ? `Tu credencial vale por ${couriers.toLocaleString("es-CL")} ${couriers === 1 ? "empresa" : "empresas"}.`
+      : "Tu credencial vale por todas las empresas del sistema.";
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-10">
-      <div className="w-full max-w-sm space-y-5 rounded-lg border bg-card p-8 shadow-sm">
+    <PantallaSinSesion marca={{ tipo: "rutax" }} distintivo={<DistintivoBackstage />}>
+      <div className="w-full max-w-sm space-y-5 border border-line bg-card p-8">
         <div className="space-y-2 text-center">
-          <ShieldAlert className="mx-auto size-9 text-primary" aria-hidden="true" />
-          <h1 className="font-semibold">Verificación en dos pasos requerida</h1>
-          <p className="text-sm text-muted-foreground">
+          {/* «Confirma que eres tú», no «Verificación en dos pasos requerida»:
+              lo segundo nombra el mecanismo, lo primero dice qué se va a hacer.
+              Quien llega acá ya sabe que hay un segundo paso — lo tiene delante. */}
+          <h1 className="font-heading text-lg font-semibold text-fg">
+            {sinFactorEnrolado ? "Configura tu segundo factor" : "Confirma que eres tú"}
+          </h1>
+          <p className="text-sm text-fg-muted">
             {sinFactorEnrolado
-              ? "El backstage de Rutax exige un segundo factor (MFA) para todas las cuentas de administrador. Configúralo para continuar."
-              : `${actor.email} tiene MFA configurado, pero esta sesión todavía no lo verificó.`}
+              ? "Antes de entrar necesitas una aplicación de autenticación. No se puede saltar ni desactivar."
+              : "Escribe el código de 6 dígitos de tu aplicación de autenticación."}
           </p>
         </div>
 
+        {/* ⚠️ El aviso explica **por qué** se pide, no que se pide. Es el único
+            perfil del producto cuya credencial abre la puerta de todos los
+            couriers a la vez, y eso es lo que justifica un paso más. */}
+        <p className="border border-attention-line bg-attention-bg px-3 py-2 text-xs leading-relaxed text-attention-fg">
+          {alcance} El segundo factor no se puede desactivar, y te lo vamos a volver a pedir antes
+          de entrar a la cuenta de un courier.
+        </p>
+
         {sinFactorEnrolado ? <PanelEnrolamientoTotp /> : <PanelStepUpTotp />}
 
+        {/* ⚠️ **No se ofrece «usa un código de respaldo»**, que es lo que dibuja
+            el tablero: los códigos de respaldo NO EXISTEN en el producto. Un
+            enlace ahí sería un botón muerto en la pantalla donde alguien ya está
+            bloqueado — el mismo defecto que se acaba de quitar de
+            `revisa-tu-correo`.
+            Lo que se dice es lo único cierto, y es una limitación real que hay
+            que resolver: hoy un administrador que pierde su teléfono no tiene
+            camino de vuelta por sí solo. */}
+        <p className="text-center text-xs leading-relaxed text-fg-subtle">
+          ¿Perdiste tu aplicación de autenticación? Todavía no hay códigos de respaldo: pídele a
+          otro administrador total que reponga tu segundo factor.
+        </p>
+
         <form action={cerrarSesionAdmin} className="text-center">
-          <button type="submit" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            type="submit"
+            className="text-xs text-fg-muted transition-colors hover:text-fg"
+          >
             Cerrar sesión
           </button>
         </form>
       </div>
-    </div>
+    </PantallaSinSesion>
   );
 }

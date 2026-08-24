@@ -1795,7 +1795,32 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       sabemos quién entra por esta puerta»—, así que el redirect a `/login` es correcto. El tablero
       se contradice consigo mismo y gana la regla, que es la que se puede cumplir. Queda escrito en
       el archivo, con la condición que lo reabriría: un subdominio o un enlace con el courier.
-- [ ] `/admin/login` — el formulario lo renderiza `admin/layout.tsx`, no la página. Con MFA/TOTP.
+- [x] **`/admin/login` y su segundo paso — HECHO (24-08). Cierra las 13 pantallas sin sesión.**
+      El formulario lo sigue renderizando `admin/layout.tsx` y no la página, y **está bien así**: la
+      protección es uniforme para todo `/admin/*`, no de una ruta.
+      · **Marca Rutax + distintivo `BACKSTAGE`** en ámbar con trama de 45°, el mismo recurso que el
+        modo de pruebas. No adorna: avisa de que **acá se ven datos de varias empresas**, que es la
+        única superficie del producto donde eso pasa. Va junto a la marca porque es una propiedad
+        de la puerta, no del formulario. `PantallaSinSesion` gana una ranura `distintivo`.
+      · **Columna centrada, sin lienzo**, como pide el tablero: el lienzo de marca es de la puerta
+        que abre nuestro cliente; en la del backstage no le habla a nadie. Y se retira la sombra
+        que tenían las dos pantallas (regla 4).
+      · **El copy explica por qué, no que.** Antes: «Este panel requiere tu cuenta de super-admin
+        (correo y contraseña + verificación en dos pasos)» — describe el mecanismo. Ahora dice lo
+        que no se ve: que esta credencial abre la puerta de todos los couriers a la vez.
+      · ⚠️ **La cifra del aviso se cuenta, no se copia.** El tablero dice «tu credencial vale por 27
+        empresas»; 27 era el dato del día del dibujo. Un número a mano en una advertencia de
+        seguridad envejece solo, y el día que deje de coincidir la advertencia pierde su peso. Se
+        consulta; si falla, la frase va sin número y sigue siendo cierta. **Verificado: dice «1
+        empresa», en singular, que es lo que hay en la base local.**
+      ⚠️ **NO se ofrece «usa un código de respaldo», que es lo que dibuja el tablero: no existen.**
+      Un enlace ahí sería un botón muerto en la pantalla donde alguien ya está bloqueado — el mismo
+      defecto que se acaba de quitar de `revisa-tu-correo`. Se dice lo único cierto: que hay que
+      pedirle a otro administrador total que reponga el factor.
+      🔴 **Y eso es una brecha operativa real, no solo de copy: hoy un administrador que pierde su
+      teléfono no tiene camino de vuelta por sí solo.** Con un único super-admin en la base, perder
+      ese teléfono deja el backstage inaccesible sin tocar la base a mano. Los códigos de respaldo
+      son trabajo pendiente de seguridad, no de esta pantalla.
 - [x] **`/registro` — ya usaba el marco** *(verificado 24-08; el checklist lo daba por
       pendiente)*.
 - [x] **`/registro/revisa-tu-correo` — HECHO (24-08), y tenía un enlace muerto.** Su única salida

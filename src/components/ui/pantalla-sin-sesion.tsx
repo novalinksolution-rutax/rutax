@@ -52,12 +52,20 @@ export type MarcaSinSesion =
 
 export function PantallaSinSesion({
   marca,
+  /**
+   * Un rótulo **junto a la marca**, no dentro del contenido. Hoy solo lo usa el
+   * backstage: su distintivo `BACKSTAGE` en ámbar no adorna, avisa de que **acá
+   * se ven datos de varias empresas**. Va arriba porque es una propiedad de la
+   * puerta, no del formulario que hay detrás.
+   */
+  distintivo,
   /** Nota bajo el contenido: enlaces legales, «¿problemas?», etc. */
   pie,
   className,
   children,
 }: {
   marca: MarcaSinSesion
+  distintivo?: React.ReactNode
   pie?: React.ReactNode
   className?: string
   children: React.ReactNode
@@ -77,8 +85,11 @@ export function PantallaSinSesion({
           en el sistema, y el manual es explícito — «sin logo del courier, el
           nombre de fantasía es el titular. No hay hueco, no hay caja vacía». El
           día que se pueda subir un logo, entra acá y nada más se mueve. */}
-      {marca.tipo === "rutax" ? (
-        <MarcaRutax version="reducida" />
+      {marca.tipo === "rutax" || distintivo ? (
+        <div className="flex items-center gap-2.5">
+          {marca.tipo === "rutax" ? <MarcaRutax version="reducida" /> : null}
+          {distintivo}
+        </div>
       ) : marca.tipo === "courier" ? (
         <p className="font-heading text-sm font-semibold tracking-[0.08em] text-fg-muted uppercase">
           {marca.nombre}

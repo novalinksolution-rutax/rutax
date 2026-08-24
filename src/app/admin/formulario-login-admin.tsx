@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
 import { iniciarSesionAdmin } from "./acciones-sesion";
+import { DistintivoBackstage } from "./distintivo-backstage";
 
 /**
  * Formulario de acceso al backstage — F3-A: correo + contraseña vía Supabase
@@ -45,17 +46,28 @@ export function FormularioLoginAdmin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
+    // ⚠️ **Columna centrada y sin lienzo**, a diferencia del login del
+    // backoffice: el lienzo de marca es de la puerta que abre nuestro cliente.
+    // Acá entramos nosotros, y una pieza de marca en la puerta del backstage no
+    // le habla a nadie.
+    //
+    // Y sin sombra (regla 4): la elevación es escalón de fondo más borde. La
+    // tenía, con `shadow-sm`.
+    <PantallaSinSesion marca={{ tipo: "rutax" }} distintivo={<DistintivoBackstage />}>
       <form
         onSubmit={handleSubmit}
         aria-busy={isPending}
-        className="w-full max-w-sm space-y-4 rounded-lg border bg-card p-8 shadow-sm"
+        className="w-full max-w-sm space-y-4 border border-line bg-card p-8"
       >
         <div className="space-y-2 text-center">
-          <Shield className="mx-auto size-9 text-primary" aria-hidden="true" />
-          <h1 className="font-semibold">Acceso restringido</h1>
-          <p className="text-sm text-muted-foreground">
-            Este panel requiere tu cuenta de super-admin de Rutax (correo y contraseña + verificación en dos pasos).
+          <h1 className="font-heading text-lg font-semibold text-fg">Entra al backstage</h1>
+          {/* ⚠️ Dice **por qué** se pide el segundo factor, no que se pide. Que
+              se pide ya se ve al pedirlo; lo que no se ve es que ésta es la
+              única credencial del producto que abre la puerta de todos los
+              couriers a la vez. */}
+          <p className="text-sm text-fg-muted">
+            Tu cuenta ve datos de todos los couriers, así que además del correo y la contraseña
+            vamos a pedirte tu segundo factor.
           </p>
         </div>
 
@@ -98,6 +110,6 @@ export function FormularioLoginAdmin() {
           {isPending ? "Verificando…" : "Entrar"}
         </Button>
       </form>
-    </div>
+    </PantallaSinSesion>
   );
 }
