@@ -57,6 +57,15 @@ export type FilaFinanciera =
        * fila, no un tooltip ni un dato de auditoría.
        */
       motivo?: string
+      /**
+       * Quién lo aplicó y cuándo, en la MISMA fila.
+       *
+       * El autor existía —vive en la bitácora— pero se pintaba arriba, en la
+       * cabecera, lejos del descuento que explica. Un «−$8.000» con su motivo
+       * pero sin firma se lee como una decisión del sistema; con el nombre al
+       * lado se lee como lo que es: alguien lo decidió y responde por él.
+       */
+      autor?: string
     }
   | { tipo: "total"; concepto: string; entregas?: number; monto: number }
 
@@ -148,7 +157,12 @@ function FilaTabla({ fila, rotulo }: { fila: FilaFinanciera; rotulo: "neto" | "b
         <td className="px-3 py-2 text-fg">
           {fila.concepto}
           {fila.motivo ? (
-            <span className="mt-0.5 block text-xs text-fg-muted">Motivo: {fila.motivo}</span>
+            <span className="mt-0.5 block text-xs text-fg-muted">
+              Motivo: {fila.motivo}
+              {fila.autor ? <span className="block">{fila.autor}</span> : null}
+            </span>
+          ) : fila.autor ? (
+            <span className="mt-0.5 block text-xs text-fg-muted">{fila.autor}</span>
           ) : null}
           {fila.causa ? (
             <>

@@ -519,15 +519,99 @@ es donde vive el manifiesto impreso.
 
 | Pantalla | Ruta | Veredicto |
 |---|---|---|
-| Períodos de cobro | `(tenant)/dinero/periodos` | **PANTALLA DISTINTA** |
-| Liquidaciones | `(tenant)/dinero/liquidaciones` | **PANTALLA DISTINTA** |
-| Detalle del período | `(tenant)/dinero/periodos/[periodoId]` | FALTA PIEZA |
-| Detalle de la liquidación | `(tenant)/dinero/liquidaciones/[liquidacionId]` | FALTA PIEZA |
+| Períodos de cobro | `(tenant)/dinero/periodos` | ✅ **HECHA** — 23-08, ver abajo |
+| Liquidaciones | `(tenant)/dinero/liquidaciones` | ✅ **HECHA** — 23-08, ver abajo |
+| Detalle del período | `(tenant)/dinero/periodos/[periodoId]` | ✅ **HECHA** — 23-08, ver abajo |
+| Detalle de la liquidación | `(tenant)/dinero/liquidaciones/[liquidacionId]` | ✅ **HECHA** — 23-08, ver abajo |
 | Cobranza | `(tenant)/dinero/cobranza` | **CONGELADA** — decisión 4 |
 
 **El hallazgo del bloque:** la selección múltiple no vive en la tabla en ninguno de los dos
 listados; es un panel-checklist paralelo. `BarraSeleccion` y `BarraCajones` están construidas y
 solo se usan desde `kitchen-sink`.
+
+
+### ✅ Dinero · las cuatro pantallas vivas · hecho el 23-08-2026
+
+**Una sola lista, en los dos listados.** Había DOS del mismo dato: la tabla, sin casillas, y el
+checklist del panel `AprobacionLote` encima — y la selección de una no tenía relación con la otra:
+se podía filtrar la tabla a un seller y facturar, desde el panel, períodos de otro. El panel se
+retiró; la ceremonia (peldaño 3, monto en el título, frase a escribir, preflight consolidado) se
+extrajo intacta a `CeremoniaLote` y ahora cuelga de la barra de selección. Selección en tres
+niveles: fila · página · conjunto filtrado.
+
+**`BarraCajones` gana un cajón TRANSVERSAL.** «Con problemas» y «Pago rechazado» **cruzan** los
+estados —un período facturado también puede tener problema; una liquidación con el pago rechazado
+sigue `emitida`—, así que sus filas ya están contadas a la izquierda. Meterlos entre los demás daba
+«35 en los grupos de arriba» sobre 27 filas. Van tras el separador, no suman, y la barra lo declara.
+Es distinto del `excluido`, que está FUERA de los grupos.
+
+🐞 **Cuatro defectos que no eran de diseño:**
+
+1. **La pantalla de liquidaciones nunca mostró un pago en curso.** Dos errores apilados en la misma
+   consulta, cada uno suficiente: ordenaba por `created_at` (la columna es `creado_en`) y filtraba
+   por un estado `'procesando'` que **no existe** en el enum `estado_payout`. PostgREST rechazaba
+   las dos cosas, el error se descartaba al desestructurar, y el mapa de payouts quedaba vacío
+   siempre. «Pago en proceso», «Pago confirmado» y el rechazo del banco no aparecieron nunca — y un
+   pago en tránsito invisible se ve igual que uno que no existe, así que se podía transferir dos
+   veces. El `'procesando'` fantasma venía de `ejecutar-payout.ts`, donde era una comparación
+   muerta; se retiró de ahí también, porque es de donde se copió.
+2. **El cajón «Con problemas» de períodos contaba y al pulsarlo limpiaba los filtros** — su `href`
+   era la ruta pelada. Y contaba solo los DTE rechazados por el SII, no las excepciones que impiden
+   emitir.
+3. **La fila bloqueada no existía.** Un período cerrado con una excepción de conciliación no se
+   puede emitir, y eso se descubría recién en el preflight: con la ceremonia abierta y el monto ya
+   escrito en el título.
+4. **El detalle del período mostraba DOS totales distintos del mismo período** — «$13.566» en la
+   cifra grande (de `monto_total_clp`) y «$11.400» en el total de la tabla (suma de las líneas).
+   Manda el de las líneas: es el que va a la factura y el que ya excluye las anuladas. Si el
+   guardado quedó viejo, se dice, porque es el que muestra el listado.
+
+⚠️ **El bloqueo de la fila espeja EXACTAMENTE a `bloqueaFacturacion`, y eso es más ancho de lo que
+parece.** Dos cosas se copian y no se simplifican: el estado no es `pendiente` sino los cuatro NO
+terminales, y el vínculo es `periodo_cobro_id = X` **OR** `seller_id = Y` — una excepción que nombra
+un período **trae su `seller_id` igual**, así que bloquea todos los períodos de ese seller. La
+primera versión contaba «la del período o la del seller, sin duplicar», dejó tres filas
+seleccionables, y el preflight las rechazó las tres con la ceremonia abierta. Visto en pantalla.
+
+**Los impuestos se conservan, rotulados** (decisión del usuario). La regla 22 dice que Rutax no
+muestra impuestos, y sigue: significa que Rutax no CALCULA un IVA para mostrarlo. `Neto · IVA ·
+Total` del DTE emitido y `Bruto · Retención · Líquido` del payout son cifras de documentos que ya
+existen —las declaró el proveedor DTE ante el SII, o se le retuvo al conductor en su boleta— y el
+courier las necesita para cuadrar. Van bajo un rótulo que dice de dónde salen: «Según el documento
+emitido», «Lo que se transfirió». Y la ceremonia del lote también rotula: su monto es el **total con
+IVA**, distinto del **neto** que muestra la barra de selección de la que viene.
+
+**Lo demás del delta, por pantalla:**
+
+- **Períodos:** cinco columnas con `SELLER Y PERÍODO` fusionado y su RUT, rótulo `NETO`, bajada de
+  contexto que dice lo que va a pasar solo («2 períodos vencieron y cierran en la próxima pasada» —
+  el tablero decía «cierre sugerido», pero no hay nada que sugerir: el cron cierra a las 02:00).
+- **Detalle del período:** rótulo `TOTAL NETO A FACTURAR` con su composición a la vista (vivía solo
+  dentro del modal de emisión), bloques `QUÉ VE EL SELLER` —seis pruebas, y la primera frase es la
+  que sorprende: **el seller ya ve el período abierto**— y `BITÁCORA`, exportación a CSV con `;` y
+  BOM para Excel en español, RUT y autor del cierre, la causa del ajuste nombrada por el código del
+  pedido, y el estado de falla de lectura que ya no se disfraza de «período vacío».
+- **Liquidaciones:** columnas `COMPOSICIÓN` («N entregas · N visitas» — al conductor se le paga por
+  las dos cosas desde la etapa 8, y el listado contaba solo entregas) y `AJUSTES (NETO)`, que sale
+  de la celda del monto para poder compararse entre filas. Indicador de banco que dice qué pasa si
+  sigues: «los pagos no salen del banco todavía».
+- **Detalle de la liquidación:** rótulo `NETO A PAGAR` con su resta, el **autor del ajuste dentro de
+  su fila** —estaba, pero a media pantalla del «−$8.000» que explica—, y el ajuste manual y el pago
+  traídos a esta pantalla: vivían solo en el listado, o sea que había que volver a la lista para
+  actuar sobre lo que se acababa de leer.
+
+**Dos cosas que se vieron solo en pantalla:** `BloqueComposicion` con un único sumando escribía
+«4.200 entregas», que es el mismo número de arriba con una palabra al lado — ahora no se dibuja bajo
+dos términos. Y el total de la liquidación decía «Neto a pagar (neto)», porque `TablaFinanciera` le
+agrega su rótulo al concepto.
+
+**Queda anotado:** el motivo del rechazo bancario **no se traduce**. `payouts_conductor` guarda el
+texto crudo del proveedor y **no un código**; adivinar la causa sobre una cadena que el proveedor
+puede cambiar sin avisar mostraría un motivo equivocado sobre una transferencia que no salió.
+Traducirlo de verdad exige que el adaptador persista un código — trabajo de integración, no de
+pantalla. Y la fila «Mínimo de facturación no alcanzado» que el tablero dibuja en la tabla
+financiera **no existe como línea**: el motor la detecta como excepción de conciliación
+(`minimo_omitido`) y nunca agrega un cargo, así que dibujarla inventaría plata.
 
 ## B3 · Configuración y puesta en marcha · 12 pantallas
 

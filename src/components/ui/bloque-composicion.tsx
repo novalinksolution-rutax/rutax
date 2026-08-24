@@ -38,7 +38,10 @@ export function BloqueComposicion({
   sumandos: SumandoComposicion[]
   className?: string
 }) {
-  if (sumandos.length === 0) return null
+  // Con un solo sumando no hay resta que mostrar: sale «4.200 entregas», que es
+  // el mismo número de arriba con una palabra al lado. Visto en pantalla, en el
+  // detalle de una liquidación sin ajustes ni visitas.
+  if (sumandos.length < 2) return null
 
   return (
     <p

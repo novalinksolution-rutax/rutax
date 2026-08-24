@@ -34,10 +34,15 @@ import { referenciaLineaLiquidacion } from "@/lib/ui/referencia-linea-liquidacio
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { BotonDescargaPdfLiquidacion } from "../boton-descarga-pdf-liquidacion";
-import { formatearFechaHora as formatearFechaHoraCl } from "@/lib/formato-cl";
+import { formatearFechaHora as formatearFechaHoraCl, formatearFecha } from "@/lib/formato-cl";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { TablaFinanciera } from "@/components/ui/tabla-financiera";
 import { agruparLiquidacion } from "@/modules/dinero/agrupacion-liquidacion";
+import { BloqueComposicion } from "@/components/ui/bloque-composicion";
+import { etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
+import { DialogAjustarLiquidacion } from "../dialog-ajustar";
+import { DialogEmitirPago } from "../dialog-emitir-pago";
+import { DialogMarcarPagada } from "../dialog-marcar-pagada";
 
 export const metadata: Metadata = {
   title: "Detalle de liquidación",
@@ -82,6 +87,8 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
   let liquidacion;
   let payout: PayoutConductor | null = null;
   let conductorNombre = "—";
+  let conductorRut: string | null = null;
+  let conductorRelacion: string | null = null;
   let errorCarga = false;
 
   try {
@@ -91,13 +98,18 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
     const [{ data: conductorData }, payoutData] = await Promise.all([
       cliente
         .from("conductores")
-        .select("nombre_completo")
+        .select("nombre_completo, rut, tipo_relacion")
         .eq("id", liquidacion.driverId)
         .eq("tenant_id", tenantId)
         .maybeSingle(),
       obtenerPayoutPorLiquidacion(cliente, tenantId, liquidacionId),
     ]);
     conductorNombre = (conductorData?.nombre_completo as string) ?? liquidacion.driverId;
+    // RUT y régimen: el régimen decide si hay retención y qué documento
+    // respalda el pago (boleta de honorarios o liquidación de sueldo). Sin
+    // ellos hay que salir a la ficha del conductor para saber qué se firma.
+    conductorRut = (conductorData?.rut as string | null) ?? null;
+    conductorRelacion = (conductorData?.tipo_relacion as string | null) ?? null;
     payout = payoutData;
   } catch (error) {
     // `redirect()` (arriba, cuando la liquidación no existe o es de otro
@@ -111,13 +123,25 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
     errorCarga = true;
   }
 
+  // ⚠️ FALLA DE LECTURA. Sin la liquidación no hay cabecera ni neto que
+  // conservar, así que reemplazar la pantalla es correcto; lo que cambia es el
+  // texto: dice qué NO hacer. Emitir un pago sobre un neto que no se pudo leer
+  // es la única forma de perder plata desde esta pantalla.
   if (errorCarga || !liquidacion) {
     return (
-      <div
-        role="alert"
-        className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
-      >
-        No se pudo cargar la liquidación. Intenta recargar la página.
+      <div className="space-y-4">
+        <Retorno
+          href={destinoRetorno("/dinero/liquidaciones", volver)}
+          etiqueta="Volver a liquidaciones"
+        />
+        <div
+          role="alert"
+          className="border border-fault-line bg-fault-bg px-4 py-3.5 text-sm leading-relaxed text-fault-fg"
+        >
+          <strong className="font-medium">No se pudo leer esta liquidación.</strong> Existe y
+          puede tener líneas: esta pantalla no las está viendo. No emitas el pago ni la marques
+          como pagada hasta poder verlas — recarga en unos segundos.
+        </div>
       </div>
     );
   }
@@ -145,6 +169,21 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
       ? liquidacion.montoTotalClp + liquidacion.bonoClp - liquidacion.penalizacionClp
       : null;
 
+  // La firma del ajuste, para ponerla dentro de su fila. Sale de la bitácora
+  // —`dinero.liquidaciones` guarda el motivo y no el autor, y eso está bien: la
+  // bitácora es el registro, la tabla es el estado.
+  // La bitácora completa de la liquidación. Esta pantalla ahora ofrece emitir
+  // el pago —irreversible desde acá— y ajustar el monto, así que muestra su
+  // registro, igual que el detalle del período y el del manifiesto.
+  const bitacora = await obtenerTrazabilidad(cliente, tenantId, "liquidacion", liquidacionId, {
+    limite: 8,
+  }).catch(() => []);
+
+  const hechoAjuste = hechosAjuste[0];
+  const firmaDelAjuste = hechoAjuste
+    ? `Aplicó ${hechoAjuste.autorNombre ?? "Rutax"} el ${formatearFecha(hechoAjuste.cuando)}`
+    : null;
+
   return (
     <div className="space-y-6">
       {/* Una sola salida: antes había migas Y un «Volver» debajo, al mismo
@@ -155,39 +194,56 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
       <section>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              <Link
-                href={`/conductores/${liquidacion.driverId}`}
-                className="font-medium text-foreground hover:underline"
-              >
+            <h1 className="font-heading text-2xl font-semibold">
+              <Link href={`/conductores/${liquidacion.driverId}`} className="hover:underline">
                 {conductorNombre}
               </Link>
-            </p>
-            <p className="text-base text-muted-foreground">
-              {formatearFechaCorta(liquidacion.fechaInicio)} – {formatearFechaCorta(liquidacion.fechaFin)}
+            </h1>
+            <p className="rx-num text-xs text-fg-muted">
+              {etiquetaPeriodo(liquidacion.fechaInicio, liquidacion.fechaFin)}
+              {conductorRut ? ` · ${conductorRut}` : ""}
+              {conductorRelacion
+                ? ` · ${conductorRelacion}${
+                    conductorRelacion === "independiente" ? " · boleta de honorarios" : ""
+                  }`
+                : ""}
             </p>
             <BadgeEstado variante={BADGE_ESTADO_LIQUIDACION[liquidacion.estado]} eje="liquidacion" valor={liquidacion.estado} texto={traducirEstadoLiquidacion(liquidacion.estado)} />
-            <p className="text-3xl font-semibold tabular-nums">{formatearCLPOGuion(montoConAjustes)}</p>
-            {(liquidacion.bonoClp > 0 || liquidacion.penalizacionClp > 0) && (
-              <p className="text-sm text-muted-foreground">
-                Base: <span className="font-medium tabular-nums">{formatearCLPOGuion(liquidacion.montoTotalClp)}</span>
-                {liquidacion.bonoClp > 0 && (
-                  <>
-                    {" "}
-                    · Bono: <span className="font-medium tabular-nums text-success">+{formatearCLP(liquidacion.bonoClp)}</span>
-                  </>
-                )}
-                {liquidacion.penalizacionClp > 0 && (
-                  <>
-                    {" "}
-                    · Penalización:{" "}
-                    <span className="font-medium tabular-nums text-destructive">
-                      −{formatearCLP(liquidacion.penalizacionClp)}
-                    </span>
-                  </>
-                )}
+
+            {/* ⚠️ LA CIFRA VA ROTULADA (regla 18). Era un número pelado de 3xl,
+                y más abajo la misma pantalla muestra el monto BRUTO del payout:
+                dos cifras grandes distintas para la misma liquidación, ninguna
+                diciendo cuál es cuál. */}
+            <div className="pt-1">
+              <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
+                Neto a pagar
               </p>
-            )}
+              <p className="rx-num text-3xl font-semibold">
+                {formatearCLPOGuion(montoConAjustes)}
+              </p>
+              {/* Regla 21: la resta a la vista. Antes el desglose iba en prosa
+                  —«Base: X · Bono: +Y»— que no se alinea ni se compara. */}
+              {liquidacion.bonoClp > 0 || liquidacion.penalizacionClp > 0 ? (
+                <BloqueComposicion
+                  className="mt-1"
+                  sumandos={[
+                    { concepto: "base", monto: liquidacion.montoTotalClp ?? 0 },
+                    ...(liquidacion.bonoClp > 0
+                      ? [{ concepto: "bono", monto: liquidacion.bonoClp }]
+                      : []),
+                    ...(liquidacion.penalizacionClp > 0
+                      ? [
+                          {
+                            concepto: "penalización",
+                            monto: liquidacion.penalizacionClp,
+                            resta: true,
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
+              ) : null}
+            </div>
             {/* ⚠️ Acá había una cita suelta: el motivo del ajuste, sin autor y
                 sin fecha. Un descuento de $8.000 en la liquidación de un
                 conductor con un texto que no dice **quién** lo aplicó ni
@@ -195,22 +251,59 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
                 autor sí existe, solo que en la bitácora.
                 `dinero.liquidaciones` guarda `nota_ajuste` y no el autor, y eso
                 está bien: la bitácora es el registro, la tabla es el estado. */}
-            {hechosAjuste.length > 0 ? (
-              <BloqueTrazabilidad hechos={hechosAjuste} forma="por fila" />
-            ) : liquidacion.notaAjuste ? (
-              // Respaldo para los ajustes anteriores a que esto se registrara
-              // con autor. Se muestra igual: perder el motivo sería peor.
-              <p className="text-sm text-muted-foreground italic">
-                &ldquo;{liquidacion.notaAjuste}&rdquo;
-              </p>
-            ) : null}
+            {/* El motivo y su autor ya NO van acá: bajaron a la fila del ajuste
+                en la tabla, que es donde está el «−$8.000» que explican. Acá
+                quedaban a media pantalla de distancia de la cifra. */}
           </div>
 
-          {liquidacion.pdfRef && (
-            <div className="shrink-0">
-              <BotonDescargaPdfLiquidacion pdfRef={liquidacion.pdfRef} />
-            </div>
-          )}
+          {/* --- Lo que se puede hacer con esta liquidación ------------------
+              El ajuste manual y el pago vivían SOLO en el listado. Acá es donde
+              se lee el descuento que se está discutiendo y la composición del
+              neto: tener que volver a la lista para actuar sobre lo que se
+              acaba de leer es la separación exacta que hay que cerrar. */}
+          <div className="flex shrink-0 flex-col items-stretch gap-2 sm:w-56">
+            <p className="text-[10px] font-medium tracking-[0.12em] text-fg-muted uppercase">
+              {liquidacion.estado === "borrador" ? "Ajuste" : "Pago"}
+            </p>
+
+            {liquidacion.estado === "borrador" ? (
+              <DialogAjustarLiquidacion
+                liquidacionId={liquidacion.id}
+                montoBaseClp={liquidacion.montoTotalClp ?? 0}
+                bonoActual={liquidacion.bonoClp}
+                penalizacionActual={liquidacion.penalizacionClp}
+                notaActual={liquidacion.notaAjuste}
+              />
+            ) : null}
+
+            {liquidacion.estado === "emitida" &&
+            !(
+              payout &&
+              (payout.estado === "pendiente" ||
+                payout.estado === "enviado" ||
+                payout.estado === "confirmado")
+            ) ? (
+              <>
+                <DialogEmitirPago
+                  autorNombre={sesion.nombreCompleto ?? "Tu cuenta"}
+                  liquidacionId={liquidacion.id}
+                  conductorNombre={conductorNombre}
+                  fechaInicio={liquidacion.fechaInicio}
+                  fechaFin={liquidacion.fechaFin}
+                  montoTotalClp={liquidacion.montoTotalClp}
+                />
+                <DialogMarcarPagada
+                  liquidacionId={liquidacion.id}
+                  conductorNombre={conductorNombre}
+                  fechaInicio={liquidacion.fechaInicio}
+                  fechaFin={liquidacion.fechaFin}
+                  montoTotalClp={liquidacion.montoTotalClp}
+                />
+              </>
+            ) : null}
+
+            {liquidacion.pdfRef && <BotonDescargaPdfLiquidacion pdfRef={liquidacion.pdfRef} />}
+          </div>
         </div>
       </section>
 
@@ -228,24 +321,43 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
             <div className="space-y-2">
               <BadgeEstado variante={BADGE_ESTADO_PAYOUT[payout.estado]} eje="payout" valor={payout.estado} texto={traducirEstadoPayout(payout.estado)} />
 
-              <div className="flex flex-wrap gap-6 pt-1">
-                <div>
-                  <p className="text-xs text-muted-foreground">Monto bruto</p>
-                  <p className="text-sm font-semibold tabular-nums">{formatearCLP(payout.montoBrutoClp)}</p>
-                </div>
-                {payout.montoRetencionClp > 0 && (
+              {/* ⚠️ ACÁ SÍ HAY UNA CIFRA BRUTA, Y VA ROTULADA. La regla 18 pide
+                  una sola cifra por pantalla y, si hiciera falta una bruta, que
+                  vaya rotulada con su propio desglose: es justo este caso. No
+                  es un impuesto que calcule Rutax — es la retención que se le
+                  aplicó a la boleta del conductor, y el courier la necesita para
+                  cuadrar. Decisión del usuario, 23-08. */}
+              <div className="pt-1">
+                <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
+                  Lo que se transfirió
+                </p>
+                <div className="mt-1 flex flex-wrap gap-6">
                   <div>
-                    <p className="text-xs text-muted-foreground">Retención</p>
-                    <p className="text-sm font-semibold tabular-nums">{formatearCLP(payout.montoRetencionClp)}</p>
+                    <p className="text-xs text-fg-muted">Bruto</p>
+                    <p className="rx-num text-sm font-semibold">
+                      {formatearCLP(payout.montoBrutoClp)}
+                    </p>
                   </div>
-                )}
-                <div>
-                  <p className="text-xs text-muted-foreground">Monto líquido</p>
-                  <p className="text-sm font-bold tabular-nums">{formatearCLP(payout.montoLiquidoClp)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Método</p>
-                  <p className="text-sm font-semibold">{TEXTO_METODO_PAYOUT[payout.metodo] ?? payout.metodo}</p>
+                  {payout.montoRetencionClp > 0 && (
+                    <div>
+                      <p className="text-xs text-fg-muted">Retención</p>
+                      <p className="rx-num text-sm font-semibold">
+                        −{formatearCLP(payout.montoRetencionClp)}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-fg-muted">Líquido a la cuenta</p>
+                    <p className="rx-num text-sm font-bold">
+                      {formatearCLP(payout.montoLiquidoClp)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-fg-muted">Método</p>
+                    <p className="text-sm font-semibold">
+                      {TEXTO_METODO_PAYOUT[payout.metodo] ?? payout.metodo}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -352,17 +464,49 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
                   monto: aj.monto,
                   // El motivo lo lee el conductor, en su liquidación y en su PDF.
                   motivo: aj.motivo,
+                  // Y la firma va EN LA FILA, no en la cabecera. Un «−$8.000»
+                  // con motivo pero sin autor se lee como una decisión del
+                  // sistema; con el nombre al lado, como lo que es.
+                  autor: firmaDelAjuste ?? undefined,
                 })),
                 {
                   tipo: "total" as const,
-                  concepto: "Neto a pagar",
+                  // «Total a pagar» y no «Neto a pagar»: `TablaFinanciera` le
+                  // agrega su rótulo al concepto, y quedaba «Neto a pagar
+                  // (neto)». Visto en pantalla.
+                  concepto: "Total a pagar",
                   entregas: agrupacion.cantidadEntregas + agrupacion.cantidadVisitas,
                   monto: agrupacion.neto,
                 },
               ]}
             />
           </div>
-        ) : (
+        ) : null}
+
+        {/* La resta completa bajo la tabla: entregas + visitas ± ajustes = neto.
+            La tabla la muestra en filas; esto la muestra como una línea que se
+            puede leer de un vistazo y copiar en un correo — que es lo que hoy se
+            hace a mano en una planilla. */}
+        {!verUnaPorUna && lineas.length > 0 ? (
+          <BloqueComposicion
+            className="mt-2"
+            sumandos={[
+              ...(agrupacion.cantidadEntregas > 0
+                ? [{ concepto: "entregas", monto: agrupacion.subtotalEntregas }]
+                : []),
+              ...(agrupacion.cantidadVisitas > 0
+                ? [{ concepto: "visitas", monto: agrupacion.subtotalVisitas }]
+                : []),
+              ...agrupacion.ajustes.map((aj) => ({
+                concepto: aj.concepto.toLowerCase(),
+                monto: Math.abs(aj.monto),
+                resta: aj.monto < 0,
+              })),
+            ]}
+          />
+        ) : null}
+
+        {verUnaPorUna && lineas.length > 0 ? (
           <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label="Líneas de liquidación">
@@ -396,7 +540,21 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
               </table>
             </div>
           </div>
-        )}
+        ) : null}
+      </section>
+
+      {/* Sección D — Bitácora */}
+      <section aria-labelledby="bitacora-titulo" className="space-y-2 border-t border-line pt-4">
+        <h2
+          id="bitacora-titulo"
+          className="text-[10px] font-medium tracking-[0.12em] text-fg-muted uppercase"
+        >
+          Bitácora
+        </h2>
+        <BloqueTrazabilidad
+          hechos={bitacora}
+          vacio="Todavía no hay movimientos registrados en esta liquidación."
+        />
       </section>
     </div>
   );
