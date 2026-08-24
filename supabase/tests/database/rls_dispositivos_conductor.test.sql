@@ -2,7 +2,7 @@
 -- Deny-all + confidencialidad del token — dispositivos_conductor
 -- =============================================================================
 -- Migración probada:
---   20260824000001_identidad_dispositivos_conductor.sql
+--   20260824000002_identidad_dispositivos_conductor.sql
 --
 -- La tabla guarda el token de notificación de cada instalación de la app del
 -- conductor. Con el token de alguien se le puede mandar una notificación falsa:
