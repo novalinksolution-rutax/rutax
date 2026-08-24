@@ -6,6 +6,10 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarUsuariosYRoles, puedeInvitarUsuarios, puedeRevocarInvitaciones } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
 import { obtenerEstadoEquipo } from "./actions";
+import {
+  PantallaConfiguracion,
+  SinPermisoConfiguracion,
+} from "../configuracion/_componentes/pantalla-configuracion";
 import { PanelEquipo } from "./panel-equipo";
 
 export const metadata: Metadata = {
@@ -29,40 +33,41 @@ export default async function PaginaEquipo() {
 
   if (!puedeGestionarUsuariosYRoles(sesion.usuario)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
-        <ShieldAlert className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="space-y-1">
-          <p className="font-medium text-foreground">No tienes permiso para ver esta sección</p>
-          <p className="text-sm text-muted-foreground">
-            La gestión de usuarios y roles solo la pueden ver el dueño de la cuenta o administración.
-          </p>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/onboarding">Volver al panel de activación</Link>
-        </Button>
-      </div>
+      <SinPermisoConfiguracion frase="El equipo y sus roles solo los pueden ver y cambiar el dueño de la cuenta o administración." />
     );
   }
 
   const resultado = await obtenerEstadoEquipo();
 
+  // El recuento en la cabecera: cuánta gente tiene acceso y cuántas invitaciones
+  // siguen sin aceptarse. Es lo que se viene a mirar, y estaba solo dentro de la
+  // tabla.
+  const personas = resultado.ok ? resultado.estado.usuarios.length : null;
+  const pendientes = resultado.ok
+    ? resultado.estado.invitaciones.filter((i) => i.estado === "pendiente").length
+    : 0;
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Equipo</h1>
-          <p className="text-sm text-muted-foreground">
-            Quién tiene acceso a tu cuenta, con qué rol, y qué invitaciones siguen pendientes.
-          </p>
-        </div>
-      </div>
+    <PantallaConfiguracion
+      titulo="Equipo"
+      bajada={
+        personas === null
+          ? "Quién tiene acceso a tu cuenta, con qué rol, y qué invitaciones siguen pendientes."
+          : `${personas} ${personas === 1 ? "persona" : "personas"} con acceso${
+              pendientes > 0
+                ? ` · ${pendientes} ${pendientes === 1 ? "invitación pendiente" : "invitaciones pendientes"}`
+                : ""
+            }.`
+      }
+    >
 
       <PanelEquipo
         estadoInicial={resultado.ok ? resultado.estado : null}
         errorInicial={resultado.ok ? null : resultado.mensaje}
         puedeInvitar={puedeInvitarUsuarios(sesion.usuario)}
         puedeRevocar={puedeRevocarInvitaciones(sesion.usuario)}
+        puedeGestionar={puedeGestionarUsuariosYRoles(sesion.usuario)}
       />
-    </div>
+    </PantallaConfiguracion>
   );
 }

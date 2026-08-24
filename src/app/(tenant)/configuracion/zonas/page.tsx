@@ -6,6 +6,10 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarTarifas } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
 import { obtenerEstadoZonas } from "./actions";
+import {
+  PantallaConfiguracion,
+  SinPermisoConfiguracion,
+} from "../_componentes/pantalla-configuracion";
 import { PanelZonas } from "./panel-zonas";
 
 export const metadata: Metadata = {
@@ -31,18 +35,7 @@ export default async function PaginaZonasYCortes() {
 
   if (!puedeGestionarTarifas(sesion.usuario)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
-        <ShieldAlert className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="space-y-1">
-          <p className="font-medium text-foreground">No tienes permiso para ver esta sección</p>
-          <p className="text-sm text-muted-foreground">
-            La configuración de zonas y horarios de corte es exclusiva del dueño o administración.
-          </p>
-        </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/dashboard">Volver al dashboard</Link>
-        </Button>
-      </div>
+      <SinPermisoConfiguracion frase="Las zonas y los horarios de corte solo los pueden ver y cambiar el dueño de la cuenta o administración." />
     );
   }
 
@@ -64,19 +57,11 @@ export default async function PaginaZonasYCortes() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="space-y-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-          Zonas y horarios de corte
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Define las zonas de cobertura, asigna las comunas de la RM y configura el horario de corte
-          y el objetivo de SLA por seller. El sistema usará esta configuración para calcular si un
-          pedido same-day se comprometió a tiempo.
-        </p>
-      </div>
-
+    <PantallaConfiguracion
+      titulo="Zonas y horarios de corte"
+      bajada="Cómo agrupas las comunas de la RM y a qué hora cierra cada seller. De acá sale el cálculo de si una entrega same-day llegó a tiempo."
+    >
       <PanelZonas estadoInicial={resultado.datos} />
-    </div>
+    </PantallaConfiguracion>
   );
 }

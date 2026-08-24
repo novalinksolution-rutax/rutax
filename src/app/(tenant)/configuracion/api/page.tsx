@@ -5,6 +5,10 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarTarifas } from "@/modules/identidad/capacidades";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  PantallaConfiguracion,
+  SinPermisoConfiguracion,
+} from "../_componentes/pantalla-configuracion";
 import { PanelApiKeys, type ApiKeyRow } from "./panel-api-keys";
 import { PanelWebhooks, type WebhookEndpointRow } from "./panel-webhooks";
 
@@ -18,15 +22,7 @@ export default async function PaginaApiIntegraciones() {
 
   if (!puedeGestionarTarifas(sesion.usuario)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
-        <ShieldAlert className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="space-y-1">
-          <p className="font-medium text-foreground">Sin permiso para ver esta sección</p>
-          <p className="text-sm text-muted-foreground">
-            La gestión de API keys y webhooks es exclusiva del dueño o administración.
-          </p>
-        </div>
-      </div>
+      <SinPermisoConfiguracion frase="Las claves de API y los webhooks solo los pueden ver y cambiar el dueño de la cuenta o administración." />
     );
   }
 
@@ -68,13 +64,13 @@ export default async function PaginaApiIntegraciones() {
   }));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">API e Integraciones</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Gestiona las credenciales y notificaciones para conectar sistemas externos a Rutax.
-        </p>
-      </div>
+    /* El nombre se homologa con el de la navegación y el del tablero:
+       «Integraciones». La ruta sigue siendo `/configuracion/api` —cambiarla
+       rompería enlaces guardados— pero el título ya no es un tercer nombre. */
+    <PantallaConfiguracion
+      titulo="Integraciones"
+      bajada="Las credenciales y los avisos con que conectas tus propios sistemas a Rutax."
+    >
 
       <Tabs defaultValue="api-keys">
         <TabsList>
@@ -104,6 +100,6 @@ export default async function PaginaApiIntegraciones() {
           <PanelWebhooks endpoints={endpoints} />
         </TabsContent>
       </Tabs>
-    </div>
+    </PantallaConfiguracion>
   );
 }

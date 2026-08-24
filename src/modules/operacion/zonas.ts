@@ -325,3 +325,67 @@ export async function resolverZona(
 
   return (data as string | null) ?? null;
 }
+
+// =============================================================================
+// renombrarZona
+// =============================================================================
+
+/**
+ * Cambia el nombre de una zona.
+ *
+ * -----------------------------------------------------------------------------
+ * POR QUÉ FALTABA Y POR QUÉ IMPORTA
+ * -----------------------------------------------------------------------------
+ * Una zona se podía crear y desactivar, pero **no renombrar**. El courier que
+ * escribía «Nororiente» y después quería «Zona 1 · Nororiente» no tenía salida:
+ * o vivía con el nombre, o desactivaba la zona —perdiendo sus comunas de la
+ * vista, porque las secciones filtran las inactivas— y creaba otra a mano.
+ *
+ * No se toca `activa` acá: renombrar y desactivar son dos cosas distintas y
+ * mezclarlas en una función haría que un rename accidental apagara una zona.
+ */
+export async function renombrarZona(
+  cliente: SupabaseClient,
+  tenantId: string,
+  zonaId: string,
+  nombre: string,
+  actorUsuarioId: string,
+  actor: UsuarioActual,
+): Promise<Zona> {
+  if (!puedeGestionarTarifas(actor)) {
+    throw new ErrorValidacion('El usuario no tiene capacidad para gestionar zonas');
+  }
+
+  const limpio = nombre.trim();
+  if (limpio.length < 2) {
+    throw new ErrorValidacion('El nombre de la zona debe tener al menos 2 caracteres');
+  }
+
+  await registrarEnBitacora(cliente, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: 'zona.renombrada',
+    entidadTipo: 'zona',
+    entidadId: zonaId,
+    detalle: { nombre: limpio },
+  });
+
+  const { data, error } = await cliente
+    .schema('identidad')
+    .from('zonas')
+    .update({ nombre: limpio })
+    .eq('id', zonaId)
+    .eq('tenant_id', tenantId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Error al renombrar zona: ${error.message}`);
+  }
+  if (!data) {
+    throw new ErrorValidacion(`Zona ${zonaId} no encontrada en el tenant`);
+  }
+
+  return filaAZona(data);
+}

@@ -26,6 +26,7 @@ import {
   type EstadoSeller,
 } from "@/lib/ui/traduccion-estados";
 import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
+import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 import { BotonCopiarInvitacion } from "./boton-copiar-invitacion";
 import { ControlSincronizarMl, type ConexionMlResumen } from "./control-sincronizar-ml";
 
@@ -251,7 +252,17 @@ export default async function PaginaSellers() {
             <TableBody>
               {sellers.map((seller) => (
                 <TableRow key={seller.id}>
-                  <TableCell className="px-4 font-medium">{seller.razonSocial}</TableCell>
+                  {/* 🐞 El listado era TERMINAL: ninguna fila navegaba a
+                      ninguna parte, aunque el seller es uno de los objetos
+                      centrales del dominio. Ahora el nombre abre su ficha. */}
+                  <TableCell className="px-4 font-medium">
+                    <EnlaceDetalle
+                      href={`/sellers/${seller.id}`}
+                      className="hover:underline"
+                    >
+                      {seller.razonSocial}
+                    </EnlaceDetalle>
+                  </TableCell>
                   <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums sm:table-cell">
                     {seller.rut}
                   </TableCell>

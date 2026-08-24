@@ -620,15 +620,95 @@ financiera **no existe como línea**: el motor la detecta como excepción de con
 | El asistente | `(tenant)/onboarding` | ✅ **HECHA** — 23-08, ver abajo |
 | Final del asistente · «Ya puedes operar» | `(tenant)/onboarding/listo` | ✅ **HECHA** — 23-08, ver abajo |
 | El cuerpo del paso · DTE, folios, tarifas, cobranza | `(tenant)/onboarding/*` | ✅ **HECHA** — 23-08, ver abajo |
-| Tarifas | `(tenant)/configuracion/tarifas` | FALTA PIEZA |
-| Zonas y ventanas de corte | `(tenant)/configuracion/zonas` | FALTA PIEZA |
-| Bodegas | `(tenant)/configuracion/bodegas` | FALTA PIEZA |
-| Equipo | `(tenant)/equipo` | FALTA PIEZA |
-| Exportar datos | `(tenant)/configuracion/exportar-datos` | FALTA PIEZA |
-| Sellers | `(tenant)/sellers` | FALTA PIEZA |
-| Retiro | `(tenant)/configuracion/retiro` | IGUAL |
-| Integraciones | `(tenant)/configuracion/api` | IGUAL |
-| Mi plan | `(tenant)/configuracion/plan` | IGUAL |
+| Tarifas | `(tenant)/configuracion/tarifas` | ⚠️ **PARCIAL** — 23-08, ver abajo |
+| Zonas y ventanas de corte | `(tenant)/configuracion/zonas` | ✅ **HECHA** — 23-08, ver abajo |
+| Bodegas | `(tenant)/configuracion/bodegas` | ⚠️ **PARCIAL** — 23-08, ver abajo |
+| Equipo | `(tenant)/equipo` | ✅ **HECHA** — 23-08, ver abajo |
+| Exportar datos | `(tenant)/configuracion/exportar-datos` | ✅ **HECHA** — 23-08, ver abajo |
+| Sellers | `(tenant)/sellers` + `sellers/[sellerId]` | ✅ **HECHA** — 23-08, ver abajo |
+| Retiro | `(tenant)/configuracion/retiro` | ✅ **HECHA** — 23-08, ver abajo |
+| Integraciones | `(tenant)/configuracion/api` | ✅ **HECHA** — 23-08, ver abajo |
+| Mi plan | `(tenant)/configuracion/plan` | ⚠️ **PARCIAL** — solo homologación |
+
+
+### ✅ Configuración · las nueve pantallas · hecho el 23-08-2026
+
+**Una sola anatomía, donde había cuatro dialectos.** El ancho se decidía pantalla por pantalla
+—`max-w-2xl`, `max-w-3xl` o ninguno—, la cabecera llevaba o no llevaba acción sin criterio, y el
+estado «sin permiso» estaba copiado y pegado con variantes en cada archivo. Nada de eso era una
+decisión: era el orden en que se fueron escribiendo. Ahora las nueve pasan por
+`PantallaConfiguracion` y `SinPermisoConfiguracion`.
+
+⚠️ **El texto de «sin permiso» se pasa entero y no por partes.** Armarlo con un objeto y un
+artículo obliga a adivinar género y número desde el código, y produce «las tarifas lo pueden ver».
+El español no se arma por plantilla.
+
+🐞 **El bug de datos del bloque: editar una ventana de corte la sobrescribía con valores por
+defecto.** Los cinco campos arrancaban en constantes literales —`useState("14:00")`, `"30"`,
+`"60"`, `"97"`— y el mismo formulario servía para crear y para editar. Como el guardado es un
+upsert por `(tenant, seller, zona, tipo)`, **abrir «editar» y guardar pisaba la ventana vigente**,
+sin avisar. No es cosmético: la hora de corte y el objetivo de SLA gobiernan el semáforo de
+cumplimiento y el cálculo de riesgo del día. Un courier que cortaba a las 17:30 y entraba a mirar
+su configuración salía cortando a las 14:00. Ahora cada fila abre la suya, precargada, y el título
+dice cuál se está editando.
+
+🐞 **«Gestión de rol próximamente», literal, en la celda de acciones de Equipo** — única ocurrencia
+de esa palabra en todo `src/`. Y al lado, el estado **«Suspendido» dibujado sin que nada llevara a
+él ni saliera de él**. Faltaban tres Server Actions, no tres botones. Las tres existen ahora, con
+bitácora antes del efecto y `actorUsuarioId`: cambiar el rol, suspender y reactivar. Ninguna se
+puede aplicar sobre uno mismo — degradarse o suspenderse solo deja al tenant sin quién ejerza la
+gestión.
+
+**El diálogo de cambio de rol sale del catálogo, no de un texto.** Qué pierde, qué gana y qué sigue
+sin tener se calculan por **diferencia de conjuntos** sobre `MATRIZ_ROL_CAPACIDADES`. Las cuatro
+descripciones de rol estaban escritas a mano, con un comentario que admitía ser «un resumen fiel que
+debe revisarse si el mapa cambia» — un resumen que hay que acordarse de revisar es un resumen que va
+a mentir. Diez pruebas en `capacidades-legibles.test.ts`, incluida la que exige que **las 33
+capacidades del catálogo tengan frase**.
+
+*«Sigue sin tener» no es relleno:* sin esa tercera lista, quien aprueba tiene que acordarse del
+catálogo entero para saber qué NO está pasando.
+
+🐞 **«Exportar datos» era la única pantalla del bloque que expulsaba en silencio**
+(`redirect("/dashboard")` sin permiso). Quien llegaba por un enlace directo pensaba que el enlace
+estaba roto. Ahora explica, y muestra el rastro de la última exportación — el dato estaba en la
+bitácora desde siempre y no se mostraba.
+
+**La ficha del seller, que no existía.** El listado era terminal: ninguna fila navegaba a ninguna
+parte, aunque el seller tiene pedidos, bodegas, tarifas, períodos y conexiones repartidos en cinco
+pantallas. La ficha los reúne y **enlaza a la pantalla que manda sobre cada dato** — no calcula
+ninguna cifra nueva, porque una segunda aritmética se desincroniza de la primera. Cada bloque
+declara su vacío con la consecuencia escrita: «no tiene bodegas» no dice nada, «el conductor no sabe
+adónde ir a retirar» sí. Y muestra la salud de **cada** cuenta de ML: el listado enseña la de la
+primera y pierde el resto.
+
+**Y las piezas que faltaban:** renombrar zona (una zona se podía crear y desactivar, no renombrar);
+activar/desactivar una ventana de corte (el estado se pintaba sin transiciones — su única salida era
+accidental, porque el upsert fuerza `activa: true`); la explicación al pie de cada campo de la
+ventana, que dice qué produce y no qué es; el recuento en la cabecera de Equipo; la frase de Retiro
+sobre el lado vacío del modelo («al seller todavía no se le cobra el retiro: eso es a propósito»); y
+el nombre de Integraciones homologado con el de la navegación, que era el tercero.
+
+**Decisión del usuario:** Sellers se queda en el grupo «Clientes» y no baja a Configuración. El
+código tenía razón: un seller es el cliente del courier —se le factura, tiene portal propio y
+períodos de cobro—, no un parámetro al lado de «zonas» y «folios».
+
+⚠️ **Queda pendiente, y es deuda declarada:**
+
+- **Tarifas** recibió la homologación y su copy en lenguaje de negocio, pero **no** el eje
+  «programada», los tres contadores-filtro, la fusión de las dos tablas en una ni la reactivación de
+  una tarifa inactiva. Esa última es de los «cinco estados sin salida» y sigue abierta: inactivar es
+  una puerta de un solo sentido.
+- **Bodegas**: falta el conteo en la pestaña y el orden del tablero («Mis bodegas» primero).
+- **Mi plan**: solo homologación; faltan «Cliente desde el …», el rótulo de periodicidad y el aviso
+  embebido con acción al 100 % de consumo.
+- **Exportar datos** sigue siendo **síncrono**. El tablero lo quiere asíncrono; eso exige un job y
+  una notificación, y el copy actual dice lo que de verdad pasa en vez de prometer un aviso que no
+  llega.
+- **Radix Select no responde a interacción programática en este entorno**, así que el selector de
+  rol del diálogo se verificó por sus pruebas y forzando el estado inicial — el resto del diálogo sí
+  se vio en pantalla, con sus tres listas.
+
 
 🐞 **Y un defecto vivo en producción, no una brecha de diseño:** el aviso de configuración
 pendiente **no desaparece nunca, para ningún courier**. `completo` exige

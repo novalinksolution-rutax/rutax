@@ -42,6 +42,8 @@ import {
   actionAsignarComunas,
   actionObtenerVentanasSeller,
   actionGuardarVentanaCorte,
+  actionToggleVentanaCorte,
+  actionRenombrarZona,
   type EstadoZonas,
   type Seller,
 } from "./actions";
@@ -70,10 +72,19 @@ export function PanelZonas({ estadoInicial }: Props) {
     setZonas((prev) => prev.map((z) => (z.id === id ? { ...z, activa } : z)));
   }
 
+  function onZonaRenombrada(id: string, nombre: string) {
+    setZonas((prev) => prev.map((z) => (z.id === id ? { ...z, nombre } : z)));
+  }
+
   return (
     <div className="space-y-6">
       {/* 1. Crear y gestionar zonas */}
-      <SeccionZonas zonas={zonas} onCreada={onZonaCreada} onToggle={onToggleZona} />
+      <SeccionZonas
+        zonas={zonas}
+        onCreada={onZonaCreada}
+        onToggle={onToggleZona}
+        onRenombrada={onZonaRenombrada}
+      />
 
       {/* 2. Asignar comunas a zona */}
       <SeccionComunasPorZona zonas={zonas.filter((z) => z.activa)} />
@@ -92,10 +103,12 @@ function SeccionZonas({
   zonas,
   onCreada,
   onToggle,
+  onRenombrada,
 }: {
   zonas: Zona[];
   onCreada: (z: Zona) => void;
   onToggle: (id: string, activa: boolean) => void;
+  onRenombrada: (id: string, nombre: string) => void;
 }) {
   const [expandida, setExpandida] = useState(false);
   const [nombre, setNombre] = useState("");
@@ -185,7 +198,12 @@ function SeccionZonas({
             {expandida && (
               <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
                 {zonas.map((zona) => (
-                  <FilaZona key={zona.id} zona={zona} onToggle={onToggle} />
+                  <FilaZona
+                    key={zona.id}
+                    zona={zona}
+                    onToggle={onToggle}
+                    onRenombrada={onRenombrada}
+                  />
                 ))}
               </ul>
             )}
@@ -203,11 +221,36 @@ function SeccionZonas({
 function FilaZona({
   zona,
   onToggle,
+  onRenombrada,
 }: {
   zona: Zona;
   onToggle: (id: string, activa: boolean) => void;
+  onRenombrada: (id: string, nombre: string) => void;
 }) {
   const [pendiente, iniciarTransicion] = useTransition();
+  // Renombrar se edita EN LA FILA y no en un modal: es un campo, y abrir un
+  // diálogo para cambiar un texto de dos palabras cuesta más que el cambio.
+  const [editando, setEditando] = useState(false);
+  const [nombre, setNombre] = useState(zona.nombre);
+  const [errorNombre, setErrorNombre] = useState<string | null>(null);
+
+  function guardarNombre() {
+    const limpio = nombre.trim();
+    if (limpio === zona.nombre) {
+      setEditando(false);
+      return;
+    }
+    setErrorNombre(null);
+    iniciarTransicion(async () => {
+      const r = await actionRenombrarZona(zona.id, limpio);
+      if (!r.ok) {
+        setErrorNombre(r.mensaje);
+        return;
+      }
+      onRenombrada(zona.id, r.datos.nombre);
+      setEditando(false);
+    });
+  }
 
   function toggle() {
     iniciarTransicion(async () => {
@@ -220,11 +263,40 @@ function FilaZona({
 
   return (
     <li className="flex items-center justify-between gap-4 px-4 py-3">
-      <div className="flex items-center gap-2">
-        <MapPin className="size-4 text-muted-foreground" aria-hidden="true" />
-        <span className="text-sm font-medium">{zona.nombre}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <MapPin className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        {editando ? (
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
+            <Input
+              value={nombre}
+              autoFocus
+              disabled={pendiente}
+              onChange={(e) => setNombre(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") guardarNombre();
+                if (e.key === "Escape") {
+                  setNombre(zona.nombre);
+                  setEditando(false);
+                }
+              }}
+              onBlur={guardarNombre}
+              aria-label={`Nombre de la zona ${zona.nombre}`}
+              className="h-8 max-w-xs"
+            />
+            {errorNombre ? <span className="text-xs text-destructive">{errorNombre}</span> : null}
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            className="min-w-0 truncate text-left text-sm font-medium hover:underline"
+            title="Cambiar el nombre"
+          >
+            {zona.nombre}
+          </button>
+        )}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3">
         <Badge variant={zona.activa ? "success" : "neutral"}>
           {zona.activa ? "Activa" : "Inactiva"}
         </Badge>
@@ -451,11 +523,21 @@ function SeccionVentanasCorte({
   const [ventanas, setVentanas] = useState<VentanaCorte[]>([]);
   const [cargando, setCargando] = useState(false);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  // Cuál ventana se está editando. `null` = una nueva. Se pasa al formulario
+  // como valor inicial Y como `key`, para que React lo remonte al cambiar de
+  // ventana: sin eso, abrir la segunda mostraría los campos de la primera.
+  const [editando, setEditando] = useState<VentanaCorte | null>(null);
+
+  function onEditar(v: VentanaCorte) {
+    setEditando(v);
+    setMostrarFormulario(true);
+  }
 
   async function seleccionarSeller(id: string) {
     setSellerId(id);
     setVentanas([]);
     setMostrarFormulario(false);
+    setEditando(null);
     if (!id) return;
     setCargando(true);
     const resultado = await actionObtenerVentanasSeller(id);
@@ -476,6 +558,7 @@ function SeccionVentanasCorte({
       return [...prev, v];
     });
     setMostrarFormulario(false);
+    setEditando(null);
   }
 
   if (sellers.length === 0) {
@@ -539,6 +622,9 @@ function SeccionVentanasCorte({
                             <th className="px-4 py-2 text-left font-medium text-muted-foreground">Corte</th>
                             <th className="px-4 py-2 text-left font-medium text-muted-foreground">SLA objetivo</th>
                             <th className="px-4 py-2 text-left font-medium text-muted-foreground">Estado</th>
+                            <th className="px-4 py-2 text-right font-medium text-muted-foreground">
+                              <span className="sr-only">Acciones</span>
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -564,6 +650,23 @@ function SeccionVentanasCorte({
                                   {v.activa ? "Activa" : "Inactiva"}
                                 </Badge>
                               </td>
+                              {/* 🐞 «Editar» no existía: el único camino al
+                                  formulario era un botón «Agregar / editar» que
+                                  lo abría EN BLANCO, con 14:00/30/60/97, y
+                                  guardarlo pisaba la ventana vigente con esos
+                                  valores. Ahora cada fila abre la suya. */}
+                              <td className="px-4 py-2 text-right">
+                                <div className="flex flex-wrap items-center justify-end gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditar(v)}
+                                    className="text-xs font-medium text-accent-text hover:underline"
+                                  >
+                                    Editar
+                                  </button>
+                                  <BotonToggleVentana ventana={v} onCambiada={onVentanaGuardada} />
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -577,15 +680,20 @@ function SeccionVentanasCorte({
 
                   <Button
                     variant="outline"
-                    onClick={() => setMostrarFormulario((v) => !v)}
+                    onClick={() => {
+                      setEditando(null);
+                      setMostrarFormulario((v) => !v);
+                    }}
                   >
-                    {mostrarFormulario ? "Cancelar" : "Agregar / editar ventana de corte"}
+                    {mostrarFormulario ? "Cancelar" : "Agregar una ventana de corte"}
                   </Button>
 
                   {mostrarFormulario && (
                     <FormularioVentanaCorte
+                      key={editando?.id ?? "nueva"}
                       sellerId={sellerId}
                       zonas={zonas}
+                      ventana={editando}
                       onGuardada={onVentanaGuardada}
                     />
                   )}
@@ -603,21 +711,52 @@ function SeccionVentanasCorte({
 // Formulario ventana de corte
 // =============================================================================
 
+/**
+ * El formulario de ventana de corte.
+ *
+ * -----------------------------------------------------------------------------
+ * 🐞 EL BUG QUE CORROMPÍA CONFIGURACIÓN
+ * -----------------------------------------------------------------------------
+ * Los cinco campos arrancaban en constantes literales —`useState("14:00")`,
+ * `"30"`, `"60"`, `"97"`— y el mismo formulario servía para crear y para
+ * «editar». Como `guardarVentanaCorte` hace un upsert por
+ * `(tenant, seller, zona, tipo)`, **abrir «editar» y guardar sobrescribía la
+ * ventana vigente con esos valores por defecto**, sin avisar.
+ *
+ * No es cosmético: la hora de corte y el objetivo de SLA gobiernan el semáforo
+ * de cumplimiento y el cálculo de riesgo del día. Un courier que cortaba a las
+ * 17:30 y entraba a mirar su configuración salía cortando a las 14:00.
+ *
+ * Ahora el formulario recibe la ventana que edita y arranca en ella. Cuando
+ * `ventana` es `null` es una nueva, y ahí sí los valores por defecto son lo
+ * correcto.
+ */
 function FormularioVentanaCorte({
   sellerId,
   zonas,
+  ventana,
   onGuardada,
 }: {
   sellerId: string;
   zonas: Zona[];
+  /** La ventana que se está editando, o `null` para una nueva. */
+  ventana: VentanaCorte | null;
   onGuardada: (v: VentanaCorte) => void;
 }) {
-  const [tipoEntrega, setTipoEntrega] = useState<"flex" | "same_day">("same_day");
-  const [horaCorte, setHoraCorte] = useState("14:00");
-  const [minutosPreparacion, setMinutosPreparacion] = useState("30");
-  const [minutosRutaEstimado, setMinutosRutaEstimado] = useState("60");
-  const [slaObjetivoPct, setSlaObjetivoPct] = useState("97");
-  const [zonaId, setZonaId] = useState<string>("");
+  const [tipoEntrega, setTipoEntrega] = useState<"flex" | "same_day">(
+    ventana ? (ventana.tipoEntrega as "flex" | "same_day") : "same_day",
+  );
+  const [horaCorte, setHoraCorte] = useState(ventana?.horaCorte ?? "14:00");
+  const [minutosPreparacion, setMinutosPreparacion] = useState(
+    ventana ? String(ventana.minutosPreparacion) : "30",
+  );
+  const [minutosRutaEstimado, setMinutosRutaEstimado] = useState(
+    ventana ? String(ventana.minutosRutaEstimado) : "60",
+  );
+  const [slaObjetivoPct, setSlaObjetivoPct] = useState(
+    ventana ? String(ventana.slaObjetivoPct) : "97",
+  );
+  const [zonaId, setZonaId] = useState<string>(ventana?.zonaId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pendiente, iniciarTransicion] = useTransition();
 
@@ -648,7 +787,24 @@ function FormularioVentanaCorte({
       onSubmit={manejarEnvio}
       className="space-y-4 rounded-lg border border-border bg-muted/30 p-4"
     >
-      <p className="text-sm font-medium text-foreground">Nueva ventana de corte</p>
+      {/* Qué se está editando, con nombre. Antes decía «Nueva ventana de corte»
+          también al editar una existente — el título mentía sobre lo que iba a
+          pasar al guardar. */}
+      <p className="text-sm font-medium text-foreground">
+        {ventana
+          ? `Ventana vigente · ${etiquetaTipoEntrega(ventana.tipoEntrega)}${
+              ventana.zonaId
+                ? ` · ${zonas.find((z) => z.id === ventana.zonaId)?.nombre ?? "zona"}`
+                : " · todas las zonas"
+            }`
+          : "Nueva ventana de corte"}
+      </p>
+      {ventana ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Estás editando la ventana que está rigiendo hoy. Al guardar, el cambio aplica a los
+          pedidos que entren desde ese momento — los que ya están en curso conservan su corte.
+        </p>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -665,7 +821,7 @@ function FormularioVentanaCorte({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="ventana-hora">Hora de corte (hora local)</Label>
+          <Label htmlFor="ventana-hora">Hora de corte</Label>
           <Input
             id="ventana-hora"
             type="time"
@@ -673,6 +829,11 @@ function FormularioVentanaCorte({
             onChange={(e) => setHoraCorte(e.target.value)}
             required
           />
+          {/* Cada campo dice qué produce, no qué es. «Hora local» no explica
+              qué pasa con un pedido que entra a las 14:05. */}
+          <p className="text-xs text-muted-foreground">
+            Hora de Santiago. Después de esta hora el pedido se crea igual y sale mañana.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -685,6 +846,10 @@ function FormularioVentanaCorte({
             value={minutosPreparacion}
             onChange={(e) => setMinutosPreparacion(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">
+            Lo que toma retirar y clasificar antes de salir. Entra en el cálculo de si una
+            entrega llega a tiempo.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -697,6 +862,10 @@ function FormularioVentanaCorte({
             value={minutosRutaEstimado}
             onChange={(e) => setMinutosRutaEstimado(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">
+            Cuánto dura la ruta desde que sale la flota. Con la preparación, define a qué hora
+            se compromete la entrega.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -709,7 +878,10 @@ function FormularioVentanaCorte({
             value={slaObjetivoPct}
             onChange={(e) => setSlaObjetivoPct(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">Default: 97%. Mínimo recomendado para Flex.</p>
+          <p className="text-xs text-muted-foreground">
+            El porcentaje de entregas a tiempo que te propones. Es contra esto que se pinta el
+            semáforo de cumplimiento del seller. 97% es lo recomendado para Flex.
+          </p>
         </div>
 
         {zonas.length > 0 && (
@@ -744,8 +916,52 @@ function FormularioVentanaCorte({
 
       <Button type="submit" disabled={pendiente}>
         {pendiente ? <RefreshCw className="size-4 animate-spin" aria-hidden="true" /> : null}
-        {pendiente ? "Guardando…" : "Guardar ventana de corte"}
+        {pendiente ? "Guardando…" : ventana ? "Guardar los cambios" : "Crear la ventana"}
       </Button>
     </form>
+  );
+}
+
+
+// =============================================================================
+// Activar / desactivar una ventana de corte
+// =============================================================================
+
+/**
+ * La transición que le faltaba al estado «Inactiva».
+ *
+ * La tabla pintaba el distintivo y **ninguna acción llevaba a ese estado ni
+ * salía de él**. La única salida era accidental: `guardarVentanaCorte` fuerza
+ * `activa: true` en su upsert, así que volver a guardar la reactivaba de
+ * rebote — algo que nadie va a adivinar.
+ */
+function BotonToggleVentana({
+  ventana,
+  onCambiada,
+}: {
+  ventana: VentanaCorte;
+  onCambiada: (v: VentanaCorte) => void;
+}) {
+  const [pendiente, iniciarTransicion] = useTransition();
+
+  return (
+    <button
+      type="button"
+      disabled={pendiente}
+      onClick={() =>
+        iniciarTransicion(async () => {
+          const r = await actionToggleVentanaCorte(ventana.id, !ventana.activa);
+          if (r.ok) onCambiada(r.datos);
+        })
+      }
+      aria-label={
+        ventana.activa
+          ? `Desactivar la ventana de ${etiquetaTipoEntrega(ventana.tipoEntrega)}`
+          : `Reactivar la ventana de ${etiquetaTipoEntrega(ventana.tipoEntrega)}`
+      }
+      className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline disabled:opacity-50"
+    >
+      {pendiente ? "…" : ventana.activa ? "Desactivar" : "Reactivar"}
+    </button>
   );
 }

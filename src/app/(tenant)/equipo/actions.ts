@@ -34,6 +34,7 @@ import {
 } from "@/modules/identidad/invitaciones";
 import { enviarEmailInvitacion } from "@/modules/identidad/notificaciones-invitacion";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
+import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
 
 // -----------------------------------------------------------------------------
@@ -426,4 +427,171 @@ export async function invitarPersona(entrada: InvitarPersonaEntrada): Promise<Ac
       creadoEn: new Date().toISOString(),
     },
   };
+}
+
+// -----------------------------------------------------------------------------
+// Cambiar el rol, suspender y reactivar — las tres que faltaban
+// -----------------------------------------------------------------------------
+/**
+ * 🐞 Las tres no existían, y la interfaz lo admitía a medias.
+ *
+ * La celda de acciones de una persona activa decía, literal, **«Gestión de rol
+ * próximamente»** —única ocurrencia de esa palabra en todo `src/`— y la celda de
+ * estado pintaba **«Suspendido»** sin que ninguna acción llevara a ese estado ni
+ * saliera de él. Un estado que se dibuja sin transiciones o es código muerto o,
+ * peor, dejó gente atrapada por un camino que ya no existe.
+ *
+ * Las tres escriben bitácora ANTES del efecto, con `actorUsuarioId`: cambiarle
+ * el rol a alguien o cortarle el acceso es una acción de acceso, y RNF-04 exige
+ * el quién.
+ *
+ * No se delega a un módulo de `identidad` porque no hay uno para esto: el ciclo
+ * de vida del usuario interno vive en `usuarios_perfil` y hasta hoy solo lo
+ * escribía la aceptación de invitación.
+ */
+
+/** Nadie puede cambiarse el rol a sí mismo ni suspenderse solo. */
+function esUnoMismo(sesionUsuarioId: string, usuarioId: string): boolean {
+  return sesionUsuarioId === usuarioId;
+}
+
+export async function cambiarRolDePersona(
+  usuarioId: string,
+  rolNuevo: RolInterno,
+): Promise<AccionEquipoResultado> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, tipo: "permiso", mensaje: "No hay una sesión activa." };
+  }
+  if (!puedeGestionarUsuariosYRoles(sesion.usuario)) {
+    return {
+      ok: false,
+      tipo: "permiso",
+      mensaje: "No tienes permiso para cambiar roles — contacta al dueño de la cuenta.",
+    };
+  }
+  if (!ROLES_INTERNOS.includes(rolNuevo)) {
+    return { ok: false, tipo: "validacion", mensaje: "Ese rol no existe." };
+  }
+  // Quitarse a uno mismo la gestión de usuarios deja al tenant sin quién la
+  // ejerza si además es el único dueño. Se prohíbe entero: es más simple de
+  // entender que una regla condicional, y nadie necesita degradarse solo.
+  if (esUnoMismo(sesion.usuarioId, usuarioId)) {
+    return {
+      ok: false,
+      tipo: "validacion",
+      mensaje: "No puedes cambiarte el rol a ti mismo. Pídeselo a otra persona con acceso.",
+    };
+  }
+
+  const cliente = crearClienteServiceRole();
+
+  const { data: actual, error: errorLectura } = await cliente
+    .schema("identidad")
+    .from("usuarios_perfil")
+    .select("rol, nombre_completo, tipo_usuario")
+    .eq("id", usuarioId)
+    .eq("tenant_id", sesion.usuario.tenantId)
+    .maybeSingle();
+
+  if (errorLectura) {
+    return { ok: false, tipo: "desconocido", mensaje: "No se pudo leer a esa persona." };
+  }
+  if (!actual) {
+    return { ok: false, tipo: "validacion", mensaje: "Esa persona no está en tu equipo." };
+  }
+  if (actual.tipo_usuario !== "interno") {
+    return {
+      ok: false,
+      tipo: "validacion",
+      mensaje: "Solo se puede cambiar el rol de alguien de tu equipo interno.",
+    };
+  }
+  if (actual.rol === rolNuevo) return { ok: true };
+
+  try {
+    await registrarEnBitacora(cliente, {
+      tenantId: sesion.usuario.tenantId,
+      actorUsuarioId: sesion.usuarioId,
+      actorTipo: "usuario",
+      accion: "usuario.rol_cambiado",
+      entidadTipo: "usuario",
+      entidadId: usuarioId,
+      detalle: { rol_anterior: actual.rol, rol_nuevo: rolNuevo },
+    });
+
+    const { error } = await cliente
+      .schema("identidad")
+      .from("usuarios_perfil")
+      .update({ rol: rolNuevo })
+      .eq("id", usuarioId)
+      .eq("tenant_id", sesion.usuario.tenantId);
+
+    if (error) throw error;
+  } catch (error) {
+    return mapearError(error);
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Suspende o reactiva a alguien del equipo.
+ *
+ * Suspender no borra: la persona conserva su historial —sus manifiestos, sus
+ * acciones en la bitácora— y deja de poder entrar. `capacidadesDe` ya devuelve
+ * el conjunto vacío para quien no está activo, así que el corte es real en toda
+ * la app y no depende de que cada pantalla se acuerde de comprobarlo.
+ */
+export async function cambiarEstadoDePersona(
+  usuarioId: string,
+  activo: boolean,
+): Promise<AccionEquipoResultado> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, tipo: "permiso", mensaje: "No hay una sesión activa." };
+  }
+  if (!puedeGestionarUsuariosYRoles(sesion.usuario)) {
+    return {
+      ok: false,
+      tipo: "permiso",
+      mensaje: "No tienes permiso para suspender personas — contacta al dueño de la cuenta.",
+    };
+  }
+  if (esUnoMismo(sesion.usuarioId, usuarioId)) {
+    return {
+      ok: false,
+      tipo: "validacion",
+      mensaje: "No puedes suspenderte a ti mismo: te quedarías fuera sin poder volver a entrar.",
+    };
+  }
+
+  const cliente = crearClienteServiceRole();
+  const estadoNuevo = activo ? "activo" : "suspendido";
+
+  try {
+    await registrarEnBitacora(cliente, {
+      tenantId: sesion.usuario.tenantId,
+      actorUsuarioId: sesion.usuarioId,
+      actorTipo: "usuario",
+      accion: activo ? "usuario.reactivado" : "usuario.suspendido",
+      entidadTipo: "usuario",
+      entidadId: usuarioId,
+      detalle: { estado: estadoNuevo },
+    });
+
+    const { error } = await cliente
+      .schema("identidad")
+      .from("usuarios_perfil")
+      .update({ estado: estadoNuevo })
+      .eq("id", usuarioId)
+      .eq("tenant_id", sesion.usuario.tenantId)
+      .eq("tipo_usuario", "interno");
+
+    if (error) throw error;
+  } catch (error) {
+    return mapearError(error);
+  }
+
+  return { ok: true };
 }

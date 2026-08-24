@@ -11,7 +11,7 @@
  * contexto de "estoy viendo mi equipo".
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -28,6 +28,8 @@ import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { EstadoError, EstadoVacio } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "./descripciones-roles";
+import { DialogoCambiarRol } from "./dialogo-cambiar-rol";
+import type { RolInterno } from "@/modules/identidad/roles";
 import { FormularioInvitacion } from "./formulario-invitacion";
 import {
   reenviarInvitacion,
@@ -47,14 +49,30 @@ interface Props {
   errorInicial: string | null;
   puedeInvitar: boolean;
   puedeRevocar: boolean;
+  /** `gestionar_usuarios_y_roles`: cambiar el rol y suspender. */
+  puedeGestionar: boolean;
 }
 
-export function PanelEquipo({ estadoInicial, errorInicial, puedeInvitar, puedeRevocar }: Props) {
+export function PanelEquipo({
+  estadoInicial,
+  errorInicial,
+  puedeInvitar,
+  puedeRevocar,
+  puedeGestionar,
+}: Props) {
   const [estado, setEstado] = useState<EstadoEquipo | null>(estadoInicial);
   const [errorCarga, setErrorCarga] = useState<string | null>(errorInicial);
   const [recargando, setRecargando] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [formularioAbierto, setFormularioAbierto] = useState(false);
+
+  function actualizarUsuario(u: UsuarioEquipo) {
+    setEstado((prev) =>
+      prev
+        ? { ...prev, usuarios: prev.usuarios.map((x) => (x.id === u.id ? u : x)) }
+        : prev,
+    );
+  }
 
   async function recargar() {
     setRecargando(true);
@@ -180,7 +198,12 @@ export function PanelEquipo({ estadoInicial, errorInicial, puedeInvitar, puedeRe
           <TableBody>
             {filas.map((fila) =>
               fila.tipo === "usuario" ? (
-                <FilaUsuario key={`usuario-${fila.usuario.id}`} usuario={fila.usuario} />
+                <FilaUsuario
+                  key={`usuario-${fila.usuario.id}`}
+                  usuario={fila.usuario}
+                  puedeGestionar={puedeGestionar}
+                  onActualizado={actualizarUsuario}
+                />
               ) : (
                 <FilaInvitacion
                   key={`invitacion-${fila.invitacion.id}`}
@@ -249,7 +272,15 @@ function construirFilas(estado: EstadoEquipo | null, filtro: Filtro): FilaCombin
 // Fila — usuario activo
 // -----------------------------------------------------------------------------
 
-function FilaUsuario({ usuario }: { usuario: UsuarioEquipo }) {
+function FilaUsuario({
+  usuario,
+  puedeGestionar,
+  onActualizado,
+}: {
+  usuario: UsuarioEquipo;
+  puedeGestionar: boolean;
+  onActualizado: (u: UsuarioEquipo) => void;
+}) {
   const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[usuario.rol];
 
   return (
@@ -273,12 +304,26 @@ function FilaUsuario({ usuario }: { usuario: UsuarioEquipo }) {
         />
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">Miembro desde el {formatearFecha(usuario.creadoEn)}</TableCell>
-      <TableCell className="text-right text-xs text-muted-foreground">
-        {/* Cambiar rol / suspender es una acción de mayor riesgo — se deja para
-            una iteración posterior con su propio diálogo de confirmación; no
-            se improvisa aquí un botón sin el flujo de confirmación que una
-            acción sobre el acceso de otra persona amerita. */}
-        Gestión de rol próximamente
+      {/* 🐞 ACÁ DECÍA «Gestión de rol próximamente». Era la única ocurrencia de
+          esa palabra en todo `src/`, y el estado «Suspendido» de la celda de al
+          lado se pintaba sin que nada llevara a él ni saliera de él. Las tres
+          acciones existen ahora, con su bitácora. */}
+      <TableCell className="text-right">
+        {puedeGestionar ? (
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {usuario.estado === "activo" ? (
+              <DialogoCambiarRol
+                usuarioId={usuario.id}
+                nombre={usuario.nombreCompleto}
+                rolActual={usuario.rol as RolInterno}
+                onCambiado={(rol) => onActualizado({ ...usuario, rol })}
+              />
+            ) : null}
+            <BotonSuspender usuario={usuario} onActualizado={onActualizado} />
+          </div>
+        ) : (
+          <span className="text-xs text-fg-muted">Solo el dueño puede cambiarlo</span>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -490,4 +535,57 @@ function copyDeApoyo(invitacion: InvitacionEquipo): string {
     default:
       return "—";
   }
+}
+
+
+// -----------------------------------------------------------------------------
+// Suspender / reactivar
+// -----------------------------------------------------------------------------
+/**
+ * Las dos transiciones del estado que la tabla ya pintaba sin tener ninguna.
+ *
+ * Suspender NO borra: la persona conserva su historial —sus manifiestos, sus
+ * líneas en la bitácora— y deja de poder entrar. `capacidadesDe` devuelve el
+ * conjunto vacío para quien no está activo, así que el corte vale en toda la
+ * app y no depende de que cada pantalla se acuerde de comprobarlo.
+ */
+function BotonSuspender({
+  usuario,
+  onActualizado,
+}: {
+  usuario: UsuarioEquipo;
+  onActualizado: (u: UsuarioEquipo) => void;
+}) {
+  const [pendiente, iniciarTransicion] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const activo = usuario.estado === "activo";
+
+  return (
+    <span className="inline-flex flex-col items-end gap-0.5">
+      <button
+        type="button"
+        disabled={pendiente}
+        onClick={() =>
+          iniciarTransicion(async () => {
+            setError(null);
+            const { cambiarEstadoDePersona } = await import("./actions");
+            const r = await cambiarEstadoDePersona(usuario.id, !activo);
+            if (!r.ok) {
+              setError(r.mensaje);
+              return;
+            }
+            onActualizado({ ...usuario, estado: activo ? "suspendido" : "activo" });
+          })
+        }
+        className={
+          activo
+            ? "text-xs font-medium text-fault-fg hover:underline disabled:opacity-50"
+            : "text-xs font-medium text-accent-text hover:underline disabled:opacity-50"
+        }
+      >
+        {pendiente ? "…" : activo ? "Suspender" : "Reactivar"}
+      </button>
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  );
 }

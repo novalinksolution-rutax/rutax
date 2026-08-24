@@ -6,6 +6,10 @@ import { puedeGestionarBodegas } from "@/modules/identidad/capacidades";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
 import { obtenerMontoVisitaDefaultClp } from "@/lib/datos-tenant/config-retiro";
 import { accionListarBodegasCourier } from "./actions";
+import {
+  PantallaConfiguracion,
+  SinPermisoConfiguracion,
+} from "../_componentes/pantalla-configuracion";
 import { PanelBodegas } from "./panel-bodegas";
 
 export const metadata: Metadata = {
@@ -18,15 +22,7 @@ export default async function PaginaBodegas() {
 
   if (!puedeGestionarBodegas(sesion.usuario)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
-        <ShieldAlert className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="space-y-1">
-          <p className="font-medium text-foreground">Sin permiso para ver esta sección</p>
-          <p className="text-sm text-muted-foreground">
-            La gestión de bodegas es exclusiva de dueño, supervisor o coordinador.
-          </p>
-        </div>
-      </div>
+      <SinPermisoConfiguracion frase="Las bodegas solo las pueden ver y cambiar el dueño, un supervisor o un coordinador." />
     );
   }
 
@@ -42,20 +38,16 @@ export default async function PaginaBodegas() {
   const errorCourierInicial = bodegasCourierResultado.ok ? null : bodegasCourierResultado.mensaje;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Bodegas</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Dónde se retiran los pedidos y desde dónde sale tu flota a repartir.
-        </p>
-      </div>
-
+    <PantallaConfiguracion
+      titulo="Bodegas"
+      bajada="Dónde se retiran los pedidos y desde dónde sale tu flota a repartir. Son dos cosas distintas y por eso van separadas."
+    >
       <PanelBodegas
         sellers={sellers}
         bodegasCourierIniciales={bodegasCourierIniciales}
         errorCourierInicial={errorCourierInicial}
         montoVisitaDefaultClp={montoVisitaDefaultClp}
       />
-    </div>
+    </PantallaConfiguracion>
   );
 }

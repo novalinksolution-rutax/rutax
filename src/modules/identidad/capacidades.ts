@@ -381,6 +381,19 @@ export function tieneCapacidad(usuario: UsuarioActual, capacidad: Capacidad): bo
   return MATRIZ_ROL_CAPACIDADES[usuario.rol].includes(capacidad);
 }
 
+/**
+ * Las capacidades de un ROL, sin usuario de por medio.
+ *
+ * `capacidadesDe` responde por una persona; esto responde por un rol, que es lo
+ * que hace falta para comparar DOS roles antes de cambiarle el suyo a alguien:
+ * qué pierde, qué gana y qué sigue sin tener. Sin esto, esa comparación se
+ * escribe a mano y queda desincronizada del mapa la primera vez que el mapa
+ * cambia — que es exactamente lo que pasó con las descripciones de rol.
+ */
+export function capacidadesDeRol(rol: Rol): readonly Capacidad[] {
+  return MATRIZ_ROL_CAPACIDADES[rol];
+}
+
 /** Lista de capacidades activas del usuario — útil para `frontend` (qué mostrar/ocultar). */
 export function capacidadesDe(usuario: UsuarioActual): readonly Capacidad[] {
   if (!estaActivo(usuario)) return [];

@@ -9,6 +9,10 @@ import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  PantallaConfiguracion,
+  SinPermisoConfiguracion,
+} from "../_componentes/pantalla-configuracion";
 import { DialogTarifa } from "./dialog-tarifa";
 import { BotonInactivarTarifa } from "./boton-inactivar";
 
@@ -45,15 +49,7 @@ export default async function PaginaTarifas() {
 
   if (!puedeGestionarTarifas(sesion.usuario)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
-        <ShieldAlert className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="space-y-1">
-          <p className="font-medium text-foreground">Sin permiso para ver esta sección</p>
-          <p className="text-sm text-muted-foreground">
-            La gestión de tarifas es exclusiva del dueño o administración.
-          </p>
-        </div>
-      </div>
+      <SinPermisoConfiguracion frase="Las tarifas solo las pueden ver y cambiar el dueño de la cuenta o administración." />
     );
   }
 
@@ -102,16 +98,14 @@ export default async function PaginaTarifas() {
   const inactivas = tarifas.filter((t) => t.estado === "inactiva");
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Tarifas</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Rate cards por seller. Define base, mínimos y recargos que usa el motor de cobro.
-          </p>
-        </div>
-        <DialogTarifa sellers={sellers} />
-      </div>
+    <PantallaConfiguracion
+      titulo="Tarifas"
+      /* Lenguaje de negocio, no jerga. Decía «rate cards por seller… que usa el
+         motor de cobro»: quien lee esto quiere saber qué plata mueve, no cómo
+         se llama el objeto adentro. */
+      bajada="Lo que le cobras a cada seller por entrega y lo que le pagas al conductor por hacerla. Sin una tarifa vigente, una entrega se hace y no se puede cobrar."
+      accion={<DialogTarifa sellers={sellers} />}
+    >
 
       {tarifas.length === 0 ? (
         <EmptyState
@@ -190,7 +184,7 @@ export default async function PaginaTarifas() {
           )}
         </>
       )}
-    </div>
+    </PantallaConfiguracion>
   );
 }
 

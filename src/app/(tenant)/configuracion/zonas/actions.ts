@@ -23,10 +23,12 @@ import {
   activarDesactivarZona,
   asignarComunasAZona,
   listarComunasDeZona,
+  renombrarZona,
 } from "@/modules/operacion/zonas";
 import {
   guardarVentanaCorte,
   listarVentanasPorSeller,
+  cambiarActivaVentanaCorte,
 } from "@/modules/operacion/ventanas-corte";
 import type { Zona, ZonaComuna, VentanaCorte } from "@/modules/operacion/tipos";
 
@@ -277,5 +279,87 @@ export async function actionGuardarVentanaCorte(
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : "Error al guardar la ventana de corte.";
     return { ok: false, mensaje };
+  }
+}
+
+// =============================================================================
+// Renombrar zona
+// =============================================================================
+
+/**
+ * Cambia el nombre de una zona.
+ *
+ * Faltaba entera: una zona se podía crear y desactivar, pero no renombrar. El
+ * courier que quería corregir un nombre tenía que desactivar la zona —perdiendo
+ * sus comunas de la vista, porque las secciones filtran las inactivas— y crear
+ * otra a mano.
+ */
+export async function actionRenombrarZona(
+  zonaId: string,
+  nombre: string,
+): Promise<Respuesta<Zona>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) return { ok: false, mensaje: "No hay sesión activa." };
+  if (!puedeGestionarTarifas(sesion.usuario)) {
+    return { ok: false, mensaje: "No tienes permiso para gestionar zonas." };
+  }
+
+  try {
+    const cliente = crearClienteServiceRole();
+    const zona = await renombrarZona(
+      cliente,
+      sesion.usuario.tenantId,
+      zonaId,
+      nombre,
+      sesion.usuarioId,
+      sesion.usuario,
+    );
+    revalidatePath("/configuracion/zonas");
+    return { ok: true, datos: zona };
+  } catch (err) {
+    return {
+      ok: false,
+      mensaje: err instanceof Error ? err.message : "Error al renombrar la zona.",
+    };
+  }
+}
+
+// =============================================================================
+// Activar / desactivar ventana de corte
+// =============================================================================
+
+/**
+ * La transición que le faltaba al estado «Inactiva», que se dibujaba sin tener
+ * ni entrada ni salida.
+ */
+export async function actionToggleVentanaCorte(
+  ventanaId: string,
+  activa: boolean,
+): Promise<Respuesta<VentanaCorte>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) return { ok: false, mensaje: "No hay sesión activa." };
+  if (!puedeGestionarTarifas(sesion.usuario)) {
+    return { ok: false, mensaje: "No tienes permiso para gestionar ventanas de corte." };
+  }
+
+  try {
+    const cliente = crearClienteServiceRole();
+    const ventana = await cambiarActivaVentanaCorte(
+      cliente,
+      {
+        tenantId: sesion.usuario.tenantId,
+        ventanaId,
+        activa,
+        actorUsuarioId: sesion.usuarioId,
+      },
+      sesion.usuario,
+    );
+    revalidatePath("/configuracion/zonas");
+    return { ok: true, datos: ventana };
+  } catch (err) {
+    return {
+      ok: false,
+      mensaje: err instanceof Error ? err.message : "Error al cambiar el estado de la ventana.",
+    };
   }
 }

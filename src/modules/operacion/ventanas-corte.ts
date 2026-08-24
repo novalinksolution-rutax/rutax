@@ -315,3 +315,66 @@ export async function evaluarVentanaCorte(
     horaEvaluada: ahora.hora,
   };
 }
+
+// =============================================================================
+// cambiarActivaVentanaCorte
+// =============================================================================
+
+/**
+ * Activa o desactiva una ventana de corte.
+ *
+ * -----------------------------------------------------------------------------
+ * EL ESTADO SE DIBUJABA Y NO TENÍA NI ENTRADA NI SALIDA
+ * -----------------------------------------------------------------------------
+ * La tabla pintaba un distintivo «Inactiva» y **ninguna acción llevaba a ese
+ * estado ni salía de él**. Un estado sin transiciones no se puede alcanzar ni
+ * abandonar: o es código muerto, o —peor— quedó gente atrapada ahí por un
+ * camino que ya no existe.
+ *
+ * Ojo con la mitad que sí existía: `guardarVentanaCorte` fuerza `activa: true`
+ * en su upsert, así que guardar una ventana inactiva la reactiva de rebote. Eso
+ * es una salida accidental, no una acción: nadie que quiera reactivar una
+ * ventana va a adivinar que tiene que volver a guardarla.
+ */
+export async function cambiarActivaVentanaCorte(
+  cliente: SupabaseClient,
+  entrada: {
+    tenantId: string;
+    ventanaId: string;
+    activa: boolean;
+    actorUsuarioId: string;
+  },
+  actor: UsuarioActual,
+): Promise<VentanaCorte> {
+  if (!puedeGestionarTarifas(actor)) {
+    throw new ErrorValidacion('El usuario no tiene capacidad para gestionar ventanas de corte');
+  }
+
+  await registrarEnBitacora(cliente, {
+    tenantId: entrada.tenantId,
+    actorUsuarioId: entrada.actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: entrada.activa ? 'ventana_corte.activada' : 'ventana_corte.desactivada',
+    entidadTipo: 'ventana_corte',
+    entidadId: entrada.ventanaId,
+    detalle: { activa: entrada.activa },
+  });
+
+  const { data, error } = await cliente
+    .schema('identidad')
+    .from('ventanas_corte')
+    .update({ activa: entrada.activa })
+    .eq('id', entrada.ventanaId)
+    .eq('tenant_id', entrada.tenantId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Error al cambiar el estado de la ventana de corte: ${error.message}`);
+  }
+  if (!data) {
+    throw new ErrorValidacion(`Ventana de corte ${entrada.ventanaId} no encontrada en el tenant`);
+  }
+
+  return filaAVentanaCorte(data);
+}
