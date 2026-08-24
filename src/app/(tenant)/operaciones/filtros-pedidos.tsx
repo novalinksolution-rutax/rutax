@@ -20,8 +20,10 @@ import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import type { FuentePedido } from "@/modules/operacion/tipos";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ChipsFiltro, type ChipFiltro } from "@/components/filtros/chips-filtro";
 import { HojaInferior } from "@/components/ui/hoja-inferior";
 import { FiltroFecha } from "@/components/filtros/filtro-fecha";
+import { formatearFechaCorta } from "@/lib/formato-cl";
 import {
   Select,
   SelectContent,
@@ -136,6 +138,53 @@ export function FiltrosPedidos(props: Props) {
   );
 }
 
+
+/**
+ * Un `Select` de filtro con su rótulo, para vivir dentro de un chip.
+ *
+ * ⚠️ Vive **fuera** del componente que lo usa. Definido adentro, su identidad
+ * cambia en cada render y React lo desmonta y lo vuelve a montar entero: el
+ * desplegable se cerraría solo al escribir en él.
+ */
+function ControlSelect({
+  id,
+  rotulo,
+  campo,
+  valor,
+  placeholder,
+  opciones,
+  onCambiar,
+}: {
+  id: string;
+  rotulo: string;
+  campo: string;
+  valor: string;
+  placeholder: string;
+  opciones: { valor: string; etiqueta: string }[];
+  onCambiar: (campo: string, valor: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium">
+        {rotulo}
+      </label>
+      <Select value={valor || TODOS} onValueChange={(v) => onCambiar(campo, v === TODOS ? "" : v)}>
+        <SelectTrigger id={id} size="default" className="w-full">
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={TODOS}>{placeholder}</SelectItem>
+          {opciones.map((o) => (
+            <SelectItem key={o.valor} value={o.valor}>
+              {o.etiqueta}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function FiltrosPedidosForm({
   sellers,
   conductores,
@@ -194,130 +243,118 @@ export function FiltrosPedidosForm({
     ],
   );
 
+  const nombreSeller = sellers.find((x) => x.id === filtroSeller)?.nombre ?? null;
+  const nombreConductor = conductores.find((c) => c.id === filtroConductor)?.nombre ?? null;
+
+  /**
+   * La fecha **siempre está puesta** —cae a hoy cuando la URL no trae nada— así
+   * que su chip va sin ×: no hay «sin fecha» al que volver. Se muestra «Hoy»
+   * cuando coincide, porque es lo que el coordinador tiene en la cabeza.
+   */
+  const etiquetaFecha =
+    filtroFecha === hoy
+      ? "Hoy"
+      : filtroFecha
+        ? formatearFechaCorta(filtroFecha)
+        : filtroFechaDesde || filtroFechaHasta
+          ? `${filtroFechaDesde ? formatearFechaCorta(filtroFechaDesde) : "…"} a ${filtroFechaHasta ? formatearFechaCorta(filtroFechaHasta) : "…"}`
+          : "Hoy";
+
+  const chips: ChipFiltro[] = [
+    {
+      clave: "fecha",
+      etiqueta: "Fecha",
+      valor: etiquetaFecha,
+      control: (
+        <FiltroFecha
+          id="filtro-fecha"
+          label="Fecha comprometida"
+          hoy={hoy}
+          exacto={filtroFecha}
+          desde={filtroFechaDesde}
+          hasta={filtroFechaHasta}
+        />
+      ),
+    },
+    {
+      clave: "seller",
+      etiqueta: "Seller",
+      valor: nombreSeller,
+      onQuitar: () => actualizar("seller", ""),
+      control: (
+        <ControlSelect
+          id="filtro-seller"
+          rotulo="Seller"
+          campo="seller"
+          valor={filtroSeller}
+          placeholder="Todos los sellers"
+          opciones={sellers.map((x) => ({ valor: x.id, etiqueta: etiquetaSellerConEstado(x.nombre, x.estado) }))}
+          onCambiar={actualizar}
+        />
+      ),
+    },
+    {
+      clave: "comuna",
+      etiqueta: "Comuna",
+      valor: filtroComuna || null,
+      onQuitar: () => actualizar("comuna", ""),
+      control: (
+        <ControlSelect
+          id="filtro-comuna"
+          rotulo="Comuna"
+          campo="comuna"
+          valor={filtroComuna}
+          placeholder="Todas las comunas"
+          opciones={COMUNAS_RM.map((c) => ({ valor: c, etiqueta: c }))}
+          onCambiar={actualizar}
+        />
+      ),
+    },
+    {
+      clave: "conductor",
+      etiqueta: "Conductor",
+      valor: nombreConductor,
+      onQuitar: () => actualizar("conductor", ""),
+      control: (
+        <ControlSelect
+          id="filtro-conductor"
+          rotulo="Conductor"
+          campo="conductor"
+          valor={filtroConductor}
+          placeholder="Todos los conductores"
+          opciones={conductores.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+          onCambiar={actualizar}
+        />
+      ),
+    },
+    {
+      clave: "fuente",
+      // «Procedencia» y no «Fuente»: es la palabra del tablero, y la que
+      // entiende alguien que no vive en el modelo de datos.
+      etiqueta: "Procedencia",
+      valor: filtroFuente ? etiquetaFuentePedido(filtroFuente as FuentePedido) : null,
+      onQuitar: () => actualizar("fuente", ""),
+      control: (
+        <ControlSelect
+          id="filtro-fuente"
+          rotulo="Procedencia"
+          campo="fuente"
+          valor={filtroFuente}
+          placeholder="Todas las fuentes"
+          opciones={FUENTES_PEDIDO.map((f) => ({
+            valor: f,
+            etiqueta: etiquetaFuentePedido(f as FuentePedido),
+          }))}
+          onCambiar={actualizar}
+        />
+      ),
+    },
+  ];
+
   return (
-    <div className="flex flex-wrap items-end gap-3">
-      {/* Fecha — primero a propósito: es el único filtro que SIEMPRE está
-          puesto (cae a hoy cuando la URL no trae nada), así que es el que el
-          coordinador mira y cambia más. Los cuatro selects de abajo son
-          refinamiento ocasional. */}
-      <FiltroFecha
-        id="filtro-fecha"
-        label="Fecha comprometida"
-        hoy={hoy}
-        exacto={filtroFecha}
-        desde={filtroFechaDesde}
-        hasta={filtroFechaHasta}
-      />
-
-      {/* Seller */}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="filtro-seller" className="text-xs font-medium text-muted-foreground">
-            Seller
-          </label>
-          <Select
-            value={filtroSeller || TODOS}
-            onValueChange={(v) => actualizar("seller", v === TODOS ? "" : v)}
-          >
-            <SelectTrigger id="filtro-seller" size="default" className="h-9 w-48">
-              <SelectValue placeholder="Todos los sellers" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TODOS}>Todos los sellers</SelectItem>
-              {sellers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {etiquetaSellerConEstado(s.nombre, s.estado)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Fuente — de dónde vino el pedido (ML Flex, Same-day propio, Shopify).
-            Con tres fuentes conviviendo en la misma bandeja hace falta poder
-            acotar. NO se oculta con "por revisar": mismo criterio que comuna. */}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="filtro-fuente" className="text-xs font-medium text-muted-foreground">
-            Fuente
-          </label>
-          <Select
-            value={filtroFuente || TODOS}
-            onValueChange={(v) => actualizar("fuente", v === TODOS ? "" : v)}
-          >
-            <SelectTrigger id="filtro-fuente" size="default" className="h-9 w-48">
-              <SelectValue placeholder="Todas las fuentes" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TODOS}>Todas las fuentes</SelectItem>
-              {FUENTES_PEDIDO.map((fuente) => (
-                <SelectItem key={fuente} value={fuente}>
-                  {etiquetaFuentePedido(fuente as FuentePedido)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Comuna — destino de los enlaces profundos de la Torre (F11). NO se
-            oculta con "por revisar": acotar la bandeja de direcciones a una
-            comuna es justamente lo que se quiere al llegar desde el mapa. */}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="filtro-comuna" className="text-xs font-medium text-muted-foreground">
-            Comuna
-          </label>
-          <Select
-            value={filtroComuna || TODOS}
-            onValueChange={(v) => actualizar("comuna", v === TODOS ? "" : v)}
-          >
-            <SelectTrigger id="filtro-comuna" size="default" className="h-9 w-48">
-              <SelectValue placeholder="Todas las comunas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TODOS}>Todas las comunas</SelectItem>
-              {COMUNAS_RM.map((comuna) => (
-                <SelectItem key={comuna} value={comuna}>
-                  {comuna}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Conductor — ídem F11: «Pérez · 12 de 40» tiene que llegar acá filtrado. */}
-        <div className="flex flex-col gap-1">
-          <label htmlFor="filtro-conductor" className="text-xs font-medium text-muted-foreground">
-            Conductor
-          </label>
-          <Select
-            value={filtroConductor || TODOS}
-            onValueChange={(v) => actualizar("conductor", v === TODOS ? "" : v)}
-          >
-            <SelectTrigger id="filtro-conductor" size="default" className="h-9 w-48">
-              <SelectValue placeholder="Todos los conductores" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={TODOS}>Todos los conductores</SelectItem>
-              {conductores.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.nombre}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-      {/* Limpiar filtros — solo visible cuando hay filtros activos. Limpia
-          también el grupo de estado: es el único "volver al principio". */}
-      {hayFiltroActivo && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(pathname)}
-          className="h-9 text-muted-foreground"
-        >
-          Limpiar filtros
-        </Button>
-      )}
-    </div>
+    <ChipsFiltro
+      chips={chips}
+      onLimpiarTodo={hayFiltroActivo ? () => router.push(pathname) : undefined}
+    />
   );
 }

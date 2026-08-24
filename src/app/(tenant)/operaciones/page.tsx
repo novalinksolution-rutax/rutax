@@ -35,9 +35,11 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import type { Pedido } from "@/modules/operacion/tipos";
 import { etiquetaConductorAusente } from "@/lib/ui/etiqueta-conductor-ausente";
-import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
+import { etiquetaFuenteCorta, etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
+import { ChevronRight } from "lucide-react";
+import { formatearFechaCorta } from "@/lib/formato-cl";
 import { cn } from "@/lib/utils";
 import { BarraCajonesPedidos } from "./barra-cajones-pedidos";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -535,13 +537,17 @@ export default async function PaginaOperaciones({
                 <TableHead className="px-4">Estado</TableHead>
                 <TableHead className="px-4">Destinatario</TableHead>
                 <TableHead className="hidden px-4 sm:table-cell">Seller</TableHead>
-                {filtroPorRevisar ? (
-                  <TableHead className="px-4">Motivo</TableHead>
-                ) : (
-                  <TableHead className="hidden px-4 text-right md:table-cell">
-                    Fecha comprometida
-                  </TableHead>
-                )}
+                <TableHead className="hidden px-4 text-right md:table-cell">Fecha</TableHead>
+                {/* ⚠️ **Origen es columna propia, no un chip bajo el destinatario.**
+                    Con tres fuentes conviviendo en la misma bandeja, la procedencia
+                    dejó de ser un detalle del pedido y pasó a ser un eje de lectura:
+                    «¿cuáles de éstos son de Shopify?» se contesta barriendo una
+                    columna, no leyendo cincuenta líneas. */}
+                <TableHead className="hidden px-4 md:table-cell">Origen</TableHead>
+                {/* Motivo estaba **en vez de** fecha, y solo en la bandeja de
+                    revisión. Ahora conviven: son dos preguntas distintas —cuándo
+                    vence y por qué está así— y la fila tiene sitio para las dos. */}
+                <TableHead className="hidden px-4 lg:table-cell">Motivo</TableHead>
                 <TableHead className="hidden px-4 lg:table-cell">Conductor</TableHead>
                 {tieneAcciones && (
                   <TableHead className="px-4 text-right">
@@ -651,16 +657,13 @@ function FilaPedido({
           {sellerNombre && (
             <p className="text-xs text-muted-foreground sm:hidden">· {sellerNombre}</p>
           )}
-          {/* Fuente: era columna propia y ocupaba un ancho fijo para repetir el
-              mismo valor en casi todas las filas. Aquí acompaña a la comuna,
-              junto al resto de los distintivos de la fila. */}
-          <span className="rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground">
+          {/* La fuente **ya no va acá**: tiene columna propia desde que hay tres
+              conviviendo. Repetirla bajo el nombre era decir dos veces lo mismo
+              en la fila más apretada de la pantalla. En táctil, donde la columna
+              cae, vuelve — ahí sí es la única forma de saberlo. */}
+          <span className="rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground md:hidden">
             {etiquetaFuentePedido(pedido.fuente)}
           </span>
-          {/* Origen de cuenta ML — solo si el seller tiene más de una conexión */}
-          {origen && (
-            <span className="rounded bg-muted px-1.5 py-px text-[10px] text-muted-foreground">{origen}</span>
-          )}
           {/* Badge discreto de geocoding: solo cuando hay problema, no en modo bandeja (ya tiene columna) */}
           {!modoBandeja && requiereRevision && (
             <span className="inline-flex items-center gap-0.5 rounded-md bg-destructive-subtle px-1.5 py-px text-[10px] font-medium text-destructive-subtle-foreground">
@@ -677,16 +680,22 @@ function FilaPedido({
       <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
         {sellerNombre ?? pedido.sellerId}
       </TableCell>
-      {/* Columna condicional: Motivo en bandeja / Fecha comprometida en lista normal */}
-      {modoBandeja ? (
-        <TableCell className="px-4">
-          <BadgesMotivoGeo pedido={pedido} />
-        </TableCell>
-      ) : (
-        <TableCell className="hidden px-4 text-right font-mono text-muted-foreground tabular-nums md:table-cell">
-          {pedido.fechaCompromiso ?? "Sin fecha"}
-        </TableCell>
-      )}
+      <TableCell className="rx-num hidden px-4 text-right font-mono text-fg-muted md:table-cell">
+        {/* `24-08`, no `2026-08-24`: son cincuenta filas de la misma semana y el
+            año no distingue ninguna. */}
+        {pedido.fechaCompromiso ? formatearFechaCorta(pedido.fechaCompromiso) : "Sin fecha"}
+      </TableCell>
+      <TableCell className="hidden px-4 md:table-cell">
+        <span className="font-mono text-[11px] tracking-[0.06em] text-fg-muted uppercase">
+          {etiquetaFuenteCorta(pedido.fuente)}
+        </span>
+        {/* La cuenta de ML solo si el seller tiene más de una conectada: con una
+            sola, repetir su nombre en cada fila no informa de nada. */}
+        {origen ? <span className="block text-xs text-fg-subtle">{origen}</span> : null}
+      </TableCell>
+      <TableCell className="hidden px-4 lg:table-cell">
+        <BadgesMotivoGeo pedido={pedido} />
+      </TableCell>
       <TableCell className="hidden px-4 text-muted-foreground lg:table-cell">
         {pedido.driverIdAsignado ? (
           (conductorNombre ?? pedido.driverIdAsignado)
@@ -696,11 +705,18 @@ function FilaPedido({
       </TableCell>
       {tieneAcciones && (
         <TableCell className="px-4 text-right">
+          {/* Un chevrón, no «Ver detalle». La fila entera ya es un enlace al
+              pedido —el nombre del destinatario lo es— así que el texto repetía
+              cincuenta veces una instrucción que nadie necesita leer dos veces.
+              El glifo dice «acá se entra» y devuelve el ancho a las columnas que
+              sí llevan dato. El nombre accesible se conserva entero: para un
+              lector de pantalla «›» no significa nada. */}
           <Link
             href={`/operaciones/${pedido.id}`}
-            className="text-xs font-medium text-primary hover:underline"
+            aria-label={`Ver el detalle de ${pedido.destinatarioNombre}`}
+            className="inline-flex size-7 items-center justify-center text-fg-muted hover:text-fg"
           >
-            Ver detalle
+            <ChevronRight className="size-4" aria-hidden="true" />
           </Link>
         </TableCell>
       )}
