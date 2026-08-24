@@ -72,7 +72,6 @@ import type {
 } from "@/modules/operacion/conductores-nomina";
 import {
   actionActualizarCapacidadConductor,
-  actionToggleDisponibilidadConductor,
   actionSacarDeNomina,
   actionReincorporarANomina,
 } from "./actions";
@@ -383,7 +382,7 @@ function CajonConductor({
             />
           ) : (
             <>
-              <InterruptorDisponible conductor={conductor} onActualizado={onActualizado} />
+              <DisponibilidadDelDia conductor={conductor} />
               <Estampador conductor={conductor} onActualizado={onActualizado} />
               <EditorZonasConductor conductor={conductor} zonasTenant={zonas} />
               {hoy ? <BloqueHoy hoy={hoy} /> : null}
@@ -419,54 +418,38 @@ function CajonConductor({
   );
 }
 
-function InterruptorDisponible({
-  conductor,
-  onActualizado,
-}: {
-  conductor: ConductorEnNomina;
-  onActualizado: (c: Conductor) => void;
-}) {
-  const [pendiente, iniciar] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
+/**
+ * La disponibilidad del día — **de solo lectura desde acá**.
+ * =============================================================================
+ *
+ * Acá había un interruptor. Se retiró por decisión del usuario (24-08-2026):
+ * `disponible` pasa a ser **solo del conductor**, que se marca desde su app al
+ * empezar el turno.
+ *
+ * El motivo es que el campo describía la creencia del coordinador y no un
+ * hecho: la asistencia se definía por WhatsApp y alguien la transcribía acá.
+ *
+ * ⚠️ **La contrapartida está dicha en la pantalla, y no escondida en un
+ * comentario**: si el conductor no se marca, el coordinador ya no puede meterlo
+ * en la auto-asignación. Quitar un control sin explicar qué lo reemplazó es cómo
+ * se generan las llamadas que este cambio viene a evitar — así que el hueco que
+ * dejó el interruptor lo ocupa la explicación, no un espacio en blanco.
+ */
+function DisponibilidadDelDia({ conductor }: { conductor: ConductorEnNomina }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
-        <Label htmlFor={`disp-${conductor.id}`} className="text-sm font-medium">
-          Disponible hoy
-        </Label>
-        <button
-          id={`disp-${conductor.id}`}
-          type="button"
-          role="switch"
-          aria-checked={conductor.disponible}
-          disabled={pendiente}
-          onClick={() =>
-            iniciar(async () => {
-              setError(null);
-              const r = await actionToggleDisponibilidadConductor(
-                conductor.id,
-                !conductor.disponible,
-              );
-              if (r.ok) onActualizado({ ...conductor, disponible: !conductor.disponible });
-              else setError(r.mensaje);
-            })
-          }
-          className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors ${
-            conductor.disponible
-              ? "border-balanced-line bg-balanced-fg"
-              : "border-line bg-bg-sunken"
-          } disabled:opacity-60`}
-        >
-          <span
-            className={`size-4 rounded-full bg-bg transition-transform ${
-              conductor.disponible ? "translate-x-6" : "translate-x-1"
-            }`}
-          />
-        </button>
+        <span className="text-sm font-medium">Disponible hoy</span>
+        <DistintivoEstado
+          tono={conductor.disponible ? "balanced" : "neutral"}
+          etiqueta={conductor.disponible ? "Se marcó" : "No se ha marcado"}
+        />
       </div>
-      <p className="mt-1 text-xs text-fg-muted">Se apaga solo a medianoche.</p>
-      {error ? <p className="mt-1 text-xs text-fault-fg">{error}</p> : null}
+      <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+        {conductor.disponible
+          ? "Lo marcó él desde su app. Se apaga solo a medianoche."
+          : "Lo marca él desde su app, al empezar su turno. Mientras no lo haga no entra en la asignación automática, y desde acá no se puede marcar por él: si no aparece, hay que llamarlo."}
+      </p>
     </div>
   );
 }

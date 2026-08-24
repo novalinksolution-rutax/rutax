@@ -25,7 +25,6 @@ import {
 import {
   listarConductores,
   listarZonasConductor,
-  actualizarDisponibilidadConductor,
   actualizarCapacidadConductor,
   actualizarZonasConductor,
   actualizarDatosBancariosConductor,
@@ -115,44 +114,21 @@ export async function obtenerZonasConductor(
 }
 
 // =============================================================================
-// Actualizar disponibilidad
+// Actualizar disponibilidad — RETIRADA el 24-08-2026
 // =============================================================================
-
-export async function actionToggleDisponibilidadConductor(
-  conductorId: string,
-  disponible: boolean,
-): Promise<Respuesta<Conductor>> {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId) {
-    return { ok: false, mensaje: "No hay sesión activa." };
-  }
-
-  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
-    return {
-      ok: false,
-      mensaje: "No tienes permiso para modificar la disponibilidad de conductores.",
-    };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    const conductor = await actualizarDisponibilidadConductor(
-      cliente,
-      sesion.usuario.tenantId,
-      conductorId,
-      disponible,
-      sesion.usuarioId,
-      sesion.usuario,
-    );
-    revalidatePath("/conductores");
-    revalidatePath("/manifiestos");
-    return { ok: true, datos: conductor };
-  } catch (err) {
-    const mensaje =
-      err instanceof Error ? err.message : "Error al actualizar la disponibilidad.";
-    return { ok: false, mensaje };
-  }
-}
+//
+// `actionToggleDisponibilidadConductor` vivía acá. Se retiró junto con su
+// interruptor: `conductores.disponible` pasa a ser **solo del conductor**, que
+// se marca desde su app (`PUT /api/conductor/disponibilidad`).
+//
+// No basta con sacar el botón. Una Server Action sin llamador sigue siendo un
+// endpoint: cualquiera con el identificador de la acción puede invocarla, y el
+// gate que tenía —`asignar_y_reasignar_pedidos`— la habría dejado disponible
+// para todo coordinador. Quitar un control de la interfaz y dejar su acción
+// viva es no haberlo quitado.
+//
+// Lo que la reemplaza, si un conductor no se marca: llamarlo. Está dicho en la
+// pantalla, donde estaba el interruptor.
 
 // =============================================================================
 // Actualizar capacidad

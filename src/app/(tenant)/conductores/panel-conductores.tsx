@@ -728,18 +728,35 @@ export function SeccionRedistribucion({
 
   return (
     <>
+      {/* La pantalla se contradecía sola.
+          --------------------------------------------------------------------
+          Tres líneas más arriba dice «lo marca él desde su app · desde acá no
+          se puede marcar por él», y acá ofrecía «Marcar como no disponible».
+
+          Las dos cosas son verdad, pero son acciones distintas y el texto las
+          confundía. La regla real, escrita:
+
+          · **Ponerlo disponible** es del conductor y solo suyo. El coordinador
+            no puede meter a alguien que no se presentó.
+          · **Sacarlo** sigue siendo del coordinador, porque no es asistencia:
+            es la respuesta a que se cayó a mitad de ruta. Lo que resuelve es
+            **quién entrega esas paradas**, y dejar de estar disponible es la
+            consecuencia, no el propósito.
+
+          Así que el botón se nombra por lo que resuelve. */}
       <div className="rounded-lg border border-warning bg-warning-subtle/30 px-4 py-3 flex items-start justify-between gap-4">
         <div className="space-y-0.5">
           <p className="text-sm font-medium text-warning-subtle-foreground">
-            Marcar como no disponible
+            Se cayó a mitad de ruta
           </p>
           <p className="text-xs text-muted-foreground">
-            Desactiva al conductor para hoy y redistribuye sus paradas abiertas.
+            Reparte sus paradas abiertas entre los demás y lo saca de la asignación de hoy. Para
+            volver, se marca él desde su app.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={abrir} className="shrink-0 border-warning">
           <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
-          Marcar y redistribuir
+          Redistribuir sus paradas
         </Button>
       </div>
 

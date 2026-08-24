@@ -5,7 +5,6 @@
  * La lectura de conductores (para la vista del conductor) vive en identidad.
  * Este módulo solo añade las tres operaciones de escritura que necesita el
  * coordinador/supervisor para configurar el pool antes del auto-assign:
- *   - `actualizarDisponibilidadConductor`  — toggle disponible/no-disponible
  *   - `actualizarCapacidadConductor`       — cupo máximo de paradas
  *   - `actualizarZonasConductor`           — reemplaza zonas preferentes
  *
@@ -115,62 +114,16 @@ export async function listarZonasConductor(
 }
 
 // =============================================================================
-// actualizarDisponibilidadConductor
+// actualizarDisponibilidadConductor — RETIRADA el 24-08-2026
 // =============================================================================
-
-/**
- * Cambia el campo `disponible` de un conductor.
- * DISTINTO de `estado` ('activo'/'inactivo'): un conductor activo puede estar
- * no disponible por día libre o licencia sin darse de baja de la nómina.
- *
- * Requiere `asignar_y_reasignar_pedidos`.
- */
-export async function actualizarDisponibilidadConductor(
-  cliente: SupabaseClient,
-  tenantId: string,
-  conductorId: string,
-  disponible: boolean,
-  actorUsuarioId: string,
-  actor: UsuarioActual,
-): Promise<Conductor> {
-  if (!puedeAsignarYReasignarPedidos(actor)) {
-    throw new ErrorValidacion(
-      'El usuario no tiene capacidad para modificar la disponibilidad de conductores',
-    );
-  }
-
-  // Bitácora ANTES del efecto (CLAUDE.md invariante).
-  await registrarEnBitacora(cliente, {
-    tenantId,
-    actorUsuarioId,
-    actorTipo: 'usuario',
-    accion: disponible ? 'conductor.disponible_activado' : 'conductor.disponible_desactivado',
-    entidadTipo: 'conductor',
-    entidadId: conductorId,
-    detalle: { conductor_id: conductorId, disponible },
-  });
-
-  const { data, error } = await cliente
-    .schema('identidad')
-    .from('conductores')
-    .update({ disponible })
-    .eq('id', conductorId)
-    .eq('tenant_id', tenantId)
-    .select(
-      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
-    )
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Error al actualizar disponibilidad del conductor: ${error.message}`);
-  }
-
-  if (!data) {
-    throw new ErrorValidacion(`Conductor ${conductorId} no encontrado en el tenant`);
-  }
-
-  return filaAConductor(data);
-}
+//
+// Cambiaba `conductores.disponible` con la capacidad del coordinador. Ese campo
+// pasa a ser **solo del conductor**: lo marca desde su app, y la única
+// superficie es `marcarmeDisponible` en `disponibilidad-conductor.ts`, que NO
+// acepta un `conductorId` de fuera — sale de la sesión.
+//
+// Se retira entera y no se deja «por si acaso»: mientras exista una función que
+// cambia la disponibilidad de un tercero, alguien la va a volver a llamar.
 
 // =============================================================================
 // actualizarCapacidadConductor
