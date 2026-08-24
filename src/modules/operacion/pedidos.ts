@@ -308,7 +308,7 @@ function aplicarFiltrosPedidos(
  * (~130 bultos) los cinco cajones sumaban 25 como mucho y cambiaban al pasar de
  * página. Ahora cada cajón es un `count` en base sobre todo el conjunto.
  *
- * Son seis consultas `head: true` en paralelo (devuelven cifra, no filas): no
+ * Son siete consultas `head: true` en paralelo (devuelven cifra, no filas): no
  * hay tabla que traer, así que tampoco hay tope de 1000 filas de PostgREST que
  * esquivar ni RPC nueva que migrar.
  *
@@ -340,9 +340,13 @@ export async function contarPedidosPorGrupo(
 
   const claves = Object.keys(GRUPOS_ESTADO_PEDIDO) as (keyof typeof GRUPOS_ESTADO_PEDIDO)[];
 
-  const [porGrupo, porRevisar] = await Promise.all([
+  // `cancelado` se cuenta aunque NO sea un grupo de `GRUPOS_ESTADO_PEDIDO`: la
+  // barra lo muestra como cajón excluido —fuera de la suma, tras el separador—
+  // y sin su cifra no se puede declarar el total real («284 de 291»).
+  const [porGrupo, porRevisar, cancelado] = await Promise.all([
     Promise.all(claves.map((clave) => contar({ estados: GRUPOS_ESTADO_PEDIDO[clave] }))),
     contar({ porRevisar: true }),
+    contar({ estados: ["cancelado"] }),
   ]);
 
   const contadores = Object.fromEntries(
@@ -350,6 +354,7 @@ export async function contarPedidosPorGrupo(
   ) as ContadoresGrupoPedido;
 
   contadores.por_revisar = porRevisar;
+  contadores.cancelado = cancelado;
   return contadores;
 }
 

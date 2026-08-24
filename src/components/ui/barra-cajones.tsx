@@ -1,5 +1,7 @@
 "use client"
 
+import * as React from "react"
+
 import { cn } from "@/lib/utils"
 
 /**
@@ -40,6 +42,54 @@ import { cn } from "@/lib/utils"
  * cargar. Un contador que cuenta la página es un contador que miente.
  */
 
+/**
+ * Cuántos cajones quedaron fuera de la vista.
+ *
+ * ⚠️ **Se mide con `IntersectionObserver` y no con aritmética de anchos.** Un
+ * cálculo de «ancho total menos ancho visible partido por ancho de cajón» supone
+ * que todos miden lo mismo, y no lo hacen: «Sin asignar» y «En ruta» tienen
+ * etiquetas de largo distinto, y el conteo cambia el ancho de cada uno cuando
+ * pasa de 8 a 128. El observador pregunta por lo que de verdad se ve.
+ *
+ * Vuelve a medir al desplazar y al cambiar el tamaño, porque las dos cosas
+ * cambian la respuesta y ninguna dispara al observador por sí sola en todos los
+ * navegadores.
+ */
+function useCajonesFuera() {
+  const ref = React.useRef<HTMLDivElement>(null)
+  const [fuera, setFuera] = React.useState(0)
+
+  React.useEffect(() => {
+    const tira = ref.current
+    if (!tira) return
+
+    const hijos = () => [...tira.children].filter((h) => h instanceof HTMLElement) as HTMLElement[]
+
+    const medir = () => {
+      // Sin desbordamiento no hay nada fuera: en escritorio la tira se envuelve
+      // y todos se ven, aunque algunos queden en otra línea.
+      if (tira.scrollWidth <= tira.clientWidth + 1) {
+        setFuera(0)
+        return
+      }
+      const borde = tira.getBoundingClientRect().right
+      const invisibles = hijos().filter((h) => h.getBoundingClientRect().right > borde + 1).length
+      setFuera(invisibles)
+    }
+
+    medir()
+    tira.addEventListener("scroll", medir, { passive: true })
+    const observador = new ResizeObserver(medir)
+    observador.observe(tira)
+    return () => {
+      tira.removeEventListener("scroll", medir)
+      observador.disconnect()
+    }
+  })
+
+  return { ref, fuera }
+}
+
 export interface Cajon {
   /** Clave del grupo, la que viaja en la URL. */
   clave: string
@@ -75,13 +125,28 @@ export function BarraCajones({
 }) {
   const sumaCajones = cajones.reduce((acc, c) => acc + c.conteo, 0)
   const noCuadra = excluido !== undefined && sumaCajones !== total
+  const { ref: refTira, fuera } = useCajonesFuera()
 
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
+      <div className="flex items-center gap-2">
       <div
+        ref={refTira}
         role="group"
         aria-label="Filtrar por estado"
-        className="flex flex-wrap items-stretch gap-1"
+        // ⚠️ **Con el dedo la tira NO se envuelve: se desplaza.** Envuelta, siete
+        // cajones ocupan tres líneas y empujan la tabla fuera de la pantalla en
+        // un teléfono — el coordinador pierde el listado para ganar un filtro que
+        // usa una vez. Con el puntero sí se envuelve, porque ahí sobra el ancho y
+        // una tira que se desplaza esconde opciones sin necesidad.
+        className={cn(
+          "flex items-stretch gap-1",
+          "flex-wrap",
+          "pointer-coarse:flex-nowrap pointer-coarse:overflow-x-auto pointer-coarse:pb-1",
+          // Sin barra visible: en táctil el desplazamiento se descubre
+          // empujando, y una barra de scroll sobre 6 px de alto no la ve nadie.
+          "pointer-coarse:[scrollbar-width:none] pointer-coarse:[&::-webkit-scrollbar]:hidden",
+        )}
       >
         <BotonCajon
           etiqueta="Todos"
@@ -127,6 +192,19 @@ export function BarraCajones({
             ) : null}
           </>
         ) : null}
+      </div>
+      {/* «→ 2 más». No es un indicador de desplazamiento: es el **número** de
+          cajones que quedaron fuera de la vista. Un borde difuminado avisa de que
+          hay más; una cifra dice cuántos, que es lo que decide si vale la pena
+          empujar la tira. */}
+      {fuera > 0 ? (
+        <span
+          aria-hidden="true"
+          className="rx-num hidden shrink-0 font-mono text-[10.5px] text-fg-subtle pointer-coarse:inline"
+        >
+          → {fuera} más
+        </span>
+      ) : null}
       </div>
 
       {/* La declaración de que la suma no cuadra, y por qué. Sin esto, alguien

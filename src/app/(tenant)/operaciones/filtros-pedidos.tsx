@@ -12,13 +12,15 @@
  */
 
 import { useRouter, usePathname } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { FUENTES_PEDIDO } from "@/modules/operacion/tipos";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import type { FuentePedido } from "@/modules/operacion/tipos";
+import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HojaInferior } from "@/components/ui/hoja-inferior";
 import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import {
   Select,
@@ -31,6 +33,19 @@ import {
 /** Sentinela para "sin filtro": Radix Select no admite items con value="". */
 const TODOS = "__todos__";
 
+/**
+ * ⚠️ **Con el dedo, los filtros se van a una hoja.**
+ *
+ * Son seis controles en fila. En un teléfono ocupan media pantalla **antes** de
+ * que se vea el primer pedido, y son refinamiento ocasional: el coordinador los
+ * toca una vez y después trabaja media hora sobre la lista. Dejarlos ahí es
+ * cobrarle esa media pantalla todo el rato por algo que usó una vez.
+ *
+ * En la hoja van completos, con el mismo formulario —no una versión recortada— y
+ * el botón de arriba lleva **el contador de cuántos hay puestos**, que es lo que
+ * evita el peor caso: buscar un pedido que sí existe, no encontrarlo, y no
+ * entender que hay un filtro escondido tapándolo.
+ */
 interface Props {
   sellers: { id: string; nombre: string; estado: string }[];
   conductores: { id: string; nombre: string }[];
@@ -51,6 +66,74 @@ interface Props {
   filtroConductor: string;
   filtroFuente: string;
   hayFiltroActivo: boolean;
+}
+
+/** Cuántos filtros hay puestos. La fecha no cuenta: siempre está. */
+function contarFiltros(p: Props): number {
+  return [p.filtroSeller, p.filtroComuna, p.filtroConductor, p.filtroFuente].filter(Boolean).length;
+}
+
+/**
+ * Los filtros, en fila con el puntero y en hoja con el dedo.
+ *
+ * El formulario es **el mismo objeto** en los dos casos: una versión recortada
+ * para móvil sería un segundo formulario que mantener, y el que se queda atrás
+ * siempre es el que se usa menos.
+ */
+export function FiltrosPedidos(props: Props) {
+  const [hojaAbierta, setHojaAbierta] = useState(false);
+  const puestos = contarFiltros(props);
+
+  return (
+    <>
+      {/* Con puntero: la fila de siempre. */}
+      <div className="pointer-coarse:hidden">
+        <FiltrosPedidosForm {...props} />
+      </div>
+
+      {/* Con dedo: un botón con su contador, y la hoja. */}
+      <div className="hidden pointer-coarse:block">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setHojaAbierta(true)}
+          className="w-full justify-between"
+        >
+          <span className="flex items-center gap-2">
+            <SlidersHorizontal className="size-4" aria-hidden="true" />
+            Filtros
+          </span>
+          {puestos > 0 ? (
+            <span className="rx-num border border-brand bg-accent-deep px-1.5 py-px font-mono text-[11px]">
+              {puestos}
+            </span>
+          ) : null}
+        </Button>
+      </div>
+
+      <HojaInferior
+        abierta={hojaAbierta}
+        onOpenChange={setHojaAbierta}
+        titulo="Filtros"
+        descripcion={
+          puestos === 0
+            ? "Ninguno puesto: se ven todos los pedidos de la fecha."
+            : `${puestos} ${puestos === 1 ? "puesto" : "puestos"}`
+        }
+        pie={
+          <Button type="button" className="w-full" onClick={() => setHojaAbierta(false)}>
+            Ver los pedidos
+          </Button>
+        }
+      >
+        {/* En vertical, no en fila: en 390 px una fila de seis controles deja
+            cada uno en 60 px. */}
+        <div className="[&>div]:flex-col [&>div]:items-stretch">
+          <FiltrosPedidosForm {...props} />
+        </div>
+      </HojaInferior>
+    </>
+  );
 }
 
 export function FiltrosPedidosForm({

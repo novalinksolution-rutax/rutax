@@ -8,7 +8,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, MapPinOff, Loader2 } from "lucide-react";
+import { MapPinOff, Loader2 } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerPedido, listarIncidenciasDePedido } from "@/modules/operacion/index";
@@ -32,6 +32,7 @@ import {
 } from "@/modules/identidad/capacidades";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
+import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { PanelTrazabilidadFinanciera } from "@/components/dinero/panel-trazabilidad-financiera";
 import {
   traducirEstadoPedido,
@@ -109,7 +110,15 @@ async function cargarAsignacion(pedidoId: string, tenantId: string) {
 
 interface Props {
   params: Promise<{ pedidoId: string }>;
-  searchParams: Promise<{ traza?: string }>;
+  /**
+   * `volver` trae de dónde vino, para que el retorno lleve al listado que el
+   * coordinador estaba mirando —con sus filtros— y no al listado de fábrica.
+   *
+   * ⚠️ Viene de la URL, así que **es una redirección abierta si se usa tal
+   * cual**. `destinoRetorno` solo acepta una barra inicial: `//sitio-malo.cl`,
+   * `/\evil.cl`, `https://…` y `javascript:` caen al destino interno.
+   */
+  searchParams: Promise<{ traza?: string; volver?: string }>;
 }
 
 export default async function PaginaDetallePedido({ params, searchParams }: Props) {
@@ -200,14 +209,11 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
 
   return (
     <div className="space-y-6">
-      {/* Volver */}
-      <Link
-        href="/operaciones"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ChevronLeft className="size-4" aria-hidden="true" />
-        Volver a pedidos
-      </Link>
+      {/* El retorno explícito del sistema. Antes era un enlace propio con sus
+          clases a mano; ahora es el mismo componente que el resto del producto,
+          y **conserva los filtros de origen** en vez de mandar al listado de
+          fábrica. Nombra el destino: «Volver» a secas obliga a adivinar. */}
+      <Retorno href={destinoRetorno("/operaciones", sp.volver)} etiqueta="Volver a pedidos" />
 
       {/* Sección A — Encabezado */}
       <div>
@@ -243,6 +249,8 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
             className="px-3 py-1 text-sm"
             texto={traducirEstadoPedido(pedido.estado)}
+            eje="pedido"
+            valor={pedido.estado}
           />
         </div>
 
@@ -699,7 +707,12 @@ function TargetaIncidencia({
               tipoActual={incidencia.tipo}
             />
           )}
-          <BadgeEstado variante={BADGE_ESTADO_INCIDENCIA[incidencia.estado]} texto={traducirEstadoIncidencia(incidencia.estado)} />
+          <BadgeEstado
+                  variante={BADGE_ESTADO_INCIDENCIA[incidencia.estado]}
+                  texto={traducirEstadoIncidencia(incidencia.estado)}
+                  eje="incidencia"
+                  valor={incidencia.estado}
+                />
         </div>
       </div>
     </li>

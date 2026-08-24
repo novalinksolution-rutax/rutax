@@ -536,7 +536,19 @@ export interface FiltrosPedidos {
  * Conteo por grupo de estado sobre el CONJUNTO filtrado, no sobre la página.
  * Las claves son las de `GRUPOS_ESTADO_PEDIDO` más `por_revisar`.
  */
-export type ContadoresGrupoPedido = Record<GrupoEstadoPedido, number>;
+/**
+ * Los conteos de la barra de cajones.
+ *
+ * ⚠️ **`cancelado` va aparte de `GrupoEstadoPedido` a propósito.** No es un grupo
+ * operativo —no está pendiente, no va en ruta y no se entregó— y **no suma con
+ * los demás**: si sumara, el total de la barra no cuadraría con el de la tabla y
+ * nadie sabría por qué. Va tras un separador, en tono fuera de juego, y la barra
+ * declara el total real. La aritmética del tablero lo fija: 284 en los cajones,
+ * 7 cancelados, 291 en total.
+ */
+export type ContadoresGrupoPedido = Record<GrupoEstadoPedido, number> & {
+  cancelado: number;
+};
 
 export interface PaginadoPedidos {
   datos: Pedido[];

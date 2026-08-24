@@ -61,7 +61,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **1** | Tokens y primitivas | **hecha** — tokens, puente, fuentes, 8 re-estilos, selector de fecha, `interruptor` | `credencial de una sola vez` | — | *(no hizo falta)* |
 | **2** | Estado | **hecha** — 8 de 10 · 25 ejes · 33 correcciones con prueba mecánica | los 4 vocabularios que faltan viven en la app del conductor (bloque 6) | — | *(no hizo falta)* |
 | **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
-| **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
+| **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, y su bloqueo **ya caducó**: entra con Pedidos | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | **CERRADO el 24-08** — 6.0 a 6.5 completos, incluidas la casilla táctil de 56 px, el barrido vertical y la hoja inferior | la adopción de la hoja en el resto de los paneles va **por pantalla**, con su bloque. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
@@ -177,11 +177,23 @@ bloques 4–8, cuando cada pantalla se toque.
       suspendido (§9.3), y plan y aviso inactivos (§11.3, mismo criterio). Antes eran el mismo gris
       que algo pendiente.
 
-- [ ] **0.2b · Las 5 llamadas de `operaciones/` — BLOQUEADAS.**
-      `(tenant)/operaciones/page.tsx` (3) y `(tenant)/operaciones/[pedidoId]/page.tsx` (2) están
-      **modificadas sin commitear** por trabajo en curso ajeno al rediseño. Tocarlas mezcla dos
-      cambios en un mismo diff. Se hacen cuando ese trabajo aterrice; los ejes son `pedido`, `geo`,
-      `cobertura` e `incidencia`, todos ya declarados.
+- [x] **0.2b · Las 5 llamadas de `operaciones/` — HECHAS (24-08).** Tres en el listado (pedido, geo,
+      cobertura) y dos en el detalle (pedido, incidencia).
+      **Lo que desbloqueó, y se vio en pantalla:** `Cancelado` pasa a `inert` **con su trama de
+      135°**. Antes era el mismo gris que algo pendiente — es decir, un pedido fuera de juego se leía
+      como trabajo por hacer. `(tenant)/operaciones/page.tsx` (3) y
+      `(tenant)/operaciones/[pedidoId]/page.tsx` (2). Los ejes son `pedido`, `geo`, `cobertura` e
+      `incidencia`, todos ya declarados.
+      🔴 **EL BLOQUEO CADUCÓ Y NADIE LO MIRÓ (auditado el 24-08).** Decía «modificadas sin commitear
+      por trabajo en curso ajeno al rediseño», y era cierto el 22-08. Ese trabajo **aterrizó**
+      (`6b6f893`, el filtro de fecha) y la carpeta está limpia desde entonces.
+      ⚠️ **Y no era el único: los cinco bloqueos por circunstancia apuntaban a `operaciones/` y
+      caducaron todos a la vez** — estas 5 llamadas, el `Retorno` del detalle, la migración de
+      `pedidos.cancelar*` a ceremonia de dinero, la `BarraCajones` y la `FranjaCambiosPendientes`.
+      **Es la tercera vez que este documento va por detrás del código** (antes: el bloque 6 entero y
+      el cartel de la PWA). El patrón: se escribe cuando algo se bloquea y no se revisa cuando se
+      desbloquea. **Un bloqueo por circunstancia debería llevar de qué depende, para poder
+      comprobarlo** — «cuando aterrice X» se comprueba en un comando; «trabajo en curso» no.
 
 - [x] **0.3 · Los vocabularios que vivían fuera del sistema, absorbidos** — eran **13**, y ninguno
       pasaba por `tonoDeEstado`. Seis se movieron a `traduccion-estados.ts` como vocabularios de
@@ -300,7 +312,12 @@ bloques 4–8, cuando cada pantalla se toque.
       `destinoRetorno` solo acepta una barra inicial: `//evil.cl`, `/\evil.cl`, `https://…` y
       `javascript:` caen al destino interno. Once pruebas lo fijan, y **se verificó en vivo**:
       con `?volver=//sitio-malo.cl/phishing` el botón apunta a `/manifiestos`.
-      *Falta:* las de `operaciones/` (bloqueadas por el trabajo en curso) y `conductores/[id]`,
+      ✅ **Las de `operaciones/` ya están (24-08):** el detalle del pedido tenía un enlace propio con
+      sus clases a mano y **mandaba siempre al listado de fábrica**, perdiendo los filtros de origen.
+      Ahora es el `Retorno` del sistema con `destinoRetorno`. **Verificado en el navegador las dos
+      mitades:** con `?volver=/operaciones?estado=asignado` conserva el filtro, y con
+      `?volver=//sitio-malo.cl/phishing` cae a `/operaciones`.
+      *Falta:* `conductores/[id]`,
       que aún no cuelga el retorno desde su listado. Y los 31 `<h1>` propios de `(tenant)` siguen
       sin encabezado compartido.
 
@@ -365,11 +382,58 @@ bloques 4–8, cuando cada pantalla se toque.
 
 ## Adopción de los bloques 1–3 que entra acá
 
-- [ ] `BarraCajones` en `(tenant)/operaciones` (los 6 cajones que pide el inventario, con
-      `cancelado` como excluido) y en `preparacion/asignar`.
-- [ ] `FranjaCambiosPendientes` en `operaciones` y `preparacion/asignar`, que ya se refrescan solas
-      vía Realtime (`src/components/tiempo-real/`).
+- [x] **`BarraCajones` en `(tenant)/operaciones` — HECHA (24-08).** Eran seis botones con clases
+      escritas a mano (`bg-warning-subtle`, `bg-info-subtle`, `bg-destructive-subtle`): colores del
+      ADN anterior que no pasaban por ningún tono, y **sin declarar nunca que la suma no cuadra**.
+      **La aritmética del tablero encajó sola, y es lo que confirma que el componente se diseñó para
+      esta pantalla:** cinco cajones suman (128+96+34+18+8 = 284), «por revisar» **cruza** los cinco
+      —sus filas ya están contadas— y «cancelado» queda **fuera** (7), total 291. Son exactamente los
+      tres papeles de la API: `cajones` · `transversal` · `excluido`.
+      🐞 **`cancelado` no se contaba**: `contarPedidosPorGrupo` hacía seis consultas y ninguna era la
+      suya, así que no había cifra con la que declarar el total real. Ahora son siete.
+      **Verificado en pantalla:** «12 en los grupos de arriba · 1 cancelados · 13 en total».
+      *(La mitad de `preparacion/asignar` sigue pendiente.)*
+- [x] **`FranjaCambiosPendientes` en `operaciones` — CABLEADA (24-08), y ver el aviso de abajo.**
+      La pantalla se refrescaba sola por Realtime, y en ésta eso no es una virtud: **la lista se
+      reordena bajo el cursor sin avisar**. El coordinador leía la fila 12, entraba un pedido, y la
+      fila 12 pasaba a ser otra — peor si iba a tocarla. Ahora los cambios se acumulan, la franja
+      dice cuántos son, y la lista se reordena **solo cuando él lo pide**.
+      El contador vive en un contexto porque se muestra en dos sitios lejanos del árbol —el indicador
+      de la cabecera, que es quien escucha, y la franja bajo los filtros—, y así la página **no se
+      vuelve de cliente**: los hijos de servidor pasan como ranura.
+      ⚠️ **El seguro de la selección NO se construyó** *(decisión del usuario)*: el tablero pide que
+      con una selección activa ni los cambios en sitio se apliquen, pero **Pedidos no tiene
+      selección** — esa vive en la bandeja de asignar. Entra cuando exista una acción en bloque acá.
+      🔴 **NO SE PUDO VER FUNCIONANDO, y el motivo es un hallazgo aparte:** en el entorno local
+      **Realtime no entrega un solo evento**. Se insertaron tres pedidos, se esperó 10 s (el rebote
+      es de 800 ms) y no llegó nada — **mientras el indicador seguía diciendo «En vivo»**. Las
+      suscripciones están autenticadas (`role: authenticated`, con `tenant_id`) y `operacion.pedidos`
+      está publicada, así que no es el token ni la publicación. **Es anterior a este cambio**: la
+      lista tampoco se refrescaba sola, que es lo que el código hacía antes. Ver el aviso al final
+      del bloque.
+      *(La mitad de `preparacion/asignar` sigue pendiente.)*
 - [ ] Unificar la `BarraSeleccion` local de `preparacion/asignar/_componentes/` con la del sistema.
+
+## 🔴 Aviso: Realtime no entrega nada en local, y el indicador dice que sí
+
+Encontrado el 24-08 al cablear la franja de Pedidos. **No es del rediseño y no se cerró acá**, pero
+es lo bastante grave para no dejarlo en un comentario de código.
+
+**El síntoma:** se insertan pedidos en la base, se espera 10 s, y **no llega un solo evento**. El
+indicador de la cabecera sigue mostrando **«En vivo»** todo el rato.
+
+**Lo que ya se descartó:**
+· las suscripciones **están autenticadas** — `realtime.subscription` muestra `role: authenticated`
+  con `tenant_id`, así que no es el fallo de `INITIAL_SESSION` que ya está documentado;
+· `operacion.pedidos` **está en la publicación** `supabase_realtime`;
+· el rebote es de **800 ms**, así que no era falta de espera.
+
+**Por qué importa más de lo que parece:** el tablero de operación, la bandeja de asignar y ahora
+Pedidos dicen «En vivo» y **prometen algo que no está pasando**. Un coordinador que confía en que la
+pantalla se actualiza sola no vuelve a recargar — y trabaja sobre una foto vieja sin saberlo. Un
+indicador de salud que no puede estar en rojo no es un indicador.
+
+**Sin verificar:** si esto ocurre también en producción. Es lo primero que hay que mirar.
 
 ## Pantallas
 

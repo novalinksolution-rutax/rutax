@@ -38,6 +38,8 @@ import { etiquetaConductorAusente } from "@/lib/ui/etiqueta-conductor-ausente";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
+import { cn } from "@/lib/utils";
+import { BarraCajonesPedidos } from "./barra-cajones-pedidos";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
 import { Pagination } from "@/components/ui/pagination";
@@ -50,8 +52,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FormularioPedidoSameDay } from "./formulario-same-day";
-import { FiltrosPedidosForm } from "./filtros-pedidos";
-import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { FiltrosPedidos } from "./filtros-pedidos";
+import {
+  FranjaCambiosEnVivo,
+  IndicadorCambiosEnVivo,
+  ProveedorCambiosEnVivo,
+} from "./cambios-en-vivo";
 import { obtenerSellersDelTenant, type SellerFiltro } from "@/lib/datos-tenant/sellers";
 import { obtenerConductoresDelTenant } from "@/lib/datos-tenant/conductores";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
@@ -84,42 +90,25 @@ import {
  * módulo — no se redefinen aquí, para que el número de arriba y la tabla de
  * abajo no puedan volver a decir cosas distintas.
  */
-const GRUPOS_BARRA: {
-  clave: GrupoEstadoPedido;
-  etiqueta: string;
-  clasesActivo: string;
-}[] = [
-  {
-    clave: "pendiente_asignacion",
-    etiqueta: "Pendiente asignación",
-    clasesActivo: "bg-warning-subtle text-warning-subtle-foreground ring-warning/40",
-  },
-  {
-    clave: "asignado",
-    etiqueta: "Asignados",
-    clasesActivo: "bg-info-subtle text-info-subtle-foreground ring-info/40",
-  },
-  {
-    clave: "en_ruta",
-    etiqueta: "En ruta",
-    clasesActivo: "bg-info-subtle text-info-subtle-foreground ring-info/40",
-  },
-  {
-    clave: "entregado",
-    etiqueta: "Entregados",
-    clasesActivo: "bg-success-subtle text-success-subtle-foreground ring-success/40",
-  },
-  {
-    clave: "con_problemas",
-    etiqueta: "Con problemas",
-    clasesActivo: "bg-destructive-subtle text-destructive-subtle-foreground ring-destructive/40",
-  },
-  {
-    clave: "por_revisar",
-    etiqueta: "Dirección por revisar",
-    clasesActivo: "bg-destructive-subtle text-destructive-subtle-foreground ring-destructive/40",
-  },
-];
+/**
+ * Los cajones, con su reparto en tres papeles.
+ *
+ * ⚠️ **Los cinco de `cajones` son los únicos que suman.** «Por revisar» cruza los
+ * cinco —un pedido con la dirección por revisar está además en alguno de ellos—
+ * y «cancelado» queda fuera del conjunto operativo. Ver `BarraCajonesPedidos`.
+ *
+ * Antes eran seis botones con clases escritas a mano (`bg-warning-subtle`,
+ * `bg-info-subtle`, `bg-destructive-subtle`): colores del ADN anterior que no
+ * pasaban por ningún tono del sistema, y sin declarar nunca que la suma no
+ * cuadra con el total.
+ */
+const CAJONES_QUE_SUMAN = [
+  { clave: "pendiente_asignacion", etiqueta: "Sin asignar" },
+  { clave: "asignado", etiqueta: "Asignados" },
+  { clave: "en_ruta", etiqueta: "En ruta" },
+  { clave: "entregado", etiqueta: "Entregados" },
+  { clave: "con_problemas", etiqueta: "Con problemas" },
+] as const;
 
 /** Nombre visible de la cuenta de origen: alias → nickname de ML → últimos 4. */
 function etiquetaCuentaOrigen(alias: string | null, mlNickname: string | null, mlUserId: string | null): string {
@@ -392,6 +381,7 @@ export default async function PaginaOperaciones({
   const hrefPagina = (p: number) => hrefCon({ pagina: p });
 
   return (
+    <ProveedorCambiosEnVivo>
     <div className="space-y-6">
       {/* Encabezado */}
       <div className="flex items-center justify-between gap-3">
@@ -400,7 +390,7 @@ export default async function PaginaOperaciones({
             <h1 className="font-heading text-2xl font-semibold">
               {filtroPorRevisar ? "Direcciones por revisar" : "Pedidos"}
             </h1>
-            <IndicadorEnVivo tenantId={tenantId} />
+            <IndicadorCambiosEnVivo tenantId={tenantId} />
           </div>
           {filtroPorRevisar && (
             <p className="mt-0.5 text-sm text-muted-foreground">
@@ -430,34 +420,45 @@ export default async function PaginaOperaciones({
         </div>
       )}
 
-      {/* Bloque 1 — Barra de grupos: es el filtro de estado de la pantalla */}
-      <nav aria-label="Filtrar por estado" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {GRUPOS_BARRA.map(({ clave, etiqueta, clasesActivo }) => {
-          const activo = grupoActivo === clave;
-          return (
-            <Link
-              key={clave}
-              href={hrefCon({ estado: activo ? "" : clave })}
-              aria-current={activo ? "page" : undefined}
-              className={[
-                "rounded-lg px-3 py-2 text-left ring-1 transition-colors",
-                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                activo
-                  ? clasesActivo
-                  : "bg-card text-card-foreground ring-border hover:bg-accent",
-              ].join(" ")}
-            >
-              <p className="text-lg font-semibold tabular-nums">
-                {contadores ? contadores[clave] : "—"}
-              </p>
-              <p className="text-xs font-medium">{etiqueta}</p>
-            </Link>
-          );
-        })}
-      </nav>
+      {/* Bloque 1 — La barra de cajones: es el filtro de estado de la pantalla */}
+      <BarraCajonesPedidos
+        cajones={CAJONES_QUE_SUMAN.map(({ clave, etiqueta }) => ({
+          clave,
+          etiqueta,
+          conteo: contadores ? contadores[clave] : 0,
+        }))}
+        transversal={{
+          clave: "por_revisar",
+          etiqueta: "Por revisar",
+          conteo: contadores?.por_revisar ?? 0,
+        }}
+        excluido={{
+          clave: "cancelado",
+          etiqueta: "Cancelados",
+          conteo: contadores?.cancelado ?? 0,
+        }}
+        activo={grupoActivo ?? null}
+        // El total incluye el excluido y NO el transversal, que ya está contado
+        // en los cinco. Sale de los mismos conteos: no hay una consulta más.
+        total={
+          contadores
+            ? CAJONES_QUE_SUMAN.reduce((acc, c) => acc + contadores[c.clave], 0) +
+              contadores.cancelado
+            : totalPedidos
+        }
+        destinos={{
+          "": hrefCon({ estado: "" }),
+          ...Object.fromEntries(
+            [...CAJONES_QUE_SUMAN.map((c) => c.clave), "por_revisar", "cancelado"].map((clave) => [
+              clave,
+              hrefCon({ estado: clave as GrupoEstadoPedido | EstadoPedido }),
+            ]),
+          ),
+        }}
+      />
 
       {/* Bloque 2 — Filtros */}
-      <FiltrosPedidosForm
+      <FiltrosPedidos
         sellers={sellersDisponibles}
         conductores={conductoresDisponibles}
         filtroSeller={filtroSeller}
@@ -471,6 +472,8 @@ export default async function PaginaOperaciones({
         filtroFuente={filtroFuente}
         hayFiltroActivo={hayFiltroActivo}
       />
+
+      <FranjaCambiosEnVivo />
 
       {/* Bloque 3 — Tabla / estados de vista */}
       {pedidos.length === 0 && !errorCarga ? (
@@ -568,6 +571,7 @@ export default async function PaginaOperaciones({
         </DataTable>
       )}
     </div>
+    </ProveedorCambiosEnVivo>
   );
 }
 
@@ -594,20 +598,59 @@ function FilaPedido({
   const requiereRevision = requiereRevisionGeo(pedido.geoEstado, pedido.coberturaEstado);
   const estaPendienteGeo = pedido.geoEstado === "pendiente" && !requiereRevision;
 
+  /**
+   * ⚠️ **La fila cancelada se raya, y no es decoración.**
+   *
+   * Es el mismo recurso del distintivo fuera de juego aplicado a la fila
+   * completa: trama diagonal de fondo y el texto apagado. **Sigue siendo
+   * consultable, pero deja de competir** — un pedido cancelado en medio de la
+   * lista con el mismo peso visual que uno en ruta se lee como trabajo por
+   * hacer, y el coordinador lo mira dos veces cada vez que barre la pantalla.
+   *
+   * La trama es lo que lo distingue en monocromo y para quien no ve el color;
+   * bajarle solo la opacidad no lo lograría.
+   */
+  const fueraDeJuego = pedido.estado === "cancelado";
+
   return (
-    <TableRow className="group">
+    <TableRow
+      // 52 px con el dedo, la densidad normal con el puntero. Va por
+      // `pointer-coarse` y no por ancho: un iPad de 1024 px es táctil y un
+      // portátil del mismo ancho no. Mismo criterio que la casilla de asignar.
+      className={cn(
+        "group pointer-coarse:[&>td]:h-row-touch",
+        fueraDeJuego && "rx-inert-row text-fg-muted",
+      )}
+    >
       <TableCell className="px-4">
         <BadgeEstado
           variante={BADGE_ESTADO_PEDIDO[pedido.estado]}
           texto={traducirEstadoPedido(pedido.estado)}
+          eje="pedido"
+          valor={pedido.estado}
         />
       </TableCell>
       <TableCell className="px-4">
         <Link href={`/operaciones/${pedido.id}`} className="font-medium hover:underline">
           {pedido.destinatarioNombre}
         </Link>
+        {/* ⚠️ **Lo que se pierde al caer las columnas se recupera acá, no se
+            pierde.** Seller cae en `sm`, fecha en `md` y conductor en `lg`: sin
+            esto, en un teléfono el coordinador ve un nombre y una comuna, y para
+            saber de qué seller es o cuándo vence tiene que abrir el pedido.
+            El **código en monoespaciada** es lo que se dicta por teléfono y lo
+            que se busca en un manifiesto impreso; en escritorio vive en la
+            página de detalle, pero acá es la única forma de identificar la fila
+            sin abrirla. */}
         <div className="flex flex-wrap items-center gap-1 mt-0.5">
+          {pedido.codigoInterno && (
+            <p className="rx-num font-mono text-xs text-fg-muted">{pedido.codigoInterno}</p>
+          )}
           <p className="text-xs text-muted-foreground">{pedido.destinatarioComuna}</p>
+          {/* El seller, solo mientras su columna esté escondida. */}
+          {sellerNombre && (
+            <p className="text-xs text-muted-foreground sm:hidden">· {sellerNombre}</p>
+          )}
           {/* Fuente: era columna propia y ocupaba un ancho fijo para repetir el
               mismo valor en casi todas las filas. Aquí acompaña a la comuna,
               junto al resto de los distintivos de la fila. */}
@@ -704,12 +747,16 @@ function BadgesMotivoGeo({ pedido }: { pedido: Pedido }) {
         <BadgeEstado
           variante={BADGE_GEO_ESTADO[pedido.geoEstado]}
           texto={traducirGeoEstado(pedido.geoEstado)}
+          eje="geo"
+          valor={pedido.geoEstado}
         />
       )}
       {tieneCoberturaProblema && (
         <BadgeEstado
           variante={BADGE_COBERTURA_ESTADO[pedido.coberturaEstado]}
           texto={traducirCoberturaEstado(pedido.coberturaEstado)}
+          eje="cobertura"
+          valor={pedido.coberturaEstado}
         />
       )}
     </div>
