@@ -1788,10 +1788,20 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       situación. 8 pruebas. **Verificado en pantalla** el caso de credencial.
       *Sigue pendiente:* **NUEVO #29** (semáforo del sistema) y **NUEVO #30** («lo último que
       cambió»), los dos bloqueados con el resto de los 30.
-- [ ] `/portal/login` — 6 líneas, solo `redirect("/login")`. No hay login propio del portal.
+- [x] **`/portal/login` — resuelto por decisión, no construido (24-08).** El tablero dibuja un
+      login propio con la marca del courier y **no se puede construir**: en esa URL no hay dato del
+      que sacar de qué courier se trata, porque el producto vive en un solo dominio sin subdominio
+      por courier. La regla 42 ya lo había resuelto por el otro lado —`neutra` es exactamente «no
+      sabemos quién entra por esta puerta»—, así que el redirect a `/login` es correcto. El tablero
+      se contradice consigo mismo y gana la regla, que es la que se puede cumplir. Queda escrito en
+      el archivo, con la condición que lo reabriría: un subdominio o un enlace con el courier.
 - [ ] `/admin/login` — el formulario lo renderiza `admin/layout.tsx`, no la página. Con MFA/TOTP.
-- [ ] `/registro` + `/registro/revisa-tu-correo`
-- [ ] `/activar-cuenta`
+- [x] **`/registro` — ya usaba el marco** *(verificado 24-08; el checklist lo daba por
+      pendiente)*.
+- [x] **`/registro/revisa-tu-correo` — HECHO (24-08), y tenía un enlace muerto.** Su única salida
+      era «Contacta a soporte» → `/soporte`, **que no existe**: mandaba a un 404 justo a quien ya
+      está atascado esperando un correo. Se retira; la acción de la pantalla es reenviar.
+- [x] **`/activar-cuenta` — HECHO (24-08).** Al marco, marca Rutax en sus dos estados.
 - [x] `/invitacion/[token]` — **los 5 finales, hechos**, y el trabajo no fue escribirlos: fue
       **darle a cada uno una salida distinta**. Los cinco casos estaban en el servidor desde antes
       —`resolverInvitacionPorToken` ya devolvía `invalida · expirada · revocada · ya_aceptada ·
@@ -1814,7 +1824,9 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       nombra el cambio concreto que sube el escalón.
       **Verificado en el navegador** los cinco: tonos `balanced · attention · inert · neutral` leídos
       del DOM, más el formulario válido con su medidor recorrido de «Corta» a «Fuerte».
-- [ ] `/recuperar-contrasena` + `/restablecer-contrasena`
+- [x] **`/recuperar-contrasena` — ya usaba el marco** *(verificado 24-08)*.
+- [x] **`/restablecer-contrasena` — HECHO (24-08).** Al marco. El enlace vencido conserva su
+      pantalla propia con la salida de pedir otro, que es lo que el tablero pide.
 - [x] `/tracking/[token]` — **hecha, y con la `línea de tiempo pública` que faltaba.**
       Tenía los estados; lo que no tenía era **recorrido**. Un distintivo suelto que dice «En camino»
       contesta *qué* pasa; quien abre esto desde WhatsApp, en la calle, quiere saber *dónde va en el
@@ -1850,9 +1862,29 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       **Verificado en el navegador los cinco estados**, con datos sembrados: tonos `neutral ·
       progress · balanced · attention · inert`, el trazo medido en `1 / 0,45` en camino y `1 / 1`
       entregado, y la hora de entrega saliendo del POD.
-- [ ] `/terminos` y `/privacidad` (`(legal)/layout.tsx` propio) — **la pantalla está diseñada; el
-      texto lo escribe un abogado**, en USTED, con su versión y su fecha de vigencia.
-- [ ] `/offline`
+- [x] **`/terminos` y `/privacidad` — la PANTALLA hecha (24-08); el texto sigue siendo del abogado.**
+      Tenían contenido real y layout propio —correcto: un documento legal no es una columna de
+      460 px como las de formulario—. Faltaba lo estructural que el tablero sí pide:
+      · **versión y fecha de vigencia arriba.** Había «Última actualización: 5 de agosto», que es
+        información para el lector y **no sirve como llave**: dos redacciones pueden compartir
+        fecha. Y hace falta una llave porque **hay consentimientos que citan el documento por
+        versión** — un registro no puede decir «aceptó los términos», tiene que decir a qué
+        redacción dijo que sí. Las versiones viven en `src/lib/legal/versiones.ts`, junto al
+        patrón que ya existía para el consentimiento de ubicación.
+      · **la medida de 62 caracteres.** Estaba en `max-w-3xl` = 768 px, del orden de **110
+        caracteres por línea**. Medido después del cambio: **62 exactos**.
+      ⚠️ Y una trampa al alinearlo: `ch` se resuelve contra la fuente **del propio elemento**, así
+      que `max-w-[62ch]` daba 610 px en la cabecera, 534 en el cuerpo y 458 en el pie — los tres
+      «62ch». Se ancla el tamaño de letra en el contenedor y el visible va en el contenido. Medido:
+      los tres en 448–982.
+- [x] **`/offline` — HECHO (24-08), y no tenía ninguna salida.** El tablero pide reintentar, y un
+      «Reintentar» pulsado sin señal no hace nada visible: recarga, vuelve a fallar, muestra lo
+      mismo. Quien lo pulsa tres veces concluye que la app está rota. Ahora el botón **dice el
+      estado de la red antes de tocarlo** —desactivado y «Esperando señal…» sin conexión, activo y
+      «Volver a cargar» cuando vuelve— y se activa solo. Verificado en los dos sentidos.
+      ⚠️ Y lo primero que dice la pantalla es que **no se perdió nada**: la ve el conductor a mitad
+      de ruta, y su pregunta no es qué pasó sino si tiene que volver a marcar la entrega. Sin eso,
+      la reacción razonable duplica registros.
 - [x] **`not-found.tsx`** — **hecha** *(NUEVO #28, aprobado por el usuario el 23-08)*. No existía
       ninguna: todo `notFound()` caía en «404 · This page could not be found», **la única pantalla
       del producto en inglés**.

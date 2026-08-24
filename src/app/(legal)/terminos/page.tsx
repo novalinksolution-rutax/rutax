@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 
+import { CabeceraDocumentoLegal } from "@/components/ui/cabecera-documento-legal";
+import { TERMINOS } from "@/lib/legal/versiones";
+
 export const metadata: Metadata = {
   title: "Términos y condiciones",
   description:
@@ -10,8 +13,8 @@ export const metadata: Metadata = {
 export default function PaginaTerminos() {
   return (
     <article>
-      <h1 className="mb-2 text-2xl font-semibold">Términos y condiciones</h1>
-      <p className="text-muted-foreground">Última actualización: 5 de agosto de 2026</p>
+      <CabeceraDocumentoLegal titulo="Términos y condiciones" documento={TERMINOS} />
+
 
       <h2>1. Quién presta el servicio</h2>
       <p>

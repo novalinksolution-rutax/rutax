@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+
+import { CabeceraDocumentoLegal } from "@/components/ui/cabecera-documento-legal";
+import { PRIVACIDAD } from "@/lib/legal/versiones";
 import {
   DIAS_RETENCION_IMAGENES,
   DIAS_RETENCION_METADATOS,
@@ -22,8 +25,8 @@ export const metadata: Metadata = {
 export default function PaginaPrivacidad() {
   return (
     <article>
-      <h1 className="mb-2 text-2xl font-semibold">Política de privacidad</h1>
-      <p className="text-muted-foreground">Última actualización: 5 de agosto de 2026</p>
+      <CabeceraDocumentoLegal titulo="Política de privacidad" documento={PRIVACIDAD} />
+
 
       <h2>1. Quiénes somos y qué rol tenemos</h2>
       <p>

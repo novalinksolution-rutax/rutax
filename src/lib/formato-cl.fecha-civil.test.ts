@@ -14,7 +14,11 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { formatearFechaCivilCorta, formatearFechaCorta } from "./formato-cl";
+import {
+  formatearFechaCivilCorta,
+  formatearFechaCivilLarga,
+  formatearFechaCorta,
+} from "./formato-cl";
 
 describe("formatearFechaCivilCorta", () => {
   it("no corre el día hacia atrás", () => {
@@ -47,5 +51,22 @@ describe("formatearFechaCivilCorta", () => {
     // `YYYY-MM-DD`. Si algún día dejara de hacerlo, esta prueba avisa de que la
     // razón de existir del helper cambió — no de que algo se rompió.
     expect(formatearFechaCorta("2026-08-24")).toBe("23-08");
+  });
+});
+
+describe("formatearFechaCivilLarga", () => {
+  it("no corre el día, y el mes va en minúscula", () => {
+    expect(formatearFechaCivilLarga("2026-08-05")).toBe("5 de agosto de 2026");
+    expect(formatearFechaCivilLarga("2026-01-01")).toBe("1 de enero de 2026");
+    expect(formatearFechaCivilLarga("2026-12-31")).toBe("31 de diciembre de 2026");
+  });
+
+  it("no rellena el día con cero: se escribe «5», no «05»", () => {
+    expect(formatearFechaCivilLarga("2026-03-07")).toBe("7 de marzo de 2026");
+  });
+
+  it("devuelve la raya ante un mes imposible o una cadena que no es fecha", () => {
+    expect(formatearFechaCivilLarga("2026-13-01")).toBe("—");
+    expect(formatearFechaCivilLarga("ayer")).toBe("—");
   });
 });

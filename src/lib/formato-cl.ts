@@ -158,6 +158,30 @@ export function formatearFechaCivilCorta(fecha: string): string {
   return `${m[3]}-${m[2]}`;
 }
 
+/** Nombres de mes en minúscula, como los escribe el español. */
+const MESES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+] as const;
+
+/**
+ * `2026-08-05` → `5 de agosto de 2026`. Para una fecha **civil**.
+ *
+ * Hermana de `formatearFechaCivilCorta` y por el mismo motivo: `formatearFechaLarga`
+ * hace `new Date("2026-08-05")`, que es medianoche UTC, y en Santiago eso es el
+ * **día anterior**. En una fecha de vigencia de un documento legal, un día de
+ * diferencia no es un detalle de presentación.
+ *
+ * Sin `Date` de por medio no hay nada que se pueda correr: se parte la cadena.
+ */
+export function formatearFechaCivilLarga(fecha: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha.trim());
+  if (!m) return "—";
+  const mes = MESES[Number(m[2]) - 1];
+  if (!mes) return "—";
+  return `${Number(m[3])} de ${mes} de ${m[1]}`;
+}
+
 /** "hace 5 minutos" / "hace 2 días" — relativo, en español de Chile, redondeado al tramo más legible. */
 export function formatearTiempoRelativo(fecha: Date | string, ahora: Date = new Date()): string {
   const valor = typeof fecha === "string" ? new Date(fecha) : fecha;
