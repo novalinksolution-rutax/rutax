@@ -64,12 +64,12 @@ Dinero, no «Marco y navegación» del catálogo.
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
-| **6** | **App del conductor** | 15 componentes · **0 hechos** | 15 · **en el repo `rutax-conductor`** + el retiro de la PWA | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
-| **7** | **Sub-sistemas** | 12 componentes · **0 hechos** | cartografía 5 · gráficos 4 · impresos 2 · correos 1 | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
-| **8** | **Sin sesión y sitio** | 3 componentes · **0 hechos** | 3 + `not-found.tsx` + las 6 páginas del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
+| **6** | **App del conductor** | **construido en `rutax-conductor`** (5 commits: temas Sol/Día/Noche, señales, escala de texto, 20 pantallas migradas) | ⚠️ **este checklist no lo refleja ítem por ítem** — la cuenta vive en el otro repo. Y **nada se ha visto en un teléfono real**: hacen falta 7 módulos nativos y un build de EAS | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
+| **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles · 6 cuerpos de correo por reescribir | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
+| **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | 6 pantallas sin sesión (activar, registro, recuperar, legales, offline, `admin/login`) · 4 páginas del sitio, ninguna dibujada · tablet y teléfono del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
 | **9** | *(no está en §10)* | 12 componentes sin bloque asignado | 12, repartidos en 9a–9d | #4 · #5 · #6 · #13 a #20 | `B1b` · `B3a` · `B3b` · `P7` |
 
-**Los 30 marcados NUEVO están todos bloqueados por una decisión del usuario** (anexo A). Están
+**Los 33 marcados NUEVO están todos bloqueados por una decisión del usuario** (anexo A). Están
 diseñados y aislados: descartar cualquiera no obliga a rediseñar nada, así que **el resto de cada
 bloque avanza igual**.
 
@@ -1356,9 +1356,64 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
 - [ ] `/admin/login` — el formulario lo renderiza `admin/layout.tsx`, no la página. Con MFA/TOTP.
 - [ ] `/registro` + `/registro/revisa-tu-correo`
 - [ ] `/activar-cuenta`
-- [ ] `/invitacion/[token]` — el diseño trae **5 estados de error** de la invitación.
+- [x] `/invitacion/[token]` — **los 5 finales, hechos**, y el trabajo no fue escribirlos: fue
+      **darle a cada uno una salida distinta**. Los cinco casos estaban en el servidor desde antes
+      —`resolverInvitacionPorToken` ya devolvía `invalida · expirada · revocada · ya_aceptada ·
+      error`— pero en pantalla los cinco eran la misma tarjeta gris con un ícono y «contacta a quien
+      te invitó».
+      Ahora: **ya se usó** → `balanced` y un botón para entrar (no es un error: es el mejor final
+      llegando tarde) · **venció** → `attention`, **sin botón a propósito**, porque la invitación la
+      crea el courier y un «Solicitar una nueva» ahí sería un botón que no puede funcionar · **la
+      canceló el courier** → `inert` con su trama · **enlace no válido** → `neutral`, y nombra la
+      causa real (el correo que parte el enlace en dos líneas) · **falla nuestra** → `fault` y
+      «Volver a intentar», el único donde reintentar arregla algo.
+      ⚠️ **Regla 45 en el cuarto:** el texto habla del *enlace*, nunca de si esa invitación existió.
+      «Esta invitación no existe» convierte la pantalla en un oráculo de tokens. Los otros cuatro sí
+      pueden ser específicos: el token es correcto, y quien lo tiene es su destinatario.
+      🐞 **Y un peso muerto que se llevó por delante:** las seis ramas vivían dentro del componente
+      de cliente, así que **quien iba a ver tres líneas de texto se bajaba igual el formulario de
+      contraseñas entero**, con sus tres campos y su medidor. Los finales pasan a
+      `estados-finales.tsx`, servidor puro, y la página bifurca antes de mandar nada al navegador.
+      El medidor de fortaleza, de paso, dejó de decir «Débil» —que manda a probar al azar— y ahora
+      nombra el cambio concreto que sube el escalón.
+      **Verificado en el navegador** los cinco: tonos `balanced · attention · inert · neutral` leídos
+      del DOM, más el formulario válido con su medidor recorrido de «Corta» a «Fuerte».
 - [ ] `/recuperar-contrasena` + `/restablecer-contrasena`
-- [ ] `/tracking/[token]` — seguimiento público, **con sus 5 estados**.
+- [x] `/tracking/[token]` — **hecha, y con la `línea de tiempo pública` que faltaba.**
+      Tenía los estados; lo que no tenía era **recorrido**. Un distintivo suelto que dice «En camino»
+      contesta *qué* pasa; quien abre esto desde WhatsApp, en la calle, quiere saber *dónde va en el
+      trayecto*. Ahora son tres hitos —**Lo tenemos nosotros · En camino · Entregado**— con el trazo
+      que se llena hasta donde está el pedido hoy.
+      **El detalle que hace el trabajo:** cuando va en camino, el tramo que **sale** del hito actual
+      se llena hasta el **45 %** y se detiene. Es la única forma de decir «ya salió, todavía no
+      llega» sin una palabra. 🐞 Estaba escrito al revés —el parcial en el tramo que *llega*— y el
+      dibujo decía que el pedido ni había salido; se vio midiendo el `scaleY` en el navegador, no
+      mirando la pantalla.
+      **Lo que se anima es el trazo, nunca un dato:** títulos, horas, código y distintivo están en el
+      HTML desde el primer cuadro. Corre **una vez**, 1,4 s, y tiene versión estática con «reducir
+      movimiento».
+      ⚠️ **Y una trampa que era un bug de producto, no de QA:** `requestAnimationFrame` **no corre en
+      una pestaña oculta**, y WhatsApp abre el enlace en segundo plano a cada rato. Sin red debajo,
+      el trazo se quedaba en cero: un adorno que no aparece es un adorno, pero **una línea de tiempo
+      vacía es información falsa**. Lleva un `setTimeout` de respaldo, que sí corre oculto.
+      **Tres correcciones de honestidad que el dibujo obligó a mirar:**
+      · el hito del medio **no lleva hora** — no existe columna de «salió a ruta»; lo más parecido es
+        `asignado_en`, que puede ser tres horas antes de que la van se mueva. Va la ventana, que sí
+        es un compromiso;
+      · «**antes de** las 20:00», no «alrededor de las» — `fecha_compromiso_hora` es un límite (de él
+        sale `sla_cumplido`), y «alrededor» prometía un punto medio que el dato no respalda;
+      · un pedido **cancelado antes del retiro pierde los hitos que no ocurrieron** — dibujarlos
+        cumplidos le dice al comprador que su paquete está con el courier cuando sigue en la tienda.
+      **Y la tensión de marca quedó resuelta con la evidencia del propio diseño** (estaba anotada
+      como «decisión de producto» sin resolver): firma **el courier** arriba y el **seller** va en la
+      frase —«Tu pedido de Vega Norte»—, que es exactamente el reparto de `mail.seguimiento`. Antes
+      el seller ocupaba el encabezado y el courier no aparecía en ninguna parte.
+      Gana además el **código de envío**, que la matriz de exposición por rol siempre pidió («solo
+      código, comuna, estado y ventana») y no estaba. Sigue sin ir el nombre de quien recibió:
+      «Lo recibió alguien en el domicilio» (regla legal 3).
+      **Verificado en el navegador los cinco estados**, con datos sembrados: tonos `neutral ·
+      progress · balanced · attention · inert`, el trazo medido en `1 / 0,45` en camino y `1 / 1`
+      entregado, y la hora de entrega saliendo del POD.
 - [ ] `/terminos` y `/privacidad` (`(legal)/layout.tsx` propio) — **la pantalla está diseñada; el
       texto lo escribe un abogado**, en USTED, con su versión y su fecha de vigencia.
 - [ ] `/offline`
@@ -1394,19 +1449,52 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       La puerta va en un `layout.tsx` y no en la página, porque la página es un Client Component:
       así la comprobación corre en el servidor y en producción el HTML **no se genera nunca**.
 
-## Sitio comercial · 6 páginas, ninguna construida
+## Sitio comercial · 6 páginas, 2 construidas
 
-**No existe.** `src/app/page.tsx` son 31 líneas de puro enrutamiento por tipo de usuario. No hay
-`(marketing)`, ni `/precios`, ni `/agendar`. La especificación completa está en
+**Existe `(marketing)`**, con la portada y `/agendar`. Las cuatro páginas de integración y de precio
+siguen pendientes, y ninguna de ellas está dibujada. La especificación completa está en
 `RUTAX-SITIO-COMERCIAL.md`.
 
-- [ ] **La portada** — 12 secciones, dibujada en el tablero.
+- [x] **La portada** — **las 12 secciones, hechas**, y `src/app/page.tsx` deja de ser 31 líneas de
+      enrutamiento: sin sesión renderiza el sitio; con sesión, el enrutamiento por tipo de usuario
+      sigue igual.
+      El titular es **«La operación y el dinero de tu courier, en un solo sistema»** — el arco
+      completo, no un detalle operativo de un cliente («Si cierras a las 16 horas…» excluye al 95 %
+      de los visitantes) ni una sola operación descrita como si fuera el producto. Son los dos
+      errores que este trabajo ya había cometido una vez.
+      **Sin precios**, por decisión del usuario: el modo de cobro va a cambiar, y una portada que
+      promete un número que después se mueve es peor que una que no lo dice.
+      Cumple las cinco reglas que se verifican solas: **74** las cifras están en el HTML desde el
+      primer render · **75** nada corre en bucle · **76** hay versión estática diseñada · **77** no
+      se lista ninguna integración que no exista · **79** cero imágenes arriba del pliegue.
+      **Verificado en el navegador**: las 12 secciones y la secuencia recorrida beat por beat.
+- [x] **La secuencia del hero** — *pieza no presupuestada, construida a pedido del usuario.* Cuatro
+      beats en 8,2 s sobre **una sola fila que nunca se reemplaza**: entra sola con la dirección ya
+      escrita → se asigna → se entrega → **bajan las dos líneas de dinero**. Contarlo con palabras
+      exige que el visitante confíe; mostrarlo como cuatro escenas sueltas obliga a creer que es el
+      mismo pedido. Una fila que el ojo sigue **es** la prueba.
+      Arranca al entrar en pantalla, corre **una vez** y ofrece «Volver a ver». Con «reducir
+      movimiento» muestra los cuatro beats a la vez, numerados.
 - [ ] `/integraciones/mercado-libre-flex` — *definida en razón, estructura, H1, título y meta; no dibujada.*
 - [ ] `/integraciones/shopify` — *no dibujada.*
 - [ ] `/cobros-y-liquidaciones` — *no dibujada.*
 - [ ] `/precios` — *no dibujada.* **Decisión abierta: el número del precio** y si hay mínimo mensual
       para couriers de 1 a 5 conductores. La unidad ya está decidida: por conductor al mes.
-- [ ] `/agendar` — **regla 80: un solo destino**, todas las páginas llevan acá.
+- [x] `/agendar` — **hecha**, con **seis campos y ni uno más**: nombre · courier · WhatsApp ·
+      correo · cuántos conductores · de dónde llegan los pedidos. **WhatsApp además del correo**
+      porque este comprador coordina por ahí y pedir solo correo alarga la coordinación tres días;
+      **cuántos conductores** porque es el único campo que califica de verdad. **Sin fecha y hora**:
+      el calendario incrustado es la fricción más cara del embudo — obliga a decidir una agenda antes
+      de saber si vale la pena.
+      **Los tres estados que se pierden si no se diseñan, diseñados:** error de validación pegado al
+      campo y sin vaciar lo escrito · **falla de envío**, la pantalla más cara del sitio, con el
+      teléfono directo apareciendo **solo ahí** (ponerlo siempre lo vuelve la salida fácil y nadie
+      completa el formulario) · y **«si vuelve»**, que reconoce que ya escribió en vez del formulario
+      en blanco que le hace pensar que su solicitud no llegó.
+      ⚠️ **Si el correo no sale, la acción FALLA.** No devuelve un éxito falso: acá **el correo ES el
+      hecho**, al revés que los correos de dinero, donde el hecho ya ocurrió y el aviso es
+      secundario. La confirmación le devuelve lo que escribió —su nombre, su courier, su WhatsApp—
+      para que detecte un dígito mal puesto mientras todavía puede avisar.
 - [ ] **Tablet y teléfono** — especificado, **no maquetado**.
 - [ ] **Las dos fotografías** — especificadas con su criterio; **son una compra**.
 
@@ -1424,7 +1512,13 @@ retirar.
 ## Brechas del inventario que cierra
 
 - [x] **#7** — el inicio de sesión presentaba toda causa de fallo como error de tipeo. Cerrada.
-- [ ] **#9** — no hay página de inicio, y el registro no tiene un solo enlace entrante.
+- [x] **#9** — **la mitad de la página de inicio, cerrada**: `/` sin sesión ya no redirige a
+      `/login`, muestra el sitio.
+      ⚠️ *La otra mitad no se cierra, y no es un olvido:* el registro sigue **sin un solo enlace
+      entrante desde el sitio, a propósito** — `RUTAX-SITIO-COMERCIAL.md` lo fija en su primera línea
+      («sin precios en la portada, sin prueba gratis, **sin registro autoservicio**») y la regla 80
+      manda todo a un único destino. Que `/registro` no tenga puerta pública es la decisión; lo que
+      queda por resolver es **desde dónde entra** quien sí debe registrarse.
 - [x] **#10** — el destinatario del paquete veía el 404 en inglés del framework. Cerrada esa
       mitad; la página de seguimiento en sí es la `línea de tiempo pública`, que sigue pendiente.
 
@@ -1551,7 +1645,7 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
 
 ---
 
-# Anexo A · Los 30 marcados NUEVO
+# Anexo A · Los 33 marcados NUEVO
 
 **Ninguno está aprobado ni descartado.** La ficha de cierre es explícita: aprobarlos o descartarlos
 **es lo único que bloquea**. Están todos diseñados y **aislados**: descartar cualquiera no obliga a
@@ -1580,6 +1674,14 @@ Marca cada uno `[x]` si entra o `N/A` si se descarta, con una línea de razón.
 - [ ] **#24** · Sonido y vibración: cuatro señales.
 - [ ] **#25** · Notificaciones push: tres momentos.
 - [ ] **#26** · Aceptación del receptor en el traspaso, hoy unilateral.
+- [ ] **#31** · Entrar con Google, y correo con código de un solo uso como respaldo. Sin contraseña.
+      *(No necesita SMS: el envío de correo ya existe. Se lleva por delante el flujo de invitación
+      del backoffice, que hoy dice «defina su contraseña».)*
+- [ ] **#32** · La sesión del conductor no vence por tiempo: vence cuando el courier lo suspende o
+      cuando él sale. *(Decisión de seguridad tanto como de diseño.)*
+- [ ] **#33** · La ayuda de campo del alta del conductor dice que ese correo es el que usará para
+      entrar a la app. *(Corrección al formulario de B1c, no una pantalla nueva. Evita el error más
+      probable del día uno.)*
 
 ## Van en el bloque 7 · Sub-sistemas
 
@@ -1608,8 +1710,9 @@ Marca cada uno `[x]` si entra o `N/A` si se descarta, con una línea de razón.
 - [ ] **#19** · Reportar un problema desde el portal del seller. *(portal)*
 - [ ] **#20** · Detalle de la incidencia con sus notas y su efecto en el cobro. *(portal)*
 
-> ⚠️ **La ficha importada de Claude Design dice 28; son 30.** El tablero `B7b Autenticacion` se
-> agregó después y trae los números 29 y 30. Si se vuelve a importar la ficha, **hay que reponer esa
+> ⚠️ **La ficha importada de Claude Design dice 28; son 33.** Dos tableros se agregaron después de
+> la ficha: `B7b Autenticacion` trae los números 29 y 30, y `B5b Entrada del conductor` —traído el
+> 24-08— trae el 31, el 32 y el 33. Si se vuelve a importar la ficha, **hay que reponer esa
 > corrección**.
 >
 > **Ya aprobado e integrado:** el panel inferior de registro de escaneo con log de repetidos (B5).

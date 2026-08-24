@@ -1,15 +1,36 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { Portada } from "./(marketing)/portada";
 
 /**
- * Punto de entrada: redirige al área correcta según el tipo de usuario,
- * o a /login si no hay sesión activa.
+ * La raíz hace DOS cosas, y por eso no se partió en dos archivos.
+ * =============================================================================
+ *
+ * · **Con sesión** — reparte por tipo de usuario, como siempre.
+ * · **Sin sesión** — muestra la portada.
+ *
+ * Antes, sin sesión, mandaba a `/login`: un courier que llegaba a `rutax.io`
+ * encontraba un formulario y **ninguna forma de saber qué es esto**. El registro
+ * no tenía un solo enlace entrante (brecha #9).
+ *
+ * ⚠️ **La portada NO puede vivir en una ruta aparte** —`/inicio`, `(marketing)/`
+ * con su propio `page.tsx`— porque las dos cosas responden a la MISMA URL. Si
+ * fueran dos rutas, la raíz tendría que elegir a cuál redirigir, y una redirección
+ * es un viaje de más justo en la petición que decide si el visitante se queda.
  */
+export const metadata: Metadata = {
+  title: "Rutax · La operación y el dinero de tu courier, en un solo sistema",
+  description:
+    "Software de última milla para couriers de Santiago. Centraliza los pedidos de Mercado Libre Flex, Shopify y los tuyos, despáchalos con tu flota, y deja hecha la factura al seller y la liquidación del conductor.",
+};
+
 export default async function Home() {
   const sesion = await obtenerSesionActual();
 
+  // Sin sesión: la portada. No una redirección al login.
   if (!sesion) {
-    redirect("/login");
+    return <Portada />;
   }
 
   switch (sesion.usuario.tipoUsuario) {

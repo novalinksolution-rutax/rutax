@@ -1,114 +1,156 @@
 /**
- * Página pública de seguimiento de pedido (Bloque 2 — F11/F12).
+ * `/tracking/[token]` — el seguimiento público del comprador.
+ * =============================================================================
  *
- * FRONTERA DURA: solo aplica a los pedidos cuyo seguimiento es de Rutax — hoy
- * todos menos los de fuente `ml_flex`, donde el comprador ve el seguimiento de
- * Mercado Libre. Esta página rechaza (404) cualquier otro pedido o token
- * inexistente. La URL que Rutax devuelve a Shopify como `trackingInfo.url` es
- * justamente esta.
+ * -----------------------------------------------------------------------------
+ * FRONTERA DURA
+ * -----------------------------------------------------------------------------
+ * Solo aplica a los pedidos cuyo seguimiento es de Rutax — hoy todos menos los
+ * de fuente `ml_flex`, donde el comprador ve el seguimiento de Mercado Libre.
+ * Esta página rechaza (404) cualquier otro pedido o token inexistente. La URL
+ * que Rutax devuelve a Shopify como `trackingInfo.url` es justamente esta.
  *
  * Ruta PÚBLICA (sin autenticación): se accede con un `tracking_token` opaco no
- * adivinable. Por minimización de datos personales, esta página muestra SOLO:
- *   - Marca/nombre del seller.
- *   - Estado legible del pedido (en preparación / en camino / entregado / con novedad).
- *   - Hora estimada de entrega (ETA = fecha_compromiso_hora).
+ * adivinable.
  *
- * NO muestra (decisión de privacidad — Ley 21.431 / minimización):
- *   - Posición, nombre ni teléfono del conductor.
- *   - Nombre, teléfono ni dirección exacta del destinatario.
- *   - Foto del POD ni datos de otros pedidos.
+ * -----------------------------------------------------------------------------
+ * QUÉ VE EL COMPRADOR, PALABRA POR PALABRA
+ * -----------------------------------------------------------------------------
+ * El sistema de diseño lo fija en su matriz de exposición por rol: el comprador
+ * final ve **«solo código, comuna, estado y ventana»**. Las cuatro cosas están,
+ * y **ninguna quinta**:
+ *
+ * · el **código de envío** (`RX-XXXX-XXXX`) — es lo que cita si tiene que
+ *   escribirle a la tienda, y sin él la pantalla no sirve para reclamar;
+ * · la **comuna**, nunca la dirección;
+ * · el **estado**, traducido (regla 46: mismo tono, mismo glifo, otra
+ *   redacción, y **nunca el motivo de una falla**);
+ * · la **ventana** comprometida.
+ *
+ * ⚠️ **Lo que no va, y por qué cada uno:**
+ * · **nombre, teléfono y dirección del destinatario** — minimización;
+ * · **nombre, teléfono y posición del conductor** — el diseño lo marca como
+ *   «nunca» para esta superficie, y la Ley 21.431 pesa sobre el conductor;
+ * · **el nombre de quien recibió** — regla legal 3, sin excepción: la fórmula
+ *   es «Lo recibió alguien en el domicilio»;
+ * · **la foto del POD** y cualquier dato de otro pedido;
+ * · **el motivo de una entrega fallida** — se lo cuenta la tienda, no nosotros.
+ *
+ * -----------------------------------------------------------------------------
+ * LAS DOS MARCAS, Y CUÁL VA DÓNDE (regla 42)
+ * -----------------------------------------------------------------------------
+ * Esta pantalla la firma **el courier**, no Rutax: para quien espera un paquete,
+ * la relación es con quien se lo despacha, y «Rutax» no le dice nada. El
+ * **seller** aparece en la frase, no en el encabezado — es de quien compró.
+ *
+ * Es exactamente el reparto del correo hermano (`mail.seguimiento`): asunto
+ * «Tu pedido de **Vega Norte** va en camino», cuerpo «**Andes Express** lo está
+ * entregando hoy». Antes esta página ponía al seller de encabezado y al courier
+ * en ninguna parte.
+ *
+ * Y Rutax entra como **fila de cierre**, que es un lugar estructural y no un pie
+ * de página: es el único canal de Rutax hacia consumidores finales, y genera una
+ * impresión por entrega.
  */
 
 import { notFound } from "next/navigation";
-import { Package, Clock, CheckCircle2, Truck, AlertTriangle, RotateCcw } from "lucide-react";
+
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { formatearEtaSameDay } from "@/modules/operacion/eta-same-day";
+import { formatearHora } from "@/lib/formato-cl";
 import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import type { EstadoPedido } from "@/modules/operacion/tipos";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import type { TonoEstado } from "@/lib/ui/tonos-estado";
 import { FirmadoPorRutax } from "@/components/ui/marca-rutax";
+import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
+
+import { LineaTiempoPublica, type HitoPublico } from "./linea-tiempo-publica";
 
 // =============================================================================
-// Estado público (amigable para el comprador — no expone estados internos)
+// Los cinco estados públicos
 // =============================================================================
 
-interface EstadoPublico {
+/**
+ * Cinco, y no los once internos. El comprador no tiene por qué distinguir
+ * `pendiente_asignacion` de `asignado` —para él las dos dicen «todavía no sale»—
+ * ni `fallido` de `fallido_manual`, que es una diferencia de cómo se registró.
+ *
+ * `devuelto` cae en «cancelado» y no en un sexto: desde donde mira esta persona,
+ * un pedido que volvió al remitente y uno que se anuló terminan igual — no le va
+ * a llegar — y la diferencia entre los dos es interna del courier.
+ */
+type EstadoPublico = "en_preparacion" | "en_camino" | "entregado" | "con_novedad" | "cancelado";
+
+interface Presentacion {
   etiqueta: string;
   descripcion: string;
-  Icono: typeof Package;
-  /** El MISMO tono del sistema que ve el courier. Ver regla 46. */
   tono: TonoEstado;
 }
 
-function estadoPublico(estado: EstadoPedido): EstadoPublico {
+const PRESENTACION: Record<EstadoPublico, Presentacion> = {
+  en_preparacion: {
+    etiqueta: "En preparación",
+    descripcion: "Todavía no sale a ruta. Te avisamos cuando vaya en camino.",
+    tono: "neutral",
+  },
+  en_camino: {
+    etiqueta: "En camino",
+    descripcion: "Va en la ruta de hoy.",
+    tono: "progress",
+  },
+  entregado: {
+    etiqueta: "Entregado",
+    // Regla legal 3: **nunca** el nombre de quien recibió.
+    descripcion: "Lo recibió alguien en el domicilio.",
+    tono: "balanced",
+  },
+  con_novedad: {
+    etiqueta: "Con novedad",
+    // Sin el motivo (regla 46). Y sin promesa que no se pueda cumplir: no
+    // decimos «se reagenda mañana» porque quien decide eso es la tienda.
+    descripcion: "No se pudo entregar en este intento. La tienda te va a contactar.",
+    tono: "attention",
+  },
+  cancelado: {
+    etiqueta: "Cancelado",
+    descripcion: "Este pedido ya no se va a entregar.",
+    // `inert`, igual que en el panel del courier: es el tono de lo que sale del
+    // juego, y trae su trama de 135° para que no dependa del color.
+    tono: "inert",
+  },
+};
+
+function aEstadoPublico(estado: EstadoPedido): EstadoPublico {
   switch (estado) {
-    case "pendiente_asignacion":
-    case "asignado":
-      return {
-        etiqueta: "En preparación",
-        descripcion: "Tu pedido está siendo preparado para el despacho.",
-        Icono: Package,
-        tono: "neutral",
-      };
     case "en_ruta":
-      return {
-        etiqueta: "En camino",
-        descripcion: "Tu pedido va en ruta hacia la dirección de entrega.",
-        Icono: Truck,
-        tono: "progress",
-      };
+      return "en_camino";
     case "entregado":
     case "entregado_manual":
-      return {
-        etiqueta: "Entregado",
-        descripcion: "Tu pedido fue entregado.",
-        Icono: CheckCircle2,
-        tono: "balanced",
-      };
+      return "entregado";
     case "fallido":
     case "fallido_manual":
-      return {
-        etiqueta: "Con novedad",
-        descripcion: "Hubo un inconveniente con la entrega. El despachador la reagendará o se contactará contigo.",
-        Icono: AlertTriangle,
-        tono: "attention",
-      };
-    case "devuelto":
-      return {
-        etiqueta: "Devuelto",
-        descripcion: "El pedido fue devuelto al remitente.",
-        Icono: RotateCcw,
-        tono: "neutral",
-      };
+      return "con_novedad";
     case "cancelado":
-      return {
-        etiqueta: "Cancelado",
-        descripcion: "Este pedido fue cancelado.",
-        Icono: AlertTriangle,
-        // `inert`, igual que en el panel del courier: es el tono de lo que sale
-        // del juego, y trae su trama de 135° para que no dependa del color.
-        tono: "inert",
-      };
+    case "devuelto":
+      return "cancelado";
     default:
-      return {
-        etiqueta: "En proceso",
-        descripcion: "",
-        Icono: Package,
-        tono: "neutral",
-      };
+      return "en_preparacion";
   }
 }
 
 // =============================================================================
-// Carga de datos (solo campos mínimos — minimización)
+// Carga de datos — solo los campos que la pantalla muestra
 // =============================================================================
 
 interface DatosSeguimiento {
   estado: EstadoPedido;
+  codigo: string | null;
   comuna: string;
   fechaCompromisoHora: string | null;
+  retiradoEn: string | null;
+  entregadoEn: string | null;
   sellerNombre: string;
+  courierNombre: string;
 }
 
 async function cargarSeguimiento(token: string): Promise<DatosSeguimiento | null> {
@@ -117,7 +159,9 @@ async function cargarSeguimiento(token: string): Promise<DatosSeguimiento | null
 
   const { data: pedido } = await cliente
     .from("pedidos")
-    .select("estado, tipo_pedido, fuente, seller_id, destinatario_comuna, fecha_compromiso_hora")
+    .select(
+      "id, estado, tipo_pedido, fuente, tenant_id, seller_id, codigo_interno, destinatario_comuna, fecha_compromiso_hora, retirado_en",
+    )
     .eq("tracking_token", token)
     .maybeSingle();
 
@@ -125,20 +169,158 @@ async function cargarSeguimiento(token: string): Promise<DatosSeguimiento | null
   // comprador ve el de Mercado Libre y esta página no tiene nada que aportar.
   if (!pedido || podLoGobiernaLaFuente(pedido.fuente)) return null;
 
-  // Marca del seller (dato del seller, no del comprador).
-  const { data: seller } = await cliente
-    .from("sellers")
-    .select("razon_social")
-    .eq("id", pedido.seller_id as string)
-    .maybeSingle();
+  // Las tres consultas de contexto van juntas: son independientes entre sí, y
+  // encadenarlas suma tres viajes de red a una página que se abre con mala
+  // señal. Ninguna es capaz de tumbar la pantalla — si alguna falla se cae a un
+  // texto genérico.
+  const [{ data: seller }, { data: tenant }, { data: prueba }] = await Promise.all([
+    cliente.from("sellers").select("razon_social").eq("id", pedido.seller_id as string).maybeSingle(),
+    cliente
+      .from("tenants")
+      .select("nombre_fantasia")
+      .eq("id", pedido.tenant_id as string)
+      .maybeSingle(),
+    // La hora de entrega **no vive en `pedidos`**: vive en el POD, que en
+    // same-day es la verdad autoritativa. Se pide la más reciente por si hubo
+    // un intento fallido antes del bueno.
+    cliente
+      .from("pruebas_entrega")
+      .select("capturado_en, tipo_resultado")
+      .eq("pedido_id", pedido.id as string)
+      .eq("tipo_resultado", "entregado")
+      .order("capturado_en", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   return {
     estado: pedido.estado as EstadoPedido,
+    codigo: (pedido.codigo_interno as string | null) ?? null,
     comuna: (pedido.destinatario_comuna as string | null) ?? "",
     fechaCompromisoHora: (pedido.fecha_compromiso_hora as string | null) ?? null,
-    sellerNombre: (seller?.razon_social as string | null) ?? "Tu tienda",
+    retiradoEn: (pedido.retirado_en as string | null) ?? null,
+    entregadoEn: (prueba?.capturado_en as string | null) ?? null,
+    sellerNombre: (seller?.razon_social as string | null) ?? "la tienda",
+    courierNombre: (tenant?.nombre_fantasia as string | null) ?? "Tu despacho",
   };
 }
+
+// =============================================================================
+// Los tres hitos de la línea de tiempo
+// =============================================================================
+
+function armarHitos(datos: DatosSeguimiento, publico: EstadoPublico): HitoPublico[] {
+  const tonoCierre = PRESENTACION[publico].tono;
+  const cerrado = publico === "entregado" || publico === "con_novedad" || publico === "cancelado";
+  const enCamino = publico === "en_camino";
+
+  // ⚠️ **El primer hito no se puede dar por hecho.** Un pedido cancelado antes de
+  // que nadie pasara a buscarlo no fue retirado nunca, y dibujarlo como cumplido
+  // le dice al comprador que su paquete está en manos del courier cuando sigue en
+  // la tienda. `retirado_en` es la prueba directa; los tres estados que implican
+  // que un conductor lo llevaba encima valen como prueba indirecta, porque el
+  // retiro no se registra en todos los flujos.
+  const loRetiramos =
+    Boolean(datos.retiradoEn) ||
+    publico === "en_camino" ||
+    publico === "entregado" ||
+    publico === "con_novedad";
+
+  // ⚠️ **Un pedido cancelado pierde el hito «En camino», y no es cosmética.**
+  // Nada en la base dice si alcanzó a salir a ruta antes de anularse, así que
+  // dibujarlo como cumplido afirma un viaje que puede no haber ocurrido, y
+  // dibujarlo pendiente entre dos hitos alcanzados parte la línea en dos trozos
+  // sueltos que se leen como un error de la página. Se retira: el recorrido llegó
+  // hasta donde llegó, y ahí se corta.
+  const conTransito = publico !== "cancelado";
+
+  // La ventana comprometida. **«antes de las»** y no «alrededor de las»:
+  // `fecha_compromiso_hora` es un límite —de él sale `sla_cumplido`—, así que
+  // «alrededor» prometía un punto medio que el dato no respalda.
+  const ventana = datos.fechaCompromisoHora
+    ? `Llega hoy antes de las ${formatearHora(datos.fechaCompromisoHora)}`
+    : null;
+
+  const recibido: HitoPublico = {
+    clave: "recibido",
+    titulo: loRetiramos ? "Lo tenemos nosotros" : "Lo retiramos de la tienda",
+    // Sin repetir el nombre del seller: ya está en el encabezado, y decirlo tres
+    // veces en una pantalla de teléfono gasta las dos líneas que hay.
+    detalle: datos.retiradoEn
+      ? `Retirado de la tienda a las ${formatearHora(datos.retiradoEn)}`
+      : loRetiramos
+        ? "Retirado de la tienda"
+        : null,
+    // Mientras no sale a ruta, **acá es donde está el pedido**: le toca el anillo
+    // de «hito actual», no el punto de algo ya superado.
+    situacion: !loRetiramos
+      ? publico === "cancelado"
+        ? "pendiente"
+        : "actual"
+      : publico === "en_preparacion"
+        ? "actual"
+        : "hecho",
+    tono: "balanced",
+  };
+
+  const transito: HitoPublico = {
+    clave: "en_camino",
+    titulo: "En camino",
+    // Sin hora: no existe una columna que diga cuándo salió a ruta. Ver la nota
+    // del componente.
+    detalle: cerrado ? null : ventana,
+    situacion: enCamino ? "actual" : cerrado ? "hecho" : "pendiente",
+    tono: "progress",
+  };
+
+  const cierre: HitoPublico = {
+    clave: "cierre",
+    // Mientras no haya cerrado, el último hito es **el destino**, no el estado de
+    // ahora: si mostrara `PRESENTACION[publico].etiqueta`, un pedido en camino
+    // diría «En camino» dos veces seguidas y la línea perdería el sentido de ir
+    // hacia alguna parte.
+    titulo: cerrado ? PRESENTACION[publico].etiqueta : "Entregado",
+    detalle:
+      datos.entregadoEn && publico === "entregado"
+        ? `A las ${formatearHora(datos.entregadoEn)}`
+        : null,
+    situacion: cerrado ? "actual" : "pendiente",
+    tono: cerrado ? tonoCierre : "balanced",
+  };
+
+  return conTransito ? [recibido, transito, cierre] : [recibido, cierre];
+}
+
+// =============================================================================
+// Metadatos
+// =============================================================================
+
+/**
+ * El título y la descripción que ve quien recibe el enlace.
+ *
+ * Antes heredaba los del layout raíz: «Rutax — gestión operativo-financiera ·
+ * Plataforma para couriers de última milla». Copy escrito para el courier que
+ * contrata el software, mostrado al comprador que solo quiere saber dónde está
+ * su paquete.
+ *
+ * ⚠️ **Ni el título ni la descripción dicen el estado** (regla 47): la
+ * previsualización se cachea en el chat y el estado cambia varias veces el mismo
+ * día, así que diría algo falso — y se ve **sin abrir el enlace**, que es justo
+ * lo que el token protege. Tampoco lleva nombre, comuna ni monto (regla 66).
+ *
+ * `robots: noindex` porque una URL con token no tiene por qué terminar en un
+ * buscador: es un enlace personal, no una página pública.
+ */
+export const metadata = {
+  title: "Seguimiento de tu pedido",
+  description: "Mira dónde va tu paquete. Solo lo ve quien tenga este enlace.",
+  robots: { index: false, follow: false },
+  openGraph: {
+    title: "Seguimiento de tu pedido",
+    description: "Mira dónde va tu paquete. Solo lo ve quien tenga este enlace.",
+    type: "website" as const,
+  },
+};
 
 // =============================================================================
 // Página
@@ -148,95 +330,60 @@ interface Props {
   params: Promise<{ token: string }>;
 }
 
-/**
- * El titulo y la descripcion que ve quien recibe el enlace.
- *
- * Antes heredaba los del layout raiz: «Rutax - gestion operativo-financiera ·
- * Plataforma para couriers de ultima milla». Copy escrito para el courier que
- * contrata el software, mostrado al comprador que solo quiere saber donde esta
- * su paquete.
- *
- * ⚠️ **Ni el titulo ni la descripcion dicen el estado** (regla 47): la
- * previsualizacion se cachea en el chat y el estado cambia varias veces el mismo
- * dia, asi que diria algo falso — y se ve sin abrir el enlace, que es justo lo
- * que el token protege. Tampoco lleva nombre, comuna ni monto (regla 66).
- *
- * `robots: noindex` porque una URL con token no tiene por que terminar en un
- * buscador: es un enlace personal, no una pagina publica.
- */
-export const metadata = {
-  title: "Seguimiento de tu pedido",
-  description: "Mira donde va tu paquete. Solo lo ve quien tenga este enlace.",
-  robots: { index: false, follow: false },
-  openGraph: {
-    title: "Seguimiento de tu pedido",
-    description: "Mira donde va tu paquete. Solo lo ve quien tenga este enlace.",
-    type: "website" as const,
-  },
-};
-
 export default async function PaginaSeguimiento({ params }: Props) {
   const { token } = await params;
   const datos = await cargarSeguimiento(token);
   if (!datos) notFound();
 
-  const { etiqueta, descripcion, Icono, tono } = estadoPublico(datos.estado);
-  const eta = formatearEtaSameDay({
-    pedidoId: "",
-    fechaCompromisoHora: datos.fechaCompromisoHora,
-    corteRiesgo: false,
-  });
-  const esTerminalEntregado = datos.estado === "entregado" || datos.estado === "entregado_manual";
+  const publico = aEstadoPublico(datos.estado);
+  const { etiqueta, descripcion, tono } = PRESENTACION[publico];
+  const hitos = armarHitos(datos, publico);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-6 px-5 py-10">
-      {/* Marca del seller */}
-      <header className="text-center">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Seguimiento de tu pedido</p>
-        <h1 className="mt-1 text-xl font-semibold">{datos.sellerNombre}</h1>
-      </header>
+    <PantallaSinSesion
+      marca={{ tipo: "courier", nombre: datos.courierNombre }}
+      pie={
+        <>
+          Este enlace es tuyo: quien lo tenga ve el avance de este pedido. Si algo no calza, escríbele
+          a {datos.sellerNombre} con el código de arriba.
+        </>
+      }
+    >
+      <div className="w-full max-w-sm space-y-4">
+        {/* Sin sombra (regla 4) y con el radio del sistema. */}
+        <section className="border border-line bg-bg-raised">
+          <header className="border-b border-line-subtle px-5 py-4">
+            <p className="text-sm leading-relaxed text-fg-muted">
+              Tu pedido de <span className="font-medium text-fg">{datos.sellerNombre}</span>
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <DistintivoEstado tono={tono} etiqueta={etiqueta} />
+              {datos.comuna ? (
+                <span className="text-sm text-fg-muted">· {datos.comuna}</span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-fg-muted">{descripcion}</p>
+          </header>
 
-      {/* Estado actual.
-          ⚠️ REGLA 46 · el estado que ve el comprador es una TRADUCCION, no un
-          renombre: **el mismo tono y el mismo glifo** que ve el courier, con
-          otra redaccion. Antes el tono salia de una clase escrita a mano
-          (`text-info`, `text-success`, `text-warning`) que no coincidia con
-          ninguno de los seis del sistema: el comprador y el coordinador miraban
-          el mismo pedido y lo veian de colores distintos.
-          Sin sombra (regla 4). */}
-      <section className="flex flex-col items-center gap-3 border border-line bg-card p-6 text-center">
-        <Icono className="size-12 text-fg-muted" aria-hidden="true" />
-        <DistintivoEstado tono={tono} etiqueta={etiqueta} />
-        {descripcion && <p className="text-sm text-fg-muted">{descripcion}</p>}
-      </section>
+          <div className="px-5 py-5">
+            <LineaTiempoPublica hitos={hitos} enTransito={publico === "en_camino"} />
+          </div>
 
-      {/* ETA (solo si aún no se entregó y hay estimación) */}
-      {eta && !esTerminalEntregado && (
-        <section className="flex items-center justify-center gap-2 rounded-lg bg-info-subtle px-4 py-3 text-sm text-info-subtle-foreground">
-          <Clock className="size-4 shrink-0" aria-hidden="true" />
-          <span>
-            Entrega estimada hoy alrededor de las <span className="font-semibold">{eta}</span>
-          </span>
+          {/* El código va abajo y en monoespaciada: no es lo primero que se
+              busca, pero es lo único que sirve para reclamar, y tiene que poder
+              leerse en voz alta por teléfono sin confundir un 0 con una O. */}
+          {datos.codigo ? (
+            <footer className="border-t border-line-subtle bg-bg-inset px-5 py-3">
+              <p className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
+                Código de envío
+              </p>
+              <p className="rx-num mt-0.5 font-mono text-sm font-medium">{datos.codigo}</p>
+            </footer>
+          ) : null}
         </section>
-      )}
 
-      {/* Comuna de destino (sin dirección exacta — minimización) */}
-      {datos.comuna && (
-        <p className="text-center text-xs text-muted-foreground">Destino: {datos.comuna}</p>
-      )}
-
-      {/* Regla 42 + manual de marca: **esta pantalla la firma el courier**.
-          «Rutax» no le dice nada a alguien que compró en una tienda y espera un
-          paquete; la relación es con quien le despacha.
-
-          Rutax entra como FILA DE CIERRE, y el manual es específico sobre por
-          qué: «la misma barra que cierra una liquidación cierra la pantalla. Es
-          un lugar estructural, no un pie de página, y por eso no compite con la
-          marca de arriba». Su logotipo no pasa de 15 px acá y nunca toma color
-          de acento en el texto. */}
-      <footer className="mt-auto pt-6">
         <FirmadoPorRutax />
-      </footer>
-    </main>
+      </div>
+    </PantallaSinSesion>
   );
 }

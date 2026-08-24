@@ -190,6 +190,22 @@ html:root {
   --color-line-strong:var(--rx-line-strong);
   --color-accent-text:var(--rx-accent-text);
 
+  /* Los tres teñidos de acento. Existían en `rx-tokens.css` desde el bloque 1 y
+   * **nadie los había puenteado**, así que `bg-accent-deep`, `text-accent-soft`
+   * y `border-accent-line` no generaban ni una regla: Tailwind no falla ante una
+   * utilidad que no conoce, simplemente no la emite, y el elemento sale sin
+   * fondo. Se descubrió con el chip marcado del formulario de agendamiento, que
+   * se veía idéntico marcado y sin marcar.
+   *
+   * ⚠️ **`accent` a secas NO es el teal de Rutax.** En shadcn `--accent` es el
+   * fondo de hover, y así queda puenteado más arriba. El acento de marca es
+   * `--brand` — o sea `bg-brand`, `ring-brand`, `border-brand`. Escribir
+   * `bg-accent` esperando el teal da un gris casi invisible, que es un error que
+   * no se ve en la pantalla hasta que se mide. */
+  --color-accent-soft:var(--rx-accent-soft);
+  --color-accent-deep:var(--rx-accent-deep);
+  --color-accent-line:var(--rx-accent-line);
+
   /* Alto de fila por superficie: la misma tabla cambia de densidad según dónde
    * se use. `h-row-touch` es la que hace que la asignación en bloque funcione
    * con el dedo, de pie en la bodega. */
