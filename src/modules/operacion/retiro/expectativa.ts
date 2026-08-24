@@ -172,7 +172,11 @@ async function detectarSellersSinTarifa(
  * resultado: una estimación con sus supuestos escondidos se lee como una
  * instrucción.
  */
-export const MINUTOS_POR_PARADA = 12;
+// Los 12 min viven en `holgura-ruta.ts` —un modulo puro, sin dependencias— y se
+// re-exportan aca para no partir la cifra en dos: el panel de ruta la consume
+// desde el navegador y este modulo desde el servidor.
+export { MINUTOS_POR_PARADA } from "../holgura-ruta";
+import { MINUTOS_POR_PARADA } from "../holgura-ruta";
 
 export interface ConductoresNecesarios {
   conductores: number;

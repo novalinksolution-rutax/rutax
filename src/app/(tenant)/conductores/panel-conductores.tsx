@@ -54,6 +54,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { semaforoSla } from "@/lib/ui/semaforo-sla";
 import { esRutValido } from "@/modules/identidad/rut";
 import type { Conductor, ConductorZona, Zona, ImpactoSla } from "@/modules/operacion/tipos";
@@ -690,18 +691,23 @@ export function SeccionRedistribucion({
     idempotente: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Redistribuir mueve las paradas de un conductor a otros y no se deshace. El
+  // motivo va a la bitácora junto al hecho: es lo que hace legible mañana ese
+  // movimiento, y lo pide igual la misma acción desde el detalle del manifiesto.
+  const [motivo, setMotivo] = useState("");
 
   function abrir() {
     setImpactoSla(null);
     setResumen(null);
     setError(null);
+    setMotivo("");
     setDialogAbierto(true);
   }
 
   function confirmar() {
     setError(null);
     iniciarTransicion(async () => {
-      const resp = await actionMarcarConductorNoDisponible(conductor.id, fechaHoy);
+      const resp = await actionMarcarConductorNoDisponible(conductor.id, motivo, fechaHoy);
       if (!resp.ok) {
         setError(resp.mensaje);
         return;
@@ -741,6 +747,8 @@ export function SeccionRedistribucion({
         <DialogRedistribucion
           conductor={conductor}
           pendiente={pendiente}
+          motivo={motivo}
+          onMotivo={setMotivo}
           mostrarConfirmacion={mostrarConfirmacion}
           error={error}
           resumen={resumen}
@@ -760,6 +768,8 @@ export function SeccionRedistribucion({
 interface PropsDialogRedistribucion {
   conductor: Conductor;
   pendiente: boolean;
+  motivo: string;
+  onMotivo: (valor: string) => void;
   mostrarConfirmacion: boolean;
   error: string | null;
   resumen: { reasignadas: number; sinConductor: number; idempotente: boolean } | null;
@@ -771,6 +781,8 @@ interface PropsDialogRedistribucion {
 function DialogRedistribucion({
   conductor,
   pendiente,
+  motivo,
+  onMotivo,
   mostrarConfirmacion,
   error,
   resumen,
@@ -800,11 +812,26 @@ function DialogRedistribucion({
             </h2>
 
             {mostrarConfirmacion && (
-              <p id="dialog-redistrib-desc" className="mt-2 text-sm text-muted-foreground">
-                Se marcará al conductor como no disponible y sus paradas abiertas de hoy se
-                redistribuirán automáticamente entre los conductores restantes del pool.
-                Las paradas en ruta o terminales no se tocan.
-              </p>
+              <>
+                <p id="dialog-redistrib-desc" className="mt-2 text-sm text-muted-foreground">
+                  Se marcará al conductor como no disponible y sus paradas abiertas de hoy se
+                  redistribuirán automáticamente entre los conductores restantes del pool.
+                  Las paradas en ruta o terminales no se tocan.
+                </p>
+                <div className="mt-4 space-y-1.5">
+                  <Label htmlFor="motivo-redistribuir">Motivo</Label>
+                  <Textarea
+                    id="motivo-redistribuir"
+                    rows={2}
+                    value={motivo}
+                    onChange={(e) => onMotivo(e.target.value)}
+                    placeholder="Se accidentó y no puede seguir la ruta."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Queda en la bitácora con tu nombre, junto a la redistribución.
+                  </p>
+                </div>
+              </>
             )}
 
             {pendiente && (
@@ -890,7 +917,7 @@ function DialogRedistribucion({
           {mostrarConfirmacion && (
             <Button
               onClick={onConfirmar}
-              disabled={pendiente}
+              disabled={pendiente || motivo.trim().length < 3}
               className="bg-warning text-warning-foreground hover:bg-warning/90"
             >
               {pendiente ? (

@@ -25,10 +25,28 @@
  * planilla— pero es exactamente el malentendido que haría creer al coordinador
  * que ya resolvió el día. Por eso el diálogo dice cuántas paradas quedan
  * abiertas y adónde ir a cerrarlas.
+ *
+ * =============================================================================
+ * QUÉ CAMBIÓ EN EL REDISEÑO
+ * =============================================================================
+ * El diálogo escrito a mano —`fixed inset-0` con overlay `bg-black/50`, sin
+ * atrapar el foco y sin cerrar con Escape— pasa al `Dialog` del sistema, y
+ * `window.location.reload()` pasa a `router.refresh()`: recargar la página
+ * perdía el orden de ruta sin guardar del panel de al lado.
  */
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { FlagTriangleRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { actionCompletarManifiesto } from "../actions";
 
 interface Props {
@@ -45,6 +63,7 @@ export function BotonCompletarManifiesto({
   nombreConductor,
   paradasAbiertas,
 }: Props) {
+  const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -59,82 +78,67 @@ export function BotonCompletarManifiesto({
       const resultado = await actionCompletarManifiesto(formData);
       if (resultado?.error) {
         setError(resultado.error);
-      } else {
-        setAbierto(false);
-        window.location.reload();
+        return;
       }
+      setAbierto(false);
+      router.refresh();
     });
   }
 
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
+        className="w-full justify-start"
         disabled={pending}
         onClick={() => setAbierto(true)}
-        className="inline-flex items-center gap-2 rounded-lg border border-input bg-card px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
       >
         <FlagTriangleRight className="size-4" aria-hidden="true" />
         Cerrar manifiesto
-      </button>
+      </Button>
 
-      {abierto && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dialog-completar-titulo"
-        >
-          <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-lg">
-            <h2 id="dialog-completar-titulo" className="text-lg font-semibold">
-              ¿Cerrar la ruta de {nombreConductor}?
-            </h2>
+      <Dialog open={abierto} onOpenChange={(a) => !a && !pending && setAbierto(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cerrar la ruta de {nombreConductor}</DialogTitle>
+          </DialogHeader>
 
-            <p className="mt-2 text-sm text-muted-foreground">
-              El manifiesto pasa a completado y el conductor deja de verlo como ruta activa.
+          <p className="text-sm leading-relaxed text-fg-muted">
+            El manifiesto pasa a completado y el conductor deja de verlo como ruta activa.
+          </p>
+
+          {paradasAbiertas > 0 ? (
+            // El aviso importa: cerrar la planilla no entrega los paquetes, y
+            // sin decirlo el coordinador cree que dejó el día cuadrado.
+            <p className="border border-attention-line bg-attention-bg px-3 py-2.5 text-sm leading-relaxed text-attention-fg">
+              Quedan{" "}
+              <strong className="font-medium">
+                {paradasAbiertas} parada{paradasAbiertas === 1 ? "" : "s"} sin cerrar
+              </strong>
+              . Cerrar el manifiesto <strong className="font-medium">no</strong> las marca como
+              entregadas: siguen apareciendo para asignar hasta que les des un estado final
+              desde la ficha de cada pedido.
             </p>
+          ) : null}
 
-            {paradasAbiertas > 0 && (
-              // El aviso importa: cerrar la planilla no entrega los paquetes, y
-              // sin decirlo el coordinador cree que dejó el día cuadrado.
-              <p className="mt-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-                Quedan{" "}
-                <span className="font-semibold text-foreground">
-                  {paradasAbiertas} parada{paradasAbiertas === 1 ? "" : "s"} sin cerrar
-                </span>
-                . Cerrar el manifiesto <span className="font-medium">no</span> las marca como
-                entregadas: siguen apareciendo para asignar hasta que les des un estado final
-                desde la ficha de cada pedido.
-              </p>
-            )}
+          {error ? (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
 
-            {error && (
-              <p role="alert" className="mt-3 text-sm text-destructive">
-                {error}
-              </p>
-            )}
-
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => setAbierto(false)}
-                className="rounded-lg border border-input px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={handleCompletar}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-              >
-                {pending ? "Cerrando…" : "Cerrar manifiesto"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="ghost" disabled={pending} onClick={() => setAbierto(false)}>
+              Volver
+            </Button>
+            <Button disabled={pending} onClick={handleCompletar}>
+              {pending ? "Cerrando…" : "Cerrar manifiesto"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

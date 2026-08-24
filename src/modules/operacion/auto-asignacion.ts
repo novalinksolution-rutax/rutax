@@ -301,6 +301,14 @@ export async function marcarConductorNoDisponibleYRedistribuir(
   fecha: string,
   actor: UsuarioActual,
   actorUsuarioId: string,
+  /**
+   * Por qué se cae el conductor. Va a la bitácora junto al hecho.
+   *
+   * Sin esto la línea decía «alguien marcó a Muñoz no disponible el 21-08» y
+   * nada más: mañana, cuando se revise por qué esas paradas cambiaron de manos,
+   * no hay forma de distinguir un accidente de un error de dedo.
+   */
+  motivo: string,
 ): Promise<ResultadoRedistribucion> {
   // 1. RBAC
   if (!puedeAsignarYReasignarPedidos(actor)) {
@@ -317,7 +325,7 @@ export async function marcarConductorNoDisponibleYRedistribuir(
     accion: 'operacion.conductor_caido',
     entidadTipo: 'conductor',
     entidadId: conductorId,
-    detalle: { conductor_id: conductorId, fecha },
+    detalle: { conductor_id: conductorId, fecha, motivo },
   });
 
   // Verificar estado actual del conductor para idempotencia.
@@ -448,7 +456,13 @@ export async function marcarConductorNoDisponibleYRedistribuir(
   const { data: filasConductores, error: errPool } = await cliente
     .schema('identidad')
     .from('conductores')
-    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre')
+    // ⚠️ `nombre` NO EXISTE en `identidad.conductores`: la columna es
+    // `nombre_completo`. Pedía `nombre` a secas y PostgREST devolvía
+    // «column conductores.nombre does not exist», que acá se convierte en un
+    // throw — o sea que **redistribuir fallaba siempre**, en el primer paso, y
+    // el conductor quedaba marcado no disponible con sus paradas sin mover.
+    // Se alias-ea para no tocar el resto del archivo, que lee `c.nombre`.
+    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre:nombre_completo')
     .eq('tenant_id', tenantId)
     .eq('estado', 'activo')
     .eq('disponible', true)

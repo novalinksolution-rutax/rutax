@@ -9,6 +9,7 @@ import { puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
 import { marcarConductorNoDisponibleYRedistribuir } from "@/modules/operacion/auto-asignacion";
 import type { ResultadoRedistribucion } from "@/modules/operacion/tipos";
 import { ahoraEnSantiago } from "@/lib/fecha-santiago";
+import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 
 // =============================================================================
 // Tipos de respuesta compartidos
@@ -51,11 +52,38 @@ export async function actionCancelarManifiesto(formData: FormData) {
   const sesion = await exigirSesionActual();
   if (!sesion.usuario.tenantId) return { error: "Sin sesión." };
 
+  // ⚠️ ESTA COMPROBACIÓN NO ESTABA. La acción hacía un `update` directo con
+  // `service_role` —que se salta RLS— sin mirar una sola capacidad: cualquier
+  // sesión autenticada podía cancelar un manifiesto invocándola. Confirmar y
+  // completar sí la tenían; cancelar, que es la irreversible de las tres, no.
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return { error: "No tienes permiso para cancelar manifiestos." };
+  }
+
   const manifiestoId = formData.get("manifiestoId") as string;
   if (!manifiestoId) return { error: "Falta el ID del manifiesto." };
 
+  // Peldaño 2 de la escalera: la consecuencia se dice en pantalla y el motivo se
+  // escribe. Lo va a leer quien revise por qué esas paradas quedaron sin ruta.
+  const motivo = ((formData.get("motivo") as string) ?? "").trim();
+  if (motivo.length < 3) return { error: "Escribe el motivo de la cancelación." };
+
   try {
     const cliente = crearClienteServiceRole();
+
+    // Bitácora ANTES del efecto (invariante de CLAUDE.md): así queda registro
+    // aunque el paso siguiente falle. Tampoco estaba — cancelar un manifiesto no
+    // dejaba ni una línea de quién ni por qué.
+    await registrarEnBitacora(cliente, {
+      tenantId: sesion.usuario.tenantId,
+      actorUsuarioId: sesion.usuarioId,
+      actorTipo: "usuario",
+      accion: "manifiesto.cancelado",
+      entidadTipo: "manifiesto",
+      entidadId: manifiestoId,
+      detalle: { manifiesto_id: manifiestoId, motivo },
+    });
+
     await cliente
       .from("manifiestos")
       .update({ estado: "cancelado" })
@@ -130,6 +158,7 @@ export async function actionCompletarManifiesto(formData: FormData) {
  */
 export async function actionMarcarConductorNoDisponible(
   conductorId: string,
+  motivo: string,
   fecha?: string,
 ): Promise<Respuesta<ResultadoRedistribucion>> {
   const sesion = await exigirSesionActual();
@@ -148,6 +177,13 @@ export async function actionMarcarConductorNoDisponible(
     return { ok: false, mensaje: "ID de conductor requerido." };
   }
 
+  // Peldaño 2: redistribuir mueve las paradas de un conductor a otros y no se
+  // deshace. El motivo es lo que hace legible mañana ese movimiento.
+  const motivoLimpio = motivo.trim();
+  if (motivoLimpio.length < 3) {
+    return { ok: false, mensaje: "Escribe por qué este conductor se cae." };
+  }
+
   const fechaOperacion = fecha ?? ahoraEnSantiago().fecha;
 
   try {
@@ -159,9 +195,11 @@ export async function actionMarcarConductorNoDisponible(
       fechaOperacion,
       sesion.usuario,
       sesion.usuarioId,
+      motivoLimpio,
     );
 
     revalidatePath("/manifiestos");
+    revalidatePath("/conductores");
 
     return { ok: true, datos: resultado };
   } catch (err) {

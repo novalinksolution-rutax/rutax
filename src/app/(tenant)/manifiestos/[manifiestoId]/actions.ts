@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
+import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 
 // =============================================================================
 // Quitar pedido del manifiesto (desactivar asignación)
@@ -24,6 +25,13 @@ export async function actionQuitarPedidoDeManifiesto(formData: FormData) {
     return { error: "Faltan datos requeridos." };
   }
 
+  // Peldaño 2 de la escalera de fricción. Quitar una parada devuelve el pedido a
+  // la bandeja SIN CONDUCTOR, y hasta hoy se ejecutaba al primer clic y sin
+  // dejar rastro: mañana alguien encuentra ese pedido suelto y no hay forma de
+  // saber quién lo sacó ni por qué.
+  const motivo = ((formData.get("motivo") as string) ?? "").trim();
+  if (motivo.length < 3) return { error: "Escribe por qué sale esta parada." };
+
   try {
     const cliente = crearClienteServiceRole();
 
@@ -38,6 +46,18 @@ export async function actionQuitarPedidoDeManifiesto(formData: FormData) {
     if (!manifiesto || manifiesto.estado !== "borrador") {
       return { error: "Solo se pueden quitar pedidos de manifiestos en borrador." };
     }
+
+    // Bitácora ANTES del efecto (invariante de CLAUDE.md): el registro queda
+    // aunque falle el paso siguiente y el pedido quede a medio camino.
+    await registrarEnBitacora(cliente, {
+      tenantId: sesion.usuario.tenantId,
+      actorUsuarioId: sesion.usuarioId,
+      actorTipo: "usuario",
+      accion: "manifiesto.parada_quitada",
+      entidadTipo: "manifiesto",
+      entidadId: manifiestoId,
+      detalle: { manifiesto_id: manifiestoId, asignacion_id: asignacionId, motivo },
+    });
 
     // Desactivar la asignación
     const { error } = await cliente

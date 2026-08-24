@@ -12,20 +12,44 @@
  * en bitácora.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { ACTO } from "./bloque-trazabilidad";
 
+/**
+ * Se barre `src/` entero y no un archivo.
+ *
+ * La primera versión leía solo `modules/dinero/acciones.ts`, porque las únicas
+ * etiquetas eran de dinero. Al aparecer las de manifiesto —que se escriben desde
+ * las Server Actions de la pantalla— ese barrido las declaraba inventadas, y la
+ * salida fácil habría sido agregar el archivo a mano: la lista se queda atrás en
+ * cuanto alguien registre en bitácora desde un sitio nuevo, y la prueba empieza
+ * a rechazar etiquetas correctas.
+ *
+ * También acepta comillas dobles: el repo usa las dos.
+ */
 function accionesQueElDominioEmite(): Set<string> {
-  const fuente = readFileSync(
-    join(process.cwd(), "src/modules/dinero/acciones.ts"),
-    "utf-8",
-  );
-  const encontradas = fuente.matchAll(/accion:\s*'([a-z_.]+)'/g);
-  return new Set([...encontradas].map((m) => m[1]));
+  const encontradas = new Set<string>();
+
+  function recorrer(directorio: string) {
+    for (const entrada of readdirSync(directorio, { withFileTypes: true })) {
+      const ruta = join(directorio, entrada.name);
+      if (entrada.isDirectory()) {
+        recorrer(ruta);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entrada.name) || /\.test\.tsx?$/.test(entrada.name)) continue;
+      for (const m of readFileSync(ruta, "utf-8").matchAll(/accion:\s*["']([a-z_.]+)["']/g)) {
+        encontradas.add(m[1]);
+      }
+    }
+  }
+
+  recorrer(join(process.cwd(), "src"));
+  return encontradas;
 }
 
 describe("vocabulario de actos de la trazabilidad", () => {
@@ -41,6 +65,7 @@ describe("vocabulario de actos de la trazabilidad", () => {
     const reales = accionesQueElDominioEmite();
     expect(reales.size).toBeGreaterThan(10);
     expect(reales.has("dinero.periodo_reabierto")).toBe(true);
+    expect(reales.has("manifiesto.cancelado")).toBe(true);
   });
 
   it("las acciones de dinero con motivo obligatorio tienen etiqueta", () => {
@@ -51,6 +76,12 @@ describe("vocabulario de actos de la trazabilidad", () => {
       "dinero.liquidacion_ajustada",
       "dinero.linea_cobro_anulada_manual",
       "dinero.linea_liquidacion_anulada_manual",
+      // Las de manifiesto son las que ve el coordinador en la bitácora de la
+      // ruta, al lado de las acciones que las escriben.
+      "manifiesto.cancelado",
+      "manifiesto.parada_quitada",
+      "operacion.conductor_caido",
+      "operacion.redistribucion_completada",
     ]) {
       expect(ACTO[accion], `falta la etiqueta de ${accion}`).toBeTruthy();
     }

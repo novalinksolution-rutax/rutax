@@ -107,7 +107,7 @@ pedido con `tracking_token` —son todos Flex, y esa pantalla tiene frontera dur
 | Torre de control | `(tenant)/torre-de-control` | ✅ **HECHA** — 23-08, ver abajo |
 | Preparación del día | `(tenant)/preparacion` | ✅ **HECHA** — 23-08, ver abajo |
 | Manifiestos · listado | `(tenant)/manifiestos` | ✅ **HECHA** — 23-08, ver abajo |
-| Detalle del manifiesto | `(tenant)/manifiestos/[manifiestoId]` | FALTA PIEZA |
+| Detalle del manifiesto | `(tenant)/manifiestos/[manifiestoId]` | ✅ **HECHA** — 23-08, ver abajo |
 
 **Lo que hay que resolver antes de construir:** cuatro cifras del tablero no existen en ninguna
 capa de datos — «en ruta ahora» y «conductores con ruta» del contrato de la Torre, «paradas» y
@@ -419,6 +419,100 @@ como fuente de datos lo convierte en un contrato que nadie sabe que está firman
 callado el día que alguien cambie qué guarda ese `detalle`.
 
 **Queda pendiente:** el filtro por conductor y el patrón de filtros colapsados con cuenta.
+
+
+### ✅ Detalle del manifiesto · hecho el 23-08-2026
+
+La pantalla tenía **una sola columna** y las acciones sueltas bajo la tabla. Ahora son dos: la
+ancha con la secuencia, la angosta con `ACCIONES`, `ZONA DE CONSECUENCIA · TODO EN LA BITÁCORA` y
+`BITÁCORA`. El título pasó a ser el **conductor** —se entra acá para ver la ruta de alguien— con el
+nombre del documento debajo, y los distintivos `28 paradas · 12 cerradas`.
+
+**El panel de recálculo antes de guardar es la pieza nueva.** Antes el coordinador movía una parada,
+veía cambiar el total y tenía que decidir de cabeza si eso rompía el turno. Ahora ve
+`Orden actual 143,3 km` / `Con tu cambio 170,7 km · +27,4 km` y, debajo, la respuesta a la pregunta
+real: **«sigues cerrando antes de las 21:00, con 1 h 20 de margen»** — o, si se pasa, la hora a la
+que cierra y cuánto se excede.
+
+⚠️ **Los supuestos van escritos al lado del número, siempre** («16 paradas abiertas a 12 min cada
+una y 15 km/h, con distancias en línea recta»). Es la misma regla que el cálculo de conductores de
+Preparación: una estimación con los supuestos escondidos se lee como una instrucción. Nueve pruebas
+en `holgura-ruta.test.ts` fijan la aritmética, incluidas las dos que costó ver en pantalla — que el
+reloj arranca en el despacho y no «ahora» cuando todavía no son las 16:00, y que el margen negativo
+no se recorta a cero.
+
+🐞 **«Cierras a las 25:43».** La primera versión seguía contando pasada la medianoche. Se vio en
+pantalla y no se lee: nadie mira un reloj de 25 horas. Ahora da la vuelta y dice «01:43 **de
+mañana**» — la magnitud del exceso ya la lleva la frase de margen.
+
+**Las paradas cerradas quedaron rayadas y sin controles**, y la primera abierta se rotula
+`Siguiente`. Ese rótulo va **al lado** del distintivo de estado y no dentro: «siguiente» es posición
+en la ruta, no estado del pedido, y son ejes independientes (regla 4). Reordenar solo afecta a las
+pendientes: mover una entrega ya hecha no cambia nada en la calle y sí ensucia la secuencia que el
+conductor está siguiendo.
+
+**`DIRECCIÓN` pasó delante de `DESTINATARIO`** y dejó de esconderse bajo `sm` — es el orden de la
+app del conductor, y el que usa quien va siguiendo la ruta. El nombre sirve al llegar; la dirección,
+para saber a dónde.
+
+⚠️ **El reparo `Colina · sin tarifa` NO se resuelve mirando `tarifa_aplicable_id`.** Es el campo
+obvio y da una respuesta falsa: lo escriben el alta same-day y la ingesta de Shopify, y **la ingesta
+de Mercado Libre no lo escribe nunca**. En un courier cuya operación es Flex entera se habrían
+pintado de reparo las treinta paradas, todas falsas — y la próxima vez nadie mira el reparo
+verdadero. Se resuelve como el motor: **por seller y régimen**, a la fecha de operación, con una
+consulta por par y no por parada.
+
+**Los tres actos de la pantalla subieron de peldaño.** Cancelar el manifiesto y quitar una parada
+piden **motivo** y dicen su consecuencia en número; «se cayó el conductor» —que redistribuye— llegó
+a esta pantalla con motivo y **tarjeta de resultado en bloque**, no en un aviso que se va: las
+paradas que quedaron sin receptor son lo único accionable y se perderían.
+
+🐞 **Tres defectos que no eran de diseño, encontrados al construir:**
+
+1. **`actionCancelarManifiesto` no comprobaba ninguna capacidad.** Hacía un `update` con
+   `service_role` —que se salta RLS—, así que cualquier sesión autenticada podía cancelar un
+   manifiesto invocándola. Confirmar y completar sí la tenían; cancelar, la irreversible de las
+   tres, no. Y **no dejaba una línea de bitácora**: ni quién ni por qué.
+2. **`redistribuir` fallaba SIEMPRE**, en su primer paso: pedía `conductores.nombre` y la columna es
+   `nombre_completo`. El conductor quedaba marcado no disponible y sus paradas sin mover.
+   Encontrado ejecutándolo en el navegador; ninguna prueba lo cubría porque el pool se lee con un
+   doble.
+3. **Quitar una parada se ejecutaba al primer clic** y sin rastro. A las 15:50, con treinta filas,
+   ese botón devuelve un pedido a la bandeja sin conductor y hay que ir a buscarlo a Operaciones.
+
+**El vacío y la falla de lectura ya no son el mismo estado.** `cargarPedidosAsignados` devolvía `[]`
+ante cualquier error, así que una consulta caída se leía como «este manifiesto no tiene pedidos» —
+con la flota por salir, una invitación a cancelarlo. Ahora devuelve `null` y la pantalla dice **«no
+lo canceles ni redistribuyas hasta poder verlas»**, y apaga la zona de consecuencia entera.
+
+**Y el vacío dice qué ve el conductor, según el estado.** «J. Tapia ve “tu ruta todavía no está
+lista”» es lo que ve un conductor con manifiesto **en borrador**; escribirlo bajo uno completado
+—que fue el primer intento, y se vio en pantalla— es pedirle al coordinador que agregue paradas a
+una ruta cerrada.
+
+**La bitácora de la ruta lee dos orígenes.** «Se cayó el conductor» se registra contra la entidad
+`conductor` —ahí pertenece, porque mueve paradas de varios manifiestos— pero **se ejecuta desde esta
+pantalla**. Leyendo solo `manifiesto`, el coordinador redistribuía 15 paradas y el recuadro de abajo
+seguía diciendo «todavía no hay movimientos». Las del conductor se acotan a la ventana operativa del
+día, que llega hasta las 06:00 del día siguiente: el corte es 21:00–22:00 y el cierre puede pasarse
+de las doce.
+
+**Y el resto del delta:** los tres diálogos escritos a mano —sin atrapar el foco, sin cerrar con
+Escape— pasaron al `Dialog` del sistema; los cuatro `window.location.reload()` pasaron a
+`router.refresh()` (recargar perdía el orden de ruta sin guardar del panel de al lado); los
+controles de la fila miden 48 px en el teléfono; y las dos fechas que salían en ISO crudo
+(`2026-08-24` en el encabezado y en `F. COMPROMISO`) se escriben con el helper de fechas **civiles**
+— pasarlas por los de instante las corre un día, porque medianoche UTC del 24 es el 23 por la tarde
+en Santiago.
+
+⛔ **El punto de término del conductor no aparece, y no es un olvido.** El tablero lo pone en el
+subtítulo (`Bodega Quilicura → punto de término en Ñuñoa`). Bajo subordinación laboral el
+consentimiento solo es libre si negarse no queda a la vista del jefe, así que la salida tiene que
+ser idéntica exista o no
+(`docs/seguridad/punto-de-termino-conductor.md` §4). Mostrarlo reabre esa revisión.
+
+**Queda pendiente:** `Imprimir la hoja de ruta` — diferida al bloque 8 por decisión del usuario, que
+es donde vive el manifiesto impreso.
 
 
 ## B2 · Dinero · 5 pantallas

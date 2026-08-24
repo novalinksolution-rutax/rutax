@@ -54,6 +54,10 @@ export const ACTO: Record<string, string> = {
   "dinero.pago_atribuido_manual": "Atribuyó un pago a mano",
   "dinero.pago_descartado": "Descartó un movimiento",
   "dinero.pago_recuperado": "Devolvió el movimiento a la bandeja",
+  "manifiesto.cancelado": "Canceló el manifiesto",
+  "manifiesto.parada_quitada": "Quitó una parada",
+  "operacion.conductor_caido": "Marcó al conductor no disponible",
+  "operacion.redistribucion_completada": "Redistribuyó sus paradas",
 }
 
 function nombreDelActo(accion: string): string {

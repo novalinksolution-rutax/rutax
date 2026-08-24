@@ -82,6 +82,14 @@ import {
   puntoUsable,
   totalDistanciaM,
 } from "@/modules/operacion/distancias-tramo";
+import { etiquetaFechaCivilCorta } from "@/lib/ui/rango-fecha";
+import {
+  calcularHolguraRuta,
+  formatearDuracionCorta,
+  formatearHoraDeMinutos,
+  HORA_CORTE,
+  minutosSantiagoAhora,
+} from "@/modules/operacion/holgura-ruta";
 
 import { accionCalcularRuta, accionGuardarOrdenManual } from "./actions-ruta";
 import { BotonQuitarPedido } from "./boton-quitar-pedido";
@@ -104,6 +112,16 @@ export interface ParadaVista {
   long: number | null;
   /** Si esta parada tiene número de orden guardado (`orden_ruta`). */
   ruteada: boolean;
+  /**
+   * El conductor ya la cerró: entregada, fallida o devuelta.
+   *
+   * Se raya y **pierde sus controles**. Reordenar solo afecta a las pendientes:
+   * mover una parada ya entregada no cambia nada en la calle y sí ensucia la
+   * secuencia que el conductor está siguiendo.
+   */
+  cerrada: boolean;
+  /** El seller no tiene tarifa vigente: esa entrega no se podría cobrar. */
+  sinTarifa?: boolean;
 }
 
 interface Props {
@@ -130,6 +148,8 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
   const router = useRouter();
   const [pendiente, startTransition] = useTransition();
   const [aviso, setAviso] = useState<Aviso | null>(null);
+  /** Minutos desde medianoche en Santiago. Se captura al mover una parada. */
+  const [ahoraMin, setAhoraMin] = useState<number | null>(null);
 
   const porId = useMemo(
     () => new Map(paradas.map((p) => [p.pedidoId, p] as const)),
@@ -187,8 +207,42 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
 
   const totalM = useMemo(() => (origen ? totalDistanciaM(tramos) : null), [origen, tramos]);
 
+  // El orden GUARDADO, medido con la misma función. Es la mitad izquierda del
+  // panel de recálculo: sin él, «198,7 km» es un número sin contra qué compararse
+  // y el coordinador no puede saber si su cambio mejoró o empeoró la ruta.
+  const totalGuardadoM = useMemo(() => {
+    if (!origen) return null;
+    const enOrdenServidor = idsServidor
+      .map((id) => porId.get(id))
+      .filter((p): p is ParadaVista => p !== undefined);
+    return totalDistanciaM(distanciasPorTramo(origen, enOrdenServidor));
+  }, [origen, idsServidor, porId]);
+
+  const paradasAbiertas = useMemo(() => enOrden.filter((p) => !p.cerrada).length, [enOrden]);
+
+  // Índice de la primera parada abierta: la que el conductor tiene por delante.
+  // Se calcula sobre el orden LOCAL, así que se mueve mientras se reordena — que
+  // es justo lo que hay que ver antes de guardar.
+  const indiceSiguiente = useMemo(() => enOrden.findIndex((p) => !p.cerrada), [enOrden]);
+
+  const holgura = useMemo(
+    () =>
+      ahoraMin === null
+        ? null
+        : calcularHolguraRuta({
+            paradasAbiertas,
+            metrosGuardados: totalGuardadoM,
+            metrosPropuestos: totalM,
+            ahoraMin,
+          }),
+    [ahoraMin, paradasAbiertas, totalGuardadoM, totalM],
+  );
+
+  // Solo las ABIERTAS: una parada ya entregada sin coordenada no es un problema
+  // que resolver — el conductor llegó igual. Contarlas dejaría el aviso encendido
+  // toda la tarde sobre paquetes que ya están en la puerta de su destinatario.
   const sinCoordenada = useMemo(
-    () => enOrden.filter((p) => puntoUsable(p.lat, p.long) === null).length,
+    () => enOrden.filter((p) => !p.cerrada && puntoUsable(p.lat, p.long) === null).length,
     [enOrden],
   );
 
@@ -196,9 +250,19 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
 
   function moverA(desde: number, hasta: number) {
     setAviso(null);
+    // La hora se toma AL MOVER y no durante el render: leer el reloj mientras se
+    // pinta hace que el servidor y el navegador dibujen cosas distintas, y acá
+    // además es lo correcto de todos modos — cada movimiento re-estima contra el
+    // reloj de ese momento.
+    setAhoraMin(minutosSantiagoAhora());
     setOrden((actual) => {
       const destino = Math.max(0, Math.min(actual.length - 1, hasta));
       if (desde === destino || desde < 0 || desde >= actual.length) return actual;
+      // Una parada cerrada no se mueve. La fila ya no dibuja controles, así que
+      // esto es un cinturón: si alguna vez vuelve a haber un camino para
+      // llamarlo (un atajo de teclado, un arrastre), sigue sin poder reescribir
+      // una entrega que ya ocurrió.
+      if (porId.get(actual[desde])?.cerrada) return actual;
       const copia = [...actual];
       const [movida] = copia.splice(desde, 1);
       copia.splice(destino, 0, movida);
@@ -354,17 +418,106 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
         </div>
       )}
 
+      {/* El panel de recálculo: qué cambió, y si eso rompe el turno.
+          ------------------------------------------------------------------
+          Antes de esto la pantalla mostraba el total nuevo y nada mas. «198,7
+          km» no dice si mejoró ni si el conductor alcanza — deja al coordinador
+          haciendo de cabeza, a las 15:50, la única cuenta que importa. */}
       {sucio && (
-        <p className="text-sm text-muted-foreground">
-          Hay cambios sin guardar. El conductor sigue viendo el orden anterior hasta que
-          guardes.
-        </p>
+        <div className="space-y-3 rounded-lg border border-line bg-surface-2 px-4 py-3">
+          <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+            <div>
+              <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
+                Orden actual
+              </p>
+              <p className="rx-num text-base text-fg-muted">
+                {totalGuardadoM !== null ? formatearDistancia(totalGuardadoM) : "sin medir"}
+              </p>
+            </div>
+            <div>
+              <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
+                Con tu cambio
+              </p>
+              <p className="rx-num text-base font-medium text-fg">
+                {totalM !== null ? formatearDistancia(totalM) : "sin medir"}
+                {/* El delta es lo que se lee de un vistazo, y lleva signo
+                    siempre: «13,4» sin signo se puede leer como el total. */}
+                {totalM !== null && totalGuardadoM !== null && (
+                  <span
+                    className={
+                      totalM > totalGuardadoM
+                        ? "ms-2 text-sm text-attention-fg"
+                        : totalM < totalGuardadoM
+                          ? "ms-2 text-sm text-balanced-fg"
+                          : "ms-2 text-sm text-fg-muted"
+                    }
+                  >
+                    {totalM === totalGuardadoM
+                      ? "sin cambio"
+                      : `${totalM > totalGuardadoM ? "+" : "−"}${formatearDistancia(Math.abs(totalM - totalGuardadoM))}`}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* La frase de holgura. Es lo único de este bloque que responde la
+              pregunta real: no «cuántos kilómetros», sino «alcanza». */}
+          {holgura && (
+            <p className="text-sm leading-relaxed">
+              {holgura.margenMin >= 0 ? (
+                <>
+                  Sigues cerrando antes de las {HORA_CORTE}:00, con{" "}
+                  <span className="rx-num text-fg">
+                    {formatearDuracionCorta(holgura.margenMin)}
+                  </span>{" "}
+                  de margen.
+                </>
+              ) : (
+                <span className="text-fault-fg">
+                  Con este orden cierras a las{" "}
+                  <span className="rx-num">
+                    {formatearHoraDeMinutos(holgura.cierreEstimadoMin).hora}
+                  </span>
+                  {formatearHoraDeMinutos(holgura.cierreEstimadoMin).cruzaMedianoche
+                    ? " de mañana"
+                    : ""}
+                  , {formatearDuracionCorta(holgura.margenMin)} después del corte.
+                </span>
+              )}{" "}
+              <span className="text-fg-muted">
+                {holgura.minutosDelCambio !== null && holgura.minutosDelCambio !== 0 && (
+                  <>
+                    Tu cambio {holgura.minutosDelCambio > 0 ? "agrega" : "ahorra"}{" "}
+                    {formatearDuracionCorta(holgura.minutosDelCambio)}.{" "}
+                  </>
+                )}
+                {/* Los supuestos van al lado del número, siempre. Una estimación
+                    con los supuestos escondidos se lee como una instrucción —
+                    misma regla que el cálculo de conductores de Preparación. */}
+                Estimado sobre {paradasAbiertas}{" "}
+                {paradasAbiertas === 1 ? "parada abierta" : "paradas abiertas"} a{" "}
+                {holgura.supuestos.minutosPorParada} min cada una y{" "}
+                {holgura.supuestos.kmhLineaRecta} km/h, con distancias en línea recta.
+              </span>
+            </p>
+          )}
+
+          <p className="text-sm text-fg-muted">
+            El conductor sigue viendo el orden anterior hasta que guardes.
+          </p>
+        </div>
       )}
 
       <DataTable
         toolbar={
-          <span className="text-sm tabular-nums text-muted-foreground">
+          <span className="rx-num text-sm text-fg-muted">
             {enOrden.length} parada{enOrden.length === 1 ? "" : "s"}
+            {/* Lo que se quiere saber mirando la tabla no es cuántas hay: es
+                cuántas faltan. */}
+            {paradasAbiertas < enOrden.length && (
+              <> · {enOrden.length - paradasAbiertas} cerradas</>
+            )}
           </span>
         }
       >
@@ -383,8 +536,12 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
                 Tramo
               </TableHead>
               <TableHead className="px-4">Estado</TableHead>
-              <TableHead className="px-4">Destinatario</TableHead>
-              <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
+              {/* DIRECCIÓN antes que DESTINATARIO, y visible siempre: es el
+                  orden de la app del conductor, y el que usa quien lee esta
+                  tabla para ir siguiendo la ruta. El nombre sirve al llegar; la
+                  dirección, para saber a dónde. */}
+              <TableHead className="px-4">Dirección</TableHead>
+              <TableHead className="hidden px-4 sm:table-cell">Destinatario</TableHead>
               <TableHead className="hidden px-4 md:table-cell">F. compromiso</TableHead>
               {(puedeRutear || puedeQuitar) && (
                 <TableHead className="px-4 text-right">
@@ -396,8 +553,15 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
           <TableBody>
             {enOrden.map((parada, idx) => {
               const ubicada = puntoUsable(parada.lat, parada.long) !== null;
+              // Una parada cerrada es historia: se raya y pierde sus controles.
+              // Moverla no cambia nada en la calle y sí ensucia la secuencia que
+              // el conductor está siguiendo en ese momento.
+              const esSiguiente = idx === indiceSiguiente && !parada.cerrada;
               return (
-                <TableRow key={parada.pedidoId}>
+                <TableRow
+                  key={parada.pedidoId}
+                  className={parada.cerrada ? "rx-inert-row text-fg-muted" : undefined}
+                >
                   <TableCell className="px-4 text-center font-semibold tabular-nums text-muted-foreground">
                     {idx + 1}
                   </TableCell>
@@ -405,42 +569,71 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
                     {formatearDistancia(tramos[idx] ?? null)}
                   </TableCell>
                   <TableCell className="px-4">
-                    <BadgeEstado variante={parada.estadoVariante} texto={parada.estadoTexto} />
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <BadgeEstado variante={parada.estadoVariante} texto={parada.estadoTexto} />
+                      {/* «Siguiente» no es un estado del pedido y por eso no va
+                          dentro del distintivo: es la posición en la ruta. Son
+                          ejes independientes y mezclarlos produce un distintivo
+                          que dice dos cosas a la vez (regla 4). */}
+                      {esSiguiente && (
+                        <span className="rx-num rounded-sm bg-progress-bg px-1.5 py-0.5 text-[10px] leading-none tracking-[0.1em] text-progress-fg uppercase">
+                          Siguiente
+                        </span>
+                      )}
+                    </span>
                   </TableCell>
                   <TableCell className="px-4">
                     <Link
                       href={`/operaciones/${parada.pedidoId}`}
-                      className="font-medium hover:underline"
+                      className={
+                        parada.cerrada
+                          ? "font-medium line-through decoration-1 hover:underline"
+                          : "font-medium hover:underline"
+                      }
                     >
-                      {parada.destinatarioNombre}
+                      {parada.destinatarioDireccion}
                     </Link>
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      — {parada.destinatarioComuna}
+                    <span className="block text-xs text-muted-foreground">
+                      {parada.destinatarioComuna}
+                      {/* El reparo va pegado a la comuna que lo provoca: es una
+                          entrega que se va a hacer y no se va a poder cobrar. */}
+                      {parada.sinTarifa ? (
+                        <span className="text-attention-fg"> · sin tarifa</span>
+                      ) : null}
                     </span>
                     {!ubicada && (
-                      <Badge variant="outline" className="ml-2 gap-1 align-middle text-xs">
+                      <Badge variant="outline" className="mt-1 gap-1 align-middle text-xs">
                         <MapPin className="size-3" aria-hidden="true" />
                         Sin ubicación
                       </Badge>
                     )}
                   </TableCell>
                   <TableCell className="hidden px-4 text-muted-foreground sm:table-cell">
-                    {parada.destinatarioDireccion}
+                    {parada.destinatarioNombre}
                   </TableCell>
-                  <TableCell className="hidden px-4 text-muted-foreground md:table-cell">
-                    {parada.fechaCompromiso ?? "—"}
+                  <TableCell className="rx-num hidden px-4 text-muted-foreground md:table-cell">
+                    {/* `fecha_compromiso` es una fecha CIVIL: se escribe con el
+                        helper de fechas civiles y no con los de instante, que la
+                        correrían un día (medianoche UTC del 24 es el 23 por la
+                        tarde en Santiago). Antes salía el ISO crudo. */}
+                    {parada.fechaCompromiso
+                      ? etiquetaFechaCivilCorta(parada.fechaCompromiso)
+                      : "—"}
                   </TableCell>
                   {(puedeRutear || puedeQuitar) && (
                     <TableCell className="px-4">
                       <div className="flex items-center justify-end gap-1">
-                        {puedeRutear && (
+                        {parada.cerrada && (
+                          <span className="text-xs text-fg-muted">Cerrada</span>
+                        )}
+                        {puedeRutear && !parada.cerrada && (
                           <>
                             <button
                               type="button"
                               onClick={() => moverA(idx, idx - 1)}
                               disabled={pendiente || idx === 0}
-                              aria-label={`Subir a ${parada.destinatarioNombre} en la ruta`}
-                              className="inline-flex items-center justify-center rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                              aria-label={`Subir ${parada.destinatarioDireccion} en la ruta`}
+                              className="inline-flex size-12 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 sm:size-9"
                             >
                               <ArrowUp className="size-4" aria-hidden="true" />
                             </button>
@@ -448,8 +641,8 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
                               type="button"
                               onClick={() => moverA(idx, idx + 1)}
                               disabled={pendiente || idx === enOrden.length - 1}
-                              aria-label={`Bajar a ${parada.destinatarioNombre} en la ruta`}
-                              className="inline-flex items-center justify-center rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                              aria-label={`Bajar ${parada.destinatarioDireccion} en la ruta`}
+                              className="inline-flex size-12 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 sm:size-9"
                             >
                               <ArrowDown className="size-4" aria-hidden="true" />
                             </button>
@@ -464,7 +657,7 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
                               defaultValue={idx + 1}
                               key={`${parada.pedidoId}-${idx}`}
                               disabled={pendiente}
-                              aria-label={`Posición de ${parada.destinatarioNombre} en la ruta`}
+                              aria-label={`Posición de ${parada.destinatarioDireccion} en la ruta`}
                               onKeyDown={(e) => {
                                 // Enter mueve DIRECTAMENTE, no delegando en un
                                 // `blur()`. La versión con blur parece más corta
@@ -487,15 +680,16 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
                                   e.currentTarget.value = String(idx + 1);
                                 }
                               }}
-                              className="h-8 w-14 rounded-md border border-input bg-background px-2 text-center text-sm tabular-nums disabled:opacity-40"
+                              className="h-12 w-14 rounded-md border border-input bg-background px-2 text-center text-sm tabular-nums disabled:opacity-40 sm:h-9"
                             />
                           </>
                         )}
-                        {puedeQuitar && (
+                        {puedeQuitar && !parada.cerrada && (
                           <BotonQuitarPedido
                             asignacionId={parada.asignacionId}
                             manifiestoId={manifiestoId}
                             nombreDestinatario={parada.destinatarioNombre}
+                            direccion={parada.destinatarioDireccion}
                           />
                         )}
                       </div>
