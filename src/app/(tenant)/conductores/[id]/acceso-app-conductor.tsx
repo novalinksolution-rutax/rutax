@@ -232,7 +232,8 @@ function DialogInvitarConductor({
         <DialogHeader>
           <DialogTitle>Invitar a {nombreConductor} a la app</DialogTitle>
           <DialogDescription>
-            Le enviaremos un correo con un enlace para que defina su contraseña y entre a ver su manifiesto del día.
+            Le enviaremos un correo para que active su cuenta y elija su PIN de 6 números. Con ese
+            PIN entra a la app — no tiene que recordar ninguna contraseña.
           </DialogDescription>
         </DialogHeader>
 
@@ -252,8 +253,19 @@ function DialogInvitarConductor({
               }}
               disabled={enviando}
               aria-invalid={Boolean(error)}
-              aria-describedby={error ? `${idBase}-email-error` : undefined}
+              aria-describedby={error ? `${idBase}-email-error` : `${idBase}-email-ayuda`}
             />
+            {/* ⚠️ **Acá nace el error más probable del día uno.** Este campo pedía
+                un correo sin decir para qué servía, así que se escribía el que
+                hubiera a mano — y después el conductor, a las 16:00 en la bodega,
+                intenta entrar con SU correo y la app le dice que no está
+                registrado. Él no puede arreglarlo: tiene que llamar a quien
+                escribió esto.
+                Decirlo acá cuesta una línea; no decirlo cuesta una llamada en el
+                peor momento del día. */}
+            <p id={`${idBase}-email-ayuda`} className="text-sm text-fg-muted">
+              Es el correo con el que va a entrar a la app. Si usa Gmail, pon ese mismo.
+            </p>
           </div>
 
           {error && (

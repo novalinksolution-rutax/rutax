@@ -8,7 +8,7 @@ que dispara Supabase Auth directamente (no pasan por Resend ni por
 |---|---|---|
 | `reset-password.html` | **Reset Password** | El usuario pide "¿Olvidaste tu contraseña?" (`src/app/recuperar-contrasena/actions.ts`, vía `resetPasswordForEmail`). |
 | `invite-user.html` | **Invite user** | Se da de alta un courier nuevo (`crearTenantConDueno` → `auth.admin.inviteUserByEmail`, `src/modules/identidad/onboarding.ts`), incluido el reenvío "¿no te llegó?" de `src/app/registro/actions.ts`. |
-| `magic-link.html` | **Magic Link** | Hoy **ningún flujo de la app la dispara** (no hay ningún `signInWithOtp` en `src/`). Se versiona igual porque ya estaba personalizada en el panel y un reseteo accidental no debe dejarla en blanco/roto para el día que se active. |
+| `magic-link.html` | **Magic Link** | **El código de 6 dígitos con el que entra el conductor a la app nativa** (bloque B5b, regla 81). Lo dispara `pedirCodigo()` del repo `rutax-conductor` vía `signInWithOtp`. Ya no la dispara nada del repo web. |
 
 ## Lo más importante: Supabase NO lee estos archivos
 
@@ -54,7 +54,7 @@ cada vez que se edite una plantilla.**
 |---|---|
 | Reset Password | `Restablece tu contraseña de Rutax` |
 | Invite user | `Activa tu cuenta de Rutax` |
-| Magic Link | `Tu enlace de acceso a Rutax` |
+| Magic Link | `Tu código para entrar` |
 
 ## Por qué el default de Supabase rompe el flujo (no resetear "a ciegas")
 
@@ -142,18 +142,31 @@ La forma correcta, usada en las tres plantillas de esta carpeta:
   si no lo conserva, el correo diga simplemente "Hola," en vez de "Hola, ." con
   un espacio vacío.
 
-- **`magic-link.html`**
-  ```
-  {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=magiclink
-  ```
-  Sin `next`: se investigó el repo completo (`signInWithOtp`, "magic link",
-  "magiclink") y **no existe ningún flujo activo** que dispare este correo hoy.
-  Se deja sin `next` a propósito — cae al default de `/auth/confirm`
-  (`/activar-cuenta`), que para un usuario ya activo rebota a `/onboarding`
-  (`src/app/(tenant)/onboarding/page.tsx`, existe). Es un destino razonable
-  pero genérico. **Si en el futuro se activa un login sin contraseña**, edita
-  esta plantilla para agregar `&next=<ruta real de destino>` explícito — no
-  asumas que el fallback de hoy sigue siendo el correcto.
+- **`magic-link.html`** — **no lleva URL. Lleva `{{ .Token }}`, el código de
+  6 dígitos**, y eso es un cambio deliberado del 24-08-2026.
+
+  Cuando se escribió esta carpeta la plantilla no la disparaba nadie y era un
+  botón «Iniciar sesión». Ahora tiene un consumidor y es uno solo: **la app del
+  conductor**, que desde el bloque B5b entra sin contraseña (regla 81).
+
+  **Por qué se le quitó el enlace, y por qué no hay que reponerlo:**
+  · **No lleva a ninguna parte útil.** No hay deep link hacia la app nativa, así
+    que tocarlo desde el correo del teléfono abre el **navegador**, cae en
+    `/auth/confirm` sin `next`, y de ahí a `/activar-cuenta` → `/onboarding`:
+    pantallas del courier, no del conductor. Un callejón que además parece que
+    funcionó.
+  · **El código se escribe con guantes**, que es la situación real — 16:00, en
+    la bodega, con el teléfono en una mano.
+  · **Y se puede dictar por teléfono** si el conductor llama a su coordinador.
+    Un enlace de 200 caracteres, no.
+
+  ⚠️ El preheader **no lleva el código**: se ve en la bandeja y en la pantalla de
+  bloqueo sin abrir el correo.
+
+  ⚠️ **Si algún día la web necesita entrar sin contraseña**, esto no le sirve tal
+  cual: necesita su propio `next` explícito, y probablemente su propia plantilla.
+  No agregues el botón «por si acaso» — volvería a mandar conductores a
+  `/onboarding`.
 
 ## Diseño y tono
 
@@ -189,6 +202,24 @@ La forma correcta, usada en las tres plantillas de esta carpeta:
   clientes que sí soportan dark-mode automático (Apple Mail, Outlook.com) que
   no le apliquen una inversión de color automática al HTML (que rompería el
   contraste calculado a mano).
+
+## Los dos ajustes del panel que esta plantilla necesita (además de pegarla)
+
+El HTML no basta: hay dos valores que viven en otra parte del panel y que, si no
+se tocan, dejan el flujo del conductor roto **sin ningún error visible**.
+
+1. **Authentication → Providers → Email → «Email OTP Expiration» = 600.**
+   La pantalla del conductor dice, con esas palabras, «Son 6 números y duran 10
+   minutos». El default de Supabase es una hora. `supabase/config.toml` ya lo
+   fija en 600, **pero eso solo aplica al stack local**: el hosted lo ignora.
+   Si acá queda en 3600, la app miente.
+
+2. **Authentication → Providers → Email → confirmar que el proveedor de correo
+   sale por SMTP propio.** Con el SMTP de fábrica de Supabase el envío está
+   limitado a unos pocos correos por hora, compartidos entre TODO el proyecto —
+   o sea entre invitaciones, recuperaciones y códigos de conductor. El día que
+   ocho conductores entren a las 16:00 en un teléfono nuevo, los últimos no
+   reciben nada y la app solo puede decir «no pudimos conectarnos».
 
 ## Si cambias una ruta de destino
 

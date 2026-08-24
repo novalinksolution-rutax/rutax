@@ -64,7 +64,7 @@ Dinero, no «Marco y navegación» del catálogo.
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, bloqueada por trabajo en curso | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
-| **6** | **App del conductor** | **construido en `rutax-conductor`** (5 commits: temas Sol/Día/Noche, señales, escala de texto, 20 pantallas migradas) | ⚠️ **este checklist no lo refleja ítem por ítem** — la cuenta vive en el otro repo. Y **nada se ha visto en un teléfono real**: hacen falta 7 módulos nativos y un build de EAS | #22 a #26 | `Rutax B5 App del conductor` · `P5` |
+| **6** | **App del conductor** | **construido en `rutax-conductor`** (6 commits: temas Sol/Día/Noche, señales, escala de texto, 20 pantallas migradas, **y B5b: la puerta con PIN, el candado y la entrada**) | ⚠️ **este checklist no lo refleja ítem por ítem** — la cuenta vive en el otro repo. Y **nada se ha visto en un teléfono real**: hacen falta 7 módulos nativos y un build de EAS | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
 | **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles · 6 cuerpos de correo por reescribir | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | 6 pantallas sin sesión (activar, registro, recuperar, legales, offline, `admin/login`) · 4 páginas del sitio, ninguna dibujada · tablet y teléfono del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
 | **9** | *(no está en §10)* | 12 componentes sin bloque asignado | 12, repartidos en 9a–9d | #4 · #5 · #6 · #13 a #20 | `B1b` · `B3a` · `B3b` · `P7` |
@@ -882,6 +882,77 @@ Ahora **falla cerrado**: si alguien pide peldaño 3, tiene que dar una frase no 
       prueba oficial la gobierna Mercado Envíos: hoy el mismo botón dispara lo mismo en los dos
       regímenes y la diferencia se comunica solo con texto.
 
+## 6.5 · B5b · La entrada del conductor
+
+Tablero traído el 24-08. Tres pantallas, seis estados, tres marcados NUEVO (#31, #32, #33) y cuatro
+reglas nuevas (81 a 84).
+
+- [x] **La puerta** — correo y **PIN de 6 dígitos**, con **teclado dibujado en pantalla**.
+- [x] **El candado** — la app pide el PIN tras 3 minutos sin usarse, y **se verifica sin red**.
+- [x] **La entrada** — «Hola, Carlos / Tienes 24 paradas hoy», 1,4 s, con el símbolo de la marca
+      armándose solo: la barra de arriba entra desde la izquierda, la de abajo desde la derecha con
+      140 ms de desfase, y se traslapan. El traslape es el cuadre.
+      Con «reducir movimiento» dura **2,2 s en vez de 1,4**: el tiempo que el movimiento usaba para
+      contar lo usa la permanencia. No se salta — su nombre y sus paradas son información.
+- [x] **Recuperación por correo** — «Olvidé mi PIN» → código de 6 dígitos → PIN nuevo, sin salir de
+      la app.
+- [x] **Los estados** — credencial equivocada, código malo o vencido, correo no registrado, sin
+      señal, suspendido, y el **progreso con pasos nombrados** («Mandando el código…»), con «está
+      tardando más de lo normal» a los 8 s **sin quitar el paso**.
+- [x] **El PIN se elige en la invitación** (repo web) — el conductor deja de inventar una contraseña
+      de 8 caracteres **que después no usaba nunca**. La barrera está en la Server Action, que lee el
+      rol **de la invitación** y no del formulario.
+- [x] **NUEVO #33** — la ayuda de campo del alta del conductor. Ahí nacía el error más probable del
+      día uno: se pedía un correo sin decir para qué servía.
+- [x] **NUEVO #32** — la sesión no vence por tiempo. Vence cuando el courier suspende al conductor,
+      cuando él sale, o **cuando entra en otro teléfono** (decisión del usuario: un aparato a la vez;
+      un teléfono perdido con la app abierta muestra direcciones de clientes).
+
+### ⚠️ Dónde esto se aparta del tablero, y por qué
+
+- **Regla 81 rota a propósito** *(decisión del usuario, 24-08-2026)*. El tablero dice «en la app del
+  conductor no hay contraseñas: Google, o correo con código de un solo uso». Se cambia por un **PIN
+  permanente** porque el código por correo depende de que el correo llegue, de que haya señal para
+  recibirlo, y de un límite de envíos que a las 16:00 con ocho conductores entrando es un cuello
+  real — y sobre todo porque **un PIN se puede verificar sin red**, que es lo que permite que la app
+  se cierre sola sin dejar a nadie fuera de su ruta.
+  El código por correo **no se tira**: queda como la única vía de recuperación.
+- **NUEVO #31 (Google) no se construyó** *(decisión del usuario)*. Exige un proyecto en Google Cloud
+  y el proveedor activado en Supabase, y **no se puede probar en Expo Go**: solo en un build de EAS.
+  Entra después como un botón más arriba del correo, sin rediseñar la pantalla. Con él llegan dos
+  piezas del tablero que hoy no tienen dónde ir: el estado «ese correo de Google no está registrado»
+  (regla 83, muestra con qué cuenta entró y fuerza el selector) y el separador «o».
+- **Sin bloqueo por intentos fallidos** *(decisión del usuario)*. Quien tenga el teléfono
+  desbloqueado puede probar PIN tras PIN sin penalización. Queda escrito en el código, no escondido.
+
+### Lo verificado contra el servidor, no leído en el código
+
+```
+PIN equivocado           → "Invalid login credentials"
+correo inexistente       → "Invalid login credentials"   ← el MISMO (regla 45)
+PIN bueno                → sesión: conductor · activo · tenant · "Carlos Vera"
+olvidé mi PIN → código   → PIN nuevo → entra · el viejo deja de servir
+código: pedir otro       → mata el anterior · un solo uso · 10 minutos
+```
+
+Y en el navegador, la invitación del conductor: el campo filtra a dígitos y corta en 6, `123456` se
+rechaza con «Números seguidos es de los primeros que alguien probaría. Mézclalos», y `482619` crea la
+cuenta con `tipo_usuario: conductor`.
+
+⚠️ **Las dos pantallas de la app NO se han visto.** El bundle web de Expo no compila —
+`react-native-maps` importa internos que no existen en navegador y expo-router empaqueta todas las
+rutas para armar su árbol, así que una pantalla nativa tumba las veinte. Se intentaron dos rodeos y
+se revirtieron. Hace falta Expo Go en un teléfono.
+
+### El cabo suelto que este cambio abre
+
+- [ ] **Dos listas de reglas de PIN, en dos repos, sin nada que las ate.**
+      `src/modules/identidad/pin-conductor.ts` (web, la que manda) y
+      `rutax-conductor/src/lib/pin-conductor.ts` (app, para el PIN nuevo tras olvidarlo). Las pruebas
+      de los dos lados fijan los mismos casos exactos a propósito, pero **nada falla si alguien
+      relaja una y no la otra**. Es el mismo patrón que ya mordió con el tope de cuentas de Mercado
+      Libre.
+
 ## 6.4 · Retiro de la PWA `/conductor` de este repo
 
 El inventario la marca para retiro: sus capacidades **se funden en la app nativa**, no se pierden.
@@ -910,6 +981,10 @@ El inventario la marca para retiro: sus capacidades **se funden en la app nativa
 
 ## Bloqueado
 
+- [x] **NUEVO #31** · Entrar sin contraseña — **hecho, pero por otro camino**: PIN de 6 dígitos en
+      vez de Google + código de un solo uso. Google queda pendiente (ver 6.5).
+- [x] **NUEVO #32** · La sesión no vence por tiempo, y se cierra en los demás aparatos al entrar.
+- [x] **NUEVO #33** · La ayuda de campo del alta del conductor.
 - [ ] **NUEVO #22** · Los tres temas de la app del conductor.
 - [ ] **NUEVO #23** · Escala de tamaño de texto en la app.
 - [ ] **NUEVO #24** · Sonido y vibración: cuatro señales.

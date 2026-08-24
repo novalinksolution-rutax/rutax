@@ -197,7 +197,103 @@ describe("aceptarInvitacionComoPersonaNueva", () => {
     });
   });
 
-  it("rechaza contraseña corta sin tocar la base", async () => {
+  it("crea la cuenta del conductor con su PIN de 6 dígitos", async () => {
+    // El conductor NO define una contraseña: define un PIN, y ese PIN **es** la
+    // contraseña de Supabase. Seis dígitos son válidos porque
+    // `minimum_password_length` está en 6 y `password_requirements` vacío.
+    const bitacora: Array<Record<string, unknown>> = [];
+    const perfiles: Array<Record<string, unknown>> = [];
+    const { cliente } = crearClienteInvitacionesFalso({
+      invitaciones: [invitacionFalsa({ tipo_usuario: "conductor", rol: "conductor", driver_id: "driver-1" })],
+      otrasTablas: otrasTablasBase(bitacora, perfiles),
+    });
+    const crearUsuario = vi
+      .fn()
+      .mockResolvedValue({ data: { user: { id: "auth-conductor-1" } }, error: null });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      conAuthFalso(cliente, { admin: { createUser: crearUsuario } }),
+    );
+
+    const resultado = await aceptarInvitacionComoPersonaNueva({
+      token: TOKEN_VALIDO,
+      nombreCompleto: "Carlos Vera",
+      contrasena: "482619",
+    });
+
+    expect(resultado).toEqual({ ok: true });
+    // El PIN viaja tal cual como contraseña: no se transforma ni se guarda aparte.
+    expect(crearUsuario.mock.calls[0][0]).toMatchObject({ password: "482619" });
+  });
+
+  it("⚠️ el PIN débil del conductor se rechaza EN EL SERVIDOR, no solo en la pantalla", async () => {
+    // Un formulario se salta; una Server Action no. Y el rol se lee **de la
+    // invitación**: si viniera del cliente, cualquiera podría declararse
+    // conductor para saltarse la regla de 8 caracteres.
+    const bitacora: Array<Record<string, unknown>> = [];
+    const perfiles: Array<Record<string, unknown>> = [];
+    const { cliente } = crearClienteInvitacionesFalso({
+      invitaciones: [invitacionFalsa({ tipo_usuario: "conductor", rol: "conductor", driver_id: "driver-1" })],
+      otrasTablas: otrasTablasBase(bitacora, perfiles),
+    });
+    const crearUsuario = vi.fn();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      conAuthFalso(cliente, { admin: { createUser: crearUsuario } }),
+    );
+
+    const resultado = await aceptarInvitacionComoPersonaNueva({
+      token: TOKEN_VALIDO,
+      nombreCompleto: "Carlos Vera",
+      contrasena: "123456",
+    });
+
+    expect(resultado.ok).toBe(false);
+    // Lo que de verdad importa: **no se creó ninguna cuenta**.
+    expect(crearUsuario).not.toHaveBeenCalled();
+  });
+
+  it("⚠️ una contraseña de 6 letras NO le sirve al conductor", async () => {
+    // Sin esta barrera, `minimum_password_length = 6` dejaría pasar «abcdef» y el
+    // conductor tendría una credencial que su teclado numérico no puede escribir.
+    const bitacora: Array<Record<string, unknown>> = [];
+    const perfiles: Array<Record<string, unknown>> = [];
+    const { cliente } = crearClienteInvitacionesFalso({
+      invitaciones: [invitacionFalsa({ tipo_usuario: "conductor", rol: "conductor", driver_id: "driver-1" })],
+      otrasTablas: otrasTablasBase(bitacora, perfiles),
+    });
+    const crearUsuario = vi.fn();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      conAuthFalso(cliente, { admin: { createUser: crearUsuario } }),
+    );
+
+    const resultado = await aceptarInvitacionComoPersonaNueva({
+      token: TOKEN_VALIDO,
+      nombreCompleto: "Carlos Vera",
+      contrasena: "abcdef",
+    });
+
+    expect(resultado.ok).toBe(false);
+    expect(crearUsuario).not.toHaveBeenCalled();
+  });
+
+  it("rechaza la contraseña corta de alguien del equipo, y no crea nada", async () => {
+    // ⚠️ **Antes esta prueba exigía que ni siquiera se tocara la base**, y esa
+    // garantía se perdió a propósito: para saber si la regla es «6 dígitos» o «8
+    // caracteres» hay que saber el rol, y el rol vive en la invitación. Se paga
+    // un SELECT por token, que es barato e indexado.
+    //
+    // Lo que sí se conserva —y es lo que importa— es que **no se cree ninguna
+    // cuenta**: eso es lo que esta prueba vigila ahora.
+    const bitacora: Array<Record<string, unknown>> = [];
+    const perfiles: Array<Record<string, unknown>> = [];
+    const { cliente } = crearClienteInvitacionesFalso({
+      invitaciones: [invitacionFalsa()],
+      otrasTablas: otrasTablasBase(bitacora, perfiles),
+    });
+    const crearUsuario = vi.fn();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      conAuthFalso(cliente, { admin: { createUser: crearUsuario } }),
+    );
+
     const resultado = await aceptarInvitacionComoPersonaNueva({
       token: TOKEN_VALIDO,
       nombreCompleto: "Juan Pérez",
@@ -205,7 +301,8 @@ describe("aceptarInvitacionComoPersonaNueva", () => {
     });
 
     expect(resultado.ok).toBe(false);
-    expect(crearClienteServiceRole).not.toHaveBeenCalled();
+    expect(crearUsuario).not.toHaveBeenCalled();
+    expect(perfiles).toHaveLength(0);
   });
 });
 

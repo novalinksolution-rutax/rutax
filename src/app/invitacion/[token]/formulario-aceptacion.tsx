@@ -23,6 +23,24 @@
  * nada al navegador.
  *
  * -----------------------------------------------------------------------------
+ * ⚠️ EL CONDUCTOR NO DEFINE UNA CONTRASEÑA: DEFINE UN PIN DE 6 DÍGITOS
+ * -----------------------------------------------------------------------------
+ * Es la misma pantalla con otro campo, y el motivo está en la app: **el conductor
+ * escribe con guantes, de pie, en una bodega**, y abre la app treinta veces al
+ * día. Una contraseña ahí es una llamada a su coordinador a las 15:50 el día que
+ * la olvide.
+ *
+ * El PIN **es** la contraseña de Supabase —seis dígitos son válidos como
+ * contraseña— así que no hay credencial paralela ni nada nuevo que guardar.
+ *
+ * Antes esta pantalla le hacía inventar una contraseña de 8 caracteres **que
+ * después no usaba nunca**, porque la app entraba por otro camino. Ese absurdo se
+ * termina acá.
+ *
+ * La barrera de verdad está en la Server Action, que lee el rol **de la
+ * invitación** y no del formulario: un formulario se salta.
+ *
+ * -----------------------------------------------------------------------------
  * EL MEDIDOR DE FORTALEZA DICE QUÉ FALTA, NO SOLO CUÁNTO HAY
  * -----------------------------------------------------------------------------
  * «Débil» a secas deja a la persona probando cosas al azar. Cada tramo nombra el
@@ -39,6 +57,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { Rol } from "@/modules/identidad/roles";
+import { LARGO_PIN, rechazarPin, soloDigitosPin, TEXTO_RECHAZO } from "@/modules/identidad/pin-conductor";
 
 import {
   aceptarInvitacionComoPersonaExistente,
@@ -96,6 +115,9 @@ function FormularioDefinirContrasena({
   const router = useRouter();
   const idBase = useId();
 
+  // El conductor pone un PIN; el resto del equipo, una contraseña. Es el mismo
+  // par de campos con otras reglas, así que comparten estado.
+  const esConductor = info.rol === "conductor";
   const [nombreCompleto, setNombreCompleto] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [confirmacion, setConfirmacion] = useState("");
@@ -112,8 +134,14 @@ function FormularioDefinirContrasena({
   function validar(): boolean {
     const nuevos: typeof errores = {};
     if (!nombreCompleto.trim()) nuevos.nombre = "Necesitamos tu nombre para saber con quién habla tu equipo.";
-    if (contrasena.length < 8) nuevos.contrasena = "Tiene que tener al menos 8 caracteres.";
-    if (contrasena !== confirmacion) nuevos.confirmacion = "Las dos no coinciden.";
+    if (esConductor) {
+      const problema = rechazarPin(contrasena);
+      if (problema) nuevos.contrasena = TEXTO_RECHAZO[problema];
+      if (contrasena !== confirmacion) nuevos.confirmacion = "Los dos PIN no coinciden.";
+    } else {
+      if (contrasena.length < 8) nuevos.contrasena = "Tiene que tener al menos 8 caracteres.";
+      if (contrasena !== confirmacion) nuevos.confirmacion = "Las dos no coinciden.";
+    }
     setErrores(nuevos);
     return Object.keys(nuevos).length === 0;
   }
@@ -140,7 +168,11 @@ function FormularioDefinirContrasena({
   return (
     <Tarjeta>
       <h1 className="font-heading text-xl leading-tight font-semibold">
-        {esPrimerDueno ? `Activa ${info.nombreTenant}` : "Crea tu contraseña"}
+        {esPrimerDueno
+          ? `Activa ${info.nombreTenant}`
+          : esConductor
+            ? "Elige tu PIN"
+            : "Crea tu contraseña"}
       </h1>
       {/* Quién invitó y para qué: sin esto, alguien que recibe el correo dos
           días después no sabe de qué empresa le están hablando. */}
@@ -150,7 +182,8 @@ function FormularioDefinirContrasena({
         ) : (
           <>
             <span className="font-medium text-fg">{info.nombreTenant}</span> te invitó como{" "}
-            {NOMBRES_ROL[info.rol]}. Define tu contraseña para entrar.
+            {NOMBRES_ROL[info.rol]}.{" "}
+            {esConductor ? "Elige tu PIN para entrar a la app." : "Define tu contraseña para entrar."}
           </>
         )}
       </p>
@@ -183,20 +216,32 @@ function FormularioDefinirContrasena({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${idBase}-contrasena`}>Contraseña</Label>
+          <Label htmlFor={`${idBase}-contrasena`}>{esConductor ? "Tu PIN" : "Contraseña"}</Label>
+          {/* Se dice para qué sirve ANTES de que lo elija. Sin esto, el conductor
+              inventa seis números al azar y a las 16:00, en la bodega, no se
+              acuerda de ninguno. */}
+          {esConductor ? (
+            <p className="text-sm text-fg-muted">
+              6 números. Son los que vas a escribir en la app para entrar a tu ruta, así que elige
+              unos que puedas recordar.
+            </p>
+          ) : null}
           <Input
             id={`${idBase}-contrasena`}
             type="password"
+            inputMode={esConductor ? "numeric" : undefined}
+            autoComplete={esConductor ? "off" : "new-password"}
+            maxLength={esConductor ? LARGO_PIN : undefined}
             value={contrasena}
             onChange={(e) => {
-              setContrasena(e.target.value);
+              setContrasena(esConductor ? soloDigitosPin(e.target.value) : e.target.value);
               setErrores((a) => ({ ...a, contrasena: undefined }));
             }}
             aria-invalid={Boolean(errores.contrasena)}
             aria-describedby={errores.contrasena ? `${idBase}-contrasena-error` : undefined}
             className={errores.contrasena ? "border-fault-line" : undefined}
           />
-          {contrasena ? (
+          {contrasena && !esConductor ? (
             <div className="space-y-1 pt-0.5">
               {/* Cuatro tramos rectos, sin radio: es el mismo lenguaje de las
                   barras del resto del producto. */}
@@ -221,13 +266,16 @@ function FormularioDefinirContrasena({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor={`${idBase}-confirmacion`}>Repítela</Label>
+          <Label htmlFor={`${idBase}-confirmacion`}>{esConductor ? "Repite tu PIN" : "Repítela"}</Label>
           <Input
             id={`${idBase}-confirmacion`}
             type="password"
+            inputMode={esConductor ? "numeric" : undefined}
+            autoComplete={esConductor ? "off" : "new-password"}
+            maxLength={esConductor ? LARGO_PIN : undefined}
             value={confirmacion}
             onChange={(e) => {
-              setConfirmacion(e.target.value);
+              setConfirmacion(esConductor ? soloDigitosPin(e.target.value) : e.target.value);
               setErrores((a) => ({ ...a, confirmacion: undefined }));
             }}
             aria-invalid={Boolean(errores.confirmacion)}
@@ -251,7 +299,7 @@ function FormularioDefinirContrasena({
 
         <Button type="submit" className="w-full" disabled={enviando}>
           {enviando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-          {enviando ? "Activando tu cuenta…" : "Crear contraseña y entrar"}
+          {enviando ? "Activando tu cuenta…" : esConductor ? "Guardar mi PIN" : "Crear contraseña y entrar"}
         </Button>
       </form>
     </Tarjeta>

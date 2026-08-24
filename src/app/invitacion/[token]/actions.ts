@@ -23,6 +23,7 @@ import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { aceptarInvitacion } from "@/modules/identidad/invitaciones";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
+import { rechazarPin, TEXTO_RECHAZO } from "@/modules/identidad/pin-conductor";
 import type { Rol } from "@/modules/identidad/roles";
 
 // -----------------------------------------------------------------------------
@@ -143,9 +144,6 @@ export async function aceptarInvitacionComoPersonaNueva(
   if (!nombreCompleto) {
     return { ok: false, tipo: "validacion", mensaje: "Tu nombre completo es obligatorio." };
   }
-  if (entrada.contrasena.length < 8) {
-    return { ok: false, tipo: "validacion", mensaje: "La contraseña debe tener al menos 8 caracteres." };
-  }
 
   const cliente = crearClienteServiceRole();
 
@@ -159,7 +157,7 @@ export async function aceptarInvitacionComoPersonaNueva(
   const { data: invitacion, error: buscarError } = await cliente
     .schema("identidad")
     .from("invitaciones")
-    .select("email")
+    .select("email, rol")
     .eq("token", entrada.token.trim())
     .maybeSingle();
 
@@ -168,6 +166,26 @@ export async function aceptarInvitacionComoPersonaNueva(
   }
 
   const email = (invitacion.email as string).trim().toLowerCase();
+
+  /**
+   * ⚠️ **El conductor define un PIN de 6 dígitos, no una contraseña.**
+   *
+   * El rol se lee **de la invitación**, no de lo que mandó el formulario: si
+   * viniera del cliente, cualquiera podría declararse conductor para saltarse la
+   * regla de 8 caracteres y dejar su cuenta con seis dígitos.
+   *
+   * Y la comprobación vive acá, en el servidor, aunque la pantalla ya la haga:
+   * un formulario se salta, una Server Action no. Es la mitad que manda.
+   */
+  const esConductor = invitacion.rol === "conductor";
+  if (esConductor) {
+    const problema = rechazarPin(entrada.contrasena);
+    if (problema) {
+      return { ok: false, tipo: "validacion", mensaje: TEXTO_RECHAZO[problema] };
+    }
+  } else if (entrada.contrasena.length < 8) {
+    return { ok: false, tipo: "validacion", mensaje: "La contraseña debe tener al menos 8 caracteres." };
+  }
 
   const { data: creado, error: crearError } = await cliente.auth.admin.createUser({
     email,

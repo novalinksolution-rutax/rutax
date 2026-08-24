@@ -1,23 +1,39 @@
 <!DOCTYPE html>
 <html lang="es-CL" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <!--
-  Rutax — Enlace de acceso sin contraseña (Supabase Auth · plantilla "Magic Link")
+  Rutax — El código para entrar a la app del conductor
+  (Supabase Auth · plantilla "Magic Link")
   =============================================================================
-  COPIA CANÓNICA versionada. Supabase NO lee este archivo: hay que pegar su
-  contenido en el panel (Authentication → Email Templates → Magic Link).
-  Ver supabase/templates/README.md para el paso a paso, el asunto sugerido, la
-  URL exacta y contra qué se verificó. Deliberadamente NO se repite aquí la
-  sintaxis de variables de Supabase: ese motor de plantillas evalúa esas
-  variables donde sea que aparezcan en el documento, así que solo deben
-  escribirse una vez, en el cuerpo real del correo más abajo.
+  COPIA CANÓNICA versionada. Supabase NO lee este archivo en el proyecto hosted:
+  hay que pegar su contenido en el panel (Authentication → Email Templates →
+  Magic Link). Ver supabase/templates/README.md.
 
-  ESTADO DEL FEATURE: hoy NINGUNA pantalla de Rutax dispara un inicio de
-  sesión sin contraseña — no se encontró ningún llamador en `src/`. Esta
-  plantilla existe porque Supabase la trae por defecto y ya estaba
-  personalizada en el panel (sin versionar); se reconstruye por prolijidad y
-  para que un reseteo accidental no dañe el pipeline de correo aun sin uso
-  activo. Si en el futuro se activa este flujo, agrega un destino explícito al
-  enlace de abajo — hoy se omite a propósito (ver README.md para el porqué).
+  QUÉ CAMBIÓ, Y POR QUÉ
+  -----------------------------------------------------------------------------
+  Hasta hoy esta plantilla no la disparaba nadie y era un ENLACE («Iniciar
+  sesión»). Ahora sí tiene un consumidor, y uno solo: **la app del conductor**,
+  que desde el bloque B5b entra sin contraseña con un código de 6 dígitos
+  (regla 81).
+
+  Por eso es CÓDIGO Y NO ENLACE, y no es una preferencia estética:
+
+  · **El enlace no lleva a ninguna parte útil.** No hay deep link configurado
+    hacia la app nativa, así que tocarlo desde el correo del teléfono abre el
+    NAVEGADOR, cae en `/auth/confirm` sin `next`, y de ahí a `/activar-cuenta`
+    → `/onboarding` — pantallas del courier, no del conductor. Un callejón, y
+    encima uno que parece que funcionó.
+  · **El código sí se puede escribir con guantes**, que es la situación real:
+    16:00, en la bodega, con el teléfono en una mano.
+  · Y **se puede dictar por teléfono** si el conductor está atascado y llama a
+    su coordinador. Un enlace de 200 caracteres, no.
+
+  ⚠️ Si algún día la WEB necesita entrar sin contraseña, esto no le sirve tal
+  cual: necesita su propio `next` explícito (ver README.md, sección de la URL de
+  cada plantilla). No agregues el botón «por si acaso» — volvería a mandar
+  conductores a `/onboarding`.
+
+  Los colores son los del sistema nuevo, transcritos de
+  `src/lib/email/plantilla-email.ts`. El navy #2a3ca0 era el ADN anterior.
 -->
   <head>
     <meta charset="utf-8" />
@@ -25,7 +41,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="color-scheme" content="light" />
     <meta name="supported-color-schemes" content="light" />
-    <title>Tu enlace de acceso a Rutax</title>
+    <title>Tu código para entrar</title>
     <!--[if mso]>
     <noscript>
       <xml>
@@ -36,65 +52,61 @@
     </noscript>
     <![endif]-->
   </head>
-  <body style="margin:0; padding:0; background-color:#f5f5fa;">
-    <!-- Preheader (texto de previsualización en la bandeja de entrada; oculto en el cuerpo). -->
-    <span style="display:none; font-size:1px; color:#f5f5fa; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
-      Usa este botón para entrar a Rutax sin contraseña. El enlace es personal y de un solo uso.
+  <body style="margin:0; padding:0; background-color:#E6EEEF;">
+    <!-- Preheader. ⚠️ NO lleva el código: se ve en la bandeja sin abrir el correo,
+         y en la pantalla de bloqueo del teléfono. -->
+    <span style="display:none; font-size:1px; color:#E6EEEF; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
+      Tu código para entrar a la app. Dura 10 minutos.
     </span>
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5fa;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#E6EEEF;">
       <tr>
         <td align="center" style="padding:32px 16px;">
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
-            <!-- Encabezado de marca -->
+            <!-- Encabezado. **Regla 61: ningún correo depende de una imagen** —
+                 el nombre va en texto, no en un logo que el cliente de correo
+                 bloquea por defecto. -->
             <tr>
-              <td align="center" style="background-color:#2a3ca0; border-radius:12px 12px 0 0; padding:28px 40px;">
-                <span style="font-family:Arial, Helvetica, sans-serif; font-size:22px; font-weight:bold; color:#ffffff; letter-spacing:0.5px;">Rutax</span>
+              <td style="background-color:#FFFFFF; border:1px solid #C6D6D8; border-bottom:0; padding:24px 40px 0 40px; font-family:Arial, Helvetica, sans-serif;">
+                <span style="font-size:13px; font-weight:bold; color:#4C5F65; letter-spacing:2px;">RUTAX</span>
               </td>
             </tr>
 
             <!-- Cuerpo -->
             <tr>
-              <td style="background-color:#ffffff; border-radius:0 0 12px 12px; padding:40px; font-family:Arial, Helvetica, sans-serif; color:#172131;">
-                <h1 style="margin:0 0 16px 0; font-size:20px; line-height:28px; font-weight:bold; color:#172131;">
-                  Tu enlace de acceso a Rutax
+              <td style="background-color:#FFFFFF; border:1px solid #C6D6D8; border-top:0; padding:24px 40px 40px 40px; font-family:Arial, Helvetica, sans-serif; color:#0B1114;">
+                <h1 style="margin:0 0 8px 0; font-size:20px; line-height:28px; font-weight:bold; color:#0B1114;">
+                  Tu código para entrar
                 </h1>
 
-                <p style="margin:0 0 16px 0; font-size:15px; line-height:23px; color:#172131;">
-                  Usa el siguiente botón para iniciar sesión en Rutax sin contraseña.
+                <p style="margin:0 0 24px 0; font-size:15px; line-height:23px; color:#4C5F65;">
+                  Escríbelo en la app para abrir tu ruta.
                 </p>
 
-                <!-- Botón (patrón "bulletproof": tabla + celda con fondo, no depende de CSS moderno) -->
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px 0;">
+                <!-- El código. Grande, monoespaciado y con aire entre cifras:
+                     se lee de un vistazo y se puede dictar por teléfono sin
+                     confundir un 0 con una O. -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px 0;">
                   <tr>
-                    <td align="center" style="border-radius:8px; background-color:#2a3ca0;">
-                      <a
-                        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink"
-                        target="_blank"
-                        style="display:inline-block; padding:14px 28px; font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold; color:#ffffff; text-decoration:none; border-radius:8px;"
-                      >
-                        Iniciar sesión
-                      </a>
+                    <td align="center" style="background-color:#F1F6F6; border:1px solid #DCE7E8; padding:20px 32px;">
+                      <span style="font-family:'Courier New', Courier, monospace; font-size:34px; font-weight:bold; letter-spacing:10px; color:#0B1114;">{{ .Token }}</span>
                     </td>
                   </tr>
                 </table>
 
-                <p style="margin:0 0 8px 0; font-size:13px; line-height:20px; color:#606a78;">
-                  Si el botón no funciona, copia y pega esta dirección en tu navegador:
-                </p>
-                <p style="margin:0 0 24px 0; font-size:13px; line-height:20px; color:#2a3ca0; word-break:break-all;">
-                  {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=magiclink
+                <p style="margin:0 0 16px 0; font-size:14px; line-height:21px; color:#0B1114;">
+                  Dura <strong>10 minutos</strong>. Si te llegan varios, usa el último.
                 </p>
 
-                <p style="margin:0; font-size:13px; line-height:20px; color:#606a78;">
-                  Este enlace es personal, de un solo uso y vence pronto por tu seguridad. Si no fuiste tú quien lo pidió, ignora este correo.
+                <p style="margin:0; font-size:13px; line-height:20px; color:#4C5F65;">
+                  Si no fuiste tú quien lo pidió, ignora este correo: sin el código nadie entra a tu cuenta.
                 </p>
               </td>
             </tr>
 
             <!-- Pie -->
             <tr>
-              <td align="center" style="padding:24px 40px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#606a78;">
+              <td align="center" style="padding:24px 40px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#4C5F65;">
                 Este es un mensaje automático de Rutax — no respondas a este correo.
               </td>
             </tr>
