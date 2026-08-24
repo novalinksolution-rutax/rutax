@@ -1018,22 +1018,83 @@ la regla prohíbe. Se deja sin construir, con este motivo.
 
 #### Lo que queda del bloque 6
 
-Hechas: retiro en bodega, manifiesto del día, detalle de parada, preferencias (tema, escala y
-acuse), marcarme disponible y las notificaciones.
+### Hecho el 24-08-2026 (tercera pasada) — las siete que quedaban
 
-**Siguen pendientes, y son deuda con nombre:**
+#### Mis liquidaciones · la deuda que dejó el retiro de la PWA (brecha #19)
 
-- **Mis liquidaciones** (brecha #19) y **punto de término** de 3 pasos — las dos que dejó sin
-  superficie el retiro de la PWA. Son las de mayor prioridad del resto del bloque.
-- **Histórico de retiros** y **parada de retiro** (la hoja con pendientes y cómo entrar).
-- **Permisos denegados**, los cuatro con su salida.
-- **Guardado sin confirmar** — la cola existe; falta expresarla como reintento con aviso.
-- **NUEVO #26** queda descartado con motivo (ver arriba): el flujo que pide ya está resuelto de otra
-  forma.
+Ruta `GET /api/conductor/liquidaciones` (+ `?id=` para el detalle) y sus dos pantallas.
 
-⚠️ **13 de las 22 pantallas del repo Expo siguen leyendo `colors` como constante** —las de la Torre
-móvil, login, evidencia, traspaso y el listado de retiros— así que **no cambian de tema todavía**.
-Migrar una es cambiar dos líneas (`useColores` + `useEstilosCompat`); lo que falta se lee de una.
+⚠️ `listarLiquidaciones` acepta `driverId` **opcional**: sin él devuelve las de todo el tenant. Acá
+va siempre y sale del token — con `service_role` bypaseando RLS, olvidarlo le mostraría a un
+conductor lo que gana cada uno de sus compañeros. El detalle repite la comprobación sobre la fila
+leída, porque `obtenerLiquidacion` filtra por tenant y **no** por conductor.
+
+🔎 **El neto no existe como columna.** La fila guarda `monto_total_clp`, `bono_clp` y
+`penalizacion_clp` por separado, y el neto es `total + bono − penalización` —una cuenta que hasta
+hoy hacía cada pantalla por su lado. Mostrar solo `montoTotalClp` le habría enseñado al conductor
+una cifra distinta de la que le llega al banco cada vez que hubo un ajuste.
+
+**El ajuste va firmado.** `dinero.liquidaciones` guarda el motivo pero **no quién lo puso**: el autor
+está en la bitácora (`dinero.liquidacion_ajustada`). `resolverAutorDeAjuste` lo lee, y solo si hay
+ajuste. El motivo es el que Administración escribió sabiendo que él lo iba a leer; un descuento
+firmado se discute con una persona, uno anónimo se discute con «el sistema» — y esa conversación
+termina en el teléfono del coordinador.
+
+#### Punto de término · y el tablero se corrige contra el documento de seguridad
+
+🔎 **El tablero dibuja un campo de dirección; no se puede construir, y no es de estilo.** El paso 2
+del tablero muestra «Av. Vicuña Mackenna 1240» escrita a mano. Para convertir ese texto en
+coordenada habría que geocodificarlo, y el camino natural —`resolverCoordenadaConCache`— escribe en
+`integraciones.geocoding_cache`, que es **global, sin `tenant_id`, guarda la dirección en claro y no
+tiene purga**. El domicilio del conductor quedaría escrito para siempre en una tabla compartida
+entre couriers, y **«puedes borrarlo cuando quieras» sería falso**.
+
+`docs/seguridad/punto-de-termino-conductor.md` §3 ya lo prohíbe y el servidor ya lo impone: `PUT
+/api/conductor/punto-termino` acepta **solo dos números**. Así que el paso 2 es **pin en el mapa**,
+con «usar dónde estoy ahora» —que es GPS, no geocoding— conservado del tablero.
+
+Los tres pasos, con lo que exige §5.2: el 1 no pide nada, explica · el 2 **no persiste nada** (si
+vuelve atrás no queda rastro) · el 3 con casilla **nunca premarcada** y texto versionado. El texto
+está en `punto-termino.ts` **con 15 pruebas**, y una comprueba que siga estando **el residuo del
+§4.4** —que el jefe va a notar que sus rutas terminan por su sector—. Es el que suena mal y por eso
+se borra primero; sin él, el consentimiento no es informado.
+
+Revocar es **un toque**, sin confirmación en cadena y sin preguntar por qué (§5.3).
+
+#### Histórico de retiros · parada de retiro · permisos · guardado sin confirmar
+
+- **Histórico** — `GET /api/conductor/retiros/historico?mes=`, actas cerradas por mes, con **las dos
+  cifras** («27 de 31», no «27»). Vive en su app y no solo en el backoffice porque **respalda su pago
+  por visita**: si la lista está solo del lado del courier, revisarla es pedírsela a quien le paga.
+- **Parada de retiro** — misma jerarquía que una parada de entrega, otro cuerpo: pendientes y **cómo
+  entrar**. «Portón lateral, timbre 2, preguntar por Marcela» es la mitad que el courier ya tenía
+  guardada y que nadie había puesto donde se usa. Y «se paga como visita, esté vacía o no» va
+  **antes** de entrar: dicho después, el conductor que llega a una bodega vacía cree que perdió el
+  viaje y la próxima vez no va.
+- **Permisos** — los cuatro, y **negar no es lo mismo en los cuatro**. Solo la cámara bloquea; sin
+  galería se dispara la foto, sin ubicación se registra sin coordenada y queda anotado, sin avisos la
+  app funciona igual. Tratarlos como el mismo problema enseña que los permisos son ruido, y entonces
+  no se lee el que sí importa. La salida es **abrir los ajustes**, no explicar tres niveles de menú.
+- **Guardado sin confirmar** — la cola existe y funciona; lo que cambia es cómo se **expresa**: decía
+  «N por enviar · toca para reintentar», que le pide al conductor administrar un buzón. Ahora dice
+  las tres cosas en orden: ya está guardado · se reintenta solo, sigue con la siguiente · **y cerrar
+  la app ahora lo pierde**. Ni verde ni rojo mientras espera. Se retira «Limpiar»: descartar
+  evidencia no confirmada no es de rutina, y ofrecerla a un toque del aviso invita a usarla para
+  hacer callar la franja.
+
+#### Lo que queda del bloque 6, ahora
+
+Las doce pantallas están construidas.
+
+⚠️ **9 de las 22 pantallas del repo Expo siguen leyendo `colors` como constante** —Torre móvil,
+login, evidencia, traspaso y el listado de retiros— así que **no cambian de tema todavía**. Migrar
+una es cambiar dos líneas (`useColores` + `useEstilosCompat`); lo que falta se lee de una.
+
+⚠️ **Nada de la app se ha visto en pantalla.** Necesita un build de EAS con los siete módulos
+nativos nuevos. Lo verificado es `tsc`, las 184 pruebas del repo Expo y las 3.839 del web.
+
+**NUEVO #26** queda descartado con motivo (ver la pasada anterior): el flujo que pide ya está
+resuelto de otra forma.
 
 ## B6 · Backstage · 16 pantallas
 

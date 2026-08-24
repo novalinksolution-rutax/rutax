@@ -77,6 +77,36 @@ export async function listarSesionesDeHoyDelConductor(
   return ((data ?? []) as FilaSesionRetiro[]).map(filaASesion);
 }
 
+/**
+ * Las actas CERRADAS del conductor — su histórico de retiros.
+ * -----------------------------------------------------------------------------
+ * Existe aparte de `listarSesionesDeHoyDelConductor` porque responde otra
+ * pregunta. La de hoy es operativa: «qué me falta». Ésta es **el respaldo de su
+ * pago por visita**: cada acta con sus dos cifras, que es lo que el conductor
+ * compara contra su liquidación cuando el número no le calza.
+ *
+ * Por eso va **por mes y no por día**, y por eso trae solo las cerradas: una
+ * visita abierta todavía no respalda nada.
+ */
+export async function listarHistoricoDeRetiros(
+  cliente: SupabaseClient,
+  entrada: { tenantId: string; conductorId: string; desde: string; hasta: string },
+): Promise<SesionRetiroResumen[]> {
+  const { data, error } = await cliente
+    .from("sesiones_retiro")
+    .select("*")
+    .eq("tenant_id", entrada.tenantId)
+    .eq("conductor_id", entrada.conductorId)
+    .eq("estado", "cerrada")
+    .gte("fecha_operacion", entrada.desde)
+    .lte("fecha_operacion", entrada.hasta)
+    .order("fecha_operacion", { ascending: false })
+    .order("cerrada_en", { ascending: false });
+
+  if (error) throw new Error(`Error al listar tus retiros: ${error.message}`);
+  return ((data ?? []) as FilaSesionRetiro[]).map(filaASesion);
+}
+
 // =============================================================================
 // GET /{sesionId} — detalle de una visita, con sus bultos
 // =============================================================================
