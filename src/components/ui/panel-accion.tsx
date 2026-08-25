@@ -97,6 +97,7 @@ export function PanelAccion({
   /** Botones. En la hoja quedan fijos abajo; en el lateral, al final del cuerpo. */
   pie,
   children,
+  ancho = "normal",
   className,
 }: {
   abierto: boolean;
@@ -107,6 +108,18 @@ export function PanelAccion({
   subtitulo?: React.ReactNode;
   pie?: React.ReactNode;
   children: React.ReactNode;
+  /**
+   * `normal` (430 px) es la medida del tablero para las siete pantallas del
+   * segundo nivel. `amplio` (620 px) es la excepción que B3b ya contempla
+   * —«salvo las dos que necesitan el ancho completo»— y existe para los
+   * formularios largos: el alta de same-day tiene cuatro grupos y un buscador
+   * de direcciones, y en 430 px cada campo queda en su propia línea.
+   *
+   * ⚠️ No es cosmético. La razón por la que el alta de same-day se sacó de un
+   * modal de 512 px fue justamente que un formulario largo necesita espacio;
+   * meterlo en 430 px sería repetir ese error con otro nombre.
+   */
+  ancho?: "normal" | "amplio";
   className?: string;
 }) {
   const lateral = useHayAnchoLateral();
@@ -114,7 +127,22 @@ export function PanelAccion({
   if (!lateral) {
     return (
       <>
-        {disparador}
+        {/* 🐞 **El disparador hay que cablearlo a mano acá.** En la rama del
+            lateral lo hace `SheetTrigger asChild`; en ésta no hay Radix que lo
+            haga, así que sin este `cloneElement` el botón se dibuja y **no abre
+            nada** — que es exactamente lo que pasó al probarlo en 390 px: el
+            panel funcionaba en escritorio y en teléfono el botón no hacía nada.
+
+            Se conserva el `onClick` que el llamador haya puesto: puede tener
+            uno propio y perderlo en silencio sería peor que no abrir. */}
+        {React.isValidElement<{ onClick?: React.MouseEventHandler }>(disparador)
+          ? React.cloneElement(disparador, {
+              onClick: (evento: React.MouseEvent<HTMLElement>) => {
+                disparador.props.onClick?.(evento);
+                if (!evento.defaultPrevented) onOpenChange(true);
+              },
+            })
+          : disparador}
         <HojaInferior
           abierta={abierto}
           onOpenChange={onOpenChange}
@@ -140,7 +168,12 @@ export function PanelAccion({
           queda en 384 px. */}
       <SheetContent
         side="right"
-        className="w-full gap-0 overflow-y-auto p-0 sm:w-[430px] sm:max-w-[430px]!"
+        className={cn(
+          "w-full gap-0 overflow-y-auto p-0",
+          ancho === "amplio"
+            ? "sm:w-[620px] sm:max-w-[620px]!"
+            : "sm:w-[430px] sm:max-w-[430px]!",
+        )}
       >
         <SheetHeader className="gap-1 border-b-2 border-fg px-4 py-3.5">
           <SheetTitle className="text-base font-semibold">{titulo}</SheetTitle>

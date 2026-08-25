@@ -82,7 +82,24 @@ interface Exito {
   avisoCorte: string | null;
 }
 
-export function FormularioAltaSameDay({ sellers }: { sellers: SellerOpcion[] }) {
+export function FormularioAltaSameDay({
+  sellers,
+  onListo,
+}: {
+  sellers: SellerOpcion[];
+  /**
+   * Cómo se sale de acá.
+   *
+   * ⚠️ **El mismo formulario vive en dos sitios**: la página
+   * `/operaciones/nuevo` —que sigue existiendo, con su URL compartible y su
+   * botón atrás— y el panel de acción del listado. Sin este callback el panel
+   * navegaría a `/operaciones` al terminar, o sea que se cerraría recargando la
+   * pantalla en la que ya estás.
+   *
+   * `undefined` = está en la página: entonces sí se navega.
+   */
+  onListo?: () => void;
+}) {
   const router = useRouter();
   const [campos, setCampos] = useState({ ...ESTADO_VACIO });
   const [direccionElegida, setDireccionElegida] = useState(false);
@@ -167,14 +184,14 @@ export function FormularioAltaSameDay({ sellers }: { sellers: SellerOpcion[] }) 
     campos.destinatarioComuna !== "" &&
     errorTelefono === null;
 
+  /** Volver: cerrar el panel si está en el panel, navegar si está en la página. */
+  const volver = () => {
+    if (onListo) onListo();
+    else router.push("/operaciones");
+  };
+
   if (exito && !pendiente) {
-    return (
-      <BloqueExito
-        exito={exito}
-        onCrearOtro={() => setExito(null)}
-        onVolver={() => router.push("/operaciones")}
-      />
-    );
+    return <BloqueExito exito={exito} onCrearOtro={() => setExito(null)} onVolver={volver} />;
   }
 
   return (
@@ -386,8 +403,8 @@ export function FormularioAltaSameDay({ sellers }: { sellers: SellerOpcion[] }) 
         >
           Crear y agregar otro
         </Button>
-        <Button type="button" variant="ghost" asChild>
-          <Link href="/operaciones">Volver</Link>
+        <Button type="button" variant="ghost" onClick={volver}>
+          Volver
         </Button>
       </div>
     </form>
