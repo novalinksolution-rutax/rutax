@@ -19,6 +19,8 @@ import {
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import type { Zona } from "@/modules/operacion/tipos";
+import { VentanasCorteSeller } from "./ventanas-corte-seller";
 
 export const metadata: Metadata = {
   title: "Ficha del seller",
@@ -72,7 +74,7 @@ export default async function PaginaFichaSeller({
 
   if (!seller) notFound();
 
-  const [conexionesMl, conexionesShopify, bodegas, tarifas, periodos, pedidosHoy] =
+  const [conexionesMl, conexionesShopify, bodegas, tarifas, periodos, pedidosHoy, zonasActivas] =
     await Promise.all([
       cliente
         .from("conexiones_seller_ml")
@@ -115,6 +117,15 @@ export default async function PaginaFichaSeller({
         .eq("tenant_id", tenantId)
         .eq("seller_id", sellerId)
         .eq("fecha_compromiso", hoy),
+      // Las zonas activas del courier: las necesita el formulario de hora de
+      // corte para poder fijar un plazo distinto por zona.
+      cliente
+        .schema("identidad")
+        .from("zonas")
+        .select("id, nombre, activa")
+        .eq("tenant_id", tenantId)
+        .eq("activa", true)
+        .order("nombre"),
     ]);
 
   const filasMl = (conexionesMl.data ?? []) as Record<string, unknown>[];
@@ -122,6 +133,11 @@ export default async function PaginaFichaSeller({
   const filasBodegas = (bodegas.data ?? []) as Record<string, unknown>[];
   const filasTarifas = (tarifas.data ?? []) as Record<string, unknown>[];
   const filasPeriodos = (periodos.data ?? []) as Record<string, unknown>[];
+  const zonas = ((zonasActivas.data ?? []) as Record<string, unknown>[]).map((z) => ({
+    id: z.id as string,
+    nombre: z.nombre as string,
+    activa: true,
+  })) as Zona[];
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -248,6 +264,24 @@ export default async function PaginaFichaSeller({
             </li>
           ))}
         </ul>
+      </Bloque>
+
+      {/* --- Su hora de corte ----------------------------------------------
+          🔴 Vivía en `/configuracion/zonas`, detrás de un acordeón y un selector
+          de seller. B3b: «la ventana de corte no es un destino de
+          configuración: es un campo del seller, porque cada seller tiene el
+          plazo que su courier le prometió». Acá el seller ya está elegido.
+
+          Y NO es una preferencia de visualización: la hora de corte y el
+          objetivo de SLA deciden si una entrega llegó a tiempo — de ahí sale el
+          semáforo de cumplimiento y el cálculo de riesgo del día. */}
+      <Bloque
+        titulo="Su hora de corte"
+        vacio=""
+        vacioSiNoHay={false}
+        enlace={{ texto: "Ver zonas", href: "/configuracion/zonas" }}
+      >
+        <VentanasCorteSeller sellerId={sellerId} zonas={zonas} />
       </Bloque>
 
       {/* --- Sus períodos -------------------------------------------------- */}

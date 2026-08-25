@@ -115,7 +115,7 @@ export default async function ConfiguracionIndex() {
     },
     {
       href: "/configuracion/zonas",
-      titulo: "Zonas y horarios de corte",
+      titulo: "Zonas",
       estado:
         zonas === null
           ? null

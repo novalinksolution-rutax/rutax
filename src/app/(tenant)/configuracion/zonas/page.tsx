@@ -13,7 +13,7 @@ import {
 import { PanelZonas } from "./panel-zonas";
 
 export const metadata: Metadata = {
-  title: "Zonas y horarios de corte",
+  title: "Zonas",
 };
 
 /**
@@ -58,8 +58,11 @@ export default async function PaginaZonasYCortes() {
 
   return (
     <PantallaConfiguracion
-      titulo="Zonas y horarios de corte"
-      bajada="Cómo agrupas las comunas de la RM y a qué hora cierra cada seller. De acá sale el cálculo de si una entrega same-day llegó a tiempo."
+      titulo="Zonas"
+      /* El destino hace UNA cosa: agrupar comunas. La hora de corte se fue a la
+         ficha del seller, porque es un plazo que el courier le prometió a él y
+         no un ajuste global. */
+      bajada="Cómo agrupas las comunas de la RM para cobrar distinto según dónde entregas. La hora de corte de cada seller se fija en su ficha."
     >
       <PanelZonas estadoInicial={resultado.datos} />
     </PantallaConfiguracion>
