@@ -1,13 +1,4 @@
 -- =============================================================================
--- ⏸️ EN PAUSA — ESTE ARCHIVO NO SE APLICA
--- =============================================================================
--- Vive fuera de `supabase/migrations/` a propósito: el CLI no lo ve, así que ni
--- `db push` ni `db reset` lo toman. Decisión del usuario (25-ago-2026): el
--- diagnóstico de abajo se hizo contra la base local y no se ha reproducido en
--- producción. Ver `supabase/migraciones-en-pausa/README.md`.
--- =============================================================================
-
--- =============================================================================
 -- Los claims de uuid toleran el «null» que entrega Realtime
 -- =============================================================================
 --
@@ -60,6 +51,31 @@
 --
 -- Se agrega `'undefined'` por el mismo motivo por el que se agrega `'null'`: si
 -- una interpolación de JavaScript llega hasta acá, que no tumbe la replicación.
+--
+-- -----------------------------------------------------------------------------
+-- POR QUÉ SE PUDO APLICAR EN PRODUCCIÓN SIN COMPROBAR EL FALLO ALLÁ
+-- -----------------------------------------------------------------------------
+-- Estuvo en pausa entre el 24 y el 25 de agosto de 2026, fuera de esta carpeta,
+-- porque el diagnóstico se hizo entero en local. Lo que la sacó de pausa no fue
+-- una comprobación en producción —esa sigue sin hacerse— sino una auditoría de
+-- lo único que podía salir mal: que un claim NULL **ensanchara** el acceso en
+-- alguna política. Consultado contra la base:
+--
+--   · 109 políticas usan `claim_tenant_id/seller_id/driver_id`.
+--   · 0 los usan con `IS NULL`, `IS NOT DISTINCT`, `<>` o `COALESCE`, que es la
+--     forma en la que un NULL significaría «sin restricción».
+--   · Todas están en la forma positiva `columna = claim_x()`, donde NULL da NULL
+--     y NULL deniega.
+--   · Fuera de políticas: una función (`operacion.pruebas_entrega_del_seller`),
+--     misma forma positiva, y cero vistas.
+--
+-- O sea: el único delta es «excepción → NULL», y NULL solo puede denegar. La
+-- vuelta atrás son las tres definiciones originales, que están tal cual en
+-- `20260101000001_identidad_base.sql`.
+--
+-- ⚠️ **Sigue sin comprobarse si producción estaba rota**, y ya no se puede: el
+-- arreglo borra el síntoma. Si alguna vez importa saberlo, era el log de
+-- Realtime del proyecto hosted buscando `invalid input syntax for type uuid`.
 -- =============================================================================
 
 create or replace function identidad.claim_tenant_id()
