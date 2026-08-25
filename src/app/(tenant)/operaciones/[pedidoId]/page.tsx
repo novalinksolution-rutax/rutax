@@ -355,31 +355,14 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             </div>
           </section>
 
-          {/* Incidencias activas: es lo único accionable de la pantalla, así que
-              sube al primer lugar de la lectura. Antes iba enterrada entre el
-              historial y la asignación. */}
-          {incidenciasAbiertas.length > 0 && (
-            <section aria-labelledby="incidencias-titulo">
-              <h2 id="incidencias-titulo" className="mb-3 text-base font-semibold">
-                Incidencias activas
-              </h2>
-              <ul className="space-y-2">
-                {incidenciasAbiertas.map((inc) => (
-                  <TargetaIncidencia
-                    key={inc.id}
-                    incidencia={inc}
-                    pedidoId={pedidoId}
-                    puedeReclasificar={puedeIncidencias}
-                  />
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* Historial de estados — la narración del pedido. */}
+          {/* ── Seguimiento ───────────────────────────────────────────────
+              Se llamaba «Historial de estados». El tablero P3 lo nombra
+              SEGUIMIENTO y lo pone PRIMERO de la columna: quien abre un pedido
+              pregunta «¿en qué va?» antes que ninguna otra cosa, y la respuesta
+              es la línea de hitos con su autor. */}
           <section aria-labelledby="historial-titulo">
             <h2 id="historial-titulo" className="mb-3 text-base font-semibold">
-              Historial de estados
+              Seguimiento
             </h2>
             <div className="rounded-lg border bg-card p-4">
               {historial.length === 0 ? (
@@ -421,11 +404,51 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             </div>
           </section>
 
-          {/* Prueba de entrega (POD) del ciclo same-day propio. */}
-          {pod && <VisorPod pod={pod} />}
+          {/* ── Prueba de entrega ─────────────────────────────────────────
+              Antes eran dos piezas sueltas y sin encabezado: el visor de POD
+              solo se pintaba si existía, así que cuando no había prueba la
+              pantalla no decía NADA — ni que faltaba, ni de quién dependía. Un
+              hueco se lee como «acá no va nada». */}
+          <section aria-labelledby="prueba-titulo">
+            <h2 id="prueba-titulo" className="mb-3 text-base font-semibold">
+              Prueba de entrega
+            </h2>
+            {pod && <VisorPod pod={pod} />}
 
-          {/* Evidencias informativas (capa paralela a ML Flex). */}
-          <VisorEvidencias evidencias={evidencias} />
+            <VisorEvidencias evidencias={evidencias} />
+
+            {!pod && evidencias.length === 0 && (
+              <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                Todavía no hay prueba: el conductor la registra al cerrar la parada.
+              </p>
+            )}
+          </section>
+
+          {/* ── Incidencias ───────────────────────────────────────────────
+              La sección ya no desaparece cuando no hay ninguna: decir «sin
+              incidencias» es información —significa que el pedido va limpio— y
+              su ausencia obligaba a deducirlo de un hueco. */}
+          <section aria-labelledby="incidencias-titulo">
+            <h2 id="incidencias-titulo" className="mb-3 text-base font-semibold">
+              Incidencias
+            </h2>
+            {incidenciasAbiertas.length > 0 ? (
+              <ul className="space-y-2">
+                {incidenciasAbiertas.map((inc) => (
+                  <TargetaIncidencia
+                    key={inc.id}
+                    incidencia={inc}
+                    pedidoId={pedidoId}
+                    puedeReclasificar={puedeIncidencias}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                Sin incidencias en este pedido.
+              </p>
+            )}
+          </section>
 
           {/* Estado de geocoding — es diagnóstico, así que baja hasta aquí. El
               aviso corto ya vive en el encabezado; este bloque es el detalle
@@ -831,6 +854,29 @@ function TargetaIncidencia({
   );
 }
 
+/**
+ * Una acción de peldaño 1, con su rótulo.
+ * =============================================================================
+ * Tablero P3: «lo reversible como lista, con su rótulo `reversible`». El rótulo
+ * existe para que la reversibilidad se sepa ANTES de tocar — que es la mitad de
+ * la escalera de fricción que no vive en los diálogos.
+ *
+ * ⚠️ El rótulo va DEBAJO del control y no al lado. En el tablero la columna es
+ * ancha y caben los dos en una línea; acá mide 20 rem, y meter el rótulo al
+ * costado deja el botón en un ancho distinto por acción según lo que mida su
+ * texto. La lista se lee peor y el rótulo deja de escanearse.
+ */
+function AccionReversible({ children }: { children: React.ReactNode }) {
+  return (
+    <div>
+      {children}
+      <span className="mt-0.5 block text-right font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
+        reversible
+      </span>
+    </div>
+  );
+}
+
 // =============================================================================
 // Bloque de acciones (Client Component wrapper)
 // =============================================================================
@@ -920,30 +966,42 @@ function AccionesPedido({
           desiguales según la longitud del texto. */}
       <div className="grid gap-2">
         {puedeAsignar && esPendiente && (
-          <Link
-            href={`/manifiestos?asignarPedido=${pedido.id}`}
-            className="rounded-lg border bg-card px-4 py-2 text-center text-sm font-medium hover:bg-muted transition-colors"
-          >
-            Asignar a manifiesto
-          </Link>
+          <AccionReversible>
+            <Link
+              href={`/manifiestos?asignarPedido=${pedido.id}`}
+              className="block rounded-lg border bg-card px-4 py-2 text-center text-sm font-medium hover:bg-muted transition-colors"
+            >
+              Asignar a manifiesto
+            </Link>
+          </AccionReversible>
         )}
 
         {puedeAsignar && puedeReasignar && (
-          <DialogReasignacion
+          <AccionReversible>
+            <DialogReasignacion
             pedidoId={pedido.id}
             estadoActual={pedido.estado}
             conductorActual={conductorNombre ?? asignacion.driver_id}
-            manifiestoActual={asignacion.manifiestos?.nombre ?? asignacion.manifiesto_id}
-          />
+              manifiestoActual={asignacion.manifiestos?.nombre ?? asignacion.manifiesto_id}
+            />
+          </AccionReversible>
         )}
 
         {puedeIncidencias && !esTerminal && (
-          <DrawerIncidencia
-            pedidoId={pedido.id}
-            sellerId={pedido.sellerId}
-          />
+          <AccionReversible>
+            <DrawerIncidencia pedidoId={pedido.id} sellerId={pedido.sellerId} />
+          </AccionReversible>
         )}
 
+        {/* ⚠️ **«Cambiar de estado» va SIN rótulo, a propósito.** Es el único
+            de esta lista que no es de peldaño 1: puede llevar el pedido a un
+            estado TERMINAL —entregado, fallido— y de ahí la máquina de estados
+            no admite salida. Rotularlo «reversible» sería mentir sobre la única
+            acción de la lista que no lo es.
+
+            Lo que le corresponde según el tablero es peldaño 2 —modal con la
+            consecuencia en números y tercera salida—, y eso es una decisión
+            pendiente, no algo que se arregle poniéndole otra etiqueta. */}
         {puedeAjustar && (
           <DrawerCambioEstado
             pedidoId={pedido.id}
@@ -952,7 +1010,9 @@ function AccionesPedido({
         )}
 
         {puedeDescargarEtiqueta && (
-          <BotonDescargarEtiqueta pedidoId={pedido.id} esSameDay={pedido.tipoPedido === "same_day"} />
+          <AccionReversible>
+            <BotonDescargarEtiqueta pedidoId={pedido.id} esSameDay={pedido.tipoPedido === "same_day"} />
+          </AccionReversible>
         )}
 
         {frasesSinEtiqueta && (
