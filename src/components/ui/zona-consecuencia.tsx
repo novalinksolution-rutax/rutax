@@ -40,11 +40,21 @@
  * el navegador oculta el contenido cerrado desde su propio shadow DOM y una
  * utilidad de Tailwind sobre el hijo no llega ahí.
  *
- * Lo que sí funciona: estado local para el teléfono y `md:block` para el
- * escritorio, **en un solo árbol**. El escritorio no depende del estado —así el
- * primer render del servidor ya sale correcto en las dos anchuras— y las
- * acciones no se duplican en el DOM, que con tres diálogos y sus Server Actions
- * no es un detalle.
+ * Lo que sí funciona: estado local para el teléfono y una utilidad `md:` para
+ * el escritorio. El escritorio no depende del estado, así que el primer render
+ * del servidor ya sale correcto en las dos anchuras.
+ *
+ * ⚠️ **En teléfono el disparador va FUERA del marco y las acciones también.**
+ * El tablero dibuja «Más acciones» como una acción más —junto a «Cambiar de
+ * estado» y «Descargar etiqueta»— y deja la zona como un bloque de aviso que
+ * solo se lee. La primera versión metía el disparador dentro del marco rojo, y
+ * eso invierte el mensaje: convierte la zona en algo que se abre en vez de un
+ * aviso que advierte.
+ *
+ * ⚠️ `children` va UNA sola vez en el árbol. Una primera versión lo ponía dos
+ * —una para cada anchura— creyendo que la rama oculta no se renderizaba, y es
+ * falso: `hidden` es CSS y las dos quedan montadas. Con tres diálogos dentro,
+ * eso son seis instancias colgando del árbol y dos ids repetidos.
  */
 
 import { useState, type ReactNode } from "react";
@@ -77,32 +87,23 @@ export function ZonaConsecuencia({
 }) {
   const [abiertoEnTelefono, setAbiertoEnTelefono] = useState(false);
 
-  return (
-    <section
-      aria-labelledby="zona-consecuencia-titulo"
-      className={cn("border border-fault-line bg-fault-bg/40 px-4 py-3", className)}
-    >
-      <h2
-        id="zona-consecuencia-titulo"
-        className="font-heading text-sm font-semibold text-fault-fg"
-      >
-        Zona de consecuencia
-      </h2>
-      {/* El aviso de auditoría, arriba y siempre visible — también con el
-          bloque plegado en el teléfono. */}
-      <p className="mt-0.5 font-mono text-[10px] font-medium tracking-[0.12em] text-fault-fg/90 uppercase">
-        Todo queda en la bitácora
-      </p>
+  const plegada = siemprePlegada || !abiertoEnTelefono;
 
-      {/* El disparador es solo del teléfono: en `md` el bloque va siempre
-          desplegado y este botón no existe. */}
+  return (
+    <>
+      {/* ── El disparador, SUELTO y ARRIBA ─────────────────────────────────
+          Va fuera del marco a propósito: el tablero lo dibuja como una acción
+          más —junto a «Cambiar de estado» y «Descargar etiqueta»— y no como un
+          control dentro de la zona roja. La primera versión lo metía adentro, y
+          eso invierte el mensaje: convierte la zona en algo que se abre en vez
+          de un aviso que se lee. */}
       <button
         type="button"
         onClick={() => setAbiertoEnTelefono((v) => !v)}
         aria-expanded={abiertoEnTelefono}
         aria-controls="zona-consecuencia-acciones"
         className={cn(
-          "mt-3 flex w-full cursor-pointer items-center justify-between gap-2 border border-fault-line/60 bg-bg-raised px-3 py-2 text-sm font-medium text-fault-fg",
+          "flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-line bg-card px-4 py-2 text-sm font-medium text-fg transition-colors hover:bg-muted",
           !siemprePlegada && "md:hidden",
         )}
       >
@@ -113,18 +114,39 @@ export function ZonaConsecuencia({
         />
       </button>
 
-      <div
-        id="zona-consecuencia-acciones"
-        className={cn(
-          "mt-3 flex-col gap-2",
-          !siemprePlegada && "md:flex",
-          abiertoEnTelefono ? "flex" : "hidden",
-        )}
+      <section
+        aria-labelledby="zona-consecuencia-titulo"
+        className={cn("border border-fault-line bg-fault-bg/40 px-4 py-3", className)}
       >
-        {children}
-        <p className="mt-1 text-xs text-fault-fg/90">{resumen}</p>
-      </div>
-    </section>
+        <h2
+          id="zona-consecuencia-titulo"
+          className="font-heading text-sm font-semibold text-fault-fg"
+        >
+          Zona de consecuencia
+        </h2>
+        {/* El aviso de auditoría, siempre visible — también con las acciones
+            plegadas. Es lo único que la zona tiene que decir cuando está
+            cerrada. */}
+        <p className="mt-0.5 font-mono text-[10px] font-medium tracking-[0.12em] text-fault-fg/90 uppercase">
+          Todo queda en la bitácora
+        </p>
+
+        {/* Las acciones, UNA sola vez en el árbol. En escritorio están
+            siempre; en teléfono, detrás del disparador de arriba. */}
+        <div
+          id="zona-consecuencia-acciones"
+          className={cn(
+            "mt-3 flex-col gap-2",
+            !siemprePlegada && "md:flex",
+            abiertoEnTelefono ? "flex" : "hidden",
+          )}
+        >
+          {children}
+        </div>
+
+        <p className={cn("text-xs text-fault-fg/90", plegada ? "mt-2" : "mt-3")}>{resumen}</p>
+      </section>
+    </>
   );
 }
 

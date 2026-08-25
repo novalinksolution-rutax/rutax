@@ -596,6 +596,45 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             usuarioId={sesion.usuarioId}
           />
 
+          {/* 🔴 Zona y bitácora van PEGADAS a las acciones, no al final de la
+              columna. El tablero las dibuja seguidas —acciones → zona →
+              bitácora— y con Asignación y Ficha en medio, en el teléfono el
+              botón «Más acciones» y la zona que advierte quedaban separados por
+              dos pantallazos de material de consulta. Asignación y Ficha bajan:
+              son referencia, se miran cuando hace falta cotejar algo. */}
+          {/* ── Zona de consecuencia ─────────────────────────────────────────
+              Tablero P3, decisión n.º 2. Va AL FINAL y con marco propio: lo
+              grave no se mezcla con lo reversible.
+
+              🔴 Las dos anulaciones de dinero entran acá por PRIMERA VEZ.
+              `AccionesCorregirDinero` existía, sus Server Actions existían, y
+              no tenía un solo llamador en todo el repo: desde esta pantalla no
+              había forma de anular el cobro ni la liquidación de un pedido. */}
+          <ZonaConsecuenciaPedido
+            pedido={pedido}
+            traza={traza}
+            sellerNombre={sellerNombre}
+            conductorNombre={conductorNombre}
+            puedeCancelar={puedeCancelar}
+            puedeAnularDinero={puedeVerConciliacion(sesion.usuario) && !falloElDinero}
+            motivoBloqueo={
+              falloElDinero
+                ? "No pudimos leer el dinero de este pedido. Anular una línea sin verla sería a ciegas."
+                : null
+            }
+          />
+
+          {/* ── Bitácora del pedido ───────────────────────────────────────
+              Tablero P3, decisión n.º 4: «la auditoría es contexto, no
+              consecuencia». Va a la vista y sin abrir nada, JUSTO DEBAJO de la
+              zona de consecuencia, para que quien está por hacer algo grave ya
+              vea el registro donde va a quedar.
+
+              Solo para quien tiene `ver_bitacora_auditoria` —dueño y
+              administración—. Regla dura del sistema: un rol sin la capacidad
+              no ve la opción; nada de candados ni bloques grises. */}
+          {puedeVerBitacora && <BitacoraDelPedido entradas={bitacora} />}
+
           {/* Asignación: quién lo tiene. Justo bajo las acciones porque es el
               contexto con el que se decide reasignar. */}
           <section aria-labelledby="asignacion-titulo">
@@ -666,38 +705,6 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             </div>
           </section>
 
-          {/* ── Zona de consecuencia ─────────────────────────────────────────
-              Tablero P3, decisión n.º 2. Va AL FINAL y con marco propio: lo
-              grave no se mezcla con lo reversible.
-
-              🔴 Las dos anulaciones de dinero entran acá por PRIMERA VEZ.
-              `AccionesCorregirDinero` existía, sus Server Actions existían, y
-              no tenía un solo llamador en todo el repo: desde esta pantalla no
-              había forma de anular el cobro ni la liquidación de un pedido. */}
-          <ZonaConsecuenciaPedido
-            pedido={pedido}
-            traza={traza}
-            sellerNombre={sellerNombre}
-            conductorNombre={conductorNombre}
-            puedeCancelar={puedeCancelar}
-            puedeAnularDinero={puedeVerConciliacion(sesion.usuario) && !falloElDinero}
-            motivoBloqueo={
-              falloElDinero
-                ? "No pudimos leer el dinero de este pedido. Anular una línea sin verla sería a ciegas."
-                : null
-            }
-          />
-
-          {/* ── Bitácora del pedido ───────────────────────────────────────
-              Tablero P3, decisión n.º 4: «la auditoría es contexto, no
-              consecuencia». Va a la vista y sin abrir nada, JUSTO DEBAJO de la
-              zona de consecuencia, para que quien está por hacer algo grave ya
-              vea el registro donde va a quedar.
-
-              Solo para quien tiene `ver_bitacora_auditoria` —dueño y
-              administración—. Regla dura del sistema: un rol sin la capacidad
-              no ve la opción; nada de candados ni bloques grises. */}
-          {puedeVerBitacora && <BitacoraDelPedido entradas={bitacora} />}
         </div>
       </div>
     </div>
