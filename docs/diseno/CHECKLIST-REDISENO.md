@@ -113,7 +113,7 @@ adopción» no se verifica; «no importa `PantallaSinSesion`» sí, con un coman
 | **6** | **App del conductor** | **CERRADO el 24-08** — 6.0 a 6.5 completos, incluidas la casilla táctil de 56 px, el barrido vertical y la hoja inferior | la adopción de la hoja en el resto de los paneles va **por pantalla**, con su bloque. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
 | **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles. **Los correos se cerraron el 24-08**: el molde pasó a tres bandas, las tres plantillas de Supabase se re-transcribieron y nació `mail.seguimiento` | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | **las 13 pantallas sin sesión están hechas** (se cerraron el 24-08). Queda **solo el sitio comercial**: 4 páginas sin dibujar · tablet y teléfono · las 2 fotografías | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
-| **9** | *(no está en §10)* | **auditado el 24-08: de los 12, nueve estaban construidos y el checklist no se había enterado** | `formulario de configuración` y `formulario de alta con aviso en línea` como componentes compartidos · `fila de salud de conexión` · y **#6**, la marca de disponibilidad, que sigue sin pintarse | — | `B3b` ✅ traído |
+| **9** | *(no está en §10)* | **CERRADO el 25-08.** De los 12, nueve ya estaban construidos; se hicieron los tres que faltaban (#6 la marca de disponibilidad, `fila de salud de conexión` y `formulario de configuración`) **y las 7 pantallas de segundo nivel de la versión nueva de B3b** | el `formulario de alta con aviso en línea` sigue sin extraerse como componente compartido — 14 pantallas lo repiten a mano | — | `B3b` ✅ v2 traída |
 
 **Los 33 marcados NUEVO están todos bloqueados por una decisión del usuario** (anexo A). Están
 diseñados y aislados: descartar cualquiera no obliga a rediseñar nada, así que **el resto de cada
@@ -2198,6 +2198,61 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
 > vencido, revocado y fallo de descifrado terminan los tres en «desvinculada» con el mismo texto. El
 > `bloque de falla externa` existe precisamente para eso, y **regla 60: un error de integración dice
 > siempre qué sigue funcionando.**
+
+## 9e · La versión nueva de B3b · las 7 del segundo nivel (25-08)
+
+El tablero se reeditó y pasó de 391 a 609 líneas. Tres correcciones
+estructurales y una sección entera nueva.
+
+**Las tres correcciones:**
+- [x] El destino se llama **«Zonas»**, no «Zonas y cortes». Faltaba en el
+      título, el índice y la bajada.
+- [x] **Sellers no es un destino de configuración**: es de primer nivel. Ya
+      estaba así en la navegación.
+- [x] 🔴 **La ventana de corte es un campo del seller**, no un destino.
+      Vivía en `/configuracion/zonas` detrás de un acordeón y un selector de
+      seller — para cambiarle la hora a Vega Norte había que entrar a una
+      pantalla llamada «Zonas» y volver a elegir el seller que uno ya estaba
+      mirando. Se mudó a `sellers/[sellerId]/ventanas-corte-seller.tsx`.
+      🐞 **Y en el camino: la sección no se renderizaba en ninguna cuenta.**
+      `obtenerEstadoZonas` pedía `sellers.nombre_empresa`, columna que no
+      existe; PostgREST devolvía 42703, el `?? []` se lo tragaba y con la lista
+      vacía `SeccionVentanasCorte` hacía `return null`. Ni un error en pantalla
+      ni una línea en el log. Era la sección cuyo bug de precarga (#16) se había
+      arreglado y documentado: el arreglo nunca fue visible.
+
+**Las siete del segundo nivel, todas hechas:**
+- [x] **1 · Crear o editar una tarifa** — `panel-tarifa.tsx`. El motor en dos
+      campos con la resta a la vista mientras se teclea, el botón que dice desde
+      cuándo rige («Programar para el 01-09»), y la cabecera que nombra el
+      objeto en vez de dibujar dos campos apagados. `BloqueComposicion` gana un
+      `total` que lo pone en vertical.
+- [x] **2 · Zonas · alta con las 52 comunas** — el contador dice lo que FALTA
+      («9 de 52 · 6 sin zona») y la comuna que ya tiene dueño se ve con trama y
+      con el nombre de su zona, no se oculta. Antes la pantalla no sabía qué
+      comunas tenía otra zona: las dibujaba libres y el guardado fallaba por el
+      `unique (tenant_id, comuna)` perdiendo todo lo marcado.
+- [x] **3 · Detalle de bodega** — `panel-bodega.tsx`, cuatro bloques rotulados.
+      «Cómo entrar» declara quién lo lee y que no va en la etiqueta.
+      ⚠️ **Un punto donde NO se siguió al tablero:** B3b dice que el pago por
+      visita es de la bodega del courier. Es al revés — el retiro se paga por
+      visitar la bodega DEL SELLER — y el modelo ya lo impone: `monto_visita_clp`
+      vive en `seller_bodegas` y no existe en `courier_bodegas`.
+- [x] **4 · Invitar a una persona** — con el bloque de capacidades del rol
+      marcado, extraído a `components/ui/bloque-capacidades.tsx` y compartido
+      con «cambiar el rol». Sale del catálogo, no de un texto a mano (regla 6).
+- [x] **5 · Webhooks · NUEVO #34** — el registro de últimos avisos con sus
+      fallas. La bandeja de salida existía y no se mostraba: quien integra no
+      tenía forma de saber si el problema era suyo o nuestro. Y se dice lo
+      incómodo: los avisos perdidos no se recuperan.
+- [x] **6 · Cambiar de plan** — cada plan dice qué le pasaría a ESTE courier
+      («Ya tienes 12 conductores: tendrías que dar de baja 7»), no qué incluye.
+      Un comparador que no usa los datos del que mira es una tabla de precios.
+- [x] **7 · La navegación anidada** — cada destino con su estado accionable en
+      la segunda línea y en ámbar el que necesita atención.
+
+**Lo que el tablero deja declarado y sigue sin dibujar:** la ficha de seller
+desplegada y el modal de desactivar la bodega principal.
 
 ## 9b · Lo hecho
 
