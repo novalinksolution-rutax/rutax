@@ -637,19 +637,9 @@ export interface CrearPedidoSameDayEntrada {
 // Entradas CRUD Zonas / Ventanas de Corte (F7, ítem 1.2)
 // =============================================================================
 
-export interface CrearZonaEntrada {
-  tenantId: string;
-  nombre: string;
-  actorUsuarioId: string;
-}
-
-export interface AsignarComunasZonaEntrada {
-  tenantId: string;
-  zonaId: string;
-  /** Lista COMPLETA de comunas de la zona. La operación borra las existentes e inserta estas. */
-  comunas: string[];
-  actorUsuarioId: string;
-}
+// `CrearZonaEntrada` y `AsignarComunasZonaEntrada` se retiraron con sus
+// funciones: crear la zona y asignarle comunas son un solo guardado y una sola
+// transacción, y su entrada es `GuardarZonaEntrada` (en `zonas.ts`).
 
 export interface GuardarVentanaCorteEntrada {
   tenantId: string;

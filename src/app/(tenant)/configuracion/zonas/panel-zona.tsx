@@ -17,13 +17,17 @@
  * con las 52 comunas».
  *
  * -----------------------------------------------------------------------------
- * ⚠️ SE GUARDA EN DOS PASOS Y EL ORDEN IMPORTA
+ * SE GUARDA EN UNA SOLA LLAMADA, Y ESO ES DEL SERVIDOR
  * -----------------------------------------------------------------------------
- * El servidor tiene dos acciones —crear/renombrar la zona y asignarle comunas—
- * y no una transacción. Si la segunda falla, **la zona ya existe**: se dice con
- * todas las letras en vez de dejar un mensaje de error genérico sobre una zona
- * que sí se creó. Lo contrario —crear en silencio y reportar solo el fallo—
- * produce zonas duplicadas al reintentar.
+ * `actionGuardarZona` hace las tres escrituras —crear o renombrar, borrar las
+ * comunas anteriores, insertar las nuevas— dentro de una transacción de
+ * Postgres. Antes eran dos acciones sueltas desde acá y un fallo en la segunda
+ * dejaba la zona creada y vacía; al reintentar se creaba una segunda con el
+ * mismo nombre. El detalle está en `identidad.guardar_zona_con_comunas`.
+ *
+ * Para esta pantalla eso significa una cosa concreta: **el error que llega es
+ * siempre sobre un guardado que NO ocurrió**, así que no hay que explicar
+ * estados a medias.
  */
 
 import { useEffect, useState } from "react";
@@ -34,11 +38,9 @@ import { Label } from "@/components/ui/label";
 import { PanelAccion } from "@/components/ui/panel-accion";
 import type { Zona } from "@/modules/operacion/tipos";
 import {
-  actionAsignarComunas,
-  actionCrearZona,
+  actionGuardarZona,
   actionObtenerCoberturaComunas,
   actionObtenerComunasDeZona,
-  actionRenombrarZona,
 } from "./actions";
 import {
   contarCobertura,
@@ -127,36 +129,17 @@ export function PanelZona({
     setGuardando(true);
     setError(null);
     try {
-      let zonaId = zona?.id ?? null;
-
-      if (!zonaId) {
-        const fd = new FormData();
-        fd.set("nombre", limpio);
-        const r = await actionCrearZona(fd);
-        if (!r.ok) {
-          setError(r.mensaje);
-          return;
-        }
-        zonaId = r.datos.id;
-      } else if (limpio !== zona!.nombre) {
-        const r = await actionRenombrarZona(zonaId, limpio);
-        if (!r.ok) {
-          setError(r.mensaje);
-          return;
-        }
-      }
-
-      const r2 = await actionAsignarComunas(zonaId, seleccionadas);
-      if (!r2.ok) {
-        // ⚠️ La zona YA existe: decirlo evita que se reintente y se dupliquen.
-        setError(
-          esEdicion
-            ? r2.mensaje
-            : `Creamos la zona «${limpio}», pero no pudimos asignarle las comunas: ${r2.mensaje}`,
-        );
+      const r = await actionGuardarZona({
+        zonaId: zona?.id ?? null,
+        nombre: limpio,
+        comunas: seleccionadas,
+      });
+      if (!r.ok) {
+        // Una sola llamada, un solo error, y nada quedó a medias: no hay que
+        // explicar una zona creada sin comunas porque ya no puede pasar.
+        setError(r.mensaje);
         return;
       }
-
       onGuardada();
       onOpenChange(false);
     } finally {

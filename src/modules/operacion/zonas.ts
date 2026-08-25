@@ -10,8 +10,17 @@
  * - Escritura via service_role (bypass RLS).
  * - Bitácora ANTES del efecto externo.
  * - Validación de comunas contra COMUNAS_RM.
- * - Reasignación de comunas: borrar las existentes + insertar las nuevas
- *   (operación atómica — la BD tiene unique (tenant_id, comuna) en zona_comunas).
+ * - Guardar una zona (crear/renombrar + sus comunas) va por
+ *   `guardarZonaConComunas`, o sea por UNA transacción en Postgres.
+ *
+ * 🔴 **Acá vivía `asignarComunasAZona`, y su comentario decía «operación
+ * atómica» sin serlo**: borraba las comunas de la zona y después insertaba las
+ * nuevas, en dos viajes distintos. Si el insert fallaba —bastaba una comuna que
+ * ya fuera de otra zona, el `unique (tenant_id, comuna)`— la zona **se quedaba
+ * sin ninguna comuna**, y eso no hace ruido en ninguna parte: las comunas
+ * huérfanas caen en la tarifa por defecto del courier y se cobran igual, en
+ * silencio, hasta el cierre del período. Se retiró junto con `crearZona` y
+ * `renombrarZona` para que no quede un segundo camino de escritura.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -20,7 +29,7 @@ import { puedeGestionarTarifas } from '@/modules/identidad/capacidades';
 import { ErrorValidacion } from '@/modules/identidad/errores';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { resolverComunaCanonica } from '@/modules/integraciones/geocoding/normalizacion';
-import type { Zona, ZonaComuna, CrearZonaEntrada, AsignarComunasZonaEntrada } from './tipos';
+import type { Zona, ZonaComuna } from './tipos';
 
 // =============================================================================
 // Mappers fila BD → interfaz
@@ -49,54 +58,6 @@ function filaAZonaComuna(fila: Record<string, any>): ZonaComuna {
   };
 }
 
-// =============================================================================
-// crearZona
-// =============================================================================
-
-/**
- * Crea una nueva zona para el tenant. Requiere capacidad `gestionar_tarifas`.
- * Lanza `ErrorValidacion` si el nombre ya existe en el tenant.
- */
-export async function crearZona(
-  cliente: SupabaseClient,
-  entrada: CrearZonaEntrada,
-  actor: UsuarioActual,
-): Promise<Zona> {
-  if (!puedeGestionarTarifas(actor)) {
-    throw new ErrorValidacion('El usuario no tiene capacidad para gestionar zonas');
-  }
-
-  // Bitácora ANTES de la escritura (CLAUDE.md invariante).
-  await registrarEnBitacora(cliente, {
-    tenantId: entrada.tenantId,
-    actorUsuarioId: entrada.actorUsuarioId,
-    actorTipo: 'usuario',
-    accion: 'zona.creada',
-    entidadTipo: 'zona',
-    entidadId: null,
-    detalle: { nombre: entrada.nombre },
-  });
-
-  const { data, error } = await cliente
-    .schema('identidad')
-    .from('zonas')
-    .insert({
-      tenant_id: entrada.tenantId,
-      nombre: entrada.nombre,
-      activa: true,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === '23505') {
-      throw new ErrorValidacion(`Ya existe una zona llamada "${entrada.nombre}" en este tenant`);
-    }
-    throw new Error(`Error al crear zona: ${error.message}`);
-  }
-
-  return filaAZona(data);
-}
 
 // =============================================================================
 // listarZonas
@@ -171,98 +132,6 @@ export async function activarDesactivarZona(
   return filaAZona(data);
 }
 
-// =============================================================================
-// asignarComunasAZona
-// =============================================================================
-
-/**
- * Reemplaza las comunas de una zona por la lista proporcionada.
- * Operación: DELETE las existentes + INSERT las nuevas, en transacción implícita
- * (dos llamadas al cliente — la BD garantiza la unicidad).
- *
- * Valida cada comuna contra COMUNAS_RM usando `resolverComunaCanonica`.
- * La commune se almacena en su forma canónica del catálogo.
- */
-export async function asignarComunasAZona(
-  cliente: SupabaseClient,
-  entrada: AsignarComunasZonaEntrada,
-  actor: UsuarioActual,
-): Promise<ZonaComuna[]> {
-  if (!puedeGestionarTarifas(actor)) {
-    throw new ErrorValidacion('El usuario no tiene capacidad para gestionar zonas');
-  }
-
-  // Validar y normalizar comunas.
-  const comunasCanoninicas: string[] = [];
-  const comunasInvalidas: string[] = [];
-
-  for (const c of entrada.comunas) {
-    const canonica = resolverComunaCanonica(c);
-    if (!canonica) {
-      comunasInvalidas.push(c);
-    } else {
-      comunasCanoninicas.push(canonica);
-    }
-  }
-
-  if (comunasInvalidas.length > 0) {
-    throw new ErrorValidacion(
-      `Las siguientes comunas no están en la Región Metropolitana: ${comunasInvalidas.join(', ')}`,
-    );
-  }
-
-  // Bitácora ANTES del efecto.
-  await registrarEnBitacora(cliente, {
-    tenantId: entrada.tenantId,
-    actorUsuarioId: entrada.actorUsuarioId,
-    actorTipo: 'usuario',
-    accion: 'zona.comunas_reasignadas',
-    entidadTipo: 'zona',
-    entidadId: entrada.zonaId,
-    detalle: { comunas: comunasCanoninicas, cantidad: comunasCanoninicas.length },
-  });
-
-  // Borrar comunas existentes de esta zona en el tenant.
-  const { error: errorDelete } = await cliente
-    .schema('identidad')
-    .from('zona_comunas')
-    .delete()
-    .eq('tenant_id', entrada.tenantId)
-    .eq('zona_id', entrada.zonaId);
-
-  if (errorDelete) {
-    throw new Error(`Error al limpiar comunas de la zona: ${errorDelete.message}`);
-  }
-
-  if (comunasCanoninicas.length === 0) {
-    return [];
-  }
-
-  // Insertar las nuevas.
-  const filas = comunasCanoninicas.map((comuna) => ({
-    tenant_id: entrada.tenantId,
-    zona_id: entrada.zonaId,
-    comuna,
-  }));
-
-  const { data, error: errorInsert } = await cliente
-    .schema('identidad')
-    .from('zona_comunas')
-    .insert(filas)
-    .select();
-
-  if (errorInsert) {
-    if (errorInsert.code === '23505') {
-      throw new ErrorValidacion(
-        'Una o más comunas ya están asignadas a otra zona del tenant. ' +
-          'Una comuna solo puede pertenecer a una zona por tenant.',
-      );
-    }
-    throw new Error(`Error al asignar comunas a la zona: ${errorInsert.message}`);
-  }
-
-  return (data ?? []).map(filaAZonaComuna);
-}
 
 // =============================================================================
 // listarComunasDeZona
@@ -287,6 +156,110 @@ export async function listarComunasDeZona(
   }
 
   return (data ?? []).map(filaAZonaComuna);
+}
+
+// =============================================================================
+// guardarZonaConComunas — crear/renombrar + comunas, en UNA transacción
+// =============================================================================
+
+export interface GuardarZonaEntrada {
+  tenantId: string;
+  /** `null` = crear una zona nueva. */
+  zonaId: string | null;
+  nombre: string;
+  comunas: string[];
+  actorUsuarioId: string;
+}
+
+/**
+ * 🔴 **Reemplaza a `crearZona` + `asignarComunasAZona`, y la razón es que ese
+ * par dejaba estados a medias en dos sitios distintos.**
+ *
+ * · **Crear + asignar:** si la asignación fallaba, la zona quedaba creada y
+ *   vacía. Al reintentar se creaba una segunda zona con el mismo nombre.
+ * · **Reasignar:** `asignarComunasAZona` borra las comunas actuales y después
+ *   inserta las nuevas, en dos viajes. Si el insert fallaba —bastaba una comuna
+ *   que ya fuera de otra zona, o sea el `unique (tenant_id, comuna)`— **la zona
+ *   se quedaba sin ninguna comuna**. Y eso no falla en ninguna parte: las
+ *   comunas huérfanas caen en la tarifa por defecto del courier y se cobran
+ *   igual, en silencio, hasta el cierre del período. El comentario de la
+ *   cabecera de este archivo decía «operación atómica» y no lo era.
+ *
+ * Ahora las tres escrituras viven en `identidad.guardar_zona_con_comunas`, o
+ * sea en una sola transacción.
+ *
+ * ⚠️ **La normalización de comunas se queda acá, no baja al SQL.** La función
+ * confía en lo que recibe: `resolverComunaCanonica` resuelve «ñuñoa» y «NUNOA»
+ * a la forma del catálogo, y hacerlo en plpgsql sería duplicar una tabla de
+ * alias que ya vive en TypeScript.
+ *
+ * ⚠️ **La bitácora sigue yendo ANTES**, fuera de la transacción. Es el
+ * invariante del proyecto: la auditoría queda completa aunque el paso siguiente
+ * falle. La contrapartida —una línea de un guardado que no ocurrió— es
+ * preferible a un guardado sin línea.
+ */
+export async function guardarZonaConComunas(
+  cliente: SupabaseClient,
+  entrada: GuardarZonaEntrada,
+  actor: UsuarioActual,
+): Promise<Zona> {
+  if (!puedeGestionarTarifas(actor)) {
+    throw new ErrorValidacion('El usuario no tiene capacidad para gestionar zonas');
+  }
+
+  const nombre = entrada.nombre.trim();
+  if (!nombre) {
+    throw new ErrorValidacion('El nombre de la zona no puede ir vacío');
+  }
+
+  const canonicas: string[] = [];
+  const invalidas: string[] = [];
+  for (const c of entrada.comunas) {
+    const canonica = resolverComunaCanonica(c);
+    if (canonica) canonicas.push(canonica);
+    else invalidas.push(c);
+  }
+  if (invalidas.length > 0) {
+    throw new ErrorValidacion(
+      `Las siguientes comunas no están en la Región Metropolitana: ${invalidas.join(', ')}`,
+    );
+  }
+
+  await registrarEnBitacora(cliente, {
+    tenantId: entrada.tenantId,
+    actorUsuarioId: entrada.actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: entrada.zonaId ? 'zona.comunas_reasignadas' : 'zona.creada',
+    entidadTipo: 'zona',
+    entidadId: entrada.zonaId,
+    detalle: { nombre, comunas: canonicas, cantidad: canonicas.length },
+  });
+
+  const { data, error } = await cliente
+    .schema('identidad')
+    .rpc('guardar_zona_con_comunas', {
+      p_tenant_id: entrada.tenantId,
+      p_zona_id: entrada.zonaId,
+      p_nombre: nombre,
+      p_comunas: canonicas,
+    });
+
+  if (error) {
+    // El choque de unicidad es el caso frecuente y tiene una salida concreta:
+    // quitar de la selección la comuna que ya es de otra zona.
+    if (error.code === '23505') {
+      throw new ErrorValidacion(
+        'Una o más comunas ya están asignadas a otra zona. Una comuna solo puede estar en una zona.',
+      );
+    }
+    if (error.code === 'P0002') {
+      throw new ErrorValidacion('La zona no existe en este courier.');
+    }
+    throw new Error(`Error al guardar la zona: ${error.message}`);
+  }
+
+  // La función devuelve la fila, que PostgREST entrega como objeto.
+  return filaAZona(data as Record<string, unknown>);
 }
 
 // =============================================================================
@@ -362,66 +335,3 @@ export async function resolverZona(
   return (data as string | null) ?? null;
 }
 
-// =============================================================================
-// renombrarZona
-// =============================================================================
-
-/**
- * Cambia el nombre de una zona.
- *
- * -----------------------------------------------------------------------------
- * POR QUÉ FALTABA Y POR QUÉ IMPORTA
- * -----------------------------------------------------------------------------
- * Una zona se podía crear y desactivar, pero **no renombrar**. El courier que
- * escribía «Nororiente» y después quería «Zona 1 · Nororiente» no tenía salida:
- * o vivía con el nombre, o desactivaba la zona —perdiendo sus comunas de la
- * vista, porque las secciones filtran las inactivas— y creaba otra a mano.
- *
- * No se toca `activa` acá: renombrar y desactivar son dos cosas distintas y
- * mezclarlas en una función haría que un rename accidental apagara una zona.
- */
-export async function renombrarZona(
-  cliente: SupabaseClient,
-  tenantId: string,
-  zonaId: string,
-  nombre: string,
-  actorUsuarioId: string,
-  actor: UsuarioActual,
-): Promise<Zona> {
-  if (!puedeGestionarTarifas(actor)) {
-    throw new ErrorValidacion('El usuario no tiene capacidad para gestionar zonas');
-  }
-
-  const limpio = nombre.trim();
-  if (limpio.length < 2) {
-    throw new ErrorValidacion('El nombre de la zona debe tener al menos 2 caracteres');
-  }
-
-  await registrarEnBitacora(cliente, {
-    tenantId,
-    actorUsuarioId,
-    actorTipo: 'usuario',
-    accion: 'zona.renombrada',
-    entidadTipo: 'zona',
-    entidadId: zonaId,
-    detalle: { nombre: limpio },
-  });
-
-  const { data, error } = await cliente
-    .schema('identidad')
-    .from('zonas')
-    .update({ nombre: limpio })
-    .eq('id', zonaId)
-    .eq('tenant_id', tenantId)
-    .select()
-    .single();
-
-  if (error) {
-    throw new Error(`Error al renombrar zona: ${error.message}`);
-  }
-  if (!data) {
-    throw new ErrorValidacion(`Zona ${zonaId} no encontrada en el tenant`);
-  }
-
-  return filaAZona(data);
-}

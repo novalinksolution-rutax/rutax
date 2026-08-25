@@ -18,13 +18,11 @@ import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarTarifas } from "@/modules/identidad/capacidades";
 import {
-  crearZona,
   listarZonas,
   activarDesactivarZona,
-  asignarComunasAZona,
   listarComunasDeZona,
   listarComunasDelTenant,
-  renombrarZona,
+  guardarZonaConComunas,
 } from "@/modules/operacion/zonas";
 import {
   guardarVentanaCorte,
@@ -103,38 +101,6 @@ export async function obtenerEstadoZonas(): Promise<Respuesta<EstadoZonas>> {
 // =============================================================================
 // Zonas
 // =============================================================================
-
-export async function actionCrearZona(
-  formData: FormData,
-): Promise<Respuesta<Zona>> {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId) {
-    return { ok: false, mensaje: "No hay sesión activa." };
-  }
-
-  const nombre = String(formData.get("nombre") ?? "").trim();
-  if (!nombre) {
-    return { ok: false, mensaje: "El nombre de la zona es obligatorio." };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    const zona = await crearZona(
-      cliente,
-      {
-        tenantId: sesion.usuario.tenantId,
-        nombre,
-        actorUsuarioId: sesion.usuarioId,
-      },
-      sesion.usuario,
-    );
-    revalidatePath("/configuracion/zonas");
-    return { ok: true, datos: zona };
-  } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error al crear la zona.";
-    return { ok: false, mensaje };
-  }
-}
 
 export async function actionToggleZona(
   zonaId: string,
@@ -217,10 +183,19 @@ export async function actionObtenerCoberturaComunas(): Promise<
   }
 }
 
-export async function actionAsignarComunas(
-  zonaId: string,
-  comunas: string[],
-): Promise<Respuesta<ZonaComuna[]>> {
+/**
+ * 🔴 Guarda la zona y sus comunas de una sola vez, en una transacción.
+ *
+ * Reemplaza la secuencia `actionCrearZona` → `actionAsignarComunas` que hacía
+ * el panel, y que dejaba la zona creada y vacía si la segunda fallaba. El
+ * porqué completo está en `guardarZonaConComunas`.
+ */
+export async function actionGuardarZona(entrada: {
+  /** `null` = crear. */
+  zonaId: string | null;
+  nombre: string;
+  comunas: string[];
+}): Promise<Respuesta<Zona>> {
   const sesion = await exigirSesionActual();
   if (!sesion.usuario.tenantId) {
     return { ok: false, mensaje: "No hay sesión activa." };
@@ -228,21 +203,23 @@ export async function actionAsignarComunas(
 
   try {
     const cliente = crearClienteServiceRole();
-    const resultado = await asignarComunasAZona(
+    const zona = await guardarZonaConComunas(
       cliente,
       {
         tenantId: sesion.usuario.tenantId,
-        zonaId,
-        comunas,
+        zonaId: entrada.zonaId,
+        nombre: entrada.nombre,
+        comunas: entrada.comunas,
         actorUsuarioId: sesion.usuarioId,
       },
       sesion.usuario,
     );
-    revalidatePath("/configuracion/zonas");
-    return { ok: true, datos: resultado };
+    return { ok: true, datos: zona };
   } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error al asignar comunas.";
-    return { ok: false, mensaje };
+    return {
+      ok: false,
+      mensaje: err instanceof Error ? err.message : "Error al guardar la zona.",
+    };
   }
 }
 
@@ -319,48 +296,6 @@ export async function actionGuardarVentanaCorte(
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : "Error al guardar la ventana de corte.";
     return { ok: false, mensaje };
-  }
-}
-
-// =============================================================================
-// Renombrar zona
-// =============================================================================
-
-/**
- * Cambia el nombre de una zona.
- *
- * Faltaba entera: una zona se podía crear y desactivar, pero no renombrar. El
- * courier que quería corregir un nombre tenía que desactivar la zona —perdiendo
- * sus comunas de la vista, porque las secciones filtran las inactivas— y crear
- * otra a mano.
- */
-export async function actionRenombrarZona(
-  zonaId: string,
-  nombre: string,
-): Promise<Respuesta<Zona>> {
-  const sesion = await exigirSesionActual();
-  if (!sesion.usuario.tenantId) return { ok: false, mensaje: "No hay sesión activa." };
-  if (!puedeGestionarTarifas(sesion.usuario)) {
-    return { ok: false, mensaje: "No tienes permiso para gestionar zonas." };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    const zona = await renombrarZona(
-      cliente,
-      sesion.usuario.tenantId,
-      zonaId,
-      nombre,
-      sesion.usuarioId,
-      sesion.usuario,
-    );
-    revalidatePath("/configuracion/zonas");
-    return { ok: true, datos: zona };
-  } catch (err) {
-    return {
-      ok: false,
-      mensaje: err instanceof Error ? err.message : "Error al renombrar la zona.",
-    };
   }
 }
 
