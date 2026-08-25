@@ -97,24 +97,34 @@ export const CATALOGO_PLANTILLAS = {
    * Cuerpo aprobado en Meta:
    *   📦 RUTAX
    *   Hola {{1}} 👋
-   *   Hoy retiramos {{2}} pedidos desde tu bodega.
-   *   Conductor: {{3}}
-   *   Vehículo: {{4}}
-   *   Detalle:
-   *   {{5}}
+   *   Hoy retiramos {{2}} pedidos desde {{3}}.
+   *   Conductor: {{4}}
    *   Gracias por utilizar Rutax.
+   *
+   * -------------------------------------------------------------------------
+   * DOS COSAS QUE SE SACARON A PROPÓSITO (2026-08-25), PARA NO REPONERLAS
+   * -------------------------------------------------------------------------
+   * · **La patente del vehículo.** El aviso sale DESPUÉS del retiro («hoy
+   *   retiramos», en pasado): saber qué vehículo vino cuando ya se fue no le
+   *   sirve al seller para nada. Y era dato del vehículo del conductor saliendo
+   *   hacia un tercero (Meta) y hacia otra empresa (el seller) sin que nadie lo
+   *   necesitara. Si algún día hay un aviso de «va en camino», ahí sí tiene
+   *   sentido — pero es otra plantilla.
+   * · **El desglose de rutas.** Era información interna del courier («32 a
+   *   Maipú, 28 a Puente Alto»); al seller no le dice nada porque sus paquetes
+   *   van donde tengan que ir.
+   *
+   * ⚠️ Y una que NO está, por decisión del usuario: **lo que quedó sin
+   * retirar**. El retiro es una conciliación —lo esperado contra lo cargado— y
+   * la excepción es la única parte accionable para el seller. Como no viaja por
+   * acá, esa información tiene que llegarle por otra vía (el portal o una
+   * incidencia); no asumir que este mensaje la cubre.
    */
   retiro_completado: {
     nombre: "notificacion_retiro_pedidos",
     idioma: "es",
     rolDestinatario: "seller",
-    variables: [
-      "nombreDestinatario",
-      "cantidadPedidos",
-      "nombreConductor",
-      "patenteVehiculo",
-      "detalleRutas",
-    ],
+    variables: ["nombreDestinatario", "cantidadPedidos", "nombreBodega", "nombreConductor"],
   },
 } as const satisfies Record<string, DefinicionPlantilla>;
 
