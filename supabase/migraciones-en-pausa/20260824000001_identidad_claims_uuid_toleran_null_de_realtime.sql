@@ -1,4 +1,13 @@
 -- =============================================================================
+-- ⏸️ EN PAUSA — ESTE ARCHIVO NO SE APLICA
+-- =============================================================================
+-- Vive fuera de `supabase/migrations/` a propósito: el CLI no lo ve, así que ni
+-- `db push` ni `db reset` lo toman. Decisión del usuario (25-ago-2026): el
+-- diagnóstico de abajo se hizo contra la base local y no se ha reproducido en
+-- producción. Ver `supabase/migraciones-en-pausa/README.md`.
+-- =============================================================================
+
+-- =============================================================================
 -- Los claims de uuid toleran el «null» que entrega Realtime
 -- =============================================================================
 --

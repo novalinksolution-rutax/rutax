@@ -573,10 +573,16 @@ esperado era NULL y sigue siéndolo—; lo único que cambia es que se obtiene s
 **Verificado:** con la migración puesta, la franja de Pedidos recibe, acumula, incorpora al pedirlo y
 desaparece.
 
-🔴 **PENDIENTE EN PRODUCCIÓN.** El hook, las políticas y Realtime son los mismos allá, así que **la
-presunción es que producción está igual de rota** — desde siempre, y sin que nadie lo note porque el
-indicador está en verde. No se pudo comprobar desde acá (haría falta una sesión real). **Aplicar la
-migración es el arreglo; comprobarlo después es mirar el log de Realtime del proyecto hosted.**
+⏸️ **EN PAUSA, NO PENDIENTE — decisión del usuario (25-ago-2026).** La migración **no se aplica en
+producción** y se movió a `supabase/migraciones-en-pausa/`, fuera de donde el CLI la ve, para que
+ningún `db push` se la lleve de pasada. El motivo: el diagnóstico completo se hizo contra la base
+local y **no se ha reproducido en producción**.
+
+Lo que sigue siendo cierto: el hook, las políticas y Realtime son los mismos allá, así que la
+presunción —no la comprobación— es que producción está igual. Comprobarlo es mirar el log de Realtime
+del proyecto hosted buscando `invalid input syntax for type uuid: "null"`; si aparece, sacar la
+migración de pausa es el arreglo. La barrera del cliente que va más abajo **sí** está desplegada y
+tapa la mitad que se puede tapar desde afuera.
 
 **Y una barrera extra en el cliente** (`components/tiempo-real/filtro-tenant.ts`, 7 pruebas): el
 indicador **no se suscribe** si el tenant no es un uuid. No era la causa de esto, pero es la otra
