@@ -20,7 +20,7 @@ import {
 import { codigoVisibleDeBulto, derivarResolucionBulto, type FormatoCodigoBulto, type ResolucionEscaneo } from "./parser-codigo";
 import { cerrarSesionRetiroRpc, type ResultadoCerrarSesionRetiro } from "./rpc";
 import { inngest } from "@/lib/inngest/cliente";
-import type { EventoVisitaRetiroCerrada } from "@/lib/inngest/eventos";
+import type { EventoVisitaRetiroCerrada, EventoWhatsAppSolicitado } from "@/lib/inngest/eventos";
 import type { SesionRetiroResumen } from "./bodegas";
 import { listarEsperadosDeSeller, type BultoEsperado } from "./expectativa";
 
@@ -367,9 +367,116 @@ export async function cerrarSesionRetiro(
   // idempotente y lo absorbería igual.
   if (!resultado.yaEstabaCerrada) {
     await publicarVisitaCerrada(cliente, entrada, resultado);
+    await avisarRetiroPorWhatsApp(cliente, entrada, resultado);
   }
 
   return resultado;
+}
+
+/**
+ * Publica `notificaciones/whatsapp.solicitado` para avisarle al seller que se
+ * retiraron pedidos de su bodega.
+ *
+ * Es el gatillo que convierte la integración de WhatsApp en algo que funciona
+ * solo. Reemplaza el «jefe, retiré 20 al seller X» por WhatsApp: el aviso sale
+ * al cerrar la visita, con el mismo dato que quedó en el acta.
+ *
+ * -----------------------------------------------------------------------------
+ * PUBLICA UN EVENTO, NO LLAMA AL ADAPTADOR — Y ESO ES EL LÍMITE DE MÓDULOS
+ * -----------------------------------------------------------------------------
+ * `operacion` no habla con Meta ni conoce plantillas: emite un hecho y
+ * `integraciones` decide qué hacer con él. Es la misma vía por la que sale
+ * `dinero/retiro.visita-cerrada` unas líneas más arriba. Importar el adaptador
+ * desde acá metería la Cloud API dentro del núcleo operativo.
+ *
+ * BEST-EFFORT POST-COMMIT, igual que el evento de dinero y por la misma razón:
+ * la visita ya está cerrada y respaldada. Un conductor de pie en la bodega no
+ * puede quedarse sin poder cerrar su acta porque no se pudo encolar un aviso.
+ *
+ * ⚠️ Las variables van EN ORDEN y tienen que calzar con `catalogo-plantillas.ts`
+ * (`retiro_completado`, cuatro variables). Si alguien cambia la plantilla en
+ * Meta sin tocar el catálogo, el envío falla con un error de Meta que habla de
+ * «parámetros» y no dice cuál sobra.
+ */
+async function avisarRetiroPorWhatsApp(
+  cliente: SupabaseClient,
+  entrada: { tenantId: string; sesionId: string; conductorId: string },
+  resultado: ResultadoCerrarSesionRetiro,
+): Promise<void> {
+  try {
+    // Sin pedidos marcados no hay nada que contar. Mandar «hoy retiramos 0
+    // pedidos desde tu bodega» es peor que no mandar nada: gasta una
+    // conversación, confunde al seller y desgasta la calificación del número.
+    if (resultado.pedidosMarcados <= 0) return;
+
+    const { data: sesion } = await cliente
+      .from("sesiones_retiro")
+      .select("seller_id, bodega_id")
+      .eq("tenant_id", entrada.tenantId)
+      .eq("id", entrada.sesionId)
+      .maybeSingle();
+
+    if (!sesion?.seller_id) return;
+
+    // Los nombres que van dentro del mensaje. Se leen en paralelo: son dos
+    // lecturas chicas y esto corre una vez por visita a bodega.
+    const [seller, bodega, conductor] = await Promise.all([
+      cliente
+        .schema("identidad")
+        .from("sellers")
+        .select("razon_social")
+        .eq("tenant_id", entrada.tenantId)
+        .eq("id", sesion.seller_id as string)
+        .maybeSingle(),
+      cliente
+        .schema("identidad")
+        .from("seller_bodegas")
+        .select("nombre")
+        .eq("tenant_id", entrada.tenantId)
+        .eq("id", sesion.bodega_id as string)
+        .maybeSingle(),
+      cliente
+        .schema("identidad")
+        .from("conductores")
+        .select("nombre_completo")
+        .eq("tenant_id", entrada.tenantId)
+        .eq("id", entrada.conductorId)
+        .maybeSingle(),
+    ]);
+
+    // Si falta el nombre del seller no se manda: el mensaje abre con «Hola
+    // {{1}}» y un saludo a nadie es peor que el silencio. Los otros dos sí
+    // tienen respaldo razonable — el aviso sigue siendo útil sin ellos.
+    const nombreSeller = seller.data?.razon_social as string | undefined;
+    if (!nombreSeller) return;
+
+    const data: EventoWhatsAppSolicitado["data"] = {
+      tenantId: entrada.tenantId,
+      claveEvento: "retiro_completado",
+      // La visita ES la referencia: un aviso por visita, para siempre. Dos
+      // retiros al mismo seller el mismo día son dos visitas y por lo tanto
+      // dos avisos, que es lo correcto.
+      referencia: entrada.sesionId,
+      destino: { sellerId: sesion.seller_id as string, bodegaId: null },
+      variables: [
+        nombreSeller,
+        String(resultado.pedidosMarcados),
+        (bodega.data?.nombre as string | undefined) ?? "tu bodega",
+        (conductor.data?.nombre_completo as string | undefined) ?? "nuestro conductor",
+      ],
+    };
+
+    await inngest.send({
+      name: "notificaciones/whatsapp.solicitado",
+      // Determinístico por visita: dos reintentos del cierre no encolan dos
+      // avisos. Es la primera capa; la segunda es la llave de idempotencia de
+      // `whatsapp_mensajes`, que ataja incluso un evento duplicado.
+      id: `whatsapp-retiro-${entrada.sesionId}`,
+      data,
+    });
+  } catch {
+    // El cierre ya ocurrió y no se revierte porque no se pudo encolar un aviso.
+  }
 }
 
 /**

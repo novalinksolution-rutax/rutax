@@ -11,10 +11,17 @@ vi.mock("@/modules/identidad/auditoria", () => ({
 vi.mock("./rpc", () => ({
   cerrarSesionRetiroRpc: vi.fn(),
 }));
+// Sin este doble, el publicador sale de verdad a la red durante las pruebas y,
+// sobre todo, no hay forma de observar QUÉ evento se publicó — que es
+// justamente lo que hay que fijar en el aviso de WhatsApp.
+vi.mock("@/lib/inngest/cliente", () => ({
+  inngest: { send: vi.fn().mockResolvedValue(undefined) },
+}));
 
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { cerrarSesionRetiroRpc } from "./rpc";
+import { inngest } from "@/lib/inngest/cliente";
 import { cerrarSesionRetiro, listarSesionesDeHoyDelConductor, obtenerSesionRetiro } from "./sesiones";
 
 // Este repo opera en America/Santiago: `listarSesionesDeHoyDelConductor` usa
@@ -43,6 +50,7 @@ function crearCliente(fixtures: {
   bultos_retiro?: FilaFixture[];
   pedidos?: FilaFixture[];
   sellers?: FilaFixture[];
+  conductores?: FilaFixture[];
 }) {
   const tablas: Record<string, FilaFixture[]> = {
     sesiones_retiro: fixtures.sesiones_retiro,
@@ -50,6 +58,7 @@ function crearCliente(fixtures: {
     bultos_retiro: fixtures.bultos_retiro ?? [],
     pedidos: fixtures.pedidos ?? [],
     sellers: fixtures.sellers ?? [],
+    conductores: fixtures.conductores ?? [],
   };
   const llamadasEq: { tabla: string; columna: string; valor: unknown }[] = [];
 
@@ -80,7 +89,12 @@ function crearCliente(fixtures: {
   }
 
   const from = vi.fn((tabla: string) => builder(tabla));
-  return { cliente: { from } as never, from, llamadasEq };
+  // `.schema(...)` devuelve el mismo cliente: en el doble las tablas viven en un
+  // solo espacio de nombres, y lo que se prueba acá es el FILTRADO, no el
+  // enrutado de esquemas de PostgREST.
+  const cliente: Record<string, unknown> = { from };
+  cliente.schema = () => cliente;
+  return { cliente: cliente as never, from, llamadasEq };
 }
 
 beforeEach(() => {
@@ -403,5 +417,182 @@ describe("cerrarSesionRetiro", () => {
     expect(resultado.descartada).toBeUndefined();
     expect(cerrarSesionRetiroRpc).toHaveBeenCalled();
     expect(filtrosDelete).toEqual([]); // no se borró nada
+  });
+});
+
+// =============================================================================
+// El aviso de WhatsApp al cerrar la visita
+// =============================================================================
+//
+// Es el gatillo que convierte la integración de WhatsApp en algo que corre
+// solo. Lo que se fija acá es el ORDEN de las variables —porque Meta las recibe
+// por posición y un cambio silencioso manda el nombre del conductor donde va la
+// bodega— y las tres condiciones en que NO debe salir nada.
+describe("cerrarSesionRetiro — aviso de WhatsApp al seller", () => {
+  const SELLER_NOMBRE = "Comercial Aurora SpA";
+  const BODEGA_NOMBRE = "Bodega Maipú";
+  const CONDUCTOR_NOMBRE = "Juan Pérez";
+
+  function fixturesCompletos() {
+    return {
+      sesiones_retiro: [
+        {
+          id: SESION_1,
+          tenant_id: TENANT_A,
+          conductor_id: CONDUCTOR_1,
+          seller_id: SELLER_1,
+          bodega_id: BODEGA_1,
+          fecha_operacion: HOY,
+          estado: "abierta",
+        },
+      ],
+      bultos_retiro: [{ id: "b1", tenant_id: TENANT_A, sesion_retiro_id: SESION_1 }],
+      sellers: [{ id: SELLER_1, tenant_id: TENANT_A, razon_social: SELLER_NOMBRE }],
+      seller_bodegas: [{ id: BODEGA_1, tenant_id: TENANT_A, nombre: BODEGA_NOMBRE }],
+      conductores: [{ id: CONDUCTOR_1, tenant_id: TENANT_A, nombre_completo: CONDUCTOR_NOMBRE }],
+    };
+  }
+
+  function resultadoRpc(pedidosMarcados: number, yaEstabaCerrada = false) {
+    return {
+      sesionId: SESION_1,
+      estado: "cerrada" as const,
+      bultosTotal: 30,
+      bultosResueltos: 30,
+      bultosSinResolver: 0,
+      cerradaEn: new Date().toISOString(),
+      yaEstabaCerrada,
+      pedidosMarcados,
+    };
+  }
+
+  function eventoWhatsApp() {
+    return vi
+      .mocked(inngest.send)
+      .mock.calls.map((c) => c[0])
+      .find((e) => (e as { name: string }).name === "notificaciones/whatsapp.solicitado") as
+      | { name: string; id: string; data: Record<string, unknown> }
+      | undefined;
+  }
+
+  it("publica el aviso con las CUATRO variables en el orden de la plantilla", async () => {
+    const { cliente } = crearCliente(fixturesCompletos());
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue(resultadoRpc(87));
+
+    await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    const evento = eventoWhatsApp();
+    expect(evento).toBeDefined();
+    expect(evento!.data.claveEvento).toBe("retiro_completado");
+    // El orden ES el contrato con Meta: {{1}} nombre, {{2}} cantidad,
+    // {{3}} bodega, {{4}} conductor.
+    expect(evento!.data.variables).toEqual([SELLER_NOMBRE, "87", BODEGA_NOMBRE, CONDUCTOR_NOMBRE]);
+    expect(evento!.data.destino).toEqual({ sellerId: SELLER_1, bodegaId: null });
+  });
+
+  it("usa la visita como referencia — un aviso por visita, aunque el cierre se reintente", async () => {
+    const { cliente } = crearCliente(fixturesCompletos());
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue(resultadoRpc(87));
+
+    await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    const evento = eventoWhatsApp();
+    expect(evento!.data.referencia).toBe(SESION_1);
+    // Id determinístico: dos reintentos del cierre no encolan dos avisos.
+    expect(evento!.id).toBe(`whatsapp-retiro-${SESION_1}`);
+  });
+
+  it("NO avisa si no se marcó ni un pedido — «retiramos 0 pedidos» es peor que el silencio", async () => {
+    const { cliente } = crearCliente(fixturesCompletos());
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue(resultadoRpc(0));
+
+    await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    expect(eventoWhatsApp()).toBeUndefined();
+  });
+
+  it("NO avisa si falta el nombre del seller — el mensaje abre saludándolo", async () => {
+    const fixtures = fixturesCompletos();
+    fixtures.sellers = [];
+    const { cliente } = crearCliente(fixtures);
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue(resultadoRpc(87));
+
+    await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    expect(eventoWhatsApp()).toBeUndefined();
+  });
+
+  it("SÍ avisa sin nombre de bodega o de conductor, con un respaldo legible", async () => {
+    // Estos dos no bloquean: el aviso sigue siendo útil sin ellos, y callarse
+    // por un nombre que falta le costaría al seller su notificación del día.
+    const fixtures = fixturesCompletos();
+    fixtures.seller_bodegas = [];
+    fixtures.conductores = [];
+    const { cliente } = crearCliente(fixtures);
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue(resultadoRpc(12));
+
+    await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    expect(eventoWhatsApp()!.data.variables).toEqual([
+      SELLER_NOMBRE,
+      "12",
+      "tu bodega",
+      "nuestro conductor",
+    ]);
+  });
+
+  it("NO reavisa si la visita YA estaba cerrada", async () => {
+    const { cliente } = crearCliente(fixturesCompletos());
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue(resultadoRpc(87, true));
+
+    await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    expect(eventoWhatsApp()).toBeUndefined();
+  });
+
+  it("si la publicación falla, el cierre NO se cae — el conductor está en la bodega", async () => {
+    const { cliente } = crearCliente(fixturesCompletos());
+    vi.mocked(cerrarSesionRetiroRpc).mockResolvedValue(resultadoRpc(87));
+    vi.mocked(inngest.send).mockRejectedValue(new Error("Inngest caído"));
+
+    const resultado = await cerrarSesionRetiro(cliente, {
+      tenantId: TENANT_A,
+      sesionId: SESION_1,
+      conductorId: CONDUCTOR_1,
+      actorUsuarioId: USUARIO_AUTH_1,
+    });
+
+    expect(resultado.estado).toBe("cerrada");
+    expect(resultado.pedidosMarcados).toBe(87);
   });
 });
