@@ -111,8 +111,8 @@ adopción» no se verifica; «no importa `PantallaSinSesion`» sí, con un coman
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
 | **6** | **App del conductor** | **CERRADO el 24-08** — 6.0 a 6.5 completos, incluidas la casilla táctil de 56 px, el barrido vertical y la hoja inferior | la adopción de la hoja en el resto de los paneles va **por pantalla**, con su bloque. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
-| **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles · 6 cuerpos de correo por reescribir | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
-| **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | 6 pantallas sin sesión (activar, registro, recuperar, legales, offline, `admin/login`) · 4 páginas del sitio, ninguna dibujada · tablet y teléfono del sitio | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
+| **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles. **Los correos se cerraron el 24-08**: el molde pasó a tres bandas, las tres plantillas de Supabase se re-transcribieron y nació `mail.seguimiento` | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
+| **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | **las 13 pantallas sin sesión están hechas** (se cerraron el 24-08). Queda **solo el sitio comercial**: 4 páginas sin dibujar · tablet y teléfono · las 2 fotografías | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
 | **9** | *(no está en §10)* | 12 componentes sin bloque asignado | 12, repartidos en 9a–9d | #4 · #5 · #6 · #13 a #20 | `B1b` · `B3a` · `B3b` · `P7` |
 
 **Los 33 marcados NUEVO están todos bloqueados por una decisión del usuario** (anexo A). Están
@@ -1700,6 +1700,59 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       que hay son síncronas—, así que **nadie lo dispararía**. Entra el día que una exportación se
       vaya a un job.
 
+- [x] **El molde pasa a TRES BANDAS, y las tres plantillas de Supabase entran (24-08).**
+      Al abrir la lámina de la plantilla base contra el código apareció que **la marca estaba mal
+      puesta**: iba como un rótulo de 13 px en versalitas grises dentro de la misma celda del
+      cuerpo, o sea degradada a etiqueta administrativa. La lámina y B7 dicen lo contrario, y la
+      regla 2 de B7 lo escribe entero: *el nombre en texto es la versión canónica porque no hay
+      logo que poner*, así que ocupa el lugar que ocuparía un logo.
+      Ahora son tres bandas, como la tarjeta de seguimiento público: **marca a tamaño de titular
+      (18/700) sobre una regla de 2 px en negro de marca · cuerpo · pie con fondo tenue**. El
+      titular baja a 19/600 y el contexto a 14 px.
+      · **El cuerpo usa el gris de IMPRESIÓN** (`#3E4D53`, 7,4:1), que `rx-tokens.css` define solo
+        dentro de `@media print`. Un correo se parece más a un impreso que a una pantalla: no
+        controlamos el brillo, ni el cliente, ni si se lee en la calle a mediodía.
+      · **La caja de datos pasa a UNA columna** en mono (`Etiqueta · valor`, total en negrita). Una
+        tabla de dos columnas con `align="right"` se descuadra en cuanto el cliente cambia la
+        fuente monoespaciada, y en 320 px la etiqueta y el valor se pegan.
+      · **Los dos teales estaban cruzados.** El botón se rellenaba con `--rx-accent-text`
+        (`#007D69`, el que solo sirve para texto) y llevaba blanco encima: llegaba más apagado que
+        el botón real del producto. Ahora rellena `--rx-accent` (`#00B89A`) con `--rx-fg-on-accent`
+        (`#04231E`), 6,6:1, y hay prueba que los mantiene separados.
+      · **El pie gana «Despacho gestionado con Rutax», solo cuando NO firmamos nosotros.** Chocaba
+        con la regla 42 —«ninguna mención a Rutax en el correo del seller»—: esa regla rige el
+        CUERPO, no el pie, y la prueba ahora parte el HTML en dos para exigir las dos cosas.
+      **Las tres plantillas de Supabase** (`reset-password`, `invite-user`, `magic-link`) se
+      re-transcribieron al molde. Dos seguían en el ADN anterior —navy `#2a3ca0` sobre lavanda
+      `#f5f5fa`, esquinas de 12 px, la marca en blanco sobre una banda de color—, que ya no existe
+      en ninguna parte del producto.
+      ⚠️ **Van transcritas a mano y no se enteran si el molde cambia**: Supabase no ejecuta nuestro
+      código, el panel solo acepta HTML pegado. Es el precio de que esos tres los mande Supabase.
+      ⚠️ **El plazo del enlace de recuperación decía una hora y `otp_expiry` está en 600.** Es UN
+      solo valor para todo el proyecto y de él cuelgan cuatro promesas escritas: el correo, las tres
+      pantallas del flujo y la app del conductor. Ahora las cuatro dicen diez minutos.
+      **Verificado en el navegador** a 760 px y a 390 px, las cuatro piezas.
+- [x] **`mail.seguimiento`** — escrito y probado (24-08), `src/modules/operacion/mail-seguimiento.ts`.
+      Es la pieza con más reglas en contra del producto: **la forma más restringida del pedido en
+      todo el registro**. Sin dirección, sin nombre del destinatario, sin teléfono, sin monto, sin
+      conductor y sin el motivo de una falla — solo código y comuna, comprobado sobre el HTML **y**
+      sobre el texto plano (si el dato se colara solo ahí, ninguna prueba de HTML lo vería).
+      Devuelve `null` en Flex —la relación con el comprador es de Mercado Libre, que ya manda sus
+      propios avisos— y ante **cualquier fuente desconocida**: falla cerrado, una fuente nueva no
+      empieza a escribirle a compradores por omisión.
+      Firma el **courier**, pero el asunto nombra la **tienda**, que es lo que el comprador reconoce
+      en su bandeja; y el asunto **no lleva la hora**, porque se congela ahí y el correo se abre días
+      después (misma razón que la regla 6 de B7).
+      🚧 **NO SE PUEDE ENVIAR TODAVÍA, y no es un pendiente técnico sino una decisión tuya.**
+      1. **No existe `destinatario_email`** en `operacion.pedidos` — hay teléfono, no correo.
+      2. **La ingesta de Shopify no lo pide, a propósito**, y hay prueba que lo impone
+         (`ingesta-pedidos.test.ts` → «no pide un solo campo de más»: `CONSULTA_ORDENES` no puede
+         contener `email` ni `customer`).
+      3. **Para Shopify sería duplicado igual:** `marcar-cumplido-shopify.ts` ya escribe el
+         fulfillment con nuestra URL de tracking, y eso dispara la notificación NATIVA de Shopify.
+      O sea el único destinatario real sería **same-day propio**, y para eso hace falta una columna
+      de dato personal (Ley 21.431), un campo en el formulario de alta y revisión de
+      `seguridad-cumplimiento`.
 - [ ] **Los rebotes son invisibles.** Vuelven por `webhook-resend.ts` y no se muestran en ninguna
       parte. Una invitación que rebota es una invitación que nadie sabe que nunca llegó.
 - [x] **El correo de conexión caída, que llevaba un año comentado** — hecho el 24-08.
@@ -2328,8 +2381,10 @@ seller · el acta de retiro no se imprime.
 ## Contenido pendiente
 
 - [ ] Los **42 mensajes de éxito de módulo único**. El molde los resuelve sin ambigüedad.
-- [ ] Los **cuerpos completos de los 6 correos que ya existen**. Quedaron con asunto, acción y la
-      regla que los cambia.
+- [x] Los **cuerpos completos de los correos que ya existen** — **cerrado el 24-08**. Cuatro de los
+      seis se reescribieron al molde; de los otros dos, `bienvenidaConductor` no se puede construir
+      (la app no está publicada en ninguna tienda) y `exportListo` no tiene quién lo dispare (las
+      dos exportaciones del producto son síncronas). Y el molde entero pasó a tres bandas — ver §7.4.
 - [ ] **Términos y política de privacidad.** Lo escribe un abogado; la pantalla ya está diseñada.
 
 ## Sitio comercial pendiente
