@@ -451,12 +451,20 @@ function AccesosRapidos({ datos }: { datos: VistaPreviaPedido }) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button asChild variant="outline" size="sm">
-        <a href={`/api/operaciones/${datos.id}/etiqueta`} target="_blank" rel="noreferrer">
-          <Download className="size-3.5" aria-hidden="true" />
-          Etiqueta
-        </a>
-      </Button>
+      {/* 🔴 Solo cuando la etiqueta EXISTE. Mercado Libre deja de servirla en
+          cuanto el bulto sale a la calle, y el botón se mostraba igual: el
+          courier hacía clic, esperaba, y recibía un error por lo que era el
+          estado normal de un pedido en ruta. Es la misma regla del enlace de
+          seguimiento de acá al lado — un botón que no puede cumplir es peor que
+          uno que no está. */}
+      {datos.etiquetaDisponible && (
+        <Button asChild variant="outline" size="sm">
+          <a href={`/api/operaciones/${datos.id}/etiqueta`} target="_blank" rel="noreferrer">
+            <Download className="size-3.5" aria-hidden="true" />
+            Etiqueta
+          </a>
+        </Button>
+      )}
 
       {/* Solo cuando hay token: en Flex el seguimiento lo da Mercado Envíos y
           un botón que copia una URL vacía es peor que no tenerlo. */}

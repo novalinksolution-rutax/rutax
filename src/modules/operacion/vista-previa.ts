@@ -33,6 +33,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { obtenerPedido } from "./pedidos";
 import { mapaNombresConductores } from "@/modules/identidad/consultas";
+import { puedeImprimirEtiqueta } from "./etiqueta-disponible";
 import type { EstadoPedido, FuentePedido } from "./tipos";
 
 export interface HitoSeguimiento {
@@ -80,6 +81,17 @@ export interface VistaPreviaPedido {
 
   /** Solo same-day. Es el enlace que se comparte con el destinatario. */
   trackingToken: string | null;
+
+  /**
+   * ¿Se puede imprimir la etiqueta?
+   *
+   * 🔴 Se decide **en el servidor** y viaja como booleano. La alternativa era
+   * mandar `tipoPedido`, `mlShipmentId` y `estadoMl` al cliente para que
+   * repitiera la regla — tres campos crudos, uno de ellos un identificador de
+   * ML, para calcular algo que ya sabemos acá. Y dos copias de la regla se
+   * separan sin que nadie lo note. Ver `etiqueta-disponible.ts`.
+   */
+  etiquetaDisponible: boolean;
 }
 
 export async function armarVistaPreviaPedido(
@@ -142,6 +154,12 @@ export async function armarVistaPreviaPedido(
 
     dinero: cobro,
     trackingToken: pedido.trackingToken ?? null,
+    etiquetaDisponible: puedeImprimirEtiqueta({
+      tipoPedido: pedido.tipoPedido,
+      mlShipmentId: pedido.mlShipmentId ?? null,
+      estadoMl: pedido.estadoMl ?? null,
+      estado: pedido.estado,
+    }),
   };
 }
 

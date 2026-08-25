@@ -45,14 +45,28 @@ const CAMPOS_INICIALES: CamposFormulario = {
   emailContacto: "",
 };
 
-export function FormularioInvitarSeller() {
+export function FormularioInvitarSeller({
+  onInvitado,
+  /**
+   * `false` cuando lo monta un panel, que ya tiene su propia caja: dos bordes
+   * concéntricos separados por 16 px se leen como un error de maquetación.
+   */
+  conTarjeta = true,
+}: {
+  /** Se llama tras invitar. En el panel cierra; en la página no hace nada. */
+  onInvitado?: () => void;
+  conTarjeta?: boolean;
+} = {}) {
   const idBase = useId();
   const [campos, setCampos] = useState<CamposFormulario>(CAMPOS_INICIALES);
   const [errores, setErrores] = useState<ErroresFormulario>({});
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
 
-  function actualizarCampo<K extends keyof CamposFormulario>(campo: K, valor: string) {
+  function actualizarCampo<K extends keyof CamposFormulario>(
+    campo: K,
+    valor: string,
+  ) {
     setCampos((anterior) => ({ ...anterior, [campo]: valor }));
     setErrores((anterior) => ({ ...anterior, [campo]: undefined }));
     setErrorServidor(null);
@@ -93,7 +107,8 @@ export function FormularioInvitarSeller() {
     }
 
     if (!campos.nombreContacto.trim()) {
-      nuevosErrores.nombreContacto = "Ingresa el nombre de la persona de contacto.";
+      nuevosErrores.nombreContacto =
+        "Ingresa el nombre de la persona de contacto.";
     }
 
     const email = campos.emailContacto.trim().toLowerCase();
@@ -122,12 +137,27 @@ export function FormularioInvitarSeller() {
     setEnviando(false);
 
     if (!resultado.ok) {
-      if (resultado.tipo === "validacion" && resultado.mensaje.toLowerCase().includes("rut")) {
+      if (
+        resultado.tipo === "validacion" &&
+        resultado.mensaje.toLowerCase().includes("rut")
+      ) {
         setErrores((anterior) => ({ ...anterior, rut: resultado.mensaje }));
-      } else if (resultado.tipo === "validacion" && resultado.mensaje.toLowerCase().includes("correo")) {
-        setErrores((anterior) => ({ ...anterior, emailContacto: resultado.mensaje }));
-      } else if (resultado.tipo === "validacion" && resultado.mensaje.toLowerCase().includes("razón")) {
-        setErrores((anterior) => ({ ...anterior, razonSocial: resultado.mensaje }));
+      } else if (
+        resultado.tipo === "validacion" &&
+        resultado.mensaje.toLowerCase().includes("correo")
+      ) {
+        setErrores((anterior) => ({
+          ...anterior,
+          emailContacto: resultado.mensaje,
+        }));
+      } else if (
+        resultado.tipo === "validacion" &&
+        resultado.mensaje.toLowerCase().includes("razón")
+      ) {
+        setErrores((anterior) => ({
+          ...anterior,
+          razonSocial: resultado.mensaje,
+        }));
       } else {
         setErrorServidor(resultado.mensaje);
       }
@@ -156,101 +186,126 @@ export function FormularioInvitarSeller() {
     // acción que el courier repetirá varias veces" (mismo principio que la I).
     setCampos(CAMPOS_INICIALES);
     setErrores({});
+    // ⚠️ Se avisa DESPUÉS de limpiar: el panel se cierra, y si el llamador
+    // decidiera reabrirlo se encontraría el formulario en blanco y no con los
+    // datos del seller que acaba de invitar.
+    onInvitado?.();
   }
+
+  const formulario = (
+    <form onSubmit={manejarEnvio} noValidate className="space-y-5">
+      <div className="space-y-2">
+        <Label htmlFor={`${idBase}-razon-social`}>Razón social</Label>
+        <Input
+          id={`${idBase}-razon-social`}
+          autoFocus
+          placeholder="Ej: Comercial Andes Limitada"
+          value={campos.razonSocial}
+          onChange={(e) => actualizarCampo("razonSocial", e.target.value)}
+          aria-invalid={Boolean(errores.razonSocial)}
+          aria-describedby={
+            errores.razonSocial ? `${idBase}-razon-social-error` : undefined
+          }
+        />
+        {errores.razonSocial ? (
+          <p
+            id={`${idBase}-razon-social-error`}
+            className="text-sm text-destructive"
+          >
+            {errores.razonSocial}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`${idBase}-rut`}>RUT del seller</Label>
+        <Input
+          id={`${idBase}-rut`}
+          inputMode="text"
+          placeholder="12.345.678-9"
+          value={campos.rut}
+          onChange={(e) => manejarCambioRut(e.target.value)}
+          onBlur={validarRutAlPerderFoco}
+          aria-invalid={Boolean(errores.rut)}
+          aria-describedby={errores.rut ? `${idBase}-rut-error` : undefined}
+        />
+        {errores.rut ? (
+          <p id={`${idBase}-rut-error`} className="text-sm text-destructive">
+            {errores.rut}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`${idBase}-nombre-contacto`}>Nombre de contacto</Label>
+        <Input
+          id={`${idBase}-nombre-contacto`}
+          placeholder="Ej: María Pérez"
+          value={campos.nombreContacto}
+          onChange={(e) => actualizarCampo("nombreContacto", e.target.value)}
+          aria-invalid={Boolean(errores.nombreContacto)}
+          aria-describedby={
+            errores.nombreContacto
+              ? `${idBase}-nombre-contacto-error`
+              : undefined
+          }
+        />
+        {errores.nombreContacto ? (
+          <p
+            id={`${idBase}-nombre-contacto-error`}
+            className="text-sm text-destructive"
+          >
+            {errores.nombreContacto}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor={`${idBase}-email-contacto`}>Correo de contacto</Label>
+        <Input
+          id={`${idBase}-email-contacto`}
+          type="email"
+          autoComplete="off"
+          placeholder="contacto@empresa.cl"
+          value={campos.emailContacto}
+          onChange={(e) => actualizarCampo("emailContacto", e.target.value)}
+          aria-invalid={Boolean(errores.emailContacto)}
+          aria-describedby={
+            errores.emailContacto ? `${idBase}-email-contacto-error` : undefined
+          }
+        />
+        {errores.emailContacto ? (
+          <p
+            id={`${idBase}-email-contacto-error`}
+            className="text-sm text-destructive"
+          >
+            {errores.emailContacto}
+          </p>
+        ) : null}
+        <p className="text-xs text-muted-foreground">
+          A este correo le enviaremos el enlace para que el seller entre a su
+          portal y conecte su cuenta de Mercado Libre.
+        </p>
+      </div>
+
+      {errorServidor ? (
+        <Alert variant="destructive">
+          <ShieldAlert />
+          <AlertDescription>{errorServidor}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <Button type="submit" loading={enviando} className="w-full sm:w-auto">
+        {enviando ? "Invitando…" : "Invitar a este seller"}
+      </Button>
+    </form>
+  );
+
+  if (!conTarjeta) return formulario;
 
   return (
     <Card>
-      <CardContent className="pt-6">
-        <form onSubmit={manejarEnvio} noValidate className="space-y-5">
-          <div className="space-y-2">
-            <Label htmlFor={`${idBase}-razon-social`}>Razón social</Label>
-            <Input
-              id={`${idBase}-razon-social`}
-              autoFocus
-              placeholder="Ej: Comercial Andes Limitada"
-              value={campos.razonSocial}
-              onChange={(e) => actualizarCampo("razonSocial", e.target.value)}
-              aria-invalid={Boolean(errores.razonSocial)}
-              aria-describedby={errores.razonSocial ? `${idBase}-razon-social-error` : undefined}
-            />
-            {errores.razonSocial ? (
-              <p id={`${idBase}-razon-social-error`} className="text-sm text-destructive">
-                {errores.razonSocial}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`${idBase}-rut`}>RUT del seller</Label>
-            <Input
-              id={`${idBase}-rut`}
-              inputMode="text"
-              placeholder="12.345.678-9"
-              value={campos.rut}
-              onChange={(e) => manejarCambioRut(e.target.value)}
-              onBlur={validarRutAlPerderFoco}
-              aria-invalid={Boolean(errores.rut)}
-              aria-describedby={errores.rut ? `${idBase}-rut-error` : undefined}
-            />
-            {errores.rut ? (
-              <p id={`${idBase}-rut-error`} className="text-sm text-destructive">
-                {errores.rut}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`${idBase}-nombre-contacto`}>Nombre de contacto</Label>
-            <Input
-              id={`${idBase}-nombre-contacto`}
-              placeholder="Ej: María Pérez"
-              value={campos.nombreContacto}
-              onChange={(e) => actualizarCampo("nombreContacto", e.target.value)}
-              aria-invalid={Boolean(errores.nombreContacto)}
-              aria-describedby={errores.nombreContacto ? `${idBase}-nombre-contacto-error` : undefined}
-            />
-            {errores.nombreContacto ? (
-              <p id={`${idBase}-nombre-contacto-error`} className="text-sm text-destructive">
-                {errores.nombreContacto}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`${idBase}-email-contacto`}>Correo de contacto</Label>
-            <Input
-              id={`${idBase}-email-contacto`}
-              type="email"
-              autoComplete="off"
-              placeholder="contacto@empresa.cl"
-              value={campos.emailContacto}
-              onChange={(e) => actualizarCampo("emailContacto", e.target.value)}
-              aria-invalid={Boolean(errores.emailContacto)}
-              aria-describedby={errores.emailContacto ? `${idBase}-email-contacto-error` : undefined}
-            />
-            {errores.emailContacto ? (
-              <p id={`${idBase}-email-contacto-error`} className="text-sm text-destructive">
-                {errores.emailContacto}
-              </p>
-            ) : null}
-            <p className="text-xs text-muted-foreground">
-              A este correo le enviaremos el enlace para que el seller entre a su portal y conecte su cuenta de
-              Mercado Libre.
-            </p>
-          </div>
-
-          {errorServidor ? (
-            <Alert variant="destructive">
-              <ShieldAlert />
-              <AlertDescription>{errorServidor}</AlertDescription>
-            </Alert>
-          ) : null}
-
-          <Button type="submit" loading={enviando} className="w-full sm:w-auto">
-            {enviando ? "Invitando…" : "Invitar a este seller"}
-          </Button>
-        </form>
-      </CardContent>
+      <CardContent className="pt-6">{formulario}</CardContent>
     </Card>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { BotonCerrarSesion } from "./boton-cerrar-sesion";
 import { FirmadoPorRutax } from "@/components/ui/marca-rutax";
 
 import { BotonBorrarPuntoTermino } from "./boton-borrar-punto-termino";
@@ -87,6 +88,11 @@ export default async function PaginaConductorRetirada() {
           <BotonBorrarPuntoTermino />
         </div>
       </div>
+
+      {/* 🐞 La salida que no existía: sin esto el conductor entraba por /login,
+          leía que su trabajo está en la app, y se quedaba con una sesión que no
+          podía cerrar — en un teléfono que puede no ser suyo. */}
+      <BotonCerrarSesion />
 
       <FirmadoPorRutax />
     </div>

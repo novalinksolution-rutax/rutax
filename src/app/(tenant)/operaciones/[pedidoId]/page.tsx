@@ -59,6 +59,7 @@ import { DrawerCambioEstado } from "./drawer-cambio-estado";
 import { DrawerIncidencia } from "./drawer-incidencia";
 import { DialogReasignacion } from "./dialog-reasignacion";
 import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
+import { disponibilidadEtiqueta } from "@/modules/operacion/etiqueta-disponible";
 import { BotonReubicar } from "./boton-reubicar";
 import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
 import { VisorPod } from "./visor-pod";
@@ -759,12 +760,19 @@ function AccionesPedido({
   // una vez en_ruta, la vía es marcarlo 'fallido' y reasignar desde ahí).
   const puedeReasignar =
     tieneAsignacion && esTransicionValida(pedido.estado, "pendiente_asignacion", "interno");
-  // Flex requiere ml_shipment_id (etiqueta de ML); same-day genera su propia
-  // etiqueta interna con QR y no depende de ningún campo de Mercado Libre.
-  // Nunca en estados terminales (§16): no tiene sentido imprimir la etiqueta
-  // de un pedido cancelado/entregado/devuelto.
-  const puedeDescargarEtiqueta =
-    puedeAsignar && !esTerminal && (!!pedido.mlShipmentId || pedido.tipoPedido === "same_day");
+  // 🔴 **No basta con «no es terminal».** Mercado Libre solo sirve la etiqueta
+  // mientras el envío está en `ready_to_ship`/`ready_to_print`: en cuanto sale
+  // a la calle deja de darla, y hasta hoy el botón se mostraba igual, el
+  // courier hacía clic, esperaba, y recibía un 502 genérico por lo que en
+  // realidad era el estado normal de un pedido en ruta. Ver
+  // `etiqueta-disponible.ts`.
+  const etiqueta = disponibilidadEtiqueta({
+    tipoPedido: pedido.tipoPedido,
+    mlShipmentId: pedido.mlShipmentId ?? null,
+    estadoMl: pedido.estadoMl ?? null,
+    estado: pedido.estado,
+  });
+  const puedeDescargarEtiqueta = puedeAsignar && etiqueta.disponible;
 
   // Sin ninguna acción visible: no renderizar nada. `DrawerCambioEstado` (el
   // único botón que gatea `puedeAjustar`) se auto-oculta cuando no hay ningún

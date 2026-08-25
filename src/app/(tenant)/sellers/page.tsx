@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
+import { PanelInvitarSeller } from "./panel-invitar-seller";
 import { Store } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeSincronizarConexionesMl, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
-import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -206,11 +205,9 @@ export default async function PaginaSellers() {
             Clientes de tu cuenta y el estado de su conexión con sus fuentes de pedidos.
           </p>
         </div>
-        {puedeInvitar && (
-          <Button asChild size="sm">
-            <Link href="/sellers/invitar">Invitar seller</Link>
-          </Button>
-        )}
+        {/* Panel, no navegación: la pregunta que trae a alguien acá suele ser
+            «¿ya invité a este?», y la respuesta está en la tabla de atrás. */}
+        {puedeInvitar && <PanelInvitarSeller />}
       </div>
 
       {sellers.length === 0 ? (
@@ -219,11 +216,7 @@ export default async function PaginaSellers() {
           titulo="Todavía no tienes sellers"
           descripcion="Invita a tus clientes para que conecten sus cuentas de Mercado Libre o Shopify y sus pedidos lleguen solos."
           accion={
-            puedeInvitar ? (
-              <Button asChild size="sm">
-                <Link href="/sellers/invitar">Invitar a tu primer seller</Link>
-              </Button>
-            ) : undefined
+            puedeInvitar ? <PanelInvitarSeller etiqueta="Invitar a tu primer seller" /> : undefined
           }
         />
       ) : (
