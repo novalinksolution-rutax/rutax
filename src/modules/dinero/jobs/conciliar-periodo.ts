@@ -32,6 +32,7 @@ import { leerTodasLasFilas, leerPorLotesDeIds } from '@/lib/supabase/leer-pagina
 import { camposClasificacionParaInsert } from '../conciliacion-clasificacion';
 import type { TipoDiferenciaConciliacion } from '../tipos';
 import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
+import { listarPedidosEntregadosPorRutax } from '../pedidos-entregados-por-rutax';
 
 /**
  * Calcula los 3 campos de clasificación de la bandeja de excepciones
@@ -69,32 +70,29 @@ export const jobConciliarPeriodo = inngest.createFunction(
     await step.run('check-pedidos-sin-linea-cobro', async () => {
       const supabase = crearClienteServiceRole();
 
-      // Buscar pedidos del seller en el rango que estén entregados
-      // pero sin línea de cobro correspondiente.
-      // ⚠️ PAGINADO. Un barrido truncado informa "sin discrepancias" cuando en
-      // realidad no las miró todas — la misma trampa que tenía el detector de
-      // líneas huérfanas. Con quincenas, un seller de 67 entregas diarias cruza
-      // las 1.000 filas y el resto quedaba sin conciliar, en silencio.
-      const pedidosEntregados = await leerTodasLasFilas<{ id: string; estado: string }>(
-        `pedidos entregados del seller ${sellerId}`,
-        (desde, hasta) => supabase
-        .schema('operacion')
-        .from('pedidos')
-        .select('id, estado')
-        .eq('tenant_id', tenantId)
-        .eq('seller_id', sellerId)
-        .in('estado', ['entregado', 'entregado_manual'])
-        // Ventana del período en calendario de SANTIAGO. Sin esto, un
-        // timestamp sin offset se interpreta en la zona del servidor (UTC) y
-        // el período se corre 3–4 horas: entregas de la noche del último día
-        // quedaban fuera de la conciliación de su propio período.
-        .gte('actualizado_en', limitesDelDiaSantiago(fechaInicio).desde.toISOString())
-        .lt('actualizado_en', limitesDelDiaSantiago(fechaFin).hasta.toISOString())
-        .order('id')
-        .range(desde, hasta),
-      );
-
-      const pedidoIds = pedidosEntregados.map((p) => p.id);
+      // ⚠️ Los pedidos que Rutax ENTREGÓ, no los que ML dice que están
+      // entregados. La diferencia no es sutil: para un pedido Flex el estado lo
+      // escribe Mercado Libre, así que uno que despachó el propio seller llega
+      // igual a `entregado` en Rutax. Preguntar solo por el estado hacía que un
+      // courier que **todavía no operaba** encontrara 109 excepciones de
+      // «entregado sin línea de cobro» al cerrar su primer período — todas de
+      // pedidos que nadie de Rutax tocó. Ver `pedidos-entregados-por-rutax.ts`.
+      //
+      // El detector hermano (liquidación, más abajo) llega a lo mismo por otra
+      // vía: exige `driver_id_asignado`. Es más estricto porque además necesita
+      // saber A QUIÉN pagarle, así que se deja como está.
+      const pedidoIds = await listarPedidosEntregadosPorRutax(supabase, {
+        tenantId,
+        sellerId,
+        rango: {
+          // Ventana del período en calendario de SANTIAGO. Sin esto, un
+          // timestamp sin offset se interpreta en la zona del servidor (UTC) y
+          // el período se corre 3–4 horas: entregas de la noche del último día
+          // quedaban fuera de la conciliación de su propio período.
+          desdeIso: limitesDelDiaSantiago(fechaInicio).desde.toISOString(),
+          hastaIso: limitesDelDiaSantiago(fechaFin).hasta.toISOString(),
+        },
+      });
       if (pedidoIds.length === 0) return;
 
       // Obtener pedido_ids que SÍ tienen línea de cobro. EN LOTES: la lista crece
