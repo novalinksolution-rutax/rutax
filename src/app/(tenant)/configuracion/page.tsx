@@ -68,7 +68,40 @@ export default async function ConfiguracionIndex() {
     }
   };
 
-  const [tarifas, zonas, bodegas, equipo, cobranza] = await Promise.all([
+  /**
+   * Un conteo con filtro libre, tolerante al fallo.
+   *
+   * ⚠️ El `ajustar` va tipado como `any` a propósito y con su regla apagada:
+   * el builder de PostgREST cambia de tipo en cada `.eq()` encadenado, así que
+   * escribir la firma exacta obliga a copiar un genérico de seis parámetros
+   * que no aporta nada — lo que importa acá es que el fallo devuelva `null` y
+   * no un cero, y eso sí está tipado en el retorno.
+   */
+  const contarCrudo = async (
+    tabla: string,
+    esquema: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ajustar: (q: any) => any,
+  ): Promise<number | null> => {
+    try {
+      const base = cliente.schema(esquema).from(tabla).select("id", { count: "exact", head: true });
+      const { count, error } = await ajustar(base);
+      return error ? null : (count ?? 0);
+    } catch {
+      return null;
+    }
+  };
+
+  const [
+    tarifas,
+    zonas,
+    bodegas,
+    equipo,
+    cobranza,
+    comunasAsignadas,
+    bodegasSinUbicar,
+    invitacionesPendientes,
+  ] = await Promise.all([
     contar("tarifas", "identidad", { estado: "activa" }),
     contar("zonas", "identidad", { activa: true }),
     contar("courier_bodegas", "identidad", { activa: true }),
@@ -87,9 +120,41 @@ export default async function ConfiguracionIndex() {
     )
       .then((r) => r.data)
       .catch(() => null),
+    // Las comunas ya asignadas: lo que importa es cuántas quedan HUÉRFANAS, y
+    // una comuna sin zona no falla —cae en la tarifa por defecto y se cobra
+    // igual, en silencio— así que el número tiene que estar a la vista.
+    contarCrudo("zona_comunas", "identidad", (q) => q.eq("tenant_id", tenantId)),
+    contarCrudo("courier_bodegas", "identidad", (q) =>
+      q.eq("tenant_id", tenantId).eq("activa", true).neq("geo_estado", "resuelto"),
+    ),
+    contarCrudo("invitaciones", "identidad", (q) =>
+      q.eq("tenant_id", tenantId).eq("estado", "pendiente"),
+    ),
   ]);
 
-  const secciones: { href: string; titulo: string; estado: string | null; visible: boolean }[] = [
+  /** El total de comunas de la Región Metropolitana. */
+  const COMUNAS_RM_TOTAL = 52;
+  const comunasSinZona =
+    comunasAsignadas === null ? null : Math.max(0, COMUNAS_RM_TOTAL - comunasAsignadas);
+
+  /**
+   * 🔴 Cada destino trae su estado en la segunda línea, **y los que necesitan
+   * atención lo dicen en ámbar**.
+   *
+   * En 1440 esta información no cabe en la navegación lateral y no hace falta
+   * —el listado está al lado—, pero en teléfono **la lista ES la pantalla**, así
+   * que tiene que decir dónde hay que entrar. Un renglón que dice «Claves de API
+   * y webhooks para conectar tus sistemas» describe la sección; «6 comunas sin
+   * zona» dice qué hacer.
+   */
+  const secciones: {
+    href: string;
+    titulo: string;
+    estado: string | null;
+    /** Ámbar: hay algo que resolver ahí adentro. */
+    alerta?: boolean;
+    visible: boolean;
+  }[] = [
     {
       href: "/onboarding",
       titulo: "Puesta en marcha",
@@ -105,12 +170,13 @@ export default async function ConfiguracionIndex() {
           : tarifas > 0
             ? `${tarifas} ${tarifas === 1 ? "tarifa activa" : "tarifas activas"}.`
             : "Sin tarifas. Una entrega sin tarifa se hace y no se puede cobrar.",
+      alerta: tarifas === 0,
       visible: puedeGestionarTarifas(u),
     },
     {
       href: "/configuracion/api",
       titulo: "Integraciones",
-      estado: "Claves de API y webhooks para conectar tus propios sistemas.",
+      estado: "Claves de API y avisos hacia tus propios sistemas.",
       visible: puedeGestionarTarifas(u),
     },
     {
@@ -119,9 +185,12 @@ export default async function ConfiguracionIndex() {
       estado:
         zonas === null
           ? null
-          : zonas > 0
-            ? `${zonas} ${zonas === 1 ? "zona activa" : "zonas activas"}.`
-            : "Sin zonas. Los pedidos no se agrupan por sector.",
+          : zonas === 0
+            ? "Sin zonas. Los pedidos no se agrupan por sector."
+            : comunasSinZona !== null && comunasSinZona > 0
+              ? `${comunasSinZona} ${comunasSinZona === 1 ? "comuna sin zona" : "comunas sin zona"}.`
+              : `${zonas} ${zonas === 1 ? "zona activa" : "zonas activas"}. Todas las comunas cubiertas.`,
+      alerta: zonas === 0 || (comunasSinZona !== null && comunasSinZona > 0),
       visible: puedeGestionarTarifas(u),
     },
     {
@@ -137,8 +206,11 @@ export default async function ConfiguracionIndex() {
         bodegas === null
           ? null
           : bodegas > 0
-            ? `${bodegas} ${bodegas === 1 ? "bodega propia" : "bodegas propias"}. De ahí sale toda ruta.`
+            ? bodegasSinUbicar !== null && bodegasSinUbicar > 0
+              ? `${bodegasSinUbicar} sin ubicar. Sin coordenada no entra en ninguna ruta.`
+              : `${bodegas} ${bodegas === 1 ? "bodega propia" : "bodegas propias"}. De ahí sale toda ruta.`
             : "Sin bodega propia. Sin ella no se puede calcular una ruta.",
+      alerta: bodegas === 0 || (bodegasSinUbicar !== null && bodegasSinUbicar > 0),
       visible: puedeGestionarBodegas(u),
     },
     {
@@ -147,7 +219,11 @@ export default async function ConfiguracionIndex() {
       estado:
         equipo === null
           ? null
-          : `${equipo} ${equipo === 1 ? "persona con acceso" : "personas con acceso"}.`,
+          : `${equipo} ${equipo === 1 ? "persona" : "personas"}${
+              invitacionesPendientes
+                ? ` · ${invitacionesPendientes} ${invitacionesPendientes === 1 ? "invitada" : "invitadas"}`
+                : ""
+            }.`,
       visible: puedeGestionarUsuariosYRoles(u),
     },
     {
@@ -194,14 +270,28 @@ export default async function ConfiguracionIndex() {
             <li key={s.href}>
               <Link
                 href={s.href}
-                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-sunken"
+                // 56 px en táctil: en teléfono esta lista ES la pantalla y cada renglón
+                // es un destino, no un renglón de tabla.
+                className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-bg-sunken pointer-coarse:min-h-14"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium text-fg">{s.titulo}</span>
                   {/* Sin dato no se inventa uno: el renglón se queda con su
                       nombre y sigue llevando a su sección. */}
+                  {/* 🔴 El estado que necesita atención va en ámbar. En 1440
+                      no cabe en la navegación lateral y no hace falta —el
+                      listado está al lado—, pero en teléfono la lista ES la
+                      pantalla y tiene que decir dónde hay que entrar. */}
                   {s.estado ? (
-                    <span className="block text-sm leading-snug text-fg-muted">{s.estado}</span>
+                    <span
+                      className={
+                        s.alerta
+                          ? "block text-sm leading-snug font-medium text-attention-fg"
+                          : "block text-sm leading-snug text-fg-muted"
+                      }
+                    >
+                      {s.estado}
+                    </span>
                   ) : (
                     <span className="block text-sm leading-snug text-fg-subtle">
                       No se pudo leer su estado.
