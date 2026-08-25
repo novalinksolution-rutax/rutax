@@ -56,16 +56,11 @@
  */
 export const IDIOMAS_PLANTILLA_VALIDOS = ["es", "es_AR", "es_ES", "es_MX", "en_US"] as const;
 
-/** A qué tipo de contacto se dirige un aviso. Espeja el CHECK de `rol` en la BD. */
-export type RolDestinatario = "seller" | "courier" | "bodega";
-
 export interface DefinicionPlantilla {
   /** Nombre EXACTO con el que la plantilla está aprobada en Meta. */
   nombre: string;
   /** Código de idioma de la plantilla aprobada (`es`, `en_US`…). */
   idioma: string;
-  /** A quién se le manda. Determina cómo se resuelven los destinatarios. */
-  rolDestinatario: RolDestinatario;
   /**
    * Nombres de las variables del cuerpo, EN EL ORDEN de `{{1}}`, `{{2}}`, …
    *
@@ -93,7 +88,6 @@ export const CATALOGO_PLANTILLAS = {
   prueba_conexion: {
     nombre: "hello_world",
     idioma: "en_US",
-    rolDestinatario: "courier",
     variables: [],
   },
 
@@ -131,7 +125,6 @@ export const CATALOGO_PLANTILLAS = {
   retiro_completado: {
     nombre: "notificacion_retiro_pedidos",
     idioma: "es",
-    rolDestinatario: "seller",
     variables: ["nombreDestinatario", "cantidadPedidos", "nombreBodega", "nombreConductor"],
   },
 } as const satisfies Record<string, DefinicionPlantilla>;

@@ -43,10 +43,8 @@ import type { PuertoWhatsApp } from "./puerto-whatsapp";
 const ESTADOS_YA_RESUELTOS = new Set(["enviado", "entregado", "leido", "fallido"]);
 
 export interface DestinoNotificacion {
-  /** Obligatorio si la plantilla va dirigida al rol `seller`. */
+  /** SIEMPRE obligatorio: todo aviso va a los contactos de un seller. */
   sellerId?: string | null;
-  /** Obligatorio si la plantilla va dirigida al rol `bodega`. */
-  bodegaId?: string | null;
 }
 
 export interface SolicitudNotificacion {
@@ -137,38 +135,31 @@ export async function enviarNotificacionWhatsApp(
   // ---- 2. Los destinatarios -------------------------------------------------
   const cliente = crearClienteServiceRole();
 
-  let consulta = cliente
+  // TODO aviso va a los contactos de UN seller — no hay otro tipo de
+  // destinatario (decisión del usuario, 2026-08-25). El seller es siempre
+  // obligatorio y por eso se comprueba antes de tocar la base.
+  const sellerId = solicitud.destino?.sellerId;
+  if (!sellerId) {
+    return rechazo(
+      "destino_incompleto",
+      `Falta "sellerId": todo aviso de WhatsApp va dirigido a los contactos de un seller.`,
+    );
+  }
+
+  const { data: contactos, error: errorContactos } = await cliente
     .schema("integraciones")
     .from("whatsapp_contactos")
     .select("id, telefono_e164, idioma")
     .eq("tenant_id", tenantId)
-    .eq("rol", plantilla.rolDestinatario)
+    .eq("seller_id", sellerId)
     // ⚠️ La barrera de consentimiento. Es la única condición que impide que
     // Rutax le escriba a alguien que no dijo que sí, y va en la consulta —no en
     // un `if` posterior— para que no haya forma de saltársela por descuido.
+    //
+    // Nota: acá caen TODOS los contactos del seller, tanto el suyo propio como
+    // los que Rutax agregó (la pareja, el jefe de bodega). Es deliberado: son
+    // destinatarios del mismo aviso, y cada uno tiene su propio consentimiento.
     .eq("opt_in_estado", "otorgado");
-
-  if (plantilla.rolDestinatario === "seller") {
-    if (!solicitud.destino?.sellerId) {
-      return rechazo(
-        "destino_incompleto",
-        `El evento "${claveEvento}" va dirigido a un seller: falta "sellerId" en el destino.`,
-      );
-    }
-    consulta = consulta.eq("seller_id", solicitud.destino.sellerId);
-  }
-
-  if (plantilla.rolDestinatario === "bodega") {
-    if (!solicitud.destino?.bodegaId) {
-      return rechazo(
-        "destino_incompleto",
-        `El evento "${claveEvento}" va dirigido a una bodega: falta "bodegaId" en el destino.`,
-      );
-    }
-    consulta = consulta.eq("bodega_id", solicitud.destino.bodegaId);
-  }
-
-  const { data: contactos, error: errorContactos } = await consulta;
 
   if (errorContactos) {
     // Fallo de BASE: sí se lanza. No es "el aviso no salió", es "no sé si
@@ -183,7 +174,7 @@ export async function enviarNotificacionWhatsApp(
     // para que el llamador lo distinga de un fallo y NO reintente.
     return rechazo(
       "sin_destinatarios",
-      `No hay contactos de WhatsApp con consentimiento otorgado para el rol "${plantilla.rolDestinatario}".`,
+      "Este seller no tiene ningún contacto de WhatsApp con consentimiento otorgado.",
     );
   }
 

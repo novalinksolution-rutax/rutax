@@ -492,7 +492,10 @@ describe("cerrarSesionRetiro — aviso de WhatsApp al seller", () => {
     // El orden ES el contrato con Meta: {{1}} nombre, {{2}} cantidad,
     // {{3}} bodega, {{4}} conductor.
     expect(evento!.data.variables).toEqual([SELLER_NOMBRE, "87", BODEGA_NOMBRE, CONDUCTOR_NOMBRE]);
-    expect(evento!.data.destino).toEqual({ sellerId: SELLER_1, bodegaId: null });
+    // Solo el seller: desde el 2026-08-25 no hay otro tipo de destinatario.
+    // Sus contactos —el suyo propio y los que Rutax le haya sumado— se resuelven
+    // dentro del servicio de envío, no acá.
+    expect(evento!.data.destino).toEqual({ sellerId: SELLER_1 });
   });
 
   it("usa la visita como referencia — un aviso por visita, aunque el cierre se reintente", async () => {

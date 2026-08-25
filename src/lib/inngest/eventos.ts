@@ -874,7 +874,6 @@ export interface EventoWhatsAppSolicitado {
     /** A quién, cuando la plantilla va dirigida a un seller o a una bodega. */
     destino?: {
       sellerId?: string | null;
-      bodegaId?: string | null;
     };
     /** Variables del cuerpo EN ORDEN. Debe calzar con el catálogo. */
     variables: string[];

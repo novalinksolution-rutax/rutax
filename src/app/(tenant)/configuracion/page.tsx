@@ -8,7 +8,6 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   puedeGestionarTarifas,
   puedeGestionarBodegas,
-  puedeGestionarContactosWhatsApp,
   puedeGestionarUsuariosYRoles,
   puedeVerBitacoraAuditoria,
   puedeGestionarSuscripcion,
@@ -213,12 +212,6 @@ export default async function ConfiguracionIndex() {
             : "Sin bodega propia. Sin ella no se puede calcular una ruta.",
       alerta: bodegas === 0 || (bodegasSinUbicar !== null && bodegasSinUbicar > 0),
       visible: puedeGestionarBodegas(u),
-    },
-    {
-      href: "/configuracion/whatsapp",
-      titulo: "Contactos de WhatsApp",
-      estado: "A quién le avisa Rutax por WhatsApp. Sin contactos, los avisos no salen.",
-      visible: puedeGestionarContactosWhatsApp(u),
     },
     {
       href: "/equipo",

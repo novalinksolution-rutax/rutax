@@ -52,7 +52,6 @@ export const FRASE_CAPACIDAD: Record<Capacidad, string> = {
   ajustar_operacion_diaria: "Ajustar la operación del día",
   ver_preparacion_dia: "Ver la preparación del día",
   gestionar_bodegas: "Administrar las bodegas",
-  gestionar_contactos_whatsapp: "Administrar los contactos de WhatsApp",
   sincronizar_conexiones_ml: "Sincronizar las cuentas de Mercado Libre",
   ver_torre_control: "Ver la torre de control",
   ver_reportes_ejecutivos: "Ver los reportes del negocio",

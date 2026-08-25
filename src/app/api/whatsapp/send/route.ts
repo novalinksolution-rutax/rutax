@@ -139,21 +139,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // ---- Destino --------------------------------------------------------------
+  // Todo aviso va a los contactos de un seller: no hay otro tipo de
+  // destinatario desde el 2026-08-25.
   const destinoCrudo = (cuerpo.destino ?? {}) as Record<string, unknown>;
   const sellerId = typeof destinoCrudo.sellerId === "string" ? destinoCrudo.sellerId : null;
-  const bodegaId = typeof destinoCrudo.bodegaId === "string" ? destinoCrudo.bodegaId : null;
-
-  if (plantilla.rolDestinatario === "seller" && !sellerId) {
-    return error(`El evento "${claveEvento}" va dirigido a un seller: falta destino.sellerId.`, 400);
-  }
-  if (plantilla.rolDestinatario === "bodega" && !bodegaId) {
-    return error(`El evento "${claveEvento}" va dirigido a una bodega: falta destino.bodegaId.`, 400);
+  if (!sellerId) {
+    return error("Falta destino.sellerId: todo aviso va dirigido a los contactos de un seller.", 400);
   }
 
   // ---- Publicar -------------------------------------------------------------
   const evento: EventoWhatsAppSolicitado = {
     name: "notificaciones/whatsapp.solicitado",
-    data: { tenantId, claveEvento, referencia, destino: { sellerId, bodegaId }, variables },
+    data: { tenantId, claveEvento, referencia, destino: { sellerId }, variables },
   };
 
   await inngest.send(evento);

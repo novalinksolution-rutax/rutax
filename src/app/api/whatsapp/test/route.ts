@@ -85,21 +85,33 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   // La causa más común de "no llegó" que NO es un fallo: el directorio no tiene
   // un contacto del rol que la plantilla pide, o lo tiene sin consentimiento.
   const cliente = crearClienteServiceRole();
+  // A qué seller apuntar la prueba. Obligatorio para enviar: todo aviso va a
+  // los contactos de un seller, no hay otro tipo de destinatario.
+  const sellerId = request.nextUrl.searchParams.get("sellerId");
+
   const { data: contactos } = await cliente
     .schema("integraciones")
     .from("whatsapp_contactos")
-    .select("rol, opt_in_estado")
+    .select("seller_id, opt_in_estado, origen")
     .eq("tenant_id", tenantId);
 
-  const filas = (contactos ?? []) as Array<{ rol: string; opt_in_estado: string }>;
+  const filas = (contactos ?? []) as Array<{
+    seller_id: string;
+    opt_in_estado: string;
+    origen: string;
+  }>;
+  const conConsentimiento = filas.filter((c) => c.opt_in_estado === "otorgado");
   const destinatarios = {
     totalContactos: filas.length,
-    conConsentimiento: filas.filter((c) => c.opt_in_estado === "otorgado").length,
-    /** Los que recibirían ESTA prueba: rol `courier` y consentimiento otorgado. */
-    aptosParaEstaPrueba: filas.filter(
-      (c) => c.rol === plantilla?.rolDestinatario && c.opt_in_estado === "otorgado",
-    ).length,
-    rolQuePideLaPlantilla: plantilla?.rolDestinatario ?? "desconocido",
+    conConsentimiento: conConsentimiento.length,
+    /** Cuántos sellers distintos tienen al menos un contacto que sí consintió. */
+    sellersAlcanzables: new Set(conConsentimiento.map((c) => c.seller_id)).size,
+    /** Puesto por el propio seller: el consentimiento más sólido. */
+    delPropioSeller: filas.filter((c) => c.origen === "perfil_seller").length,
+    agregadosPorRutax: filas.filter((c) => c.origen === "agregado_por_rutax").length,
+    aptosParaEstaPrueba: sellerId
+      ? conConsentimiento.filter((c) => c.seller_id === sellerId).length
+      : 0,
   };
 
   // ---- Modo lectura --------------------------------------------------------
@@ -108,7 +120,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       modo: "diagnostico",
       configuracion,
       destinatarios,
-      comoEnviar: "Agrega ?enviar=1 a esta misma URL para mandar un hello_world saltándose Inngest.",
+      comoEnviar:
+        "Agrega ?enviar=1&sellerId=<id> para mandar saltándose Inngest. El sellerId es obligatorio: todo aviso va a los contactos de un seller.",
       ...diagnosticoLegible(configuracion, destinatarios),
     });
   }
@@ -126,6 +139,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  if (!sellerId) {
+    return NextResponse.json(
+      {
+        error: "falta_seller",
+        detalle: "Agrega &sellerId=<id> — todo aviso va a los contactos de un seller.",
+        configuracion,
+        destinatarios,
+      },
+      { status: 400 },
+    );
+  }
+
   // ⚠️ Llamada DIRECTA al servicio, sin pasar por Inngest. Es el punto de esta
   // ruta: si acá llega el mensaje y por el camino normal no, el problema está
   // en la cola y no en Meta ni en la configuración.
@@ -134,7 +159,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     claveEvento: CLAVE_PRUEBA,
     // Distinta en cada intento: si fuera fija, la llave de idempotencia haría
     // que el segundo diagnóstico no enviara nada y pareciera otro fallo.
-    referencia: `diagnostico-${limite.reintentarEnSegundos}-${filas.length}-${Date.now()}`,
+    referencia: `diagnostico-${Date.now()}`,
+    destino: { sellerId },
     variables: [],
   });
 
@@ -157,7 +183,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  */
 function diagnosticoLegible(
   cfg: { sandbox: boolean; credencialesCompletas: boolean; inngestEventKeyPresente: boolean },
-  dest: { aptosParaEstaPrueba: number; rolQuePideLaPlantilla: string; conConsentimiento: number },
+  dest: { aptosParaEstaPrueba: number; conConsentimiento: number; sellersAlcanzables: number },
   resultado?: { enviados: number; mensaje?: string; detalles: Array<{ error?: string }> },
 ): { diagnostico: string } {
   if (cfg.sandbox) {
@@ -172,12 +198,18 @@ function diagnosticoLegible(
         "Faltan credenciales: se necesitan WHATSAPP_ACCESS_TOKEN y WHATSAPP_PHONE_NUMBER_ID en este ambiente.",
     };
   }
-  if (dest.aptosParaEstaPrueba === 0) {
+  if (dest.conConsentimiento === 0) {
     return {
       diagnostico:
-        `No hay a quién escribirle: esta prueba va a contactos de tipo '${dest.rolQuePideLaPlantilla}' ` +
-        `con consentimiento otorgado, y no hay ninguno (tienes ${dest.conConsentimiento} con consentimiento en total). ` +
-        "Créalo en Configuración → Contactos de WhatsApp.",
+        "No hay a quién escribirle: ningún contacto de este courier tiene el consentimiento otorgado. " +
+        "El número lo pone el seller en su perfil; Rutax puede sumar otros desde el backstage.",
+    };
+  }
+  if (resultado && dest.aptosParaEstaPrueba === 0) {
+    return {
+      diagnostico:
+        `Ese seller no tiene ningún contacto con consentimiento. En todo el courier hay ` +
+        `${dest.conConsentimiento} con consentimiento, repartidos en ${dest.sellersAlcanzables} seller(s).`,
     };
   }
   if (resultado && resultado.enviados === 0) {

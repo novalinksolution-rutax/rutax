@@ -457,7 +457,7 @@ async function avisarRetiroPorWhatsApp(
       // retiros al mismo seller el mismo día son dos visitas y por lo tanto
       // dos avisos, que es lo correcto.
       referencia: entrada.sesionId,
-      destino: { sellerId: sesion.seller_id as string, bodegaId: null },
+      destino: { sellerId: sesion.seller_id as string },
       variables: [
         nombreSeller,
         String(resultado.pedidosMarcados),

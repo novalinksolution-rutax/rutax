@@ -35,7 +35,6 @@ export {
   clavesEventoConocidas,
   type ClaveEventoWhatsApp,
   type DefinicionPlantilla,
-  type RolDestinatario,
 } from "./catalogo-plantillas";
 
 export {

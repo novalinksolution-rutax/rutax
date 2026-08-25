@@ -19,7 +19,6 @@ import {
   puedeVerPreparacionDia,
   puedeVerTorreControl,
   puedeGestionarBodegas,
-  puedeGestionarContactosWhatsApp,
 } from "@/modules/identidad/capacidades";
 import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
 import { destinosMovil } from "@/components/app-shell/destinos-movil";
@@ -184,16 +183,9 @@ export default async function LayoutTenant({ children }: { children: React.React
   if (puedeGestionarBodegas(u)) {
     itemsSettings.push({ href: "/configuracion/bodegas", etiqueta: "Bodegas", icono: "bodegas" });
   }
-  // Mismos tres roles que Bodegas y por el mismo motivo (ver capacidades.ts):
-  // el coordinador es quien habla con los sellers a diario. Va DESPUES de
-  // Bodegas porque el contacto de un seller se da de alta mirando sus bodegas.
-  if (puedeGestionarContactosWhatsApp(u)) {
-    itemsSettings.push({
-      href: "/configuracion/whatsapp",
-      etiqueta: "Contactos de WhatsApp",
-      icono: "contactos-whatsapp",
-    });
-  }
+  // Acá vivía «Contactos de WhatsApp». Se retiró el 2026-08-25: los avisos de
+  // WhatsApp los administra RUTAX desde el backstage, no el courier. El número
+  // lo pone el propio seller en su perfil.
   if (puedeGestionarUsuariosYRoles(u)) {
     itemsSettings.push({ href: "/equipo", etiqueta: "Equipo", icono: "equipo" });
   }

@@ -116,23 +116,6 @@ export const CAPACIDADES = [
   // resolverlo sin ir a buscar al dueño.
   "gestionar_bodegas",
 
-  // --- Administrar el directorio de contactos de WhatsApp --------------------
-  // Quien recibe los avisos que Rutax manda por WhatsApp (el seller de una
-  // bodega, el jefe de turno del courier), y —lo que de verdad pesa— DECLARAR
-  // que ese contacto dio su consentimiento.
-  //
-  // Capacidad propia y no `gestionar_bodegas`, aunque los roles coincidan: son
-  // cosas distintas y el dia que alguien quiera separarlas —dejar que un
-  // coordinador cargue bodegas pero no declare consentimientos, por ejemplo—
-  // no habria por donde. Reusar la de bodegas ahorraria diez lineas hoy y
-  // costaria una migracion de RBAC despues.
-  //
-  // Mismos tres roles que bodegas, por el mismo motivo: el coordinador es quien
-  // habla con los sellers todos los dias, y hacerlo esperar al dueno para
-  // agregar un telefono detiene el aviso del retiro de esa jornada.
-  // `administracion` NO: es el rol financiero, y un consentimiento de mensajeria
-  // no es una cifra.
-  "gestionar_contactos_whatsapp",
 
   // --- Forzar la sincronización de una cuenta ML de un seller ----------------
   // Pedir "trae los pedidos de esta cuenta ahora" desde el panel del courier.
@@ -287,7 +270,6 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "ajustar_operacion_diaria",
     "ver_preparacion_dia",
     "gestionar_bodegas",
-    "gestionar_contactos_whatsapp",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
     "ver_reportes_ejecutivos",
@@ -306,7 +288,6 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "ajustar_operacion_diaria",
     "ver_preparacion_dia",
     "gestionar_bodegas",
-    "gestionar_contactos_whatsapp",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
   ],
@@ -327,7 +308,6 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     // y hacerlo esperar al dueño detiene la operación de la mañana. No le
     // concede nada financiero: una bodega no lleva tarifa.
     "gestionar_bodegas",
-    "gestionar_contactos_whatsapp",
     "sincronizar_conexiones_ml",
     "ver_torre_control",
   ],
@@ -653,18 +633,3 @@ export function puedeVerLiquidacionPropia(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ver_liquidacion_propia");
 }
 
-/**
- * Administrar el directorio de contactos de WhatsApp y declarar su
- * consentimiento. Dueño, supervisor y coordinador — los mismos tres que
- * `gestionar_bodegas`, y por el mismo motivo: el coordinador es quien habla con
- * los sellers todos los días.
- *
- * ⚠️ Lo que esta capacidad realmente gobierna no es "agregar un teléfono": es
- * **afirmar que una persona consintió** que Rutax le escriba. Esa afirmación
- * queda en `bitacora_auditoria` con autor y fecha, y es el respaldo que Meta
- * pide si el número recibe reportes. Por eso no se reparte más ancho de lo
- * necesario, y por eso `administracion` queda fuera: es el rol financiero.
- */
-export function puedeGestionarContactosWhatsApp(usuario: UsuarioActual): boolean {
-  return tieneCapacidad(usuario, "gestionar_contactos_whatsapp");
-}
