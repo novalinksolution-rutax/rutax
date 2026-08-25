@@ -36,15 +36,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { PanelAccion } from "@/components/ui/panel-accion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -57,7 +49,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { semaforoSla } from "@/lib/ui/semaforo-sla";
 import { esRutValido } from "@/modules/identidad/rut";
-import type { Conductor, ConductorZona, Zona, ImpactoSla } from "@/modules/operacion/tipos";
+import type {
+  Conductor,
+  ConductorZona,
+  Zona,
+  ImpactoSla,
+} from "@/modules/operacion/tipos";
 import {
   actionActualizarZonasConductor,
   actionActualizarDatosBancarios,
@@ -70,16 +67,21 @@ import { actionMarcarConductorNoDisponible } from "../manifiestos/actions";
 // Panel principal
 // =============================================================================
 
-
 // =============================================================================
 // Dialog — Nuevo conductor (F2 "Ola 1", ítem G)
 // =============================================================================
 
-export function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) => void }) {
+export function DialogNuevoConductor({
+  onCreado,
+}: {
+  onCreado: (c: Conductor) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [nombreCompleto, setNombreCompleto] = useState("");
   const [rut, setRut] = useState("");
-  const [tipoRelacion, setTipoRelacion] = useState<"dependiente" | "independiente">("dependiente");
+  const [tipoRelacion, setTipoRelacion] = useState<
+    "dependiente" | "independiente"
+  >("dependiente");
   const [errorRut, setErrorRut] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [avisoLimite, setAvisoLimite] = useState<{
@@ -103,7 +105,11 @@ export function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) =>
       setErrorRut(null);
       return;
     }
-    setErrorRut(esRutValido(valor) ? null : "RUT inválido. Verifica el número y el dígito verificador.");
+    setErrorRut(
+      esRutValido(valor)
+        ? null
+        : "RUT inválido. Verifica el número y el dígito verificador.",
+    );
   }
 
   function guardar(e: FormEvent) {
@@ -130,7 +136,11 @@ export function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) =>
       const resp = await actionCrearConductor(formData);
       if (!resp.ok) {
         if (resp.motivo === "limite_alcanzado") {
-          setAvisoLimite({ mensaje: resp.mensaje, usoActual: resp.usoActual, limite: resp.limite });
+          setAvisoLimite({
+            mensaje: resp.mensaje,
+            usoActual: resp.usoActual,
+            limite: resp.limite,
+          });
         } else {
           setError(resp.mensaje);
         }
@@ -143,124 +153,135 @@ export function DialogNuevoConductor({ onCreado }: { onCreado: (c: Conductor) =>
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
+    <PanelAccion
+      abierto={open}
+      onOpenChange={(v: boolean) => {
         if (!v) resetear();
         setOpen(v);
       }}
-    >
-      <DialogTrigger asChild>
+      disparador={
         <Button size="sm">
           <UserPlus className="size-4" aria-hidden="true" />
           Crear conductor
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Crear conductor</DialogTitle>
-        </DialogHeader>
+      }
+      titulo="Crear conductor"
+      subtitulo="Entra a la nómina. Se marca disponible él, desde su app."
+    >
+      <form onSubmit={guardar} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="nuevo-conductor-nombre">Nombre completo</Label>
+          <Input
+            id="nuevo-conductor-nombre"
+            value={nombreCompleto}
+            onChange={(e) => {
+              setNombreCompleto(e.target.value);
+              setError(null);
+            }}
+            placeholder="Ej: Juan Pérez Soto"
+            disabled={pendiente}
+            autoComplete="off"
+            required
+          />
+        </div>
 
-        <form onSubmit={guardar} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="nuevo-conductor-nombre">Nombre completo</Label>
-            <Input
-              id="nuevo-conductor-nombre"
-              value={nombreCompleto}
-              onChange={(e) => {
-                setNombreCompleto(e.target.value);
-                setError(null);
-              }}
-              placeholder="Ej: Juan Pérez Soto"
-              disabled={pendiente}
-              autoComplete="off"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="nuevo-conductor-rut">RUT</Label>
-            <Input
-              id="nuevo-conductor-rut"
-              value={rut}
-              onChange={(e) => {
-                setRut(e.target.value);
-                validarRutInline(e.target.value);
-                setError(null);
-              }}
-              placeholder="12345678-9"
-              disabled={pendiente}
-              autoComplete="off"
-              aria-invalid={Boolean(errorRut)}
-              aria-describedby={errorRut ? "nuevo-conductor-rut-error" : undefined}
-              required
-            />
-            {errorRut && (
-              <p id="nuevo-conductor-rut-error" className="text-xs text-destructive">
-                {errorRut}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="nuevo-conductor-relacion">Tipo de relación</Label>
-            <Select
-              value={tipoRelacion}
-              onValueChange={(v) => setTipoRelacion(v as "dependiente" | "independiente")}
-              disabled={pendiente}
+        <div className="space-y-2">
+          <Label htmlFor="nuevo-conductor-rut">RUT</Label>
+          <Input
+            id="nuevo-conductor-rut"
+            value={rut}
+            onChange={(e) => {
+              setRut(e.target.value);
+              validarRutInline(e.target.value);
+              setError(null);
+            }}
+            placeholder="12345678-9"
+            disabled={pendiente}
+            autoComplete="off"
+            aria-invalid={Boolean(errorRut)}
+            aria-describedby={
+              errorRut ? "nuevo-conductor-rut-error" : undefined
+            }
+            required
+          />
+          {errorRut && (
+            <p
+              id="nuevo-conductor-rut-error"
+              className="text-xs text-destructive"
             >
-              <SelectTrigger id="nuevo-conductor-relacion">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dependiente">Dependiente (contrato de trabajo)</SelectItem>
-                <SelectItem value="independiente">Independiente (boleta de honorarios)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {avisoLimite && (
-            <Alert className="border-warning bg-warning-subtle text-warning-subtle-foreground">
-              <AlertTriangle className="text-warning" />
-              <AlertDescription>
-                <p>{avisoLimite.mensaje}</p>
-                <p className="mt-1 text-xs tabular-nums opacity-80">
-                  {avisoLimite.usoActual} de {avisoLimite.limite} conductores en tu plan actual.
-                </p>
-                <Button asChild size="sm" variant="outline" className="mt-2">
-                  <Link href="/configuracion/plan">Ver mi plan</Link>
-                </Button>
-              </AlertDescription>
-            </Alert>
+              {errorRut}
+            </p>
           )}
+        </div>
 
-          {error && (
-            <Alert variant="destructive">
-              <ShieldAlert />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+        <div className="space-y-2">
+          <Label htmlFor="nuevo-conductor-relacion">Tipo de relación</Label>
+          <Select
+            value={tipoRelacion}
+            onValueChange={(v) =>
+              setTipoRelacion(v as "dependiente" | "independiente")
+            }
+            disabled={pendiente}
+          >
+            <SelectTrigger id="nuevo-conductor-relacion">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="dependiente">
+                Dependiente (contrato de trabajo)
+              </SelectItem>
+              <SelectItem value="independiente">
+                Independiente (boleta de honorarios)
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={pendiente}>
-                Cancelar
+        {avisoLimite && (
+          <Alert className="border-warning bg-warning-subtle text-warning-subtle-foreground">
+            <AlertTriangle className="text-warning" />
+            <AlertDescription>
+              <p>{avisoLimite.mensaje}</p>
+              <p className="mt-1 text-xs tabular-nums opacity-80">
+                {avisoLimite.usoActual} de {avisoLimite.limite} conductores en
+                tu plan actual.
+              </p>
+              <Button asChild size="sm" variant="outline" className="mt-2">
+                <Link href="/configuracion/plan">Ver mi plan</Link>
               </Button>
-            </DialogClose>
-            <Button type="submit" disabled={pendiente || Boolean(errorRut)}>
-              {pendiente ? (
-                <>
-                  <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
-                  Creando…
-                </>
-              ) : (
-                "Crear conductor"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {error && (
+          <Alert variant="destructive">
+            <ShieldAlert />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          <Button type="submit" disabled={pendiente || Boolean(errorRut)}>
+            {pendiente ? (
+              <>
+                <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
+                Creando…
+              </>
+            ) : (
+              "Crear el conductor"
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pendiente}
+            onClick={() => setOpen(false)}
+          >
+            Volver
+          </Button>
+        </div>
+      </form>
+    </PanelAccion>
   );
 }
 
@@ -311,7 +332,9 @@ export function EditorZonasConductor({
     setError(null);
     setExito(null);
     setZonasSeleccionadas((prev) =>
-      prev.includes(zonaId) ? prev.filter((z) => z !== zonaId) : [...prev, zonaId],
+      prev.includes(zonaId)
+        ? prev.filter((z) => z !== zonaId)
+        : [...prev, zonaId],
     );
   }
 
@@ -319,7 +342,10 @@ export function EditorZonasConductor({
     setError(null);
     setExito(null);
     iniciarTransicion(async () => {
-      const resp = await actionActualizarZonasConductor(conductor.id, zonasSeleccionadas);
+      const resp = await actionActualizarZonasConductor(
+        conductor.id,
+        zonasSeleccionadas,
+      );
       if (!resp.ok) {
         setError(resp.mensaje);
         return;
@@ -335,10 +361,15 @@ export function EditorZonasConductor({
   if (zonasTenant.length === 0) {
     return (
       <div>
-        <p className="text-sm font-medium text-foreground mb-1">Zonas preferentes</p>
+        <p className="text-sm font-medium text-foreground mb-1">
+          Zonas preferentes
+        </p>
         <p className="text-sm text-muted-foreground">
           Aún no tienes zonas configuradas.{" "}
-          <a href="/configuracion/zonas" className="underline hover:text-foreground">
+          <a
+            href="/configuracion/zonas"
+            className="underline hover:text-foreground"
+          >
             Configúralas aquí.
           </a>
         </p>
@@ -351,7 +382,12 @@ export function EditorZonasConductor({
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-foreground">Zonas preferentes</p>
         {!cargado && (
-          <Button variant="ghost" size="sm" onClick={cargar} disabled={cargando}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={cargar}
+            disabled={cargando}
+          >
             {cargando ? (
               <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
             ) : null}
@@ -373,7 +409,9 @@ export function EditorZonasConductor({
                 <label
                   key={zona.id}
                   className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
-                    checked ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                    checked
+                      ? "bg-primary/10 text-primary"
+                      : "text-foreground hover:bg-muted"
                   } ${!zona.activa ? "opacity-50" : ""}`}
                 >
                   <input
@@ -407,7 +445,12 @@ export function EditorZonasConductor({
             </Alert>
           )}
 
-          <Button onClick={guardar} disabled={pendiente} variant="outline" size="sm">
+          <Button
+            onClick={guardar}
+            disabled={pendiente}
+            variant="outline"
+            size="sm"
+          >
             {pendiente ? (
               <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
             ) : null}
@@ -448,7 +491,9 @@ export function EditorDatosBancarios({
   puedeEditar: boolean;
   onActualizado: (c: Conductor) => void;
 }) {
-  const tieneDatos = Boolean(conductor.banco && conductor.tipoCuenta && conductor.numeroCuenta);
+  const tieneDatos = Boolean(
+    conductor.banco && conductor.tipoCuenta && conductor.numeroCuenta,
+  );
   const [editando, setEditando] = useState(false);
   const [banco, setBanco] = useState(conductor.banco ?? "");
   const [tipoCuenta, setTipoCuenta] = useState(conductor.tipoCuenta ?? "");
@@ -515,7 +560,10 @@ export function EditorDatosBancarios({
       {/* Encabezado de sección */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Banknote className="size-4 text-muted-foreground" aria-hidden="true" />
+          <Banknote
+            className="size-4 text-muted-foreground"
+            aria-hidden="true"
+          />
           <p className="text-sm font-medium text-foreground">Datos bancarios</p>
         </div>
         {puedeEditar && !editando && (
@@ -531,11 +579,18 @@ export function EditorDatosBancarios({
           {tieneDatos ? (
             <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 space-y-1">
               <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-                <span className="font-medium text-foreground">{conductor.banco}</span>
+                <CheckCircle2
+                  className="size-4 shrink-0 text-success"
+                  aria-hidden="true"
+                />
+                <span className="font-medium text-foreground">
+                  {conductor.banco}
+                </span>
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground">
-                  {conductor.tipoCuenta ? ETIQUETAS_TIPO_CUENTA[conductor.tipoCuenta] : ""}
+                  {conductor.tipoCuenta
+                    ? ETIQUETAS_TIPO_CUENTA[conductor.tipoCuenta]
+                    : ""}
                 </span>
               </div>
               <p className="text-sm text-muted-foreground pl-6 font-mono tracking-wide">
@@ -565,7 +620,10 @@ export function EditorDatosBancarios({
 
       {/* Formulario de edición */}
       {editando && (
-        <form onSubmit={guardar} className="space-y-4 rounded-lg border border-border p-4">
+        <form
+          onSubmit={guardar}
+          className="space-y-4 rounded-lg border border-border p-4"
+        >
           {/* Banco */}
           <div className="space-y-2">
             <Label htmlFor={`banco-${conductor.id}`}>Banco</Label>
@@ -593,7 +651,9 @@ export function EditorDatosBancarios({
 
           {/* Tipo de cuenta */}
           <div className="space-y-2">
-            <Label htmlFor={`tipo-cuenta-${conductor.id}`}>Tipo de cuenta</Label>
+            <Label htmlFor={`tipo-cuenta-${conductor.id}`}>
+              Tipo de cuenta
+            </Label>
             <Select
               value={tipoCuenta}
               onValueChange={(v) => {
@@ -616,7 +676,9 @@ export function EditorDatosBancarios({
 
           {/* Número de cuenta */}
           <div className="space-y-2">
-            <Label htmlFor={`numero-cuenta-${conductor.id}`}>Número de cuenta</Label>
+            <Label htmlFor={`numero-cuenta-${conductor.id}`}>
+              Número de cuenta
+            </Label>
             <Input
               id={`numero-cuenta-${conductor.id}`}
               type="text"
@@ -637,7 +699,8 @@ export function EditorDatosBancarios({
               id={`numero-cuenta-hint-${conductor.id}`}
               className="text-xs text-muted-foreground"
             >
-              Solo dígitos. El número se guardará de forma segura; solo verás los últimos 4.
+              Solo dígitos. El número se guardará de forma segura; solo verás
+              los últimos 4.
             </p>
           </div>
 
@@ -652,14 +715,22 @@ export function EditorDatosBancarios({
             <Button type="submit" disabled={pendiente}>
               {pendiente ? (
                 <>
-                  <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
+                  <RefreshCw
+                    className="size-4 animate-spin"
+                    aria-hidden="true"
+                  />
                   Guardando…
                 </>
               ) : (
                 "Guardar datos bancarios"
               )}
             </Button>
-            <Button type="button" variant="ghost" onClick={cancelar} disabled={pendiente}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={cancelar}
+              disabled={pendiente}
+            >
               Cancelar
             </Button>
           </div>
@@ -707,7 +778,11 @@ export function SeccionRedistribucion({
   function confirmar() {
     setError(null);
     iniciarTransicion(async () => {
-      const resp = await actionMarcarConductorNoDisponible(conductor.id, motivo, fechaHoy);
+      const resp = await actionMarcarConductorNoDisponible(
+        conductor.id,
+        motivo,
+        fechaHoy,
+      );
       if (!resp.ok) {
         setError(resp.mensaje);
         return;
@@ -750,11 +825,16 @@ export function SeccionRedistribucion({
             Se cayó a mitad de ruta
           </p>
           <p className="text-xs text-muted-foreground">
-            Reparte sus paradas abiertas entre los demás y lo saca de la asignación de hoy. Para
-            volver, se marca él desde su app.
+            Reparte sus paradas abiertas entre los demás y lo saca de la
+            asignación de hoy. Para volver, se marca él desde su app.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={abrir} className="shrink-0 border-warning">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={abrir}
+          className="shrink-0 border-warning"
+        >
           <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
           Redistribuir sus paradas
         </Button>
@@ -789,7 +869,11 @@ interface PropsDialogRedistribucion {
   onMotivo: (valor: string) => void;
   mostrarConfirmacion: boolean;
   error: string | null;
-  resumen: { reasignadas: number; sinConductor: number; idempotente: boolean } | null;
+  resumen: {
+    reasignadas: number;
+    sinConductor: number;
+    idempotente: boolean;
+  } | null;
   impactoSla: ImpactoSla[] | null;
   onConfirmar: () => void;
   onCerrar: () => void;
@@ -822,7 +906,10 @@ function DialogRedistribucion({
       />
       <div className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-card p-6 ring-1 ring-foreground/10">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden="true" />
+          <AlertTriangle
+            className="mt-0.5 size-5 shrink-0 text-warning"
+            aria-hidden="true"
+          />
           <div className="flex-1">
             <h2 id="dialog-redistrib-titulo" className="font-semibold">
               Marcar a {conductor.nombre} como no disponible
@@ -830,10 +917,14 @@ function DialogRedistribucion({
 
             {mostrarConfirmacion && (
               <>
-                <p id="dialog-redistrib-desc" className="mt-2 text-sm text-muted-foreground">
-                  Se marcará al conductor como no disponible y sus paradas abiertas de hoy se
-                  redistribuirán automáticamente entre los conductores restantes del pool.
-                  Las paradas en ruta o terminales no se tocan.
+                <p
+                  id="dialog-redistrib-desc"
+                  className="mt-2 text-sm text-muted-foreground"
+                >
+                  Se marcará al conductor como no disponible y sus paradas
+                  abiertas de hoy se redistribuirán automáticamente entre los
+                  conductores restantes del pool. Las paradas en ruta o
+                  terminales no se tocan.
                 </p>
                 <div className="mt-4 space-y-1.5">
                   <Label htmlFor="motivo-redistribuir">Motivo</Label>
@@ -845,7 +936,8 @@ function DialogRedistribucion({
                     placeholder="Se accidentó y no puede seguir la ruta."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Queda en la bitácora con tu nombre, junto a la redistribución.
+                    Queda en la bitácora con tu nombre, junto a la
+                    redistribución.
                   </p>
                 </div>
               </>
@@ -883,20 +975,32 @@ function DialogRedistribucion({
                     </p>
                     <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
                       {impactoSla.map((item) => {
-                        const semaforo = semaforoSla(item.slaPctActual, item.objetivoPct);
+                        const semaforo = semaforoSla(
+                          item.slaPctActual,
+                          item.objetivoPct,
+                        );
                         return (
-                          <div key={item.sellerId} className="flex items-center justify-between gap-4 px-4 py-3">
+                          <div
+                            key={item.sellerId}
+                            className="flex items-center justify-between gap-4 px-4 py-3"
+                          >
                             <div>
-                              <p className="text-sm font-medium">{item.sellerNombre}</p>
+                              <p className="text-sm font-medium">
+                                {item.sellerNombre}
+                              </p>
                               {item.paradasSinConductor > 0 && (
                                 <p className="text-xs text-muted-foreground">
-                                  {item.paradasSinConductor} parada{item.paradasSinConductor !== 1 ? "s" : ""} sin conductor
+                                  {item.paradasSinConductor} parada
+                                  {item.paradasSinConductor !== 1 ? "s" : ""}{" "}
+                                  sin conductor
                                 </p>
                               )}
                             </div>
                             <div className="flex items-center gap-2 text-sm">
                               <span className="tabular-nums text-muted-foreground">
-                                {item.slaPctActual !== null ? `${item.slaPctActual.toFixed(1)}%` : "—"}
+                                {item.slaPctActual !== null
+                                  ? `${item.slaPctActual.toFixed(1)}%`
+                                  : "—"}
                               </span>
                               <span className="text-muted-foreground">/</span>
                               <span className="tabular-nums text-muted-foreground">
@@ -919,7 +1023,8 @@ function DialogRedistribucion({
                 {resumen.sinConductor > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Las paradas sin receptor quedaron en estado{" "}
-                    <strong>pendiente de asignación</strong> y pueden reasignarse manualmente.
+                    <strong>pendiente de asignación</strong> y pueden
+                    reasignarse manualmente.
                   </p>
                 )}
               </div>
@@ -939,7 +1044,10 @@ function DialogRedistribucion({
             >
               {pendiente ? (
                 <>
-                  <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
+                  <RefreshCw
+                    className="size-4 animate-spin"
+                    aria-hidden="true"
+                  />
                   Procesando…
                 </>
               ) : (

@@ -3,16 +3,8 @@
 import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Webhook } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { PanelAccion } from "@/components/ui/panel-accion";
 import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,73 +71,82 @@ function DialogCrearEndpoint({ onCreado }: { onCreado: () => void }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { setError(null); setUrlError(null); } setOpen(v); }}>
-      <DialogTrigger asChild>
-        <Button size="sm">Añadir endpoint</Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Nuevo endpoint de webhook</DialogTitle>
-        </DialogHeader>
-
-        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="webhook-url">URL del endpoint</Label>
-            <Input
-              id="webhook-url"
-              name="url"
-              type="url"
-              required
-              placeholder="https://tu-servidor.com/webhook"
-              onChange={(e) => {
-                if (urlError) setUrlError(validarUrl(e.target.value));
-              }}
-              aria-describedby={urlError ? "url-error" : undefined}
-              aria-invalid={!!urlError}
-            />
-            {urlError && (
-              <p id="url-error" role="alert" className="text-xs text-destructive">
-                {urlError}
-              </p>
-            )}
-          </div>
-
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Eventos a escuchar</legend>
-            <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
-              {EVENTOS_DISPONIBLES.map((ev) => (
-                <label key={ev.valor} className="flex items-center gap-2.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    name={ev.valor}
-                    className="size-4 rounded border-border accent-primary"
-                  />
-                  <span className="font-mono text-xs">{ev.valor}</span>
-                  <span className="text-muted-foreground">— {ev.etiqueta}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
+    <PanelAccion
+      abierto={open}
+      onOpenChange={(v: boolean) => {
+        if (!v) {
+          setError(null);
+          setUrlError(null);
+        }
+        setOpen(v);
+      }}
+      disparador={<Button size="sm">Añadir endpoint</Button>}
+      titulo="Avisar a otro sistema"
+      subtitulo="Te mandamos un aviso cuando algo pasa acá."
+    >
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-1.5">
+          <Label htmlFor="webhook-url">URL del endpoint</Label>
+          <Input
+            id="webhook-url"
+            name="url"
+            type="url"
+            required
+            placeholder="https://tu-servidor.com/webhook"
+            onChange={(e) => {
+              if (urlError) setUrlError(validarUrl(e.target.value));
+            }}
+            aria-describedby={urlError ? "url-error" : undefined}
+            aria-invalid={!!urlError}
+          />
+          {urlError && (
+            <p id="url-error" role="alert" className="text-xs text-destructive">
+              {urlError}
             </p>
           )}
+        </div>
 
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={isPending}>
-                Cancelar
-              </Button>
-            </DialogClose>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Creando..." : "Crear endpoint"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Eventos a escuchar</legend>
+          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+            {EVENTOS_DISPONIBLES.map((ev) => (
+              <label
+                key={ev.valor}
+                className="flex items-center gap-2.5 text-sm cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  name={ev.valor}
+                  className="size-4 rounded border-border accent-primary"
+                />
+                <span className="font-mono text-xs">{ev.valor}</span>
+                <span className="text-muted-foreground">— {ev.etiqueta}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 pt-1">
+          <Button type="submit" disabled={isPending}>
+            {isPending ? "Creando…" : "Crear el endpoint"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => setOpen(false)}
+          >
+            Volver
+          </Button>
+        </div>
+      </form>
+    </PanelAccion>
   );
 }
 
@@ -174,9 +175,10 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
         <p className="font-mono text-sm break-all">{endpoint.url}</p>
         <Badge
           variant="outline"
-          className={endpoint.activo
-            ? "shrink-0 border-success/30 bg-success-subtle text-success-subtle-foreground"
-            : "shrink-0 text-muted-foreground"
+          className={
+            endpoint.activo
+              ? "shrink-0 border-success/30 bg-success-subtle text-success-subtle-foreground"
+              : "shrink-0 text-muted-foreground"
           }
         >
           {endpoint.activo ? "Activo" : "Inactivo"}
@@ -193,7 +195,8 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
 
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
         <span className="text-xs text-muted-foreground">
-          Reintentos: {endpoint.reintentoMax} · Creado {formatearFecha(endpoint.creadoEn)}
+          Reintentos: {endpoint.reintentoMax} · Creado{" "}
+          {formatearFecha(endpoint.creadoEn)}
         </span>
         <div className="flex items-center gap-2">
           <Button
@@ -202,7 +205,11 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
             disabled={isTogglePending || isDeletePending}
             onClick={handleToggle}
           >
-            {isTogglePending ? "..." : endpoint.activo ? "Desactivar" : "Activar"}
+            {isTogglePending
+              ? "..."
+              : endpoint.activo
+                ? "Desactivar"
+                : "Activar"}
           </Button>
           {/* Regla 37. Y la consecuencia real no es «se borra un endpoint»:
               es que los avisos dejan de llegar sin que nadie se entere, que es
@@ -217,8 +224,9 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
             titulo="Vas a eliminar este endpoint de webhooks"
             consecuencia={
               <>
-                Rutax <strong>deja de enviarle eventos</strong> y no queda registro del
-                endpoint. Si solo quieres cortar el envío por un rato,
+                Rutax <strong>deja de enviarle eventos</strong> y no queda
+                registro del endpoint. Si solo quieres cortar el envío por un
+                rato,
                 <strong> desactívalo</strong>: eso se revierte en un clic.
               </>
             }
@@ -266,7 +274,8 @@ export function PanelWebhooks({
         <div>
           <h2 className="text-lg font-semibold">Endpoints de Webhook</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Rutax enviará un POST a estas URLs cuando ocurran los eventos seleccionados.
+            Rutax enviará un POST a estas URLs cuando ocurran los eventos
+            seleccionados.
           </p>
         </div>
         <DialogCrearEndpoint onCreado={() => router.refresh()} />
@@ -312,8 +321,8 @@ function UltimosAvisos({ avisos }: { avisos: AvisoWebhookRow[] }) {
     return (
       <div className="border border-line bg-bg-sunken px-4 py-6 text-center">
         <p className="text-sm text-fg-muted">
-          Todavía no hemos mandado ningún aviso. El primero sale con el próximo pedido que cierre
-          uno de los eventos que elegiste.
+          Todavía no hemos mandado ningún aviso. El primero sale con el próximo
+          pedido que cierre uno de los eventos que elegiste.
         </p>
       </div>
     );
@@ -327,10 +336,18 @@ function UltimosAvisos({ avisos }: { avisos: AvisoWebhookRow[] }) {
 
       <ul className="divide-y divide-line-subtle border border-line bg-bg-raised">
         {avisos.map((a) => (
-          <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
+          <li
+            key={a.id}
+            className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2"
+          >
             <span className="flex items-baseline gap-2">
-              <DistintivoEstado tono={TONO_AVISO[a.estado]} etiqueta={ETIQUETA_AVISO[a.estado]} />
-              <span className="rx-num font-mono text-xs text-fg-muted">{a.eventoTipo}</span>
+              <DistintivoEstado
+                tono={TONO_AVISO[a.estado]}
+                etiqueta={ETIQUETA_AVISO[a.estado]}
+              />
+              <span className="rx-num font-mono text-xs text-fg-muted">
+                {a.eventoTipo}
+              </span>
             </span>
             <span className="rx-num font-mono text-xs text-fg-subtle tabular-nums">
               {formatearFechaHora(a.enviadoEn ?? a.creadoEn)}
@@ -343,7 +360,8 @@ function UltimosAvisos({ avisos }: { avisos: AvisoWebhookRow[] }) {
       </ul>
 
       <p className="text-xs leading-relaxed text-fg-subtle">
-        Reintentamos {REINTENTOS_POR_DEFECTO} veces y después dejamos de intentar.{" "}
+        Reintentamos {REINTENTOS_POR_DEFECTO} veces y después dejamos de
+        intentar.{" "}
         <span className="font-medium text-fg-muted">
           Si tu sistema estuvo caído, esos avisos se perdieron
         </span>{" "}
@@ -366,12 +384,14 @@ const ETIQUETA_AVISO: Record<AvisoWebhookRow["estado"], string> = {
   descartado: "No se entregó",
 };
 
-const TONO_AVISO: Record<AvisoWebhookRow["estado"], "balanced" | "progress" | "attention" | "fault"> =
-  {
-    pendiente: "progress",
-    enviando: "progress",
-    enviado: "balanced",
-    // Reintentando todavía puede salir bien: atención, no falla.
-    fallido: "attention",
-    descartado: "fault",
-  };
+const TONO_AVISO: Record<
+  AvisoWebhookRow["estado"],
+  "balanced" | "progress" | "attention" | "fault"
+> = {
+  pendiente: "progress",
+  enviando: "progress",
+  enviado: "balanced",
+  // Reintentando todavía puede salir bien: atención, no falla.
+  fallido: "attention",
+  descartado: "fault",
+};

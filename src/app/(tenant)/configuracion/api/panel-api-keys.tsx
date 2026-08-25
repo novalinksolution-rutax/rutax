@@ -3,25 +3,14 @@
 import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-  DialogClose,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { PanelAccion } from "@/components/ui/panel-accion";
 import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  accionCrearApiKey,
-  accionRevocarApiKey,
-} from "./acciones";
+import { accionCrearApiKey, accionRevocarApiKey } from "./acciones";
 import { formatearFecha } from "@/lib/formato-cl";
 import { CredencialUnaSolaVez } from "@/components/ui/credencial-una-sola-vez";
 
@@ -75,7 +64,7 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
         return;
       }
       formRef.current?.reset();
-      setAlerta({ clave: resultado.clave ?? '' });
+      setAlerta({ clave: resultado.clave ?? "" });
     });
   }
 
@@ -86,17 +75,25 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { setAlerta(null); setError(null); } setOpen(v); }}>
-      <DialogTrigger asChild>
-        <Button size="sm">Nueva API key</Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Nueva API key</DialogTitle>
-        </DialogHeader>
-
-        {alerta ? (
-          /* ⚠️ REGLA 31 · «mostrada · copiada · advertencia PREVIA».
+    /* Panel y no modal centrado: en teléfono el modal dejaba la clave —el
+       texto que hay que copiar AHORA porque no se vuelve a mostrar— en una
+       caja de 512 px con scroll propio. El panel es hoja inferior ahí y lateral
+       en escritorio. */
+    <PanelAccion
+      abierto={open}
+      onOpenChange={(v: boolean) => {
+        if (!v) {
+          setAlerta(null);
+          setError(null);
+        }
+        setOpen(v);
+      }}
+      disparador={<Button size="sm">Nueva API key</Button>}
+      titulo="Nueva API key"
+      subtitulo="Para que tus propios sistemas lean y escriban en Rutax."
+    >
+      {alerta ? (
+        /* ⚠️ REGLA 31 · «mostrada · copiada · advertencia PREVIA».
              Las dos primeras estaban; la tercera no. El aviso «copia esta
              clave ahora» aparecía junto a la clave YA generada, así que quien
              apretó «Crear» no sabía que abría una puerta de un solo sentido.
@@ -104,73 +101,79 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
              Y el botón de «Entendido» estaba habilitado desde el primer
              instante: un clic de más y la credencial se perdía para siempre,
              sin nada que lo impidiera. */
-          <CredencialUnaSolaVez
-            valor={alerta.clave}
-            etiqueta="Tu API key"
-            consecuencia={
-              <>
-                Si la pierdes no se puede recuperar: hay que revocar esta y crear otra, y
-                cambiarla en todo lo que la use.
-              </>
-            }
-            onConfirmar={handleEntendido}
-          />
-        ) : (
-          <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
-            {/* La advertencia PREVIA (regla 31): se dice antes de crear, no
+        <CredencialUnaSolaVez
+          valor={alerta.clave}
+          etiqueta="Tu API key"
+          consecuencia={
+            <>
+              Si la pierdes no se puede recuperar: hay que revocar esta y crear
+              otra, y cambiarla en todo lo que la use.
+            </>
+          }
+          onConfirmar={handleEntendido}
+        />
+      ) : (
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
+          {/* La advertencia PREVIA (regla 31): se dice antes de crear, no
                 después de tener la clave en pantalla. */}
-            <p className="border border-line bg-bg-sunken px-3 py-2.5 text-xs leading-relaxed text-fg-muted">
-              La clave se muestra <strong className="text-fg">una sola vez</strong>, al crearla.
-              Tenla a mano dónde vas a pegarla antes de continuar.
-            </p>
-            <div className="space-y-1.5">
-              <Label htmlFor="nombre-key">Nombre</Label>
-              <Input
-                id="nombre-key"
-                name="nombre"
-                required
-                placeholder="ej. ERP Producción"
-                autoComplete="off"
-              />
+          <p className="border border-line bg-bg-sunken px-3 py-2.5 text-xs leading-relaxed text-fg-muted">
+            La clave se muestra{" "}
+            <strong className="text-fg">una sola vez</strong>, al crearla. Tenla
+            a mano dónde vas a pegarla antes de continuar.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="nombre-key">Nombre</Label>
+            <Input
+              id="nombre-key"
+              name="nombre"
+              required
+              placeholder="ej. ERP Producción"
+              autoComplete="off"
+            />
+          </div>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Permisos</legend>
+            <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+              {PERMISOS_DISPONIBLES.map((p) => (
+                <label
+                  key={p.valor}
+                  className="flex items-center gap-2.5 text-sm cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    name={p.valor}
+                    className="size-4 rounded border-border accent-primary"
+                  />
+                  <span className="font-mono text-xs">{p.valor}</span>
+                  <span className="text-muted-foreground">— {p.etiqueta}</span>
+                </label>
+              ))}
             </div>
+          </fieldset>
 
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Permisos</legend>
-              <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
-                {PERMISOS_DISPONIBLES.map((p) => (
-                  <label key={p.valor} className="flex items-center gap-2.5 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      name={p.valor}
-                      className="size-4 rounded border-border accent-primary"
-                    />
-                    <span className="font-mono text-xs">{p.valor}</span>
-                    <span className="text-muted-foreground">— {p.etiqueta}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
 
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isPending}>
-                  Cancelar
-                </Button>
-              </DialogClose>
-              <Button type="submit" disabled={isPending}>
-                {isPending ? "Creando..." : "Crear key"}
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
+          <div className="flex items-center gap-2 pt-1">
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "Creando…" : "Crear la key"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => setOpen(false)}
+            >
+              Volver
+            </Button>
+          </div>
+        </form>
+      )}
+    </PanelAccion>
   );
 }
 
@@ -189,7 +192,9 @@ function FilaApiKey({ row }: { row: ApiKeyRow }) {
     <tr className="hover:bg-muted/30 transition-colors">
       <td className="px-4 py-3 font-medium">{row.nombre}</td>
       <td className="px-4 py-3">
-        <span className="font-mono text-xs text-muted-foreground">{row.prefijo}…</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {row.prefijo}…
+        </span>
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-wrap gap-1">
@@ -229,9 +234,10 @@ function FilaApiKey({ row }: { row: ApiKeyRow }) {
           titulo={`Vas a revocar «${row.nombre}»`}
           consecuencia={
             <>
-              Todo lo que use esta clave <strong>deja de funcionar al instante</strong> y no se
-              puede reactivar: hay que crear otra y cambiarla donde esté puesta. Si no sabes qué
-              la usa, revisa antes.
+              Todo lo que use esta clave{" "}
+              <strong>deja de funcionar al instante</strong> y no se puede
+              reactivar: hay que crear otra y cambiarla donde esté puesta. Si no
+              sabes qué la usa, revisa antes.
             </>
           }
           resumen={[
@@ -261,7 +267,9 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
         <th className="px-4 py-2">Permisos</th>
         <th className="hidden px-4 py-2 sm:table-cell">Última llamada</th>
         <th className="hidden px-4 py-2 md:table-cell">Creada</th>
-        <th className="px-4 py-2"><span className="sr-only">Acciones</span></th>
+        <th className="px-4 py-2">
+          <span className="sr-only">Acciones</span>
+        </th>
       </tr>
     </thead>
   );
@@ -272,7 +280,8 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
         <div>
           <h2 className="text-lg font-semibold">API Keys</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Credenciales para integraciones externas. Cada key tiene permisos acotados.
+            Credenciales para integraciones externas. Cada key tiene permisos
+            acotados.
           </p>
         </div>
         <DialogCrearKey onCreada={() => router.refresh()} />
@@ -292,7 +301,10 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
             <section aria-label="API keys activas">
               <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm" aria-label="API keys activas">
+                  <table
+                    className="w-full text-sm"
+                    aria-label="API keys activas"
+                  >
                     {encabezadoTabla}
                     <tbody className="divide-y divide-border">
                       {activas.map((k) => (
@@ -312,24 +324,34 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
                 onClick={() => setMostrarRevocadas((v) => !v)}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                {mostrarRevocadas ? "Ocultar" : "Mostrar"} revocadas ({revocadas.length})
+                {mostrarRevocadas ? "Ocultar" : "Mostrar"} revocadas (
+                {revocadas.length})
               </button>
               {mostrarRevocadas && (
                 <div className="mt-2 overflow-hidden rounded-lg border bg-card opacity-60 shadow-sm">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm" aria-label="API keys revocadas">
+                    <table
+                      className="w-full text-sm"
+                      aria-label="API keys revocadas"
+                    >
                       {encabezadoTabla}
                       <tbody className="divide-y divide-border">
                         {revocadas.map((k) => (
                           <tr key={k.id} className="text-muted-foreground">
                             <td className="px-4 py-2.5">{k.nombre}</td>
                             <td className="px-4 py-2.5">
-                              <span className="font-mono text-xs">{k.prefijo}…</span>
+                              <span className="font-mono text-xs">
+                                {k.prefijo}…
+                              </span>
                             </td>
                             <td className="px-4 py-2.5">
                               <div className="flex flex-wrap gap-1">
                                 {k.permisos.map((p) => (
-                                  <Badge key={p} variant="outline" className="font-mono text-xs">
+                                  <Badge
+                                    key={p}
+                                    variant="outline"
+                                    className="font-mono text-xs"
+                                  >
                                     {p}
                                   </Badge>
                                 ))}
