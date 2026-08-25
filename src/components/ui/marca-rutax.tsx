@@ -94,24 +94,51 @@ export function SimboloRutax({
  */
 export function MarcaRutax({
   version = "reducida",
+  /**
+   * `normal` es el tamaño de encabezado de producto, que es donde la marca
+   * acompaña y no protagoniza.
+   *
+   * `grande` existe para **la puerta**: en el login la marca no acompaña a nada
+   * —es lo primero y a veces lo único que hay sobre el formulario— y al tamaño
+   * de encabezado se leía como un detalle de esquina en vez de como la firma de
+   * la pantalla. Las proporciones no cambian: crecen los dos elementos juntos.
+   */
+  tamano = "normal",
   className,
 }: {
   version?: "completa" | "reducida" | "simbolo";
+  tamano?: "normal" | "grande";
   className?: string;
 }) {
+  const grande = tamano === "grande";
+
   if (version === "simbolo") {
-    return <SimboloRutax className={cn("size-6", className)} titulo="Rutax" />;
+    return (
+      <SimboloRutax className={cn(grande ? "size-10" : "size-6", className)} titulo="Rutax" />
+    );
   }
 
   return (
-    <span className={cn("inline-flex items-center gap-2", className)}>
-      <SimboloRutax className="size-6" />
+    <span className={cn("inline-flex items-center", grande ? "gap-3" : "gap-2", className)}>
+      <SimboloRutax className={grande ? "size-10" : "size-6"} />
       <span className="flex flex-col leading-none">
         {/* El logotipo va en la tipografía de titulares y en peso 700: es un
             nombre propio, no un rótulo de interfaz. */}
-        <span className="font-heading text-base font-bold tracking-[-0.02em]">Rutax</span>
+        <span
+          className={cn(
+            "font-heading font-bold tracking-[-0.02em]",
+            grande ? "text-[28px]" : "text-base",
+          )}
+        >
+          Rutax
+        </span>
         {version === "completa" ? (
-          <span className="rx-num mt-0.5 text-[9px] leading-none tracking-[0.14em] text-fg-muted uppercase">
+          <span
+            className={cn(
+              "rx-num mt-0.5 leading-none tracking-[0.14em] text-fg-muted uppercase",
+              grande ? "text-[11px]" : "text-[9px]",
+            )}
+          >
             Despacho y liquidación
           </span>
         ) : null}

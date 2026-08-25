@@ -55,11 +55,14 @@ export default async function PaginaLogin() {
 
   return (
     <div className="grid min-h-svh lg:grid-cols-[400px_1fr]">
+      {/* Esta pantalla va en claro siempre — decisión del usuario, apartándose
+          de la regla 44 del tablero. Lo resuelve `ThemeProvider` con el
+          `forcedTheme` de next-themes; el porqué está ahí. */}
       {/* La columna. En teléfono se ancla arriba —`justify-start` con su
           respiro— en vez de centrarse: centrada, el botón queda bajo el pliegue
           en cuanto aparece el teclado. */}
       <div className="flex flex-col items-center justify-start gap-8 bg-bg px-6 pt-16 pb-10 lg:justify-center lg:pt-10">
-        <MarcaRutax version="reducida" />
+        <MarcaRutax version="reducida" tamano="grande" />
         <FormularioLogin />
       </div>
 
