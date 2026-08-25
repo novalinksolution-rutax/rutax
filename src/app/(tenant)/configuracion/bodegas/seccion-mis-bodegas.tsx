@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/empty-state";
 import { EstadoCargando, EstadoError } from "@/components/onboarding/estado-pantalla";
 import { accionListarBodegasCourier, type BodegaFila } from "./actions";
-import { DialogBodega } from "./dialog-bodega";
+import { PanelBodega } from "./panel-bodega";
 import { TarjetaBodega } from "./tarjeta-bodega";
 import { alternativasActivas, principalDistintaDe } from "./utilidades";
 
@@ -50,7 +50,7 @@ export function SeccionMisBodegas({ bodegasIniciales, errorInicial = null }: Pro
           <CardDescription>De dónde sale tu flota a repartir — el punto de partida de las rutas del día.</CardDescription>
         </div>
         {!cargando && !error && (
-          <DialogBodega
+          <PanelBodega
             tipo="courier"
             esPrimera={bodegas.length === 0}
             principalActual={principal ? { id: principal.id, nombre: principal.nombre } : null}
@@ -69,7 +69,7 @@ export function SeccionMisBodegas({ bodegasIniciales, errorInicial = null }: Pro
             tono="arranque"
             titulo="Todavía no registraste ninguna bodega"
             descripcion="Agrega la bodega desde la que sale tu flota a repartir."
-            accion={<DialogBodega tipo="courier" esPrimera principalActual={null} onGuardada={recargar} />}
+            accion={<PanelBodega tipo="courier" esPrimera principalActual={null} onGuardada={recargar} />}
           />
         )}
 

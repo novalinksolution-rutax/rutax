@@ -34,7 +34,7 @@ import {
   type BodegaFila,
   type TipoBodega,
 } from "./actions";
-import { DialogBodega } from "./dialog-bodega";
+import { PanelBodega } from "./panel-bodega";
 import { DialogDesactivarPrincipal } from "./dialog-desactivar-principal";
 
 interface Props {
@@ -222,7 +222,7 @@ export function TarjetaBodega({
           <div className="flex flex-wrap items-center gap-1 border-t border-border pt-2">
             {bodega.activa ? (
               <>
-                <DialogBodega
+                <PanelBodega
                   tipo={tipo}
                   bodegaExistente={{
                     id: bodega.id,

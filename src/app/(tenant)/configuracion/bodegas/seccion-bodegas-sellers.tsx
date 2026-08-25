@@ -15,7 +15,7 @@ import { EstadoCargando, EstadoError } from "@/components/onboarding/estado-pant
 import { etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
 import type { SellerFiltro } from "@/lib/datos-tenant/sellers";
 import { accionListarBodegasSeller, type BodegaFila } from "./actions";
-import { DialogBodega } from "./dialog-bodega";
+import { PanelBodega } from "./panel-bodega";
 import { TarjetaBodega } from "./tarjeta-bodega";
 import { alternativasActivas, principalDistintaDe } from "./utilidades";
 
@@ -89,7 +89,7 @@ export function SeccionBodegasSellers({ sellers, montoVisitaDefaultClp }: Props)
                 </Select>
               </div>
               {sellerId && !cargando && !error && (
-                <DialogBodega
+                <PanelBodega
                   tipo="seller"
                   sellerId={sellerId}
                   esPrimera={bodegas.length === 0}
@@ -119,7 +119,7 @@ export function SeccionBodegasSellers({ sellers, montoVisitaDefaultClp }: Props)
                 titulo="Este seller no tiene bodegas registradas"
                 descripcion="Agrega la primera bodega para coordinar sus retiros."
                 accion={
-                  <DialogBodega
+                  <PanelBodega
                     tipo="seller"
                     sellerId={sellerId}
                     esPrimera
