@@ -42,6 +42,37 @@
  * cualquier consulta futura tendría que aprender a ignorar. El acta de retiro
  * —que es lo que respalda un pago— vive en `bultos_retiro`, en OTRA tabla, y no
  * se toca: ese fue justamente el motivo de separarlas.
+ * =============================================================================
+ * 🔴 Y ASÍ Y TODO NO CORRIÓ NUNCA: LE FALTABA EL ESQUEMA
+ * =============================================================================
+ * Descubierto el 25-08-2026 en el tablero de salud de producción: «último éxito:
+ * NUNCA». Las tres consultas pedían `bultos_retiro_qr` sin `.schema('operacion')`,
+ * o sea contra `public`, donde esa tabla **no existe** —a diferencia de
+ * `bultos_retiro`, que sí tiene vista espejo—. PostgREST respondía `PGRST205` en
+ * la primera línea del primer paso, el job moría, y con dos reintentos tardaba
+ * 1,2 minutos en darse por vencido.
+ *
+ * Lo que lo hizo invisible: **el escritor sí lleva el esquema**
+ * (`retiro/qr-credencial.ts`), así que los QR se guardaban bien y solo fallaba
+ * el que los borra. Una retención que no se cumple no rompe ninguna pantalla.
+ *
+ * ⚠️ Barrido hecho: es el ÚNICO sitio del repo que pide una tabla sin vista en
+ * `public` sin calificar el esquema.
+ *
+ * =============================================================================
+ * DOS TRAMPAS MÁS QUE ESTABAN ESPERANDO DETRÁS
+ * =============================================================================
+ * Ninguna se había manifestado porque el job jamás pasó de la primera consulta:
+ *
+ * · **`.limit(5000)` era mentira.** `config.toml` fija `max_rows = 1000` y
+ *   PostgREST trunca EN SILENCIO. El job habría procesado 1.000 por corrida
+ *   creyendo que barría todo.
+ * · **`.in()` con miles de UUID revienta la URL.** Ya mordió en este repo con
+ *   `URI too long`. Por eso ahora se avanza por lotes acotados.
+ *
+ * Se recorre con cursor sobre `bulto_id` (no con `offset`): las filas marcadas
+ * salen del conjunto filtrado y una ventana por desplazamiento se saltaría
+ * justo las que vienen detrás.
  */
 
 import { inngest } from '@/lib/inngest/cliente';
@@ -55,6 +86,20 @@ import { ESTADOS_TERMINALES_PEDIDO } from '../metricas';
  * irrecuperable si alguien necesita re-mirarlo por una disputa el día después.
  */
 export const HORAS_GRACIA_QR = 48;
+
+/**
+ * Cuántos QR se revisan por lote. Acotado por los DOS extremos: `max_rows = 1000`
+ * de PostgREST trunca en silencio por arriba, y un `.in()` con demasiados UUID
+ * revienta la URL con `URI too long` — que ya pasó en este repo.
+ */
+const TAMANO_LOTE = 200;
+
+/**
+ * Tope de lotes por corrida (40.000 QR). Es un cortafuegos contra un bucle que
+ * no avance, no una política de retención: si se alcanza, el job lo reporta y
+ * el resto se barre mañana.
+ */
+const MAX_LOTES_POR_CORRIDA = 200;
 
 /** Lo mínimo que hace falta saber de un bulto para decidir si su QR ya vence. */
 export interface BultoParaVencimiento {
@@ -111,78 +156,96 @@ export const jobPurgarQrRetiro = inngest.createFunction(
     const marcados = await step.run('marcar-vencimiento', async () => {
       const supabase = crearClienteServiceRole();
 
-      // Los bultos cuyo pedido está en estado terminal. Se resuelve en dos
-      // consultas y no con un join de PostgREST porque `bultos_retiro` y
-      // `pedidos` viven en el mismo esquema pero la relación es opcional
-      // (`pedido_id` es nullable: un bulto `no_procesado` nunca casó con nada).
-      //
-      // ⚠️ Un bulto SIN pedido también vence: es un escaneo que nunca se
-      // resolvió, y guardar para siempre el QR de un paquete que ni siquiera es
-      // nuestro sería lo contrario de minimizar. Se le da la misma gracia
-      // contando desde que se escaneó.
-      const { data: pendientes, error: errorPendientes } = await supabase
-        .from('bultos_retiro_qr')
-        .select('bulto_id, tenant_id')
-        .is('vence_en', null)
-        .limit(5000);
-
-      if (errorPendientes) {
-        throw new Error(`Error al leer QR sin vencimiento: ${errorPendientes.message}`);
-      }
-      if (!pendientes || pendientes.length === 0) {
-        return { revisados: 0, marcados: 0 };
-      }
-
-      const ids = pendientes.map((f) => f.bulto_id as string);
-
-      const { data: bultos, error: errorBultos } = await supabase
-        .from('bultos_retiro')
-        .select('id, pedido_id, escaneado_en, pedidos(estado)')
-        .in('id', ids);
-
-      if (errorBultos) {
-        throw new Error(`Error al leer los bultos de los QR: ${errorBultos.message}`);
-      }
-
       const ahora = Date.now();
-      const graciaMs = HORAS_GRACIA_QR * 60 * 60 * 1000;
-      const aMarcar: string[] = [];
+      const venceEn = new Date(ahora + HORAS_GRACIA_QR * 60 * 60 * 1000).toISOString();
 
-      for (const bulto of bultos ?? []) {
-        const fila = bulto as Record<string, unknown>;
-        const pedido = fila.pedidos as { estado?: string } | null;
+      let cursor = '';
+      let revisados = 0;
+      let marcados = 0;
+      let lotes = 0;
 
-        const marcar = debeMarcarVencimiento(
-          {
-            pedidoId: (fila.pedido_id as string | null) ?? null,
-            estadoPedido: pedido?.estado ?? null,
-            escaneadoEnMs: new Date(fila.escaneado_en as string).getTime(),
-          },
-          ahora,
-        );
-        if (marcar) aMarcar.push(fila.id as string);
+      while (lotes < MAX_LOTES_POR_CORRIDA) {
+        lotes += 1;
+
+        // ⚠️ `.schema('operacion')` — sin esto es `public.bultos_retiro_qr`, que
+        // NO existe, y el job entero muere acá con PGRST205. Fue el bug.
+        //
+        // El cursor va sobre `bulto_id` y no sobre un desplazamiento: marcar una
+        // fila la saca del filtro `vence_en is null`, así que una ventana por
+        // offset se saltaría tantas filas como haya marcado.
+        let consulta = supabase
+          .schema('operacion')
+          .from('bultos_retiro_qr')
+          .select('bulto_id')
+          .is('vence_en', null)
+          .order('bulto_id', { ascending: true })
+          .limit(TAMANO_LOTE);
+        if (cursor) consulta = consulta.gt('bulto_id', cursor);
+
+        const { data: pendientes, error: errorPendientes } = await consulta;
+
+        if (errorPendientes) {
+          throw new Error(`Error al leer QR sin vencimiento: ${errorPendientes.message}`);
+        }
+        if (!pendientes || pendientes.length === 0) break;
+
+        const ids = pendientes.map((f) => f.bulto_id as string);
+        cursor = ids[ids.length - 1];
+        revisados += ids.length;
+
+        const { data: bultos, error: errorBultos } = await supabase
+          .schema('operacion')
+          .from('bultos_retiro')
+          .select('id, pedido_id, escaneado_en, pedidos(estado)')
+          .in('id', ids);
+
+        if (errorBultos) {
+          throw new Error(`Error al leer los bultos de los QR: ${errorBultos.message}`);
+        }
+
+        const aMarcar: string[] = [];
+        for (const bulto of bultos ?? []) {
+          const fila = bulto as Record<string, unknown>;
+          const pedido = fila.pedidos as { estado?: string } | null;
+
+          const marcar = debeMarcarVencimiento(
+            {
+              pedidoId: (fila.pedido_id as string | null) ?? null,
+              estadoPedido: pedido?.estado ?? null,
+              escaneadoEnMs: new Date(fila.escaneado_en as string).getTime(),
+            },
+            ahora,
+          );
+          if (marcar) aMarcar.push(fila.id as string);
+        }
+
+        if (aMarcar.length > 0) {
+          const { error: errorMarcar } = await supabase
+            .schema('operacion')
+            .from('bultos_retiro_qr')
+            .update({ vence_en: venceEn })
+            // `.is('vence_en', null)` es compare-and-set: si otra corrida lo
+            // marcó entre la lectura y esta escritura, NO se le empuja la fecha
+            // hacia adelante. Sin esto, dos corridas seguidas podrían posponer
+            // la purga indefinidamente.
+            .is('vence_en', null)
+            .in('bulto_id', aMarcar);
+
+          if (errorMarcar) {
+            throw new Error(`Error al marcar el vencimiento de los QR: ${errorMarcar.message}`);
+          }
+          marcados += aMarcar.length;
+        }
+
+        // Página incompleta = se acabaron.
+        if (ids.length < TAMANO_LOTE) break;
       }
 
-      if (aMarcar.length === 0) {
-        return { revisados: pendientes.length, marcados: 0 };
-      }
-
-      const venceEn = new Date(ahora + graciaMs).toISOString();
-      const { error: errorMarcar } = await supabase
-        .from('bultos_retiro_qr')
-        .update({ vence_en: venceEn })
-        // `.is('vence_en', null)` es compare-and-set: si otra corrida lo marcó
-        // entre la lectura y esta escritura, NO se le empuja la fecha hacia
-        // adelante. Sin esto, dos corridas seguidas podrían posponer la purga
-        // indefinidamente.
-        .is('vence_en', null)
-        .in('bulto_id', aMarcar);
-
-      if (errorMarcar) {
-        throw new Error(`Error al marcar el vencimiento de los QR: ${errorMarcar.message}`);
-      }
-
-      return { revisados: pendientes.length, marcados: aMarcar.length };
+      // Sin cortes mudos: si el tope se agotó, queda cola para mañana y hay que
+      // poder verlo. Un job de retención que "termina bien" dejando trabajo sin
+      // hacer es indistinguible de uno que terminó de verdad.
+      const truncado = lotes >= MAX_LOTES_POR_CORRIDA;
+      return { revisados, marcados, truncado };
     });
 
     // -------------------------------------------------------------------------
@@ -192,6 +255,7 @@ export const jobPurgarQrRetiro = inngest.createFunction(
       const supabase = crearClienteServiceRole();
 
       const { data, error } = await supabase
+        .schema('operacion')
         .from('bultos_retiro_qr')
         .delete()
         .lt('vence_en', new Date().toISOString())
@@ -207,13 +271,15 @@ export const jobPurgarQrRetiro = inngest.createFunction(
     // que ese dato deje de existir, y loguear sus identificadores lo movería de
     // una tabla con `revoke all` a los registros de la aplicación.
     logger.info(
-      `Purga de QR de retiro: ${marcados.marcados} marcados (de ${marcados.revisados} sin vencimiento), ${purgados} purgados.`,
+      `Purga de QR de retiro: ${marcados.marcados} marcados (de ${marcados.revisados} sin vencimiento), ` +
+        `${purgados} purgados${marcados.truncado ? ' · TOPE DE LOTES ALCANZADO, queda cola' : ''}.`,
     );
 
     return {
       revisadosSinVencimiento: marcados.revisados,
       marcados: marcados.marcados,
       purgados,
+      truncado: marcados.truncado,
     };
   },
 );

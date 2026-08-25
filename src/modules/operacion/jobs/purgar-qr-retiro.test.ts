@@ -11,6 +11,7 @@
  * cuando el código de producción cambia, y este repo ya se quemó con eso.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from 'vitest';
 import { debeMarcarVencimiento, HORAS_GRACIA_QR } from './purgar-qr-retiro';
 
@@ -102,5 +103,77 @@ describe('debeMarcarVencimiento — cuándo un QR pasa a ser borrable', () => {
     // Se afirma el valor porque bajarlo es una decisión de política, no un
     // ajuste: el margen de menos cuesta un QR irrecuperable.
     expect(HORAS_GRACIA_QR).toBe(48);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Candados sobre el archivo del job
+// ---------------------------------------------------------------------------
+//
+// 🔴 Los tests de arriba prueban `debeMarcarVencimiento`, que es la política, y
+// pasaban en verde mientras el job **no corría nunca en producción**: fallaba en
+// la primera consulta por pedir `bultos_retiro_qr` sin esquema. Una política
+// correcta que nadie ejecuta no sirve de nada, así que estos candados miran el
+// archivo.
+
+describe("candado: el job pide las tablas donde de verdad están", () => {
+  const fuente = readFileSync("src/modules/operacion/jobs/purgar-qr-retiro.ts", "utf8");
+  // Solo el código: la cabecera cita el bug y nombraría los mismos patrones.
+  const codigo = fuente.slice(fuente.indexOf("import { inngest }"));
+
+  it("🔴 toda consulta a `bultos_retiro_qr` va calificada con `.schema('operacion')`", () => {
+    // `public.bultos_retiro_qr` NO EXISTE —a diferencia de `bultos_retiro`, que
+    // sí tiene vista espejo— así que sin el esquema PostgREST responde PGRST205
+    // y el job muere entero. Fue exactamente el bug: «último éxito: nunca».
+    const usos = [...codigo.matchAll(/\.from\(\s*['"]bultos_retiro_qr['"]\s*\)/g)];
+    expect(usos.length).toBeGreaterThan(0);
+
+    for (const uso of usos) {
+      // Mira las líneas inmediatamente anteriores, que es donde va el `.schema()`
+      // en una cadena del cliente de Supabase.
+      const antes = codigo.slice(Math.max(0, uso.index - 200), uso.index);
+      expect(antes).toMatch(/\.schema\(\s*['"]operacion['"]\s*\)\s*$/);
+    }
+  });
+
+  it("`bultos_retiro` también va calificada, aunque hoy tenga vista en public", () => {
+    // Funciona sin esquema por la vista espejo, y por eso es más peligrosa: el
+    // día que esa vista se retire, este job vuelve a caerse en silencio.
+    const usos = [...codigo.matchAll(/\.from\(\s*['"]bultos_retiro['"]\s*\)/g)];
+    for (const uso of usos) {
+      const antes = codigo.slice(Math.max(0, uso.index - 200), uso.index);
+      expect(antes).toMatch(/\.schema\(\s*['"]operacion['"]\s*\)\s*$/);
+    }
+  });
+});
+
+describe("candado: el lote no choca con los dos topes", () => {
+  const fuente = readFileSync("src/modules/operacion/jobs/purgar-qr-retiro.ts", "utf8");
+  const config = readFileSync("supabase/config.toml", "utf8");
+
+  it("🔴 el tamaño de lote NO supera el `max_rows` de PostgREST", () => {
+    // PostgREST trunca en silencio: pedir más de `max_rows` no falla, devuelve
+    // menos. Un job de retención que cree haber barrido todo y barrió 1.000 es
+    // indistinguible de uno que terminó.
+    const maxRows = Number(config.match(/max_rows\s*=\s*(\d+)/)?.[1]);
+    expect(Number.isFinite(maxRows)).toBe(true);
+
+    const tamano = Number(fuente.match(/const TAMANO_LOTE = (\d+);/)?.[1]);
+    expect(Number.isFinite(tamano)).toBe(true);
+    expect(tamano).toBeLessThanOrEqual(maxRows);
+  });
+
+  it("el lote se mantiene chico para que el `.in()` no reviente la URL", () => {
+    // `URI too long` con un `.in()` de muchos UUID ya mordió en este repo. Cada
+    // id son 38 caracteres en la query string.
+    const tamano = Number(fuente.match(/const TAMANO_LOTE = (\d+);/)?.[1]);
+    expect(tamano * 38).toBeLessThan(8000);
+  });
+
+  it("se avanza por cursor, no por desplazamiento", () => {
+    // Marcar una fila la saca del filtro `vence_en is null`: una ventana por
+    // offset se saltaría tantas filas como haya marcado en la página anterior.
+    expect(fuente).toMatch(/\.gt\(\s*['"]bulto_id['"]/);
+    expect(fuente).not.toMatch(/\.range\(/);
   });
 });
