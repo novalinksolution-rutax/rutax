@@ -20,15 +20,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { PanelAccion } from "@/components/ui/panel-accion";
 import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { capacidadesLegiblesDeRol } from "@/modules/identidad/capacidades-legibles";
@@ -97,9 +89,15 @@ export function FormularioInvitacion({ abierto, onCerrar, onInvitada }: Props) {
     setEnviando(false);
 
     if (!resultado.ok) {
-      if (resultado.tipo === "validacion" && resultado.mensaje.toLowerCase().includes("correo")) {
+      if (
+        resultado.tipo === "validacion" &&
+        resultado.mensaje.toLowerCase().includes("correo")
+      ) {
         setErrorEmail(resultado.mensaje);
-      } else if (resultado.tipo === "validacion" && resultado.mensaje.toLowerCase().includes("rol")) {
+      } else if (
+        resultado.tipo === "validacion" &&
+        resultado.mensaje.toLowerCase().includes("rol")
+      ) {
         setErrorRol(resultado.mensaje);
       } else {
         setErrorServidor(resultado.mensaje);
@@ -112,65 +110,85 @@ export function FormularioInvitacion({ abierto, onCerrar, onInvitada }: Props) {
   }
 
   return (
-    <Sheet open={abierto} onOpenChange={(siguiente) => { if (!siguiente) onCerrar(); }}>
-      <SheetContent className="flex flex-col gap-0 sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Invitar a una persona</SheetTitle>
-          <SheetDescription>
-            Le enviaremos un correo con un enlace para que defina su contraseña y empiece a usar la cuenta con el rol
-            que elijas.
-          </SheetDescription>
-        </SheetHeader>
+    /* ⚠️ Era un `Sheet` propio, y en teléfono eso daba un panel lateral de 390 px
+       —o sea, la pantalla entera entrando de costado— con el botón de enviar
+       abajo del todo. `PanelAccion` resuelve las dos anatomías: hoja inferior
+       con pie fijo bajo 768 px, lateral desde ahí. */
+    <PanelAccion
+      abierto={abierto}
+      onOpenChange={(siguiente) => {
+        if (!siguiente) onCerrar();
+      }}
+      titulo="Invitar a una persona"
+      subtitulo="Le llega un correo para crear su contraseña y entrar con el rol que elijas."
+    >
+      <form onSubmit={manejarEnvio} className="flex flex-1 flex-col gap-5">
+        <div className="space-y-2">
+          <Label htmlFor={`${idBase}-email`}>Correo electrónico</Label>
+          <Input
+            id={`${idBase}-email`}
+            type="email"
+            autoFocus
+            autoComplete="off"
+            placeholder="persona@ejemplo.cl"
+            value={email}
+            onChange={(evento) => {
+              setEmail(evento.target.value);
+              setErrorEmail(null);
+              setErrorServidor(null);
+            }}
+            aria-invalid={errorEmail ? true : undefined}
+          />
+          {errorEmail ? (
+            <p className="text-sm text-destructive">{errorEmail}</p>
+          ) : null}
+        </div>
 
-        <form onSubmit={manejarEnvio} className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-2">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium text-foreground">Rol</legend>
           <div className="space-y-2">
-            <Label htmlFor={`${idBase}-email`}>Correo electrónico</Label>
-            <Input
-              id={`${idBase}-email`}
-              type="email"
-              autoFocus
-              autoComplete="off"
-              placeholder="persona@ejemplo.cl"
-              value={email}
-              onChange={(evento) => { setEmail(evento.target.value); setErrorEmail(null); setErrorServidor(null); }}
-              aria-invalid={errorEmail ? true : undefined}
-            />
-            {errorEmail ? <p className="text-sm text-destructive">{errorEmail}</p> : null}
-          </div>
-
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-foreground">Rol</legend>
-            <div className="space-y-2">
-              {ROLES_INTERNOS.map((opcion) => {
-                const info = DESCRIPCIONES_ROLES_INTERNOS[opcion];
-                const seleccionado = rol === opcion;
-                return (
-                  <label
-                    key={opcion}
-                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
-                      seleccionado ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name={`${idBase}-rol`}
-                      value={opcion}
-                      checked={seleccionado}
-                      onChange={() => { setRol(opcion); setErrorRol(null); setErrorServidor(null); }}
-                      className="mt-1 size-4 accent-primary"
-                    />
-                    <span className="space-y-0.5">
-                      <span className="block text-sm font-medium text-foreground">{info.etiqueta}</span>
-                      <span className="block text-xs text-muted-foreground">{info.descripcion}</span>
+            {ROLES_INTERNOS.map((opcion) => {
+              const info = DESCRIPCIONES_ROLES_INTERNOS[opcion];
+              const seleccionado = rol === opcion;
+              return (
+                <label
+                  key={opcion}
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                    seleccionado
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:bg-muted/40"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name={`${idBase}-rol`}
+                    value={opcion}
+                    checked={seleccionado}
+                    onChange={() => {
+                      setRol(opcion);
+                      setErrorRol(null);
+                      setErrorServidor(null);
+                    }}
+                    className="mt-1 size-4 accent-primary"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-medium text-foreground">
+                      {info.etiqueta}
                     </span>
-                  </label>
-                );
-              })}
-            </div>
-            {errorRol ? <p className="text-sm text-destructive">{errorRol}</p> : null}
-          </fieldset>
+                    <span className="block text-xs text-muted-foreground">
+                      {info.descripcion}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {errorRol ? (
+            <p className="text-sm text-destructive">{errorRol}</p>
+          ) : null}
+        </fieldset>
 
-          {/* 🔴 El bloque de capacidades del rol marcado, el MISMO de «cambiar
+        {/* 🔴 El bloque de capacidades del rol marcado, el MISMO de «cambiar
               el rol». Es la regla 6: un permiso se explica con el catálogo, no
               con un texto a mano — y ésta es la única superficie donde el
               sistema dice qué hace cada rol.
@@ -178,36 +196,43 @@ export function FormularioInvitacion({ abierto, onCerrar, onInvitada }: Props) {
               La segunda lista no es relleno: sin «no va a poder», quien invita
               asume que el rol cubre lo que necesita y se entera de que no
               cuando la persona ya está adentro pidiendo permisos. */}
-          {rol ? (
-            <BloqueCapacidadesRol
-              vaAPoder={capacidadesLegiblesDeRol(rol).vaAPoder}
-              noVaAPoder={capacidadesLegiblesDeRol(rol).noVaAPoder}
-            />
-          ) : null}
+        {rol ? (
+          <BloqueCapacidadesRol
+            vaAPoder={capacidadesLegiblesDeRol(rol).vaAPoder}
+            noVaAPoder={capacidadesLegiblesDeRol(rol).noVaAPoder}
+          />
+        ) : null}
 
-          {errorServidor ? (
-            <Alert variant="destructive">
-              <ShieldAlert />
-              <AlertDescription>{errorServidor}</AlertDescription>
-            </Alert>
-          ) : null}
+        {errorServidor ? (
+          <Alert variant="destructive">
+            <ShieldAlert />
+            <AlertDescription>{errorServidor}</AlertDescription>
+          </Alert>
+        ) : null}
 
-          <SheetFooter className="mt-auto px-0">
-            <Button type="submit" disabled={enviando} className="w-full">
-              {enviando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {enviando ? "Enviando…" : "Enviar la invitación"}
-            </Button>
-            {/* El plazo va junto al botón y no en la letra chica: es lo que
+        <div className="mt-auto flex flex-col gap-2 pt-2">
+          <Button type="submit" disabled={enviando} className="w-full">
+            {enviando ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : null}
+            {enviando ? "Enviando…" : "Enviar la invitación"}
+          </Button>
+          {/* El plazo va junto al botón y no en la letra chica: es lo que
                 decide si hay que avisarle por otro lado a la persona. */}
-            <p className="w-full text-center text-xs text-fg-subtle">Vence en 7 días</p>
-            <SheetClose asChild>
-              <Button type="button" variant="ghost" className="w-full" disabled={enviando}>
-                Cancelar
-              </Button>
-            </SheetClose>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
+          <p className="w-full text-center text-xs text-fg-subtle">
+            Vence en 7 días
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            disabled={enviando}
+            onClick={onCerrar}
+          >
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    </PanelAccion>
   );
 }
