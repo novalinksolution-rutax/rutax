@@ -1,122 +1,202 @@
 /**
- * GET /api/whatsapp/test — prueba de extremo a extremo de la cadena con Meta.
+ * GET /api/whatsapp/test — diagnóstico de la cadena de WhatsApp.
  * =============================================================================
- * Manda la plantilla `hello_world` (la predefinida de Meta, aprobada en toda
- * WABA nueva) a un número fijado por entorno, y devuelve **lo que respondió
- * Meta**. Sirve para separar los tres fallos que desde afuera se ven iguales:
- * token malo, número no registrado para la API, y plantilla que no existe.
+ * Responde dos preguntas que desde afuera se ven idénticas —«no llegó el
+ * mensaje»— y tienen causas totalmente distintas:
+ *
+ *   `GET /api/whatsapp/test`
+ *       Solo lee. Dice en qué estado está el gate (sandbox o real), qué
+ *       credenciales hay cargadas y cuántos contactos con consentimiento
+ *       existen. No manda nada ni cuesta un peso.
+ *
+ *   `GET /api/whatsapp/test?enviar=1`
+ *       Manda `hello_world` a los contactos de rol `courier` **saltándose
+ *       Inngest**: llama al servicio de envío directo. Ese salto es el punto
+ *       de todo — si por acá llega el WhatsApp y por el camino normal no,
+ *       el problema es la cola, no Meta ni la configuración.
  *
  * -----------------------------------------------------------------------------
- * TRES CANDADOS, PORQUE ESTA RUTA GASTA PLATA
+ * POR QUÉ AHORA SÍ CORRE EN PRODUCCIÓN
  * -----------------------------------------------------------------------------
- *  1. **Nunca en producción.** `VERCEL_ENV === "production"` responde 404 — no
- *     403: una ruta de diagnóstico no debería ni existir para quien la sondea.
- *  2. **Destino por variable de entorno**, jamás en el código. Es un número de
- *     una persona real; escribirlo en el repo lo publica para siempre.
- *  3. **Sesión de un usuario interno**. Un ambiente de staging suele ser
- *     alcanzable desde internet, y sin esto cualquiera podría gastar mensajes.
+ * Hasta el 2026-08-25 esta ruta devolvía 404 fuera de desarrollo, por
+ * precaución. Fue exceso de celo, y salió caro el primer día: con el envío real
+ * recién abierto y ningún mensaje llegando, la única herramienta capaz de decir
+ * por qué estaba apagada justo donde hacía falta.
+ *
+ * El cierre real no era el ambiente, son estas tres cosas, que siguen en pie:
+ *  · sesión de un usuario INTERNO del courier (un seller o un conductor no
+ *    entran, y sin sesión tampoco);
+ *  · el envío exige `?enviar=1` explícito — un GET curioso no gasta nada;
+ *  · el destino NO se elige por parámetro: sale del directorio de contactos con
+ *    consentimiento otorgado, igual que cualquier otro envío. No hay forma de
+ *    usar esta ruta para escribirle a un número arbitrario.
  *
  * -----------------------------------------------------------------------------
- * SALTA LA COLA A PROPÓSITO
+ * NO FILTRA SECRETOS
  * -----------------------------------------------------------------------------
- * El camino normal publica un evento y el job envía. Acá se llama al puerto
- * DIRECTO: lo que se quiere diagnosticar es la conversación con Meta, y meterla
- * detrás de un job escondería la respuesta justo cuando es lo único que importa.
- * Por lo mismo no toca `whatsapp_mensajes`: no hay contacto ni consentimiento
- * detrás de esta prueba, y ensuciar la bitácora con ella sería mentir.
+ * De las credenciales solo informa SI ESTÁN, nunca su valor. Del teléfono, la
+ * versión enmascarada. Un pantallazo de esta respuesta pegado en un chat no
+ * compromete nada — que es justo lo que va a pasar con ella.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { consumirRateLimit } from "@/lib/rate-limit";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
-  obtenerPuertoWhatsApp,
   whatsappSandboxActivo,
   whatsappConfigurado,
-  normalizarTelefonoE164,
-  enmascararTelefono,
   obtenerPlantilla,
+  enviarNotificacionWhatsApp,
 } from "@/modules/integraciones/notificaciones/whatsapp";
 
-/** Clave del catálogo que apunta a `hello_world`. */
+/** Clave del catálogo que apunta a `hello_world`, la plantilla de Meta. */
 const CLAVE_PRUEBA = "prueba_conexion";
 
-export async function GET(): Promise<NextResponse> {
-  // ---- Candado 1: nunca en producción --------------------------------------
-  if (process.env.VERCEL_ENV === "production") {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
+/** Un envío de prueba cuesta plata. Pocos y espaciados. */
+const LIMITE_ENVIOS = 5;
+const VENTANA_SEGUNDOS = 300;
 
-  // ---- Candado 3: solo un usuario interno ----------------------------------
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const sesion = await obtenerSesionActual();
-  if (!sesion || sesion.usuario.tipoUsuario !== "interno") {
+  if (!sesion?.usuario.tenantId || sesion.usuario.tipoUsuario !== "interno") {
     return NextResponse.json({ error: "no_autorizado" }, { status: 401 });
   }
+  const tenantId = sesion.usuario.tenantId;
 
-  // ---- Diagnóstico de configuración, ANTES de intentar nada ----------------
-  //
-  // Se responde con el estado del gate incluso cuando no se puede enviar: "no
-  // pasó nada" es la respuesta menos útil posible, y distinguir "estoy en
-  // sandbox" de "me falta el token" ahorra la media hora de rigor.
+  const plantilla = obtenerPlantilla(CLAVE_PRUEBA);
+
+  // ---- Estado de la configuración ------------------------------------------
+  const sandbox = whatsappSandboxActivo();
   const configuracion = {
-    sandbox: whatsappSandboxActivo(),
-    credencialesPresentes: whatsappConfigurado(),
-    phoneNumberIdPresente: Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID),
+    /** `true` = NO se envía nada, pase lo que pase. Es el primer sospechoso. */
+    sandbox,
+    credencialesCompletas: whatsappConfigurado(),
     accessTokenPresente: Boolean(process.env.WHATSAPP_ACCESS_TOKEN),
+    phoneNumberIdPresente: Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID),
     appSecretPresente: Boolean(process.env.WHATSAPP_APP_SECRET),
     verifyTokenPresente: Boolean(process.env.WHATSAPP_VERIFY_TOKEN),
     versionApi: process.env.WHATSAPP_API_VERSION?.trim() || "v25.0 (por defecto)",
+    /** Sin esto, el evento se publica y no lo consume nadie. */
+    inngestEventKeyPresente: Boolean(process.env.INNGEST_EVENT_KEY),
   };
 
-  // ---- Candado 2: destino por entorno --------------------------------------
-  const destinoCrudo = process.env.WHATSAPP_TEST_NUMERO ?? "";
-  const destino = normalizarTelefonoE164(destinoCrudo);
-  if (!destino.valido) {
+  // ---- ¿Hay a quién escribirle? --------------------------------------------
+  // La causa más común de "no llegó" que NO es un fallo: el directorio no tiene
+  // un contacto del rol que la plantilla pide, o lo tiene sin consentimiento.
+  const cliente = crearClienteServiceRole();
+  const { data: contactos } = await cliente
+    .schema("integraciones")
+    .from("whatsapp_contactos")
+    .select("rol, opt_in_estado")
+    .eq("tenant_id", tenantId);
+
+  const filas = (contactos ?? []) as Array<{ rol: string; opt_in_estado: string }>;
+  const destinatarios = {
+    totalContactos: filas.length,
+    conConsentimiento: filas.filter((c) => c.opt_in_estado === "otorgado").length,
+    /** Los que recibirían ESTA prueba: rol `courier` y consentimiento otorgado. */
+    aptosParaEstaPrueba: filas.filter(
+      (c) => c.rol === plantilla?.rolDestinatario && c.opt_in_estado === "otorgado",
+    ).length,
+    rolQuePideLaPlantilla: plantilla?.rolDestinatario ?? "desconocido",
+  };
+
+  // ---- Modo lectura --------------------------------------------------------
+  if (request.nextUrl.searchParams.get("enviar") !== "1") {
+    return NextResponse.json({
+      modo: "diagnostico",
+      configuracion,
+      destinatarios,
+      comoEnviar: "Agrega ?enviar=1 a esta misma URL para mandar un hello_world saltándose Inngest.",
+      ...diagnosticoLegible(configuracion, destinatarios),
+    });
+  }
+
+  // ---- Modo envío ----------------------------------------------------------
+  const limite = await consumirRateLimit(
+    `whatsapp-test:${tenantId}`,
+    LIMITE_ENVIOS,
+    VENTANA_SEGUNDOS,
+  );
+  if (!limite.permitido) {
     return NextResponse.json(
-      {
-        enviado: false,
-        configuracion,
-        error:
-          "Falta WHATSAPP_TEST_NUMERO (o no es un teléfono válido). Ponlo en .env.local con el número que va a recibir la prueba, en formato +56 9 XXXX XXXX.",
-      },
-      { status: 400 },
+      { error: "rate_limited", detalle: "Cada envío de prueba se cobra. Espera un poco." },
+      { status: 429, headers: { "Retry-After": String(limite.reintentarEnSegundos) } },
     );
   }
 
-  const plantilla = obtenerPlantilla(CLAVE_PRUEBA);
-  if (!plantilla) {
-    return NextResponse.json(
-      { enviado: false, configuracion, error: `El catálogo no tiene "${CLAVE_PRUEBA}".` },
-      { status: 500 },
-    );
-  }
-
-  const puerto = obtenerPuertoWhatsApp();
-  const resultado = await puerto.enviarPlantilla({
-    telefonoE164: destino.telefonoE164,
-    nombrePlantilla: plantilla.nombre,
-    idioma: plantilla.idioma,
+  // ⚠️ Llamada DIRECTA al servicio, sin pasar por Inngest. Es el punto de esta
+  // ruta: si acá llega el mensaje y por el camino normal no, el problema está
+  // en la cola y no en Meta ni en la configuración.
+  const resultado = await enviarNotificacionWhatsApp({
+    tenantId,
+    claveEvento: CLAVE_PRUEBA,
+    // Distinta en cada intento: si fuera fija, la llave de idempotencia haría
+    // que el segundo diagnóstico no enviara nada y pareciera otro fallo.
+    referencia: `diagnostico-${limite.reintentarEnSegundos}-${filas.length}-${Date.now()}`,
     variables: [],
   });
 
   return NextResponse.json(
     {
-      enviado: resultado.enviado,
-      modo: resultado.modo,
-      // Enmascarado: la respuesta puede terminar pegada en un chat o en un
-      // ticket, y el número es de una persona.
-      destino: enmascararTelefono(destino.telefonoE164),
-      plantilla: `${plantilla.nombre} (${plantilla.idioma})`,
-      metaMessageId: resultado.metaMessageId ?? null,
-      error: resultado.errorDescripcion ?? null,
-      reintentable: resultado.reintentable,
+      modo: "envio_directo_sin_inngest",
+      resultado,
       configuracion,
-      ...(resultado.modo === "stub"
-        ? {
-            comoEnviarDeVerdad:
-              "Estás en sandbox. Para enviar de verdad: WHATSAPP_SANDBOX_MODE=false más WHATSAPP_ACCESS_TOKEN y WHATSAPP_PHONE_NUMBER_ID.",
-          }
-        : {}),
+      destinatarios,
+      ...diagnosticoLegible(configuracion, destinatarios, resultado),
     },
-    { status: resultado.enviado ? 200 : 502 },
+    { status: resultado.enviados > 0 ? 200 : 502 },
   );
+}
+
+/**
+ * Traduce el estado a una frase accionable. La respuesta cruda ya trae todo,
+ * pero leer ocho booleanos para deducir «te falta el token» es justo lo que
+ * hace que la gente no use una herramienta de diagnóstico.
+ */
+function diagnosticoLegible(
+  cfg: { sandbox: boolean; credencialesCompletas: boolean; inngestEventKeyPresente: boolean },
+  dest: { aptosParaEstaPrueba: number; rolQuePideLaPlantilla: string; conConsentimiento: number },
+  resultado?: { enviados: number; mensaje?: string; detalles: Array<{ error?: string }> },
+): { diagnostico: string } {
+  if (cfg.sandbox) {
+    return {
+      diagnostico:
+        "SANDBOX ACTIVO: no se envía nada. Pon WHATSAPP_SANDBOX_MODE con el valor exacto 'false' y redespliega — cualquier otro valor, o que falte, mantiene el sandbox.",
+    };
+  }
+  if (!cfg.credencialesCompletas) {
+    return {
+      diagnostico:
+        "Faltan credenciales: se necesitan WHATSAPP_ACCESS_TOKEN y WHATSAPP_PHONE_NUMBER_ID en este ambiente.",
+    };
+  }
+  if (dest.aptosParaEstaPrueba === 0) {
+    return {
+      diagnostico:
+        `No hay a quién escribirle: esta prueba va a contactos de tipo '${dest.rolQuePideLaPlantilla}' ` +
+        `con consentimiento otorgado, y no hay ninguno (tienes ${dest.conConsentimiento} con consentimiento en total). ` +
+        "Créalo en Configuración → Contactos de WhatsApp.",
+    };
+  }
+  if (resultado && resultado.enviados === 0) {
+    const primerError = resultado.detalles.find((d) => d.error)?.error;
+    return {
+      diagnostico: `Meta rechazó el envío: ${primerError ?? resultado.mensaje ?? "sin detalle"}`,
+    };
+  }
+  if (resultado && resultado.enviados > 0) {
+    return {
+      diagnostico:
+        "Enviado. Si te llegó por acá pero NO por el camino normal, el problema está en Inngest: revisa que la función 'notificaciones/enviarWhatsApp' aparezca registrada en su panel.",
+    };
+  }
+  if (!cfg.inngestEventKeyPresente) {
+    return {
+      diagnostico:
+        "Todo listo para enviar, pero falta INNGEST_EVENT_KEY: el camino normal publica un evento que nadie va a recibir.",
+    };
+  }
+  return { diagnostico: "Configuración completa. Agrega ?enviar=1 para probar el envío." };
 }
