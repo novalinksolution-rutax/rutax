@@ -129,6 +129,40 @@ export function ProveedorVistaPrevia({ children }: { children: ReactNode }) {
 }
 
 /**
+ * 🔴 Todo enlace que salga del panel lo CIERRA al pulsarse.
+ * =============================================================================
+ * El proveedor vive en `operaciones/layout.tsx`, que también envuelve al
+ * detalle: navegar a `/operaciones/[id]` **no lo desmonta**, así que el panel
+ * seguía flotando sobre la pantalla a la que acababas de llegar. Reportado por
+ * el usuario en «Abrir el detalle completo».
+ *
+ * Es un componente y no un `onClick` repetido a propósito: había tres enlaces y
+ * el bug estaba en uno. Con un `<Link>` suelto, el cuarto que alguien agregue
+ * vuelve a olvidarlo; acá la regla viaja con el elemento.
+ *
+ * ⚠️ NO se resuelve cerrando por cambio de ruta. Esa versión reabre el panel al
+ * pulsar «atrás» —el estado sigue vivo en el proveedor y la ruta vuelve a
+ * coincidir—, o sea que deshace una salida que la persona ya hizo.
+ */
+function EnlaceQueCierra({
+  href,
+  onCerrar,
+  className,
+  children,
+}: {
+  href: string;
+  onCerrar: () => void;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link href={href} onClick={onCerrar} className={className}>
+      {children}
+    </Link>
+  );
+}
+
+/**
  * Envuelve la lista y la atenúa mientras el panel está abierto.
  *
  * ⚠️ **Atenuar, no tapar.** Sin velo oscuro: el coordinador tiene que poder
@@ -350,7 +384,9 @@ function PanelContenido({
                   2 —cambia a quién se le paga— y pertenece a este dato. Metido
                   en el grupo de abajo se leería como un gesto reversible más. */}
               <Button asChild variant="outline" size="sm" className="mt-2">
-                <Link href={`/operaciones/${datos.id}#reasignar`}>Reasignar</Link>
+                <EnlaceQueCierra href={`/operaciones/${datos.id}#reasignar`} onCerrar={onCerrar}>
+                  Reasignar
+                </EnlaceQueCierra>
               </Button>
             </>
           ) : (
@@ -374,7 +410,7 @@ function PanelContenido({
         )}
 
         <Bloque titulo="Accesos rápidos">
-          <AccesosRapidos datos={datos} />
+          <AccesosRapidos datos={datos} onCerrar={onCerrar} />
         </Bloque>
 
         {datos.dinero && (
@@ -415,7 +451,9 @@ function PanelContenido({
           patrón: la salida al detalle no se busca, se sabe dónde está. */}
       <footer className="border-t border-line px-5 py-4">
         <Button asChild className="w-full">
-          <Link href={`/operaciones/${datos.id}`}>Abrir el detalle completo</Link>
+          <EnlaceQueCierra href={`/operaciones/${datos.id}`} onCerrar={onCerrar}>
+            Abrir el detalle completo
+          </EnlaceQueCierra>
         </Button>
         <p className="mt-1.5 text-center text-xs text-fg-subtle">
           Las acciones que no se deshacen viven allá
@@ -433,7 +471,13 @@ function PanelContenido({
  * en cuanto entra un cuarto, el grupo deja de leerse de un vistazo y hay que
  * empezar a buscar dentro de él.
  */
-function AccesosRapidos({ datos }: { datos: VistaPreviaPedido }) {
+function AccesosRapidos({
+  datos,
+  onCerrar,
+}: {
+  datos: VistaPreviaPedido;
+  onCerrar: () => void;
+}) {
   const [copiado, setCopiado] = useState(false);
 
   async function copiarSeguimiento() {
@@ -480,10 +524,10 @@ function AccesosRapidos({ datos }: { datos: VistaPreviaPedido }) {
       )}
 
       <Button asChild variant="outline" size="sm">
-        <Link href="/torre-de-control">
+        <EnlaceQueCierra href="/torre-de-control" onCerrar={onCerrar}>
           <Map className="size-3.5" aria-hidden="true" />
           Ver en la Torre
-        </Link>
+        </EnlaceQueCierra>
       </Button>
     </div>
   );
