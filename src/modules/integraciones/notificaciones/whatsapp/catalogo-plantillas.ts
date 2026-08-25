@@ -76,10 +76,18 @@ export interface DefinicionPlantilla {
 }
 
 /**
- * ⚠️ `hello_world` es la plantilla predefinida de Meta: viene aprobada en toda
- * WABA nueva y es lo único con lo que se puede probar la cadena completa antes
- * de que Meta apruebe una propia. Va en `en_US` y sin variables porque así la
- * define Meta — no es un descuido.
+ * ⚠️ `hello_world` NO viene incluida en toda WABA, aunque medio internet diga lo
+ * contrario — y este archivo lo decía también hasta el 2026-08-25.
+ *
+ * En la cuenta de Rutax NO estaba, y el primer envío real murió con
+ * `132001: template name (hello_world) does not exist in en_US`. Es un error que
+ * se lee como un problema de configuración y en realidad es una plantilla que
+ * nunca existió.
+ *
+ * Si la quieres para pruebas, se agrega desde la Biblioteca de plantillas del
+ * Administrador de WhatsApp. Mientras no esté, `prueba_conexion` va a fallar
+ * así, y la prueba de verdad se hace con una plantilla propia y aprobada —
+ * que además ejercita el camino que se usa en producción.
  */
 export const CATALOGO_PLANTILLAS = {
   prueba_conexion: {
