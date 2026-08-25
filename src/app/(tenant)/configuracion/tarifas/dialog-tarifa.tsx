@@ -27,7 +27,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { accionCrearTarifa, accionEditarTarifa } from "./actions";
+import { pagasMasDeLoQueCobras } from "./cajon-tarifa";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 
 /** Sentinela visual para "tarifa por defecto del tenant" (seller_id = "" real). */
 const SELLER_DEFECTO = "__defecto__";
@@ -68,6 +70,17 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
   // seller_id se envía por un input hidden para conservar el contrato del
   // servidor ("" = tarifa por defecto del tenant); el Select solo es presentación.
   const [sellerId, setSellerId] = useState("");
+
+  // Los dos montos son controlados —no `defaultValue`— porque el aviso de
+  // margen invertido tiene que correr MIENTRAS se escribe. Enterarse después de
+  // guardar es enterarse cuando la tarifa ya cobra.
+  const [cobras, setCobras] = useState(
+    tarifa?.montoClp != null ? String(tarifa.montoClp) : "",
+  );
+  const [pagas, setPagas] = useState(
+    tarifa?.montoConductorClp != null ? String(tarifa.montoConductorClp) : "",
+  );
+  const margenInvertido = pagasMasDeLoQueCobras(Number(cobras), Number(pagas));
 
   const esEdicion = !!tarifa;
 
@@ -178,7 +191,8 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
                 min={0}
                 step={1}
                 required
-                defaultValue={tarifa?.montoClp ?? ""}
+                value={cobras}
+                onChange={(e) => setCobras(e.target.value)}
                 placeholder="ej. 2500"
               />
               <p className="text-xs text-muted-foreground">Sin IVA — el 19% se agrega al facturar</p>
@@ -203,7 +217,8 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
                 min={0}
                 step={1}
                 required
-                defaultValue={tarifa?.montoConductorClp ?? ""}
+                value={pagas}
+                onChange={(e) => setPagas(e.target.value)}
                 placeholder="ej. 1200"
               />
               <p className="text-xs text-muted-foreground">
@@ -211,6 +226,31 @@ export function DialogTarifa({ sellers, tarifa, trigger }: Props) {
               </p>
             </div>
           </div>
+
+          {/*
+            ⚠️ **El aviso de margen invertido: avisa, no bloquea.**
+            Pagarle al conductor más de lo que se le cobra al seller puede ser
+            deliberado —una promoción, un tramo que se subsidia para no perder
+            al seller— así que impedirlo sería decidir por el courier. Pero es
+            también la forma más cara de equivocarse de tecla en todo el
+            producto: cada entrega hecha bajo esa tarifa genera su línea de
+            cobro y su línea de liquidación, y la resta va en contra. Nadie lo
+            nota hasta el cierre del período.
+
+            Va en `attention` y no en `fault`: no hay nada roto, hay algo que
+            conviene mirar. Y dice la diferencia con su número, porque «pagas
+            más de lo que cobras» sin la cifra obliga a restar de cabeza.
+          */}
+          {margenInvertido && (
+            <p className="border border-attention-line bg-attention-bg px-3 py-2 text-sm text-attention-fg">
+              Le vas a pagar al conductor{" "}
+              <span className="rx-num font-mono font-semibold">
+                {formatearCLP(Number(pagas) - Number(cobras))}
+              </span>{" "}
+              más de lo que le cobras al seller. Cada entrega con esta tarifa te deja esa
+              diferencia en contra. Si es a propósito, sigue.
+            </p>
+          )}
 
           {/* Vigencia */}
           <div className="grid gap-4 sm:grid-cols-2">

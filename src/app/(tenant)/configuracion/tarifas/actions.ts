@@ -218,8 +218,21 @@ export async function accionEditarTarifa(
 }
 
 // =============================================================================
-// inactivarTarifa
+// inactivarTarifa · reactivarTarifa
 // =============================================================================
+//
+// 🔴 **Van juntas y no es simetría decorativa.** Hasta hoy solo existía la
+// primera: la interfaz sabía pintar la tarifa inactivada y no ofrecía ninguna
+// forma de salir de ese estado. Es uno de los cinco «estados sin salida» que
+// B3b señala, y el más caro de los cinco — una tarifa inactivada por error deja
+// de cobrar cada entrega de ese seller, en silencio, hasta que alguien mira el
+// cierre del período. La única salida era crear otra tarifa desde cero.
+//
+// ⚠️ **Reactivar NO toca las fechas.** Es deliberado: una tarifa que se
+// inactivó en julio y se reactiva en septiembre vuelve con su ventana original,
+// y si esa ventana ya cerró va a caer en «Vencidas», no en «Vigentes». Correr
+// la fecha por su cuenta sería que el sistema decida desde cuándo se le cobra a
+// un seller, y eso es plata: lo decide el courier, editándola.
 
 export async function accionInactivarTarifa(tarifaId: string): Promise<ResultadoAccion> {
   const sesion = await obtenerSesionActual();
@@ -257,6 +270,48 @@ export async function accionInactivarTarifa(tarifaId: string): Promise<Resultado
     return {
       ok: false,
       mensaje: err instanceof Error ? err.message : "Error al inactivar la tarifa.",
+    };
+  }
+}
+
+export async function accionReactivarTarifa(tarifaId: string): Promise<ResultadoAccion> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return { ok: false, mensaje: "No autenticado." };
+  if (!puedeGestionarTarifas(sesion.usuario)) {
+    return { ok: false, mensaje: "No tienes permiso para gestionar tarifas." };
+  }
+
+  const tenantId = sesion.usuario.tenantId;
+  const supabase = crearClienteServiceRole();
+
+  try {
+    const { error } = await supabase
+      .schema("identidad")
+      .from("tarifas")
+      .update({ estado: "activa", actualizado_en: new Date().toISOString() })
+      .eq("id", tarifaId)
+      .eq("tenant_id", tenantId);
+
+    if (error) throw new Error(error.message);
+
+    // Reactivar una tarifa vuelve a poner plata en movimiento: es acción
+    // financiera y va a la bitácora con su autor, igual que inactivarla.
+    await registrarEnBitacora(supabase, {
+      tenantId,
+      actorUsuarioId: sesion.usuarioId,
+      actorTipo: "usuario",
+      accion: "identidad.tarifa_reactivada",
+      entidadTipo: "tarifa",
+      entidadId: tarifaId,
+      detalle: {},
+    });
+
+    revalidatePath("/configuracion/tarifas");
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      mensaje: err instanceof Error ? err.message : "Error al reactivar la tarifa.",
     };
   }
 }

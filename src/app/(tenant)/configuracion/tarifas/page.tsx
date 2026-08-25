@@ -1,24 +1,82 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { ShieldAlert, Tag } from "lucide-react";
+import { Tag } from "lucide-react";
+
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarTarifas } from "@/modules/identidad/capacidades";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import {
   PantallaConfiguracion,
   SinPermisoConfiguracion,
 } from "../_componentes/pantalla-configuracion";
 import { DialogTarifa } from "./dialog-tarifa";
-import { BotonInactivarTarifa } from "./boton-inactivar";
+import { BotonInactivarTarifa, BotonReactivarTarifa } from "./acciones-fila";
+import { BarraCajonesTarifas } from "./barra-cajones-tarifas";
+import { clasificarTarifa, contarPorCajon, type CajonTarifa } from "./cajon-tarifa";
 
 export const metadata: Metadata = {
   title: "Tarifas",
 };
+
+/**
+ * Tarifas — el listado, contra su tablero.
+ * =============================================================================
+ *
+ * -----------------------------------------------------------------------------
+ * 🔴 LO VIGENTE Y LO PROGRAMADO CONVIVEN EN LA MISMA TABLA
+ * -----------------------------------------------------------------------------
+ * Es la regla 28 de B3b, y la razón es de operación: **no hay pantalla de
+ * «cambios pendientes»**. La tarifa que va a regir se ve donde se ve la que
+ * rige, porque la pregunta real del courier —«¿cuánto le estoy cobrando a Vega
+ * Norte?»— tiene dos respuestas cuando hay una programada, y esconder la segunda
+ * detrás de otra pantalla es lo que hace que alguien firme un acuerdo con la
+ * cifra vieja.
+ *
+ * Antes esta pantalla tenía **dos secciones, activas e inactivas**, y una
+ * tarifa que empieza el mes que viene se dibujaba entre las activas, sin
+ * distinguirse en nada de la que está cobrando hoy.
+ *
+ * -----------------------------------------------------------------------------
+ * 🔴 EL CAJÓN «INACTIVAS» TRAE SU VUELTA
+ * -----------------------------------------------------------------------------
+ * Era uno de los cinco estados sin salida: se podía inactivar una tarifa y no
+ * había ninguna forma de reactivarla. Ver `acciones-fila.tsx`.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ HAY UN CUARTO CAJÓN QUE EL TABLERO NO DIBUJA: «VENCIDAS»
+ * -----------------------------------------------------------------------------
+ * `vigente_hasta` es un campo del formulario, así que una tarifa puede tener su
+ * ventana cerrada y seguir `activa`. No cobra —el motor la descarta— pero
+ * tampoco está inactiva. El porqué de separarla está en `cajon-tarifa.ts`.
+ *
+ * -----------------------------------------------------------------------------
+ * «COBRAS» Y «PAGAS», JUNTAS Y ROTULADAS ASÍ
+ * -----------------------------------------------------------------------------
+ * Es el motor del producto en dos celdas. Van pegadas para poder restarlas de un
+ * vistazo, y el rótulo es el verbo en segunda persona —no «monto seller» y
+ * «monto conductor»— porque lo que se está mirando es la dirección de la plata.
+ *
+ * -----------------------------------------------------------------------------
+ * EL CAJÓN VIVE EN LA URL
+ * -----------------------------------------------------------------------------
+ * `?cajon=programada`. Es compartible y el botón de atrás funciona. Sin cajón se
+ * ven todas, que es el estado correcto para quien llega a mirar.
+ */
 
 interface TarifaFila {
   id: string;
@@ -38,12 +96,29 @@ interface TarifaFila {
   recargoReprogramacionClp: number | null;
 }
 
+const ETIQUETA_CAJON: Record<CajonTarifa, string> = {
+  vigente: "Vigentes",
+  programada: "Programadas",
+  vencida: "Vencidas",
+  inactiva: "Inactivas",
+};
+
+const ORDEN_CAJONES: CajonTarifa[] = ["vigente", "programada", "vencida", "inactiva"];
+
+function esCajon(valor: string | undefined): valor is CajonTarifa {
+  return valor === "vigente" || valor === "programada" || valor === "vencida" || valor === "inactiva";
+}
+
 function formatearFecha(iso: string): string {
   const [a, m, d] = iso.split("-");
   return `${d}/${m}/${a}`;
 }
 
-export default async function PaginaTarifas() {
+export default async function PaginaTarifas({
+  searchParams,
+}: {
+  searchParams: Promise<{ cajon?: string }>;
+}) {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) redirect("/login");
 
@@ -53,8 +128,12 @@ export default async function PaginaTarifas() {
     );
   }
 
+  const params = await searchParams;
+  const cajonActivo = esCajon(params.cajon) ? params.cajon : null;
+
   const tenantId = sesion.usuario.tenantId;
   const supabase = crearClienteServiceRole();
+  const hoy = hoyEnSantiago();
 
   const { data: sellersData } = await supabase
     .schema("identidad")
@@ -69,12 +148,12 @@ export default async function PaginaTarifas() {
   }));
   const sellersMap = new Map(sellers.map((s) => [s.id, s.nombre]));
 
-  const { data: tarifasData } = await supabase
+  const { data: tarifasData, error: errorTarifas } = await supabase
     .schema("identidad")
     .from("tarifas")
     .select("*")
     .eq("tenant_id", tenantId)
-    .order("estado", { ascending: true })  // activas primero (a < i)
+    // Dentro de un cajón, la más reciente arriba: es la que se acaba de tocar.
     .order("vigente_desde", { ascending: false });
 
   const tarifas: TarifaFila[] = (tarifasData ?? []).map((t: Record<string, unknown>) => ({
@@ -91,11 +170,22 @@ export default async function PaginaTarifas() {
     estado: t.estado as "activa" | "inactiva",
     minimoFacturacionClp: t.minimo_facturacion_clp != null ? Number(t.minimo_facturacion_clp) : null,
     minimoRetiroClp: t.minimo_retiro_clp != null ? Number(t.minimo_retiro_clp) : null,
-    recargoReprogramacionClp: t.recargo_reprogramacion_clp != null ? Number(t.recargo_reprogramacion_clp) : null,
+    recargoReprogramacionClp:
+      t.recargo_reprogramacion_clp != null ? Number(t.recargo_reprogramacion_clp) : null,
   }));
 
-  const activas = tarifas.filter((t) => t.estado === "activa");
-  const inactivas = tarifas.filter((t) => t.estado === "inactiva");
+  const conteo = contarPorCajon(tarifas, hoy);
+  const visibles = cajonActivo
+    ? tarifas.filter((t) => clasificarTarifa(t, hoy) === cajonActivo)
+    : tarifas;
+
+  // ⚠️ Ante una lectura fallida los contadores van en `null`, no en cero: un
+  // «Vigentes 0» se lee como «no tengo tarifas» y eso manda a crear una que ya
+  // existe. Es la misma regla que la barra de Pedidos.
+  const hayCifras = !errorTarifas;
+
+  const destinos: Record<string, string> = { "": "/configuracion/tarifas" };
+  for (const c of ORDEN_CAJONES) destinos[c] = `/configuracion/tarifas?cajon=${c}`;
 
   return (
     <PantallaConfiguracion
@@ -106,93 +196,93 @@ export default async function PaginaTarifas() {
       bajada="Lo que le cobras a cada seller por entrega y lo que le pagas al conductor por hacerla. Sin una tarifa vigente, una entrega se hace y no se puede cobrar."
       accion={<DialogTarifa sellers={sellers} />}
     >
-
       {tarifas.length === 0 ? (
         <EmptyState
           icon={Tag}
           tono="arranque"
-          titulo="Sin tarifas configuradas"
-          descripcion="Crea la primera tarifa para que el motor pueda generar líneas de cobro al seller."
+          titulo="Todavía no tienes tarifas"
+          /* El copy del tablero: dice la consecuencia, no el trámite. */
+          descripcion="Sin una tarifa, las entregas se hacen y después no se pueden cobrar."
           accion={<DialogTarifa sellers={sellers} />}
         />
       ) : (
-        <>
-          {/* Activas */}
-          {activas.length > 0 && (
-            <section aria-label="Tarifas activas" className="space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Activas ({activas.length})
-              </h2>
-              <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm" aria-label="Tarifas activas">
-                    <thead>
-                      <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        <th className="px-4 py-2">Seller / Scope</th>
-                        <th className="px-4 py-2">Tipo</th>
-                        <th className="hidden px-4 py-2 sm:table-cell">Zona</th>
-                        <th className="px-4 py-2 text-right">Cobras (CLP)</th>
-                        <th className="px-4 py-2 text-right">Pagas al conductor</th>
-                        <th className="hidden px-4 py-2 text-right md:table-cell">Mín. factura</th>
-                        <th className="hidden px-4 py-2 text-right md:table-cell">Mín. retiro</th>
-                        <th className="hidden px-4 py-2 text-right lg:table-cell">Recargo reprog.</th>
-                        <th className="hidden px-4 py-2 sm:table-cell">Vigencia</th>
-                        <th className="px-4 py-2 text-right">
-                          <span className="sr-only">Acciones</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {activas.map((t) => (
-                        <FilaTarifa key={t.id} tarifa={t} sellers={sellers} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
-          )}
+        <div className="space-y-4">
+          <BarraCajonesTarifas
+            cajones={ORDEN_CAJONES.map((c) => ({
+              clave: c,
+              etiqueta: ETIQUETA_CAJON[c],
+              conteo: hayCifras ? conteo[c] : null,
+            }))}
+            activo={cajonActivo}
+            total={hayCifras ? tarifas.length : null}
+            destinos={destinos}
+          />
 
-          {/* Inactivas */}
-          {inactivas.length > 0 && (
-            <section aria-label="Tarifas inactivas" className="space-y-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Inactivas ({inactivas.length})
-              </h2>
-              <div className="overflow-hidden rounded-lg border bg-card opacity-60 shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm" aria-label="Tarifas inactivas">
-                    <thead>
-                      <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        <th className="px-4 py-2">Seller / Scope</th>
-                        <th className="px-4 py-2">Tipo</th>
-                        <th className="hidden px-4 py-2 sm:table-cell">Zona</th>
-                        <th className="px-4 py-2 text-right">Base (CLP)</th>
-                        <th className="hidden px-4 py-2 sm:table-cell">Vigencia</th>
-                        <th className="px-4 py-2" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {inactivas.map((t) => (
-                        <FilaTarifaInactiva key={t.id} tarifa={t} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
+          {visibles.length === 0 ? (
+            <p className="border border-line bg-bg-sunken px-4 py-8 text-center text-sm text-fg-muted">
+              No tienes tarifas en «{ETIQUETA_CAJON[cajonActivo!].toLowerCase()}».
+            </p>
+          ) : (
+            <div className="overflow-x-auto border border-line bg-bg-raised">
+              <Table densidad="comfortable" aria-label="Tarifas">
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="px-4">Seller</TableHead>
+                    <TableHead className="px-4">Tipo</TableHead>
+                    <TableHead className="hidden px-4 sm:table-cell">Zona</TableHead>
+                    {/* Las dos columnas de dinero van juntas: es el motor del
+                        producto en dos celdas, y se restan de un vistazo. */}
+                    <TableHead className="px-4 text-right">Cobras</TableHead>
+                    <TableHead className="px-4 text-right">Pagas</TableHead>
+                    <TableHead className="hidden px-4 md:table-cell">Vigencia</TableHead>
+                    <TableHead className="px-4 text-right">
+                      <span className="sr-only">Acciones</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibles.map((t) => (
+                    <FilaTarifa
+                      key={t.id}
+                      tarifa={t}
+                      cajon={clasificarTarifa(t, hoy)}
+                      sellers={sellers}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
-        </>
+        </div>
       )}
     </PantallaConfiguracion>
   );
 }
 
 // =============================================================================
-// Filas
+// La fila
 // =============================================================================
 
-function FilaTarifa({ tarifa, sellers }: { tarifa: TarifaFila; sellers: { id: string; nombre: string }[] }) {
+/**
+ * Una sola fila para los cuatro cajones.
+ *
+ * ⚠️ **No hay dos componentes de fila**, que es como estaba antes: la inactiva
+ * tenía su propia tabla, con menos columnas y otro orden. Dos filas que
+ * muestran el mismo objeto con distinta forma obligan a re-leer la cabecera al
+ * cambiar de cajón, y esconden justo la columna que uno viene a comparar —la
+ * inactiva no mostraba «pagas».
+ *
+ * Lo que cambia entre cajones es el **tono**, no la anatomía.
+ */
+function FilaTarifa({
+  tarifa,
+  cajon,
+  sellers,
+}: {
+  tarifa: TarifaFila;
+  cajon: CajonTarifa;
+  sellers: { id: string; nombre: string }[];
+}) {
   const tarifaParaDialog = {
     id: tarifa.id,
     sellerId: tarifa.sellerId,
@@ -208,98 +298,101 @@ function FilaTarifa({ tarifa, sellers }: { tarifa: TarifaFila; sellers: { id: st
     recargoReprogramacionClp: tarifa.recargoReprogramacionClp,
   };
 
+  const enJuego = cajon === "vigente" || cajon === "programada";
+
   return (
-    <tr className="hover:bg-muted/30 transition-colors">
-      <td className="px-4 py-3">
+    <TableRow
+      data-cajon={cajon}
+      className={cn(
+        // La programada lleva el fondo de `progress`: todavía no cobra, ya está
+        // decidida. Es el único recurso que la distingue de la vigente, y por
+        // eso también lleva su distintivo con la fecha — el color solo no basta.
+        cajon === "programada" && "bg-progress-bg",
+        // Lo que salió de juego se atenúa, no se esconde.
+        !enJuego && "rx-lista-atenuada",
+      )}
+    >
+      <TableCell className="px-4">
         {tarifa.sellerNombre ? (
           <span className="font-medium">{tarifa.sellerNombre}</span>
         ) : (
-          <span className="text-muted-foreground italic">Tenant (todos los sellers)</span>
+          <span className="text-fg-muted">Todos · por defecto</span>
         )}
-      </td>
-      <td className="px-4 py-3">
+      </TableCell>
+
+      <TableCell className="px-4">
         <Badge variant="outline" className="text-xs">
           {etiquetaTipoEntrega(tarifa.tipoEntrega)}
         </Badge>
-      </td>
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        {tarifa.zona ?? "—"}
-      </td>
-      <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums">
+      </TableCell>
+
+      <TableCell className="hidden px-4 text-fg-muted sm:table-cell">{tarifa.zona ?? "—"}</TableCell>
+
+      <TableCell className="rx-num px-4 text-right font-mono font-semibold tabular-nums">
         {formatearCLP(tarifa.montoClp)}
-      </td>
+      </TableCell>
+
       {/*
         Un 0 acá NO es un dato: significa que esa tarifa le liquida $0 al
-        conductor por cada entrega. Se marca en ámbar porque durante meses fue
-        el valor de TODAS las tarifas en producción —la columna existía y
-        ningún formulario la pedía— y el síntoma aparecía lejos, en la
-        liquidación del conductor, sin nada que apuntara a la tarifa.
+        conductor por cada entrega. Se marca porque durante meses fue el valor de
+        TODAS las tarifas en producción —la columna existía y ningún formulario
+        la pedía— y el síntoma aparecía lejos, en la liquidación del conductor,
+        sin nada que apuntara a la tarifa.
       */}
-      <td className="px-4 py-3 text-right font-mono font-semibold tabular-nums">
+      <TableCell className="rx-num px-4 text-right font-mono font-semibold tabular-nums">
         {tarifa.montoConductorClp > 0 ? (
           formatearCLP(tarifa.montoConductorClp)
         ) : (
-          <span className="text-warning-subtle-foreground" title="Esta tarifa liquida $0 al conductor. Edítala para fijar cuánto le pagas por entrega.">
+          <span
+            className="font-sans text-xs font-medium text-attention-fg"
+            title="Esta tarifa liquida $0 al conductor. Edítala para fijar cuánto le pagas por entrega."
+          >
             Sin definir
           </span>
         )}
-      </td>
-      <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
-        {tarifa.minimoFacturacionClp != null ? formatearCLP(tarifa.minimoFacturacionClp) : "—"}
-      </td>
-      <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground md:table-cell">
-        {tarifa.minimoRetiroClp != null ? formatearCLP(tarifa.minimoRetiroClp) : "—"}
-      </td>
-      <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground lg:table-cell">
-        {tarifa.recargoReprogramacionClp != null ? formatearCLP(tarifa.recargoReprogramacionClp) : "—"}
-      </td>
-      {/* Una tarifa sin término mostraba "01/01/2026 →" con la flecha colgando
-          sola en la línea siguiente y sin decir nada. "Desde <fecha>" se lee
-          igual de rápido y no se parte. */}
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-        <span className="text-xs whitespace-nowrap tabular-nums">
-          {tarifa.vigenteHasta
-            ? `${formatearFecha(tarifa.vigenteDesdeFecha)} → ${formatearFecha(tarifa.vigenteHasta)}`
-            : `Desde ${formatearFecha(tarifa.vigenteDesdeFecha)}`}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-2">
-          <DialogTarifa
-            sellers={sellers}
-            tarifa={tarifaParaDialog}
-            trigger={
-              <Button variant="ghost" size="sm">
-                Editar
-              </Button>
-            }
-          />
-          <BotonInactivarTarifa tarifaId={tarifa.id} />
-        </div>
-      </td>
-    </tr>
-  );
-}
+      </TableCell>
 
-function FilaTarifaInactiva({ tarifa }: { tarifa: TarifaFila }) {
-  return (
-    <tr className="text-muted-foreground">
-      <td className="px-4 py-2.5">
-        {tarifa.sellerNombre ?? <span className="italic">Tenant</span>}
-      </td>
-      <td className="px-4 py-2.5 text-xs">
-        {etiquetaTipoEntrega(tarifa.tipoEntrega)}
-      </td>
-      <td className="hidden px-4 py-2.5 sm:table-cell">{tarifa.zona ?? "—"}</td>
-      <td className="px-4 py-2.5 text-right tabular-nums font-mono">
-        {formatearCLP(tarifa.montoClp)}
-      </td>
-      <td className="hidden px-4 py-2.5 text-xs whitespace-nowrap tabular-nums sm:table-cell">
-        {tarifa.vigenteHasta
-          ? `${formatearFecha(tarifa.vigenteDesdeFecha)} → ${formatearFecha(tarifa.vigenteHasta)}`
-          : `Desde ${formatearFecha(tarifa.vigenteDesdeFecha)}`}
-      </td>
-      <td className="px-4 py-2.5" />
-    </tr>
+      <TableCell className="hidden px-4 md:table-cell">
+        <div className="flex flex-col gap-1">
+          <span className="rx-num text-xs whitespace-nowrap tabular-nums text-fg-muted">
+            {/* Una tarifa sin término mostraba «01/01/2026 →» con la flecha
+                colgando sola. «Desde <fecha>» se lee igual de rápido. */}
+            {tarifa.vigenteHasta
+              ? `${formatearFecha(tarifa.vigenteDesdeFecha)} → ${formatearFecha(tarifa.vigenteHasta)}`
+              : `Desde ${formatearFecha(tarifa.vigenteDesdeFecha)}`}
+          </span>
+          {cajon === "programada" && (
+            <span className="text-xs font-medium text-progress-fg">
+              Empieza el {formatearFecha(tarifa.vigenteDesdeFecha)}
+            </span>
+          )}
+          {cajon === "vencida" && (
+            <span className="text-xs font-medium text-fg-muted">Ya no cobra</span>
+          )}
+          {cajon === "inactiva" && (
+            <span className="text-xs font-medium text-fg-muted">Inactiva</span>
+          )}
+        </div>
+      </TableCell>
+
+      <TableCell className="px-4 text-right">
+        {cajon === "inactiva" ? (
+          <BotonReactivarTarifa tarifaId={tarifa.id} />
+        ) : (
+          <div className="flex items-center justify-end gap-1">
+            <DialogTarifa
+              sellers={sellers}
+              tarifa={tarifaParaDialog}
+              trigger={
+                <Button variant="ghost" size="sm">
+                  Editar
+                </Button>
+              }
+            />
+            <BotonInactivarTarifa tarifaId={tarifa.id} sellerNombre={tarifa.sellerNombre} />
+          </div>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
