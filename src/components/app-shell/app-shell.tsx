@@ -97,7 +97,6 @@ interface AppShellProps {
    */
   itemsSettings?: ItemNav[]
   /** Destino del "‹ Volver" del Settings anidado (área principal). */
-  hrefPrincipal?: string
   /** Ítem de plan/suscripción, renderizado como card "Free trial" (patrón Retell). */
   itemPlan?: ItemNav
   /**
@@ -444,7 +443,6 @@ export function AppShell({
   grupos,
   itemsInferiores = [],
   itemsSettings = [],
-  hrefPrincipal = "/",
   itemPlan,
   opcionesCuenta = [],
   opcionesPlan = [],
@@ -495,19 +493,38 @@ export function AppShell({
    * destino, es el estado de un menú, y ensuciar la URL con él haría que el
    * botón «atrás» del navegador tuviera que deshacer un despliegue de menú.
    */
-  const [settingsManual, setSettingsManual] = useState(false)
+  /**
+   * `null` = seguir a la ruta · `true` = lo abrió la persona · `false` = lo
+   * cerró la persona.
+   *
+   * ⚠️ **Hizo falta el tercer estado.** Con un booleano «abierto a mano», el
+   * panel se abría bien pero no se podía CERRAR estando en una pantalla de
+   * configuración: la ruta lo volvía a abrir sola. La salida de entonces fue
+   * que «Volver» navegara al dashboard, y eso reintrodujo el viaje que este
+   * arreglo venía a quitar — el usuario lo reportó de inmediato.
+   */
+  const [panelSettings, setPanelSettings] = useState<boolean | null>(null)
   /** Solo para animar el regreso; ver `contenidoNormal`. */
   const [volviendoDeSettings, setVolviendoDeSettings] = useState(false)
-  const enSettings = enRutaSettings || settingsManual
+  const enSettings = panelSettings ?? enRutaSettings
 
   function alternarColapso() {
     escribirColapso(!colapsado)
   }
 
-  const botonBuscar = (colapsadoLocal: boolean) => (
+  const botonBuscar = (colapsadoLocal: boolean, enSheet = false) => (
     <button
       type="button"
-      onClick={() => setBusquedaAbierta(true)}
+      /* 🔴 En el teléfono hay que CERRAR la hoja del menú al abrir el buscador.
+         No es cortesía: la hoja y la paleta viven las dos en `z-50`, y la hoja
+         se monta después en el DOM —Radix la lleva a `document.body`— así que
+         gana el empate. El buscador se abría DETRÁS del menú, difuminado por su
+         propio velo, y parecía roto. Cerrar la hoja es además lo correcto: el
+         buscador reemplaza al menú, no se apila encima. */
+      onClick={() => {
+        setBusquedaAbierta(true)
+        if (enSheet) setMenuAbierto(false)
+      }}
       title={colapsadoLocal ? "Buscar" : undefined}
       className={cn(
         // `w-full` es lo que alinea el buscador con el resto del shell: sin él
@@ -638,46 +655,28 @@ export function AppShell({
        —hacia adentro— y al volver el principal entra desde la izquierda. */
     <div className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 slide-in-from-right-4 duration-(--motion-base) ease-standard">
       <div className={cn("flex items-center gap-1 px-3 pt-4 pb-2", colapsadoLocal && "flex-col")}>
-        {/* ⚠️ «Volver» hace dos cosas distintas según cómo se llegó, y por eso
-            son dos elementos. Si estamos EN una pantalla de configuración, hay
-            que navegar: cerrar solo el menú dejaría el lienzo en Tarifas con la
-            navegación principal al lado, que no es ningún sitio. Si el panel se
-            abrió sin ir a ninguna parte, navegar sería justo el viaje que la
-            persona no pidió: se cierra y ya. */}
-        {enRutaSettings ? (
-          <Link
-            href={hrefPrincipal}
-            onClick={() => {
-              setVolviendoDeSettings(true)
-              setSettingsManual(false)
-              if (enSheet) setMenuAbierto(false)
-            }}
-            title={colapsadoLocal ? "Volver" : undefined}
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-sidebar-foreground",
-              colapsadoLocal && "justify-center",
-            )}
-          >
-            <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
-            {!colapsadoLocal ? <span className="truncate">Volver</span> : null}
-          </Link>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setVolviendoDeSettings(true)
-              setSettingsManual(false)
-            }}
-            title={colapsadoLocal ? "Volver" : undefined}
-            className={cn(
-              "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-sidebar-foreground",
-              colapsadoLocal && "justify-center",
-            )}
-          >
-            <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
-            {!colapsadoLocal ? <span className="truncate">Volver</span> : null}
-          </button>
-        )}
+        {/* 🔴 «Volver» CIERRA el panel y no navega — nunca, ni siquiera estando
+            dentro de una pantalla de configuración. Una versión anterior sí
+            navegaba al primer destino del menú, y el usuario lo reportó: había
+            entrado a ver las opciones, no a que lo mandaran al dashboard. La
+            regla es la misma en los dos sentidos: el lienzo no se mueve hasta
+            que la persona elige un destino. */}
+        <button
+          type="button"
+          onClick={() => {
+            setVolviendoDeSettings(true)
+            setPanelSettings(false)
+            if (enSheet) setMenuAbierto(false)
+          }}
+          title={colapsadoLocal ? "Volver" : undefined}
+          className={cn(
+            "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-sidebar-foreground",
+            colapsadoLocal && "justify-center",
+          )}
+        >
+          <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+          {!colapsadoLocal ? <span className="truncate">Volver</span> : null}
+        </button>
         {botonColapsar(colapsadoLocal, enSheet)}
       </div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
@@ -725,7 +724,7 @@ export function AppShell({
         {mostrarAvisos ? <CentroAvisos avisos={avisos} /> : null}
         {botonColapsar(colapsadoLocal, enSheet)}
       </div>
-      {mostrarBusqueda ? <div className="px-3 pb-1">{botonBuscar(colapsadoLocal)}</div> : null}
+      {mostrarBusqueda ? <div className="px-3 pb-1">{botonBuscar(colapsadoLocal, enSheet)}</div> : null}
       <Navegacion
         grupos={grupos}
         itemsInferiores={itemsInferiores}
@@ -735,7 +734,7 @@ export function AppShell({
         onNavegar={enSheet ? () => setMenuAbierto(false) : undefined}
         onAbrirSettings={() => {
           setVolviendoDeSettings(false)
-          setSettingsManual(true)
+          setPanelSettings(true)
         }}
       />
       {bloquePlan(colapsadoLocal, enSheet ? () => setMenuAbierto(false) : undefined)}

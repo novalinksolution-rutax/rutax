@@ -248,7 +248,6 @@ export default async function LayoutTenant({ children }: { children: React.React
   ];
 
   // "‹ Volver" del Settings anidado → el primer ítem del sidebar principal.
-  const hrefPrincipal = grupos[0]?.items[0]?.href ?? "/dashboard";
 
   const ROL_ETIQUETA: Record<string, string> = {
     dueno: "Dueño",
@@ -279,7 +278,6 @@ export default async function LayoutTenant({ children }: { children: React.React
       grupos={grupos}
       itemsInferiores={itemsInferiores}
       itemsSettings={itemsSettings}
-      hrefPrincipal={hrefPrincipal}
       itemPlan={itemPlan}
       opcionesPlan={opcionesPlan}
       opcionesCuenta={opcionesCuenta}

@@ -131,7 +131,14 @@ function PaletaContenido({ onCerrar }: { onCerrar: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[10vh]"
+      /* ⚠️ `z-[60]`, por encima del 50 que usan las hojas y los diálogos.
+         La paleta es lo último que se abre y siempre reemplaza a lo que había:
+         un menú lateral, un panel. Con 50 empataba con la hoja del menú móvil y
+         perdía por orden de DOM —Radix la monta en `document.body`, o sea
+         después— así que el buscador aparecía DETRÁS del menú y difuminado por
+         su velo. El shell además cierra la hoja al abrir el buscador; esto es la
+         red por si algún día se abre desde otro sitio. */
+      className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[10vh]"
       role="dialog"
       aria-modal="true"
       aria-label="Buscar"
