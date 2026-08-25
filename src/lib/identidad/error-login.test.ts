@@ -32,11 +32,21 @@ describe("traducirErrorLogin · las causas se distinguen", () => {
     expect(r.reintentarNoAyuda).toBe(true);
   });
 
-  it("servicio caído: dice explícitamente que no es la contraseña", () => {
+  it("servicio caído: se culpa al sistema y se absuelve a la contraseña", () => {
     // Si no lo dice, quien tiene la clave correcta la cambia. Y ahí sí la
     // tiene mal.
+    //
+    // ⚠️ La prueba mira las DOS mitades y no una frase literal: el copy cambió
+    // el 24-08 al del tablero —«Fue un problema nuestro, no tuyo: tu contraseña
+    // sigue siendo la misma»— y la redacción anterior decía lo mismo con otras
+    // palabras. Lo que no puede cambiar es que **admita la culpa** y **absuelva
+    // a la contraseña**; atar la prueba a las palabras exactas la habría hecho
+    // fallar por una mejora de redacción.
     const r = traducirErrorLogin({ status: 503, code: null, message: null });
-    expect(r.mensaje).toMatch(/no es tu contraseña/i);
+    expect(r.mensaje).toMatch(/problema nuestro|no es tu contraseña|no está respondiendo/i);
+    expect(r.mensaje).toMatch(/tu contraseña sigue siendo la misma|no es tu contraseña/i);
+    // Y sigue invitando a reintentar: acá reintentar sí ayuda.
+    expect(r.reintentarNoAyuda).toBe(false);
   });
 
   it("sin red: lo mismo, y sin culpar a la contraseña", () => {

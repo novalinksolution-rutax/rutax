@@ -35,6 +35,16 @@ export interface LecturaErrorLogin {
   /** El mensaje que ve la persona. */
   mensaje: string;
   /**
+   * La salida que SÍ funciona, cuando existe.
+   *
+   * ⚠️ Va justo en los dos estados donde el botón de entrar se apaga o no
+   * ayuda: **decirle a alguien que espere y no ofrecerle nada es dejarlo
+   * mirando la pantalla.** Con el bloqueo por intentos, cambiar la contraseña
+   * lo hace entrar al tiro; con un fallo nuestro, reintentar es lo correcto y
+   * hay que decirlo, porque el mensaje solo no lo sugiere.
+   */
+  salida?: { href: string; texto: string };
+  /**
    * `true` cuando reintentar ahora es inútil o contraproducente: bloqueo por
    * intentos, cuenta suspendida. La pantalla apaga el botón.
    */
@@ -82,6 +92,9 @@ export function traducirErrorLogin(
       mensaje:
         "Demasiados intentos seguidos. Espera unos minutos antes de volver a probar: seguir intentando alarga la espera.",
       reintentarNoAyuda: true,
+      // No es un error suyo: es una defensa nuestra. Por eso ofrece el camino
+      // que no está bloqueado en vez de dejarlo esperando.
+      salida: { href: "/recuperar-contrasena", texto: "Cambiar mi contraseña" },
     };
   }
 
@@ -91,6 +104,7 @@ export function traducirErrorLogin(
       mensaje:
         "Tu cuenta todavía no está activada. Busca el correo de activación que te enviamos; si no lo encuentras, pídele a quien te invitó que te lo reenvíe.",
       reintentarNoAyuda: true,
+      salida: { href: "/registro/revisa-tu-correo", texto: "Reenviar el correo de activación" },
     };
   }
 
@@ -110,8 +124,11 @@ export function traducirErrorLogin(
   // tiene mal es lo que hace que la cambie — y ahí sí la tiene mal.
   if (estado >= 500) {
     return {
+      // ⚠️ **«No pudimos validar» nos culpa a nosotros; «no coinciden» culpa a
+      // la credencial.** Confundirlas hace que alguien cambie una contraseña
+      // que estaba bien — y ahí sí queda con una contraseña que no recuerda.
       mensaje:
-        "El servicio no está respondiendo. No es tu contraseña: espera un momento e intenta otra vez.",
+        "No pudimos validar tu contraseña. Fue un problema nuestro, no tuyo: tu contraseña sigue siendo la misma.",
       reintentarNoAyuda: false,
     };
   }

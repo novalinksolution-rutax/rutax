@@ -1764,6 +1764,54 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       dice que la marca la pone el dueño de la relación, y para el comprador esa es la tienda donde
       compró. No lo resolví por mi cuenta: es una decisión de producto.
 
+## ✅ B7b · El login del backoffice — HECHO (24-08)
+
+**El lienzo, y por qué no es relleno.** Un formulario de dos campos necesita 400 px y ni uno más;
+el resto del ancho no se rellena estirando la tarjeta —eso da un formulario gordo, no una pantalla
+mejor— sino con el símbolo repetido doce veces, uno encendido. **Verificado en 1440: 24
+rectángulos, barra de 112 × 37 px exactos**, relevo cada 4 s y **nunca a un vecino** (medido:
+10 → 3 → 11 → 7). Peso 0 KB: son rectángulos con color de fondo, sin imagen ni SVG, y en un login
+la velocidad es lo primero que se juzga.
+
+**Bajo `lg` el lienzo desaparece y no se reubica**, que es justo la ventaja de un lienzo sobre un
+panel con contenido: nada de lo que hay ahí es información.
+
+**Los seis estados.** Cinco ya los distinguía `traducirErrorLogin` —la brecha #7 se cerró antes—.
+Lo que faltaba:
+- **la salida en los dos estados donde el botón se apaga o no ayuda.** Decirle a alguien que espere
+  y no ofrecerle nada es dejarlo mirando la pantalla; ahora el bloqueo por intentos ofrece cambiar
+  la contraseña, que es el camino que **no** está bloqueado.
+- **el copy de «es nuestro»**, al del tablero: «No pudimos validar tu contraseña. Fue un problema
+  nuestro, no tuyo: tu contraseña sigue siendo la misma». La distinción que importa es que
+  «no coinciden» culpa a la credencial y «no pudimos validar» nos culpa a nosotros — confundirlas
+  hace que alguien cambie una contraseña que estaba bien.
+- **`readOnly` en vez de `disabled` mientras carga.** Un campo deshabilitado se atenúa y deja de
+  leerse: quien espera pierde de vista el correo que acaba de escribir, justo cuando querría
+  comprobar si lo escribió bien. Y «Está tardando más de lo normal» a los 4 s, **sin quitar el
+  estado de carga**.
+- **Verificado con una credencial mala de verdad:** el mensaje no dice cuál de los dos campos
+  falló, el correo se conserva, la contraseña se limpia y el foco vuelve a ella.
+
+**390.** Campos de 48 px, botón de 52, y el enlace de recuperar **baja al pie, centrado** — con el
+pulgar, un enlace chico pegado a una etiqueta es un error de toque esperando. Medido: 48, 52, y el
+centro del enlace en 195 de 390.
+
+⚠️ **Marca Rutax completa, sabiendo que por esta puerta entran tres personas distintas.** El
+tablero diseña **tres puertas** y el producto tiene **una**: por `/login` entran el equipo del
+courier, sus sellers y sus conductores, y `/` los enruta después. Es **decisión del usuario
+(24-08)**, tomada con ese dato delante.
+
+⚠️ **Lo único que se cambió del tablero es la salida secundaria.** Decía «¿Tu courier todavía no
+usa Rutax? Agenda una demostración»: le habla solo al dueño, y a un seller le **afirma algo que no
+le consta** y le ofrece algo que no le toca. Queda «Qué es Rutax», que le sirve a los tres y no
+supone quién eres. *(decisión del usuario)*
+
+**Bloqueado, y no es de esta pantalla:** NUEVO #29 —el semáforo del sistema al pie— y NUEVO #30
+—«lo último que cambió»—. El primero necesita exponer un dato que hoy solo vive en el backstage; el
+segundo, que el backstage tenga dónde escribirlo.
+
+---
+
 ## Pantallas sin sesión · 13
 
 - [x] `/login` — **brecha #7 cerrada.** Mostraba **una sola frase para todo**: «Email o contraseña
