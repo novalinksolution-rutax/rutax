@@ -23,6 +23,7 @@ import {
   activarDesactivarZona,
   asignarComunasAZona,
   listarComunasDeZona,
+  listarComunasDelTenant,
   renombrarZona,
 } from "@/modules/operacion/zonas";
 import {
@@ -185,6 +186,34 @@ export async function actionObtenerComunasDeZona(
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : "Error al obtener comunas.";
     return { ok: false, mensaje };
+  }
+}
+
+/**
+ * Todas las comunas asignadas del tenant, con su zona.
+ *
+ * 🔴 Sin esto el alta de zona no sabe cuáles ya tienen dueño: las dibuja libres,
+ * alguien las marca, y o se mueven de zona sin que nadie lo pidiera o el
+ * guardado entero falla por el `unique (tenant_id, comuna)`. Ver
+ * `cobertura-comunas.ts`.
+ */
+export async function actionObtenerCoberturaComunas(): Promise<
+  Respuesta<{ comuna: string; zonaId: string }[]>
+> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay sesión activa." };
+  }
+
+  try {
+    const cliente = crearClienteServiceRole();
+    const comunas = await listarComunasDelTenant(cliente, sesion.usuario.tenantId);
+    return { ok: true, datos: comunas.map((c) => ({ comuna: c.comuna, zonaId: c.zonaId })) };
+  } catch (err) {
+    return {
+      ok: false,
+      mensaje: err instanceof Error ? err.message : "Error al obtener la cobertura de comunas.",
+    };
   }
 }
 

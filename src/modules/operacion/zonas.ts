@@ -290,6 +290,42 @@ export async function listarComunasDeZona(
 }
 
 // =============================================================================
+// listarComunasDelTenant
+// =============================================================================
+
+/**
+ * Todas las comunas asignadas del tenant, con su zona.
+ *
+ * 🔴 **Hace falta para poder decir la verdad en el alta de zona.** Con solo las
+ * comunas de LA zona que se edita, la pantalla no sabe cuáles ya tienen dueño:
+ * las dibuja libres, alguien las marca, y o se mueven de zona sin que nadie lo
+ * pidiera o el servidor rechaza el guardado entero por el `unique (tenant_id,
+ * comuna)`. B3b lo resuelve al revés — «las que ya tienen dueño se ven con su
+ * zona y no se pueden marcar desde acá»— y para eso hay que leerlas todas.
+ *
+ * ⚠️ Trae también las de zonas INACTIVAS: la restricción de unicidad no mira si
+ * la zona está activa, así que una comuna atrapada en una zona apagada sigue
+ * ocupada. Mostrarla libre sería prometer un guardado que va a fallar.
+ */
+export async function listarComunasDelTenant(
+  cliente: SupabaseClient,
+  tenantId: string,
+): Promise<ZonaComuna[]> {
+  const { data, error } = await cliente
+    .schema('identidad')
+    .from('zona_comunas')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .order('comuna');
+
+  if (error) {
+    throw new Error(`Error al listar las comunas del tenant: ${error.message}`);
+  }
+
+  return (data ?? []).map(filaAZonaComuna);
+}
+
+// =============================================================================
 // resolverZona — helper para el backend (llama a la función SQL)
 // =============================================================================
 

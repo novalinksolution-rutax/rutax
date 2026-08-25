@@ -16,7 +16,9 @@ import { useState, useTransition, type FormEvent } from "react";
 import {
   ChevronDown,
   ChevronUp,
-  Map,
+  // ⚠️ Aliaseado: sin esto `new Map()` resuelve al icono de lucide y el
+  // typecheck se cae con un error que no menciona a lucide por ninguna parte.
+  Map as IconoMapa,
   MapPin,
   RefreshCw,
   ShieldAlert,
@@ -31,12 +33,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import {
+  contarCobertura,
+  estadoDeComunas,
+  textoCobertura,
+  type AsignacionComuna,
+} from "./cobertura-comunas";
 import type { Zona, ZonaComuna } from "@/modules/operacion/tipos";
 import {
   actionCrearZona,
   actionToggleZona,
   actionObtenerComunasDeZona,
+  actionObtenerCoberturaComunas,
   actionAsignarComunas,
   actionRenombrarZona,
   type EstadoZonas,
@@ -140,7 +148,7 @@ function SeccionZonas({
     <Card>
       <CardHeader className="flex-row items-start gap-3 space-y-0">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <Map className="size-5" aria-hidden="true" />
+          <IconoMapa className="size-5" aria-hidden="true" />
         </div>
         <div className="space-y-1">
           <CardTitle className="text-base">Zonas de cobertura</CardTitle>
@@ -332,6 +340,13 @@ function SeccionComunasPorZona({ zonas }: { zonas: Zona[] }) {
   const [exito, setExito] = useState<string | null>(null);
   const [pendiente, iniciarTransicion] = useTransition();
   const [busqueda, setBusqueda] = useState("");
+  /**
+   * 🔴 La cobertura del tenant ENTERO, no solo la de la zona que se edita.
+   * Sin ella la pantalla dibuja libres las comunas que ya tiene otra zona: o se
+   * mueven sin que nadie lo pidiera, o el guardado falla por el
+   * `unique (tenant_id, comuna)` y se pierde todo lo marcado.
+   */
+  const [cobertura, setCobertura] = useState<AsignacionComuna[]>([]);
 
   async function seleccionarZona(id: string) {
     setZonaId(id);
@@ -343,7 +358,10 @@ function SeccionComunasPorZona({ zonas }: { zonas: Zona[] }) {
       return;
     }
     setCargandoComunas(true);
-    const resultado = await actionObtenerComunasDeZona(id);
+    const [resultado, resultadoCobertura] = await Promise.all([
+      actionObtenerComunasDeZona(id),
+      actionObtenerCoberturaComunas(),
+    ]);
     setCargandoComunas(false);
     if (resultado.ok) {
       setComunasActuales(resultado.datos);
@@ -351,6 +369,9 @@ function SeccionComunasPorZona({ zonas }: { zonas: Zona[] }) {
     } else {
       setError(resultado.mensaje);
     }
+    // Si la cobertura falla se sigue: el peor caso es no poder advertir de las
+    // ajenas, y eso es mejor que dejar la pantalla sin cargar.
+    if (resultadoCobertura.ok) setCobertura(resultadoCobertura.datos);
   }
 
   function toggleComuna(comuna: string) {
@@ -375,8 +396,15 @@ function SeccionComunasPorZona({ zonas }: { zonas: Zona[] }) {
     });
   }
 
-  const comunasFiltradas = COMUNAS_RM.filter((c) =>
-    c.toLowerCase().includes(busqueda.toLowerCase()),
+  const nombrePorZona = new Map(zonas.map((z) => [z.id, z.nombre]));
+  const estados = estadoDeComunas(cobertura, nombrePorZona, zonaId, comunasSeleccionadas);
+  const conteo = contarCobertura(estados);
+  const texto = textoCobertura(conteo);
+  // El buscador no filtra por dueño: quien escribe «Maipú» tiene que
+  // encontrarla aunque sea de otra zona — esconderla lo deja buscando algo que
+  // sí existe.
+  const comunasFiltradas = estados.filter((e) =>
+    e.comuna.toLowerCase().includes(busqueda.toLowerCase()),
   );
 
   if (zonas.length === 0) return null;
@@ -429,15 +457,28 @@ function SeccionComunasPorZona({ zonas }: { zonas: Zona[] }) {
               ) : (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="busqueda-comuna">
-                      Comunas RM{" "}
-                      <span className="text-muted-foreground font-normal">
-                        ({comunasSeleccionadas.length} seleccionadas)
+                    {/* 🔴 El contador dice lo que FALTA, no lo que hay. Una
+                        comuna sin zona no falla: cae en la tarifa por defecto y
+                        se cobra igual, en silencio — así que el síntoma de
+                        tener seis huérfanas aparece en el cierre del período,
+                        si alguien lo busca. Por eso las huérfanas van en ámbar
+                        y el número de asignadas va tenue: es la cifra que hace
+                        sentir que el trabajo está hecho. */}
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <Label htmlFor="busqueda-comuna">Comunas</Label>
+                      <span className="rx-num font-mono text-xs tabular-nums">
+                        <span className="text-fg-muted">{texto.principal}</span>
+                        {texto.alerta && (
+                          <>
+                            <span className="text-fg-subtle"> · </span>
+                            <span className="font-semibold text-attention-fg">{texto.alerta}</span>
+                          </>
+                        )}
                       </span>
-                    </Label>
+                    </div>
                     <Input
                       id="busqueda-comuna"
-                      placeholder="Filtrar comunas…"
+                      placeholder="Buscar una comuna…"
                       value={busqueda}
                       onChange={(e) => setBusqueda(e.target.value)}
                     />
@@ -448,28 +489,50 @@ function SeccionComunasPorZona({ zonas }: { zonas: Zona[] }) {
                     role="group"
                     aria-label="Comunas de la Región Metropolitana"
                   >
-                    {comunasFiltradas.map((comuna) => {
-                      const checked = comunasSeleccionadas.includes(comuna);
+                    {comunasFiltradas.map((e) => {
+                      /* La que ya tiene dueño NO se oculta y NO se puede marcar:
+                         se ve con trama y con el nombre de su zona. Quien la
+                         busca necesita saber dónde está; esconderla lo deja
+                         buscando una comuna que sí existe. */
+                      if (e.esDeOtraZona) {
+                        return (
+                          <span
+                            key={e.comuna}
+                            data-tono="inert"
+                            data-trama=""
+                            className="flex cursor-not-allowed items-baseline gap-1.5 border border-line-subtle px-2 py-1.5 text-sm text-fg-subtle"
+                            title={`Ya está en la zona ${e.nombreZonaDuena}. Una comuna solo puede estar en una zona.`}
+                          >
+                            <span className="truncate">{e.comuna}</span>
+                            <span className="truncate text-xs">· {e.nombreZonaDuena}</span>
+                          </span>
+                        );
+                      }
                       return (
                         <label
-                          key={comuna}
-                          className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
-                            checked
-                              ? "bg-primary/10 text-primary"
-                              : "text-foreground hover:bg-muted"
+                          key={e.comuna}
+                          className={`flex cursor-pointer items-center gap-2 px-2 py-1.5 text-sm transition-colors ${
+                            e.esDeEstaZona
+                              ? "bg-accent-deep text-accent-text"
+                              : "text-fg hover:bg-bg-sunken"
                           }`}
                         >
                           <input
                             type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleComuna(comuna)}
-                            className="size-3.5 accent-primary"
+                            checked={e.esDeEstaZona}
+                            onChange={() => toggleComuna(e.comuna)}
+                            className="size-3.5 accent-[var(--rx-accent)]"
                           />
-                          {comuna}
+                          {e.comuna}
                         </label>
                       );
                     })}
                   </div>
+
+                  <p className="text-xs text-fg-subtle">
+                    Una comuna solo puede estar en una zona. Las que ya tienen dueño se ven con su
+                    zona y no se pueden marcar desde acá.
+                  </p>
 
                   {/* Comunas actualmente en la zona para referencia */}
                   {comunasActuales.length > 0 && (
