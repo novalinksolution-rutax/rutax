@@ -31,6 +31,16 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import {
+  puedeAjustarOperacionDiaria,
+  puedeVerBitacoraAuditoria,
+  puedeVerConciliacion,
+} from "@/modules/identidad/capacidades";
+import { mapaNombresUsuarios } from "@/modules/identidad/consultas";
+import { armarBitacoraPedido } from "./bitacora-pedido";
+import { esTransicionValida } from "./maquina-estados";
+
 import { obtenerPedido } from "./pedidos";
 import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import { puedeImprimirEtiqueta } from "./etiqueta-disponible";
@@ -92,24 +102,75 @@ export interface VistaPreviaPedido {
    * separan sin que nadie lo note. Ver `etiqueta-disponible.ts`.
    */
   etiquetaDisponible: boolean;
+
+  /* =========================================================================
+   * Paridad con la página (tablero P3, decisión n.º 1)
+   * =========================================================================
+   * «El panel es el modo de trabajo en lista; la página, el modo de llegada por
+   * enlace. Mismo contenido, mismo orden, mismos permisos.» Antes el panel era
+   * un RESUMEN que empujaba al detalle —«las acciones que no se deshacen viven
+   * allá»— y eso obligaba a cargar una pantalla entera para cancelar un pedido
+   * que ya se estaba mirando.
+   *
+   * ⚠️ Lo que NO se copia es la maqueta: el propio tablero define para 390 px
+   * una forma distinta —una columna, zona de consecuencia plegada— y el panel
+   * mide 380/430. Mismo contenido y mismo orden; distinta caja.
+   * ======================================================================= */
+
+  /** `true` cuando el conductor ya registró la prueba de entrega. */
+  hayPruebaEntrega: boolean;
+  /** Cuántas incidencias siguen abiertas o en gestión. */
+  incidenciasAbiertas: number;
+
+  /**
+   * Qué puede hacer ESTE usuario sobre ESTE pedido.
+   *
+   * 🔴 Se resuelve en el servidor, igual que `etiquetaDisponible`. Mandar el rol
+   * al cliente para que repita las reglas de capacidad es tener dos copias de
+   * un control de acceso, y la del cliente no controla nada.
+   */
+  puede: {
+    cancelar: boolean;
+    anularCobro: boolean;
+    anularLiquidacion: boolean;
+    verBitacora: boolean;
+  };
+
+  /** Últimos movimientos registrados. Vacío si no tiene la capacidad. */
+  bitacora: {
+    id: string;
+    creadoEn: string;
+    autor: string | null;
+    frase: string;
+    motivo: string | null;
+  }[];
 }
 
 export async function armarVistaPreviaPedido(
   cliente: SupabaseClient,
   tenantId: string,
   pedidoId: string,
+  /** Para resolver las capacidades EN EL SERVIDOR. Ver `puede` en el contrato. */
+  usuario: UsuarioActual,
 ): Promise<VistaPreviaPedido | null> {
   // ⚠️ `obtenerPedido` filtra por tenant. Es la barrera de aislamiento de esta
   // función: si el pedido no es de este courier, acá se acaba.
   const pedido = await obtenerPedido(cliente, pedidoId, tenantId).catch(() => null);
   if (!pedido) return null;
 
-  const [asignacion, bultos, cierre, cobro] = await Promise.all([
-    leerAsignacion(cliente, tenantId, pedidoId),
-    contarBultosRetirados(cliente, tenantId, pedidoId),
-    leerCierreDelConductor(cliente, tenantId, pedidoId),
-    leerCobro(cliente, tenantId, pedidoId),
-  ]);
+  const puedeVerBitacora = puedeVerBitacoraAuditoria(usuario);
+
+  const [asignacion, bultos, cierre, cobro, hayPod, incidenciasAbiertas, bitacoraCruda, hayLiq] =
+    await Promise.all([
+      leerAsignacion(cliente, tenantId, pedidoId),
+      contarBultosRetirados(cliente, tenantId, pedidoId),
+      leerCierreDelConductor(cliente, tenantId, pedidoId),
+      leerCobro(cliente, tenantId, pedidoId),
+      hayPruebaDeEntrega(cliente, tenantId, pedidoId),
+      contarIncidenciasAbiertas(cliente, tenantId, pedidoId),
+      puedeVerBitacora ? leerBitacora(cliente, tenantId, pedidoId) : Promise.resolve([]),
+      hayLiquidacionViva(cliente, tenantId, pedidoId),
+    ]);
 
   const conductorId = asignacion?.driverId ?? pedido.driverIdAsignado ?? null;
   const nombres: Record<string, string> = conductorId
@@ -160,7 +221,106 @@ export async function armarVistaPreviaPedido(
       estadoMl: pedido.estadoMl ?? null,
       estado: pedido.estado,
     }),
+
+    hayPruebaEntrega: hayPod,
+    incidenciasAbiertas,
+    puede: {
+      // Mismo gate que la página: cancelar es SOLO same-day y solo desde una
+      // transición que la máquina de estados ya admite para 'interno'.
+      cancelar:
+        puedeAjustarOperacionDiaria(usuario) &&
+        pedido.tipoPedido === "same_day" &&
+        esTransicionValida(pedido.estado, "cancelado", "interno"),
+      // `leerCobro` ya filtra `anulada = false`: si devolvió algo, hay línea
+      // viva. Volver a comprobarlo acá sería una segunda verdad sobre lo mismo.
+      anularCobro: puedeVerConciliacion(usuario) && cobro !== null,
+      anularLiquidacion: puedeVerConciliacion(usuario) && hayLiq,
+      verBitacora: puedeVerBitacora,
+    },
+    bitacora: bitacoraCruda,
   };
+}
+
+/** ¿El conductor ya registró la prueba? Solo el hecho, nunca su contenido. */
+async function hayPruebaDeEntrega(cliente: SupabaseClient, tenantId: string, pedidoId: string) {
+  try {
+    const { count } = await cliente
+      .schema("operacion")
+      .from("pruebas_entrega")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("pedido_id", pedidoId);
+    return (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function contarIncidenciasAbiertas(
+  cliente: SupabaseClient,
+  tenantId: string,
+  pedidoId: string,
+) {
+  try {
+    const { count } = await cliente
+      .schema("operacion")
+      .from("incidencias")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("pedido_id", pedidoId)
+      .in("estado", ["abierta", "en_gestion"]);
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * ¿Queda una línea de liquidación viva que se pueda anular?
+ *
+ * Solo el hecho: el panel no muestra el monto al conductor, y traerlo para
+ * decidir si pintar un botón sería mover un dato de dinero sin necesidad.
+ */
+async function hayLiquidacionViva(cliente: SupabaseClient, tenantId: string, pedidoId: string) {
+  try {
+    const { count } = await cliente
+      .schema("dinero")
+      .from("lineas_liquidacion")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("pedido_id", pedidoId)
+      .eq("anulada", false);
+    return (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Los últimos movimientos del pedido, con el autor ya resuelto. */
+async function leerBitacora(cliente: SupabaseClient, tenantId: string, pedidoId: string) {
+  try {
+    const { data } = await cliente
+      .from("bitacora_auditoria")
+      .select("id, creado_en, accion, actor_tipo, actor_usuario_id, detalle")
+      .eq("entidad_id", pedidoId)
+      .eq("tenant_id", tenantId)
+      .order("creado_en", { ascending: false })
+      .limit(8);
+    const filas = data ?? [];
+    const ids = [
+      ...new Set(
+        filas
+          .map((f) => f.actor_usuario_id)
+          .filter((v): v is string => typeof v === "string"),
+      ),
+    ];
+    const nombres = ids.length > 0
+      ? await mapaNombresUsuarios(cliente, tenantId, ids).catch(() => ({}))
+      : {};
+    return armarBitacoraPedido(filas, nombres);
+  } catch {
+    return [];
+  }
 }
 
 /**

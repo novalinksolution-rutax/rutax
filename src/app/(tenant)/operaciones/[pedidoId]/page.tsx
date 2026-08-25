@@ -63,7 +63,7 @@ import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
 import { disponibilidadEtiqueta } from "@/modules/operacion/etiqueta-disponible";
 import { BotonReubicar } from "./boton-reubicar";
 import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
-import { armarBitacoraPedido, type EntradaBitacora } from "./bitacora-pedido";
+import { armarBitacoraPedido, type EntradaBitacora } from "@/modules/operacion/bitacora-pedido";
 import { BotonReintentarLectura } from "./boton-reintentar-lectura";
 import { DialogAnular } from "./acciones-corregir-dinero";
 import { accionAnularCobroPedido, accionAnularLiquidacionPedido } from "./acciones-dinero";

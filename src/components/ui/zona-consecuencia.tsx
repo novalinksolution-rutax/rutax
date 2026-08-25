@@ -56,10 +56,23 @@ export function ZonaConsecuencia({
   children,
   /** Qué hacen las acciones de esta zona, en una frase. La escribe quien la usa. */
   resumen,
+  /**
+   * 🔴 Plegar SIEMPRE, sin mirar el punto de corte.
+   *
+   * Lo pide el panel de vista previa, y la razón es que `md:` mira el VIEWPORT y
+   * no el ancho del contenedor: en un escritorio de 1440 la zona se desplegaba
+   * dentro de una columna de 430 px, que es ancho de teléfono. El tablero define
+   * para esa anchura el trato plegado, así que quien conoce su ancho real lo
+   * dice acá. (Un contenedor con `@container` resolvería esto solo; hoy el
+   * proyecto no lo usa en ninguna parte y estrenarlo por un bloque sería
+   * introducir una técnica nueva para un caso.)
+   */
+  siemprePlegada = false,
   className,
 }: {
   children: ReactNode;
   resumen: string;
+  siemprePlegada?: boolean;
   className?: string;
 }) {
   const [abiertoEnTelefono, setAbiertoEnTelefono] = useState(false);
@@ -88,7 +101,10 @@ export function ZonaConsecuencia({
         onClick={() => setAbiertoEnTelefono((v) => !v)}
         aria-expanded={abiertoEnTelefono}
         aria-controls="zona-consecuencia-acciones"
-        className="mt-3 flex w-full cursor-pointer items-center justify-between gap-2 border border-fault-line/60 bg-bg-raised px-3 py-2 text-sm font-medium text-fault-fg md:hidden"
+        className={cn(
+          "mt-3 flex w-full cursor-pointer items-center justify-between gap-2 border border-fault-line/60 bg-bg-raised px-3 py-2 text-sm font-medium text-fault-fg",
+          !siemprePlegada && "md:hidden",
+        )}
       >
         Más acciones
         <ChevronDown
@@ -100,7 +116,8 @@ export function ZonaConsecuencia({
       <div
         id="zona-consecuencia-acciones"
         className={cn(
-          "mt-3 flex-col gap-2 md:flex",
+          "mt-3 flex-col gap-2",
+          !siemprePlegada && "md:flex",
           abiertoEnTelefono ? "flex" : "hidden",
         )}
       >

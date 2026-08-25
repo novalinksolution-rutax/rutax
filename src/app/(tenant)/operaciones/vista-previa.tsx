@@ -75,6 +75,14 @@ import type { VistaPreviaPedido } from "@/modules/operacion/vista-previa";
 import { destinoAlSoltar } from "@/lib/ui/hoja-inferior";
 
 import { accionVistaPreviaPedido } from "./vista-previa-actions";
+import { ZonaConsecuencia, FilaConsecuencia } from "@/components/ui/zona-consecuencia";
+import { DialogAnular } from "./[pedidoId]/acciones-corregir-dinero";
+import { DialogCancelarPedido } from "./[pedidoId]/dialog-cancelar-pedido";
+import {
+  accionAnularCobroPedido,
+  accionAnularLiquidacionPedido,
+} from "./[pedidoId]/acciones-dinero";
+import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 
 /**
  * Los tiempos, tal como los fija el tablero. Están acá y no repartidos por el
@@ -409,8 +417,29 @@ function PanelContenido({
           </Bloque>
         )}
 
-        <Bloque titulo="Accesos rápidos">
-          <AccesosRapidos datos={datos} onCerrar={onCerrar} />
+        {/* ── Prueba de entrega ─────────────────────────────────────────
+            Tablero P3: el orden canónico va seguimiento → prueba → incidencias
+            → dinero, y el panel lo sigue igual que la página. Solo el HECHO,
+            nunca la foto: el visor con su enlace firmado de 15 minutos vive en
+            el detalle, y traerlo a un panel que se abre cientos de veces al día
+            sería pedir una URL firmada por cada vistazo. */}
+        <Bloque titulo="Prueba de entrega">
+          <p className="text-sm text-fg-muted">
+            {datos.hayPruebaEntrega
+              ? "Registrada por el conductor. Se ve completa en el detalle."
+              : "Todavía no hay prueba: el conductor la registra al cerrar la parada."}
+          </p>
+        </Bloque>
+
+        {/* La sección no desaparece cuando no hay ninguna: «sin incidencias»
+            significa que el pedido va limpio, y su ausencia obligaba a
+            deducirlo de un hueco. */}
+        <Bloque titulo="Incidencias">
+          <p className="text-sm text-fg-muted">
+            {datos.incidenciasAbiertas === 0
+              ? "Sin incidencias en este pedido."
+              : `${datos.incidenciasAbiertas} sin resolver. Se gestionan en el detalle.`}
+          </p>
         </Bloque>
 
         {datos.dinero && (
@@ -444,6 +473,41 @@ function PanelContenido({
             </p>
           </Bloque>
         )}
+        <Bloque titulo="Accesos rápidos">
+          <AccesosRapidos datos={datos} onCerrar={onCerrar} />
+        </Bloque>
+
+        {/* ── Zona de consecuencia ─────────────────────────────────────
+            🔴 Esto es la decisión n.º 1 del tablero hecha carne: «panel o
+            página, misma cosa». El panel era un resumen cuyo pie decía «las
+            acciones que no se deshacen viven allá», así que cancelar un pedido
+            que ya se estaba mirando costaba cargar una pantalla entera.
+
+            Va con `siemprePlegada` porque `md:` mira el VIEWPORT y no el ancho
+            del contenedor: sin eso, en un escritorio de 1440 la zona se
+            desplegaba dentro de una columna de 430 px. El tablero define para
+            esa anchura el trato plegado, tras «Más acciones». */}
+        <ZonaConsecuenciaPanel datos={datos} />
+
+        {datos.puede.verBitacora && datos.bitacora.length > 0 && (
+          <Bloque titulo="Bitácora de este pedido">
+            <ol className="space-y-2">
+              {datos.bitacora.map((e) => (
+                <li key={e.id} className="text-sm">
+                  <p className="text-fg">
+                    <span className="rx-num font-mono text-xs text-fg-subtle tabular-nums">
+                      {formatearHora(e.creadoEn)}
+                    </span>{" "}
+                    <span className="font-medium">{e.autor ?? "Rutax"}</span> {e.frase}
+                  </p>
+                  {e.motivo && (
+                    <p className="mt-0.5 text-xs text-fg-muted italic">&ldquo;{e.motivo}&rdquo;</p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </Bloque>
+        )}
       </div>
 
       {/* ── Pie ────────────────────────────────────────────────────────────
@@ -455,11 +519,83 @@ function PanelContenido({
             Abrir el detalle completo
           </EnlaceQueCierra>
         </Button>
+        {/* ⚠️ Decía «las acciones que no se deshacen viven allá», y dejó de
+            ser cierto: ahora viven acá, en la zona de consecuencia. Mantener la
+            frase mandaría a cargar una pantalla por algo que ya está a mano. */}
         <p className="mt-1.5 text-center text-xs text-fg-subtle">
-          Las acciones que no se deshacen viven allá
+          El historial completo y la prueba de entrega, allá
         </p>
       </footer>
     </>
+  );
+}
+
+/**
+ * La zona de consecuencia dentro del panel.
+ *
+ * Reusa el MISMO componente que la página —no una copia adaptada— porque lo que
+ * el tablero pide es que la zona sea reconocible en las dos superficies. Lo que
+ * cambia es la caja, no la pieza.
+ */
+function ZonaConsecuenciaPanel({ datos }: { datos: VistaPreviaPedido }) {
+  const { cancelar, anularCobro, anularLiquidacion } = datos.puede;
+  if (!cancelar && !anularCobro && !anularLiquidacion) return null;
+
+  return (
+    <ZonaConsecuencia
+      siemprePlegada
+      resumen="Piden motivo escrito y quedan a tu nombre. Anular una línea de dinero no deshace la entrega: solo saca la plata del período."
+    >
+      {anularCobro && (
+        <FilaConsecuencia descripcion="Anular el cobro al seller">
+          <DialogAnular
+            pedidoId={datos.id}
+            titulo="Vas a anular el cobro de este pedido"
+            descripcion={
+              <>
+                La línea sale del período y el seller deja de verla. Queda registrada como anulada
+                con tu nombre y tu motivo, <strong>no se borra</strong>.
+              </>
+            }
+            ayudaMotivo="Queda en la bitácora, con tu nombre."
+            accion={accionAnularCobroPedido}
+            etiquetaBoton="Anular"
+            textoConfirmar="Anular el cobro"
+          />
+        </FilaConsecuencia>
+      )}
+
+      {anularLiquidacion && (
+        <FilaConsecuencia descripcion="Anular la liquidación al conductor">
+          <DialogAnular
+            pedidoId={datos.id}
+            titulo="Vas a quitarle esta línea a la liquidación del conductor"
+            descripcion={
+              <>
+                El conductor va a ver la línea anulada <strong>con tu motivo</strong> en su
+                liquidación y en su PDF.
+              </>
+            }
+            ayudaMotivo="Lo lee el conductor, en su liquidación y en su PDF."
+            accion={accionAnularLiquidacionPedido}
+            etiquetaBoton="Anular"
+            textoConfirmar="Anular la línea"
+          />
+        </FilaConsecuencia>
+      )}
+
+      {cancelar && (
+        <FilaConsecuencia descripcion="Cancelar el pedido">
+          <DialogCancelarPedido
+            pedidoId={datos.id}
+            codigoVisible={datos.codigo ?? datos.id.slice(0, 8)}
+            sellerNombre={datos.dinero?.sellerNombre ?? null}
+            conductorNombre={datos.quien?.conductorNombre ?? null}
+            seguimientoEsDeRutax={!podLoGobiernaLaFuente(datos.fuente)}
+          />
+        </FilaConsecuencia>
+      )}
+    </ZonaConsecuencia>
   );
 }
 

@@ -50,6 +50,7 @@ export async function accionVistaPreviaPedido(pedidoId: string): Promise<Respues
       crearClienteServiceRole(),
       sesion.usuario.tenantId,
       pedidoId,
+      sesion.usuario,
     );
     return datos ? { ok: true, datos } : { ok: false, motivo: "no_encontrado" };
   } catch {
