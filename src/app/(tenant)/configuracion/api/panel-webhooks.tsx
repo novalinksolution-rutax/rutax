@@ -23,7 +23,8 @@ import {
   accionToggleWebhookEndpoint,
   accionEliminarWebhookEndpoint,
 } from "./acciones";
-import { formatearFecha } from "@/lib/formato-cl";
+import { formatearFecha, formatearFechaHora } from "@/lib/formato-cl";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 
 export interface WebhookEndpointRow {
   id: string;
@@ -232,7 +233,31 @@ function CardEndpoint({ endpoint }: { endpoint: WebhookEndpointRow }) {
   );
 }
 
-export function PanelWebhooks({ endpoints }: { endpoints: WebhookEndpointRow[] }) {
+/**
+ * Un aviso de la bandeja de salida, tal como se muestra.
+ *
+ * ⚠️ NO trae el `payload` ni el `ultimo_error`. El payload puede llevar datos
+ * del destinatario y el error crudo del proveedor dice de más sobre cómo está
+ * armado el sistema por dentro — es la misma regla del bloque de falla externa.
+ * Lo que hace falta acá es si salió, cuándo, y cuántas veces se intentó.
+ */
+export interface AvisoWebhookRow {
+  id: string;
+  endpointId: string;
+  eventoTipo: string;
+  estado: "pendiente" | "enviando" | "enviado" | "fallido" | "descartado";
+  intentos: number;
+  creadoEn: string;
+  enviadoEn: string | null;
+}
+
+export function PanelWebhooks({
+  endpoints,
+  avisos,
+}: {
+  endpoints: WebhookEndpointRow[];
+  avisos: AvisoWebhookRow[];
+}) {
   const router = useRouter();
 
   return (
@@ -262,6 +287,91 @@ export function PanelWebhooks({ endpoints }: { endpoints: WebhookEndpointRow[] }
           ))}
         </div>
       )}
+
+      {endpoints.length > 0 && <UltimosAvisos avisos={avisos} />}
     </div>
   );
 }
+
+/**
+ * ÚLTIMOS AVISOS — lo que el bloque 3 dejó abierto y acá está resuelto.
+ * =============================================================================
+ *
+ * 🔴 **Sin esto, quien integra no tiene forma de saber si el problema es suyo o
+ * nuestro.** La bandeja de salida existe desde que existen los webhooks —con su
+ * estado, sus intentos y su hora de envío— y no se mostraba en ninguna parte:
+ * la única salida era preguntarnos.
+ *
+ * ⚠️ **Y se dice lo incómodo.** Reintentamos tres veces y después dejamos de
+ * intentar: si el sistema del courier estuvo caído, esos avisos se perdieron y
+ * no se recuperan. Descubrirlo después —cuando falta un pedido en su ERP y
+ * nadie sabe por qué— es peor que leerlo acá.
+ */
+function UltimosAvisos({ avisos }: { avisos: AvisoWebhookRow[] }) {
+  if (avisos.length === 0) {
+    return (
+      <div className="border border-line bg-bg-sunken px-4 py-6 text-center">
+        <p className="text-sm text-fg-muted">
+          Todavía no hemos mandado ningún aviso. El primero sale con el próximo pedido que cierre
+          uno de los eventos que elegiste.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <section className="space-y-2" aria-label="Últimos avisos enviados">
+      <p className="font-mono text-[9px] leading-normal tracking-[0.12em] text-fg-muted uppercase">
+        Últimos avisos
+      </p>
+
+      <ul className="divide-y divide-line-subtle border border-line bg-bg-raised">
+        {avisos.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
+            <span className="flex items-baseline gap-2">
+              <DistintivoEstado tono={TONO_AVISO[a.estado]} etiqueta={ETIQUETA_AVISO[a.estado]} />
+              <span className="rx-num font-mono text-xs text-fg-muted">{a.eventoTipo}</span>
+            </span>
+            <span className="rx-num font-mono text-xs text-fg-subtle tabular-nums">
+              {formatearFechaHora(a.enviadoEn ?? a.creadoEn)}
+              {/* Los intentos solo cuando hubo más de uno: «· 1 intento» en
+                  todas las filas es ruido que tapa el dato de las que fallaron. */}
+              {a.intentos > 1 ? ` · ${a.intentos} intentos` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <p className="text-xs leading-relaxed text-fg-subtle">
+        Reintentamos {REINTENTOS_POR_DEFECTO} veces y después dejamos de intentar.{" "}
+        <span className="font-medium text-fg-muted">
+          Si tu sistema estuvo caído, esos avisos se perdieron
+        </span>{" "}
+        — no se recuperan solos.
+      </p>
+    </section>
+  );
+}
+
+/** El default de `webhook_endpoints.reintentos_max`. */
+const REINTENTOS_POR_DEFECTO = 3;
+
+const ETIQUETA_AVISO: Record<AvisoWebhookRow["estado"], string> = {
+  pendiente: "En cola",
+  enviando: "Enviando",
+  enviado: "Entregado",
+  fallido: "Reintentando",
+  // «Descartado» es jerga de la bandeja de salida. Lo que le pasó a quien
+  // integra es que no le llegó, y que ya no va a llegar.
+  descartado: "No se entregó",
+};
+
+const TONO_AVISO: Record<AvisoWebhookRow["estado"], "balanced" | "progress" | "attention" | "fault"> =
+  {
+    pendiente: "progress",
+    enviando: "progress",
+    enviado: "balanced",
+    // Reintentando todavía puede salir bien: atención, no falla.
+    fallido: "attention",
+    descartado: "fault",
+  };

@@ -10,7 +10,11 @@ import {
   SinPermisoConfiguracion,
 } from "../_componentes/pantalla-configuracion";
 import { PanelApiKeys, type ApiKeyRow } from "./panel-api-keys";
-import { PanelWebhooks, type WebhookEndpointRow } from "./panel-webhooks";
+import {
+  PanelWebhooks,
+  type WebhookEndpointRow,
+  type AvisoWebhookRow,
+} from "./panel-webhooks";
 
 export const metadata: Metadata = {
   title: "API e Integraciones",
@@ -29,7 +33,7 @@ export default async function PaginaApiIntegraciones() {
   const tenantId = sesion.usuario.tenantId;
   const supabase = crearClienteServiceRole();
 
-  const [{ data: keysData }, { data: endpointsData }] = await Promise.all([
+  const [{ data: keysData }, { data: endpointsData }, { data: avisosData }] = await Promise.all([
     supabase
       .schema("integraciones")
       .from("api_keys")
@@ -42,6 +46,16 @@ export default async function PaginaApiIntegraciones() {
       .select("id, url, eventos, activo, reintentos_max, creado_en")
       .eq("tenant_id", tenantId)
       .order("creado_en", { ascending: false }),
+    // 🔴 El registro de últimos avisos, que no se mostraba en ninguna parte.
+    // La tabla existe desde que existen los webhooks: quien integra no tenía
+    // forma de saber si el problema era suyo o nuestro, y preguntaba.
+    supabase
+      .schema("integraciones")
+      .from("webhook_outbox")
+      .select("id, endpoint_id, evento_tipo, estado, intento_num, creado_en, enviado_en")
+      .eq("tenant_id", tenantId)
+      .order("creado_en", { ascending: false })
+      .limit(20),
   ]);
 
   const apiKeys: ApiKeyRow[] = (keysData ?? []).map((k: Record<string, unknown>) => ({
@@ -61,6 +75,16 @@ export default async function PaginaApiIntegraciones() {
     activo: e.activo as boolean,
     reintentoMax: (e.reintentos_max as number) ?? 3,
     creadoEn: e.creado_en as string,
+  }));
+
+  const avisos: AvisoWebhookRow[] = (avisosData ?? []).map((a: Record<string, unknown>) => ({
+    id: a.id as string,
+    endpointId: a.endpoint_id as string,
+    eventoTipo: a.evento_tipo as string,
+    estado: a.estado as AvisoWebhookRow["estado"],
+    intentos: (a.intento_num as number) ?? 0,
+    creadoEn: a.creado_en as string,
+    enviadoEn: (a.enviado_en as string | null) ?? null,
   }));
 
   return (
@@ -97,7 +121,7 @@ export default async function PaginaApiIntegraciones() {
         </TabsContent>
 
         <TabsContent value="webhooks" className="mt-6">
-          <PanelWebhooks endpoints={endpoints} />
+          <PanelWebhooks endpoints={endpoints} avisos={avisos} />
         </TabsContent>
       </Tabs>
     </PantallaConfiguracion>
