@@ -277,7 +277,44 @@ export default async function LayoutTenant({ children }: { children: React.React
       // que el `max-w-6xl` con que se lee bien todo lo demás. La excepción se
       // declara acá —donde viven las rutas— y no se le quita el ancho máximo a
       // ninguna otra pantalla.
-      rutasAnchas={["/torre-de-control"]}
+      /**
+       * 🔴 Los LISTADOS van fluidos; los formularios y los detalles, topados.
+       *
+       * El `max-w-6xl` (1152 px) dejaba el contenido como un cuadrado al centro
+       * en cualquier monitor de 1440 para arriba, y en Pedidos obligaba a un
+       * scroll horizontal dentro de la tabla con media pantalla vacía a los
+       * lados. Una tabla quiere ancho: cada columna que no cabe es un dato que
+       * hay que ir a buscar.
+       *
+       * ⚠️ **Y por eso NO se abre todo.** Un formulario o una ficha de 1.800 px
+       * de ancho es peor que uno angosto: el ojo pierde el renglón al volver, y
+       * un campo de texto estirado de lado a lado no se lee como un campo. Las
+       * pantallas de formulario y detalle mantienen su propio `max-w` —lo
+       * declaran ellas— y por eso no están en esta lista.
+       *
+       * La regla para agregar una: **si la pantalla es una tabla o una lista de
+       * objetos, va acá. Si es un formulario, una ficha o un asistente, no.**
+       */
+      rutasAnchas={[
+        // El mapa: la razón original de que esta lista exista.
+        "/torre-de-control",
+        // Operación
+        "/operaciones",
+        "/manifiestos",
+        "/conductores",
+        "/sellers",
+        "/preparacion/asignar",
+        // Dinero
+        "/dinero/periodos",
+        "/dinero/liquidaciones",
+        "/dinero/conciliacion",
+        "/dinero/cobranza",
+        // Configuración con tabla
+        "/configuracion/tarifas",
+        "/configuracion/bodegas",
+        "/configuracion/api",
+        "/equipo",
+      ]}
       avisos={avisos}
       destinosMovil={destinos}
       banner={

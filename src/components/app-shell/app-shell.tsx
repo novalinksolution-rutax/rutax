@@ -689,7 +689,12 @@ export function AppShell({
             "mx-auto w-full flex-1 px-4 outline-none lg:px-8",
             destinosMovil.length > 0 ? "pb-24 lg:pb-10" : "pb-10",
             ancho
-              ? "max-w-[1600px] pt-5 lg:pt-6"
+              // 1800 px es un techo, no una medida: en 1920 con la barra
+              // lateral el contenido queda en ~1600 y el tope no se alcanza, o
+              // sea que se comporta como fluido. Existe para que en un monitor
+              // de 2560 una fila de tabla no llegue a los 2.300 px, donde el
+              // ojo ya no encuentra la columna de la derecha desde la primera.
+              ? "max-w-[1800px] pt-5 lg:pt-6"
               : relajado
                 ? "max-w-5xl pt-6 lg:pt-8"
                 : "max-w-6xl pt-5 lg:pt-6",

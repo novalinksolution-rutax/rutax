@@ -11,10 +11,21 @@ import { cn } from "@/lib/utils"
  */
 type DensidadTabla = "compact" | "comfortable" | "relaxed"
 
+/**
+ * ⚠️ **Subió un escalón el 25-08.** Con el lienzo topado en 1152 px la tabla
+ * quedaba como una planilla al centro de la pantalla: apretada y lejos. Al
+ * abrir los listados a ancho fluido, la densidad de antes dejaba filas
+ * delgadas cruzando 1.600 px, que es peor — el ojo pierde el renglón a mitad
+ * de camino.
+ *
+ * Cada fila gana ~8 px y el cuerpo pasa a 15 px (ver `Table`). Se pierden dos
+ * o tres filas por pantalla; con 30 pedidos al día eso no cambia el trabajo, y
+ * lo que se gana es que la tabla se lee de lejos.
+ */
 const DENSIDAD: Record<DensidadTabla, string> = {
-  compact: "[&_td]:py-1.5 [&_th]:h-9",
-  comfortable: "[&_td]:py-2.5 [&_th]:h-10",
-  relaxed: "[&_td]:py-3.5 [&_th]:h-12",
+  compact: "[&_td]:py-2 [&_th]:h-10",
+  comfortable: "[&_td]:py-3 [&_th]:h-11",
+  relaxed: "[&_td]:py-4 [&_th]:h-13",
 }
 
 function Table({
@@ -30,7 +41,9 @@ function Table({
       <table
         data-slot="table"
         data-densidad={densidad}
-        className={cn("w-full caption-bottom text-sm", DENSIDAD[densidad], className)}
+        // `text-[15px]` y no `text-sm`: un punto más, que es lo que hace que
+        // se lea de lejos sin cambiar la caja de nada.
+        className={cn("w-full caption-bottom text-[15px]", DENSIDAD[densidad], className)}
         {...props}
       />
     </div>
