@@ -56,13 +56,13 @@ describe("obtenerPuertoWhatsApp — el gate necesita las TRES condiciones", () =
 
   it("con credenciales pero SIN abrir el gate → stub", () => {
     process.env.WHATSAPP_ACCESS_TOKEN = "token";
-    process.env.WHATSAPP_PHONE_NUMBER_ID = "118309731563783";
+    process.env.WHATSAPP_PHONE_NUMBER_ID = "1183097731563783";
     expect(obtenerPuertoWhatsApp()).toBeInstanceOf(StubWhatsAppAdapter);
   });
 
   it("con el gate abierto pero SIN token → stub (no falla a medio camino)", () => {
     process.env.WHATSAPP_SANDBOX_MODE = "false";
-    process.env.WHATSAPP_PHONE_NUMBER_ID = "118309731563783";
+    process.env.WHATSAPP_PHONE_NUMBER_ID = "1183097731563783";
     expect(obtenerPuertoWhatsApp()).toBeInstanceOf(StubWhatsAppAdapter);
   });
 
@@ -75,7 +75,7 @@ describe("obtenerPuertoWhatsApp — el gate necesita las TRES condiciones", () =
   it("con las tres condiciones → adaptador real", () => {
     process.env.WHATSAPP_SANDBOX_MODE = "false";
     process.env.WHATSAPP_ACCESS_TOKEN = "token";
-    process.env.WHATSAPP_PHONE_NUMBER_ID = "118309731563783";
+    process.env.WHATSAPP_PHONE_NUMBER_ID = "1183097731563783";
     expect(obtenerPuertoWhatsApp()).toBeInstanceOf(CloudApiWhatsAppAdapter);
   });
 });
@@ -84,7 +84,7 @@ describe("whatsappConfigurado", () => {
   it("distingue 'falta configuración' de 'estoy en sandbox'", () => {
     expect(whatsappConfigurado()).toBe(false);
     process.env.WHATSAPP_ACCESS_TOKEN = "token";
-    process.env.WHATSAPP_PHONE_NUMBER_ID = "118309731563783";
+    process.env.WHATSAPP_PHONE_NUMBER_ID = "1183097731563783";
     expect(whatsappConfigurado()).toBe(true);
     // …y aun así sigue en sandbox, que es el punto.
     expect(whatsappSandboxActivo()).toBe(true);
