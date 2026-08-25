@@ -39,6 +39,11 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { etiquetaConductorAusente } from "@/lib/ui/etiqueta-conductor-ausente";
 import type { Pedido, TipoIncidencia } from "@/modules/operacion/tipos";
+import {
+  ETIQUETA_ENTREGO_OTRO,
+  FRASE_ENTREGO_OTRO,
+  loEntregoOtro,
+} from "@/modules/operacion/gestion-rutax";
 
 import { MarcaFilaActualizada } from "./cambios-en-vivo";
 import { useVistaPrevia } from "./vista-previa";
@@ -85,6 +90,26 @@ export function FilaPedido({
    */
   const fueraDeJuego = pedido.estado === "cancelado";
 
+  /**
+   * 🔴 **El pedido que terminó sin que lo tocáramos.**
+   *
+   * En Flex, Mercado Libre puede despachar un envío con su propia logística: el
+   * pedido llega a `entregado` en Rutax sin que nadie de la flota lo haya
+   * tocado. Mezclado con los propios ensucia el conteo de lo que hay que hacer
+   * hoy y —peor— la lectura de «cómo nos fue», porque suma entregas que no
+   * hicimos.
+   *
+   * ⚠️ **Se marca, no se filtra** (decisión del usuario, 25-08): un filtro fijo
+   * escondería el pedido recién ingestado, que es justo el que hay que asignar.
+   * Y la marca solo cae sobre lo terminal: un pendiente no es ajeno, es nuestro
+   * y todavía no asignado. Ver `gestion-rutax.ts`.
+   */
+  const entregoOtro = loEntregoOtro({
+    estado: pedido.estado,
+    driverIdAsignado: pedido.driverIdAsignado ?? null,
+    situacionRetiro: pedido.situacionRetiro ?? null,
+  });
+
   return (
     <TableRow
       // 52 px con el dedo, la densidad normal con el puntero. Va por
@@ -100,6 +125,9 @@ export function FilaPedido({
         // atenuada y un fondo teñido al 45 % no se distingue de nada.
         vistaPrevia?.pedidoId === pedido.id && "[&>td:first-child]:border-l-2 [&>td:first-child]:border-l-brand",
         fueraDeJuego && "rx-inert-row text-fg-muted",
+        // Misma trama que lo cancelado: sale del juego de la misma manera, aunque
+        // por otro motivo. Se sigue pudiendo abrir y leer.
+        !fueraDeJuego && entregoOtro && "rx-inert-row text-fg-muted",
       )}
     >
       {/* El borde de «cambió recién» lo pinta la celda cuando la marca está
@@ -113,6 +141,17 @@ export function FilaPedido({
           eje="pedido"
           valor={pedido.estado}
         />
+        {/* El rótulo va JUNTO al estado y no en una columna propia: es una
+            calificación de ese estado —«entregado, pero no por ti»— y en una
+            columna aparte se leería como un dato más del pedido. */}
+        {entregoOtro && (
+          <span
+            title={FRASE_ENTREGO_OTRO}
+            className="shrink-0 border border-line-subtle px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-fg-subtle uppercase"
+          >
+            {ETIQUETA_ENTREGO_OTRO}
+          </span>
+        )}
         <MarcaFilaActualizada id={pedido.id} />
       </TableCell>
       <TableCell className="px-4">
