@@ -197,7 +197,12 @@ export default async function PaginaSellers() {
   const mostrarColumnaSincronizar = puedeSincronizar && sellers.some((s) => s.conexiones.length > 0);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    /* 🔴 Sin tope propio: la ruta está en `rutasAnchas` del layout justamente
+       para que la tabla use el lienzo, y un `max-w-4xl` acá lo anulaba en
+       silencio — el `<main>` se ensanchaba a 1800 y la página se quedaba en
+       896, o sea un cuadrado en el centro. El espaciado y el ancho los pone el
+       layout; la página solo apila su contenido. */
+    <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1.5">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sellers</h1>
@@ -227,11 +232,89 @@ export default async function PaginaSellers() {
             </span>
           }
         >
-          <Table densidad="comfortable" aria-label="Lista de sellers">
+          {/* ─────────────────────────────────────────────────────────────
+              A 375 px la fila deja de ser una fila.
+              ──────────────────────────────────────────────────────────────
+              Mismo patrón que `/operaciones`: se renderizan LAS DOS formas y
+              CSS elige. Decidirlo en JavaScript midiendo el ancho sería peor —
+              el servidor no sabe el ancho, así que la primera pintura saldría
+              con la forma equivocada y cambiaría delante del usuario.
+
+              🔴 Sin esto, en teléfono la tabla se arrastraba 302 px de lado
+              dentro de su caja y la columna «Sincronizar» —la única accionable—
+              vivía fuera de la vista. Cuatro columnas no caben en 342 px por
+              mucho que se recorte cada una.
+              ───────────────────────────────────────────────────────────── */}
+          <ul className="divide-y divide-border md:hidden">
+            {sellers.map((seller) => (
+              <li key={seller.id} className="space-y-2.5 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <EnlaceDetalle
+                    href={`/sellers/${seller.id}`}
+                    className="min-w-0 font-medium hover:underline"
+                  >
+                    {seller.razonSocial}
+                  </EnlaceDetalle>
+                  <BadgeEstado
+                    variante={BADGE_ESTADO_SELLER[seller.estado as EstadoSeller] ?? "warning"}
+                    texto={traducirEstadoSeller(seller.estado)}
+                    eje="seller"
+                    valor={seller.estado}
+                  />
+                </div>
+
+                {/* El RUT sí cabe acá: en la ficha ocupa su propia línea, y es
+                    el dato con el que un courier reconoce a su cliente. */}
+                <p className="font-mono text-xs text-muted-foreground tabular-nums">
+                  {seller.rut}
+                </p>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <BadgeEstado
+                    variante={BADGE_SALUD_CONEXION[seller.estadoSalud as EstadoSaludConexion] ?? "neutral"}
+                    texto={traducirSaludConexion(seller.estadoSalud)}
+                    eje="conexion"
+                    valor={seller.estadoSalud}
+                  />
+                  {mostrarColumnaSincronizar && (
+                    <ControlSincronizarMl
+                      razonSocial={seller.razonSocial}
+                      conexiones={seller.conexiones}
+                    />
+                  )}
+                </div>
+
+                {mostrarColumnaInvitacion && seller.invitacionPendiente && (
+                  <div className="flex flex-col items-start gap-1.5">
+                    {avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)}
+                    <BotonCopiarInvitacion
+                      sellerId={seller.id}
+                      razonSocial={seller.razonSocial}
+                    />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <Table densidad="comfortable" aria-label="Lista de sellers" className="hidden md:table">
             <TableHeader>
               <TableRow className="bg-muted/40">
                 <TableHead className="px-4">Seller</TableHead>
-                <TableHead className="hidden px-4 sm:table-cell">RUT</TableHead>
+                {/* 🔴 El RUT se retira hasta `lg`, no hasta `sm`. Con las cinco
+                    columnas visibles la tabla pide ~756 px y entre 640 y 790
+                    desbordaba su caja: aparecía un scroll horizontal y la
+                    columna «Sincronizar» —la única accionable— quedaba fuera de
+                    la vista, sin nada que delatara que estaba ahí. El RUT es el
+                    dato menos urgente de un listado y vive en la ficha.
+
+                    ⚠️ Vuelve en `xl`, no en `lg`, y la razón no es el viewport:
+                    **en `lg` entra la barra lateral y el lienzo se ENCOGE** (734
+                    px a 768 de viewport → 702 px a 1024). El ancho disponible no
+                    crece de forma monótona con la pantalla, así que un punto de
+                    corte elegido mirando solo el viewport reintroduce el
+                    desborde justo en el tamaño más común de portátil. */}
+                <TableHead className="hidden px-4 xl:table-cell">RUT</TableHead>
                 <TableHead className="px-4">Cuenta</TableHead>
                 <TableHead className="px-4">Conexión ML</TableHead>
                 {mostrarColumnaSincronizar && (
@@ -256,7 +339,7 @@ export default async function PaginaSellers() {
                       {seller.razonSocial}
                     </EnlaceDetalle>
                   </TableCell>
-                  <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums sm:table-cell">
+                  <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums xl:table-cell">
                     {seller.rut}
                   </TableCell>
                   <TableCell className="px-4">

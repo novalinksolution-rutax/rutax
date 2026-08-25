@@ -48,8 +48,11 @@ export const metadata: Metadata = {
  * bloque `ShieldAlert` en la propia página, nunca un `redirect` (§15,
  * criterio "gate de ruta con el patrón de la Torre").
  *
- * Ancho normal (`max-w-6xl`, no entra a `rutasAnchas`) — no hay mapa ni
- * lienzo que necesite el viewport completo (§2.1).
+ * Ancho: SÍ entra a `rutasAnchas` (layout de `(tenant)`). El comentario decía
+ * lo contrario —«ancho normal, `max-w-6xl`, no entra»— y quedó desactualizado
+ * cuando los listados pasaron a usar el lienzo. Se corrige porque una nota así
+ * invita a reponer un tope que anularía el ensanche sin que nadie lo note; es
+ * lo que estaba pasando en `/sellers` (§2.1).
  *
  * `error_carga` (§4): "aquí hay una sola fuente de datos" — a diferencia de
  * `/preparacion` (dos consultas independientes), toda la carga vive en UNA
