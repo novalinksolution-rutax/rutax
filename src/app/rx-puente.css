@@ -236,6 +236,119 @@ html:root {
 }
 
 /* =============================================================================
+ * El lienzo del login · la ola de cuadre
+ * -----------------------------------------------------------------------------
+ * Doce módulos y una ola diagonal que los va **cuadrando** de uno en uno. Cada
+ * módulo hace lo que hace el producto —dos líneas que se emparejan y quedan
+ * cuadradas— y nadie tiene que entenderlo para que funcione.
+ *
+ * -----------------------------------------------------------------------------
+ * 🔴 EL RETROCESO DE 9 px ES LA DECISIÓN QUE HACE TODO EL EFECTO
+ * -----------------------------------------------------------------------------
+ * Sin él la barra solo cambia de color, y el lienzo es **un letrero titilando**.
+ * Con él la barra **se sale de registro y vuelve a entrar**, y ese gesto es
+ * exactamente lo que significa la marca: dos líneas que se buscan y cuadran. Es
+ * el mismo movimiento de un asiento contable al calzar, y es la razón de que el
+ * lienzo aguante mirarse diez veces en la semana en vez de agotarse en el primer
+ * vistazo.
+ *
+ * **La anticipación es 450 ms y el retorno 715.** El retorno más lento que la
+ * salida es lo que lo hace sentir peso en vez de rebote — y por eso ninguna de
+ * las dos curvas rebota, que el sistema lo prohíbe.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ LA VENTANA ES MENOR QUE EL RETARDO, Y ESA ES LA REGLA QUE ORDENA EL RESTO
+ * -----------------------------------------------------------------------------
+ * Un módulo está encendido **1,36 s** y las diagonales van cada **1,6 s**. Como
+ * la ventana es más corta que el retardo, **nunca hay dos diagonales encendidas
+ * a la vez**: en el pico son dos o tres módulos de doce, jamás la retícula.
+ *
+ * Ahí está la diferencia con una animación decorativa cualquiera. Si la ventana
+ * fuera más larga que el retardo, el lienzo se llenaría de módulos encendidos y
+ * pasaría de «algo va cuadrando» a «esto parpadea».
+ *
+ * -----------------------------------------------------------------------------
+ * LOS TIEMPOS, EN PORCENTAJE DE UN CICLO DE 16 s
+ * -----------------------------------------------------------------------------
+ * 2,8 % (450 ms) retrocede 9 px · 7,3 % (715 ms) entra en registro **y las dos
+ * barras se encienden en el mismo instante** · 12,3 % sostienen 800 ms · 15,8 %
+ * se apagan. Con el retardo diagonal de 1,6 s la ola cruza en 8 s y deja
+ * **6,7 s de calma** — el silencio es parte de la pieza, no un sobrante.
+ *
+ * ⚠️ La barra de arriba repite su color en 2,8 %: **no se mueve durante la
+ * anticipación**. Es la constante contra la que la otra se descuadra; si
+ * cambiara ahí, no habría nada respecto de lo cual estar fuera de registro.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ SOLO `transform` Y `background-color`
+ * -----------------------------------------------------------------------------
+ * Sin sombras, sin filtros, sin gradientes: nada que obligue a recalcular la
+ * disposición. Una barra que *parece* moverse por `margin` mueve la página
+ * entera en cada fotograma; ésta se mueve en su propia capa.
+ *
+ * Y **0 JavaScript**: son 24 rectángulos, dos animaciones y un `animation-delay`
+ * en línea. En un login la velocidad es lo primero que se juzga.
+ *
+ * ⚠️ Los colores van por token y no con los hexadecimales del tablero, que solo
+ * define oscuro y claro: así los cuatro temas —incluidos `sun` y `night`—
+ * funcionan sin una cuarta copia de los fotogramas.
+ * ========================================================================== */
+
+@keyframes rx-cuadre-superior {
+  0%, 100% { background-color: var(--rx-line-subtle); }
+  /* Quieta durante la anticipación: es la constante contra la que la otra se
+     descuadra. */
+  2.8%     { background-color: var(--rx-line-subtle); }
+  7.3%     { background-color: var(--rx-fg); }
+  12.3%    { background-color: var(--rx-fg); }
+  15.8%    { background-color: var(--rx-line-subtle); }
+}
+
+@keyframes rx-cuadre-inferior {
+  /* El reposo de la barra de acento lleva un dejo del acento: es la misma barra
+     apagada, no otra pieza. */
+  0%, 100% {
+    transform: translateX(0);
+    background-color: color-mix(in srgb, var(--rx-accent) 8%, var(--rx-line-subtle));
+  }
+  2.8% {
+    transform: translateX(-9px);
+    background-color: color-mix(in srgb, var(--rx-accent) 8%, var(--rx-line-subtle));
+  }
+  7.3%  { transform: translateX(0); background-color: var(--rx-accent); }
+  12.3% { transform: translateX(0); background-color: var(--rx-accent); }
+  15.8% {
+    transform: translateX(0);
+    background-color: color-mix(in srgb, var(--rx-accent) 8%, var(--rx-line-subtle));
+  }
+}
+
+@utility rx-cuadre-sup {
+  background-color: var(--rx-line-subtle);
+  animation: rx-cuadre-superior 16s cubic-bezier(0.2, 0, 0.3, 1) infinite;
+  will-change: background-color;
+}
+
+@utility rx-cuadre-inf {
+  background-color: color-mix(in srgb, var(--rx-accent) 8%, var(--rx-line-subtle));
+  animation: rx-cuadre-inferior 16s cubic-bezier(0.2, 0, 0.3, 1) infinite;
+  will-change: transform, background-color;
+}
+
+/* ⚠️ Con «reducir movimiento» la ola NO corre: la retícula se queda quieta con
+   **un solo módulo cuadrado y encendido** —el mismo mensaje contado en el
+   espacio en vez del tiempo—. El gancho va en ESE módulo, no en la retícula:
+   puesto en la retícula encendería los doce, y el lienzo diría otra cosa. */
+@media (prefers-reduced-motion: reduce) {
+  .rx-cuadre-sup,
+  .rx-cuadre-inf {
+    animation: none;
+  }
+  [data-quieto] .rx-cuadre-sup { background-color: var(--rx-fg); }
+  [data-quieto] .rx-cuadre-inf { background-color: var(--rx-accent); }
+}
+
+/* =============================================================================
  * El autorrelleno del navegador, devuelto al sistema de diseño
  * -----------------------------------------------------------------------------
  * 🔴 **Un campo autorrellenado NO usa el color que le pusimos.** El navegador lo

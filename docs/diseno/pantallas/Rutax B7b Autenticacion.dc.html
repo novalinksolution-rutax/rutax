@@ -7,20 +7,63 @@
 </head>
 <body>
 <x-dc>
-<helmet><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=Azeret+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#070C0E;font-family:Chivo,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#007D69}a:hover{color:#0B1114}code{font:400 10.5px/1.5 "Azeret Mono",monospace;opacity:.75}strong{font-weight:600}</style></helmet>
+<helmet><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin"><link href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=Azeret+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#070C0E;font-family:Chivo,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#007D69}a:hover{color:#0B1114}code{font:400 10.5px/1.5 "Azeret Mono",monospace;opacity:.75}strong{font-weight:600}
+/* Lienzo de marca · la ola de cuadre. Una sola propiedad compuesta (transform)
+   y una de color por barra. Sin sombras, sin filtros, sin repintado de página.
+   Ciclo 16 s · ventana de encendido 1,36 s · retardo diagonal 1,6 s.
+   La ventana es MENOR que el retardo: nunca dos diagonales encendidas a la vez. */
+.rxTD,.rxBD,.rxTL,.rxBL{will-change:transform,background-color}
+.rxTD{animation:rxTopDark 16s cubic-bezier(.2,0,.3,1) infinite}
+.rxBD{animation:rxBotDark 16s cubic-bezier(.2,0,.3,1) infinite}
+.rxTL{animation:rxTopLight 16s cubic-bezier(.2,0,.3,1) infinite}
+.rxBL{animation:rxBotLight 16s cubic-bezier(.2,0,.3,1) infinite}
+@keyframes rxBotDark{
+  0%,100%{transform:translateX(0);background-color:#16211E}
+  2.8%{transform:translateX(-9px);background-color:#16211E}
+  7.3%{transform:translateX(0);background-color:#00D6B4}
+  12.3%{transform:translateX(0);background-color:#00D6B4}
+  15.8%{transform:translateX(0);background-color:#16211E}
+}
+@keyframes rxTopDark{
+  0%,100%{background-color:#1B272C}
+  2.8%{background-color:#1B272C}
+  7.3%{background-color:#E9F2F3}
+  12.3%{background-color:#E9F2F3}
+  15.8%{background-color:#1B272C}
+}
+@keyframes rxBotLight{
+  0%,100%{transform:translateX(0);background-color:#D8E4E5}
+  2.8%{transform:translateX(-9px);background-color:#D8E4E5}
+  7.3%{transform:translateX(0);background-color:#00B89A}
+  12.3%{transform:translateX(0);background-color:#00B89A}
+  15.8%{transform:translateX(0);background-color:#D8E4E5}
+}
+@keyframes rxTopLight{
+  0%,100%{background-color:#CDDCDE}
+  2.8%{background-color:#CDDCDE}
+  7.3%{background-color:#0B1114}
+  12.3%{background-color:#0B1114}
+  15.8%{background-color:#CDDCDE}
+}
+/* El gancho de reposo va en UN módulo, no en la grilla. */
+@media (prefers-reduced-motion:reduce){
+  .rxTD,.rxBD,.rxTL,.rxBL{animation:none}
+  .rxKeep .rxTD{background-color:#E9F2F3}.rxKeep .rxBD{background-color:#00D6B4}
+  .rxKeep .rxTL{background-color:#0B1114}.rxKeep .rxBL{background-color:#00B89A}
+}</style></helmet>
 <div style="width:1600px;margin:0 auto;padding:0 0 80px">
 <div style="background:#0B1114;color:#F1F6F6;padding:44px 48px 38px;border-bottom:2px solid #00D6B4;display:flex;align-items:flex-end;justify-content:space-between;gap:40px">
 <div style="display:flex;align-items:center;gap:20px"><svg viewBox="0 0 24 24" width="54" height="54" aria-hidden="true"><rect x="1" y="5" width="15" height="5" fill="#E9F2F3"></rect><rect x="8" y="14" width="15" height="5" fill="#00D6B4"></rect></svg><div><div style="font:700 34px/1 Chivo,sans-serif;letter-spacing:-.032em">B7b · Autenticación</div><div style="font:400 15px/1.4 Chivo,sans-serif;color:#9EB0B6;margin-top:6px">Los tres accesos del producto, sobre el patrón <strong style="color:#E9F2F3">pantalla sin sesión</strong>. Sin componentes nuevos.</div></div></div>
-<div style="text-align:right;font:500 10px/1.8 'Azeret Mono',monospace;letter-spacing:.14em;color:#5FE3CB">TRES MARCAS, TRES PUERTAS<br>UNA COLUMNA DE 460 PX<br>EL TEMA LO DECIDE EL SISTEMA</div>
+<div style="text-align:right;font:500 10px/1.8 'Azeret Mono',monospace;letter-spacing:.14em;color:#5FE3CB">TRES MARCAS, TRES PUERTAS<br>UNA COLUMNA DE 400 PX<br>EL TEMA LO DECIDE EL SISTEMA</div>
 </div>
 <div style="background:#8A5B00;color:#FFF3D6;padding:13px 48px;font:400 13px/1.5 Chivo,sans-serif"><strong style="font-weight:600">La decisión que ordena las tres:</strong> no es una pantalla de login con tres skins, son <strong style="font-weight:600">tres puertas con dueños distintos</strong>. La del backoffice la abre nuestro cliente y lleva marca Rutax. La del portal la abre el cliente de nuestro cliente y lleva <strong style="font-weight:600">la marca del courier</strong>. La del backstage la abrimos nosotros y exige segundo factor. Misma anatomía, distinta autoridad.</div>
 
 <div style="background:#F1F6F6;border:1px solid #1B272C;margin:0 0 3px;padding:32px 44px">
-<div style="display:flex;align-items:center;gap:12px;margin:0 0 16px"><span style="display:inline-flex;align-items:center;gap:9px;font:500 10px/1 'Azeret Mono',monospace;letter-spacing:.16em;color:#007D69"><svg viewBox="0 0 12 12" width="11" height="11" fill="currentColor" aria-hidden="true"><rect x="0" y="2" width="8" height="3"></rect><rect x="4" y="7" width="8" height="3"></rect></svg>LAS TRES PUERTAS · 460 PX · OSCURO Y CLARO</span><span style="flex:1;height:2px;background:#00B89A"></span></div>
+<div style="display:flex;align-items:center;gap:12px;margin:0 0 16px"><span style="display:inline-flex;align-items:center;gap:9px;font:500 10px/1 'Azeret Mono',monospace;letter-spacing:.16em;color:#007D69"><svg viewBox="0 0 12 12" width="11" height="11" fill="currentColor" aria-hidden="true"><rect x="0" y="2" width="8" height="3"></rect><rect x="4" y="7" width="8" height="3"></rect></svg>LAS TRES PUERTAS · 400 PX · OSCURO Y CLARO</span><span style="flex:1;height:2px;background:#00B89A"></span></div>
 <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
 
 <div style="display:flex;flex-direction:column;gap:10px"><span style="font:500 9px/1.5 'Azeret Mono',monospace;letter-spacing:.12em;color:#56666B">1 · BACKOFFICE DEL COURIER · MARCA RUTAX · OSCURO</span>
-<div style="width:460px;background:#0B1114;border:1px solid #2A3A41">
+<div style="width:400px;background:#0B1114;border:1px solid #2A3A41">
 <div style="padding:34px 36px 30px">
 <div style="display:flex;align-items:center;gap:11px;margin-bottom:28px"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><rect x="1" y="5" width="15" height="5" fill="#E9F2F3"></rect><rect x="8" y="14" width="15" height="5" fill="#00D6B4"></rect></svg><span style="font:700 23px/.8 Chivo,sans-serif;letter-spacing:-.034em;color:#E9F2F3">Rutax</span></div>
 <div style="font:600 24px/1.25 Chivo,sans-serif;color:#E9F2F3;letter-spacing:-.018em">Entra a tu operación</div>
@@ -33,10 +76,10 @@
 <div style="font:400 12.5px/1.6 Chivo,sans-serif;color:#7E9198;margin-top:20px;border-top:1px solid #1B272C;padding-top:15px">¿Tu courier todavía no usa Rutax? <a href="#agendar" style="color:#5FE3CB">Agenda una demostración</a></div>
 </div>
 </div>
-<div style="font:400 12px/1.55 Chivo,sans-serif;color:#4C5F65;width:460px;text-wrap:pretty"><strong style="color:#0B1114">Quien llega acá sabe qué es Rutax:</strong> es el dueño de un courier o alguien de su equipo. Marca completa, y <strong style="color:#0B1114">la única salida secundaria es agendar</strong> — un dueño que llegó por error al login es un visitante del sitio, no un error de navegación. No hay «crear cuenta»: al backoffice se entra invitado o dado de alta.</div></div>
+<div style="font:400 12px/1.55 Chivo,sans-serif;color:#4C5F65;width:400px;text-wrap:pretty"><strong style="color:#0B1114">Quien llega acá sabe qué es Rutax:</strong> es el dueño de un courier o alguien de su equipo. Marca completa, y <strong style="color:#0B1114">la única salida secundaria es agendar</strong> — un dueño que llegó por error al login es un visitante del sitio, no un error de navegación. No hay «crear cuenta»: al backoffice se entra invitado o dado de alta.</div></div>
 
 <div style="display:flex;flex-direction:column;gap:10px"><span style="font:500 9px/1.5 'Azeret Mono',monospace;letter-spacing:.12em;color:#56666B">2 · PORTAL DEL SELLER · MARCA DEL COURIER · CLARO</span>
-<div style="width:460px;background:#F1F6F6;border:1px solid #C6D6D8;display:flex;flex-direction:column">
+<div style="width:400px;background:#F1F6F6;border:1px solid #C6D6D8;display:flex;flex-direction:column">
 <div style="padding:34px 36px 26px;background:#FFFFFF">
 <div style="font:700 25px/1 Chivo,sans-serif;letter-spacing:-.024em;color:#0B1114;margin-bottom:26px">Andes Express</div>
 <div style="font:600 23px/1.25 Chivo,sans-serif;color:#0B1114;letter-spacing:-.018em">Entra a tus pedidos</div>
@@ -50,10 +93,10 @@
 </div>
 <div style="padding:14px 36px 16px;border-top:1px solid #DCE7E8;display:flex;align-items:center;justify-content:space-between"><span style="font:400 11px/1.4 Chivo,sans-serif;color:#56666B">Despacho gestionado con</span><span style="display:flex;align-items:center;gap:5px"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="1" y="5" width="15" height="5" fill="#4C5F65"></rect><rect x="8" y="14" width="15" height="5" fill="#4C5F65"></rect></svg><span style="font:700 12px/.8 Chivo,sans-serif;letter-spacing:-.03em;color:#4C5F65">Rutax</span></span></div>
 </div>
-<div style="font:400 12px/1.55 Chivo,sans-serif;color:#4C5F65;width:460px;text-wrap:pretty">El nombre del courier en <strong style="color:#0B1114">Chivo 700 a 25 px, solo texto</strong>: el sistema no guarda su logo. Rutax al pie, en 11 px. Y <strong style="color:#0B1114">no ofrece registrarse</strong>, porque a este portal solo se entra invitado: en vez de un botón muerto, el teléfono del courier — que es lo que va a hacer igual.</div></div>
+<div style="font:400 12px/1.55 Chivo,sans-serif;color:#4C5F65;width:400px;text-wrap:pretty">El nombre del courier en <strong style="color:#0B1114">Chivo 700 a 25 px, solo texto</strong>: el sistema no guarda su logo. Rutax al pie, en 11 px. Y <strong style="color:#0B1114">no ofrece registrarse</strong>, porque a este portal solo se entra invitado: en vez de un botón muerto, el teléfono del courier — que es lo que va a hacer igual.</div></div>
 
 <div style="display:flex;flex-direction:column;gap:10px"><span style="font:500 9px/1.5 'Azeret Mono',monospace;letter-spacing:.12em;color:#56666B">3 · BACKSTAGE DE RUTAX · SEGUNDO FACTOR OBLIGATORIO</span>
-<div style="width:460px;background:#0B1114;border:1px solid #2A3A41">
+<div style="width:400px;background:#0B1114;border:1px solid #2A3A41">
 <div style="padding:34px 36px 30px">
 <div style="display:flex;align-items:center;gap:11px;margin-bottom:26px"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="1" y="5" width="15" height="5" fill="#E9F2F3"></rect><rect x="8" y="14" width="15" height="5" fill="#00D6B4"></rect></svg><span style="font:700 21px/.8 Chivo,sans-serif;letter-spacing:-.034em;color:#E9F2F3">Rutax</span><span style="font:500 9px/1.4 'Azeret Mono',monospace;letter-spacing:.12em;color:#FFC53D;border:1px solid #66490F;padding:4px 7px">BACKSTAGE</span></div>
 <div style="font:600 22px/1.25 Chivo,sans-serif;color:#E9F2F3;letter-spacing:-.016em">Confirma que eres tú</div>
@@ -64,16 +107,16 @@
 <div style="font:400 12.5px/1.6 Chivo,sans-serif;color:#7E9198;margin-top:16px;border-top:1px solid #1B272C;padding-top:14px">¿Perdiste tu aplicación de autenticación? <span style="color:#5FE3CB">Usa un código de respaldo</span></div>
 </div>
 </div>
-<div style="font:400 12px/1.55 Chivo,sans-serif;color:#4C5F65;width:460px;text-wrap:pretty">Segundo paso, después del correo y la contraseña. <strong style="color:#0B1114">El distintivo BACKSTAGE en ámbar con trama de borde</strong> es el mismo que marca el modo de pruebas: en el marco significa «acá se ven datos de varias empresas». El aviso explica <strong style="color:#0B1114">por qué</strong> se pide, no que se pide: es el único perfil cuya credencial abre 27 puertas.</div></div>
+<div style="font:400 12px/1.55 Chivo,sans-serif;color:#4C5F65;width:400px;text-wrap:pretty">Segundo paso, después del correo y la contraseña. <strong style="color:#0B1114">El distintivo BACKSTAGE en ámbar con trama de borde</strong> es el mismo que marca el modo de pruebas: en el marco significa «acá se ven datos de varias empresas». El aviso explica <strong style="color:#0B1114">por qué</strong> se pide, no que se pide: es el único perfil cuya credencial abre 27 puertas.</div></div>
 </div>
 </div>
 <div style="background:#FFFFFF;border:1px solid #1B272C;margin:0 0 3px;padding:32px 44px">
-<div style="display:flex;align-items:center;gap:12px;margin:0 0 14px"><span style="display:inline-flex;align-items:center;gap:9px;font:500 10px/1 'Azeret Mono',monospace;letter-spacing:.16em;color:#007D69"><svg viewBox="0 0 12 12" width="11" height="11" fill="currentColor" aria-hidden="true"><rect x="0" y="2" width="8" height="3"></rect><rect x="4" y="7" width="8" height="3"></rect></svg>EL LIENZO · RETÍCULA DE DESFASE · ELEGIDA</span><span style="flex:1;height:2px;background:#00B89A"></span></div>
-<p style="margin:0 0 20px;font:400 13.5px/1.6 Chivo,sans-serif;color:#4C5F65;max-width:100ch;text-wrap:pretty">Columna de <strong style="color:#0B1114">400 px</strong> —lo que necesita un formulario de dos campos— y el resto es lienzo de marca, sin una palabra. Doce módulos idénticos y uno encendido: <strong style="color:#0B1114">el argumento del producto convertido en textura.</strong> Nadie tiene que entenderlo para que funcione.</p>
+<div style="display:flex;align-items:center;gap:12px;margin:0 0 14px"><span style="display:inline-flex;align-items:center;gap:9px;font:500 10px/1 'Azeret Mono',monospace;letter-spacing:.16em;color:#007D69"><svg viewBox="0 0 12 12" width="11" height="11" fill="currentColor" aria-hidden="true"><rect x="0" y="2" width="8" height="3"></rect><rect x="4" y="7" width="8" height="3"></rect></svg>EL LIENZO · LA OLA DE CUADRE · ANIMADO EN VIVO</span><span style="flex:1;height:2px;background:#00B89A"></span></div>
+<p style="margin:0 0 20px;font:400 13.5px/1.6 Chivo,sans-serif;color:#4C5F65;max-width:100ch;text-wrap:pretty">Columna de <strong style="color:#0B1114">400 px</strong> —lo que necesita un formulario de dos campos— y el resto es lienzo de marca, sin una palabra. Doce módulos y una ola diagonal que los va cuadrando de uno en uno: <strong style="color:#0B1114">el argumento del producto convertido en movimiento.</strong> Cada módulo hace lo que hace el producto —dos líneas que se emparejan y quedan cuadradas— y nadie tiene que entenderlo para que funcione. <strong style="color:#0B1114">Está animado en esta lámina: míralo unos segundos.</strong></p>
 
 <div style="display:flex;flex-direction:column;gap:24px">
 <div>
-<div style="font:500 9px/1.5 'Azeret Mono',monospace;letter-spacing:.12em;color:#56666B;margin-bottom:10px">OSCURO · EL DEFECTO</div>
+<div style="font:500 9px/1.5 'Azeret Mono',monospace;letter-spacing:.12em;color:#56666B;margin-bottom:10px">OSCURO · EL DEFECTO · ANIMADO</div>
 <div style="width:1400px;height:520px;background:#0B1114;border:1px solid #2A3A41;display:flex;overflow:hidden;box-sizing:border-box">
 <div style="width:400px;flex:none;background:#0B1114;display:flex;flex-direction:column;box-sizing:border-box">
 <div style="flex:1;padding:44px 40px;display:flex;flex-direction:column;justify-content:center">
@@ -90,24 +133,24 @@
 </div>
 <div style="flex:1;min-width:0;background:#070C0E;padding:56px 60px;display:flex;align-items:center;box-sizing:border-box">
 <div style="display:grid;grid-template-columns:repeat(4,164px);gap:40px;justify-content:space-between;width:100%">
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#E9F2F3"></div><div style="width:112px;height:37px;background:#00D6B4;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#1B272C"></div><div style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:0.0s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:0.0s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:1.6s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:1.6s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:3.2s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:3.2s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:4.8s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:4.8s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:1.6s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:1.6s"></div></div>
+<div class="rxKeep" style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:3.2s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:3.2s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:4.8s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:4.8s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:6.4s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:6.4s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:3.2s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:3.2s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:4.8s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:4.8s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:6.4s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:6.4s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTD" style="width:112px;height:37px;background:#1B272C;animation-delay:8.0s"></div><div class="rxBD" style="width:112px;height:37px;background:#16211E;margin:30px 0 0 52px;animation-delay:8.0s"></div></div>
 </div>
 </div>
 </div>
 </div>
 <div>
-<div style="font:500 9px/1.5 'Azeret Mono',monospace;letter-spacing:.12em;color:#56666B;margin-bottom:10px">CLARO · MISMA DISPOSICIÓN, CUATRO VALORES CAMBIADOS</div>
+<div style="font:500 9px/1.5 'Azeret Mono',monospace;letter-spacing:.12em;color:#56666B;margin-bottom:10px">CLARO · MISMA COREOGRAFÍA, CUATRO VALORES CAMBIADOS</div>
 <div style="width:1400px;height:520px;background:#F1F6F6;border:1px solid #C6D6D8;display:flex;overflow:hidden;box-sizing:border-box">
 <div style="width:400px;flex:none;background:#FFFFFF;display:flex;flex-direction:column;box-sizing:border-box">
 <div style="flex:1;padding:44px 40px;display:flex;flex-direction:column;justify-content:center">
@@ -124,18 +167,18 @@
 </div>
 <div style="flex:1;min-width:0;background:#E6EEEF;padding:56px 60px;display:flex;align-items:center;box-sizing:border-box">
 <div style="display:grid;grid-template-columns:repeat(4,164px);gap:40px;justify-content:space-between;width:100%">
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#0B1114"></div><div style="width:112px;height:37px;background:#00B89A;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
-<div style="width:164px;height:104px"><div style="width:112px;height:37px;background:#CDDCDE"></div><div style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:0.0s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:0.0s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:1.6s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:1.6s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:3.2s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:3.2s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:4.8s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:4.8s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:1.6s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:1.6s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:3.2s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:3.2s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:4.8s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:4.8s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:6.4s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:6.4s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:3.2s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:3.2s"></div></div>
+<div class="rxKeep" style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:4.8s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:4.8s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:6.4s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:6.4s"></div></div>
+<div style="width:164px;height:104px"><div class="rxTL" style="width:112px;height:37px;background:#CDDCDE;animation-delay:8.0s"></div><div class="rxBL" style="width:112px;height:37px;background:#D8E4E5;margin:30px 0 0 52px;animation-delay:8.0s"></div></div>
 </div>
 </div>
 </div>
@@ -144,16 +187,18 @@
 
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:20px;font:400 12.5px/1.6 Chivo,sans-serif;color:#4C5F65">
 <div style="border-left:2px solid #00B89A;padding-left:13px"><strong style="color:#0B1114">La geometría no se negocia.</strong> Barra de <strong style="color:#0B1114">112 × 37 px</strong> —3:1 exacto—, desfase de <strong style="color:#0B1114">52 px</strong> (46,7% de su ancho) y separación de topes de <strong style="color:#0B1114">67 px</strong> (1,8 × su alto). Son las proporciones del favicon a 16 px. Si la celda no da, se achica la celda: <strong style="color:#0B1114">nunca la barra.</strong></div>
-<div style="border-left:2px solid #00B89A;padding-left:13px"><strong style="color:#0B1114">El movimiento:</strong> el módulo encendido se apaga y otro se enciende <strong style="color:#0B1114">cada 4 s</strong>, con el cruce de 200 ms y la curva <code>ease-standard</code> del sistema. Un solo cambio a la vez, nunca dos, y nunca dos vecinos seguidos. Con «reducir movimiento» se queda uno fijo — y sigue comunicando lo mismo.</div>
-<div style="border-left:2px solid #00B89A;padding-left:13px"><strong style="color:#0B1114">Peso 0 KB.</strong> Son 24 rectángulos con color de fondo: sin imagen, sin SVG, sin tipografía extra. En un login, la velocidad es lo primero que el usuario juzga, y esta pantalla pinta antes de que llegue cualquier otra cosa.</div>
+<div style="border-left:2px solid #00B89A;padding-left:13px"><strong style="color:#0B1114">La ola, en tres tiempos.</strong> La barra de abajo <strong style="color:#0B1114">retrocede 9 px</strong> (anticipación, 450 ms) · <strong style="color:#0B1114">entra en registro y las dos se encienden en el mismo instante</strong> (720 ms, <code>ease-standard</code>) · sostienen 800 ms y se apagan. <strong style="color:#0B1114">La ventana de encendido es de 1,36 s y el retardo entre diagonales de 1,6 s</strong> — la ventana es menor que el retardo, así que <strong style="color:#0B1114">nunca hay dos diagonales encendidas a la vez</strong>: en el pico son 2 o 3 módulos de 12, nunca la retícula. Ciclo de <strong style="color:#0B1114">16 s</strong> con <strong style="color:#0B1114">retardo diagonal de 1,6 s</strong>: la ola cruza en 8 s y deja 6,7 s de calma.</div>
+<div style="border-left:2px solid #00B89A;padding-left:13px"><strong style="color:#0B1114">Peso 0 KB y 0 JavaScript.</strong> Son 24 rectángulos, dos animaciones y <code>animation-delay</code> en línea. Anima <strong style="color:#0B1114">solo <code>transform</code> y <code>background-color</code></strong>: sin sombras, sin filtros, sin gradientes, sin nada que fuerce recalcular la disposición. Una barra que <em>parece</em> moverse por margen mueve la página entera; esta se mueve en su propia capa.</div>
 <div style="border-left:2px solid #00B89A;padding-left:13px"><strong style="color:#0B1114">Del panel de contenido sobrevivió una línea:</strong> el semáforo del sistema al pie de la columna, con su hora. Contesta «¿es mi contraseña o están caídos?», que es la única pregunta que este usuario tiene en la mano — y cabe en las tres anchuras.</div>
 </div>
 
-<div style="margin-top:18px;border:1px solid #C6D6D8;background:#F7FBFB;border-left:2px solid #56666B;padding:15px 17px;font:400 12.5px/1.6 Chivo,sans-serif;color:#4C5F65"><strong style="color:#0B1114">Descartadas, y por qué queda escrito:</strong> <em>el símbolo a escala arquitectónica</em> —dos barras gigantes recortadas por el borde— es más rotundo pero se agota en un vistazo, y a la décima vez que entras es una pared. <em>La fotografía a sangre</em> es la más cálida y la única que depende de una compra y de acertarle a la foto; además necesita una segunda imagen para el tema claro. <strong style="color:#0B1114">Si más adelante se quiere presencia de marca máxima con cero riesgo, la primera sigue siendo la salida</strong> — misma columna, otro lienzo.</div>
+<div style="margin-top:18px;border:1px solid #C6D6D8;background:#F7FBFB;border-left:2px solid #00B89A;padding:15px 17px;font:400 12.5px/1.6 Chivo,sans-serif;color:#4C5F65"><strong style="color:#0B1114">Por qué el retroceso de 9 px es la decisión que hace todo el efecto:</strong> sin él, la barra solo cambia de color y el lienzo es un letrero titilando. Con él, la barra <strong style="color:#0B1114">se sale de registro y vuelve a entrar</strong>, y ese gesto es exactamente lo que significa la marca: dos líneas que se buscan y cuadran. Es el mismo movimiento que hace un asiento contable al calzar, y es la razón de que el lienzo aguante mirarse diez veces en la semana en vez de agotarse en el primer vistazo. <strong style="color:#0B1114">La anticipación es 450 ms y el retorno 715:</strong> el retorno más lento que la salida es lo que lo hace sentir peso en vez de rebote — y por eso ninguna de las dos curvas tiene rebote real, que el sistema prohíbe.</div>
+
+<div style="margin-top:14px;border:1px solid #C6D6D8;background:#F7FBFB;border-left:2px solid #56666B;padding:15px 17px;font:400 12.5px/1.6 Chivo,sans-serif;color:#4C5F65"><strong style="color:#0B1114">Descartadas, y por qué queda escrito:</strong> <em>el símbolo a escala arquitectónica</em> —dos barras gigantes recortadas por el borde— es más rotundo pero se agota en un vistazo, y a la décima vez que entras es una pared. <em>La fotografía a sangre</em> es la más cálida y la única que depende de una compra y de acertarle a la foto; además necesita una segunda imagen para el tema claro. <strong style="color:#0B1114">Si más adelante se quiere presencia de marca máxima con cero riesgo, la primera sigue siendo la salida</strong> — misma columna, otro lienzo.</div>
 
 <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:22px;font:400 12.5px/1.6 Chivo,sans-serif;color:#4C5F65">
-<div style="border-left:2px solid #56666B;padding-left:13px"><strong style="color:#0B1114">Bajo 1024 el lienzo desaparece</strong> y la columna de 400 px se centra. <strong style="color:#0B1114">Nada del lienzo es información</strong>, así que no hay que reubicarlo en móvil — que es exactamente la ventaja de un lienzo sobre un panel de contenido.</div>
-<div style="border-left:2px solid #56666B;padding-left:13px"><strong style="color:#0B1114">El lienzo es solo del backoffice.</strong> El portal del seller y el backstage van con la columna centrada y sin lienzo, por las razones de abajo.</div>
+<div style="border-left:2px solid #56666B;padding-left:13px"><strong style="color:#0B1114">Con «reducir movimiento» la ola no corre:</strong> la retícula se queda quieta con <strong style="color:#0B1114">un solo módulo cuadrado y encendido</strong> —el gancho va en ese módulo, no en la grilla— que es el mismo mensaje contado en el espacio en vez del tiempo. Está implementado en esta lámina: si tu sistema tiene la preferencia activa, lo que ves ahora es esa versión.<br><br><strong style="color:#0B1114">Bajo 1024 el lienzo desaparece</strong> y la columna de 400 px se centra. <strong style="color:#0B1114">Nada del lienzo es información</strong>, así que no hay que reubicarlo en móvil — que es exactamente la ventaja de un lienzo sobre un panel de contenido.</div>
+<div style="border-left:2px solid #56666B;padding-left:13px"><strong style="color:#0B1114">El lienzo es solo del backoffice.</strong> El portal del seller y el backstage van con la <strong style="color:#0B1114">misma columna de 400 px, centrada</strong>, sin lienzo. El ancho es uno solo en las tres puertas y en las tres anchuras de pantalla: lo que cambia es qué hay al lado, nunca la columna.</div>
 </div>
 </div>
 
