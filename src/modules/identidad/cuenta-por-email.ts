@@ -47,6 +47,18 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+/**
+ * Lo mínimo que hace falta del cliente: `auth` (para `listUsers`) y `schema`
+ * (para leer el perfil).
+ *
+ * ⚠️ Es un `Pick` y no `SupabaseClient` entero, igual que en `invitaciones.ts`.
+ * El motivo no es purismo: los dobles de las pruebas implementan solo esos dos,
+ * y pedir el cliente completo hace que `crearInvitacion` —que ya trabaja con la
+ * versión acotada— no pueda pasarnos el suyo. Falla en `next build` y **no** en
+ * `vitest`, que es el peor sitio para enterarse.
+ */
+type ClienteConAuth = Pick<SupabaseClient, "auth" | "schema">;
+
 export type TipoCuenta = "interno" | "seller" | "conductor" | "super_admin";
 
 export interface CuentaPorEmail {
@@ -69,7 +81,7 @@ const SIN_CUENTA: CuentaPorEmail = { existe: false, tipoEnMiCourier: null };
  * forma de la API convierte esto en un bucle infinito dentro de un formulario.
  */
 async function buscarUsuarioAuth(
-  cliente: SupabaseClient,
+  cliente: ClienteConAuth,
   correo: string,
 ): Promise<{ id: string } | null> {
   const porPagina = 200;
@@ -92,7 +104,7 @@ async function buscarUsuarioAuth(
  * abajo.
  */
 export async function buscarCuentaPorEmail(
-  cliente: SupabaseClient,
+  cliente: ClienteConAuth,
   email: string,
   tenantIdQuePregunta: string,
 ): Promise<CuentaPorEmail> {
