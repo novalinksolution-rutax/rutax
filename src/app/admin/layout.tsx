@@ -43,6 +43,9 @@ const GRUPOS_ADMIN: GrupoNav[] = [
       },
       { href: "/admin/bitacora", etiqueta: "Bitácora", icono: "bitacora" },
       { href: "/admin/comunicaciones", etiqueta: "Comunicaciones", icono: "comunicaciones" },
+      // WhatsApp lo administra Rutax y no el courier: el emisor es nuestro
+      // número y la calidad que Meta le asigna la comparten todos los tenants.
+      { href: "/admin/whatsapp", etiqueta: "WhatsApp", icono: "contactos-whatsapp" },
     ],
   },
 ];
