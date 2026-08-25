@@ -94,6 +94,9 @@ interface Props {
   sellers: Seller[];
   tarifa?: TarifaExistente;
   trigger?: React.ReactNode;
+  /** Controlado desde fuera: la fila del listado. */
+  abierto?: boolean;
+  onOpenChange?: (abierto: boolean) => void;
 }
 
 /** `2026-09-01` → `01-09`. Para el botón, donde el año sobra. */
@@ -102,10 +105,26 @@ function diaYMes(iso: string): string {
   return `${d}-${m}`;
 }
 
-export function PanelTarifa({ sellers, tarifa, trigger }: Props) {
+export function PanelTarifa({
+  sellers,
+  tarifa,
+  trigger,
+  abierto,
+  onOpenChange,
+}: Props) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [open, setOpen] = useState(false);
+  /**
+   * Controlado o no, según quién lo abra.
+   *
+   * Sin `abierto` el panel se abre solo con su disparador —el botón «Nueva
+   * tarifa»—. Con `abierto` manda el llamador: es lo que permite que **la fila
+   * entera** sea el objetivo del clic, como en Pedidos, sin que el botón
+   * «Editar» tenga que existir.
+   */
+  const [openInterno, setOpenInterno] = useState(false);
+  const open = abierto ?? openInterno;
+  const setOpen = onOpenChange ?? setOpenInterno;
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 

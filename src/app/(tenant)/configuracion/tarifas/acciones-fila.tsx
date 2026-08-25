@@ -67,10 +67,14 @@ export function BotonInactivarTarifa({
           <DialogTitle>Inactivar esta tarifa</DialogTitle>
           {/* La consecuencia, no «¿estás seguro?». */}
           <DialogDescription>
-            Las entregas de <span className="font-medium text-fg">{aQuien}</span> se van a seguir
-            haciendo, pero <span className="font-medium text-fg">no se van a poder cobrar</span>{" "}
-            mientras no haya otra tarifa vigente. Puedes reactivarla después desde el cajón
-            «Inactivas».
+            Las entregas de{" "}
+            <span className="font-medium text-fg">{aQuien}</span> se van a
+            seguir haciendo, pero{" "}
+            <span className="font-medium text-fg">
+              no se van a poder cobrar
+            </span>{" "}
+            mientras no haya otra tarifa vigente. Puedes reactivarla después
+            desde el cajón «Inactivas».
           </DialogDescription>
         </DialogHeader>
 
@@ -84,7 +88,11 @@ export function BotonInactivarTarifa({
         )}
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => setAbierto(false)} disabled={pendiente}>
+          <Button
+            variant="ghost"
+            onClick={() => setAbierto(false)}
+            disabled={pendiente}
+          >
             Volver
           </Button>
           <Button
@@ -101,7 +109,10 @@ export function BotonInactivarTarifa({
           >
             {pendiente ? (
               <>
-                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+                <Loader2
+                  className="mr-2 size-4 animate-spin"
+                  aria-hidden="true"
+                />
                 Inactivando…
               </>
             ) : (
@@ -139,7 +150,10 @@ export function BotonReactivarTarifa({ tarifaId }: { tarifaId: string }) {
       >
         {pendiente ? (
           <>
-            <Loader2 className="mr-2 size-3.5 animate-spin" aria-hidden="true" />
+            <Loader2
+              className="mr-2 size-3.5 animate-spin"
+              aria-hidden="true"
+            />
             Reactivando…
           </>
         ) : (
