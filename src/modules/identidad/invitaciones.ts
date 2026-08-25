@@ -31,6 +31,7 @@ import { registrarEnBitacora } from "./auditoria";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import { enviarEmailInvitacion, type MotivoNoEnviado } from "./notificaciones-invitacion";
 import { esRolInterno, type Rol, type RolInterno } from "./roles";
+import { buscarCuentaPorEmail, mensajeCorreoOcupado } from "./cuenta-por-email";
 
 /**
  * Forma mínima del cliente service_role que estas funciones necesitan.
@@ -145,6 +146,26 @@ export async function crearInvitacion(
   validarCoherenciaTipoUsuario(input);
 
   const email = input.email.trim().toLowerCase();
+
+  // ---------------------------------------------------------------------------
+  // ⚠️ LA BARRERA: un correo con cuenta no se puede volver a invitar como OTRA
+  // COSA. Sin esto, `aceptarInvitacion` hace upsert por `id` y le sobrescribe el
+  // perfil — así se destruyó una cuenta de seller el 2026-08-25 al darle acceso
+  // de conductor al mismo correo. No falló nada; el perfil simplemente dejó de
+  // ser lo que era. Ver `cuenta-por-email.ts`.
+  //
+  // Se permite un solo caso: **mismo courier y mismo tipo**. Eso es un cambio de
+  // rol dentro del equipo (de coordinador a supervisor), que es exactamente para
+  // lo que el upsert existe y es legítimo.
+  // ---------------------------------------------------------------------------
+  const cuenta = await buscarCuentaPorEmail(cliente, email, actor.tenantId);
+  if (cuenta.existe) {
+    const esCambioDeRolLegitimo =
+      cuenta.tipoEnMiCourier !== null && cuenta.tipoEnMiCourier === input.tipoUsuario;
+    if (!esCambioDeRolLegitimo) {
+      throw new ErrorValidacion(mensajeCorreoOcupado(cuenta));
+    }
+  }
   const token = generarToken();
   const vigenciaMs = input.vigenciaMs ?? VIGENCIA_INVITACION_MS;
   const expiraEn = new Date(Date.now() + vigenciaMs).toISOString();

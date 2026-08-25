@@ -327,6 +327,12 @@ function crearBuilderInvitaciones(estado: EstadoTablaInvitaciones, exponerTablaB
 export interface ClienteInvitacionesFalsoOpciones {
   invitaciones?: FilaInvitacionFalsa[];
   /**
+   * Usuarios de Auth que ya existen. Los consulta la barrera de correo ocupado
+   * (`buscarCuentaPorEmail`) que `crearInvitacion` aplica desde el 2026-08-25.
+   * Vacío por defecto: el camino feliz es invitar a un correo nuevo.
+   */
+  usuariosAuth?: Array<{ id: string; email: string }>;
+  /**
    * Handler para cualquier tabla que NO sea `invitaciones` (`tenants`,
    * `usuarios_perfil`, `bitacora_auditoria`, `conductores`, …). Se invoca
    * igual desde `.from(tabla)` y desde `.schema("identidad").from(tabla)`:
@@ -375,5 +381,19 @@ export function crearClienteInvitacionesFalso(opciones: ClienteInvitacionesFalso
     };
   }
 
-  return { cliente: { auth: {}, from, schema } as never, estado };
+  // `auth.admin.listUsers` lo consulta la barrera de correo ocupado
+  // (`buscarCuentaPorEmail`, llamada desde `crearInvitacion`). Por defecto
+  // responde SIN usuarios: la mayoría de estas pruebas invitan a correos
+  // nuevos, que es el camino feliz.
+  //
+  // Para probar la barrera, se pasan usuarios por `opciones.usuariosAuth` y se
+  // siembra el perfil correspondiente en `otrasTablas`.
+  const usuariosAuth = opciones.usuariosAuth ?? [];
+  const auth = {
+    admin: {
+      listUsers: async () => ({ data: { users: usuariosAuth }, error: null }),
+    },
+  };
+
+  return { cliente: { auth, from, schema } as never, estado };
 }
