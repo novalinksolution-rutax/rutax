@@ -24,7 +24,7 @@ import {
   PantallaConfiguracion,
   SinPermisoConfiguracion,
 } from "../_componentes/pantalla-configuracion";
-import { DialogTarifa } from "./dialog-tarifa";
+import { PanelTarifa } from "./panel-tarifa";
 import { BotonInactivarTarifa, BotonReactivarTarifa } from "./acciones-fila";
 import { BarraCajonesTarifas } from "./barra-cajones-tarifas";
 import { clasificarTarifa, contarPorCajon, type CajonTarifa } from "./cajon-tarifa";
@@ -194,7 +194,7 @@ export default async function PaginaTarifas({
          motor de cobro»: quien lee esto quiere saber qué plata mueve, no cómo
          se llama el objeto adentro. */
       bajada="Lo que le cobras a cada seller por entrega y lo que le pagas al conductor por hacerla. Sin una tarifa vigente, una entrega se hace y no se puede cobrar."
-      accion={<DialogTarifa sellers={sellers} />}
+      accion={<PanelTarifa sellers={sellers} />}
     >
       {tarifas.length === 0 ? (
         <EmptyState
@@ -203,7 +203,7 @@ export default async function PaginaTarifas({
           titulo="Todavía no tienes tarifas"
           /* El copy del tablero: dice la consecuencia, no el trámite. */
           descripcion="Sin una tarifa, las entregas se hacen y después no se pueden cobrar."
-          accion={<DialogTarifa sellers={sellers} />}
+          accion={<PanelTarifa sellers={sellers} />}
         />
       ) : (
         <div className="space-y-4">
@@ -380,7 +380,7 @@ function FilaTarifa({
           <BotonReactivarTarifa tarifaId={tarifa.id} />
         ) : (
           <div className="flex items-center justify-end gap-1">
-            <DialogTarifa
+            <PanelTarifa
               sellers={sellers}
               tarifa={tarifaParaDialog}
               trigger={
