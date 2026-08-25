@@ -663,10 +663,14 @@ export function AppShell({
             que la persona elige un destino. */}
         <button
           type="button"
+          /* ⚠️ NO cierra la hoja del menú en el teléfono. Lo hacía —herencia de
+             cuando «Volver» navegaba— y el efecto era el contrario del que se
+             busca: pulsabas «Volver» para ver las opciones principales y
+             desaparecía el menú entero. «Volver» retrocede un nivel dentro del
+             menú; salir del menú es tocar fuera o la X. */
           onClick={() => {
             setVolviendoDeSettings(true)
             setPanelSettings(false)
-            if (enSheet) setMenuAbierto(false)
           }}
           title={colapsadoLocal ? "Volver" : undefined}
           className={cn(
