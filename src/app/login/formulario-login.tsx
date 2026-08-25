@@ -122,13 +122,17 @@ export function FormularioLogin() {
     <div className="w-full max-w-[400px]">
       <h1 className="font-heading text-2xl font-semibold text-fg">Entra a tu operación</h1>
       {/* ⚠️ El tablero dice «La plataforma de despacho y liquidación **de tu
-          courier**». Se recorta el complemento (decisión del usuario,
-          24-08-2026), y encaja con que ésta sea **una puerta y no tres**: por
-          acá entran el equipo del courier, sus sellers y sus conductores, y a un
-          seller «tu courier» le nombra a su proveedor, no a él. Sin el
-          complemento la frase describe el producto sin suponer quién mira. */}
+          courier**». Se recortan el complemento y el artículo (decisión del
+          usuario, 24-08-2026).
+          Lo del complemento encaja con que ésta sea **una puerta y no tres**:
+          por acá entran el equipo del courier, sus sellers y sus conductores, y
+          a un seller «tu courier» le nombra a su proveedor, no a él. Sin él la
+          frase describe el producto sin suponer quién mira.
+          Y sin el artículo deja de ser una afirmación de categoría —«LA
+          plataforma»— para ser lo que corresponde bajo un titular: una etiqueta
+          de qué es esto. */}
       <p className="mt-1 text-sm text-fg-muted">
-        La plataforma de despacho y liquidación.
+        Plataforma de despacho y liquidación.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-7 space-y-4" aria-busy={cargando}>
