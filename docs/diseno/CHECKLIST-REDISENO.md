@@ -106,7 +106,7 @@ adopción» no se verifica; «no importa `PantallaSinSesion`» sí, con un coman
 |---|---|---|---|---|---|
 | **1** | Tokens y primitivas | **hecha** — tokens, puente, fuentes, 8 re-estilos, selector de fecha, `interruptor` | `credencial de una sola vez` | — | *(no hizo falta)* |
 | **2** | Estado | **hecha** — 8 de 10 · 25 ejes · 33 correcciones con prueba mecánica | los 4 vocabularios que faltan viven en la app del conductor (bloque 6) | — | *(no hizo falta)* |
-| **3** | Tablas | **hecha** — las 4 piezas nuevas | adopción: **0 pantallas reales**, solo `kitchen-sink` | — | *(no hizo falta)* |
+| **3** | Tablas | **hecha** — las 4 piezas nuevas, adoptadas en **13 pantallas reales** | la `BarraSeleccion` propia de `preparacion/asignar`, que sigue duplicada | — | *(no hizo falta)* |
 | **0** | **Cola de 1–3** | **5 de 6 hechos** — interruptor, 33 correcciones, 55 sitios, 13 vocabularios absorbidos, lint | solo 0.2b, y su bloqueo **ya caducó**: entra con Pedidos | — | — |
 | **4** | **Marco** | **6 de 8** · los 2 abiertos dependen de decisiones tuyas | índice propio de configuración (B3b) · buscador del backstage | #12 · #21 | `Rutax P1 Pedidos` ✅ traído |
 | **5** | **Dinero** | **cerrado** — 16 componentes, 6 pantallas, 12 de 26 acciones | lo que queda del bloque está **bloqueado o fuera de alcance**: el interruptor de DTE real (decisión tuya), 4 acciones que no existen todavía, 2 que viven en la app del conductor, y `pedidos.cancelar*` en `operaciones` (trabajo en curso). Sigue pendiente el multi-período del atribuidor. | #7 a #11 | `P4` ✅ `B2a` ✅ `B2b` ✅ |
@@ -181,9 +181,19 @@ propósito. Lo que falta de adopción está en el bloque 0 y repartido en los bl
       La regla mixta: lo que ya está en pantalla se actualiza en su lugar; lo que entraría nuevo se
       acumula y se anuncia, **no se inserta**. Porque si la lista se reordena mientras alguien
       selecciona treinta filas para asignar, pierde la selección o toca la equivocada.
-- [ ] **Adopción: cero pantallas de producto.** Los cuatro solo se usan en `/kitchen-sink`.
-      `preparacion/asignar` tiene su **propia** `BarraSeleccion` local
-      (`_componentes/barra-seleccion.tsx`), sin relación con la nueva. Repartido en los bloques 4–8.
+- [x] **Adopción — el «cero pantallas de producto» era FALSO (verificado el 24-08).** Los cuatro se
+      usan hoy en **13 pantallas reales**, no solo en `/kitchen-sink`:
+      ```
+      grep -rln "BarraCajones\|BarraSeleccion\|FranjaCambiosPendientes\|MarcadorFilaActualizada" src/app/
+      ```
+      operaciones (page + barra de cajones + cambios en vivo) · incidencias · manifiestos ·
+      conductores/nómina · dinero (períodos ×2, liquidaciones, ceremonia de lote) ·
+      preparación/asignar · portal/pedidos.
+- [ ] **Lo que sí queda: `preparacion/asignar` mantiene su propia `BarraSeleccion`**
+      (`_componentes/barra-seleccion.tsx`), escrita a mano y sin relación con la compartida. Dos
+      barras que se parecen no son una barra: son dos sitios donde arreglar lo mismo. Se comprueba
+      con `grep -n "components/ui/barra-seleccion" src/app/\(tenant\)/preparacion/asignar/_componentes/*.tsx`
+      — hoy no devuelve nada.
 - [ ] `tabla con selección múltiple`, `selección táctil en tres niveles`, `tabla de densidad 32`,
       `aviso de truncamiento`, `esqueleto de tabla`, `paginación` — pendientes, en sus bloques.
 
