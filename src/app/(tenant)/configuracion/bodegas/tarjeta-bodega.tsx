@@ -66,6 +66,14 @@ export function TarjetaBodega({
   const [isPending, startTransition] = useTransition();
   const [mostrarConfirmarPrincipal, setMostrarConfirmarPrincipal] = useState(false);
   const [mostrarDesactivarPrincipal, setMostrarDesactivarPrincipal] = useState(false);
+  /**
+   * 🔴 La tarjeta entera abre el panel, como la fila en Pedidos y en Tarifas.
+   *
+   * Antes había que acertarle al botón «Editar» del pie. Una tarjeta con cuatro
+   * bloques de datos y un botón chico abajo hace que el gesto natural —tocar lo
+   * que estás mirando— no haga nada.
+   */
+  const [panelAbierto, setPanelAbierto] = useState(false);
 
   const tieneContacto = !!(bodega.contactoNombre || bodega.contactoTelefono);
   const noUbicada = bodega.geoEstado !== "resuelto";
@@ -127,7 +135,13 @@ export function TarjetaBodega({
 
   return (
     <>
-      <Card className={cn(!bodega.activa && "opacity-60")}>
+      <Card
+        className={cn(!bodega.activa && "opacity-60", bodega.activa && "cursor-pointer")}
+        // Solo la bodega activa se edita: la desactivada tiene su propia acción,
+        // reactivarla, y abrir el formulario daría uno que al guardar la
+        // reviviría de rebote.
+        onClick={bodega.activa ? () => setPanelAbierto(true) : undefined}
+      >
         <CardContent className="space-y-3 p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -219,7 +233,12 @@ export function TarjetaBodega({
             </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-1 border-t border-border pt-2">
+          {/* ⚠️ El pie para la propagación: sin esto, «Desactivar» abriría
+              además el panel de edición por debajo de su confirmación. */}
+          <div
+            className="flex flex-wrap items-center gap-1 border-t border-border pt-2"
+            onClick={(e) => e.stopPropagation()}
+          >
             {bodega.activa ? (
               <>
                 <PanelBodega
@@ -237,11 +256,10 @@ export function TarjetaBodega({
                   }}
                   principalActual={principalActual}
                   montoVisitaDefaultClp={montoVisitaDefaultClp}
-                  trigger={
-                    <Button type="button" variant="ghost" size="sm">
-                      Editar
-                    </Button>
-                  }
+                  // Sin disparador propio: lo abre la tarjeta.
+                  trigger={null}
+                  abierto={panelAbierto}
+                  onOpenChange={setPanelAbierto}
                   onGuardada={onCambiado}
                 />
                 {!bodega.esPrincipal && (
