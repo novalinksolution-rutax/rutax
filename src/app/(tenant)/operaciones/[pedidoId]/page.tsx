@@ -774,6 +774,22 @@ function AccionesPedido({
   });
   const puedeDescargarEtiqueta = puedeAsignar && etiqueta.disponible;
 
+  /**
+   * 🔴 **Cuando NO se puede, hay que decirlo.** La regla calcula una frase por
+   * cada motivo justamente para eso, y esta pantalla no la mostraba: si la
+   * etiqueta no estaba disponible no se pintaba ni el botón ni una explicación,
+   * y el courier se quedaba mirando un hueco sin saber si esperar, reintentar o
+   * desistir. El silencio se lee como «acá no va nada», no como «hoy no».
+   *
+   * No se dice en dos casos, y por razones distintas: en un pedido terminal la
+   * sección entera no se renderiza, y a quien no puede asignar tampoco le sirve
+   * saberlo — nunca iba a ver el botón.
+   */
+  const frasesSinEtiqueta =
+    puedeAsignar && !etiqueta.disponible && etiqueta.motivo !== "terminal"
+      ? etiqueta.frase
+      : null;
+
   // Sin ninguna acción visible: no renderizar nada. `DrawerCambioEstado` (el
   // único botón que gatea `puedeAjustar`) se auto-oculta cuando no hay ningún
   // estado destino válido — y un pedido terminal NUNCA tiene uno (la máquina de
@@ -832,6 +848,12 @@ function AccionesPedido({
 
         {puedeDescargarEtiqueta && (
           <BotonDescargarEtiqueta pedidoId={pedido.id} esSameDay={pedido.tipoPedido === "same_day"} />
+        )}
+
+        {frasesSinEtiqueta && (
+          <p className="rounded-lg border border-dashed px-4 py-2 text-center text-xs text-muted-foreground">
+            {frasesSinEtiqueta}
+          </p>
         )}
 
         {puedeCancelar && (

@@ -32,19 +32,30 @@ describe("etiqueta de Flex", () => {
     expect(r.disponible === false && r.frase).toContain("ya salió");
   });
 
-  it("distingue «ya salió» de «todavía no está lista»", () => {
-    // La salida es distinta: en uno no hay nada que hacer, en el otro hay que
-    // esperar. Decir solo «no disponible» deja sin saber cuál de las dos es.
-    const r = disponibilidadEtiqueta(flex({ estadoMl: "handling" }));
-    expect(r.disponible === false && r.motivo).toBe("todavia_no_esta_lista");
-    expect(r.disponible === false && r.frase).toContain("Vuelve a intentar");
+  it("🔴 en `handling` SÍ — verificado contra producción", () => {
+    // El bug que costó el 62% del despacho del 25-ago: 5 de los 8 pedidos Flex
+    // pendientes estaban en `handling`, la lista blanca los dejaba fuera, y al
+    // pedirle la etiqueta a ML por la ruta directa ML LA ENTREGÓ. Si esto se
+    // pone en rojo porque alguien volvió a excluir `handling`, es ese bug otra
+    // vez.
+    expect(puedeImprimirEtiqueta(flex({ estadoMl: "handling" }))).toBe(true);
   });
 
-  it("🔴 un estado de ML desconocido cae en NO disponible", () => {
-    // Lista blanca, no lista negra. Si ML agrega un estado mañana, ofrecer el
-    // botón y fallar es peor que no ofrecerlo: el segundo caso se entiende.
-    expect(puedeImprimirEtiqueta(flex({ estadoMl: "algo_nuevo_de_ml" }))).toBe(false);
-    expect(puedeImprimirEtiqueta(flex({ estadoMl: null }))).toBe(false);
+  it("🔴 un estado de ML desconocido se OFRECE, no se esconde", () => {
+    // Al revés de como estaba. Los dos errores no cuestan lo mismo: esconder un
+    // botón que funciona bloquea el despacho sin salida; ofrecer uno que falla
+    // cuesta un clic y un mensaje que el botón ya muestra en línea.
+    expect(puedeImprimirEtiqueta(flex({ estadoMl: "algo_nuevo_de_ml" }))).toBe(true);
+    expect(puedeImprimirEtiqueta(flex({ estadoMl: null }))).toBe(true);
+    expect(puedeImprimirEtiqueta(flex({ estadoMl: "pending" }))).toBe(true);
+  });
+
+  it("los cuatro estados en que ML deja de darla", () => {
+    for (const estadoMl of ["shipped", "delivered", "not_delivered", "cancelled"]) {
+      const r = disponibilidadEtiqueta(flex({ estadoMl }));
+      expect(r.disponible).toBe(false);
+      expect(r.disponible === false && r.motivo).toBe("ya_salio");
+    }
   });
 
   it("sin `ml_shipment_id` no hay qué imprimir", () => {
