@@ -56,6 +56,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Rol } from "@/modules/identidad/roles";
 import { LARGO_PIN, rechazarPin, soloDigitosPin, TEXTO_RECHAZO } from "@/modules/identidad/pin-conductor";
 
@@ -118,6 +119,10 @@ function FormularioDefinirContrasena({
   // El conductor pone un PIN; el resto del equipo, una contraseña. Es el mismo
   // par de campos con otras reglas, así que comparten estado.
   const esConductor = info.rol === "conductor";
+  // El rol viene de la INVITACION, resuelta en el servidor: no es algo que el
+  // formulario pueda torcer. Solo un seller representa a alguien a quien Rutax
+  // le manda avisos de retiro.
+  const esSeller = info.rol === "seller";
   const [nombreCompleto, setNombreCompleto] = useState("");
   const [contrasena, setContrasena] = useState("");
   const [confirmacion, setConfirmacion] = useState("");
@@ -128,6 +133,8 @@ function FormularioDefinirContrasena({
   }>({});
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
+  const [telefonoWhatsApp, setTelefonoWhatsApp] = useState("");
+  const [aceptaWhatsApp, setAceptaWhatsApp] = useState(false);
 
   const fortaleza = calcularFortaleza(contrasena);
 
@@ -154,7 +161,13 @@ function FormularioDefinirContrasena({
 
     setEnviando(true);
     try {
-      const resultado = await aceptarInvitacionComoPersonaNueva({ token, nombreCompleto, contrasena });
+      const resultado = await aceptarInvitacionComoPersonaNueva({
+        token,
+        nombreCompleto,
+        contrasena,
+        telefonoWhatsApp: esSeller ? telefonoWhatsApp : undefined,
+        aceptaWhatsApp: esSeller ? aceptaWhatsApp : undefined,
+      });
       if (resultado.ok) {
         router.push("/login?activada=1");
         return;
@@ -288,6 +301,56 @@ function FormularioDefinirContrasena({
             </p>
           ) : null}
         </div>
+
+        {/*
+          El WhatsApp del seller, y su consentimiento.
+
+          Va acá y no en el formulario del courier porque **el permiso lo tiene
+          que dar el interesado**. Hasta el 2026-08-25 era el courier quien
+          afirmaba que otra empresa había aceptado recibir mensajes; esto lo
+          reemplaza por la firma de quien decide.
+
+          Es OPCIONAL: quien no quiera dar su número activa igual su cuenta y lo
+          pone después en «Mi perfil». Pedirlo obligatorio convertiría un
+          consentimiento en un peaje, que es lo contrario de un consentimiento.
+        */}
+        {esSeller ? (
+          <div className="space-y-3 rounded-md border border-border bg-bg-subtle p-3">
+            <div className="space-y-2">
+              <Label htmlFor={`${idBase}-whatsapp`}>
+                Tu WhatsApp <span className="font-normal text-fg-muted">(opcional)</span>
+              </Label>
+              <Input
+                id={`${idBase}-whatsapp`}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+56 9 1234 5678"
+                value={telefonoWhatsApp}
+                onChange={(e) => setTelefonoWhatsApp(e.target.value)}
+              />
+              <p className="text-sm text-fg-muted">
+                Para avisarte cuando retiremos pedidos desde tu bodega.
+              </p>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id={`${idBase}-acepta-whatsapp`}
+                checked={aceptaWhatsApp}
+                onCheckedChange={(v) => setAceptaWhatsApp(v === true)}
+                className="mt-0.5"
+              />
+              <Label
+                htmlFor={`${idBase}-acepta-whatsapp`}
+                className="cursor-pointer text-sm font-normal leading-relaxed"
+              >
+                Acepto recibir avisos de mis entregas por WhatsApp. Puedo darme de baja
+                respondiendo <span className="font-medium">BAJA</span> en cualquier momento.
+              </Label>
+            </div>
+          </div>
+        ) : null}
 
         {/* Embebido y persistente, no una notificación temporal: si se va sola,
             quien estaba escribiendo la contraseña no alcanza a leerla. */}

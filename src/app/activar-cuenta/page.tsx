@@ -76,7 +76,6 @@ export default async function PaginaActivarCuenta({ searchParams }: PageProps) {
         enlaceInvalido={false}
         nombreFantasia={nombreFantasia}
         nombreSugerido={sesion.nombreCompleto}
-        esSeller={sesion.usuario.tipoUsuario === "seller"}
       />
     </PantallaSinSesion>
   );

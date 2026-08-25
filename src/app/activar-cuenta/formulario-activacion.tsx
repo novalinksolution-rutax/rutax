@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Checkbox } from "@/components/ui/checkbox";
 import { definirContrasenaInicial } from "./actions";
 
 interface Props {
@@ -23,20 +22,9 @@ interface Props {
   enlaceInvalido: boolean;
   nombreFantasia: string | null;
   nombreSugerido: string | null;
-  /**
-   * `true` cuando quien activa es un SELLER. Solo entonces se le pide el
-   * WhatsApp: un usuario interno del courier o un conductor no representan a
-   * nadie a quien Rutax le mande avisos de retiro.
-   */
-  esSeller?: boolean;
 }
 
-export function FormularioActivacion({
-  enlaceInvalido,
-  nombreFantasia,
-  nombreSugerido,
-  esSeller = false,
-}: Props) {
+export function FormularioActivacion({ enlaceInvalido, nombreFantasia, nombreSugerido }: Props) {
   const router = useRouter();
   const idBase = useId();
 
@@ -46,8 +34,6 @@ export function FormularioActivacion({
   const [errores, setErrores] = useState<{ nombre?: string; contrasena?: string; confirmacion?: string }>({});
   const [enviando, setEnviando] = useState(false);
   const [errorServidor, setErrorServidor] = useState<string | null>(null);
-  const [telefonoWhatsApp, setTelefonoWhatsApp] = useState("");
-  const [aceptaWhatsApp, setAceptaWhatsApp] = useState(false);
 
   if (enlaceInvalido) {
     return (
@@ -89,12 +75,7 @@ export function FormularioActivacion({
 
     setEnviando(true);
     try {
-      const resultado = await definirContrasenaInicial({
-        nombreCompleto,
-        contrasena,
-        telefonoWhatsApp: esSeller ? telefonoWhatsApp : undefined,
-        aceptaWhatsApp: esSeller ? aceptaWhatsApp : undefined,
-      });
+      const resultado = await definirContrasenaInicial({ nombreCompleto, contrasena });
       if (resultado.ok) {
         router.push("/onboarding");
         router.refresh();
@@ -176,57 +157,6 @@ export function FormularioActivacion({
             />
             {errores.confirmacion ? <p className="text-sm text-destructive">{errores.confirmacion}</p> : null}
           </div>
-
-          {/*
-            El WhatsApp del seller, y su consentimiento.
-
-            Va acá y no en una pantalla del courier porque **el permiso lo tiene
-            que dar el interesado**. Hasta el 2026-08-25 era el courier quien
-            afirmaba que otra empresa había aceptado recibir mensajes; esto lo
-            reemplaza por la firma de quien decide.
-
-            Es OPCIONAL: quien no quiera dar su número activa igual su cuenta y
-            lo puede poner después desde su perfil. Pedirlo como obligatorio
-            convertiría un consentimiento en un peaje, que es justo lo contrario
-            de un consentimiento.
-          */}
-          {esSeller ? (
-            <div className="space-y-3 rounded-md border border-border bg-bg-subtle p-3">
-              <div className="space-y-2">
-                <Label htmlFor={`${idBase}-whatsapp`}>
-                  Tu WhatsApp <span className="font-normal text-fg-muted">(opcional)</span>
-                </Label>
-                <Input
-                  id={`${idBase}-whatsapp`}
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="+56 9 1234 5678"
-                  value={telefonoWhatsApp}
-                  onChange={(e) => setTelefonoWhatsApp(e.target.value)}
-                />
-                <p className="text-sm text-fg-muted">
-                  Para avisarte cuando retiremos pedidos desde tu bodega.
-                </p>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <Checkbox
-                  id={`${idBase}-acepta-whatsapp`}
-                  checked={aceptaWhatsApp}
-                  onCheckedChange={(v) => setAceptaWhatsApp(v === true)}
-                  className="mt-0.5"
-                />
-                <Label
-                  htmlFor={`${idBase}-acepta-whatsapp`}
-                  className="cursor-pointer text-sm font-normal leading-relaxed"
-                >
-                  Acepto recibir avisos de mis entregas por WhatsApp. Puedo darme de baja
-                  respondiendo <span className="font-medium">BAJA</span> en cualquier momento.
-                </Label>
-              </div>
-            </div>
-          ) : null}
 
           {errorServidor ? (
             <Alert variant="destructive">
