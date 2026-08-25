@@ -113,7 +113,7 @@ adopción» no se verifica; «no importa `PantallaSinSesion`» sí, con un coman
 | **6** | **App del conductor** | **CERRADO el 24-08** — 6.0 a 6.5 completos, incluidas la casilla táctil de 56 px, el barrido vertical y la hoja inferior | la adopción de la hoja en el resto de los paneles va **por pantalla**, con su bloque. Y **nada se ha visto en un teléfono real** | #22 a #26 · #31 a #33 | `Rutax B5 App del conductor` ✅ · `B5b` ✅ · `P5` |
 | **7** | **Sub-sistemas** | **12 de 26** — los 5 correos de dinero, la alerta de certificado, el CSV del seller, el atribuidor de ajustes, los grupos del mapa | cartografía (cruce de 200 ms, tramo del zoom, glifos del basemap) · rebotes invisibles. **Los correos se cerraron el 24-08**: el molde pasó a tres bandas, las tres plantillas de Supabase se re-transcribieron y nació `mail.seguimiento` | #1 · #2 · #3 · #27 | `Rutax Subsistemas` · `B1a` · `B8` |
 | **8** | **Sin sesión y sitio** | **15 de 33** — marco sin sesión, tarjeta 1200×630, `not-found`, `error`/`global-error`, `/login`, **portada + `/agendar` + secuencia del hero**, **`/tracking` con su línea de tiempo**, **`/invitacion` con sus 5 finales** | **las 13 pantallas sin sesión están hechas** (se cerraron el 24-08). Queda **solo el sitio comercial**: 4 páginas sin dibujar · tablet y teléfono · las 2 fotografías | #28 · #29 · #30 | `Rutax B7 Sin sesion` · `B7b` · `Sitio comercial` |
-| **9** | *(no está en §10)* | 12 componentes sin bloque asignado | 12, repartidos en 9a–9d | #4 · #5 · #6 · #13 a #20 | `B1b` · `B3a` · `B3b` · `P7` |
+| **9** | *(no está en §10)* | **auditado el 24-08: de los 12, nueve estaban construidos y el checklist no se había enterado** | `formulario de configuración` y `formulario de alta con aviso en línea` como componentes compartidos · `fila de salud de conexión` · y **#6**, la marca de disponibilidad, que sigue sin pintarse | — | `B3b` ✅ traído |
 
 **Los 33 marcados NUEVO están todos bloqueados por una decisión del usuario** (anexo A). Están
 diseñados y aislados: descartar cualquiera no obliga a rediseñar nada, así que **el resto de cada
@@ -2199,6 +2199,40 @@ pero **sus componentes propios se quedan sin lugar en el orden**. Son estos doce
 > `bloque de falla externa` existe precisamente para eso, y **regla 60: un error de integración dice
 > siempre qué sigue funcionando.**
 
+## 9b · Lo hecho
+
+- [x] **Tarifas contra B3b, y el pozo cerrado (24-08)** — `(tenant)/configuracion/tarifas/`.
+      🔴 **Se podía inactivar una tarifa y no había ninguna forma de reactivarla.** Es el más caro
+      de los cinco estados sin salida: una tarifa inactivada por error deja de cobrar cada entrega
+      de ese seller, **en silencio**, hasta que alguien mira el cierre del período. La única vuelta
+      era crear otra desde cero, y con eso se pierde la fecha de vigencia original — que es lo que
+      decide desde cuándo se le cobró. Ahora `accionReactivarTarifa`, con su bitácora: reactivar
+      vuelve a poner plata en movimiento, así que es acción financiera y lleva autor.
+      ⚠️ **Reactivar NO toca las fechas**, a propósito: una tarifa inactivada en julio y reactivada
+      en septiembre vuelve con su ventana original. Correr la fecha sola sería que el sistema decida
+      desde cuándo se le cobra a un seller.
+      **Lo vigente y lo programado conviven en la misma tabla** (regla 28). Antes eran dos secciones
+      —activas e inactivas— y una tarifa que empieza el mes que viene se dibujaba entre las activas,
+      sin distinguirse de la que cobra hoy.
+      🔴 **La clasificación es la mitad de un par.** La otra mitad es `resolverTarifaVigente`
+      (`src/modules/operacion/tarifas.ts`), de donde el motor saca cuánto cobrar. Si se separan, la
+      pantalla miente sobre qué tarifa gobierna — con un número plausible al lado. Hay una **prueba
+      candado** que lee el predicado del motor (`estado=activa` + `lte(vigente_desde)` +
+      `vigente_hasta null o gte`) y falla si alguien lo cambia sin mirar `cajon-tarifa.ts`.
+      ⚠️ **Son CUATRO cajones y el tablero dibuja tres.** Falta «Vencidas»: `vigente_hasta` es un
+      campo del formulario, así que una tarifa puede tener la ventana cerrada y seguir `activa`. No
+      cobra, pero tampoco está inactiva — en «Vigentes» afirmaría que gobierna, y en «Inactivas»
+      tendría un «Reactivar» que no arregla nada. Su salida es editarla.
+      **Una sola fila para los cuatro cajones**, no dos anatomías: la inactiva tenía su propia tabla
+      con menos columnas y escondía justo la que uno viene a comparar, «pagas». Lo que cambia entre
+      cajones es el tono.
+      **Las dos columnas de dinero rotuladas con el verbo** —«Cobras» y «Pagas»—, y el **aviso de
+      margen invertido**: avisa mientras se escribe y **no bloquea**, porque puede ser deliberado
+      (una promoción, un tramo subsidiado); dice la diferencia en pesos, porque «pagas más de lo que
+      cobras» sin la cifra obliga a restar de cabeza.
+      **Verificado en el navegador, claro y oscuro:** la fila programada da `#E1F5FF` y `#07293A`,
+      los dos valores exactos que B3b enumera. 14 pruebas.
+
 ## 9c · Lo hecho
 
 - [x] **`bloque de falla externa`** · DE CERO — `src/components/ui/bloque-falla-externa.tsx`,
@@ -2332,17 +2366,17 @@ Marca cada uno `[x]` si entra o `N/A` si se descarta, con una línea de razón.
 
 ## Van en el bloque 9 · Lo que §10 no asigna
 
-- [ ] **#4** · Redistribución por conductor no disponible, con su modal de reparto. *(9d)*
-- [ ] **#5** · Secuenciación con la razón escrita cuando no puede optimizar por cierre. *(9d)*
-- [ ] **#6** · Marca de disponibilidad del conductor visible para el coordinador. *(9d)*
-- [ ] **#13** · La pantalla de cierre del asistente. *(9a)*
-- [ ] **#14** · Cambiar el rol de una persona activa, con su bloque de capacidades. *(9b)*
-- [ ] **#15** · Suspender y reactivar con su transición real. *(9b)*
-- [ ] **#16** · La ventana de corte precargada con el valor vigente. *(9b)*
-- [ ] **#17** · Cajón «Inactivas» con reactivación: los cinco estados sin salida. *(9b)*
-- [ ] **#18** · Ficha de seller: hoy el listado es terminal. *(9b)*
-- [ ] **#19** · Reportar un problema desde el portal del seller. *(portal)*
-- [ ] **#20** · Detalle de la incidencia con sus notas y su efecto en el cobro. *(portal)*
+- [x] **#4** · Redistribución por conductor no disponible — **ya estaba**: `boton-redistribuir.tsx` y la sección de redistribución de `panel-conductores.tsx`. *(9d)*
+- [x] **#5** · Secuenciador de ruta — **ya estaba**: `manifiestos/[manifiestoId]/panel-ruta.tsx` + `actions-ruta.ts`. *(9d)*
+- [ ] **#6** · Marca de disponibilidad del conductor visible para el coordinador. **Pendiente de verdad**: `ConductorOpcion` ya lleva `disponible: boolean` en `preparacion/asignar/_componentes/barra-seleccion.tsx:23` y **no se pinta en ninguna parte**. Se comprueba con `grep -n disponible` en ese directorio. *(9d)*
+- [x] **#13** · Pantalla de cierre del asistente — **ya estaba**: `(tenant)/onboarding/listo/page.tsx`. *(9a)*
+- [x] **#14** · Cambiar el rol con su bloque de capacidades — **ya estaba**: `equipo/dialogo-cambiar-rol.tsx`, con «Pierde / Gana / Sigue sin tener» calculado por diferencia. *(9b)*
+- [x] **#15** · Suspender y reactivar — **ya estaba**: `equipo/panel-equipo.tsx` + `actions.ts`, con la guarda de no suspenderse a uno mismo. *(9b)*
+- [x] **#16** · Ventana de corte precargada — **ya estaba**, y el bug que corrompía configuración está documentado en `panel-zonas.tsx`: los cinco campos arrancaban en literales y el upsert sobrescribía la ventana vigente con los valores por defecto. *(9b)*
+- [x] **#17** · Cajón «Inactivas» con reactivación — **HECHO el 24-08 en tarifas**, que era el único de los cinco que seguía sin salida. Bodegas (`accionReactivarBodega`), zonas y ventanas (`activarDesactivarZona`, toggle), conductores (`reactivarConductor`) y el auto-cobro ya la tenían. Ver el detalle en 9b. *(9b)*
+- [x] **#18** · Ficha de seller — **ya estaba**: `(tenant)/sellers/[sellerId]/page.tsx`, que reúne y enlaza sin calcular cifras propias. *(9b)*
+- [x] **#19** · Reportar un problema desde el portal — **ya estaba**: `portal/incidencias/dialogo-reportar.tsx`. *(portal)*
+- [x] **#20** · Detalle de la incidencia con notas y efecto en el cobro — **ya estaba**: `portal/incidencias/page.tsx`, que dibuja `notasResolucion` y «Efecto en tu cobro». *(portal)*
 
 > ⚠️ **La ficha importada de Claude Design dice 28; son 33.** Dos tableros se agregaron después de
 > la ficha: `B7b Autenticacion` trae los números 29 y 30, y `B5b Entrada del conductor` —traído el
