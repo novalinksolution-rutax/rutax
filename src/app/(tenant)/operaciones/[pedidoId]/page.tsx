@@ -26,6 +26,7 @@ import {
   puedeGestionarIncidencias,
   puedeAjustarOperacionDiaria,
   puedeVerConciliacion,
+  puedeVerBitacoraAuditoria,
   puedeGestionarLiquidacionesConductores,
   puedeEmitirFacturas,
   puedeVerReportesEjecutivos,
@@ -62,6 +63,8 @@ import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
 import { disponibilidadEtiqueta } from "@/modules/operacion/etiqueta-disponible";
 import { BotonReubicar } from "./boton-reubicar";
 import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
+import { armarBitacoraPedido, type EntradaBitacora } from "./bitacora-pedido";
+import { BotonReintentarLectura } from "./boton-reintentar-lectura";
 import { DialogAnular } from "./acciones-corregir-dinero";
 import { accionAnularCobroPedido, accionAnularLiquidacionPedido } from "./acciones-dinero";
 import { ZonaConsecuencia, FilaConsecuencia } from "@/components/ui/zona-consecuencia";
@@ -94,6 +97,26 @@ async function cargarHistorialEstados(pedidoId: string, tenantId: string) {
     .in("accion", ACCIONES_HISTORIAL_ESTADO_PEDIDO)
     .order("creado_en", { ascending: false })
     .limit(20);
+  return data ?? [];
+}
+
+/**
+ * TODA la bitácora del pedido, no solo lo que movió su estado.
+ *
+ * ⚠️ Sin filtro de `accion`, al revés que `cargarHistorialEstados`: el
+ * seguimiento narra el viaje del paquete y esto da cuenta de lo que se HIZO
+ * sobre él —una etiqueta descargada, una línea de dinero anulada—, que es
+ * justamente lo que el seguimiento omite.
+ */
+async function cargarBitacoraCompleta(pedidoId: string, tenantId: string) {
+  const cliente = crearClienteServiceRole();
+  const { data } = await cliente
+    .from("bitacora_auditoria")
+    .select("id, creado_en, accion, actor_tipo, actor_usuario_id, detalle")
+    .eq("entidad_id", pedidoId)
+    .eq("tenant_id", tenantId)
+    .order("creado_en", { ascending: false })
+    .limit(50);
   return data ?? [];
 }
 
@@ -148,7 +171,25 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
     puedeEmitirFacturas(sesion.usuario) ||
     puedeVerReportesEjecutivos(sesion.usuario);
 
-  const [historial, asignacion, pod, evidencias, traza] = await Promise.all([
+  const puedeVerBitacora = puedeVerBitacoraAuditoria(sesion.usuario);
+
+  /* ==========================================================================
+   * 🔴 `allSettled`, NO `all` — «falla de lectura ≠ objeto vacío»
+   * ==========================================================================
+   * Tablero P3, decisión n.º 6. Con `Promise.all`, que fallara UNA lectura
+   * secundaria —el dinero, el POD— tumbaba la carga entera y la pantalla se
+   * iba al `error.tsx`: el pedido EXISTE y no se podía ver nada de él.
+   *
+   * Y el modo de fallo silencioso era peor todavía: varios de estos cargadores
+   * devuelven `data ?? []` ante un error de PostgREST, o sea que un fallo de
+   * lectura se veía **idéntico a «no hay nada»**. Un pedido cuyo historial no
+   * se pudo leer se mostraba como un pedido sin historial, y sobre eso alguien
+   * decide si cambiarle el estado.
+   *
+   * Ahora cada lectura falla por su cuenta, la pantalla se pinta con lo que sí
+   * llegó, y **lo que faltó se dice con nombre y apellido**.
+   * ======================================================================== */
+  const lecturas = await Promise.allSettled([
     cargarHistorialEstados(pedidoId, tenantId),
     cargarAsignacion(pedidoId, tenantId),
     obtenerPruebaEntregaPorPedido(crearClienteServiceRole(), pedidoId, tenantId),
@@ -156,7 +197,36 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
     gateDinero
       ? obtenerTrazaDineroPorPedido(crearClienteServiceRole(), tenantId, pedidoId)
       : Promise.resolve(null),
+    puedeVerBitacora ? cargarBitacoraCompleta(pedidoId, tenantId) : Promise.resolve([]),
   ]);
+
+  const ROTULOS_LECTURA: string[] = [
+    "el seguimiento",
+    "la asignación",
+    "la prueba de entrega",
+    "las evidencias",
+    "el dinero",
+    "la bitácora",
+  ];
+
+  const lecturasFallidas = lecturas
+    .map((r, i) => (r.status === "rejected" ? ROTULOS_LECTURA[i] : null))
+    .filter((x): x is string => x !== null);
+
+  const valor = <T,>(i: number, porDefecto: T): T =>
+    lecturas[i].status === "fulfilled" ? ((lecturas[i] as PromiseFulfilledResult<T>).value ?? porDefecto) : porDefecto;
+
+  const historial = valor<Record<string, unknown>[]>(0, []);
+  const asignacion = valor<Awaited<ReturnType<typeof cargarAsignacion>>>(1, null);
+  const pod = valor<Awaited<ReturnType<typeof obtenerPruebaEntregaPorPedido>>>(2, null);
+  const evidencias = valor<Awaited<ReturnType<typeof listarEvidenciasPorPedido>>>(3, []);
+  const traza = valor<Awaited<ReturnType<typeof obtenerTrazaDineroPorPedido>> | null>(4, null);
+  const bitacoraCruda = valor<Record<string, unknown>[]>(5, []);
+
+  // ⚠️ El dinero se trata aparte del resto: es la única lectura cuyo fallo hace
+  // PELIGROSA una acción. Anular un cobro que no pudimos leer es anular a
+  // ciegas, así que la zona de consecuencia se bloquea con su motivo.
+  const falloElDinero = lecturas[4].status === "rejected";
 
   // Nombres legibles (seller y conductor) en vez de UUIDs. Best-effort: si la
   // resolución falla, la pantalla cae al UUID sin bloquear el render.
@@ -188,6 +258,26 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
   } catch {
     // sin bloquear — quedan los UUIDs/valores por defecto como fallback.
   }
+
+  /* Autores de la bitácora y del seguimiento, en UNA sola consulta.
+     Best-effort: si falla, las líneas quedan sin nombre pero la pantalla se
+     pinta — un registro sin autor sigue diciendo qué pasó y cuándo. */
+  let nombresAutores: Record<string, UsuarioBasico> = {};
+  const idsAutores = [
+    ...new Set(
+      [...bitacoraCruda, ...historial]
+        .map((f) => (f as Record<string, unknown>).actor_usuario_id)
+        .filter((v): v is string => typeof v === "string"),
+    ),
+  ];
+  if (idsAutores.length > 0) {
+    try {
+      nombresAutores = await mapaNombresUsuarios(crearClienteServiceRole(), tenantId, idsAutores);
+    } catch {
+      // sin bloquear.
+    }
+  }
+  const bitacora = armarBitacoraPedido(bitacoraCruda, nombresAutores);
 
   const puedeAsignar = puedeAsignarYReasignarPedidos(sesion.usuario);
   const puedeIncidencias = puedeGestionarIncidencias(sesion.usuario);
@@ -277,6 +367,17 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         {/* ---------------- Columna izquierda — la historia ---------------- */}
         <div className="space-y-6">
+          {/* ── Lectura incompleta ────────────────────────────────────────
+              Tablero P3, decisión n.º 6: «falla de lectura ≠ objeto vacío».
+              La identidad del pedido se mantiene arriba —el encabezado ya está
+              pintado— y acá se dice QUÉ no se pudo leer. Antes esto no existía:
+              con `Promise.all` la pantalla entera se caía, y con los cargadores
+              que devuelven `[]` ante un error, un fallo se veía idéntico a «no
+              hay nada». */}
+          {lecturasFallidas.length > 0 && (
+            <AvisoLecturaIncompleta partes={lecturasFallidas} />
+          )}
+
           {/* Cancelación: si el pedido está cancelado, es el titular de la
               pantalla y va primero. Estado neutral, nunca destructivo — no es
               una alarma (§6.1/§16). */}
@@ -385,12 +486,16 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
                           <span aria-hidden="true">→</span>{" "}
                           {traducirEstadoPedido(entrada.detalle?.estado_nuevo)}
                         </p>
-                        {entrada.actor_usuario_id && (
-                          <p className="text-xs text-muted-foreground">
-                            Cambiado manualmente el{" "}
-                            {formatearFechaHora(entrada.creado_en)}
-                          </p>
-                        )}
+                        {/* 🔴 El AUTOR, no solo «cambiado manualmente». El
+                            tablero pide autor en cada hito —«asignado a R.
+                            Muñoz · por C. Rojas»— y esta línea decía que hubo
+                            una mano detrás sin decir de quién, que es la mitad
+                            inútil del dato. */}
+                        <p className="text-xs text-muted-foreground">
+                          {entrada.actor_usuario_id
+                            ? `${nombresAutores[entrada.actor_usuario_id]?.nombreCompleto ?? "Usuario no encontrado"} · ${formatearFechaHora(entrada.creado_en)}`
+                            : `Sincronización automática · ${formatearFechaHora(entrada.creado_en)}`}
+                        </p>
                         {entrada.detalle?.motivo && (
                           <p className="mt-0.5 text-xs text-muted-foreground italic">
                             &ldquo;{entrada.detalle.motivo}&rdquo;
@@ -575,11 +680,107 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             sellerNombre={sellerNombre}
             conductorNombre={conductorNombre}
             puedeCancelar={puedeCancelar}
-            puedeAnularDinero={puedeVerConciliacion(sesion.usuario)}
+            puedeAnularDinero={puedeVerConciliacion(sesion.usuario) && !falloElDinero}
+            motivoBloqueo={
+              falloElDinero
+                ? "No pudimos leer el dinero de este pedido. Anular una línea sin verla sería a ciegas."
+                : null
+            }
           />
+
+          {/* ── Bitácora del pedido ───────────────────────────────────────
+              Tablero P3, decisión n.º 4: «la auditoría es contexto, no
+              consecuencia». Va a la vista y sin abrir nada, JUSTO DEBAJO de la
+              zona de consecuencia, para que quien está por hacer algo grave ya
+              vea el registro donde va a quedar.
+
+              Solo para quien tiene `ver_bitacora_auditoria` —dueño y
+              administración—. Regla dura del sistema: un rol sin la capacidad
+              no ve la opción; nada de candados ni bloques grises. */}
+          {puedeVerBitacora && <BitacoraDelPedido entradas={bitacora} />}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Aviso de lectura incompleta.
+ *
+ * Dice QUÉ faltó, no «hubo un error»: la diferencia entre «no pudimos leer el
+ * dinero» y «no pudimos leer el seguimiento» decide si la persona puede seguir
+ * trabajando o no. Y advierte contra la acción concreta que sería peligrosa
+ * sobre datos a medias.
+ */
+/**
+ * «a, b y c» — no `join(", ")`.
+ *
+ * ⚠️ Y por eso la frase dice «falló leer» y no «falló la lectura de»: los
+ * rótulos llevan artículo («el dinero»), así que la preposición producía «de el
+ * dinero». Se arregla en la frase, no en los rótulos: quitarles el artículo los
+ * dejaría sin poder usarse en ninguna otra oración.
+ */
+function enumerar(partes: string[]): string {
+  if (partes.length <= 1) return partes[0] ?? "";
+  return `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}`;
+}
+
+function AvisoLecturaIncompleta({ partes }: { partes: string[] }) {
+  return (
+    <div
+      role="alert"
+      className="border border-attention-line bg-attention-bg px-4 py-3 text-sm text-attention-fg"
+    >
+      <p className="font-semibold">No pudimos cargar el detalle completo</p>
+      <p className="mt-1">
+        El pedido existe: lo que falló fue leer{" "}
+        <span className="font-medium">{enumerar(partes)}</span>. No lo cambies de estado hasta
+        verlo completo.
+      </p>
+      <BotonReintentarLectura />
+    </div>
+  );
+}
+
+/**
+ * Bitácora del pedido — quién hizo qué, y cuándo.
+ *
+ * Lista, no tabla: son tres columnas de las cuales dos son cortas y la del
+ * medio manda. En una tabla, la hora y el autor compiten con lo único que se
+ * viene a leer.
+ */
+function BitacoraDelPedido({ entradas }: { entradas: EntradaBitacora[] }) {
+  return (
+    <section aria-labelledby="bitacora-titulo">
+      <h2 id="bitacora-titulo" className="mb-3 text-base font-semibold">
+        Bitácora de este pedido
+      </h2>
+      <div className="rounded-lg border bg-card p-4">
+        {entradas.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Todavía no hay nada registrado sobre este pedido.
+          </p>
+        ) : (
+          <ol className="space-y-2.5">
+            {entradas.map((e) => (
+              <li key={e.id} className="text-sm">
+                <p className="text-fg">
+                  <span className="font-mono text-xs text-fg-subtle tabular-nums">
+                    {formatearFechaHora(e.creadoEn)}
+                  </span>{" "}
+                  <span className="font-medium">{e.autor ?? "Rutax"}</span> {e.frase}
+                </p>
+                {e.motivo && (
+                  <p className="mt-0.5 text-xs text-muted-foreground italic">
+                    &ldquo;{e.motivo}&rdquo;
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -594,6 +795,7 @@ function ZonaConsecuenciaPedido({
   conductorNombre,
   puedeCancelar,
   puedeAnularDinero,
+  motivoBloqueo,
 }: {
   pedido: Pedido;
   traza: Awaited<ReturnType<typeof obtenerTrazaDineroPorPedido>> | null;
@@ -601,6 +803,8 @@ function ZonaConsecuenciaPedido({
   conductorNombre: string | null;
   puedeCancelar: boolean;
   puedeAnularDinero: boolean;
+  /** Por qué las acciones de dinero no están disponibles. `null` = sí lo están. */
+  motivoBloqueo: string | null;
 }) {
   // Una línea ya anulada no se puede volver a anular: ofrecer el botón sería
   // prometer una acción que el servidor rechaza («la línea ya está anulada»).
@@ -611,10 +815,18 @@ function ZonaConsecuenciaPedido({
 
   // Regla dura del sistema: un rol sin la capacidad NO VE la opción. Si no
   // queda ninguna, la zona entera desaparece — nada de marcos rojos vacíos.
-  if (!puedeCancelar && !anularCobro && !anularLiquidacion) return null;
+  if (!puedeCancelar && !anularCobro && !anularLiquidacion && !motivoBloqueo) return null;
 
   return (
     <ZonaConsecuencia resumen="Las tres piden motivo escrito y quedan a tu nombre. Anular una línea de dinero no deshace la entrega: solo saca la plata del período.">
+      {/* 🔴 Deshabilitado CON MOTIVO, no escondido. El tablero es explícito:
+          «si no pudimos leer el dinero, anularlo sería a ciegas». Ocultar la
+          acción haría creer que este pedido no tiene línea que anular. */}
+      {motivoBloqueo && (
+        <p className="border border-fault-line/60 bg-bg-raised px-3 py-2 text-xs text-fg-muted">
+          {motivoBloqueo}
+        </p>
+      )}
       {anularCobro && (
         <FilaConsecuencia descripcion="Anular el cobro al seller">
           <DialogAnular
