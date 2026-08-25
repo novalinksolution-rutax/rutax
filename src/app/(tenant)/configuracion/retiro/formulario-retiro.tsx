@@ -1,18 +1,30 @@
 "use client";
 
 /**
- * Formulario de un solo campo — Configuración → Retiro.
- * Mismo patrón de envío que `DialogTarifa` (FormData + Server Action +
- * `useTransition`), pero SIN dialog: es una pantalla de configuración
- * permanente, no un alta puntual (mismo criterio que `PanelZonas`).
+ * Configuración → Retiro. Un solo campo, y el molde de la sección.
+ * =============================================================================
+ *
+ * Es el `formulario de configuración` de B3b en su forma más simple: una
+ * sección, guardado explícito, acuse de recibo. Toda la mecánica —el botón, el
+ * acuse, el borrado del acuse al volver a escribir, el error— vive en
+ * `SeccionConfiguracion`; acá solo va el campo y **qué decir cuando se
+ * guardó**.
+ *
+ * ⚠️ El acuse dice la CONSECUENCIA y no el trámite. «Guardado» informa de la
+ * mecánica; «desde ahora cada visita a bodega liquida $4.500 al conductor»
+ * informa del efecto, que es lo que la persona vino a conseguir y lo único que
+ * le permite darse cuenta de que se equivocó de tecla.
  */
 
-import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import {
+  SeccionConfiguracion,
+  type ResultadoGuardado,
+} from "../_componentes/seccion-configuracion";
 import { accionGuardarConfigRetiro } from "./actions";
 
 interface Props {
@@ -22,32 +34,24 @@ interface Props {
 
 export function FormularioRetiro({ montoActual }: Props) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [guardadoOk, setGuardadoOk] = useState<number | null>(null);
-  const [isPending, startTransition] = useTransition();
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError(null);
-    setGuardadoOk(null);
-    const formData = new FormData(e.currentTarget);
-    const monto = Number(formData.get("monto_visita_bodega_clp"));
-
-    startTransition(async () => {
-      const resultado = await accionGuardarConfigRetiro(formData);
-      if (!resultado.ok) {
-        setError(resultado.mensaje);
-        return;
-      }
-      setGuardadoOk(monto);
-      router.refresh();
-    });
+  async function guardar(datos: FormData): Promise<ResultadoGuardado> {
+    const monto = Number(datos.get("monto_visita_bodega_clp"));
+    const resultado = await accionGuardarConfigRetiro(datos);
+    if (!resultado.ok) return { ok: false, mensaje: resultado.mensaje };
+    router.refresh();
+    return {
+      ok: true,
+      acuse: `Desde ahora cada visita a bodega liquida ${formatearCLP(monto)} al conductor.`,
+    };
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <SeccionConfiguracion onGuardar={guardar}>
       <div className="max-w-xs space-y-1.5">
-        <Label htmlFor="monto_visita_bodega_clp">Le pagas al conductor por visita a bodega (CLP)</Label>
+        <Label htmlFor="monto_visita_bodega_clp">
+          Le pagas al conductor por visita a bodega (CLP)
+        </Label>
         <Input
           id="monto_visita_bodega_clp"
           name="monto_visita_bodega_clp"
@@ -57,29 +61,13 @@ export function FormularioRetiro({ montoActual }: Props) {
           required
           defaultValue={montoActual ?? ""}
           placeholder="ej. 1500"
-          disabled={isPending}
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-fg-muted">
           Se paga por CADA visita cerrada, sin importar cuántos bultos retiró el conductor en
           ella. Puedes fijar un monto distinto para una bodega puntual desde Configuración →
           Bodegas.
         </p>
       </div>
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {guardadoOk !== null && !error && (
-        <p className="text-sm text-success-subtle-foreground">
-          Guardado — desde ahora cada visita a bodega liquida {formatearCLP(guardadoOk)} al conductor.
-        </p>
-      )}
-
-      <Button type="submit" disabled={isPending}>
-        {isPending ? "Guardando…" : "Guardar"}
-      </Button>
-    </form>
+    </SeccionConfiguracion>
   );
 }

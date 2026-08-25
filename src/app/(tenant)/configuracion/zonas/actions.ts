@@ -72,18 +72,29 @@ export async function obtenerEstadoZonas(): Promise<Respuesta<EstadoZonas>> {
     cliente
       .schema("identidad")
       .from("sellers")
-      .select("id, nombre_empresa")
+      // 🔴 Decía `nombre_empresa`, **una columna que no existe**. La tabla tiene
+      // `razon_social` (y `nombre_contacto`), así que PostgREST devolvía 42703,
+      // `data` venía `null`, el `?? []` lo tragaba y `sellers` quedaba SIEMPRE
+      // vacío. Con la lista vacía `SeccionVentanasCorte` hace `return null`:
+      // **toda la sección de horario de corte y objetivo de SLA no se
+      // renderizaba nunca**, en ninguna cuenta. Ni un error en pantalla ni una
+      // línea en el log — solo una sección que no estaba.
+      .select("id, razon_social")
       .eq("tenant_id", tenantId)
-      .order("nombre_empresa"),
+      .order("razon_social"),
   ]);
 
-  const sellers: Seller[] = (sellersFila.data ?? []).map(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (s: any) => ({
-      id: s.id as string,
-      nombre: (s.nombre_empresa as string) ?? "Seller",
-    }),
-  );
+  // ⚠️ Y el error se propaga, que es la mitad que faltaba. Tragarse el fallo de
+  // una lectura y seguir con una lista vacía convierte cualquier typo futuro en
+  // una pantalla que se encoge en silencio, que es exactamente lo que pasó acá.
+  if (sellersFila.error) {
+    return { ok: false, mensaje: `No pudimos cargar tus sellers: ${sellersFila.error.message}` };
+  }
+
+  const sellers: Seller[] = (sellersFila.data ?? []).map((s: Record<string, unknown>) => ({
+    id: s.id as string,
+    nombre: (s.razon_social as string) ?? "Seller",
+  }));
 
   return { ok: true, datos: { zonas, sellers } };
 }

@@ -527,9 +527,14 @@ function SeccionVentanasCorte({
   // como valor inicial Y como `key`, para que React lo remonte al cambiar de
   // ventana: sin eso, abrir la segunda mostraría los campos de la primera.
   const [editando, setEditando] = useState<VentanaCorte | null>(null);
+  /** El acuse del último guardado. Ver `onVentanaGuardada`. */
+  const [acuse, setAcuse] = useState<string | null>(null);
 
   function onEditar(v: VentanaCorte) {
     setEditando(v);
+    // Al reabrir el formulario el acuse anterior deja de ser cierto sobre lo que
+    // hay en pantalla: se borra, como en `SeccionConfiguracion`.
+    setAcuse(null);
     setMostrarFormulario(true);
   }
 
@@ -538,6 +543,7 @@ function SeccionVentanasCorte({
     setVentanas([]);
     setMostrarFormulario(false);
     setEditando(null);
+    setAcuse(null);
     if (!id) return;
     setCargando(true);
     const resultado = await actionObtenerVentanasSeller(id);
@@ -545,7 +551,14 @@ function SeccionVentanasCorte({
     if (resultado.ok) setVentanas(resultado.datos);
   }
 
-  function onVentanaGuardada(v: VentanaCorte) {
+  /**
+   * ⚠️ **El acuse vive acá y no en el formulario, porque el formulario se
+   * cierra al guardar.** Es la regla 25 —guardado explícito con acuse de
+   * recibo— resuelta donde la persona queda: junto a la fila que acaba de
+   * cambiar. Un acuse dentro de un árbol que se desmonta no lo lee nadie.
+   */
+  function onVentanaGuardada(v: VentanaCorte, acuseNuevo: string) {
+    setAcuse(acuseNuevo);
     setVentanas((prev) => {
       const idx = prev.findIndex(
         (x) => x.sellerId === v.sellerId && x.tipoEntrega === v.tipoEntrega && x.zonaId === v.zonaId,
@@ -611,6 +624,18 @@ function SeccionVentanasCorte({
                 <p className="text-sm text-muted-foreground">Cargando configuración…</p>
               ) : (
                 <>
+                  {/* El acuse del último guardado, junto a la fila que cambió.
+                      `role="status"` y no `alert`: es una buena noticia, y
+                      `alert` interrumpe al lector de pantalla. */}
+                  {acuse && (
+                    <p
+                      role="status"
+                      className="border border-balanced-line bg-balanced-bg px-3 py-2 text-sm text-balanced-fg"
+                    >
+                      {acuse}
+                    </p>
+                  )}
+
                   {/* Ventanas existentes */}
                   {ventanas.length > 0 ? (
                     <div className="overflow-hidden rounded-lg border border-border">
@@ -741,7 +766,8 @@ function FormularioVentanaCorte({
   zonas: Zona[];
   /** La ventana que se está editando, o `null` para una nueva. */
   ventana: VentanaCorte | null;
-  onGuardada: (v: VentanaCorte) => void;
+  /** El segundo argumento es el acuse: lo muestra la sección, no el formulario. */
+  onGuardada: (v: VentanaCorte, acuse: string) => void;
 }) {
   const [tipoEntrega, setTipoEntrega] = useState<"flex" | "same_day">(
     ventana ? (ventana.tipoEntrega as "flex" | "same_day") : "same_day",
@@ -757,9 +783,25 @@ function FormularioVentanaCorte({
     ventana ? String(ventana.slaObjetivoPct) : "97",
   );
   const [zonaId, setZonaId] = useState<string>(ventana?.zonaId ?? "");
+
   const [error, setError] = useState<string | null>(null);
   const [pendiente, iniciarTransicion] = useTransition();
 
+  /**
+   * ⚠️ **Este formulario NO usa `SeccionConfiguracion`, y la razón es que se
+   * cierra al guardar.** El componente compartido rinde el acuse dentro del
+   * formulario, y acá el formulario ya no está cuando llega la respuesta: lo
+   * desmonta `onGuardada`. Un acuse renderizado en un árbol que se va no lo lee
+   * nadie.
+   *
+   * La regla 25 igual se cumple —guardado explícito, con acuse— pero el acuse
+   * lo pone la SECCIÓN, que es donde queda la persona después de guardar, junto
+   * a la fila que acaba de cambiar. Ver `SeccionVentanasCorte`.
+   *
+   * ⚠️ Y arma su propio `FormData`: los seis campos son controlados —llega
+   * precargado con la ventana vigente, que es la regla 26— y algunos son
+   * `Select` de shadcn, que no emiten un campo nativo.
+   */
   function manejarEnvio(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -778,7 +820,16 @@ function FormularioVentanaCorte({
         setError(resultado.mensaje);
         return;
       }
-      onGuardada(resultado.datos);
+      // El acuse dice la CONSECUENCIA y no el trámite: la hora de corte gobierna
+      // el semáforo de cumplimiento del seller, así que lo que hay que confirmar
+      // es a qué hora corta desde ahora, no que «se guardó».
+      const nombreZona = zonaId
+        ? (zonas.find((z) => z.id === zonaId)?.nombre ?? "la zona elegida")
+        : "todas las zonas";
+      onGuardada(
+        resultado.datos,
+        `${etiquetaTipoEntrega(tipoEntrega)} en ${nombreZona} corta a las ${horaCorte} desde ahora, con ${slaObjetivoPct}% de objetivo.`,
+      );
     });
   }
 
@@ -940,7 +991,8 @@ function BotonToggleVentana({
   onCambiada,
 }: {
   ventana: VentanaCorte;
-  onCambiada: (v: VentanaCorte) => void;
+  /** El segundo argumento es el acuse: lo muestra la sección. */
+  onCambiada: (v: VentanaCorte, acuse: string) => void;
 }) {
   const [pendiente, iniciarTransicion] = useTransition();
 
@@ -951,7 +1003,18 @@ function BotonToggleVentana({
       onClick={() =>
         iniciarTransicion(async () => {
           const r = await actionToggleVentanaCorte(ventana.id, !ventana.activa);
-          if (r.ok) onCambiada(r.datos);
+          // También acusa recibo, y también con la consecuencia: desactivar una
+          // ventana no es un interruptor decorativo — deja a ese seller sin hora
+          // de corte, y con eso su semáforo de cumplimiento deja de significar
+          // nada.
+          if (r.ok) {
+            onCambiada(
+              r.datos,
+              r.datos.activa
+                ? `${etiquetaTipoEntrega(ventana.tipoEntrega)} vuelve a cortar a las ${r.datos.horaCorte}.`
+                : `${etiquetaTipoEntrega(ventana.tipoEntrega)} queda sin hora de corte: sus pedidos dejan de contarse contra un plazo.`,
+            );
+          }
         })
       }
       aria-label={
