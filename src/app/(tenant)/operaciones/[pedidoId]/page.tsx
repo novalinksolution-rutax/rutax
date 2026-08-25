@@ -62,6 +62,9 @@ import { BotonDescargarEtiqueta } from "./boton-descargar-etiqueta";
 import { disponibilidadEtiqueta } from "@/modules/operacion/etiqueta-disponible";
 import { BotonReubicar } from "./boton-reubicar";
 import { DialogCancelarPedido } from "./dialog-cancelar-pedido";
+import { DialogAnular } from "./acciones-corregir-dinero";
+import { accionAnularCobroPedido, accionAnularLiquidacionPedido } from "./acciones-dinero";
+import { ZonaConsecuencia, FilaConsecuencia } from "@/components/ui/zona-consecuencia";
 import { VisorPod } from "./visor-pod";
 import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
@@ -457,11 +460,9 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             pedido={pedido}
             asignacion={asignacion}
             conductorNombre={conductorNombre}
-            sellerNombre={sellerNombre}
             puedeAsignar={puedeAsignar}
             puedeIncidencias={puedeIncidencias}
             puedeAjustar={puedeAjustar}
-            puedeCancelar={puedeCancelar}
             esTerminal={esTerminal}
             tenantId={tenantId}
             usuarioId={sesion.usuarioId}
@@ -536,9 +537,117 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
               </dl>
             </div>
           </section>
+
+          {/* ── Zona de consecuencia ─────────────────────────────────────────
+              Tablero P3, decisión n.º 2. Va AL FINAL y con marco propio: lo
+              grave no se mezcla con lo reversible.
+
+              🔴 Las dos anulaciones de dinero entran acá por PRIMERA VEZ.
+              `AccionesCorregirDinero` existía, sus Server Actions existían, y
+              no tenía un solo llamador en todo el repo: desde esta pantalla no
+              había forma de anular el cobro ni la liquidación de un pedido. */}
+          <ZonaConsecuenciaPedido
+            pedido={pedido}
+            traza={traza}
+            sellerNombre={sellerNombre}
+            conductorNombre={conductorNombre}
+            puedeCancelar={puedeCancelar}
+            puedeAnularDinero={puedeVerConciliacion(sesion.usuario)}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+// =============================================================================
+// Zona de consecuencia del pedido
+// =============================================================================
+
+function ZonaConsecuenciaPedido({
+  pedido,
+  traza,
+  sellerNombre,
+  conductorNombre,
+  puedeCancelar,
+  puedeAnularDinero,
+}: {
+  pedido: Pedido;
+  traza: Awaited<ReturnType<typeof obtenerTrazaDineroPorPedido>> | null;
+  sellerNombre: string | null;
+  conductorNombre: string | null;
+  puedeCancelar: boolean;
+  puedeAnularDinero: boolean;
+}) {
+  // Una línea ya anulada no se puede volver a anular: ofrecer el botón sería
+  // prometer una acción que el servidor rechaza («la línea ya está anulada»).
+  const hayCobro = Boolean(traza?.cobro && !traza.cobro.anulada);
+  const hayLiquidacion = Boolean(traza?.liquidacion && !traza.liquidacion.anulada);
+  const anularCobro = puedeAnularDinero && hayCobro;
+  const anularLiquidacion = puedeAnularDinero && hayLiquidacion;
+
+  // Regla dura del sistema: un rol sin la capacidad NO VE la opción. Si no
+  // queda ninguna, la zona entera desaparece — nada de marcos rojos vacíos.
+  if (!puedeCancelar && !anularCobro && !anularLiquidacion) return null;
+
+  return (
+    <ZonaConsecuencia resumen="Las tres piden motivo escrito y quedan a tu nombre. Anular una línea de dinero no deshace la entrega: solo saca la plata del período.">
+      {anularCobro && (
+        <FilaConsecuencia descripcion="Anular el cobro al seller">
+          <DialogAnular
+            pedidoId={pedido.id}
+            titulo="Vas a anular el cobro de este pedido"
+            descripcion={
+              <>
+                La línea sale del período y el seller deja de verla. Queda registrada
+                como anulada con tu nombre y tu motivo, <strong>no se borra</strong>. Si
+                el período ya estuviera facturado, esto no se puede hacer.
+              </>
+            }
+            ayudaMotivo="Queda en la bitácora, con tu nombre."
+            accion={accionAnularCobroPedido}
+            etiquetaBoton="Anular"
+            textoConfirmar="Anular el cobro"
+          />
+        </FilaConsecuencia>
+      )}
+
+      {anularLiquidacion && (
+        <FilaConsecuencia descripcion="Anular la liquidación al conductor">
+          <DialogAnular
+            pedidoId={pedido.id}
+            titulo="Vas a quitarle esta línea a la liquidación del conductor"
+            descripcion={
+              <>
+                El conductor va a ver la línea anulada <strong>con tu motivo</strong> en su
+                liquidación y en su PDF. Si ya le pagaste este período, esto no lo
+                devuelve: hay que ajustarlo en el próximo.
+              </>
+            }
+            ayudaMotivo="Lo lee el conductor, en su liquidación y en su PDF."
+            accion={accionAnularLiquidacionPedido}
+            etiquetaBoton="Anular"
+            textoConfirmar="Anular la línea"
+          />
+        </FilaConsecuencia>
+      )}
+
+      {puedeCancelar && (
+        <FilaConsecuencia descripcion="Cancelar el pedido">
+          <DialogCancelarPedido
+            pedidoId={pedido.id}
+            codigoVisible={pedido.codigoInterno ?? pedido.mlShipmentId ?? pedido.id.slice(0, 8)}
+            sellerNombre={sellerNombre}
+            conductorNombre={conductorNombre}
+            // ⚠️ En Flex el seguimiento del comprador lo gobierna Mercado Libre y
+            // nuestra página ni responde: prometer que «va a decir que se
+            // canceló» sería falso justo en la fuente que hoy es casi toda la
+            // operación.
+            seguimientoEsDeRutax={!podLoGobiernaLaFuente(pedido.fuente)}
+          />
+        </FilaConsecuencia>
+      )}
+    </ZonaConsecuencia>
   );
 }
 
@@ -730,11 +839,9 @@ function AccionesPedido({
   pedido,
   asignacion,
   conductorNombre,
-  sellerNombre,
   puedeAsignar,
   puedeIncidencias,
   puedeAjustar,
-  puedeCancelar,
   esTerminal,
   tenantId,
   usuarioId,
@@ -744,11 +851,9 @@ function AccionesPedido({
   asignacion: any;
   conductorNombre: string | null;
   /** Para la consecuencia de cancelar: a quién deja de cobrársele. */
-  sellerNombre: string | null;
   puedeAsignar: boolean;
   puedeIncidencias: boolean;
   puedeAjustar: boolean;
-  puedeCancelar: boolean;
   esTerminal: boolean;
   tenantId: string;
   usuarioId: string;
@@ -856,19 +961,10 @@ function AccionesPedido({
           </p>
         )}
 
-        {puedeCancelar && (
-          <DialogCancelarPedido
-            pedidoId={pedido.id}
-            codigoVisible={pedido.codigoInterno ?? pedido.mlShipmentId ?? pedido.id.slice(0, 8)}
-            sellerNombre={sellerNombre}
-            conductorNombre={conductorNombre}
-            // ⚠️ En Flex el seguimiento del comprador lo gobierna Mercado Libre y
-            // nuestra página ni responde: prometer que «va a decir que se
-            // canceló» sería falso justo en la fuente que hoy es casi toda la
-            // operación.
-            seguimientoEsDeRutax={!podLoGobiernaLaFuente(pedido.fuente)}
-          />
-        )}
+        {/* 🔴 «Cancelar el pedido» ya NO vive acá: se fue a la zona de
+            consecuencia. Estaba en esta misma lista y con el mismo peso visual
+            que «Abrir una incidencia», o sea que la gravedad solo aparecía
+            dentro del diálogo — cuando la persona ya había hecho clic. */}
       </div>
     </section>
   );
