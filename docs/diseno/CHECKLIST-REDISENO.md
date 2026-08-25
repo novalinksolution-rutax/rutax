@@ -1668,8 +1668,38 @@ los `--rx-thermal-*` y el bloque `@media print` de `rx-tokens.css` no tienen con
       **24 + 10 pruebas.** Los otros cinco —período cerrado, liquidación emitida, morosidad,
       excedente, seguimiento— avisan de algo que el portal ya muestra y que nadie está esperando en
       ese instante. **Quedan como decisión, no como olvido.**
-- [ ] **Los 6 cuerpos que ya existen, reescritos al molde** (`…-MENSAJES.md` §9.3). Quedaron con
-      asunto, acción y la regla que los cambia; los cuerpos completos están **pendientes de escribir**.
+- [x] **Los cuerpos al molde — CUATRO de los seis, hechos (24-08). Y el alcance no era el que
+      decía este archivo.** No eran «seis cuerpos por reescribir»: dos de los seis **no existen**, y
+      uno de los que sí existe **mentía**.
+      🔴 **La invitación del conductor le pedía crear una contraseña, y el conductor entra con un
+      PIN de 6 dígitos** desde la decisión del 24-08. El correo prometía una cosa y la pantalla a la
+      que llevaba le pedía otra. Corregido: asunto, cuerpo y la acción («Crear mi PIN»). De paso
+      deja de nombrar a Rutax en el asunto — para el conductor la relación es con su courier
+      (regla 42), y «te invitó a Rutax» le habla de un software que no conoce.
+      · **`invitaSeller`** — asunto al molde.
+      · **`invitaEquipo`** — asunto al molde («Te sumaron al equipo de X», no «te invitó a su cuenta
+        en Rutax»: lo que le pasó es que entró a un equipo, y el nombre del software no es la
+        noticia) **y ahora dice el rol y qué va a poder hacer**, que era lo que faltaba. El texto
+        sale de `DESCRIPCIONES_ROLES_INTERNOS`, el mismo que ve quien invita al elegir el rol; se
+        movió a `modules/identidad` porque ahora lo usan las dos puntas. Que digan lo mismo es lo
+        que impide que el correo prometa un acceso que el selector no ofrecía. Hubo que hacer viajar
+        el rol hasta el correo: no llegaba, en ninguno de los dos llamadores.
+      · **`cuentaCaida`** — asunto al molde («Dejamos de recibir», no «dejaron de entrar»: la forma
+        impersonal suena a que algo pasó solo), la acción pasa a **«Volver a conectar»** —la que
+        resuelve, no la que lleva a mirar— y **dice que se arregla en menos de un minuto**. Sin ese
+        dato, «se cayó la conexión con Mercado Libre» se lee como un problema técnico que hay que
+        escalar, y se pospone.
+      · **`recuperar`** — ya cumplía el molde en el cuerpo (1 hora, «tu contraseña sigue
+        funcionando», una sola acción). Se cambió el asunto a «Cambia tu contraseña»: «restablece»
+        es el nombre técnico del flujo y en una bandeja se lee como jerga. ⚠️ El asunto vive en el
+        panel de Supabase: hay que pegarlo a mano.
+      ❌ **`bienvenidaConductor` NO se puede construir**: el molde pide dos enlaces de tienda y **la
+      app no está publicada** en ninguna. Un correo que dice «Descarga la app» con enlaces muertos
+      es peor que no mandarlo.
+      ❌ **`exportListo` tampoco**: no existe ninguna exportación asíncrona en el producto —las dos
+      que hay son síncronas—, así que **nadie lo dispararía**. Entra el día que una exportación se
+      vaya a un job.
+
 - [ ] **Los rebotes son invisibles.** Vuelven por `webhook-resend.ts` y no se muestran en ninguna
       parte. Una invitación que rebota es una invitación que nadie sabe que nunca llegó.
 - [x] **El correo de conexión caída, que llevaba un año comentado** — hecho el 24-08.

@@ -35,7 +35,7 @@ import {
 import { enviarEmailInvitacion } from "@/modules/identidad/notificaciones-invitacion";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
-import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
+import { esRolInterno, ROLES_INTERNOS, type Rol, type RolInterno } from "@/modules/identidad/roles";
 
 // -----------------------------------------------------------------------------
 // Lectura — usuarios activos + invitaciones del tenant (cliente de sesión: P1
@@ -245,7 +245,9 @@ export async function reenviarInvitacion(invitacionId: string): Promise<AccionEq
   const { data: invitacion, error: errorBuscar } = await cliente
     .schema("identidad")
     .from("invitaciones")
-    .select("id, estado, email, tipo_usuario, token, expira_en")
+    // `rol` entra en el SELECT para que el correo del equipo pueda decir a qué
+    // acceso está entrando quien lo recibe — igual que en el primer envío.
+    .select("id, estado, email, tipo_usuario, rol, token, expira_en")
     .eq("id", invitacionId)
     .eq("tenant_id", sesion.usuario.tenantId)
     .maybeSingle();
@@ -278,6 +280,7 @@ export async function reenviarInvitacion(invitacionId: string): Promise<AccionEq
     invitacionId: invitacion.id as string,
     email: invitacion.email as string,
     tipoUsuario: invitacion.tipo_usuario as TipoUsuarioInvitacion,
+    rolInterno: esRolInterno(invitacion.rol as Rol) ? (invitacion.rol as RolInterno) : null,
     token: invitacion.token as string,
     expiraEn: invitacion.expira_en as string,
   });

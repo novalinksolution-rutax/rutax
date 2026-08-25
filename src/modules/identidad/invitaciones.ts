@@ -30,7 +30,7 @@ import type { UsuarioActual } from "./usuario-actual";
 import { registrarEnBitacora } from "./auditoria";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import { enviarEmailInvitacion, type MotivoNoEnviado } from "./notificaciones-invitacion";
-import type { Rol } from "./roles";
+import { esRolInterno, type Rol, type RolInterno } from "./roles";
 
 /**
  * Forma mínima del cliente service_role que estas funciones necesitan.
@@ -211,6 +211,10 @@ export async function crearInvitacion(
     invitacionId: data.id as string,
     email,
     tipoUsuario: input.tipoUsuario,
+    // El rol viaja hasta el correo para que el del equipo pueda decir a qué
+    // tiene acceso quien lo recibe. `esRolInterno` es el mismo predicado que
+    // usa RBAC: sin él habría que repetir la lista de roles acá.
+    rolInterno: esRolInterno(input.rol) ? input.rol : null,
     token: data.token as string,
     expiraEn: data.expira_en as string,
   });

@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/select";
 import { compararRoles, describirRol } from "@/modules/identidad/capacidades-legibles";
 import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
-import { DESCRIPCIONES_ROLES_INTERNOS } from "./descripciones-roles";
+import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { cambiarRolDePersona } from "./actions";
 
 export function DialogoCambiarRol({

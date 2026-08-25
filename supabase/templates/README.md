@@ -50,9 +50,15 @@ cada vez que se edite una plantilla.**
    en la pantalla correcta.
 6. Repite para las otras dos plantillas.
 
+⚠️ **«Cambia», no «Restablece».** El molde de mensajes (§9.3) usa el verbo que
+describe lo que la persona va a hacer, no el nombre técnico de la operación:
+«restablecer» es como se llama el flujo por dentro, y en una bandeja de entrada
+se lee como jerga. Si cambias el asunto acá, cámbialo también en el panel de
+Supabase — este archivo no lo aplica solo.
+
 | Plantilla | Subject heading sugerido |
 |---|---|
-| Reset Password | `Restablece tu contraseña de Rutax` |
+| Reset Password | `Cambia tu contraseña de Rutax` |
 | Invite user | `Activa tu cuenta de Rutax` |
 | Magic Link | `Tu código para entrar` |
 

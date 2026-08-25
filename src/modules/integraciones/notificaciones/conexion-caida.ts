@@ -53,7 +53,11 @@ export function construirEmailConexionCaida(args: {
   urlPanel: string | null;
 }): { asunto: string; html: string; texto: string } {
   return {
-    asunto: `Dejaron de entrar los pedidos de ${args.nombreSeller}`,
+    // «Dejamos de recibir», no «dejaron de entrar»: el sujeto somos nosotros.
+    // La forma impersonal suena a que algo pasó solo; ésta dice quién se quedó
+    // sin los pedidos, que es lo que el courier necesita entender de un vistazo
+    // en la bandeja.
+    asunto: `Dejamos de recibir los pedidos de «${args.nombreSeller}»`,
     html: envolverEmail({
       marca: "Rutax",
       titular: `Se cayó la conexión de ${args.nombreSeller} con Mercado Libre`,
@@ -66,17 +70,28 @@ export function construirEmailConexionCaida(args: {
         "caducara solo, que el seller lo revocara o que algo fallara de nuestro lado: no se " +
         "puede distinguir cuál de los tres, y reconectar arregla los tres igual.</p>" +
         "<p style=\"margin:12px 0 0\">El seller también lo ve en su portal y puede reconectar " +
-        "desde ahí. Si no lo hace hoy, conviene llamarlo.</p>",
+        "desde ahí. Si no lo hace hoy, conviene llamarlo.</p>" +
+        // ⚠️ Que se arregla en menos de un minuto **va en el correo**, y no es
+        // relleno: sin ese dato, «se cayó la conexión con Mercado Libre» se lee
+        // como un problema técnico que hay que escalar, y se pospone. Con él, se
+        // resuelve en el momento.
+        "<p style=\"margin:12px 0 0\">Reconectar toma menos de un minuto: son dos clics y " +
+        "entrar con la cuenta de Mercado Libre del seller.</p>",
       datos: [{ etiqueta: "Seller", valor: args.nombreSeller, destacada: true }],
-      ...(args.urlPanel ? { accion: { etiqueta: "Ver sus conexiones", url: args.urlPanel } } : {}),
+      // «Volver a conectar», no «Ver sus conexiones»: la acción del correo es la
+      // que resuelve el problema, no la que lleva a mirarlo.
+      ...(args.urlPanel ? { accion: { etiqueta: "Volver a conectar", url: args.urlPanel } } : {}),
       motivoRecepcion:
         "Recibes este correo porque administras la operación de tu courier en Rutax. " +
         "El estado de las conexiones está en Clientes → el seller.",
     }),
     texto:
       `Se cayó la conexión de ${args.nombreSeller} con Mercado Libre y sus pedidos nuevos ` +
-      `dejaron de entrar. Los que ya estaban se despachan normal. Reconectar lo arregla; ` +
-      `el seller puede hacerlo desde su portal.`,
+      `dejaron de entrar. Los que ya estaban se despachan normal.
+
+` +
+      `Reconectar toma menos de un minuto y lo arregla; el seller también puede hacerlo desde ` +
+      `su portal.`,
   };
 }
 

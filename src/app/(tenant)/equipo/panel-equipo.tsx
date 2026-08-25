@@ -27,7 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { EstadoError, EstadoVacio } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
-import { DESCRIPCIONES_ROLES_INTERNOS } from "./descripciones-roles";
+import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { DialogoCambiarRol } from "./dialogo-cambiar-rol";
 import type { RolInterno } from "@/modules/identidad/roles";
 import { FormularioInvitacion } from "./formulario-invitacion";

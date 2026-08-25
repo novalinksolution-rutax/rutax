@@ -18,6 +18,8 @@
  *  - **El núcleo no llama APIs externas directo**: todo va por `PuertoEmail`.
  */
 
+import type { RolInterno } from "@/modules/identidad/roles";
+import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { obtenerPuertoEmail } from "@/modules/integraciones/notificaciones/email";
 import { formatearFecha } from "@/lib/formato-cl";
@@ -57,6 +59,12 @@ interface ArgsContenido {
   nombreCourier: string;
   urlInvitacion: string;
   expiraEn: string;
+  /**
+   * El rol interno, cuando lo hay. El correo del equipo **tiene que decir qué
+   * rol le dieron y qué va a poder hacer**: sin eso, quien lo recibe entra sin
+   * saber a qué tiene acceso y lo descubre chocando con lo que no puede.
+   */
+  rolInterno?: RolInterno | null;
 }
 
 /**
@@ -85,11 +93,20 @@ export function construirEmailInvitacion(args: ArgsContenido): ContenidoEmailInv
   // `background:#1e3a5f` —el navy del sistema retirado—, y Outlook ignora ese
   // `display`, así que llegaba como un enlace suelto sin caja. Lo pone la
   // plantilla, con su fondo declarado dos veces y su enlace de respaldo.
-  const accion = { etiqueta: "Crear mi contraseña", url };
+  // ⚠️ **El conductor define un PIN de 6 dígitos, no una contraseña** (decisión
+  // del 24-08-2026: un PIN se verifica sin red, y eso es lo que deja que la app
+  // se cierre sola sin dejar a nadie fuera de su ruta). El correo decía «Crear
+  // mi contraseña» y lo llevaba a una pantalla que le pide seis dígitos: el
+  // correo prometía una cosa y el producto hacía otra.
+  const esConductor = args.tipoUsuario === "conductor";
+  const accion = {
+    etiqueta: esConductor ? "Crear mi PIN" : "Crear mi contraseña",
+    url,
+  };
 
   if (args.tipoUsuario === "seller") {
     return {
-      asunto: `${args.nombreCourier} te invitó a su portal de despachos`,
+      asunto: `${args.nombreCourier} te invitó a su plataforma de despacho`,
       html: envolverEmail({
         marca: args.nombreCourier,
         titular: `${args.nombreCourier} te dio acceso a su portal`,
@@ -118,44 +135,79 @@ ${cierreTexto}`,
     };
   }
 
-  if (args.tipoUsuario === "conductor") {
+  if (esConductor) {
+    // ⚠️ Y el correo tampoco nombra a Rutax en el asunto: para el conductor la
+    // relación es con su courier (regla 42). «Te invitó a Rutax» le habla de un
+    // software que no conoce; «te dio acceso a su app» le habla de su trabajo.
     return {
-      asunto: `${args.nombreCourier} te invitó a Rutax`,
+      asunto: `${args.nombreCourier} te dio acceso a su app de reparto`,
       html: envolverEmail({
         marca: args.nombreCourier,
-        titular: `${args.nombreCourier} te dio acceso a Rutax`,
-        preencabezado: "Crea tu contraseña para ver tu manifiesto del día.",
+        titular: `${args.nombreCourier} te dio acceso a su app`,
+        preencabezado: "Crea tu PIN de 6 dígitos para ver tu ruta del día.",
         cuerpoHtml:
-          `<p style="margin:0"><strong>${courier}</strong> te dio acceso a Rutax, donde vas a ver ` +
-          `tu manifiesto del día y tus liquidaciones.</p>`,
+          `<p style="margin:0 0 12px"><strong>${courier}</strong> te dio acceso a su app de ` +
+          `reparto, donde vas a ver tu ruta del día y tus liquidaciones.</p>` +
+          `<p style="margin:0">Entras con un <strong>PIN de 6 dígitos</strong> que eliges tú. Es ` +
+          `el que vas a usar cada vez que abras la app, así que elige uno que te acuerdes.</p>`,
         accion,
         motivoRecepcion,
       }),
       texto:
-        `${args.nombreCourier} te dio acceso a Rutax, donde vas a ver tu manifiesto del día y tus ` +
-        `liquidaciones.
+        `${args.nombreCourier} te dio acceso a su app de reparto, donde vas a ver tu ruta del ` +
+        `día y tus liquidaciones.
 
-Crea tu contraseña aquí: ${url}
+Entras con un PIN de 6 dígitos que eliges tú: ` +
+        `es el que vas a usar cada vez que abras la app.
+
+Créalo aquí: ${url}
 
 ${cierreTexto}`,
     };
   }
 
+  // ⚠️ **Dice el rol y qué va a poder hacer**, que es lo que el molde pide y lo
+  // que faltaba: antes decía «te sumó a su equipo» y nada más. Quien lo recibía
+  // entraba sin saber a qué tiene acceso, y lo descubría chocando con lo que no
+  // puede — que es la peor forma de enterarse de un permiso.
+  //
+  // La descripción sale de `DESCRIPCIONES_ROLES_INTERNOS`, el mismo texto que ve
+  // quien invita al elegir el rol. Que las dos puntas digan lo mismo no es
+  // prolijidad: es lo que impide prometer en el correo algo que el selector no
+  // ofrecía.
+  const rol = args.rolInterno ? DESCRIPCIONES_ROLES_INTERNOS[args.rolInterno] : null;
+
   return {
-    asunto: `${args.nombreCourier} te invitó a su cuenta en Rutax`,
+    // «Te sumaron al equipo de X», no «X te invitó a su cuenta en Rutax»: lo que
+    // le pasó es que entró a un equipo, y el nombre del software no es la
+    // noticia.
+    asunto: `Te sumaron al equipo de ${args.nombreCourier}`,
     html: envolverEmail({
       marca: args.nombreCourier,
       titular: `${args.nombreCourier} te sumó a su equipo`,
-      preencabezado: "Crea tu contraseña para entrar.",
-      cuerpoHtml: `<p style="margin:0"><strong>${courier}</strong> te sumó a su equipo en Rutax.</p>`,
+      preencabezado: rol
+        ? `Entras como ${rol.etiqueta.toLowerCase()}. Crea tu contraseña para empezar.`
+        : "Crea tu contraseña para entrar.",
+      cuerpoHtml: rol
+        ? `<p style="margin:0 0 12px"><strong>${courier}</strong> te sumó a su equipo como ` +
+          `<strong>${escaparHtml(rol.etiqueta)}</strong>.</p>` +
+          `<p style="margin:0">${escaparHtml(rol.descripcion)}</p>`
+        : `<p style="margin:0"><strong>${courier}</strong> te sumó a su equipo.</p>`,
       accion,
       motivoRecepcion,
     }),
-    texto:
-      `${args.nombreCourier} te sumó a su equipo en Rutax.
+    texto: rol
+      ? `${args.nombreCourier} te sumó a su equipo como ${rol.etiqueta}.
+
+${rol.descripcion}
 
 ` +
-      `Crea tu contraseña aquí: ${url}
+        `Crea tu contraseña aquí: ${url}
+
+${cierreTexto}`
+      : `${args.nombreCourier} te sumó a su equipo.
+
+Crea tu contraseña aquí: ${url}
 
 ${cierreTexto}`,
   };
@@ -233,6 +285,7 @@ export async function enviarEmailInvitacion(
     invitacionId: string;
     email: string;
     tipoUsuario: TipoUsuarioInvitacion;
+    rolInterno?: RolInterno | null;
     token: string;
     expiraEn: string;
   },
@@ -249,6 +302,7 @@ export async function enviarEmailInvitacion(
       const nombreCourier = await leerNombreCourier(cliente, args.tenantId);
       const contenido = construirEmailInvitacion({
         tipoUsuario: args.tipoUsuario,
+        rolInterno: args.rolInterno ?? null,
         nombreCourier,
         urlInvitacion: construirEnlaceInvitacion(urlBase, args.token),
         expiraEn: args.expiraEn,

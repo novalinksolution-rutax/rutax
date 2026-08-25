@@ -7,6 +7,12 @@
  * Resumen fiel del mapa rol→capacidades de `capacidades.ts` (única fuente de
  * verdad de RBAC) — si ese mapa cambia, esta descripción debe revisarse para
  * no prometer algo que el rol ya no puede hacer.
+ *
+ * ⚠️ **Vive en `modules/identidad` y no en la pantalla de equipo desde el
+ * 24-08-2026**, porque ahora lo usan las dos puntas: el selector que ve quien
+ * invita **y el correo que recibe el invitado**. Que digan lo mismo no es
+ * prolijidad — es lo que impide que el correo prometa un acceso que el selector
+ * no ofrecía.
  */
 
 import type { RolInterno } from "@/modules/identidad/roles";

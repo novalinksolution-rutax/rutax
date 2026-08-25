@@ -30,7 +30,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
-import { DESCRIPCIONES_ROLES_INTERNOS } from "./descripciones-roles";
+import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { invitarPersona, type InvitacionEnviada } from "./actions";
 
 interface Props {
