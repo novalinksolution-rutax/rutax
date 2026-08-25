@@ -233,8 +233,18 @@ export default async function LayoutTenant({ children }: { children: React.React
 
   // Bloque inferior (ítems sobre la card de plan): entrada "Configuración" que
   // ABRE el Settings anidado.
+  //
+  // 🔴 `abreSettings` y NO un `href` a `/onboarding`. Apuntaba ahí, así que un
+  // clic en «Configuración» cargaba «Puesta en marcha» entera — la pantalla que
+  // menos se usa después del primer día— solo para que apareciera el sub-menú
+  // al lado. Quien entra a Configuración va a ver las opciones; ahora el panel
+  // se despliega en el sitio y el lienzo no se mueve hasta que elija.
+  //
+  // El `href` se conserva apuntando al índice porque el shell lo usa para saber
+  // que `/configuracion` también es "estar en configuración"; el botón no
+  // navega.
   const itemsInferiores: ItemNav[] = [
-    { href: "/onboarding", etiqueta: "Configuración", icono: "configuracion" },
+    { href: "/configuracion", etiqueta: "Configuración", icono: "configuracion", abreSettings: true },
   ];
 
   // "‹ Volver" del Settings anidado → el primer ítem del sidebar principal.

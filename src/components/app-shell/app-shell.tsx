@@ -169,21 +169,23 @@ function ItemLink({
   colapsado,
   relajado,
   onNavegar,
+  onAbrirSettings,
 }: {
   item: ItemNav
   activo: boolean
   colapsado?: boolean
   relajado?: boolean
   onNavegar?: () => void
+  /** Solo para el ítem con `abreSettings`: abre el panel sin navegar. */
+  onAbrirSettings?: () => void
 }) {
   const Icono = item.icono ? ICONOS[item.icono] : undefined
-  return (
-    <Link
-      href={item.href}
-      onClick={onNavegar}
-      aria-current={activo ? "page" : undefined}
-      title={colapsado ? item.etiqueta : undefined}
-      className={cn(
+  // 🔴 El ítem que abre Configuración es un BOTÓN, no un enlace, y la diferencia
+  // no es cosmética: un enlace promete un destino y aquí no lo hay. Renderizarlo
+  // como `<a href>` deja que el navegador lo abra en otra pestaña, lo precargue
+  // y lo anuncie como enlace al lector de pantalla — tres promesas falsas.
+  const clases = cn(
+        item.abreSettings && "w-full cursor-pointer text-left",
         "group flex items-center gap-2.5 text-[13px] transition-colors duration-(--motion-fast) ease-out",
         relajado ? "px-2.5 py-2" : "px-2.5 py-[9px]",
         colapsado && "relative justify-center px-0",
@@ -194,8 +196,10 @@ function ItemLink({
         activo
           ? "border-l-2 border-primary bg-bg-inset font-semibold text-fg"
           : "border-l-2 border-transparent font-normal text-fg-muted hover:bg-foreground/5 hover:text-fg",
-      )}
-    >
+  )
+
+  const contenido = (
+    <>
       {Icono ? (
         <Icono
           className={cn("size-4 shrink-0", activo ? "text-primary" : "text-fg-muted group-hover:text-fg")}
@@ -225,6 +229,41 @@ function ItemLink({
           </span>
         )
       ) : null}
+    </>
+  )
+
+  // Dos elementos y no uno parametrizado: TypeScript no puede reconciliar las
+  // props de `Link` con las de `button` en un mismo componente dinámico, y
+  // forzarlo con un `as any` escondería justo lo que aquí importa — que uno
+  // lleva `href` y el otro no.
+  if (item.abreSettings) {
+    return (
+      <button
+        type="button"
+        // ⚠️ NO se llama a `onNavegar`. En el teléfono esa función cierra la
+        // hoja del menú, y como este botón no va a ninguna parte, cerrarla
+        // dejaba a la persona mirando la pantalla anterior: el panel se abría
+        // detrás de una hoja que acababa de desaparecer. La hoja se queda
+        // abierta hasta que se elige un destino de verdad.
+        onClick={() => onAbrirSettings?.()}
+        aria-expanded={activo}
+        title={colapsado ? item.etiqueta : undefined}
+        className={clases}
+      >
+        {contenido}
+      </button>
+    )
+  }
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavegar}
+      aria-current={activo ? "page" : undefined}
+      title={colapsado ? item.etiqueta : undefined}
+      className={clases}
+    >
+      {contenido}
     </Link>
   )
 }
@@ -236,6 +275,7 @@ function Navegacion({
   colapsado,
   relajado,
   onNavegar,
+  onAbrirSettings,
 }: {
   grupos: GrupoNav[]
   itemsInferiores: ItemNav[]
@@ -243,6 +283,7 @@ function Navegacion({
   colapsado?: boolean
   relajado?: boolean
   onNavegar?: () => void
+  onAbrirSettings?: () => void
 }) {
   return (
     <>
@@ -277,6 +318,7 @@ function Navegacion({
               colapsado={colapsado}
               relajado={relajado}
               onNavegar={onNavegar}
+              onAbrirSettings={onAbrirSettings}
             />
           ))}
         </div>
@@ -428,10 +470,35 @@ export function AppShell({
   // El ancho amplio es por RUTA, no por densidad: la densidad la fija el layout
   // para toda su área y esto es la excepción de una pantalla.
   const ancho = rutasAnchas.some((r) => pathname === r || pathname?.startsWith(`${r}/`))
-  // Settings anidado (Patrón H): activo cuando el pathname cae en un ítem de settings.
-  const enSettings =
+  // Settings anidado (Patrón H): activo cuando el pathname cae en un ítem de
+  // settings…
+  //
+  // ⚠️ El `href` del ítem que ABRE settings cuenta como ruta de settings. Es el
+  // índice (`/configuracion`), y sin esto quedaba en tierra de nadie: se veía la
+  // navegación principal mientras el lienzo mostraba el índice de configuración.
+  const rutasSettings = [...itemsSettings, ...itemsInferiores.filter((i) => i.abreSettings)]
+  const enRutaSettings =
     itemsSettings.length > 0 &&
-    itemsSettings.some((i) => pathname === i.href || pathname?.startsWith(`${i.href}/`))
+    rutasSettings.some((i) => pathname === i.href || pathname?.startsWith(`${i.href}/`))
+
+  /**
+   * 🔴 …o cuando la persona lo ABRIÓ, sin haber ido a ninguna parte.
+   *
+   * «Configuración» era un enlace a `/onboarding`: un clic cargaba «Puesta en
+   * marcha» entera para que se viera el sub-menú al lado. Quien entra a
+   * Configuración va a *ver las opciones*; mandarlo a una de ellas —y a la que
+   * menos se usa después del primer día— le cuesta una carga de página y una
+   * vuelta atrás.
+   *
+   * Ahora el panel se abre en el sitio y **el lienzo no se mueve** hasta que la
+   * persona elija. El estado vive acá y no en la URL a propósito: no es un
+   * destino, es el estado de un menú, y ensuciar la URL con él haría que el
+   * botón «atrás» del navegador tuviera que deshacer un despliegue de menú.
+   */
+  const [settingsManual, setSettingsManual] = useState(false)
+  /** Solo para animar el regreso; ver `contenidoNormal`. */
+  const [volviendoDeSettings, setVolviendoDeSettings] = useState(false)
+  const enSettings = enRutaSettings || settingsManual
 
   function alternarColapso() {
     escribirColapso(!colapsado)
@@ -565,20 +632,52 @@ export function AppShell({
 
   // Sidebar del Settings anidado (Patrón H): "‹ Volver" + sub-ítems de configuración.
   const contenidoSettings = (colapsadoLocal: boolean, enSheet = false) => (
-    <>
+    /* La entrada se DESLIZA, y no es adorno: el panel reemplaza a la navegación
+       principal en el mismo sitio, así que sin movimiento el cambio se lee como
+       un salto y cuesta entender que se puede volver. Entra desde la derecha
+       —hacia adentro— y al volver el principal entra desde la izquierda. */
+    <div className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 slide-in-from-right-4 duration-(--motion-base) ease-standard">
       <div className={cn("flex items-center gap-1 px-3 pt-4 pb-2", colapsadoLocal && "flex-col")}>
-        <Link
-          href={hrefPrincipal}
-          onClick={enSheet ? () => setMenuAbierto(false) : undefined}
-          title={colapsadoLocal ? "Volver" : undefined}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-sidebar-foreground",
-            colapsadoLocal && "justify-center",
-          )}
-        >
-          <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
-          {!colapsadoLocal ? <span className="truncate">Volver</span> : null}
-        </Link>
+        {/* ⚠️ «Volver» hace dos cosas distintas según cómo se llegó, y por eso
+            son dos elementos. Si estamos EN una pantalla de configuración, hay
+            que navegar: cerrar solo el menú dejaría el lienzo en Tarifas con la
+            navegación principal al lado, que no es ningún sitio. Si el panel se
+            abrió sin ir a ninguna parte, navegar sería justo el viaje que la
+            persona no pidió: se cierra y ya. */}
+        {enRutaSettings ? (
+          <Link
+            href={hrefPrincipal}
+            onClick={() => {
+              setVolviendoDeSettings(true)
+              setSettingsManual(false)
+              if (enSheet) setMenuAbierto(false)
+            }}
+            title={colapsadoLocal ? "Volver" : undefined}
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-sidebar-foreground",
+              colapsadoLocal && "justify-center",
+            )}
+          >
+            <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+            {!colapsadoLocal ? <span className="truncate">Volver</span> : null}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setVolviendoDeSettings(true)
+              setSettingsManual(false)
+            }}
+            title={colapsadoLocal ? "Volver" : undefined}
+            className={cn(
+              "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-sidebar-foreground",
+              colapsadoLocal && "justify-center",
+            )}
+          >
+            <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+            {!colapsadoLocal ? <span className="truncate">Volver</span> : null}
+          </button>
+        )}
         {botonColapsar(colapsadoLocal, enSheet)}
       </div>
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
@@ -600,11 +699,19 @@ export function AppShell({
       </nav>
       {bloquePlan(colapsadoLocal, enSheet ? () => setMenuAbierto(false) : undefined)}
       {bloqueCuenta(colapsadoLocal)}
-    </>
+    </div>
   )
 
   const contenidoNormal = (colapsadoLocal: boolean, enSheet = false) => (
-    <>
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col",
+        // Solo cuando se VUELVE de configuración. Si se animara siempre, la
+        // barra se deslizaría en cada carga de página, que es exactamente el
+        // tic nervioso que nadie pide.
+        volviendoDeSettings && "animate-in fade-in-0 slide-in-from-left-4 duration-(--motion-base) ease-standard",
+      )}
+    >
       <div className={cn("flex items-center gap-1 px-3 pt-4 pb-2", colapsadoLocal && "flex-col")}>
         <div className={cn("min-w-0", colapsadoLocal ? "" : "flex-1")}>
           <BloqueMarca
@@ -626,10 +733,14 @@ export function AppShell({
         colapsado={colapsadoLocal}
         relajado={relajado}
         onNavegar={enSheet ? () => setMenuAbierto(false) : undefined}
+        onAbrirSettings={() => {
+          setVolviendoDeSettings(false)
+          setSettingsManual(true)
+        }}
       />
       {bloquePlan(colapsadoLocal, enSheet ? () => setMenuAbierto(false) : undefined)}
       {bloqueCuenta(colapsadoLocal)}
-    </>
+    </div>
   )
 
   const contenidoSidebar = (colapsadoLocal: boolean, enSheet = false) =>

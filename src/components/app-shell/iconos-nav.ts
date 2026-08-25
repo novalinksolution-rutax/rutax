@@ -104,6 +104,16 @@ export interface ItemNav {
    * información, es ruido, y gasta la señal del que sí importa.
    */
   contador?: number
+  /**
+   * 🔴 Este ítem NO navega: abre el Settings anidado ahí mismo.
+   *
+   * «Configuración» apuntaba a `/onboarding`, así que hacer clic cargaba
+   * «Puesta en marcha» entera. Quien entra a Configuración va a *ver las
+   * opciones*, no a caer en una de ellas — y menos en la que menos se usa
+   * después del primer día. Con esto el panel se desliza y el lienzo se queda
+   * donde estaba hasta que la persona elija.
+   */
+  abreSettings?: boolean
 }
 
 export interface GrupoNav {
