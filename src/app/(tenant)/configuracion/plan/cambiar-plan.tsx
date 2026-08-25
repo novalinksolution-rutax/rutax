@@ -34,6 +34,7 @@ import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { formatearFecha } from "@/lib/formato-cl";
 import { ahoraEnSantiago, diferenciaEnDiasCalendario } from "@/lib/fecha-santiago";
 import { cn } from "@/lib/utils";
+import { impactoDelPlan, type UsoDelCourier } from "./impacto-plan";
 import { EMAIL_SOPORTE_RUTAX, MAILTO_SOPORTE_RUTAX } from "@/lib/contacto-rutax";
 import { solicitarCambioDePlanAction } from "./actions";
 import type { PlanPublico, CambioPlanPendiente } from "@/modules/plataforma/superficie-courier";
@@ -44,6 +45,8 @@ interface Props {
    *  puede no estar aquí si fue desactivado después de que lo contratara. */
   planes: PlanPublico[];
   planActual: PlanPublico;
+  /** Lo que este courier usa hoy. Sin esto el comparador es una tabla de precios. */
+  uso: UsoDelCourier;
   periodicidadActual: Periodicidad;
   /** Límites del ciclo vigente — insumo de la estimación de proración. `null`
    *  si aún no se generó el primer período (courier recién en trial). */
@@ -99,7 +102,14 @@ interface ExitoCambio {
   periodicidadNueva: Periodicidad;
 }
 
-export function CambiarPlan({ planes, planActual, periodicidadActual, periodoActual, cambioPendiente }: Props) {
+export function CambiarPlan({
+  planes,
+  planActual,
+  periodicidadActual,
+  periodoActual,
+  cambioPendiente,
+  uso,
+}: Props) {
   const router = useRouter();
   const [periodicidad, setPeriodicidad] = useState<Periodicidad>(periodicidadActual);
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanPublico | null>(null);
@@ -233,6 +243,7 @@ export function CambiarPlan({ planes, planActual, periodicidadActual, periodoAct
               plan={plan}
               periodicidad={periodicidad}
               esActual={plan.id === planActual.id && periodicidad === periodicidadActual}
+              uso={uso}
               deshabilitado={isPending}
               onElegir={() => abrirDialogo(plan)}
             />
@@ -307,12 +318,14 @@ function TarjetaPlanCambio({
   periodicidad,
   esActual,
   deshabilitado,
+  uso,
   onElegir,
 }: {
   plan: PlanPublico;
   periodicidad: Periodicidad;
   esActual: boolean;
   deshabilitado: boolean;
+  uso: UsoDelCourier;
   onElegir: () => void;
 }) {
   const precio = periodicidad === "mensual" ? plan.precioMensualClp : plan.precioAnualClp;
@@ -322,6 +335,13 @@ function TarjetaPlanCambio({
     typeof conductoresMaxRaw === "number" && Number.isFinite(conductoresMaxRaw) ? conductoresMaxRaw : null;
   const apiPublica = Boolean(plan.caracteristicas["api_publica"]);
   const webhooks = Boolean(plan.caracteristicas["webhooks"]);
+
+  // 🔴 Qué le pasaría a ESTE courier con este plan. Ver `impacto-plan.ts`.
+  const impacto = impactoDelPlan(
+    uso,
+    { conductoresMax, pedidosMes: plan.limitePedidosMes },
+    esActual,
+  );
 
   return (
     <Card className={cn("flex h-full flex-col", esActual && "border-primary ring-1 ring-primary/20")}>
@@ -366,6 +386,22 @@ function TarjetaPlanCambio({
             </li>
           ) : null}
         </ul>
+
+        {/* La conclusión la da la pantalla, no la persona: «Hasta 6
+            conductores» obliga a recordar cuántos tiene y restar de cabeza, y
+            el precio de equivocarse es contratar un plan que lo deja fuera de
+            operación el día 1. */}
+        {impacto ? (
+          <p
+            className={
+              impacto.tono === "attention"
+                ? "border border-attention-line bg-attention-bg px-2.5 py-1.5 text-xs leading-relaxed text-attention-fg"
+                : "text-xs leading-relaxed text-fg-subtle"
+            }
+          >
+            {impacto.frase}
+          </p>
+        ) : null}
 
         <Button
           onClick={onElegir}

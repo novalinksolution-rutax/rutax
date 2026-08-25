@@ -147,6 +147,9 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
         <CambiarPlan
           planes={planes}
           planActual={plan}
+          // Lo que este courier usa hoy: sin esto el comparador es una tabla
+          // de precios, y esa ya está en el sitio comercial.
+          uso={{ conductores: consumo.conductoresActivos, pedidosMes: consumo.pedidosMes }}
           periodicidadActual={miPlan.periodicidad}
           periodoActual={
             periodoActual
