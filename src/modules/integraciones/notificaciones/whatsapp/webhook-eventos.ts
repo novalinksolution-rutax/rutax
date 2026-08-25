@@ -224,7 +224,7 @@ export function normalizarEventosWebhookWhatsApp(payload: unknown): EventosWebho
         if (nombrePlantilla && estadoMeta) {
           plantillas.push({
             nombrePlantilla,
-            idioma: sanear(valor.message_template_language, 20) ?? "es_CL",
+            idioma: sanear(valor.message_template_language, 20) ?? "es",
             estadoMeta,
           });
         }

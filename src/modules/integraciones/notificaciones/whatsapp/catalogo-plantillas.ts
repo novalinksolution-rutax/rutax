@@ -31,8 +31,30 @@
  * idioma y número de variables. Al revés, el envío falla con un 400 legible pero
  * el aviso no sale.
  *
+ * -----------------------------------------------------------------------------
+ * ⚠️ `es_CL` NO EXISTE COMO IDIOMA DE PLANTILLA. NO LO VUELVAS A PONER.
+ * -----------------------------------------------------------------------------
+ * Es el error obvio en un producto Chile-only, y estuvo acá hasta el 2026-08-25.
+ * Meta acepta cuatro variantes del castellano y ninguna es Chile:
+ *
+ *     es · es_AR · es_ES · es_MX
+ *
+ * Se usa `es` (castellano neutro): el texto lo escribimos nosotros, así que la
+ * variante regional no cambia una coma de lo que lee el destinatario — solo
+ * decide si Meta encuentra la plantilla o no.
+ *
+ * El modo en que falla es especialmente confuso: la plantilla existe, está
+ * aprobada y se ve en el panel, pero el envío devuelve «template name does not
+ * exist in the translation». Uno se pasa la tarde revisando el NOMBRE.
+ *
  * REGLAS DE DEPENDENCIAS (hoja del grafo): no importa nada.
  */
+
+/**
+ * Los códigos de idioma que Meta acepta para una plantilla, de los que a este
+ * producto le sirven. La lista completa es larga; acá van los que aplican.
+ */
+export const IDIOMAS_PLANTILLA_VALIDOS = ["es", "es_AR", "es_ES", "es_MX", "en_US"] as const;
 
 /** A qué tipo de contacto se dirige un aviso. Espeja el CHECK de `rol` en la BD. */
 export type RolDestinatario = "seller" | "courier" | "bodega";
@@ -40,7 +62,7 @@ export type RolDestinatario = "seller" | "courier" | "bodega";
 export interface DefinicionPlantilla {
   /** Nombre EXACTO con el que la plantilla está aprobada en Meta. */
   nombre: string;
-  /** Código de idioma de la plantilla aprobada (`es_CL`, `en_US`…). */
+  /** Código de idioma de la plantilla aprobada (`es`, `en_US`…). */
   idioma: string;
   /** A quién se le manda. Determina cómo se resuelven los destinatarios. */
   rolDestinatario: RolDestinatario;
@@ -84,7 +106,7 @@ export const CATALOGO_PLANTILLAS = {
    */
   retiro_completado: {
     nombre: "notificacion_retiro_pedidos",
-    idioma: "es_CL",
+    idioma: "es",
     rolDestinatario: "seller",
     variables: [
       "nombreDestinatario",

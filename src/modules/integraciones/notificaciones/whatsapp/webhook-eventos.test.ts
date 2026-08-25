@@ -154,13 +154,13 @@ describe("normalizarEventosWebhookWhatsApp — estado de plantillas", () => {
         {
           event: "APPROVED",
           message_template_name: "notificacion_retiro_pedidos",
-          message_template_language: "es_CL",
+          message_template_language: "es",
         },
         "message_template_status_update",
       ),
     );
     expect(eventos.plantillas).toEqual([
-      { nombrePlantilla: "notificacion_retiro_pedidos", idioma: "es_CL", estadoMeta: "aprobada" },
+      { nombrePlantilla: "notificacion_retiro_pedidos", idioma: "es", estadoMeta: "aprobada" },
     ]);
   });
 

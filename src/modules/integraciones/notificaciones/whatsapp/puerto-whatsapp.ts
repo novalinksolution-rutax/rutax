@@ -42,7 +42,7 @@ export interface EnviarPlantillaArgs {
   telefonoE164: string;
   /** Nombre de la plantilla tal como está aprobada en Meta. */
   nombrePlantilla: string;
-  /** Código de idioma de la plantilla (`es_CL`, `en_US`…). */
+  /** Código de idioma de la plantilla (`es`, `en_US`…). */
   idioma: string;
   /**
    * Variables del cuerpo, EN ORDEN: la primera es `{{1}}`. Lista vacía para una
