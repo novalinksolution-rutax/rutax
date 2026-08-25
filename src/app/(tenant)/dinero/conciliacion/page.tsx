@@ -38,7 +38,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FiltrosConciliacion, SIN_ASIGNAR_FILTRO } from "./filtros-conciliacion";
-import { FilaEventoConciliacion } from "./fila-evento-conciliacion";
+import { TablaConciliacion } from "./tabla-conciliacion";
 import { esEventoVencido } from "./semaforo-vencimiento";
 import type { EventoConciliacionUI } from "./tipos-ui";
 
@@ -399,36 +399,13 @@ export default async function PaginaConciliacion({
         />
       ) : (
         !errorCarga && (
-          <DataTable>
-            <Table densidad="compact" aria-label="Excepciones de conciliación">
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead className="px-4">Categoría / Tipo</TableHead>
-                  <TableHead className="hidden px-4 sm:table-cell">Estado</TableHead>
-                  <TableHead className="hidden px-4 md:table-cell">Vence</TableHead>
-                  <TableHead className="hidden px-4 lg:table-cell">Asignado</TableHead>
-                  <TableHead className="hidden px-4 xl:table-cell text-right">Diferencia</TableHead>
-                  <TableHead className="hidden px-4 2xl:table-cell">Seller</TableHead>
-                  <TableHead className="hidden px-4 2xl:table-cell">Pedido</TableHead>
-                  <TableHead className="px-4 text-right">
-                    <span className="sr-only">Acciones</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {eventos.map((evento) => (
-                  <FilaEventoConciliacion
-                    key={evento.id}
-                    evento={evento}
-                    usuariosInternos={usuariosInternos}
-                    usuarioActualId={sesion.usuarioId}
-                    abrirInicial={filtroEventoId === evento.id}
-                    queryStringFiltros={queryStringFiltros}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </DataTable>
+          <TablaConciliacion
+            eventos={eventos}
+            usuariosInternos={usuariosInternos}
+            usuarioActualId={sesion.usuarioId}
+            filtroEventoId={filtroEventoId}
+            queryStringFiltros={queryStringFiltros}
+          />
         )
       )}
     </div>

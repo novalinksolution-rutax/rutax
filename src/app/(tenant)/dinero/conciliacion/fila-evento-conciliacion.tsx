@@ -19,6 +19,7 @@ import Link from "next/link";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
 
+import { Checkbox } from "@/components/ui/checkbox";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -56,6 +57,9 @@ interface Props {
   abrirInicial: boolean;
   /** Query string de los filtros actuales (sin `evento`) — se preserva al abrir/cerrar el Sheet. */
   queryStringFiltros: string;
+  /** Selección múltiple. La gobierna la tabla, no la fila. */
+  seleccionada?: boolean;
+  onAlternarSeleccion?: () => void;
 }
 
 export function FilaEventoConciliacion({
@@ -64,6 +68,8 @@ export function FilaEventoConciliacion({
   usuarioActualId,
   abrirInicial,
   queryStringFiltros,
+  seleccionada = false,
+  onAlternarSeleccion,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -121,6 +127,18 @@ export function FilaEventoConciliacion({
           }
         }}
       >
+        {/* La casilla NO abre el detalle: `stopPropagation` porque la fila
+            entera es un botón. Sin esto, marcar cien excepciones abriría cien
+            paneles. */}
+        {onAlternarSeleccion ? (
+          <TableCell className="px-4" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={seleccionada}
+              onCheckedChange={onAlternarSeleccion}
+              aria-label="Seleccionar esta excepción"
+            />
+          </TableCell>
+        ) : null}
         <TableCell className="px-4">
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-1.5">
