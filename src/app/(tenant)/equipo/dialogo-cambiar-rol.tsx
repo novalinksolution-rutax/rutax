@@ -34,15 +34,9 @@
  */
 
 import { useState, useTransition } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { PanelAccion } from "@/components/ui/panel-accion";
 import { ListaCapacidades } from "@/components/ui/bloque-capacidades";
 import { Label } from "@/components/ui/label";
 import {
@@ -52,7 +46,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { compararRoles, describirRol } from "@/modules/identidad/capacidades-legibles";
+import {
+  compararRoles,
+  describirRol,
+} from "@/modules/identidad/capacidades-legibles";
 import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { cambiarRolDePersona } from "./actions";
@@ -62,13 +59,20 @@ export function DialogoCambiarRol({
   nombre,
   rolActual,
   onCambiado,
+  abierto: abiertoControlado,
+  onOpenChange,
 }: {
   usuarioId: string;
   nombre: string;
   rolActual: RolInterno;
   onCambiado: (rol: RolInterno) => void;
+  /** Controlado desde fuera: la fila del listado. */
+  abierto?: boolean;
+  onOpenChange?: (abierto: boolean) => void;
 }) {
-  const [abierto, setAbierto] = useState(false);
+  const [abiertoInterno, setAbiertoInterno] = useState(false);
+  const abierto = abiertoControlado ?? abiertoInterno;
+  const setAbierto = onOpenChange ?? setAbiertoInterno;
   const [rolNuevo, setRolNuevo] = useState<RolInterno>(rolActual);
   const [error, setError] = useState<string | null>(null);
   const [pendiente, iniciarTransicion] = useTransition();
@@ -90,98 +94,109 @@ export function DialogoCambiarRol({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
+    <PanelAccion
+      abierto={abierto}
+      onOpenChange={(a) => {
+        if (!a && pendiente) return;
+        // ⚠️ El selector se devuelve al rol vigente **al cerrar**, no al abrir.
+        // Al abrir habría que hacerlo en un efecto —y `setState` dentro de un
+        // efecto dispara un render en cascada, que la regla señala con razón—;
+        // al cerrar es un manejador de evento y no cuesta nada. El resultado es
+        // el mismo: reabrir con la elección anterior a medio hacer haría creer
+        // que ese cambio ya se guardó.
+        if (!a) {
           setRolNuevo(rolActual);
           setError(null);
-          setAbierto(true);
-        }}
-        className="text-xs font-medium text-accent-text hover:underline"
-      >
-        Cambiar el rol
-      </button>
-
-      <Dialog open={abierto} onOpenChange={(a) => !a && !pendiente && setAbierto(false)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {hayCambio
-                ? `Vas a cambiar a ${nombre} de ${DESCRIPCIONES_ROLES_INTERNOS[rolActual].etiqueta} a ${DESCRIPCIONES_ROLES_INTERNOS[rolNuevo].etiqueta}`
-                : `Cambiar el rol de ${nombre}`}
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-1.5">
-            <Label htmlFor={`rol-${usuarioId}`}>Rol</Label>
-            <Select value={rolNuevo} onValueChange={(v) => setRolNuevo(v as RolInterno)}>
-              <SelectTrigger id={`rol-${usuarioId}`} className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLES_INTERNOS.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {DESCRIPCIONES_ROLES_INTERNOS[r].etiqueta}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {/* La descripción del rol elegido sale del catálogo, no de un texto
+        }
+        setAbierto(a);
+      }}
+      titulo={
+        hayCambio
+          ? `De ${DESCRIPCIONES_ROLES_INTERNOS[rolActual].etiqueta} a ${DESCRIPCIONES_ROLES_INTERNOS[rolNuevo].etiqueta}`
+          : "Cambiar el rol"
+      }
+      subtitulo={nombre}
+      pie={
+        <div className="flex items-center gap-2">
+          <Button disabled={pendiente || !hayCambio} onClick={confirmar}>
+            {pendiente ? "Cambiando…" : "Cambiar el rol"}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={pendiente}
+            onClick={() => setAbierto(false)}
+          >
+            Volver
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor={`rol-${usuarioId}`}>Rol</Label>
+          <Select
+            value={rolNuevo}
+            onValueChange={(v) => setRolNuevo(v as RolInterno)}
+          >
+            <SelectTrigger id={`rol-${usuarioId}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ROLES_INTERNOS.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {DESCRIPCIONES_ROLES_INTERNOS[r].etiqueta}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* La descripción del rol elegido sale del catálogo, no de un texto
                 a mano que haya que acordarse de revisar. */}
-            <p className="text-xs leading-relaxed text-fg-muted">{describirRol(rolNuevo)}</p>
-          </div>
-
-          {hayCambio ? (
-            <div className="space-y-3 border border-line bg-bg-sunken px-4 py-3">
-              {/* Lo que PIERDE va primero: es lo que puede romper el trabajo de
-                  alguien mañana por la mañana. */}
-              <ListaCapacidades
-                rotulo="Pierde"
-                tono="fault"
-                items={cambio.pierde}
-                vacio="No pierde nada."
-              />
-              <ListaCapacidades
-                rotulo="Gana"
-                tono="balanced"
-                items={cambio.gana}
-                vacio="No gana nada nuevo."
-              />
-              <ListaCapacidades
-                rotulo="Sigue sin tener"
-                tono="muted"
-                items={cambio.sigueSinTener}
-                vacio="Nada más queda fuera."
-                colapsable
-              />
-            </div>
-          ) : (
-            <p className="text-sm text-fg-muted">
-              Elige otro rol para ver qué cambia.
-            </p>
-          )}
-
-          {error ? (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
-
           <p className="text-xs leading-relaxed text-fg-muted">
-            Toma efecto en su próxima carga de pantalla y queda en la bitácora a tu nombre.
+            {describirRol(rolNuevo)}
           </p>
+        </div>
 
-          <DialogFooter>
-            <Button variant="ghost" disabled={pendiente} onClick={() => setAbierto(false)}>
-              Volver
-            </Button>
-            <Button disabled={pendiente || !hayCambio} onClick={confirmar}>
-              {pendiente ? "Cambiando…" : "Cambiar el rol"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        {hayCambio ? (
+          <div className="space-y-3 border border-line bg-bg-sunken px-4 py-3">
+            {/* Lo que PIERDE va primero: es lo que puede romper el trabajo de
+                  alguien mañana por la mañana. */}
+            <ListaCapacidades
+              rotulo="Pierde"
+              tono="fault"
+              items={cambio.pierde}
+              vacio="No pierde nada."
+            />
+            <ListaCapacidades
+              rotulo="Gana"
+              tono="balanced"
+              items={cambio.gana}
+              vacio="No gana nada nuevo."
+            />
+            <ListaCapacidades
+              rotulo="Sigue sin tener"
+              tono="muted"
+              items={cambio.sigueSinTener}
+              vacio="Nada más queda fuera."
+              colapsable
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-fg-muted">
+            Elige otro rol para ver qué cambia.
+          </p>
+        )}
+
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <p className="text-xs leading-relaxed text-fg-muted">
+          Toma efecto en su próxima carga de pantalla y queda en la bitácora a
+          tu nombre.
+        </p>
+      </div>
+    </PanelAccion>
   );
 }

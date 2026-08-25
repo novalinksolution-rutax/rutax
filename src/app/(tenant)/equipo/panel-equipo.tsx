@@ -283,8 +283,20 @@ function FilaUsuario({
 }) {
   const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[usuario.rol];
 
+  /**
+   * 🔴 La fila entera abre el panel, como en Pedidos, Tarifas y Bodegas.
+   *
+   * Solo la persona ACTIVA: la suspendida tiene su propia acción —reactivarla—
+   * y abrirle un cambio de rol daría un formulario que no se puede aplicar.
+   */
+  const [panelRolAbierto, setPanelRolAbierto] = useState(false);
+  const abrible = puedeGestionar && usuario.estado === "activo";
+
   return (
-    <TableRow>
+    <TableRow
+      onClick={abrible ? () => setPanelRolAbierto(true) : undefined}
+      className={abrible ? "cursor-pointer" : undefined}
+    >
       <TableCell>
         <div className="space-y-0.5">
           <p className="font-medium text-foreground">{usuario.nombreCompleto}</p>
@@ -308,7 +320,9 @@ function FilaUsuario({
           esa palabra en todo `src/`, y el estado «Suspendido» de la celda de al
           lado se pintaba sin que nada llevara a él ni saliera de él. Las tres
           acciones existen ahora, con su bitácora. */}
-      <TableCell className="text-right">
+      {/* ⚠️ La celda para la propagación: sin esto, «Suspender» abriría además
+          el panel de cambio de rol por debajo. */}
+      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
         {puedeGestionar ? (
           <div className="flex flex-wrap items-center justify-end gap-3">
             {usuario.estado === "activo" ? (
@@ -317,6 +331,8 @@ function FilaUsuario({
                 nombre={usuario.nombreCompleto}
                 rolActual={usuario.rol as RolInterno}
                 onCambiado={(rol) => onActualizado({ ...usuario, rol })}
+                abierto={panelRolAbierto}
+                onOpenChange={setPanelRolAbierto}
               />
             ) : null}
             <BotonSuspender usuario={usuario} onActualizado={onActualizado} />
