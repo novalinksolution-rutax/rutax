@@ -573,16 +573,18 @@ esperado era NULL y sigue siéndolo—; lo único que cambia es que se obtiene s
 **Verificado:** con la migración puesta, la franja de Pedidos recibe, acumula, incorpora al pedirlo y
 desaparece.
 
-⏸️ **EN PAUSA, NO PENDIENTE — decisión del usuario (25-ago-2026).** La migración **no se aplica en
-producción** y se movió a `supabase/migraciones-en-pausa/`, fuera de donde el CLI la ve, para que
-ningún `db push` se la lleve de pasada. El motivo: el diagnóstico completo se hizo contra la base
-local y **no se ha reproducido en producción**.
+✅ **APLICADA EN PRODUCCIÓN el 25-ago-2026**, tras 24 h en pausa. Lo que la desbloqueó **no fue una
+comprobación en producción** —esa nunca se hizo y ya no se puede, porque el arreglo borra el
+síntoma— sino una auditoría de lo único que podía salir mal: que un claim NULL **ensanchara** el
+acceso en alguna política. Consultado contra la base: **109 políticas** usan
+`claim_tenant_id/seller_id/driver_id` y **ninguna** los usa con `IS NULL`, `IS NOT DISTINCT`, `<>` o
+`COALESCE`; todas están en la forma positiva `columna = claim_x()`, donde NULL da NULL y NULL
+deniega. Fuera de políticas: una función (`operacion.pruebas_entrega_del_seller`), misma forma, y
+cero vistas. El único delta es «excepción → NULL», y NULL solo puede denegar.
 
-Lo que sigue siendo cierto: el hook, las políticas y Realtime son los mismos allá, así que la
-presunción —no la comprobación— es que producción está igual. Comprobarlo es mirar el log de Realtime
-del proyecto hosted buscando `invalid input syntax for type uuid: "null"`; si aparece, sacar la
-migración de pausa es el arreglo. La barrera del cliente que va más abajo **sí** está desplegada y
-tapa la mitad que se puede tapar desde afuera.
+⚠️ **Sigue sin saberse si producción estaba rota.** La presunción era que sí —mismo hook, mismas
+políticas, mismo Realtime— pero se aplicó por costo/riesgo, no por evidencia. Si algún día importa
+el dato histórico, el sitio era el log de Realtime del proyecto hosted.
 
 **Y una barrera extra en el cliente** (`components/tiempo-real/filtro-tenant.ts`, 7 pruebas): el
 indicador **no se suscribe** si el tenant no es un uuid. No era la causa de esto, pero es la otra
