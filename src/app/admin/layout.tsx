@@ -42,6 +42,10 @@ const GRUPOS_ADMIN: GrupoNav[] = [
         icono: "salud",
       },
       { href: "/admin/bitacora", etiqueta: "Bitácora", icono: "bitacora" },
+      // Quién puede entrar a Rutax, en todos los couriers -- y lo que está mal.
+      // Nace del incidente del 2026-08-25: una invitación sobrescribió el perfil
+      // de una cuenta de seller y nadie se enteró.
+      { href: "/admin/cuentas", etiqueta: "Cuentas", icono: "equipo" },
       { href: "/admin/comunicaciones", etiqueta: "Comunicaciones", icono: "comunicaciones" },
       // WhatsApp lo administra Rutax y no el courier: el emisor es nuestro
       // número y la calidad que Meta le asigna la comparten todos los tenants.
