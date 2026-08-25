@@ -113,6 +113,37 @@ export function compararRoles(desde: Rol, hacia: Rol): CambioDeRol {
   return { pierde, gana, sigueSinTener };
 }
 
+export interface CapacidadesDeUnRol {
+  /** Lo que va a poder hacer. */
+  vaAPoder: string[];
+  /** Lo que NO va a poder. Es la mitad que evita el «pensé que sí podía». */
+  noVaAPoder: string[];
+}
+
+/**
+ * Las dos listas de un rol, sin comparación con otro.
+ *
+ * `compararRoles` responde «qué cambia»; esto responde «qué es». Hace falta al
+ * **invitar**, donde no hay rol anterior con el que comparar — y el tablero pide
+ * el mismo bloque de capacidades ahí, porque es la única superficie donde el
+ * sistema explica los roles.
+ *
+ * ⚠️ **Sale del catálogo de capacidades, no de un texto a mano.** Es la regla 6
+ * del bloque: cuatro frases escritas a mano se desactualizan en cuanto un rol
+ * gana una capacidad, y nadie se entera — la pantalla sigue prometiendo lo
+ * mismo. Acá, si la matriz cambia, el copy cambia solo.
+ */
+export function capacidadesLegiblesDeRol(rol: Rol): CapacidadesDeUnRol {
+  const suyas = new Set(capacidadesDeRol(rol));
+  const vaAPoder: string[] = [];
+  const noVaAPoder: string[] = [];
+  // Se recorre el CATÁLOGO para que el orden sea siempre el mismo.
+  for (const c of CAPACIDADES) {
+    (suyas.has(c) ? vaAPoder : noVaAPoder).push(FRASE_CAPACIDAD[c]);
+  }
+  return { vaAPoder, noVaAPoder };
+}
+
 /**
  * La descripción de un rol, derivada del mapa.
  *

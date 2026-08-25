@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ListaCapacidades } from "@/components/ui/bloque-capacidades";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -182,55 +183,5 @@ export function DialogoCambiarRol({
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-function ListaCapacidades({
-  rotulo,
-  tono,
-  items,
-  vacio,
-  colapsable = false,
-}: {
-  rotulo: string;
-  tono: "fault" | "balanced" | "muted";
-  items: string[];
-  vacio: string;
-  /** «Sigue sin tener» puede ser larga: se puede plegar sin perderse. */
-  colapsable?: boolean;
-}) {
-  const color =
-    tono === "fault" ? "text-fault-fg" : tono === "balanced" ? "text-balanced-fg" : "text-fg-muted";
-
-  const cuerpo =
-    items.length === 0 ? (
-      <p className="text-sm text-fg-muted">{vacio}</p>
-    ) : (
-      <ul className="list-disc space-y-0.5 pl-5 text-sm leading-snug text-fg-muted">
-        {items.map((t) => (
-          <li key={t}>{t}</li>
-        ))}
-      </ul>
-    );
-
-  if (colapsable && items.length > 3) {
-    return (
-      <details>
-        <summary className={`cursor-pointer text-[10px] font-medium tracking-[0.12em] uppercase ${color}`}>
-          {rotulo} ({items.length})
-        </summary>
-        <div className="mt-1">{cuerpo}</div>
-      </details>
-    );
-  }
-
-  return (
-    <div>
-      <p className={`text-[10px] font-medium tracking-[0.12em] uppercase ${color}`}>
-        {rotulo}
-        {items.length > 0 ? ` (${items.length})` : ""}
-      </p>
-      <div className="mt-1">{cuerpo}</div>
-    </div>
   );
 }

@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/sheet";
 import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
+import { capacidadesLegiblesDeRol } from "@/modules/identidad/capacidades-legibles";
+import { BloqueCapacidadesRol } from "@/components/ui/bloque-capacidades";
 import { invitarPersona, type InvitacionEnviada } from "./actions";
 
 interface Props {
@@ -168,6 +170,21 @@ export function FormularioInvitacion({ abierto, onCerrar, onInvitada }: Props) {
             {errorRol ? <p className="text-sm text-destructive">{errorRol}</p> : null}
           </fieldset>
 
+          {/* 🔴 El bloque de capacidades del rol marcado, el MISMO de «cambiar
+              el rol». Es la regla 6: un permiso se explica con el catálogo, no
+              con un texto a mano — y ésta es la única superficie donde el
+              sistema dice qué hace cada rol.
+
+              La segunda lista no es relleno: sin «no va a poder», quien invita
+              asume que el rol cubre lo que necesita y se entera de que no
+              cuando la persona ya está adentro pidiendo permisos. */}
+          {rol ? (
+            <BloqueCapacidadesRol
+              vaAPoder={capacidadesLegiblesDeRol(rol).vaAPoder}
+              noVaAPoder={capacidadesLegiblesDeRol(rol).noVaAPoder}
+            />
+          ) : null}
+
           {errorServidor ? (
             <Alert variant="destructive">
               <ShieldAlert />
@@ -178,8 +195,11 @@ export function FormularioInvitacion({ abierto, onCerrar, onInvitada }: Props) {
           <SheetFooter className="mt-auto px-0">
             <Button type="submit" disabled={enviando} className="w-full">
               {enviando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {enviando ? "Enviando…" : "Enviar invitación"}
+              {enviando ? "Enviando…" : "Enviar la invitación"}
             </Button>
+            {/* El plazo va junto al botón y no en la letra chica: es lo que
+                decide si hay que avisarle por otro lado a la persona. */}
+            <p className="w-full text-center text-xs text-fg-subtle">Vence en 7 días</p>
             <SheetClose asChild>
               <Button type="button" variant="ghost" className="w-full" disabled={enviando}>
                 Cancelar
