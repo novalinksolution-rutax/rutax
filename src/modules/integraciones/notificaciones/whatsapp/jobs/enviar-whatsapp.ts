@@ -101,11 +101,29 @@ export const jobEnviarWhatsApp = inngest.createFunction(
   },
 );
 
-/** Resumen sin datos personales: solo conteos. Va a la telemetría del run. */
-function resumen(resultado: { enviados: number; duplicados: number; fallidos: number }) {
+/**
+ * Resumen del run, sin datos personales.
+ *
+ * ⚠️ INCLUYE EL MOTIVO DEL FALLO, y esa es la parte que importa. La primera
+ * versión devolvía solo los conteos, así que en el panel de Inngest un envío
+ * rechazado se veía como `{enviado: false, fallidos: 1}` y punto: había que ir
+ * a buscar el porqué a la tabla `whatsapp_mensajes`. Mordió el mismo día que se
+ * abrió el envío real — el run decía que algo falló y no decía qué.
+ *
+ * El texto viene saneado desde el adaptador (sin token ni teléfono), así que es
+ * seguro dejarlo en la telemetría, que es justo donde alguien lo va a leer.
+ */
+function resumen(resultado: {
+  enviados: number;
+  duplicados: number;
+  fallidos: number;
+  detalles: Array<{ error?: string }>;
+}) {
+  const primerError = resultado.detalles.find((d) => d.error)?.error;
   return {
     enviados: resultado.enviados,
     duplicados: resultado.duplicados,
     fallidos: resultado.fallidos,
+    ...(primerError ? { error: primerError } : {}),
   };
 }
