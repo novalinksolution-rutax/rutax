@@ -95,5 +95,26 @@ export async function restablecerContrasena(
     detalle: { rol: perfil?.rol ?? null, via: "recuperacion_email" },
   });
 
+  /**
+   * ⚠️ **Se cierran las sesiones de los OTROS aparatos, y la pantalla lo avisa
+   * antes de que ocurra.**
+   *
+   * Quien cambia su contraseña casi siempre lo hace por una de dos razones: la
+   * olvidó, o sospecha que alguien más entró. En el segundo caso, cambiarla sin
+   * cerrar la sesión ajena **no sirve de nada** — el intruso sigue dentro con su
+   * sesión ya abierta, y la persona se queda creyendo que resolvió el problema.
+   *
+   * `scope: "others"` deja viva la de este aparato: la persona acaba de
+   * autenticarse con el enlace, así que echarla también sería pedirle que entre
+   * dos veces.
+   *
+   * Va DESPUÉS de la bitácora, como cualquier efecto externo, y su fallo no
+   * revierte el cambio de contraseña: la contraseña nueva ya es la buena.
+   */
+  await supabase.auth.signOut({ scope: "others" }).catch(() => {
+    // Si falla, la contraseña igual cambió. No se le dice a la persona que su
+    // cambio falló por algo que no lo afecta.
+  });
+
   return { ok: true };
 }

@@ -1,43 +1,83 @@
 "use client";
 
 /**
- * Paso 1 de 2 — "¿Olvidaste tu contraseña?".
+ * Pedir el enlace, y la respuesta que no confirma nada.
+ * =============================================================================
  *
- * El estado de éxito NO dice "te enviamos un correo": dice "si existe una
- * cuenta con ese correo, te enviamos…". La diferencia no es de estilo — es lo
- * que impide que la pantalla confirme qué correos están registrados.
+ * -----------------------------------------------------------------------------
+ * 🔴 EL «SI» ES LA PALABRA QUE HACE TODO EL TRABAJO
+ * -----------------------------------------------------------------------------
+ * «**Si** ese correo tiene cuenta en Rutax, ya te llegó un enlace.» Una pantalla
+ * pública **nunca confirma ni niega que un correo exista**, y ésta responde
+ * exactamente lo mismo exista o no.
+ *
+ * Sin ese «si», el formulario se convierte en un oráculo: probando correos se
+ * averigua cuáles están registrados, que es el primer paso de cualquiera que
+ * quiera entrar por la fuerza.
+ *
+ * -----------------------------------------------------------------------------
+ * EL TITULAR DICE EL RESULTADO, NO EL TRÁMITE
+ * -----------------------------------------------------------------------------
+ * «Cambia tu contraseña», no «Recuperar contraseña». Lo segundo describe lo que
+ * hace el sistema; lo primero, lo que quiere quien está mirando.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ EL ENVIADO VA EN TONO `balanced`, NO EN `progress`
+ * -----------------------------------------------------------------------------
+ * Para el usuario **ya terminó lo que le tocaba**: escribió su correo y no hay
+ * nada más que hacer acá. `progress` diría «esto sigue en curso» y lo dejaría
+ * esperando delante de una pantalla que no va a cambiar.
  */
 
-import { useId, useState, type FormEvent } from "react";
-import Link from "next/link";
-import { ArrowLeft, KeyRound, Loader2, Mail, MailCheck } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { VolverAEntrar } from "@/app/login/marco-puerta";
 import { solicitarRecuperacionContrasena } from "./actions";
 
-export function FormularioRecuperar() {
-  const idBase = useId();
+/**
+ * Cuánto hay que esperar para pedir otro enlace.
+ *
+ * ⚠️ **Se muestra como cuenta atrás y no como «espera un momento»**: quien no ve
+ * llegar el correo vuelve a pulsar, y un botón que no responde sin decir por qué
+ * se lee como roto. Con el reloj a la vista, la espera es información.
+ */
+const SEGUNDOS_REENVIO = 60;
 
+export function FormularioRecuperar() {
   const [email, setEmail] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restante, setRestante] = useState(0);
+
+  useEffect(() => {
+    if (restante <= 0) return;
+    const id = window.setTimeout(() => setRestante((s) => s - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [restante]);
 
   async function manejarEnvio(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
-    if (enviando) return;
+    if (enviando || restante > 0) return;
     setError(null);
     setEnviando(true);
     try {
       const resultado = await solicitarRecuperacionContrasena(email);
       if (resultado.ok) {
         setEnviado(true);
+        setRestante(SEGUNDOS_REENVIO);
         return;
       }
-      setError(resultado.mensaje);
+      // ⚠️ **El estado que faltaba.** Si el envío falla es problema nuestro, y
+      // hay que decirlo así: sin esta frase, quien lo lee supone que escribió
+      // mal el correo o que su cuenta no existe — y las dos son falsas.
+      setError(
+        "No pudimos mandar el correo. Fue un problema nuestro: tu contraseña sigue siendo la misma. Vuelve a intentar.",
+      );
     } finally {
       setEnviando(false);
     }
@@ -45,84 +85,95 @@ export function FormularioRecuperar() {
 
   if (enviado) {
     return (
-      <Card className="w-full max-w-sm text-center">
-        <CardHeader className="items-center space-y-1">
-          <div className="mb-1 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <MailCheck className="size-6" aria-hidden="true" />
-          </div>
-          <CardTitle className="text-xl">Revisa tu correo</CardTitle>
-          <CardDescription>
-            Si existe una cuenta con <span className="font-medium text-foreground">{email}</span>, te enviamos un
-            enlace para crear una contraseña nueva. Vence en 1 hora.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            ¿No llega? Revisa la carpeta de spam antes de volver a pedirlo.
-          </p>
-          <Button asChild variant="secondary" className="w-full">
-            <Link href="/login">Volver a iniciar sesión</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="w-full max-w-[400px]">
+        <h1 className="font-heading text-2xl font-semibold text-fg">Revisa tu correo</h1>
+        <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+          {/* El «Si» inicial es la pieza de seguridad de esta pantalla. */}
+          Si <span className="font-medium text-fg">{email}</span> tiene cuenta en Rutax, ya te
+          llegó un enlace. Dura una hora.
+        </p>
+
+        <div className="mt-5 border border-balanced-line bg-balanced-bg px-3 py-2 text-sm text-balanced-fg">
+          Si no lo ves, revisa el correo no deseado.{" "}
+          {restante > 0 ? (
+            <>
+              Puedes pedir otro en{" "}
+              <span className="rx-num font-mono tabular-nums">{formatearCuenta(restante)}</span>.
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setEnviado(false);
+                setError(null);
+              }}
+              className="font-medium underline underline-offset-4"
+            >
+              Pedir otro enlace
+            </button>
+          )}
+        </div>
+
+        <VolverAEntrar />
+      </div>
     );
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader className="items-center space-y-1 text-center">
-        <div className="mb-1 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <KeyRound className="size-6" aria-hidden="true" />
-        </div>
-        <CardTitle className="text-xl">Recuperar contraseña</CardTitle>
-        <CardDescription>Te enviaremos un enlace para crear una nueva.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={manejarEnvio} className="space-y-4">
-          {error ? (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : null}
+    <div className="w-full max-w-[400px]">
+      <h1 className="font-heading text-2xl font-semibold text-fg">Cambia tu contraseña</h1>
+      <p className="mt-1 text-sm text-fg-muted">
+        Escribe tu correo y te mandamos un enlace para crear una nueva.
+      </p>
 
-          <div className="space-y-2">
-            <Label htmlFor={`${idBase}-email`}>Correo electrónico</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden="true" />
-              <Input
-                id={`${idBase}-email`}
-                type="email"
-                autoComplete="email"
-                autoFocus
-                placeholder="tu@correo.cl"
-                className="pl-9"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={enviando}
-              />
-            </div>
+      <form onSubmit={manejarEnvio} className="mt-7 space-y-4" aria-busy={enviando}>
+        {error && (
+          <div
+            role="alert"
+            className="border border-fault-line bg-fault-bg px-3 py-2 text-sm text-fault-fg"
+          >
+            {error}
           </div>
+        )}
 
-          <Button type="submit" className="w-full" disabled={enviando}>
-            {enviando ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
-                Enviando…
-              </>
-            ) : (
-              "Enviarme el enlace"
-            )}
-          </Button>
+        {/* Un solo campo y una sola acción: si esta pantalla necesitara tres
+            botones, estaría resolviendo dos problemas. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="email">Correo</Label>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="tu@correo.cl"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoFocus
+            readOnly={enviando}
+            className="pointer-coarse:h-12"
+          />
+        </div>
 
-          <Button asChild variant="ghost" className="w-full">
-            <Link href="/login">
-              <ArrowLeft className="mr-2 size-4" aria-hidden="true" />
-              Volver a iniciar sesión
-            </Link>
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        <Button type="submit" className="w-full pointer-coarse:h-13" disabled={enviando}>
+          {enviando ? (
+            <>
+              <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+              Mandando…
+            </>
+          ) : (
+            "Mandarme el enlace"
+          )}
+        </Button>
+      </form>
+
+      <VolverAEntrar />
+    </div>
   );
+}
+
+/** `0:47`. Los segundos siempre con dos dígitos: sin eso el ancho baila. */
+function formatearCuenta(segundos: number): string {
+  const m = Math.floor(segundos / 60);
+  const s = segundos % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }

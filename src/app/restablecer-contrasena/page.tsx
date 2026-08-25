@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { FormularioRestablecer } from "./formulario-restablecer";
-import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
+import { MarcoPuerta } from "@/app/login/marco-puerta";
 
 export const metadata: Metadata = {
   title: "Crea tu contraseña nueva",
@@ -35,9 +35,13 @@ export default async function PaginaRestablecerContrasena({ searchParams }: Page
   const enlaceInvalido = error === "enlace_invalido" || !user;
 
   return (
-    // Marca Rutax, igual que recuperar: es la misma persona, en el paso siguiente.
-    <PantallaSinSesion marca={{ tipo: "rutax" }}>
-      <FormularioRestablecer enlaceInvalido={enlaceInvalido} />
-    </PantallaSinSesion>
+    // ⚠️ Mismo marco que el login, no `PantallaSinSesion`: el tablero es
+    // explícito —«no es un flujo aparte: es la misma puerta con otro cuerpo»—.
+    // El correo se le muestra porque es la única forma de que confirme para qué
+    // cuenta está creando la contraseña; sale de la sesión del enlace, así que
+    // no confirma nada que quien mira no supiera ya.
+    <MarcoPuerta>
+      <FormularioRestablecer enlaceInvalido={enlaceInvalido} email={user?.email ?? null} />
+    </MarcoPuerta>
   );
 }

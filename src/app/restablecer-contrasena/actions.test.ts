@@ -24,13 +24,20 @@ const TENANT_ID = "22222222-2222-2222-2222-222222222222";
 /** Registra las tablas tocadas por el cliente service_role, para poder afirmar sobre ellas. */
 let tablasTocadas: string[];
 let updateSpy: ReturnType<typeof vi.fn>;
+/** El cierre de las OTRAS sesiones. Se expone para poder afirmar sobre su alcance. */
+let signOutSpy: ReturnType<typeof vi.fn>;
 
 function mockSesion(user: { id: string } | null, updateUserError: unknown = null) {
   const updateUser = vi.fn().mockResolvedValue({ error: updateUserError });
+  // ⚠️ El doble tiene que modelar `signOut` porque el código lo llama. Sin él,
+  // las cinco pruebas del camino feliz reventaban con «no es una función» —y el
+  // fallo era del doble, no del código.
+  signOutSpy = vi.fn().mockResolvedValue({ error: null });
   vi.mocked(createClient).mockResolvedValue({
     auth: {
       getUser: vi.fn().mockResolvedValue({ data: { user } }),
       updateUser,
+      signOut: signOutSpy,
     },
   } as unknown as Awaited<ReturnType<typeof createClient>>);
   return updateUser;
@@ -160,5 +167,36 @@ describe("fallo al guardar", () => {
 
     expect(r).toMatchObject({ ok: false, tipo: "desconocido" });
     if (!r.ok) expect(r.mensaje).toMatch(/nuestro sistema/i);
+  });
+});
+
+describe("las otras sesiones se cierran", () => {
+  it("🔴 cierra las sesiones de los OTROS aparatos, no la de éste", async () => {
+    // Quien cambia su contraseña casi siempre lo hace por una de dos razones: la
+    // olvidó, o sospecha que alguien más entró. En el segundo caso, cambiarla sin
+    // cerrar la sesión ajena NO SIRVE DE NADA — el intruso sigue dentro con su
+    // sesión ya abierta, y la persona se queda creyendo que resolvió el problema.
+    mockSesion({ id: USUARIO_ID });
+    mockAdmin();
+
+    const r = await restablecerContrasena({ contrasena: "caballo verde en la bodega" });
+
+    expect(r.ok).toBe(true);
+    expect(signOutSpy).toHaveBeenCalledWith({ scope: "others" });
+    // `others` y no `global`: la persona acaba de autenticarse con el enlace, y
+    // echarla también sería pedirle que entre dos veces seguidas.
+    expect(signOutSpy).not.toHaveBeenCalledWith({ scope: "global" });
+  });
+
+  it("si el cierre falla, la contraseña igual quedó cambiada", async () => {
+    // El cambio ya ocurrió: decirle que falló por algo que no lo afecta lo
+    // mandaría a repetir una operación que salió bien.
+    mockSesion({ id: USUARIO_ID });
+    mockAdmin();
+    signOutSpy.mockRejectedValue(new Error("red caída"));
+
+    await expect(restablecerContrasena({ contrasena: "caballo verde en la bodega" })).resolves.toMatchObject({
+      ok: true,
+    });
   });
 });

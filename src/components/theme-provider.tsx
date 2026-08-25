@@ -43,9 +43,16 @@ import type { ComponentProps } from "react"
  * **no toca la preferencia guardada**, así que quien pasa por el login no se
  * lleva el tema claro al resto del producto.
  *
- * Acotado a propósito: el resto de las pantallas sin sesión sigue la regla 44.
+ * ⚠️ **Son las TRES de la puerta, no una.** La decisión fue «claro fijo solo en
+ * el login», y al llegar el diseño de recuperar contraseña el tablero zanjó que
+ * esas dos pantallas **no son un flujo aparte: son la misma puerta con otro
+ * cuerpo** — misma columna, mismo lienzo, misma marca. Dejarlas siguiendo el
+ * tema del sistema haría que pedir un enlace cambiara de color a media puerta.
+ *
+ * El resto de las pantallas sin sesión —registro, activar, legales, seguimiento—
+ * sigue la regla 44.
  */
-const RUTAS_EN_CLARO = ["/login"]
+const RUTAS_EN_CLARO = ["/login", "/recuperar-contrasena", "/restablecer-contrasena"]
 
 export function ThemeProvider({ children, ...props }: ComponentProps<typeof NextThemesProvider>) {
   const ruta = usePathname()

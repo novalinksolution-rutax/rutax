@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { FormularioRecuperar } from "./formulario-recuperar";
-import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
+import { MarcoPuerta } from "@/app/login/marco-puerta";
 
 export const metadata: Metadata = {
-  title: "Recuperar contraseña",
+  // El título dice el resultado, no el trámite — igual que el de la pantalla.
+  title: "Cambia tu contraseña",
 };
 
 /**
@@ -22,8 +23,11 @@ export default async function PaginaRecuperarContrasena() {
   }
 
   return (
-    <PantallaSinSesion marca={{ tipo: "neutra" }}>
+    // ⚠️ Mismo marco que el login, no `PantallaSinSesion`: «no es un flujo
+    // aparte, es la misma puerta con otro cuerpo». Y con eso la marca deja de
+    // ser `neutra` y pasa a ser la completa, que es la del marco.
+    <MarcoPuerta>
       <FormularioRecuperar />
-    </PantallaSinSesion>
+    </MarcoPuerta>
   );
 }
