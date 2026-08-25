@@ -29,10 +29,25 @@ import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { mensajeErrorContrasenaAccionable } from "@/modules/identidad/errores-contrasena";
+import { normalizarTelefonoE164 } from "@/modules/integraciones/notificaciones/whatsapp";
 
 export interface DefinirContrasenaInicialEntrada {
   nombreCompleto: string;
   contrasena: string;
+  /**
+   * WhatsApp del seller, opcional. Solo lo manda el formulario cuando quien
+   * activa es un seller — un usuario interno o un conductor no tienen dónde
+   * escribirlo.
+   */
+  telefonoWhatsApp?: string;
+  /**
+   * ⚠️ La casilla de consentimiento. Sin ella el teléfono NO se guarda: un
+   * número sin permiso no sirve de nada y tenerlo guardado solo invita a
+   * usarlo. Es el propio seller marcándola, que es el respaldo más fuerte que
+   * existe ante Meta — y la razón de que este campo viva acá y no en una
+   * pantalla del courier.
+   */
+  aceptaWhatsApp?: boolean;
 }
 
 export type DefinirContrasenaResultado =
@@ -99,7 +114,7 @@ export async function definirContrasenaInicial(
     .update({ estado: "activo", nombre_completo: nombreCompleto })
     .eq("id", user.id)
     .eq("estado", "invitado") // doble candado: solo transiciona desde 'invitado', nunca reactiva a un suspendido
-    .select("tenant_id, rol")
+    .select("tenant_id, rol, tipo_usuario, seller_id")
     .maybeSingle();
 
   if (errorPerfil) {
@@ -120,6 +135,13 @@ export async function definirContrasenaInicial(
       entidadId: user.id,
       detalle: { rol: perfilActualizado.rol, via: "activacion_invitacion_inicial" },
     });
+
+    await guardarWhatsAppDelSeller(admin, {
+      perfil: perfilActualizado as PerfilActivado,
+      usuarioId: user.id,
+      telefono: entrada.telefonoWhatsApp,
+      acepta: entrada.aceptaWhatsApp === true,
+    });
   }
 
   // Refrescar el JWT para que los claims reflejen `estado_usuario: activo`
@@ -129,4 +151,81 @@ export async function definirContrasenaInicial(
 
   revalidatePath("/onboarding");
   return { ok: true };
+}
+
+interface PerfilActivado {
+  tenant_id: string | null;
+  rol: string;
+  tipo_usuario: string;
+  seller_id: string | null;
+}
+
+/**
+ * Guarda el WhatsApp que el seller escribió al activar su cuenta.
+ * =============================================================================
+ * Este es el ORIGEN preferido de todo destinatario de notificaciones: el número
+ * lo pone su dueño y el consentimiento lo marca él mismo. Es la razón de que el
+ * campo viva en esta pantalla y no en una del courier — hasta el 2026-08-25 era
+ * el courier quien AFIRMABA el permiso de otra empresa, que es exactamente lo
+ * que este cambio elimina.
+ *
+ * ⚠️ **BEST-EFFORT: nunca hace fallar la activación.** La persona está entrando
+ * a su cuenta por primera vez; dejarla afuera porque no se pudo guardar un
+ * teléfono sería desproporcionado. Si algo falla, la activación sigue y el
+ * número se puede poner después desde su perfil.
+ *
+ * Sin consentimiento marcado NO se guarda nada. Un número sin permiso no sirve
+ * para nada y tenerlo guardado solo invita a usarlo.
+ */
+async function guardarWhatsAppDelSeller(
+  admin: ReturnType<typeof crearClienteServiceRole>,
+  args: {
+    perfil: PerfilActivado;
+    usuarioId: string;
+    telefono: string | undefined;
+    acepta: boolean;
+  },
+): Promise<void> {
+  const { perfil, telefono, acepta } = args;
+
+  // Solo sellers: un usuario interno o un conductor no tienen a quién
+  // representar, y el modelo exige `seller_id`.
+  if (perfil.tipo_usuario !== "seller" || !perfil.seller_id || !perfil.tenant_id) return;
+  if (!acepta || !telefono?.trim()) return;
+
+  const normalizado = normalizarTelefonoE164(telefono);
+  if (!normalizado.valido) return;
+
+  try {
+    const ahora = new Date().toISOString();
+    const { error } = await admin
+      .schema("integraciones")
+      .from("whatsapp_contactos")
+      .insert({
+        tenant_id: perfil.tenant_id,
+        seller_id: perfil.seller_id,
+        telefono_e164: normalizado.telefonoE164,
+        origen: "perfil_seller",
+        opt_in_estado: "otorgado",
+        opt_in_en: ahora,
+      });
+
+    // 23505 = ya existía (el courier lo cargó antes, o se reintentó la
+    // activación). No es un error: el número ya está donde tiene que estar.
+    if (error && error.code !== "23505") return;
+
+    await registrarEnBitacora(admin, {
+      tenantId: perfil.tenant_id,
+      actorUsuarioId: args.usuarioId,
+      actorTipo: "usuario",
+      accion: "whatsapp.consentimiento_otorgado",
+      entidadTipo: "seller",
+      entidadId: perfil.seller_id,
+      // El teléfono NO va en el detalle: es dato personal y la entidad alcanza
+      // para llegar a él por join cuando alguien con permiso lo necesite.
+      detalle: { origen: "perfil_seller", via: "activacion_de_cuenta" },
+    });
+  } catch {
+    // Ver la cabecera: la activación ya ocurrió y no se revierte por esto.
+  }
 }
