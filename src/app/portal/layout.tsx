@@ -58,6 +58,13 @@ export default async function LayoutPortal({
       ],
     },
     {
+      titulo: "Mi cuenta",
+      // Hoy solo su WhatsApp. Va en grupo propio y no colgando de Operación
+      // porque no es del día a día: se entra una vez a dejar el número y
+      // después solo si cambia o si quiere darse de baja.
+      items: [{ href: "/portal/perfil", etiqueta: "Mi perfil", icono: "configuracion" }],
+    },
+    {
       titulo: "Dinero",
       // «Mis cobros», igual que el `h1` y que la pestaña. «Estado de cuenta»
       // es lenguaje de banco, y además no cabía en la barra inferior del
