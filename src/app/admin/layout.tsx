@@ -33,6 +33,14 @@ const GRUPOS_ADMIN: GrupoNav[] = [
     items: [
       { href: "/admin/metricas", etiqueta: "Métricas", icono: "metricas" },
       { href: "/admin/salud", etiqueta: "Salud", icono: "salud" },
+      // La otra salud: la de las conexiones de los sellers de todos los
+      // couriers. Va aparte de la de jobs porque responde otra pregunta —
+      // «¿a quién hay que llamar hoy?» y no «¿anda el sistema?».
+      {
+        href: "/admin/salud-integraciones",
+        etiqueta: "Integraciones",
+        icono: "salud",
+      },
       { href: "/admin/bitacora", etiqueta: "Bitácora", icono: "bitacora" },
       { href: "/admin/comunicaciones", etiqueta: "Comunicaciones", icono: "comunicaciones" },
     ],
