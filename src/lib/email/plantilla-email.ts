@@ -16,6 +16,40 @@
  * Y sin `<head>` no hay forma de declarar el juego de caracteres, así que un
  * «Ñuñoa» o un «$ 864.100» pueden salir con caracteres rotos según el cliente.
  *
+ * -----------------------------------------------------------------------------
+ * 🔴 LA ANATOMÍA: TRES BANDAS, NO UNA CAJA
+ * -----------------------------------------------------------------------------
+ * Es la lámina de la plantilla base del bloque de correos, y la misma que usa
+ * la tarjeta de seguimiento público de B7: **el correo se lee como una ficha
+ * con secciones, no como una hoja con márgenes**.
+ *
+ *     ┌──────────────────────────────────┐
+ *     │ Andes Express            18/700  │  marca
+ *     ├══════════════════════════════════┤  ← regla de 2 px en negro de marca
+ *     │ Un titular que dice el hecho     │  19/600
+ *     │ Un párrafo de contexto…          │  14 · gris de impresión
+ *     │ ┌──────────────────────────────┐ │
+ *     │ │ Entregas · 285               │ │  caja de datos, todo en mono
+ *     │ │ Total · $ 864.100            │ │
+ *     │ └──────────────────────────────┘ │
+ *     │ [ Una sola acción ]              │  teal de relleno
+ *     │ Si el botón no funciona…         │
+ *     ├──────────────────────────────────┤
+ *     │ Recibes esto porque…             │  pie, 11 px, fondo tenue
+ *     └──────────────────────────────────┘
+ *
+ * ⚠️ **La marca va en su propia banda y a tamaño de titular** (18 px, 700, en
+ * negro de marca), separada del cuerpo por una regla de 2 px. Una versión
+ * anterior la ponía como una etiqueta de 13 px en versalitas grises dentro de
+ * la misma celda del cuerpo: eso la convertía en un rótulo administrativo. El
+ * nombre —del courier o el nuestro— **es la primera cosa que ancla el correo**,
+ * y en B7 la regla está escrita con todas las letras: en texto, a tamaño de
+ * titular, porque no hay logo que poner.
+ *
+ * ⚠️ **El titular es más chico que en una pantalla, y va debajo de la marca.**
+ * 19 px contra los 18 de la marca es una diferencia deliberadamente corta: son
+ * dos cosas distintas, no una jerarquía de tres niveles.
+ *
  * LAS DECISIONES QUE NO SON OBVIAS
  * -----------------------------------------------------------------------------
  * · **Tablas, no `div`.** En 2026 sigue siendo así: Outlook usa el motor de
@@ -27,11 +61,22 @@
  *   transcriben desde `rx-tokens.css` con su nombre anotado al lado, igual que
  *   en el mapa y en los PDF.
  *
+ * · **El cuerpo usa el gris de IMPRESIÓN (`#3E4D53`, 7,4:1), no el de
+ *   pantalla.** `rx-tokens.css` lo define solo dentro de `@media print` y lo
+ *   llama «único gris de texto impreso». Un correo se parece más a un impreso
+ *   que a una pantalla: no controlamos el brillo, ni el cliente, ni si se lee
+ *   en la calle a mediodía. El gris de pantalla (6,2:1) queda para el pie.
+ *
  * · **Blanco puro y negro de marca, jamás casi-blanco ni casi-negro.** Los
  *   clientes invierten los colores por su cuenta en modo oscuro y **no se puede
  *   impedir**. Un `#F1F6F6` invertido queda gris sucio y un `#0B1114` invertido
  *   queda gris claro: los dos ilegibles. `#FFFFFF` y `#0B1114` sobreviven la
  *   inversión porque son los extremos.
+ *
+ * · **Dos teales, y no son intercambiables.** `--rx-accent` (`#00B89A`) rellena
+ *   —es el fondo del botón, con `--rx-fg-on-accent` (`#04231E`) encima, 6,6:1—
+ *   y `--rx-accent-text` (`#007D69`) se lee: es el color del enlace de
+ *   respaldo. Cruzarlos deja un botón más apagado que el del producto.
  *
  * · **El botón declara su fondo dos veces** —en el `bgcolor` de la celda y en el
  *   `style`— por lo mismo: si el cliente descarta uno, queda el otro. Y es una
@@ -40,7 +85,9 @@
  *
  * · **Ningún correo depende de una imagen** (regla 61). El nombre del courier va
  *   como texto: la mayoría de los clientes bloquea imágenes por defecto, y un
- *   correo cuya identidad es un logo bloqueado llega anónimo.
+ *   correo cuya identidad es un logo bloqueado llega anónimo. Es también la
+ *   regla 2 de B7: el nombre en texto es la versión canónica, el logo sería una
+ *   mejora opcional que ninguna pieza necesita para verse entera.
  *
  * · **El enlace de respaldo va siempre**, aunque haya botón. Es lo único que
  *   queda cuando el cliente degrada, y es lo que se puede copiar y pegar.
@@ -69,25 +116,21 @@ function esc(valor: string): string {
 /** Ancho de la columna. 600 px es lo que cabe en el panel de vista previa. */
 const ANCHO = 600;
 
-// Valores transcritos de `rx-tokens.css`, tema claro. Un correo no tiene tema:
-// se envía una vez y lo lee quien sea, donde sea.
+// Valores transcritos de `rx-tokens.css`. Un correo no tiene tema: se envía una
+// vez y lo lee quien sea, donde sea.
 const C = {
   fondo: "#E6EEEF", // --rx-bg-sunken · el lienzo alrededor de la tarjeta
   tarjeta: "#FFFFFF", // --rx-bg-raised · blanco PURO, ver la nota de arriba
   texto: "#0B1114", // --rx-fg
-  textoTenue: "#4C5F65", // --rx-fg-muted · 6,2:1
+  textoCuerpo: "#3E4D53", // --rx-fg-muted del contexto IMPRESO · 7,4:1
+  textoTenue: "#4C5F65", // --rx-fg-muted de pantalla · 6,2:1 · solo el pie
   linea: "#C6D6D8", // --rx-line
   lineaTenue: "#DCE7E8", // --rx-line-subtle
-  // ⚠️ **Dos teales, y no son intercambiables.** El ADN los separa en
-  // `rx-tokens.css`: `--rx-accent` sirve para RELLENO, borde y glifo y **nunca
-  // para texto en tema claro**; `--rx-accent-text` es el que sí se lee como
-  // texto. Una versión anterior de este archivo usaba el de texto como fondo
-  // del botón, con blanco encima — llegaba más apagado que el botón real del
-  // producto y contradecía la lámina de la plantilla base.
   acentoTexto: "#007D69", // --rx-accent-text · el enlace de respaldo
   acentoRelleno: "#00B89A", // --rx-accent · el fondo del botón
   sobreAcento: "#04231E", // --rx-fg-on-accent · 6,6:1 sobre el relleno
-  datosFondo: "#F1F6F6", // --rx-bg
+  datosFondo: "#F7FBFB", // --rx-bg-inset
+  pieFondo: "#F1F6F6", // --rx-bg
 } as const;
 
 const FUENTE =
@@ -98,7 +141,7 @@ export interface FilaDatosEmail {
   etiqueta: string;
   /** Ya formateado. La plantilla no formatea montos ni fechas. */
   valor: string;
-  /** Destaca la fila: el total lleva regla arriba y peso. */
+  /** Destaca la fila: el total va en negrita. */
   destacada?: boolean;
 }
 
@@ -107,8 +150,17 @@ export interface ArgsPlantillaEmail {
    * Quién firma. **El courier cuando el destinatario es su cliente** (seller,
    * conductor, comprador); **Rutax cuando nosotros somos la contraparte**
    * (folios, certificado, morosidad, plan). Va como texto, nunca como logo.
+   *
+   * Es la regla 1 de B7: en una superficie sin sesión —y un correo lo es— la
+   * marca la decide el dueño de la relación.
    */
   marca: string;
+  /**
+   * Una línea bajo la marca que dice de qué va la pieza, como el «Tu pedido va
+   * en camino» de la tarjeta de seguimiento. Opcional: la mayoría de los
+   * correos no la necesita porque el titular ya lo dice.
+   */
+  bajadaMarca?: string;
   /** El hecho, en una línea. */
   titular: string;
   /**
@@ -120,6 +172,12 @@ export interface ArgsPlantillaEmail {
   cuerpoHtml: string;
   /** Donde va la plata y lo que se mira primero. En mono. */
   datos?: FilaDatosEmail[];
+  /**
+   * Rótulo de la caja de datos, en versalitas monoespaciadas — el recurso con
+   * que el sistema encabeza una sección («TU PEDIDO», «EL CIERRE»). Sin él la
+   * caja va sin rótulo, que es lo correcto cuando los datos se explican solos.
+   */
+  rotuloDatos?: string;
   accion?: { etiqueta: string; url: string };
   /** Por qué lo recibe. Va en el pie, y no es opcional. */
   motivoRecepcion: string;
@@ -130,19 +188,19 @@ export interface ArgsPlantillaEmail {
   preencabezado?: string;
 }
 
-function fila(f: FilaDatosEmail): string {
-  const borde = f.destacada
-    ? `border-top:2px solid ${C.texto};`
-    : `border-top:1px solid ${C.lineaTenue};`;
-  const peso = f.destacada ? "700" : "400";
-  return (
-    `<tr>` +
-    `<td style="${borde}padding:8px 0;font-family:${FUENTE};font-size:14px;color:${C.textoTenue}">` +
-    `${esc(f.etiqueta)}</td>` +
-    `<td align="right" style="${borde}padding:8px 0;font-family:${MONO};font-size:14px;` +
-    `font-weight:${peso};color:${C.texto}">${esc(f.valor)}</td>` +
-    `</tr>`
-  );
+/**
+ * Una línea de la caja de datos: `Etiqueta · valor`, todo en mono.
+ *
+ * ⚠️ **Una sola columna, no dos con el valor alineado a la derecha.** Es lo que
+ * dibuja la lámina, y además es lo único que sobrevive: una tabla de dos
+ * columnas con `align="right"` se descuadra en cuanto el cliente cambia la
+ * fuente monoespaciada por otra de distinto ancho, y en 320 px de teléfono la
+ * etiqueta y el valor terminan pegados. El punto medio hace de separador y no
+ * depende de ninguna geometría.
+ */
+function filaDatos(f: FilaDatosEmail): string {
+  const linea = `${esc(f.etiqueta)} · ${esc(f.valor)}`;
+  return f.destacada ? `<strong>${linea}</strong>` : linea;
 }
 
 /**
@@ -153,29 +211,50 @@ function fila(f: FilaDatosEmail): string {
  */
 export function envolverEmail(args: ArgsPlantillaEmail): string {
   const boton = args.accion
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rx-btn" style="margin:24px 0">` +
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rx-btn" style="margin:15px 0 0">` +
       `<tr><td bgcolor="${C.acentoRelleno}" style="background-color:${C.acentoRelleno};border-radius:3px">` +
       // 44 px de alto: es el mínimo táctil, y este correo se abre en la calle.
-      `<a href="${esc(args.accion.url)}" style="display:block;padding:13px 24px;font-family:${FUENTE};` +
-      `font-size:15px;font-weight:600;color:${C.sobreAcento};text-decoration:none">` +
+      `<a href="${esc(args.accion.url)}" style="display:block;padding:14px 18px;font-family:${FUENTE};` +
+      `font-size:14px;font-weight:600;color:${C.sobreAcento};text-decoration:none">` +
       `${esc(args.accion.etiqueta)}</a>` +
       `</td></tr></table>` +
-      `<p style="margin:0 0 16px;font-family:${FUENTE};font-size:13px;line-height:1.5;color:${C.textoTenue}">` +
+      `<p style="margin:14px 0 0;font-family:${FUENTE};font-size:12.5px;line-height:1.6;color:${C.textoCuerpo}">` +
       `Si el botón no funciona, copia y pega esta dirección:<br>` +
-      `<a href="${esc(args.accion.url)}" style="color:${C.acentoTexto};word-break:break-all">${esc(args.accion.url)}</a>` +
+      `<a href="${esc(args.accion.url)}" style="font-family:${MONO};font-size:11px;` +
+      `color:${C.acentoTexto};word-break:break-all">${esc(args.accion.url)}</a>` +
       `</p>`
     : "";
 
-  const tablaDatos = args.datos?.length
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ` +
-      `style="margin:20px 0;background-color:${C.datosFondo};padding:4px 14px">` +
-      args.datos.map(fila).join("") +
-      `</table>`
+  const rotulo = args.rotuloDatos
+    ? `<div style="font-family:${MONO};font-size:9px;line-height:1.5;letter-spacing:.12em;` +
+      `text-transform:uppercase;color:${C.textoTenue};margin:0 0 8px">${esc(args.rotuloDatos)}</div>`
+    : "";
+
+  const cajaDatos = args.datos?.length
+    ? `<div style="border:1px solid ${C.linea};background-color:${C.datosFondo};padding:12px 13px;` +
+      `margin:13px 0 0">` +
+      rotulo +
+      `<div style="font-family:${MONO};font-size:13px;line-height:1.7;color:${C.texto}">` +
+      args.datos.map(filaDatos).join("<br>") +
+      `</div></div>`
     : "";
 
   const preencabezado = args.preencabezado
     ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(args.preencabezado)}</div>`
     : "";
+
+  const bajada = args.bajadaMarca
+    ? `<div style="margin:5px 0 0;font-family:${FUENTE};font-size:12.5px;line-height:1.5;` +
+      `color:${C.textoTenue}">${esc(args.bajadaMarca)}</div>`
+    : "";
+
+  // ⚠️ «Despacho gestionado con Rutax» solo cuando NO firmamos nosotros. Si la
+  // marca ya es Rutax, esa línea diría dos veces lo mismo — y en un correo de
+  // folios o de morosidad sonaría a que le presentamos un proveedor ajeno.
+  const firmaRutax =
+    args.marca.trim().toLowerCase() === "rutax"
+      ? ""
+      : `<br>Despacho gestionado con <strong style="color:${C.texto}">Rutax</strong>`;
 
   return (
     `<!doctype html><html lang="es"><head>` +
@@ -187,10 +266,10 @@ export function envolverEmail(args: ArgsPlantillaEmail): string {
     `<title>${esc(args.titular)}</title>` +
     // La media query es lo ÚNICO que va en `<style>`: si el cliente la descarta,
     // queda la tabla de 600 px, que ya funciona. Nada crítico depende de acá.
-    // El botón pasa a ancho completo bajo 480, como pide la lámina de la
-    // plantilla base: en el teléfono un botón angosto obliga a apuntar.
     `<style>@media (max-width:480px){.rx-col{width:100%!important}` +
-    `.rx-pad{padding:20px 16px!important}` +
+    `.rx-pad{padding:16px 14px!important}` +
+    // El botón pasa a ancho completo bajo 480, como pide la lámina: en el
+    // teléfono un botón angosto obliga a apuntar.
     `.rx-btn{width:100%!important}.rx-btn a{text-align:center!important}}</style>` +
     `</head>` +
     `<body style="margin:0;padding:0;background-color:${C.fondo}">` +
@@ -200,24 +279,29 @@ export function envolverEmail(args: ArgsPlantillaEmail): string {
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${ANCHO}" ` +
     `class="rx-col" style="width:${ANCHO}px;max-width:${ANCHO}px;background-color:${C.tarjeta};` +
     `border:1px solid ${C.linea}">` +
-    `<tr><td class="rx-pad" style="padding:28px 32px">` +
-    // 1 · Marca, como texto.
-    `<p style="margin:0 0 20px;font-family:${FUENTE};font-size:13px;font-weight:600;` +
-    `letter-spacing:.08em;text-transform:uppercase;color:${C.textoTenue}">${esc(args.marca)}</p>` +
-    // 2 · Titular con el hecho.
-    `<h1 style="margin:0 0 12px;font-family:${FUENTE};font-size:21px;line-height:1.3;` +
-    `font-weight:700;color:${C.texto}">${esc(args.titular)}</h1>` +
-    // 3 · Contexto. Cuerpo 15: nunca menos de 14, se lee en la calle.
-    `<div style="font-family:${FUENTE};font-size:15px;line-height:1.55;color:${C.texto}">` +
+    // 1 · Banda de marca. Tamaño de titular, en negro de marca, y una regla de
+    //     2 px que la separa del cuerpo.
+    `<tr><td class="rx-pad" style="padding:16px 18px;border-bottom:2px solid ${C.texto}">` +
+    `<div style="font-family:${FUENTE};font-size:18px;line-height:1;font-weight:700;` +
+    `letter-spacing:-.02em;color:${C.texto}">${esc(args.marca)}</div>` +
+    bajada +
+    `</td></tr>` +
+    // 2 · Banda de cuerpo: titular, contexto, datos, acción y respaldo.
+    `<tr><td class="rx-pad" style="padding:18px">` +
+    `<div style="font-family:${FUENTE};font-size:19px;line-height:1.3;font-weight:600;` +
+    `letter-spacing:-.012em;color:${C.texto}">${esc(args.titular)}</div>` +
+    `<div style="margin:9px 0 0;font-family:${FUENTE};font-size:14px;line-height:1.6;` +
+    `color:${C.textoCuerpo}">` +
     args.cuerpoHtml +
     `</div>` +
-    tablaDatos +
+    cajaDatos +
     boton +
     `</td></tr>` +
-    // 7 · Pie: por qué lo recibe.
-    `<tr><td class="rx-pad" style="padding:16px 32px 24px;border-top:1px solid ${C.lineaTenue};` +
-    `font-family:${FUENTE};font-size:12px;line-height:1.5;color:${C.textoTenue}">` +
-    `${esc(args.motivoRecepcion)}` +
+    // 3 · Banda de pie: por qué lo recibe, y quién gestiona el despacho.
+    `<tr><td class="rx-pad" style="padding:14px 18px;background-color:${C.pieFondo};` +
+    `border-top:1px solid ${C.lineaTenue};font-family:${FUENTE};font-size:11px;line-height:1.6;` +
+    `color:${C.textoTenue}">` +
+    `${esc(args.motivoRecepcion)}${firmaRutax}` +
     `</td></tr>` +
     `</table></td></tr></table></body></html>`
   );

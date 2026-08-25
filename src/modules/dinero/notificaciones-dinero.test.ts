@@ -40,8 +40,16 @@ describe("factura emitida · al seller", () => {
 
   it("firma el COURIER, no Rutax: el seller es su cliente (regla 42)", () => {
     expect(r.html).toContain("Andes Express");
-    // Ninguna mención a Rutax en el cuerpo del correo del seller.
-    expect(r.html.replace(/https?:\/\/[^"']+/g, "")).not.toContain("Rutax");
+
+    // ⚠️ La regla 42 rige el CUERPO, no el pie. La lámina de la plantilla base
+    // y la tarjeta de seguimiento de B7 ponen las dos lo mismo abajo:
+    // «Despacho gestionado con Rutax», en 11 px. Presente, no protagonista —
+    // sin eso el seller no tiene forma de saber a quién reclamarle si el
+    // software falla, ni de reconocer el correo si cambia de courier.
+    const sinUrls = r.html.replace(/https?:\/\/[^"']+/g, "");
+    const [antesDelPie, pie] = partirEnElPie(sinUrls);
+    expect(antesDelPie).not.toContain("Rutax");
+    expect(pie).toContain("Despacho gestionado con");
   });
 
   it("es el ÚNICO correo que nombra el IVA, y lo nombra", () => {
@@ -254,3 +262,16 @@ describe("los cinco, como conjunto", () => {
     for (const c of todos) expect(c.html).not.toContain("<img");
   });
 });
+
+/**
+ * Parte el HTML en «todo lo anterior al pie» y «el pie».
+ *
+ * El pie es la última banda de la plantilla: la que lleva fondo tenue y el
+ * borde superior. Se localiza por su `background-color`, que es el único de esa
+ * banda en todo el documento.
+ */
+function partirEnElPie(html: string): [string, string] {
+  const i = html.lastIndexOf("background-color:#F1F6F6");
+  if (i < 0) throw new Error("no se encontró la banda de pie");
+  return [html.slice(0, i), html.slice(i)];
+}

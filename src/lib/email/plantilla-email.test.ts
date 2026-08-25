@@ -98,7 +98,10 @@ describe("plantilla de correo · lo que hace que llegue entero", () => {
     expect(html).toContain("Andes Express");
   });
 
-  it("el bloque de datos va en mono y el total se destaca", () => {
+  it("el bloque de datos va en mono, en UNA columna, y el total en negrita", () => {
+    // Una tabla de dos columnas con align="right" se descuadra en cuanto el
+    // cliente cambia la fuente monoespaciada, y en 320 px la etiqueta y el
+    // valor se pegan. El punto medio no depende de ninguna geometría.
     const html = envolverEmail({
       ...BASE,
       datos: [
@@ -107,11 +110,39 @@ describe("plantilla de correo · lo que hace que llegue entero", () => {
       ],
     });
     expect(html).toContain("monospace");
-    // La fila destacada lleva regla de 2 px y peso; la normal, no.
-    expect(html).toContain("border-top:2px solid");
-    expect(html).toContain("font-weight:700");
+    expect(html).toContain("Entregas · 285");
+    expect(html).toContain("<strong>Total neto · $ 864.100</strong>");
+    expect(html).not.toContain('align="right"');
   });
 
+  it("la marca va en su propia banda, a tamaño de titular", () => {
+    // La regla 2 de B7: el nombre en texto es la versión canónica y va a
+    // tamaño de titular, porque no hay logo que poner. Una etiqueta de 13 px
+    // en versalitas grises —lo que había antes— la degrada a rótulo.
+    const html = envolverEmail(BASE);
+    expect(html).toMatch(/font-size:18px[^<]*font-weight:700[^<]*>Andes Express</);
+    // Y la separa del cuerpo una regla de 2 px en negro de marca.
+    expect(html).toContain("border-bottom:2px solid #0B1114");
+  });
+
+  it("el cuerpo usa el gris de IMPRESIÓN, no el de pantalla", () => {
+    // Un correo se parece más a un impreso que a una pantalla: no controlamos
+    // el brillo ni el cliente, y se lee en la calle. #3E4D53 es 7,4:1.
+    expect(envolverEmail(BASE)).toContain("color:#3E4D53");
+  });
+
+  it("«Despacho gestionado con Rutax» solo cuando NO firmamos nosotros", () => {
+    // Con la marca en Rutax esa línea diría dos veces lo mismo, y en un correo
+    // de folios o morosidad sonaría a que le presentamos un proveedor ajeno.
+    expect(envolverEmail(BASE)).toContain("Despacho gestionado con");
+    expect(envolverEmail({ ...BASE, marca: "Rutax" })).not.toContain(
+      "Despacho gestionado con",
+    );
+    // Y no se escapa por la caja: da igual cómo venga escrito.
+    expect(envolverEmail({ ...BASE, marca: "  rutax " })).not.toContain(
+      "Despacho gestionado con",
+    );
+  });
   it("el pie dice por qué lo recibe, y no es opcional", () => {
     expect(envolverEmail(BASE)).toContain("Recibes esto porque");
   });

@@ -181,9 +181,33 @@ La forma correcta, usada en las tres plantillas de esta carpeta:
 
 **Las tres plantillas siguen el molde del bloque de correos, y el molde es
 código.** Vive en `src/lib/email/plantilla-email.ts` y es lo que usan los
-veinte y tantos correos que salen por Resend. Sus siete regiones son: marca ·
-titular con el hecho · párrafo de contexto · bloque de datos en mono · un botón
-· enlace de respaldo en texto · pie con el porqué.
+veinte y tantos correos que salen por Resend.
+
+Su anatomía son **tres bandas, no una caja con márgenes** — la misma ficha por
+secciones que la tarjeta de seguimiento público de B7:
+
+```
+┌──────────────────────────────────┐
+│ Rutax                    18/700  │  1 · marca
+├══════════════════════════════════┤  ← regla de 2 px, negro de marca
+│ Un titular que dice el hecho     │  2 · cuerpo — titular 19/600
+│ Un párrafo de contexto…          │      contexto 14 · gris de impresión
+│ ┌──────────────────────────────┐ │
+│ │ TU PEDIDO                    │ │      caja de datos: rótulo en
+│ │ Código · RX-7K2M-9PQR        │ │      versalitas mono + líneas en mono
+│ └──────────────────────────────┘ │
+│ [ Una sola acción ]              │      botón de teal de relleno
+│ Si el botón no funciona…         │      enlace de respaldo, en mono
+├──────────────────────────────────┤
+│ Recibes esto porque…             │  3 · pie, 11 px, fondo tenue
+└──────────────────────────────────┘
+```
+
+⚠️ **La marca va en su propia banda y a tamaño de titular** (18 px, 700, en
+negro de marca). Es la regla 2 de B7: el nombre en texto es la versión
+canónica —no hay logo que poner— y por eso ocupa el lugar que ocuparía un
+logo, no el de una etiqueta administrativa. Una versión anterior la ponía como
+un rótulo de 13 px en versalitas grises dentro de la celda del cuerpo.
 
 ⚠️ **Acá el molde va transcrito a mano, porque Supabase no ejecuta nuestro
 código**: el panel solo acepta HTML pegado. Si el molde cambia, estas tres
@@ -192,6 +216,11 @@ Supabase y no nosotros — y es la razón de que solo sean tres.
 
 Lo que fija el molde, y por qué:
 
+- **El cuerpo usa el gris de IMPRESIÓN (`#3E4D53`, 7,4:1), no el de pantalla.**
+  `rx-tokens.css` lo define solo dentro de `@media print` y lo llama «único
+  gris de texto impreso». Un correo se parece más a un impreso que a una
+  pantalla: no controlamos el brillo, ni el cliente, ni si se lee en la calle a
+  mediodía. El gris de pantalla (6,2:1) queda para el pie.
 - **Blanco puro y negro de marca, jamás casi-blanco ni casi-negro.** Los
   clientes de correo invierten los colores por su cuenta en modo oscuro y **no
   se puede impedir**. Un `#F1F6F6` invertido queda gris sucio y un `#0B1114`
