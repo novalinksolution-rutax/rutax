@@ -236,6 +236,53 @@ html:root {
 }
 
 /* =============================================================================
+ * El autorrelleno del navegador, devuelto al sistema de diseño
+ * -----------------------------------------------------------------------------
+ * 🔴 **Un campo autorrellenado NO usa el color que le pusimos.** El navegador lo
+ * pinta con el suyo, y cada uno elige distinto: Chrome un amarillo pálido, Opera
+ * un lavanda, Safari otro. Es la razón por la que la misma pantalla se ve
+ * distinta en dos navegadores **sin que nada esté roto** — y pasa en toda
+ * pantalla con formulario, no solo en la de entrar.
+ *
+ * En el tema oscuro es peor que feo: el fondo claro que impone el navegador
+ * queda con nuestro texto claro encima, y el campo se vuelve ilegible.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ POR QUÉ CON `box-shadow` Y NO CON `background-color`
+ * -----------------------------------------------------------------------------
+ * Porque **`background-color` no se puede sobrescribir**: el navegador pinta ese
+ * fondo en una capa propia que la cascada no alcanza. La sombra interior sí se
+ * dibuja encima, y es el único recurso que funciona en los tres motores.
+ * `-webkit-text-fill-color` hace lo mismo con el texto, que también se fuerza.
+ *
+ * El `1000px` no es un número mágico con sentido: es «más grande que cualquier
+ * campo», para que la sombra cubra la caja entera sea cual sea su alto.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ Y POR QUÉ EL COLOR ES UNA VARIABLE Y NO UN TOKEN FIJO
+ * -----------------------------------------------------------------------------
+ * Porque el campo es transparente y **lo que se ve detrás depende de dónde
+ * esté**. En claro, el fondo de página es `#F1F6F6` y el de una tarjeta es
+ * blanco: con un valor fijo, un campo autorrellenado dentro de una tarjeta
+ * dibujaría un rectángulo gris sobre el blanco — cambiar un fondo por otro
+ * equivocado, en vez de arreglar nada.
+ *
+ * Así que el valor por omisión es el fondo de página, y **cada superficie que no
+ * sea ésa declara el suyo** (`Card` ya lo hace). Es una línea por superficie y
+ * evita que esto haya que recordarlo campo por campo.
+ * ========================================================================== */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  box-shadow: 0 0 0 1000px var(--rx-relleno-campo, var(--color-bg)) inset;
+  -webkit-text-fill-color: var(--color-fg);
+  /* El cursor también se hereda del navegador si no se dice nada. */
+  caret-color: var(--color-fg);
+}
+
+/* =============================================================================
  * La lista atenuada tras la vista previa
  * -----------------------------------------------------------------------------
  * ⚠️ **Existe porque `opacity-55` NO EMITE NADA.** No está en la escala de
