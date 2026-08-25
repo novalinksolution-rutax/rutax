@@ -54,6 +54,11 @@ import { jobGeocodificarPedido } from "@/modules/integraciones/geocoding/jobs/ge
 
 // Jobs de notificaciones
 import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaciones/conexion-caida";
+// Envío por WhatsApp. Vive en un job y no en el request que lo dispara por dos
+// razones: el backoff ante un 429 de Meta lo pone Inngest gratis, y un aviso
+// caído no puede tumbar la operación que lo generó (un retiro ya cerrado no se
+// deshace porque la Cloud API esté caída).
+import { jobEnviarWhatsApp } from "@/modules/integraciones/notificaciones/whatsapp/jobs/enviar-whatsapp";
 
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
@@ -147,6 +152,7 @@ const funciones = [
   // Jobs de geocoding (F4)
   jobGeocodificarPedido,
   jobNotificacionConexionCaida,
+  jobEnviarWhatsApp,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
   jobPurgarEvidencias,

@@ -835,3 +835,48 @@ export interface EventoPedidoEstadoTerminal {
 // Límite del módulo: `operacion` y `dinero` NO consumen eventos de `contexto`.
 // La capa de anticipación depende del núcleo operativo, nunca al revés.
 // =============================================================================
+
+// =============================================================================
+// `notificaciones` — avisos salientes por WhatsApp.
+// =============================================================================
+
+/**
+ * Publicado por `POST /api/whatsapp/send` (y, más adelante, por los puntos de
+ * la operación que quieran avisar: el cierre de una sesión de retiro, la
+ * confirmación de un manifiesto). Consumido por
+ * `integraciones/notificaciones/whatsapp/jobs/enviar-whatsapp.ts`.
+ *
+ * POR QUÉ HAY UN EVENTO Y NO UNA LLAMADA DIRECTA: mandar un WhatsApp implica
+ * hablar con Meta, y eso ni puede correr dentro del request del usuario (la
+ * regla del proyecto: los procesos pesados son jobs idempotentes con
+ * reintentos) ni puede tumbar la operación que lo disparó — un retiro que ya se
+ * cerró no se deshace porque la Cloud API esté caída. El evento es lo que
+ * separa las dos cosas, y de paso trae el backoff de Inngest sin construirlo.
+ *
+ * EL EMISOR NO VIAJA EN EL EVENTO. El número es UNO solo, el de Rutax (1:N), y
+ * lo resuelve `fabrica-whatsapp.ts` desde el entorno. `tenantId` dice a qué
+ * courier pertenecen los DESTINATARIOS, no desde qué número se manda.
+ */
+export interface EventoWhatsAppSolicitado {
+  name: 'notificaciones/whatsapp.solicitado';
+  data: {
+    /** El courier dueño de los contactos destinatarios. */
+    tenantId: string;
+    /** Clave del catálogo de plantillas (`catalogo-plantillas.ts`). */
+    claveEvento: string;
+    /**
+     * El hecho concreto que originó el aviso (id de la sesión de retiro, del
+     * manifiesto, del pedido). Es la mitad variable de la llave de
+     * idempotencia: sin esto, dos retiros del mismo día se tomarían por el
+     * mismo aviso y el segundo no saldría nunca.
+     */
+    referencia: string;
+    /** A quién, cuando la plantilla va dirigida a un seller o a una bodega. */
+    destino?: {
+      sellerId?: string | null;
+      bodegaId?: string | null;
+    };
+    /** Variables del cuerpo EN ORDEN. Debe calzar con el catálogo. */
+    variables: string[];
+  };
+}
