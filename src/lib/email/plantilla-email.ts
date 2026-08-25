@@ -78,8 +78,15 @@ const C = {
   textoTenue: "#4C5F65", // --rx-fg-muted · 6,2:1
   linea: "#C6D6D8", // --rx-line
   lineaTenue: "#DCE7E8", // --rx-line-subtle
-  acento: "#007D69", // --rx-accent-text · el teal cuando es texto o fondo de botón
-  sobreAcento: "#FFFFFF",
+  // ⚠️ **Dos teales, y no son intercambiables.** El ADN los separa en
+  // `rx-tokens.css`: `--rx-accent` sirve para RELLENO, borde y glifo y **nunca
+  // para texto en tema claro**; `--rx-accent-text` es el que sí se lee como
+  // texto. Una versión anterior de este archivo usaba el de texto como fondo
+  // del botón, con blanco encima — llegaba más apagado que el botón real del
+  // producto y contradecía la lámina de la plantilla base.
+  acentoTexto: "#007D69", // --rx-accent-text · el enlace de respaldo
+  acentoRelleno: "#00B89A", // --rx-accent · el fondo del botón
+  sobreAcento: "#04231E", // --rx-fg-on-accent · 6,6:1 sobre el relleno
   datosFondo: "#F1F6F6", // --rx-bg
 } as const;
 
@@ -146,8 +153,8 @@ function fila(f: FilaDatosEmail): string {
  */
 export function envolverEmail(args: ArgsPlantillaEmail): string {
   const boton = args.accion
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0">` +
-      `<tr><td bgcolor="${C.acento}" style="background-color:${C.acento};border-radius:3px">` +
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rx-btn" style="margin:24px 0">` +
+      `<tr><td bgcolor="${C.acentoRelleno}" style="background-color:${C.acentoRelleno};border-radius:3px">` +
       // 44 px de alto: es el mínimo táctil, y este correo se abre en la calle.
       `<a href="${esc(args.accion.url)}" style="display:block;padding:13px 24px;font-family:${FUENTE};` +
       `font-size:15px;font-weight:600;color:${C.sobreAcento};text-decoration:none">` +
@@ -155,7 +162,7 @@ export function envolverEmail(args: ArgsPlantillaEmail): string {
       `</td></tr></table>` +
       `<p style="margin:0 0 16px;font-family:${FUENTE};font-size:13px;line-height:1.5;color:${C.textoTenue}">` +
       `Si el botón no funciona, copia y pega esta dirección:<br>` +
-      `<a href="${esc(args.accion.url)}" style="color:${C.acento};word-break:break-all">${esc(args.accion.url)}</a>` +
+      `<a href="${esc(args.accion.url)}" style="color:${C.acentoTexto};word-break:break-all">${esc(args.accion.url)}</a>` +
       `</p>`
     : "";
 
@@ -180,8 +187,11 @@ export function envolverEmail(args: ArgsPlantillaEmail): string {
     `<title>${esc(args.titular)}</title>` +
     // La media query es lo ÚNICO que va en `<style>`: si el cliente la descarta,
     // queda la tabla de 600 px, que ya funciona. Nada crítico depende de acá.
+    // El botón pasa a ancho completo bajo 480, como pide la lámina de la
+    // plantilla base: en el teléfono un botón angosto obliga a apuntar.
     `<style>@media (max-width:480px){.rx-col{width:100%!important}` +
-    `.rx-pad{padding:20px 16px!important}}</style>` +
+    `.rx-pad{padding:20px 16px!important}` +
+    `.rx-btn{width:100%!important}.rx-btn a{text-align:center!important}}</style>` +
     `</head>` +
     `<body style="margin:0;padding:0;background-color:${C.fondo}">` +
     preencabezado +

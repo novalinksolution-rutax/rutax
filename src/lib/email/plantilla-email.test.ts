@@ -54,8 +54,24 @@ describe("plantilla de correo · lo que hace que llegue entero", () => {
       ...BASE,
       accion: { etiqueta: "Ver el detalle", url: "https://rutax.io/x" },
     });
-    expect(html).toContain('bgcolor="#007D69"');
-    expect(html).toContain("background-color:#007D69");
+    expect(html).toContain('bgcolor="#00B89A"');
+    expect(html).toContain("background-color:#00B89A");
+  });
+
+  it("el botón se RELLENA con --rx-accent, no con --rx-accent-text", () => {
+    // Los dos teales existen a propósito y el ADN los separa: `--rx-accent`
+    // (#00B89A) es relleno/borde/glifo y `--rx-accent-text` (#007D69) es el
+    // que se lee como texto. Esta plantilla los tenía cruzados — el botón
+    // salía con el teal de texto y blanco encima, más apagado que el botón
+    // real del producto y distinto de la lámina de la plantilla base.
+    const html = envolverEmail({
+      ...BASE,
+      accion: { etiqueta: "Ver el detalle", url: "https://rutax.io/x" },
+    });
+    // El relleno lleva el texto oscuro de `--rx-fg-on-accent`, no blanco.
+    expect(html).toMatch(/background-color:#00B89A[\s\S]{0,220}color:#04231E/);
+    // Y el teal de texto sigue siendo el del enlace de respaldo.
+    expect(html).toContain("color:#007D69");
   });
 
   it("el enlace de respaldo va aunque haya botón", () => {

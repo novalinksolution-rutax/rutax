@@ -4,13 +4,13 @@
   Rutax — El código para entrar a la app del conductor
   (Supabase Auth · plantilla "Magic Link")
   =============================================================================
-  COPIA CANÓNICA versionada. Supabase NO lee este archivo en el proyecto hosted:
-  hay que pegar su contenido en el panel (Authentication → Email Templates →
-  Magic Link). Ver supabase/templates/README.md.
+  COPIA CANÓNICA versionada. Supabase NO lee este archivo en el proyecto
+  hosted: hay que pegar su contenido en el panel (Authentication → Email
+  Templates → Magic Link). Ver supabase/templates/README.md.
 
   QUÉ CAMBIÓ, Y POR QUÉ
   -----------------------------------------------------------------------------
-  Hasta hoy esta plantilla no la disparaba nadie y era un ENLACE («Iniciar
+  Hasta hace poco esta plantilla no la disparaba nadie y era un ENLACE («Iniciar
   sesión»). Ahora sí tiene un consumidor, y uno solo: **la app del conductor**,
   que desde el bloque B5b entra sin contraseña con un código de 6 dígitos
   (regla 81).
@@ -32,16 +32,32 @@
   cada plantilla). No agregues el botón «por si acaso» — volvería a mandar
   conductores a `/onboarding`.
 
-  Los colores son los del sistema nuevo, transcritos de
-  `src/lib/email/plantilla-email.ts`. El navy #2a3ca0 era el ADN anterior.
+  ESTA PLANTILLA SIGUE EL MOLDE, Y EL MOLDE ES CÓDIGO
+  -----------------------------------------------------------------------------
+  Las regiones y los colores están implementados en
+  `src/lib/email/plantilla-email.ts`, que es lo que usan los veinte y tantos
+  correos que salen por Resend. Acá van transcritos a mano **porque Supabase no
+  ejecuta nuestro código**: el panel solo acepta HTML pegado.
+
+  ⚠️ Si cambia el molde, esta transcripción NO se entera. Es el precio de que
+  estos tres correos los mande Supabase y no nosotros.
+
+  **La región del botón se cambia por la del código**, y es el único correo del
+  producto que lo hace: acá el código ES la acción, y por eso ocupa el sitio
+  donde el molde pone el bloque de datos en mono — «lo que se mira primero».
+  No hay enlace de respaldo porque no hay enlace del que respaldarse.
 -->
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="x-apple-disable-message-reformatting" />
     <meta name="color-scheme" content="light" />
     <meta name="supported-color-schemes" content="light" />
     <title>Tu código para entrar</title>
+    <!-- La media query es lo ÚNICO que va en <style>: si el cliente la
+         descarta, queda la tabla de 600 px, que ya funciona. -->
+    <style>@media (max-width:480px){.rx-col{width:100%!important}.rx-pad{padding:20px 16px!important}.rx-btn{width:100%!important}.rx-btn a{text-align:center!important}}</style>
     <!--[if mso]>
     <noscript>
       <xml>
@@ -53,61 +69,66 @@
     <![endif]-->
   </head>
   <body style="margin:0; padding:0; background-color:#E6EEEF;">
-    <!-- Preheader. ⚠️ NO lleva el código: se ve en la bandeja sin abrir el correo,
-         y en la pantalla de bloqueo del teléfono. -->
-    <span style="display:none; font-size:1px; color:#E6EEEF; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
+    <!-- Preencabezado. ⚠️ NO lleva el código: se ve en la bandeja sin abrir el
+         correo, y en la pantalla de bloqueo del teléfono. -->
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
       Tu código para entrar a la app. Dura 10 minutos.
-    </span>
+    </div>
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#E6EEEF;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#E6EEEF;">
       <tr>
-        <td align="center" style="padding:32px 16px;">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
-            <!-- Encabezado. **Regla 61: ningún correo depende de una imagen** —
-                 el nombre va en texto, no en un logo que el cliente de correo
-                 bloquea por defecto. -->
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="rx-col" style="width:600px; max-width:600px; background-color:#FFFFFF; border:1px solid #C6D6D8;">
             <tr>
-              <td style="background-color:#FFFFFF; border:1px solid #C6D6D8; border-bottom:0; padding:24px 40px 0 40px; font-family:Arial, Helvetica, sans-serif;">
-                <span style="font-size:13px; font-weight:bold; color:#4C5F65; letter-spacing:2px;">RUTAX</span>
-              </td>
-            </tr>
+              <td class="rx-pad" style="padding:28px 32px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
 
-            <!-- Cuerpo -->
-            <tr>
-              <td style="background-color:#FFFFFF; border:1px solid #C6D6D8; border-top:0; padding:24px 40px 40px 40px; font-family:Arial, Helvetica, sans-serif; color:#0B1114;">
-                <h1 style="margin:0 0 8px 0; font-size:20px; line-height:28px; font-weight:bold; color:#0B1114;">
+                <!-- 1 · Marca. Va como TEXTO (regla 61): la mayoría de los
+                     clientes bloquea imágenes por defecto, y un correo cuya
+                     identidad es un logo bloqueado llega anónimo. -->
+                <p style="margin:0 0 20px 0; font-size:13px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:#4C5F65;">
+                  Rutax
+                </p>
+
+                <!-- 2 · Titular con el hecho. -->
+                <h1 style="margin:0 0 12px 0; font-size:21px; line-height:1.3; font-weight:700; color:#0B1114;">
                   Tu código para entrar
                 </h1>
 
-                <p style="margin:0 0 24px 0; font-size:15px; line-height:23px; color:#4C5F65;">
+                <!-- 3 · Contexto. -->
+                <p style="margin:0; font-size:15px; line-height:1.55; color:#0B1114;">
                   Escríbelo en la app para abrir tu ruta.
                 </p>
 
-                <!-- El código. Grande, monoespaciado y con aire entre cifras:
-                     se lee de un vistazo y se puede dictar por teléfono sin
-                     confundir un 0 con una O. -->
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px 0;">
+                <!-- 4 · El código, en el sitio del bloque de datos. Grande,
+                     monoespaciado y con aire entre cifras: se lee de un vistazo
+                     y se puede dictar por teléfono sin confundir un 0 con una
+                     O. -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
                   <tr>
-                    <td align="center" style="background-color:#F1F6F6; border:1px solid #DCE7E8; padding:20px 32px;">
-                      <span style="font-family:'Courier New', Courier, monospace; font-size:34px; font-weight:bold; letter-spacing:10px; color:#0B1114;">{{ .Token }}</span>
+                    <td align="center" style="background-color:#F1F6F6; border:1px solid #DCE7E8; padding:20px 24px;">
+                      <span style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,'Courier New',monospace; font-size:34px; font-weight:700; letter-spacing:10px; color:#0B1114;">{{ .Token }}</span>
                     </td>
                   </tr>
                 </table>
 
-                <p style="margin:0 0 16px 0; font-size:14px; line-height:21px; color:#0B1114;">
+                <p style="margin:0 0 16px 0; font-size:14px; line-height:1.5; color:#0B1114;">
                   Dura <strong>10 minutos</strong>. Si te llegan varios, usa el último.
                 </p>
 
-                <p style="margin:0; font-size:13px; line-height:20px; color:#4C5F65;">
+                <p style="margin:0; font-size:13px; line-height:1.5; color:#4C5F65;">
                   Si no fuiste tú quien lo pidió, ignora este correo: sin el código nadie entra a tu cuenta.
                 </p>
+
               </td>
             </tr>
 
-            <!-- Pie -->
+            <!-- 7 · Pie: por qué lo recibe. El molde pide además cómo dejar de
+                 recibirlo, y acá NO va: este correo solo llega cuando tú pides
+                 entrar, y es la única forma de abrir la app. No hay de qué
+                 darse de baja. -->
             <tr>
-              <td align="center" style="padding:24px 40px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#4C5F65;">
-                Este es un mensaje automático de Rutax — no respondas a este correo.
+              <td class="rx-pad" style="padding:16px 32px 24px 32px; border-top:1px solid #DCE7E8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; font-size:12px; line-height:1.5; color:#4C5F65;">
+                Recibes esto porque alguien pidió entrar a la app con este correo. Es un mensaje automático: no respondas a este correo.
               </td>
             </tr>
           </table>

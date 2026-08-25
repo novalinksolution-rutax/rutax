@@ -90,7 +90,7 @@ export function FormularioRecuperar() {
         <p className="mt-2 text-sm leading-relaxed text-fg-muted">
           {/* El «Si» inicial es la pieza de seguridad de esta pantalla. */}
           Si <span className="font-medium text-fg">{email}</span> tiene cuenta en Rutax, ya te
-          llegó un enlace. Dura una hora.
+          llegó un enlace. Dura diez minutos.
         </p>
 
         <div className="mt-5 border border-balanced-line bg-balanced-bg px-3 py-2 text-sm text-balanced-fg">

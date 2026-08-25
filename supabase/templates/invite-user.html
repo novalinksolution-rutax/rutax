@@ -3,30 +3,65 @@
 <!--
   Rutax — Activación de cuenta de courier (Supabase Auth · plantilla "Invite user")
   =============================================================================
-  COPIA CANÓNICA versionada. Supabase NO lee este archivo: hay que pegar su
-  contenido en el panel (Authentication → Email Templates → Invite user).
-  Ver supabase/templates/README.md para el paso a paso, el asunto sugerido, la
-  URL exacta, la nota sobre por qué no se usa el RedirectTo de Supabase como
-  `next`, y contra qué se verificó cada afirmación. Deliberadamente NO se
-  repite aquí la sintaxis de variables de Supabase: ese motor de plantillas
-  evalúa esas variables donde sea que aparezcan en el documento, así que solo
-  deben escribirse una vez, en el cuerpo real del correo más abajo.
+  COPIA CANÓNICA versionada. Supabase NO lee este archivo en el proyecto
+  hosted: hay que pegar su contenido en el panel (Authentication → Email
+  Templates → Invite user). Ver supabase/templates/README.md para el paso a
+  paso, el asunto, la URL exacta, la nota sobre por qué no se usa el RedirectTo
+  de Supabase como `next`, y contra qué se verificó cada afirmación.
+  Deliberadamente NO se repite aquí arriba la sintaxis de variables de
+  Supabase: ese motor las evalúa donde sea que aparezcan en el documento, así
+  que solo deben escribirse una vez, en el cuerpo real del correo.
 
-  OJO — esto NO es el correo de "invitación de equipo/seller/conductor" que
+  OJO — esto NO es el correo de «invitación de equipo/seller/conductor» que
   vive en código (`src/modules/identidad/notificaciones-invitacion.ts`, vía
   Resend). Es un mecanismo DISTINTO: Supabase Auth (`auth.admin
   .inviteUserByEmail`) lo dispara cuando se da de alta un courier nuevo
   (`crearTenantConDueno`, Pantalla A→B→C, RF-006) — ver
   `src/modules/identidad/onboarding.ts` y `src/app/registro/actions.ts`
-  (incluye el reenvío de "¿no te llegó?").
+  (incluye el reenvío de «¿no te llegó?»).
+
+  ESTA PLANTILLA SIGUE EL MOLDE, Y EL MOLDE ES CÓDIGO
+  -----------------------------------------------------------------------------
+  Las siete regiones —marca, titular con el hecho, párrafo de contexto, bloque
+  de datos en mono, un botón, enlace de respaldo, pie con el porqué— y sus
+  colores están implementadas en `src/lib/email/plantilla-email.ts`, que es lo
+  que usan los veinte y tantos correos que salen por Resend. Acá van
+  transcritas a mano **porque Supabase no ejecuta nuestro código**: el panel
+  solo acepta HTML pegado.
+
+  ⚠️ Si cambia el molde, esta transcripción NO se entera. Es el precio de que
+  estos tres correos los mande Supabase y no nosotros.
+
+  Este correo no lleva bloque de datos: no hay ninguna cifra que mirar. Esa
+  región es opcional en el molde; las otras seis, no.
+
+  QUÉ CAMBIÓ RESPECTO DE LA VERSIÓN ANTERIOR
+  -----------------------------------------------------------------------------
+  · **El ADN.** Estaba en navy #2a3ca0 sobre lavanda #f5f5fa, con esquinas de
+    12 px y la marca en blanco sobre una banda de color. Nada de eso existe ya
+    en el producto. Ahora es la tarjeta blanca con borde, el teal de RELLENO en
+    el botón (#00B89A con texto #04231E — o sea `--rx-accent` y
+    `--rx-fg-on-accent`, NO el teal de texto) y las esquinas de 3 px
+    (`--rx-radius-ctrl`).
+  · **Se fue el «Hola,» suelto.** El molde no tiene región de saludo: va marca,
+    titular con el hecho, y párrafo de contexto. El nombre no se pierde — se
+    dobla dentro del párrafo, que es donde hace trabajo.
+  · **El botón dice «Crear mi contraseña»** y no «Activar mi cuenta», porque es
+    exactamente lo que pide la pantalla que abre (`/activar-cuenta` se titula
+    «Define tu contraseña»). Un botón que promete otra cosa que la pantalla de
+    destino se lee como un error aunque funcione.
 -->
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="x-apple-disable-message-reformatting" />
     <meta name="color-scheme" content="light" />
     <meta name="supported-color-schemes" content="light" />
     <title>Activa tu cuenta de Rutax</title>
+    <!-- La media query es lo ÚNICO que va en <style>: si el cliente la
+         descarta, queda la tabla de 600 px, que ya funciona. -->
+    <style>@media (max-width:480px){.rx-col{width:100%!important}.rx-pad{padding:20px 16px!important}.rx-btn{width:100%!important}.rx-btn a{text-align:center!important}}</style>
     <!--[if mso]>
     <noscript>
       <xml>
@@ -37,70 +72,84 @@
     </noscript>
     <![endif]-->
   </head>
-  <body style="margin:0; padding:0; background-color:#f5f5fa;">
-    <!-- Preheader (texto de previsualización en la bandeja de entrada; oculto en el cuerpo). -->
-    <span style="display:none; font-size:1px; color:#f5f5fa; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
-      Tu cuenta de courier en Rutax está lista para activarse. El enlace vence en 7 días.
-    </span>
+  <body style="margin:0; padding:0; background-color:#E6EEEF;">
+    <!-- Preencabezado: lo que se ve en la bandeja junto al asunto. Sin esto, el
+         cliente toma la primera línea del cuerpo. -->
+    <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
+      Tu cuenta de courier ya está creada. El enlace vence en 7 días.
+    </div>
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5fa;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#E6EEEF;">
       <tr>
-        <td align="center" style="padding:32px 16px;">
-          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
-            <!-- Encabezado de marca -->
+        <td align="center" style="padding:24px 12px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" class="rx-col" style="width:600px; max-width:600px; background-color:#FFFFFF; border:1px solid #C6D6D8;">
             <tr>
-              <td align="center" style="background-color:#2a3ca0; border-radius:12px 12px 0 0; padding:28px 40px;">
-                <span style="font-family:Arial, Helvetica, sans-serif; font-size:22px; font-weight:bold; color:#ffffff; letter-spacing:0.5px;">Rutax</span>
-              </td>
-            </tr>
+              <td class="rx-pad" style="padding:28px 32px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
 
-            <!-- Cuerpo -->
-            <tr>
-              <td style="background-color:#ffffff; border-radius:0 0 12px 12px; padding:40px; font-family:Arial, Helvetica, sans-serif; color:#172131;">
-                <h1 style="margin:0 0 16px 0; font-size:20px; line-height:28px; font-weight:bold; color:#172131;">
+                <!-- 1 · Marca. Va como TEXTO: la mayoría de los clientes
+                     bloquea imágenes por defecto, y un correo cuya identidad es
+                     un logo bloqueado llega anónimo. Acá firma Rutax y no el
+                     courier: nosotros somos la contraparte, porque es la cuenta
+                     del courier EN Rutax. -->
+                <p style="margin:0 0 20px 0; font-size:13px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:#4C5F65;">
+                  Rutax
+                </p>
+
+                <!-- 2 · Titular con el hecho. -->
+                <h1 style="margin:0 0 12px 0; font-size:21px; line-height:1.3; font-weight:700; color:#0B1114;">
                   Activa tu cuenta de Rutax
                 </h1>
 
-                <p style="margin:0 0 16px 0; font-size:15px; line-height:23px; color:#172131;">
-                  {{ if .Data.nombre_completo }}Hola, {{ .Data.nombre_completo }}.{{ else }}Hola,{{ end }}
+                <!-- 3 · Contexto. Cuerpo 15: nunca menos de 14, se lee en la
+                     calle. El nombre va dentro del párrafo, no en un saludo
+                     suelto: si Supabase no trae el dato, la frase sigue
+                     entera. -->
+                <p style="margin:0; font-size:15px; line-height:1.55; color:#0B1114;">
+                  {{ if .Data.nombre_completo }}{{ .Data.nombre_completo }}, tu{{ else }}Tu{{ end }} cuenta de courier ya está creada. Define tu contraseña y quedas dentro; desde ahí configuras tu operación.
                 </p>
 
-                <p style="margin:0 0 16px 0; font-size:15px; line-height:23px; color:#172131;">
-                  Tu cuenta de courier en Rutax ya está creada. Para empezar a operar, actívala y crea tu contraseña.
-                </p>
-
-                <!-- Botón (patrón "bulletproof": tabla + celda con fondo, no depende de CSS moderno) -->
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px 0;">
+                <!-- 5 · Un botón, y uno solo. El fondo se declara DOS veces
+                     —en el bgcolor de la celda y en el style— porque si el
+                     cliente descarta uno queda el otro, y un botón sin fondo es
+                     texto oscuro sobre blanco. Es una celda con padding y no un
+                     <a> con display:inline-block, que Outlook ignora. -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="rx-btn" style="margin:24px 0;">
                   <tr>
-                    <td align="center" style="border-radius:8px; background-color:#2a3ca0;">
+                    <td bgcolor="#00B89A" style="background-color:#00B89A; border-radius:3px;">
                       <a
                         href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/activar-cuenta"
                         target="_blank"
-                        style="display:inline-block; padding:14px 28px; font-family:Arial, Helvetica, sans-serif; font-size:16px; font-weight:bold; color:#ffffff; text-decoration:none; border-radius:8px;"
+                        style="display:block; padding:13px 24px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; color:#04231E; text-decoration:none;"
                       >
-                        Activar mi cuenta
+                        Crear mi contraseña
                       </a>
                     </td>
                   </tr>
                 </table>
 
-                <p style="margin:0 0 8px 0; font-size:13px; line-height:20px; color:#606a78;">
-                  Si el botón no funciona, copia y pega esta dirección en tu navegador:
-                </p>
-                <p style="margin:0 0 24px 0; font-size:13px; line-height:20px; color:#2a3ca0; word-break:break-all;">
-                  {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/activar-cuenta
+                <!-- 6 · Enlace de respaldo. Va siempre, aunque haya botón: es
+                     lo único que queda cuando el cliente degrada. -->
+                <p style="margin:0 0 16px 0; font-size:13px; line-height:1.5; color:#4C5F65;">
+                  Si el botón no funciona, copia y pega esta dirección:<br />
+                  <a
+                    href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/activar-cuenta"
+                    style="color:#007D69; word-break:break-all;"
+                  >{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/activar-cuenta</a>
                 </p>
 
-                <p style="margin:0; font-size:13px; line-height:20px; color:#606a78;">
-                  Este enlace vence en 7 días. Si no creaste esta cuenta, puedes ignorar este correo.
+                <p style="margin:0; font-size:13px; line-height:1.5; color:#4C5F65;">
+                  El enlace vence en 7 días. Si no creaste esta cuenta, ignora este correo.
                 </p>
+
               </td>
             </tr>
 
-            <!-- Pie -->
+            <!-- 7 · Pie: por qué lo recibe. El molde pide además cómo dejar de
+                 recibirlo, y acá NO va: es el único correo que abre la cuenta,
+                 y llega una sola vez. No hay de qué darse de baja. -->
             <tr>
-              <td align="center" style="padding:24px 40px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#606a78;">
-                Este es un mensaje automático de Rutax — no respondas a este correo.
+              <td class="rx-pad" style="padding:16px 32px 24px 32px; border-top:1px solid #DCE7E8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; font-size:12px; line-height:1.5; color:#4C5F65;">
+                Recibes esto porque se dio de alta un courier en Rutax con este correo. Es un mensaje automático: no respondas a este correo.
               </td>
             </tr>
           </table>

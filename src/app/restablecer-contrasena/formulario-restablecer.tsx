@@ -88,7 +88,7 @@ export function FormularioRestablecer({
       <div className="w-full max-w-[400px]">
         <h1 className="font-heading text-2xl font-semibold text-fg">Este enlace ya no sirve</h1>
         <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-          Los enlaces duran una hora, y solo se pueden usar una vez. Pide otro y te llega al tiro.
+          Los enlaces duran diez minutos, y solo se pueden usar una vez. Pide otro y te llega al tiro.
         </p>
 
         {/* Atención, no falla: no se rompió nada, solo pasó el tiempo. */}

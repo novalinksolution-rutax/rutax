@@ -52,7 +52,7 @@ export async function restablecerContrasena(
       ok: false,
       tipo: "sin_sesion",
       mensaje:
-        "Este enlace ya no es válido. Los enlaces de recuperación vencen en 1 hora y sirven una sola vez — pide uno nuevo.",
+        "Este enlace ya no es válido. Los enlaces de recuperación vencen en diez minutos y sirven una sola vez — pide uno nuevo.",
     };
   }
 

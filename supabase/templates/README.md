@@ -111,9 +111,12 @@ La forma correcta, usada en las tres plantillas de esta carpeta:
   - `src/app/recuperar-contrasena/actions.ts` (comentario propio del código:
     *"el enlace entra por `/auth/confirm?type=recovery&next=/restablecer-contrasena`
     — el mismo puente que ya usa la activación del dueño"*).
-  - Copy de "1 hora" y "sirve una sola vez" tomado literal de
+  - Copy de "10 minutos" y "sirve una sola vez" tomado literal de
     `src/app/restablecer-contrasena/formulario-restablecer.tsx` (estado de
-    enlace inválido) — no se inventó un plazo.
+    enlace inválido) — no se inventó un plazo. **Los diez minutos son el
+    mismo `otp_expiry` que usa el código del conductor**: es un solo valor
+    para todo el proyecto, así que el correo de recuperación y la app tienen
+    que prometer lo mismo o uno de los dos miente.
 
 - **`invite-user.html`**
   ```
@@ -176,38 +179,56 @@ La forma correcta, usada en las tres plantillas de esta carpeta:
 
 ## Diseño y tono
 
-- Reconstruido a partir del diseño real ya en uso en `src/modules/identidad/
-  notificaciones-invitacion.ts` y `src/modules/plataforma/notificaciones.ts`
-  (los correos que sí salen por Resend): mismo tono (español de Chile, "tú",
-  sin jerga técnica — nunca aparecen palabras como "token" u "OTP"), mismo
-  color de botón de acción y mismo patrón de "si el botón no funciona, copia y
-  pega este enlace".
-- El navy de marca (`#2a3ca0`) es el token `--brand` vigente hoy en
-  `src/app/globals.css` (decisión de marca 2026-07-22, "confianza
-  financiera"), no el `#1e3a5f` más antiguo que quedó hardcodeado en
-  `notificaciones-invitacion.ts`. Se preferió el token vigente porque es el
-  que el usuario ve hoy en el resto de la app (botones, foco, sidebar); vale la
-  pena homologar ese archivo más adelante si se retoca el correo de
-  invitaciones de equipo.
-- Sin logo como imagen: no existe ningún logo de Rutax alojado en una URL
-  pública (el único activo de marca en el repo es `public/icon.svg`, un SVG
-  local que no se puede referenciar por URL en un correo, y los clientes de
-  correo bloquean imágenes remotas por defecto de todos modos). Se usa un
-  wordmark de texto ("Rutax", blanco/bold sobre la barra navy) — es lo mismo
-  que hacen hoy los correos de Resend (ningún `<img>` en ellos tampoco).
-- HTML de correo, no de web: todo el layout es con `<table>`, ancho fijo
-  (600px, con `max-width` para que se angoste en móvil), estilos en línea,
-  sin Tailwind, sin clases externas ni `<script>`. El botón usa el patrón
-  "bulletproof button" (tabla + celda con color de fondo) en vez de un `<a>`
-  con `border-radius` suelto, para que Outlook de escritorio (que no interpreta
-  bien el CSS de un enlace) lo siga mostrando como botón.
-- No depende de `prefers-color-scheme` ni de variables CSS: los tres correos
-  se ven bien en modo claro puro, que es el único que se garantiza. Se declaró
-  `<meta name="color-scheme" content="light">` y
-  `<meta name="supported-color-schemes" content="light">` para pedirle a los
-  clientes que sí soportan dark-mode automático (Apple Mail, Outlook.com) que
-  no le apliquen una inversión de color automática al HTML (que rompería el
-  contraste calculado a mano).
+**Las tres plantillas siguen el molde del bloque de correos, y el molde es
+código.** Vive en `src/lib/email/plantilla-email.ts` y es lo que usan los
+veinte y tantos correos que salen por Resend. Sus siete regiones son: marca ·
+titular con el hecho · párrafo de contexto · bloque de datos en mono · un botón
+· enlace de respaldo en texto · pie con el porqué.
+
+⚠️ **Acá el molde va transcrito a mano, porque Supabase no ejecuta nuestro
+código**: el panel solo acepta HTML pegado. Si el molde cambia, estas tres
+transcripciones NO se enteran. Es el precio de que estos correos los mande
+Supabase y no nosotros — y es la razón de que solo sean tres.
+
+Lo que fija el molde, y por qué:
+
+- **Blanco puro y negro de marca, jamás casi-blanco ni casi-negro.** Los
+  clientes de correo invierten los colores por su cuenta en modo oscuro y **no
+  se puede impedir**. Un `#F1F6F6` invertido queda gris sucio y un `#0B1114`
+  invertido queda gris claro: los dos ilegibles. `#FFFFFF` y `#0B1114`
+  sobreviven la inversión porque son los extremos. Los `<meta name="color-
+  scheme" content="light">` siguen puestos para pedirle a los clientes que
+  respetan la señal (Apple Mail, Outlook.com) que no inviertan — pero se pide,
+  no se exige, y por eso la paleta aguanta que no hagan caso.
+- **Dos teales, y no son intercambiables.** El botón se RELLENA con
+  `--rx-accent` (`#00B89A`) y su texto es `--rx-fg-on-accent` (`#04231E`), 6,6:1.
+  El `#007D69` de `--rx-accent-text` es solo para texto: es el color del enlace
+  de respaldo. Cruzarlos deja un botón más apagado que el del producto.
+- **El botón declara su fondo dos veces** —en el `bgcolor` de la celda y en el
+  `style`— por si el cliente descarta uno; y es una celda de tabla con
+  `padding`, no un `<a>` con `display:inline-block`, que Outlook de escritorio
+  ignora dejando un enlace sin caja.
+- **Ningún correo depende de una imagen** (regla 61). El nombre va como texto:
+  la mayoría de los clientes bloquea imágenes por defecto, y un correo cuya
+  identidad es un logo bloqueado llega anónimo.
+- **Quién firma.** El courier cuando el destinatario es su cliente (seller,
+  conductor, comprador); **Rutax cuando nosotros somos la contraparte**. Las
+  tres de acá firman Rutax: son la cuenta del courier en Rutax, la contraseña
+  de la plataforma y el acceso a la app.
+- **El enlace de respaldo va siempre**, aunque haya botón: es lo único que
+  queda cuando el cliente degrada, y es lo que se puede copiar y pegar.
+- **Móvil.** Una columna siempre; los 600 px bajan a 100% bajo 480 y el botón
+  pasa a ancho completo. La media query es lo ÚNICO que va en `<style>`: si el
+  cliente la descarta, queda la tabla de 600 px, que ya funciona.
+- **Tablas, no `div`.** Outlook usa el motor de Word: no implementa `max-width`
+  ni `flex`. La única caja que respeta es una `<table>` con `width` en
+  atributo, no en CSS. Y todo el estilo va en línea, porque Gmail descarta
+  `<style>` en muchos contextos.
+
+*Histórico: hasta el 24-08-2026 estas tres plantillas estaban en el ADN
+anterior —navy `#2a3ca0` sobre lavanda `#f5f5fa`, esquinas de 12 px y la marca
+en blanco sobre una banda de color—, que ya no existe en ninguna parte del
+producto.*
 
 ## Los dos ajustes del panel que esta plantilla necesita (además de pegarla)
 
@@ -215,10 +236,15 @@ El HTML no basta: hay dos valores que viven en otra parte del panel y que, si no
 se tocan, dejan el flujo del conductor roto **sin ningún error visible**.
 
 1. **Authentication → Providers → Email → «Email OTP Expiration» = 600.**
-   La pantalla del conductor dice, con esas palabras, «Son 6 números y duran 10
-   minutos». El default de Supabase es una hora. `supabase/config.toml` ya lo
-   fija en 600, **pero eso solo aplica al stack local**: el hosted lo ignora.
-   Si acá queda en 3600, la app miente.
+   El default de Supabase es una hora. `supabase/config.toml` ya lo fija en
+   600, **pero eso solo aplica al stack local**: el hosted lo ignora.
+
+   ⚠️ **Es UN solo valor y cuelgan de él dos promesas escritas**, en sitios que
+   no se parecen: la pantalla del conductor dice, con esas palabras, «Son 6
+   números y duran 10 minutos», y desde el 24-08-2026 también lo dicen el
+   correo de recuperación y las tres pantallas del flujo
+   (`src/app/recuperar-contrasena/`, `src/app/restablecer-contrasena/`). Si acá
+   queda en 3600, las cuatro mienten a la vez.
 
 2. **Authentication → Providers → Email → confirmar que el proveedor de correo
    sale por SMTP propio.** Con el SMTP de fábrica de Supabase el envío está
