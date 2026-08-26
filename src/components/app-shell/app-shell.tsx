@@ -48,7 +48,7 @@ import { ICONOS, type GrupoNav, type ItemNav } from "./iconos-nav"
 import { NavInferior } from "./nav-inferior"
 import { SkipLink } from "./skip-link"
 import { PaletaComando } from "./paleta-comando"
-import { MenuCuenta } from "./menu-cuenta"
+import { MenuCuenta, type EnlaceMenuCuenta } from "./menu-cuenta"
 import type { Aviso } from "@/lib/avisos/obtener-avisos"
 import { SimboloRutax } from "@/components/ui/marca-rutax"
 
@@ -135,6 +135,16 @@ interface AppShellProps {
   accionSalir?: () => void | Promise<void>
   /** Adorno junto al nombre en el menú de cuenta (p. ej. badge de rol admin). */
   adornoCuenta?: React.ReactNode
+  /**
+   * Destinos extra dentro del menú de cuenta — hoy «Mi perfil».
+   *
+   * ⚠️ **El `icono` de cada uno tiene que ser un ELEMENTO ya renderizado**
+   * (`<User className="size-4" />`), no el componente. Quien arma esta lista es
+   * un `layout.tsx` de servidor, y una función no cruza esa frontera: React
+   * tumba el render de todo lo que el layout envuelve, con typecheck y lint en
+   * verde. `EnlaceMenuCuenta` ya lo tipa como `ReactNode` por eso mismo.
+   */
+  enlacesCuenta?: EnlaceMenuCuenta[]
   /** Centro de avisos in-app (por defecto sí; admin no lo tiene). */
   mostrarAvisos?: boolean
   /** Buscador global ⌘K (por defecto sí; admin no lo usa). */
@@ -453,6 +463,7 @@ export function AppShell({
   avisos,
   accionSalir,
   adornoCuenta,
+  enlacesCuenta,
   mostrarAvisos = true,
   mostrarBusqueda = true,
   destinosMovil = [],
@@ -628,6 +639,7 @@ export function AppShell({
         nombre={nombreCompleto ?? "Cuenta"}
         subtitulo={subtituloCuenta}
         adorno={adornoCuenta}
+        enlaces={enlacesCuenta}
         accionSalir={accionSalir}
         colapsado={colapsadoLocal}
       />

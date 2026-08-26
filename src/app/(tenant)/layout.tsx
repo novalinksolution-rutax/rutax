@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { UserRound } from "lucide-react";
 import { cerrarSesion } from "@/lib/identidad/cerrar-sesion";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { createClient } from "@/lib/supabase/server";
@@ -341,6 +342,18 @@ export default async function LayoutTenant({ children }: { children: React.React
         "/configuracion/bodegas",
         "/configuracion/api",
         "/equipo",
+      ]}
+      /* ⚠️ El ícono va **ya renderizado**, no como componente: este layout es
+         de servidor y una función no cruza la frontera hacia un Client
+         Component — se lleva por delante todo lo que el layout envuelve, con
+         typecheck y lint en verde. */
+      enlacesCuenta={[
+        {
+          href: "/perfil",
+          etiqueta: "Mi perfil",
+          subtitulo: "Tus datos y tus permisos",
+          icono: <UserRound className="size-4" aria-hidden="true" />,
+        },
       ]}
       accionSalir={async () => {
         "use server";
