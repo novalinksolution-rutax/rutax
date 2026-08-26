@@ -52,6 +52,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
+import {
+  ListaAtenuable,
+  useVistaPreviaLateral,
+} from "@/components/ui/vista-previa-lateral";
+import { cn } from "@/lib/utils";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import {
   BADGE_ESTADO_LIQUIDACION,
@@ -115,6 +120,9 @@ export function TablaLiquidaciones({
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  // `null` si nadie montó el proveedor: la tabla no revienta, solo deja de
+  // previsualizar.
+  const vistaPrevia = useVistaPreviaLateral();
 
   return (
     <div className="space-y-4">
@@ -132,6 +140,9 @@ export function TablaLiquidaciones({
         }}
       />
 
+      {/* Atenuar, no tapar: con el panel abierto hay que poder seguir leyendo
+          las filas de arriba y abajo, y tocar otra tiene que cambiar el panel. */}
+      <ListaAtenuable>
       <DataTable
         toolbar={
           <span className="rx-num text-sm text-fg-muted">
@@ -158,7 +169,31 @@ export function TablaLiquidaciones({
             {filas.map((f) => {
               const ajusteNeto = f.bonoClp - f.penalizacionClp;
               return (
-                <TableRow key={f.id}>
+                <TableRow
+                  key={f.id}
+                  // La fila entera abre la vista previa. El manejador se aparta
+                  // cuando el clic cayó sobre un control: el enlace del conductor
+                  // y los botones de acción son suyos, y navegar además desde acá
+                  // rompería el clic medio.
+                  onClick={(evento) => {
+                    if (
+                      (evento.target as HTMLElement).closest(
+                        "a,button,input,select,[role='button'],[role='menuitem']",
+                      )
+                    ) {
+                      return;
+                    }
+                    vistaPrevia?.abrir(f.id);
+                  }}
+                  className={cn(
+                    vistaPrevia && "cursor-pointer",
+                    // La fila abierta se marca en el borde, no con fondo: la
+                    // tabla ya está atenuada y un fondo teñido no se distingue.
+                    vistaPrevia?.id === f.id &&
+                      "[&>td:first-child]:border-l-2 [&>td:first-child]:border-l-brand",
+                    "pointer-coarse:[&>td]:h-row-touch",
+                  )}
+                >
                   <TableCell className="px-4">
                     <EnlaceDetalle
                       href={`/dinero/liquidaciones/${f.id}`}
@@ -278,6 +313,7 @@ export function TablaLiquidaciones({
           </TableBody>
         </Table>
       </DataTable>
+      </ListaAtenuable>
 
       {filas.length === 0 ? (
         <div className="border border-line bg-bg-sunken px-6 py-12 text-center">

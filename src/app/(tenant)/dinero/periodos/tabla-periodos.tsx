@@ -65,6 +65,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
+import {
+  ListaAtenuable,
+  useVistaPreviaLateral,
+} from "@/components/ui/vista-previa-lateral";
+import { cn } from "@/lib/utils";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import {
   BADGE_ESTADO_PERIODO,
@@ -122,6 +127,9 @@ export function TablaPeriodos({
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  // `null` si nadie montó el proveedor: la tabla no revienta, solo deja de
+  // previsualizar.
+  const vistaPrevia = useVistaPreviaLateral();
 
   return (
     <div className="space-y-4">
@@ -144,6 +152,9 @@ export function TablaPeriodos({
         }}
       />
 
+      {/* Atenuar, no tapar: con el panel abierto hay que poder seguir leyendo
+          las filas de arriba y abajo, y tocar otra tiene que cambiar el panel. */}
+      <ListaAtenuable>
       <DataTable
         toolbar={
           <span className="rx-num text-sm text-fg-muted">
@@ -172,15 +183,35 @@ export function TablaPeriodos({
               return (
                 <TableRow
                   key={f.id}
-                  /* La trama inerte marca lo que está fuera de juego: el
-                     anulado, y el cerrado que no se puede emitir. Un abierto con
-                     excepción NO va acá — está muy en juego, y todavía hay
-                     tiempo de arreglarlo. */
-                  className={
-                    f.estado === "anulado" || (bloqueado && f.estado === "cerrado")
-                      ? "rx-inert-row"
-                      : undefined
-                  }
+                  // La fila entera abre la vista previa. El manejador se aparta
+                  // cuando el clic cayó sobre un control: el enlace del seller y
+                  // los botones de acción son suyos, y navegar además desde acá
+                  // rompería el clic medio.
+                  onClick={(evento) => {
+                    if (
+                      (evento.target as HTMLElement).closest(
+                        "a,button,input,select,[role='button'],[role='menuitem']",
+                      )
+                    ) {
+                      return;
+                    }
+                    vistaPrevia?.abrir(f.id);
+                  }}
+                  className={cn(
+                    vistaPrevia && "cursor-pointer",
+                    // La fila abierta se marca en el borde, no con fondo: la
+                    // tabla ya está atenuada y un fondo teñido al 55 % no se
+                    // distingue de nada.
+                    vistaPrevia?.id === f.id &&
+                      "[&>td:first-child]:border-l-2 [&>td:first-child]:border-l-brand",
+                    /* La trama inerte marca lo que está fuera de juego: el
+                       anulado, y el cerrado que no se puede emitir. Un abierto
+                       con excepción NO va acá — está muy en juego, y todavía hay
+                       tiempo de arreglarlo. */
+                    (f.estado === "anulado" || (bloqueado && f.estado === "cerrado")) &&
+                      "rx-inert-row",
+                    "pointer-coarse:[&>td]:h-row-touch",
+                  )}
                 >
                   {/* Seller y período en una sola columna: es la identidad de la
                       fila, y separarlos obligaba a leer dos celdas para saber de
@@ -308,6 +339,7 @@ export function TablaPeriodos({
           </TableBody>
         </Table>
       </DataTable>
+      </ListaAtenuable>
 
     </div>
   );

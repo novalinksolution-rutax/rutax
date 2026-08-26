@@ -26,6 +26,8 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
+import { ListaAtenuable } from "@/components/ui/vista-previa-lateral";
+import { FilaSeller } from "./fila-seller";
 import { BotonCopiarInvitacion } from "./boton-copiar-invitacion";
 import { ControlSincronizarMl, type ConexionMlResumen } from "./control-sincronizar-ml";
 
@@ -297,6 +299,10 @@ export default async function PaginaSellers() {
             ))}
           </ul>
 
+          {/* Atenuar, no tapar: con el panel abierto hay que poder seguir
+              leyendo las filas de arriba y abajo, y tocar otra tiene que
+              cambiar el panel sin cerrarlo. */}
+          <ListaAtenuable>
           <Table densidad="comfortable" aria-label="Lista de sellers" className="hidden md:table">
             <TableHeader>
               <TableRow className="bg-muted/40">
@@ -327,10 +333,11 @@ export default async function PaginaSellers() {
             </TableHeader>
             <TableBody>
               {sellers.map((seller) => (
-                <TableRow key={seller.id}>
+                <FilaSeller key={seller.id} sellerId={seller.id}>
                   {/* 🐞 El listado era TERMINAL: ninguna fila navegaba a
                       ninguna parte, aunque el seller es uno de los objetos
-                      centrales del dominio. Ahora el nombre abre su ficha. */}
+                      centrales del dominio. Ahora el nombre abre su ficha y la
+                      fila entera abre la vista previa. */}
                   <TableCell className="px-4 font-medium">
                     <EnlaceDetalle
                       href={`/sellers/${seller.id}`}
@@ -379,10 +386,11 @@ export default async function PaginaSellers() {
                       ) : null}
                     </TableCell>
                   )}
-                </TableRow>
+                </FilaSeller>
               ))}
             </TableBody>
           </Table>
+          </ListaAtenuable>
         </DataTable>
       )}
     </div>
