@@ -35,7 +35,7 @@ import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
 import type { Conductor } from "./tipos";
 
 const COLUMNAS_NOMINA =
-  "id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, rut, tipo_relacion, banco, tipo_cuenta, numero_cuenta";
+  "id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, rut, tipo_relacion, banco, tipo_cuenta, numero_cuenta, telefono";
 
 export type TipoRelacionConductor = "dependiente" | "independiente";
 
@@ -46,6 +46,12 @@ export interface ConductorEnNomina extends Conductor {
   tipoRelacion: TipoRelacionConductor;
   /** Ids de zona preferente, ya resueltos — el listado los muestra en la fila. */
   zonaIds: string[];
+  /**
+   * E.164 sin `+`, o `null`. Dato personal (Ley 21.431): solo el vigente, sin
+   * histórico. Va en la nómina y no solo en la ficha porque quien llama al
+   * conductor es el coordinador, y la ficha está tras el gate financiero.
+   */
+  telefono: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,6 +66,7 @@ function filaANomina(fila: Record<string, any>, zonaIds: string[]): ConductorEnN
     banco: fila.banco ?? null,
     tipoCuenta: (fila.tipo_cuenta as "corriente" | "vista" | "ahorro" | null) ?? null,
     numeroCuenta: fila.numero_cuenta ?? null,
+    telefono: fila.telefono ?? null,
     rut: fila.rut ?? "",
     tipoRelacion: (fila.tipo_relacion as TipoRelacionConductor) ?? "dependiente",
     zonaIds,

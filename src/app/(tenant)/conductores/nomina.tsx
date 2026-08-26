@@ -65,6 +65,8 @@ import {
   estadoDelDiaConductor,
   TEXTO_RELACION_CONDUCTOR,
 } from "@/lib/ui/traduccion-estados";
+import { formatearTelefonoLegible } from "@/lib/telefono-cl";
+import { EditorTelefonoConductor } from "./editor-telefono";
 import type { Conductor, Zona } from "@/modules/operacion/tipos";
 import type {
   ConductorEnNomina,
@@ -164,10 +166,11 @@ export function PanelNomina({
             setConductores((prev) =>
               [
                 ...prev,
-                // El alta devuelve un `Conductor` base. El RUT y la relación
-                // los acaba de escribir el propio formulario, así que la fila
-                // se completa al recargar; mientras tanto no se inventa nada.
-                { ...c, rut: "", tipoRelacion: "dependiente" as const, zonaIds: [] },
+                // El alta devuelve un `Conductor` base. El RUT, la relación y
+                // el teléfono los acaba de escribir el propio formulario, así
+                // que la fila se completa al recargar; mientras tanto no se
+                // inventa nada.
+                { ...c, rut: "", tipoRelacion: "dependiente" as const, zonaIds: [], telefono: null },
               ].sort(
                 (a, b) => a.nombre.localeCompare(b.nombre, "es-CL"),
               ),
@@ -315,7 +318,13 @@ function FilaConductor({
       <span className={`hidden flex-1 sm:grid ${COLUMNAS_ANCHO} sm:items-center`}>
         <span className="min-w-0 py-2.5 pr-3">
           <span className="block truncate text-sm font-medium text-fg">{conductor.nombre}</span>
-          <span className="rx-num block truncate text-xs text-fg-muted">{conductor.rut}</span>
+          <span className="rx-num block truncate text-xs text-fg-muted">
+            {conductor.rut}
+            {/* Sin enlace `tel:` acá: la fila entera ya es pulsable y abre el
+                cajón, y un enlace dentro de un control pulsable se roba el
+                toque. El número marcable está en el cajón. */}
+            {conductor.telefono ? ` · ${formatearTelefonoLegible(conductor.telefono)}` : ""}
+          </span>
         </span>
         <span className="py-2.5 pr-3">{distintivo}</span>
         <span className="rx-num py-2.5 pr-3 text-sm">
@@ -383,6 +392,10 @@ function CajonConductor({
           ) : (
             <>
               <DisponibilidadDelDia conductor={conductor} />
+              {/* Va inmediatamente después de la disponibilidad porque ese
+                  bloque termina diciendo «si no aparece, hay que llamarlo», y
+                  hasta ahora no había con qué. */}
+              <BloqueTelefono conductor={conductor} onActualizado={onActualizado} />
               <Estampador conductor={conductor} onActualizado={onActualizado} />
               <EditorZonasConductor conductor={conductor} zonasTenant={zonas} />
               {hoy ? <BloqueHoy hoy={hoy} /> : null}
@@ -435,6 +448,43 @@ function CajonConductor({
  * se generan las llamadas que este cambio viene a evitar — así que el hueco que
  * dejó el interruptor lo ocupa la explicación, no un espacio en blanco.
  */
+/**
+ * El teléfono, dentro del cajón.
+ *
+ * No lleva prop de permiso: **esta pantalla entera ya exige
+ * `asignar_y_reasignar_pedidos`** (ver el guard de `page.tsx`), que es
+ * exactamente el gate de la acción que escribe el teléfono. Pasar un booleano
+ * calculado con la misma capacidad sería una segunda fuente de verdad para la
+ * misma pregunta, y de esas se desincroniza una tarde o temprano.
+ *
+ * Es la diferencia con `EditorDatosBancarios`, que sí lo lleva: ese responde a
+ * un gate DISTINTO del de la pantalla (el financiero), así que ahí el booleano
+ * dice algo que el guard no dice.
+ */
+function BloqueTelefono({
+  conductor,
+  onActualizado,
+}: {
+  conductor: ConductorEnNomina;
+  /** Recibe el conductor YA actualizado — la lista vive en estado del cliente. */
+  onActualizado: (c: ConductorEnNomina) => void;
+}) {
+  return (
+    <div>
+      <span className="text-sm font-medium">Teléfono</span>
+      <div className="mt-1">
+        <EditorTelefonoConductor
+          conductorId={conductor.id}
+          telefono={conductor.telefono}
+          puedeEditar
+          idCampo={`telefono-nomina-${conductor.id}`}
+          onGuardado={(telefonoNuevo) => onActualizado({ ...conductor, telefono: telefonoNuevo })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function DisponibilidadDelDia({ conductor }: { conductor: ConductorEnNomina }) {
   return (
     <div>

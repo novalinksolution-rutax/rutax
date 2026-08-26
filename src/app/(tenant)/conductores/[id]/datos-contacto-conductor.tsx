@@ -20,25 +20,13 @@
  * revocar el acceso e invitar de nuevo, que es lo que hace la sección de abajo.
  * Un lápiz junto al correo prometería algo que no puede cumplir.
  *
- * -----------------------------------------------------------------------------
- * ⚠️ EL TELÉFONO SE MUESTRA ENTERO. A PROPÓSITO.
- * -----------------------------------------------------------------------------
- * `enmascararTelefono` existe y acá NO se usa. Enmascarar sirve en un listado,
- * donde basta reconocer de quién es el número. Esta pantalla la abre alguien que
- * necesita **marcarlo**: un `+56 9 **** 5571` no le sirve de nada. La
- * minimización protege del vistazo de paso, no de la persona cuyo trabajo es
- * llamar a ese conductor — y llegar hasta acá ya exigió pasar el RBAC de la
- * ficha.
+ * El editor del teléfono es `../editor-telefono`, compartido con la nómina:
+ * el mismo campo hace falta en las dos pantallas, y duplicarlo garantizaba que
+ * una se quedara atrás con validaciones distintas para lo mismo.
  */
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { Phone, Mail, IdCard, Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { formatearTelefonoLegible, telefonoParaMarcar } from "@/lib/telefono-cl";
-import { actionActualizarTelefonoConductor } from "../actions";
+import { Phone, Mail, IdCard } from "lucide-react";
+import { EditorTelefonoConductor } from "../editor-telefono";
 
 /** De dónde salió el correo, porque las dos procedencias NO significan lo mismo. */
 export type OrigenCorreo =
@@ -92,31 +80,6 @@ export function DatosContactoConductor({
   /** `asignar_y_reasignar_pedidos`. Sin esto el teléfono se ve pero no se toca. */
   puedeEditar: boolean;
 }) {
-  const router = useRouter();
-  const [editando, setEditando] = useState(false);
-  const [valor, setValor] = useState(telefono ? formatearTelefonoLegible(telefono) : "");
-  const [error, setError] = useState<string | null>(null);
-  const [guardando, iniciar] = useTransition();
-
-  function guardar() {
-    setError(null);
-    iniciar(async () => {
-      const r = await actionActualizarTelefonoConductor(conductorId, valor);
-      if (!r.ok) {
-        setError(r.mensaje);
-        return;
-      }
-      setEditando(false);
-      router.refresh();
-    });
-  }
-
-  function cancelar() {
-    setValor(telefono ? formatearTelefonoLegible(telefono) : "");
-    setError(null);
-    setEditando(false);
-  }
-
   return (
     <section
       aria-label="Datos de contacto"
@@ -128,69 +91,11 @@ export function DatosContactoConductor({
         </Campo>
 
         <Campo icono={<Phone className="size-4" />} etiqueta="Teléfono">
-          {editando ? (
-            <div className="space-y-2">
-              <Label htmlFor="telefono-conductor" className="sr-only">
-                Teléfono del conductor
-              </Label>
-              <Input
-                id="telefono-conductor"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") guardar();
-                  if (e.key === "Escape") cancelar();
-                }}
-                placeholder="9 1234 5678"
-                inputMode="tel"
-                autoFocus
-                aria-describedby={error ? "telefono-error" : "telefono-ayuda"}
-              />
-              {error ? (
-                <p id="telefono-error" className="text-[12.5px] text-destructive">
-                  {error}
-                </p>
-              ) : (
-                <p id="telefono-ayuda" className="text-[12.5px] text-fg-subtle">
-                  Déjalo en blanco para quitarlo.
-                </p>
-              )}
-              <div className="flex gap-2">
-                <Button size="sm" onClick={guardar} disabled={guardando}>
-                  {guardando ? "Guardando…" : "Guardar"}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={cancelar} disabled={guardando}>
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2">
-              {telefono ? (
-                <a
-                  href={`tel:${telefonoParaMarcar(telefono)}`}
-                  className="rx-num tabular-nums underline decoration-dotted underline-offset-4 hover:text-brand"
-                >
-                  {formatearTelefonoLegible(telefono)}
-                </a>
-              ) : (
-                <span className="text-fg-muted">Sin teléfono</span>
-              )}
-              {puedeEditar ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2"
-                  onClick={() => setEditando(true)}
-                >
-                  <Pencil className="size-3.5" aria-hidden="true" />
-                  <span className="sr-only sm:not-sr-only sm:ml-1">
-                    {telefono ? "Editar" : "Agregar"}
-                  </span>
-                </Button>
-              ) : null}
-            </div>
-          )}
+          <EditorTelefonoConductor
+            conductorId={conductorId}
+            telefono={telefono}
+            puedeEditar={puedeEditar}
+          />
         </Campo>
 
         <Campo icono={<Mail className="size-4" />} etiqueta="Correo">
