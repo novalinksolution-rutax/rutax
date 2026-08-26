@@ -35,8 +35,6 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { DataTable } from "@/components/ui/data-table";
-import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FiltrosConciliacion, SIN_ASIGNAR_FILTRO } from "./filtros-conciliacion";
 import { TablaConciliacion } from "./tabla-conciliacion";
 import { esEventoVencido } from "./semaforo-vencimiento";

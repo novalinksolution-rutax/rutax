@@ -272,6 +272,17 @@ async function aplicarEnLote(
   let fallidos = 0;
   let primerError: string | null = null;
 
+  // El tope se DENUNCIA, no se aplica en silencio. Recortar la lista sin decirlo
+  // devolvería «120 aplicadas» sobre una selección de 300 y las 100 restantes se
+  // perderían sin que nada avise. Hoy no debería ocurrir —el cliente manda
+  // tandas muy por debajo del tope— y precisamente por eso, si ocurre, es que
+  // alguien llamó a esta acción por otra vía.
+  const excedente = Math.max(0, eventoIds.length - TOPE_LOTE);
+  if (excedente > 0) {
+    fallidos += excedente;
+    primerError = `Se pidieron ${eventoIds.length} de una vez y el máximo por llamada es ${TOPE_LOTE}. Quedaron ${excedente} sin tocar.`;
+  }
+
   for (const id of eventoIds.slice(0, TOPE_LOTE)) {
     const r = await accion(id);
     if (r.ok) {
@@ -283,21 +294,6 @@ async function aplicarEnLote(
   }
 
   return { aplicados, fallidos, primerError };
-}
-
-/** Mueve un lote de excepciones al mismo estado destino. */
-export async function accionTransicionarEnLote(
-  eventoIds: string[],
-  nuevoEstado: EstadoEventoConciliacion,
-  comentario: string,
-): Promise<ResultadoLote> {
-  // El comentario es obligatorio en lote aunque la acción individual lo exija
-  // solo en ciertos destinos: cerrar cien excepciones de una vez sin decir por
-  // qué deja una bitácora que no explica nada al que la lea en tres meses.
-  if (!comentario.trim()) {
-    return { aplicados: 0, fallidos: eventoIds.length, primerError: "Escribe el motivo del cambio." };
-  }
-  return aplicarEnLote(eventoIds, (id) => accionTransicionarEvento(id, nuevoEstado, comentario));
 }
 
 /** Asigna (o desasigna, con `null`) un lote de excepciones a la misma persona. */
