@@ -13,7 +13,6 @@
  */
 
 import { useTransition } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronsUpDown, LogOut } from "lucide-react"
 
@@ -79,15 +78,31 @@ interface MenuCuentaProps {
 }
 
 export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, lado = "top", enlaces }: MenuCuentaProps) {
-  const router = useRouter()
   const [cerrando, startCerrar] = useTransition()
 
-  function cerrarSesionCliente() {
+  /**
+   * 🔴 **Se cierra en el SERVIDOR, y sin `<form>`.** Dos arreglos en uno, y el
+   * botón estaba roto por los dos motivos a la vez:
+   *
+   * · Antes llamaba a `auth.signOut()` del cliente del navegador y **descartaba
+   *   su respuesta**. Si esa llamada fallaba, no quedaba rastro y la persona
+   *   veía exactamente lo mismo que si no hubiera pulsado.
+   * · Y la otra rama envolvía un `<button type="submit">` en un
+   *   `DropdownMenuItem`: Radix cierra el menú al seleccionar, **desmonta el
+   *   formulario antes de que el navegador lo envíe**, y el submit se pierde.
+   *
+   * Con `onSelect` + `preventDefault` el menú NO se cierra solo, y la acción de
+   * servidor se llama directo. Ella borra la cookie y redirige.
+   */
+  function salir() {
     startCerrar(async () => {
-      const { createClient } = await import("@/lib/supabase/client")
-      await createClient().auth.signOut()
-      router.push("/login")
-      router.refresh()
+      if (accionSalir) {
+        await accionSalir()
+        return
+      }
+      // Sin acción de servidor no hay forma fiable de cerrar: se dice, en vez
+      // de fingir que se cerró.
+      console.error("[sesion] esta superficie no recibió `accionSalir`")
     })
   }
 
@@ -155,28 +170,17 @@ export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, 
           </>
         ) : null}
         <DropdownMenuSeparator />
-        {accionSalir ? (
-          <form action={accionSalir}>
-            <DropdownMenuItem asChild variant="destructive">
-              <button type="submit" className="w-full">
-                <LogOut aria-hidden="true" />
-                Cerrar sesión
-              </button>
-            </DropdownMenuItem>
-          </form>
-        ) : (
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={cerrando}
-            onSelect={(e) => {
-              e.preventDefault()
-              cerrarSesionCliente()
-            }}
-          >
-            <LogOut aria-hidden="true" />
-            Cerrar sesión
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={cerrando}
+          onSelect={(e) => {
+            e.preventDefault()
+            salir()
+          }}
+        >
+          <LogOut aria-hidden="true" />
+          {cerrando ? "Cerrando…" : "Cerrar sesión"}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

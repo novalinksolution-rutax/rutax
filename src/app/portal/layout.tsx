@@ -7,6 +7,7 @@
  * `(tenant)/layout.tsx`.
  */
 
+import { cerrarSesion } from "@/lib/identidad/cerrar-sesion";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -81,6 +82,10 @@ export default async function LayoutPortal({
       etiquetaMarca="Tienda"
       densidad="relajada"
       grupos={grupos}
+      accionSalir={async () => {
+        "use server";
+        await cerrarSesion("/portal/login");
+      }}
       avisos={avisos}
       destinosMovil={destinosMovil(grupos.flatMap((g) => g.items))}
       // El seller ve el botón de buscar y la paleta ⌘K, pero `/api/buscar` corta

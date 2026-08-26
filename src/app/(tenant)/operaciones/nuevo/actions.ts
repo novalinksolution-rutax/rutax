@@ -35,9 +35,9 @@ import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAjustarOperacionDiaria } from "@/modules/identidad/capacidades";
 import { crearPedidoSameDay } from "@/modules/operacion/pedidos";
+import { guardarCoordenadaElegida } from "@/modules/operacion/coordenada-elegida";
 import { resolverTarifaVigente } from "@/modules/operacion/tarifas";
 import { obtenerResumenCortePorSeller } from "@/modules/operacion/metricas";
-import { calcularCobertura } from "@/modules/integraciones/geocoding/jobs/geocodificar-pedido";
 import { obtenerPuertoAutocompletado } from "@/modules/integraciones/geocoding/autocompletado";
 import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 
@@ -195,62 +195,5 @@ export async function actionCrearSameDay(datos: DatosAltaSameDay): Promise<Resul
       ok: false,
       mensaje: err instanceof Error ? err.message : "Error al crear el pedido.",
     };
-  }
-}
-
-/**
- * Escribe la coordenada que el autocompletado ya resolvió.
- *
- * Falla en silencio a propósito: el pedido **ya está creado** y es lo que
- * importa. Si esta escritura no sale, el job lo geocodifica como siempre y el
- * único costo es una llamada de más al proveedor. Hacer fallar la creación por
- * esto sería cambiar un ahorro por un pedido perdido.
- */
-async function guardarCoordenadaElegida(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cliente: any,
-  args: {
-    tenantId: string;
-    pedidoId: string;
-    sellerId: string;
-    lat: number;
-    long: number;
-    comunaDeclarada: string;
-    comunaResuelta: string | null;
-  },
-): Promise<void> {
-  try {
-    const tarifaId = await resolverTarifaVigente(cliente, {
-      tenantId: args.tenantId,
-      sellerId: args.sellerId,
-      tipoEntrega: "same_day",
-      fecha: ahoraEnSantiago().fecha,
-    });
-
-    const cobertura = calcularCobertura({
-      comunaDeclarada: args.comunaDeclarada,
-      comunaResuelta: args.comunaResuelta,
-      hayTarifaVigente: tarifaId !== null,
-    });
-
-    await cliente
-      .schema("operacion")
-      .from("pedidos")
-      .update({
-        lat: args.lat,
-        long: args.long,
-        geo_estado: "resuelto",
-        // La eligió una persona de una lista del proveedor: es la confianza más
-        // alta que este sistema puede tener sobre una dirección.
-        geo_confianza: 1,
-        geocodificado_en: new Date().toISOString(),
-        cobertura_estado: cobertura,
-      })
-      .eq("id", args.pedidoId)
-      .eq("tenant_id", args.tenantId);
-  } catch {
-    console.warn(
-      "[alta same-day] No se pudo guardar la coordenada elegida; el job la resolverá.",
-    );
   }
 }

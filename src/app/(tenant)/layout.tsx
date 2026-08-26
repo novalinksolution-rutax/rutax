@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cerrarSesion } from "@/lib/identidad/cerrar-sesion";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -326,6 +327,10 @@ export default async function LayoutTenant({ children }: { children: React.React
         "/configuracion/api",
         "/equipo",
       ]}
+      accionSalir={async () => {
+        "use server";
+        await cerrarSesion("/login");
+      }}
       avisos={avisos}
       destinosMovil={destinos}
       banner={

@@ -6,7 +6,8 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeSolicitarSameDay } from "@/modules/identidad/capacidades";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { evaluarVentanaCorte } from "@/modules/operacion/ventanas-corte";
-import { FormularioNuevoPedido } from "./formulario-nuevo-pedido";
+import { FormularioAltaSameDay } from "@/components/operacion/formulario-alta-same-day";
+import { accionCrearSameDaySeller } from "./accion-alta";
 
 export const metadata: Metadata = {
   // El mismo nombre que el `h1` y que el botón que trae acá.
@@ -48,14 +49,24 @@ export default async function PaginaNuevoPedido() {
       .maybeSingle(),
   ]);
 
-  const avisoCorte =
-    evaluacion?.corteRiesgo && evaluacion.ventana
-      ? {
-          horaCorte: evaluacion.ventana.horaCorte,
-          nombreCourier:
-            (tenantFila.data?.nombre_fantasia as string | undefined) ?? "tu empresa de despacho",
-        }
-      : null;
+  /**
+   * 🔴 El MISMO formulario que usa el courier, con su propio estado ya resuelto.
+   *
+   * El portal tenía uno propio con menos campos, sin autocompletado de dirección
+   * y sin validación al salir del campo. Decisión del usuario (25-08-2026): el
+   * mismo formulario y los mismos campos. Coincide con el tablero B4.
+   *
+   * ⚠️ `tieneTarifa: true` **siempre**, y no es un dato falso escondido: el
+   * formulario compartido solo usa ese campo para pintarle al COURIER el aviso
+   * de «este seller no tiene tarifa vigente». Es un hueco de configuración que
+   * el seller no puede arreglar, y decírselo solo le genera una llamada. La hora
+   * de corte, que sí le sirve, va con su valor real.
+   */
+  const estadoSeller = {
+    horaCorte: evaluacion?.ventana?.horaCorte ?? null,
+    tieneTarifa: true,
+  };
+  void tenantFila;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -76,7 +87,10 @@ export default async function PaginaNuevoPedido() {
       </div>
 
       <div className="rounded-lg border bg-card p-6 shadow-sm">
-        <FormularioNuevoPedido avisoCorte={avisoCorte} />
+        <FormularioAltaSameDay
+          estadoSellerInicial={estadoSeller}
+          accionCrear={accionCrearSameDaySeller}
+        />
       </div>
     </div>
   );

@@ -1,39 +1,43 @@
 /**
- * Bodegas del seller — Portal, solo lectura (Flujo, alcance "retiro en bodega").
+ * Bodegas del seller — las administra ÉL.
+ * =============================================================================
  *
- * Cero botones de acción: las bodegas las carga y edita el courier. El seller
- * solo verifica que la dirección y el contacto sean correctos.
+ * -----------------------------------------------------------------------------
+ * 🔴 ERA UNA TARJETA MUERTA
+ * -----------------------------------------------------------------------------
+ * Esta pantalla era de solo lectura: el seller veía su bodega y no podía hacer
+ * nada con ella. Ni agregar la que acababa de arrendar, ni corregir un teléfono
+ * equivocado, ni dar de baja la que cerró. Para cualquiera de las tres tenía
+ * que escribirle a su courier y esperar.
  *
- * A propósito NUNCA se muestra `geo_estado`: el seller no puede corregir la
- * dirección desde aquí, así que un aviso de "no ubicada" solo generaría una
- * llamada al courier sin que el seller pueda hacer nada al respecto.
+ * El tablero `B4` lo decía así —«ninguna acción: no es su configuración»— y
+ * **se revierte por decisión del usuario (25-08-2026)**: la bodega es del
+ * seller, es él quien sabe dónde está y a quién hay que llamar.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ LO QUE SIGUE SIENDO DEL COURIER
+ * -----------------------------------------------------------------------------
+ * El **pago por visita** (`monto_visita_clp`): es lo que el courier le paga al
+ * conductor por venir hasta acá. No se muestra, no se edita, y una bodega nueva
+ * lo hereda del monto general. Ver `actions.ts`.
+ *
+ * A propósito tampoco se muestra `geo_estado`. Ahora el seller SÍ puede
+ * corregir la dirección, pero un aviso de «no ubicada» seguiría sin decirle qué
+ * hacer: la coordenada la resuelve el servidor al guardar, y si falla, el
+ * courier la reintenta desde su pantalla.
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Phone, Warehouse } from "lucide-react";
+import { Warehouse } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { cn } from "@/lib/utils";
+import { ListaMisBodegas, type BodegaSeller } from "./lista-mis-bodegas";
 
 export const metadata: Metadata = {
   title: "Bodegas",
 };
-
-interface BodegaSeller {
-  id: string;
-  nombre: string;
-  direccion: string;
-  comuna: string;
-  instruccionesAcceso: string | null;
-  contactoNombre: string | null;
-  contactoTelefono: string | null;
-  esPrincipal: boolean;
-  activa: boolean;
-}
 
 export default async function PaginaBodegasSeller() {
   const sesion = await obtenerSesionActual();
@@ -88,14 +92,14 @@ export default async function PaginaBodegasSeller() {
     errorCarga = true;
   }
 
-  const activas = bodegas.filter((b) => b.activa);
-  const inactivas = bodegas.filter((b) => !b.activa);
-
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Bodegas</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Dónde retira tu courier los pedidos para despacharlos.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Desde acá retira {nombreCourier} tus pedidos. Agrega las que uses y mantén al día la
+          dirección y a quién llamar.
+        </p>
       </div>
 
       {errorCarga && (
@@ -108,81 +112,17 @@ export default async function PaginaBodegasSeller() {
         /* El vacío nombra al courier y OFRECE LA SALIDA: sin bodega registrada
            nadie va a pasar a retirar, así que quedarse esperando es lo peor que
            puede hacer el seller. */
+        /* El vacío ya no manda a escribirle al courier: ahora hay botón. */
         <EmptyState
           icon={Warehouse}
           tono="arranque"
-          titulo={`${nombreCourier} todavía no registró ninguna bodega`}
-          descripcion={`Mientras no haya una, no hay dónde ir a retirar tus pedidos. Escríbeles para coordinar desde dónde los recogen.`}
+          titulo="Todavía no tienes ninguna bodega"
+          descripcion={`Mientras no haya una, ${nombreCourier} no tiene dónde ir a retirar tus pedidos. Agrega la primera y quedas listo.`}
+          accion={<ListaMisBodegas bodegas={[]} />}
         />
       )}
 
-      {!errorCarga && bodegas.length > 0 && (
-        <div className="space-y-4">
-          {activas.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {activas.map((b) => (
-                <TarjetaBodegaSoloLectura key={b.id} bodega={b} />
-              ))}
-            </div>
-          )}
-          {inactivas.length > 0 && (
-            <div className="space-y-2">
-              <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                Inactivas ({inactivas.length})
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {inactivas.map((b) => (
-                  <TarjetaBodegaSoloLectura key={b.id} bodega={b} />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {!errorCarga && bodegas.length > 0 && <ListaMisBodegas bodegas={bodegas} />}
     </div>
-  );
-}
-
-function TarjetaBodegaSoloLectura({ bodega }: { bodega: BodegaSeller }) {
-  const tieneContacto = !!(bodega.contactoNombre || bodega.contactoTelefono);
-
-  return (
-    <Card className={cn(!bodega.activa && "opacity-60")}>
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Warehouse className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <p className="font-medium text-foreground">{bodega.nombre}</p>
-          </div>
-          {bodega.esPrincipal && <Badge>Principal</Badge>}
-        </div>
-
-        <p className="text-sm text-muted-foreground">
-          {bodega.direccion}, {bodega.comuna}
-        </p>
-
-        {tieneContacto && (
-          <div className="flex items-start gap-2 text-sm">
-            <Phone className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <div>
-              <p className="text-xs text-muted-foreground">A quién llamar</p>
-              <p className="text-foreground">
-                {bodega.contactoNombre}
-                {bodega.contactoNombre && bodega.contactoTelefono && " · "}
-                {bodega.contactoTelefono && (
-                  <a href={`tel:${bodega.contactoTelefono}`} className="text-primary hover:underline">
-                    {bodega.contactoTelefono}
-                  </a>
-                )}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {bodega.instruccionesAcceso && (
-          <p className="text-xs text-muted-foreground">{bodega.instruccionesAcceso}</p>
-        )}
-      </CardContent>
-    </Card>
   );
 }
