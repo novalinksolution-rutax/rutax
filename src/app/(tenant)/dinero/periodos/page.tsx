@@ -43,10 +43,9 @@ import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { etiquetaFechaCivilCorta } from "@/lib/ui/rango-fecha";
 
 import { FiltrosPeriodosForm } from "./filtros-periodos";
-import { accionPreflightLoteFacturas, accionEmitirFacturasLote } from "./actions";
 import { IndicadorFolio } from "@/components/ui/indicador-folio";
 import { contarFoliosDisponibles } from "@/modules/dinero/folios-disponibles";
-import { TablaPeriodos, type ElegiblePeriodo, type FilaPeriodoVista } from "./tabla-periodos";
+import { TablaPeriodos, type FilaPeriodoVista } from "./tabla-periodos";
 
 export const metadata: Metadata = {
   title: "Períodos de cobro",
@@ -225,18 +224,6 @@ export default async function PaginaPeriodosCobro({
     tieneXml: Boolean(p.dte?.xmlDteRef),
   }));
 
-  // Los elegibles del CONJUNTO FILTRADO, no de la página: es lo que hace posible
-  // el tercer nivel de selección («seleccionar los 34 del filtro completo»).
-  const elegiblesDelFiltro: ElegiblePeriodo[] = visibles
-    .filter((p) => p.estado === "cerrado" && p.excepcionesBloqueantes === 0)
-    .map((p) => ({
-      id: p.id,
-      etiqueta: p.sellerNombre,
-      sub: etiquetaPeriodo(p.fechaInicio, p.fechaFin),
-      montoClp: p.montoTotalClp ?? 0,
-      lineas: p.totalLineas,
-    }));
-
   // ── La bajada del encabezado ─────────────────────────────────────────────
   const abiertos = enriquecidos.filter((p) => p.estado === "abierto");
   const cierre = proximoCierreAutomatico(abiertos, hoyEnSantiago());
@@ -332,15 +319,12 @@ export default async function PaginaPeriodosCobro({
         <>
           <TablaPeriodos
             filas={filas}
-            elegiblesDelFiltro={elegiblesDelFiltro}
             cajones={cajones}
             cajonExcluido={cajonExcluido}
             cajonTransversal={cajonTransversal}
             cajonActivo={filtroEstado || null}
             totalFiltrado={visibles.length}
             puedeCerrar
-            accionPreflight={accionPreflightLoteFacturas}
-            accionEmitir={accionEmitirFacturasLote}
           />
 
           {totalPaginas > 1 ? (

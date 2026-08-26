@@ -29,4 +29,25 @@ describe("avanceEnFalla", () => {
     // borrador no está atrasado: está sin armar.
     expect(avanceEnFalla(null, 20)).toBe(false);
   });
+
+  it("una ruta ya cerrada NO está atrasada, por bajo que sea su avance", () => {
+    // 🔴 El caso que llegó del uso real: cuatro manifiestos completados en 0 %,
+    // en rojo, a las 20:00. «Va atrasado» solo significa algo mientras la ruta
+    // todavía puede avanzar. Si quedaron paradas abiertas, eso se cuenta aparte
+    // y en tono de atención — es otra afirmación, con otras palabras.
+    expect(avanceEnFalla(0, 20, "completado")).toBe(false);
+    expect(avanceEnFalla(10, 22, "completado")).toBe(false);
+    expect(avanceEnFalla(0, 20, "cancelado")).toBe(false);
+    expect(avanceEnFalla(0, 20, "borrador")).toBe(false);
+  });
+
+  it("las rutas que SÍ pueden avanzar conservan la alarma", () => {
+    // La contraprueba de la de arriba: si excluir estados terminales apagara
+    // también las vivas, la columna dejaría de avisar de lo único que avisa.
+    expect(avanceEnFalla(10, 20, "en_ruta")).toBe(true);
+    expect(avanceEnFalla(10, 20, "confirmado")).toBe(true);
+    // Y sin estado se comporta como antes, que es lo que usa cualquier llamador
+    // que no lo tenga a mano.
+    expect(avanceEnFalla(10, 20)).toBe(true);
+  });
 });

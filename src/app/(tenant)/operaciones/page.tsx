@@ -105,6 +105,8 @@ interface SearchParams {
   /** Procedencia del pedido (ml_flex | rutax_manual | shopify). */
   fuente?: string;
   por_revisar?: string;
+  /** "1" = solo los pedidos que ya están en un manifiesto. Cualquier otra cosa, sin filtro. */
+  en_manifiesto?: string;
   pagina?: string;
 }
 
@@ -165,6 +167,9 @@ export default async function PaginaOperaciones({
   const filtroComuna = params.comuna || "";
   const filtroConductor = sanearFiltroUuid(params.conductor);
   const filtroFuente = sanearFiltroFuentePedido(params.fuente);
+  // Binario y sin saneo con lista: cualquier cosa que no sea exactamente "1" es
+  // «sin filtro». No hay valor inválido que pueda llegar a la consulta.
+  const filtroEnManifiesto = params.en_manifiesto === "1";
   const pagina = sanearNumeroPagina(params.pagina);
   // 100, no 25: el pie del tablero dice «las primeras 100 de 284». Con 25 el
   // coordinador pagina cuatro veces para ver el mismo día, y cada paginación
@@ -178,6 +183,7 @@ export default async function PaginaOperaciones({
     filtroComuna ||
     filtroConductor ||
     filtroFuente ||
+    filtroEnManifiesto ||
     hayRangoFecha ||
     filtroFecha !== hoyIso
   );
@@ -194,6 +200,11 @@ export default async function PaginaOperaciones({
     comuna: filtroComuna || undefined,
     conductorId: filtroConductor || undefined,
     fuente: filtroFuente || undefined,
+    // Va en `filtrosBase` y no suelto en el listado: así la barra de cajones
+    // cuenta lo mismo que la tabla muestra. Con el filtro puesto, «Sin asignar»
+    // pasa a ser 0 — y es correcto: un pedido sin asignar no está en ningún
+    // manifiesto.
+    enManifiesto: filtroEnManifiesto || undefined,
     fecha: filtroFecha || undefined,
     fechaDesde: filtroFechaDesde || undefined,
     fechaHasta: filtroFechaHasta || undefined,
@@ -287,6 +298,7 @@ export default async function PaginaOperaciones({
     if (filtroComuna) sp.set("comuna", filtroComuna);
     if (filtroConductor) sp.set("conductor", filtroConductor);
     if (filtroFuente) sp.set("fuente", filtroFuente);
+    if (filtroEnManifiesto) sp.set("en_manifiesto", "1");
 
     const estadoDestino = estado !== undefined ? estado : grupoActivo || filtroEstado;
     if (estadoDestino) sp.set("estado", estadoDestino);
@@ -413,6 +425,7 @@ export default async function PaginaOperaciones({
         filtroComuna={filtroComuna}
         filtroConductor={filtroConductor}
         filtroFuente={filtroFuente}
+        filtroEnManifiesto={filtroEnManifiesto}
         hayFiltroActivo={hayFiltroActivo}
       />
 

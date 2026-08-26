@@ -21,6 +21,7 @@ import type { FuentePedido } from "@/modules/operacion/tipos";
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChipsFiltro, type ChipFiltro } from "@/components/filtros/chips-filtro";
+import { Checkbox } from "@/components/ui/checkbox";
 import { HojaInferior } from "@/components/ui/hoja-inferior";
 import { FiltroFecha } from "@/components/filtros/filtro-fecha";
 import { formatearFechaCivilCorta } from "@/lib/formato-cl";
@@ -67,12 +68,15 @@ interface Props {
   filtroComuna: string;
   filtroConductor: string;
   filtroFuente: string;
+  /** Solo los pedidos que ya están en un manifiesto. Binario: puesto o no. */
+  filtroEnManifiesto: boolean;
   hayFiltroActivo: boolean;
 }
 
 /** Cuántos filtros hay puestos. La fecha no cuenta: siempre está. */
 function contarFiltros(p: Props): number {
-  return [p.filtroSeller, p.filtroComuna, p.filtroConductor, p.filtroFuente].filter(Boolean).length;
+  return [p.filtroSeller, p.filtroComuna, p.filtroConductor, p.filtroFuente, p.filtroEnManifiesto]
+    .filter(Boolean).length;
 }
 
 /**
@@ -197,6 +201,7 @@ export function FiltrosPedidosForm({
   filtroComuna,
   filtroConductor,
   filtroFuente,
+  filtroEnManifiesto,
   hayFiltroActivo,
 }: Props) {
   const router = useRouter();
@@ -225,6 +230,7 @@ export function FiltrosPedidosForm({
       // universo (con tres fuentes conviviendo en la bandeja, filtrar por
       // estado no puede devolver a "todas las fuentes").
       if (campo !== "fuente" && filtroFuente) params.set("fuente", filtroFuente);
+      if (campo !== "en_manifiesto" && filtroEnManifiesto) params.set("en_manifiesto", "1");
       if (valor) params.set(campo, valor);
       // Resetear a página 1 al cambiar filtros
       router.push(`${pathname}?${params.toString()}`);
@@ -240,6 +246,7 @@ export function FiltrosPedidosForm({
       filtroComuna,
       filtroConductor,
       filtroFuente,
+      filtroEnManifiesto,
     ],
   );
 
@@ -347,6 +354,38 @@ export function FiltrosPedidosForm({
           }))}
           onCambiar={actualizar}
         />
+      ),
+    },
+    {
+      clave: "en_manifiesto",
+      etiqueta: "En manifiesto",
+      // Binario: o está puesto, o el chip está disponible. No hay un «no» que
+      // valga la pena mostrar —«los que NO están en un manifiesto» es otra
+      // pregunta— así que el valor solo existe cuando el filtro está activo.
+      valor: filtroEnManifiesto ? "Sí" : null,
+      onQuitar: () => actualizar("en_manifiesto", ""),
+      control: (
+        <label
+          htmlFor="filtro-en-manifiesto"
+          className="flex cursor-pointer items-start gap-2.5"
+        >
+          <Checkbox
+            id="filtro-en-manifiesto"
+            checked={filtroEnManifiesto}
+            onCheckedChange={(marcado) => actualizar("en_manifiesto", marcado ? "1" : "")}
+            className="mt-0.5"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Solo los que están en un manifiesto</span>
+            {/* Sin esta línea el filtro se lee como «los asignados», y no es lo
+                mismo: lo que responde es si el pedido ya entró al flujo de
+                entrega de Rutax, con conductor y ruta. */}
+            <span className="mt-0.5 block text-xs leading-snug text-fg-muted">
+              Los que ya entraron al flujo de entrega: tienen conductor y ruta
+              asignados. Deja fuera los que todavía están sin asignar.
+            </span>
+          </span>
+        </label>
       ),
     },
   ];

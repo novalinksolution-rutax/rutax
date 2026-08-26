@@ -67,6 +67,15 @@ export function CajonesManifiestos({
  * coordinador no tiene forma de saberlo desde ninguna pantalla.
  *
  * -----------------------------------------------------------------------------
+ * COMPLETADO: SI QUEDÓ ALGO ABIERTO, ESO ES LO QUE HAY QUE DECIR
+ * -----------------------------------------------------------------------------
+ * Una ruta cerrada no está «atrasada»: está cerrada. Pintarla de rojo porque su
+ * porcentaje es bajo dice «este conductor no va a llegar» de alguien que terminó
+ * hace dos horas — y era lo que pasaba. Lo que sí importa de una ruta cerrada es
+ * si el conductor la terminó o si el coordinador la cerró a la fuerza, y eso se
+ * lee en las paradas que quedaron sin cerrar. Va en ámbar, no en rojo.
+ *
+ * -----------------------------------------------------------------------------
  * CANCELADO: DÓNDE QUEDARON SUS PARADAS
  * -----------------------------------------------------------------------------
  * Lo que uno quiere saber al ver un manifiesto cancelado no es que está
@@ -116,26 +125,52 @@ export function CeldaAvance({
     return <span className="text-xs text-muted-foreground">—</span>;
   }
 
-  const enFalla = avanceEnFalla(avance.porcentaje, horaActual);
+  const enFalla = avanceEnFalla(avance.porcentaje, horaActual, estado);
+  const abiertas = avance.paradas - avance.cerradas;
 
   return (
-    <span className="flex items-center gap-2">
-      <span className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+    <span className="flex flex-col gap-0.5">
+      <span className="flex items-center gap-2">
         <span
-          className={`block h-full rounded-full ${enFalla ? "bg-destructive" : "bg-primary"}`}
-          style={{ width: `${avance.porcentaje}%` }}
-        />
-      </span>
-      {/* El porcentaje escrito, y el conteo debajo: la barra sola no se compara
-          entre dos filas de un vistazo, y el color no puede ser el único canal. */}
-      <span
-        className={`text-xs tabular-nums ${enFalla ? "text-destructive" : "text-muted-foreground"}`}
-      >
-        {avance.porcentaje}%
-        <span className="ms-1">
-          ({avance.cerradas}/{avance.paradas})
+          className="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-muted"
+          aria-hidden="true"
+        >
+          <span
+            className={`block h-full rounded-full ${enFalla ? "bg-destructive" : "bg-primary"}`}
+            style={{ width: `${avance.porcentaje}%` }}
+          />
+        </span>
+        {/* El porcentaje escrito, y el conteo al lado: la barra sola no se
+            compara entre dos filas de un vistazo, y el color no puede ser el
+            único canal. */}
+        <span
+          className={`text-xs tabular-nums ${enFalla ? "text-destructive" : "text-muted-foreground"}`}
+        >
+          {avance.porcentaje}%
+          <span className="ms-1">
+            ({avance.cerradas}/{avance.paradas})
+          </span>
         </span>
       </span>
+
+      {/* Una ruta cerrada con paradas abiertas: el dato que distingue «terminó»
+          de «lo cerraron». Es lo mismo que `completarManifiesto` deja escrito en
+          la bitácora como `paradas_abiertas`, dicho donde se mira. */}
+      {estado === "completado" && abiertas > 0 ? (
+        <span className="text-[11px] leading-snug text-attention-fg">
+          {abiertas} sin cerrar al terminar la ruta
+        </span>
+      ) : null}
+
+      {/* Por qué esta cifra puede ir por delante de la de Pedidos. En Flex el
+          estado oficial lo escribe Mercado Libre y llega con la sincronización;
+          el conductor ya cerró la parada en la app. Decirlo evita que se lea
+          como un descuadre. */}
+      {avance.cerradasSoloEnApp > 0 ? (
+        <span className="text-[11px] leading-snug text-fg-subtle">
+          {avance.cerradasSoloEnApp} según el conductor, sin confirmar aún
+        </span>
+      ) : null}
     </span>
   );
 }

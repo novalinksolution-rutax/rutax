@@ -1,12 +1,24 @@
 "use client";
 
 /**
- * La tabla de liquidaciones, con la selección adentro.
+ * La tabla de liquidaciones.
  * =============================================================================
  *
- * Mismo esqueleto que la de períodos y por las mismas razones: había dos listas
- * del mismo dato —esta tabla, sin casillas, y el checklist del panel de
- * aprobación en lote— y la selección de una no tenía relación con la otra.
+ * -----------------------------------------------------------------------------
+ * ⚠️ ACÁ HABÍA SELECCIÓN MÚLTIPLE Y SE RETIRÓ (26-08-2026, decisión del usuario)
+ * -----------------------------------------------------------------------------
+ * No estaba rota: estaba **cerrada por regla de negocio**. La casilla solo se
+ * habilitaba sobre una liquidación `emitida` y sin payout en curso, así que en
+ * una cuenta donde todas están en borrador **todas salían grises** y la función
+ * se leía como muerta, sin que la pantalla dijera por qué.
+ *
+ * Se retiró en vez de explicarla, junto con la misma pieza en Períodos. Pagar
+ * sigue existiendo **de a una**, en el detalle: `DialogEmitirPago` y
+ * `DialogMarcarPagada`. Ahí se ve de qué se está pagando cada caso, que es lo
+ * que una decisión de dinero necesita tener delante.
+ *
+ * El motor de lote (`acciones-lote`, `preflight-lote`, `CeremoniaLote`) queda en
+ * el repo sin llamadores: sus únicos dos usos eran esta tabla y la de períodos.
  *
  * -----------------------------------------------------------------------------
  * LO QUE ES PROPIO DE ESTA PANTALLA
@@ -24,16 +36,12 @@
  * motivo ocupa la columna de composición — que es donde se lee.
  */
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { BarraCajones, type Cajon } from "@/components/ui/barra-cajones";
-import { BarraSeleccion } from "@/components/ui/barra-seleccion";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Table,
@@ -50,7 +58,6 @@ import {
   traducirEstadoLiquidacion,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoLiquidacion } from "@/modules/dinero/tipos";
-import { CeremoniaLote, type ItemLoteUI } from "../_componentes/ceremonia-lote";
 import { DialogAjustarLiquidacion } from "./dialog-ajustar";
 import { DialogEmitirPago } from "./dialog-emitir-pago";
 import { DialogMarcarPagada } from "./dialog-marcar-pagada";
@@ -78,89 +85,36 @@ export interface FilaLiquidacionVista {
   payoutEstado: string | null;
   /** Frase ya armada del rechazo — el texto crudo del banco, enmarcado. */
   rechazoTexto: string | null;
-  /** Se puede pagar: emitida y sin payout en tránsito. */
+  /**
+      * Se puede pagar: emitida y sin payout en tránsito.
+      *
+      * Ya no gobierna ninguna casilla —la selección múltiple se retiró— pero
+      * sigue decidiendo qué acciones ofrece la fila, que es de donde salió.
+      */
   elegiblePago: boolean;
-}
-
-export interface ElegiblePago extends ItemLoteUI {
-  entregas: number;
-  visitas: number;
-  conAjustes: boolean;
 }
 
 interface Props {
   filas: readonly FilaLiquidacionVista[];
-  elegiblesDelFiltro: readonly ElegiblePago[];
   cajones: Cajon[];
   /** «Pago rechazado» cruza los estados: una rechazada sigue siendo `emitida`. */
   cajonTransversal: Cajon;
   cajonActivo: string | null;
   totalFiltrado: number;
   autorNombre: string;
-  accionPreflight: (ids: string[]) => Promise<
-    | { ok: true; resultado: import("@/modules/dinero/preflight-lote").ResultadoPreflightLote }
-    | { ok: false; mensaje: string }
-  >;
-  accionEmitir: (ids: string[]) => Promise<
-    | { ok: true; resultado: import("@/modules/dinero/acciones-lote").ResultadoLote }
-    | { ok: false; mensaje: string }
-  >;
 }
 
 export function TablaLiquidaciones({
   filas,
-  elegiblesDelFiltro,
   cajones,
   cajonTransversal,
   cajonActivo,
   totalFiltrado,
   autorNombre,
-  accionPreflight,
-  accionEmitir,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-
-  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
-  const [ceremoniaAbierta, setCeremoniaAbierta] = useState(false);
-
-  const elegiblesPagina = useMemo(
-    () => filas.filter((f) => f.elegiblePago).map((f) => f.id),
-    [filas],
-  );
-  const paginaCompleta =
-    elegiblesPagina.length > 0 && elegiblesPagina.every((id) => seleccion.has(id));
-  const paginaParcial = !paginaCompleta && elegiblesPagina.some((id) => seleccion.has(id));
-
-  const seleccionados = useMemo(
-    () => elegiblesDelFiltro.filter((i) => seleccion.has(i.id)),
-    [elegiblesDelFiltro, seleccion],
-  );
-  const fueraDeSeleccion = elegiblesDelFiltro.filter((i) => !seleccion.has(i.id)).length;
-
-  function alternarFila(id: string) {
-    setSeleccion((prev) => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id);
-      else s.add(id);
-      return s;
-    });
-  }
-
-  function alternarPagina() {
-    setSeleccion((prev) => {
-      const s = new Set(prev);
-      if (paginaCompleta) elegiblesPagina.forEach((id) => s.delete(id));
-      else elegiblesPagina.forEach((id) => s.add(id));
-      return s;
-    });
-  }
-
-  const totalEntregas = seleccionados.reduce((s, i) => s + i.entregas, 0);
-  const totalVisitas = seleccionados.reduce((s, i) => s + i.visitas, 0);
-  const conAjustes = seleccionados.filter((i) => i.conAjustes).length;
-  const totalNeto = seleccionados.reduce((s, i) => s + i.montoClp, 0);
 
   return (
     <div className="space-y-4">
@@ -170,7 +124,6 @@ export function TablaLiquidaciones({
         activo={cajonActivo}
         total={totalFiltrado}
         onSeleccionar={(clave) => {
-          setSeleccion(new Set());
           const siguiente = new URLSearchParams(params.toString());
           if (clave) siguiente.set("estado", clave);
           else siguiente.delete("estado");
@@ -189,14 +142,6 @@ export function TablaLiquidaciones({
         <Table densidad="comfortable" aria-label="Liquidaciones de conductores">
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead className="w-10 px-4">
-                <Checkbox
-                  checked={paginaCompleta ? true : paginaParcial ? "indeterminate" : false}
-                  disabled={elegiblesPagina.length === 0}
-                  onCheckedChange={alternarPagina}
-                  aria-label="Seleccionar las liquidaciones pagables de esta página"
-                />
-              </TableHead>
               <TableHead className="px-4">Conductor y período</TableHead>
               <TableHead className="px-4">Estado</TableHead>
               <TableHead className="hidden px-4 md:table-cell">Composición</TableHead>
@@ -213,19 +158,7 @@ export function TablaLiquidaciones({
             {filas.map((f) => {
               const ajusteNeto = f.bonoClp - f.penalizacionClp;
               return (
-                <TableRow
-                  key={f.id}
-                  className={seleccion.has(f.id) ? "bg-accent-bg/40" : undefined}
-                >
-                  <TableCell className="px-4">
-                    <Checkbox
-                      checked={seleccion.has(f.id)}
-                      disabled={!f.elegiblePago}
-                      onCheckedChange={() => alternarFila(f.id)}
-                      aria-label={`Seleccionar ${f.conductorNombre} · ${f.periodoEtiqueta}`}
-                    />
-                  </TableCell>
-
+                <TableRow key={f.id}>
                   <TableCell className="px-4">
                     <EnlaceDetalle
                       href={`/dinero/liquidaciones/${f.id}`}
@@ -345,56 +278,6 @@ export function TablaLiquidaciones({
           </TableBody>
         </Table>
       </DataTable>
-
-      {paginaCompleta && fueraDeSeleccion > 0 ? (
-        <p className="text-sm text-fg-muted">
-          Están seleccionadas las {elegiblesPagina.length} de esta página.{" "}
-          <button
-            type="button"
-            className="font-medium text-accent-text hover:underline"
-            onClick={() => setSeleccion(new Set(elegiblesDelFiltro.map((i) => i.id)))}
-          >
-            Seleccionar las {elegiblesDelFiltro.length} del filtro completo
-          </button>
-        </p>
-      ) : null}
-
-      <BarraSeleccion
-        cantidad={seleccionados.length}
-        composicion={[
-          { etiqueta: `${totalEntregas.toLocaleString("es-CL")} entregas` },
-          // Las visitas solo si las hay: «0 visitas» es una parte de la
-          // composición que no compone nada.
-          ...(totalVisitas > 0
-            ? [{ etiqueta: `${totalVisitas.toLocaleString("es-CL")} visitas` }]
-            : []),
-          // Las que llevan ajuste se marcan: es lo que uno quiere revisar antes
-          // de mandar plata a la cuenta de alguien.
-          ...(conAjustes > 0
-            ? [{ etiqueta: `${conAjustes} con ajustes`, alerta: true }]
-            : []),
-          { etiqueta: `neto ${formatearCLP(totalNeto)}` },
-        ]}
-        onLimpiar={() => setSeleccion(new Set())}
-      >
-        <Button size="sm" onClick={() => setCeremoniaAbierta(true)}>
-          Verificar y emitir{" "}
-          {seleccionados.length === 1 ? "el pago" : `los ${seleccionados.length} pagos`}
-        </Button>
-      </BarraSeleccion>
-
-      <CeremoniaLote
-        abierto={ceremoniaAbierta}
-        onCerrar={(hubo) => {
-          setCeremoniaAbierta(false);
-          if (hubo) setSeleccion(new Set());
-        }}
-        ids={seleccionados.map((i) => i.id)}
-        items={seleccionados}
-        tipo="pago"
-        accionPreflight={accionPreflight}
-        accionEmitir={accionEmitir}
-      />
 
       {filas.length === 0 ? (
         <div className="border border-line bg-bg-sunken px-6 py-12 text-center">

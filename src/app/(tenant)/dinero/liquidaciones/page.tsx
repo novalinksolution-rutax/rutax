@@ -33,12 +33,7 @@ import {
 } from "@/modules/dinero/listado-liquidaciones";
 import { etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
 import { FiltrosLiquidacionesForm } from "./filtros-liquidaciones";
-import { accionPreflightLotePagos, accionEmitirPagosLote } from "./actions";
-import {
-  TablaLiquidaciones,
-  type ElegiblePago,
-  type FilaLiquidacionVista,
-} from "./tabla-liquidaciones";
+import { TablaLiquidaciones, type FilaLiquidacionVista } from "./tabla-liquidaciones";
 
 export const metadata: Metadata = {
   title: "Liquidaciones",
@@ -273,16 +268,6 @@ export default async function PaginaLiquidaciones({
     elegiblePago: esPagable(l),
   }));
 
-  const elegiblesDelFiltro: ElegiblePago[] = ordenadas.filter(esPagable).map((l) => ({
-    id: l.id,
-    etiqueta: l.conductorNombre,
-    sub: etiquetaPeriodo(l.fechaInicio, l.fechaFin),
-    montoClp: neto(l),
-    entregas: l.entregas,
-    visitas: l.visitas,
-    conAjustes: l.bonoClp > 0 || l.penalizacionClp > 0,
-  }));
-
   const conductoresConLiquidacion = new Set(enriquecidas.map((l) => l.driverId)).size;
 
   return (
@@ -351,14 +336,11 @@ export default async function PaginaLiquidaciones({
       ) : (
         <TablaLiquidaciones
           filas={filas}
-          elegiblesDelFiltro={elegiblesDelFiltro}
           cajones={cajones}
           cajonTransversal={cajonTransversal}
           cajonActivo={filtroEstado || null}
           totalFiltrado={enriquecidas.length}
           autorNombre={sesion.nombreCompleto ?? "Tu cuenta"}
-          accionPreflight={accionPreflightLotePagos}
-          accionEmitir={accionEmitirPagosLote}
         />
       )}
     </div>

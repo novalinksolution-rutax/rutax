@@ -528,6 +528,26 @@ export interface FiltrosPedidos {
    * barra mentía sobre lo que comparaba.
    */
   porRevisar?: boolean;
+  /**
+   * Si `true`, solo los pedidos que **ya están en un manifiesto**: los que
+   * entraron al flujo de entrega de Rutax.
+   *
+   * Se responde con la existencia de una asignación ACTIVA, y eso equivale a
+   * «tiene manifiesto» porque `asignaciones_pedido.manifiesto_id` es NOT NULL:
+   * no hay forma de estar asignado sin estarlo a un manifiesto.
+   *
+   * ⚠️ **Activa, no cualquiera.** Acá la pregunta es dónde está el pedido AHORA,
+   * y una asignación inactiva es la huella de un manifiesto del que ya salió
+   * —reasignado, o su manifiesto cancelado—. Es justo lo contrario del criterio
+   * de `pedidos-entregados-por-rutax.ts`, que cuenta CUALQUIER asignación
+   * porque ahí la pregunta es histórica: «¿lo movimos nosotros alguna vez?».
+   * Dos preguntas distintas sobre la misma tabla; no unificarlas.
+   *
+   * ⚠️ Necesita que el `select` traiga el embed de `asignaciones_pedido`, que
+   * es lo que `seleccionSegunFiltros` agrega. Filtrar sin el embed no falla:
+   * **devuelve todo sin filtrar**, en silencio.
+   */
+  enManifiesto?: boolean;
   pagina?: number;
   limite?: number;
 }

@@ -47,6 +47,12 @@ const CERRADOS = new Set([
 export interface AvanceManifiesto {
   paradas: number;
   cerradas: number;
+  /**
+   * De las cerradas, cuántas lo están **solo** porque el conductor lo declaró en
+   * la app: el estado oficial del pedido todavía no llegó. En Flex es lo normal
+   * durante horas, y es lo que la celda usa para no mentir en ninguna dirección.
+   */
+  cerradasSoloEnApp: number;
   /** 0–100. `null` cuando no hay paradas: no es 0 %, es «nada que medir». */
   porcentaje: number | null;
 }
@@ -97,13 +103,31 @@ export async function cargarContextoManifiestos(
       .range(desde, hasta),
   );
 
+  // Lo que el conductor declaró cerrado desde SU app, que es lo que va por
+  // delante del estado oficial. Ver `cerradasPorElConductor`.
+  const declaradas = await cerradasPorElConductor(
+    cliente,
+    tenantId,
+    asignaciones.filter((a) => a.activa).map((a) => a.pedido_id),
+  );
+
   const avance: Record<string, AvanceManifiesto> = {};
   for (const a of asignaciones) {
     if (!a.activa) continue;
-    const actual = (avance[a.manifiesto_id] ??= { paradas: 0, cerradas: 0, porcentaje: null });
+    const actual = (avance[a.manifiesto_id] ??= {
+      paradas: 0,
+      cerradas: 0,
+      cerradasSoloEnApp: 0,
+      porcentaje: null,
+    });
     actual.paradas += 1;
+
     const estado = Array.isArray(a.pedidos) ? a.pedidos[0]?.estado : undefined;
-    if (estado && CERRADOS.has(estado)) actual.cerradas += 1;
+    const oficialCerrado = Boolean(estado && CERRADOS.has(estado));
+    const declaradoCerrado = declaradas.has(a.pedido_id);
+
+    if (oficialCerrado || declaradoCerrado) actual.cerradas += 1;
+    if (declaradoCerrado && !oficialCerrado) actual.cerradasSoloEnApp += 1;
   }
   for (const v of Object.values(avance)) {
     v.porcentaje = v.paradas > 0 ? Math.round((v.cerradas / v.paradas) * 100) : null;
@@ -117,6 +141,73 @@ export async function cargarContextoManifiestos(
   );
 
   return { avance, redistribucion };
+}
+
+/**
+ * Las paradas que el CONDUCTOR declaró cerradas desde su app.
+ * =============================================================================
+ *
+ * 🔴 **Ésta es la mitad que faltaba, y por eso una ruta completada salía en 0 %.**
+ *
+ * El avance se medía solo contra `pedidos.estado`, y en Flex ese estado **no lo
+ * escribe Rutax**: lo escribe Mercado Libre y llega con la sincronización.
+ * `completarManifiesto` tampoco mueve un solo pedido. Resultado: el conductor
+ * cerraba sus 26 paradas en la app, el coordinador cerraba la ruta, y la tabla
+ * seguía diciendo «0 % (0/26)» — en rojo, además, si ya eran más de las 18:00.
+ *
+ * Es exactamente el desfase que la Torre de control ya resuelve, y se resuelve
+ * igual: mirando las dos tablas donde el conductor deja su declaración.
+ *
+ *   · **`cierres_conductor`** — Flex. Registro PARALELO del courier: no mueve el
+ *     estado, porque el POD oficial lo gobierna la app de Mercado Envíos.
+ *   · **`pruebas_entrega`** — same-day. Es el POD autoritativo y sí mueve el
+ *     estado, así que acá suele ser redundante. Se consulta igual: si la
+ *     escritura del estado falló, el POD sigue siendo la verdad.
+ *
+ * **Cuenta el cierre, no la entrega.** Un `no_entregado` cierra la parada igual
+ * que un entregado: la pregunta de esta columna es «¿cuánto le queda por
+ * hacer?», no «¿cuánto entregó?». Lo que no se pudo entregar lo levanta
+ * incidencias, que es su pantalla.
+ *
+ * ⚠️ **Une, no reemplaza.** Un pedido cancelado en ML nunca va a tener cierre
+ * del conductor y está cerradísimo; uno entregado y ya sincronizado tampoco lo
+ * necesita. Los dos lados suman, y por eso esto no puede empeorar ninguna fila.
+ *
+ * ⚠️ **En tandas de 100.** Un `.in()` con mil UUID responde `URI too long` — ya
+ * pasó en este repo. Acá el largo lo decide cuántas paradas tengan los
+ * manifiestos de la página: cincuenta rutas de treinta paradas son 1.500 ids, o
+ * sea que el fallo llega con el volumen real y no con los datos de demo.
+ */
+async function cerradasPorElConductor(
+  cliente: SupabaseClient,
+  tenantId: string,
+  pedidoIds: readonly string[],
+): Promise<Set<string>> {
+  const cerradas = new Set<string>();
+  if (pedidoIds.length === 0) return cerradas;
+
+  const unicos = [...new Set(pedidoIds)];
+  const TANDA = 100;
+
+  for (const tabla of ['cierres_conductor', 'pruebas_entrega'] as const) {
+    for (let i = 0; i < unicos.length; i += TANDA) {
+      const tanda = unicos.slice(i, i + TANDA);
+      const filas = await leerTodasLasFilas<{ pedido_id: string }>(
+        `${tabla} de los manifiestos`,
+        (desde, hasta) =>
+          cliente
+            .schema("operacion")
+            .from(tabla)
+            .select("pedido_id")
+            .eq("tenant_id", tenantId)
+            .in("pedido_id", tanda)
+            .range(desde, hasta),
+      );
+      for (const f of filas) cerradas.add(f.pedido_id);
+    }
+  }
+
+  return cerradas;
 }
 
 /**
@@ -251,8 +342,25 @@ export async function contarManifiestosPorEstado(
 export const HORA_UMBRAL_AVANCE = 18;
 export const AVANCE_MINIMO_ESPERADO = 40;
 
-export function avanceEnFalla(porcentaje: number | null, horaActual: number): boolean {
+/**
+ * ⚠️ **El estado del manifiesto es parte de la regla, no un adorno.**
+ *
+ * «Va atrasado» solo tiene sentido mientras la ruta puede avanzar. Una ruta ya
+ * `completado` no está atrasada: está cerrada, y pintarla de rojo a las 20:00
+ * dice «este conductor no va a llegar» de alguien que terminó hace dos horas.
+ * Si quedaron paradas sin cerrar, eso se cuenta aparte y en tono de atención —
+ * es otra cosa, y la celda la dice con otras palabras.
+ *
+ * `borrador` y `cancelado` no llegan hasta acá (la celda los resuelve antes),
+ * pero se excluyen igual: la regla tiene que ser cierta leída sola.
+ */
+export function avanceEnFalla(
+  porcentaje: number | null,
+  horaActual: number,
+  estado?: EstadoManifiesto,
+): boolean {
   if (porcentaje === null) return false;
+  if (estado === 'completado' || estado === 'cancelado' || estado === 'borrador') return false;
   return horaActual >= HORA_UMBRAL_AVANCE && porcentaje < AVANCE_MINIMO_ESPERADO;
 }
 

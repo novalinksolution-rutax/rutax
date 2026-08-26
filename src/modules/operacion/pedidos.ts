@@ -199,7 +199,7 @@ export async function listarPedidos(
   const offset = (pagina - 1) * limite;
 
   let query = aplicarFiltrosPedidos(
-    cliente.from("pedidos").select("*", { count: "exact" }),
+    cliente.from("pedidos").select(seleccionSegunFiltros("*", filtros), { count: "exact" }),
     filtros,
   );
 
@@ -256,6 +256,30 @@ export async function listarPedidos(
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 type ConsultaPedidos = PostgrestFilterBuilder<any, any, any, any>;
 
+/**
+ * El `select` que hace falta para poder filtrar por manifiesto.
+ * =============================================================================
+ *
+ * PostgREST solo deja filtrar por un recurso embebido **si el recurso está en el
+ * `select`**, así que el embed no lo puede poner `aplicarFiltrosPedidos`: tiene
+ * que viajar en la cadena de columnas de cada llamador. Se centraliza acá para
+ * que el listado y la barra de cajones no puedan divergir — que es el mismo
+ * motivo por el que existe `aplicarFiltrosPedidos`.
+ *
+ * `!inner` es lo que convierte el embed en el filtro: sin él, un pedido sin
+ * asignación saldría igual, con el array vacío. Y no duplica filas porque hay un
+ * único parcial —`idx_asignaciones_pedido_activa_uk`— que impone una sola
+ * asignación activa por pedido: el join trae 0 o 1, nunca 2.
+ *
+ * Verificado contra PostgREST real a través de las vistas de `public`
+ * (2026-08-26): 9 de 29 pedidos, con `count` exacto y sin duplicados.
+ */
+function seleccionSegunFiltros(columnas: string, filtros: FiltrosPedidos): string {
+  return filtros.enManifiesto
+    ? `${columnas}, asignaciones_pedido!inner(manifiesto_id)`
+    : columnas;
+}
+
 function aplicarFiltrosPedidos(
   consulta: ConsultaPedidos,
   filtros: FiltrosPedidos,
@@ -279,6 +303,11 @@ function aplicarFiltrosPedidos(
   }
 
   if (filtros.fuente) query = query.eq("fuente", filtros.fuente);
+
+  // Solo lo que ya está en un manifiesto. El `!inner` lo pone
+  // `seleccionSegunFiltros`; esto acota el embed a la asignación VIGENTE, y con
+  // el inner join eso descarta al pedido que solo tuvo asignaciones viejas.
+  if (filtros.enManifiesto) query = query.eq("asignaciones_pedido.activa", true);
 
   if (filtros.porRevisar) {
     // Cajón de revisión de dirección: geo_estado problemático OR cobertura sin
@@ -342,9 +371,12 @@ export async function contarPedidosPorGrupo(
   };
 
   async function contar(extra: Partial<FiltrosPedidos>): Promise<number> {
+    const conFiltros = { ...base, ...extra };
     const { count, error } = await aplicarFiltrosPedidos(
-      cliente.from("pedidos").select("id", { count: "exact", head: true }),
-      { ...base, ...extra },
+      cliente
+        .from("pedidos")
+        .select(seleccionSegunFiltros("id", conFiltros), { count: "exact", head: true }),
+      conFiltros,
     );
     if (error) {
       throw new Error(`Error al contar pedidos: ${error.message}`);

@@ -32,23 +32,29 @@
  * Fundirlos perdería justo el dato que hace falta para arreglarlo.
  *
  * -----------------------------------------------------------------------------
- * SELECCIÓN EN TRES NIVELES
+ * ⚠️ ACÁ HABÍA SELECCIÓN EN TRES NIVELES Y SE RETIRÓ (26-08-2026, decisión del usuario)
  * -----------------------------------------------------------------------------
- * Fila · página · conjunto filtrado. El tercero importa: el courier factura «los
- * 34 cerrados de agosto», no «los 20 que caben en la página», y sin ese nivel
- * hay que paginar seleccionando de a veinte. La casilla de la cabecera cubre la
- * PÁGINA, y cuando la página está completa aparece la línea que ofrece el resto.
+ * Fila · página · conjunto filtrado, con su ceremonia de emisión en lote. No
+ * estaba rota: estaba **cerrada por regla de negocio** —solo se habilitaba sobre
+ * un período `cerrado` y sin excepciones bloqueantes—, así que en una cuenta sin
+ * períodos cerrados **todas las casillas salían grises** y la función se leía
+ * como muerta, sin que la pantalla dijera por qué.
+ *
+ * Se retiró junto con la misma pieza en Liquidaciones. Emitir sigue existiendo
+ * **de a uno**, en el detalle del período (`DialogEmitirFactura`), que es donde
+ * se ve de qué se está facturando cada caso — y donde ya vivía la ceremonia de
+ * P4 para una acción irreversible ante el SII.
+ *
+ * El motor de lote (`acciones-lote`, `preflight-lote`, `CeremoniaLote`) queda en
+ * el repo sin llamadores: sus únicos dos usos eran esta tabla y la de
+ * liquidaciones.
  */
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { BarraCajones, type Cajon } from "@/components/ui/barra-cajones";
-import { BarraSeleccion } from "@/components/ui/barra-seleccion";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Table,
@@ -59,7 +65,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
-import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import {
   BADGE_ESTADO_PERIODO,
   BADGE_ESTADO_SII,
@@ -69,7 +75,6 @@ import {
   traducirEstadoCobroPeriodo,
 } from "@/lib/ui/traduccion-estados";
 import type { EstadoPeriodo, DocumentoDte, EstadoCobroPeriodo } from "@/modules/dinero/tipos";
-import { CeremoniaLote, type ItemLoteUI } from "../_componentes/ceremonia-lote";
 import { DialogCerrarPeriodo } from "./dialog-cerrar-periodo";
 
 export interface FilaPeriodoVista {
@@ -93,21 +98,9 @@ export interface FilaPeriodoVista {
   tieneXml: boolean;
 }
 
-/**
- * Un elegible del conjunto filtrado. Lleva sus líneas encima **a propósito**:
- * la barra declara «427 líneas», y si ese número saliera de las filas visibles,
- * seleccionar el filtro completo daría una composición que cuenta solo la página
- * — un número más chico que el real, justo antes de emitir facturas.
- */
-export interface ElegiblePeriodo extends ItemLoteUI {
-  lineas: number;
-}
-
 interface Props {
   /** Las filas de ESTA página, ya ordenadas. */
   filas: readonly FilaPeriodoVista[];
-  /** Todos los elegibles del conjunto filtrado, no solo los de la página. */
-  elegiblesDelFiltro: readonly ElegiblePeriodo[];
   cajones: Cajon[];
   cajonExcluido: Cajon;
   /** El cajón que cruza los estados: «Con problemas». No suma con los demás. */
@@ -115,74 +108,20 @@ interface Props {
   cajonActivo: string | null;
   totalFiltrado: number;
   puedeCerrar: boolean;
-  accionPreflight: (ids: string[]) => Promise<
-    { ok: true; resultado: import("@/modules/dinero/preflight-lote").ResultadoPreflightLote } | { ok: false; mensaje: string }
-  >;
-  accionEmitir: (ids: string[]) => Promise<
-    { ok: true; resultado: import("@/modules/dinero/acciones-lote").ResultadoLote } | { ok: false; mensaje: string }
-  >;
-}
-
-/** Un período se puede facturar si está cerrado y nada lo bloquea. */
-function esElegible(f: FilaPeriodoVista): boolean {
-  return f.estado === "cerrado" && f.excepcionesBloqueantes === 0;
 }
 
 export function TablaPeriodos({
   filas,
-  elegiblesDelFiltro,
   cajones,
   cajonExcluido,
   cajonTransversal,
   cajonActivo,
   totalFiltrado,
   puedeCerrar,
-  accionPreflight,
-  accionEmitir,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-
-  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
-  const [ceremoniaAbierta, setCeremoniaAbierta] = useState(false);
-
-  const elegiblesPagina = useMemo(() => filas.filter(esElegible).map((f) => f.id), [filas]);
-
-  const paginaCompleta =
-    elegiblesPagina.length > 0 && elegiblesPagina.every((id) => seleccion.has(id));
-  const paginaParcial = !paginaCompleta && elegiblesPagina.some((id) => seleccion.has(id));
-
-  // Cuántos elegibles del filtro quedan fuera de la selección. Es lo que hace
-  // posible el tercer nivel: «hay 14 más allá de esta página».
-  const fueraDeSeleccion = elegiblesDelFiltro.filter((i) => !seleccion.has(i.id)).length;
-
-  function alternarFila(id: string) {
-    setSeleccion((prev) => {
-      const s = new Set(prev);
-      if (s.has(id)) s.delete(id);
-      else s.add(id);
-      return s;
-    });
-  }
-
-  function alternarPagina() {
-    setSeleccion((prev) => {
-      const s = new Set(prev);
-      if (paginaCompleta) elegiblesPagina.forEach((id) => s.delete(id));
-      else elegiblesPagina.forEach((id) => s.add(id));
-      return s;
-    });
-  }
-
-  const seleccionados = useMemo(
-    () => elegiblesDelFiltro.filter((i) => seleccion.has(i.id)),
-    [elegiblesDelFiltro, seleccion],
-  );
-
-  // La composición del tablero: «427 líneas · neto $ 1.285.900 · 2 folios».
-  const totalLineas = seleccionados.reduce((s, i) => s + i.lineas, 0);
-  const totalNeto = seleccionados.reduce((s, i) => s + i.montoClp, 0);
 
   return (
     <div className="space-y-4">
@@ -193,10 +132,6 @@ export function TablaPeriodos({
         activo={cajonActivo}
         total={totalFiltrado}
         onSeleccionar={(clave) => {
-          // La selección se descarta al cambiar de cajón: los ids elegibles son
-          // otros, y arrastrar una selección invisible hacia una ceremonia que
-          // nombra montos es exactamente lo que no puede pasar acá.
-          setSeleccion(new Set());
           // Se conserva el resto de la URL —el filtro de seller— y se vuelve a
           // la página 1: el cajón cambia el conjunto, así que la página 3 del
           // anterior no significa nada en el nuevo.
@@ -219,14 +154,6 @@ export function TablaPeriodos({
         <Table densidad="comfortable" aria-label="Períodos de cobro">
           <TableHeader>
             <TableRow className="bg-muted/40">
-              <TableHead className="w-10 px-4">
-                <Checkbox
-                  checked={paginaCompleta ? true : paginaParcial ? "indeterminate" : false}
-                  disabled={elegiblesPagina.length === 0}
-                  onCheckedChange={alternarPagina}
-                  aria-label="Seleccionar los períodos facturables de esta página"
-                />
-              </TableHead>
               <TableHead className="px-4">Seller y período</TableHead>
               <TableHead className="px-4">Estado</TableHead>
               <TableHead className="hidden px-4 text-right md:table-cell">Líneas</TableHead>
@@ -241,12 +168,10 @@ export function TablaPeriodos({
           </TableHeader>
           <TableBody>
             {filas.map((f) => {
-              const elegible = esElegible(f);
               const bloqueado = f.excepcionesBloqueantes > 0;
               return (
                 <TableRow
                   key={f.id}
-                  data-seleccionada={seleccion.has(f.id) ? "" : undefined}
                   /* La trama inerte marca lo que está fuera de juego: el
                      anulado, y el cerrado que no se puede emitir. Un abierto con
                      excepción NO va acá — está muy en juego, y todavía hay
@@ -254,20 +179,9 @@ export function TablaPeriodos({
                   className={
                     f.estado === "anulado" || (bloqueado && f.estado === "cerrado")
                       ? "rx-inert-row"
-                      : seleccion.has(f.id)
-                        ? "bg-accent-bg/40"
-                        : undefined
+                      : undefined
                   }
                 >
-                  <TableCell className="px-4">
-                    <Checkbox
-                      checked={seleccion.has(f.id)}
-                      disabled={!elegible}
-                      onCheckedChange={() => alternarFila(f.id)}
-                      aria-label={`Seleccionar ${f.sellerNombre} · ${f.periodoEtiqueta}`}
-                    />
-                  </TableCell>
-
                   {/* Seller y período en una sola columna: es la identidad de la
                       fila, y separarlos obligaba a leer dos celdas para saber de
                       quién es. El RUT abajo, que es lo que va en la factura. */}
@@ -395,49 +309,6 @@ export function TablaPeriodos({
         </Table>
       </DataTable>
 
-      {/* El tercer nivel de selección. Aparece solo cuando la página está
-          completa y hay más allá de ella: ofrecerlo antes sería ruido. */}
-      {paginaCompleta && fueraDeSeleccion > 0 ? (
-        <p className="text-sm text-fg-muted">
-          Están seleccionados los {elegiblesPagina.length} de esta página.{" "}
-          <button
-            type="button"
-            className="font-medium text-accent-text hover:underline"
-            onClick={() => setSeleccion(new Set(elegiblesDelFiltro.map((i) => i.id)))}
-          >
-            Seleccionar los {elegiblesDelFiltro.length} del filtro completo
-          </button>
-        </p>
-      ) : null}
-
-      <BarraSeleccion
-        cantidad={seleccionados.length}
-        composicion={[
-          { etiqueta: `${totalLineas.toLocaleString("es-CL")} líneas` },
-          { etiqueta: `neto ${formatearCLP(totalNeto)}` },
-          {
-            etiqueta: `${seleccionados.length} ${seleccionados.length === 1 ? "folio" : "folios"}`,
-          },
-        ]}
-        onLimpiar={() => setSeleccion(new Set())}
-      >
-        <Button size="sm" onClick={() => setCeremoniaAbierta(true)}>
-          Verificar y emitir {seleccionados.length === 1 ? "la factura" : `las ${seleccionados.length}`}
-        </Button>
-      </BarraSeleccion>
-
-      <CeremoniaLote
-        abierto={ceremoniaAbierta}
-        onCerrar={(hubo) => {
-          setCeremoniaAbierta(false);
-          if (hubo) setSeleccion(new Set());
-        }}
-        ids={seleccionados.map((i) => i.id)}
-        items={seleccionados}
-        tipo="factura"
-        accionPreflight={accionPreflight}
-        accionEmitir={accionEmitir}
-      />
     </div>
   );
 }
