@@ -25,7 +25,7 @@
  */
 
 import { CAPACIDADES, capacidadesDeRol, type Capacidad } from "./capacidades";
-import type { Rol } from "./roles";
+import { esRolInterno, ROLES_INTERNOS, type Rol } from "./roles";
 
 /**
  * Qué permite cada capacidad, en la voz del producto.
@@ -75,6 +75,53 @@ export const FRASE_CAPACIDAD: Record<Capacidad, string> = {
   administrar_plataforma: "Administrar la plataforma",
 };
 
+
+// =============================================================================
+// El universo contra el que se mide un rol
+// =============================================================================
+
+/**
+ * 🔴 **Un rol interno NO se mide contra el catálogo entero.**
+ *
+ * Encontrado el 26-08-2026 al construir la referencia de permisos de Equipo: la
+ * pantalla decía que el **dueño** —«control total»— «no puede» hacer 13 cosas.
+ * Las trece resultaron ser capacidades **de otros tipos de usuario**: siete del
+ * seller (conectar su cuenta de Mercado Libre, descargar sus facturas, pedir un
+ * same-day…), cinco del conductor (ver su ruta del día, confirmar su
+ * manifiesto…) y una del super-admin de Rutax.
+ *
+ * No son huecos de su poder: **no son de su rol**. Decirle al dueño que no puede
+ * «ver su ruta del día» no es un permiso que le falte, es un error de categoría
+ * — y como la lista sale del catálogo, se veía cierta.
+ *
+ * Así que el lado NEGATIVO —«no puede», «sigue sin tener»— se mide contra la
+ * **familia del rol**: para un rol interno, la unión de lo que los cuatro roles
+ * internos pueden tener. El lado positivo no cambia: lo que un rol puede es lo
+ * que puede.
+ *
+ * ⚠️ Afectaba a las tres superficies que explican roles —el formulario de
+ * invitación, el diálogo de cambiar el rol y la referencia nueva— porque las
+ * tres recorren este módulo.
+ */
+function universoDe(...roles: Rol[]): Capacidad[] {
+  const familia = new Set<Rol>();
+  for (const rol of roles) {
+    if (esRolInterno(rol)) for (const r of ROLES_INTERNOS) familia.add(r);
+    // Fuera del equipo interno cada rol es su propia familia: no hay un segundo
+    // rol de seller con el que compararlo, así que su «no puede» es vacío — y
+    // eso es lo correcto, no un olvido.
+    else familia.add(rol);
+  }
+
+  const union = new Set<Capacidad>();
+  for (const r of familia) for (const c of capacidadesDeRol(r)) union.add(c);
+
+  // Se filtra el CATÁLOGO y no se devuelve el `Set`: así el orden de las listas
+  // es siempre el mismo —el del catálogo— y no depende de cómo se escribió la
+  // matriz de cada rol.
+  return CAPACIDADES.filter((c) => union.has(c));
+}
+
 export interface CambioDeRol {
   /** Lo que deja de poder hacer. Es lo primero que hay que leer. */
   pierde: string[];
@@ -99,10 +146,11 @@ export function compararRoles(desde: Rol, hacia: Rol): CambioDeRol {
   const gana: string[] = [];
   const sigueSinTener: string[] = [];
 
-  // Se recorre el CATÁLOGO y no los conjuntos: así el orden de las tres listas
-  // es siempre el mismo —el del catálogo— y no depende de cómo se escribió la
-  // matriz de cada rol.
-  for (const c of CAPACIDADES) {
+  // Se recorre el UNIVERSO de los dos roles —no el catálogo entero— y no los
+  // conjuntos: el orden de las tres listas queda siempre el mismo, y
+  // `sigueSinTener` no se llena de capacidades de seller y de conductor que
+  // ningún rol interno podría tener nunca. Ver `universoDe`.
+  for (const c of universoDe(desde, hacia)) {
     const tenia = antes.has(c);
     const tendra = despues.has(c);
     if (tenia && !tendra) pierde.push(FRASE_CAPACIDAD[c]);
@@ -137,8 +185,9 @@ export function capacidadesLegiblesDeRol(rol: Rol): CapacidadesDeUnRol {
   const suyas = new Set(capacidadesDeRol(rol));
   const vaAPoder: string[] = [];
   const noVaAPoder: string[] = [];
-  // Se recorre el CATÁLOGO para que el orden sea siempre el mismo.
-  for (const c of CAPACIDADES) {
+  // El universo de su familia, no el catálogo entero: ver `universoDe`. Sin
+  // esto, del dueño se decía que «no puede» ver su ruta del día.
+  for (const c of universoDe(rol)) {
     (suyas.has(c) ? vaAPoder : noVaAPoder).push(FRASE_CAPACIDAD[c]);
   }
   return { vaAPoder, noVaAPoder };

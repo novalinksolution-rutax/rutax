@@ -28,6 +28,8 @@ import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { EstadoError, EstadoVacio } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
+import { describirRol } from "@/modules/identidad/capacidades-legibles";
+import { PermisosPorRol } from "./permisos-por-rol";
 import { DialogoCambiarRol } from "./dialogo-cambiar-rol";
 import type { RolInterno } from "@/modules/identidad/roles";
 import { FormularioInvitacion } from "./formulario-invitacion";
@@ -188,10 +190,15 @@ export function PanelEquipo({
         <Table>
           <TableHeader>
             <TableRow>
+              {/* ⚠️ **Cuatro columnas, como el tablero B3b: Persona · Rol ·
+                  Estado · Acciones.** Había una quinta, «Detalle», gastando el
+                  ancho de una columna entera en una fecha de alta — que ahora va
+                  bajo el correo, donde no compite con nada. Ese ancho es
+                  justamente el que necesitaba el rol para dejar de ser una
+                  etiqueta muda. */}
               <TableHead>Persona</TableHead>
               <TableHead>Rol</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead>Detalle</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -225,6 +232,10 @@ export function PanelEquipo({
     <div className="space-y-4">
       {encabezado}
       {contenido}
+      {/* Va DESPUÉS del listado: se viene a mirar a las personas, y la
+          referencia de roles es la pregunta de al lado. Plegado ocupa un
+          renglón. */}
+      <PermisosPorRol />
       <FormularioInvitacion abierto={formularioAbierto} onCerrar={() => setFormularioAbierto(false)} onInvitada={alInvitar} />
     </div>
   );
@@ -300,11 +311,23 @@ function FilaUsuario({
       <TableCell>
         <div className="space-y-0.5">
           <p className="font-medium text-foreground">{usuario.nombreCompleto}</p>
-          <p className="text-xs text-muted-foreground">{usuario.email ?? "Sin correo registrado"}</p>
+          <p className="text-xs text-muted-foreground">
+            {usuario.email ?? "Sin correo registrado"}
+            <span className="text-fg-subtle"> · desde el {formatearFecha(usuario.creadoEn)}</span>
+          </p>
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="max-w-72">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
+        {/* 🔴 **Qué significa ese rol, DERIVADO del catálogo de capacidades.**
+            La etiqueta sola no dice nada, y para saber qué puede hacer un
+            coordinador había que abrir el panel de CAMBIARLE el rol a alguien:
+            una acción de mutación, solo para quien gestiona usuarios. Esto se
+            lee sin permiso y sin consecuencia, y no puede quedar desincronizado
+            —sale de `MATRIZ_ROL_CAPACIDADES`, no de una frase a mano—. La lista
+            completa de los cuatro roles está arriba, en «Qué puede hacer cada
+            rol». */}
+        <p className="mt-1 text-xs leading-snug text-fg-muted">{describirRol(usuario.rol)}</p>
       </TableCell>
       <TableCell>
         {/* Mismo render que las invitaciones de la columna de al lado: con
@@ -315,7 +338,6 @@ function FilaUsuario({
           etiqueta={usuario.estado === "activo" ? "Activo" : "Suspendido"}
         />
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">Miembro desde el {formatearFecha(usuario.creadoEn)}</TableCell>
       {/* 🐞 ACÁ DECÍA «Gestión de rol próximamente». Era la única ocurrencia de
           esa palabra en todo `src/`, y el estado «Suspendido» de la celda de al
           lado se pintaba sin que nada llevara a él ni saliera de él. Las tres
@@ -436,8 +458,11 @@ function FilaInvitacion({
           ) : null}
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell className="max-w-72">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
+        {/* Igual que en la fila de una persona: al invitar es cuando MÁS
+            importa saber qué se está entregando. */}
+        <p className="mt-1 text-xs leading-snug text-fg-muted">{describirRol(invitacion.rol)}</p>
       </TableCell>
       <TableCell>
         <BadgeEstadoInvitacion estado={invitacion.estado} />

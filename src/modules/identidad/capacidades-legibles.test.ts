@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { CAPACIDADES } from "./capacidades";
-import { FRASE_CAPACIDAD, compararRoles, describirRol } from "./capacidades-legibles";
+import {
+  FRASE_CAPACIDAD,
+  capacidadesLegiblesDeRol,
+  compararRoles,
+  describirRol,
+} from "./capacidades-legibles";
 
 describe("FRASE_CAPACIDAD", () => {
   it("cubre TODAS las capacidades del catálogo, sin faltar ninguna", () => {
@@ -79,5 +84,59 @@ describe("describirRol", () => {
     // Enumerarlas todas no describe nada. La frase corta más el resto contado
     // sí: dice de qué se trata el rol y que hay más.
     expect(describirRol("dueno")).toMatch(/y \d+ cosas más\.$/);
+  });
+});
+
+describe("un rol interno se mide contra su familia, no contra el catálogo entero", () => {
+  /**
+   * 🔴 La red del defecto del 26-08-2026.
+   *
+   * La referencia de permisos de Equipo decía que el **dueño** —«control
+   * total»— «no puede» hacer 13 cosas. Las trece eran capacidades de OTROS
+   * tipos de usuario: siete del seller, cinco del conductor y una del
+   * super-admin. No son huecos de su poder; no son de su rol. Y como la lista
+   * salía del catálogo, se leía como cierta.
+   *
+   * Afectaba a las tres superficies que explican roles, porque las tres pasan
+   * por este módulo.
+   */
+  const DE_OTRA_FAMILIA = [
+    FRASE_CAPACIDAD.ver_ruta_propia, // conductor
+    FRASE_CAPACIDAD.confirmar_manifiesto_propio, // conductor
+    FRASE_CAPACIDAD.gestionar_conexion_ml_propia, // seller
+    FRASE_CAPACIDAD.ver_documentos_propios, // seller
+    FRASE_CAPACIDAD.administrar_plataforma, // super-admin de Rutax
+  ];
+
+  it.each(["dueno", "supervisor", "coordinador", "administracion"] as const)(
+    "a %s no se le dice que «no puede» hacer cosas de seller, conductor o Rutax",
+    (rol) => {
+      const { noVaAPoder } = capacidadesLegiblesDeRol(rol);
+      for (const frase of DE_OTRA_FAMILIA) {
+        expect(noVaAPoder, `${rol} · ${frase}`).not.toContain(frase);
+      }
+    },
+  );
+
+  it("`sigueSinTener` tampoco las trae al cambiar de rol", () => {
+    const r = compararRoles("coordinador", "supervisor");
+    for (const frase of DE_OTRA_FAMILIA) {
+      expect(r.sigueSinTener).not.toContain(frase);
+    }
+  });
+
+  it("pero SÍ conserva lo que otro rol interno sí tiene", () => {
+    // La contraprueba: si acotar el universo dejara la lista vacía, la mitad
+    // «no puede» dejaría de informar. Un coordinador no emite facturas y el
+    // dueño sí, así que eso tiene que seguir apareciendo.
+    const { noVaAPoder } = capacidadesLegiblesDeRol("coordinador");
+    expect(noVaAPoder).toContain(FRASE_CAPACIDAD.emitir_facturas);
+    expect(noVaAPoder.length).toBeGreaterThan(0);
+  });
+
+  it("el dueño no queda con nada pendiente dentro de su propia familia", () => {
+    // Es lo que su descripción promete —«control total»— y ahora la pantalla
+    // puede decirlo sin mentir en ninguna de las dos direcciones.
+    expect(capacidadesLegiblesDeRol("dueno").noVaAPoder).toEqual([]);
   });
 });
