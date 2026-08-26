@@ -49,6 +49,9 @@ export const metadata: Metadata = {
  * Es una tabla de análisis en la pantalla de «¿cómo va hoy?». El cumplimiento
  * del mes sigue, con su riel; el histórico no aporta a la pregunta del inicio.
  */
+import { PanelCrearSameDay } from "./pedidos/panel-crear-same-day";
+import { obtenerEstadoAltaSeller } from "./pedidos/estado-alta-seller";
+
 export default async function PaginaPortalSeller() {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) {
@@ -60,6 +63,8 @@ export default async function PaginaPortalSeller() {
 
   const tenantId = sesion.usuario.tenantId;
   const sellerId = sesion.usuario.sellerId;
+  // Su hora de corte, para el aviso en línea del formulario de alta.
+  const estadoAlta = await obtenerEstadoAltaSeller(sesion.usuario.tenantId, sellerId);
   const hoy = hoyEnSantiago();
   const cliente = crearClienteServiceRole();
 
@@ -174,9 +179,8 @@ export default async function PaginaPortalSeller() {
 
       {/* 5 · Las dos acciones del portal. */}
       <div className="flex flex-wrap gap-2">
-        <Button asChild size="sm">
-          <Link href="/portal/pedidos/nuevo">Crear un pedido same-day</Link>
-        </Button>
+        {/* Mismo panel que en el listado: crear no saca de donde estabas. */}
+        <PanelCrearSameDay estadoSeller={estadoAlta} variante="inicio" />
         <Button asChild size="sm" variant="outline">
           <Link href="/portal/pedidos">Ver todos mis pedidos</Link>
         </Button>

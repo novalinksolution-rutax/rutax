@@ -35,7 +35,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Inbox, SearchX, Plus } from "lucide-react";
+import { Inbox, SearchX } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerConexionesPorSeller } from "@/modules/integraciones/ml";
@@ -63,6 +63,8 @@ import {
 } from "@/lib/ui/vocabulario-portal";
 import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
 import { CajonesPedidosSeller, BuscadorPedidosSeller } from "./piezas-listado-seller";
+import { PanelCrearSameDay } from "./panel-crear-same-day";
+import { obtenerEstadoAltaSeller } from "./estado-alta-seller";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
@@ -119,6 +121,8 @@ export default async function PaginaPedidosSeller({
 
   const params = await searchParams;
   const sellerId = sesion.usuario.sellerId;
+  // Su hora de corte, para el aviso en línea del formulario de alta.
+  const estadoAlta = await obtenerEstadoAltaSeller(sesion.usuario.tenantId, sellerId);
   const tenantId = sesion.usuario.tenantId;
   const pedidoNuevoId = params.nuevo ?? null;
 
@@ -304,12 +308,11 @@ export default async function PaginaPedidosSeller({
             Seguimiento de tus entregas. Los estados se actualizan automáticamente.
           </p>
         </div>
-        <Button asChild className="whitespace-nowrap">
-          <Link href="/portal/pedidos/nuevo">
-            <Plus className="size-4" aria-hidden="true" />
-            Crear pedido same-day
-          </Link>
-        </Button>
+        {/* 🔴 Abre el PANEL, no navega. Llevaba a `/portal/pedidos/nuevo` y
+            cargar una pantalla entera —perdiendo de vista la lista que estabas
+            mirando— por el gesto que más se repite es la fricción más cara del
+            portal. La página sigue existiendo para quien llegue por enlace. */}
+        <PanelCrearSameDay estadoSeller={estadoAlta} />
       </div>
 
       {/* Confirmación de envío creado */}
