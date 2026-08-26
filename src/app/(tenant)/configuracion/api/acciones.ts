@@ -135,7 +135,7 @@ export async function accionCrearApiKey(
   } catch (err) {
     return {
       ok: false,
-      mensaje: err instanceof Error ? err.message : 'Error al crear la API key.',
+      mensaje: err instanceof Error ? err.message : 'Error al crear la clave.',
     };
   }
 }
@@ -169,11 +169,11 @@ export async function accionRevocarApiKey(
       .maybeSingle();
 
     if (errLectura) throw new Error(errLectura.message);
-    if (!key) return { ok: false, mensaje: 'API key no encontrada.' };
+    if (!key) return { ok: false, mensaje: 'No encontramos esa clave.' };
 
     const keyData = key as Record<string, unknown>;
     if (keyData.estado === 'revocada') {
-      return { ok: false, mensaje: 'La API key ya está revocada.' };
+      return { ok: false, mensaje: 'Esa clave ya estaba revocada.' };
     }
 
     // Bitácora ANTES del UPDATE (RNF-04).
@@ -201,7 +201,7 @@ export async function accionRevocarApiKey(
   } catch (err) {
     return {
       ok: false,
-      mensaje: err instanceof Error ? err.message : 'Error al revocar la API key.',
+      mensaje: err instanceof Error ? err.message : 'Error al revocar la clave.',
     };
   }
 }

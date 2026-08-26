@@ -16,7 +16,12 @@ import {
 } from "./panel-webhooks";
 
 export const metadata: Metadata = {
-  title: "API e Integraciones",
+  /* ⚠️ **«Integraciones», el mismo nombre que la navegación y el tablero.**
+     Decía «API e Integraciones» — un TERCER nombre para la misma pantalla,
+     visible en la pestaña del navegador y en el historial. El comentario de
+     abajo ya declaraba haberlo homologado y se había quedado a medias: se
+     cambió el `<h1>` y no el `metadata`. */
+  title: "Integraciones",
 };
 
 export default async function PaginaApiIntegraciones() {
@@ -99,7 +104,7 @@ export default async function PaginaApiIntegraciones() {
       <Tabs defaultValue="api-keys">
         <TabsList>
           <TabsTrigger value="api-keys">
-            API Keys
+            Claves de API
             {apiKeys.filter((k) => k.estado === "activa").length > 0 && (
               <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
                 {apiKeys.filter((k) => k.estado === "activa").length}

@@ -88,8 +88,8 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
         }
         setOpen(v);
       }}
-      disparador={<Button size="sm">Nueva API key</Button>}
-      titulo="Nueva API key"
+      disparador={<Button size="sm">Nueva clave</Button>}
+      titulo="Nueva clave de API"
       subtitulo="Para que tus propios sistemas lean y escriban en Rutax."
     >
       {alerta ? (
@@ -103,7 +103,7 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
              sin nada que lo impidiera. */
         <CredencialUnaSolaVez
           valor={alerta.clave}
-          etiqueta="Tu API key"
+          etiqueta="Tu clave"
           consecuencia={
             <>
               Si la pierdes no se puede recuperar: hay que revocar esta y crear
@@ -278,7 +278,7 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">API Keys</h2>
+          <h2 className="text-lg font-semibold">Claves de API</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Credenciales para integraciones externas. Cada key tiene permisos
             acotados.
@@ -291,19 +291,19 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
         <EmptyState
           icon={KeyRound}
           tono="arranque"
-          titulo="Sin API keys"
-          descripcion="Crea tu primera API key para conectar sistemas externos a Rutax."
+          titulo="Todavía no tienes claves"
+          descripcion="Crea la primera para conectar tus propios sistemas a Rutax."
           accion={<DialogCrearKey onCreada={() => router.refresh()} />}
         />
       ) : (
         <div className="space-y-4">
           {activas.length > 0 && (
-            <section aria-label="API keys activas">
+            <section aria-label="Claves de API activas">
               <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
                 <div className="overflow-x-auto">
                   <table
                     className="w-full text-sm"
-                    aria-label="API keys activas"
+                    aria-label="Claves de API activas"
                   >
                     {encabezadoTabla}
                     <tbody className="divide-y divide-border">
@@ -318,7 +318,7 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
           )}
 
           {revocadas.length > 0 && (
-            <section aria-label="API keys revocadas">
+            <section aria-label="Claves de API revocadas">
               <button
                 type="button"
                 onClick={() => setMostrarRevocadas((v) => !v)}
@@ -332,7 +332,7 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
                   <div className="overflow-x-auto">
                     <table
                       className="w-full text-sm"
-                      aria-label="API keys revocadas"
+                      aria-label="Claves de API revocadas"
                     >
                       {encabezadoTabla}
                       <tbody className="divide-y divide-border">
