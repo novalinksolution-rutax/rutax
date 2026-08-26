@@ -263,11 +263,20 @@ export function CampoDireccion({
         </p>
       ) : null}
 
-      {/* El estado «ubicada» se dice con texto, no solo con el visto: el color y
-          el ícono no pueden ser los únicos portadores (regla 5). */}
+      {/* ⚠️ **El acuse de «ubicada» dejó de VERSE, no de existir.**
+          Se retiró de la vista por decisión del usuario (26-08-2026): la
+          dirección ya se ve normalizada en el propio campo, así que la frase
+          repetía lo que el campo mostraba.
+
+          Pero sigue en el árbol, invisible y con `role="status"`, porque era el
+          único portador NO visual del estado: el visto es un ícono y el verde es
+          un color, y ninguno de los dos existe para quien usa un lector de
+          pantalla. Borrarlo del todo habría dejado a esa persona sin forma de
+          saber que la dirección quedó ubicada — que es el dato que decide si el
+          conductor la va a encontrar. */}
       {elegida ? (
-        <p className="mt-1 text-xs text-balanced-fg">
-          Dirección ubicada. El conductor la va a encontrar.
+        <p className="sr-only" role="status">
+          Dirección ubicada.
         </p>
       ) : null}
 

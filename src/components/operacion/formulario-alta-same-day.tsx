@@ -332,7 +332,10 @@ export function FormularioAltaSameDay({
             }}
             buscar={actionSugerirDirecciones}
             resolver={actionResolverDireccion}
-            ayuda="Escribe y elige de la lista: así queda ubicada al instante, con su comuna. Si la escribes a mano, la ubicamos después y el pedido puede quedar «por revisar»."
+            /* Sin `ayuda`: el instructivo se retiró por decisión del usuario
+               (26-08-2026). La lista aparece sola al escribir y el campo acepta
+               texto libre igual — explicarlo de antemano era enseñar algo que la
+               pantalla ya enseña sola al segundo carácter. */
           />
         </div>
 
