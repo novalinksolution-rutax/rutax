@@ -34,6 +34,26 @@ import type {
   SugerenciaDireccion,
 } from "../autocompletado";
 
+/**
+ * 🔴 **Que el proveedor rechace NO es «no hay resultados».**
+ *
+ * `pedir` devolvía `null` ante cualquier respuesta no-OK y los dos métodos lo
+ * traducían a lista vacía. O sea que el fallo más probable de todos —403 porque
+ * la Places API (New) no está habilitada en el proyecto de Google, o porque la
+ * llave está restringida a otra API— se veía en pantalla como «esa dirección no
+ * existe», y en el servidor no quedaba más que un `warn` sin el código.
+ *
+ * Habilitar la Geocoding API **no** habilita ésta: son dos productos distintos
+ * (`maps.googleapis.com/maps/api/geocode` contra `places.googleapis.com/v1`).
+ * Es exactamente el tipo de cosa que hay que poder leer en un log.
+ */
+export class ErrorProveedorAutocompletado extends Error {
+  constructor(readonly estado: number) {
+    super(`El proveedor de autocompletado respondió ${estado}`);
+    this.name = "ErrorProveedorAutocompletado";
+  }
+}
+
 const URL_AUTOCOMPLETE = "https://places.googleapis.com/v1/places:autocomplete";
 const URL_DETALLE = "https://places.googleapis.com/v1/places";
 
@@ -102,7 +122,6 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
           sessionToken: sesion,
         },
       });
-      if (!respuesta) return [];
 
       const datos = respuesta as RespuestaSugerencias;
       return (datos.suggestions ?? [])
@@ -114,11 +133,16 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
           secundaria: p.structuredFormat?.secondaryText?.text ?? "",
         }))
         .filter((s) => s.principal !== "");
-    } catch {
-      // Sin datos en el log: la consulta es una dirección que alguien está
-      // escribiendo, y el fallo no cambia lo que el formulario puede hacer.
-      console.warn("[autocompletado] Google no respondió; el campo sigue en texto libre.");
-      return [];
+    } catch (error) {
+      // ⚠️ El rechazo del proveedor SE PROPAGA: quien llama lo traduce a «no
+      // pudimos buscar», que es distinto de «no hay ninguna dirección así».
+      // Tragárselo acá es lo que hacía invisible una API sin habilitar.
+      if (error instanceof ErrorProveedorAutocompletado) throw error;
+      // El resto —red caída, timeout— también, y por lo mismo.
+      // Sin datos en el mensaje: la consulta es una dirección que alguien está
+      // escribiendo.
+      console.warn("[autocompletado] Google no respondió a tiempo.");
+      throw new ErrorProveedorAutocompletado(0);
     }
   }
 
@@ -134,7 +158,6 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
         `${URL_DETALLE}/${encodeURIComponent(id)}?sessionToken=${encodeURIComponent(sesion)}`,
         { metodo: "GET", mascara: MASCARA_DETALLE },
       );
-      if (!respuesta) return null;
 
       const datos = respuesta as RespuestaDetalle;
       const componentes = datos.addressComponents ?? [];
@@ -149,8 +172,15 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
         lat: datos.location?.latitude ?? null,
         long: datos.location?.longitude ?? null,
       };
-    } catch {
-      console.warn("[autocompletado] No se pudo resolver la dirección elegida.");
+    } catch (error) {
+      // Acá sí se devuelve `null` y no se propaga: el campo ya tiene el texto
+      // que la persona eligió de la lista y lo conserva (ver `elegir` en
+      // `CampoDireccion`). Lo que se pierde es la coordenada, y eso el job de
+      // geocoding lo resuelve después — o sea que hay camino de vuelta.
+      console.warn(
+        "[autocompletado] No se pudo resolver la dirección elegida:",
+        error instanceof ErrorProveedorAutocompletado ? `HTTP ${error.estado}` : "error de red",
+      );
       return null;
     }
   }
@@ -159,7 +189,7 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
   private async pedir(
     url: string,
     opciones: { metodo: "GET" | "POST"; cuerpo?: unknown; mascara?: string },
-  ): Promise<unknown | null> {
+  ): Promise<unknown> {
     const control = new AbortController();
     const reloj = setTimeout(() => control.abort(), TIMEOUT_MS);
     try {
@@ -176,7 +206,10 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
         body: opciones.cuerpo ? JSON.stringify(opciones.cuerpo) : undefined,
         signal: control.signal,
       });
-      if (!r.ok) return null;
+      // El código importa y hay que poder leerlo: 403 es «la API no está
+      // habilitada o la llave está restringida», 429 es cuota. Devolver `null`
+      // los volvía a todos «sin resultados».
+      if (!r.ok) throw new ErrorProveedorAutocompletado(r.status);
       return await r.json();
     } finally {
       clearTimeout(reloj);
