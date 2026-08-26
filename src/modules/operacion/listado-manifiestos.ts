@@ -177,8 +177,14 @@ export async function cargarContextoManifiestos(
  * pasó en este repo. Acá el largo lo decide cuántas paradas tengan los
  * manifiestos de la página: cincuenta rutas de treinta paradas son 1.500 ids, o
  * sea que el fallo llega con el volumen real y no con los datos de demo.
+ *
+ * ⚠️ **Es `export` porque la nómina de conductores cuenta lo mismo** (su columna
+ * «Ruta de hoy»). Cuando cada una tenía su copia de la regla, la tabla de
+ * conductores decía «0 de 3» de la misma ruta que Manifiestos daba por completa
+ * — dos pantallas contradiciéndose sobre el mismo conductor. Si esta regla
+ * cambia, tiene que cambiar en un solo sitio.
  */
-async function cerradasPorElConductor(
+export async function cerradasPorElConductor(
   cliente: SupabaseClient,
   tenantId: string,
   pedidoIds: readonly string[],

@@ -819,21 +819,29 @@ export function SeccionRedistribucion({
             consecuencia, no el propósito.
 
           Así que el botón se nombra por lo que resuelve. */}
-      <div className="rounded-lg border border-warning bg-warning-subtle/30 px-4 py-3 flex items-start justify-between gap-4">
-        <div className="space-y-0.5">
-          <p className="text-sm font-medium text-warning-subtle-foreground">
-            Se cayó a mitad de ruta
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Reparte sus paradas abiertas entre los demás y lo saca de la
-            asignación de hoy. Para volver, se marca él desde su app.
-          </p>
-        </div>
+      {/* ⚠️ **APILADO, no en dos columnas.** Era
+          `flex items-start justify-between` con el botón en `shrink-0`: en un
+          cajón de 352 px, un botón de «Redistribuir sus paradas» con su ícono se
+          lleva la mitad del ancho y deja el párrafo en una columna de ~150 px.
+          Dos frases ahí son seis renglones estrangulados contra el botón — que
+          es exactamente lo que se veía mal.
+
+          En un panel angosto la disposición correcta es una sola columna: el
+          texto usa el ancho completo y el botón va debajo, ancho completo
+          también. Nada compite por el mismo espacio. */}
+      <div className="rounded-lg border border-warning bg-warning-subtle/30 px-4 py-3">
+        <p className="text-sm font-medium text-warning-subtle-foreground">
+          Se cayó a mitad de ruta
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          Reparte sus paradas abiertas entre los demás y lo saca de la asignación de hoy. Para
+          volver, se marca él desde su app.
+        </p>
         <Button
           variant="outline"
           size="sm"
           onClick={abrir}
-          className="shrink-0 border-warning"
+          className="mt-3 w-full border-warning"
         >
           <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
           Redistribuir sus paradas

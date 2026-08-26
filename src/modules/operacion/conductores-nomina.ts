@@ -32,7 +32,24 @@ import { puedeGestionarLiquidacionesConductores } from "@/modules/identidad/capa
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
+import { cerradasPorElConductor } from "./listado-manifiestos";
 import type { Conductor } from "./tipos";
+
+/**
+ * Los estados terminales del pedido, para el lado OFICIAL de la cuenta.
+ *
+ * Es la mitad que llega desde la fuente (Mercado Libre en Flex). La otra mitad
+ * —lo que el conductor declaró en su app— la trae `cerradasPorElConductor`, y
+ * una parada cuenta si cualquiera de las dos la da por cerrada.
+ */
+const ESTADOS_TERMINALES_PEDIDO_NOMINA = new Set([
+  "entregado",
+  "entregado_manual",
+  "fallido",
+  "fallido_manual",
+  "devuelto",
+  "cancelado",
+]);
 
 const COLUMNAS_NOMINA =
   "id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, rut, tipo_relacion, banco, tipo_cuenta, numero_cuenta, telefono";
@@ -180,13 +197,17 @@ export async function obtenerHoyDeConductores(
       : // PostgREST tipa toda relacion embebida como ARREGLO, aunque sea a-uno.
           // Se declara asi y se normaliza abajo; forzar el tipo a objeto es
           // pelearse con el cliente para nada.
-          leerTodasLasFilas<{ manifiesto_id: string; pedidos: { estado: string }[] }>(
+          leerTodasLasFilas<{
+            manifiesto_id: string;
+            pedido_id: string;
+            pedidos: { estado: string }[];
+          }>(
           "paradas del día",
           (desde, hasta) =>
             cliente
               .schema("operacion")
               .from("asignaciones_pedido")
-              .select("manifiesto_id, pedidos!inner(estado)")
+              .select("manifiesto_id, pedido_id, pedidos!inner(estado)")
               .eq("tenant_id", tenantId)
               .in(
                 "manifiesto_id",
@@ -214,14 +235,25 @@ export async function obtenerHoyDeConductores(
   ]);
 
   const conductorDeManifiesto = new Map(manifiestos.map((m) => [m.id, m.driver_id]));
-  const TERMINALES = new Set([
-    "entregado",
-    "entregado_manual",
-    "fallido",
-    "fallido_manual",
-    "devuelto",
-    "cancelado",
-  ]);
+
+  /**
+   * 🔴 **Una parada cuenta como cerrada si el conductor lo declaró en la app, o
+   * si el estado oficial del pedido ya es terminal.**
+   *
+   * Acá había una copia propia de la lista de estados terminales, midiendo solo
+   * contra `pedidos.estado`. En Flex ese estado lo escribe Mercado Libre y llega
+   * con la sincronización, así que esta columna decía **«0 de 3»** de una ruta
+   * que el conductor había cerrado entera y que Manifiestos ya daba por
+   * completa: dos pantallas contradiciéndose sobre el mismo conductor.
+   *
+   * Ahora las dos usan `cerradasPorElConductor`, que es la misma unión que
+   * cuenta la Torre de control. Una sola regla, un solo sitio donde cambiarla.
+   */
+  const declaradas = await cerradasPorElConductor(
+    cliente,
+    tenantId,
+    asignaciones.map((a) => a.pedido_id),
+  );
 
   for (const a of asignaciones) {
     const driverId = conductorDeManifiesto.get(a.manifiesto_id);
@@ -230,7 +262,8 @@ export async function obtenerHoyDeConductores(
     if (!hoy) continue;
     hoy.paradasTotales += 1;
     const estado = Array.isArray(a.pedidos) ? a.pedidos[0]?.estado : undefined;
-    if (estado && TERMINALES.has(estado)) hoy.paradasCerradas += 1;
+    const oficialCerrado = Boolean(estado && ESTADOS_TERMINALES_PEDIDO_NOMINA.has(estado));
+    if (oficialCerrado || declaradas.has(a.pedido_id)) hoy.paradasCerradas += 1;
   }
 
   for (const s of sesiones) {

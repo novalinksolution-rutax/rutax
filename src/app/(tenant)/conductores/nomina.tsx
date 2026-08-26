@@ -12,18 +12,35 @@
  * izquierda, panel de detalle al costado**.
  *
  * -----------------------------------------------------------------------------
- * DOS EJES, UNA COLUMNA, Y UNA TRAMA
+ * QUÉ MIRA ESTA TABLA (reestructurada el 26-08-2026, decisión del usuario)
+ * -----------------------------------------------------------------------------
+ * Decía quién es cada conductor y casi nada de qué está haciendo. Ahora las
+ * cinco columnas son: **quién · su ruta de hoy · sus retiros de hoy · su cupo ·
+ * sus zonas**, o sea la nómina y el día en la misma fila.
+ *
+ * · La **disponibilidad baja bajo el nombre** y la columna «Hoy» desaparece: era
+ *   un distintivo solo, gastando una columna entera.
+ * · **Ruta y Retiros suben desde el cajón.** Estaban ahí adentro, en un bloque
+ *   «Hoy», donde solo se veían de a un conductor — que es justo lo contrario de
+ *   lo que se viene a hacer acá: comparar a los quince.
+ * · **«Relación» deja de ser columna** y se va al cajón, donde ya estaba en su
+ *   cabecera. Solo importa cuando se le paga, y Liquidaciones ya la muestra ahí.
+ *
+ * ⚠️ **Siguen siendo CINCO columnas.** El usuario ya había descartado abrir una
+ * más (23-08-2026): en la tablet de la bodega el ancho está ajustado, y con seis
+ * a 375 px la primera colapsa y el nombre deja de leerse. Esto entra sin gastar
+ * ancho nuevo porque retira dos y agrega dos.
+ *
+ * -----------------------------------------------------------------------------
+ * DOS EJES, Y UNA TRAMA
  * -----------------------------------------------------------------------------
  * `estado` (la nómina) y `disponible` (hoy) son ejes distintos, y la regla nº 4
  * del bloque prohíbe combinarlos en un distintivo — que es exactamente lo que
  * hacía la pantalla vieja con dos `Badge` pegados.
  *
- * La columna `HOY` muestra **un solo valor de tres** y estar fuera de la nómina
- * se lee además por la **trama diagonal de toda la fila**. Decisión del usuario
- * (23-08-2026) sobre la alternativa de abrir una séptima columna: la tabla ya
- * lleva seis y en la tablet de la bodega el ancho está ajustado. La trama es
- * codificación secundaria de verdad — sobrevive al monocromo y a la ceguera de
- * color (regla 5).
+ * El distintivo muestra **un solo valor de tres** y estar fuera de la nómina se
+ * lee además por la **trama diagonal de toda la fila**: codificación secundaria
+ * de verdad, que sobrevive al monocromo y a la ceguera de color (regla 5).
  *
  * -----------------------------------------------------------------------------
  * LA ZONA DE CONSECUENCIA
@@ -111,8 +128,8 @@ interface Props {
 const ANCHO_CAJON = "w-full sm:max-w-[352px]!";
 
 /**
- * Las cinco columnas de datos del tablero, en su proporción — la sexta, el
- * chevrón, va fuera de la grilla porque es del botón, no de los datos.
+ * Las cinco columnas de datos, en su proporción — la sexta, el chevrón, va
+ * fuera de la grilla porque es del botón, no de los datos.
  *
  * En angosto la tabla NO se encoge: se rehace en `ficha de fila 390`. Con seis
  * columnas a 375 px la primera colapsa a 24 px —el nombre deja de leerse— y el
@@ -120,7 +137,7 @@ const ANCHO_CAJON = "w-full sm:max-w-[352px]!";
  * así que se aplica lo que P1 fija para todo el producto: «el teléfono no es una
  * reducción», y lo que cae reaparece bajo el nombre, en mono.
  */
-const COLUMNAS_ANCHO = "grid-cols-[1.5fr_1.05fr_.8fr_.9fr_1.3fr]";
+const COLUMNAS_ANCHO = "grid-cols-[1.7fr_1.05fr_1fr_.65fr_1.15fr]";
 
 export function PanelNomina({
   estadoInicial,
@@ -226,9 +243,9 @@ export function PanelNomina({
           >
             <span className={`flex-1 grid ${COLUMNAS_ANCHO}`}>
               <span className="py-2 pr-3">Conductor</span>
-              <span className="py-2 pr-3">Hoy</span>
+              <span className="py-2 pr-3">Ruta de hoy</span>
+              <span className="py-2 pr-3">Retiros de hoy</span>
               <span className="py-2 pr-3">Capacidad</span>
-              <span className="py-2 pr-3">Relación</span>
               <span className="py-2 pr-3">Zonas preferentes</span>
             </span>
             <span className="w-4 shrink-0" />
@@ -237,6 +254,7 @@ export function PanelNomina({
             <FilaConductor
               key={c.id}
               conductor={c}
+              hoy={estadoInicial.hoy[c.id]}
               zonas={zonas}
               seleccionado={c.id === seleccionadoId}
               onSeleccionar={() => setSeleccionadoId(c.id)}
@@ -247,7 +265,6 @@ export function PanelNomina({
 
       <CajonConductor
         conductor={seleccionado}
-        hoy={seleccionado ? estadoInicial.hoy[seleccionado.id] : undefined}
         impedimentos={seleccionado ? (estadoInicial.impedimentos[seleccionado.id] ?? []) : []}
         zonas={zonas}
         fechaHoy={fechaHoy}
@@ -260,17 +277,72 @@ export function PanelNomina({
   );
 }
 
+/**
+ * Lo que el conductor lleva hecho hoy, en dos celdas.
+ * =============================================================================
+ *
+ * Subieron desde el bloque «Hoy» del cajón, donde solo se veían de a uno. La
+ * pregunta de esta pantalla a las 18:00 es «¿quién va colgado?», y eso es una
+ * comparación entre filas: dentro de un cajón no se puede hacer.
+ *
+ * 🔴 **Sin ruta se dibuja «—», nunca «0 de 0».** Un cero afirma que tiene una
+ * ruta y no ha cerrado nada, que es la lectura opuesta a la verdadera —todavía
+ * no le asignaron ninguna— y a las 15:50 esa confusión manda a llamar al
+ * conductor equivocado.
+ */
+function CeldaRutaDeHoy({ hoy }: { hoy: HoyDelConductor | undefined }) {
+  if (!hoy?.manifiestoId || hoy.paradasTotales === 0) {
+    return <span className="text-sm text-fg-subtle">—</span>;
+  }
+  const porcentaje = Math.round((hoy.paradasCerradas / hoy.paradasTotales) * 100);
+  return (
+    <span className="flex flex-col gap-1">
+      <span className="rx-num text-sm text-fg">
+        {hoy.paradasCerradas} de {hoy.paradasTotales}
+        <span className="ms-1 text-xs text-fg-muted">paradas</span>
+      </span>
+      {/* La barra es secundaria y por eso va debajo y fina: la cifra es la que
+          se compara entre filas, el trazo solo la hace ojeable. */}
+      <span className="h-1 w-16 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+        <span
+          className="block h-full rounded-full bg-primary"
+          style={{ width: `${porcentaje}%` }}
+        />
+      </span>
+    </span>
+  );
+}
+
+function CeldaRetirosDeHoy({ hoy }: { hoy: HoyDelConductor | undefined }) {
+  if (!hoy || hoy.visitasRetiro === 0) {
+    return <span className="text-sm text-fg-subtle">—</span>;
+  }
+  return (
+    <span className="flex flex-col">
+      <span className="rx-num text-sm text-fg">
+        {hoy.visitasRetiro}
+        <span className="ms-1 text-xs text-fg-muted">
+          {hoy.visitasRetiro === 1 ? "visita" : "visitas"}
+        </span>
+      </span>
+      <span className="rx-num text-xs text-fg-muted">{hoy.bultosRetirados} bultos</span>
+    </span>
+  );
+}
+
 // =============================================================================
 // La fila
 // =============================================================================
 
 function FilaConductor({
   conductor,
+  hoy: hoyDelDia,
   zonas,
   seleccionado,
   onSeleccionar,
 }: {
   conductor: ConductorEnNomina;
+  hoy: HoyDelConductor | undefined;
   zonas: Zona[];
   seleccionado: boolean;
   onSeleccionar: () => void;
@@ -282,6 +354,17 @@ function FilaConductor({
     .filter((n): n is string => Boolean(n));
   const relacion = TEXTO_RELACION_CONDUCTOR[conductor.tipoRelacion] ?? conductor.tipoRelacion;
   const textoZonas = nombresZona.length > 0 ? nombresZona.join(", ") : "Sin zonas";
+  /**
+   * El día, condensado para la ficha de 390 — donde no hay columnas.
+   *
+   * Se prefiere la ruta al cupo: el cupo es una constante del conductor y la
+   * ruta es lo que está pasando. Si no tiene ruta todavía, entonces sí manda el
+   * cupo, que es lo que dice cuánto se le puede dar.
+   */
+  const resumenDelDia =
+    hoyDelDia?.manifiestoId && hoyDelDia.paradasTotales > 0
+      ? `${hoyDelDia.paradasCerradas} de ${hoyDelDia.paradasTotales} paradas`
+      : `${conductor.capacidadParadas} paradas de cupo`;
   const distintivo = <DistintivoEstado tono={hoy.tono} etiqueta={hoy.etiqueta} />;
 
   return (
@@ -308,29 +391,42 @@ function FilaConductor({
         estado={distintivo}
         clasificacion={relacion}
         titulo={conductor.nombre}
-        detalle={
-          fueraDeNomina
-            ? conductor.rut
-            : `${conductor.rut} · ${conductor.capacidadParadas} paradas · ${textoZonas}`
-        }
+        detalle={fueraDeNomina ? conductor.rut : `${conductor.rut} · ${resumenDelDia} · ${textoZonas}`}
       />
 
       <span className={`hidden flex-1 sm:grid ${COLUMNAS_ANCHO} sm:items-center`}>
         <span className="min-w-0 py-2.5 pr-3">
           <span className="block truncate text-sm font-medium text-fg">{conductor.nombre}</span>
-          <span className="rx-num block truncate text-xs text-fg-muted">
-            {conductor.rut}
-            {/* Sin enlace `tel:` acá: la fila entera ya es pulsable y abre el
-                cajón, y un enlace dentro de un control pulsable se roba el
-                toque. El número marcable está en el cajón. */}
-            {conductor.telefono ? ` · ${formatearTelefonoLegible(conductor.telefono)}` : ""}
+          {/* La disponibilidad baja acá desde su antigua columna: es una
+              propiedad de la persona, no una quinta magnitud del día, y en
+              columna propia gastaba un ancho que ahora usa la ruta. */}
+          <span className="mt-1 flex min-w-0 items-center gap-1.5">
+            {distintivo}
+            <span className="rx-num min-w-0 truncate text-xs text-fg-muted">
+              {/* Sin enlace `tel:` acá: la fila entera ya es pulsable y abre el
+                  cajón, y un enlace dentro de un control pulsable se roba el
+                  toque. El número marcable está en el cajón. */}
+              {conductor.telefono ? formatearTelefonoLegible(conductor.telefono) : conductor.rut}
+            </span>
           </span>
         </span>
-        <span className="py-2.5 pr-3">{distintivo}</span>
+        <span className="py-2.5 pr-3">
+          {fueraDeNomina ? (
+            <span className="text-sm text-fg-subtle">—</span>
+          ) : (
+            <CeldaRutaDeHoy hoy={hoyDelDia} />
+          )}
+        </span>
+        <span className="py-2.5 pr-3">
+          {fueraDeNomina ? (
+            <span className="text-sm text-fg-subtle">—</span>
+          ) : (
+            <CeldaRetirosDeHoy hoy={hoyDelDia} />
+          )}
+        </span>
         <span className="rx-num py-2.5 pr-3 text-sm">
           {fueraDeNomina ? "—" : `${conductor.capacidadParadas} paradas`}
         </span>
-        <span className="py-2.5 pr-3 text-sm">{relacion}</span>
         <span className="min-w-0 truncate py-2.5 pr-3 text-sm text-fg-muted">
           {fueraDeNomina ? "—" : textoZonas}
         </span>
@@ -349,7 +445,6 @@ function FilaConductor({
 
 function CajonConductor({
   conductor,
-  hoy,
   impedimentos,
   zonas,
   fechaHoy,
@@ -359,7 +454,6 @@ function CajonConductor({
   onActualizado,
 }: {
   conductor: ConductorEnNomina | null;
-  hoy: HoyDelConductor | undefined;
   impedimentos: string[];
   zonas: Zona[];
   fechaHoy: string;
@@ -398,7 +492,6 @@ function CajonConductor({
               <BloqueTelefono conductor={conductor} onActualizado={onActualizado} />
               <Estampador conductor={conductor} onActualizado={onActualizado} />
               <EditorZonasConductor conductor={conductor} zonasTenant={zonas} />
-              {hoy ? <BloqueHoy hoy={hoy} /> : null}
               {/* El bloque no se renderiza si no se puede tocar: el tablero pide
                   que para el coordinador NO EXISTA, no que se vea en gris. */}
               {puedeEditarBanco ? (
@@ -569,39 +662,18 @@ function Estampador({
   );
 }
 
-function BloqueHoy({ hoy }: { hoy: HoyDelConductor }) {
-  const nada =
-    !hoy.manifiestoId && hoy.paradasTotales === 0 && hoy.visitasRetiro === 0;
-
-  return (
-    <div className="border-t border-line pt-3">
-      <p className="text-[10px] font-medium tracking-[0.12em] text-fg-muted uppercase">Hoy</p>
-      {nada ? (
-        <p className="mt-1.5 text-sm text-fg-muted">Sin ruta ni retiros todavía.</p>
-      ) : (
-        <dl className="mt-1.5 space-y-1 text-sm">
-          {hoy.manifiestoId ? (
-            <div className="flex justify-between gap-3">
-              <dt className="text-fg-muted">Ruta</dt>
-              <dd className="rx-num">
-                {hoy.paradasCerradas} de {hoy.paradasTotales} paradas
-              </dd>
-            </div>
-          ) : null}
-          {hoy.visitasRetiro > 0 ? (
-            <div className="flex justify-between gap-3">
-              <dt className="text-fg-muted">Retiros</dt>
-              <dd className="rx-num">
-                {hoy.visitasRetiro} {hoy.visitasRetiro === 1 ? "visita" : "visitas"} ·{" "}
-                {hoy.bultosRetirados} bultos
-              </dd>
-            </div>
-          ) : null}
-        </dl>
-      )}
-    </div>
-  );
-}
+/*
+ * ⚠️ ACÁ VIVÍA `BloqueHoy` — ruta y retiros del día — Y SE RETIRÓ (26-08-2026).
+ *
+ * No se perdió: subió a la tabla, como dos columnas propias. El cajón muestra a
+ * UN conductor, y la pregunta de las 18:00 —«¿quién va colgado?»— es una
+ * comparación entre los quince. Dentro de un cajón esa comparación exige abrir y
+ * cerrar quince veces.
+ *
+ * Y de paso descarga el cajón, que era la otra mitad del encargo: acá quedan las
+ * cosas que se TOCAN —teléfono, cupo, zonas, banco— y las de consecuencia. El
+ * día se mira afuera. Ver `CeldaRutaDeHoy` y `CeldaRetirosDeHoy`.
+ */
 
 // =============================================================================
 // La zona de consecuencia
