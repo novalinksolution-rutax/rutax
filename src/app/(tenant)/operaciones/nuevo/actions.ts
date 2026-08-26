@@ -34,39 +34,71 @@ import { revalidatePath } from "next/cache";
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAjustarOperacionDiaria } from "@/modules/identidad/capacidades";
+import { puedeUsarBusquedaDeDirecciones } from "./reglas-alta";
 import { crearPedidoSameDay } from "@/modules/operacion/pedidos";
 import { guardarCoordenadaElegida } from "@/modules/operacion/coordenada-elegida";
 import { resolverTarifaVigente } from "@/modules/operacion/tarifas";
 import { obtenerResumenCortePorSeller } from "@/modules/operacion/metricas";
-import { obtenerPuertoAutocompletado } from "@/modules/integraciones/geocoding/autocompletado";
+import {
+  obtenerPuertoAutocompletado,
+  type SugerenciaDireccion,
+} from "@/modules/integraciones/geocoding/autocompletado";
 import { ahoraEnSantiago } from "@/lib/fecha-santiago";
 
 // =============================================================================
 // Autocompletado de dirección
 // =============================================================================
 
-export async function actionSugerirDirecciones(consulta: string, sesion: string) {
+/**
+ * El resultado distingue **tres cosas que antes se veían iguales**.
+ *
+ * `[]` respondía a la vez «no hay ninguna dirección así», «no tienes permiso» y
+ * «el proveedor falló». Las tres pintaban una lista vacía, o sea: la pantalla
+ * decía que la dirección no existe cuando en realidad nadie la había buscado.
+ * Es la forma más cara de fallar, porque no deja rastro ni en la pantalla ni en
+ * la cabeza de quien la mira.
+ */
+export type ResultadoSugerencias =
+  | { ok: true; sugerencias: SugerenciaDireccion[] }
+  | { ok: false; motivo: "sin_permiso" | "proveedor" };
+
+export async function actionSugerirDirecciones(
+  consulta: string,
+  sesion: string,
+): Promise<ResultadoSugerencias> {
   // Gate igual que el de crear: sugerir direcciones es parte del mismo acto, y
   // la acción es invocable directamente.
   const sesionUsuario = await exigirSesionActual();
-  if (!puedeAjustarOperacionDiaria(sesionUsuario.usuario)) return [];
+  if (!puedeUsarBusquedaDeDirecciones(sesionUsuario.usuario)) {
+    return { ok: false, motivo: "sin_permiso" };
+  }
 
   try {
-    return await obtenerPuertoAutocompletado().sugerir({ consulta, sesion });
-  } catch {
+    return { ok: true, sugerencias: await obtenerPuertoAutocompletado().sugerir({ consulta, sesion }) };
+  } catch (error) {
     // Un proveedor mal configurado no puede impedir crear un pedido: el campo
-    // sigue aceptando texto libre.
-    return [];
+    // sigue aceptando texto libre. Pero SÍ se registra, y sin el texto de la
+    // consulta —es la dirección de una persona— ni nada que pueda traer la
+    // clave: solo el mensaje del error.
+    console.error(
+      "[operaciones/nuevo] el proveedor de autocompletado falló:",
+      error instanceof Error ? error.message : "error desconocido",
+    );
+    return { ok: false, motivo: "proveedor" };
   }
 }
 
 export async function actionResolverDireccion(id: string, sesion: string) {
   const sesionUsuario = await exigirSesionActual();
-  if (!puedeAjustarOperacionDiaria(sesionUsuario.usuario)) return null;
+  if (!puedeUsarBusquedaDeDirecciones(sesionUsuario.usuario)) return null;
 
   try {
     return await obtenerPuertoAutocompletado().resolver({ id, sesion });
-  } catch {
+  } catch (error) {
+    console.error(
+      "[operaciones/nuevo] el proveedor no pudo resolver la dirección elegida:",
+      error instanceof Error ? error.message : "error desconocido",
+    );
     return null;
   }
 }

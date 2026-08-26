@@ -17,6 +17,34 @@ import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
  * de los grupos. Lo que NO se acepta es un fijo: el campo existe para avisarle
  * al destinatario que el conductor va en camino, y eso es un mensaje al móvil.
  */
+import {
+  puedeAjustarOperacionDiaria,
+  puedeSolicitarSameDay,
+} from "@/modules/identidad/capacidades";
+import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+
+/**
+ * Quién puede usar la búsqueda de direcciones del alta same-day.
+ * =============================================================================
+ *
+ * 🔴 **Son DOS capacidades, no una.** El formulario de alta es compartido: el
+ * courier lo monta en `/operaciones/nuevo` y el portal del seller monta
+ * exactamente el mismo componente desde el 25-08-2026. Pero la acción que
+ * alimenta las sugerencias exigía solo `ajustar_operacion_diaria`, que es del
+ * equipo INTERNO — así que para todo seller devolvía lista vacía en la primera
+ * línea, y **el autocompletado estaba muerto en el portal** sin que nada lo
+ * dijera: una lista vacía se lee como «esa dirección no existe».
+ *
+ * La regla correcta es «quien puede dar de alta un same-day puede buscarle la
+ * dirección», y eso se escribe con las dos capacidades. Vive acá y no dentro del
+ * archivo de acciones porque en un módulo `"use server"` no se puede exportar
+ * nada que no sea una acción asíncrona — y sin exportarlo no hay forma de
+ * probarlo.
+ */
+export function puedeUsarBusquedaDeDirecciones(usuario: UsuarioActual): boolean {
+  return puedeAjustarOperacionDiaria(usuario) || puedeSolicitarSameDay(usuario);
+}
+
 export const MOVIL_CL = /^(\+?56)?\s?9\s?\d{4}\s?\d{4}$/;
 
 export function esMovilChileno(valor: string): boolean {

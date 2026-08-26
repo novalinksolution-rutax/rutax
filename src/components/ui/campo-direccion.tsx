@@ -51,6 +51,19 @@ export interface DireccionElegida {
   long: number | null;
 }
 
+/**
+ * 🔴 **Tres cosas que antes se veían iguales: una lista vacía.**
+ *
+ * «No hay ninguna dirección así», «no tienes permiso» y «el proveedor falló»
+ * devolvían todas `[]`, así que la pantalla afirmaba que la dirección no existe
+ * cuando en realidad nadie la había buscado. Con un resultado etiquetado, el
+ * campo puede decir lo que de verdad pasó — y lo que hay que hacer, que es
+ * distinto en cada caso.
+ */
+export type ResultadoBusqueda =
+  | { ok: true; sugerencias: SugerenciaVisible[] }
+  | { ok: false; motivo: "sin_permiso" | "proveedor" };
+
 /** Milisegundos sin teclear antes de preguntar. */
 const ESPERA_MS = 250;
 
@@ -73,7 +86,7 @@ export function CampoDireccion({
   onCambio: (v: string) => void;
   /** Se dispara solo al elegir de la lista, con la dirección ya resuelta. */
   onElegir: (d: DireccionElegida) => void;
-  buscar: (consulta: string, sesion: string) => Promise<SugerenciaVisible[]>;
+  buscar: (consulta: string, sesion: string) => Promise<ResultadoBusqueda>;
   resolver: (id: string, sesion: string) => Promise<DireccionElegida | null>;
   /** `true` cuando el valor actual vino de la lista, no de escribir. */
   elegida: boolean;
@@ -89,6 +102,8 @@ export function CampoDireccion({
   const [abierta, setAbierta] = useState(false);
   const [buscando, setBuscando] = useState(false);
   const [activa, setActiva] = useState(-1);
+  /** `null` mientras la búsqueda funcione. Ver `ResultadoBusqueda`. */
+  const [fallo, setFallo] = useState<"sin_permiso" | "proveedor" | null>(null);
 
   const sesion = useRef<string | null>(null);
   // Guarda lo último que se pidió para descartar respuestas que llegan tarde:
@@ -123,8 +138,15 @@ export function CampoDireccion({
       setBuscando(false);
       // Llegó tarde: ya se está escribiendo otra cosa.
       if (ultimaConsulta.current !== consulta) return;
-      setSugerencias(r);
-      setAbierta(r.length > 0);
+      if (!r.ok) {
+        setFallo(r.motivo);
+        setSugerencias([]);
+        setAbierta(false);
+        return;
+      }
+      setFallo(null);
+      setSugerencias(r.sugerencias);
+      setAbierta(r.sugerencias.length > 0);
       setActiva(-1);
     }, ESPERA_MS);
     return () => clearTimeout(reloj);
@@ -203,6 +225,20 @@ export function CampoDireccion({
       </div>
 
       {ayuda ? <p className="mt-1 text-xs leading-relaxed text-fg-muted">{ayuda}</p> : null}
+
+      {/* 🔴 Que la búsqueda no esté disponible SE DICE.
+          Callarlo deja la lista vacía, que es indistinguible de «esa dirección
+          no existe» — y entonces la persona reescribe la dirección una y otra
+          vez creyendo que se equivocó ella. Se dice qué pasó y que puede seguir:
+          el texto libre nunca dejó de funcionar, solo se ubica después. */}
+      {fallo && !elegida ? (
+        <p className="mt-1 text-xs leading-relaxed text-attention-fg">
+          {fallo === "proveedor"
+            ? "No pudimos buscar direcciones en este momento."
+            : "La búsqueda de direcciones no está disponible para tu cuenta."}{" "}
+          Escríbela completa y la ubicamos nosotros después; el pedido se crea igual.
+        </p>
+      ) : null}
 
       {/* El estado «ubicada» se dice con texto, no solo con el visto: el color y
           el ícono no pueden ser los únicos portadores (regla 5). */}

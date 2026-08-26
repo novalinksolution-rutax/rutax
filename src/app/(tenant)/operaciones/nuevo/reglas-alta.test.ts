@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { comunaDelCatalogo, esMovilChileno, superaHoraDeCorte } from "./reglas-alta";
+import {
+  comunaDelCatalogo,
+  esMovilChileno,
+  puedeUsarBusquedaDeDirecciones,
+  superaHoraDeCorte,
+} from "./reglas-alta";
+import { capacidadesDeRol } from "@/modules/identidad/capacidades";
+import { ROLES, type Rol } from "@/modules/identidad/roles";
+import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 
 describe("esMovilChileno", () => {
   it("acepta las formas en que la gente escribe un móvil", () => {
@@ -68,5 +76,56 @@ describe("superaHoraDeCorte", () => {
     // Un aviso falso empuja a reagendar un pedido que sí alcanzaba a salir hoy.
     expect(superaHoraDeCorte("", "16:00")).toBe(false);
     expect(superaHoraDeCorte("16:30", "sin hora")).toBe(false);
+  });
+});
+
+describe("puedeUsarBusquedaDeDirecciones", () => {
+  /**
+   * 🔴 La red del defecto del 26-08-2026: el formulario de alta same-day es UNO
+   * y lo montan dos superficies, pero su acción de sugerencias exigía solo la
+   * capacidad del equipo interno. Todo seller recibía lista vacía —que se lee
+   * como «esa dirección no existe»— y nadie podía notarlo desde el código de la
+   * pantalla, porque la pantalla es la misma.
+   *
+   * La regla se enuncia al revés, sobre el catálogo: **quien puede dar de alta
+   * un same-day puede buscarle la dirección**. Así, si mañana un rol nuevo gana
+   * `solicitar_same_day`, esto pasa solo.
+   */
+  function usuario(rol: Rol): UsuarioActual {
+    return {
+      tenantId: "11111111-1111-1111-1111-111111111111",
+      tipoUsuario: rol === "seller" ? "seller" : rol === "conductor" ? "conductor" : "interno",
+      sellerId: rol === "seller" ? "22222222-2222-2222-2222-222222222222" : null,
+      driverId: rol === "conductor" ? "33333333-3333-3333-3333-333333333333" : null,
+      rol,
+      estado: "activo",
+    };
+  }
+
+  const PUEDEN_CREAR = ROLES.filter((rol) => {
+    const suyas = capacidadesDeRol(rol);
+    return suyas.includes("solicitar_same_day") || suyas.includes("ajustar_operacion_diaria");
+  });
+
+  it("todo rol que puede crear un same-day puede buscar la dirección", () => {
+    // Que la lista no esté vacía es parte de la prueba: si un refactor dejara
+    // el filtro sin resultados, el `for` no correría y esto pasaría en verde.
+    expect(PUEDEN_CREAR.length).toBeGreaterThan(0);
+    expect(PUEDEN_CREAR).toContain("seller");
+    for (const rol of PUEDEN_CREAR) {
+      expect(puedeUsarBusquedaDeDirecciones(usuario(rol)), rol).toBe(true);
+    }
+  });
+
+  it("y ningún otro rol la tiene: no se abrió de más al arreglarlo", () => {
+    const resto = ROLES.filter((r) => !PUEDEN_CREAR.includes(r));
+    for (const rol of resto) {
+      expect(puedeUsarBusquedaDeDirecciones(usuario(rol)), rol).toBe(false);
+    }
+  });
+
+  it("una cuenta suspendida no busca direcciones, aunque su rol pudiera", () => {
+    expect(puedeUsarBusquedaDeDirecciones({ ...usuario("dueno"), estado: "suspendido" })).toBe(false);
+    expect(puedeUsarBusquedaDeDirecciones({ ...usuario("seller"), estado: "invitado" })).toBe(false);
   });
 });
