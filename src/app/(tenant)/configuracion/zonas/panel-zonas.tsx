@@ -1,34 +1,31 @@
 "use client";
 
 /**
- * Panel de configuración de zonas, comunas y ventanas de corte (F7, ítem 1.2).
+ * El listado de zonas — con la misma anatomía que Tarifas.
  *
- * Sigue el mismo patrón que PanelTarifas:
- *   - Estado local inicializado desde el server component.
- *   - Server actions para mutaciones.
- *   - Tres secciones: Zonas · Comunas por zona · Ventanas de corte por seller.
- *
- * Decisión UX: tres cards separadas y colapsables para no abrumar al operador
- * que solo quiere configurar el corte de un seller sin tocar zonas.
+ * Las dos son secciones del MISMO módulo, una al lado de la otra en pestañas.
+ * Si una es una tabla con su barra de cajones y la otra una lista de nombres,
+ * pasar de una a otra se siente como cambiar de producto.
  */
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { BarraCajones } from "@/components/ui/barra-cajones";
 import { Button } from "@/components/ui/button";
-import type { Zona } from "@/modules/operacion/tipos";
+import { DistintivoEstado } from "@/components/ui/distintivo-estado";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { actionToggleZona } from "./actions";
-import type { EstadoZonas } from "./actions";
+import type { EstadoZonas, ZonaEnriquecida } from "./actions";
 import { PanelZona } from "./panel-zona";
-
-
-// =============================================================================
-// Tipos locales
-// =============================================================================
-
-// =============================================================================
-// Panel principal
-// =============================================================================
 
 interface Props {
   estadoInicial: EstadoZonas;
@@ -40,11 +37,15 @@ export function PanelZonas({ estadoInicial }: Props) {
   return (
     <div className="space-y-6">
       {/* ⚠️ **Se recarga del servidor en vez de reconciliar en memoria.**
-          Crear una zona ahora toca DOS cosas —la zona y sus comunas—, así que
+          Crear una zona toca DOS cosas —la zona y sus comunas—, así que
           mantener una copia local exigiría reconstruir también la cobertura de
-          todas las demás zonas, que es de donde sale el «6 sin zona». Un
+          todas las demás, que es de donde sale el «6 sin zona». Un
           `router.refresh()` deja los dos datos ciertos con una consulta. */}
-      <SeccionZonas zonas={estadoInicial.zonas} onCambio={() => router.refresh()} />
+      <SeccionZonas
+        zonas={estadoInicial.zonas}
+        comunasSinZona={estadoInicial.comunasSinZona}
+        onCambio={() => router.refresh()}
+      />
 
       {/* 🔴 Acá vivía la ventana de corte, y se fue a la ficha del seller.
           B3b: «la ventana de corte no es un destino de configuración: es un
@@ -58,14 +59,39 @@ export function PanelZonas({ estadoInicial }: Props) {
 }
 
 // =============================================================================
-// Sección 1: Zonas
+// El listado
 // =============================================================================
 
+/**
+ * -----------------------------------------------------------------------------
+ * 🔴 LAS DOS COLUMNAS QUE ANTES NO ESTABAN
+ * -----------------------------------------------------------------------------
+ * El listado era el nombre y un botón de desactivar. Las dos preguntas que uno
+ * se hace ahí obligaban a abrir cada zona una por una:
+ *
+ * · **Comunas** responde «¿qué agrupa?» de un vistazo, y delata la zona vacía:
+ *   una zona sin comunas no hace nada, y hasta ahora se veía igual que una
+ *   llena.
+ * · **Tarifas que la usan** responde «¿desactivarla rompe algo?». Desactivar
+ *   una zona que usan tres tarifas es una decisión de dinero, y la pantalla la
+ *   ofrecía como un clic sin consecuencia visible.
+ *
+ * -----------------------------------------------------------------------------
+ * EL CAJÓN VIVE EN ESTADO LOCAL, AL REVÉS QUE EN TARIFAS
+ * -----------------------------------------------------------------------------
+ * ⚠️ Y es a propósito. El módulo ya usa `?seccion=` para la pestaña y `?cajon=`
+ * para el cajón de Tarifas: un segundo cajón en la URL **compartiría ese
+ * parámetro**, así que elegir «Inactivas» acá y volver a Tarifas dejaría puesto
+ * un filtro que nadie pidió. Con tres zonas típicas, un filtro compartible no
+ * vale ese riesgo.
+ */
 function SeccionZonas({
   zonas,
+  comunasSinZona,
   onCambio,
 }: {
-  zonas: Zona[];
+  zonas: ZonaEnriquecida[];
+  comunasSinZona: number;
   onCambio: () => void;
 }) {
   /**
@@ -75,37 +101,91 @@ function SeccionZonas({
    * acordeón aparte con SU PROPIO selector de zona: creabas «Norte», bajabas, y
    * volvías a elegir «Norte» en un desplegable. Una zona sin comunas no hace
    * nada, así que las dos mitades eran la misma tarea partida en dos.
-   *
-   * Ahora el listado está siempre a la vista —es un listado, no un acordeón— y
-   * el alta y la edición viven en el panel, con las 52 comunas dentro.
    */
   const [nuevaAbierta, setNuevaAbierta] = useState(false);
-  const [editando, setEditando] = useState<Zona | null>(null);
+  const [editando, setEditando] = useState<ZonaEnriquecida | null>(null);
+  const [cajon, setCajon] = useState<"activa" | "inactiva" | null>(null);
+
+  const conteo = useMemo(
+    () => ({
+      activa: zonas.filter((z) => z.activa).length,
+      inactiva: zonas.filter((z) => !z.activa).length,
+    }),
+    [zonas],
+  );
+
+  const visibles = cajon
+    ? zonas.filter((z) => (cajon === "activa" ? z.activa : !z.activa))
+    : zonas;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-base font-semibold text-fg">Zonas de cobertura</h2>
-          <p className="mt-0.5 text-sm text-fg-muted">
-            Agrupa comunas para cobrar distinto según dónde entregas.
-          </p>
-        </div>
-        <Button size="sm" className="shrink-0" onClick={() => setNuevaAbierta(true)}>
-          Nueva zona
-        </Button>
-      </div>
-
+    <div className="space-y-4">
       {zonas.length === 0 ? (
         <p className="border border-line bg-bg-sunken px-4 py-8 text-center text-sm text-fg-muted">
           Todavía no tienes zonas. Sin ellas, todas las comunas usan la misma tarifa.
         </p>
       ) : (
-        <ul className="divide-y divide-line border border-line bg-bg-raised">
-          {zonas.map((zona) => (
-            <FilaZona key={zona.id} zona={zona} onEditar={() => setEditando(zona)} onCambio={onCambio} />
-          ))}
-        </ul>
+        <>
+          {/* La barra y la acción en la misma fila, como en Tarifas: el botón de
+              crear pertenece al listado, no a la cabecera del módulo — que la
+              comparten las tres secciones. */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <BarraCajones
+              cajones={[
+                { clave: "activa", etiqueta: "Activas", conteo: conteo.activa },
+                { clave: "inactiva", etiqueta: "Inactivas", conteo: conteo.inactiva },
+              ]}
+              activo={cajon}
+              total={zonas.length}
+              onSeleccionar={(c) => setCajon(c as "activa" | "inactiva" | null)}
+            />
+            <Button size="sm" className="shrink-0" onClick={() => setNuevaAbierta(true)}>
+              Nueva zona
+            </Button>
+          </div>
+
+          {/* 🔴 Una comuna sin zona NO falla: cae en la tarifa por defecto y se
+              cobra igual, en silencio. Por eso se dice acá — es lo único que
+              avisa de que se está cobrando sin distinguir dónde. */}
+          {comunasSinZona > 0 ? (
+            <p className="border border-attention-line bg-attention-bg px-4 py-2.5 text-sm leading-relaxed text-attention-fg">
+              {comunasSinZona} {comunasSinZona === 1 ? "comuna" : "comunas"} de la RM sin zona: esas
+              entregas se cobran con la tarifa por defecto, sin distinguir dónde van.
+            </p>
+          ) : null}
+
+          {visibles.length === 0 ? (
+            <p className="border border-line bg-bg-sunken px-4 py-8 text-center text-sm text-fg-muted">
+              No tienes zonas en «{cajon === "activa" ? "activas" : "inactivas"}».
+            </p>
+          ) : (
+            <div className="overflow-x-auto border border-line bg-bg-raised">
+              <Table densidad="comfortable" aria-label="Zonas de cobertura">
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="px-4">Zona</TableHead>
+                    <TableHead className="px-4">Comunas</TableHead>
+                    <TableHead className="px-4 text-right">Tarifas que la usan</TableHead>
+                    <TableHead className="px-4">Estado</TableHead>
+                    <TableHead className="px-4 text-right">
+                      <span className="sr-only">Acciones</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibles.map((zona) => (
+                    <FilaZona
+                      key={zona.id}
+                      zona={zona}
+                      onEditar={() => setEditando(zona)}
+                      onCambio={onCambio}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </>
       )}
 
       <PanelZona
@@ -137,24 +217,52 @@ function FilaZona({
   onEditar,
   onCambio,
 }: {
-  zona: Zona;
+  zona: ZonaEnriquecida;
   onEditar: () => void;
   onCambio: () => void;
 }) {
   const [pendiente, iniciarTransicion] = useTransition();
 
   return (
-    <li
-      onClick={onEditar}
-      className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-bg-sunken"
-    >
-      <span className="min-w-0">
-        <span className="block font-medium text-fg">{zona.nombre}</span>
-        {!zona.activa && <span className="block text-xs text-fg-subtle">Desactivada</span>}
-      </span>
+    <TableRow onClick={onEditar} className={cn("cursor-pointer", !zona.activa && "rx-inert-row")}>
+      <TableCell className="px-4 font-medium text-fg">{zona.nombre}</TableCell>
 
-      {/* Para la propagación: el toggle no debe abrir además el panel. */}
-      <span onClick={(e) => e.stopPropagation()}>
+      <TableCell className="px-4">
+        {zona.comunas.length === 0 ? (
+          // 🔴 Una zona sin comunas no agrupa nada: existe y no hace nada.
+          <span className="text-sm text-attention-fg">Sin comunas todavía</span>
+        ) : (
+          <>
+            <span className="rx-num block text-sm text-fg">
+              {zona.comunas.length} {zona.comunas.length === 1 ? "comuna" : "comunas"}
+            </span>
+            {/* Las primeras, para reconocerla sin abrirla. La lista completa
+                está en el panel. */}
+            <span className="block max-w-64 truncate text-xs text-fg-muted">
+              {zona.comunas.slice(0, 3).join(", ")}
+              {zona.comunas.length > 3 ? ` y ${zona.comunas.length - 3} más` : ""}
+            </span>
+          </>
+        )}
+      </TableCell>
+
+      <TableCell className="rx-num px-4 text-right text-sm">
+        {zona.tarifasQueLaUsan > 0 ? (
+          zona.tarifasQueLaUsan
+        ) : (
+          <span className="text-fg-subtle">—</span>
+        )}
+      </TableCell>
+
+      <TableCell className="px-4">
+        <DistintivoEstado
+          tono={zona.activa ? "balanced" : "inert"}
+          etiqueta={zona.activa ? "Activa" : "Inactiva"}
+        />
+      </TableCell>
+
+      {/* Para la propagación: el botón no debe abrir además el panel. */}
+      <TableCell className="px-4 text-right" onClick={(e) => e.stopPropagation()}>
         <Button
           variant="ghost"
           size="sm"
@@ -168,7 +276,7 @@ function FilaZona({
         >
           {pendiente ? "…" : zona.activa ? "Desactivar" : "Reactivar"}
         </Button>
-      </span>
-    </li>
+      </TableCell>
+    </TableRow>
   );
 }

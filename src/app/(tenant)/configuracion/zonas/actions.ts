@@ -30,6 +30,7 @@ import {
   cambiarActivaVentanaCorte,
 } from "@/modules/operacion/ventanas-corte";
 import type { Zona, ZonaComuna, VentanaCorte } from "@/modules/operacion/tipos";
+import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 
 // =============================================================================
 // Tipos de respuesta
@@ -48,9 +49,39 @@ export interface Seller {
   nombre: string;
 }
 
+/**
+ * Una zona con lo que hace falta para juzgarla desde el listado.
+ *
+ * 🔴 **La zona sola no dice nada.** El listado mostraba el nombre y un botón de
+ * desactivar, y las dos preguntas que uno se hace ahí —«¿qué comunas agrupa?» y
+ * «¿desactivarla rompe algo?»— obligaban a abrirla una por una. Peor: una zona
+ * la usan TARIFAS, así que desactivar la que usan tres es una decisión de
+ * dinero, y la pantalla la ofrecía como un clic sin consecuencia visible.
+ */
+export interface ZonaEnriquecida extends Zona {
+  /** Las comunas que agrupa, en orden. */
+  comunas: string[];
+  /**
+   * Cuántas tarifas apuntan a esta zona **por nombre**.
+   *
+   * ⚠️ `identidad.tarifas.zona` guarda el NOMBRE, no un id: no hay clave ajena
+   * que impida renombrar una zona y dejar sus tarifas apuntando al vacío. Por
+   * eso el conteo se hace por texto, y por eso mostrarlo importa.
+   */
+  tarifasQueLaUsan: number;
+}
+
 export interface EstadoZonas {
-  zonas: Zona[];
+  zonas: ZonaEnriquecida[];
   sellers: Seller[];
+  /**
+   * Comunas de la RM que no están en ninguna zona.
+   *
+   * No es un error: caen en la tarifa por defecto y se cobran igual. Pero se
+   * cobran **sin distinguir dónde**, que es justo lo que las zonas existen para
+   * evitar — así que la pantalla lo dice en vez de dejarlo implícito.
+   */
+  comunasSinZona: number;
 }
 
 export async function obtenerEstadoZonas(): Promise<Respuesta<EstadoZonas>> {
@@ -66,7 +97,7 @@ export async function obtenerEstadoZonas(): Promise<Respuesta<EstadoZonas>> {
   const cliente = crearClienteServiceRole();
   const tenantId = sesion.usuario.tenantId;
 
-  const [zonas, sellersFila] = await Promise.all([
+  const [zonas, sellersFila, comunasFila, tarifasFila] = await Promise.all([
     listarZonas(cliente, tenantId),
     cliente
       .schema("identidad")
@@ -81,6 +112,23 @@ export async function obtenerEstadoZonas(): Promise<Respuesta<EstadoZonas>> {
       .select("id, razon_social")
       .eq("tenant_id", tenantId)
       .order("razon_social"),
+
+    cliente
+      .schema("identidad")
+      .from("zona_comunas")
+      .select("zona_id, comuna")
+      .eq("tenant_id", tenantId)
+      .order("comuna"),
+
+    // Solo las ACTIVAS: una tarifa inactiva apuntando a la zona no es una
+    // consecuencia de desactivarla, y contarla inflaría el aviso.
+    cliente
+      .schema("identidad")
+      .from("tarifas")
+      .select("zona")
+      .eq("tenant_id", tenantId)
+      .eq("estado", "activa")
+      .not("zona", "is", null),
   ]);
 
   // ⚠️ Y el error se propaga, que es la mitad que faltaba. Tragarse el fallo de
@@ -95,7 +143,39 @@ export async function obtenerEstadoZonas(): Promise<Respuesta<EstadoZonas>> {
     nombre: (s.razon_social as string) ?? "Seller",
   }));
 
-  return { ok: true, datos: { zonas, sellers } };
+  // ⚠️ Las dos lecturas de enriquecimiento SÍ se toleran: si fallan, el listado
+  // sigue en pie con los nombres —que es la mitad que la pantalla siempre
+  // supo— en vez de caerse entero. Distinto de `sellers`, que gobierna si una
+  // sección se renderiza o no y por eso se propaga.
+  const comunasPorZona = new Map<string, string[]>();
+  for (const f of comunasFila.data ?? []) {
+    const id = (f as Record<string, unknown>).zona_id as string;
+    const comuna = (f as Record<string, unknown>).comuna as string;
+    const actual = comunasPorZona.get(id);
+    if (actual) actual.push(comuna);
+    else comunasPorZona.set(id, [comuna]);
+  }
+
+  const usosPorNombre = new Map<string, number>();
+  for (const f of tarifasFila.data ?? []) {
+    const nombre = (f as Record<string, unknown>).zona as string | null;
+    if (!nombre) continue;
+    usosPorNombre.set(nombre, (usosPorNombre.get(nombre) ?? 0) + 1);
+  }
+
+  const enriquecidas: ZonaEnriquecida[] = zonas.map((z) => ({
+    ...z,
+    comunas: comunasPorZona.get(z.id) ?? [],
+    tarifasQueLaUsan: usosPorNombre.get(z.nombre) ?? 0,
+  }));
+
+  // Una comuna puede estar en dos zonas por error de configuración; el conjunto
+  // las cuenta una vez, que es lo que hace falta para saber cuántas faltan.
+  const cubiertas = new Set<string>();
+  for (const lista of comunasPorZona.values()) for (const c of lista) cubiertas.add(c);
+  const comunasSinZona = Math.max(0, COMUNAS_RM.length - cubiertas.size);
+
+  return { ok: true, datos: { zonas: enriquecidas, sellers, comunasSinZona } };
 }
 
 // =============================================================================

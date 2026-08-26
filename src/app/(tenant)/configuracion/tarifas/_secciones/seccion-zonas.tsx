@@ -38,12 +38,12 @@ export async function SeccionZonas() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <p className="text-sm leading-relaxed text-fg-muted">
-        Cómo agrupas las comunas de la RM para cobrar distinto según dónde entregas. La hora de
-        corte de cada seller se fija en su ficha.
-      </p>
-      <PanelZonas estadoInicial={resultado.datos} />
-    </div>
+    /* ⚠️ **Sin párrafo de sección, y sin `max-w-3xl`.**
+       Había una bajada acá que repetía casi literalmente la que el propio
+       listado ya traía —«Agrupa comunas para cobrar distinto según dónde
+       entregas»—: la misma frase dos veces, una debajo de la otra. Y el ancho
+       acotado dejaba de tener sentido cuando la sección pasó a ser una tabla de
+       cinco columnas, como la de Tarifas. */
+    <PanelZonas estadoInicial={resultado.datos} />
   );
 }

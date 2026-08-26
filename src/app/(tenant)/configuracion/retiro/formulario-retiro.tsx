@@ -62,10 +62,15 @@ export function FormularioRetiro({ montoActual }: Props) {
           defaultValue={montoActual ?? ""}
           placeholder="ej. 1500"
         />
+        {/* ⚠️ Acá seguía «Puedes fijar un monto distinto para una bodega
+            puntual desde Configuración → Bodegas». Se retiró: desde que la
+            sección lista las bodegas con lo que cuesta cada una, esa misma idea
+            se decía TRES veces —la descripción de la tarjeta, esta ayuda y la
+            tabla con su botón—. La ayuda del campo se queda con lo único que el
+            campo necesita explicar. */}
         <p className="text-xs text-fg-muted">
           Se paga por CADA visita cerrada, sin importar cuántos bultos retiró el conductor en
-          ella. Puedes fijar un monto distinto para una bodega puntual desde Configuración →
-          Bodegas.
+          ella.
         </p>
       </div>
     </SeccionConfiguracion>
