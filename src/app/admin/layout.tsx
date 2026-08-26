@@ -1,4 +1,5 @@
 
+import { UserRound } from "lucide-react";
 import { exigirSuperAdmin, type ActorSuperAdmin } from "@/modules/plataforma/autorizacion-admin";
 import { Badge } from "@/components/ui/badge";
 import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
@@ -150,13 +151,31 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <AppShell
       nombreFantasia="Rutax"
       etiquetaMarca="Plataforma"
-      nombreCompleto={actor.email}
+      /* 🐞 Acá iba `actor.email` en el sitio del NOMBRE. El nombre existía en
+         `plataforma.super_admins` y no se usaba en ninguna parte de la interfaz
+         —solo lo leía la bitácora para rotular al actor—, así que el bloque de
+         cuenta mostraba un correo largo, truncado, donde las otras tres
+         superficies muestran una persona. El correo sigue estando, en «Mi
+         perfil», que es donde se pregunta con qué cuenta entré. */
+      nombreCompleto={actor.nombre}
       subtituloCuenta={esAdminTotal ? "Administrador" : "Soporte (solo lectura)"}
       grupos={GRUPOS_ADMIN}
       itemsInferiores={[{ href: "/admin/seguridad", etiqueta: "Seguridad", icono: "seguridad" }]}
       adornoCuenta={
         <Badge variant={esAdminTotal ? "outline" : "neutral"}>{esAdminTotal ? "Total" : "Soporte"}</Badge>
       }
+      /* ⚠️ El ícono va YA RENDERIZADO, no como componente: este layout es de
+         servidor y una función no cruza la frontera hacia un Client Component
+         — se lleva por delante todo lo que el layout envuelve, con typecheck y
+         lint en verde. */
+      enlacesCuenta={[
+        {
+          href: "/admin/perfil",
+          etiqueta: "Mi perfil",
+          subtitulo: "Tu cuenta de plataforma",
+          icono: <UserRound className="size-4" aria-hidden="true" />,
+        },
+      ]}
       accionSalir={cerrarSesionAdmin}
       mostrarAvisos={false}
       // El buscador global sigue apagado en el backstage a propósito: encenderlo

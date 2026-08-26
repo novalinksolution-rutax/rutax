@@ -57,19 +57,28 @@ export const FRASE_CAPACIDAD: Record<Capacidad, string> = {
   ver_reportes_ejecutivos: "Ver los reportes del negocio",
   ver_bitacora_auditoria: "Ver la bitácora y exportar los datos",
   gestionar_suscripcion: "Cambiar el plan de Rutax",
-  // --- Del seller, en su portal ---
-  gestionar_conexion_ml_propia: "Conectar su tienda o su cuenta de Mercado Libre",
+  /* --- Del seller, en su portal ---------------------------------------------
+     🔴 **En SEGUNDA persona, y las de arriba no.** No es una inconsistencia.
+     Las del equipo interno se leen en dos contextos —«esta persona va a poder…»
+     al invitar, y «Puedes…» en Mi perfil—, así que van en infinitivo desnudo,
+     que funciona en los dos. Éstas y las del conductor solo se renderizan en
+     UN sitio: el «Qué puedes hacer» de su propio perfil (`permisos-por-rol` y
+     el diálogo de cambiar rol recorren solo `ROLES_INTERNOS`, y `universoDe`
+     impide que un rol interno vea las ajenas). Ahí «Descargar sus facturas»
+     bajo el rótulo «Puedes» habla de un tercero que no existe.
+     Si alguna vez se muestran a otro, hay que volver a mirarlas. */
+  gestionar_conexion_ml_propia: "Conectar tu tienda o tu cuenta de Mercado Libre",
   solicitar_same_day: "Pedir un envío same-day",
-  ver_documentos_propios: "Descargar sus facturas",
-  ver_incidencias_propias: "Ver las incidencias de sus pedidos",
-  reportar_incidencias_propias: "Reportar un problema con un pedido suyo",
+  ver_documentos_propios: "Descargar tus facturas",
+  ver_incidencias_propias: "Ver las incidencias de tus pedidos",
+  reportar_incidencias_propias: "Reportar un problema con un pedido tuyo",
   descargar_etiqueta_same_day: "Descargar la etiqueta de un same-day",
-  gestionar_pedidos_propios: "Cancelar o editar sus pedidos",
-  // --- Del conductor, en su app ---
-  ver_ruta_propia: "Ver su ruta del día",
-  confirmar_manifiesto_propio: "Confirmar su manifiesto",
-  marcar_evidencias_propias: "Registrar la evidencia de sus entregas",
-  ver_liquidacion_propia: "Ver su liquidación",
+  gestionar_pedidos_propios: "Cancelar o editar tus pedidos",
+  // --- Del conductor, en su app (misma nota que arriba) ---
+  ver_ruta_propia: "Ver tu ruta del día",
+  confirmar_manifiesto_propio: "Confirmar tu manifiesto",
+  marcar_evidencias_propias: "Registrar la evidencia de tus entregas",
+  ver_liquidacion_propia: "Ver tu liquidación",
   recibir_traspaso_propio: "Recibir un traspaso de otro conductor",
   // --- De Rutax, no del courier ---
   administrar_plataforma: "Administrar la plataforma",
@@ -204,9 +213,17 @@ export function describirRol(rol: Rol, cuantas = 3): string {
   const suyas = capacidadesDeRol(rol);
   if (suyas.length === 0) return "Sin acceso a la operación del courier.";
   const primeras = CAPACIDADES.filter((c) => suyas.includes(c)).slice(0, cuantas);
+  // Las frases del catálogo empiezan en mayúscula («Dar de alta gente…») porque
+  // ahí son ítems de una lista; acá se encadenan, así que se bajan todas y
+  // después se sube la primera.
   const frases = primeras.map((c) => FRASE_CAPACIDAD[c].toLowerCase());
   const resto = suyas.length - primeras.length;
-  return resto > 0
-    ? `${frases.join(", ")}, y ${resto} ${resto === 1 ? "cosa" : "cosas"} más.`
-    : `${frases.join(", ")}.`;
+  const cuerpo =
+    resto > 0
+      ? `${frases.join(", ")}, y ${resto} ${resto === 1 ? "cosa" : "cosas"} más.`
+      : `${frases.join(", ")}.`;
+  // 🐞 Salía en minúscula: «dar de alta gente y cambiarle el rol, …». Los cinco
+  // sitios que la muestran la ponen en su propio párrafo, como frase suelta, así
+  // que una frase que empieza en minúscula se lee como un texto cortado.
+  return cuerpo.charAt(0).toUpperCase() + cuerpo.slice(1);
 }

@@ -16,15 +16,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { accionGuardarMiPerfil } from "./actions";
+import { accionGuardarMiPerfil } from "@/modules/identidad/mi-perfil.acciones";
 
-export function FormularioPerfil({
+export function FormularioMiPerfil({
   nombreInicial,
   telefonoInicial,
+  ayudaNombre,
+  ayudaTelefono,
 }: {
   nombreInicial: string;
   /** Ya legible («+56 9 1234 5678»), no el E.164 crudo. */
   telefonoInicial: string;
+  /**
+   * Qué se hace con el nombre, dicho en la voz de quien lo lee.
+   *
+   * Es prop y no una constante porque «el nombre con el que te ve tu equipo» es
+   * verdad para el courier y falsa para un seller, que no tiene equipo acá. Un
+   * texto compartido que solo es cierto en una de las pantallas es peor que dos
+   * textos.
+   */
+  ayudaNombre: string;
+  ayudaTelefono: string;
 }) {
   const [nombre, setNombre] = useState(nombreInicial);
   const [telefono, setTelefono] = useState(telefonoInicial);
@@ -86,10 +98,7 @@ export function FormularioPerfil({
           autoComplete="name"
           maxLength={120}
         />
-        <p className="text-xs text-fg-muted">
-          Es el nombre con el que te ve tu equipo, y el que queda en la bitácora junto a cada cosa
-          que hagas.
-        </p>
+        <p className="text-xs text-fg-muted">{ayudaNombre}</p>
       </div>
 
       <div className="space-y-1.5">
@@ -105,11 +114,9 @@ export function FormularioPerfil({
           autoComplete="tel"
           placeholder="9 1234 5678"
         />
-        {/* Se dice que es opcional Y qué pasa si se deja vacío: sin la segunda
-            mitad, borrar el número parece que no se pudo. */}
-        <p className="text-xs text-fg-muted">
-          Opcional. Déjalo en blanco para quitarlo.
-        </p>
+        {/* Se dice para qué sirve, que es opcional, Y qué pasa si se deja
+            vacío: sin lo último, borrar el número parece que no se pudo. */}
+        <p className="text-xs text-fg-muted">{ayudaTelefono}</p>
       </div>
 
       {error ? (

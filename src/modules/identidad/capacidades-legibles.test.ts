@@ -85,6 +85,17 @@ describe("describirRol", () => {
     // sí: dice de qué se trata el rol y que hay más.
     expect(describirRol("dueno")).toMatch(/y \d+ cosas más\.$/);
   });
+
+  it("empieza en mayúscula: los cinco sitios la muestran como frase suelta", () => {
+    // 🐞 Salía «dar de alta gente y cambiarle el rol, …» en su propio párrafo,
+    // que se lee como un texto cortado. Se comprueba en TODOS los roles con
+    // capacidades, no solo en el dueño: el bug venía de bajar la primera frase
+    // del catálogo, y eso pasa igual en los cinco.
+    for (const rol of ["dueno", "administracion", "supervisor", "coordinador", "seller", "conductor"] as const) {
+      const primera = describirRol(rol).charAt(0);
+      expect(primera, rol).toBe(primera.toUpperCase());
+    }
+  });
 });
 
 describe("un rol interno se mide contra su familia, no contra el catálogo entero", () => {

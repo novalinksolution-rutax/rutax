@@ -1,18 +1,24 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ListaCapacidades } from "@/components/ui/bloque-capacidades";
+import { FormularioMiPerfil } from "@/components/perfil/formulario-mi-perfil";
+import {
+  BloqueCorreo,
+  DatoDesdeCuando,
+  DatoPerfil,
+  NotaPerfil,
+  SeccionContrasena,
+  SeccionPerfil,
+} from "@/components/perfil/secciones-perfil";
 import { formatearTelefonoLegible } from "@/lib/telefono-cl";
 import { capacidadesLegiblesDeRol, describirRol } from "@/modules/identidad/capacidades-legibles";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { esRolInterno } from "@/modules/identidad/roles";
 import { PantallaConfiguracion } from "../configuracion/_componentes/pantalla-configuracion";
-import { FormularioPerfil } from "./formulario-perfil";
 
 export const metadata: Metadata = {
   title: "Mi perfil",
@@ -35,16 +41,18 @@ export const metadata: Metadata = {
  * suyo. Lo que se gobierna con capacidades es tocar lo de OTRO, y eso vive en
  * `/equipo`.
  *
+ * Y desde el 26-08-2026 no es la única: el seller, el conductor y el super-admin
+ * tienen la suya. Las cuatro se arman con las mismas piezas
+ * (`components/perfil/secciones-perfil.tsx`) para que la explicación de por qué
+ * el correo no se edita sea UNA, no cuatro que se van separando.
+ *
  * -----------------------------------------------------------------------------
  * QUÉ SE EDITA Y QUÉ SOLO SE MIRA
  * -----------------------------------------------------------------------------
  * · **Se edita:** nombre y teléfono. Son suyos y no cambian lo que puede hacer.
- * · **Se mira:** el correo —es la identidad y la llave de entrada; cambiarlo
- *   pasa por re-verificación y por la regla «un correo, una cuenta»—, el rol
- *   —que lo cambia el dueño, no uno mismo— y los permisos que ese rol trae.
- * · **Se delega:** la contraseña, al flujo de recuperación que ya existe. Un
- *   segundo camino para lo mismo son dos sitios donde equivocarse, y ése ya
- *   manda su correo y tiene su rastro.
+ * · **Se mira:** el correo, el rol —que lo cambia el dueño, no uno mismo— y los
+ *   permisos que ese rol trae.
+ * · **Se delega:** la contraseña, al flujo de recuperación que ya existe.
  *
  * -----------------------------------------------------------------------------
  * 🔴 LOS PERMISOS SALEN DEL CATÁLOGO
@@ -60,7 +68,7 @@ export default async function PaginaMiPerfil() {
 
   // El teléfono NO viaja en la sesión —no está en los claims— así que se lee.
   // Y se lee con `service_role` porque la columna está fuera de la vista de
-  // `public` a propósito: es dato personal (ver la migración 20260826000001).
+  // `public` a propósito: es dato personal (ver la migración 20260826000003).
   const { data: perfil } = await crearClienteServiceRole()
     .schema("identidad")
     .from("usuarios_perfil")
@@ -79,64 +87,34 @@ export default async function PaginaMiPerfil() {
       titulo="Mi perfil"
       bajada="Tus datos y lo que tu rol te permite hacer. Para cambiar el rol de alguien —incluido el tuyo— hace falta el dueño de la cuenta."
     >
-      <section className="space-y-4 border border-line bg-bg-raised px-5 py-5">
-        <h2 className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
-          Tus datos
-        </h2>
-        <FormularioPerfil
+      <SeccionPerfil titulo="Tus datos" className="space-y-4">
+        <FormularioMiPerfil
           nombreInicial={(perfil?.nombre_completo as string | null) ?? sesion.nombreCompleto ?? ""}
           telefonoInicial={telefonoE164 ? formatearTelefonoLegible(telefonoE164) : ""}
+          ayudaNombre="Es el nombre con el que te ve tu equipo, y el que queda en la bitácora junto a cada cosa que hagas."
+          ayudaTelefono="Opcional. Déjalo en blanco para quitarlo."
         />
-      </section>
+      </SeccionPerfil>
 
-      <section className="space-y-3 border border-line bg-bg-raised px-5 py-5">
-        <h2 className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
-          Tu cuenta
-        </h2>
-
+      <SeccionPerfil titulo="Tu cuenta">
         <dl className="space-y-2.5">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <dt className="text-sm text-fg-muted">Correo</dt>
-            <dd className="rx-num text-sm text-fg">{sesion.email ?? "Sin correo registrado"}</dd>
-          </div>
-          {/* Por qué no se puede editar, dicho donde se pregunta. Un campo
-              deshabilitado sin explicación se lee como algo roto. */}
-          <p className="text-xs leading-relaxed text-fg-muted">
-            Es con lo que entras, así que no se cambia desde acá: hacerlo exige verificar el correo
-            nuevo y hay un rato en que podrías quedarte fuera de tu propia cuenta. Si necesitas
-            cambiarlo, escríbenos.
-          </p>
+          <BloqueCorreo email={sesion.email} />
 
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line pt-2.5">
-            <dt className="text-sm text-fg-muted">Rol</dt>
-            <dd className="flex items-center gap-2">
-              <Badge variant="outline">
-                {interno ? DESCRIPCIONES_ROLES_INTERNOS[rol].etiqueta : rol}
-              </Badge>
-            </dd>
-          </div>
-          <p className="text-xs leading-relaxed text-fg-muted">{describirRol(rol)}</p>
+          <DatoPerfil termino="Rol" conSeparador>
+            <Badge variant="outline">
+              {interno ? DESCRIPCIONES_ROLES_INTERNOS[rol].etiqueta : rol}
+            </Badge>
+          </DatoPerfil>
+          <NotaPerfil>{describirRol(rol)}</NotaPerfil>
 
-          {perfil?.creado_en ? (
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line pt-2.5">
-              <dt className="text-sm text-fg-muted">En este courier desde</dt>
-              <dd className="rx-num text-sm text-fg">
-                {new Date(perfil.creado_en as string).toLocaleDateString("es-CL", {
-                  timeZone: "America/Santiago",
-                  day: "2-digit",
-                  month: "2-digit",
-                  year: "numeric",
-                })}
-              </dd>
-            </div>
-          ) : null}
+          <DatoDesdeCuando
+            rotulo="En este courier desde"
+            fechaIso={perfil?.creado_en as string | undefined}
+          />
         </dl>
-      </section>
+      </SeccionPerfil>
 
-      <section className="space-y-3 border border-line bg-bg-raised px-5 py-5">
-        <h2 className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
-          Qué puedes hacer
-        </h2>
+      <SeccionPerfil titulo="Qué puedes hacer">
         <ListaCapacidades
           rotulo="Puedes"
           tono="balanced"
@@ -152,21 +130,9 @@ export default async function PaginaMiPerfil() {
           vacio="Nada queda fuera de tu rol."
           colapsable
         />
-      </section>
+      </SeccionPerfil>
 
-      <section className="space-y-3 border border-line bg-bg-raised px-5 py-5">
-        <h2 className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
-          Tu contraseña
-        </h2>
-        <p className="text-sm leading-relaxed text-fg-muted">
-          Se cambia por el mismo camino que si la olvidaras: te mandamos un enlace a{" "}
-          {sesion.email ?? "tu correo"} y la defines ahí. Así nadie puede cambiártela por tenerte la
-          sesión abierta en un computador prestado.
-        </p>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/recuperar-contrasena">Cambiar mi contraseña</Link>
-        </Button>
-      </section>
+      <SeccionContrasena email={sesion.email} />
     </PantallaConfiguracion>
   );
 }

@@ -7,6 +7,7 @@
  * `(tenant)/layout.tsx`.
  */
 
+import { UserRound } from "lucide-react";
 import { cerrarSesion } from "@/lib/identidad/cerrar-sesion";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
@@ -59,13 +60,6 @@ export default async function LayoutPortal({
       ],
     },
     {
-      titulo: "Mi cuenta",
-      // Hoy solo su WhatsApp. Va en grupo propio y no colgando de Operación
-      // porque no es del día a día: se entra una vez a dejar el número y
-      // después solo si cambia o si quiere darse de baja.
-      items: [{ href: "/portal/perfil", etiqueta: "Mi perfil", icono: "configuracion" }],
-    },
-    {
       titulo: "Dinero",
       // «Mis cobros», igual que el `h1` y que la pestaña. «Estado de cuenta»
       // es lenguaje de banco, y además no cabía en la barra inferior del
@@ -82,6 +76,27 @@ export default async function LayoutPortal({
       etiquetaMarca="Tienda"
       densidad="relajada"
       grupos={grupos}
+      /* «Mi perfil» vive en el bloque de cuenta del pie del sidebar, igual que
+         en el backoffice del courier (encargo del usuario, 26-08-2026: que el
+         bloque con tu nombre lleve a alguna parte, en todos los roles).
+
+         ⚠️ Y salió del grupo «Mi cuenta» de la navegación: tenerlo en los dos
+         sitios es la misma duplicación que el usuario ya reclamó con «Mi plan»
+         apareciendo tres veces. El sitio donde alguien busca sus propios datos
+         es donde está su nombre.
+
+         ⚠️ El ícono va YA RENDERIZADO, no como componente: este layout es de
+         servidor y una función no cruza la frontera hacia un Client Component
+         — se lleva por delante todo lo que el layout envuelve, con typecheck y
+         lint en verde. */
+      enlacesCuenta={[
+        {
+          href: "/portal/perfil",
+          etiqueta: "Mi perfil",
+          subtitulo: "Tus datos y tus avisos",
+          icono: <UserRound className="size-4" aria-hidden="true" />,
+        },
+      ]}
       accionSalir={async () => {
         "use server";
         await cerrarSesion("/portal/login");

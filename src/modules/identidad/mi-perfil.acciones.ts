@@ -1,8 +1,19 @@
 "use server";
 
 /**
- * Lo que una persona del equipo puede cambiar de sí misma.
+ * Lo que CUALQUIER persona puede cambiar de sí misma.
  * =============================================================================
+ *
+ * -----------------------------------------------------------------------------
+ * UNA SOLA, PARA TODAS LAS SUPERFICIES
+ * -----------------------------------------------------------------------------
+ * La usan «Mi perfil» del equipo del courier (`(tenant)/perfil`) y la del seller
+ * (`portal/perfil`), y sirve igual al conductor. No es casualidad: los tres
+ * viven en la MISMA tabla, `identidad.usuarios_perfil`, y la acción no pregunta
+ * de qué tipo es nadie — solo escribe la fila de quien tiene la sesión.
+ *
+ * Que sea una sola es lo que impide que dentro de seis meses el seller pueda
+ * poner un nombre de 300 caracteres porque su copia se quedó sin el tope.
  *
  * -----------------------------------------------------------------------------
  * ⚠️ SIEMPRE SOBRE SÍ MISMA — NO RECIBE UN `usuarioId`
@@ -100,7 +111,8 @@ export async function accionGuardarMiPerfil(
 
   // El nombre viaja en el bloque de cuenta del sidebar, que vive en el layout:
   // sin esto, la persona guarda y sigue viendo el nombre viejo abajo a la
-  // izquierda — y eso se lee como que no se guardó.
+  // izquierda — y eso se lee como que no se guardó. Se invalida desde la raíz
+  // justamente porque hay más de un layout con ese bloque.
   revalidatePath("/", "layout");
   return { ok: true };
 }
