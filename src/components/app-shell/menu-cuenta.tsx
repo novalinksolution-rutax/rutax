@@ -75,9 +75,15 @@ interface MenuCuentaProps {
    * nada en `(tenant)`, `portal` ni `admin`, que no pasan esta prop.
    */
   enlaces?: EnlaceMenuCuenta[]
+  /**
+   * Se llama al seguir uno de `enlaces`. En el cajón del teléfono cierra el
+   * cajón; en el sidebar de escritorio no se pasa, porque no hay nada que
+   * cerrar.
+   */
+  onNavegar?: () => void
 }
 
-export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, lado = "top", enlaces }: MenuCuentaProps) {
+export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, lado = "top", enlaces, onNavegar }: MenuCuentaProps) {
   const [cerrando, startCerrar] = useTransition()
 
   /**
@@ -155,7 +161,27 @@ export function MenuCuenta({ nombre, subtitulo, adorno, accionSalir, colapsado, 
             {enlaces.map((enlace) => {
               return (
                 <DropdownMenuItem key={enlace.href} asChild>
-                  <Link href={enlace.href} className="flex w-full items-center gap-2">
+                  {/* 🐞 `onNavegar` cierra el cajón del teléfono.
+                      Reportado por el usuario (26-08-2026): «cuando le doy a
+                      perfil, la barra lateral no se cierra». Y no era de esa
+                      pantalla — pasaba en los cuatro roles, porque el bloque de
+                      cuenta era el ÚNICO del cajón que no recibía el aviso: la
+                      navegación y «Mi plan» sí lo tenían.
+
+                      ⚠️ Va como `onClick` del enlace y NO como `onSelect` del
+                      ítem con `preventDefault` + `router.push`. La razón está
+                      arriba, en el comentario de «Cerrar sesión»: al cerrar se
+                      desmonta el árbol, y si la navegación dependiera de un
+                      efecto posterior al cierre se perdería igual que se perdía
+                      aquel `submit`. Acá el `href` real ya disparó la
+                      navegación dentro del mismo evento antes de que el estado
+                      se aplique — y de paso el enlace sigue siendo un enlace:
+                      se puede abrir en otra pestaña. */}
+                  <Link
+                    href={enlace.href}
+                    onClick={onNavegar}
+                    className="flex w-full items-center gap-2"
+                  >
                     {enlace.icono ?? null}
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{enlace.etiqueta}</span>

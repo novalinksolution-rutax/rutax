@@ -633,7 +633,17 @@ export function AppShell({
     )
   }
 
-  const bloqueCuenta = (colapsadoLocal: boolean) => (
+  /**
+   * 🐞 `enSheet` faltaba acá, y solo acá.
+   *
+   * La navegación (`onNavegar`) y «Mi plan» ya cerraban el cajón del teléfono al
+   * seguir un enlace; el bloque de cuenta no, porque ni siquiera recibía el
+   * parámetro. Resultado: se tocaba «Mi perfil», la pantalla cambiaba detrás y
+   * el cajón se quedaba encima, tapándola. Reportado por el usuario el
+   * 26-08-2026, y valía para los cuatro roles — este `AppShell` es el mismo para
+   * el courier, el portal del seller y el backstage.
+   */
+  const bloqueCuenta = (colapsadoLocal: boolean, enSheet = false) => (
     <div className="p-2">
       <MenuCuenta
         nombre={nombreCompleto ?? "Cuenta"}
@@ -642,6 +652,7 @@ export function AppShell({
         enlaces={enlacesCuenta}
         accionSalir={accionSalir}
         colapsado={colapsadoLocal}
+        onNavegar={enSheet ? () => setMenuAbierto(false) : undefined}
       />
     </div>
   )
@@ -713,7 +724,7 @@ export function AppShell({
         ))}
       </nav>
       {bloquePlan(colapsadoLocal, enSheet ? () => setMenuAbierto(false) : undefined)}
-      {bloqueCuenta(colapsadoLocal)}
+      {bloqueCuenta(colapsadoLocal, enSheet)}
     </div>
   )
 
@@ -754,7 +765,7 @@ export function AppShell({
         }}
       />
       {bloquePlan(colapsadoLocal, enSheet ? () => setMenuAbierto(false) : undefined)}
-      {bloqueCuenta(colapsadoLocal)}
+      {bloqueCuenta(colapsadoLocal, enSheet)}
     </div>
   )
 
