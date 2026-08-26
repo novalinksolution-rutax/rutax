@@ -193,7 +193,11 @@ export function FilaTarifa({
           <BotonReactivarTarifa tarifaId={tarifa.id} />
         ) : (
           <div className="flex items-center justify-end gap-1">
-            {/* El panel ya no tiene disparador propio: lo abre la fila. */}
+            {/* ⚠️ El panel NO dibuja disparador acá: lo abre el clic en la
+                fila. Se consigue pasándole `abierto`, y por eso `PanelTarifa`
+                solo cae en su botón «Nueva tarifa» cuando `abierto` viene
+                `undefined`. Antes lo dibujaba igual: cada fila tenía un botón
+                que decía «Nueva tarifa» y abría «Editar tarifa». */}
             <PanelTarifa
               sellers={sellers}
               tarifa={tarifaParaDialog}

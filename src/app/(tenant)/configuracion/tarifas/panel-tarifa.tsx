@@ -184,7 +184,26 @@ export function PanelTarifa({
     <PanelAccion
       abierto={open}
       onOpenChange={setOpen}
-      disparador={trigger ?? <Button size="sm">Nueva tarifa</Button>}
+      /**
+       * 🐞 **El respaldo solo existe cuando NADIE controla el panel desde fuera.**
+       *
+       * Acá decía `trigger ?? <Button>Nueva tarifa</Button>`, y el `??` no
+       * distingue quién lo abre. La fila de la tabla pasa `abierto` para que el
+       * clic en la fila abra la edición **y no pasa `trigger`**, así que caía en
+       * el respaldo: cada fila dibujaba un botón que decía «Nueva tarifa» y que,
+       * al pulsarlo, abría «Editar tarifa» de ESA tarifa. La etiqueta decía una
+       * cosa y hacía otra, en siete filas a la vez.
+       *
+       * El comentario de `fila-tarifa.tsx` afirmaba «el panel ya no tiene
+       * disparador propio: lo abre la fila». Era la intención, no el código.
+       *
+       * Y costaba ancho: la columna de acciones medía 212 px con los dos
+       * botones, empujando la tabla 21 px más allá del borde a 1230 px de
+       * ventana — o sea que «Inactivar» quedaba cortado en un portátil normal.
+       */
+      disparador={
+        trigger ?? (abierto === undefined ? <Button size="sm">Nueva tarifa</Button> : undefined)
+      }
       titulo={esEdicion ? "Editar tarifa" : "Nueva tarifa"}
       subtitulo={
         esEdicion ? (
