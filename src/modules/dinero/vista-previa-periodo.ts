@@ -31,6 +31,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
 import { contarBloqueosDeFacturacion } from "./listado-periodos";
+import { montosDesdeNeto } from "./montos";
 import type { EstadoPeriodo, EstadoCobroPeriodo, DocumentoDte } from "./tipos";
 
 export interface VistaPreviaPeriodo {
@@ -42,16 +43,26 @@ export interface VistaPreviaPeriodo {
   fechaFin: string;
   estado: EstadoPeriodo;
 
-  /** Líneas vigentes (no anuladas) y lo que suman. */
+  /** Líneas vigentes (no anuladas) y lo que suman. Las líneas están en NETO. */
   lineasVigentes: number;
   netoDesdeLineas: number;
+  /** El IVA y el bruto derivados de ese neto — lo que va en la factura. */
+  ivaDesdeLineas: number;
+  brutoDesdeLineas: number;
   /**
-   * El total que quedó guardado al cerrar. `null` en un período abierto.
+   * 🔴 El total que quedó guardado al cerrar, **que está en BRUTO**.
    *
-   * Se muestra **solo cuando discrepa** de `netoDesdeLineas`: si coinciden, dos
-   * cifras iguales una al lado de la otra no informan, preocupan.
+   * `periodos_cobro.monto_total_clp` se escribe como `neto + IVA` (ver
+   * `cerrarPeriodo`: «Líneas en NETO. El total del período es BRUTO»). La
+   * primera versión de este panel lo comparaba contra el NETO sumado de las
+   * líneas y, al no coincidir nunca, avisaba de una discrepancia **en todos los
+   * períodos cerrados** — explicándola además como líneas anuladas, que es una
+   * causa inventada. Se comparó contra el bruto derivado y el aviso volvió a
+   * significar algo.
+   *
+   * `null` en un período abierto: ahí todavía no se ha escrito.
    */
-  netoGuardado: number | null;
+  brutoGuardado: number | null;
 
   /** Anuladas: lo que explica una discrepancia entre las dos cifras de arriba. */
   lineasAnuladas: number;
@@ -115,8 +126,14 @@ export async function armarVistaPreviaPeriodo(
     Promise.resolve(
       cliente
         .schema("identidad")
+        // ⚠️ `razon_social`, no `nombre`: esa columna NO EXISTE en
+        // `identidad.sellers`. Con el nombre equivocado la consulta falla, el
+        // `.catch()` se la traga y el panel encabezaba con la palabra literal
+        // «Seller» en vez del nombre del cliente — sin un solo error en
+        // consola. Es el precio de tolerar el fallo: hay que acertar el
+        // contrato, porque nada te avisa si no.
         .from("sellers")
-        .select("nombre, rut")
+        .select("razon_social, rut")
         .eq("id", sellerId)
         .eq("tenant_id", tenantId)
         .maybeSingle(),
@@ -156,18 +173,26 @@ export async function armarVistaPreviaPeriodo(
     .filter((f): f is string => Boolean(f))
     .sort();
 
+  // Las líneas están en neto; el IVA se calcula UNA vez sobre la suma, igual
+  // que `cerrarPeriodo` y que el cron C2. Calcularlo por línea y sumar da otro
+  // número por el redondeo.
+  const neto = vigentes.reduce((s, l) => s + (l.monto_final_clp ?? 0), 0);
+  const conIva = montosDesdeNeto(neto);
+
   return {
     id: periodo.id as string,
     sellerId,
-    sellerNombre: (seller?.nombre as string | undefined) ?? "Seller",
+    sellerNombre: (seller?.razon_social as string | undefined) ?? "Seller",
     sellerRut: (seller?.rut as string | undefined) ?? null,
     fechaInicio: periodo.fecha_inicio as string,
     fechaFin: periodo.fecha_fin as string,
     estado: periodo.estado as EstadoPeriodo,
 
     lineasVigentes: vigentes.length,
-    netoDesdeLineas: vigentes.reduce((s, l) => s + (l.monto_final_clp ?? 0), 0),
-    netoGuardado: (periodo.monto_total_clp as number | null) ?? null,
+    netoDesdeLineas: neto,
+    ivaDesdeLineas: conIva.ivaClp,
+    brutoDesdeLineas: conIva.totalClp,
+    brutoGuardado: (periodo.monto_total_clp as number | null) ?? null,
 
     lineasAnuladas: lineas.length - vigentes.length,
 

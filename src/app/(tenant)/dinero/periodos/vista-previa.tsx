@@ -88,23 +88,40 @@ function Encabezado(d: VistaPreviaPeriodo) {
 }
 
 function Cuerpo(d: VistaPreviaPeriodo, cerrar: () => void) {
-  // 🔴 El total guardado envejece: se escribe al cerrar y no se vuelve a tocar
-  // aunque después se anule una línea. Se muestra SOLO cuando discrepa — dos
-  // cifras iguales una al lado de la otra no informan, preocupan.
-  const discrepa = d.netoGuardado !== null && d.netoGuardado !== d.netoDesdeLineas;
+  /**
+   * 🔴 **Se compara BRUTO contra BRUTO.**
+   *
+   * Las líneas están en neto y `periodos_cobro.monto_total_clp` se guarda en
+   * bruto —neto + IVA, ver `cerrarPeriodo`—. La primera versión de este panel
+   * comparaba el neto sumado contra ese guardado: como nunca coinciden, avisaba
+   * de una discrepancia en **todos** los períodos cerrados, y encima la
+   * explicaba como líneas anuladas cuando no había ninguna. Un aviso que salta
+   * siempre no avisa de nada, y uno que inventa la causa es peor.
+   */
+  const discrepa = d.brutoGuardado !== null && d.brutoGuardado !== d.brutoDesdeLineas;
 
   return (
     <>
       <BloqueVistaPrevia titulo="El cobro">
-        <p className="rx-num text-2xl font-semibold text-fg">{formatearCLP(d.netoDesdeLineas)}</p>
+        {/* Regla 18: la cifra declara qué es. Arriba el BRUTO, que es lo que el
+            seller va a pagar y lo que dice la factura; el neto y el IVA debajo,
+            porque la pregunta «¿por qué es esto?» se responde con la resta. */}
+        <p className="rx-num text-2xl font-semibold text-fg">{formatearCLP(d.brutoDesdeLineas)}</p>
         <p className="mt-0.5 text-xs text-fg-muted">
-          neto, sumado desde {d.lineasVigentes}{" "}
+          total con IVA, desde {d.lineasVigentes}{" "}
           {d.lineasVigentes === 1 ? "línea vigente" : "líneas vigentes"}
         </p>
+        <div className="mt-2">
+          <DatoVistaPrevia rotulo="Neto">{formatearCLP(d.netoDesdeLineas)}</DatoVistaPrevia>
+          <DatoVistaPrevia rotulo="IVA">{formatearCLP(d.ivaDesdeLineas)}</DatoVistaPrevia>
+        </div>
         {discrepa ? (
           <p className="mt-2 border border-attention-line bg-attention-bg px-2.5 py-1.5 text-xs leading-snug text-attention-fg">
-            Al cerrarlo quedó guardado {formatearCLP(d.netoGuardado ?? 0)}. La diferencia sale de
-            lo que se anuló después; el detalle y la factura usan la suma de las líneas.
+            Al cerrarlo quedó guardado {formatearCLP(d.brutoGuardado ?? 0)}
+            {d.lineasAnuladas > 0
+              ? ". La diferencia sale de las líneas que se anularon después"
+              : ". No calza con lo que suman sus líneas hoy"}
+            ; el detalle y la factura usan la suma de las líneas.
           </p>
         ) : null}
       </BloqueVistaPrevia>
@@ -170,11 +187,12 @@ function Cuerpo(d: VistaPreviaPeriodo, cerrar: () => void) {
         {d.montoPagadoClp !== null && d.montoPagadoClp > 0 ? (
           <>
             <DatoVistaPrevia rotulo="Pagado">{formatearCLP(d.montoPagadoClp)}</DatoVistaPrevia>
+            {/* Contra el BRUTO: es lo que se le cobra al seller, no el neto. */}
             <DatoVistaPrevia
               rotulo="Saldo"
-              tono={d.netoDesdeLineas - d.montoPagadoClp > 0 ? "atencion" : "normal"}
+              tono={d.brutoDesdeLineas - d.montoPagadoClp > 0 ? "atencion" : "normal"}
             >
-              {formatearCLP(d.netoDesdeLineas - d.montoPagadoClp)}
+              {formatearCLP(d.brutoDesdeLineas - d.montoPagadoClp)}
             </DatoVistaPrevia>
           </>
         ) : (

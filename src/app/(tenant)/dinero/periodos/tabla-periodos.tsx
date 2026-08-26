@@ -168,9 +168,22 @@ export function TablaPeriodos({
               <TableHead className="px-4">Seller y período</TableHead>
               <TableHead className="px-4">Estado</TableHead>
               <TableHead className="hidden px-4 text-right md:table-cell">Líneas</TableHead>
-              {/* Rótulo obligatorio: la cifra es NETA, y sin decirlo alguien
-                  la puede leer como el total con impuestos (regla 18). */}
-              <TableHead className="px-4 text-right">Neto</TableHead>
+              {/* 🔴 **Decía «Neto» y la cifra es el TOTAL CON IVA.**
+                  El comentario que estaba acá afirmaba lo contrario —«la cifra
+                  es NETA, y sin decirlo alguien la puede leer como el total con
+                  impuestos»— y era justo al revés: `periodos_cobro.monto_total_clp`
+                  se escribe como `neto + IVA` (ver `cerrarPeriodo`: «Líneas en
+                  NETO. El total del período es BRUTO»), y este listado lo muestra
+                  crudo, sin recalcular nada.
+
+                  Con $11.400 de neto la columna decía «Neto $13.566». Un courier
+                  que cotice esa cifra como neta se equivoca en un 19 %, que es
+                  exactamente el daño que la regla 18 existe para impedir.
+
+                  Se corrige el RÓTULO y no la cifra: 13.566 es lo que el seller
+                  paga y lo que dice la factura. El desglose neto/IVA está en la
+                  vista previa de la fila. */}
+              <TableHead className="px-4 text-right">Total con IVA</TableHead>
               <TableHead className="hidden px-4 lg:table-cell">Folio / SII</TableHead>
               <TableHead className="px-4 text-right">
                 <span className="sr-only">Acciones</span>

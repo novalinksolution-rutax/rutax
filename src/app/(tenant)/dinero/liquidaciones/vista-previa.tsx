@@ -110,7 +110,13 @@ function Cuerpo(d: VistaPreviaLiquidacion) {
         {d.visitas > 0 ? (
           <DatoVistaPrevia rotulo="Visitas a bodega">{d.visitas}</DatoVistaPrevia>
         ) : null}
-        <DatoVistaPrevia rotulo="Bruto">{formatearCLP(d.brutoClp)}</DatoVistaPrevia>
+        {/* El bruto solo cuando hay algo que restarle. Sin ajustes es idéntico
+            al neto de abajo, y dos cifras iguales pegadas no informan: hacen
+            dudar de si una de las dos está mal. Es el mismo criterio que en la
+            vista previa del período. */}
+        {hayAjuste ? (
+          <DatoVistaPrevia rotulo="Bruto">{formatearCLP(d.brutoClp)}</DatoVistaPrevia>
+        ) : null}
         {d.bonoClp > 0 ? (
           <DatoVistaPrevia rotulo="Bono">+ {formatearCLP(d.bonoClp)}</DatoVistaPrevia>
         ) : null}

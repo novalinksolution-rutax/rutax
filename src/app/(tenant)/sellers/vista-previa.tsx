@@ -147,12 +147,16 @@ function Cuerpo(d: VistaPreviaSellerCourier, cerrar: () => void) {
           <p className="text-xs text-fault-fg">No pudimos leer sus períodos de cobro.</p>
         ) : (
           <>
-            {d.periodoAbiertoClp !== null ? (
-              <DatoVistaPrevia rotulo="Período en curso">
-                {formatearCLP(d.periodoAbiertoClp)}
+            {d.periodoVivoClp !== null ? (
+              <DatoVistaPrevia
+                // Un período CERRADO sin facturar es plata comprometida con una
+                // acción pendiente: va en ámbar. Uno abierto es el curso normal.
+                rotulo={d.periodoVivoEstado === "cerrado" ? "Cerrado, sin facturar" : "Período en curso"}
+                tono={d.periodoVivoEstado === "cerrado" ? "atencion" : "normal"}
+              >
+                {formatearCLP(d.periodoVivoClp)}
                 <span className="ms-1 text-xs text-fg-muted">
-                  ({d.periodoAbiertoLineas}{" "}
-                  {d.periodoAbiertoLineas === 1 ? "línea" : "líneas"})
+                  ({d.periodoVivoLineas} {d.periodoVivoLineas === 1 ? "línea" : "líneas"} · neto)
                 </span>
               </DatoVistaPrevia>
             ) : (

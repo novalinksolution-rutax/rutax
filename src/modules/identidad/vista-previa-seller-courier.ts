@@ -79,9 +79,18 @@ export interface VistaPreviaSellerCourier {
 
   /** `false` cuando la lectura de dinero falló. */
   hayDinero: boolean;
-  /** Neto acumulado del período abierto en curso, si tiene uno. */
-  periodoAbiertoClp: number | null;
-  periodoAbiertoLineas: number;
+  /**
+   * El período VIVO: el abierto si lo hay, y si no el cerrado sin facturar.
+   *
+   * 🔴 La primera versión solo miraba `abierto`, y por eso un seller con un
+   * período **cerrado esperando factura** aparecía como «sin período abierto» —
+   * justo el estado donde hay plata comprometida y algo que hacer. Se veía en
+   * pantalla: TecnoHogar tenía $26.180 cerrados y la ficha decía que no había
+   * nada.
+   */
+  periodoVivoClp: number | null;
+  periodoVivoLineas: number;
+  periodoVivoEstado: "abierto" | "cerrado" | null;
   /** Lo último que se le facturó, con su fecha de cierre. */
   ultimoFacturadoClp: number | null;
   ultimoFacturadoHasta: string | null;
@@ -201,8 +210,9 @@ export async function armarVistaPreviaSellerCourier(
 
   // ── Dinero ───────────────────────────────────────────────────────────────
   let hayDinero = true;
-  let periodoAbiertoClp: number | null = null;
-  let periodoAbiertoLineas = 0;
+  let periodoVivoClp: number | null = null;
+  let periodoVivoLineas = 0;
+  let periodoVivoEstado: "abierto" | "cerrado" | null = null;
   let ultimoFacturadoClp: number | null = null;
   let ultimoFacturadoHasta: string | null = null;
 
@@ -216,26 +226,34 @@ export async function armarVistaPreviaSellerCourier(
       .order("fecha_fin", { ascending: false })
       .limit(24);
 
-    const abierto = (periodos ?? []).find((p) => p.estado === "abierto");
+    // El abierto manda; si no hay, el cerrado sin facturar — que es donde hay
+    // plata comprometida y una acción pendiente. `periodos` viene ordenado por
+    // `fecha_fin` descendente, así que `find` toma el más reciente de cada uno.
+    const vivo =
+      (periodos ?? []).find((p) => p.estado === "abierto") ??
+      (periodos ?? []).find((p) => p.estado === "cerrado");
     const facturado = (periodos ?? []).find((p) => p.estado === "facturado");
 
-    if (abierto) {
-      // ⚠️ El total guardado del período abierto NO sirve: se escribe al cerrar.
-      // Mientras está abierto, la única cifra real es la suma de sus líneas.
+    if (vivo) {
+      periodoVivoEstado = vivo.estado as "abierto" | "cerrado";
+      // ⚠️ El total guardado NO sirve para el abierto: se escribe al cerrar. Y
+      // para el cerrado está en BRUTO mientras las líneas están en neto, así
+      // que mezclarlos daría dos cifras incomparables. Se suman las líneas en
+      // los dos casos: una sola definición, y es la que usa el detalle.
       const lineas = await leerTodasLasFilas<{ monto_final_clp: number | null; anulada: boolean | null }>(
-        "líneas del período abierto",
+        "líneas del período vivo",
         (d, h) =>
           cliente
             .schema("dinero")
             .from("lineas_cobro")
             .select("monto_final_clp, anulada")
             .eq("tenant_id", tenantId)
-            .eq("periodo_cobro_id", abierto.id as string)
+            .eq("periodo_cobro_id", vivo.id as string)
             .range(d, h),
       );
       const vigentes = lineas.filter((l) => !l.anulada);
-      periodoAbiertoLineas = vigentes.length;
-      periodoAbiertoClp = vigentes.reduce((s, l) => s + (l.monto_final_clp ?? 0), 0);
+      periodoVivoLineas = vigentes.length;
+      periodoVivoClp = vigentes.reduce((s, l) => s + (l.monto_final_clp ?? 0), 0);
     }
 
     if (facturado) {
@@ -268,8 +286,9 @@ export async function armarVistaPreviaSellerCourier(
     incidenciasAbiertas,
 
     hayDinero,
-    periodoAbiertoClp,
-    periodoAbiertoLineas,
+    periodoVivoClp,
+    periodoVivoLineas,
+    periodoVivoEstado,
     ultimoFacturadoClp,
     ultimoFacturadoHasta,
   };
