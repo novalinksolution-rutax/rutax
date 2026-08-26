@@ -121,6 +121,92 @@ bloque avanza igual**.
 
 ---
 
+# Deudas abiertas al 25-08-2026
+
+**Qué es esto.** Lo que quedó sin cerrar tras la sesión del 25-ago, en orden de gravedad. No es
+backlog de diseño: son cosas rotas, a medio verificar, o decisiones que faltan. El backlog de
+tableros vive en el «Tablero de estado» de más arriba.
+
+## 🔴 Roto, con diagnóstico y sin arreglar
+
+- [ ] **Fuga de columnas al portal del seller.** Comprobado con sesión real de seller contra la API
+      (`seller@falabellatech.cl`, HTTP 200): `GET /rest/v1/pedidos` devuelve **`monto_liquidacion_clp`
+      junto a `monto_cobro_clp`**, o sea el margen del courier entrega por entrega (3.800 − 2.400 =
+      1.400, 37 %). También `notas_internas` y `corte_riesgo`. Y `asignaciones_pedido` responde con
+      `driver_id` y `manifiesto_id` — identificador estable por conductor, aunque el nombre queda
+      bloqueado (`conductores` → `[]`).
+
+      **La interfaz está limpia**: ninguna pantalla del portal muestra nada de eso y no viaja en el
+      HTML. El agujero es el **permiso por columna**: RLS decide qué filas, el `GRANT` decide qué
+      columnas, y `authenticated` tiene SELECT sobre todas. Mismo patrón que el snapshot de regla y
+      el token de invitación.
+
+      ⚠️ **No se arregla con un `revoke` a secas**: el courier y el conductor leen esas mismas tablas
+      con el mismo rol `authenticated`. Hace falta grant por columna afinado, o una vista propia para
+      el portal. Con pgTAP y contraprueba.
+
+- [ ] **«Cerrar sesión» no funciona** en el menú de cuenta del courier. Diagnóstico sin verificar: el
+      `<button type="submit">` vive dentro de un `DropdownMenuItem` de Radix, que cierra el menú y
+      desmonta el `<form>` antes de que el navegador lo envíe (`menu-cuenta.tsx`).
+
+      **Bloquea más de lo que parece:** `/portal/login` rebota a `/dashboard` mientras haya sesión de
+      courier, así que sin cerrar sesión **no se puede entrar como seller a probar el portal**. El
+      rodeo es borrar la cookie `sb-*-auth-token` desde la consola.
+
+## Verificaciones que quedaron pendientes
+
+- [ ] **`operacion/purgarQrRetiro` nunca ha corrido con éxito.** Arreglado y desplegado el 25-ago
+      (le faltaba `.schema('operacion')`), pero corre a las 03:40 de Santiago: la primera corrida
+      real es la madrugada siguiente. Mirar su «último éxito» en `/admin/salud`.
+- [ ] **Realtime sigue sin evidencia de que entregue en producción.** La migración de claims se
+      aplicó el 25-ago; el tablero de salud mostró 556 corridas del webhook de ML en 24 h mientras la
+      franja «En vivo» no se movía en siete minutos de observación. No se comprobó ni antes ni
+      después.
+- [ ] **Cerrar un período real desde el arreglo del detector.** El predicado
+      `listarPedidosEntregadosPorRutax` está en producción y no se ha ejercitado en un cierre de
+      verdad. *(Las 109 excepciones históricas SÍ se resolvieron.)*
+
+## Decisiones que faltan
+
+- [ ] **El peldaño de «Cambiar de estado»** (tablero P3). Es la única acción de la lista de
+      reversibles que puede llevar el pedido a un estado **terminal**, del que la máquina de estados
+      no admite salida. Se dejó **sin rótulo** en vez de rotularla «reversible», que sería mentir. Lo
+      que le corresponde es peldaño 2: modal con la consecuencia en números y tercera salida.
+
+## P3 · Detalle del pedido — lo aplicado el 25-08, y lo que falta
+
+El tablero `Rutax P3 Detalle` **nunca se había aplicado como pantalla**; lo único suyo en el código
+era la escalera de fricción, absorbida por el bloque 5. Cinco commits: `3365722`, `b20ebb4`,
+`c2e4dc9`, `fc33748`, `4703b00`.
+
+- [x] **Zona de consecuencia** (decisión n.º 2) — marco en tono falla, «todo queda en la bitácora»
+      como encabezado y no como pie. 🔴 Y con ella entraron por primera vez **las dos anulaciones de
+      dinero**: `AccionesCorregirDinero` existía, sus Server Actions existían, y **no tenía un solo
+      llamador en todo el repo**.
+- [x] **Orden canónico** — seguimiento → prueba de entrega → incidencias → dinero. «Historial de
+      estados» pasó a llamarse **Seguimiento**; «Prueba de entrega» nació como sección con su estado
+      vacío; incidencias dejó de desaparecer cuando no hay ninguna.
+- [x] **Rótulo `reversible`** en las acciones de peldaño 1.
+- [x] **Bitácora del pedido a la vista** (decisión n.º 4), solo con `ver_bitacora_auditoria`, y el
+      **autor en cada hito** del seguimiento — antes decía «cambiado manualmente» sin decir por quién.
+- [x] **Falla de lectura ≠ objeto vacío** (decisión n.º 6) — `Promise.all` → `allSettled`. Antes, que
+      fallara una lectura secundaria tumbaba la pantalla entera; y con los cargadores que devuelven
+      `[]` ante error, **un fallo se veía idéntico a «no hay nada»**.
+- [x] **Panel = página** (decisión n.º 1) con el trato de teléfono, y el teléfono corregido: «Más
+      acciones» va **fuera** del marco, y zona y bitácora quedan **pegadas** a las acciones.
+- [ ] **El encabezado del teléfono**: al tablero le falta `código · comuna` en una línea y el tercer
+      chip de situación de retiro (`Retirado`).
+
+**Dos trampas que costaron tiempo y no deben repetirse:**
+
+- `<details open>` **no sirve** para colapsar por punto de corte: el atributo es estático y el
+  navegador oculta el contenido cerrado desde su shadow DOM, así que ninguna utilidad de Tailwind
+  llega ahí.
+- **`md:` mide el VIEWPORT, no el contenedor.** La zona se desplegaba dentro de una columna de 430 px
+  porque la ventana pasaba de 768. Solo falla en «ventana ancha + contenedor estrecho».
+
+---
+
 # Bloques 1 a 3 · lo que ya está en el código
 
 Commit `da1c3ab`. **Se construyó la capa, no la adopción**: ninguna pantalla se reestructuró, a
