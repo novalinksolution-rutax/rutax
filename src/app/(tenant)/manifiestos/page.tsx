@@ -37,7 +37,7 @@ import {
   type ConteosManifiesto,
   type ContextoManifiestos,
 } from "@/modules/operacion/listado-manifiestos";
-import { CajonesManifiestos, CeldaAvance } from "./piezas-listado";
+import { CajonesManifiestos, CeldaAvance, FilaManifiesto } from "./piezas-listado";
 import { ChevronRight } from "lucide-react";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
@@ -271,7 +271,7 @@ export default async function PaginaManifiestos({
                   const avance = contexto.avance[m.id] ?? null;
                   const redis = contexto.redistribucion[m.id] ?? null;
                   return (
-                    <TableRow key={m.id}>
+                    <FilaManifiesto key={m.id} href={`/manifiestos/${m.id}`}>
                       <TableCell className="px-4">
                         <BadgeEstado
                           variante={BADGE_ESTADO_MANIFIESTO[m.estado]}
@@ -314,13 +314,14 @@ export default async function PaginaManifiestos({
                         {m.confirmadoEn ? formatearHora(m.confirmadoEn) : "—"}
                       </TableCell>
 
-                      {/* El chevrón es la afordancia de «esta fila entra»: sin
-                          él, solo el nombre parece pulsable y el resto de la
-                          fila se lee como texto. */}
+                      {/* El chevrón es la afordancia de «esta fila entra». Ya
+                          no miente: desde que la fila entera es pulsable
+                          (`FilaManifiesto`), el chevrón anuncia un objetivo que
+                          existe en vez de prometer uno que no estaba. */}
                       <TableCell className="px-4 text-muted-foreground">
                         <ChevronRight className="size-4" aria-hidden="true" />
                       </TableCell>
-                    </TableRow>
+                    </FilaManifiesto>
                   );
                 })}
               </TableBody>

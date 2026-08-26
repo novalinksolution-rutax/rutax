@@ -52,7 +52,7 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from '@maplibre/maplibre-gl-style-spec';
-import { paletaDe, type PaletaMapa, type TemaMapa } from './paleta';
+import { paletaDe, UMBRALES_ZOOM, type PaletaMapa, type TemaMapa } from './paleta';
 
 // =============================================================================
 // Identificadores — el contrato con la pantalla
@@ -522,6 +522,38 @@ function capasBasemap(paleta: PaletaMapa, conEtiquetas: boolean): LayerSpecifica
  * consola no dice nada útil. Sin default, olvidarlo no compila. Pásale el mismo
  * `urlGlifos !== null` que le pasas a `construirEstiloBase`.
  */
+/**
+ * Los dos anclajes de zoom del punto de entrega.
+ * =============================================================================
+ *
+ * ⚠️ **La rampa estaba anclada en z13 y z17, y z13 NO SE DIBUJA NUNCA.** Las
+ * capas de punto solo se encienden en el nivel 3 —`aplicarNivel` en `mapa.tsx`
+ * las pone en `none` fuera de él—, o sea desde `UMBRALES_ZOOM.punto` = 13,6.
+ * El anclaje de abajo caía **fuera del rango visible**, así que la mitad baja de
+ * la rampa se gastaba en un zoom que nadie ve: al aterrizar el vuelo del nivel 3
+ * —`ZOOM_DESTINO.punto`, 15,2— un pendiente quedaba en **4,9 px de radio**. Diez
+ * píxeles de diámetro para la unidad más chica y más importante de la pantalla.
+ *
+ * Ahora la rampa va de 13,6 a 17,5 —el rango que de verdad se ve, con
+ * `zoomMaximo` arriba— y con radios bastante mayores: a 15,2 el pendiente pasa
+ * de 4,9 a 9,3 px.
+ *
+ * 🔴 **Los tamaños RELATIVOS son sistema, no gusto**, y la cadena tiene que
+ * mantenerse en este orden: entregado < pendiente = en ruta < incidencia <
+ * anillo de corte < anillo de agrupado, y la sombra por fuera del borde
+ * exterior de su punto. Si subes uno, revisa la cadena entera.
+ */
+const Z_PUNTO = UMBRALES_ZOOM.punto;
+const Z_TOPE = 17.5;
+
+/** Rampa de radio entre el zoom en que el punto aparece y el tope del mapa. */
+function radioPunto(
+  enAparicion: number,
+  enTope: number,
+): DataDrivenPropertyValueSpecification<number> {
+  return ['interpolate', ['linear'], ['zoom'], Z_PUNTO, enAparicion, Z_TOPE, enTope];
+}
+
 export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecification[] {
   const d = paletaDe(tema).datos;
   const comunas = IDS_FUENTES.comunas;
@@ -541,9 +573,9 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
     filter: ['>', ['get', 'agrupados'], 1],
     paint: {
       'circle-color': 'transparent',
-      // Por encima del radio de cualquier punto (el mayor es el del corte, 6,5
-      // a 10), para que asome siempre.
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 8, 17, 13],
+      // Por encima del radio de cualquier punto (el mayor es el anillo del
+      // corte, 11,5 a 20), para que asome siempre.
+      'circle-radius': radioPunto(14, 24),
       'circle-stroke-color': d.agrupacionBorde,
       'circle-stroke-width': 1.2,
       'circle-stroke-opacity': 0.75,
@@ -660,8 +692,8 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
         /**
          * ⚠️ Se mide contra el borde EXTERIOR del punto, no contra su núcleo.
          * `circle-stroke-width` de MapLibre se dibuja **hacia afuera** del
-         * radio, así que el halo hay que sumarlo: un pendiente a z17 ocupa
-         * 6 + 1,6 = 7,6 px, y la incidencia 8 + 1,8 = 9,8. Dimensionarla contra
+         * radio, así que el halo hay que sumarlo: un pendiente a 17,5 ocupa
+         * 13 + 1,6 = 14,6 px, y la incidencia 16 + 1,8 = 17,8. Dimensionarla contra
          * el núcleo la dejaba entera debajo del halo blanco — invisible, como
          * se comprobó comparando la misma vista con y sin ella.
          *
@@ -672,13 +704,15 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
           'interpolate',
           ['linear'],
           ['zoom'],
-          13,
-          ['match', ['get', 'estado'], 'incidencia', 8.8, 7.2],
-          17,
-          ['match', ['get', 'estado'], 'incidencia', 12, 10],
+          Z_PUNTO,
+          ['match', ['get', 'estado'], 'incidencia', 13, 11],
+          Z_TOPE,
+          ['match', ['get', 'estado'], 'incidencia', 21, 18],
         ],
         'circle-blur': 0.8,
-        'circle-translate': [0, 2],
+        // El desplazamiento crece con el punto: 2 px bajo un punto de 13 de
+        // radio ya no se lee como sombra, se lee como borde grueso.
+        'circle-translate': [0, 3],
         'circle-opacity': atenuar(),
       },
     },
@@ -692,7 +726,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       filter: ['==', ['get', 'estado'], 'entregado'],
       paint: {
         'circle-color': d.puntoEntregado,
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 2.5, 17, 4.5],
+        'circle-radius': radioPunto(4.5, 8),
         'circle-opacity': atenuar(0.75),
       },
     },
@@ -703,7 +737,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       filter: ['==', ['get', 'estado'], 'pendiente'],
       paint: {
         'circle-color': d.puntoPendiente,
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3.5, 17, 6],
+        'circle-radius': radioPunto(7, 13),
         // 1,6 y no 1,2: con la sombra debajo, un halo delgado deja el punto
         // apoyado sobre su propia sombra en vez de recortado del plano.
         'circle-stroke-color': d.puntoHalo,
@@ -719,7 +753,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       filter: ['==', ['get', 'estado'], 'en_ruta'],
       paint: {
         'circle-color': d.puntoHalo,
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 3.5, 17, 6],
+        'circle-radius': radioPunto(7, 13),
         'circle-stroke-color': d.puntoEnRuta,
         'circle-stroke-width': 2.2,
         'circle-opacity': atenuar(),
@@ -739,7 +773,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       ],
       paint: {
         'circle-color': 'rgba(0,0,0,0)',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 6.5, 17, 10],
+        'circle-radius': radioPunto(11.5, 20),
         'circle-stroke-color': d.anilloCorte,
         'circle-stroke-width': 1.8,
         'circle-stroke-opacity': atenuar(),
@@ -754,7 +788,7 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
       filter: ['==', ['get', 'estado'], 'incidencia'],
       paint: {
         'circle-color': d.puntoIncidencia,
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 13, 5, 17, 8],
+        'circle-radius': radioPunto(9, 16),
         'circle-stroke-color': d.puntoHalo,
         'circle-stroke-width': 1.8,
         // La incidencia ajena también se atenúa, pero **conserva su rojo**: es lo
@@ -778,8 +812,10 @@ export function capasDatos(tema: TemaMapa, conEtiquetas: boolean): LayerSpecific
             layout: {
               'text-field': ['concat', '+', ['to-string', ['-', ['get', 'agrupados'], 1]]],
               'text-font': FUENTE_MEDIA,
-              'text-size': 10,
-              'text-offset': [0.9, -0.9],
+              // Crecen con el punto: con un radio de hasta 13 px, un `+N` a
+              // 0,9 em del centro cae DENTRO del círculo en vez de en su hombro.
+              'text-size': 11,
+              'text-offset': [1.3, -1.3],
               'text-allow-overlap': true,
             },
             paint: {

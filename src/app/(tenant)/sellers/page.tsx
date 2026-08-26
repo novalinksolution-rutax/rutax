@@ -205,7 +205,7 @@ export default async function PaginaSellers() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sellers</h1>
+          <h1 className="font-heading text-2xl font-semibold">Sellers</h1>
           <p className="text-sm text-muted-foreground">
             Clientes de tu cuenta y el estado de su conexión con sus fuentes de pedidos.
           </p>

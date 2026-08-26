@@ -309,7 +309,7 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
           `(tenant)`. La Torre es un módulo, no una consola. */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Torre de control</h1>
+          <h1 className="font-heading text-2xl font-semibold">Torre de control</h1>
           <p className="text-sm text-muted-foreground">
             {sinPedidos
               ? 'No hay pedidos con compromiso para hoy.'

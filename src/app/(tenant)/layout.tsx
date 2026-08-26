@@ -165,7 +165,15 @@ export default async function LayoutTenant({ children }: { children: React.React
   // Settings anidado (Patrón H de Retell): el grupo Configuración SALE del sidebar
   // principal y se vuelve una sub-navegación que reemplaza el sidebar al entrar
   // (con "‹ Volver"). Mismo gating RBAC que antes; el hub de onboarding es
-  // "Puesta en marcha". Mi plan vive aquí y también en el bloque inferior (billing).
+  // "Puesta en marcha".
+  //
+  // ⚠️ **«Mi plan» NO va acá (26-08-2026).** Vivía en esta lista *y* en la
+  // tarjeta de plan del bloque inferior *y* en el índice de `/configuracion`:
+  // tres puertas al mismo destino. La tarjeta de abajo es la que se queda —es
+  // la que muestra el estado de la suscripción, no solo un enlace— y es la
+  // misma razón por la que el bloque de marca perdió su desplegable (ver más
+  // abajo). Lo que le pagas a Rutax tampoco es «cómo está armado tu courier»,
+  // que es lo que esta sub-navegación reúne.
   const itemsSettings: ItemNav[] = [
     { href: "/onboarding", etiqueta: "Puesta en marcha", icono: "puesta-en-marcha" },
   ];
@@ -192,9 +200,6 @@ export default async function LayoutTenant({ children }: { children: React.React
   }
   if (puedeVerBitacoraAuditoria(u)) {
     itemsSettings.push({ href: "/configuracion/exportar-datos", etiqueta: "Exportar datos", icono: "exportar" });
-  }
-  if (puedeGestionarSuscripcion(u)) {
-    itemsSettings.push({ href: "/configuracion/plan", etiqueta: "Mi plan", icono: "plan" });
   }
 
   const grupos: GrupoNav[] = [
@@ -315,6 +320,13 @@ export default async function LayoutTenant({ children }: { children: React.React
         "/manifiestos",
         "/conductores",
         "/sellers",
+        // ⚠️ **`/preparacion` y no solo su hijo `/asignar`.** Faltaba la raíz, y
+        // se notaba justo al cambiar de pantalla: Torre, Pedidos y Manifiestos
+        // se dibujan a 1800 px y Preparación caía a `max-w-6xl`, así que el
+        // título saltaba hacia adentro. Cumple la regla de esta lista —es una
+        // lista de objetos, las visitas de retiro del día, con su columna de
+        // carga por comuna al lado— y no una ficha ni un formulario.
+        "/preparacion",
         "/preparacion/asignar",
         // Dinero
         "/dinero/periodos",

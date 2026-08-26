@@ -9,8 +9,11 @@
  * servidor y no viaja al navegador.
  */
 
+import type { ReactNode } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { BarraCajones, type Cajon } from "@/components/ui/barra-cajones";
+import { TableRow } from "@/components/ui/table";
+import { hrefConRetorno } from "@/components/app-shell/retorno";
 import type { EstadoManifiesto } from "@/modules/operacion/tipos";
 import {
   avanceEnFalla,
@@ -134,5 +137,56 @@ export function CeldaAvance({
         </span>
       </span>
     </span>
+  );
+}
+
+
+/**
+ * La fila del manifiesto, entera pulsable.
+ * =============================================================================
+ *
+ * Hasta ahora solo el nombre del conductor navegaba, con un chevrón al final que
+ * **prometía que la fila entraba**. El objetivo real medía el ancho de un nombre
+ * en una fila de mil píxeles, y en la tablet de la bodega —que es donde se mira
+ * esta pantalla— eso es fallar el toque una y otra vez.
+ *
+ * ⚠️ **El enlace del conductor NO se retira**, aunque ahora sea redundante con
+ * el clic. Es lo único que da acceso por teclado, clic medio y «abrir en pestaña
+ * nueva»: la fila con `onClick` es un `<tr>`, no un ancla, y nada de eso
+ * funciona sobre ella. Por eso el manejador **se aparta cuando el clic cayó
+ * sobre un control**: sin ese guardia, un clic en el nombre navegaría dos veces
+ * al mismo sitio y el clic medio abriría la pestaña Y movería esta.
+ *
+ * Se lleva el filtro puesto, igual que `EnlaceDetalle`: volver de un detalle no
+ * pierde la vista desde la que se entró.
+ */
+export function FilaManifiesto({
+  href,
+  children,
+}: {
+  href: string;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  const actual = query ? `${pathname}?${query}` : pathname;
+
+  return (
+    <TableRow
+      onClick={(evento) => {
+        if ((evento.target as HTMLElement).closest("a,button,input,select,[role='button']")) {
+          return;
+        }
+        router.push(hrefConRetorno(href, actual));
+      }}
+      // 52 px con el dedo, densidad normal con el puntero. Mismo criterio que la
+      // fila de Pedidos: por `pointer-coarse`, no por ancho — un iPad de 1024 px
+      // es táctil y un portátil del mismo ancho no.
+      className="cursor-pointer pointer-coarse:[&>td]:h-row-touch"
+    >
+      {children}
+    </TableRow>
   );
 }

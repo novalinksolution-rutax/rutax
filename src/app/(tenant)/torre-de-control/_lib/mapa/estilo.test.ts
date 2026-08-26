@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { capasDatos, construirEstiloBase, IDS_CAPAS, IDS_FUENTES } from './estilo';
-import { nivelParaZoom, paletaDe, UMBRALES_ZOOM, type TemaMapa } from './paleta';
+import { nivelParaZoom, paletaDe, UMBRALES_ZOOM, ZOOM_DESTINO, type TemaMapa } from './paleta';
 
 const TEMAS: TemaMapa[] = ['claro', 'oscuro'];
 const URLS = { urlBasemap: 'https://ejemplo/rm.pmtiles', urlGlifos: 'https://ejemplo/fuentes' };
@@ -258,5 +258,92 @@ describe('zoom semántico', () => {
     expect(nivelParaZoom(UMBRALES_ZOOM.punto - 0.01)).toBe('agrupacion');
     expect(nivelParaZoom(UMBRALES_ZOOM.punto)).toBe('punto');
     expect(nivelParaZoom(17)).toBe('punto');
+  });
+});
+
+describe('el tamaño del punto de entrega', () => {
+  /** Lee el radio de una capa de círculo a un zoom dado, resolviendo el `interpolate`. */
+  function radioA(idCapa: string, zoom: number, estado = 'pendiente'): number {
+    // ⚠️ El anillo del agrupado SOLO existe en la versión sin glifos (es el
+    // sustituto del `+N`), así que hay que buscarlo en las dos.
+    const capa =
+      capasDatos('claro', true).find((c) => c.id === idCapa) ??
+      capasDatos('claro', false).find((c) => c.id === idCapa);
+    if (!capa || capa.type !== 'circle') throw new Error(`no es una capa de círculo: ${idCapa}`);
+    const expr = capa.paint?.['circle-radius'] as unknown[];
+    expect(expr[0]).toBe('interpolate');
+    // ['interpolate', ['linear'], ['zoom'], z0, v0, z1, v1]
+    const [z0, v0, z1, v1] = expr.slice(3) as [number, unknown, number, unknown];
+    // Cada parada es un número, o un `['match', ['get','estado'], 'incidencia', a, b]`.
+    const valor = (v: unknown): number => {
+      if (typeof v === 'number') return v;
+      const m = v as unknown[];
+      return (m[2] === estado ? m[3] : m[4]) as number;
+    };
+    const t = Math.min(1, Math.max(0, (zoom - z0) / (z1 - z0)));
+    return valor(v0) + (valor(v1) - valor(v0)) * t;
+  }
+
+  const CAPAS_DE_PUNTO = [
+    IDS_CAPAS.puntoEntregado,
+    IDS_CAPAS.puntoPendiente,
+    IDS_CAPAS.puntoEnRuta,
+    IDS_CAPAS.puntoCorte,
+    IDS_CAPAS.puntoIncidencia,
+    IDS_CAPAS.puntoSombra,
+  ];
+
+  it.each(CAPAS_DE_PUNTO)('la rampa de %s arranca donde el punto SE VE, no antes', (id) => {
+    // 🔴 Éste es el defecto que se arregló el 26-08-2026, y es el que hay que
+    // impedir que vuelva. La rampa estaba anclada en z13 y las capas de punto
+    // solo se encienden desde `UMBRALES_ZOOM.punto` (13,6) — `aplicarNivel` las
+    // pone en `none` fuera del nivel 3. O sea que la mitad baja de la rampa se
+    // gastaba en un zoom que nadie ve, y al aterrizar el vuelo del nivel 3 el
+    // punto salía diminuto. Un anclaje por debajo del umbral es el bug.
+    const capa = capasDatos('claro', true).find((c) => c.id === id);
+    const expr = (capa as { paint?: Record<string, unknown> }).paint?.['circle-radius'] as unknown[];
+    expect(expr[3]).toBe(UMBRALES_ZOOM.punto);
+  });
+
+  it('al aterrizar el vuelo del nivel 3, el pedido pendiente es una marca y no un píxel', () => {
+    // `ZOOM_DESTINO.punto` es donde cae el `flyTo`: es el tamaño que la persona
+    // ve de verdad, no el del tope teórico del zoom. Antes daba 4,9 px.
+    expect(radioA(IDS_CAPAS.puntoPendiente, ZOOM_DESTINO.punto)).toBeGreaterThanOrEqual(8);
+  });
+
+  it('la cadena de tamaños se mantiene en orden, a todo zoom visible', () => {
+    // Los tamaños relativos son sistema: dicen qué manda sobre qué. Subir uno
+    // solo invierte la jerarquía sin que nada falle.
+    for (const zoom of [UMBRALES_ZOOM.punto, ZOOM_DESTINO.punto, 17.5]) {
+      const entregado = radioA(IDS_CAPAS.puntoEntregado, zoom);
+      const pendiente = radioA(IDS_CAPAS.puntoPendiente, zoom);
+      const enRuta = radioA(IDS_CAPAS.puntoEnRuta, zoom);
+      const incidencia = radioA(IDS_CAPAS.puntoIncidencia, zoom);
+      const corte = radioA(IDS_CAPAS.puntoCorte, zoom);
+      const anillo = radioA(IDS_CAPAS.puntoAgrupadoAnillo, zoom);
+
+      expect(entregado).toBeLessThan(pendiente);
+      expect(pendiente).toBe(enRuta);
+      expect(enRuta).toBeLessThan(incidencia);
+      expect(incidencia).toBeLessThan(corte);
+      // El anillo del agrupado tiene que asomar por encima de TODOS, o el `+N`
+      // que sustituye deja de verse. (Solo existe sin glifos, pero su radio se
+      // compara igual: es el mismo número en las dos versiones.)
+      expect(corte).toBeLessThan(anillo);
+    }
+  });
+
+  it('la sombra sobresale del borde EXTERIOR del punto, halo incluido', () => {
+    // `circle-stroke-width` se dibuja hacia afuera del radio. Dimensionar la
+    // sombra contra el núcleo la deja entera debajo del halo blanco: invisible.
+    for (const zoom of [UMBRALES_ZOOM.punto, 17.5]) {
+      const halo = 2.2; // el mayor de los tres (en ruta)
+      expect(radioA(IDS_CAPAS.puntoSombra, zoom, 'pendiente')).toBeGreaterThan(
+        radioA(IDS_CAPAS.puntoPendiente, zoom) + halo,
+      );
+      expect(radioA(IDS_CAPAS.puntoSombra, zoom, 'incidencia')).toBeGreaterThan(
+        radioA(IDS_CAPAS.puntoIncidencia, zoom) + 1.8,
+      );
+    }
   });
 });

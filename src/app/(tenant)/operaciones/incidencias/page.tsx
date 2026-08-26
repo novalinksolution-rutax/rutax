@@ -13,8 +13,6 @@
  */
 
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarIncidencias } from "@/modules/identidad/capacidades";
@@ -107,15 +105,17 @@ export default async function PaginaIncidencias({
 
   return (
     <div className="space-y-5">
+      {/* ⚠️ **Acá había un «‹ Pedidos» y se retiró (26-08-2026).** Parecía un
+          «volver» y no lo era: es un enlace fijo, así que le prometía a
+          cualquiera que llegó desde el dashboard, desde la barra inferior del
+          teléfono o por un enlace directo que estaba «volviendo» a una pantalla
+          en la que nunca estuvo.
+
+          Incidencias no es una sub-pantalla de Pedidos: es un destino propio,
+          está en la navegación lateral y es uno de los cuatro de la barra
+          inferior en teléfono. No hay ningún camino que dependa de esta miga. */}
       <div>
-        <Link
-          href="/operaciones"
-          className="inline-flex items-center gap-1 text-sm text-fg-muted hover:text-fg"
-        >
-          <ChevronLeft className="size-4" aria-hidden="true" />
-          Pedidos
-        </Link>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="font-heading text-2xl font-semibold">Incidencias</h1>
           <IndicadorEnVivo
             tenantId={tenantId}

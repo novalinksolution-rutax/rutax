@@ -10,7 +10,6 @@ import {
   puedeGestionarBodegas,
   puedeGestionarUsuariosYRoles,
   puedeVerBitacoraAuditoria,
-  puedeGestionarSuscripcion,
 } from "@/modules/identidad/capacidades";
 
 export const metadata: Metadata = {
@@ -232,12 +231,12 @@ export default async function ConfiguracionIndex() {
       estado: "Llévate todo lo tuyo, cuando quieras.",
       visible: puedeVerBitacoraAuditoria(u),
     },
-    {
-      href: "/configuracion/plan",
-      titulo: "Mi plan",
-      estado: "Lo que le pagas a Rutax, aparte de lo que tú le cobras a tus sellers.",
-      visible: puedeGestionarSuscripcion(u),
-    },
+    // ⚠️ **«Mi plan» se retiró de este índice (26-08-2026).** Estaba acá, en la
+    // sub-navegación de Configuración y en la tarjeta de plan del sidebar: tres
+    // puertas al mismo sitio. La tarjeta se queda porque además muestra el
+    // estado de la suscripción; ésta era solo un renglón más. Y de fondo: esta
+    // pantalla responde «qué me falta configurar de mi courier», y lo que le
+    // pagas a Rutax no es parte de cómo está armado tu courier.
   ];
 
   const bancoConectado = Boolean(cobranza?.link_token_ref);
