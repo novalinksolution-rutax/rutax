@@ -261,6 +261,24 @@ export function MapaTorre({
       pitchWithRotate: false,
     });
 
+    /**
+     * 🔴 **Las dos opciones de arriba solo apagan el RATÓN.**
+     *
+     * `dragRotate` y `pitchWithRotate` no tocan los gestos táctiles: en un
+     * teléfono el pellizco de MapLibre rota además de acercar, y dos dedos
+     * arrastrando hacia arriba inclinan la cámara. O sea que la cámara cenital
+     * que el diseño fija se pierde con el gesto más común que hay sobre un mapa,
+     * y con el mapa torcido las etiquetas de calle quedan de lado y las placas de
+     * comuna dejan de calzar con su forma.
+     *
+     * Peor: no hay ningún control para volver a poner el norte arriba, así que
+     * quien lo rota sin querer se queda así.
+     *
+     * Se apagan las dos después de construir el mapa, que es donde viven.
+     */
+    m.touchZoomRotate.disableRotation();
+    m.touchPitch.disable();
+
     mapa.current = m;
     listo.current = false;
     onMapaListo?.(m);

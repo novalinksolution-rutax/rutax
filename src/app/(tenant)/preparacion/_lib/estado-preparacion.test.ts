@@ -135,6 +135,11 @@ describe("clasificarEstadoCabecera", () => {
   });
 });
 
+/**
+ * Las cuatro SIN punto final: son un tramo de la línea de estado, no una frase
+ * suelta — la cabecera sigue con « · faltan 1 h 54 para el despacho». Ver la
+ * nota en `calcularSubtituloCabecera`.
+ */
 describe("calcularSubtituloCabecera", () => {
   const base: MagnitudesPreparacion = {
     bultosRetiradosHoy: 1,
@@ -146,27 +151,27 @@ describe("calcularSubtituloCabecera", () => {
 
   it("pluraliza en singular cuando cada magnitud es 1 (en_curso_tranquilo)", () => {
     expect(calcularSubtituloCabecera("en_curso_tranquilo", base)).toBe(
-      "1 bulto retirado hasta ahora · 1 conductor en bodega.",
+      "1 bulto retirado hasta ahora · 1 conductor en bodega",
     );
   });
 
   it("pluraliza en plural con 0 o 2+ (en_curso_con_avisos)", () => {
     const m: MagnitudesPreparacion = { ...base, bultosRetiradosHoy: 0, sinNovedades: 2 };
     expect(calcularSubtituloCabecera("en_curso_con_avisos", m)).toBe(
-      "0 bultos retirados hasta ahora · 2 visitas sin novedades.",
+      "0 bultos retirados hasta ahora · 2 visitas sin novedades",
     );
   });
 
   it("cierre_de_manana no menciona enBodegaAhora ni sinNovedades", () => {
     const m: MagnitudesPreparacion = { ...base, bultosRetiradosHoy: 84 };
     expect(calcularSubtituloCabecera("cierre_de_manana", m)).toBe(
-      "84 bultos retirados en total · todos los conductores están de vuelta.",
+      "84 bultos retirados en total · todos los conductores están de vuelta",
     );
   });
 
   it("arranque_vacio es texto fijo, sin importar las magnitudes", () => {
     expect(calcularSubtituloCabecera("arranque_vacio", base)).toBe(
-      "Ningún conductor ha abierto una visita todavía.",
+      "Ningún conductor ha abierto una visita todavía",
     );
   });
 });

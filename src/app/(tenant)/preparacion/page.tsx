@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
 import { obtenerExpectativaDelDia } from "@/modules/operacion/retiro/expectativa";
 import { CierreDelDia } from "./_componentes/cierre-del-dia";
+import { CabeceraPanelMonitoreo } from "@/components/panel-monitoreo/cabecera-panel";
 import { CuentaRegresivaDespacho } from "./_componentes/cuenta-regresiva-despacho";
 import {
   agruparVisitas,
@@ -137,26 +138,33 @@ export default async function PaginaPreparacionDelDia() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold">Preparación del día</h1>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-            <span>{subtitulo}</span>
+      {/* La cabecera es la MISMA que la de la Torre, y por eso es un componente
+          compartido: el tablero B1a las trata como una pantalla con dos
+          contenidos. Acá vivía una copia con `flex flex-wrap` y dos tipografías
+          en la línea de estado — ver `CabeceraPanelMonitoreo` para qué se veía
+          mal y por qué. */}
+      <CabeceraPanelMonitoreo
+        titulo="Preparación del día"
+        resumen={
+          <>
+            {subtitulo}
             {/* Todo lo de esta pantalla se juzga contra este reloj: 128 bultos a
                 las 11:40 es tranquilidad y a las 15:40 es un problema. */}
-            <span aria-hidden="true">·</span>
+            <span aria-hidden="true"> · </span>
             <CuentaRegresivaDespacho />
-          </p>
-        </div>
-        <IndicadorEnVivo
-          tenantId={tenantId}
-          tablas={[
-            { schema: "operacion", tabla: "sesiones_retiro" },
-            { schema: "operacion", tabla: "bultos_retiro" },
-            { schema: "operacion", tabla: "pedidos" },
-          ]}
-        />
-      </div>
+          </>
+        }
+        acciones={
+          <IndicadorEnVivo
+            tenantId={tenantId}
+            tablas={[
+              { schema: "operacion", tabla: "sesiones_retiro" },
+              { schema: "operacion", tabla: "bultos_retiro" },
+              { schema: "operacion", tabla: "pedidos" },
+            ]}
+          />
+        }
+      />
 
       {esArranqueVacio ? (
         <EmptyState

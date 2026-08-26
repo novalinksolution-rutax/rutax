@@ -27,6 +27,7 @@ import { useTheme } from 'next-themes';
 import { ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IndicadorEnVivo } from '@/components/tiempo-real/indicador-en-vivo';
+import { CabeceraPanelMonitoreo } from '@/components/panel-monitoreo/cabecera-panel';
 import { DistintivoEstado } from '@/components/ui/distintivo-estado';
 import { cn } from '@/lib/utils';
 import type { EstadoTorre } from '@/modules/contexto/contrato-torre';
@@ -67,7 +68,18 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
   const { resolvedTheme } = useTheme();
   // Plegado del mapa en teléfono. Arranca cerrado: quien entra desde el teléfono
   // viene a ver cuántos faltan, no a navegar cartografía.
-  const [mapaAbiertoMovil, setMapaAbiertoMovil] = useState(false);
+  /**
+   * El mapa, en teléfono y tablet, **abierto por omisión** (encargo del usuario,
+   * 26-08-2026: «necesito ver el mismo mapa en móvil y en tablet»).
+   *
+   * Antes arrancaba plegado, siguiendo al tablero B1a («fuera de la oficina
+   * nadie consulta un mapa de 390 px: consulta números»). La decisión del
+   * usuario lo revierte: es el MISMO mapa, no una versión recortada, y quien
+   * abre la Torre desde la calle quiere verlo. El plegado se conserva —para
+   * ganar sitio cuando lo que se busca es la lista— pero deja de ser el
+   * arranque.
+   */
+  const [mapaAbiertoMovil, setMapaAbiertoMovil] = useState(true);
   const tema: TemaMapa = resolvedTheme === 'dark' ? 'oscuro' : 'claro';
 
   const [geometrias, setGeometrias] = useState<MapaGeometrias | null>(null);
@@ -85,6 +97,8 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
   // nivel y borre la comuna recién elegida. Ver `ControlesMapa`.
   const [controles, setControles] = useState<ControlesMapa | null>(null);
   const [pantallaCompleta, setPantallaCompleta] = useState(false);
+  /** Respaldo de pantalla completa por CSS. Ver `alternarPantallaCompleta`. */
+  const [pantallaSimulada, setPantallaSimulada] = useState(false);
   const region = useRef<HTMLDivElement>(null);
 
   // La pestaña la sugiere el nivel, pero **una vez que el usuario elige, manda
@@ -135,15 +149,47 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
 
   // --- Pantalla completa -----------------------------------------------------
   useEffect(() => {
-    const alCambiar = () => setPantallaCompleta(document.fullscreenElement === region.current);
+    const alCambiar = () => {
+      const nativa = document.fullscreenElement === region.current;
+      setPantallaCompleta(nativa);
+      // Salir por Escape o por el gesto del sistema tiene que apagar también el
+      // respaldo; si no, la pantalla se queda fija sobre el resto sin botón que
+      // la cierre.
+      if (!nativa) setPantallaSimulada(false);
+    };
     document.addEventListener('fullscreenchange', alCambiar);
     return () => document.removeEventListener('fullscreenchange', alCambiar);
   }, []);
 
+  /**
+   * 🔴 **En iPhone `requestFullscreen()` sobre un `div` NO EXISTE**, y antes eso
+   * hacía que el botón no hiciera absolutamente nada.
+   *
+   * Safari de iOS solo implementa pantalla completa sobre `<video>`. La llamada
+   * rechaza la promesa, el `void` se la tragaba, y el usuario tocaba el botón sin
+   * respuesta ni explicación — en el único aparato donde ganar la pantalla
+   * entera vale más, porque es el más chico.
+   *
+   * El respaldo es CSS: el contenedor se fija sobre el viewport. No es igual
+   * —no oculta la barra del navegador— pero da toda la pantalla disponible, y el
+   * mismo botón lo revierte.
+   */
   const alternarPantallaCompleta = useCallback(() => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void region.current?.requestFullscreen();
-  }, []);
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    if (pantallaSimulada) {
+      setPantallaSimulada(false);
+      return;
+    }
+    const nodo = region.current;
+    if (!nodo?.requestFullscreen) {
+      setPantallaSimulada(true);
+      return;
+    }
+    nodo.requestFullscreen().catch(() => setPantallaSimulada(true));
+  }, [pantallaSimulada]);
 
   // --- Navegación ------------------------------------------------------------
   const entrarEnComuna = useCallback(
@@ -305,36 +351,37 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
 
   return (
     <div className="space-y-5">
-      {/* Cabecera: `h1` + una línea de resumen, igual que toda pantalla de
-          `(tenant)`. La Torre es un módulo, no una consola. */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold">Torre de control</h1>
-          <p className="text-sm text-muted-foreground">
-            {sinPedidos
-              ? 'No hay pedidos con compromiso para hoy.'
-              : `${estado.courier.nombre} · faltan ${estado.resumen.pendientes} de ${estado.resumen.total} por entregar`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* SOLO LECTURA, con la trama del tono inerte. Es lo que explica por
-              qué esta pantalla no tiene un solo control que cambie algo: no es
-              que falten botones, es que la Torre lee y enlaza. Sin decirlo,
-              quien llega buscando reasignar cree que la pantalla está a medio
-              hacer. La trama importa — en monocromo el gris no distingue
-              «inerte» de «neutro» (regla 5). */}
-          <DistintivoEstado tono="inert" etiqueta="Solo lectura" />
-          {/* F5: Realtime como SEÑAL → `router.refresh()`. El dato lo sigue
-              leyendo el servidor, así que el aislamiento por RLS no se toca. */}
-          <IndicadorEnVivo
-            tenantId={tenantId}
-            tablas={[
-              { schema: 'operacion', tabla: 'pedidos' },
-              { schema: 'operacion', tabla: 'incidencias' },
-            ]}
-          />
-        </div>
-      </div>
+      {/* Cabecera compartida con Preparación del día: el tablero B1a las trata
+          como una misma pantalla con dos contenidos. La Torre es un módulo, no
+          una consola. */}
+      <CabeceraPanelMonitoreo
+        titulo="Torre de control"
+        resumen={
+          sinPedidos
+            ? 'No hay pedidos con compromiso para hoy.'
+            : `${estado.courier.nombre} · faltan ${estado.resumen.pendientes} de ${estado.resumen.total} por entregar`
+        }
+        acciones={
+          <>
+            {/* SOLO LECTURA, con la trama del tono inerte. Es lo que explica por
+                qué esta pantalla no tiene un solo control que cambie algo: no es
+                que falten botones, es que la Torre lee y enlaza. Sin decirlo,
+                quien llega buscando reasignar cree que la pantalla está a medio
+                hacer. La trama importa — en monocromo el gris no distingue
+                «inerte» de «neutro» (regla 5). */}
+            <DistintivoEstado tono="inert" etiqueta="Solo lectura" />
+            {/* F5: Realtime como SEÑAL → `router.refresh()`. El dato lo sigue
+                leyendo el servidor, así que el aislamiento por RLS no se toca. */}
+            <IndicadorEnVivo
+              tenantId={tenantId}
+              tablas={[
+                { schema: 'operacion', tabla: 'pedidos' },
+                { schema: 'operacion', tabla: 'incidencias' },
+              ]}
+            />
+          </>
+        }
+      />
 
       <BandaOlas olas={estado.olas} />
 
@@ -354,22 +401,70 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
           // En pantalla completa el contenedor ocupa el viewport; sin esto,
           // conserva su alto calculado y deja el resto en negro.
           pantallaCompleta && 'h-screen rounded-none border-0',
+          // El respaldo de pantalla completa (iPhone). `inset-0` en vez de
+          // `h-screen` porque acá el contenedor sale del flujo: si solo se le
+          // diera alto, quedaría del ancho de su columna.
+          pantallaSimulada && 'fixed inset-0 z-50 rounded-none border-0',
         )}
       >
+        {/* El alto va por CLASES y no por `style`, a propósito: el corte por
+            ancho es una media query, y resolverlo en JS obliga a un `matchMedia`
+            que en el primer render del servidor no sabe la respuesta — o sea, un
+            parpadeo del mapa cambiando de alto al hidratar, en la pantalla que
+            justamente se mira de un vistazo.
+
+            Bajo `lg` la región crece: el mapa pasó a estar abierto por omisión
+            (encargo del usuario) y con el alto anterior el lienzo y la lista se
+            repartían 420 px — nada para cada uno. */}
         <div
-          className="flex min-h-0 flex-col lg:flex-row"
-          style={{
-            height: pantallaCompleta ? '100vh' : 'max(420px, min(68vh, 720px))',
-          }}
+          className={cn(
+            'flex min-h-0 flex-col lg:flex-row',
+            !pantallaCompleta &&
+              !pantallaSimulada &&
+              'h-[max(520px,min(82vh,760px))] lg:h-[max(420px,min(68vh,720px))]',
+          )}
+          style={
+            pantallaCompleta
+              ? { height: '100vh' }
+              : pantallaSimulada
+                ? // ⚠️ `100dvh` y no `100vh`: en un teléfono la barra del
+                  // navegador se cuenta dentro de `vh`, así que con `100vh` el
+                  // pie del mapa queda debajo de ella, tapado y sin forma de
+                  // llegar. `dvh` es el alto que de verdad se ve.
+                  { height: '100dvh' }
+                : undefined
+          }
         >
           {/* --- Mapa --- */}
           <div
+            /**
+             * 🔴 **`flex-1` bajo `lg` hacía que el alto del mapa no existiera.**
+             *
+             * El contenedor es `flex-col` bajo `lg`, así que el eje principal es
+             * el vertical — y ahí `flex-1` (`flex: 1 1 0%`) fija
+             * `flex-basis: 0%` y **gana sobre `height`**. `shrink-0` no salva:
+             * impide encoger, no crecer.
+             *
+             * Resultado medido a 375×812: el mapa y la lista se repartían 333 px
+             * cada uno, exactamente la mitad, con el `h-[320px]` de antes
+             * ignorado. Llevaba así desde que se escribió; no se notaba porque el
+             * mapa arrancaba plegado.
+             *
+             * Se corrige con `flex-none` bajo `lg` —el alto manda— y `flex-1`
+             * desde `lg`, que es donde el eje principal pasa a ser el horizontal
+             * y el mapa sí debe repartirse el ancho con el panel.
+             */
             className={cn(
-              'relative min-w-0 flex-1 lg:block',
-              // En teléfono el mapa tiene alto propio: dentro de un `flex-col`
-              // con `flex-1` compartido con la lista quedaría a la mitad de una
-              // mitad.
-              mapaAbiertoMovil ? 'h-[320px] shrink-0 lg:h-auto' : 'hidden',
+              'relative min-w-0 lg:block lg:flex-1',
+              // Crece con el aparato —el teléfono da menos que la tablet— pero
+              // con tope, para que a la lista de comunas siempre le quede sitio
+              // suficiente para leerse sin desplazar.
+              mapaAbiertoMovil
+                ? 'h-[clamp(260px,46vh,380px)] flex-none sm:h-[clamp(320px,52vh,460px)] lg:h-auto'
+                : 'hidden',
+              // En pantalla completa el lienzo se queda con TODO: la lista de
+              // abajo se oculta, así que repartir no tiene sentido.
+              (pantallaCompleta || pantallaSimulada) && 'h-auto! flex-1',
             )}
           >
             {hayMapa ? (
@@ -493,10 +588,18 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                   type="button"
                   onClick={alternarPantallaCompleta}
                   data-reserva-placas
-                  className="absolute top-3 right-3 z-10 rounded-md border border-border bg-card/90 p-1.5 backdrop-blur-[2px] transition-colors hover:bg-card focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                  aria-label={pantallaCompleta ? 'Salir de pantalla completa' : 'Pantalla completa'}
+                  // 40 px de blanco táctil en pantalla chica y el tamaño de
+                  // siempre desde `lg`: con el ratón 28 px sobran, con el pulgar
+                  // sobre un mapa que se arrastra son un fallo garantizado —
+                  // errarle no es «no pasa nada», es mover el mapa.
+                  className="absolute top-3 right-3 z-10 inline-flex size-10 items-center justify-center rounded-md border border-border bg-card/90 backdrop-blur-[2px] transition-colors hover:bg-card focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:size-auto lg:p-1.5"
+                  aria-label={
+                    pantallaCompleta || pantallaSimulada
+                      ? 'Salir de pantalla completa'
+                      : 'Pantalla completa'
+                  }
                 >
-                  {pantallaCompleta ? (
+                  {pantallaCompleta || pantallaSimulada ? (
                     <Minimize2 className="size-4" aria-hidden="true" />
                   ) : (
                     <Maximize2 className="size-4" aria-hidden="true" />
@@ -569,13 +672,24 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
             )}
           </div>
 
-          {/* --- Lista de comunas: la superficie principal bajo `lg` --- */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:hidden">
+          {/* --- Lista de comunas: la otra mitad bajo `lg` ---
+              En pantalla completa se retira entera: quien pidió la pantalla
+              completa la pidió PARA el mapa, y dejarle la lista debajo le
+              devolvería el mismo reparto del que quiso salir. */}
+          <div
+            className={cn(
+              'flex min-h-0 flex-1 flex-col overflow-hidden lg:hidden',
+              (pantallaCompleta || pantallaSimulada) && 'hidden',
+            )}
+          >
             <button
               type="button"
               onClick={() => setMapaAbiertoMovil((v) => !v)}
               aria-expanded={mapaAbiertoMovil}
-              className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted/60"
+              // `min-h-11`: es un control que se toca con el dedo, y a `py-2.5`
+              // quedaba en 37 px — bajo el mínimo con el que se acierta sin
+              // mirar.
+              className="flex min-h-11 shrink-0 items-center justify-between border-b border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted/60"
             >
               {mapaAbiertoMovil ? 'Ocultar el mapa' : 'Ver el mapa'}
               <ChevronDown

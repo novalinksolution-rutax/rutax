@@ -134,6 +134,17 @@ export function clasificarEstadoCabecera(
 export const TEXTO_SUBTITULO_ERROR_CABECERA = "No pudimos cargar el estado de hoy.";
 
 /** El subtítulo de la cabecera para los cuatro estados CON datos (§13). */
+/**
+ * ⚠️ **Ninguna de las cuatro termina en punto, y es a propósito.**
+ *
+ * No son frases sueltas: son un TRAMO de la línea de estado de la cabecera, que
+ * sigue con « · faltan 1 h 54 para el despacho». Con punto quedaba
+ * «…una visita todavía. · faltan 1 h 54…» — un punto seguido de un separador y
+ * de una minúscula, que se lee como dos cosas mal pegadas.
+ *
+ * Si algún día este texto se usa solo en alguna parte, el punto lo pone quien lo
+ * usa así; al revés no se puede.
+ */
 export function calcularSubtituloCabecera(
   estado: EstadoCabeceraPreparacion,
   magnitudes: MagnitudesPreparacion,
@@ -142,16 +153,16 @@ export function calcularSubtituloCabecera(
 
   switch (estado) {
     case "arranque_vacio":
-      return "Ningún conductor ha abierto una visita todavía.";
+      return "Ningún conductor ha abierto una visita todavía";
     case "cierre_de_manana":
-      return `${bultos} en total · todos los conductores están de vuelta.`;
+      return `${bultos} en total · todos los conductores están de vuelta`;
     case "en_curso_con_avisos": {
       const avisos = `${magnitudes.sinNovedades} ${pluralizar(magnitudes.sinNovedades, "visita sin novedades", "visitas sin novedades")}`;
-      return `${bultos} hasta ahora · ${avisos}.`;
+      return `${bultos} hasta ahora · ${avisos}`;
     }
     case "en_curso_tranquilo": {
       const enBodega = `${magnitudes.enBodegaAhora} ${pluralizar(magnitudes.enBodegaAhora, "conductor en bodega", "conductores en bodega")}`;
-      return `${bultos} hasta ahora · ${enBodega}.`;
+      return `${bultos} hasta ahora · ${enBodega}`;
     }
   }
 }
