@@ -49,6 +49,30 @@ export const metadata: Metadata = {
  *
  * Los conteos van con `head: true`: cuenta en la base y no trae filas.
  */
+/**
+ * El distintivo de una conexión, con la apagada separada de la caída.
+ *
+ * ⚠️ Recibe la fila cruda porque el id de quien la apagó se lee acá y **muere
+ * acá**: hacia el marcado sale solo el distintivo ya resuelto.
+ */
+function badgeConexion(c: Record<string, unknown>): React.ComponentProps<typeof BadgeEstado> {
+  if (c.desconectada_por_usuario_id != null) {
+    return {
+      variante: "neutral",
+      eje: "conexion",
+      valor: "desconectada_a_proposito",
+      texto: "La desconectó el seller",
+    };
+  }
+  const estado = c.estado_salud as EstadoSaludConexion;
+  return {
+    variante: BADGE_SALUD_CONEXION[estado] ?? "neutral",
+    eje: "conexion",
+    valor: estado as string,
+    texto: traducirSaludConexion(estado as string),
+  };
+}
+
 export default async function PaginaFichaSeller({
   params,
   searchParams,
@@ -76,17 +100,30 @@ export default async function PaginaFichaSeller({
 
   const [conexionesMl, conexionesShopify, bodegas, tarifas, periodos, pedidosHoy, zonasActivas] =
     await Promise.all([
+      // ⚠️ Las dos van por el esquema `identidad` y no por la vista de
+      // `public`: `desconectada_por_usuario_id` NO está en las vistas a
+      // propósito (es un id de usuario), y sin ella la ficha no puede
+      // distinguir la cuenta que se cayó de la que el seller apagó. El id se
+      // reduce a booleano unas líneas más abajo y nunca llega al navegador.
       cliente
+        .schema("identidad")
         .from("conexiones_seller_ml")
-        .select("id, alias, ml_nickname, estado_salud, ultima_sync_exitosa_en")
+        .select("id, alias, ml_nickname, estado_salud, ultima_sync_exitosa_en, desconectada_por_usuario_id")
         .eq("tenant_id", tenantId)
         .eq("seller_id", sellerId),
       // La tabla de Shopify es de agosto: si por lo que sea la lectura falla, la
       // ficha no se cae — se muestra sin esa fuente.
       Promise.resolve(
         cliente
+          .schema("identidad")
           .from("conexiones_seller_shopify")
-          .select("id, dominio_tienda, estado_salud, ultima_sync_exitosa_en")
+          // 🔴 Acá decía `dominio_tienda`, columna que NO EXISTE (es
+          // `shop_domain`). PostgREST devolvía 400, el `.catch` de abajo lo
+          // convertía en `data: null` y el bloque quedaba vacío: **el courier
+          // nunca vio ni una tienda Shopify de ninguno de sus sellers**, sin un
+          // solo error a la vista. El respaldo pensado para no tumbar la ficha
+          // terminó escondiendo el fallo que debía sobrevivir.
+          .select("id, shop_domain, estado_salud, ultima_sync_exitosa_en, desconectada_por_usuario_id")
           .eq("tenant_id", tenantId)
           .eq("seller_id", sellerId),
       ).catch(() => ({ data: null })),
@@ -177,33 +214,24 @@ export default async function PaginaFichaSeller({
               </span>
               {/* La salud de CADA cuenta, no la de la primera. El listado
                   muestra una sola y pierde la del resto — acá es donde se ven
-                  todas, que es para lo que se entra a la ficha. */}
-              <BadgeEstado
-                variante={
-                  BADGE_SALUD_CONEXION[c.estado_salud as EstadoSaludConexion] ?? "neutral"
-                }
-                eje="conexion"
-                valor={c.estado_salud as string}
-                texto={traducirSaludConexion(c.estado_salud as string)}
-              />
+                  todas, que es para lo que se entra a la ficha.
+
+                  🔴 Y se separa la apagada de la caída: las dos comparten
+                  `desvinculada`, pero al courier le piden cosas distintas —
+                  una es «llama a tu seller, se le venció el token» y la otra es
+                  «tu seller lo apagó, no hay nada que arreglar». */}
+              <BadgeEstado {...badgeConexion(c)} />
             </li>
           ))}
           {filasShopify.map((c) => (
             <li key={c.id as string} className="flex items-center justify-between gap-3 py-2">
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium text-fg">
-                  {c.dominio_tienda as string}
+                  {c.shop_domain as string}
                 </span>
                 <span className="block text-xs text-fg-muted">Shopify</span>
               </span>
-              <BadgeEstado
-                variante={
-                  BADGE_SALUD_CONEXION[c.estado_salud as EstadoSaludConexion] ?? "neutral"
-                }
-                eje="conexion"
-                valor={c.estado_salud as string}
-                texto={traducirSaludConexion(c.estado_salud as string)}
-              />
+              <BadgeEstado {...badgeConexion(c)} />
             </li>
           ))}
         </ul>

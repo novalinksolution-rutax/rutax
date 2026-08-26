@@ -11,6 +11,7 @@
 export {
   conectarTienda,
   reconectarTienda,
+  desconectarTienda,
   obtenerConexionesPorSeller,
   obtenerAccessToken,
   validarCredencial,

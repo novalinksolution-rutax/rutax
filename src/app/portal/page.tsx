@@ -105,9 +105,18 @@ export default async function PaginaPortalSeller() {
   // «Caída» = `desvinculada` o `atencion`. `pendiente` es una conexión que
   // todavía no terminó de conectarse: no es una caída, y avisarla como tal
   // haría sonar la alarma justo mientras el seller la está configurando.
+  //
+  // 🔴 **Y tampoco cuenta la que el propio seller apagó.** Desconectar deja la
+  // cuenta en `desvinculada` —es el estado que corta la ingesta— así que sin
+  // este filtro, apretar «Desconectar» encendía una alarma roja arriba de todo
+  // diciendo «una de tus cuentas se desconectó… vuelve a conectarla»: la
+  // pantalla regañando al seller por lo que acababa de pedir. Una alarma que
+  // salta por una decisión deliberada enseña a ignorar las alarmas.
   const conexionesCaidas = resultado.ok
     ? resultado.conexiones.filter(
-        (c) => c.estadoSalud === "desvinculada" || c.estadoSalud === "atencion",
+        (c) =>
+          !c.desconectadaPorSeller &&
+          (c.estadoSalud === "desvinculada" || c.estadoSalud === "atencion"),
       ).length
     : 0;
 

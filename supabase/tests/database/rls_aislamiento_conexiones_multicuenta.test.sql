@@ -28,7 +28,7 @@
 
 begin;
 
-select plan(21);
+select plan(23);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (redefinidos aquí — cada .test.sql corre en su
@@ -296,6 +296,43 @@ select throws_ok(
   '23514',  -- check_violation (errcode que el trigger de tope emite)
   null,
   'tope 10: insertar la 11ª conexión del seller A falla (check_violation)'
+);
+
+-- -----------------------------------------------------------------------------
+-- El tope cuenta CONEXIONES VIVAS: la desconectada a mano libera su cupo.
+-- -----------------------------------------------------------------------------
+-- 🔴 Esta es la mitad que se rompe en silencio. Desde el 26-08-2026 el seller
+-- puede apagar una cuenta desde el portal, y la función del tope solo cuenta
+-- las que tienen `desconectada_por_usuario_id is null`. Si alguien repone esa
+-- función copiando una versión anterior —el patrón que ya mordió con los CHECK
+-- de lista—, el seller que apagó una cuenta para dar de alta otra se queda
+-- atrapado en un tope lleno de cuentas muertas, sin explicación posible.
+--
+-- El seller A quedó lleno arriba (10 vivas, la 11ª rechazada). Se apaga una.
+update identidad.conexiones_seller_ml
+set    estado_salud = 'desvinculada',
+       desconectada_desde = now(),
+       desconectada_por_usuario_id = 'aaaaaaaa-3333-0000-0000-0000000000a4'
+where  seller_id = 'aaaaaaaa-1111-0000-0000-0000000000a1'
+  and  ml_user_id = 'ML-A-10';
+
+select lives_ok(
+  $$ insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, estado_salud)
+     values ('aaaaaaaa-0000-0000-0000-0000000000a1', 'aaaaaaaa-1111-0000-0000-0000000000a1',
+             'ML-A-11', 'pendiente') $$,
+  'tope 10: apagar una cuenta a mano LIBERA su cupo (la 11ª ahora entra)'
+);
+
+-- Contraprueba, y es la que importa: liberó UN cupo, no desactivó el tope. Sin
+-- esto, una función que devolviera "siempre hay espacio" pasaría el caso de
+-- arriba en verde.
+select throws_ok(
+  $$ insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id, estado_salud)
+     values ('aaaaaaaa-0000-0000-0000-0000000000a1', 'aaaaaaaa-1111-0000-0000-0000000000a1',
+             'ML-A-12', 'pendiente') $$,
+  '23514',
+  null,
+  'tope 10: liberó UN cupo, no desactivó el tope (la siguiente vuelve a fallar)'
 );
 
 -- El seller A2 (con 1 conexión) SÍ puede agregar más — el tope es por seller,

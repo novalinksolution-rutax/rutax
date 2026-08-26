@@ -38,6 +38,14 @@ export interface ConexionShopify {
   alias: string | null;
   nombreTienda: string | null;
   activa: boolean;
+  /**
+   * `true` cuando la apagó una persona, no cuando se cayó sola.
+   *
+   * ⚠️ Es un BOOLEANO, no el id de quien la apagó: la pantalla necesita saber si
+   * fue a propósito, no quién — y un id de usuario no tiene por qué llegar al
+   * navegador. El quién vive en la bitácora. Mismo criterio que en ML.
+   */
+  desconectadaPorPersona: boolean;
   creadoEn: string;
 }
 

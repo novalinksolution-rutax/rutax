@@ -21,6 +21,7 @@ import { puedeGestionarConexionesFuentePropia } from "@/modules/identidad/capaci
 import {
   conectarTienda,
   reconectarTienda,
+  desconectarTienda,
   obtenerConexionesPorSeller,
   normalizarShopDomain,
   ErrorCredencialShopifyInvalida,
@@ -40,6 +41,8 @@ export interface ConexionShopifySeller {
   estadoSalud: ConexionShopify["estadoSalud"];
   ultimaSyncExitosaEn: string | null;
   activa: boolean;
+  /** Apagada por una persona, no caída sola. Ver `ConexionShopify`. */
+  desconectadaPorPersona: boolean;
 }
 
 export type ResultadoAccionShopify =
@@ -56,6 +59,7 @@ function aVista(c: ConexionShopify): ConexionShopifySeller {
     estadoSalud: c.estadoSalud,
     ultimaSyncExitosaEn: c.ultimaSyncExitosaEn,
     activa: c.activa,
+    desconectadaPorPersona: c.desconectadaPorPersona,
   };
 }
 
@@ -188,6 +192,51 @@ export async function reconectarTiendaShopify(entrada: {
       tenantId: s.tenantId,
       accessToken: entrada.accessToken,
     });
+  } catch (error) {
+    return traducirError(error);
+  }
+
+  revalidatePath("/portal");
+  return { ok: true };
+}
+
+
+/**
+ * Apaga la ingesta de una tienda. El trabajo sucio lo hace el puerto.
+ *
+ * Acá viven las tres cosas que son de esta capa y no del adaptador: el permiso,
+ * la propiedad de la conexión, y la bitácora ANTES del efecto (RNF-04).
+ */
+export async function desconectarTiendaShopify(
+  conexionId: string,
+): Promise<ResultadoAccionShopify> {
+  const s = await sesionSellerConPermiso();
+  if (!s) return { ok: false, mensaje: "No tienes permiso para desconectar esta tienda." };
+
+  // ⚠️ La propiedad se comprueba contra las tiendas DEL SELLER DE LA SESIÓN,
+  // nunca contra el id que llega en la petición. Mismo patrón que reconectar.
+  let propias: ConexionShopify[];
+  try {
+    propias = await obtenerConexionesPorSeller(s.tenantId, s.sellerId);
+  } catch (error) {
+    return traducirError(error);
+  }
+  if (!propias.some((c) => c.id === conexionId)) {
+    return { ok: false, mensaje: "Esa tienda no es tuya." };
+  }
+
+  await registrarEnBitacora(crearClienteServiceRole(), {
+    tenantId: s.tenantId,
+    actorUsuarioId: s.usuarioId,
+    actorTipo: "usuario",
+    accion: "seller.conexion_shopify_desconectada",
+    entidadTipo: "identidad.conexiones_seller_shopify",
+    entidadId: conexionId,
+    detalle: { sellerId: s.sellerId },
+  });
+
+  try {
+    await desconectarTienda({ conexionId, tenantId: s.tenantId, usuarioId: s.usuarioId });
   } catch (error) {
     return traducirError(error);
   }

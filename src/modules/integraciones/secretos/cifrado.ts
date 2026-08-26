@@ -246,3 +246,60 @@ function bufferDesdeColumnaBytea(valor: unknown): Buffer {
 
   throw new Error("Formato de columna `valor_cifrado` no reconocido al descifrar.");
 }
+
+
+/**
+ * Borra un secreto de la bóveda, por su referencia opaca.
+ * =============================================================================
+ *
+ * 🔴 **Es la mitad que faltaba.** El módulo sabía cifrar y descifrar, y no
+ * olvidar: `grep` de `secretos_cifrados` no devolvía un solo `delete` en todo
+ * `src/`. Mientras no se pudiera desconectar una cuenta eso no se notaba —
+ * ahora sí, porque una conexión apagada que conserva su refresh token vivo es
+ * exactamente lo que no puede pasar.
+ *
+ * El precedente ya estaba escrito para otra tabla:
+ * *«Purga: al revocar, al desvincular y por inactividad. **No basta
+ * `activa = false`**»* (`docs/seguridad/punto-de-termino-conductor.md` C5).
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ EL ORDEN IMPORTA, Y ES AL REVÉS DE LO QUE PARECE
+ * -----------------------------------------------------------------------------
+ * Quien llama tiene que **soltar primero la referencia en su tabla** y borrar el
+ * secreto después. Al revés queda una ventana en la que la conexión apunta a un
+ * secreto que ya no existe, y cualquier job que la lea en ese instante falla al
+ * descifrar y la marca `desvinculada` con un error que no significa nada.
+ *
+ * -----------------------------------------------------------------------------
+ * NO FALLA SI YA NO ESTÁ
+ * -----------------------------------------------------------------------------
+ * Borrar dos veces es correcto: los jobs reintentan y una desconexión que se
+ * repite tiene que terminar en el mismo sitio. Lo que sí devuelve es **cuántas
+ * filas borró**, para que el llamador pueda distinguir «lo borré» de «ya no
+ * estaba» si le importa.
+ *
+ * ⚠️ El `tenantId` NO es decorativo: esto corre con `service_role`, así que RLS
+ * no protege nada. Sin él, una referencia de otro courier borraría su secreto.
+ */
+export async function olvidarSecreto(
+  referenciaExternaId: ReferenciaSecreto | string | null | undefined,
+  tenantId: string,
+): Promise<{ borrados: number }> {
+  if (!referenciaExternaId) return { borrados: 0 };
+
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema("identidad")
+    .from("secretos_cifrados")
+    .delete()
+    .eq("referencia_externa_id", referenciaExternaId)
+    .eq("tenant_id", tenantId)
+    .select("id");
+
+  if (error) {
+    // Sin datos del secreto en el mensaje, igual que el resto del módulo.
+    throw new Error(`No se pudo borrar el secreto: ${error.message}`);
+  }
+
+  return { borrados: (data ?? []).length };
+}

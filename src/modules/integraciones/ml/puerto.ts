@@ -781,12 +781,13 @@ interface FilaConexionInterna {
   ultimo_error: string | null;
   alias: string | null;
   ml_nickname: string | null;
+  desconectada_por_usuario_id: string | null;
 }
 
 const COLUMNAS_CONEXION =
   "id, tenant_id, seller_id, ml_user_id, access_token_ref, refresh_token_ref, " +
   "token_expira_en, estado_salud, ultima_sync_exitosa_en, desconectada_desde, ultimo_error, " +
-  "alias, ml_nickname";
+  "alias, ml_nickname, desconectada_por_usuario_id";
 
 function aConexionPublica(fila: FilaConexionInterna): ConexionSellerMl {
   return {
@@ -798,6 +799,9 @@ function aConexionPublica(fila: FilaConexionInterna): ConexionSellerMl {
     estadoSalud: fila.estado_salud,
     ultimaSyncExitosaEn: fila.ultima_sync_exitosa_en ? new Date(fila.ultima_sync_exitosa_en) : null,
     desconectadaDesde: fila.desconectada_desde ? new Date(fila.desconectada_desde) : null,
+    // El id se reduce a un booleano ACÁ y no sale del módulo. Ver el comentario
+    // del campo en `tipos.ts`.
+    desconectadaPorPersona: fila.desconectada_por_usuario_id != null,
     ultimoError: fila.ultimo_error,
     alias: fila.alias,
     mlNickname: fila.ml_nickname,
@@ -952,6 +956,13 @@ async function persistirTokensYActualizarConexion(
   }
   if (entrada.estadoSaludResultante === "sana") {
     campos.desconectada_desde = null;
+    // 🔴 El autor se limpia JUNTO con la marca de caída, y no es cosmético.
+    // La cuenta que vuelve sana ya no está apagada, así que dejar el autor
+    // puesto (a) la dejaría diciendo «Desconectada por ti» mientras ingiere, y
+    // (b) **la sacaría de la cuenta del tope**: la función que impone el máximo
+    // de cuentas por seller solo cuenta las que tienen este campo en `null`, así
+    // que una cuenta reconectada y todavía marcada sería una cuenta gratis.
+    campos.desconectada_por_usuario_id = null;
   }
   if (entrada.marcarComoSincronizada) {
     campos.ultima_sync_exitosa_en = ahora.toISOString();

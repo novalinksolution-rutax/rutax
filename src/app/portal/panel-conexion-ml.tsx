@@ -40,8 +40,11 @@ import { EstadoError } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { MAX_CUENTAS_ML } from "./conectar-ml/compartido";
+import { BotonConfirmado } from "@/components/ui/boton-confirmado";
+import { PowerOff } from "lucide-react";
 import { iniciarConexionMl } from "./conectar-ml/actions";
 import {
+  desconectarConexionMlPropia,
   obtenerConexionesPropia,
   renombrarConexionMl,
   solicitarSincronizacionMlPropia,
@@ -82,6 +85,16 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
   // mantiene el botón deshabilitado un rato después de terminar, para que no
   // invite a apretarlo diez veces seguidas (RNF de anti-machaque).
   const [sincronizandoId, setSincronizandoId] = useState<string | null>(null);
+  const [desconectandoId, setDesconectandoId] = useState<string | null>(null);
+  /**
+   * ⚠️ Por conexión, no uno solo para todas.
+   *
+   * Con un `string | null` compartido, el fallo de apagar una cuenta se pinta en
+   * la tarjeta de TODAS —con cuatro cuentas, cuatro veces el mismo error— y
+   * ninguna dice cuál falló. Es la misma razón por la que `resultadoSyncPorId`
+   * es un registro y no un valor.
+   */
+  const [errorDesconectarPorId, setErrorDesconectarPorId] = useState<Record<string, string>>({});
   const [enEnfriamientoIds, setEnEnfriamientoIds] = useState<Set<string>>(new Set());
   const [resultadoSyncPorId, setResultadoSyncPorId] = useState<
     Record<string, { ok: boolean; mensaje: string }>
@@ -167,6 +180,37 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
    * sana). Es asíncrono: solo confirmamos que SE PIDIÓ, nunca prometemos una
    * cantidad de pedidos nueva que todavía no conocemos.
    */
+  /**
+   * Apaga la ingesta de una cuenta.
+   *
+   * ⚠️ **Se recarga del servidor con `recargar()`, no se reconcilia en memoria.**
+   * Desconectar cambia tres cosas a la vez —estado de salud, marca de tiempo y
+   * autor— y de las tres depende qué tarjeta se dibuja. Parchear a mano la copia
+   * local es donde se cuela una pantalla que dice «desconectada por ti» sin la
+   * fecha, o que sigue ofreciendo «Sincronizar ahora» sobre una cuenta apagada.
+   * Renombrar sí se parchea en memoria porque toca un solo campo.
+   */
+  async function desconectar(conexionId: string) {
+    if (desconectandoId) return;
+    setDesconectandoId(conexionId);
+    setErrorDesconectarPorId((prev) => {
+      if (!(conexionId in prev)) return prev;
+      const copia = { ...prev };
+      delete copia[conexionId];
+      return copia;
+    });
+    try {
+      const r = await desconectarConexionMlPropia(conexionId);
+      if (!r.ok) {
+        setErrorDesconectarPorId((prev) => ({ ...prev, [conexionId]: r.mensaje }));
+        return;
+      }
+      await recargar();
+    } finally {
+      setDesconectandoId(null);
+    }
+  }
+
   async function sincronizarAhora(conexionId: string) {
     if (sincronizandoId || enEnfriamientoIds.has(conexionId)) return;
     setSincronizandoId(conexionId);
@@ -295,6 +339,14 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                             >
                               Editar nombre
                             </button>
+                            {/* Sincronizar una cuenta apagada no trae nada: el
+                                job la salta por su estado. Ofrecerlo prometería
+                                un efecto que no ocurre.
+
+                                ⚠️ Va con un condicional y NO con `hidden`: el
+                                botón trae utilidades de `display`, y ésas le
+                                ganan al atributo — quedaría visible. */}
+                            {c.desconectadaPorSeller ? null : (
                             <Button
                               type="button"
                               variant="ghost"
@@ -310,6 +362,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                               )}
                               Sincronizar ahora
                             </Button>
+                            )}
                           </div>
                         )}
                         <p className="text-sm text-muted-foreground">{p.titulo}</p>
@@ -322,6 +375,13 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                             }`}
                           >
                             {resultadoSyncPorId[c.id].mensaje}
+                          </p>
+                        ) : null}
+                        {/* El fallo se dice EN SU tarjeta: con varias cuentas,
+                            un error global no dice cuál no se pudo apagar. */}
+                        {errorDesconectarPorId[c.id] ? (
+                          <p role="alert" className="text-xs text-destructive">
+                            {errorDesconectarPorId[c.id]}
                           </p>
                         ) : null}
                       </div>
@@ -338,6 +398,54 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                         {accionandoId === c.id ? "Te llevamos a Mercado Libre…" : "Reconectar"}
                       </Button>
                     ) : null}
+
+                    {/* 🔴 **Peldaño 3 · hay que escribir el nombre de la cuenta.**
+                        No porque sea catastrófico —los pedidos ya traídos se
+                        quedan y volver es reconectar— sino por LO MISMO que
+                        revocar una clave de API: el error de este flujo no es
+                        «desconectar sin querer», es **desconectar la cuenta
+                        equivocada** de una lista donde todas se llaman parecido.
+                        Escribir el nombre es lo único que obliga a leer cuál.
+
+                        Y la consecuencia dice qué pasa y qué NO pasa: el seller
+                        tiene que saber que esto no le quita a Rutax el permiso
+                        en Mercado Libre, o creerá que hizo algo que no hizo. */}
+                    {p.mostrarDesconectar ? (
+                      <BotonConfirmado
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        etiqueta="Desconectar"
+                        deshabilitado={desconectandoId !== null}
+                        cargando={desconectandoId === c.id}
+                        peldano={3}
+                        confirmacion={{ frase: etiquetaConexionMl(c) }}
+                        titulo={`Vas a desconectar «${etiquetaConexionMl(c)}»`}
+                        consecuencia={
+                          <>
+                            <strong>Dejamos de traer los pedidos de esta cuenta.</strong> Los que ya
+                            entraron se quedan como están, y puedes volver a conectarla cuando
+                            quieras — hay que autorizarla otra vez en Mercado Libre.
+                            <br />
+                            <br />
+                            Esto <strong>no</strong> le quita a Rutax el permiso sobre tu cuenta de
+                            Mercado Libre: eso se hace desde tu propia cuenta allá.
+                          </>
+                        }
+                        // El nickname solo si NO es ya lo que dice la primera
+                        // fila: sin alias, `etiquetaConexionMl` devuelve el
+                        // nickname, y las dos filas mostraban el mismo texto.
+                        resumen={[
+                          { etiqueta: "Cuenta", valor: etiquetaConexionMl(c) },
+                          ...(c.mlNickname && c.mlNickname !== etiquetaConexionMl(c)
+                            ? [{ etiqueta: "En Mercado Libre", valor: c.mlNickname, mono: true }]
+                            : []),
+                        ]}
+                        textoConfirmar="Desconectar la cuenta"
+                        varianteModal="destructive"
+                        onConfirmar={() => void desconectar(c.id)}
+                      />
+                    ) : null}
                   </CardContent>
 
                   {/* ⚠️ REGLA 60 · UN ERROR DE INTEGRACION DICE SIEMPRE QUE
@@ -350,8 +458,17 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                       Y no se inventa la causa: el sondeo de salud de ML **no
                       distingue** token vencido de token revocado ni de un fallo
                       al descifrar el secreto. Decir «tu token expiro» seria
-                      elegir una de las tres al azar. */}
-                  {c.estadoSalud === "desvinculada" ? (
+                      elegir una de las tres al azar.
+
+                      🔴 **Y NO se muestra cuando la apagó el propio seller.**
+                      Comparte `estado_salud = 'desvinculada'` con la avería —es
+                      el estado que corta la ingesta— así que sin esta condición
+                      el bloque le explicaba «Mercado Libre dejó de aceptar
+                      nuestro permiso… no podemos distinguir cuál de los tres» a
+                      quien acababa de apretar Desconectar. La cabecera decía
+                      «Desconectada por ti» y el bloque de abajo la contradecía,
+                      en la misma tarjeta. */}
+                  {c.estadoSalud === "desvinculada" && !c.desconectadaPorSeller ? (
                     <div className="px-6 pb-6">
                       <BloqueFallaExterna
                         titulo="Dejamos de recibir tus pedidos nuevos de esta cuenta"
@@ -517,10 +634,36 @@ interface Presentacion {
   bordeTarjeta: string;
   tono: "ok" | "neutro" | "atencion" | "critico";
   mostrarReconectar: boolean;
+  /** Solo tiene sentido apagar lo que está encendido. */
+  mostrarDesconectar: boolean;
 }
 
 /** Traduce `estado_salud` a lenguaje humano — nunca expone jerga técnica. */
 function presentacion(c: ConexionMlSellerItem): Presentacion {
+  /**
+   * 🔴 **La apagó una persona: no es una avería y no se cuenta como tal.**
+   *
+   * Comparte `estado_salud = 'desvinculada'` con el token vencido y el revocado
+   * —es el estado que apaga la ingesta— pero decirle «tu cuenta se desconectó,
+   * reconéctala» a quien acaba de apagarla sería reportarle como problema lo
+   * que hizo queriendo. Va en tono neutro, sin ícono de alarma, y con el
+   * `Reconectar` que ya existe como salida.
+   */
+  if (c.desconectadaPorSeller) {
+    return {
+      icono: <PowerOff className="size-5" aria-hidden="true" />,
+      titulo: "Desconectada por ti",
+      detalle: c.desconectadaDesde
+        ? `Desde el ${formatearFecha(c.desconectadaDesde)}. No estamos trayendo sus pedidos.`
+        : "No estamos trayendo sus pedidos.",
+      fondoIcono: "bg-muted text-muted-foreground",
+      bordeTarjeta: "border-border",
+      tono: "neutro",
+      mostrarReconectar: true,
+      mostrarDesconectar: false,
+    };
+  }
+
   switch (c.estadoSalud) {
     case "sana":
       return {
@@ -531,6 +674,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
         bordeTarjeta: "border-success/30",
         tono: "ok",
         mostrarReconectar: false,
+        mostrarDesconectar: true,
       };
     case "pendiente":
       return {
@@ -541,6 +685,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
         bordeTarjeta: "border-border",
         tono: "neutro",
         mostrarReconectar: false,
+        mostrarDesconectar: true,
       };
     case "atencion":
       return {
@@ -551,6 +696,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
         bordeTarjeta: "border-warning/30",
         tono: "atencion",
         mostrarReconectar: true,
+        mostrarDesconectar: true,
       };
     case "desvinculada":
     default:
@@ -562,6 +708,9 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
         bordeTarjeta: "border-destructive/30",
         tono: "critico",
         mostrarReconectar: true,
+        // Ya no ingiere: apagar lo que está caído no cambia nada, y ofrecerlo
+        // sugeriría que sí.
+        mostrarDesconectar: false,
       };
   }
 }

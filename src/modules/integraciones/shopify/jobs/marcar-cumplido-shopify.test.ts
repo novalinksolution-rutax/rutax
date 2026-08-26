@@ -116,6 +116,7 @@ function conexion(over: Partial<ConexionShopify> = {}): ConexionShopify {
     tokenRef: null,
     scopesOtorgados: [],
     filtroEtiqueta: null,
+    desconectadaPorPersona: false,
     estadoSalud: "sana",
     ultimaSyncExitosaEn: null,
     ultimoError: null,

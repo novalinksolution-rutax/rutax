@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { CheckCircle2, Loader2, Plus, RefreshCw, Store, TriangleAlert } from "lucide-react";
+import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import { formatearTiempoRelativo } from "@/lib/formato-cl";
 import { SCOPES_REQUERIDOS } from "@/modules/integraciones/shopify/tipos";
 import {
   conectarTiendaShopify,
+  desconectarTiendaShopify,
   reconectarTiendaShopify,
   type ConexionShopifySeller,
 } from "./acciones-shopify";
@@ -52,6 +54,21 @@ export function PanelConexionesShopify({
   const [abierto, setAbierto] = useState<null | { modo: "alta" } | { modo: "reconexion"; conexion: ConexionShopifySeller }>(
     null,
   );
+  const [desconectandoId, setDesconectandoId] = useState<string | null>(null);
+  // Keyed por id: con varias tiendas, un solo string pintaría el error de una
+  // en la fila de la otra.
+  const [errorPorId, setErrorPorId] = useState<Record<string, string>>({});
+
+  async function desconectar(id: string) {
+    setDesconectandoId(id);
+    setErrorPorId((prev) => {
+      const { [id]: _, ...resto } = prev;
+      return resto;
+    });
+    const r = await desconectarTiendaShopify(id);
+    setDesconectandoId(null);
+    if (!r.ok) setErrorPorId((prev) => ({ ...prev, [id]: r.mensaje }));
+  }
 
   return (
     <Card>
@@ -89,21 +106,35 @@ export function PanelConexionesShopify({
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {c.shopDomain}
-                    {c.ultimaSyncExitosaEn
-                      ? ` · al día ${formatearTiempoRelativo(c.ultimaSyncExitosaEn)}`
-                      : " · sin sincronizar todavía"}
+                    {c.desconectadaPorPersona
+                      ? " · no estamos trayendo sus pedidos"
+                      : c.ultimaSyncExitosaEn
+                        ? ` · al día ${formatearTiempoRelativo(c.ultimaSyncExitosaEn)}`
+                        : " · sin sincronizar todavía"}
                   </p>
                   {c.filtroEtiqueta ? (
                     <p className="truncate text-xs text-muted-foreground">
                       Solo pedidos con la etiqueta <span className="font-medium">{c.filtroEtiqueta}</span>
                     </p>
                   ) : null}
+                  {errorPorId[c.id] ? (
+                    <p className="text-xs text-destructive">{errorPorId[c.id]}</p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <DistintivoEstado
-                    tono={tonoSaludConexion(c.estadoSalud)}
-                    etiqueta={TEXTO_SALUD_CONEXION[c.estadoSalud]}
-                  />
+                  {/* 🔴 La que apagó el propio seller NO se pinta como avería.
+                      Comparte `desvinculada` con el token revocado —es el estado
+                      que corta la ingesta— pero decirle «Desconectada» en tono
+                      de alarma a quien acaba de apagarla es reportarle como
+                      problema lo que hizo queriendo. */}
+                  {c.desconectadaPorPersona ? (
+                    <DistintivoEstado tono="neutral" etiqueta="Desconectada por ti" />
+                  ) : (
+                    <DistintivoEstado
+                      tono={tonoSaludConexion(c.estadoSalud)}
+                      etiqueta={TEXTO_SALUD_CONEXION[c.estadoSalud]}
+                    />
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
@@ -112,6 +143,49 @@ export function PanelConexionesShopify({
                     <RefreshCw data-icon="inline-start" aria-hidden />
                     Reconectar
                   </Button>
+
+                  {/* Peldaño 3 · hay que escribir el dominio de la tienda. No
+                      porque sea catastrófico —los pedidos ya traídos se quedan y
+                      volver es pegar el token otra vez— sino porque el error de
+                      este flujo no es «desconectar sin querer», es
+                      **desconectar la tienda equivocada** de una lista donde
+                      todas se llaman parecido. Escribirla obliga a leer cuál.
+
+                      Solo se ofrece sobre lo que está encendido: apagar lo ya
+                      apagado no cambia nada y sugeriría que sí. */}
+                  {c.desconectadaPorPersona ? null : (
+                    <BotonConfirmado
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      etiqueta="Desconectar"
+                      deshabilitado={desconectandoId !== null}
+                      cargando={desconectandoId === c.id}
+                      peldano={3}
+                      confirmacion={{ frase: c.shopDomain }}
+                      titulo={`Vas a desconectar «${c.alias ?? c.nombreTienda ?? c.shopDomain}»`}
+                      consecuencia={
+                        <>
+                          <strong>Dejamos de traer los pedidos de esta tienda.</strong> Los que ya
+                          entraron se quedan como están, y puedes volver a conectarla cuando quieras
+                          — hay que pegar el token otra vez.
+                          <br />
+                          <br />
+                          Esto <strong>no</strong> desinstala la app de tu tienda: eso se hace desde
+                          tu propio panel de Shopify.
+                        </>
+                      }
+                      resumen={[
+                        { etiqueta: "Tienda", valor: c.shopDomain, mono: true },
+                        ...(c.filtroEtiqueta
+                          ? [{ etiqueta: "Filtro de etiqueta", valor: c.filtroEtiqueta }]
+                          : []),
+                      ]}
+                      textoConfirmar="Desconectar la tienda"
+                      varianteModal="destructive"
+                      onConfirmar={() => void desconectar(c.id)}
+                    />
+                  )}
                 </div>
               </li>
             ))}

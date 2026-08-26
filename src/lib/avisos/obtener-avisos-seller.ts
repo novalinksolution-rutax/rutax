@@ -29,6 +29,13 @@ export async function obtenerAvisosSeller(sellerId: string): Promise<Aviso[]> {
     const avisos: Aviso[] = [];
 
     for (const c of conexiones) {
+      // 🔴 La que apagó el propio seller NO es un aviso. Desconectar deja la
+      // cuenta en `desvinculada` —es el estado que corta la ingesta— así que sin
+      // esto, apretar «Desconectar» le encendía un aviso URGENTE que le pedía
+      // reconectar lo que acababa de apagar. Un centro de avisos que reclama por
+      // una decisión deliberada enseña a ignorarlo entero.
+      if (c.desconectadaPorPersona) continue;
+
       if (c.estadoSalud === "desvinculada") {
         avisos.push({
           id: `ml-desvinculada-${c.id}`,

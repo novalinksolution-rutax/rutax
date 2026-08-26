@@ -59,7 +59,11 @@ async function avisosConexionesCaidas(tenantId: string): Promise<Aviso[]> {
       .from("conexiones_seller_ml")
       .select("id, sellers!conexiones_seller_ml_seller_id_fkey(razon_social)")
       .eq("tenant_id", tenantId)
-      .eq("estado_salud", "desvinculada");
+      .eq("estado_salud", "desvinculada")
+      // Igual que en el portal: la que el seller apagó a propósito no es una
+      // caída. Al courier le importa lo que se rompió, no lo que su cliente
+      // decidió — y avisarlo como avería lo mandaría a llamar por nada.
+      .is("desconectada_por_usuario_id", null);
 
     const caidas = data ?? [];
     if (caidas.length === 0) return [];

@@ -191,9 +191,14 @@ async function cargarConexionesCaidas(tenantId: string): Promise<ConexionCaida[]
         "id, seller_id, alias, ml_nickname, ultima_sync_exitosa_en, sellers!conexiones_seller_ml_seller_id_fkey(razon_social)",
       )
       .eq("tenant_id", tenantId)
-      .eq("estado_salud", "desvinculada"),
-    // `activa` SÍ se filtra acá (a diferencia de ML, que no tiene esa columna):
-    // una conexión dada de baja a propósito no es una caída que alertar.
+      .eq("estado_salud", "desvinculada")
+      // 🔴 La que apagó el seller a propósito NO es una caída, y este panel es
+      // una lista de avisos: mandaría al courier a llamar por teléfono por una
+      // decisión de su cliente. Desde el 26-08-2026 el seller puede desconectar
+      // sus cuentas desde el portal, así que `desvinculada` ya no implica rota.
+      .is("desconectada_por_usuario_id", null),
+    // Shopify lo consigue por otra vía: al desconectar se apaga también
+    // `activa`, y este filtro ya existía. Misma idea, dos columnas.
     cliente
       .schema("identidad")
       .from("conexiones_seller_shopify")

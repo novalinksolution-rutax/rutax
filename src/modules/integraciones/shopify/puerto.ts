@@ -18,7 +18,7 @@
  */
 
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { cifrarSecreto, descifrarSecreto } from "../secretos/cifrado";
+import { cifrarSecreto, descifrarSecreto, olvidarSecreto } from "../secretos/cifrado";
 import { peticionShopify, normalizarShopDomain, ErrorShopDomainInvalido } from "./cliente-http";
 import { SCOPES_REQUERIDOS, type ConexionShopify, type EstadoSaludShopify } from "./tipos";
 
@@ -125,7 +125,8 @@ export async function validarCredencial(
 
 const TABLA = "conexiones_seller_shopify";
 const COLUMNAS_PUBLICAS =
-  "id, tenant_id, seller_id, shop_domain, scopes_otorgados, filtro_etiqueta, estado_salud, ultima_sync_exitosa_en, ultimo_error, alias, nombre_tienda, activa, creado_en";
+  "id, tenant_id, seller_id, shop_domain, scopes_otorgados, filtro_etiqueta, estado_salud, " +
+  "ultima_sync_exitosa_en, ultimo_error, alias, nombre_tienda, activa, desconectada_por_usuario_id, creado_en";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function aConexionPublica(fila: Record<string, any>): ConexionShopify {
@@ -145,6 +146,8 @@ function aConexionPublica(fila: Record<string, any>): ConexionShopify {
     alias: fila.alias ?? null,
     nombreTienda: fila.nombre_tienda ?? null,
     activa: fila.activa ?? true,
+    // El id se lee acá y muere acá: hacia afuera sale solo el sí/no.
+    desconectadaPorPersona: fila.desconectada_por_usuario_id != null,
     creadoEn: fila.creado_en,
   };
 }
@@ -279,6 +282,10 @@ export async function reconectarTienda(entrada: {
       estado_salud: "sana",
       ultimo_error: null,
       activa: true,
+      // 🔴 Se limpia el autor: la tienda que vuelve con token nuevo ya no está
+      // apagada. Dejarlo puesto la dejaría diciendo «Desconectada por ti»
+      // mientras ingiere pedidos.
+      desconectada_por_usuario_id: null,
       // `cursor_ingesta_en` NO viaja acá, a propósito: es la memoria de hasta
       // dónde se ingirió y una reconexión no la invalida.
     })
@@ -289,6 +296,69 @@ export async function reconectarTienda(entrada: {
 
   if (error) throw new Error(`No se pudo reconectar la tienda: ${error.message}`);
   return aConexionPublica(data);
+}
+
+/**
+ * Apaga la ingesta de UNA tienda Shopify.
+ * =============================================================================
+ *
+ * Gemela de `desconectarConexionMlPropia` (portal/actions.ts), con la misma
+ * frontera: desconectar significa **dejar de traer pedidos a Rutax**, y nada
+ * más. NO desinstala la custom app del admin de Shopify ni le revoca nada —
+ * eso el seller lo hace en su propia tienda, y la pantalla se lo dice.
+ *
+ * 🔴 EL ORDEN DE LAS ESCRITURAS (la bitácora la pone el llamador, antes)
+ *  1. **La fila**: salud, `activa=false`, autor, y `token_ref` a `null`.
+ *  2. **El secreto**, al final. Soltar la referencia ANTES de borrar es lo que
+ *     evita la ventana en la que la conexión apunta a un secreto que ya no
+ *     existe: ahí cualquier job que la lea falla al descifrar y la marca caída
+ *     con un error que no significa nada.
+ *
+ * ⚠️ Si el paso 2 falla, la tienda **ya no ingiere** y eso es lo que se pidió:
+ * no se propaga el error. Un secreto huérfano es basura, no un agujero — nadie
+ * lo puede resolver porque su referencia ya no existe en ninguna fila.
+ *
+ * Se apagan las DOS banderas a propósito. `activa` es la que dice «apagada por
+ * decisión» y `estado_salud` es la que ya entiende el resto del sistema (la
+ * ingesta filtra por ambas); dejar una sola obligaría a recordar cuál manda.
+ */
+export async function desconectarTienda(entrada: {
+  conexionId: string;
+  tenantId: string;
+  usuarioId: string;
+}): Promise<void> {
+  const supabase = crearClienteServiceRole();
+
+  // La referencia al secreto se lee acá y no sale de esta función.
+  const { data: fila } = await supabase
+    .schema("identidad")
+    .from(TABLA)
+    .select("token_ref")
+    .eq("id", entrada.conexionId)
+    .eq("tenant_id", entrada.tenantId)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .schema("identidad")
+    .from(TABLA)
+    .update({
+      estado_salud: "desvinculada",
+      activa: false,
+      desconectada_por_usuario_id: entrada.usuarioId,
+      token_ref: null,
+      // El error anterior deja de aplicar: la tienda no está rota, está apagada.
+      ultimo_error: null,
+    })
+    .eq("id", entrada.conexionId)
+    .eq("tenant_id", entrada.tenantId);
+
+  if (error) throw new Error(`No se pudo desconectar la tienda: ${error.message}`);
+
+  try {
+    await olvidarSecreto((fila?.token_ref as string | null) ?? null, entrada.tenantId);
+  } catch {
+    // Silencio deliberado: ver el bloque de arriba.
+  }
 }
 
 export async function obtenerConexionesPorSeller(

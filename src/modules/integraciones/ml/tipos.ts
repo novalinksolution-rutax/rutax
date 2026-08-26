@@ -29,6 +29,20 @@ export interface ConexionSellerMl {
   alias: string | null;
   /** Nickname de la cuenta en ML (capturado al conectar; puede ser null). */
   mlNickname: string | null;
+  /**
+   * La apagó una PERSONA, no se cayó sola.
+   *
+   * 🔴 Comparte `estadoSalud = 'desvinculada'` con el token vencido, el
+   * revocado y el fallo de descifrado —ése es el estado que corta la ingesta—
+   * así que sin esto las cuatro causas son indistinguibles, y las tres
+   * superficies que avisan de una caída (el banner del portal, el centro de
+   * avisos del seller y el del courier) le gritan al seller por algo que pidió.
+   *
+   * ⚠️ Es un BOOLEANO derivado, no el id de quien la apagó: este tipo cruza
+   * hacia la interfaz y un id de usuario no tiene por qué llegar ahí. El quién
+   * vive en la bitácora.
+   */
+  desconectadaPorPersona: boolean;
 }
 
 /**

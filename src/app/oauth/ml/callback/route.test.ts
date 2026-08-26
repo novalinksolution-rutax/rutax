@@ -114,6 +114,7 @@ function conexion(overrides: Partial<ConexionSellerMl> = {}): ConexionSellerMl {
     tenantId: TENANT_ID,
     sellerId: SELLER_ID,
     mlUserId: ML_USER_ID,
+    desconectadaPorPersona: false,
     tokenExpiraEn: new Date(Date.now() + 6 * 60 * 60_000),
     estadoSalud: "sana",
     ultimaSyncExitosaEn: new Date(),

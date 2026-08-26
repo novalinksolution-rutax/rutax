@@ -77,6 +77,7 @@ describe("jobRefrescarTokens — lógica del loop de refresco", () => {
     tenantId: "tenant-1",
     sellerId: "seller-1",
     mlUserId: "ml-user-1",
+    desconectadaPorPersona: false,
     tokenExpiraEn: new Date(Date.now() + 3600_000),
     estadoSalud: "sana",
     ultimaSyncExitosaEn: new Date(),
