@@ -160,7 +160,7 @@ function DialogCrearKey({ onCreada }: { onCreada: () => void }) {
 
           <div className="flex items-center gap-2 pt-1">
             <Button type="submit" disabled={isPending}>
-              {isPending ? "Creando…" : "Crear la key"}
+              {isPending ? "Creando…" : "Crear la clave"}
             </Button>
             <Button
               type="button"
@@ -280,8 +280,8 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
         <div>
           <h2 className="text-lg font-semibold">Claves de API</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Credenciales para integraciones externas. Cada key tiene permisos
-            acotados.
+            Con qué tus propios sistemas se identifican ante Rutax. Cada clave lleva sus
+            permisos acotados.
           </p>
         </div>
         <DialogCrearKey onCreada={() => router.refresh()} />
