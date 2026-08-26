@@ -530,3 +530,85 @@ export async function crearConductor(
 
   return { ok: true, conductor: filaAConductor(data) };
 }
+
+// =============================================================================
+// Teléfono de contacto
+// =============================================================================
+
+/**
+ * Guarda (o borra, con `null`) el teléfono del conductor.
+ *
+ * -----------------------------------------------------------------------------
+ * EL GATE ES OPERATIVO, NO FINANCIERO — Y ESO ES DELIBERADO
+ * -----------------------------------------------------------------------------
+ * `asignar_y_reasignar_pedidos`, la misma que da de alta al conductor. NO
+ * `gestionar_liquidaciones_conductores`, que es la que protege los datos
+ * bancarios.
+ *
+ * La diferencia no es un descuido: quien necesita el teléfono es **el
+ * coordinador**, que a las 17:30 tiene un conductor que no aparece en una
+ * comuna. Ponerlo detrás del gate financiero (dueño y administración) dejaría
+ * el número justo fuera del alcance de la única persona que lo va a marcar.
+ * Un teléfono es dato de contacto operativo; una cuenta bancaria es dinero.
+ *
+ * -----------------------------------------------------------------------------
+ * ⚠️ ESPERA E.164 YA NORMALIZADO
+ * -----------------------------------------------------------------------------
+ * No normaliza acá: lo hace el llamador con `normalizarTelefonoE164`, que es
+ * quien puede devolverle un mensaje útil a la persona que escribió mal. Si
+ * llega algo sin normalizar, el CHECK `conductores_telefono_e164` lo rechaza en
+ * la base — ruidoso, que es como debe fallar.
+ *
+ * ⚠️ **El número NO va entero a la bitácora.** Es dato personal (Ley 21.431) y
+ * la bitácora es append-only: lo que entra ahí no se puede sacar. Se registra
+ * enmascarado, que es suficiente para auditar «quién le cambió el teléfono a
+ * quién y cuándo» — que es lo que RNF-04 pide— sin acumular el dato.
+ */
+export async function actualizarTelefonoConductor(
+  cliente: SupabaseClient,
+  tenantId: string,
+  conductorId: string,
+  telefonoE164: string | null,
+  actorUsuarioId: string,
+  actor: UsuarioActual,
+): Promise<void> {
+  if (!puedeAsignarYReasignarPedidos(actor)) {
+    throw new ErrorValidacion(
+      'El usuario no tiene capacidad para modificar el teléfono de conductores',
+    );
+  }
+
+  // Bitácora ANTES del efecto (CLAUDE.md invariante).
+  await registrarEnBitacora(cliente, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: telefonoE164 === null ? 'conductor.telefono_borrado' : 'conductor.telefono_actualizado',
+    entidadTipo: 'conductor',
+    entidadId: conductorId,
+    detalle: {
+      conductor_id: conductorId,
+      // Solo los últimos 4 dígitos. Ver la nota de arriba.
+      telefono_mascara: telefonoE164 === null ? null : `****${telefonoE164.slice(-4)}`,
+    },
+  });
+
+  const { data, error } = await cliente
+    .schema('identidad')
+    .from('conductores')
+    .update({ telefono: telefonoE164 })
+    .eq('id', conductorId)
+    .eq('tenant_id', tenantId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    // El mensaje del error de base NO se propaga tal cual: un 23514 del CHECK
+    // trae la fila completa, teléfono incluido, y de ahí se va a los logs.
+    throw new Error('Error al actualizar el teléfono del conductor.');
+  }
+
+  if (!data) {
+    throw new ErrorValidacion(`Conductor ${conductorId} no encontrado en el tenant`);
+  }
+}

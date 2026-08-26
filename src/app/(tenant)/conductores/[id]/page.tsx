@@ -18,7 +18,11 @@ import Link from "next/link";
 import { Wallet } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeGestionarLiquidacionesConductores, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
+import {
+  puedeGestionarLiquidacionesConductores,
+  puedeInvitarUsuarios,
+  puedeAsignarYReasignarPedidos,
+} from "@/modules/identidad/capacidades";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { traducirEstadoLiquidacion, BADGE_ESTADO_LIQUIDACION } from "@/lib/ui/traduccion-estados";
 import type { EstadoLiquidacion, TipoHechoLinea } from "@/modules/dinero/tipos";
@@ -37,7 +41,9 @@ import {
 import { DialogAnular } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-corregir-dinero";
 import { accionAnularLiquidacionPedido } from "@/app/(tenant)/operaciones/[pedidoId]/acciones-dinero";
 import { accionAnularLineaLiquidacion } from "./actions-linea";
-import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./acceso-app-conductor";
+import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./acceso-app-conductor";
+import { DatosContactoConductor, type OrigenCorreo } from "./datos-contacto-conductor";
+
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
 type Bucket = "acumulando" | "por_pagar" | "pagado";
@@ -72,6 +78,13 @@ function clasificar(liqEstado: EstadoLiquidacion | null): Bucket {
   return "por_pagar"; // borrador | emitida
 }
 
+/**
+ * Tope de cuentas a inspeccionar por conductor. Lo normal es UNA; dos ya es una
+ * anomalía que hay que mostrar. El tope existe para que un dato corrupto no
+ * dispare una ráfaga de llamadas a `auth.admin` en el render de una página.
+ */
+const MAX_CUENTAS_A_MOSTRAR = 5;
+
 // -----------------------------------------------------------------------------
 // Acceso a la app — ¿tiene cuenta, invitación pendiente, o nada? El estado se
 // resuelve SIEMPRE en el servidor: invitar dos veces al mismo conductor, o no
@@ -83,18 +96,43 @@ async function resolverEstadoAccesoApp(
   cliente: ReturnType<typeof crearClienteServiceRole>,
   tenantId: string,
   driverId: string,
-): Promise<EstadoAccesoAppConductor> {
-  const { data: perfil } = await cliente
+): Promise<{ acceso: EstadoAccesoAppConductor; correo: OrigenCorreo }> {
+  // ⚠️ NO lleva `.maybeSingle()`, y ese detalle era un bug real.
+  //
+  // Un conductor puede terminar con MÁS DE UNA cuenta —dos invitaciones al
+  // mismo driver con correos distintos, que es justo lo que marca
+  // `entidad_compartida` en el backstage—. Con dos filas, `maybeSingle()`
+  // devuelve error, `data` queda en `null`, y como el error se descartaba la
+  // pantalla concluía «sin acceso a la app» y ofrecía invitar… a alguien que ya
+  // tenía DOS formas de entrar. El caso raro producía exactamente la respuesta
+  // contraria a la verdad.
+  const { data: perfiles } = await cliente
     .from("usuarios_perfil")
-    .select("estado")
+    .select("id, estado")
     .eq("driver_id", driverId)
     .eq("tenant_id", tenantId)
     .eq("tipo_usuario", "conductor")
-    .maybeSingle();
+    .order("creado_en", { ascending: true })
+    .limit(MAX_CUENTAS_A_MOSTRAR);
 
-  if (perfil) {
-    const estadoPerfil = perfil.estado as string;
-    return estadoPerfil === "activo" ? { tipo: "cuenta_activa" } : { tipo: "cuenta_suspendida" };
+  if (perfiles && perfiles.length > 0) {
+    // Si hay varias, manda la activa: la pregunta que responde esta sección es
+    // «¿puede entrar?», y basta con que una lo permita.
+    const perfil = perfiles.find((p) => p.estado === "activo") ?? perfiles[0];
+    const activo = perfil.estado === "activo";
+
+    // El correo NO está en `usuarios_perfil`: el perfil cuelga de `auth.users`
+    // por su `id`, y el correo vive ahí. De ahí este segundo salto por la API de
+    // admin — no hay forma de traerlo en el select.
+    const { data: cuentaAuth } = await cliente.auth.admin.getUserById(perfil.id as string);
+    const email = cuentaAuth?.user?.email ?? null;
+
+    return {
+      acceso: activo ? { tipo: "cuenta_activa" } : { tipo: "cuenta_suspendida" },
+      correo: email
+        ? { tipo: "cuenta", email, cuentasDeMas: perfiles.length - 1 }
+        : { tipo: "sin_cuenta" },
+    };
   }
 
   const { data: invitacionData } = await cliente
@@ -108,7 +146,7 @@ async function resolverEstadoAccesoApp(
     .maybeSingle();
 
   if (!invitacionData) {
-    return { tipo: "sin_acceso", ultimaInvitacionVencida: null };
+    return { acceso: { tipo: "sin_acceso", ultimaInvitacionVencida: null }, correo: { tipo: "sin_cuenta" } };
   }
 
   const invitacion = invitacionData as {
@@ -123,11 +161,14 @@ async function resolverEstadoAccesoApp(
 
   if (vigente) {
     return {
-      tipo: "invitacion_pendiente",
-      email: invitacion.email,
-      expiraEn: invitacion.expira_en,
-      emailEstado: invitacion.email_estado ?? null,
-      emailMotivo: invitacion.email_motivo ?? null,
+      acceso: {
+        tipo: "invitacion_pendiente",
+        email: invitacion.email,
+        expiraEn: invitacion.expira_en,
+        emailEstado: invitacion.email_estado ?? null,
+        emailMotivo: invitacion.email_motivo ?? null,
+      },
+      correo: { tipo: "invitacion_pendiente", email: invitacion.email },
     };
   }
 
@@ -138,7 +179,12 @@ async function resolverEstadoAccesoApp(
   const vencida =
     (invitacion.estado === "pendiente" || invitacion.estado === "expirada") && expiraEnMs <= Date.now();
 
-  return { tipo: "sin_acceso", ultimaInvitacionVencida: vencida ? invitacion.expira_en : null };
+  return {
+    acceso: { tipo: "sin_acceso", ultimaInvitacionVencida: vencida ? invitacion.expira_en : null },
+    // Una invitación vencida o revocada NO es un correo que mostrar como
+    // contacto: nadie puede entrar con él y ya no representa nada vigente.
+    correo: { tipo: "sin_cuenta" },
+  };
 }
 
 interface Props {
@@ -160,7 +206,7 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
   // Conductor (aislado por tenant).
   const { data: conductor } = await cliente
     .from("conductores")
-    .select("id, nombre_completo, estado")
+    .select("id, nombre_completo, estado, rut, telefono")
     .eq("id", driverId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -277,11 +323,19 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
         </Link>
       </div>
 
+      <DatosContactoConductor
+        conductorId={conductor.id as string}
+        rut={conductor.rut as string}
+        telefono={(conductor.telefono as string | null) ?? null}
+        origenCorreo={estadoAccesoApp.correo}
+        puedeEditar={puedeAsignarYReasignarPedidos(sesion.usuario)}
+      />
+
       <AccesoAppConductor
         driverId={driverId}
         nombreConductor={conductor.nombre_completo as string}
         puedeInvitar={puedeInvitarUsuarios(sesion.usuario)}
-        estadoInicial={estadoAccesoApp}
+        estadoInicial={estadoAccesoApp.acceso}
       />
 
       {/* Resumen por estado de pago */}

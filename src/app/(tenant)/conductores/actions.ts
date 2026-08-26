@@ -15,6 +15,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { normalizarTelefonoE164, type MotivoTelefonoInvalido } from "@/lib/telefono-cl";
 import { createClient } from "@/lib/supabase/server";
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -28,6 +29,7 @@ import {
   actualizarCapacidadConductor,
   actualizarZonasConductor,
   actualizarDatosBancariosConductor,
+  actualizarTelefonoConductor,
   crearConductor,
   type DatosAltaConductor,
 } from "@/modules/operacion/conductores";
@@ -441,5 +443,71 @@ export async function actionReincorporarANomina(
       ok: false,
       mensaje: err instanceof Error ? err.message : "Error al reincorporar.",
     };
+  }
+}
+
+// =============================================================================
+// Teléfono de contacto
+// =============================================================================
+
+/** Textos propios: los de WhatsApp nombran a WhatsApp y acá no viene al caso. */
+const MENSAJE_TELEFONO_CONDUCTOR: Record<MotivoTelefonoInvalido, string> = {
+  vacio: "Escribe un teléfono, o deja el campo en blanco para quitarlo.",
+  sin_digitos: "Eso no tiene ningún número.",
+  demasiado_corto: "Faltan dígitos. Un móvil chileno son 9: 9 1234 5678.",
+  demasiado_largo: "Sobran dígitos. Revisa si quedó repetido el código de país.",
+  formato: "Revisa el número: no parece un teléfono válido.",
+};
+
+/**
+ * Guarda el teléfono del conductor. Un campo vacío **lo borra**, a propósito:
+ * es la única forma de corregir un número que ya no es de esa persona, y dejar
+ * un teléfono ajeno guardado es peor que no tener ninguno.
+ *
+ * RBAC: `asignar_y_reasignar_pedidos` — el gate operativo, no el financiero.
+ * El razonamiento está en `actualizarTelefonoConductor`.
+ */
+export async function actionActualizarTelefonoConductor(
+  conductorId: string,
+  telefonoCrudo: string,
+): Promise<Respuesta<{ telefono: string | null }>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay sesión activa." };
+  }
+
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return { ok: false, mensaje: "No tienes permiso para editar los datos del conductor." };
+  }
+
+  // Vacío = borrar. No es un error de validación: es una intención.
+  const crudo = telefonoCrudo.trim();
+  let telefonoE164: string | null = null;
+
+  if (crudo.length > 0) {
+    const normalizado = normalizarTelefonoE164(crudo);
+    if (!normalizado.valido) {
+      return { ok: false, mensaje: MENSAJE_TELEFONO_CONDUCTOR[normalizado.motivo] };
+    }
+    telefonoE164 = normalizado.telefonoE164;
+  }
+
+  try {
+    const cliente = crearClienteServiceRole();
+    await actualizarTelefonoConductor(
+      cliente,
+      sesion.usuario.tenantId,
+      conductorId,
+      telefonoE164,
+      sesion.usuarioId,
+      sesion.usuario,
+    );
+    revalidatePath("/conductores");
+    revalidatePath(`/conductores/${conductorId}`);
+    return { ok: true, datos: { telefono: telefonoE164 } };
+  } catch (err) {
+    // El mensaje del dominio ya viene saneado (nunca trae el número).
+    const mensaje = err instanceof Error ? err.message : "Error al guardar el teléfono.";
+    return { ok: false, mensaje };
   }
 }
