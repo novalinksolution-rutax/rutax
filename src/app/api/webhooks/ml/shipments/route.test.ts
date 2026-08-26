@@ -32,16 +32,24 @@ import { POST, esParaNuestraApp, extraerShipmentId } from "./route";
 
 const CLIENT_ID = "1234567890123456";
 
-/** Doble de Supabase: `conexiones` son las filas que devuelve el lookup. */
+/**
+ * Doble de Supabase: `conexiones` son las filas que devuelve el lookup.
+ *
+ * ⚠️ El doble **no aplica los filtros** — devuelve lo que se le pasa. Por eso la
+ * prueba de la cuenta desconectada tiene que mirar `cadena.neq`: si solo mirara
+ * el resultado, pasaría en verde con el bug vivo.
+ */
 function crearSupabaseFalso(conexiones: Array<{ id: string }>) {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const cadena: any = {};
   cadena.select = vi.fn(() => cadena);
   cadena.eq = vi.fn(() => cadena);
+  cadena.neq = vi.fn(() => cadena);
   cadena.limit = vi.fn(async () => ({ data: conexiones, error: null }));
   /* eslint-enable @typescript-eslint/no-explicit-any */
   return {
     schema: vi.fn(() => ({ from: vi.fn(() => cadena) })),
+    cadena,
   };
 }
 
@@ -98,6 +106,26 @@ describe("POST /api/webhooks/ml/shipments", () => {
 
     expect(respuesta.status).toBe(200);
     expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it("REQUISITO: una cuenta DESCONECTADA no encola nada, y el filtro va en la consulta", async () => {
+    // Desconectar es borrado BLANDO: la fila sigue existiendo. Y ML sigue
+    // notificando esa cuenta para siempre, porque desconectar en Rutax no le
+    // revoca a Rutax el permiso en ML. Preguntar solo «¿existe la fila?» encolaba
+    // un run que moría sin token: 4 reintentos y una alerta de Sentry por cada
+    // notificación. Detectado en producción el 26-08-2026.
+    const supabase = crearSupabaseFalso([]); // el filtro ya excluyó la fila
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      supabase as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+
+    const respuesta = await POST(peticion(NOTIFICACION) as never);
+
+    expect(respuesta.status).toBe(200);
+    expect(inngest.send).not.toHaveBeenCalled();
+    // Contraprueba: el doble ignora los filtros, así que sin esta línea la prueba
+    // pasaría igual con el bug vivo. Lo que se prueba es que la consulta LO LLEVA.
+    expect(supabase.cadena.neq).toHaveBeenCalledWith("estado_salud", "desvinculada");
   });
 
   it("con una cuenta conocida encola el evento y responde 200", async () => {

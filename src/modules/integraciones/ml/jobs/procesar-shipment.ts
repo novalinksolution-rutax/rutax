@@ -32,6 +32,29 @@
  * ninguna conexión, ahí sí se ignora — ese es el caso real de «seller no
  * conectado» (y el webhook ya lo filtra antes de encolar).
  *
+ * ---------------------------------------------------------------------------
+ * 🔴 CUENTA APAGADA: SE SALE LIMPIO, NO SE LANZA (26-08-2026)
+ * ---------------------------------------------------------------------------
+ * Desconectar una cuenta de venta NO le revoca el permiso a Rutax en ML, así que
+ * ML **sigue notificando** esa cuenta. Sus pedidos ya están en `operacion.pedidos`
+ * (se ingestaron antes de apagarla), así que la notificación llegaba hasta el
+ * paso 2 y ahí moría: `access_token_ref` en null → `throw` → 4 reintentos →
+ * alerta en Sentry. Una por notificación, para un estado que alguien pidió.
+ *
+ * Ahora el paso devuelve un centinela `{ omitido }` y el job termina sin error.
+ * El `resultado` separa `conexion_desconectada_por_persona` de
+ * `conexion_sin_token` porque en el panel de Inngest eso es justo lo que uno
+ * necesita saber: la primera la pidió alguien, la segunda hay que ir a mirarla.
+ *
+ * ⚠️ La barrera de verdad está en el webhook, que ya no encola para una cuenta
+ * desvinculada. Esto es defensa en profundidad: cubre los eventos que quedaron
+ * encolados, el polling de respaldo y cualquier emisor futuro. **Las dos mitades
+ * se mueven juntas.**
+ *
+ * ⚠️ Y deja un cabo que este job no puede cerrar: los pedidos de esa cuenta que
+ * quedaron en vuelo ya no reciben actualizaciones de NINGUNA fuente y su estado
+ * ML queda congelado. Es consecuencia de apagar la cuenta, no de este cambio.
+ *
  * Idempotencia y no-reintento:
  * - Si el pedido ya está en el estado traducido → no-op.
  * - `ErrorConflicto` (optimistic locking perdido ante otra ejecución
@@ -69,6 +92,13 @@ interface FilaConexionToken {
   id: string;
   access_token_ref: string | null;
   estado_salud: string;
+  /**
+   * Solo para distinguir la DECISIÓN de la avería en el log y en el resultado
+   * del run. Se reduce a booleano dentro del paso y **el id nunca sale**: la
+   * salida de un `step.run` la persiste Inngest y queda a la vista en su panel.
+   * Mismo trato que le da `aConexionPublica` en el puerto.
+   */
+  desconectada_por_usuario_id: string | null;
 }
 
 /**
@@ -380,7 +410,7 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
       let consulta = supabase
         .schema("identidad")
         .from("conexiones_seller_ml")
-        .select("id, access_token_ref, estado_salud")
+        .select("id, access_token_ref, estado_salud, desconectada_por_usuario_id")
         .eq("seller_id", pedido.sellerId);
       if (userId) {
         consulta = consulta.eq("ml_user_id", String(userId));
@@ -395,18 +425,18 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
 
       const conexion = conexionData as FilaConexionToken | null;
 
-      if (!conexion?.access_token_ref) {
-        throw new Error(
-          `No hay conexión ML activa para el seller ${pedido.sellerId} ` +
-            `(cuenta ${userId ?? "?"}). No se puede consultar el shipment.`,
-        );
-      }
-
-      if (conexion.estado_salud === "desvinculada") {
-        throw new Error(
-          `Conexión ML del seller ${pedido.sellerId} está desvinculada. ` +
-            "El sondeo de salud o el job de refresco gestionará la reconexión.",
-        );
+      // 🔴 SIN CONEXIÓN QUE INGIERA NO ES UN FALLO DEL JOB — ver el bloque
+      // «CUENTA APAGADA» del encabezado. Antes eran dos `throw`, y contra una
+      // cuenta desconectada a propósito eso significaba 5 intentos y una alerta
+      // en Sentry por cada notificación de ML, para un estado que alguien pidió.
+      // Se sale limpio, igual que hace `polling-estados.ts` ante lo mismo.
+      if (conexion?.estado_salud === "desvinculada" || !conexion?.access_token_ref) {
+        return {
+          // Solo el booleano cruza el borde del paso; el id se queda acá.
+          omitido: conexion?.desconectada_por_usuario_id
+            ? ("conexion_desconectada_por_persona" as const)
+            : ("conexion_sin_token" as const),
+        };
       }
 
       // Descifrar token SOLO para este request
@@ -440,6 +470,24 @@ export const jobProcesarShipmentActualizado = inngest.createFunction(
         throw error; // 429/5xx ya vienen con backoff aplicado; el resto se propaga.
       }
     });
+
+    // La cuenta no está ingiriendo: se termina sin tocar el pedido y sin error.
+    // El `resultado` distingue la decisión de la avería, que es lo que uno
+    // quiere leer en el panel de Inngest al preguntarse por qué no se actualizó.
+    if (estadoMl && "omitido" in estadoMl) {
+      if (estadoMl.omitido === "conexion_desconectada_por_persona") {
+        logger.info(
+          `Shipment ${shipmentId}: la cuenta ML ${userId ?? "?"} está desconectada a ` +
+            "propósito. No se consulta ML ni se toca el pedido.",
+        );
+      } else {
+        logger.warn(
+          `Shipment ${shipmentId}: el seller ${pedido.sellerId} no tiene conexión ML ` +
+            `que ingiera para la cuenta ${userId ?? "?"}. Se omite sin tocar el pedido.`,
+        );
+      }
+      return { resultado: estadoMl.omitido, pedidoId: pedido.id };
+    }
 
     if (!estadoMl) return { resultado: "shipment_no_existe_en_ml" };
 

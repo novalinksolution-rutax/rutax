@@ -391,6 +391,119 @@ describe("jobProcesarShipmentActualizado — envío que no está en BD", () => {
 });
 
 // =============================================================================
+// 1b · La cuenta apagada no dispara nada, y no lanza
+// =============================================================================
+//
+// El pedido YA está en `operacion.pedidos` (se ingestó antes de apagar la
+// cuenta), así que la notificación llega hasta el paso 2. Antes moría ahí con un
+// `throw`: 4 reintentos y una alerta en Sentry por cada notificación de ML — y
+// ML notifica para siempre, porque desconectar en Rutax no revoca el permiso en
+// ML. La barrera principal está en el webhook; esto es la segunda mitad.
+
+describe("jobProcesarShipmentActualizado — cuenta que no ingiere", () => {
+  const CONEXION_APAGADA = {
+    ...CONEXION,
+    estado_salud: "desvinculada",
+    access_token_ref: null,
+    desconectada_por_usuario_id: "usuario-que-apreto-desconectar",
+  };
+
+  it("REQUISITO: una cuenta desconectada a propósito NO consulta a ML, no toca el pedido y no lanza", async () => {
+    const { cliente, registro } = crearSupabaseFalso({
+      pedidos: [PEDIDO_VIVO],
+      conexiones: [CONEXION_APAGADA],
+    });
+    mockCrearClienteServiceRole.mockReturnValue(cliente);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fnActualizar = vi.fn();
+    setFnActualizarEstado(fnActualizar);
+
+    const resultado = await handlerJob({
+      event: { data: { shipmentId: "44012345678", userId: "ml-user-99", timestamp: "x" } },
+      step: stepFalso,
+      logger: crearLogger(),
+    });
+
+    expect(resultado.resultado).toBe("conexion_desconectada_por_persona");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fnActualizar).not.toHaveBeenCalled();
+    expect(registro.pedidoUpdate).toHaveLength(0);
+  });
+
+  it("el id de quien la desconectó no sale del paso ni aparece en los logs", async () => {
+    // La salida de un `step.run` la persiste Inngest y queda a la vista en su
+    // panel. Del autor solo puede cruzar el booleano.
+    const { cliente } = crearSupabaseFalso({
+      pedidos: [PEDIDO_VIVO],
+      conexiones: [CONEXION_APAGADA],
+    });
+    mockCrearClienteServiceRole.mockReturnValue(cliente);
+    vi.stubGlobal("fetch", vi.fn());
+
+    const logger = crearLogger();
+    const resultado = await handlerJob({
+      event: { data: { shipmentId: "44012345678", userId: "ml-user-99", timestamp: "x" } },
+      step: stepFalso,
+      logger,
+    });
+
+    const todo = [
+      JSON.stringify(resultado),
+      ...logger.info.mock.calls.flat(),
+      ...logger.warn.mock.calls.flat(),
+      ...logger.error.mock.calls.flat(),
+    ].join("\n");
+    expect(todo).not.toContain("usuario-que-apreto-desconectar");
+  });
+
+  it("una conexión CAÍDA se distingue de una apagada a propósito", async () => {
+    // Mismo desenlace —no se consulta a ML— pero el `resultado` tiene que decir
+    // cuál de las dos fue: una la pidió alguien y la otra hay que ir a arreglarla.
+    const { cliente } = crearSupabaseFalso({
+      pedidos: [PEDIDO_VIVO],
+      conexiones: [
+        { ...CONEXION, estado_salud: "desvinculada", desconectada_por_usuario_id: null },
+      ],
+    });
+    mockCrearClienteServiceRole.mockReturnValue(cliente);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const resultado = await handlerJob({
+      event: { data: { shipmentId: "44012345678", userId: "ml-user-99", timestamp: "x" } },
+      step: stepFalso,
+      logger: crearLogger(),
+    });
+
+    expect(resultado.resultado).toBe("conexion_sin_token");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("una conexión SANA sigue consultando a ML como siempre (contraprueba)", async () => {
+    // Sin esto, borrar el `if` entero y devolver el centinela siempre dejaría las
+    // tres pruebas de arriba en verde con la ingesta rota para todo el mundo.
+    const { cliente } = crearSupabaseFalso({ pedidos: [PEDIDO_VIVO], conexiones: [CONEXION] });
+    mockCrearClienteServiceRole.mockReturnValue(cliente);
+    const fetchMock = vi.fn(async () =>
+      respuestaFalsa({ json: { id: 1, status: "shipped", substatus: null } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setFnActualizarEstado(vi.fn().mockResolvedValue(undefined));
+
+    const resultado = await handlerJob({
+      event: { data: { shipmentId: "44012345678", userId: "ml-user-99", timestamp: "x" } },
+      step: stepFalso,
+      logger: crearLogger(),
+    });
+
+    expect(resultado.resultado).toBe("actualizado");
+    expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
 // 2 · La cancelación se avisa, no se aplica
 // =============================================================================
 

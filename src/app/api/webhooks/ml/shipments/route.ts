@@ -30,12 +30,39 @@
  *    compartidas de ML y un límite por IP estrangularía a TODOS los sellers.
  *    Al exceder → 429 + Retry-After; ML reintenta, y el polling C5 (cada 15
  *    min) es la red de seguridad final — ninguna entrega se pierde.
- * 2. CHECK de seller conectado: si el `user_id` no corresponde a una conexión
- *    ML registrada, se responde 200 SIN encolar (cero evento Inngest, cero
- *    fetch a ML). Cierra el vector "user_id aleatorio" que el rate limit por
- *    user_id no acota.
+ * 2. CHECK de cuenta ingiriendo: si el `user_id` no corresponde a una conexión
+ *    ML que hoy pueda ingerir, se responde 200 SIN encolar (cero evento Inngest,
+ *    cero fetch a ML). Cierra el vector "user_id aleatorio" que el rate limit
+ *    por user_id no acota.
  * La integridad de los DATOS ya está protegida por el modelo de "consultar el
  * recurso con nuestro token".
+ *
+ * ---------------------------------------------------------------------------
+ * 🔴 CUENTA APAGADA: EL CHECK MIRA LA SALUD, NO SOLO LA EXISTENCIA (26-08-2026)
+ * ---------------------------------------------------------------------------
+ * Desconectar una cuenta de venta en Rutax **no le revoca a Rutax el permiso en
+ * Mercado Libre** — es una decisión explícita del producto, y ML tampoco
+ * documenta endpoint de revocación. Consecuencia directa: **ML sigue
+ * notificando esa cuenta para siempre.**
+ *
+ * Y como desconectar es un borrado BLANDO (`estado_salud = 'desvinculada'` +
+ * los `*_token_ref` en null, la fila intacta para conservar el autor y la
+ * bitácora), el check de acá —que preguntaba solo si EXISTÍA una fila con ese
+ * `ml_user_id`— seguía encolando. El job caía en el paso `consultar-ml` sin
+ * token, agotaba sus 4 reintentos y levantaba una alerta en Sentry **por cada
+ * notificación**. Detectado en producción el 26-08-2026, el mismo día en que se
+ * construyó la desconexión.
+ *
+ * Por eso el filtro es `estado_salud <> 'desvinculada'` y no
+ * `desconectada_por_usuario_id is null`: cubre las dos causas con el mismo
+ * predicado que ya usan la ingesta, el polling y el sondeo. Una conexión CAÍDA
+ * (token vencido) tampoco tiene con qué consultar a ML, y su recuperación es de
+ * `sondeo-salud` + el backfill de la reconexión, no de este webhook.
+ *
+ * ⚠️ Lo que se pierde a propósito: mientras la cuenta esté apagada o caída, las
+ * notificaciones de ML se descartan sin registro. No se pierde información —al
+ * reconectar, el backfill barre 7 días y el repaso del cron `ml/ingestaPedidos`
+ * recorre los no terminales—, pero no busques esos envíos en ningún log.
  *
  * Fuente del esquema correcto: documentación de notificaciones de ML marketplace
  * + verificación en vivo (junio 2026).
@@ -141,8 +168,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // CHECK de seller conectado: un user_id que no corresponde a ninguna conexión
-  // ML registrada no encola nada (200 para que ML no reintente; si fuera un
+  // CHECK de cuenta INGIRIENDO: un user_id que no corresponde a ninguna conexión
+  // ML capaz de ingerir no encola nada (200 para que ML no reintente; si fuera un
   // seller legítimo recién conectado, el backfill/polling lo cubre después).
   const supabase = crearClienteServiceRole();
   // NOTA QA: `ml_user_id` NO tiene UNIQUE en BD (solo `seller_id` lo es), así que
@@ -151,17 +178,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // `.maybeSingle()` PostgREST DEVOLVERÍA ERROR ante 2+ filas y, como aquí solo
   // miramos `data`, la notificación se perdería en silencio pese a existir
   // conexiones válidas. Usamos una lista acotada y miramos si hay AL MENOS UNA:
-  // basta una conexión conocida para encolar (el job consulta el recurso con el
-  // token del seller correcto y descarta lo que no corresponda).
+  // basta una conexión que ingiera para encolar (el job consulta el recurso con
+  // el token del seller correcto y descarta lo que no corresponda).
+  //
+  // 🔴 EL FILTRO DE SALUD NO ES COSMÉTICO — ver el bloque «CUENTA APAGADA» del
+  // encabezado. Desconectar es un borrado BLANDO: la fila sigue existiendo, así
+  // que preguntar solo «¿existe?» dejaba pasar cada notificación de una cuenta
+  // apagada y el job moría sin token, 5 intentos y una alerta por notificación.
   const { data: conexiones } = await supabase
     .schema("identidad")
     .from("conexiones_seller_ml")
     .select("id")
     .eq("ml_user_id", userId)
+    .neq("estado_salud", "desvinculada")
     .limit(1);
 
   if (!conexiones || conexiones.length === 0) {
-    // Sin conexión conocida → ignorar silenciosamente (sin evento, sin fetch).
+    // Sin conexión que ingiera → ignorar silenciosamente (sin evento, sin fetch).
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 
