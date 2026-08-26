@@ -21,6 +21,14 @@ import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { formatearFecha } from "@/lib/formato-cl";
@@ -89,10 +97,10 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
 
       {/* 2. Período vigente + Consumo del plan */}
       <div className="grid gap-4 sm:grid-cols-2">
-        <section aria-labelledby="periodo-vigente-titulo" className="rounded-lg border bg-card p-5 shadow-sm">
+        <section aria-labelledby="periodo-vigente-titulo" className="border border-line bg-bg-raised p-5">
           <h2
             id="periodo-vigente-titulo"
-            className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground"
+            className="mb-3 font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase"
           >
             Período vigente
           </h2>
@@ -120,8 +128,8 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           )}
         </section>
 
-        <section aria-labelledby="consumo-titulo" className="rounded-lg border bg-card p-5 shadow-sm">
-          <h2 id="consumo-titulo" className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        <section aria-labelledby="consumo-titulo" className="border border-line bg-bg-raised p-5">
+          <h2 id="consumo-titulo" className="mb-3 font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
             Consumo del plan
           </h2>
           <div className="space-y-4">
@@ -163,7 +171,7 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
 
       {/* 4. Historial de pagos */}
       <section id="historial-pagos" aria-labelledby="historial-pagos-titulo" className="scroll-mt-24 space-y-3">
-        <h2 id="historial-pagos-titulo" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 id="historial-pagos-titulo" className="font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
           Historial de pagos
         </h2>
 
@@ -174,54 +182,69 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
             descripcion="Aquí verás cada pago confirmado cuando se procese tu primer período."
           />
         ) : (
-          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Historial de pagos de la suscripción">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2">Fecha de pago</th>
-                    <th className="px-4 py-2">Monto</th>
-                    <th className="hidden px-4 py-2 sm:table-cell">Método</th>
-                    <th className="px-4 py-2">Estado</th>
-                    <th className="px-4 py-2 text-right">
-                      <span className="sr-only">Comprobante</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {historialPagos.map((pago) => (
-                    <tr key={pago.periodoId} className="transition-colors hover:bg-muted/30">
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {pago.fecha ? formatearFecha(pago.fecha) : "—"}
-                      </td>
-                      <td className="px-4 py-3 font-medium tabular-nums">{formatearCLP(pago.montoClp)}</td>
-                      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                        {pago.metodo ? traducirMetodoPago(pago.metodo) : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <EstadoPagoBadge estado={pago.estado} />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {pago.estado === "confirmado" ? (
-                          <Button asChild variant="outline" size="sm">
-                            <a
-                              href={`/api/courier/plataforma/comprobantes/${pago.periodoId}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <Download className="size-3.5" aria-hidden="true" />
-                              Comprobante
-                            </a>
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          /* ⚠️ **La primitiva compartida, no una `<table>` a mano.**
+              Esta pantalla se escribió antes del rediseño y traía su propia
+              tabla, con sus propias clases: cabeceras en `text-xs uppercase`
+              donde el resto del producto usa mono de 10 px, y `bg-card` /
+              `border` / `text-muted-foreground` donde el resto usa los tokens
+              `bg-bg-raised` / `border-line` / `text-fg-muted`. Se veía de otro
+              producto, que es exactamente lo que se vino a arreglar.
+
+              ⚠️ NO se usa `TablaFinanciera` pese a que el tablero la nombra:
+              ésa desglosa UN documento —concepto, tarifa, subtotal, total— y
+              esto es una lista de pagos en el tiempo, con una acción por fila y
+              sin nada que sumar. Forzarla perdería la acción y ganaría una fila
+              de total que no significa nada. */
+          <div className="overflow-x-auto border border-line bg-bg-raised">
+            <Table densidad="comfortable" aria-label="Historial de pagos de la suscripción">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Fecha de pago</TableHead>
+                  <TableHead className="px-4 text-right">Monto</TableHead>
+                  <TableHead className="hidden px-4 sm:table-cell">Método</TableHead>
+                  <TableHead className="px-4">Estado</TableHead>
+                  <TableHead className="px-4 text-right">
+                    <span className="sr-only">Comprobante</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historialPagos.map((pago) => (
+                  <TableRow key={pago.periodoId}>
+                    <TableCell className="px-4 text-fg-muted">
+                      {pago.fecha ? formatearFecha(pago.fecha) : "—"}
+                    </TableCell>
+                    {/* `rx-num`: toda columna de cifras va en tabular para poder
+                        compararse entre filas, que es a lo que se viene acá. */}
+                    <TableCell className="rx-num px-4 text-right font-medium">
+                      {formatearCLP(pago.montoClp)}
+                    </TableCell>
+                    <TableCell className="hidden px-4 text-fg-muted sm:table-cell">
+                      {pago.metodo ? traducirMetodoPago(pago.metodo) : "—"}
+                    </TableCell>
+                    <TableCell className="px-4">
+                      <EstadoPagoBadge estado={pago.estado} />
+                    </TableCell>
+                    <TableCell className="px-4 text-right">
+                      {pago.estado === "confirmado" ? (
+                        <Button asChild variant="outline" size="sm">
+                          <a
+                            href={`/api/courier/plataforma/comprobantes/${pago.periodoId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Download className="size-3.5" aria-hidden="true" />
+                            Comprobante
+                          </a>
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-fg-subtle">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
       </section>
