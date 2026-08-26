@@ -73,6 +73,16 @@ const MASCARA_DETALLE = "formattedAddress,location,addressComponents";
  */
 const TIPOS_COMUNA = ["administrative_area_level_3", "locality", "sublocality"];
 
+/**
+ * Los dos componentes con los que se arma «calle y número».
+ *
+ * En Chile el número va DESPUÉS de la calle («Los Militares 5001»), al revés
+ * que en inglés. Google entrega los dos por separado, así que el orden lo
+ * decide este archivo y no hay que adivinarlo del texto.
+ */
+const TIPO_CALLE = "route";
+const TIPO_NUMERO = "street_number";
+
 interface RespuestaSugerencias {
   suggestions?: Array<{
     placePrediction?: {
@@ -161,13 +171,30 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
 
       const datos = respuesta as RespuestaDetalle;
       const componentes = datos.addressComponents ?? [];
+      const buscar = (tipo: string) =>
+        componentes.find((c) => c.types?.includes(tipo))?.longText ?? null;
+
       const comuna =
-        TIPOS_COMUNA.map(
-          (tipo) => componentes.find((c) => c.types?.includes(tipo))?.longText,
-        ).find((v): v is string => Boolean(v)) ?? null;
+        TIPOS_COMUNA.map(buscar).find((v): v is string => Boolean(v)) ?? null;
+
+      /**
+       * 🔴 «Calle y número», compuesto — no recortado.
+       *
+       * Se arma con los componentes estructurados y NUNCA cortando el texto
+       * largo por comas: «Av. Pdte. Riesco 5335, Las Condes» y «Camino El Alba,
+       * Km 2, Lo Barnechea» no tienen la misma forma, y un recorte por comas
+       * fallaría guardando media dirección — en silencio, y solo en las
+       * direcciones raras, que son justo las que el conductor no encuentra.
+       *
+       * Sin calle no se inventa nada: se devuelve `null` y decide quien llama.
+       */
+      const calle = buscar(TIPO_CALLE);
+      const numero = buscar(TIPO_NUMERO);
+      const direccionCorta = calle ? [calle, numero].filter(Boolean).join(" ") : null;
 
       return {
         direccion: datos.formattedAddress ?? "",
+        direccionCorta,
         comuna,
         lat: datos.location?.latitude ?? null,
         long: datos.location?.longitude ?? null,

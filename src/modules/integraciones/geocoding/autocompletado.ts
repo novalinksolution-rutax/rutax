@@ -59,8 +59,32 @@ export interface SugerenciaDireccion {
 }
 
 export interface DireccionResuelta {
-  /** La calle y el número, ya normalizados por el proveedor. */
+  /**
+   * La dirección completa tal como la escribe el proveedor, con comuna, región
+   * y país. **No es lo que se muestra**: se conserva porque es el dato crudo y
+   * porque sirve de respaldo cuando no se puede componer la corta.
+   */
   direccion: string;
+  /**
+   * 🔴 **Solo calle y número** — «Los Militares 5001», sin código postal, sin
+   * comuna, sin región y sin país. Es lo que va al campo (encargo del usuario,
+   * 26-08-2026).
+   *
+   * No es un recorte cosmético del texto largo: se COMPONE de los componentes
+   * estructurados que devuelve el proveedor (`route` + `street_number`).
+   * Recortar por comas sería adivinar — «Av. Pdte. Riesco 5335, Las Condes» y
+   * «Camino El Alba, Km 2, Lo Barnechea» no tienen la misma forma, y el día que
+   * fallara lo haría guardando media dirección.
+   *
+   * `null` cuando el proveedor no entrega calle —un lugar con nombre propio,
+   * «Mall Parque Arauco»—. Ahí decide quien llama: la lista ya mostraba la
+   * línea principal, que es exactamente esto.
+   *
+   * ⚠️ Perder la comuna del texto NO pierde el dato: viaja en `comuna` y se
+   * guarda en su propia columna. El job de geocoding recibe dirección y comuna
+   * por separado, así que sigue resolviendo igual.
+   */
+  direccionCorta: string | null;
   /** La comuna, cuando el proveedor la entrega. Es lo que llena el campo. */
   comuna: string | null;
   lat: number | null;

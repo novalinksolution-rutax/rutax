@@ -45,7 +45,13 @@ export interface SugerenciaVisible {
 }
 
 export interface DireccionElegida {
+  /** La dirección completa del proveedor. Respaldo, no lo que se muestra. */
   direccion: string;
+  /**
+   * Solo calle y número. Es lo que queda en el campo cuando viene; ver el
+   * bloque de `elegir`. `null` si el proveedor no la pudo componer.
+   */
+  direccionCorta?: string | null;
   comuna: string | null;
   lat: number | null;
   long: number | null;
@@ -160,7 +166,24 @@ export function CampoDireccion({
     // La sesión termina al elegir: la siguiente búsqueda abre una nueva.
     sesion.current = null;
     if (detalle) {
-      onElegir(detalle);
+      /**
+       * 🔴 **En el campo queda calle y número, nada más** (encargo del usuario,
+       * 26-08-2026). Google devuelve «Los Militares 5001, 7560955 Las Condes,
+       * Región Metropolitana, Chile» y eso, en un campo de una línea, empuja la
+       * calle fuera de la vista: para confirmar que la dirección es la correcta
+       * hay que leer justo lo que se dejó de ver.
+       *
+       * ⚠️ La comuna NO se pierde al sacarla del texto: viaja aparte y llena su
+       * propio campo unas líneas más abajo, en el formulario. Guardarla en los
+       * dos sitios sería duplicarla, y dos copias de un dato se contradicen el
+       * día que alguien edite una.
+       *
+       * El respaldo es `s.principal` —la línea principal de la sugerencia, que
+       * Google ya entrega como calle y número— para el caso en que el detalle no
+       * traiga calle: un lugar con nombre propio, «Mall Parque Arauco». Ahí lo
+       * que la persona vio en la lista es mejor que la dirección larga.
+       */
+      onElegir({ ...detalle, direccion: detalle.direccionCorta || s.principal });
     } else {
       // El proveedor ya no la reconoce. Se conserva lo que la lista mostraba en
       // vez de dejar el campo como estaba: es lo que la persona quiso elegir.

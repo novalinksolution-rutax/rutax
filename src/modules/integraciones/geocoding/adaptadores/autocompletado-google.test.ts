@@ -132,3 +132,83 @@ describe("AutocompletadoGoogle · resolver", () => {
     ).resolves.toBeNull();
   });
 });
+
+describe("AutocompletadoGoogle · «calle y número», compuesto y no recortado", () => {
+  function detalle(componentes: Array<{ longText: string; types: string[] }>) {
+    return responder(200, {
+      formattedAddress: "LARGA, con comuna, región y país",
+      location: { latitude: -33.4, longitude: -70.6 },
+      addressComponents: componentes,
+    });
+  }
+
+  it("compone route + street_number, en el orden chileno", () => {
+    // En Chile el número va DESPUÉS de la calle. Google los entrega separados,
+    // así que el orden lo decide el adaptador, no el texto.
+    vi.stubGlobal(
+      "fetch",
+      detalle([
+        { longText: "5001", types: ["street_number"] },
+        { longText: "Los Militares", types: ["route"] },
+        { longText: "Las Condes", types: ["administrative_area_level_3"] },
+      ]),
+    );
+    return expect(
+      new AutocompletadoGoogle(LLAVE).resolver({ id: "p1", sesion: "s1" }),
+    ).resolves.toMatchObject({ direccionCorta: "Los Militares 5001", comuna: "Las Condes" });
+  });
+
+  /**
+   * 🔴 La contraprueba de la decisión: NO se recorta el texto largo por comas.
+   *
+   * Una dirección con una coma en la calle —«Camino El Alba, Km 2»— haría que
+   * un recorte guardara «Camino El Alba» y perdiera el kilómetro. Fallaría en
+   * silencio y solo en las direcciones raras, que son justo las que el
+   * conductor no encuentra.
+   */
+  it("una calle CON coma sobrevive entera", () => {
+    vi.stubGlobal(
+      "fetch",
+      detalle([
+        { longText: "Camino El Alba, Km 2", types: ["route"] },
+        { longText: "Lo Barnechea", types: ["administrative_area_level_3"] },
+      ]),
+    );
+    return expect(
+      new AutocompletadoGoogle(LLAVE).resolver({ id: "p1", sesion: "s1" }),
+    ).resolves.toMatchObject({ direccionCorta: "Camino El Alba, Km 2" });
+  });
+
+  it("una calle sin número no inventa uno", () => {
+    vi.stubGlobal("fetch", detalle([{ longText: "Los Militares", types: ["route"] }]));
+    return expect(
+      new AutocompletadoGoogle(LLAVE).resolver({ id: "p1", sesion: "s1" }),
+    ).resolves.toMatchObject({ direccionCorta: "Los Militares" });
+  });
+
+  it("sin calle devuelve null: decide quien llama, no el adaptador", () => {
+    // El caso del lugar con nombre propio («Mall Parque Arauco»). Devolver la
+    // dirección larga acá metería la comuna y el país en el campo, que es
+    // exactamente lo que se quiso evitar.
+    vi.stubGlobal(
+      "fetch",
+      detalle([{ longText: "Las Condes", types: ["administrative_area_level_3"] }]),
+    );
+    return expect(
+      new AutocompletadoGoogle(LLAVE).resolver({ id: "p1", sesion: "s1" }),
+    ).resolves.toMatchObject({ direccionCorta: null, comuna: "Las Condes" });
+  });
+
+  it("la larga se conserva igual: es el dato crudo del proveedor", () => {
+    vi.stubGlobal(
+      "fetch",
+      detalle([
+        { longText: "5001", types: ["street_number"] },
+        { longText: "Los Militares", types: ["route"] },
+      ]),
+    );
+    return expect(
+      new AutocompletadoGoogle(LLAVE).resolver({ id: "p1", sesion: "s1" }),
+    ).resolves.toMatchObject({ direccion: "LARGA, con comuna, región y país" });
+  });
+});

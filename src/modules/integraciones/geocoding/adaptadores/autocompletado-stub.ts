@@ -64,7 +64,12 @@ export class AutocompletadoStub implements PuertoAutocompletadoDireccion {
     const centroide = CENTROIDES_RM[nombreComuna as ComunaRM];
 
     return {
+      // El stub guarda en el id justo la calle que se tecleó, así que la corta
+      // y la larga son la misma. Se devuelven las DOS igual: si devolviera
+      // `direccionCorta: null`, en desarrollo se ejercitaría siempre el camino
+      // de respaldo y nunca el normal — y el bug viviría hasta producción.
       direccion: decodeURIComponent(calle),
+      direccionCorta: decodeURIComponent(calle),
       comuna: nombreComuna,
       lat: centroide?.lat ?? null,
       long: centroide?.long ?? null,
