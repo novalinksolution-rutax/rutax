@@ -121,13 +121,69 @@ bloque avanza igual**.
 
 ---
 
-# Deudas abiertas al 25-08-2026
+# Deudas abiertas al 26-08-2026
 
-**Qué es esto.** Lo que quedó sin cerrar tras la sesión del 25-ago, en orden de gravedad. No es
-backlog de diseño: son cosas rotas, a medio verificar, o decisiones que faltan. El backlog de
-tableros vive en el «Tablero de estado» de más arriba.
+**Qué es esto.** Lo que quedó sin cerrar tras las sesiones del 25 y el 26-ago, en orden de
+gravedad. No es backlog de diseño: son cosas rotas, a medio verificar, o decisiones que faltan. El
+backlog de tableros vive en el «Tablero de estado» de más arriba.
 
 ## 🔴 Roto, con diagnóstico y sin arreglar
+
+- [ ] **No hay forma de DESCONECTAR una cuenta de venta. En ninguna superficie.**
+      *(Reportado por el usuario el 26-08-2026; verificado en código el mismo día.)*
+
+      Un seller puede conectar su cuenta de Mercado Libre o su tienda Shopify, reconectarla y
+      sincronizarla. **No puede desconectarla.** El courier tampoco. No existe ni la acción ni el
+      botón: `grep -rn "desconectar|desvincular|revocarConexion|eliminarConexion" src/` no devuelve
+      una sola implementación — solo comentarios que mencionan el concepto.
+
+      Las tres superficies donde debería estar y no está:
+      - `portal/panel-conexion-ml.tsx` — ofrece *Reconectar*, *Sincronizar ahora* y *Agregar otra
+        cuenta*.
+      - `portal/panel-conexion-shopify.tsx` — ofrece *Conectar tienda* y *Reconectar*.
+      - `(tenant)/sellers` y `sellers/[sellerId]` — solo LEEN el estado de salud y ofrecen
+        *Sincronizar*.
+
+      ### ⚠️ Por qué NO es «poner un botón»
+
+      **1 · El tope de 10 cuentas ML cuenta FILAS, no cuentas activas.** El trigger
+      `identidad.conexiones_seller_ml_imponer_tope` hace
+      `select count(*) from identidad.conexiones_seller_ml where seller_id = …`, **sin filtro de
+      estado** — y esa tabla **no tiene columna `activa`**. Consecuencia directa: si desconectar
+      fuera una marca blanda, un seller que conecte y desconecte diez cuentas **queda bloqueado
+      para siempre** sin poder conectar una undécima, y el mensaje de error diría que ya tiene el
+      máximo. Si es borrado duro, libera el cupo pero pierde el historial — aunque no del todo: los
+      pedidos ya ingestados guardan su `ml_user_id`.
+
+      **2 · Asimetría con Shopify.** `conexiones_seller_shopify` **sí** tiene `activa` y **no** tiene
+      tope. O sea que la misma acción se implementa distinto en cada fuente, y hay que decidirlo a
+      propósito en vez de descubrirlo a mitad de camino.
+
+      **3 · El token es el problema de verdad.** Desconectar tiene que **borrar el secreto**
+      (`access_token_ref` / `refresh_token_ref` → `identidad.secretos_cifrados`), no solo marcar la
+      fila. Dejar vivo un refresh token de una conexión que el seller cree desconectada es la falla
+      de seguridad, no la fila huérfana. El repo ya tiene el precedente escrito, para otra tabla:
+      *«Purga: al revocar, al desvincular y por inactividad. **No basta `activa = false`**»*
+      (`docs/seguridad/punto-de-termino-conductor.md` C5).
+
+      **4 · Desconectar en Rutax ≠ revocado en Mercado Libre.** ML no documenta endpoint de
+      logout/revocación (ver [[multicuenta_ml_bug_agregar_cuenta]]), así que lo más probable es que
+      solo se pueda revocar desde la cuenta del propio seller en ML. **El copy tiene que decirlo**, o
+      el seller va a creer que le quitó el acceso a Rutax cuando solo borró la credencial de acá.
+
+      ### Decisiones que hacen falta antes de construirlo
+
+      - **¿Quién desconecta?** El seller (es su cuenta y su credencial) parece lo natural. Que lo
+        haga el courier significa que puede cortarle la fuente de pedidos a su propio cliente.
+      - **¿Blando o duro?** Lo decide el punto 1: con el tope contando filas, el borrado duro es la
+        única opción que no deja al seller encerrado — salvo que se cambie el trigger para contar
+        solo las conectadas, que es una migración.
+
+      **Recomendación** (sin construir): en el panel del propio seller, como peldaño 3 —pidiendo
+      escribir el nombre de la cuenta, igual que revocar una clave de API—, porque en la práctica no
+      se deshace: volver exige una vuelta completa de OAuth. El courier lo sigue viendo de solo
+      lectura.
+
 
 - [ ] **Fuga de columnas al portal del seller.** Comprobado con sesión real de seller contra la API
       (`seller@falabellatech.cl`, HTTP 200): `GET /rest/v1/pedidos` devuelve **`monto_liquidacion_clp`
