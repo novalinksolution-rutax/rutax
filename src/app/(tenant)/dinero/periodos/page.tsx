@@ -33,7 +33,7 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
 import { listarPeriodosCobro, listarDocumentosDte } from "@/modules/dinero/index";
-import type { PeriodoCobro, DocumentoDte, EstadoPeriodo } from "@/modules/dinero/tipos";
+import type { PeriodoCobro, DocumentoDte } from "@/modules/dinero/tipos";
 import {
   contarBloqueosDeFacturacion,
   etiquetaPeriodo,

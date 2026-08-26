@@ -17,7 +17,7 @@
  * al final como pendientes.
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   registrarPruebaEntrega,
   haversineMetros,
@@ -69,18 +69,6 @@ function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual & { usuar
     sellerId: null,
     driverId,
     rol: "conductor",
-    estado: "activo",
-  };
-}
-
-function actorInterno(): UsuarioActual & { usuarioId: string } {
-  return {
-    usuarioId: USUARIO_AUTH_1,
-    tenantId: TENANT_A,
-    tipoUsuario: "interno",
-    sellerId: null,
-    driverId: null,
-    rol: "dueno",
     estado: "activo",
   };
 }
@@ -852,7 +840,7 @@ describe("Esc-8 | transicionarPedidosSameDayAEnRuta — batch solo same_day, ide
             select: () => ({
               eq: () => ({
                 eq: () => ({
-                  maybeSingle: (pedidoId?: string) => {
+                  maybeSingle: (_pedidoId?: string) => {
                     // Devolvemos el pedido para el primer eq encadenado
                     const asig = opts.asignaciones.find(
                       (a) => estadosPedidos[a.pedido_id] === "asignado",

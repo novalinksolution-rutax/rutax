@@ -30,7 +30,7 @@ import type { UsuarioActual } from "./usuario-actual";
 import { registrarEnBitacora } from "./auditoria";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import { enviarEmailInvitacion, type MotivoNoEnviado } from "./notificaciones-invitacion";
-import { esRolInterno, type Rol, type RolInterno } from "./roles";
+import { esRolInterno, type Rol } from "./roles";
 import { buscarCuentaPorEmail, mensajeCorreoOcupado } from "./cuenta-por-email";
 
 /**

@@ -26,31 +26,6 @@ import {
 // Helpers de test
 // ---------------------------------------------------------------------------
 
-/** Offset en minutos del instante dado respecto a UTC (positivo = atrás de UTC). */
-function offsetUtcEnMinutos(instante: Date): number {
-  // Leer componentes locales de Santiago para calcular el offset real.
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Santiago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-  const partes = Object.fromEntries(fmt.formatToParts(instante).map((p) => [p.type, p.value]));
-  const localMs = Date.UTC(
-    Number(partes.year),
-    Number(partes.month) - 1,
-    Number(partes.day),
-    Number(partes.hour),
-    Number(partes.minute),
-    Number(partes.second),
-  );
-  return (localMs - instante.getTime()) / 60_000;
-}
-
 // ---------------------------------------------------------------------------
 // combinarFechaHoraSantiago
 // ---------------------------------------------------------------------------

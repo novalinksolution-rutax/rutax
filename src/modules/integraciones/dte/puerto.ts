@@ -156,7 +156,7 @@ export async function obtenerPuertoDte(tenantId: string): Promise<PuertoDte> {
         throw new Error('El valor descifrado de credenciales DTE no es texto.');
       }
       credencialesDescifradas = resultado.valor;
-    } catch (errorDescifrado) {
+    } catch (_errorDescifrado) {
       // No propagar el error original (podría incluir fragmentos del valor
       // cifrado). Lanzar un error operativo propio, sin datos sensibles.
       throw new ErrorConfigDteInvalida(

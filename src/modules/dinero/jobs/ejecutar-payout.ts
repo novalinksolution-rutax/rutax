@@ -50,7 +50,11 @@ export const jobEjecutarPayout = inngest.createFunction(
     retries: 3,
   },
   async ({ event, step, logger }) => {
-    const { liquidacionId, tenantId, driverId, montoTotalClp, solicitadoPorUsuarioId } =
+    // ⚠️ `_montoTotalClp` va con guion bajo porque NO debe usarse: el monto del
+    // evento es solo la suma de líneas, sin bono ni penalización, y pagar por él
+    // transferiría una cifra distinta a la que el courier aprobó. El monto real se
+    // recalcula abajo con los valores frescos de la base (ver A-2).
+    const { liquidacionId, tenantId, driverId, montoTotalClp: _montoTotalClp, solicitadoPorUsuarioId } =
       event.data as {
         liquidacionId: string;
         tenantId: string;

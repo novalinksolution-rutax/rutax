@@ -27,7 +27,6 @@ import { CENTROIDES_RM } from '@/lib/geo/centroides-rm';
 import type { ComunaRM } from '@/lib/ui/comunas-rm';
 
 export class StubGeocodingAdapter implements PuertoGeocoding {
-  // eslint-disable-next-line @typescript-eslint/require-await
   async geocodificar(args: ParametrosGeocoding): Promise<ResultadoGeocoding> {
     const comunaCanonica = resolverComunaCanonica(args.comuna);
 

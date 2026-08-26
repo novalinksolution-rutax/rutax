@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { ShieldAlert, TriangleAlert, Info } from "lucide-react";
+import { TriangleAlert, Info } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarTarifas } from "@/modules/identidad/capacidades";
 import {
@@ -9,7 +8,6 @@ import {
   obtenerMontoEntregaDeRespaldoClp,
 } from "@/lib/datos-tenant/config-retiro";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   PantallaConfiguracion,

@@ -808,7 +808,7 @@ function crearMockSupabaseAnulacion(opts: {
       if (tabla === 'periodos_cobro') {
         return {
           select: (_cols: string) => ({
-            eq: (c: string, v: unknown) => ({
+            eq: (_c: string, _v: unknown) => ({
               eq: (_c2: string, v2: unknown) => ({
                 maybeSingle: async () => {
                   // Verificar tenant
@@ -824,7 +824,7 @@ function crearMockSupabaseAnulacion(opts: {
       if (tabla === 'liquidaciones') {
         return {
           select: (_cols: string) => ({
-            eq: (c: string, v: unknown) => ({
+            eq: (_c: string, _v: unknown) => ({
               eq: (_c2: string, v2: unknown) => ({
                 maybeSingle: async () => {
                   if (v2 !== tenantId) return { data: null, error: null };
@@ -913,12 +913,6 @@ describe('generar-lineas: anular-lineas-si-devolucion — compuerta período abi
 
     // Verificar que el UPDATE que emitirá el job incluye los campos correctos
     if (puedeAnularCobro) {
-      const updatePayload = {
-        anulada: true,
-        anulada_en: expect.any(String),
-        motivo_anulacion: 'devolucion',
-        actualizado_en: expect.any(String),
-      };
       // Simular el UPDATE
       updatesCobro.push({
         anulada: true,

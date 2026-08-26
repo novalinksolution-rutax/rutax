@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { obtenerMetricasDelDia, obtenerSlaPorSeller, type SlaPorSeller } from "./metricas";
+import { obtenerMetricasDelDia, obtenerSlaPorSeller } from "./metricas";
 
 const TENANT_A = "10000000-0000-0000-0000-000000000001";
 

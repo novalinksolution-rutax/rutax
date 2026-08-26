@@ -8,7 +8,6 @@ import {
   puedeGestionarConfiguracionDte,
   puedeGestionarTarifas,
   puedeVerConciliacion,
-  puedeGestionarSuscripcion,
 } from "@/modules/identidad/capacidades";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -80,7 +79,6 @@ export default async function PaginaOnboarding({
   const puedeDte = puedeGestionarConfiguracionDte(sesion.usuario);
   const puedeTarifas = puedeGestionarTarifas(sesion.usuario);
   const puedeCobranza = puedeVerConciliacion(sesion.usuario);
-  const puedePlan = puedeGestionarSuscripcion(sesion.usuario);
 
   const estado = await resolverEstadoOnboarding(tenantId).catch(() => null);
 

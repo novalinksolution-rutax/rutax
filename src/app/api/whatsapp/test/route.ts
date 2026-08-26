@@ -46,7 +46,6 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   whatsappSandboxActivo,
   whatsappConfigurado,
-  obtenerPlantilla,
   enviarNotificacionWhatsApp,
 } from "@/modules/integraciones/notificaciones/whatsapp";
 
@@ -64,7 +63,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
   const tenantId = sesion.usuario.tenantId;
 
-  const plantilla = obtenerPlantilla(CLAVE_PRUEBA);
 
   // ---- Estado de la configuración ------------------------------------------
   const sandbox = whatsappSandboxActivo();

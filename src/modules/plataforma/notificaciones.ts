@@ -331,9 +331,6 @@ export function construirEmailSuscripcionCreada(args: {
   nombreTenant: string;
   trialHasta: string | null;
 }): ContenidoEmail {
-  const bloqueTrial = args.trialHasta
-    ? `<p>Tienes hasta el <strong>${formatearFechaCorta(args.trialHasta)}</strong> para usar Rutax sin costo.</p>`
-    : '';
   const bloqueTrialTexto = args.trialHasta ? ` Tienes hasta el ${formatearFechaCorta(args.trialHasta)} para usar sin costo.` : '';
   return {
     asunto: 'Tu cuenta ya está lista',

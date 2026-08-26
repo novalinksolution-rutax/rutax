@@ -15,8 +15,7 @@
 
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
-import { Package, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerConexionesPorSeller } from "@/modules/integraciones/ml";

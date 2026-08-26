@@ -219,7 +219,7 @@ export function diaSemanaDeFecha(fecha: string): number {
 }
 
 function etiquetaDia(fecha: string): string {
-  const [, mes, dia] = fecha.split('-').map(Number);
+  const [, , dia] = fecha.split('-').map(Number);
   return `${DIAS_CORTOS[diaSemanaDeFecha(fecha)]} ${dia}`;
 }
 

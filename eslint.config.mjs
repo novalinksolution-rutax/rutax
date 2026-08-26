@@ -40,9 +40,51 @@ const eslintConfig = defineConfig([
     // el código — suficiente para que la salida del lint deje de servir mientras
     // haya un worktree abierto.
     ".claude/**",
+    // Andamiaje del CLI de Supabase (`supabase/.gitignore` ya lo excluye del
+    // repo). `supabase/.temp/start-secrets/.../main/index.ts` es el runtime de
+    // Edge Functions que el CLI **escribe al arrancar el entorno local**: un
+    // bundle de una sola línea, de decenas de miles de columnas, que nadie
+    // escribió a mano y nadie va a mantener.
+    //
+    // Aportaba **los 182 errores** de `npm run lint` — el 100% de ellos, todos
+    // `prefer-const`/`no-var`/`no-unused-vars` sobre nombres minificados. O sea
+    // que la compuerta llevaba tiempo en rojo permanente por un archivo que ni
+    // siquiera está versionado, y en rojo permanente una compuerta no atrapa
+    // nada: el día que un error de verdad entre, se pierde entre los 182.
+    //
+    // Aparece o desaparece según si `npx supabase start` corrió en esa máquina,
+    // así que el lint daba resultados distintos según quién lo ejecutara.
+    "supabase/.temp/**",
     // Reportes de `npm run coverage`: HTML y JS generados, no fuente.
     "coverage/**",
   ]),
+  {
+    // El guion bajo significa «no lo uso, y es a propósito».
+    //
+    // El código ya escribía así —`b.select = (_cols) => b` en los dobles de
+    // Supabase, `_tabla`, `_opts`, `_v`— porque es la convención universal para
+    // un parámetro que existe solo para ocupar su posición en la firma. Lo que
+    // faltaba era que la regla la respetara: sin esto eran ~150 advertencias
+    // sobre decisiones deliberadas, y una lista de 150 avisos correctos es una
+    // lista que nadie lee. El aviso que importa —un import que quedó huérfano
+    // tras borrar código— se perdía dentro.
+    //
+    // `caughtErrors: "all"` con su propio patrón, a propósito: un `catch (err)`
+    // cuyo `err` no se usa es de las formas más caras de tragarse un fallo, así
+    // que ese sí queremos verlo salvo que se nombre `_err` explícitamente.
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrors: "all",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

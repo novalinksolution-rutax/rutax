@@ -21,18 +21,10 @@ import {
   traducirEstadoCobroPeriodo,
   BADGE_ESTADO_COBRO_PERIODO,
 } from "@/lib/ui/traduccion-estados";
-import { formatearCLP, formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 
 import { BadgeEstado } from "@/components/ui/badge-estado";
-import { DataTable } from "@/components/ui/data-table";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { BotonDescargaFacturaPdf } from "./boton-descarga-factura-pdf";

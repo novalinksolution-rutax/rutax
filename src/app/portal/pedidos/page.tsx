@@ -98,21 +98,6 @@ function limpiarBusqueda(bruto: string | undefined): string {
     .slice(0, 60);
 }
 
-/**
- * Lo mínimo que `conFiltrosComunes` necesita de un constructor de consulta.
- *
- * Se escribe estructuralmente en vez de importar el tipo de PostgREST para que
- * la misma función sirva a la consulta de filas y a las cinco de conteo, que son
- * constructores distintos. El genérico devuelve `T`, así que el `.in()` que
- * viene después conserva el tipo completo.
- */
-interface FiltrablePedidos<T> {
-  eq(columna: string, valor: string): T;
-  gte(columna: string, valor: string): T;
-  lte(columna: string, valor: string): T;
-  or(filtro: string): T;
-}
-
 interface SearchParams {
   estado?: string;
   q?: string;

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { ShieldAlert } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarBodegas } from "@/modules/identidad/capacidades";
 import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";

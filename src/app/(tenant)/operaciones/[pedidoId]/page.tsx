@@ -42,7 +42,6 @@ import {
   traducirEstadoIncidencia,
   BADGE_ESTADO_PEDIDO,
   BADGE_ESTADO_INCIDENCIA,
-  UMBRAL_INCIDENCIA_SIN_GESTION_HORAS,
   esIncidenciaSinGestion,
   horasDesde,
   traducirGeoEstado,
@@ -592,8 +591,6 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
             puedeIncidencias={puedeIncidencias}
             puedeAjustar={puedeAjustar}
             esTerminal={esTerminal}
-            tenantId={tenantId}
-            usuarioId={sesion.usuarioId}
           />
 
           {/* 🔴 Zona y bitácora van PEGADAS a las acciones, no al final de la
@@ -1108,8 +1105,6 @@ function AccionesPedido({
   puedeIncidencias,
   puedeAjustar,
   esTerminal,
-  tenantId,
-  usuarioId,
 }: {
   pedido: Pedido;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1120,8 +1115,6 @@ function AccionesPedido({
   puedeIncidencias: boolean;
   puedeAjustar: boolean;
   esTerminal: boolean;
-  tenantId: string;
-  usuarioId: string;
 }) {
   const tieneAsignacion = !!asignacion;
   const esPendiente = pedido.estado === "pendiente_asignacion";

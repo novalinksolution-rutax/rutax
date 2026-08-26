@@ -21,11 +21,6 @@ const mockInsert = vi.fn((data: Record<string, unknown>) => {
   return Promise.resolve({ error: insertError });
 });
 
-const mockContains = vi.fn(() => ({
-  // from webhook_endpoints
-  then: undefined, // no-op
-}));
-
 // Builder de cadena de llamadas para webhook_endpoints.
 const endpointQueryChain = {
   select: vi.fn(() => endpointQueryChain),

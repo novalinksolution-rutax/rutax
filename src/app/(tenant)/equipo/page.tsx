@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { ShieldAlert } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarUsuariosYRoles, puedeInvitarUsuarios, puedeRevocarInvitaciones } from "@/modules/identidad/capacidades";
-import { Button } from "@/components/ui/button";
 import { obtenerEstadoEquipo } from "./actions";
 import {
   PantallaConfiguracion,

@@ -8,7 +8,7 @@
  * tantas pruebas del segundo caso como del primero.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { listarPedidosEntregadosPorRutax } from "./pedidos-entregados-por-rutax";
 
 const TENANT = "10000000-0000-0000-0000-000000000001";

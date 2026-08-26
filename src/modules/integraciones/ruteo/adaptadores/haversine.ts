@@ -56,7 +56,6 @@ class MatrizHaversine implements MatrizDistancias {
 export class HaversineMatrizAdapter implements PuertoMatriz {
   // Sin I/O: no hay nada que esperar. `async` solo para cumplir el contrato
   // `PuertoMatriz` (asíncrono desde el día uno — ver la cabecera de `puerto.ts`).
-  // eslint-disable-next-line @typescript-eslint/require-await
   async calcularMatriz(puntos: readonly PuntoRuteo[]): Promise<MatrizDistancias> {
     // Defensa en profundidad: `operacion/ruteo/motor.ts` ya valida ids únicos
     // antes de llegar aquí, pero este adaptador construye un Map indexado por

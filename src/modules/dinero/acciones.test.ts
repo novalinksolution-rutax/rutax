@@ -80,35 +80,6 @@ function usuarioInvitado(rol: UsuarioActual['rol']): UsuarioActual {
   };
 }
 
-/** Crea un mock básico del cliente Supabase para los tests. */
-function crearMockSupabaseConPeriodoAbierto() {
-  const mockQuery = {
-    schema: vi.fn().mockReturnThis(),
-    from: vi.fn().mockReturnThis(),
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    update: vi.fn().mockReturnThis(),
-    is: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({
-      data: {
-        id: 'periodo-001',
-        tenant_id: 'tenant-a',
-        seller_id: 'seller-a',
-        fecha_inicio: '2026-06-01',
-        fecha_fin: '2026-06-30',
-        estado: 'abierto',
-      },
-      error: null,
-    }),
-  };
-  // El segundo maybeSingle (cálculo de totales) devuelve array vacío
-  return {
-    ...mockQuery,
-    // Para listar líneas (devuelve data como array)
-    data: [],
-  };
-}
-
 function crearMockSupabaseConLiquidacionEmitida() {
   const mockQuery = {
     schema: vi.fn().mockReturnThis(),
@@ -371,12 +342,6 @@ describe('marcarLiquidacionPagada — RBAC', () => {
   it('rol dueno → pasa el check RBAC', async () => {
     const usuario = usuarioConRol('dueno');
     const mockQuery = crearMockSupabaseConLiquidacionEmitida();
-    // Necesitamos encadenar el update correctamente
-    const updateMock = {
-      ...mockQuery,
-      eq: vi.fn().mockReturnThis(),
-      // No lanzar error
-    };
     mockQuery.update = vi.fn().mockReturnValue({
       eq: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
@@ -1148,7 +1113,6 @@ describe('cerrarPeriodoManualmente — lógica de cálculo de totales', () => {
   });
 
   it('período con 3 líneas de cobro: montoTotal = suma de monto_final_clp', async () => {
-    const usuario = usuarioConRol('dueno');
 
     const lineas = [
       { monto_final_clp: 2500 },

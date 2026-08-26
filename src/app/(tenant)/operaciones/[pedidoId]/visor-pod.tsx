@@ -72,11 +72,7 @@ export function VisorPod({ pod }: Props) {
     <div className="rounded-lg border bg-card p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Prueba de entrega (POD)</h3>
-        <BadgeResultadoPod
-          tipoResultado={pod.tipoResultado}
-          geocercaResultado={pod.geocercaResultado}
-          esValido={pod.esValido}
-        />
+        <BadgeResultadoPod tipoResultado={pod.tipoResultado} esValido={pod.esValido} />
       </div>
 
       {/* Hora de captura */}
@@ -135,13 +131,15 @@ export function VisorPod({ pod }: Props) {
 // Badge según resultado del POD
 // =============================================================================
 
+// `esValido` ya incorpora el resultado de la geocerca, así que el badge no
+// necesita mirarla: recibirla aparte era un resto que invitaba a decidir dos
+// veces lo mismo con criterios que podían separarse. La geocerca en detalle la
+// muestra `SeccionGeocerca`, más abajo.
 function BadgeResultadoPod({
   tipoResultado,
-  geocercaResultado,
   esValido,
 }: {
   tipoResultado: PruebaEntrega["tipoResultado"];
-  geocercaResultado: PruebaEntrega["geocercaResultado"];
   esValido: boolean;
 }) {
   if (tipoResultado === "fallido") {
