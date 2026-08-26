@@ -79,7 +79,23 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
    * ganar sitio cuando lo que se busca es la lista— pero deja de ser el
    * arranque.
    */
-  const [mapaAbiertoMovil, setMapaAbiertoMovil] = useState(true);
+  /**
+   * 🐞 **Arranca CERRADO, y esto ya estuvo mal una vez — la mía.**
+   *
+   * El 26-08-2026 lo pasé a `true` junto con el arreglo que hace que el mapa se
+   * renderice bajo `lg`. Las dos cosas son distintas y las mezclé: que el mapa
+   * SIRVA en el teléfono —antes se retiraba, aplastado a 124 px por un panel de
+   * 340 fijos— no significa que tenga que abrirse solo.
+   *
+   * El tablero B1a lo dice sin ambigüedad: «En teléfono se invierte. Cifras y
+   * lista primero, mapa como bloque desplegable. Fuera de la oficina nadie
+   * consulta un mapa de 390 px: consulta números.» Abierto por omisión, el mapa
+   * se come el pliegue y empuja la lista de comunas —lo que sí se toca— fuera
+   * de la vista. Comprobado a 375 px.
+   *
+   * Solo gobierna `< lg`: en escritorio el mapa se muestra siempre.
+   */
+  const [mapaAbiertoMovil, setMapaAbiertoMovil] = useState(false);
   const tema: TemaMapa = resolvedTheme === 'dark' ? 'oscuro' : 'claro';
 
   const [geometrias, setGeometrias] = useState<MapaGeometrias | null>(null);
