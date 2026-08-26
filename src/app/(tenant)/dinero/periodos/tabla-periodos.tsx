@@ -45,9 +45,9 @@
  * se ve de qué se está facturando cada caso — y donde ya vivía la ceremonia de
  * P4 para una acción irreversible ante el SII.
  *
- * El motor de lote (`acciones-lote`, `preflight-lote`, `CeremoniaLote`) queda en
- * el repo sin llamadores: sus únicos dos usos eran esta tabla y la de
- * liquidaciones.
+ * El motor de lote (`acciones-lote`, `preflight-lote`, `CeremoniaLote`) **se
+ * eliminó** junto con esto: sus únicos dos usos eran esta tabla y la de
+ * liquidaciones. Está en el historial si alguna vez vuelve a hacer falta.
  */
 
 import Link from "next/link";

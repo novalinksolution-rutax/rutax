@@ -20,9 +20,6 @@ import {
   type ResultadoPreflight,
   type TipoAccionDinero,
 } from "@/modules/dinero/preflight";
-import { preflightLotePagos, type ResultadoPreflightLote } from "@/modules/dinero/preflight-lote";
-import { emitirPagosLoteLiquidaciones, type ResultadoLote } from "@/modules/dinero/acciones-lote";
-import { revalidatePath } from "next/cache";
 
 // =============================================================================
 // Marcar liquidación como pagada
@@ -76,54 +73,6 @@ export async function accionEmitirPagoLiquidacion(
   } catch (err) {
     const mensaje =
       err instanceof Error ? err.message : "Error al emitir el pago.";
-    return { ok: false, mensaje };
-  }
-}
-
-// =============================================================================
-// Aprobación por LOTES de pagos (§1.4 P1) — selección múltiple ≠ automático
-// =============================================================================
-
-/** Preflight consolidado de varias liquidaciones antes de aprobar el pago en lote. */
-export async function accionPreflightLotePagos(
-  liquidacionIds: string[],
-): Promise<{ ok: true; resultado: ResultadoPreflightLote } | { ok: false; mensaje: string }> {
-  const sesion = await obtenerSesionActual();
-  if (!sesion?.usuario.tenantId) {
-    return { ok: false, mensaje: "No autenticado." };
-  }
-  try {
-    const resultado = await preflightLotePagos(sesion.usuario.tenantId, liquidacionIds, sesion.usuario);
-    return { ok: true, resultado };
-  } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error al verificar el lote.";
-    return { ok: false, mensaje };
-  }
-}
-
-/**
- * Solicita en lote el pago de las liquidaciones confirmadas. Cada una pasa por
- * `emitirPagoLiquidacion` (con su RBAC, bitácora y evento) — el lote no salta
- * ningún control. Devuelve el resultado por elemento.
- */
-export async function accionEmitirPagosLote(
-  liquidacionIds: string[],
-): Promise<{ ok: true; resultado: ResultadoLote } | { ok: false; mensaje: string }> {
-  const sesion = await obtenerSesionActual();
-  if (!sesion?.usuario.tenantId) {
-    return { ok: false, mensaje: "No autenticado." };
-  }
-  try {
-    const resultado = await emitirPagosLoteLiquidaciones(
-      sesion.usuario.tenantId,
-      liquidacionIds,
-      sesion.usuario,
-      sesion.usuarioId,
-    );
-    revalidatePath("/dinero/liquidaciones");
-    return { ok: true, resultado };
-  } catch (err) {
-    const mensaje = err instanceof Error ? err.message : "Error al emitir el lote de pagos.";
     return { ok: false, mensaje };
   }
 }

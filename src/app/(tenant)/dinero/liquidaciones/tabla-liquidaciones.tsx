@@ -17,8 +17,9 @@
  * `DialogMarcarPagada`. Ahí se ve de qué se está pagando cada caso, que es lo
  * que una decisión de dinero necesita tener delante.
  *
- * El motor de lote (`acciones-lote`, `preflight-lote`, `CeremoniaLote`) queda en
- * el repo sin llamadores: sus únicos dos usos eran esta tabla y la de períodos.
+ * El motor de lote (`acciones-lote`, `preflight-lote`, `CeremoniaLote`) **se
+ * eliminó** junto con esto: sus únicos dos usos eran esta tabla y la de
+ * períodos. Está en el historial si alguna vez vuelve a hacer falta.
  *
  * -----------------------------------------------------------------------------
  * LO QUE ES PROPIO DE ESTA PANTALLA
