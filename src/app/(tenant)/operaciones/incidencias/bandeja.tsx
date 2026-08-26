@@ -75,6 +75,22 @@ export function Bandeja({
   const sinGestionar = incidencias.filter((i) => esIncidenciaSinGestion(i.estado, i.abiertaEn));
   const recientes = incidencias.filter((i) => !esIncidenciaSinGestion(i.estado, i.abiertaEn));
 
+  /**
+   * 🐞 **«Recién abiertas» rotulaba una resuelta hace diez días.**
+   *
+   * Visto en producción (26-08-2026) al abrir el cajón «Resueltas»: el segundo
+   * grupo no es «las recientes», es **todo lo que no está sin gestionar**, y su
+   * título solo es cierto mientras la bandeja mezcla los dos. Filtrada por
+   * resueltas —o por cerradas— `sinGestionar` queda vacío por construcción
+   * (`esIncidenciaSinGestion` mira el estado), TODO cae en el segundo grupo, y
+   * el encabezado afirma algo falso sobre cada fila.
+   *
+   * Los dos títulos se muestran solo cuando el corte separa algo de verdad. Con
+   * un solo grupo no hay contraste que señalar: el encabezado no aporta nada y
+   * puede mentir, así que la lista va sola.
+   */
+  const hayContraste = sinGestionar.length > 0 && recientes.length > 0;
+
   function irAlCajon(clave: string | null) {
     const url = new URL(window.location.href);
     if (clave) url.searchParams.set("estado", clave);
@@ -123,6 +139,9 @@ export function Bandeja({
 
           {sinGestionar.length > 0 ? (
             <>
+              {/* El de urgencia se mantiene aunque sea el único grupo: ahí el
+                  título no describe una posición en la lista, describe que esas
+                  incidencias ya dispararon un aviso. Eso es cierto siempre. */}
               <CabeceraGrupo
                 titulo={`Sin gestionar · más de ${UMBRAL_INCIDENCIA_SIN_GESTION_HORAS} h`}
                 conteo={sinGestionar.length}
@@ -144,7 +163,9 @@ export function Bandeja({
 
           {recientes.length > 0 ? (
             <>
-              <CabeceraGrupo titulo="Recién abiertas" conteo={recientes.length} />
+              {hayContraste ? (
+                <CabeceraGrupo titulo="Recién abiertas" conteo={recientes.length} />
+              ) : null}
               {recientes.map((i) => (
                 <FilaIncidencia
                   key={i.id}
