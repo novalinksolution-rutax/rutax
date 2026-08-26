@@ -40,6 +40,7 @@ export default async function PaginaBodegas() {
     <PantallaConfiguracion
       titulo="Bodegas"
       bajada="Dónde se retiran los pedidos y desde dónde sale tu flota a repartir. Son dos cosas distintas y por eso van separadas."
+      ancho="tabla"
     >
       <PanelBodegas
         sellers={sellers}

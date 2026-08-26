@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 /**
  * La anatomía compartida de las pantallas de configuración.
  * =============================================================================
@@ -19,17 +21,33 @@ import { ShieldAlert } from "lucide-react";
  * verse igual, o cada una se lee como si fuera de otro producto.
  *
  * -----------------------------------------------------------------------------
- * `max-w-3xl` Y NO `max-w-2xl`
+ * 🔴 DOS ANCHOS, PORQUE UN SOLO ANCHO NO PUEDE SERVIR A LAS DOS COSAS
  * -----------------------------------------------------------------------------
- * Las pantallas de este grupo se reparten entre formularios de dos campos y
- * tablas de diez columnas. El ancho lo manda la más ancha: con `2xl` la tabla de
- * tarifas se comprime y con `3xl` el formulario de retiro no se ve mal — el
- * campo tiene su propio ancho, no el del contenedor.
+ * Acá había un `max-w-3xl` para todas, con esta justificación: «el ancho lo
+ * manda la más ancha; con `3xl` el formulario de retiro no se ve mal». **Estaba
+ * mal por el otro lado**, y se veía: `/configuracion/tarifas` está declarada
+ * como ruta ancha en el layout de `(tenant)` —su lienzo mide 1800— y esta clase
+ * se lo volvía a estrangular a 768. La tabla quedaba en una columna angosta
+ * flotando en el centro de un lienzo enorme, con «Vigencia» cortada y una barra
+ * de desplazamiento horizontal PROPIA dentro de la caja. Y el tablero B3b la
+ * dibuja a 1400.
+ *
+ * Así que el ancho es una decisión de cada pantalla, con dos valores y ninguno
+ * más:
+ *
+ * · **`formulario`** (por defecto) — `max-w-3xl` centrado. Retiro, Zonas,
+ *   Exportar datos: campos, no columnas. Una línea de texto de 1800 px no se
+ *   lee.
+ * · **`tabla`** — todo el lienzo. Tarifas, Bodegas, Integraciones y Equipo, que
+ *   son **las cuatro que el layout ya declaraba anchas**. Si agregas una acá,
+ *   agrégala también a `rutasAnchas`: si no, el `<main>` la deja en `max-w-6xl`
+ *   y el efecto es el mismo defecto, más chico.
  */
 export function PantallaConfiguracion({
   titulo,
   bajada,
   accion,
+  ancho = "formulario",
   children,
 }: {
   titulo: string;
@@ -37,10 +55,12 @@ export function PantallaConfiguracion({
   bajada: string;
   /** La acción principal de la pantalla, si tiene una. Va arriba a la derecha. */
   accion?: React.ReactNode;
+  /** Ver el bloque de arriba. `tabla` exige estar también en `rutasAnchas`. */
+  ancho?: "formulario" | "tabla";
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className={cn("space-y-6", ancho === "formulario" ? "mx-auto max-w-3xl" : "w-full")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-heading text-2xl font-semibold">{titulo}</h1>

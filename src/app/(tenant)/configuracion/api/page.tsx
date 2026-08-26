@@ -93,6 +93,7 @@ export default async function PaginaApiIntegraciones() {
     <PantallaConfiguracion
       titulo="Integraciones"
       bajada="Las credenciales y los avisos con que conectas tus propios sistemas a Rutax."
+      ancho="tabla"
     >
 
       <Tabs defaultValue="api-keys">

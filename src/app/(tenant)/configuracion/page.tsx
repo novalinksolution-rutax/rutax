@@ -160,42 +160,33 @@ export default async function ConfiguracionIndex() {
       estado: "El estado de tu activación, paso por paso.",
       visible: true,
     },
+    // ⚠️ **Un solo renglón para Tarifas, Zonas y Retiro (26-08-2026).** Las
+    // tres son ahora secciones del mismo módulo. El estado combina las dos
+    // cifras que pueden pedir atención —sin tarifas, comunas huérfanas— porque
+    // la pregunta de este índice es «qué me falta configurar», y esconder las
+    // comunas sin zona detrás de un renglón que solo habla de tarifas la
+    // dejaría sin respuesta. Una comuna sin zona no falla: cae en la tarifa por
+    // defecto y se cobra igual, en silencio.
     {
       href: "/configuracion/tarifas",
-      titulo: "Tarifas",
+      titulo: "Tarifas, zonas y retiro",
       estado:
         tarifas === null
           ? null
-          : tarifas > 0
-            ? `${tarifas} ${tarifas === 1 ? "tarifa activa" : "tarifas activas"}.`
-            : "Sin tarifas. Una entrega sin tarifa se hace y no se puede cobrar.",
-      alerta: tarifas === 0,
+          : tarifas === 0
+            ? "Sin tarifas. Una entrega sin tarifa se hace y no se puede cobrar."
+            : comunasSinZona !== null && comunasSinZona > 0
+              ? `${tarifas} ${tarifas === 1 ? "tarifa activa" : "tarifas activas"} · ${comunasSinZona} ${comunasSinZona === 1 ? "comuna sin zona" : "comunas sin zona"}.`
+              : `${tarifas} ${tarifas === 1 ? "tarifa activa" : "tarifas activas"}${
+                  zonas ? ` · ${zonas} ${zonas === 1 ? "zona" : "zonas"}` : ""
+                }.`,
+      alerta: tarifas === 0 || (comunasSinZona !== null && comunasSinZona > 0),
       visible: puedeGestionarTarifas(u),
     },
     {
       href: "/configuracion/api",
       titulo: "Integraciones",
       estado: "Claves de API y avisos hacia tus propios sistemas.",
-      visible: puedeGestionarTarifas(u),
-    },
-    {
-      href: "/configuracion/zonas",
-      titulo: "Zonas",
-      estado:
-        zonas === null
-          ? null
-          : zonas === 0
-            ? "Sin zonas. Los pedidos no se agrupan por sector."
-            : comunasSinZona !== null && comunasSinZona > 0
-              ? `${comunasSinZona} ${comunasSinZona === 1 ? "comuna sin zona" : "comunas sin zona"}.`
-              : `${zonas} ${zonas === 1 ? "zona activa" : "zonas activas"}. Todas las comunas cubiertas.`,
-      alerta: zonas === 0 || (comunasSinZona !== null && comunasSinZona > 0),
-      visible: puedeGestionarTarifas(u),
-    },
-    {
-      href: "/configuracion/retiro",
-      titulo: "Retiro",
-      estado: "Cuánto se le paga al conductor por cada visita a bodega.",
       visible: puedeGestionarTarifas(u),
     },
     {
