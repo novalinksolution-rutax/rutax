@@ -46,9 +46,15 @@ export function FiltrosPedidosSeller({
 
   return (
     <>
+      {/* 🔴 SIN `label`, y no es un descuido de accesibilidad — el control ya
+          dice qué filtra en su propio texto («Todas las fechas», «Hoy», «22
+          ago»). La etiqueta flotaba ARRIBA del selector mientras el buscador de
+          al lado no tenía ninguna, así que los dos controles quedaban a
+          distinta altura y el rótulo se leía como si fuera de la fila entera.
+          El nombre accesible no se pierde: `FiltroFecha` cae a un `aria-label`
+          propio cuando no recibe `label`. */}
       <FiltroFecha
         id="f-fecha-p"
-        label="Fecha de compromiso"
         hoy={hoy}
         exacto={filtroFecha}
         desde={filtroFechaDesde}
@@ -61,7 +67,7 @@ export function FiltrosPedidosSeller({
           variant="ghost"
           size="sm"
           onClick={() => router.push(pathname)}
-          className="h-9 self-end text-muted-foreground"
+          className="h-9 text-muted-foreground"
         >
           Limpiar filtros
         </Button>

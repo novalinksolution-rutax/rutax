@@ -64,10 +64,11 @@ import {
 import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
 import { CajonesPedidosSeller, BuscadorPedidosSeller } from "./piezas-listado-seller";
 import { PanelCrearSameDay } from "./panel-crear-same-day";
+import { ProveedorVistaPreviaSeller, BotonVerPedido } from "./vista-previa-seller";
+import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { obtenerEstadoAltaSeller } from "./estado-alta-seller";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
-import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
@@ -300,6 +301,7 @@ export default async function PaginaPedidosSeller({
   }
 
   return (
+    <ProveedorVistaPreviaSeller>
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -339,7 +341,13 @@ export default async function PaginaPedidosSeller({
             total={total}
           />
 
+          {/* Buscador y fecha en la MISMA línea base. El rótulo «Filtros» va
+              al principio, como en el listado del courier, para que la fila se
+              lea como un grupo y no como dos controles sueltos. */}
           <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
+              Filtros
+            </span>
             <BuscadorPedidosSeller inicial={busqueda} />
             <FiltrosPedidosSeller
               hoy={hoyIso}
@@ -407,6 +415,11 @@ export default async function PaginaPedidosSeller({
                       seller entra a esta pantalla, y la respuesta era una fecha
                       ISO cruda impresa tal cual. */}
                   <TableHead className="hidden px-4 md:table-cell">Llega</TableHead>
+                  {/* 🔴 De dónde vino el pedido, que antes NO estaba en ninguna
+                      parte del listado. El seller vende en varios sitios: sin
+                      esto, dos pedidos de tiendas distintas se ven idénticos y
+                      hay que abrir cada uno para saber cuál es cuál. */}
+                  <TableHead className="hidden px-4 lg:table-cell">De dónde vino</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -422,14 +435,17 @@ export default async function PaginaPedidosSeller({
                       />
                     </TableCell>
                     <TableCell className="px-4 align-top whitespace-normal">
-                      {/* El nombre ES el enlace: la quinta columna con «Ver
-                          detalle» repetido en cada fila se retiró. */}
-                      <EnlaceDetalle
-                        href={`/portal/pedidos/${pedido.id}`}
-                        className="font-medium hover:underline"
+                      {/* 🔴 El nombre ABRE EL PANEL, ya no navega. Para mirar
+                          «¿ya llegó?» de tres pedidos había que entrar y volver
+                          tres veces, perdiendo el filtro y el sitio de la lista
+                          cada vez. El detalle sigue a un clic, desde el pie del
+                          panel. */}
+                      <BotonVerPedido
+                        pedidoId={pedido.id}
+                        destinatario={pedido.destinatarioNombre}
                       >
-                        {pedido.destinatarioNombre}
-                      </EnlaceDetalle>
+                        <span className="font-medium">{pedido.destinatarioNombre}</span>
+                      </BotonVerPedido>
                       {/* El código de envío bajo el nombre: es con lo que el
                           seller busca el pedido cuando su cliente le escribe. */}
                       <p className="rx-num text-xs text-fg-muted">
@@ -457,6 +473,23 @@ export default async function PaginaPedidosSeller({
                     <TableCell className="hidden px-4 align-top text-muted-foreground md:table-cell">
                       {textoLlegada(pedido.fechaCompromiso, hoyIso, pedido.estado)}
                     </TableCell>
+                    {/* De dónde vino: la tienda, y el identificador CON EL QUE
+                        EL SELLER LA BUSCA ALLÁ. El de Mercado Libre es el número
+                        de venta, no el de envío: es el que aparece en su panel
+                        de ventas y el que su comprador le menciona. */}
+                    <TableCell className="hidden px-4 align-top lg:table-cell">
+                      <span className="text-foreground">{etiquetaFuentePedido(pedido.fuente)}</span>
+                      {mostrarOrigen && etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] && (
+                        <span className="block text-xs text-muted-foreground">
+                          {etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""]}
+                        </span>
+                      )}
+                      {(pedido.mlOrderId ?? pedido.referenciaExterna ?? pedido.idExterno) && (
+                        <span className="rx-num block font-mono text-xs text-muted-foreground">
+                          {pedido.mlOrderId ?? pedido.referenciaExterna ?? pedido.idExterno}
+                        </span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -465,5 +498,6 @@ export default async function PaginaPedidosSeller({
         )
       )}
     </div>
+    </ProveedorVistaPreviaSeller>
   );
 }

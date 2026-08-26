@@ -63,7 +63,7 @@ export function FiltroFecha({
   exacto,
   desde,
   hasta,
-  label = "Fecha",
+  label,
   paramExacto = "fecha",
   paramDesde = "fecha_desde",
   paramHasta = "fecha_hasta",
@@ -148,10 +148,16 @@ export function FiltroFecha({
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <span id={id ? `${id}-label` : undefined} className="text-xs font-medium text-muted-foreground">
-        {label}
-      </span>
+    /* ⚠️ `flex-col` SOLO cuando hay etiqueta. Con el contenedor de columna
+       siempre puesto, el control quedaba desplazado hacia abajo respecto de los
+       de al lado aunque no hubiera nada encima: media línea de aire fantasma
+       que descuadraba la fila entera. */
+    <div className={label ? "flex flex-col gap-1" : "contents"}>
+      {label ? (
+        <span id={id ? `${id}-label` : undefined} className="text-xs font-medium text-muted-foreground">
+          {label}
+        </span>
+      ) : null}
       <Popover
         open={abierto}
         onOpenChange={(o) => {
@@ -167,7 +173,13 @@ export function FiltroFecha({
           <button
             type="button"
             id={id}
-            aria-labelledby={id ? `${id}-label` : undefined}
+            /* ⚠️ Sin `label` visible, `aria-labelledby` apuntaría a un id que
+               no existe y el botón se quedaría SIN NOMBRE accesible — un
+               control que el lector de pantalla anuncia solo por su valor
+               («Todas las fechas») sin decir de qué es. Con label se usa;
+               sin label, se nombra a mano. */
+            aria-labelledby={id && label ? `${id}-label` : undefined}
+            aria-label={label ? undefined : "Filtrar por fecha"}
             className={cn(
               "flex h-9 w-52 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors",
               "hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
