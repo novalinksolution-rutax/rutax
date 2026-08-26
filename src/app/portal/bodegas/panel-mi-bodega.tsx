@@ -17,6 +17,12 @@
  */
 
 import { useState, useTransition } from "react";
+import { CampoDireccion } from "@/components/ui/campo-direccion";
+import { comunaDelCatalogo } from "@/app/(tenant)/operaciones/nuevo/reglas-alta";
+import {
+  actionResolverDireccion,
+  actionSugerirDirecciones,
+} from "@/app/(tenant)/operaciones/nuevo/actions";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -60,12 +66,28 @@ export function PanelMiBodega({
   const esEdicion = !!bodega;
   const [error, setError] = useState<string | null>(null);
   const [comuna, setComuna] = useState(bodega?.comuna ?? "");
+  /**
+   * Misma búsqueda de direcciones que el alta same-day (encargo del usuario,
+   * 26-08-2026): acá es adonde el conductor va a buscar los bultos, así que una
+   * coordenada mala manda a alguien a la calle equivocada con la van vacía.
+   */
+  const [direccion, setDireccion] = useState(bodega?.direccion ?? "");
+  const [direccionElegida, setDireccionElegida] = useState(false);
+  const [coordenada, setCoordenada] = useState<{ lat: number; long: number } | null>(null);
   const [guardando, iniciar] = useTransition();
 
   function guardar(fd: FormData) {
     // El `Select` de shadcn no es un control nativo: su valor no entra solo en
     // el FormData. Se inyecta acá o el servidor recibe la comuna vacía.
     fd.set("comuna", comuna);
+    // La coordenada de la dirección elegida viaja con el formulario para que la
+    // acción no vuelva a preguntarle al proveedor: más rápido para quien espera,
+    // exacto, y una llamada facturada menos. Si se escribió a mano no van, y la
+    // acción geocodifica como siempre.
+    if (coordenada) {
+      fd.set("lat", String(coordenada.lat));
+      fd.set("long", String(coordenada.long));
+    }
     setError(null);
     iniciar(async () => {
       const r = esEdicion
@@ -123,12 +145,32 @@ export function PanelMiBodega({
 
         <div className="space-y-1.5">
           <Label htmlFor="direccion">Dirección</Label>
-          <Input
+          <CampoDireccion
             id="direccion"
             name="direccion"
-            defaultValue={bodega?.direccion ?? ""}
+            valor={direccion}
+            elegida={direccionElegida}
             placeholder="Calle, número, y el detalle que haga falta"
-            disabled={guardando}
+            onCambio={(v) => {
+              setDireccion(v);
+              // Reescribir a mano suelta la coordenada: conservarla dejaría la
+              // bodega apuntando al sitio anterior con una dirección nueva.
+              if (direccionElegida) {
+                setDireccionElegida(false);
+                setCoordenada(null);
+              }
+            }}
+            onElegir={(d) => {
+              setDireccion(d.direccion);
+              setDireccionElegida(true);
+              const delCatalogo = comunaDelCatalogo(d.comuna);
+              if (delCatalogo) setComuna(delCatalogo);
+              setCoordenada(
+                d.lat != null && d.long != null ? { lat: d.lat, long: d.long } : null,
+              );
+            }}
+            buscar={actionSugerirDirecciones}
+            resolver={actionResolverDireccion}
           />
         </div>
 

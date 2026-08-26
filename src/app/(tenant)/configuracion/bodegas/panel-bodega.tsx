@@ -43,6 +43,12 @@
  */
 
 import { useState, useTransition, type FormEvent } from "react";
+import { CampoDireccion } from "@/components/ui/campo-direccion";
+import { comunaDelCatalogo } from "@/app/(tenant)/operaciones/nuevo/reglas-alta";
+import {
+  actionResolverDireccion,
+  actionSugerirDirecciones,
+} from "@/app/(tenant)/operaciones/nuevo/actions";
 import { PanelAccion } from "@/components/ui/panel-accion";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -122,6 +128,21 @@ export function PanelBodega({
   const setOpen = onOpenChange ?? setOpenInterno;
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  /**
+   * La dirección pasa a buscarse, no a teclearse (encargo del usuario,
+   * 26-08-2026). Es el mismo `CampoDireccion` del alta same-day, y acá importa
+   * MÁS: de esta coordenada sale toda la ruta del día, así que una bodega mal
+   * ubicada desvía a la flota entera, no a un pedido.
+   *
+   * Al elegir de la lista llegan la coordenada y la comuna exactas, así que la
+   * Server Action **se salta el geocoding**: es más rápido para quien espera,
+   * más preciso, y una llamada facturada menos.
+   */
+  const [direccion, setDireccion] = useState(bodegaExistente?.direccion ?? "");
+  const [direccionElegida, setDireccionElegida] = useState(false);
+  const [comuna, setComuna] = useState(bodegaExistente?.comuna ?? "");
+  const [coordenada, setCoordenada] = useState<{ lat: number; long: number } | null>(null);
+
   const [esPrincipal, setEsPrincipal] = useState(
     bodegaExistente?.esPrincipal ?? false,
   );
@@ -219,21 +240,52 @@ export function PanelBodega({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="direccion">Dirección</Label>
-              <Input
+              <CampoDireccion
                 id="direccion"
                 name="direccion"
                 required
                 placeholder="Calle y número"
-                defaultValue={bodegaExistente?.direccion ?? ""}
-                disabled={isPending}
+                valor={direccion}
+                elegida={direccionElegida}
+                onCambio={(v) => {
+                  setDireccion(v);
+                  // Al reescribir a mano se sueltan la coordenada y la marca:
+                  // conservarlas dejaría la bodega apuntando al sitio anterior
+                  // con una dirección nueva, que es la peor combinación.
+                  if (direccionElegida) {
+                    setDireccionElegida(false);
+                    setCoordenada(null);
+                  }
+                }}
+                onElegir={(d) => {
+                  setDireccion(d.direccion);
+                  setDireccionElegida(true);
+                  const delCatalogo = comunaDelCatalogo(d.comuna);
+                  if (delCatalogo) setComuna(delCatalogo);
+                  setCoordenada(
+                    d.lat != null && d.long != null ? { lat: d.lat, long: d.long } : null,
+                  );
+                }}
+                buscar={actionSugerirDirecciones}
+                resolver={actionResolverDireccion}
               />
+              {/* La coordenada viaja con el formulario para que la acción no
+                  tenga que volver a preguntarle al proveedor. Si la dirección se
+                  escribió a mano, no van y la acción geocodifica como siempre. */}
+              {coordenada ? (
+                <>
+                  <input type="hidden" name="lat" value={coordenada.lat} />
+                  <input type="hidden" name="long" value={coordenada.long} />
+                </>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="comuna">Comuna</Label>
               <Select
                 name="comuna"
                 required
-                defaultValue={bodegaExistente?.comuna}
+                value={comuna}
+                onValueChange={setComuna}
                 disabled={isPending}
               >
                 <SelectTrigger id="comuna" className="h-9 w-full">

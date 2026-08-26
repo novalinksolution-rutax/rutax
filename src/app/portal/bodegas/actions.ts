@@ -123,8 +123,46 @@ function leerCampos(fd: FormData): { ok: true; v: CamposBodega } | { ok: false; 
  * buscar los bultos. Que no lance porque una bodega sin coordenada sigue siendo
  * una bodega útil: se guarda igual y el courier la reintenta.
  */
-async function ubicar(direccion: string, comuna: string) {
+/**
+ * Lee la coordenada que manda el formulario, si vino y si es creíble.
+ *
+ * ⚠️ **Se valida el rango.** Llega de un campo del cliente: sin esto, un
+ * `lat=999` entraría a la base y pondría la bodega en ninguna parte — y a esa
+ * bodega es adonde el conductor va a buscar los bultos. Ante cualquier duda,
+ * `null`, que no rompe nada: significa «geocodifica tú».
+ */
+function coordenadaDelFormulario(fd: FormData): { lat: number; long: number } | null {
+  const lat = Number(fd.get("lat"));
+  const long = Number(fd.get("long"));
+  if (!Number.isFinite(lat) || !Number.isFinite(long)) return null;
+  if (lat < -90 || lat > 90 || long < -180 || long > 180) return null;
+  return { lat, long };
+}
+
+async function ubicar(
+  direccion: string,
+  comuna: string,
+  /**
+   * La coordenada que ya trajo la dirección elegida del buscador. Cuando viene
+   * NO se llama al proveedor: preguntarle dos veces por la misma dirección es
+   * una llamada facturada de más, y la segunda respuesta podría ser peor.
+   */
+  coordenadaElegida: { lat: number; long: number } | null = null,
+) {
   const ahora = new Date().toISOString();
+
+  if (coordenadaElegida) {
+    return {
+      lat: coordenadaElegida.lat,
+      long: coordenadaElegida.long,
+      geo_estado: "resuelto",
+      // Confianza máxima: no es la interpretación de un texto, es el punto que
+      // el proveedor tiene para la dirección que la persona vio y confirmó.
+      geo_confianza: 1,
+      geocodificado_en: ahora,
+    };
+  }
+
   try {
     const r = await resolverCoordenadaConCache({ direccion, comuna });
     if (r?.lat != null && r?.long != null) {
@@ -160,7 +198,7 @@ export async function accionCrearMiBodega(fd: FormData): Promise<ResultadoBodega
       .eq("seller_id", g.sellerId);
     const esPrimera = (count ?? 0) === 0;
 
-    const geo = await ubicar(campos.v.direccion, campos.v.comuna);
+    const geo = await ubicar(campos.v.direccion, campos.v.comuna, coordenadaDelFormulario(fd));
 
     // Bitácora ANTES del efecto (invariante del proyecto).
     await registrarEnBitacora(cliente, {
@@ -226,7 +264,9 @@ export async function accionEditarMiBodega(id: string, fd: FormData): Promise<Re
 
     const cambioLaDireccion =
       actual.direccion !== campos.v.direccion || actual.comuna !== campos.v.comuna;
-    const geo = cambioLaDireccion ? await ubicar(campos.v.direccion, campos.v.comuna) : {};
+    const geo = cambioLaDireccion
+      ? await ubicar(campos.v.direccion, campos.v.comuna, coordenadaDelFormulario(fd))
+      : {};
 
     await registrarEnBitacora(cliente, {
       tenantId: g.tenantId,

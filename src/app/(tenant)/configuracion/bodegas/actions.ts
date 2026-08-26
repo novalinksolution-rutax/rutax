@@ -162,6 +162,32 @@ interface CamposBodegaForm {
   esPrincipalSolicitado: boolean;
   /** Solo aplica a `seller_bodegas` — `null` para courier (ver `BodegaFila`). */
   montoVisitaClp: number | null;
+  /**
+   * La coordenada que YA trajo la dirección elegida del buscador.
+   *
+   * `null` cuando la dirección se tecleó a mano; ahí se geocodifica como
+   * siempre. Cuando viene, se usa tal cual: es la del propio proveedor sobre la
+   * dirección que la persona vio y confirmó, así que volver a geocodificar
+   * sería preguntar dos veces por lo mismo —una llamada facturada de más— y
+   * encima con la posibilidad de que la segunda respuesta sea peor.
+   */
+  coordenadaElegida: { lat: number; long: number } | null;
+}
+
+/**
+ * Lee la coordenada que manda el formulario, si vino y si es creíble.
+ *
+ * ⚠️ **Se valida el rango.** Llega de un campo oculto, o sea del cliente: sin
+ * esto, un `lat=999` entraría a la base y pondría el origen de una ruta en
+ * ninguna parte. Ante cualquier duda se devuelve `null`, que no rompe nada —
+ * significa «geocodifica tú».
+ */
+function leerCoordenadaDelFormulario(formData: FormData): { lat: number; long: number } | null {
+  const lat = Number(formData.get("lat"));
+  const long = Number(formData.get("long"));
+  if (!Number.isFinite(lat) || !Number.isFinite(long)) return null;
+  if (lat < -90 || lat > 90 || long < -180 || long > 180) return null;
+  return { lat, long };
 }
 
 /**
@@ -223,6 +249,7 @@ function leerCamposBodega(
       contactoTelefono,
       esPrincipalSolicitado,
       montoVisitaClp,
+      coordenadaElegida: leerCoordenadaDelFormulario(formData),
     },
   };
 }
@@ -237,12 +264,25 @@ async function resolverGeoBodega(
   direccion: string,
   comuna: string,
   /**
-   * Solo `true` cuando un humano aprieta "Reintentar ubicación". El caché
-   * guarda también los `no_resuelto`, así que sin esto el reintento leía el
-   * fallo cacheado y no volvía a preguntarle al proveedor jamás: el botón no
-   * hacía nada y, al no llamar a nadie, tampoco dejaba error que mirar.
+   * ⚠️ **Opciones con nombre, no posicionales.** El tercer parámetro ya lo
+   * usaba «Reintentar ubicación» con un `true` suelto; agregar otro delante lo
+   * habría corrido de sitio en silencio, y el reintento habría empezado a
+   * pasar `true` como coordenada. Con nombres no hay orden que romper.
    */
-  forzarConsulta = false,
+  opciones: {
+    /**
+     * La coordenada de la dirección elegida en el buscador. Cuando viene, esta
+     * función NO llama al proveedor: ya está resuelta, y por el camino bueno.
+     */
+    coordenadaElegida?: { lat: number; long: number } | null;
+    /**
+     * Solo `true` cuando un humano aprieta "Reintentar ubicación". El caché
+     * guarda también los `no_resuelto`, así que sin esto el reintento leía el
+     * fallo cacheado y no volvía a preguntarle al proveedor jamás: el botón no
+     * hacía nada y, al no llamar a nadie, tampoco dejaba error que mirar.
+     */
+    forzarConsulta?: boolean;
+  } = {},
 ): Promise<{
   lat: number | null;
   long: number | null;
@@ -251,12 +291,27 @@ async function resolverGeoBodega(
   geocodificadoEn: string;
 }> {
   const ahora = new Date().toISOString();
+
+  // Atajo: la dirección se eligió del buscador y su coordenada ya vino con
+  // ella. Se marca `resuelto` con confianza máxima porque no es una
+  // interpretación de un texto: es el punto que el proveedor tiene para la
+  // dirección que la persona vio en la lista y confirmó.
+  if (opciones.coordenadaElegida) {
+    return {
+      lat: opciones.coordenadaElegida.lat,
+      long: opciones.coordenadaElegida.long,
+      geoEstado: "resuelto" as EstadoGeocoding,
+      geoConfianza: 1,
+      geocodificadoEn: ahora,
+    };
+  }
+
   try {
     const resultado = await resolverCoordenadaConCache({
       direccion,
       comuna,
       timeoutMs: TIMEOUT_GEOCODING_SINCRONO_MS,
-      forzarConsulta,
+      forzarConsulta: opciones.forzarConsulta ?? false,
     });
     return {
       lat: resultado.lat,
@@ -352,8 +407,11 @@ async function crearBodegaInterno(
     if (unsetError) throw new Error(unsetError.message);
   }
 
-  // 3 · Geocoding síncrono, nunca bloqueante.
-  const geo = await resolverGeoBodega(args.direccion, args.comuna);
+  // 3 · Geocoding síncrono, nunca bloqueante — salvo que la dirección venga
+  //     ya ubicada desde el buscador, y entonces ni se llama al proveedor.
+  const geo = await resolverGeoBodega(args.direccion, args.comuna, {
+    coordenadaElegida: args.coordenadaElegida,
+  });
 
   const payload: Record<string, unknown> = {
     tenant_id: args.tenantId,
@@ -430,7 +488,9 @@ async function editarBodegaInterno(
     if (unsetError) throw new Error(unsetError.message);
   }
 
-  const geo = await resolverGeoBodega(args.direccion, args.comuna);
+  const geo = await resolverGeoBodega(args.direccion, args.comuna, {
+    coordenadaElegida: args.coordenadaElegida,
+  });
 
   const payload: Record<string, unknown> = {
     nombre: args.nombre,
@@ -580,7 +640,9 @@ async function reintentarUbicacionInterno(
 
   // `true`: esto es un reintento explícito del operador, tiene que llegar al
   // proveedor aunque el caché ya tenga un `no_resuelto` para esa dirección.
-  const geo = await resolverGeoBodega(actual.direccion as string, actual.comuna as string, true);
+  const geo = await resolverGeoBodega(actual.direccion as string, actual.comuna as string, {
+    forzarConsulta: true,
+  });
 
   const { error } = await cliente
     .schema("identidad")

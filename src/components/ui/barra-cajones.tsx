@@ -131,8 +131,27 @@ export function BarraCajones({
   const { ref: refTira, fuera } = useCajonesFuera()
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      <div className="flex items-center gap-2">
+    /**
+     * 🔴 **`min-w-0`, y no es defensivo: sin él la barra desborda la pantalla.**
+     *
+     * Reportado por el usuario en Tarifas (26-08-2026): los filtros se salían en
+     * responsive. Medido a 375 px — este envoltorio media 523 y empujaba el
+     * documento entero a 539, así que la página se iba de lado y los cajones
+     * quedaban cortados.
+     *
+     * La causa no está acá abajo sino ARRIBA: en Tarifas la barra es un **ítem
+     * flex**, porque comparte fila con el botón «Nueva tarifa». Un ítem flex
+     * nace con `min-width: auto`, o sea que se niega a encoger por debajo de su
+     * contenido — y como con el dedo la tira va en `nowrap`, ese contenido son
+     * los cuatro cajones en línea. El `overflow-x-auto` de la tira no llegaba a
+     * actuar nunca: no había nada que desplazar porque el envoltorio crecía.
+     *
+     * En los otros 14 listados la barra es hija directa de un bloque, así que el
+     * problema no aparecía. Se arregla acá y no en Tarifas para que la próxima
+     * pantalla que la ponga al lado de un botón herede el arreglo.
+     */
+    <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
+      <div className="flex min-w-0 items-center gap-2">
       <div
         ref={refTira}
         role="group"
