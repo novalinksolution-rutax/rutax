@@ -171,14 +171,19 @@ export default async function PaginaPreparacionDelDia() {
           icon={Boxes}
           tono="arranque"
           titulo="Todavía no hay retiros hoy"
-          descripcion="Cuando un conductor abra una visita en la app, la vas a ver aquí, en vivo."
+          descripcion="Cuando un conductor abra una visita en la app, la vas a ver aquí, en vivo. Si un retiro ya ocurrió y no se pudo escanear, regístralo desde la oficina."
           // Un vacío sin salida obliga a saber de memoria dónde se mira lo que
-          // viene. Éste lleva a los pedidos de hoy, que es lo que se va a
-          // retirar.
+          // viene. El primero lleva a los pedidos de hoy, que es lo que se va a
+          // retirar; el segundo es la vía de excepción cuando la app no pudo.
           accion={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/operaciones">Ver los pedidos de hoy</Link>
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/operaciones">Ver los pedidos de hoy</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/preparacion/registrar-retiro">Registrar un retiro</Link>
+              </Button>
+            </div>
           }
         />
       ) : (

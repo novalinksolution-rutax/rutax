@@ -341,11 +341,19 @@ export function BandejaAsignar({
           icon={Boxes}
           tono="arranque"
           titulo="Todavía no hay pedidos para asignar"
-          descripcion="Los conductores están retirando en bodega. En cuanto cierren una visita, sus pedidos van a aparecer acá."
+          descripcion="Los conductores están retirando en bodega. En cuanto cierren una visita, sus pedidos van a aparecer acá. Si el retiro ya ocurrió pero no se pudo escanear, regístralo desde la oficina."
           accion={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/preparacion">Volver a Preparación del día</Link>
-            </Button>
+            // La segunda salida NO es decorativa: sin ella, un conductor sin
+            // batería bloquea el día entero y esta pantalla es donde el
+            // coordinador se entera, sin ninguna pista de qué hacer.
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button asChild size="sm">
+                <Link href="/preparacion/registrar-retiro">Registrar un retiro</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/preparacion">Volver a Preparación del día</Link>
+              </Button>
+            </div>
           }
         />
       ) : (
