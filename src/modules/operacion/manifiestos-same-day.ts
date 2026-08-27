@@ -48,9 +48,21 @@ import { ErrorConflicto } from "@/modules/identidad/errores";
  * @param actor       UsuarioActual del conductor (para RBAC).
  * @param actorUsuarioId UUID de `auth.users` — el "quién" de RNF-04 en bitácora.
  * @param ejecutor    Quién dispara la transición. `'conductor'` cuando arranca su
- *                    ruta; `'interno'` cuando el coordinador asigna una parada a
- *                    un manifiesto que YA va en la calle. La máquina de estados
- *                    admite `asignado → en_ruta` por los dos.
+ *                    ruta; `'sistema'` cuando la asignación pone al día una
+ *                    parada con un manifiesto que YA va en la calle.
+ *
+ * ⚠️ **`'interno'` NO sirve acá y cuesta media hora descubrirlo.** La máquina de
+ * estados admite `asignado → en_ruta` solo por `['sistema', 'conductor']` —
+ * «un interno no puede hacer transiciones de ML», dice su propia prueba— y
+ * además `actualizarEstadoPedido` le exige un `motivo` a todo lo `interno`
+ * (RF-029). Con `'interno'` fallan las dos cosas, y si el llamador envuelve
+ * esto en un `try/catch` (que debe hacerlo: la asignación no puede perderse por
+ * esto), el pedido se queda en `asignado` sin que nada lo diga. Pasó el
+ * 2026-08-27.
+ *
+ * La puesta al día es una CONSECUENCIA de la asignación, no una corrección
+ * manual: `'sistema'` es además lo que describe el hecho. El «quién» no se
+ * pierde — viaja igual en `actorUsuarioId`.
  */
 export async function transicionarPedidosSameDayAEnRuta(
   cliente: SupabaseClient,
@@ -59,7 +71,7 @@ export async function transicionarPedidosSameDayAEnRuta(
   driverId: string,
   actor: UsuarioActual,
   actorUsuarioId: string,
-  ejecutor: "conductor" | "interno" = "conductor",
+  ejecutor: "conductor" | "sistema" = "conductor",
 ): Promise<void> {
   // Leer los pedidos same-day del manifiesto que aún están en 'asignado'.
   // La JOIN va por asignaciones_pedido: la tabla que relaciona pedido↔manifiesto.
@@ -157,7 +169,7 @@ export async function alinearPedidosNuevosConManifiestoEnRuta(
     driverId: string;
     actor: UsuarioActual;
     actorUsuarioId: string;
-    ejecutor?: "conductor" | "interno";
+    ejecutor?: "conductor" | "sistema";
   },
 ): Promise<boolean> {
   const { data: manifiesto, error } = await cliente
@@ -179,7 +191,7 @@ export async function alinearPedidosNuevosConManifiestoEnRuta(
     entrada.driverId,
     entrada.actor,
     entrada.actorUsuarioId,
-    entrada.ejecutor ?? "interno",
+    entrada.ejecutor ?? "sistema",
   );
   return true;
 }

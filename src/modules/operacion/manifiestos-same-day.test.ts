@@ -6,6 +6,7 @@ vi.mock("./pedidos", () => ({ actualizarEstadoPedido: vi.fn() }));
 
 import { actualizarEstadoPedido } from "./pedidos";
 import { alinearPedidosNuevosConManifiestoEnRuta } from "./manifiestos-same-day";
+import { validarTransicion } from "./maquina-estados";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const MANIFIESTO = "22222222-2222-4222-8222-222222222222";
@@ -87,8 +88,10 @@ describe("alinearPedidosNuevosConManifiestoEnRuta", () => {
       pedidoId: "p1",
       estadoNuevo: "en_ruta",
       estadoEsperado: "asignado",
-      // El coordinador asigna desde la web: no es el conductor quien dispara.
-      ejecutor: "interno",
+      // No es el conductor quien dispara, y tampoco es una corrección manual:
+      // es una consecuencia de la asignación. Ver la prueba de más abajo, que
+      // ata este valor a la máquina de estados real.
+      ejecutor: "sistema",
       actuadoPorUsuarioId: USUARIO,
     });
   });
@@ -129,5 +132,25 @@ describe("alinearPedidosNuevosConManifiestoEnRuta", () => {
     const { cliente } = clienteFalso({ estadoManifiesto: null });
     await expect(llamar(cliente)).resolves.toBe(false);
     expect(actualizarEstadoPedido).not.toHaveBeenCalled();
+  });
+
+  it("🔴 el ejecutor que usa ES VÁLIDO en la máquina de estados real", async () => {
+    // La red que faltaba. Esta prueba mockea `actualizarEstadoPedido`, así que
+    // por sí sola aprobaría cualquier ejecutor —y aprobó `interno`, que la
+    // máquina rechaza y que además exige un `motivo` que nadie manda. El
+    // llamador envuelve todo en try/catch (debe: la asignación no puede
+    // perderse), así que el pedido se quedaba en `asignado` en silencio.
+    //
+    // Se comprueba contra la máquina DE VERDAD, no contra el doble.
+    const { cliente } = clienteFalso({
+      estadoManifiesto: "en_ruta",
+      asignaciones: [{ pedido_id: "p1" }],
+    });
+    await llamar(cliente);
+
+    const usado = vi.mocked(actualizarEstadoPedido).mock.calls[0][1] as {
+      ejecutor: Parameters<typeof validarTransicion>[2];
+    };
+    expect(validarTransicion("asignado", "en_ruta", usado.ejecutor)).toBe(true);
   });
 });
