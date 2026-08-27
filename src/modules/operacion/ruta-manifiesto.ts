@@ -243,9 +243,23 @@ export async function calcularYAplicarRutaManifiesto(
     manifiestoId: string;
     /** UUID del usuario auth que dispara el cálculo. RNF-04. */
     actorUsuarioId: string;
+    /**
+     * Fijaciones EXTRA para este cálculo, además de las que ya viven en la base.
+     *
+     * Dos usos, y por eso es una lista y no una sola:
+     *   · la parada que el conductor acaba de mover, con la posición donde la
+     *     soltó;
+     *   · las paradas YA CERRADAS, ancladas en su orden actual — «ya
+     *     ocurrieron» y el reordenamiento solo alcanza a lo que falta.
+     *
+     * Si una parada ya estaba fijada, la de acá gana: acaba de moverse otra vez.
+     * `undefined` = recálculo normal, que es lo que hace el botón del
+     * coordinador.
+     */
+    fijarAdicionales?: readonly { pedidoId: string; orden: number }[];
   },
 ): Promise<ResultadoRuteoManifiesto> {
-  const { tenantId, manifiestoId, actorUsuarioId } = input;
+  const { tenantId, manifiestoId, actorUsuarioId, fijarAdicionales } = input;
 
   // --- 1. El manifiesto, para saber de qué conductor es --------------------
   const { data: manifiesto, error: errorManifiesto } = await cliente
@@ -268,6 +282,19 @@ export async function calcularYAplicarRutaManifiesto(
 
   if (!origen) throw new ErrorSinBodegaOrigen();
 
+  // La fijación que llega del gesto del conductor se aplica ANTES de rutear, y
+  // pisa a la que hubiera: mover una parada que ya estaba fijada es moverla,
+  // no un conflicto.
+  const extra = new Map(
+    (fijarAdicionales ?? []).map((f) => [f.pedidoId, f.orden] as const),
+  );
+  const paradasConFijacion: ParadaDelManifiesto[] =
+    extra.size === 0
+      ? paradas
+      : paradas.map((p) =>
+          extra.has(p.pedidoId) ? { ...p, ordenFijo: extra.get(p.pedidoId) as number } : p,
+        );
+
   // --- 3. El ancla. Variable local, y hasta aquí llega ----------------------
   // Se lee DESPUÉS del origen para que un fallo de configuración de bodega
   // (visible para el coordinador) nunca dependa de si este conductor definió su
@@ -284,7 +311,7 @@ export async function calcularYAplicarRutaManifiesto(
   const ruta = await resolverRuta({
     origen: { lat: origen.lat, long: origen.long },
     destino: ancla,
-    paradas,
+    paradas: paradasConFijacion,
   });
 
   // --- 5. Persistir la secuencia COMPLETA ----------------------------------
@@ -298,7 +325,7 @@ export async function calcularYAplicarRutaManifiesto(
     actorUsuarioId,
     // Las fijadas se REESCRIBEN tal como venían: el recálculo respeta lo que el
     // conductor movió a mano. Ver la nota de `ParadaDelManifiesto.ordenFijo`.
-    fijados: fijadosDeLaSecuencia(ruta.secuencia, paradas),
+    fijados: fijadosDeLaSecuencia(ruta.secuencia, paradasConFijacion),
     // `undefined` con motor local — mide en línea recta y no tiene geometría
     // que guardar. El RPC lo traduce a «sin tramos».
     //
