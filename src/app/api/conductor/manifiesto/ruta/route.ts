@@ -50,11 +50,27 @@ import {
   ErrorSinBodegaOrigen,
 } from "@/modules/operacion/ruta-manifiesto";
 import { ErrorSecuenciaDesincronizada } from "@/modules/operacion/secuencia-paradas-rpc";
+import { ubicacionUsable } from "@/modules/operacion/ruteo/ubicacion-conductor";
 
 interface CuerpoRuta {
   accion?: unknown;
   pedidoId?: unknown;
   posicion?: unknown;
+  /**
+   * Dónde está el conductor AHORA. Opcional, y solo tiene sentido con
+   * `optimizar`: es el origen alternativo de la ruta.
+   *
+   * ⚠️ **No se persiste.** Entra en la función de costo del solver y no sale por
+   * el otro lado: no se escribe en ninguna columna, no viaja al coordinador y no
+   * deja recorrido (Ley 21.431). Lo llega a ver el proveedor de ruteo como un
+   * punto de partida sin identidad asociada, igual que cualquier dirección de
+   * entrega. Lo único que queda escrito es el ORDEN resultante.
+   *
+   * ⚠️ **Y llega solo si el conductor lo pidió**: la app lo manda cuando él toca
+   * «ordenar desde donde estoy», que es el acto de consentimiento. No se manda
+   * en cada cálculo ni en segundo plano.
+   */
+  desdeMiUbicacion?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -156,11 +172,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Solo con `optimizar`: al mover una parada el conductor está corrigiendo
+    // una secuencia existente, y cambiarle el origen a la vez convertiría un
+    // gesto de arrastre en un recálculo completo que él no pidió.
+    const ubicacion =
+      accion === "optimizar" ? ubicacionUsable(cuerpo.desdeMiUbicacion) : null;
+
     const resumen = await calcularYAplicarRutaManifiesto(cliente, {
       tenantId,
       manifiestoId: vigente.id,
       actorUsuarioId: usuario.usuarioId,
       fijarAdicionales: fijaciones,
+      origenAlternativo: ubicacion
+        ? { lat: ubicacion.lat, long: ubicacion.long, nombre: "Donde estás ahora" }
+        : undefined,
     });
 
     return NextResponse.json({
@@ -170,6 +195,11 @@ export async function POST(request: NextRequest) {
       distanciaTotalM: resumen.distanciaTotalM,
       duracionTotalS: resumen.duracionTotalS,
       proveedor: resumen.proveedor,
+      // Para que la app pueda decir DESDE DÓNDE quedó ordenada. Callarlo haría
+      // que las dos rutas se vieran iguales y el conductor no sabría cuál está
+      // mirando.
+      nombreOrigen: resumen.nombreOrigen,
+      desdeMiUbicacion: ubicacion !== null,
     });
   } catch (err) {
     if (err instanceof ErrorSecuenciaDesincronizada) {

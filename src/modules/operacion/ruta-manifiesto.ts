@@ -257,9 +257,33 @@ export async function calcularYAplicarRutaManifiesto(
      * coordinador.
      */
     fijarAdicionales?: readonly { pedidoId: string; orden: number }[];
+    /**
+     * Origen ALTERNATIVO para este cálculo: dónde está el conductor ahora.
+     *
+     * 🔴 **Por qué existe (2026-08-27).** La ruta siempre arrancaba en la bodega
+     * del courier, y eso es correcto a las 16:00 y falso a las 18:30. Un
+     * conductor que ya salió, o que arrancó desde otro lado, pedía «ordenar» y
+     * recibía una secuencia calculada desde un punto donde no está: la primera
+     * parada podía quedar a 12 km detrás suyo. El conductor sin experiencia no
+     * tiene por qué saber que eso se arregla cambiando una dirección en una
+     * pantalla de configuración — que además no puede tocar, porque la bodega es
+     * del courier.
+     *
+     * ⚠️ **Es la posición del conductor y NO SE PERSISTE.** Entra en la función
+     * de costo y no sale por el otro lado, igual que el ancla de término: no se
+     * guarda en ninguna columna, no viaja al coordinador y no deja recorrido
+     * (Ley 21.431 — ver `docs/seguridad/punto-de-termino-conductor.md`). Lo
+     * único que queda escrito es el ORDEN resultante, que es el mismo residuo
+     * ya aceptado en §4.4 de ese documento.
+     *
+     * Cuando viene, **la bodega deja de ser obligatoria**: no tiene sentido
+     * exigir una configuración del courier para calcular una ruta que no sale
+     * de ahí.
+     */
+    origenAlternativo?: { lat: number; long: number; nombre: string };
   },
 ): Promise<ResultadoRuteoManifiesto> {
-  const { tenantId, manifiestoId, actorUsuarioId, fijarAdicionales } = input;
+  const { tenantId, manifiestoId, actorUsuarioId, fijarAdicionales, origenAlternativo } = input;
 
   // --- 1. El manifiesto, para saber de qué conductor es --------------------
   const { data: manifiesto, error: errorManifiesto } = await cliente
@@ -275,11 +299,18 @@ export async function calcularYAplicarRutaManifiesto(
   if (!manifiesto) throw new ErrorManifiestoNoEncontrado();
 
   // --- 2. Origen y paradas, en paralelo ------------------------------------
-  const [origen, paradas] = await Promise.all([
+  // La bodega se lee igual cuando hay origen alternativo: cuesta una consulta y
+  // deja el camino de la lectura ejercitado en los dos casos. Lo que cambia es
+  // que deja de ser obligatoria.
+  const [bodega, paradas] = await Promise.all([
     obtenerOrigenRutaDelCourier(cliente, tenantId),
     listarParadasDelManifiesto(cliente, tenantId, manifiestoId),
   ]);
 
+  const origen = origenAlternativo ?? bodega;
+  // Solo se exige bodega cuando la ruta sale de ella. Con origen alternativo, un
+  // courier sin bodega configurada no puede bloquear a un conductor que ya está
+  // en la calle.
   if (!origen) throw new ErrorSinBodegaOrigen();
 
   // La fijación que llega del gesto del conductor se aplica ANTES de rutear, y
