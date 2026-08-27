@@ -34,7 +34,6 @@ import {
   UserPlus,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PanelAccion } from "@/components/ui/panel-accion";
 import { Input } from "@/components/ui/input";
@@ -600,14 +599,21 @@ export function EditorDatosBancarios({
               </p>
             </div>
           ) : (
-            <Badge
-              variant="warning"
-              className="gap-1.5 text-xs"
-              aria-label="Conductor sin datos bancarios — no puede recibir pagos"
-            >
-              <AlertTriangle className="size-3" aria-hidden="true" />
-              Sin datos bancarios — el conductor no puede recibir pagos
-            </Badge>
+            /* 🔴 Esto era un `Badge` y se salía de la caja.
+               `Badge` es `whitespace-nowrap` + `w-fit` + `shrink-0` + alto fijo
+               `h-5`: está hecho para UNA PALABRA de estado, no para una frase de
+               56 caracteres. Con esas clases el texto no parte nunca, la caja
+               crece hasta pasarse del cajón y el aviso se corta contra el borde
+               — en escritorio se veía, en un teléfono era ilegible.
+               El aviso pasa a ser lo que siempre fue: un mensaje con su
+               consecuencia, en el mismo `Alert` en tono atención que ya usa este
+               archivo unas líneas más arriba. Ahí el texto envuelve. */
+            <Alert className="border-warning bg-warning-subtle text-warning-subtle-foreground">
+              <AlertTriangle className="size-4" aria-hidden="true" />
+              <AlertDescription>
+                Sin datos bancarios — el conductor no puede recibir pagos.
+              </AlertDescription>
+            </Alert>
           )}
           {exito && (
             <Alert className="bg-success-subtle text-success-subtle-foreground">
