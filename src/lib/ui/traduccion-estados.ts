@@ -1096,6 +1096,18 @@ export function estadoDelDiaConductor(
 }
 
 /** `dependiente` | `independiente` — Ley 21.431: se registra, no se infiere. */
+/**
+ * En qué anda el conductor.
+ *
+ * ⚠️ `null` NO se traduce acá a «Sin declarar»: cada pantalla decide cómo dice
+ * la ausencia, porque no es lo mismo en una fila de tabla que en una ficha. Lo
+ * que este mapa garantiza es que «moto» se escriba igual en todas.
+ */
+export const TEXTO_VEHICULO_CONDUCTOR: Record<string, string> = {
+  moto: "Moto",
+  auto: "Auto",
+};
+
 export const TEXTO_RELACION_CONDUCTOR: Record<string, string> = {
   dependiente: "Dependiente",
   independiente: "Independiente",

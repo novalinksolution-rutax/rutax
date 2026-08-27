@@ -400,6 +400,15 @@ export interface Conductor {
   disponible: boolean;
   /** Cupo máximo de paradas en el turno (> 0). Constraint en BD. */
   capacidadParadas: number;
+  /**
+   * En qué anda: `'moto' | 'auto'`, o `null` si no está declarado.
+   *
+   * ⚠️ **Informativo — no entra en ninguna heurística.** La auto-asignación
+   * sigue decidiendo por `capacidadParadas`; el vehículo la explica, no la
+   * gobierna (decisión del usuario, 26-08-2026). Si algún día se quiere que
+   * pese, es una decisión nueva, no un atajo.
+   */
+  vehiculo: 'moto' | 'auto' | null;
   /** Nombre para logs/bitácora — no se usa en la heurística. */
   nombre: string;
   // Datos bancarios para liquidación (migración 20260621000012 — F19).

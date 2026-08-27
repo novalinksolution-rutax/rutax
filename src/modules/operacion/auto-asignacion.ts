@@ -195,6 +195,8 @@ interface FilaConductor {
   disponible: boolean;
   capacidad_paradas: number;
   nombre: string;
+  /** Informativo. Viaja porque el tipo lo pide, no porque la heurística lo mire. */
+  vehiculo: 'moto' | 'auto' | null;
 }
 
 /** Fila de zona preferente de conductor. */
@@ -462,7 +464,7 @@ export async function marcarConductorNoDisponibleYRedistribuir(
     // throw — o sea que **redistribuir fallaba siempre**, en el primer paso, y
     // el conductor quedaba marcado no disponible con sus paradas sin mover.
     // Se alias-ea para no tocar el resto del archivo, que lee `c.nombre`.
-    .select('id, tenant_id, estado, disponible, capacidad_paradas, nombre:nombre_completo')
+    .select('id, tenant_id, estado, disponible, capacidad_paradas, vehiculo, nombre:nombre_completo')
     .eq('tenant_id', tenantId)
     .eq('estado', 'activo')
     .eq('disponible', true)
@@ -532,6 +534,11 @@ export async function marcarConductorNoDisponibleYRedistribuir(
   const candidatos: ConductorCandidato[] = conductoresRaw
     .filter((c) => !conductoresConManifiestoActivo.has(c.id))
     .map((c) => ({
+      // ⚠️ `vehiculo` viaja pero NO pesa en la heurística: el costo sigue
+      // siendo la ocupación `cargaActual / capacidadParadas`. Está acá porque
+      // `ConductorCandidato` extiende `Conductor`, no porque decida nada
+      // (decisión del usuario, 26-08-2026: el vehículo es informativo).
+      vehiculo: c.vehiculo ?? null,
       id: c.id,
       tenantId: c.tenant_id,
       estado: c.estado as 'activo' | 'inactivo',

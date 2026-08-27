@@ -67,6 +67,13 @@ export interface MiPerfilConductor {
   tipoRelacion: string;
   estado: string;
   desdeCuando: string | null;
+  /**
+   * En qué anda, si el courier lo declaró. **De solo lectura para él**: lo
+   * declara el coordinador en la ficha, igual que el cupo y las zonas. Que el
+   * conductor pudiera cambiarlo movería un dato con el que el courier reparte,
+   * desde la calle y sin que nadie se entere.
+   */
+  vehiculo: "moto" | "auto" | null;
   cuentaDePago: CuentaDePagoConductor | null;
 }
 
@@ -100,7 +107,7 @@ export async function leerMiPerfilConductor(
     .schema("identidad")
     .from("conductores")
     .select(
-      "nombre_completo, telefono, rut, tipo_relacion, estado, creado_en, banco, tipo_cuenta, numero_cuenta",
+      "nombre_completo, telefono, rut, tipo_relacion, estado, creado_en, banco, tipo_cuenta, numero_cuenta, vehiculo",
     )
     .eq("id", entrada.conductorId)
     .eq("tenant_id", entrada.tenantId)
@@ -120,6 +127,7 @@ export async function leerMiPerfilConductor(
     tipoRelacion: (data.tipo_relacion as string) ?? "",
     estado: (data.estado as string) ?? "",
     desdeCuando: (data.creado_en as string | null) ?? null,
+    vehiculo: (data.vehiculo as "moto" | "auto" | null) ?? null,
     // Los tres o ninguno: media cuenta bancaria no le sirve a nadie y sugeriría
     // que está configurada cuando el payout va a fallar por incompleta.
     cuentaDePago:

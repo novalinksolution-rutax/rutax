@@ -52,7 +52,7 @@ const ESTADOS_TERMINALES_PEDIDO_NOMINA = new Set([
 ]);
 
 const COLUMNAS_NOMINA =
-  "id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, rut, tipo_relacion, banco, tipo_cuenta, numero_cuenta, telefono";
+  "id, tenant_id, estado, disponible, capacidad_paradas, vehiculo, nombre_completo, rut, tipo_relacion, banco, tipo_cuenta, numero_cuenta, telefono";
 
 export type TipoRelacionConductor = "dependiente" | "independiente";
 
@@ -79,6 +79,7 @@ function filaANomina(fila: Record<string, any>, zonaIds: string[]): ConductorEnN
     estado: fila.estado as "activo" | "inactivo",
     disponible: Boolean(fila.disponible),
     capacidadParadas: Number(fila.capacidad_paradas),
+    vehiculo: (fila.vehiculo as "moto" | "auto" | null) ?? null,
     nombre: fila.nombre_completo ?? "",
     banco: fila.banco ?? null,
     tipoCuenta: (fila.tipo_cuenta as "corriente" | "vista" | "ahorro" | null) ?? null,

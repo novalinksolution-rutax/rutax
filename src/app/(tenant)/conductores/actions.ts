@@ -30,6 +30,9 @@ import {
   actualizarZonasConductor,
   actualizarDatosBancariosConductor,
   actualizarTelefonoConductor,
+  actualizarVehiculoConductor,
+  esVehiculoConductor,
+  type VehiculoConductor,
   crearConductor,
   type DatosAltaConductor,
 } from "@/modules/operacion/conductores";
@@ -508,6 +511,56 @@ export async function actionActualizarTelefonoConductor(
   } catch (err) {
     // El mensaje del dominio ya viene saneado (nunca trae el número).
     const mensaje = err instanceof Error ? err.message : "Error al guardar el teléfono.";
+    return { ok: false, mensaje };
+  }
+}
+
+/**
+ * Guarda en qué anda el conductor: moto o auto.
+ *
+ * Vacío **lo borra** y vuelve a «Sin declarar», que es un estado legítimo y no
+ * un error: el courier tiene que poder deshacer un dato puesto por equivocación,
+ * y dejar «auto» en alguien que anda en moto es peor que no saberlo.
+ *
+ * RBAC: `asignar_y_reasignar_pedidos` — el gate operativo, el mismo que el
+ * teléfono y la capacidad. No el financiero: quién anda en qué lo administra
+ * quien reparte, no quien paga.
+ */
+export async function actionActualizarVehiculoConductor(
+  conductorId: string,
+  vehiculoCrudo: string,
+): Promise<Respuesta<{ vehiculo: VehiculoConductor | null }>> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) {
+    return { ok: false, mensaje: "No hay sesión activa." };
+  }
+  if (!puedeAsignarYReasignarPedidos(sesion.usuario)) {
+    return { ok: false, mensaje: "No tienes permiso para editar los datos del conductor." };
+  }
+
+  const crudo = vehiculoCrudo.trim();
+  let vehiculo: VehiculoConductor | null = null;
+  if (crudo.length > 0) {
+    if (!esVehiculoConductor(crudo)) {
+      return { ok: false, mensaje: "Elige moto o auto." };
+    }
+    vehiculo = crudo;
+  }
+
+  try {
+    await actualizarVehiculoConductor(
+      crearClienteServiceRole(),
+      sesion.usuario.tenantId,
+      conductorId,
+      vehiculo,
+      sesion.usuarioId,
+      sesion.usuario,
+    );
+    revalidatePath("/conductores");
+    revalidatePath(`/conductores/${conductorId}`);
+    return { ok: true, datos: { vehiculo } };
+  } catch (err) {
+    const mensaje = err instanceof Error ? err.message : "Error al guardar el vehículo.";
     return { ok: false, mensaje };
   }
 }

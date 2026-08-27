@@ -66,6 +66,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -81,16 +88,22 @@ import {
 import {
   estadoDelDiaConductor,
   TEXTO_RELACION_CONDUCTOR,
+  TEXTO_VEHICULO_CONDUCTOR,
 } from "@/lib/ui/traduccion-estados";
 import { formatearTelefonoLegible } from "@/lib/telefono-cl";
 import { EditorTelefonoConductor } from "./editor-telefono";
 import type { Conductor, Zona } from "@/modules/operacion/tipos";
+import {
+  esVehiculoConductor,
+  type VehiculoConductor,
+} from "@/modules/operacion/conductores";
 import type {
   ConductorEnNomina,
   HoyDelConductor,
 } from "@/modules/operacion/conductores-nomina";
 import {
   actionActualizarCapacidadConductor,
+  actionActualizarVehiculoConductor,
   actionSacarDeNomina,
   actionReincorporarANomina,
 } from "./actions";
@@ -137,7 +150,14 @@ const ANCHO_CAJON = "w-full sm:max-w-[352px]!";
  * así que se aplica lo que P1 fija para todo el producto: «el teléfono no es una
  * reducción», y lo que cae reaparece bajo el nombre, en mono.
  */
-const COLUMNAS_ANCHO = "grid-cols-[1.7fr_1.05fr_1fr_.65fr_1.15fr]";
+// La cuarta columna pasa de .65 a .8: ahora lleva el vehículo Y el cupo, y con
+// .65 «Sin declarar» se cortaba.
+//
+// El ancho se midió, no se estimó: «Sin declarar» ocupa 83 px y «30 paradas» 66,
+// así que a .8 la celda tiene ~110 px de los ~95 que necesita. Lo que sobraba se
+// le devolvió a «Zonas preferentes» —que es `truncate` y con dos zonas reales ya
+// se cortaba—, y el reparto total no cambia: los mismos 5,55fr.
+const COLUMNAS_ANCHO = "grid-cols-[1.7fr_1.05fr_1fr_.8fr_1fr]";
 
 export function PanelNomina({
   estadoInicial,
@@ -245,7 +265,7 @@ export function PanelNomina({
               <span className="py-2 pr-3">Conductor</span>
               <span className="py-2 pr-3">Ruta de hoy</span>
               <span className="py-2 pr-3">Retiros de hoy</span>
-              <span className="py-2 pr-3">Capacidad</span>
+              <span className="py-2 pr-3">Vehículo y cupo</span>
               <span className="py-2 pr-3">Zonas preferentes</span>
             </span>
             <span className="w-4 shrink-0" />
@@ -361,10 +381,31 @@ function FilaConductor({
    * ruta es lo que está pasando. Si no tiene ruta todavía, entonces sí manda el
    * cupo, que es lo que dice cuánto se le puede dar.
    */
+  /**
+   * En 390 el vehículo entra en la línea de detalle, no en una fila propia. Y va
+   * PEGADO al cupo, formando un solo segmento —«Auto · 30 paradas»— igual que en
+   * la tabla, donde comparten celda.
+   *
+   * ⚠️ Cuando el vehículo está, el cupo pierde las palabras «de cupo». No es
+   * capricho: esta línea es `truncate`, o sea UNA sola con puntos suspensivos, y
+   * a 375 px ya se cortaba antes de esto —«30 paradas de cupo · Si…»—. El
+   * vehículo delante aporta el contexto que esas dos palabras cargaban, así que
+   * salen y el añadido no le quita ancho a las zonas.
+   *
+   * Se omite cuando no está declarado: en el teléfono el espacio es el recurso
+   * escaso, y «Sin declarar» ahí gasta ancho para decir que falta un dato que se
+   * completa desde el escritorio. En la tabla sí se dice, que es donde el
+   * courier revisa su nómina.
+   */
+  const vehiculoCorto = conductor.vehiculo
+    ? TEXTO_VEHICULO_CONDUCTOR[conductor.vehiculo]
+    : null;
   const resumenDelDia =
     hoyDelDia?.manifiestoId && hoyDelDia.paradasTotales > 0
       ? `${hoyDelDia.paradasCerradas} de ${hoyDelDia.paradasTotales} paradas`
-      : `${conductor.capacidadParadas} paradas de cupo`;
+      : vehiculoCorto
+        ? `${conductor.capacidadParadas} paradas`
+        : `${conductor.capacidadParadas} paradas de cupo`;
   const distintivo = <DistintivoEstado tono={hoy.tono} etiqueta={hoy.etiqueta} />;
 
   return (
@@ -391,7 +432,13 @@ function FilaConductor({
         estado={distintivo}
         clasificacion={relacion}
         titulo={conductor.nombre}
-        detalle={fueraDeNomina ? conductor.rut : `${conductor.rut} · ${resumenDelDia} · ${textoZonas}`}
+        detalle={
+          fueraDeNomina
+            ? conductor.rut
+            : [conductor.rut, vehiculoCorto, resumenDelDia, textoZonas]
+                .filter(Boolean)
+                .join(" · ")
+        }
       />
 
       <span className={`hidden flex-1 sm:grid ${COLUMNAS_ANCHO} sm:items-center`}>
@@ -424,8 +471,35 @@ function FilaConductor({
             <CeldaRetirosDeHoy hoy={hoyDelDia} />
           )}
         </span>
-        <span className="rx-num py-2.5 pr-3 text-sm">
-          {fueraDeNomina ? "—" : `${conductor.capacidadParadas} paradas`}
+        {/* 🔴 El vehículo va JUNTO al cupo, y no en columna propia.
+            Son el mismo hecho contado dos veces: el cupo dice cuánto lleva y el
+            vehículo dice por qué. Separados, el coordinador tiene que cruzarlos
+            con la vista; juntos se leen de un tirón cuando reparte contra el
+            reloj de las 16:00.
+
+            Y «Sin declarar» se DICE, en vez de dejar el hueco en blanco: es la
+            única forma de que el courier vea a quién le falta el dato. Un
+            vehículo por omisión se vería idéntico a uno declarado de verdad. */}
+        <span className="min-w-0 py-2.5 pr-3 text-sm">
+          {fueraDeNomina ? (
+            "—"
+          ) : (
+            <>
+              {/* `block truncate` en las dos: sin él, un ancho apretado parte
+                  «Sin declarar» en dos líneas y la fila entera crece de alto,
+                  descuadrando la tabla. Cortar es preferible a empujar. */}
+              <span
+                className={`block truncate ${conductor.vehiculo ? "text-fg" : "text-fg-subtle"}`}
+              >
+                {conductor.vehiculo
+                  ? TEXTO_VEHICULO_CONDUCTOR[conductor.vehiculo]
+                  : "Sin declarar"}
+              </span>
+              <span className="rx-num block truncate text-xs text-fg-muted">
+                {conductor.capacidadParadas} paradas
+              </span>
+            </>
+          )}
         </span>
         <span className="min-w-0 truncate py-2.5 pr-3 text-sm text-fg-muted">
           {fueraDeNomina ? "—" : textoZonas}
@@ -490,6 +564,10 @@ function CajonConductor({
                   bloque termina diciendo «si no aparece, hay que llamarlo», y
                   hasta ahora no había con qué. */}
               <BloqueTelefono conductor={conductor} onActualizado={onActualizado} />
+              {/* El vehículo va pegado al cupo, y ANTES: es el que lo explica
+                  —«anda en moto, por eso lleva 20»—. En la tabla se muestran en
+                  la misma celda por lo mismo. */}
+              <SelectorVehiculo conductor={conductor} onActualizado={onActualizado} />
               <Estampador conductor={conductor} onActualizado={onActualizado} />
               <EditorZonasConductor conductor={conductor} zonasTenant={zonas} />
               {/* El bloque no se renderiza si no se puede tocar: el tablero pide
@@ -593,6 +671,74 @@ function DisponibilidadDelDia({ conductor }: { conductor: ConductorEnNomina }) {
           ? "Lo marcó él desde su app. Se apaga solo a medianoche."
           : "Lo marca él desde su app, al empezar su turno. Mientras no lo haga no entra en la asignación automática, y desde acá no se puede marcar por él: si no aparece, hay que llamarlo."}
       </p>
+    </div>
+  );
+}
+
+/**
+ * En qué anda: moto o auto.
+ *
+ * Encargo del usuario (26-08-2026). Es **informativo**: no entra en la
+ * auto-asignación ni en los tiempos estimados; el coordinador reparte con el
+ * dato a la vista y decide él. Ver la migración `20260826000005`.
+ *
+ * ⚠️ **«Sin declarar» es una opción de verdad, no un placeholder.** Se puede
+ * volver a ella, y hace falta: si alguien marca «auto» por error, dejarlo
+ * corregible solo a otro valor equivocado sería peor que el hueco. Un vehículo
+ * inventado se ve idéntico a uno declarado de verdad, y por eso el estado «no lo
+ * sabemos» tiene que ser alcanzable.
+ *
+ * Guarda al elegir, sin botón «Guardar», igual que el cupo de al lado: es un
+ * campo de un solo gesto y confirmar aparte sobra.
+ */
+const SIN_DECLARAR = "__sin__";
+
+function SelectorVehiculo({
+  conductor,
+  onActualizado,
+}: {
+  conductor: Conductor;
+  onActualizado: (c: Conductor) => void;
+}) {
+  const [pendiente, iniciar] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function elegir(valor: string) {
+    const vehiculo: VehiculoConductor | null = esVehiculoConductor(valor) ? valor : null;
+    if (vehiculo === conductor.vehiculo) return;
+    // Optimista con vuelta atrás: si el servidor rechaza, la fila recupera lo
+    // que tenía. Dejar el valor nuevo puesto mostraría un dato que no se guardó.
+    onActualizado({ ...conductor, vehiculo });
+    iniciar(async () => {
+      setError(null);
+      const r = await actionActualizarVehiculoConductor(conductor.id, vehiculo ?? "");
+      if (!r.ok) {
+        onActualizado({ ...conductor, vehiculo: conductor.vehiculo });
+        setError(r.mensaje);
+      }
+    });
+  }
+
+  return (
+    <div>
+      <Label htmlFor={`vehiculo-${conductor.id}`} className="text-sm font-medium">
+        Vehículo
+      </Label>
+      <Select
+        value={conductor.vehiculo ?? SIN_DECLARAR}
+        onValueChange={elegir}
+        disabled={pendiente}
+      >
+        <SelectTrigger id={`vehiculo-${conductor.id}`} className="mt-1.5">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={SIN_DECLARAR}>Sin declarar</SelectItem>
+          <SelectItem value="moto">{TEXTO_VEHICULO_CONDUCTOR.moto}</SelectItem>
+          <SelectItem value="auto">{TEXTO_VEHICULO_CONDUCTOR.auto}</SelectItem>
+        </SelectContent>
+      </Select>
+      {error ? <p className="mt-1 text-xs text-fault-fg">{error}</p> : null}
     </div>
   );
 }

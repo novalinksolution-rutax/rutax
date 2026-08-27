@@ -42,6 +42,11 @@ function conductor(overrides: Partial<ConductorCandidato> & { id: string }): Con
     estado: 'activo',
     disponible: true,
     capacidadParadas: 30,
+    // Sin declarar: el vehículo NO entra en la heurística, así que los casos de
+    // esta suite no lo fijan. Si algún día pesara, estas pruebas tendrían que
+    // decir cuál lleva cada uno — y que hoy no haga falta es la prueba de que
+    // no pesa.
+    vehiculo: null,
     nombre: `Conductor ${overrides.id}`,
     cargaActual: 0,
     zonasConductor: new Set(),

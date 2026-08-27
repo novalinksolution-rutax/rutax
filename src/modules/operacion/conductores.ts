@@ -43,6 +43,7 @@ function filaAConductor(fila: Record<string, any>): Conductor {
     estado: fila.estado as 'activo' | 'inactivo',
     disponible: Boolean(fila.disponible),
     capacidadParadas: Number(fila.capacidad_paradas),
+    vehiculo: (fila.vehiculo as 'moto' | 'auto' | null) ?? null,
     nombre: fila.nombre_completo ?? '',
     banco: fila.banco ?? null,
     tipoCuenta: (fila.tipo_cuenta as 'corriente' | 'vista' | 'ahorro' | null) ?? null,
@@ -77,7 +78,7 @@ export async function listarConductores(
     .schema('identidad')
     .from('conductores')
     .select(
-      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+      'id, tenant_id, estado, disponible, capacidad_paradas, vehiculo, nombre_completo, banco, tipo_cuenta, numero_cuenta',
     )
     .eq('tenant_id', tenantId)
     .order('nombre_completo');
@@ -169,7 +170,7 @@ export async function actualizarCapacidadConductor(
     .eq('id', conductorId)
     .eq('tenant_id', tenantId)
     .select(
-      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+      'id, tenant_id, estado, disponible, capacidad_paradas, vehiculo, nombre_completo, banco, tipo_cuenta, numero_cuenta',
     )
     .maybeSingle();
 
@@ -312,7 +313,7 @@ export async function actualizarDatosBancariosConductor(
     .eq('id', conductorId)
     .eq('tenant_id', tenantId)
     .select(
-      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+      'id, tenant_id, estado, disponible, capacidad_paradas, vehiculo, nombre_completo, banco, tipo_cuenta, numero_cuenta',
     )
     .maybeSingle();
 
@@ -513,7 +514,7 @@ export async function crearConductor(
       tipo_relacion: datos.tipoRelacion,
     })
     .select(
-      'id, tenant_id, estado, disponible, capacidad_paradas, nombre_completo, banco, tipo_cuenta, numero_cuenta',
+      'id, tenant_id, estado, disponible, capacidad_paradas, vehiculo, nombre_completo, banco, tipo_cuenta, numero_cuenta',
     )
     .maybeSingle();
 
@@ -610,5 +611,81 @@ export async function actualizarTelefonoConductor(
 
   if (!data) {
     throw new ErrorValidacion(`Conductor ${conductorId} no encontrado en el tenant`);
+  }
+}
+
+/** `moto` | `auto`, o `null` cuando el conductor no lo tiene declarado. */
+export type VehiculoConductor = 'moto' | 'auto';
+
+export const VEHICULOS_CONDUCTOR: readonly VehiculoConductor[] = ['moto', 'auto'] as const;
+
+export function esVehiculoConductor(valor: unknown): valor is VehiculoConductor {
+  return typeof valor === 'string' && (VEHICULOS_CONDUCTOR as readonly string[]).includes(valor);
+}
+
+/**
+ * En qué anda el conductor.
+ * =============================================================================
+ *
+ * Encargo del usuario (26-08-2026): la nómina no distinguía moto de auto, y el
+ * coordinador que reparte 25-30 paquetes contra el reloj de las 16:00 no tenía
+ * cómo saber a quién mandar qué.
+ *
+ * ⚠️ **Es informativo y no gobierna nada** — decisión del usuario. No toca
+ * `capacidad_paradas`, que ya es por conductor y ya decide la auto-asignación,
+ * ni los tiempos, que siguen siendo globales. El vehículo explica la capacidad;
+ * no la sugiere ni la impone.
+ *
+ * ⚠️ **`null` es un valor legítimo: «sin declarar».** No se rellena con un valor
+ * por omisión, porque un `auto` inventado se ve idéntico a uno declarado de
+ * verdad y el courier perdería la única forma de saber a quién le falta el dato.
+ *
+ * Va a bitácora como cualquier cambio sobre la ficha —con su autor, y ANTES del
+ * efecto— aunque no mueva plata: es la nómina de personas del courier, y la
+ * regla del proyecto no distingue por importancia.
+ */
+export async function actualizarVehiculoConductor(
+  cliente: SupabaseClient,
+  tenantId: string,
+  conductorId: string,
+  vehiculo: VehiculoConductor | null,
+  actorUsuarioId: string,
+  actor: UsuarioActual,
+): Promise<void> {
+  if (!puedeAsignarYReasignarPedidos(actor)) {
+    throw new ErrorValidacion(
+      'El usuario no tiene capacidad para modificar el vehículo de conductores',
+    );
+  }
+  if (vehiculo !== null && !esVehiculoConductor(vehiculo)) {
+    throw new ErrorValidacion('El vehículo no es uno de los valores permitidos.');
+  }
+
+  await registrarEnBitacora(cliente, {
+    tenantId,
+    actorUsuarioId,
+    actorTipo: 'usuario',
+    accion: vehiculo === null ? 'conductor.vehiculo_borrado' : 'conductor.vehiculo_actualizado',
+    entidadTipo: 'conductor',
+    entidadId: conductorId,
+    detalle: { conductor_id: conductorId, vehiculo },
+  });
+
+  const { data, error } = await cliente
+    .schema('identidad')
+    .from('conductores')
+    .update({ vehiculo })
+    .eq('id', conductorId)
+    // ⚠️ Las dos condiciones. Acá se corre con `service_role`, así que la RLS no
+    // está de respaldo: el `tenant_id` es la barrera.
+    .eq('tenant_id', tenantId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error('Error al actualizar el vehículo del conductor.');
+  }
+  if (!data) {
+    throw new ErrorValidacion('El conductor no existe en este courier.');
   }
 }
