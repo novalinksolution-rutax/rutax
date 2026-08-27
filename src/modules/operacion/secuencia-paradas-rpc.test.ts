@@ -93,7 +93,34 @@ describe("aplicarSecuenciaParadasRpc · la llamada", () => {
       p_pedido_ids: [PEDIDO_1, PEDIDO_2, PEDIDO_3],
       p_origen: "motor",
       p_actor_usuario_id: ACTOR_1,
+      // Quien no manda fijadas ni geometría manda `null`, NO `[]`: la función
+      // SQL distingue «no me mandaron nada» de «me mandaron un arreglo vacío»,
+      // y un vacío contra una secuencia con paradas sería un llamador roto.
+      p_fijados: null,
+      p_tramos: null,
     });
+  });
+
+  it("manda las fijadas y la geometría alineadas por posición cuando existen", async () => {
+    const { cliente, rpc } = crearClienteRpc({ data: [filaSql()], error: null });
+    const tramo = { polilinea: "abc", distanciaM: 1200, duracionS: 300 };
+
+    await aplicarSecuenciaParadasRpc(cliente, {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      pedidoIdsEnOrden: [PEDIDO_1, PEDIDO_2],
+      origen: "manual",
+      actorUsuarioId: ACTOR_1,
+      fijados: [false, true],
+      tramos: [tramo, null],
+    });
+
+    // La posición ES el vínculo: el segundo pedido es el fijado y el primero es
+    // el que trae tramo. Desalinearlos se ve en el mapa de inmediato.
+    expect(rpc).toHaveBeenCalledWith(
+      "aplicar_secuencia_paradas",
+      expect.objectContaining({ p_fijados: [false, true], p_tramos: [tramo, null] }),
+    );
   });
 
   it("manda la lista EN EL ORDEN recibido — la posición es el orden de la ruta", async () => {

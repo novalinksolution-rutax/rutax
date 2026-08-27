@@ -197,6 +197,26 @@ export async function aplicarSecuenciaParadasRpc(
     origen: OrigenSecuencia;
     /** `null` para un job sin sesión humana — queda como actor `sistema`. */
     actorUsuarioId: string | null;
+    /**
+     * Qué paradas quedan FIJADAS, **por posición** contra `pedidoIdsEnOrden`.
+     *
+     * Una parada fijada es la que el conductor movió a mano: el motor no la
+     * vuelve a mover en los recálculos siguientes. Omitir el arreglo equivale a
+     * "ninguna fijada", que es lo que quiere la web del coordinador.
+     */
+    fijados?: readonly boolean[];
+    /**
+     * Geometría por calle del tramo que LLEGA a cada parada, **por posición**.
+     *
+     * Un elemento `null` (o el arreglo entero omitido) es "sin geometría", que
+     * es lo que devuelve el motor local: mide en línea recta y no tiene un
+     * trazado que guardar.
+     *
+     * ⚠️ Posicional, igual que `fijados`, porque **el orden ES el dato** de esta
+     * función. Unos tramos desalineados se ven de inmediato en el mapa —la
+     * línea no calza con los pines— en vez de esconderse dentro de una clave.
+     */
+    tramos?: readonly ({ polilinea: string; distanciaM: number; duracionS: number } | null)[];
   },
 ): Promise<ResultadoSecuenciaParadas> {
   const { data, error } = await cliente.schema("operacion").rpc("aplicar_secuencia_paradas", {
@@ -205,6 +225,11 @@ export async function aplicarSecuenciaParadasRpc(
     p_pedido_ids: entrada.pedidoIdsEnOrden,
     p_origen: entrada.origen,
     p_actor_usuario_id: entrada.actorUsuarioId,
+    // `null` y no `[]`: la función distingue "no me mandaron nada" de "me
+    // mandaron un arreglo vacío", y un vacío contra una secuencia con paradas
+    // sería un llamador roto.
+    p_fijados: entrada.fijados && entrada.fijados.length > 0 ? entrada.fijados : null,
+    p_tramos: entrada.tramos && entrada.tramos.length > 0 ? entrada.tramos : null,
   });
 
   if (error) {

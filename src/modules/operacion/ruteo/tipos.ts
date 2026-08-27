@@ -22,6 +22,15 @@ export interface ParadaARutear {
   pedidoId: string;
   lat: number | null;
   long: number | null;
+  /**
+   * Posición 1-based que el conductor le impuso a mano. `undefined`/`null` =
+   * el motor decide dónde va.
+   *
+   * Existe porque **una corrección manual que el motor deshace es peor que no
+   * tener motor**: el conductor arregla el salto absurdo del Mapocho y treinta
+   * segundos después el recálculo se lo borra. Ver `paradas-fijas.ts`.
+   */
+  ordenFijo?: number | null;
 }
 
 export interface EntradaRuteo {

@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     const { data: asignaciones } = await cliente
       .from("asignaciones_pedido")
       .select(
-        "orden_ruta, pedidos(id, seller_id, tipo_pedido, fuente, origen, ml_order_id, ml_shipment_id, id_externo, referencia_externa, estado, estado_ml, subestado_ml, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, lat, long, geo_estado)",
+        "orden_ruta, orden_fijado, tramo_polilinea, tramo_distancia_m, tramo_duracion_s, pedidos(id, seller_id, tipo_pedido, fuente, origen, ml_order_id, ml_shipment_id, codigo_interno, id_externo, referencia_externa, estado, estado_ml, subestado_ml, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, lat, long, geo_estado)",
       )
       .eq("manifiesto_id", manifiestoId)
       .eq("tenant_id", tenantId)
@@ -65,11 +65,36 @@ export async function GET(request: NextRequest) {
     // pedido.id → orden_ruta. Las paradas sin secuencia (manifiesto sin rutear,
     // o parada que el motor no pudo ubicar) simplemente no entran al mapa.
     const ordenPorPedidoId = new Map<string, number | null>();
+    /**
+     * Lo que el mapa necesita además del orden: si la parada está fijada por el
+     * conductor y la geometría del tramo que LLEGA a ella.
+     *
+     * ⚠️ La polilínea se sirve tal cual la guardó el cálculo. **Nunca contiene
+     * el tramo hacia el punto de término del conductor** — lo descarta el
+     * adaptador antes de persistirse (canal 3 de
+     * `docs/seguridad/punto-de-termino-conductor.md`).
+     */
+    const rutaPorPedidoId = new Map<
+      string,
+      {
+        fijado: boolean;
+        polilinea: string | null;
+        distanciaM: number | null;
+        duracionS: number | null;
+      }
+    >();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ((asignaciones ?? []) as Record<string, any>[]).forEach((a) => {
       const p = a.pedidos as Record<string, unknown> | null;
       if (!p?.id) return;
-      ordenPorPedidoId.set(p.id as string, (a.orden_ruta as number | null) ?? null);
+      const pedidoId = p.id as string;
+      ordenPorPedidoId.set(pedidoId, (a.orden_ruta as number | null) ?? null);
+      rutaPorPedidoId.set(pedidoId, {
+        fijado: a.orden_fijado === true,
+        polilinea: (a.tramo_polilinea as string | null) ?? null,
+        distanciaM: (a.tramo_distancia_m as number | null) ?? null,
+        duracionS: (a.tramo_duracion_s as number | null) ?? null,
+      });
     });
 
     // Construir lista de pedidos con casts explícitos (igual que page.tsx conductor).
@@ -92,6 +117,7 @@ export async function GET(request: NextRequest) {
           origen: p.origen as string,
           mlOrderId: (p.ml_order_id as string | null) ?? null,
           mlShipmentId: (p.ml_shipment_id as string | null) ?? null,
+          codigoInterno: (p.codigo_interno as string | null) ?? null,
           idExterno: (p.id_externo as string | null) ?? null,
           referenciaExterna: (p.referencia_externa as string | null) ?? null,
           estado: p.estado as string,
@@ -147,18 +173,68 @@ export async function GET(request: NextRequest) {
 
     // La secuencia persistida manda; el alfabético queda de respaldo para el
     // manifiesto sin rutear y para las paradas que quedaron sin ubicar.
+    // Cuántos BULTOS trae cada parada.
+    //
+    // ⚠️ No existe `pedidos.bultos`: un pedido no declara su cantidad de bultos
+    // en ninguna columna. Lo que sí existe es lo que se ESCANEÓ al retirarlo,
+    // que además es el dato honesto — le dice al conductor cuántos paquetes va
+    // a bajar de la van, no cuántos dijo el seller que había.
+    //
+    // Un pedido sin bultos escaneados (retiro registrado a mano, o el bulto que
+    // no se resolvió) devuelve `null`, no `0`: «no lo sabemos» y «no trae
+    // ninguno» son cosas distintas, y un 0 en la ficha sería una afirmación
+    // falsa.
+    const bultosPorPedido = new Map<string, number>();
+    if (pedidoIds.length > 0) {
+      const { data: bultos } = await cliente
+        .from("bultos_retiro")
+        .select("pedido_id")
+        .eq("tenant_id", tenantId)
+        .in("pedido_id", pedidoIds);
+
+      (bultos ?? []).forEach((b: Record<string, unknown>) => {
+        const id = b.pedido_id as string | null;
+        if (!id) return;
+        bultosPorPedido.set(id, (bultosPorPedido.get(id) ?? 0) + 1);
+      });
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pedidosOrdenados = ordenarParadasConSecuencia(pedidosBase as any[], ordenPorPedidoId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const paradas = pedidosOrdenados.map((pedido: any, idx: number) => {
-      const cierre = cierresMap.get(pedido.id as string) ?? null;
+      const pedidoId = pedido.id as string;
+      const cierre = cierresMap.get(pedidoId) ?? null;
+      const ruta = rutaPorPedidoId.get(pedidoId) ?? null;
       return {
         orden: idx + 1,
-        pedido,
-        incidenciaAbierta: incidenciasMap.get(pedido.id as string) ?? null,
+        pedido: {
+          ...pedido,
+          // El identificador que va en el PIN del mapa. Misma regla que la Torre
+          // de control: `ml_shipment_id` en Flex, `codigo_interno` en el resto,
+          // y NUNCA `tracking_token` — ese es público y viaja en la URL que se
+          // le comparte al destinatario.
+          codigoEnvio: (pedido.mlShipmentId as string | null) ?? (pedido.codigoInterno as string | null) ?? null,
+          bultos: bultosPorPedido.get(pedidoId) ?? null,
+        },
+        incidenciaAbierta: incidenciasMap.get(pedidoId) ?? null,
         cierreConductor: cierre
           ? { resultado: cierre.resultado, motivo: cierre.motivo, cerradoEn: cierre.cerradoEn }
           : null,
+        /** El conductor fijó esta parada a mano: el motor no la mueve. */
+        fijada: ruta?.fijado === true,
+        /**
+         * Geometría del tramo que LLEGA a esta parada, por calle. `null` cuando
+         * la ruta la calculó el motor local (líneas rectas, sin trazado).
+         */
+        tramo:
+          ruta && ruta.polilinea !== null
+            ? {
+                polilinea: ruta.polilinea,
+                distanciaM: ruta.distanciaM,
+                duracionS: ruta.duracionS,
+              }
+            : null,
       };
     });
 

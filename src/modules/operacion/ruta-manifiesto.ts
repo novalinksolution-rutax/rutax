@@ -165,6 +165,16 @@ export interface ParadaDelManifiesto {
   pedidoId: string;
   lat: number | null;
   long: number | null;
+  /**
+   * Posición fijada por el conductor, o `null` si el motor puede moverla.
+   *
+   * ⚠️ **Sobrevive también al «Calcular ruta» del coordinador**, y eso es una
+   * decisión, no un descuido: si el recálculo del coordinador borrara las
+   * fijaciones, desharía en silencio la corrección que el conductor hizo en la
+   * calle — que es exactamente lo que el diseño prohíbe. Se limpian solo
+   * cuando alguien manda una secuencia sin ellas.
+   */
+  ordenFijo: number | null;
 }
 
 export interface ResultadoRuteoManifiesto {
@@ -286,6 +296,20 @@ export async function calcularYAplicarRutaManifiesto(
     pedidoIdsEnOrden: pedidoIdsDesdeSecuencia(ruta.secuencia),
     origen: "motor",
     actorUsuarioId,
+    // Las fijadas se REESCRIBEN tal como venían: el recálculo respeta lo que el
+    // conductor movió a mano. Ver la nota de `ParadaDelManifiesto.ordenFijo`.
+    fijados: fijadosDeLaSecuencia(ruta.secuencia, paradas),
+    // `undefined` con motor local — mide en línea recta y no tiene geometría
+    // que guardar. El RPC lo traduce a «sin tramos».
+    //
+    // Un tramo SIN polilínea es «sin geometría», no un tramo a medias: sus
+    // métricas se descartan con él. Es la misma regla que impone el CHECK
+    // `asignaciones_pedido_tramo_completo`, dicha antes de llegar a la base.
+    tramos: ruta.tramos?.map((t) =>
+      t.polilinea === null
+        ? null
+        : { polilinea: t.polilinea, distanciaM: t.distanciaM, duracionS: t.duracionS },
+    ),
   });
 
   return {
@@ -310,6 +334,17 @@ interface RutaResuelta {
   duracionTotalS: number | null;
   tramos: readonly TramoRuta[] | null;
   proveedor: ProveedorRuta;
+}
+
+/** Qué paradas de `secuencia` quedan fijadas, alineado POR POSICIÓN. */
+function fijadosDeLaSecuencia(
+  secuencia: readonly { pedidoId: string }[],
+  paradas: readonly ParadaDelManifiesto[],
+): boolean[] {
+  const fijos = new Set(
+    paradas.filter((p) => p.ordenFijo !== null).map((p) => p.pedidoId),
+  );
+  return secuencia.map((s) => fijos.has(s.pedidoId));
 }
 
 /**
@@ -345,7 +380,26 @@ async function resolverRuta(entrada: {
 }): Promise<RutaResuelta> {
   const puerto = obtenerPuertoOptimizacion();
 
-  if (puerto !== null) {
+  // ⚠️ **Con paradas fijadas NO se llama al proveedor externo, y es a propósito.**
+  //
+  // Google decide un orden y devuelve la geometría DE ESE orden. Al insertar
+  // después una parada fijada en el medio, esa geometría deja de unir los pines
+  // que se ven en pantalla: la línea iría por un lado y los números por otro.
+  // Dibujar eso es peor que no dibujarlo, y sus totales quedan igual de
+  // inválidos — devolver «0 km» o los kilómetros del orden que no se usó serían
+  // las dos formas de mentir.
+  //
+  // El motor local, en cambio, maneja las fijadas de forma nativa y devuelve un
+  // kilometraje que corresponde a la ruta real. Se pierde el trazado por calle
+  // mientras haya una parada fijada; se gana que todo lo que se muestra sea
+  // cierto.
+  //
+  // El estado deseable es otro y queda anotado: pedirle la geometría del orden
+  // YA DECIDIDO a `Compute Routes` de Google, que se cobra POR PETICIÓN (una
+  // por ruta) y no por parada. Ese es el siguiente paso del ruteo.
+  const hayFijadas = entrada.paradas.some((p) => p.ordenFijo !== null);
+
+  if (puerto !== null && !hayFijadas) {
     // Solo las ubicables salen a la red.
     const ubicables: ParadaAOptimizar[] = [];
     for (const parada of entrada.paradas) {
@@ -422,7 +476,7 @@ async function listarParadasDelManifiesto(
 ): Promise<ParadaDelManifiesto[]> {
   const { data, error } = await cliente
     .from("asignaciones_pedido")
-    .select("pedido_id, pedidos(id, lat, long)")
+    .select("pedido_id, orden_ruta, orden_fijado, pedidos(id, lat, long)")
     .eq("tenant_id", tenantId)
     .eq("manifiesto_id", manifiestoId)
     .eq("activa", true);
@@ -435,10 +489,17 @@ async function listarParadasDelManifiesto(
     .map((fila: Record<string, unknown>) => {
       const pedido = fila.pedidos as Record<string, unknown> | null;
       if (!pedido) return null;
+      // La fijación solo significa algo junto a su posición: `orden_fijado`
+      // sin `orden_ruta` no puede ocurrir (lo impide el CHECK
+      // `asignaciones_pedido_fijado_exige_orden`), pero se comprueba igual
+      // porque leer de la base no es lo mismo que confiar en ella.
+      const fijado = fila.orden_fijado === true;
+      const ordenRuta = (fila.orden_ruta as number | null) ?? null;
       return {
         pedidoId: fila.pedido_id as string,
         lat: (pedido.lat as number | null) ?? null,
         long: (pedido.long as number | null) ?? null,
+        ordenFijo: fijado && ordenRuta !== null ? ordenRuta : null,
       } satisfies ParadaDelManifiesto;
     })
     .filter((p): p is ParadaDelManifiesto => p !== null);

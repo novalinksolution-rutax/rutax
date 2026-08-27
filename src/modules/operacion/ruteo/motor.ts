@@ -77,6 +77,7 @@ import { construirVecinoCercano } from './vecino-cercano';
 import { ejecutarDosOpt, TOPE_PASADAS_DOS_OPT } from './dos-opt';
 import { ejecutarOrOpt, TOPE_PASADAS_OR_OPT } from './or-opt';
 import { costoPublico, ORIGEN_ID, DESTINO_ID, type DistanciaFn } from './costo';
+import { fusionarConFijas, separarFijas } from './paradas-fijas';
 import type { EntradaRuteo, ParadaARutear, ParadaSinUbicar, RutaCalculada } from './tipos';
 
 /**
@@ -125,6 +126,8 @@ interface ParadaUbicada {
   pedidoId: string;
   lat: number;
   long: number;
+  /** Posición impuesta por el conductor, si la hay. Ver `paradas-fijas.ts`. */
+  ordenFijo?: number | null;
 }
 
 function separarUbicables(paradas: readonly ParadaARutear[]): {
@@ -137,7 +140,7 @@ function separarUbicables(paradas: readonly ParadaARutear[]): {
   for (const parada of paradas) {
     const { lat, long } = parada;
     if (coordenadaValida(lat) && coordenadaValida(long) && enRangoFisico(lat, long)) {
-      ubicables.push({ pedidoId: parada.pedidoId, lat, long });
+      ubicables.push({ pedidoId: parada.pedidoId, lat, long, ordenFijo: parada.ordenFijo });
     } else {
       sinUbicar.push({ pedidoId: parada.pedidoId, motivo: 'sin_coordenada' });
     }
@@ -198,12 +201,18 @@ export async function calcularRuta(
     ...ubicables.map((p) => ({ id: p.pedidoId, lat: p.lat, long: p.long })),
   ];
 
+  // ⚠️ La matriz se construye sobre TODAS las ubicables, fijadas incluidas: son
+  // paradas de la ruta y el costo final las atraviesa. Lo que se les niega es
+  // participar en el reordenamiento, no existir.
   const matriz = await puerto.calcularMatriz(puntos);
   const distancia: DistanciaFn = (desdeId, haciaId) => matriz.distanciaM(desdeId, haciaId);
   const destinoId = entrada.destino !== null ? DESTINO_ID : null;
 
+  // Lo que el conductor movió a mano no se vuelve a mover. Ver `paradas-fijas.ts`.
+  const { fijas, libres } = separarFijas(ubicables);
+
   let secuencia = construirVecinoCercano(
-    ubicables.map((p) => p.pedidoId),
+    libres.map((p) => p.pedidoId),
     distancia,
   );
 
@@ -217,9 +226,13 @@ export async function calcularRuta(
     if (!dosOpt.mejoro && !orOpt.mejoro) break; // óptimo local conjunto: ninguno de los dos mejora más
   }
 
+  const secuenciaFinal = fusionarConFijas(secuencia, fijas);
+
   return {
-    secuencia: secuencia.map((pedidoId, indice) => ({ pedidoId, orden: indice + 1 })),
+    secuencia: secuenciaFinal.map((pedidoId, indice) => ({ pedidoId, orden: indice + 1 })),
     sinUbicar,
-    distanciaTotalM: costoPublico(secuencia, distancia),
+    // Sobre la secuencia FINAL, no sobre la optimizada: el conductor tiene que
+    // ver el kilometraje de la ruta que va a manejar, fijadas incluidas.
+    distanciaTotalM: costoPublico(secuenciaFinal, distancia),
   };
 }
