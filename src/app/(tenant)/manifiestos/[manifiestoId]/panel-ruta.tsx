@@ -299,7 +299,21 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeRutear, puedeQui
               : "") +
             (s.distanciaTotalM !== undefined
               ? ` · ${formatearDistancia(s.distanciaTotalM)}`
-              : "")
+              : "") +
+            // Cuánto se maneja: solo existe cuando la ruta vino por calle. El
+            // motor propio mide distancia y no tiene noción de tiempo.
+            (typeof s.duracionTotalS === "number"
+              ? ` · ${formatearDuracionCorta(s.duracionTotalS / 60)} de manejo`
+              : "") +
+            // Con QUÉ se midió. No es un detalle técnico: cambia cuánto puede
+            // confiar el coordinador en la secuencia que está viendo, y es lo
+            // único que delata que la credencial de Google dejó de funcionar
+            // —cuando eso pasa se cae al motor propio y todo lo demás se ve igual.
+            (s.proveedor === "google"
+              ? " · trazada por calle, con tráfico"
+              : s.proveedor === "local"
+                ? " · medida en línea recta"
+                : "")
           : "Ruta calculada.",
       });
       router.refresh();

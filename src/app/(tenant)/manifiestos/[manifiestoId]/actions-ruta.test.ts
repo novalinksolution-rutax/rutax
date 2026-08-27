@@ -117,6 +117,9 @@ describe("accionCalcularRuta — RBAC", () => {
       totalSinSecuencia: 0,
       distanciaTotalM: 1234,
       nombreOrigen: "Bodega Central",
+      proveedor: "local" as const,
+      duracionTotalS: null,
+      tramos: null,
     });
 
     const roles: Rol[] = ["dueno", "supervisor", "coordinador"];
@@ -187,6 +190,9 @@ describe("accionCalcularRuta — el tenant y el actor salen de la sesión", () =
       totalSinSecuencia: 0,
       distanciaTotalM: 500,
       nombreOrigen: "Bodega Central",
+      proveedor: "local" as const,
+      duracionTotalS: null,
+      tramos: null,
     });
 
     await accionCalcularRuta(MANIFIESTO_1);
@@ -280,13 +286,34 @@ describe("las respuestas de las dos acciones nunca traen nada del punto de térm
       totalSinSecuencia: 1,
       distanciaTotalM: 4200,
       nombreOrigen: "Bodega Central",
+      proveedor: "local" as const,
+      duracionTotalS: null,
+      tramos: null,
     });
 
     const resultado = await accionCalcularRuta(MANIFIESTO_1);
 
     expect(resultado.ok).toBe(true);
+    // La lista es CERRADA a propósito: es la guarda que obliga a justificar
+    // cada campo nuevo que quiera viajar al navegador del coordinador.
+    //
+    // `proveedor`, `duracionTotalS` y `tramos` se sumaron el 2026-08-26 con el
+    // puerto de optimización externa. Los tres son seguros y el motivo está en
+    // `ResultadoAccionRuta`: el adaptador descarta el tramo final hacia el
+    // ancla ANTES de devolverlo, así que ni la geometría ni los totales
+    // contienen nada del punto de término. La contraprueba —que la salida es
+    // idéntica con y sin ancla— vive en
+    // `integraciones/ruteo/adaptadores/google-route-optimization.test.ts`.
     expect(Object.keys(resultado.resumen ?? {}).sort()).toEqual(
-      ["distanciaTotalM", "nombreOrigen", "totalParadas", "totalSinSecuencia"].sort(),
+      [
+        "distanciaTotalM",
+        "duracionTotalS",
+        "nombreOrigen",
+        "proveedor",
+        "totalParadas",
+        "totalSinSecuencia",
+        "tramos",
+      ].sort(),
     );
   });
 

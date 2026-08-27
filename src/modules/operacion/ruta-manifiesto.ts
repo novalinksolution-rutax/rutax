@@ -44,6 +44,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Punto } from "@/lib/geo/distancia";
+import {
+  ErrorRuteoProveedor,
+  obtenerPuertoOptimizacion,
+  type ParadaAOptimizar,
+  type TramoRuta,
+} from "@/modules/integraciones/ruteo";
 
 import { puntoUsable } from "./distancias-tramo";
 import { obtenerAnclaFinRuta } from "./punto-termino-conductor";
@@ -174,7 +180,40 @@ export interface ResultadoRuteoManifiesto {
   distanciaTotalM: number;
   /** Nombre de la bodega desde la que se calculó. Para decirlo en pantalla. */
   nombreOrigen: string;
+  /**
+   * Quién resolvió la secuencia. `local` = motor propio sobre haversine (línea
+   * recta); `google` = Route Optimization, por calle y con tráfico.
+   *
+   * Sale hacia la pantalla a propósito: la diferencia entre las dos es
+   * exactamente la advertencia que el producto le debe al conductor —«esto es
+   * una propuesta en línea recta»— y esa advertencia **no se puede escribir
+   * fija** si la ruta a veces viene por calle.
+   */
+  proveedor: ProveedorRuta;
+  /**
+   * Segundos estimados de conducción, con tráfico. `null` con motor local, que
+   * no tiene noción de tiempo.
+   *
+   * Como `distanciaTotalM`, se acumula solo hasta la última parada: nunca
+   * incluye el trayecto al punto de término (canal 5 del §4.3).
+   */
+  duracionTotalS: number | null;
+  /**
+   * Geometría por calle de cada tramo (origen→1, 1→2, …). `null` con motor
+   * local.
+   *
+   * ⚠️ **Esto es el canal 3 del §4.3 y por eso vale la pena decir por qué puede
+   * salir de aquí.** El adaptador ya descartó el tramo final hacia el ancla, así
+   * que este arreglo tiene siempre tantos tramos como paradas en secuencia,
+   * exista o no punto de término — la salida es idéntica en los dos casos, que
+   * es la condición dura del documento. Un `fitBounds` sobre estas polilíneas
+   * tampoco puede delatar el ancla, porque no hay un solo vértice suyo aquí.
+   */
+  tramos: readonly TramoRuta[] | null;
 }
+
+/** Quién resolvió la secuencia. */
+export type ProveedorRuta = "local" | "google";
 
 /**
  * Calcula la ruta del manifiesto y la persiste, en ese orden.
@@ -232,7 +271,7 @@ export async function calcularYAplicarRutaManifiesto(
     anclaLeida === null ? null : puntoUsable(anclaLeida.lat, anclaLeida.long);
 
   // --- 4. Motor -------------------------------------------------------------
-  const ruta = await calcularRuta({
+  const ruta = await resolverRuta({
     origen: { lat: origen.lat, long: origen.long },
     destino: ancla,
     paradas,
@@ -254,6 +293,104 @@ export async function calcularYAplicarRutaManifiesto(
     totalSinSecuencia: resultado.totalSinSecuencia,
     distanciaTotalM: ruta.distanciaTotalM,
     nombreOrigen: origen.nombre,
+    proveedor: ruta.proveedor,
+    duracionTotalS: ruta.duracionTotalS,
+    tramos: ruta.tramos,
+  };
+}
+
+// =============================================================================
+// Quién resuelve la ruta: el proveedor externo si está encendido, si no el motor
+// =============================================================================
+
+/** Lo que las dos vías tienen que producir para que el resto no se entere. */
+interface RutaResuelta {
+  secuencia: readonly { pedidoId: string; orden: number }[];
+  distanciaTotalM: number;
+  duracionTotalS: number | null;
+  tramos: readonly TramoRuta[] | null;
+  proveedor: ProveedorRuta;
+}
+
+/**
+ * Resuelve la secuencia con el proveedor externo si hay uno configurado, y si
+ * no —o si falla— con el motor local.
+ *
+ * =============================================================================
+ * EL FALLBACK NO ES PEREZA: ES LA HORA
+ * =============================================================================
+ * Esto se ejecuta con el coordinador mirando la pantalla y la flota esperando
+ * para salir a las 16:00 en punto. Si Google no contesta, una secuencia en
+ * línea recta es peor que una por calle y muchísimo mejor que un mensaje de
+ * error y cero paradas ordenadas. Por eso `ErrorRuteoProveedor` **no se
+ * propaga**: se degrada.
+ *
+ * ⚠️ Lo que SÍ se propaga es `ErrorRuteoConfig`: que alguien haya escrito mal
+ * el nombre del proveedor no se arregla sirviendo líneas rectas en silencio
+ * durante un mes. Falla ruidoso, como pide el puerto.
+ *
+ * =============================================================================
+ * LAS PARADAS SIN COORDENADA NO LLEGAN AL PROVEEDOR, Y NO SE PIERDEN
+ * =============================================================================
+ * El puerto externo exige coordenada; el motor local acepta nulos y los
+ * devuelve en `sinUbicar`. Acá se filtran antes de salir a la red, y las que
+ * quedan fuera simplemente no entran en la secuencia — lo que el RPC traduce a
+ * `orden_ruta` nulo, o sea el estado «sin secuencia» que la pantalla ya
+ * muestra. Es el mismo destino que tienen con el motor local.
+ */
+async function resolverRuta(entrada: {
+  origen: Punto;
+  destino: Punto | null;
+  paradas: readonly ParadaDelManifiesto[];
+}): Promise<RutaResuelta> {
+  const puerto = obtenerPuertoOptimizacion();
+
+  if (puerto !== null) {
+    // Solo las ubicables salen a la red.
+    const ubicables: ParadaAOptimizar[] = [];
+    for (const parada of entrada.paradas) {
+      const punto = puntoUsable(parada.lat, parada.long);
+      if (punto) {
+        ubicables.push({ pedidoId: parada.pedidoId, lat: punto.lat, long: punto.long });
+      }
+    }
+
+    try {
+      const optimizada = await puerto.optimizarRuta({
+        origen: entrada.origen,
+        destino: entrada.destino,
+        paradas: ubicables,
+      });
+      return {
+        secuencia: optimizada.secuencia,
+        distanciaTotalM: optimizada.distanciaTotalM,
+        duracionTotalS: optimizada.duracionTotalS,
+        tramos: optimizada.tramos,
+        proveedor: "google",
+      };
+    } catch (causa) {
+      if (!(causa instanceof ErrorRuteoProveedor)) throw causa;
+      // Se registra el hecho SIN la entrada del solver: lleva el ancla (canal
+      // 12 del §4.3). Solo el mensaje del proveedor, que ya viene depurado.
+      console.warn(
+        "[ruta-manifiesto] el proveedor de ruteo falló, se usa el motor local:",
+        causa.message,
+      );
+    }
+  }
+
+  const local = await calcularRuta({
+    origen: entrada.origen,
+    destino: entrada.destino,
+    paradas: entrada.paradas,
+  });
+
+  return {
+    secuencia: local.secuencia,
+    distanciaTotalM: local.distanciaTotalM,
+    duracionTotalS: null,
+    tramos: null,
+    proveedor: "local",
   };
 }
 

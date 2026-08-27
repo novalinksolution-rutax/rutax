@@ -91,6 +91,30 @@ export interface ResultadoAccionRuta {
     distanciaTotalM?: number;
     /** Bodega desde la que se calculó. Solo en el cálculo del motor. */
     nombreOrigen?: string;
+    /**
+     * Quién resolvió la secuencia: `local` (motor propio, línea recta) o
+     * `google` (Route Optimization, por calle y con tráfico).
+     *
+     * Viaja al navegador a propósito: la advertencia «esto es una propuesta en
+     * línea recta» deja de ser cierta cuando la ruta vino por calle, y no se
+     * puede decidir en tiempo de escritura cuál de las dos mostrar.
+     */
+    proveedor?: "local" | "google";
+    /** Segundos de conducción estimados. `null` con motor local. */
+    duracionTotalS?: number | null;
+    /**
+     * Geometría por calle de cada tramo, para dibujar la ruta en el mapa.
+     * `null` con motor local.
+     *
+     * ⚠️ **Sale de aquí y es seguro, pero conviene saber por qué.** El
+     * adaptador ya descartó el tramo final hacia el punto de término del
+     * conductor (canal 3 del §4.3 de
+     * `docs/seguridad/punto-de-termino-conductor.md`), así que hay tantos
+     * tramos como paradas en secuencia, exista o no ancla — la respuesta es
+     * idéntica en los dos casos. No hay un solo vértice del ancla acá dentro,
+     * ni siquiera para encuadrar el mapa.
+     */
+    tramos?: readonly { distanciaM: number; duracionS: number; polilinea: string | null }[] | null;
   };
 }
 
