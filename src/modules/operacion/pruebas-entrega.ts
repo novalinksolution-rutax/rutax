@@ -41,7 +41,8 @@ import type { TipoIncidencia } from "./tipos";
  * Radio máximo aceptable entre la posición de captura del POD y el destino del
  * pedido (metros).
  *
- * **1.000 m desde el 2026-08-15** (decisión del usuario; antes eran 150 m).
+ * **3.000 m desde el 2026-08-27** (decisión del usuario; 1.000 m desde el
+ * 2026-08-15, y 150 m antes de eso).
  *
  * Qué compra y qué cuesta, para que quien lo lea sepa qué está mirando:
  *
@@ -52,11 +53,21 @@ import type { TipoIncidencia } from "./tipos";
  *   el POD dependía tanto de la calidad del geocoding como de dónde estaba el
  *   conductor, y la evidencia castigaba al conductor por un error de la
  *   dirección.
- * - **Cuesta** poder de prueba. 1 km en Santiago son ~3 km²: varias manzanas, a
- *   veces media comuna. La geocerca deja de responder "estuvo en la puerta" y
- *   pasa a responder "estuvo en el barrio". Sigue atajando lo que importa —
- *   marcar entregado desde la casa o desde otra comuna— pero ya no distingue el
- *   edificio de al lado.
+ * - **Cuesta** poder de prueba, y a 3 km cuesta casi todo. Son ~28 km², más que
+ *   varias comunas de Santiago juntas: desde Providencia entra el centro,
+ *   Ñuñoa, Las Condes y parte de Recoleta. La geocerca ya no responde «estuvo
+ *   en la puerta» ni «estuvo en el barrio», sino **«estuvo en ese lado de la
+ *   ciudad»**. Lo que sigue atajando es marcar entregado desde la casa, desde
+ *   otra ciudad o sin haber salido de la bodega; lo que deja de atajar es
+ *   cerrar un pedido desde la parada anterior, o desde el semáforo a diez
+ *   cuadras. Con 25-30 paradas en pocas comunas, es probable que **ninguna
+ *   entrega del día vuelva a dar `fuera`**.
+ *
+ * ⚠️ Es un radio de PRUEBA, decidido para poder cerrar entregas en terreno sin
+ * pelear con el GPS. Si el objetivo era desbloquear las pruebas y no relajar la
+ * evidencia de forma permanente, esto se devuelve a 1.000 m antes de operar de
+ * verdad — la geocerca es lo único que respalda un «entregado» ante un reclamo
+ * del seller.
  *
  * ⚠️ El radio se aplica a las TRES superficies que lo reusan: el POD autoritativo
  * de same-day (este archivo), el cierre operativo de Flex (`cierre-conductor.ts`)
@@ -64,7 +75,7 @@ import type { TipoIncidencia } from "./tipos";
  * responden la misma pregunta física. Si alguna vez una necesita un radio
  * distinto, hay que darle constante propia, no cambiar ésta.
  */
-export const POD_GEOCERCA_RADIO_M = 1000;
+export const POD_GEOCERCA_RADIO_M = 3000;
 
 // =============================================================================
 // Tipos de dominio del POD

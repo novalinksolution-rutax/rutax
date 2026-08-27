@@ -205,6 +205,11 @@ function clientePodMock(opts: {
 // Escenario 4 — POD: es_valido según foto + geocerca (integración del módulo)
 // =============================================================================
 
+/** Grados de latitud para una distancia en metros — ver la nota gemela en
+ *  `pruebas-entrega.test.ts`: los offsets fijos solo eran «fuera» mientras el
+ *  radio valiera 1 km. Va en ámbito de módulo porque lo usan dos escenarios. */
+const gradosLatitudPara = (metros: number) => metros / 111_190;
+
 describe("Esc-4 | registrarPruebaEntrega — es_valido según combinación foto+geocerca", () => {
   // -------------------------------------------------------------------------
   // 4a. Con foto + geocerca 'dentro' → es_valido=true (happy path)
@@ -313,8 +318,8 @@ describe("Esc-4 | registrarPruebaEntrega — es_valido según combinación foto+
   // -------------------------------------------------------------------------
   // 4c. Con foto + geocerca 'fuera' → es_valido=false
   // -------------------------------------------------------------------------
-  it("foto=sí, geocerca=fuera (>1 km) → registra POD con es_valido=false", async () => {
-    const latLejos = LAT_DESTINO - 0.0135; // ≈ 1,5 km al norte
+  it("foto=sí, geocerca=fuera → registra POD con es_valido=false", async () => {
+    const latLejos = LAT_DESTINO - gradosLatitudPara(POD_GEOCERCA_RADIO_M * 1.5);
 
     const distancia = haversineMetros(latLejos, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     expect(distancia).toBeGreaterThan(POD_GEOCERCA_RADIO_M); // pre-condición del test
@@ -435,13 +440,27 @@ describe("Esc-5 | haversineMetros — geocerca Haversine con coordenadas reales"
     expect(dist).toBeLessThan(120);    // ~98 m con tolerancia
   });
 
-  it("Plaza de Armas → Parque Balmaceda (~1.7 km real) está FUERA del radio de 1 km", () => {
-    // Haversine real: ~1730 m (estimación visual era errónea — el Parque Balmaceda
-    // está a ~1.7 km, no 2.2 km, de la Plaza de Armas).
+  /**
+   * Con 150 m era FUERA; con 1 km seguía FUERA; con 3 km (2026-08-27) pasó a
+   * DENTRO. Se conserva y se da vuelta a propósito: un conductor parado en el
+   * Parque Balmaceda queda validado para una entrega en la Plaza de Armas, a
+   * 1,7 km y cruzando el centro. Junto con la del Cerro Santa Lucía, son las
+   * dos ilustraciones concretas de qué costó cada ensanche.
+   */
+  it("Plaza de Armas → Parque Balmaceda (~1.7 km real) está DENTRO del radio de 3 km", () => {
     const dist = haversineMetros(-33.4372, -70.6506, -33.4430, -70.6333);
-    expect(dist).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
+    expect(dist).toBeLessThan(POD_GEOCERCA_RADIO_M);
     expect(dist).toBeGreaterThan(1500); // conservador: real ≈ 1730 m
     expect(dist).toBeLessThan(2000);    // acotado para detectar regresiones
+  });
+
+  it("Plaza de Armas → Estadio Nacional (~4.7 km real) está FUERA del radio de 3 km", () => {
+    // Hace falta un par REAL que siga quedando fuera con el radio de 3 km: sin
+    // él, ninguna prueba con coordenadas de verdad ejercita ya la rama `fuera`.
+    const dist = haversineMetros(-33.4372, -70.6506, -33.4644, -70.6108);
+    expect(dist).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
+    expect(dist).toBeGreaterThan(4000);
+    expect(dist).toBeLessThan(5500);
   });
 
   /**
@@ -471,12 +490,12 @@ describe("Esc-5 | haversineMetros — geocerca Haversine con coordenadas reales"
     expect(dist).toBeLessThan(1050);
   });
 
-  it("Punto a ~989 m → dentro; punto a ~1011 m → fuera (discriminación límite)", () => {
-    // Ajuste fino para que la distancia caiga a cada lado del radio de 1 km,
-    // con margen suficiente para no depender del redondeo de haversine.
-    // 0.00890 grados ≈ 989 m; 0.00910 grados ≈ 1011 m.
-    const latDentro = LAT_DESTINO - 0.00890;
-    const latFuera  = LAT_DESTINO - 0.00910;
+  it("un punto justo bajo el radio → dentro; justo sobre → fuera (discriminación límite)", () => {
+    // A cada lado del radio con ~1 % de margen: suficiente para no depender del
+    // redondeo de haversine, y derivado de la constante para que el límite
+    // siga siendo el límite cuando el radio cambie.
+    const latDentro = LAT_DESTINO - gradosLatitudPara(POD_GEOCERCA_RADIO_M * 0.99);
+    const latFuera  = LAT_DESTINO - gradosLatitudPara(POD_GEOCERCA_RADIO_M * 1.01);
 
     const dDentro = haversineMetros(latDentro, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     const dFuera  = haversineMetros(latFuera,  LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
@@ -488,7 +507,7 @@ describe("Esc-5 | haversineMetros — geocerca Haversine con coordenadas reales"
     // Puede haber ligera variación numérica: lo que importa es que el punto
     // interior está más cerca que el exterior.
     expect(dDentro).toBeLessThan(dFuera);
-    // Y que el punto interior realmente está a menos de 1 km.
+    // Y que el punto interior realmente está dentro del radio.
     expect(dDentro).toBeLessThan(POD_GEOCERCA_RADIO_M);
     // Y el exterior a más.
     expect(dFuera).toBeGreaterThan(POD_GEOCERCA_RADIO_M);

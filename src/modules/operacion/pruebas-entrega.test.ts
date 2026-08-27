@@ -69,6 +69,18 @@ function actorSinCapacidad(): UsuarioActual & { usuarioId: string } {
 // 1. Haversine — función pura
 // =============================================================================
 
+/**
+ * Un desplazamiento en latitud, en grados, para una distancia dada en metros.
+ *
+ * Las pruebas de «está fuera» se escribían con un offset fijo («0.0135 ≈ 1,5
+ * km») que era mayor que el radio SOLO mientras el radio fuera 1 km. Al subirlo
+ * a 3 km (2026-08-27) seis pruebas se cayeron a la vez, y las que no dependían
+ * del radio para su aserción habrían pasado en verde afirmando lo contrario de
+ * su nombre. Derivándolo de la constante, el caso «fuera» sigue estando fuera
+ * con cualquier radio futuro.
+ */
+const gradosLatitudPara = (metros: number) => metros / 111_190;
+
 describe("haversineMetros — cálculo de distancia GPS", () => {
   it("distancia entre el mismo punto es 0", () => {
     expect(haversineMetros(LAT_DESTINO, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO)).toBe(0);
@@ -82,9 +94,8 @@ describe("haversineMetros — cálculo de distancia GPS", () => {
     expect(dist).toBeGreaterThan(0);
   });
 
-  it("distancia ~1,5 km está fuera del radio de 1 km", () => {
-    // ~0.0135 grados de latitud ≈ 1,5 km
-    const latLejos = LAT_DESTINO - 0.0135;
+  it("un punto a 1,5× el radio está fuera de la geocerca", () => {
+    const latLejos = LAT_DESTINO - gradosLatitudPara(POD_GEOCERCA_RADIO_M * 1.5);
     const dist = haversineMetros(latLejos, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     expect(dist).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
   });
@@ -116,11 +127,13 @@ describe("POD_GEOCERCA_RADIO_M", () => {
    * esperando a que el coordinador la revise a mano, y se aplica a las tres
    * superficies que lo reusan (POD same-day, cierre Flex y evidencia).
    *
-   * 1.000 m desde el 2026-08-15 (antes 150 m), por decisión del usuario. El
-   * porqué y el intercambio están escritos junto a la constante.
+   * 3.000 m desde el 2026-08-27 (1.000 m desde el 15-ago, 150 m antes), por
+   * decisión del usuario. El porqué y el intercambio están escritos junto a la
+   * constante — incluido que a 3 km es un radio de PRUEBA y que la nota dice
+   * cómo devolverlo.
    */
-  it("es exactamente 1.000 metros", () => {
-    expect(POD_GEOCERCA_RADIO_M).toBe(1000);
+  it("es exactamente 3.000 metros", () => {
+    expect(POD_GEOCERCA_RADIO_M).toBe(3000);
   });
 });
 
@@ -331,8 +344,8 @@ describe("Lógica de geocerca y es_valido", () => {
   });
 
   // Fuera del radio
-  it("punto a 1,5 km del destino está FUERA de la geocerca", () => {
-    const latLejos = LAT_DESTINO - 0.0135; // ~1,5 km
+  it("punto a 1,5× el radio del destino está FUERA de la geocerca", () => {
+    const latLejos = LAT_DESTINO - gradosLatitudPara(POD_GEOCERCA_RADIO_M * 1.5);
     const dist = haversineMetros(latLejos, LONG_DESTINO, LAT_DESTINO, LONG_DESTINO);
     expect(dist).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
     const geocercaResultado = dist <= POD_GEOCERCA_RADIO_M ? "dentro" : "fuera";

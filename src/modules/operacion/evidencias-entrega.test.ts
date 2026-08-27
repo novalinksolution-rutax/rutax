@@ -13,6 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { POD_GEOCERCA_RADIO_M } from "./pruebas-entrega";
 import {
   registrarEvidenciaEntrega,
   type RegistrarEvidenciaEntrada,
@@ -248,11 +249,20 @@ describe("registrarEvidenciaEntrega — geocerca", () => {
     const ev = await registrarEvidenciaEntrega(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mock as any,
-      { ...ENTRADA_BASE, geo: { lat: LAT_DESTINO - 0.01, long: LONG_DESTINO } },
+      // 1,5× el radio vigente. Con un offset fijo («0.01 ≈ 1,1 km») este caso
+      // dejó de estar fuera en cuanto el radio subió a 3 km (2026-08-27), y la
+      // prueba pasaba a afirmar lo contrario de su nombre.
+      {
+        ...ENTRADA_BASE,
+        geo: {
+          lat: LAT_DESTINO - (POD_GEOCERCA_RADIO_M * 1.5) / 111_190,
+          long: LONG_DESTINO,
+        },
+      },
       actorConductor(),
     );
     expect(ev.geocercaResultado).toBe("fuera");
-    expect(ev.distanciaDestinoM).toBeGreaterThan(150);
+    expect(ev.distanciaDestinoM).toBeGreaterThan(POD_GEOCERCA_RADIO_M);
   });
 
   it("sin geo del conductor → 'sin_referencia'", async () => {
