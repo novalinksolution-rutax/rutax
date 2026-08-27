@@ -34,7 +34,7 @@ import type {
 } from "./tipos";
 import { GRUPOS_ESTADO_PEDIDO } from "./tipos";
 import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
-import { ahoraEnSantiago } from "@/lib/fecha-santiago";
+import { ahoraEnSantiago, hoyEnSantiago } from "@/lib/fecha-santiago";
 import { resolverZona } from "./zonas";
 import { evaluarVentanaCorte } from "./ventanas-corte";
 import { resolverTarifaVigente } from "./tarifas";
@@ -1263,7 +1263,21 @@ export async function crearPedidoSameDay(
         destinatario_comuna: entrada.destinatarioComuna,
         destinatario_telefono: entrada.destinatarioTelefono ?? null,
         instrucciones_entrega: entrada.instruccionesEntrega ?? null,
-        fecha_compromiso: entrada.fechaCompromiso ?? null,
+        // 🔴 Sin fecha, el pedido se compromete para HOY (día operativo de
+        // Santiago). Antes se guardaba NULL, y eso lo volvía invisible: el
+        // panel de Pedidos filtra `fecha_compromiso` con `.eq` (o con
+        // `.gte`/`.lte`), y en SQL un NULL no satisface NINGUNA comparación:
+        // el pedido existía y no aparecía en ninguna pantalla del día —
+        // tampoco en «Registrar retiro», así que no se podía ni asignar.
+        // Mordió el 2026-08-27 al crear diez pedidos de prueba.
+        //
+        // El formulario SIEMPRE prometió esto («Si la dejas vacía, se entrega
+        // hoy»); lo que faltaba era cumplirlo.
+        //
+        // ⚠️ `hoyEnSantiago()` y no `new Date().toISOString()`: en Vercel
+        // el runtime corre en UTC, así que después de las 21:00 de Chile el
+        // pedido se habría comprometido para MAÑANA.
+        fecha_compromiso: entrada.fechaCompromiso ?? hoyEnSantiago(),
         notas_internas: entrada.notasInternas ?? null,
         tarifa_aplicable_id: tarifaAplicableId,
         fecha_compromiso_hora: fechaCompromisoHora,

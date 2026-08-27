@@ -27,6 +27,7 @@ vi.mock("@/lib/inngest/cliente", () => ({
 
 import { inngest } from "@/lib/inngest/cliente";
 import { actualizarEstadoPedido, cancelarPedido, crearPedidoSameDay, asegurarCodigoInterno } from "./pedidos";
+import { hoyEnSantiago, sumarDiasCalendario } from "@/lib/fecha-santiago";
 import { ErrorTransicionInvalida, ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
 import { PATRON_CODIGO_INTERNO } from "./codigo-interno";
@@ -338,9 +339,14 @@ function crearClienteFalso(opts?: {
                 destinatario_nombre: fila.destinatario_nombre as string,
                 destinatario_direccion: fila.destinatario_direccion as string,
                 destinatario_comuna: fila.destinatario_comuna as string,
-                destinatario_telefono: null,
-                instrucciones_entrega: null,
-                fecha_compromiso: null,
+                destinatario_telefono: (fila.destinatario_telefono as string | null) ?? null,
+                instrucciones_entrega: (fila.instrucciones_entrega as string | null) ?? null,
+                // ⚠️ Estas tres se escribían a mano como `null`, ignorando el
+                // payload. Un doble falso que no refleja lo que se le pide
+                // escribir no puede detectar que se escribió mal: por eso el
+                // bug de `fecha_compromiso = NULL` (2026-08-27) pasó por 71
+                // pruebas en verde. Un falso reproduce el INSERT, no lo inventa.
+                fecha_compromiso: (fila.fecha_compromiso as string | null) ?? null,
                 tarifa_aplicable_id: fila.tarifa_aplicable_id as string,
                 monto_cobro_clp: null,
                 monto_liquidacion_clp: null,
@@ -1670,6 +1676,54 @@ describe("crearPedidoSameDay — campos de geocoding", () => {
     expect(pedido.destinatarioNombre).toBe("María González");
     expect(pedido.destinatarioDireccion).toBe("Calle Falsa 456");
     expect(pedido.destinatarioComuna).toBe("Santiago");
+  });
+});
+
+// =============================================================================
+// crearPedidoSameDay — fecha de compromiso (regresión 2026-08-27)
+// =============================================================================
+// 🔴 Sin fecha, el pedido se guardaba con `fecha_compromiso = NULL`, y en SQL
+// un NULL no satisface NINGUNA comparación: ni el `.eq` del panel de Pedidos,
+// ni el `.gte`/`.lte` del rango. El pedido existía y no aparecía en ninguna
+// pantalla del día, así que tampoco se podía asignar. Diez pedidos reales se
+// perdieron así antes de encontrarlo.
+//
+// El formulario SIEMPRE prometió «Si la dejas vacía, se entrega hoy» —y hasta
+// calculaba el aviso de corte tratando el vacío como hoy—; lo único que no lo
+// cumplía era la escritura.
+
+describe("crearPedidoSameDay — fecha de compromiso", () => {
+  it("sin fecha, se compromete para HOY y nunca guarda NULL", async () => {
+    const { cliente, estado } = crearClienteFalso();
+
+    const { pedido } = await crearPedidoSameDay(cliente, {
+      tenantId: TENANT_A,
+      sellerId: SELLER_1,
+      destinatarioNombre: "Camila Rojas",
+      destinatarioDireccion: "Av. Apoquindo 4501",
+      destinatarioComuna: "Las Condes",
+      // fechaCompromiso ausente a propósito: es el caso que se rompió.
+    });
+
+    const fila = estado.pedidos.find((p) => p.id === pedido.id);
+    expect(fila?.fecha_compromiso).toBe(hoyEnSantiago());
+    expect(fila?.fecha_compromiso).not.toBeNull();
+  });
+
+  it("respeta la fecha explícita cuando el usuario la eligió", async () => {
+    const { cliente, estado } = crearClienteFalso();
+    const manana = sumarDiasCalendario(hoyEnSantiago(), 1);
+
+    const { pedido } = await crearPedidoSameDay(cliente, {
+      tenantId: TENANT_A,
+      sellerId: SELLER_1,
+      destinatarioNombre: "Tomás Vera",
+      destinatarioDireccion: "Av. Independencia 1300",
+      destinatarioComuna: "Independencia",
+      fechaCompromiso: manana,
+    });
+
+    expect(estado.pedidos.find((p) => p.id === pedido.id)?.fecha_compromiso).toBe(manana);
   });
 });
 
