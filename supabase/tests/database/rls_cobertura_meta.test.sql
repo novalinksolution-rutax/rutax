@@ -23,7 +23,7 @@
 
 begin;
 
-select plan(3);
+select plan(4);
 
 -- Schemas de negocio cubiertos. `public` se excluye a propósito: ahí solo viven
 -- vistas security_invoker (relkind 'v'), que heredan la RLS de la tabla base.
@@ -97,6 +97,52 @@ select results_eq($$
    )
 $$, $$ values (true) $$,
   'Tablas críticas (secretos y dinero) con RLS enable + force'
+);
+
+-- ---------------------------------------------------------------------------
+-- Test 4 · 🔴 La suposición del Test 1, convertida en aserción.
+--
+-- Arriba se lee: «`public` se excluye a propósito: ahí solo viven vistas
+-- security_invoker, que heredan la RLS de la tabla base». Eso era una CREENCIA,
+-- no una comprobación — y se rompió el 26-08-2026.
+--
+-- `public.conductores` perdió la opción al reponerla para agregarle una columna:
+-- `create or replace view` conserva los GRANT pero **reemplaza las opciones**, y
+-- quien la repuso no repitió el `WITH`. Sin `security_invoker` la vista corre con
+-- los privilegios de su dueño, la RLS de la tabla base deja de aplicarse, y la
+-- aplicación consulta SIEMPRE por la vista: un courier leía la nómina de otro.
+--
+-- No dio ningún síntoma. Con un solo tenant en la base el resultado es idéntico
+-- al correcto; el fallo aparece recién cuando existe un segundo courier, que es
+-- cuando ya es tarde. Por eso la red va acá, en el momento de migrar.
+--
+-- Se afirma sobre TODAS las vistas de `public` menos tres nombradas, y NO sobre
+-- una lista blanca: una vista espejo nueva a la que se le olvide el `WITH` tiene
+-- que caer acá. Las tres excepciones, con su motivo:
+--
+--  · `pg_all_foreign_keys` y `tap_funky` — no son nuestras. Las instala la
+--    extensión pgTAP en `public`, y solo existen donde corren estas pruebas.
+--
+--  · `pruebas_entrega_seller` — su aislamiento NO vive en la RLS de una tabla
+--    base: es una vista sobre `operacion.pruebas_entrega_del_seller()`, una
+--    función SECURITY DEFINER que filtra ella misma por
+--    `claim_tipo_usuario() = 'seller'`, `claim_tenant_id()` y
+--    `claim_seller_id()`. Ahí `security_invoker` no es el mecanismo, y exigirlo
+--    sería pedir lo que no aplica. Verificado leyendo el cuerpo de la función,
+--    no suponiéndolo.
+-- ---------------------------------------------------------------------------
+select is_empty(
+  $$
+  select n.nspname || '.' || c.relname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public'
+     and c.relkind = 'v'
+     and c.relname not in ('pg_all_foreign_keys', 'tap_funky', 'pruebas_entrega_seller')
+     and coalesce(array_to_string(c.reloptions, ','), '')
+         not like '%security_invoker=true%'
+  $$,
+  'Toda vista de public tiene security_invoker=true (sin él NO aplica la RLS de quien consulta)'
 );
 
 select * from finish();
