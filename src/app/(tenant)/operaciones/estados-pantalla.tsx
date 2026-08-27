@@ -136,24 +136,33 @@ export function VacioFiltroSinResultados({
   );
 }
 
-/** Vacío 3 · **Arranque.** Ni bueno ni malo: temprano. */
-export function VacioArranque({ puedeCrear }: { puedeCrear: boolean }) {
+/**
+ * Vacío 3 · **Arranque.** Ni bueno ni malo: temprano.
+ *
+ * ⚠️ **`accionCrear` llega como ELEMENTO YA RENDERIZADO, no como componente.**
+ * Es el mismo patrón que exige el resto del repo: pasar una función de
+ * componente a través de un límite de servidor tumba en ejecución todo lo que
+ * el árbol envuelve, y ni el typecheck ni el lint lo notan.
+ *
+ * 🔴 **El botón llevaba a `/operaciones/nuevo`.** Un vacío es exactamente el
+ * momento en que el courier no quiere cambiar de pantalla: está mirando su día
+ * y lo que necesita es meter un pedido, no navegar a otro sitio y volver. El
+ * formulario ya vivía en un panel lateral —que bajo 768 px es una hoja de
+ * abajo hacia arriba— en el encabezado de esta misma pantalla; el vacío se
+ * había quedado con el enlace viejo. La página **no se retira**: sigue siendo
+ * una URL que se comparte y que el botón atrás respeta.
+ */
+export function VacioArranque({ accionCrear }: { accionCrear?: React.ReactNode }) {
   return (
     <EmptyState
       icon={Inbox}
       titulo="Aún no hay pedidos para hoy"
       descripcion={
-        puedeCrear
+        accionCrear
           ? "Los pedidos de tus sellers llegan solos cuando ellos venden. También puedes crear uno same-day a mano."
           : "Los pedidos de tus sellers llegan solos cuando ellos venden."
       }
-      accion={
-        puedeCrear ? (
-          <Button asChild size="sm">
-            <Link href="/operaciones/nuevo">Crear pedido same-day</Link>
-          </Button>
-        ) : undefined
-      }
+      accion={accionCrear}
     />
   );
 }

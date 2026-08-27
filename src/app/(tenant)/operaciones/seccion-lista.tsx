@@ -73,6 +73,7 @@ export async function SeccionLista({
   hoyIso,
   filtrosPuestosLegibles,
   puedeAjustar,
+  accionCrearSameDay,
   tieneAcciones,
   nombreSellerPorId,
   hrefPagina,
@@ -91,6 +92,12 @@ export async function SeccionLista({
   hoyIso: string;
   filtrosPuestosLegibles: string[];
   puedeAjustar: boolean;
+  /**
+   * El disparador del panel de alta, YA RENDERIZADO — nunca el componente.
+   * Pasar una función de componente a través de un límite de servidor tumba en
+   * ejecución todo lo que el árbol envuelve, y typecheck y lint lo aprueban.
+   */
+  accionCrearSameDay?: React.ReactNode;
   tieneAcciones: boolean;
   nombreSellerPorId: Record<string, string>;
   hrefPagina: (p: number) => string;
@@ -320,7 +327,7 @@ export async function SeccionLista({
             hrefLimpiar="/operaciones"
           />
         ) : (
-          <VacioArranque puedeCrear={puedeAjustar} />
+          <VacioArranque accionCrear={puedeAjustar ? accionCrearSameDay : undefined} />
         )
       ) : (
         <DataTable

@@ -454,6 +454,10 @@ export default async function PaginaOperaciones({
           hoyIso={hoyIso}
           filtrosPuestosLegibles={filtrosPuestosLegibles}
           puedeAjustar={puedeAjustar}
+          // El MISMO panel que el encabezado, no una segunda forma de crear.
+          accionCrearSameDay={
+            <FormularioPedidoSameDay sellers={sellersDisponibles} variante="vacio" />
+          }
           tieneAcciones={tieneAcciones}
           nombreSellerPorId={nombreSellerPorId}
           hrefPagina={hrefPagina}

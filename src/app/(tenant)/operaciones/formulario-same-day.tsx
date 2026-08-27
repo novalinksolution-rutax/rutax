@@ -43,10 +43,20 @@ import { FormularioAltaSameDay } from "./nuevo/formulario";
 
 export function FormularioPedidoSameDay({
   sellers,
+  variante = "encabezado",
 }: {
   sellers: { id: string; nombre: string }[];
   /** Ya no se usa: la acción lo toma de la sesión. Se conserva por el llamador. */
   tenantId?: string;
+  /**
+   * Dónde vive el disparador, que es lo único que cambia entre los dos sitios.
+   *
+   * - `encabezado` — compite por ancho con el título, el indicador en vivo y
+   *   «Ver incidencias», así que el rótulo se acorta por tramos.
+   * - `vacio` — es el ÚNICO elemento de la pantalla. Acortarlo ahí no ahorra
+   *   nada y deja al courier con un botón que dice «Crear» sin decir qué.
+   */
+  variante?: "encabezado" | "vacio";
 }) {
   const [abierto, setAbierto] = useState(false);
 
@@ -69,9 +79,15 @@ export function FormularioPedidoSameDay({
               Se resuelve acortando el rótulo, no encogiendo la letra ni
               cortando con puntos suspensivos. El nombre accesible se conserva
               entero para quien no ve el botón. */}
-          <span className="hidden xl:inline">Crear pedido same-day</span>
-          <span className="hidden sm:inline xl:hidden">Crear</span>
-          <span className="sr-only sm:hidden">Crear pedido same-day</span>
+          {variante === "vacio" ? (
+            "Crear pedido same-day"
+          ) : (
+            <>
+              <span className="hidden xl:inline">Crear pedido same-day</span>
+              <span className="hidden sm:inline xl:hidden">Crear</span>
+              <span className="sr-only sm:hidden">Crear pedido same-day</span>
+            </>
+          )}
         </Button>
       }
     >
