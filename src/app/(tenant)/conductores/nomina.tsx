@@ -589,12 +589,20 @@ function CajonConductor({
             </>
           )}
 
+          {/* ⚠️ **El rótulo nombra las TRES cosas que hay detrás, no una.**
+              Decía «Historial de entregas y pagos», y detrás vive además el
+              bloque «Acceso a la app» — que es el ÚNICO sitio desde donde se
+              invita a un conductor a usar el teléfono.
+              Con el rótulo viejo, quien buscaba invitar recorría el cajón
+              entero, no encontraba nada y concluía que la función no existía;
+              pasó de verdad el 2026-08-27. Una puerta rotulada con una sola de
+              las cosas que hay detrás esconde las otras dos. */}
           <Link
             href={`/conductores/${conductor.id}`}
-            className="flex items-center justify-between border-t border-line pt-3 text-sm text-accent-text hover:underline"
+            className="flex items-center justify-between gap-2 border-t border-line pt-3 text-sm text-accent-text hover:underline"
           >
-            Historial de entregas y pagos
-            <ChevronRight className="size-4" aria-hidden="true" />
+            <span className="min-w-0">Historial, pagos y acceso a la app</span>
+            <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
           </Link>
         </div>
       </SheetContent>

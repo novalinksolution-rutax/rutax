@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     // `orden_ruta` es la secuencia persistida de la parada dentro del manifiesto
     // (etapa 7). Viaja en la MISMA consulta que ya se hacía: no hace falta un
     // viaje extra para saber en qué orden va la ruta.
-    const { data: asignaciones } = await cliente
+    const { data: asignaciones, error: errorAsignaciones } = await cliente
       .from("asignaciones_pedido")
       .select(
         "orden_ruta, orden_fijado, tramo_polilinea, tramo_distancia_m, tramo_duracion_s, pedidos(id, seller_id, tipo_pedido, fuente, origen, ml_order_id, ml_shipment_id, codigo_interno, id_externo, referencia_externa, estado, estado_ml, subestado_ml, driver_id_asignado, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso, lat, long, geo_estado)",
@@ -62,6 +62,27 @@ export async function GET(request: NextRequest) {
       .eq("manifiesto_id", manifiestoId)
       .eq("tenant_id", tenantId)
       .eq("activa", true);
+
+    // 🔴 **Se mira el error, y esto no es ceremonia.** Antes solo se
+    // desestructuraba `data`: cuando la consulta falló —porque la vista espejo
+    // no publicaba una columna recién agregada a la tabla base— `asignaciones`
+    // quedó `undefined`, el `?? []` lo convirtió en cero paradas y el endpoint
+    // devolvió **200 con la ruta vacía**. El conductor abrió la app y no vio
+    // ninguno de sus pedidos; en los logs no había nada que mirar.
+    //
+    // Un fallo de lectura NO puede parecerse a un día sin trabajo: se responde
+    // 500 y se registra, para que la próxima vez el diagnóstico empiece en el
+    // sitio correcto.
+    if (errorAsignaciones) {
+      console.error(
+        "[api/conductor/manifiesto] no se pudieron leer las asignaciones:",
+        errorAsignaciones.message,
+      );
+      return NextResponse.json(
+        { error: "No pudimos cargar tus paradas. Vuelve a intentarlo." },
+        { status: 500 },
+      );
+    }
 
     // pedido.id → orden_ruta. Las paradas sin secuencia (manifiesto sin rutear,
     // o parada que el motor no pudo ubicar) simplemente no entran al mapa.
