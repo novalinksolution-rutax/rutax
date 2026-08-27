@@ -4,6 +4,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { ordenarParadasConSecuencia } from "@/modules/operacion/orden-paradas";
 import { listarCierresPorPedidos } from "@/modules/operacion/cierre-conductor";
 import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
+import { obtenerOrigenRutaDelCourier } from "@/modules/operacion/ruta-manifiesto";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { ESTADOS_TERMINALES, type EstadoPedido } from "@/modules/operacion/tipos";
 
@@ -238,12 +239,35 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // De dónde sale la ruta: la bodega del courier.
+    //
+    // ⚠️ **No es dato personal de nadie** —es el galpón desde el que opera la
+    // empresa— así que viaja sin reparos, a diferencia del punto de término del
+    // conductor, que NO sale nunca por acá.
+    //
+    // Best-effort: si el courier no configuró bodega, el mapa dibuja el circuito
+    // sin punto de partida en vez de fallar. Una ruta sin marca de salida se
+    // entiende igual; una pantalla en blanco a las 16:00, no.
+    let origen: { nombre: string; lat: number; long: number } | null = null;
+    try {
+      const bodega = await obtenerOrigenRutaDelCourier(cliente, tenantId);
+      if (bodega) {
+        origen = { nombre: bodega.nombre, lat: bodega.lat, long: bodega.long };
+      }
+    } catch (e) {
+      console.error(
+        "[api/conductor/manifiesto] no se pudo leer la bodega de origen:",
+        e instanceof Error ? e.message : "error desconocido",
+      );
+    }
+
     return NextResponse.json({
       manifiesto: {
         id: manifiestoId,
         nombre: m.nombre,
         fechaOperacion: m.fechaOperacion,
         estado: m.estado,
+        origen,
         paradas,
       },
     });
