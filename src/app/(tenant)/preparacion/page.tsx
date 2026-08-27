@@ -155,14 +155,24 @@ export default async function PaginaPreparacionDelDia() {
           </>
         }
         acciones={
-          <IndicadorEnVivo
-            tenantId={tenantId}
-            tablas={[
-              { schema: "operacion", tabla: "sesiones_retiro" },
-              { schema: "operacion", tabla: "bultos_retiro" },
-              { schema: "operacion", tabla: "pedidos" },
-            ]}
-          />
+          // La vía de excepción va en la CABECERA, no solo en el estado vacío:
+          // el conductor al que se le muere el teléfono es casi siempre el
+          // tercero de cinco, con la pantalla ya llena de visitas. Escondida
+          // tras el vacío, la salida solo aparecía cuando no había pasado nada
+          // — justo el único día en que no hace falta.
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/preparacion/registrar-retiro">Registrar retiro</Link>
+            </Button>
+            <IndicadorEnVivo
+              tenantId={tenantId}
+              tablas={[
+                { schema: "operacion", tabla: "sesiones_retiro" },
+                { schema: "operacion", tabla: "bultos_retiro" },
+                { schema: "operacion", tabla: "pedidos" },
+              ]}
+            />
+          </div>
         }
       />
 

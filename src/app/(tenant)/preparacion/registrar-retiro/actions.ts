@@ -35,25 +35,13 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeAsignarYReasignarPedidos } from "@/modules/identidad/capacidades";
 import {
   registrarRetiroDesdeWeb,
+  TOPE_PEDIDOS_RETIRO,
   type ResultadoRegistroWeb,
 } from "@/modules/operacion/retiro/registro-web";
 
 type RespuestaOk<T> = { ok: true; datos: T };
 type RespuestaError = { ok: false; mensaje: string };
 type Respuesta<T> = RespuestaOk<T> | RespuestaError;
-
-/**
- * Tope de pedidos por registro.
- *
- * No es una regla de negocio: es la reja contra el `URI too long` de PostgREST,
- * que ya mordió una vez en este repo con un `.in()` de mil UUID. Un retiro real
- * grande son ~130 bultos (el caso del courier: 30 + 30 + 70 entre tres
- * bodegas), así que 300 deja holgura de sobra sin acercarse al límite.
- *
- * Se DENUNCIA en la respuesta en vez de recortar en silencio — mismo criterio
- * que `TOPE_LOTE` en la conciliación.
- */
-export const TOPE_PEDIDOS_RETIRO = 300;
 
 /**
  * Registra un retiro completo: abre la visita, mete los bultos y la cierra.

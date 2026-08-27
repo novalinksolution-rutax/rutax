@@ -64,6 +64,26 @@ import { abrirVisitaBodega } from "./bodegas";
 import { registrarLoteEscaneos, type ResultadoEscaneo } from "./escaneos";
 import { cerrarSesionRetiro } from "./sesiones";
 
+/**
+ * Tope de pedidos por registro.
+ *
+ * No es una regla de negocio: es la reja contra el `URI too long` de PostgREST,
+ * que ya mordió una vez en este repo con un `.in()` de mil UUID. Un retiro real
+ * grande son ~130 bultos (el caso del courier: 30 + 30 + 70 entre tres
+ * bodegas), así que 300 deja holgura de sobra sin acercarse al límite.
+ *
+ * Se DENUNCIA en la respuesta de la Server Action en vez de recortar en
+ * silencio — mismo criterio que `TOPE_LOTE` en la conciliación.
+ *
+ * ⚠️ **Vive acá y NO en `actions.ts`, y no es una preferencia de orden.** Un
+ * módulo `"use server"` solo puede exportar funciones async; una constante
+ * exportada desde ahí hace que Next descarte **todos** los exports del módulo,
+ * y el build de producción falla con «The module has no exports at all».
+ * Typecheck, lint y las 4.244 pruebas pasan igual: solo lo caza `npm run build`.
+ * Ya ocurrió una vez (2026-08-27) — no devolverla a `actions.ts`.
+ */
+export const TOPE_PEDIDOS_RETIRO = 300;
+
 export interface RegistrarRetiroWebEntrada {
   tenantId: string;
   /** Quién retiró. Lo elige el coordinador: es el que va a cobrar la visita. */
