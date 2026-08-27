@@ -317,7 +317,19 @@ function FilaUsuario({
           </p>
         </div>
       </TableCell>
-      <TableCell className="max-w-72">
+      {/* 🔴 `whitespace-normal` NO es opcional acá, y no es cosmético.
+          `TableCell` de shadcn trae `whitespace-nowrap` de fábrica. Con
+          `max-w-72` la CAJA de la celda se queda en 288 px, pero el texto sigue
+          siendo una sola línea y **se pinta fuera**: medido en esta misma
+          pantalla, el párrafo del rol ocupaba 574 px dentro de una caja de 297
+          — 277 px de tinta encima de la columna de al lado.
+
+          ⚠️ Y falla de la peor manera para revisarlo: la caja mide bien.
+          `getBoundingClientRect` de la celda, del párrafo y de todo lo de
+          adentro da correcto, así que una comprobación de solapamiento por
+          rectángulos lo aprueba. Lo que se sale es la TINTA, y eso solo lo dice
+          `scrollWidth` contra `clientWidth`. */}
+      <TableCell className="max-w-72 whitespace-normal align-top">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
         {/* 🔴 **Qué significa ese rol, DERIVADO del catálogo de capacidades.**
             La etiqueta sola no dice nada, y para saber qué puede hacer un
@@ -458,17 +470,31 @@ function FilaInvitacion({
           ) : null}
         </div>
       </TableCell>
-      <TableCell className="max-w-72">
+      {/* Mismo `whitespace-normal` que en la fila de persona — ver el porqué
+          allá arriba. Las dos filas pintan la misma descripción de rol. */}
+      <TableCell className="max-w-72 whitespace-normal align-top">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
         {/* Igual que en la fila de una persona: al invitar es cuando MÁS
             importa saber qué se está entregando. */}
         <p className="mt-1 text-xs leading-snug text-fg-muted">{describirRol(invitacion.rol)}</p>
       </TableCell>
-      <TableCell>
+      {/* 🔴 UNA sola celda de Estado, no dos.
+          Hasta el 26-08-2026 esta fila tenía CINCO celdas contra los CUATRO
+          encabezados de la tabla —y contra las cuatro de `FilaUsuario`—. La
+          quinta columna «Detalle» se retiró del encabezado y **se olvidó acá**.
+
+          El navegador no se queja: dibuja la columna huérfana igual, más ancha
+          que el encabezado, y el resultado en producción era el texto del
+          estado impreso ENCIMA de la descripción del rol, con el motivo del
+          rebote saliéndose de la tabla. Se veía como un problema de CSS y era
+          un desajuste de estructura.
+
+          El ancho máximo no es decoración: el motivo que manda Resend viene
+          recortado a 300 caracteres (`webhook-resend.ts`), y 300 caracteres sin
+          tope estiran la tabla entera hasta obligar a scroll horizontal. */}
+      <TableCell className="max-w-64 whitespace-normal align-top text-sm text-muted-foreground">
         <BadgeEstadoInvitacion estado={invitacion.estado} />
-      </TableCell>
-      <TableCell className="text-sm text-muted-foreground">
-        {copyDeApoyo(invitacion)}
+        <p className="mt-1 leading-snug">{copyDeApoyo(invitacion)}</p>
         <AvisoEntrega estado={invitacion.emailEstado} motivo={invitacion.emailMotivo} />
       </TableCell>
       <TableCell className="text-right">
@@ -544,7 +570,23 @@ function AvisoEntrega({ estado, motivo }: { estado: string | null; motivo: strin
     return (
       <span className="mt-1 block text-xs font-medium text-destructive">
         El correo rebotó — no llegó
-        {motivo ? <span className="block font-normal text-muted-foreground">{motivo}</span> : null}
+        {/* El motivo lo escribe el PROVEEDOR: viene en inglés, dirigido a
+            nosotros y no al courier («we recommend removing the recipient from
+            your list»), y puede traer 300 caracteres. Se muestra porque a veces
+            dice lo único útil —«The recipient does not exist»— pero acotado a
+            dos líneas, con el texto completo al pasar el cursor. Lo accionable
+            ya lo dijo la línea de arriba. */}
+        {motivo ? (
+          <span
+            /* Sin `block`: `line-clamp-2` necesita `display:-webkit-box` y una
+               utilidad de `display` puesta después lo pisa — el recorte deja de
+               recortar y no avisa. Pasó acá: cuatro líneas en vez de dos. */
+            className="mt-0.5 line-clamp-2 font-normal text-muted-foreground"
+            title={motivo}
+          >
+            {motivo}
+          </span>
+        ) : null}
       </span>
     );
   }
