@@ -45,7 +45,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Punto } from "@/lib/geo/distancia";
 import {
-  ErrorRuteoProveedor,
+  ErrorRuteo,
   obtenerPuertoOptimizacion,
   type ParadaAOptimizar,
   type TramoRuta,
@@ -369,10 +369,23 @@ async function resolverRuta(entrada: {
         proveedor: "google",
       };
     } catch (causa) {
-      if (!(causa instanceof ErrorRuteoProveedor)) throw causa;
-      // Se registra el hecho SIN la entrada del solver: lleva el ancla (canal
-      // 12 del §4.3). Solo el mensaje del proveedor, que ya viene depurado.
-      console.warn(
+      // Se degrada ante CUALQUIER fallo del módulo de ruteo, no solo los de
+      // red: credenciales ilegibles incluidas. El único que sigue propagando es
+      // el nombre de proveedor no reconocido, porque `obtenerPuertoOptimizacion`
+      // se llama FUERA de este try.
+      //
+      // ⚠️ Antes esto solo atajaba `ErrorRuteoProveedor`, así que una clave
+      // privada mal pegada **bloqueaba el cálculo de la ruta entera** con un
+      // error de OpenSSL en pantalla. Pasó en producción el 2026-08-27.
+      if (!(causa instanceof ErrorRuteo)) throw causa;
+
+      // `console.error`, no `warn`: cuando esto falla, el primer sitio donde se
+      // mira es el filtro de errores de Vercel. Con un warning, ahí no aparece
+      // nada y el diagnóstico se hace a ciegas — costó una hora ese día.
+      //
+      // Se registra SIN la entrada del solver: lleva el ancla (canal 12 del
+      // §4.3). Solo el mensaje, que ya viene depurado de coordenadas.
+      console.error(
         "[ruta-manifiesto] el proveedor de ruteo falló, se usa el motor local:",
         causa.message,
       );

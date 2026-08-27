@@ -77,10 +77,7 @@ function leerCredenciales(): CredencialesServicio {
     throw new ErrorRuteoConfig('falta GOOGLE_RUTEO_PRIVATE_KEY');
   }
 
-  // Ver la cabecera: la clave pegada en un panel trae `\n` de dos caracteres.
-  const privateKey = privateKeyCruda.includes('\\n')
-    ? privateKeyCruda.replace(/\\n/g, '\n')
-    : privateKeyCruda;
+  const privateKey = normalizarClavePem(privateKeyCruda);
 
   if (!privateKey.includes('BEGIN')) {
     // Sin exponer un solo carácter de la clave.
@@ -90,6 +87,43 @@ function leerCredenciales(): CredencialesServicio {
   }
 
   return { clientEmail, privateKey };
+}
+
+/**
+ * Deja la clave del JSON de Google en algo que `crypto.createSign` acepte.
+ *
+ * ⚠️ **Todo esto existe por un error que no dice nada:**
+ * `error:1E08010C:DECODER routines::unsupported`. Es lo único que devuelve
+ * OpenSSL cuando el PEM no se puede decodificar, y no distingue entre «tiene
+ * comillas», «los saltos son literales» o «esto no es una clave». Mordió en
+ * producción el 2026-08-27.
+ *
+ * Las tres formas en que la misma clave llega mal, y las tres se arreglan acá:
+ *
+ * 1. **Con comillas alrededor.** En el JSON la clave aparece como
+ *    `"private_key": "-----BEGIN..."`, y copiar el valor con sus comillas es lo
+ *    natural. El PEM empieza con `"` y el decodificador se rinde.
+ * 2. **Con `\n` de dos caracteres**, que es en lo que se convierten los saltos
+ *    reales al pegarlos en un panel de variables de entorno.
+ * 3. **Con `\r\n`** si pasó por un editor de Windows.
+ */
+export function normalizarClavePem(cruda: string): string {
+  let clave = cruda.trim();
+
+  // 1 · Comillas envolventes (dobles o simples), incluso repetidas.
+  while (
+    clave.length >= 2 &&
+    ((clave.startsWith('"') && clave.endsWith('"')) ||
+      (clave.startsWith("'") && clave.endsWith("'")))
+  ) {
+    clave = clave.slice(1, -1).trim();
+  }
+
+  // 2 y 3 · Saltos escapados.
+  clave = clave.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n');
+
+  // OpenSSL quiere el salto final tras `-----END ...-----`.
+  return clave.endsWith('\n') ? clave : `${clave}\n`;
 }
 
 /** El id del proyecto de Google Cloud, que va en la ruta del endpoint. */
@@ -131,7 +165,30 @@ export function firmarJwtServicio(
 
   const firmador = createSign('RSA-SHA256');
   firmador.update(`${cabecera}.${cuerpo}`);
-  const firma = base64Url(firmador.sign(credenciales.privateKey));
+
+  let firma: string;
+  try {
+    firma = base64Url(firmador.sign(credenciales.privateKey));
+  } catch (causa) {
+    // ⚠️ **REINTENTABLE a propósito, aunque reintentar no lo arregle.**
+    // `ErrorRuteoProveedor` es lo que hace que `ruta-manifiesto.ts` caiga al
+    // motor local; `ErrorRuteoConfig` habría propagado y **bloqueado el cálculo
+    // de la ruta entera**. Es la decisión importante de este archivo: a las
+    // 15:59, con la flota esperando, una ruta en línea recta es mucho mejor que
+    // un botón que devuelve un error de OpenSSL. La degradación no queda
+    // escondida: el resumen viaja con `proveedor: 'local'` y la pantalla dice
+    // «medida en línea recta».
+    //
+    // El mensaje NO es el de OpenSSL. `error:1E08010C:DECODER routines::
+    // unsupported` es lo que vio el usuario en producción el 2026-08-27 y no
+    // apunta a nada: la causa real fue la clave pegada con sus comillas.
+    throw new ErrorRuteoProveedor(
+      'no se pudo firmar con GOOGLE_RUTEO_PRIVATE_KEY. Revisa que sea el valor de ' +
+        '`private_key` del JSON de la cuenta de servicio, sin las comillas que lo ' +
+        `envuelven y con las líneas BEGIN/END incluidas (${causa instanceof Error ? causa.message : 'error al firmar'})`,
+      false,
+    );
+  }
 
   return `${cabecera}.${cuerpo}.${firma}`;
 }
