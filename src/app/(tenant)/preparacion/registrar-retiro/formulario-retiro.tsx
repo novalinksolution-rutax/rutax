@@ -111,13 +111,30 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
         setAviso({ tipo: "error", texto: r.mensaje });
         return;
       }
-      const total = r.datos.resultados.length;
-      const fuera = r.datos.noRegistrados.length;
+      // ⚠️ Se cuenta lo GUARDADO, no lo intentado. `resultados` incluye los
+      // rechazados, y contarlos hacía que un fallo total dijera «registrado»:
+      // el 2026-08-27 los dos bultos se rechazaron, la sesión se borró por
+      // quedar vacía, y la pantalla felicitó igual.
+      const guardados = r.datos.totalGuardados;
+      const fuera = r.datos.noRegistrados.length + r.datos.rechazados.length;
+
+      if (guardados === 0) {
+        setAviso({
+          tipo: "error",
+          texto:
+            "No se pudo guardar ningún bulto, así que el retiro no quedó registrado. " +
+            "Vuelve a intentarlo; si sigue igual, avísanos con la hora exacta.",
+        });
+        return;
+      }
+
       setAviso({
-        tipo: "exito",
+        tipo: guardados === seleccion.size ? "exito" : "error",
         texto:
-          `Retiro registrado: ${total} bulto${total === 1 ? "" : "s"} a nombre de ${conductorElegido?.nombre ?? "el conductor"}` +
-          (fuera > 0 ? `. ${fuera} pedido${fuera === 1 ? " quedó" : "s quedaron"} fuera` : "") +
+          `Retiro registrado: ${guardados} bulto${guardados === 1 ? "" : "s"} a nombre de ${conductorElegido?.nombre ?? "el conductor"}` +
+          (fuera > 0
+            ? `. ${fuera} pedido${fuera === 1 ? " quedó" : "s quedaron"} fuera y sigue${fuera === 1 ? "" : "n"} sin retirar`
+            : "") +
           ". Ya puedes asignarlos.",
       });
       setSeleccion(new Set());

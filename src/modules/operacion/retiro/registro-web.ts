@@ -55,6 +55,8 @@
  * hubo QR capturado— sin que haya que mantener un mecanismo aparte.
  */
 
+import { createHash } from "node:crypto";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
@@ -108,6 +110,38 @@ export interface ResultadoRegistroWeb {
   resultados: readonly ResultadoEscaneo[];
   /** Los que ni siquiera llegaron al pipeline. **Nunca se descartan en silencio.** */
   noRegistrados: readonly PedidoNoRegistrado[];
+  /**
+   * Cuántos bultos quedaron REALMENTE guardados (`registrado` o
+   * `duplicado_fusionado`).
+   *
+   * ⚠️ **Existe porque contar `resultados.length` es mentir.** El pipeline no
+   * lanza ante un ítem malo: devuelve `rechazado` y sigue. La primera versión
+   * de la pantalla reportaba «Retiro registrado: 2 bultos» con los DOS
+   * rechazados, la sesión borrada por quedar vacía y nada en la base. Mordió en
+   * producción el 2026-08-27 y fue invisible: sin este número, un fallo total y
+   * un éxito total se ven exactamente igual.
+   */
+  totalGuardados: number;
+  /** Los rechazados con su motivo, para poder decirlo y para poder loguearlo. */
+  rechazados: readonly { escaneoId: string; motivo: string }[];
+}
+
+/**
+ * UUID determinista a partir de una clave.
+ *
+ * `operacion.bultos_retiro.escaneo_id` es `uuid`: cualquier otra cosa hace
+ * fallar el insert con 22P02, y el pipeline traduce eso a `rechazado` sin
+ * lanzar — o sea, en silencio. No es un UUID v5 canónico (no hay namespace
+ * RFC), pero cumple lo único que importa acá: **es un uuid válido y el mismo
+ * para la misma clave**, así que reintentar el registro choca contra
+ * `bultos_retiro_escaneo_uk` en vez de duplicar bultos.
+ */
+export function uuidDeterminista(clave: string): string {
+  const h = createHash("sha256").update(clave, "utf8").digest("hex");
+  // Versión 4 y variante RFC 4122 en los nibbles que las fijan.
+  const v = `4${h.slice(13, 16)}`;
+  const var_ = ((parseInt(h.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + h.slice(17, 20);
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${v}-${var_}-${h.slice(20, 32)}`;
 }
 
 /** Lo mínimo que hace falta de un pedido para poder alimentarlo al pipeline. */
@@ -160,7 +194,8 @@ export async function registrarRetiroDesdeWeb(
   const porId = new Map(pedidos.map((p) => [p.id, p] as const));
 
   const noRegistrados: PedidoNoRegistrado[] = [];
-  const escaneos: { escaneoId: string; codigo: string; escaneadoEn: string }[] = [];
+  /** (pedido, código) de los que SÍ se pueden alimentar. Sin id todavía. */
+  const alimentables: { pedidoId: string; codigo: string }[] = [];
   const ahora = new Date().toISOString();
 
   for (const pedidoId of pedidoIds) {
@@ -179,18 +214,10 @@ export async function registrarRetiroDesdeWeb(
       noRegistrados.push({ pedidoId, motivo: "sin_codigo_identificable" });
       continue;
     }
-    escaneos.push({
-      // Determinista: si la acción se reintenta, el mismo pedido produce el
-      // mismo `escaneoId`. La fusión real la hace la unique
-      // `(sesion_retiro_id, codigo_normalizado)`, pero un id estable hace que
-      // el resultado por ítem sea comparable entre intentos.
-      escaneoId: `web:${pedidoId}`,
-      codigo,
-      escaneadoEn: ahora,
-    });
+    alimentables.push({ pedidoId, codigo });
   }
 
-  if (escaneos.length === 0) {
+  if (alimentables.length === 0) {
     throw new Error(
       "Ninguno de los pedidos seleccionados tiene un código con el que registrar el retiro.",
     );
@@ -198,6 +225,14 @@ export async function registrarRetiroDesdeWeb(
 
   // --- 3. El ciclo, igual que en la app ------------------------------------
   const visita = await abrirVisitaBodega(cliente, { tenantId, conductorId, bodegaId });
+
+  // El id se deriva DESPUÉS de tener la sesión, por eso el ciclo va acá y no
+  // dentro del bucle de arriba. Ver `uuidDeterminista`.
+  const escaneos = alimentables.map((a) => ({
+    escaneoId: uuidDeterminista(`${visita.sesion.id}:${a.pedidoId}`),
+    codigo: a.codigo,
+    escaneadoEn: ahora,
+  }));
 
   const { resultados } = await registrarLoteEscaneos(cliente, {
     tenantId,
@@ -210,6 +245,27 @@ export async function registrarRetiroDesdeWeb(
     escaneos,
   });
 
+  const guardados = resultados.filter(
+    (r) => r.estado === "registrado" || r.estado === "duplicado_fusionado",
+  );
+  const rechazados = resultados
+    .filter((r) => r.estado === "rechazado")
+    .map((r) => ({ escaneoId: r.escaneoId, motivo: r.motivo ?? "sin_motivo" }));
+
+  // ⚠️ Se registra el rechazo con nombre y motivo. Sin esto, el fallo del
+  // 2026-08-27 (todo el lote rechazado por un `escaneo_id` que no era uuid) no
+  // dejó UNA SOLA línea en los logs de Vercel: el POST devolvía 200, la
+  // pantalla decía «registrado» y la sesión se borraba sola por quedar vacía.
+  // Los motivos son constantes del pipeline, no derivan del código escaneado.
+  if (rechazados.length > 0) {
+    console.error("[operacion/retiro] bultos rechazados al registrar desde la web", {
+      sesionId: visita.sesion.id,
+      total: resultados.length,
+      rechazados: rechazados.length,
+      motivos: [...new Set(rechazados.map((r) => r.motivo))],
+    });
+  }
+
   await cerrarSesionRetiro(cliente, {
     tenantId,
     sesionId: visita.sesion.id,
@@ -217,7 +273,13 @@ export async function registrarRetiroDesdeWeb(
     actorUsuarioId,
   });
 
-  return { sesionId: visita.sesion.id, resultados, noRegistrados };
+  return {
+    sesionId: visita.sesion.id,
+    resultados,
+    noRegistrados,
+    totalGuardados: guardados.length,
+    rechazados,
+  };
 }
 
 /**
