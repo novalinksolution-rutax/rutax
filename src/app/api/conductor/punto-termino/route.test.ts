@@ -343,9 +343,13 @@ describe("DELETE /api/conductor/punto-termino — idempotente", () => {
     const segundaBody = await segunda.json();
 
     expect(primera.status).toBe(200);
-    expect(primeraBody).toEqual({ ok: true });
+    // `rutaRecalculada` entra al contrato desde el 2026-08-27: mover o quitar el
+    // punto de término cambia dónde termina la ruta, así que la respuesta dice
+    // si la secuencia se rehízo. Acá va en `false` porque el conductor no tiene
+    // manifiesto vigente en este montaje.
+    expect(primeraBody).toEqual({ ok: true, rutaRecalculada: false });
     expect(segunda.status).toBe(200);
-    expect(segundaBody).toEqual({ ok: true });
+    expect(segundaBody).toEqual({ ok: true, rutaRecalculada: false });
     expect(revocarPuntoTermino).toHaveBeenCalledTimes(2);
   });
 });

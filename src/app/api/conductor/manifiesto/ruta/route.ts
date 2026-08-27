@@ -43,16 +43,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
-import { listarCierresPorPedidos } from "@/modules/operacion/cierre-conductor";
+import { leerParadasYAnclarCerradas } from "@/modules/operacion/ruteo/anclas-cerradas";
 import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
 import {
   calcularYAplicarRutaManifiesto,
   ErrorSinBodegaOrigen,
 } from "@/modules/operacion/ruta-manifiesto";
 import { ErrorSecuenciaDesincronizada } from "@/modules/operacion/secuencia-paradas-rpc";
-
-/** Estados de pedido en los que la parada ya ocurrió y no se reordena. */
-const ESTADOS_CERRADOS = ["entregado", "fallido", "devuelto", "cancelado"];
 
 interface CuerpoRuta {
   accion?: unknown;
@@ -107,55 +104,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "No tienes una ruta hoy." }, { status: 404 });
   }
 
-  // --- Las paradas del manifiesto, con su estado y su orden ------------------
-  const { data: filas, error: errorFilas } = await cliente
-    .from("asignaciones_pedido")
-    .select("pedido_id, orden_ruta, pedidos(id, estado)")
-    .eq("tenant_id", tenantId)
-    .eq("manifiesto_id", vigente.id)
-    .eq("activa", true);
-
-  if (errorFilas) {
-    console.error("[api/conductor/manifiesto/ruta] al leer paradas:", errorFilas.message);
+  // --- Paradas y anclas de las cerradas --------------------------------------
+  // El anclado vive en `ruteo/anclas-cerradas` porque lo comparte con el
+  // redefinir del punto de término: dos gestos que recalculan la misma ruta no
+  // pueden tener dos ideas distintas de qué parada «ya ocurrió».
+  let paradas, fijaciones, estaCerrada;
+  try {
+    ({ paradas, fijaciones, estaCerrada } = await leerParadasYAnclarCerradas(cliente, {
+      tenantId,
+      manifiestoId: vigente.id,
+    }));
+  } catch (err) {
+    console.error(
+      "[api/conductor/manifiesto/ruta] al leer paradas:",
+      err instanceof Error ? err.message : err,
+    );
     return NextResponse.json({ error: "No se pudo leer tu ruta." }, { status: 500 });
-  }
-
-  const paradas = (filas ?? [])
-    .map((f: Record<string, unknown>) => {
-      const p = f.pedidos as Record<string, unknown> | null;
-      if (!p?.id) return null;
-      return {
-        pedidoId: p.id as string,
-        estado: (p.estado as string) ?? "",
-        ordenRuta: (f.orden_ruta as number | null) ?? null,
-      };
-    })
-    .filter((p): p is NonNullable<typeof p> => p !== null);
-
-  const cierres = await listarCierresPorPedidos(
-    cliente,
-    paradas.map((p) => p.pedidoId),
-    tenantId,
-  );
-
-  /** Ya ocurrió: por estado del pedido o porque el conductor la cerró. */
-  const estaCerrada = (pedidoId: string, estado: string) =>
-    ESTADOS_CERRADOS.includes(estado) || cierres.has(pedidoId);
-
-  // --- Las cerradas se anclan donde están ------------------------------------
-  // «Ya ocurrieron»: una entrega hecha no puede cambiar de posición. Se fijan
-  // en su orden actual y el motor las respeta igual que a una fijada por el
-  // conductor, así que el reordenamiento alcanza solo a lo que falta sin
-  // necesitar un caso especial dentro del solver.
-  //
-  // Una cerrada SIN `orden_ruta` (manifiesto que nadie ruteó) no se puede
-  // anclar: no tiene posición que conservar. Entra al reordenamiento como una
-  // más, que es lo correcto — la ruta se está ordenando por primera vez.
-  const fijaciones: { pedidoId: string; orden: number }[] = [];
-  for (const parada of paradas) {
-    if (parada.ordenRuta !== null && estaCerrada(parada.pedidoId, parada.estado)) {
-      fijaciones.push({ pedidoId: parada.pedidoId, orden: parada.ordenRuta });
-    }
   }
 
   // --- Validación del gesto --------------------------------------------------

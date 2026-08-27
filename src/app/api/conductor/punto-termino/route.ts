@@ -11,6 +11,10 @@ import {
   revocarPuntoTermino,
 } from "@/modules/operacion/punto-termino-conductor";
 import { tieneConsentimientoVigente } from "@/modules/operacion/consentimiento-ubicacion";
+import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
+import { calcularYAplicarRutaManifiesto } from "@/modules/operacion/ruta-manifiesto";
+import { leerParadasYAnclarCerradas } from "@/modules/operacion/ruteo/anclas-cerradas";
 
 /**
  * Punto de término de ruta del conductor — superficie para la app nativa.
@@ -122,6 +126,67 @@ export async function GET(request: NextRequest) {
 }
 
 // =============================================================================
+
+// =============================================================================
+// Rehacer la ruta con el punto de término nuevo
+// =============================================================================
+/**
+ * El punto de término es **el final de la ruta**, así que moverlo cambia cuál
+ * es la mejor secuencia de lo que falta. Hasta el 2026-08-27 no lo cambiaba: el
+ * conductor corregía su dirección de término en plena entrega, la guardaba, y
+ * la ruta seguía igual. El dato se usaba solo en el siguiente cálculo, que
+ * podía no llegar nunca.
+ *
+ * Tres decisiones que no son obvias:
+ *
+ * · **Las cerradas se anclan**, igual que al reordenar. Recalcular a media
+ *   jornada no puede reubicar entregas ya hechas.
+ *
+ * · **Si el manifiesto no tiene secuencia, no se toca.** Que nadie lo haya
+ *   ruteado es un estado con su propia pantalla («Ordenar la ruta»), y ese
+ *   botón ya va a leer el punto nuevo. Rutear de callada al guardar una
+ *   dirección convertiría un ajuste de perfil en una decisión operativa.
+ *
+ * · **Un fallo acá NUNCA tumba el guardado.** El punto ya quedó escrito y es
+ *   dato personal del conductor: devolver 500 lo dejaría creyendo que no se
+ *   guardó, y volvería a intentarlo. Se registra y se informa con
+ *   `rutaRecalculada: false`.
+ */
+async function rehacerRutaConTerminoNuevo(
+  cliente: ReturnType<typeof crearClienteServiceRole>,
+  entrada: { tenantId: string; driverId: string; actorUsuarioId: string },
+): Promise<boolean> {
+  try {
+    const vigente = await obtenerManifiestoVigenteDelConductor(cliente, {
+      tenantId: entrada.tenantId,
+      driverId: entrada.driverId,
+      fecha: fechaLocalEnSantiago(new Date()),
+    });
+    if (!vigente) return false;
+
+    const { fijaciones, tieneSecuencia } = await leerParadasYAnclarCerradas(cliente, {
+      tenantId: entrada.tenantId,
+      manifiestoId: vigente.id,
+    });
+    if (!tieneSecuencia) return false;
+
+    await calcularYAplicarRutaManifiesto(cliente, {
+      tenantId: entrada.tenantId,
+      manifiestoId: vigente.id,
+      actorUsuarioId: entrada.actorUsuarioId,
+      fijarAdicionales: fijaciones,
+    });
+    return true;
+  } catch (err) {
+    console.error(
+      "[api/conductor/punto-termino] el punto se guardó pero la ruta no se rehizo:",
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
+// =============================================================================
 // PUT — definir o redefinir
 // =============================================================================
 
@@ -175,8 +240,16 @@ export async function PUT(request: NextRequest) {
       long: body.long,
     });
 
+    // Después de guardar, no antes: si el guardado falla no hay término nuevo
+    // con el que rutear, y recalcular con el viejo sería trabajo para nada.
+    const rutaRecalculada = await rehacerRutaConTerminoNuevo(crearClienteServiceRole(), {
+      tenantId,
+      driverId,
+      actorUsuarioId: usuarioId,
+    });
+
     return NextResponse.json(
-      { puntoTermino: punto },
+      { puntoTermino: punto, rutaRecalculada },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (err) {
@@ -219,7 +292,18 @@ export async function DELETE(request: NextRequest) {
       conductorId: driverId,
       actorUsuarioId: usuarioId,
     });
-    return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+    // Simétrico al PUT: quitarlo también cambia dónde termina la ruta, así que
+    // la secuencia que se calculó apuntando a ese destino deja de ser la buena.
+    const rutaRecalculada = await rehacerRutaConTerminoNuevo(crearClienteServiceRole(), {
+      tenantId,
+      driverId,
+      actorUsuarioId: usuarioId,
+    });
+
+    return NextResponse.json(
+      { ok: true, rutaRecalculada },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Error al quitar el punto de término" },
