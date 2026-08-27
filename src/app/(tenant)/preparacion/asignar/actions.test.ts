@@ -28,9 +28,14 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
+vi.mock("@/modules/operacion/manifiestos-same-day", () => ({
+  alinearPedidosNuevosConManifiestoEnRuta: vi.fn(),
+}));
+
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { asignarPedidosEnBloqueRpc } from "@/modules/operacion/asignacion-rpc";
+import { alinearPedidosNuevosConManifiestoEnRuta } from "@/modules/operacion/manifiestos-same-day";
 import { revalidatePath } from "next/cache";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { actionAsignarPedidosEnBloque } from "./actions";
@@ -82,6 +87,7 @@ beforeEach(() => {
     { marca: "cliente-service-role" } as unknown as ReturnType<typeof crearClienteServiceRole>,
   );
   vi.mocked(exigirSesionActual).mockResolvedValue(crearSesion());
+  vi.mocked(alinearPedidosNuevosConManifiestoEnRuta).mockResolvedValue(false);
   // Fija "ahora" para que `fechaLocalEnSantiago(new Date())` sea determinista
   // tanto dentro de la acción como en la expectativa de la prueba — sin esto,
   // una corrida justo al cruce de medianoche de Santiago sería intermitente.
@@ -167,7 +173,46 @@ describe("actionAsignarPedidosEnBloque — camino feliz", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/manifiestos");
     expect(revalidatePath).toHaveBeenCalledWith(`/manifiestos/${MANIFIESTO_1}`);
 
-    expect(resultado).toEqual({ ok: true, datos: resultadoOk() });
+    expect(resultado).toEqual({
+      ok: true,
+      datos: { ...resultadoOk(), puestosEnRuta: false },
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Puesta al día con un manifiesto que ya va en la calle (2026-08-27)
+  // ---------------------------------------------------------------------------
+
+  it("🔴 pone al día las paradas nuevas con el manifiesto DEVUELTO por el RPC", async () => {
+    // Sin esto quedaban en `asignado` con el manifiesto ya `en_ruta`, y
+    // `asignado → entregado` es inválida: el conductor las veía en su lista y no
+    // podía entregarlas. El manifiesto tiene que salir del RPC y no calcularse
+    // aparte — el RPC puede haber reutilizado uno o haber creado otro.
+    vi.mocked(asignarPedidosEnBloqueRpc).mockResolvedValue(resultadoOk());
+    vi.mocked(alinearPedidosNuevosConManifiestoEnRuta).mockResolvedValue(true);
+
+    const resultado = await actionAsignarPedidosEnBloque(CONDUCTOR_1, [PEDIDO_1]);
+
+    const [, entrada] = vi.mocked(alinearPedidosNuevosConManifiestoEnRuta).mock.calls[0];
+    expect(entrada).toMatchObject({
+      manifiestoId: MANIFIESTO_1,
+      driverId: CONDUCTOR_1,
+    });
+    expect(resultado).toMatchObject({ ok: true, datos: { puestosEnRuta: true } });
+  });
+
+  it("🔴 si la puesta al día falla, la asignación NO se pierde", async () => {
+    // Corre fuera de la transacción del RPC: los pedidos ya quedaron asignados y
+    // eso es lo que no puede deshacerse por un fallo del paso siguiente.
+    vi.mocked(asignarPedidosEnBloqueRpc).mockResolvedValue(resultadoOk());
+    vi.mocked(alinearPedidosNuevosConManifiestoEnRuta).mockRejectedValue(
+      new Error("se cayó la lectura del manifiesto"),
+    );
+
+    const resultado = await actionAsignarPedidosEnBloque(CONDUCTOR_1, [PEDIDO_1]);
+
+    expect(resultado).toMatchObject({ ok: true, datos: { puestosEnRuta: false } });
+    expect(revalidatePath).toHaveBeenCalledWith("/preparacion/asignar");
   });
 });
 

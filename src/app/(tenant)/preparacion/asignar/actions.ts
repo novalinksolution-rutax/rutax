@@ -51,6 +51,7 @@ import {
   asignarPedidosEnBloqueRpc,
   type ResultadoAsignacionEnBloque,
 } from "@/modules/operacion/asignacion-rpc";
+import { alinearPedidosNuevosConManifiestoEnRuta } from "@/modules/operacion/manifiestos-same-day";
 
 // =============================================================================
 // Tipos de respuesta — mismo molde que manifiestos/actions.ts (actionMarcarConductorNoDisponible)
@@ -74,7 +75,7 @@ type Respuesta<T> = RespuestaOk<T> | RespuestaError;
 export async function actionAsignarPedidosEnBloque(
   conductorId: string,
   pedidoIds: string[],
-): Promise<Respuesta<ResultadoAsignacionEnBloque>> {
+): Promise<Respuesta<ResultadoAsignacionEnBloque & { puestosEnRuta: boolean }>> {
   const sesion = await exigirSesionActual();
   if (!sesion.usuario.tenantId) {
     return { ok: false, mensaje: "No hay sesión activa." };
@@ -101,6 +102,32 @@ export async function actionAsignarPedidosEnBloque(
       actorUsuarioId: sesion.usuarioId,
     });
 
+    // 🔴 Si el manifiesto YA va en la calle, las paradas recién asignadas se
+    // ponen al día con él. Sin esto quedaban en `asignado` mientras el
+    // manifiesto estaba `en_ruta`, y `asignado → entregado` es inválida: el
+    // conductor las veía en su lista y no podía entregarlas, sin ningún mensaje
+    // que lo explicara. Es el caso normal —el coordinador reparte por lotes
+    // durante la mañana— no el raro.
+    //
+    // Va DESPUÉS del RPC y fuera de su transacción a propósito: si esto falla,
+    // la asignación ya quedó hecha y es lo que no puede perderse. El fallo se
+    // registra y se denuncia en la respuesta en vez de deshacer el lote.
+    let puestosEnRuta = false;
+    try {
+      puestosEnRuta = await alinearPedidosNuevosConManifiestoEnRuta(cliente, {
+        tenantId: sesion.usuario.tenantId,
+        manifiestoId: resultado.manifiestoId,
+        driverId: conductorId,
+        actor: sesion.usuario,
+        actorUsuarioId: sesion.usuarioId,
+      });
+    } catch (err) {
+      console.error(
+        "[preparacion/asignar] asignados pero sin poner al día con la ruta en curso:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // La bandeja de asignación y el bloque de /preparacion leen cifras en
     // vivo; el manifiesto (nuevo o reutilizado) también cambió.
     revalidatePath("/preparacion/asignar");
@@ -108,7 +135,7 @@ export async function actionAsignarPedidosEnBloque(
     revalidatePath("/manifiestos");
     revalidatePath(`/manifiestos/${resultado.manifiestoId}`);
 
-    return { ok: true, datos: resultado };
+    return { ok: true, datos: { ...resultado, puestosEnRuta } };
   } catch (err) {
     const mensaje = err instanceof Error ? err.message : "Error al asignar los pedidos.";
     return { ok: false, mensaje };

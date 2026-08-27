@@ -47,6 +47,10 @@ import { ErrorConflicto } from "@/modules/identidad/errores";
  * @param driverId    UUID del conductor (para la barrera en actualizarEstadoPedido).
  * @param actor       UsuarioActual del conductor (para RBAC).
  * @param actorUsuarioId UUID de `auth.users` — el "quién" de RNF-04 en bitácora.
+ * @param ejecutor    Quién dispara la transición. `'conductor'` cuando arranca su
+ *                    ruta; `'interno'` cuando el coordinador asigna una parada a
+ *                    un manifiesto que YA va en la calle. La máquina de estados
+ *                    admite `asignado → en_ruta` por los dos.
  */
 export async function transicionarPedidosSameDayAEnRuta(
   cliente: SupabaseClient,
@@ -55,6 +59,7 @@ export async function transicionarPedidosSameDayAEnRuta(
   driverId: string,
   actor: UsuarioActual,
   actorUsuarioId: string,
+  ejecutor: "conductor" | "interno" = "conductor",
 ): Promise<void> {
   // Leer los pedidos same-day del manifiesto que aún están en 'asignado'.
   // La JOIN va por asignaciones_pedido: la tabla que relaciona pedido↔manifiesto.
@@ -95,7 +100,7 @@ export async function transicionarPedidosSameDayAEnRuta(
           tenantId,
           estadoNuevo: "en_ruta",
           estadoEsperado: "asignado",
-          ejecutor: "conductor",
+          ejecutor,
           // El id de `auth.users`, NUNCA `actor.driverId`: la FK de
           // `bitacora_auditoria.actor_usuario_id` apunta a `auth.users(id)` y un
           // id de conductor la viola. Ver el aviso del docstring.
@@ -111,4 +116,70 @@ export async function transicionarPedidosSameDayAEnRuta(
       throw err;
     }
   }
+}
+
+// =============================================================================
+// Paradas que llegan con la ruta ya empezada
+// =============================================================================
+
+/**
+ * Pone al día los pedidos recién asignados con el estado del manifiesto.
+ *
+ * 🔴 **El bug que arregla (2026-08-27).** `transicionarPedidosSameDayAEnRuta`
+ * corre UNA sola vez, cuando el conductor arranca. Una parada asignada después
+ * se quedaba en `asignado` mientras el manifiesto ya iba `en_ruta`, y
+ * `asignado → entregado` es una transición inválida: el conductor veía la
+ * parada en su lista y **no podía entregarla**, sin ningún mensaje que lo
+ * explicara. Es el caso normal, no el raro: el coordinador reparte por lotes
+ * durante toda la mañana y el despacho arranca a las 16:00.
+ *
+ * Se llama DESPUÉS de asignar. Si el manifiesto no va en ruta, no hace nada:
+ * la parada entra en `asignado` como siempre y arrancará con el resto.
+ *
+ * ⚠️ **Solo toca same-day**, por la misma frontera dura del resto del archivo:
+ * el estado de un pedido Flex lo escribe Mercado Envíos y Rutax no se lo pisa.
+ * Una parada Flex agregada a una ruta en curso se queda en `asignado`, y está
+ * bien — su ciclo lo gobierna la app de Flex.
+ *
+ * ⚠️ **Nota operativa, no técnica:** `en_ruta` significa «el conductor lleva
+ * este bulto». Al asignar a alguien que ya salió, el bulto puede seguir en la
+ * bodega. La asignación ya exige `situacion_retiro = 'retirado'`, así que
+ * alguien lo tomó; quién lo tiene físicamente es una decisión del coordinador
+ * y Rutax no puede saberlo. Se asume a propósito.
+ *
+ * @returns `true` si el manifiesto iba en ruta y se puso al día.
+ */
+export async function alinearPedidosNuevosConManifiestoEnRuta(
+  cliente: SupabaseClient,
+  entrada: {
+    tenantId: string;
+    manifiestoId: string;
+    driverId: string;
+    actor: UsuarioActual;
+    actorUsuarioId: string;
+    ejecutor?: "conductor" | "interno";
+  },
+): Promise<boolean> {
+  const { data: manifiesto, error } = await cliente
+    .from("manifiestos")
+    .select("estado")
+    .eq("id", entrada.manifiestoId)
+    .eq("tenant_id", entrada.tenantId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Error al leer el estado del manifiesto: ${error.message}`);
+  }
+  if (manifiesto?.estado !== "en_ruta") return false;
+
+  await transicionarPedidosSameDayAEnRuta(
+    cliente,
+    entrada.manifiestoId,
+    entrada.tenantId,
+    entrada.driverId,
+    entrada.actor,
+    entrada.actorUsuarioId,
+    entrada.ejecutor ?? "interno",
+  );
+  return true;
 }
