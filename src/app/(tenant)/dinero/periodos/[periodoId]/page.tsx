@@ -545,6 +545,17 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
               Exportar CSV
             </a>
           ) : null}
+          {/* Entrada a la Reportería con las fechas de ESTE período ya puestas.
+              Es el otro camino que pidió el usuario, además del rango libre: acá
+              se ve lo que se le cobra al seller, y allá lo mismo cruzado con lo
+              que se le pagó al conductor por cada una de esas entregas — que es
+              lo que hay que mirar antes de facturar. */}
+          <Link
+            href={`/dinero/reporteria?periodo=${periodo.id}`}
+            className="text-xs font-medium text-fg-muted hover:text-fg hover:underline"
+          >
+            Ver con el pago al conductor ›
+          </Link>
         </div>
 
         {lineas.length === 0 ? (

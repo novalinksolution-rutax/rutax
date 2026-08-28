@@ -1904,3 +1904,66 @@ estáticamente todo `src/` (excluidos los tests) y falla si algún archivo vuelv
 - [x] **TZ-01 — El historial de estados muestra la hora chilena.** Un registro guardado como `21:47 UTC` se muestra como `17:47`. *Verificado en el navegador; era el bug reportado.* **(Alto)**
 - [x] **TZ-02 — Ningún formateo de fecha sin huso.** `src/lib/formato-cl.zona-horaria.test.ts` barre `src/` y falla si aparece un `toLocaleDateString` / `toLocaleTimeString` / `Intl.DateTimeFormat` sin `timeZone`. **(Alto)**
 - [x] **TZ-03 — Hora en 24h.** `formatearHora` no devuelve "p. m."; corregida la inconsistencia del botón "listo para salir" del conductor. **(Medio)**
+
+---
+
+## Reportería consolidada — 2026-08-28
+
+Módulo nuevo: el detalle con el que se factura y se transfiere **a mano**,
+mientras el DTE y los pagos automáticos no estén encendidos. No se retira cuando
+lo estén: es lo que deja auditar al motor entrega→dinero.
+
+### Motor del reporte (`src/modules/dinero/reporteria/`)
+- [x] Una fila por pedido con **los dos lados** — cobro al seller y pago al
+      conductor. Verlas juntas es lo que deja notar que falta una.
+- [x] La fila con un lado faltante se **marca**, no se esconde ni se filtra.
+- [x] El margen queda **nulo** cuando falta un lado: restar contra cero diría
+      «ganamos $3.000» cuando lo cierto es que falta pagarle a alguien.
+- [x] Las líneas anuladas no entran (sumarlas cobraría dos veces).
+- [x] Las visitas a bodega van aparte y **suman** al pago del conductor.
+- [x] 26 pruebas, con **mutación verificada** en las dos guardas duras.
+
+### ⚠️ Nada de UUID en la salida (restricción del usuario)
+- [x] El pedido se nombra con lo que su contraparte reconoce: número de venta de
+      ML en Flex, `#1001` en Shopify, `RX-…` en same-day.
+- [x] `codigoVisible()` es una **cadena de prioridad**, no un `switch` por
+      fuente. La primera versión ramificaba por `tipo_pedido` — el bug que
+      CLAUDE.md advierte no repetir.
+- [x] El CSV barre su propia salida buscando UUID, con los ids poblados a
+      propósito en la fila para que la prueba demuestre que **no salen**.
+- [x] Las columnas del CSV son una lista **explícita**: derivarlas de las claves
+      del objeto publicaría los ids internos sola.
+
+### Escalabilidad a fuentes futuras (Falabella y las que vengan)
+- [x] `referencia_externa` primero: toda fuente nueva que la pueble entra al
+      reporte **sin tocar una línea de código**.
+- [x] El desglose por fuente se arma **recorriendo las filas**, nunca desde una
+      lista fija. Con lista fija la fuente nueva no daría error: simplemente no
+      se sumaría, y el total sería menor que la plata movida.
+- [x] Prueba con una fuente que **hoy no existe en el código** (`falabella`):
+      se nombra sola, entra a los totales y cuadra contra el total general.
+- [x] Una fuente sin traducir se muestra **cruda**, no como «Otra»: delata que
+      falta ponerle nombre.
+
+### RBAC
+- [x] Exige **las dos** capacidades (`emitir_facturas` +
+      `gestionar_liquidaciones_conductores`). Pedir una sola sería una puerta
+      lateral hacia la mitad que el usuario no ve por su camino normal.
+- [x] **NO** va por `ver_reportes_ejecutivos`: esa la tiene solo el dueño y
+      dejaría fuera a `administracion`, que es el rol para el que se construyó.
+- [x] La exportación pide lo mismo que la pantalla, no menos.
+- [x] Verificado en local: sin sesión, `/dinero/reporteria` responde 307 a login.
+
+### Respaldos imprimibles
+- [x] Documento por seller y liquidación por conductor, con RUT de ambas partes.
+- [x] 🔴 **«No es una factura ni una boleta»** arriba y en el cuerpo, no al pie.
+      Un papel con emisor, RUT, detalle y total se lee como factura aunque nadie
+      lo llame así, y eso es un problema con el SII.
+- [x] El conductor **no aparece** en el documento del seller (dato personal,
+      Ley 21.431, y no le hace falta para pagar). Lo que se le cobró al seller
+      **no aparece** en el del conductor (es el margen del courier).
+
+### Pendiente
+- [ ] **Verlo en el navegador con sesión.** Compila, el gate redirige y el build
+      pasa, pero no lo he visto renderizado: entrar exige escribir una
+      contraseña y eso no lo hago. Falta ese pase antes de darlo por cerrado.

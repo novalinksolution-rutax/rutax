@@ -17,6 +17,7 @@ import {
   Building2,
   CreditCard,
   Download,
+  FileSpreadsheet,
   GitCompareArrows,
   HandCoins,
   Home,
@@ -55,6 +56,10 @@ export const ICONOS: Record<string, LucideIcon> = {
   periodos: Receipt,
   liquidaciones: Wallet,
   conciliacion: GitCompareArrows,
+  // La planilla con la que se factura y se transfiere a mano. No `Receipt` (ya
+  // es "periodos") ni `LineChart` (ya es "metricas", que es otra pregunta: el
+  // pulso del negocio, no el detalle línea por línea con el que se paga).
+  reporteria: FileSpreadsheet,
   pagos: Banknote,
   configuracion: Settings,
   equipo: Users,

@@ -156,6 +156,16 @@ export default async function LayoutTenant({ children }: { children: React.React
   if (puedeVerConciliacion(u) || puedeGestionarCobranza(u)) {
     grupoDinero.items.push({ href: "/dinero/cobranza", etiqueta: "Cobranza", icono: "pagos" });
   }
+  // Reportería cruza las DOS mitades del dinero en la misma fila, así que pide
+  // las dos capacidades: pedir una sola sería una puerta lateral hacia la que el
+  // usuario no puede ver por su camino normal. Cae en {dueño, administración}.
+  if (puedeEmitirFacturas(u) && puedeGestionarLiquidacionesConductores(u)) {
+    grupoDinero.items.push({
+      href: "/dinero/reporteria",
+      etiqueta: "Reportería",
+      icono: "reporteria",
+    });
+  }
 
   // Clientes — el seller es una entidad de negocio, no un ajuste (IA Blueprint §1.1).
   const grupoClientes: GrupoNav = {
