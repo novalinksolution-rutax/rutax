@@ -69,8 +69,13 @@ function campo(valor: string | number | null | undefined): string {
  * se pierde entre los montos.
  */
 function estadoDe(discrepancia: string | null): string {
+  // 🔴 «FALTA» va en mayúsculas porque hay que actuar; «anulada» no, porque ya
+  // se actuó. Pintarlos igual hizo leer «el motor falló» donde decía «alguien
+  // decidió» — y por poco se re-dispara el motor sobre seis anulaciones.
   if (discrepancia === "sin_pago") return "FALTA EL PAGO AL CONDUCTOR";
   if (discrepancia === "sin_cobro") return "FALTA EL COBRO AL SELLER";
+  if (discrepancia === "pago_anulado") return "Pago anulado a mano";
+  if (discrepancia === "cobro_anulado") return "Cobro anulado a mano";
   return "Completa";
 }
 

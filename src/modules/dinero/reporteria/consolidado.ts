@@ -61,8 +61,27 @@ export interface FiltrosReporte {
   conductorId?: string;
 }
 
-/** Qué le falta a una fila. `null` cuando los dos lados están. */
-export type Discrepancia = "sin_cobro" | "sin_pago" | null;
+/**
+ * Qué le pasa a una fila. `null` cuando los dos lados están vivos.
+ *
+ * 🔴 **«No existe» y «anulada» NO son lo mismo, y confundirlos costó caro el
+ * 2026-08-28.** El reporte decía «Falta el pago» en seis entregas cuyas líneas
+ * de liquidación **existían y estaban anuladas**. Se leyó como «el motor no
+ * alcanzó a escribirlas» y casi se re-dispara el motor sobre ellas — que habría
+ * pasado por encima de seis decisiones que alguien tomó con su nombre y su
+ * motivo.
+ *
+ * Piden respuestas opuestas:
+ *   · `sin_*`     → el motor nunca la escribió. Se regenera.
+ *   · `*_anulado` → alguien la anuló. Se mira quién y por qué, y regenerarla
+ *                   sería deshacer esa decisión por la puerta de atrás.
+ */
+export type Discrepancia =
+  | "sin_cobro"
+  | "sin_pago"
+  | "cobro_anulado"
+  | "pago_anulado"
+  | null;
 
 export interface FilaReporte {
   /** El número que la contraparte reconoce. Nunca un UUID. */
@@ -173,8 +192,15 @@ export interface ReporteConsolidado {
   porFuente: TotalPorFuente[];
   totalCobro: number;
   totalPago: number;
-  /** Cuántas filas tienen un lado faltante. Es la cifra que hay que mirar. */
+  /**
+   * Cuántas filas tienen un lado que el motor NUNCA escribió. Es la cifra que
+   * hay que mirar, y **no incluye las anuladas**: esas no son un hueco, son una
+   * decisión con autor. Meterlas acá convertiría el contador en una lista de
+   * tareas que no hay que hacer.
+   */
   conDiscrepancia: number;
+  /** Cuántas filas tienen un lado anulado a mano. Se muestran, no se cuentan arriba. */
+  conAnulacion: number;
 }
 
 interface FilaCobro {
@@ -344,6 +370,18 @@ export async function obtenerReporteConsolidado(
   const cobrosVivos = cobros.filter((c) => c.anulada !== true);
   const liqVivas = liquidaciones.filter((l) => l.anulada !== true);
 
+  // Las anuladas NO entran a los totales —una línea anulada no es plata que se
+  // deba— pero sí hay que saber que existen: es la diferencia entre «el motor no
+  // la escribió» y «alguien la anuló».
+  const pedidosConCobroAnulado = new Set(
+    cobros.filter((c) => c.anulada === true).map((c) => c.pedido_id),
+  );
+  const pedidosConPagoAnulado = new Set(
+    liquidaciones
+      .filter((l) => l.anulada === true && l.pedido_id)
+      .map((l) => l.pedido_id as string),
+  );
+
   const entregasLiq = liqVivas.filter((l) => l.tipo_hecho !== "retiro_bodega");
   const visitasLiq = liqVivas.filter((l) => l.tipo_hecho === "retiro_bodega");
 
@@ -451,7 +489,15 @@ export async function obtenerReporteConsolidado(
         (c && n(c.ajuste_incidencia_clp) !== 0) || (l && n(l.ajuste_incidencia_clp) !== 0)
           ? (c?.concepto ?? l?.concepto ?? null)
           : null,
-      discrepancia: !c ? "sin_cobro" : !l ? "sin_pago" : null,
+      discrepancia: !c
+        ? pedidosConCobroAnulado.has(id)
+          ? "cobro_anulado"
+          : "sin_cobro"
+        : !l
+          ? pedidosConPagoAnulado.has(id)
+            ? "pago_anulado"
+            : "sin_pago"
+          : null,
     };
   });
 
@@ -538,6 +584,12 @@ export async function obtenerReporteConsolidado(
     totalPago:
       filas.reduce((s, f) => s + (f.pagoFinal ?? 0), 0) +
       visitas.reduce((s, v) => s + v.montoFinal, 0),
-    conDiscrepancia: filas.filter((f) => f.discrepancia !== null).length,
+    // Solo lo que el motor no escribió. Lo anulado va aparte: no es un hueco.
+    conDiscrepancia: filas.filter(
+      (f) => f.discrepancia === "sin_cobro" || f.discrepancia === "sin_pago",
+    ).length,
+    conAnulacion: filas.filter(
+      (f) => f.discrepancia === "cobro_anulado" || f.discrepancia === "pago_anulado",
+    ).length,
   };
 }

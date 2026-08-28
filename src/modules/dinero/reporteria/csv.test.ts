@@ -43,6 +43,7 @@ const reporte = (extra: Partial<ReporteConsolidado> = {}): ReporteConsolidado =>
   totalCobro: 3000,
   totalPago: 2300,
   conDiscrepancia: 0,
+  conAnulacion: 0,
   ...extra,
 });
 

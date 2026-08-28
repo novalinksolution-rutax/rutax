@@ -223,6 +223,53 @@ describe("obtenerReporteConsolidado", () => {
     expect(r.filas[0].margen).toBeNull();
   });
 
+  it("🔴 una línea ANULADA no es «falta»: son cosas distintas y piden lo opuesto", async () => {
+    // Encontrado en producción el 2026-08-28. Seis entregas salían como «Falta
+    // el pago» y sus líneas de liquidación EXISTÍAN, anuladas a mano. Se leyó
+    // como «el motor no las escribió» y por poco se re-dispara el motor sobre
+    // seis decisiones que alguien tomó con su nombre.
+    const r = await obtenerReporteConsolidado(
+      clienteFalso({
+        cobros: [cobro("p1")],
+        liquidaciones: [liquidacion("p1", { anulada: true })],
+        pedidos: [pedido("p1")],
+      }),
+      rango,
+    );
+
+    expect(r.filas[0].discrepancia).toBe("pago_anulado");
+    // Y NO cuenta como hueco: el contador de arriba es la lista de lo que hay
+    // que arreglar, y esto ya está decidido.
+    expect(r.conDiscrepancia).toBe(0);
+    expect(r.conAnulacion).toBe(1);
+    // La plata anulada tampoco entra a los totales.
+    expect(r.totalPago).toBe(0);
+  });
+
+  it("un cobro anulado se distingue igual", async () => {
+    const r = await obtenerReporteConsolidado(
+      clienteFalso({
+        cobros: [cobro("p1", { anulada: true })],
+        liquidaciones: [liquidacion("p1")],
+        pedidos: [pedido("p1")],
+      }),
+      rango,
+    );
+    expect(r.filas[0].discrepancia).toBe("cobro_anulado");
+    expect(r.conDiscrepancia).toBe(0);
+  });
+
+  it("🔴 sin ninguna línea sí es «falta», y ahí sí hay que actuar", async () => {
+    // La contraprueba: si no hay línea anulada de por medio, el hueco es real.
+    const r = await obtenerReporteConsolidado(
+      clienteFalso({ cobros: [cobro("p1")], liquidaciones: [], pedidos: [pedido("p1")] }),
+      rango,
+    );
+    expect(r.filas[0].discrepancia).toBe("sin_pago");
+    expect(r.conDiscrepancia).toBe(1);
+    expect(r.conAnulacion).toBe(0);
+  });
+
   it("un pedido pagado y no cobrado también se marca", async () => {
     const r = await obtenerReporteConsolidado(
       clienteFalso({ cobros: [], liquidaciones: [liquidacion("p1")], pedidos: [pedido("p1")] }),

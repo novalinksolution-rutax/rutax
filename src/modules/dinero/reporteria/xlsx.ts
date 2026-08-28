@@ -196,12 +196,18 @@ export async function armarLibro(d: DatosLibro): Promise<ExcelJS.Buffer> {
   const filas: (string | number | null)[][] = [];
 
   for (const f of d.reporte.filas) {
+    // Ver la nota de `estadoDe` en `csv.ts`: «falta» y «anulada» no se pintan
+    // igual, porque piden respuestas opuestas.
     const estado =
       f.discrepancia === "sin_pago"
         ? "FALTA EL PAGO AL CONDUCTOR"
         : f.discrepancia === "sin_cobro"
           ? "FALTA EL COBRO AL SELLER"
-          : "Completa";
+          : f.discrepancia === "pago_anulado"
+            ? "Pago anulado a mano"
+            : f.discrepancia === "cobro_anulado"
+              ? "Cobro anulado a mano"
+              : "Completa";
     filas.push([
       "Entrega",
       f.fechaHecho,

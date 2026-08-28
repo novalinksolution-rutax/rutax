@@ -58,6 +58,53 @@ function notaDelPago(entregas: number, visitas: number): string {
   return `${e(entregas)} más ${v(visitas)}.`;
 }
 
+/**
+ * La nota de una fila: qué le pasa, en una etiqueta.
+ *
+ * 🔴 **«Falta» y «anulada» se distinguen a propósito.** Un lado que el motor no
+ * escribió se regenera; uno que alguien anuló tiene autor y motivo, y tocarlo
+ * sería deshacer esa decisión por la puerta de atrás. Pintarlos igual —como
+ * hacía la primera versión— hizo leer «el motor falló» donde decía «alguien
+ * decidió», y por poco se re-dispara el motor sobre seis anulaciones.
+ *
+ * Por eso tampoco comparten tono: lo que falta es rojo porque hay que actuar;
+ * lo anulado es neutro porque ya se actuó.
+ */
+/**
+ * Qué decir bajo el contador de filas incompletas.
+ *
+ * 🔴 Las anuladas se nombran aparte y NO se suman al contador. Sumarlas
+ * convertiría la cifra en una lista de tareas que no hay que hacer: una línea
+ * anulada ya la decidió alguien, con su nombre y su motivo.
+ */
+function notaDeIncompletas(faltan: number, anuladas: number): string {
+  const nota = anuladas > 0
+    ? ` Además hay ${anuladas} con una línea anulada a mano, que no es lo mismo: ahí ya alguien decidió.`
+    : "";
+  if (faltan === 0) return `Todas las entregas tienen sus dos líneas.${nota}`;
+  return `Les falta el cobro o el pago. Revísalas antes de facturar.${nota}`;
+}
+
+function NotaDeFila({ fila }: { fila: ReporteConsolidado["filas"][number] }) {
+  switch (fila.discrepancia) {
+    case "sin_pago":
+      return <Badge variant="destructive">Falta el pago</Badge>;
+    case "sin_cobro":
+      return <Badge variant="destructive">Falta el cobro</Badge>;
+    case "pago_anulado":
+      return <Badge variant="secondary">Pago anulado</Badge>;
+    case "cobro_anulado":
+      return <Badge variant="secondary">Cobro anulado</Badge>;
+    default:
+      break;
+  }
+  if (fila.ajustadoAMano) return <Badge variant="secondary">Ajustado a mano</Badge>;
+  if (fila.motivoAjuste) {
+    return <span className="text-xs text-muted-foreground">{fila.motivoAjuste}</span>;
+  }
+  return null;
+}
+
 export function VistaReporteria({
   reporte,
   error,
@@ -190,11 +237,7 @@ export function VistaReporteria({
               titulo="Filas incompletas"
               valor={String(reporte.conDiscrepancia)}
               destacar={reporte.conDiscrepancia > 0}
-              nota={
-                reporte.conDiscrepancia > 0
-                  ? "Les falta el cobro o el pago. Revísalas antes de facturar."
-                  : "Todas las entregas tienen sus dos líneas."
-              }
+              nota={notaDeIncompletas(reporte.conDiscrepancia, reporte.conAnulacion)}
             />
           </div>
 
@@ -387,12 +430,8 @@ export function VistaReporteria({
                         <FichaFila390
                           className="flex-1"
                           estado={
-                            f.discrepancia === "sin_pago" ? (
-                              <Badge variant="destructive">Falta el pago</Badge>
-                            ) : f.discrepancia === "sin_cobro" ? (
-                              <Badge variant="destructive">Falta el cobro</Badge>
-                            ) : f.ajustadoAMano ? (
-                              <Badge variant="secondary">Ajustado a mano</Badge>
+                            f.discrepancia || f.ajustadoAMano ? (
+                              <NotaDeFila fila={f} />
                             ) : (
                               <span className="text-xs text-muted-foreground">
                                 {f.fechaHecho ? formatearFechaCivilCorta(f.fechaHecho) : "—"}
@@ -464,17 +503,7 @@ export function VistaReporteria({
                           <TableCell>
                             {/* La fila incompleta se MARCA, no se esconde: es el
                                 hallazgo más caro que este reporte entrega. */}
-                            {f.discrepancia === "sin_pago" ? (
-                              <Badge variant="destructive">Falta el pago</Badge>
-                            ) : f.discrepancia === "sin_cobro" ? (
-                              <Badge variant="destructive">Falta el cobro</Badge>
-                            ) : f.ajustadoAMano ? (
-                              <Badge variant="secondary">Ajustado a mano</Badge>
-                            ) : f.motivoAjuste ? (
-                              <span className="text-xs text-muted-foreground">
-                                {f.motivoAjuste}
-                              </span>
-                            ) : null}
+                            <NotaDeFila fila={f} />
                           </TableCell>
                         </TableRow>
                       ))}
