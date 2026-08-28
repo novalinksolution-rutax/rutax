@@ -31,7 +31,7 @@ import Link from "next/link";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
+import { puedeVerPeriodosCobro } from "@/modules/identidad/capacidades";
 import { listarPeriodosCobro, listarDocumentosDte } from "@/modules/dinero/index";
 import type { PeriodoCobro, DocumentoDte } from "@/modules/dinero/tipos";
 import {
@@ -78,7 +78,10 @@ export default async function PaginaPeriodosCobro({
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
-  if (!puedeEmitirFacturas(sesion.usuario)) redirect("/dashboard");
+  // 🔴 LECTURA, no emisión. Esta pantalla muestra cuánto le debe cada seller, y
+  // eso el courier tiene que poder verlo aunque Rutax le tenga apagada la
+  // emisión de facturas. Los botones de emitir siguen pidiendo `emitir_facturas`.
+  if (!puedeVerPeriodosCobro(sesion.usuario)) redirect("/dashboard");
 
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;

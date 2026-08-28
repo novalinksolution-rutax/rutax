@@ -30,6 +30,7 @@ vi.mock('@/modules/identidad/auditoria', () => ({
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { emitirNotaCreditoPeriodo } from './acciones';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fake Supabase en memoria (mismo modelo que acciones-cobranza.test.ts).
@@ -97,6 +98,7 @@ function dueno(): UsuarioActual {
     driverId: null,
     rol: 'dueno',
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

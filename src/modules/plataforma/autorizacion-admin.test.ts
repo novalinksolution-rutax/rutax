@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Tests de `autorizacion-admin.ts` — el "dual-gate" real de F3-A:
  * - `resolverSuperAdminActivo`: lectura fresca `service_role` de
@@ -75,6 +76,7 @@ function usuarioSuperAdmin(overrides: Partial<UsuarioActual> = {}): UsuarioActua
     rol: "super_admin",
     estado: "activo",
     ...overrides,
+    areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
   };
 }
 
@@ -159,7 +161,7 @@ describe("exigirSuperAdmin", () => {
       usuarioId: USUARIO_ID,
       email: "dueno@courier.cl",
       nombreCompleto: "Dueño Courier",
-      usuario: { tenantId: "tenant-1", tipoUsuario: "interno", sellerId: null, driverId: null, rol: "dueno", estado: "activo" },
+      usuario: { tenantId: "tenant-1", tipoUsuario: "interno", sellerId: null, driverId: null, rol: "dueno", estado: "activo", areasHabilitadas: [...AREAS_PRODUCTO] },
     });
 
     await expect(exigirSuperAdmin()).rejects.toBeInstanceOf(NoAutorizadoAdmin);

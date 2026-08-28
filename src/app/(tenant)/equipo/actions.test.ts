@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Prueba de regresión — `reenviarInvitacion` (botón "Reenviar correo" en
  * `/equipo`).
@@ -50,6 +51,7 @@ function crearUsuario(overrides: Partial<UsuarioActual> = {}): UsuarioActual {
     rol: "dueno",
     estado: "activo",
     ...overrides,
+    areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
   };
 }
 

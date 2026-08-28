@@ -59,6 +59,7 @@
 
 import { etiquetaFechaCivilCorta } from "@/lib/ui/rango-fecha";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { AREAS_PRODUCTO, type AreaProducto } from "@/modules/identidad/areas-producto";
 import type { EstadoOnboardingCourier } from "./estado";
 
 export type ClaveBloque = "operar" | "cobrar" | "cuadrar";
@@ -67,6 +68,7 @@ export type ClavePaso =
   | "sellers"
   | "conductores"
   | "bodega"
+  | "empresa"
   | "dte"
   | "folios"
   | "tarifas"
@@ -137,9 +139,30 @@ export interface PasoAsistente {
    * de cabecera: reimplementarlo embebido crearía una copia que se queda atrás.
    */
   seResuelveFuera: boolean;
+  /**
+   * De qué área de producto depende este paso, o `null` si no depende de ninguna.
+   *
+   * Cuando Rutax tiene el área apagada, el paso NO se muestra: pedirle a un
+   * courier que cargue su certificado DTE para luego no dejarlo emitir es trabajo
+   * tirado y una promesa que no se va a cumplir. Ver `areas-producto.ts`.
+   */
+  areaRequerida: AreaProducto | null;
 }
 
-export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistente[] {
+export function pasosDelAsistente(
+  estado: EstadoOnboardingCourier,
+  /**
+   * Las áreas que Rutax tiene encendidas para este courier. Los pasos de un área
+   * apagada NO aparecen: el asistente significa «haz esto para operar», y un
+   * paso que no lleva a nada rompe esa promesa.
+   *
+   * Por defecto, todas: quien no pase el dato —una prueba de la función pura—
+   * ve el asistente completo. Es lo contrario del fail-closed de
+   * `tieneCapacidad`, y a propósito: acá el riesgo no es de acceso (las
+   * pantallas detrás tienen su propio gate) sino de mostrar un paso de más.
+   */
+  areasHabilitadas: readonly AreaProducto[] = AREAS_PRODUCTO,
+): PasoAsistente[] {
   const hayProveedor = estado.dte.proveedorElegido !== null;
   const dteCargado = estado.dte.estado === "activo" || estado.dte.estado === "en_proceso";
   const emisorCompleto = estado.dte.camposEmisorFaltantes.length === 0;
@@ -153,16 +176,11 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
     ? "Sin proveedor elegido."
     : estado.dte.estado === "con_problemas"
       ? "Hay un problema con tu certificado."
-      : !emisorCompleto
-        ? // El certificado sin los datos del emisor no basta: son campos
-          // obligatorios del documento, y decir cuáles faltan evita abrir el
-          // paso solo para averiguarlo.
-          `${estado.dte.proveedorElegido} · falta ${listaEnFrase(estado.dte.camposEmisorFaltantes)} de tu empresa.`
-        : estado.dte.certificadoVenceEn
-          ? // Fecha CIVIL: `etiquetaFechaCivilCorta` no pasa por `Date`, que la
-            // correría un día (medianoche UTC es el día anterior en Santiago).
-            `${estado.dte.proveedorElegido} · certificado hasta el ${etiquetaFechaCivilCorta(estado.dte.certificadoVenceEn.slice(0, 10))}.`
-          : `${estado.dte.proveedorElegido} · certificado cargado.`;
+      : estado.dte.certificadoVenceEn
+        ? // Fecha CIVIL: `etiquetaFechaCivilCorta` no pasa por `Date`, que la
+          // correría un día (medianoche UTC es el día anterior en Santiago).
+          `${estado.dte.proveedorElegido} · certificado hasta el ${etiquetaFechaCivilCorta(estado.dte.certificadoVenceEn.slice(0, 10))}.`
+        : `${estado.dte.proveedorElegido} · certificado cargado.`;
 
   const resumenFolios = !hayProveedor
     ? "Depende de tu proveedor: él decide si los gestiona o si los cargas tú."
@@ -209,6 +227,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/sellers",
       seResuelveFuera: true,
+      areaRequerida: null,
     },
     {
       clave: "conductores",
@@ -226,6 +245,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/conductores",
       seResuelveFuera: true,
+      areaRequerida: null,
     },
     {
       clave: "bodega",
@@ -242,22 +262,50 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/configuracion/bodegas",
       seResuelveFuera: true,
+      areaRequerida: null,
     },
 
     // ── Bloque 2 · Para cobrar ──────────────────────────────────────────────
+    {
+      // 🔴 PARTIDO EN DOS A PROPÓSITO (decisión del usuario, 2026-08-28).
+      //
+      // Los datos del emisor —giro, dirección, comuna, actividad económica— son
+      // identidad tributaria de la empresa y sirven aunque Rutax tenga apagada
+      // la emisión: van en cualquier documento y los pide `gestionar_perfil_
+      // empresa`, no la configuración DTE. Si vivieran dentro del paso de
+      // facturación, apagar el área se los llevaría por delante.
+      clave: "empresa",
+      bloque: "cobrar",
+      titulo: "Los datos de tu empresa",
+      enFrase: "los datos de tu empresa",
+      resumen: emisorCompleto
+        ? "Giro, dirección, comuna y actividad económica cargados."
+        : `Falta ${listaEnFrase(estado.dte.camposEmisorFaltantes)} de tu empresa.`,
+      listo: emisorCompleto,
+      critico: false,
+      dependeDe: null,
+      bloqueado: false,
+      motivoBloqueo: null,
+      href: "/onboarding?paso=empresa",
+      seResuelveFuera: false,
+      // Sin área: la identidad de la empresa no la apaga nadie.
+      areaRequerida: null,
+    },
     {
       clave: "dte",
       bloque: "cobrar",
       titulo: "Facturación electrónica",
       enFrase: "la facturación electrónica",
       resumen: resumenDte,
-      listo: dteCargado && emisorCompleto,
+      // Ya NO exige los datos del emisor: ésos son su propio paso.
+      listo: dteCargado,
       critico: true,
       dependeDe: null,
       bloqueado: false,
       motivoBloqueo: null,
       href: "/onboarding/dte",
       seResuelveFuera: false,
+      areaRequerida: "folios_caf",
     },
     {
       clave: "folios",
@@ -274,6 +322,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
         : null,
       href: "/onboarding/folios",
       seResuelveFuera: false,
+      areaRequerida: "folios_caf",
     },
     {
       clave: "tarifas",
@@ -288,6 +337,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/onboarding/tarifas",
       seResuelveFuera: false,
+      areaRequerida: null,
     },
     {
       clave: "periodos",
@@ -304,6 +354,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/configuracion/tarifas?seccion=periodos",
       seResuelveFuera: false,
+      areaRequerida: null,
     },
     {
       clave: "cobro",
@@ -320,6 +371,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/onboarding?paso=cobro",
       seResuelveFuera: false,
+      areaRequerida: "emision_facturas",
     },
     {
       clave: "cobranza",
@@ -334,6 +386,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/onboarding/cobranza",
       seResuelveFuera: false,
+      areaRequerida: "conciliacion_cobranza",
     },
 
     // ── Bloque 3 · Para que cuadre ──────────────────────────────────────────
@@ -352,6 +405,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/onboarding?paso=retencion",
       seResuelveFuera: false,
+      areaRequerida: "pago_conductores",
     },
     {
       clave: "retiro",
@@ -369,6 +423,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/configuracion/tarifas?seccion=retiro",
       seResuelveFuera: false,
+      areaRequerida: null,
     },
     {
       clave: "zonas",
@@ -386,6 +441,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/configuracion/tarifas?seccion=zonas",
       seResuelveFuera: true,
+      areaRequerida: null,
     },
     {
       clave: "contacto",
@@ -400,6 +456,7 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       motivoBloqueo: null,
       href: "/onboarding?paso=contacto",
       seResuelveFuera: false,
+      areaRequerida: null,
     },
     {
       clave: "plan",
@@ -416,10 +473,15 @@ export function pasosDelAsistente(estado: EstadoOnboardingCourier): PasoAsistent
       // Rutax, que es backstage y tiene su propia pantalla.
       href: "/configuracion/plan",
       seResuelveFuera: true,
+      areaRequerida: "suscripcion_rutax",
     },
   ];
 
-  return definiciones.map((d, i) => ({ ...d, numero: i + 1 }));
+  // Se filtra ANTES de numerar: si no, el asistente diría «paso 4 de 9» con un
+  // hueco entre el 3 y el 5, y el conteo dejaría de cuadrar con lo que se ve.
+  return definiciones
+    .filter((d) => d.areaRequerida === null || areasHabilitadas.includes(d.areaRequerida))
+    .map((d, i) => ({ ...d, numero: i + 1 }));
 }
 
 function resumenBodega(estado: EstadoOnboardingCourier): string {

@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Tests de RBAC y guardas de estado para las acciones B2 de corrección manual:
  * `anularLineaCobroPedido` y `anularLineaLiquidacionPedido`.
@@ -25,6 +26,7 @@ import { anularLineaCobroPedido, anularLineaLiquidacionPedido } from './acciones
 
 function usuario(rol: UsuarioActual['rol'], estado: UsuarioActual['estado'] = 'activo'): UsuarioActual {
   return {
+    areasHabilitadas: [...AREAS_PRODUCTO],
     tenantId: 'tenant-a',
     tipoUsuario: rol === 'seller' ? 'seller' : rol === 'conductor' ? 'conductor' : 'interno',
     sellerId: rol === 'seller' ? 'seller-a' : null,

@@ -33,6 +33,7 @@ import { camposClasificacionParaInsert } from '../conciliacion-clasificacion';
 import type { TipoDiferenciaConciliacion } from '../tipos';
 import { limitesDelDiaSantiago } from '@/lib/fecha-santiago';
 import { listarPedidosEntregadosPorRutax } from '../pedidos-entregados-por-rutax';
+import { obtenerAreasHabilitadas } from '@/modules/plataforma/superficie-courier';
 
 /**
  * Calcula los 3 campos de clasificación de la bandeja de excepciones
@@ -63,6 +64,30 @@ export const jobConciliarPeriodo = inngest.createFunction(
         fechaFin: string;
         montoTotalClp: number;
       };
+
+    // 🔴 EL INTERRUPTOR DE RUTAX, EN EL ÚNICO JOB QUE LO NECESITA.
+    //
+    // Este job lo dispara `cerrar-periodo`, un cron que SIGUE corriendo aunque el
+    // courier tenga apagada el área: cerrar ≠ facturar, y si dejara de cerrar, el
+    // courier vería un solo período gigante que nunca rota y la pantalla de
+    // «cuánto le debo a cada seller» dejaría de significar nada a las semanas.
+    //
+    // Pero si `conciliacion_cobranza` está apagada, el courier no tiene bandeja
+    // donde ver las excepciones: generarlas sería llenarle en silencio una tabla
+    // que no puede mirar, y encontrarse una pila el día que se encienda.
+    //
+    // Los otros dos jobs de dinero no necesitan esto: `ejecutar-payout` NUNCA se
+    // dispara desde un cron —solo desde la acción humana, que la capacidad ya
+    // bloquea— y `cerrar-periodo` es registro, no dinero que se mueve.
+    const areas = await step.run('leer-areas-habilitadas', () =>
+      obtenerAreasHabilitadas(tenantId),
+    );
+    if (!areas.includes('conciliacion_cobranza')) {
+      logger.info(
+        `Conciliación apagada para el tenant ${tenantId}: no se generan excepciones del período ${periodoCobroidId}.`,
+      );
+      return { omitido: 'area_apagada' as const, periodoCobroidId, tenantId };
+    }
 
     logger.info(`Conciliando período ${periodoCobroidId} para tenant ${tenantId}.`);
 

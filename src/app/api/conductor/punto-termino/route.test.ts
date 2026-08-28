@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de `GET | PUT | DELETE /api/conductor/punto-termino`.
  *
@@ -63,6 +64,7 @@ const OTRO_DRIVER = "20000000-0000-0000-0000-000000000099";
 const SELLER_1 = "60000000-0000-0000-0000-000000000001";
 
 const usuarioConductor = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,
@@ -73,6 +75,7 @@ const usuarioConductor = {
 };
 
 const usuarioSeller = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-seller-1",
   tipoUsuario: "seller" as const,
   driverId: null,
@@ -83,6 +86,7 @@ const usuarioSeller = {
 };
 
 const usuarioInterno = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-interno-1",
   tipoUsuario: "interno" as const,
   driverId: null,

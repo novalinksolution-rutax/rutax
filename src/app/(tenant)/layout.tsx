@@ -12,8 +12,8 @@ import {
   puedeGestionarConfiguracionDte,
   puedeGestionarTarifas,
   puedeGestionarIncidencias,
-  puedeEmitirFacturas,
-  puedeGestionarLiquidacionesConductores,
+  puedeVerPeriodosCobro,
+  puedeVerLiquidaciones,
   puedeGestionarCobranza,
   puedeVerConciliacion,
   puedeVerBitacoraAuditoria,
@@ -135,11 +135,16 @@ export default async function LayoutTenant({ children }: { children: React.React
     }
   }
 
+  // 🔴 Los destinos de DINERO se gatean con las capacidades de LECTURA, no con
+  // las de acción. Cuando Rutax apaga la emisión de facturas o el pago a
+  // conductores, el courier tiene que conservar las pantallas donde VE cuánto le
+  // debe cada seller y cuánto le debe a cada conductor: son valiosas aunque
+  // todavía no pueda actuar. Los botones de dentro siguen con su gate propio.
   const grupoDinero: GrupoNav = { titulo: "Dinero", items: [] };
-  if (puedeEmitirFacturas(u)) {
+  if (puedeVerPeriodosCobro(u)) {
     grupoDinero.items.push({ href: "/dinero/periodos", etiqueta: "Períodos", icono: "periodos" });
   }
-  if (puedeGestionarLiquidacionesConductores(u)) {
+  if (puedeVerLiquidaciones(u)) {
     grupoDinero.items.push({ href: "/dinero/liquidaciones", etiqueta: "Liquidaciones", icono: "liquidaciones" });
   }
   if (puedeVerConciliacion(u)) {
@@ -159,7 +164,8 @@ export default async function LayoutTenant({ children }: { children: React.React
   // Reportería cruza las DOS mitades del dinero en la misma fila, así que pide
   // las dos capacidades: pedir una sola sería una puerta lateral hacia la que el
   // usuario no puede ver por su camino normal. Cae en {dueño, administración}.
-  if (puedeEmitirFacturas(u) && puedeGestionarLiquidacionesConductores(u)) {
+  // Son las de LECTURA: la reportería no ejecuta nada.
+  if (puedeVerPeriodosCobro(u) && puedeVerLiquidaciones(u)) {
     grupoDinero.items.push({
       href: "/dinero/reporteria",
       etiqueta: "Reportería",

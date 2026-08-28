@@ -24,7 +24,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeGestionarLiquidacionesConductores } from "@/modules/identidad/capacidades";
+import { puedeVerLiquidaciones } from "@/modules/identidad/capacidades";
 import { listarLiquidaciones } from "@/modules/dinero/index";
 import type { Liquidacion, EstadoLiquidacion } from "@/modules/dinero/tipos";
 import {
@@ -97,7 +97,9 @@ export default async function PaginaLiquidaciones({
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
-  if (!puedeGestionarLiquidacionesConductores(sesion.usuario)) redirect("/dashboard");
+  // 🔴 LECTURA, no pago. Cuánto se le debe a cada conductor se ve aunque Rutax
+  // tenga apagado el pago a conductores.
+  if (!puedeVerLiquidaciones(sesion.usuario)) redirect("/dashboard");
 
   const params = await searchParams;
   const tenantId = sesion.usuario.tenantId;

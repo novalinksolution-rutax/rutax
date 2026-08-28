@@ -47,6 +47,7 @@ const actorValido: UsuarioActual = {
   rol: 'dueno',
   tipoUsuario: 'interno',
   estado: 'activo',
+  areasHabilitadas: [...AREAS_PRODUCTO],
   sellerId: null,
   driverId: null,
 };
@@ -63,6 +64,7 @@ const actorSinPermiso: UsuarioActual = {
 
 import { readFileSync } from 'node:fs';
 import { guardarZonaConComunas } from './zonas';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 /**
  * Doble que registra lo que pasó: qué se escribió en bitácora y con qué

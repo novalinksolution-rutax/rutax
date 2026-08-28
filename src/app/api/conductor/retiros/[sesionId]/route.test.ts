@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de GET /api/conductor/retiros/:sesionId (detalle de una visita).
  */
@@ -21,6 +22,7 @@ const OTRO_DRIVER = "20000000-0000-0000-0000-000000000099";
 const SESION_1 = "30000000-0000-0000-0000-000000000001";
 
 const usuarioConductor = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,
@@ -104,6 +106,7 @@ describe("GET /api/conductor/retiros/:sesionId — control positivo", () => {
   it("sesión propia del tenant -> pasa la barrera (llega a leer bodega/bultos)", async () => {
     vi.mocked(autenticarBearer).mockResolvedValue(usuarioConductor);
     const cliente = crearCliente({
+      areasHabilitadas: [...AREAS_PRODUCTO],
       id: SESION_1,
       tenant_id: TENANT_A,
       conductor_id: DRIVER_1,

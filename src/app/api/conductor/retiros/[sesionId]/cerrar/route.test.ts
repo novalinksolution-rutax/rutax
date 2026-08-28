@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de POST /api/conductor/retiros/:sesionId/cerrar.
  *
@@ -30,6 +31,7 @@ const OTRO_DRIVER = "20000000-0000-0000-0000-000000000099";
 const SESION_1 = "30000000-0000-0000-0000-000000000001";
 
 const usuarioConductor = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,

@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de `actionCambiarEstadoPedido` — el drawer genérico "Cambiar estado".
  *
@@ -69,6 +70,7 @@ function crearSesion(overrides: Partial<UsuarioActual> = {}): SesionActual {
       rol: "supervisor",
       estado: "activo",
       ...overrides,
+      areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
     },
   };
 }

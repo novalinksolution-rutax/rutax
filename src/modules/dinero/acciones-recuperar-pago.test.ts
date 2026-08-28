@@ -26,6 +26,7 @@ vi.mock('@/modules/identidad/auditoria', () => ({
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { recuperarPagoDescartado } from './acciones';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 const MOTIVO = 'Era una cobranza, la descarté por error';
 
@@ -37,6 +38,7 @@ function usuarioConRol(rol: UsuarioActual['rol']): UsuarioActual {
     driverId: null,
     rol,
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

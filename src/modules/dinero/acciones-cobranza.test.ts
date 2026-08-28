@@ -26,6 +26,7 @@ vi.mock('@/modules/identidad/auditoria', () => ({
 // verificar el efecto neto de la re-atribución (reversa + re-imputación).
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { atribuirPagoManualmente, descartarPago } from './acciones';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fake Supabase en memoria (mismo modelo que aplicar-pago.test.ts).
@@ -92,6 +93,7 @@ function usuario(rol: UsuarioActual['rol']): UsuarioActual {
     driverId: rol === 'conductor' ? 'driver-a' : null,
     rol,
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

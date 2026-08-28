@@ -19,6 +19,7 @@ import { haversineMetros, POD_GEOCERCA_RADIO_M, registrarPruebaEntrega } from ".
 import type { PodGeoResultado } from "./pruebas-entrega";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fixtures
@@ -50,6 +51,7 @@ function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual & { usuar
     driverId,
     rol: "conductor",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -62,6 +64,7 @@ function actorSinCapacidad(): UsuarioActual & { usuarioId: string } {
     driverId: null,
     rol: "seller",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

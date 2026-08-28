@@ -37,6 +37,7 @@ import { generarPdfComprobantePago } from "@/modules/plataforma/comprobante-pago
 import { GET } from "./route";
 import type { SesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 const TENANT_A = "11111111-1111-1111-1111-111111111111";
 const OTRO_TENANT = "99999999-9999-9999-9999-999999999999";
@@ -51,6 +52,7 @@ function crearUsuario(overrides: Partial<UsuarioActual> = {}): UsuarioActual {
     driverId: null,
     rol: "dueno",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
     ...overrides,
   };
 }

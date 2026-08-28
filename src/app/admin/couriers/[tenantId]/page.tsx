@@ -14,6 +14,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { tieneSesionAdmin } from "../../sesion-admin";
+import { listarAreasDelCourier } from "@/modules/plataforma/areas-courier";
+import { PanelAreas } from "./panel-areas";
 import {
   obtenerObservabilidadTenant,
   type ObservabilidadTenant,
@@ -114,6 +116,16 @@ export default async function PaginaDetalleCourier({
     errorCarga = true;
   }
 
+  // Las áreas van aparte y toleran su propio fallo: `listarAreasDelCourier`
+  // exige `admin_total` + AAL2, así que un `soporte_lectura` legítimamente no
+  // las puede leer — y eso no debe tumbar el resto del drill-down.
+  let areas: Awaited<ReturnType<typeof listarAreasDelCourier>> | null = null;
+  try {
+    areas = await listarAreasDelCourier(tenantId);
+  } catch {
+    areas = null;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -148,6 +160,19 @@ export default async function PaginaDetalleCourier({
       ) : (
         <ContenidoDrillDown datos={datos} />
       )}
+
+      {/* El interruptor de Rutax. Va al final: se mira después de entender cómo
+          está el courier, no antes. Vive en la PÁGINA y no en el drill-down
+          porque necesita el `tenantId` de la ruta y sobrevive al error de carga
+          de la observabilidad — poder apagarle un área a un courier no debería
+          depender de que sus métricas hayan cargado. */}
+      {areas ? (
+        <PanelAreas
+          tenantId={tenantId}
+          nombreCourier={datos?.nombreFantasia ?? "este courier"}
+          areas={areas}
+        />
+      ) : null}
     </div>
   );
 }

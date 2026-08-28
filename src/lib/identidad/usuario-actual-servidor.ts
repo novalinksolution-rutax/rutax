@@ -24,6 +24,7 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { esRolValido, type Rol } from "@/modules/identidad/roles";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { obtenerAreasHabilitadas } from "@/modules/plataforma/superficie-courier";
 
 export interface SesionActual {
   usuarioId: string;
@@ -102,17 +103,38 @@ export const obtenerSesionActual = cache(async function obtenerSesionActual(): P
         driverId: null,
         rol: "supervisor",
         estado: "invitado",
+        // Sin JWT válido no hay tenant del que leer áreas, y `estado: invitado`
+        // ya niega toda capacidad. La lista vacía es coherente con eso.
+        areasHabilitadas: [],
       },
     };
   }
 
+  const tenantId = leerClaimTexto(claims, "tenant_id");
+
+  // 🔴 Las áreas que Rutax tiene encendidas para este courier. Es el ÚNICO sitio
+  // donde se cargan, y de acá las lee `tieneCapacidad` para restar lo apagado —
+  // así las ~50 puertas del producto quedan cubiertas sin tocar ninguna.
+  //
+  // Va acá y no en los claims del JWT a propósito: un claim solo se refresca al
+  // renovar el token, así que apagar un área tardaría hasta una hora en surtir
+  // efecto. Esto es un interruptor de «no quiero que le metan mano»: tiene que
+  // valer en la siguiente navegación. El coste es una consulta por request, y
+  // `obtenerSesionActual` ya está memoizada con `cache()`, igual que la propia
+  // `obtenerAreasHabilitadas`.
+  //
+  // Un `super_admin` no tiene tenant y no pasa por acá: el backstage no se apaga
+  // a sí mismo.
+  const areasHabilitadas = tenantId ? await obtenerAreasHabilitadas(tenantId) : [];
+
   const usuario: UsuarioActual = {
-    tenantId: leerClaimTexto(claims, "tenant_id"),
+    tenantId,
     tipoUsuario: leerTipoUsuario(claims),
     sellerId: leerClaimTexto(claims, "seller_id"),
     driverId: leerClaimTexto(claims, "driver_id"),
     rol: leerRol(claims),
     estado: leerEstadoUsuario(claims),
+    areasHabilitadas,
   };
 
   const nombreCompleto =

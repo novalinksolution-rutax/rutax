@@ -23,6 +23,7 @@ import { actualizarEstadoPedido } from './pedidos';
 import { ErrorConflicto } from '@/modules/identidad/errores';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import type { EstadoPedido } from './tipos';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fixtures compartidos
@@ -47,6 +48,7 @@ function actorSupervisor(): UsuarioActual {
     driverId: null,
     rol: 'supervisor',
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

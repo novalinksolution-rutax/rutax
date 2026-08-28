@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de las Server Actions de "Mi plan" (`configuracion/plan/actions.ts`).
  *
@@ -62,6 +63,7 @@ function crearUsuario(overrides: Partial<UsuarioActual> = {}): UsuarioActual {
     rol: "dueno",
     estado: "activo",
     ...overrides,
+    areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
   };
 }
 

@@ -28,6 +28,7 @@
 
 import { estaActivo, type UsuarioActual } from "./usuario-actual";
 import type { Rol } from "./roles";
+import { areaDeCapacidad } from "./areas-producto";
 
 // -----------------------------------------------------------------------------
 // 1. Catálogo cerrado de capacidades
@@ -59,6 +60,21 @@ export const CAPACIDADES = [
   "aprobar_facturacion",
   "emitir_facturas",
   "ver_conciliacion",
+
+  // --- Ver el dinero, sin poder moverlo -------------------------------------
+  // 🔴 Nacen al separar VER de HACER (2026-08-28). `emitir_facturas` gateaba a
+  // la vez la emisión del DTE y la PANTALLA de Períodos —donde se ve cuánto le
+  // debe cada seller—, y `gestionar_liquidaciones_conductores` hacía lo mismo
+  // con Liquidaciones. Mientras el módulo de dinero no sea productivo, Rutax
+  // apaga las de acción por courier (ver `areas-producto.ts`) y el courier tiene
+  // que conservar las cifras: son valiosas aunque todavía no pueda actuar.
+  //
+  // NO pertenecen a ninguna área a propósito: la lectura no se apaga.
+  //
+  // Mismo corte de roles que sus hermanas de acción —dueño y administración—,
+  // así que separarlas no le abre el dinero a nadie que no lo tuviera.
+  "ver_periodos_cobro",
+  "ver_liquidaciones",
 
   // --- Liquidación de conductores (RF-039, RF-041) ---------------------------
   // "Administración/Contabilidad: generar liquidaciones · Permisos financieros".
@@ -280,6 +296,8 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "aprobar_facturacion",
     "emitir_facturas",
     "ver_conciliacion",
+    "ver_periodos_cobro",
+    "ver_liquidaciones",
     "gestionar_liquidaciones_conductores",
     "gestionar_cobranza",
     "asignar_y_reasignar_pedidos",
@@ -348,6 +366,8 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "aprobar_facturacion",
     "emitir_facturas",
     "ver_conciliacion",
+    "ver_periodos_cobro",
+    "ver_liquidaciones",
     "gestionar_liquidaciones_conductores",
     "gestionar_cobranza",
     "ver_bitacora_auditoria",
@@ -406,7 +426,30 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
  */
 export function tieneCapacidad(usuario: UsuarioActual, capacidad: Capacidad): boolean {
   if (!estaActivo(usuario)) return false;
-  return MATRIZ_ROL_CAPACIDADES[usuario.rol].includes(capacidad);
+  if (!MATRIZ_ROL_CAPACIDADES[usuario.rol].includes(capacidad)) return false;
+
+  // 🔴 EL INTERRUPTOR DE RUTAX, Y ESTÁ ACÁ POR UNA RAZÓN.
+  //
+  // Todas las pantallas, entradas de menú y Server Actions del producto pasan
+  // por esta función. Restar acá las capacidades de un área apagada cubre las
+  // ~50 puertas existentes sin tocar ninguna, y hace imposible que una pantalla
+  // nueva se salte el interruptor: si la gatea una capacidad, ya está gateada.
+  //
+  // ⚠️ `areasHabilitadas` es obligatorio en el TIPO: el compilador obliga a cada
+  // sitio que construye un usuario a declarar qué tiene encendido, en vez de
+  // depender de un default silencioso que puede invertirse sin que nadie lo note.
+  //
+  // ⚠️ Y aun así se lee con `?? []`, que no es redundante: un objeto que llegue
+  // sin pasar por el compilador —deserializado de JSON, un doble sin tipar— haría
+  // que `.includes` lanzara un TypeError. Lanzar dentro de la función que arma la
+  // navegación deja la página en blanco; devolver `false` esconde un botón. Las
+  // dos son fail-closed, pero solo una es utilizable.
+  const area = areaDeCapacidad(capacidad);
+  if (area !== null && !(usuario.areasHabilitadas ?? []).includes(area)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -425,7 +468,10 @@ export function capacidadesDeRol(rol: Rol): readonly Capacidad[] {
 /** Lista de capacidades activas del usuario — útil para `frontend` (qué mostrar/ocultar). */
 export function capacidadesDe(usuario: UsuarioActual): readonly Capacidad[] {
   if (!estaActivo(usuario)) return [];
-  return MATRIZ_ROL_CAPACIDADES[usuario.rol];
+  // Pasa por `tieneCapacidad` en vez de devolver la fila de la matriz: si no,
+  // esta lista enseñaría opciones que la otra función niega, y las pantallas que
+  // se arman desde acá mostrarían botones que fallan al pulsarlos.
+  return MATRIZ_ROL_CAPACIDADES[usuario.rol].filter((c) => tieneCapacidad(usuario, c));
 }
 
 /**
@@ -486,6 +532,16 @@ export function puedeEmitirFacturas(usuario: UsuarioActual): boolean {
 
 export function puedeVerConciliacion(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "ver_conciliacion");
+}
+
+/** Ver los períodos y cuánto le debe cada seller. Lectura: ningún área la apaga. */
+export function puedeVerPeriodosCobro(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "ver_periodos_cobro");
+}
+
+/** Ver las liquidaciones y cuánto se le debe a cada conductor. Lectura. */
+export function puedeVerLiquidaciones(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "ver_liquidaciones");
 }
 
 // --- Liquidación de conductores / cobranza (RF-039, 041, 043..045) -----------

@@ -9,8 +9,8 @@
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import {
-  puedeEmitirFacturas,
-  puedeGestionarLiquidacionesConductores,
+  puedeVerPeriodosCobro,
+  puedeVerLiquidaciones,
   puedeVerConciliacion,
 } from "@/modules/identidad/capacidades";
 import { resolverModoDteTenant, type ModoDte } from "@/modules/dinero/modo-dte";
@@ -27,8 +27,8 @@ export default async function LayoutDinero({
 
   // Solo roles internos con acceso financiero
   const tieneAcceso =
-    puedeEmitirFacturas(sesion.usuario) ||
-    puedeGestionarLiquidacionesConductores(sesion.usuario) ||
+    puedeVerPeriodosCobro(sesion.usuario) ||
+    puedeVerLiquidaciones(sesion.usuario) ||
     puedeVerConciliacion(sesion.usuario);
 
   if (!tieneAcceso) {
@@ -40,7 +40,7 @@ export default async function LayoutDinero({
   // Modo de emisión DTE (sandbox vs. real) — solo relevante para quien factura.
   // Hace visible en toda la sección si las emisiones tocan el SII o son simuladas.
   let modoDte: ModoDte | null = null;
-  if (puedeEmitirFacturas(sesion.usuario)) {
+  if (puedeVerPeriodosCobro(sesion.usuario)) {
     try {
       modoDte = await resolverModoDteTenant(tenantId);
     } catch {

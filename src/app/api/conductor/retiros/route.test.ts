@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de POST /api/conductor/retiros (abrir visita).
  *
@@ -27,6 +28,7 @@ const BODEGA_1 = "70000000-0000-0000-0000-000000000001";
 const BODEGA_AJENA = "70000000-0000-0000-0000-000000000099";
 
 const usuarioConductor = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,

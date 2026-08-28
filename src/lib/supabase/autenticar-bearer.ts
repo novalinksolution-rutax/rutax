@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { esRolValido } from "@/modules/identidad/roles";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { obtenerAreasHabilitadas } from "@/modules/plataforma/superficie-courier";
 
 /**
  * Verifica un Bearer token de Supabase Auth y devuelve el UsuarioActual.
@@ -47,10 +48,18 @@ export async function autenticarBearer(
     const tipoUsuario = payload["tipo_usuario"] as string | undefined;
     const estadoUsuario = payload["estado_usuario"] as string | undefined;
     const rol = payload["rol"];
+    const tenantId = typeof payload["tenant_id"] === "string" ? payload["tenant_id"] : null;
+
+    // 🔴 La app nativa del conductor entra por acá, no por `obtenerSesionActual`.
+    // Sin esta línea el conductor no tendría NINGÚN área encendida y perdería su
+    // liquidación aunque Rutax la tenga abierta: el interruptor se aplica en
+    // `tieneCapacidad`, que no sabe por qué puerta entró la sesión.
+    const areasHabilitadas = tenantId ? await obtenerAreasHabilitadas(tenantId) : [];
 
     return {
       usuarioId: user.id,
-      tenantId: typeof payload["tenant_id"] === "string" ? payload["tenant_id"] : null,
+      areasHabilitadas,
+      tenantId,
       tipoUsuario: (["interno", "seller", "conductor", "super_admin"] as const).includes(
         tipoUsuario as "interno",
       )

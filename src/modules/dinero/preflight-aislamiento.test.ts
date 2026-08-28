@@ -31,6 +31,7 @@ vi.mock('@/modules/dinero/excepciones', () => ({
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { preflightEmitirFactura, preflightEmitirNotaCredito, preflightEmitirPago } from './preflight';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fake Supabase multi-tabla — idéntico en espíritu al de `preflight.test.ts`,
@@ -112,6 +113,7 @@ function dueno(tenantId: string): UsuarioActual {
     driverId: null,
     rol: 'dueno',
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

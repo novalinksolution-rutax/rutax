@@ -38,6 +38,7 @@ import {
 } from "./capacidades";
 import { ROLES, type Rol } from "./roles";
 import type { UsuarioActual } from "./usuario-actual";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 const TENANT_A = "11111111-1111-1111-1111-111111111111";
 const SELLER_A = "22222222-2222-2222-2222-222222222222";
@@ -60,6 +61,7 @@ function usuario(overrides: Partial<UsuarioActual> & { rol: Rol }): UsuarioActua
     sellerId: tipoUsuario === "seller" ? SELLER_A : null,
     driverId: tipoUsuario === "conductor" ? DRIVER_A : null,
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
     ...overrides,
   };
 }

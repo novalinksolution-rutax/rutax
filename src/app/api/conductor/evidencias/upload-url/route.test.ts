@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de POST /api/conductor/evidencias/upload-url.
  *
@@ -73,6 +74,7 @@ const PEDIDO_1 = "40000000-0000-0000-0000-000000000001";
 const PEDIDO_DE_OTRO_CONDUCTOR = "40000000-0000-0000-0000-000000000002";
 
 const usuarioConductor = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,

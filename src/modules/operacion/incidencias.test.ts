@@ -14,6 +14,7 @@ import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import { ErrorPedidoNoEncontrado } from "./errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { TipoIncidencia } from "./tipos";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fixtures
@@ -31,6 +32,7 @@ function actorSupervisor(): UsuarioActual {
     driverId: null,
     rol: "supervisor",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -42,6 +44,7 @@ function actorCoordinador(): UsuarioActual {
     driverId: null,
     rol: "coordinador", // coordinador NO tiene gestionar_incidencias
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

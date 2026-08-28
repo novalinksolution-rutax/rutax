@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de POST /api/conductor/manifiesto/completar.
  *
@@ -87,6 +88,7 @@ const DRIVER_2 = "20000000-0000-0000-0000-000000000002"; // el dueño legítimo 
 const MANIFIESTO_1 = "30000000-0000-0000-0000-000000000001";
 
 const usuarioConductor1 = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,

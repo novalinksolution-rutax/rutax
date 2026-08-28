@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { aceptarInvitacion, crearInvitacion, revocarInvitacion } from "./invitaciones";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
@@ -95,6 +96,7 @@ function dueno(overrides?: Partial<UsuarioActual>): UsuarioActual {
     driverId: null,
     rol: "dueno",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
     ...overrides,
   };
 }

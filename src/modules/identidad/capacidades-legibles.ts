@@ -43,6 +43,8 @@ export const FRASE_CAPACIDAD: Record<Capacidad, string> = {
   gestionar_configuracion_dte: "Configurar la facturación electrónica y sus folios",
   aprobar_facturacion: "Aprobar la facturación de un período",
   emitir_facturas: "Emitir facturas al SII",
+  ver_periodos_cobro: "Ver los períodos y lo que se le cobra a cada seller",
+  ver_liquidaciones: "Ver lo que se le debe a cada conductor",
   ver_conciliacion: "Ver la conciliación y sus excepciones",
   gestionar_liquidaciones_conductores: "Liquidar y pagar a los conductores",
   gestionar_cobranza: "Gestionar la cobranza a los sellers",

@@ -20,6 +20,7 @@ import {
 } from "./evidencias-entrega";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fixtures
@@ -54,6 +55,7 @@ function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual & { usuar
     driverId,
     rol: "conductor",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -66,6 +68,7 @@ function actorSeller(): UsuarioActual & { usuarioId: string } {
     driverId: null,
     rol: "seller",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

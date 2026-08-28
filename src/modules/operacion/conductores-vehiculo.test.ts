@@ -31,12 +31,14 @@ import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { actualizarVehiculoConductor, esVehiculoConductor } from './conductores';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import { ErrorValidacion } from '@/modules/identidad/errores';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 const coordinador: UsuarioActual = {
   tenantId: 'tenant-a',
   rol: 'coordinador',
   tipoUsuario: 'interno',
   estado: 'activo',
+  areasHabilitadas: [...AREAS_PRODUCTO],
   sellerId: null,
   driverId: null,
 };

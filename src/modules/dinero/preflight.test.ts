@@ -32,6 +32,7 @@ vi.mock('@/modules/dinero/excepciones', () => ({
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { bloqueaFacturacion, bloqueaPago } from './excepciones';
 import { preflightEmitirFactura, preflightEmitirNotaCredito, preflightEmitirPago } from './preflight';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fake Supabase multi-tabla — enruta por `${schema}.${tabla}` a un fixture.
@@ -137,6 +138,7 @@ function usuarioConRol(rol: UsuarioActual['rol']): UsuarioActual {
     driverId: null,
     rol,
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

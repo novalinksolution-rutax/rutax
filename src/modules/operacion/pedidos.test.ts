@@ -33,6 +33,7 @@ import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
 import { PATRON_CODIGO_INTERNO } from "./codigo-interno";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { EstadoPedido } from "./tipos";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fixtures
@@ -54,6 +55,7 @@ function actorSupervisor(): UsuarioActual {
     driverId: null,
     rol: "supervisor",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -65,6 +67,7 @@ function actorCoordinador(): UsuarioActual {
     driverId: null,
     rol: "coordinador",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -76,6 +79,7 @@ function actorSellerFixture(sellerId: string = SELLER_1): UsuarioActual {
     driverId: null,
     rol: "seller",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -1196,6 +1200,7 @@ describe("cancelarPedido — camino feliz (seller, ventana acotada)", () => {
       driverId: "driver-x",
       rol: "conductor",
       estado: "activo",
+      areasHabilitadas: [...AREAS_PRODUCTO],
     };
 
     await expect(
@@ -1817,6 +1822,7 @@ function actorConductorFixture(driverId: string = DRIVER_1): UsuarioActual {
     driverId,
     rol: "conductor",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -1891,6 +1897,7 @@ describe("actualizarEstadoPedido — barrera same-day del conductor (Bloque 2)",
       driverId: null,
       rol: "coordinador",
       estado: "activo",
+      areasHabilitadas: [...AREAS_PRODUCTO],
     };
     await expect(
       actualizarEstadoPedido(

@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Tests de aislamiento y RBAC para las Server Actions del módulo `dinero`.
  *
@@ -63,6 +64,7 @@ function usuarioConRol(rol: UsuarioActual['rol']): UsuarioActual {
     driverId: rol === 'conductor' ? 'driver-a' : null,
     rol,
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { asignarPedidosAManifiesto, crearManifiesto, confirmarManifiesto, completarManifiesto } from "./manifiestos";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // =============================================================================
 // Fixtures
@@ -37,6 +38,7 @@ function actorCoordinador(tenantId: string = TENANT_A): UsuarioActual {
     driverId: null,
     rol: "coordinador",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -48,6 +50,7 @@ function actorSeller(): UsuarioActual {
     driverId: null,
     rol: "seller",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -814,6 +817,7 @@ describe("completarManifiesto", () => {
       driverId: DRIVER_1,
       rol: "conductor",
       estado: "activo",
+      areasHabilitadas: [...AREAS_PRODUCTO],
     });
 
     const entrada = estado.bitacora.find((e) => e.accion === "manifiesto.completado");

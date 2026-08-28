@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas del callback OAuth de Mercado Libre — `GET /oauth/ml/callback`.
  *
@@ -104,6 +105,7 @@ function sesionSellerActivo() {
       driverId: null,
       rol: "seller" as const,
       estado: "activo" as const,
+      areasHabilitadas: [...AREAS_PRODUCTO],
     },
   };
 }

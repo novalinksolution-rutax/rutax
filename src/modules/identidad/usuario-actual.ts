@@ -14,6 +14,8 @@ import type { Rol } from "./roles";
  * "cómo se obtiene" no es responsabilidad de este módulo de capacidades; aquí
  * solo se decide "qué puede hacer dado este conjunto de datos".
  */
+import type { AreaProducto } from "./areas-producto";
+
 export interface UsuarioActual {
   /** uuid del tenant; `null` únicamente para `super_admin` de plataforma. */
   tenantId: string | null;
@@ -32,6 +34,23 @@ export interface UsuarioActual {
    * necesidad de que cada llamador repita el chequeo de estado.
    */
   estado: "activo" | "invitado" | "suspendido";
+  /**
+   * Las áreas de producto que Rutax tiene ENCENDIDAS para este courier
+   * (`plataforma.areas_habilitadas`). Ver `areas-producto.ts`.
+   *
+   * 🔴 **OBLIGATORIO, y esa es la decisión.** La primera versión lo hizo
+   * opcional con «si falta, ninguna encendida»: fail-closed correcto, pero
+   * silencioso — cualquier camino nuevo que olvidara cargarlo apagaba el dinero
+   * sin decir nada, y el día que alguien lo «arreglara» poniendo el default al
+   * revés, lo abriría sin decir nada tampoco.
+   *
+   * Siendo obligatorio, el compilador obliga a cada sitio que construye un
+   * usuario a declarar qué tiene encendido. Para algo que gatea plata, un error
+   * de compilación vale más que un default.
+   *
+   * En producción lo carga `obtenerSesionActual`, que es el único sitio.
+   */
+  areasHabilitadas: readonly AreaProducto[];
 }
 
 /** Verdadero solo si la cuenta está activa — condición previa a CUALQUIER capacidad. */

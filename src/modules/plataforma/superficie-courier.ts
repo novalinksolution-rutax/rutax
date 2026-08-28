@@ -26,6 +26,7 @@ import { cache } from 'react';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { inngest } from '@/lib/inngest/cliente';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { esAreaProducto, type AreaProducto } from '@/modules/identidad/areas-producto';
 import { ahoraEnSantiago, sumarDiasCalendario, diferenciaEnDiasCalendario } from '@/lib/fecha-santiago';
 import { descifrarSecreto, comoReferenciaSecreto } from '@/modules/integraciones/secretos';
 import { obtenerPuertoSuscripcionRecurrente } from '@/modules/integraciones/pagos/suscripcion-recurrente';
@@ -1031,3 +1032,49 @@ export async function cambiarPlanCourier(opts: {
 
   return { ok: true, tipo: 'upgrade', montoAjuste: montoPersistido, efectivoDesde: null };
 }
+
+// =============================================================================
+// Áreas de producto encendidas para el courier
+// =============================================================================
+
+/**
+ * Qué áreas del producto tiene ENCENDIDAS este courier.
+ *
+ * `plataforma.areas_habilitadas` es deny-all como el resto del schema: el
+ * courier no la lee ni sabe que existe, solo ve el efecto (la opción no está).
+ * Por eso pasa por acá, que es la única puerta courier-safe.
+ *
+ * ⚠️ **La AUSENCIA de fila es «apagada»**, y por eso esta función devuelve la
+ * lista vacía cuando no hay nada: un courier recién dado de alta nace sin nada
+ * encendido sin que nadie tenga que configurarlo.
+ *
+ * ⚠️ **Y falla cerrado.** Si la consulta revienta se devuelve la lista vacía, no
+ * se lanza: el llamador es `obtenerSesionActual`, que corre en CADA página, y
+ * tumbar la sesión entera por esto sería peor. La consecuencia asumida es que
+ * una caída de base deja al courier sin las áreas encendidas por un rato —
+ * molesto, pero del lado seguro. Al revés (abrir el módulo de dinero cuando la
+ * lectura falla) es exactamente lo que este interruptor viene a impedir.
+ *
+ * Memoizada por request con `cache()` de React: la llama la resolución de
+ * sesión, que a su vez se consulta muchas veces por página.
+ */
+export const obtenerAreasHabilitadas = cache(async function obtenerAreasHabilitadas(
+  tenantId: string,
+): Promise<readonly AreaProducto[]> {
+  try {
+    const supabase = crearClienteServiceRole();
+    const { data, error } = await supabase
+      .schema('plataforma')
+      .from('areas_habilitadas')
+      .select('area')
+      .eq('tenant_id', tenantId);
+
+    if (error) return [];
+
+    return (data ?? [])
+      .map((f) => f.area as unknown)
+      .filter(esAreaProducto);
+  } catch {
+    return [];
+  }
+});

@@ -51,6 +51,7 @@ import { accionCancelarPedidoSeller } from "./actions-cancelacion";
 import type { SesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { Pedido } from "@/modules/operacion/tipos";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 const TENANT_A = "10000000-0000-0000-0000-000000000001";
 const SELLER_A = "11111111-1111-1111-1111-111111111111";
@@ -69,6 +70,7 @@ function crearSesionSeller(overrides: Partial<UsuarioActual> = {}): SesionActual
       driverId: null,
       rol: "seller",
       estado: "activo",
+      areasHabilitadas: [...AREAS_PRODUCTO],
       ...overrides,
     },
   };
@@ -212,6 +214,7 @@ describe("accionCancelarPedidoSeller — sesión y RBAC", () => {
         driverId: null,
         rol: "supervisor",
         estado: "activo",
+        areasHabilitadas: [...AREAS_PRODUCTO],
       },
     });
 

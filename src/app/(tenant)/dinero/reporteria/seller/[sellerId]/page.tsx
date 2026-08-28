@@ -3,8 +3,8 @@ import { redirect, notFound } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
-  puedeEmitirFacturas,
-  puedeGestionarLiquidacionesConductores,
+  puedeVerPeriodosCobro,
+  puedeVerLiquidaciones,
 } from "@/modules/identidad/capacidades";
 import { obtenerReporteConsolidado } from "@/modules/dinero/reporteria/consolidado";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
@@ -55,8 +55,8 @@ export default async function DocumentoSeller({
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
   if (
-    !puedeEmitirFacturas(sesion.usuario) ||
-    !puedeGestionarLiquidacionesConductores(sesion.usuario)
+    !puedeVerPeriodosCobro(sesion.usuario) ||
+    !puedeVerLiquidaciones(sesion.usuario)
   ) {
     redirect("/dashboard");
   }

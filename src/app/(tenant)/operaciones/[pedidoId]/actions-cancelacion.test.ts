@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de la Server Action `accionCancelarPedido` (rol interno).
  *
@@ -73,6 +74,7 @@ function crearUsuario(overrides: Partial<UsuarioActual> = {}): UsuarioActual {
     rol: "supervisor",
     estado: "activo",
     ...overrides,
+    areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
   };
 }
 

@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de `actionAsignarPedidosEnBloque` — la Server Action de la
  * asignación en bloque (etapa 6). Foco:
@@ -64,6 +65,7 @@ function crearSesion(overrides: Partial<UsuarioActual> = {}): SesionActual {
       rol: "coordinador",
       estado: "activo",
       ...overrides,
+      areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
     },
   };
 }

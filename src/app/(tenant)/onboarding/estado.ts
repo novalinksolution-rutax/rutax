@@ -54,8 +54,6 @@ export interface EstadoOnboardingCourier {
   nombreFantasia: string;
   /** `true` cuando no falta nada para operar. Ver `resolverBloqueoOperativo`. */
   completo: boolean;
-  pasosCompletados: number;
-  totalPasos: number;
   /**
    * Qué falta para operar, como FRASE CON VERBO («cargar tus conductores»).
    * `null` cuando no falta nada.
@@ -361,11 +359,11 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
       ? Number(filaPayout.porcentaje_retencion)
       : null;
 
-  const dteListo = estadoDte === "activo" || estadoDte === "en_proceso";
-  const foliosListo = estadoFolios === "vigente" || estadoFolios === "no_aplica";
-  const tarifasListas = estadoTarifas === "configuradas";
-  const cobranzaListo = estadoCobranza === "conectado";
-  const planListo = estadoPlan === "activa" || estadoPlan === "trial";
+  // ⚠️ Acá había cinco booleanos («dteListo», «foliosListo»…) que alimentaban un
+  // conteo propio de esta función. Se retiraron con él: quién está listo lo
+  // decide `pasosDelAsistente`, sobre la lista YA filtrada por las áreas que
+  // Rutax tiene encendidas. Dos sitios calculándolo eran dos respuestas a la
+  // misma pregunta, y una de ellas contaba pasos que la pantalla no muestra.
 
   const cantidadBodegas = filasBodegas.length;
   const hayPrincipal = filasBodegas.some((b) => b.es_principal);
@@ -379,28 +377,6 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
   const telefonoContacto = (tenant?.telefono_contacto as string | undefined) ?? null;
   const emailContacto = (tenant?.email_contacto as string | undefined) ?? null;
 
-  // ⚠️ UN SOLO CONTEO, Y ES SOBRE LOS PASOS QUE SE VEN.
-  //
-  // Antes había DOS en la misma pantalla, a 25 px de distancia: `totalPasos: 2`
-  // alimentaba la barra mientras el grid renderizaba cinco tarjetas. El conteo
-  // cuenta lo que se ve; lo que decide si el courier puede operar es `completo`,
-  // que es OTRA pregunta y se dice con otras palabras.
-  const listos = [
-    cantidadBodegas > 0,
-    cantidadConductores > 0,
-    cantidadSellers > 0,
-    dteListo && camposEmisorFaltantes.length === 0,
-    foliosListo,
-    tarifasListas,
-    periodicidad.explicita,
-    datosCobroConfigurado,
-    cobranzaListo,
-    porcentajeRetencion !== null,
-    montoVisitaClp !== null,
-    cantidadZonas > 0,
-    Boolean(telefonoContacto || emailContacto),
-    planListo,
-  ];
 
   return {
     nombreFantasia,
@@ -408,8 +384,6 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
     // sería una segunda respuesta a la misma pregunta.
     completo: bloqueo === null,
     faltaParaOperar: bloqueo,
-    pasosCompletados: listos.filter(Boolean).length,
-    totalPasos: listos.length,
     dte: {
       estado: estadoDte,
       proveedorElegido: proveedorDte,

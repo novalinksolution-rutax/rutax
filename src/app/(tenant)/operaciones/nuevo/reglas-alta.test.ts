@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 import { describe, expect, it } from "vitest";
 import {
   comunaDelCatalogo,
@@ -93,6 +94,7 @@ describe("puedeUsarBusquedaDeDirecciones", () => {
    */
   function usuario(rol: Rol): UsuarioActual {
     return {
+      areasHabilitadas: [...AREAS_PRODUCTO],
       tenantId: "11111111-1111-1111-1111-111111111111",
       tipoUsuario: rol === "seller" ? "seller" : rol === "conductor" ? "conductor" : "interno",
       sellerId: rol === "seller" ? "22222222-2222-2222-2222-222222222222" : null,

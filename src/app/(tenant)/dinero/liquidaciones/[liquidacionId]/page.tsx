@@ -19,7 +19,7 @@ import {
   type HechoTrazable,
 } from "@/modules/identidad/trazabilidad";
 import { BloqueTrazabilidad } from "@/components/ui/bloque-trazabilidad";
-import { puedeGestionarLiquidacionesConductores } from "@/modules/identidad/capacidades";
+import { puedeVerLiquidaciones } from "@/modules/identidad/capacidades";
 import { obtenerLiquidacion, obtenerPayoutPorLiquidacion } from "@/modules/dinero/index";
 import type { LineaLiquidacion, PayoutConductor, MetodoPayout } from "@/modules/dinero/tipos";
 import {
@@ -76,7 +76,8 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
-  if (!puedeGestionarLiquidacionesConductores(sesion.usuario)) redirect("/dashboard");
+  // Lectura: el detalle de la liquidación se ve aunque no se pueda pagar.
+  if (!puedeVerLiquidaciones(sesion.usuario)) redirect("/dashboard");
 
   const { liquidacionId } = await params;
   const { volver, lineas: vistaLineas } = await searchParams;

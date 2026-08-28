@@ -12,12 +12,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import { guardarVentanaCorte, resolverVentanaCorte } from './ventanas-corte';
 import type { VentanaCorte } from './tipos';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 const actorValido: UsuarioActual = {
   tenantId: 'tenant-1',
   rol: 'dueno',
   tipoUsuario: 'interno',
   estado: 'activo',
+  areasHabilitadas: [...AREAS_PRODUCTO],
   sellerId: null,
   driverId: null,
 };

@@ -1,13 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { BLOQUES, pasosDelAsistente, siguientePendiente, type ClavePaso } from "./pasos";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 import type { EstadoOnboardingCourier } from "./estado";
 
 function estadoBase(parcial: Partial<EstadoOnboardingCourier> = {}): EstadoOnboardingCourier {
   return {
     nombreFantasia: "Despachos del Centro",
     completo: false,
-    pasosCompletados: 0,
-    totalPasos: 14,
     faltaParaOperar: "invitar a tu primer seller",
     dte: {
       estado: "pendiente",
@@ -40,15 +39,16 @@ function paso(estado: EstadoOnboardingCourier, clave: ClavePaso) {
 }
 
 describe("pasosDelAsistente — forma de la lista", () => {
-  it("devuelve catorce pasos numerados de forma corrida, en orden fijo", () => {
+  it("devuelve quince pasos numerados de forma corrida, en orden fijo", () => {
     const pasos = pasosDelAsistente(estadoBase());
     expect(pasos.map((p) => p.numero)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
     ]);
     expect(pasos.map((p) => p.clave)).toEqual([
       "sellers",
       "conductores",
       "bodega",
+      "empresa",
       "dte",
       "folios",
       "tarifas",
@@ -72,8 +72,8 @@ describe("pasosDelAsistente — forma de la lista", () => {
     );
     expect(numerosPorBloque).toEqual([
       [1, 2, 3],
-      [4, 5, 6, 7, 8, 9],
-      [10, 11, 12, 13, 14],
+      [4, 5, 6, 7, 8, 9, 10],
+      [11, 12, 13, 14, 15],
     ]);
   });
 
@@ -122,21 +122,22 @@ describe("pasosDelAsistente — DTE y el bloque Emisor", () => {
     expect(p.listo).toBe(true);
   });
 
-  it("🔴 el certificado cargado NO basta si faltan los datos del emisor", () => {
-    // Son campos obligatorios del documento: un paso que se marca listo estando
-    // incompleto es peor que uno que se ve pendiente.
-    const p = paso(
-      estadoBase({
-        dte: {
-          estado: "en_proceso",
-          proveedorElegido: "simplefactura",
-          certificadoVenceEn: null,
-          camposEmisorFaltantes: ["giro", "comuna"],
-        },
-      }),
-      "dte",
-    );
-    expect(p.listo).toBe(false);
+  it("🔴 los datos del emisor son SU PROPIO paso, no parte del de facturación", () => {
+    // Se partieron a propósito: son identidad tributaria de la empresa y sirven
+    // aunque Rutax tenga apagada la emisión. Dentro del paso de facturación,
+    // apagar el área se los habría llevado por delante.
+    const estado = estadoBase({
+      dte: {
+        estado: "en_proceso",
+        proveedorElegido: "simplefactura",
+        certificadoVenceEn: null,
+        camposEmisorFaltantes: ["giro", "comuna"],
+      },
+    });
+    // El certificado está cargado, así que ese paso está listo…
+    expect(paso(estado, "dte").listo).toBe(true);
+    // …y lo que falta se ve en el suyo.
+    expect(paso(estado, "empresa").listo).toBe(false);
   });
 
   it("nombra los campos que faltan, con «y» antes del último", () => {
@@ -150,7 +151,7 @@ describe("pasosDelAsistente — DTE y el bloque Emisor", () => {
           camposEmisorFaltantes: ["giro", "dirección", "comuna"],
         },
       }),
-      "dte",
+      "empresa",
     );
     expect(p.resumen).toContain("giro, dirección y comuna");
   });
@@ -301,6 +302,55 @@ describe("pasosDelAsistente — el resumen lleva el DATO, no la promesa", () => 
 
   it("sin contacto público, dice a quién deja sin respuesta", () => {
     expect(paso(estadoBase(), "contacto").resumen).toContain("no tiene a quién preguntarle");
+  });
+});
+
+// =============================================================================
+// 🔴 El interruptor de Rutax encoge el asistente
+// =============================================================================
+
+describe("pasosDelAsistente — áreas apagadas", () => {
+  it("con TODAS las áreas apagadas quedan nueve pasos, renumerados sin huecos", () => {
+    // Es la promesa del encargo: no se le pide al courier que configure algo que
+    // Rutax todavía no le va a dejar usar.
+    const pasos = pasosDelAsistente(estadoBase(), []);
+    expect(pasos.map((p) => p.clave)).toEqual([
+      "sellers",
+      "conductores",
+      "bodega",
+      "empresa",
+      "tarifas",
+      "periodos",
+      "retiro",
+      "zonas",
+      "contacto",
+    ]);
+    // 🔴 Renumerados de 1 a 9: si se filtrara DESPUÉS de numerar, el asistente
+    // diría «paso 4 de 9» con huecos y el conteo dejaría de cuadrar.
+    expect(pasos.map((p) => p.numero)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it("🔴 los datos de la empresa SOBREVIVEN a todo apagado", () => {
+    // Giro, dirección, comuna y actividad económica son identidad tributaria: no
+    // dependen de que se pueda emitir. Por eso son un paso aparte.
+    const claves = pasosDelAsistente(estadoBase(), []).map((p) => p.clave);
+    expect(claves).toContain("empresa");
+    expect(claves).not.toContain("dte");
+  });
+
+  it("cada área se lleva solo lo suyo", () => {
+    const soloFolios = pasosDelAsistente(estadoBase(), ["folios_caf"]).map((p) => p.clave);
+    expect(soloFolios).toContain("dte");
+    expect(soloFolios).toContain("folios");
+    expect(soloFolios).not.toContain("plan");
+    expect(soloFolios).not.toContain("retencion");
+    expect(soloFolios).not.toContain("cobranza");
+  });
+
+  it("con todo encendido no se pierde ningún paso (contraprueba)", () => {
+    // Sin esto, un filtro que quitara SIEMPRE pasaría las pruebas de arriba.
+    expect(pasosDelAsistente(estadoBase(), [...AREAS_PRODUCTO])).toHaveLength(15);
+    expect(pasosDelAsistente(estadoBase())).toHaveLength(15);
   });
 });
 

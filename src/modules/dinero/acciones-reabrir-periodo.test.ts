@@ -29,6 +29,7 @@ vi.mock('@/modules/identidad/auditoria', () => ({
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { reabrirPeriodo } from './acciones';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 const MOTIVO_VALIDO = 'El seller reclamó dos entregas que no eran suyas';
 
@@ -40,6 +41,7 @@ function usuarioConRol(rol: UsuarioActual['rol']): UsuarioActual {
     driverId: null,
     rol,
     estado: 'activo',
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 

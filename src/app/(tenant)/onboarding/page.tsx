@@ -116,7 +116,10 @@ export default async function PaginaOnboarding({
     );
   }
 
-  const pasos = pasosDelAsistente(estado);
+  // Los pasos de un área que Rutax tiene apagada NO se muestran: pedirle al
+  // courier que cargue su certificado DTE para luego no dejarlo emitir es
+  // trabajo tirado. Las áreas ya vienen resueltas en la sesión.
+  const pasos = pasosDelAsistente(estado, sesion.usuario.areasHabilitadas);
   const claves = pasos.map((p) => p.clave);
 
   // El paso abierto: el de la URL si es válido, o el primero que falte. Abrir en
@@ -133,7 +136,15 @@ export default async function PaginaOnboarding({
 
   const cuerpo = await cuerpoDelPaso(activo, { tenantId, estado, permisos });
 
-  const porcentaje = Math.round((estado.pasosCompletados / estado.totalPasos) * 100);
+  // 🔴 EL CONTADOR SALE DE `pasos`, QUE ES LA LISTA QUE SE VE.
+  //
+  // `estado.ts` cuenta los catorce pasos posibles; la lista ya está filtrada por
+  // las áreas que Rutax tiene encendidas. Tomarlo de `estado` ponía «13 de 14»
+  // encima de nueve renglones — el MISMO defecto de los dos conteos a 25 px que
+  // este archivo ya había corregido una vez, reintroducido por la puerta de
+  // atrás. Una sola fuente: lo que se cuenta es lo que se muestra.
+  const completados = pasos.filter((p) => p.listo).length;
+  const porcentaje = pasos.length === 0 ? 100 : Math.round((completados / pasos.length) * 100);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -155,7 +166,7 @@ export default async function PaginaOnboarding({
         <div className="w-40 shrink-0 space-y-1">
           <p className="rx-num flex items-baseline justify-between text-xs text-fg-muted">
             <span>
-              {estado.pasosCompletados} de {estado.totalPasos}
+              {completados} de {pasos.length}
             </span>
             <span className="text-fg">{porcentaje}%</span>
           </p>
@@ -165,7 +176,10 @@ export default async function PaginaOnboarding({
 
       {estado.completo ? (
         <p className="border border-balanced-line bg-balanced-bg px-4 py-3 text-sm leading-relaxed text-balanced-fg">
-          Ya puedes facturar a tus sellers y liquidar a tus conductores.{" "}
+          {/* ⚠️ No promete facturar ni liquidar: esas dos cosas pueden estar
+              apagadas por Rutax, y prometerlas acá sería mandar al courier a
+              buscar un botón que no existe. */}
+          Ya puedes operar y llevar la cuenta de lo que entra y lo que sale.{" "}
           <Link href="/onboarding/listo" className="font-medium underline">
             Ver el resumen y qué hacer ahora ›
           </Link>
@@ -210,28 +224,19 @@ async function cuerpoDelPaso(
     return <EnlaceAPantalla paso={paso} />;
   }
 
+  if (paso.clave === "empresa") {
+    if (!permisos.empresa) return <SinPermiso que="los datos de tu empresa" />;
+    return <FormularioDatosEmisor iniciales={await leerDatosEmisor(ctx.tenantId)} />;
+  }
+
   if (paso.clave === "dte") {
-    if (!permisos.dte && !permisos.empresa) return <SinPermiso que="la facturación electrónica" />;
+    if (!permisos.dte) return <SinPermiso que="la facturación electrónica" />;
     const r = await obtenerEstadoConfiguracionDte();
     return (
-      <div className="space-y-6">
-        {/* Los datos del emisor van ARRIBA del proveedor: sin ellos el
-            certificado no emite igual, y ponerlos debajo los deja pareciendo un
-            detalle opcional. */}
-        {permisos.empresa ? (
-          <FormularioDatosEmisor iniciales={await leerDatosEmisor(ctx.tenantId)} />
-        ) : (
-          <SinPermiso que="los datos de tu empresa" />
-        )}
-        {permisos.dte ? (
-          <FormularioConfiguracionDte
-            estadoInicial={r.ok ? r.estado : null}
-            errorInicial={r.ok ? null : r.mensaje}
-          />
-        ) : (
-          <SinPermiso que="el proveedor y el certificado" />
-        )}
-      </div>
+      <FormularioConfiguracionDte
+        estadoInicial={r.ok ? r.estado : null}
+        errorInicial={r.ok ? null : r.mensaje}
+      />
     );
   }
 

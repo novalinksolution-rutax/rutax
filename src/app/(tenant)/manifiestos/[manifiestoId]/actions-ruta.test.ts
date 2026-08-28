@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de las Server Actions de la ruta del manifiesto (etapa 7):
  * `accionCalcularRuta` y `accionGuardarOrdenManual`.
@@ -82,6 +83,7 @@ function crearSesion(overrides: Partial<UsuarioActual> = {}): SesionActual {
       rol: "coordinador",
       estado: "activo",
       ...overrides,
+      areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
     },
   };
 }

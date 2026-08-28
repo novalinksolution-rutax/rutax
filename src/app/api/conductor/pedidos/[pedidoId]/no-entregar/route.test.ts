@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de POST /api/conductor/pedidos/:pedidoId/no-entregar.
  *
@@ -53,6 +54,7 @@ const PEDIDO_1 = "40000000-0000-0000-0000-000000000001";
 const SELLER_1 = "60000000-0000-0000-0000-000000000001";
 
 const usuarioConductor = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,
@@ -92,6 +94,7 @@ function pedidoFila(overrides: Record<string, unknown>) {
     geo_estado: "pendiente",
     estado: "en_ruta",
     ...overrides,
+    areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
   };
 }
 

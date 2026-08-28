@@ -11,7 +11,7 @@ import Link from "next/link";
 import { Settings, PenLine } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
+import { puedeVerPeriodosCobro } from "@/modules/identidad/capacidades";
 import { obtenerPeriodoCobro, listarDocumentosDte } from "@/modules/dinero/index";
 import { resolverModoDteTenant, type ModoDte } from "@/modules/dinero/modo-dte";
 import type { DocumentoDte, LineaCobro } from "@/modules/dinero/tipos";
@@ -64,7 +64,8 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
-  if (!puedeEmitirFacturas(sesion.usuario)) redirect("/dashboard");
+  // Lectura: el detalle del período se ve aunque no se pueda emitir.
+  if (!puedeVerPeriodosCobro(sesion.usuario)) redirect("/dashboard");
 
   const { periodoId } = await params;
   const { volver, lineas: vistaLineas } = await searchParams;

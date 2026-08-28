@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Prueba de regresión — `obtenerInvitacionPendienteSeller` ("Copiar enlace"
  * en `/sellers`).
@@ -64,6 +65,7 @@ function crearUsuario(overrides: Partial<UsuarioActual> = {}): UsuarioActual {
     rol: "dueno",
     estado: "activo",
     ...overrides,
+    areasHabilitadas: overrides.areasHabilitadas ?? [...AREAS_PRODUCTO],
   };
 }
 

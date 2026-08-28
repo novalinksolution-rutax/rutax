@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de `POST /api/conductor/punto-termino/consentimiento`.
  *
@@ -57,6 +58,7 @@ const DRIVER_1 = "20000000-0000-0000-0000-000000000001";
 const OTRO_DRIVER = "20000000-0000-0000-0000-000000000099";
 
 const usuarioConductor = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-conductor-1",
   tipoUsuario: "conductor" as const,
   driverId: DRIVER_1,
@@ -67,6 +69,7 @@ const usuarioConductor = {
 };
 
 const usuarioSeller = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-seller-1",
   tipoUsuario: "seller" as const,
   driverId: null,
@@ -77,6 +80,7 @@ const usuarioSeller = {
 };
 
 const usuarioInterno = {
+  areasHabilitadas: [...AREAS_PRODUCTO],
   usuarioId: "usuario-interno-1",
   tipoUsuario: "interno" as const,
   driverId: null,
@@ -230,6 +234,7 @@ describe("POST consentimiento — el servidor controla tenant/conductor/versión
 
     await POST(
       req({
+        areasHabilitadas: [...AREAS_PRODUCTO],
         acepto: true,
         tenantId: OTRO_TENANT,
         conductorId: OTRO_DRIVER,

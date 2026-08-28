@@ -29,6 +29,7 @@ import { obtenerComunicacionesActivasParaCourier } from '@/modules/plataforma/co
 import { obtenerAvisos, type Aviso } from './obtener-avisos';
 import type { UsuarioActual } from '@/modules/identidad/usuario-actual';
 import type { ResultadoLimite } from '@/modules/plataforma/enforcement';
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 /** Doble de Supabase silencioso: cualquier query resuelve vacío, sin lanzar. */
 function crearClienteSilencioso() {
@@ -53,6 +54,7 @@ const dueno: UsuarioActual = {
   rol: 'dueno',
   tipoUsuario: 'interno',
   estado: 'activo',
+  areasHabilitadas: [...AREAS_PRODUCTO],
   sellerId: null,
   driverId: null,
 };

@@ -1,3 +1,4 @@
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 /**
  * Pruebas de `accionRegenerarLineasDinero`.
  *
@@ -62,6 +63,7 @@ function sesionComo(rol: string) {
       driverId: null,
       rol,
       estado: "activo",
+      areasHabilitadas: [...AREAS_PRODUCTO],
     },
   };
 }

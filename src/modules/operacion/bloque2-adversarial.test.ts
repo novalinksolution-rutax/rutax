@@ -28,6 +28,7 @@ import type { PodGeoResultado } from "./pruebas-entrega";
 import { transicionarPedidosSameDayAEnRuta } from "./manifiestos-same-day";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
+import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 // ---------------------------------------------------------------------------
 // Mock de Inngest — evita llamadas reales de red en actualizarEstadoPedido
@@ -70,6 +71,7 @@ function actorConductor(driverId: string = CONDUCTOR_1): UsuarioActual & { usuar
     driverId,
     rol: "conductor",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -82,6 +84,7 @@ function actorSeller(sellerId: string = SELLER_1): UsuarioActual & { usuarioId: 
     driverId: null,
     rol: "seller",
     estado: "activo",
+    areasHabilitadas: [...AREAS_PRODUCTO],
   };
 }
 
@@ -1131,6 +1134,7 @@ describe("Aislamiento cross-tenant | obtenerUrlFirmadaPod", () => {
       driverId: null,
       rol: "seller",
       estado: "activo",
+      areasHabilitadas: [...AREAS_PRODUCTO],
     };
 
     const mock = {
@@ -1212,6 +1216,7 @@ describe("Aislamiento cross-tenant | obtenerUrlFirmadaPod", () => {
       driverId: CONDUCTOR_2,              // conductor diferente
       rol: "conductor",
       estado: "activo",
+      areasHabilitadas: [...AREAS_PRODUCTO],
     };
 
     const mock = {
@@ -1315,6 +1320,7 @@ describe("Aislamiento cross-tenant | obtenerUrlFirmadaPod", () => {
       driverId: null,
       rol: "super_admin" as const,
       estado: "activo" as const,
+      areasHabilitadas: [...AREAS_PRODUCTO],
     };
 
     const mock = { from: () => ({}) } as never;
@@ -1388,6 +1394,7 @@ describe("Esc-1 | Frontera Flex — mensaje de error explícito", () => {
           driverId: DRIVER_X,
           rol: "conductor",
           estado: "activo",
+          areasHabilitadas: [...AREAS_PRODUCTO],
         },
       );
       expect.fail("debería haber lanzado ErrorValidacion");
