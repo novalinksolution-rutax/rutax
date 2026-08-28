@@ -212,3 +212,116 @@ describe("AutocompletadoGoogle · «calle y número», compuesto y no recortado"
     ).resolves.toMatchObject({ direccion: "LARGA, con comuna, región y país" });
   });
 });
+
+describe("AutocompletadoGoogle · una comuna suelta no es una dirección", () => {
+  /** Arma una predicción con la forma real de la API nueva. */
+  function prediccion(principal: string, secundaria: string, types: string[] | undefined) {
+    return {
+      placePrediction: {
+        placeId: `id-${principal}`,
+        structuredFormat: { mainText: { text: principal }, secondaryText: { text: secundaria } },
+        ...(types ? { types } : {}),
+      },
+    };
+  }
+
+  it("🔴 descarta la comuna suelta: «pucon» ya no propone «Pucón, Chile»", async () => {
+    // El caso que lo motivó: se podía elegir una comuna entera como dirección de
+    // una bodega o de una factura.
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        suggestions: [prediccion("Pucón", "Chile", ["locality", "political"])],
+      }),
+    );
+    await expect(
+      new AutocompletadoGoogle(LLAVE).sugerir({ consulta: "pucon", sesion: "s1" }),
+    ).resolves.toEqual([]);
+  });
+
+  it("descarta región, país y código postal", async () => {
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        suggestions: [
+          prediccion("Región Metropolitana", "Chile", ["administrative_area_level_1", "political"]),
+          prediccion("Chile", "", ["country", "political"]),
+          prediccion("7550000", "Las Condes", ["postal_code"]),
+        ],
+      }),
+    );
+    await expect(
+      new AutocompletadoGoogle(LLAVE).sugerir({ consulta: "region", sesion: "s1" }),
+    ).resolves.toEqual([]);
+  });
+
+  it("🔴 CONSERVA una dirección de calle (contraprueba)", async () => {
+    // Sin esto, un filtro que descartara TODO pasaría las pruebas de arriba y
+    // dejaría el buscador mudo.
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        suggestions: [
+          prediccion("Los Militares 5001", "Las Condes, Chile", ["street_address"]),
+        ],
+      }),
+    );
+    const r = await new AutocompletadoGoogle(LLAVE).sugerir({
+      consulta: "Los Militares",
+      sesion: "s1",
+    });
+    expect(r).toHaveLength(1);
+    expect(r[0].principal).toBe("Los Militares 5001");
+  });
+
+  it("🔴 CONSERVA un lugar con nombre propio, aunque traiga tipos administrativos", async () => {
+    // «Mall Parque Arauco» es una dirección legítima y el propio CampoDireccion
+    // cuenta con ella. Lo que se descarta es lo que no tiene NADA más que
+    // administrativo.
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        suggestions: [
+          prediccion("Mall Parque Arauco", "Las Condes, Chile", [
+            "shopping_mall",
+            "establishment",
+            "point_of_interest",
+            "political",
+          ]),
+        ],
+      }),
+    );
+    await expect(
+      new AutocompletadoGoogle(LLAVE).sugerir({ consulta: "parque arauco", sesion: "s1" }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("🔴 sin `types` NO descarta nada: el filtro falla ABIERTO", async () => {
+    // Es la decisión de diseño. Si Google dejara de mandar `types` —o los mandara
+    // con otro nombre— una lista de permitidos habría vaciado el buscador en
+    // silencio. Acá lo peor que pasa es que se cuele una sugerencia de más.
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        suggestions: [prediccion("Los Militares 5001", "Las Condes, Chile", undefined)],
+      }),
+    );
+    await expect(
+      new AutocompletadoGoogle(LLAVE).sugerir({ consulta: "Los Militares", sesion: "s1" }),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("de una lista mixta se queda solo con lo direccionable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        suggestions: [
+          prediccion("Pucón", "Chile", ["locality", "political"]),
+          prediccion("Av. Bernardo O'Higgins 123", "Pucón, Chile", ["street_address"]),
+        ],
+      }),
+    );
+    const r = await new AutocompletadoGoogle(LLAVE).sugerir({ consulta: "pucon", sesion: "s1" });
+    expect(r.map((x) => x.principal)).toEqual(["Av. Bernardo O'Higgins 123"]);
+  });
+});

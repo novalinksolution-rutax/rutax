@@ -83,6 +83,54 @@ const TIPOS_COMUNA = ["administrative_area_level_3", "locality", "sublocality"];
 const TIPO_CALLE = "route";
 const TIPO_NUMERO = "street_number";
 
+/**
+ * Tipos que describen un LUGAR ADMINISTRATIVO, no una dirección.
+ *
+ * Escribir «pucon» proponía «Pucón, Chile» y se podía elegir: una comuna entera
+ * como dirección de una bodega o de una factura. Google no ofrece un
+ * `includedPrimaryTypes` que resuelva esto —comprobado en su documentación: las
+ * ÚNICAS colecciones son `(cities)` y `(regions)`, y «address» NO existe como
+ * colección en la API nueva—, así que el descarte se hace acá.
+ */
+const TIPOS_ADMINISTRATIVOS = new Set([
+  "locality",
+  "sublocality",
+  "sublocality_level_1",
+  "sublocality_level_2",
+  "neighborhood",
+  "administrative_area_level_1",
+  "administrative_area_level_2",
+  "administrative_area_level_3",
+  "administrative_area_level_4",
+  "administrative_area_level_5",
+  "country",
+  "postal_code",
+  "postal_code_prefix",
+  "political",
+  "plus_code",
+]);
+
+/**
+ * ¿Esta sugerencia es un sitio al que se puede llegar, o solo un área?
+ *
+ * 🔴 **Es una lista de DESCARTE, no de permitidos, y falla ABIERTO.** Con una
+ * lista de permitidos habría que enumerar todo lo que Google puede devolver para
+ * una dirección buena —`street_address`, `premise`, `subpremise`, y los cientos
+ * de tipos de establecimiento— y lo que faltara desaparecería del buscador sin
+ * que nadie lo note. Acá, si `types` no viene o trae algo no listado, la
+ * sugerencia SE CONSERVA: lo peor que pasa es que se cuele una de más.
+ *
+ * Un centro comercial o un edificio con nombre propio SÍ pasan: tienen tipos de
+ * establecimiento además de los administrativos, y son direcciones legítimas
+ * —el propio `CampoDireccion` cuenta con ello para «Mall Parque Arauco»—.
+ * Lo que se va es lo que NO tiene nada más que administrativo: una comuna, una
+ * región, un país, un código postal.
+ */
+function esUnLugarAlQueSePuedeLlegar(tipos: string[] | undefined): boolean {
+  if (!tipos || tipos.length === 0) return true;
+  return tipos.some((t) => !TIPOS_ADMINISTRATIVOS.has(t));
+}
+
 interface RespuestaSugerencias {
   suggestions?: Array<{
     placePrediction?: {
@@ -92,6 +140,8 @@ interface RespuestaSugerencias {
         secondaryText?: { text?: string };
       };
       text?: { text?: string };
+      /** Clasificación de Google. Se usa para descartar ciudades y regiones. */
+      types?: string[];
     };
   }>;
 }
@@ -137,6 +187,9 @@ export class AutocompletadoGoogle implements PuertoAutocompletadoDireccion {
       return (datos.suggestions ?? [])
         .map((s) => s.placePrediction)
         .filter((p): p is NonNullable<typeof p> => Boolean(p?.placeId))
+        // Fuera las comunas, regiones y países sueltos: una dirección tiene que
+        // ser un sitio al que se pueda llegar.
+        .filter((p) => esUnLugarAlQueSePuedeLlegar(p.types))
         .map((p) => ({
           id: p.placeId as string,
           principal: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "",
