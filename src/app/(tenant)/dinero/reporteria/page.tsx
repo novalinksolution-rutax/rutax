@@ -157,6 +157,11 @@ export default async function PaginaReporteria({
     error = true;
   }
 
+  // Cuántas entregas hay detrás de cada monto. Se calculan acá y no en el
+  // módulo porque son de presentación: el reporte ya trae las filas.
+  const entregasCobradas = reporte?.filas.filter((f) => f.cobroFinal !== null).length ?? 0;
+  const entregasPagadas = reporte?.filas.filter((f) => f.pagoFinal !== null).length ?? 0;
+
   const qs = new URLSearchParams({ desde, hasta });
   if (sellerId) qs.set("seller", sellerId);
   if (conductorId) qs.set("conductor", conductorId);
@@ -171,47 +176,59 @@ export default async function PaginaReporteria({
         </p>
       </header>
 
-      <Card>
-        <CardContent className="pt-6">
-          <form method="get" className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <label htmlFor="desde" className="text-xs font-medium text-muted-foreground">
-                Desde
-              </label>
-              <input
-                id="desde"
-                type="date"
-                name="desde"
-                defaultValue={desde}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label htmlFor="hasta" className="text-xs font-medium text-muted-foreground">
-                Hasta
-              </label>
-              <input
-                id="hasta"
-                type="date"
-                name="hasta"
-                defaultValue={hasta}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              />
-            </div>
-            <Button type="submit">Ver</Button>
-            {etiquetaPeriodo ? (
-              <Badge variant="secondary" className="ml-1">
-                Período {etiquetaPeriodo}
-              </Badge>
-            ) : null}
-            <div className="ml-auto">
-              <Button asChild variant="outline">
-                <a href={`/dinero/reporteria/exportar?${qs.toString()}`}>Exportar CSV</a>
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      {/* 🔴 Sin `Card`. Envuelta en una tarjeta, esta fila era una caja de 90 px
+          con tres controles a la izquierda, dos botones a la derecha y medio
+          metro de blanco en medio: el recuadro prometía una sección y entregaba
+          una barra de herramientas. Sin él, el mismo espacio se lee como lo que
+          es —el borde inferior separa igual— y la pantalla arranca 40 px antes,
+          que en un reporte es una fila más de datos visible sin desplazarse. */}
+      <form method="get" className="flex flex-wrap items-end gap-3 border-b pb-4">
+        <div className="space-y-1">
+          <label htmlFor="desde" className="text-xs font-medium text-muted-foreground">
+            Desde
+          </label>
+          <input
+            id="desde"
+            type="date"
+            name="desde"
+            defaultValue={desde}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="hasta" className="text-xs font-medium text-muted-foreground">
+            Hasta
+          </label>
+          <input
+            id="hasta"
+            type="date"
+            name="hasta"
+            defaultValue={hasta}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          />
+        </div>
+        <Button type="submit" variant="secondary">
+          Ver
+        </Button>
+        {etiquetaPeriodo ? (
+          <Badge variant="secondary" className="mb-2">
+            Período {etiquetaPeriodo}
+          </Badge>
+        ) : null}
+        {/* Excel primero porque es el que abre la PERSONA que factura; el CSV
+            queda al lado, en secundario, para quien lo importa a su contable.
+            Son dos usos distintos y el mismo archivo no sirve para los dos. */}
+        <div className="ml-auto flex items-center gap-2">
+          <Button asChild>
+            <a href={`/dinero/reporteria/exportar?${qs.toString()}&formato=xlsx`}>
+              Descargar Excel
+            </a>
+          </Button>
+          <Button asChild variant="outline">
+            <a href={`/dinero/reporteria/exportar?${qs.toString()}`}>CSV</a>
+          </Button>
+        </div>
+      </form>
 
       {error || !reporte ? (
         <Card className="border-destructive">
@@ -225,11 +242,26 @@ export default async function PaginaReporteria({
         </Card>
       ) : (
         <>
+          {/* 🔴 Las cuatro llevan nota, y no por simetría: dos la tenían y dos
+              no, así que las dos primeras arrastraban 40 px de blanco para
+              igualar altura con las otras. La salida no era quitar las notas
+              —explican cifras que se malinterpretan— sino darle a las otras dos
+              una que aporte: cuántas entregas hay DETRÁS del monto es lo primero
+              que se pregunta quien va a facturar, y evita bajar a contar filas. */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Resumen titulo="Se le cobra a los sellers" valor={formatearCLP(reporte.totalCobro)} />
+            <Resumen
+              titulo="Se le cobra a los sellers"
+              valor={formatearCLP(reporte.totalCobro)}
+              nota={`${entregasCobradas} ${entregasCobradas === 1 ? "entrega facturable" : "entregas facturables"} en el rango.`}
+            />
             <Resumen
               titulo="Se le paga a los conductores"
               valor={formatearCLP(reporte.totalPago)}
+              nota={
+                reporte.visitas.length > 0
+                  ? `${entregasPagadas} ${entregasPagadas === 1 ? "entrega" : "entregas"} más ${reporte.visitas.length} ${reporte.visitas.length === 1 ? "visita" : "visitas"} a bodega.`
+                  : `${entregasPagadas} ${entregasPagadas === 1 ? "entrega" : "entregas"}. Sin visitas a bodega en el rango.`
+              }
             />
             <Resumen
               titulo="Diferencia"

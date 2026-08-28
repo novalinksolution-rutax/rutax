@@ -347,6 +347,13 @@ export default async function LayoutTenant({ children }: { children: React.React
         "/dinero/liquidaciones",
         "/dinero/conciliacion",
         "/dinero/cobranza",
+        // ⚠️ La tabla MÁS ancha del producto: 19 columnas en el CSV, 10 en
+        // pantalla. Es exactamente el caso que esta lista describe. El calce es
+        // por prefijo, así que también alcanza a `/dinero/reporteria/seller/…` y
+        // `/conductor/…`, que son fichas — pero esas se auto-limitan a
+        // `max-w-4xl` por dentro, porque un documento imprimible no se lee a
+        // 1.800 px. Ancho de lienzo y ancho de contenido son cosas distintas.
+        "/dinero/reporteria",
         // Configuración con tabla
         "/configuracion/tarifas",
         "/configuracion/bodegas",
