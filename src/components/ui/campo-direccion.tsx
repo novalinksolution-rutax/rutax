@@ -102,6 +102,16 @@ export function CampoDireccion({
 }) {
   const idAuto = useId();
   const idCampo = id ?? idAuto;
+  /**
+   * El valor con el que se montó el campo. Sirve para distinguir «venía
+   * guardado» de «lo acaba de teclear».
+   *
+   * ⚠️ Se compara el VALOR, no una bandera de «ya monté». Una bandera se rompe
+   * en desarrollo: `StrictMode` monta, desmonta y vuelve a montar, el `ref`
+   * sobrevive a ese ciclo, y el segundo pase la encuentra ya marcada y busca
+   * igual. El valor inicial no cambia por más veces que corra el efecto.
+   */
+  const valorInicial = useRef(valor);
   const idLista = `${idCampo}-sugerencias`;
 
   const [sugerencias, setSugerencias] = useState<SugerenciaVisible[]>([]);
@@ -129,6 +139,19 @@ export function CampoDireccion({
 
   useEffect(() => {
     const consulta = valor;
+
+    // 🔴 NO SE BUSCA AL MONTAR CON UN VALOR YA GUARDADO.
+    //
+    // Este efecto depende de `valor`, así que con un formulario precargado
+    // —editar una bodega, volver al paso de datos de la empresa— disparaba una
+    // búsqueda sola: se abría una lista que nadie pidió, sobre una dirección que
+    // ya estaba decidida. Y no es solo ruido: Google cobra POR SESIÓN de
+    // autocompletado, así que cada apertura de la pantalla era una sesión
+    // facturada sin que nadie tecleara una letra.
+    //
+    // Mientras el campo siga teniendo lo que traía, no se busca. En cuanto
+    // cambia, es que alguien escribió — y ahí sí.
+    if (consulta === valorInicial.current) return;
     // Todo el trabajo va DENTRO del temporizador, incluido el caso de vaciar la
     // lista. Fuera de él sería un `setState` síncrono dentro del efecto, que
     // dispara un render en cascada — y el lint del repo lo prohíbe con razón.

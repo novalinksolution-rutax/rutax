@@ -18,10 +18,34 @@
  * ⚠️ La comuna se elige con el `Select` de shadcn y estado local, como en
  * `configuracion/bodegas/panel-bodega.tsx`: Radix solo emite el campo al
  * `FormData` si es controlado y lleva `name`.
+ *
+ * -----------------------------------------------------------------------------
+ * LA DIRECCIÓN SE BUSCA, NO SE TECLEA
+ * -----------------------------------------------------------------------------
+ * Es el mismo `CampoDireccion` del alta same-day y de las bodegas (encargo del
+ * usuario). Acá no hace falta la coordenada —una dirección tributaria no rutea
+ * nada— pero sí lo otro que trae elegir de la lista: la dirección **normalizada
+ * por el proveedor y su comuna**. Y eso importa más de lo que parece, porque la
+ * comuna es un campo APARTE que va en el mismo documento: tecleando las dos a
+ * mano se puede emitir una factura que diga «Av. Providencia 1234» y, debajo,
+ * «Maipú». Eligiendo, las dos salen del mismo sitio.
+ *
+ * ⚠️ **La comuna del buscador puede no estar en el catálogo de la RM.** El
+ * reparto es Santiago-only, pero el domicilio TRIBUTARIO del courier puede estar
+ * en cualquier parte de Chile. Cuando pasa, la comuna elegida se agrega como
+ * opción en vez de descartarse: sin eso el paso quedaba sin poder completarse
+ * —el buscador devolvía una comuna que la lista no ofrecía— y ese callejón no se
+ * ve hasta que aparece el primer courier de regiones.
  */
 
 import { useState } from "react";
 
+import { CampoDireccion } from "@/components/ui/campo-direccion";
+import {
+  actionResolverDireccion,
+  actionSugerirDirecciones,
+} from "@/app/(tenant)/operaciones/nuevo/actions";
+import { comunaDelCatalogo } from "@/app/(tenant)/operaciones/nuevo/reglas-alta";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -48,6 +72,12 @@ export interface DatosEmisorIniciales {
 
 export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIniciales }) {
   const [comuna, setComuna] = useState(iniciales.comuna ?? "");
+  const [direccion, setDireccion] = useState(iniciales.direccion ?? "");
+  const [direccionElegida, setDireccionElegida] = useState(false);
+
+  // El catálogo de la RM más, si hace falta, la comuna que trajo el buscador o
+  // la que ya estaba guardada. Un `Set` para no duplicar la que ya esté.
+  const comunasOfrecidas = [...new Set([...COMUNAS_RM, ...(comuna ? [comuna] : [])])];
 
   async function guardar(datos: FormData): Promise<ResultadoGuardado> {
     const resultado = await accionGuardarDatosEmisor(datos);
@@ -78,12 +108,32 @@ export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIni
 
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="emisor-direccion">Dirección de tu casa matriz</Label>
-          <Input
+          <CampoDireccion
             id="emisor-direccion"
             name="direccion"
             required
-            defaultValue={iniciales.direccion ?? ""}
-            placeholder="Ej: Av. Providencia 1234, of. 55"
+            placeholder="Empieza a escribir y elígela de la lista"
+            valor={direccion}
+            elegida={direccionElegida}
+            onCambio={(v) => {
+              setDireccion(v);
+              // Al reescribir a mano se suelta la marca: mantenerla afirmaría
+              // que esta dirección la validó el proveedor, y no es cierto.
+              if (direccionElegida) setDireccionElegida(false);
+            }}
+            onElegir={(d) => {
+              setDireccion(d.direccion);
+              setDireccionElegida(true);
+              // La comuna del catálogo si la reconoce; si no, la del proveedor
+              // tal cual — ver la nota de cabecera sobre couriers de regiones.
+              const elegida = comunaDelCatalogo(d.comuna) ?? d.comuna;
+              if (elegida) setComuna(elegida);
+            }}
+            buscar={actionSugerirDirecciones}
+            resolver={actionResolverDireccion}
+            // La ayuda va por la prop del componente y no como un `<p>` aparte:
+            // él la enlaza con `aria-describedby` al campo.
+            ayuda="Elígela de la lista y completamos la comuna sola. Si no aparece, escríbela igual."
           />
         </div>
 
@@ -96,7 +146,7 @@ export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIni
               <SelectValue placeholder="Selecciona una comuna" />
             </SelectTrigger>
             <SelectContent>
-              {COMUNAS_RM.map((c) => (
+              {comunasOfrecidas.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}
                 </SelectItem>
