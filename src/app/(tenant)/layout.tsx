@@ -25,7 +25,7 @@ import {
 import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
 import { destinosMovil } from "@/components/app-shell/destinos-movil";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
-import { resolverEstadoOnboarding } from "@/app/(tenant)/onboarding/estado";
+import { resolverBloqueoOperativo } from "@/app/(tenant)/onboarding/estado";
 import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarEventosConciliacion } from "@/modules/dinero/index";
@@ -280,9 +280,13 @@ export default async function LayoutTenant({ children }: { children: React.React
   };
 
   const puedeActuarSobreOnboarding = puedeGestionarConfiguracionDte(sesion.usuario);
-  const [estadoOnboarding, avisos] = await Promise.all([
+  // ⚠️ La lectura LIGERA, no el estado completo del asistente. El banner usa un
+  // solo campo y esto corre en CADA carga de página del área autenticada:
+  // con los catorce pasos, el estado completo serían catorce consultas por
+  // navegación para pintar un aviso de una línea.
+  const [faltaParaOperar, avisos] = await Promise.all([
     puedeActuarSobreOnboarding && sesion.usuario.tenantId
-      ? resolverEstadoOnboarding(sesion.usuario.tenantId)
+      ? resolverBloqueoOperativo(sesion.usuario.tenantId)
       : Promise.resolve(null),
     obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId),
   ]);
@@ -378,11 +382,9 @@ export default async function LayoutTenant({ children }: { children: React.React
       }}
       avisos={avisos}
       destinosMovil={destinos}
-      banner={
-        estadoOnboarding && !estadoOnboarding.completo ? (
-          <BannerOnboarding faltaParaOperar={estadoOnboarding.faltaParaOperar} />
-        ) : null
-      }
+      // `null` ya significa «no falta nada»: el propio banner no se pinta sin
+      // frase, así que no hace falta una segunda condición que pueda discrepar.
+      banner={<BannerOnboarding faltaParaOperar={faltaParaOperar} />}
     >
       {children}
     </AppShell>

@@ -61,6 +61,7 @@ import {
   obtenerZonasConductor,
 } from "./actions";
 import { actionMarcarConductorNoDisponible } from "../manifiestos/actions";
+import { BANCOS_CHILE, ETIQUETAS_TIPO_CUENTA } from "@/lib/ui/bancos-chile";
 
 // =============================================================================
 // Panel principal
@@ -465,21 +466,9 @@ export function EditorZonasConductor({
 // Editor de datos bancarios del conductor
 // =============================================================================
 
-const BANCOS_CHILE = [
-  "Banco de Chile",
-  "BCI",
-  "Banco Estado",
-  "Santander Chile",
-  "Scotiabank Chile",
-  "Itaú Chile",
-  "BICE",
-] as const;
-
-const ETIQUETAS_TIPO_CUENTA: Record<string, string> = {
-  corriente: "Cuenta corriente",
-  vista: "Cuenta vista",
-  ahorro: "Cuenta de ahorro",
-};
+// El catálogo se mudó a `@/lib/ui/bancos-chile` al aparecer el segundo
+// consumidor (la cuenta a la que el seller le transfiere al courier): dos
+// listas de bancos son dos listas que se separan.
 
 export function EditorDatosBancarios({
   conductor,

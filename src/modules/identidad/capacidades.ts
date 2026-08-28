@@ -114,6 +114,23 @@ export const CAPACIDADES = [
   // que la decide es de terreno — entra un seller nuevo, o el conductor está
   // parado en una bodega que nadie cargó, y quien opera el día tiene que poder
   // resolverlo sin ir a buscar al dueño.
+  // --- Perfil de la empresa: el propio registro del courier -----------------
+  // Las columnas de `identidad.tenants` que el alta no pide: giro, dirección,
+  // comuna y actividad económica —el bloque `Emisor` que el SII exige en una
+  // factura, del que `razon_social` y `rut` ya eran parte— más el teléfono y el
+  // correo públicos que se muestran a quien espera un paquete.
+  //
+  // Capacidad propia, y no `gestionar_configuracion_dte` ni `gestionar_tarifas`,
+  // que fueron los dos candidatos obvios. El primero es «el proveedor y el
+  // certificado», no la identidad de la empresa; el segundo no tiene nada que
+  // ver con un teléfono de contacto — reusarlo sería el mismo estiramiento que
+  // dejó a `gestionar_conexion_ml_propia` gobernando Shopify.
+  //
+  // Dueño y administración: es la misma pareja que ya edita toda la
+  // configuración tributaria, y ni supervisor ni coordinador tienen config
+  // financiera por diseño.
+  "gestionar_perfil_empresa",
+
   "gestionar_bodegas",
 
 
@@ -259,6 +276,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
     "revocar_invitaciones",
     "gestionar_tarifas",
     "gestionar_configuracion_dte",
+    "gestionar_perfil_empresa",
     "aprobar_facturacion",
     "emitir_facturas",
     "ver_conciliacion",
@@ -321,6 +339,7 @@ const MATRIZ_ROL_CAPACIDADES: Record<Rol, readonly Capacidad[]> = {
   administracion: [
     "gestionar_tarifas", // RF-009 lista "Dueño / admin" como usuario de la gestión de tarifas.
     "gestionar_configuracion_dte", // RF-007/008 lista "Dueño / admin".
+    "gestionar_perfil_empresa",
     // Decisión del usuario (2026-08-13): administración SÍ puede forzar la
     // sincronización de una cuenta ML. No contradice el "sin reasignación
     // operativa" del levantamiento — traer pedidos no asigna a nadie, y sin
@@ -449,6 +468,11 @@ export function puedeGestionarTarifas(usuario: UsuarioActual): boolean {
 
 export function puedeGestionarConfiguracionDte(usuario: UsuarioActual): boolean {
   return tieneCapacidad(usuario, "gestionar_configuracion_dte");
+}
+
+/** Las columnas de `identidad.tenants`: bloque Emisor del SII y contacto público. */
+export function puedeGestionarPerfilEmpresa(usuario: UsuarioActual): boolean {
+  return tieneCapacidad(usuario, "gestionar_perfil_empresa");
 }
 
 // --- Motor entrega→dinero / facturación (RF-030, 033, 035..037) ---------------

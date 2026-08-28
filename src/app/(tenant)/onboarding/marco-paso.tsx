@@ -12,7 +12,10 @@
  * 2. **Qué sigue.** El botón «Seguir con …» permite avanzar sin cerrar el paso
  *    actual — que es como se completa esto de verdad: se deja folios a medias
  *    porque falta un dato, se hacen las tarifas, se vuelve.
- * 3. **Que no hay que apurarse.** «Se guarda solo. Puedes salir cuando quieras.»
+ * 3. **Que no hay que apurarse.** Se puede salir y volver: lo ya guardado se
+ *    queda. ⚠️ NO dice «se guarda solo», que es lo que decía antes y era
+ *    falso: la regla 25 prohíbe el autoguardado en configuración —cada paso
+ *    tiene su botón— y prometer lo contrario invita a salirse sin guardar.
  *    Un formulario de configuración sin esa promesa se opera con miedo.
  *
  * -----------------------------------------------------------------------------
@@ -103,7 +106,7 @@ export function MarcoPaso({
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
         <p className="text-xs text-fg-muted">
-          Se guarda solo. Puedes salir y volver cuando quieras.
+          Cada paso se guarda por su cuenta. Puedes salir y volver cuando quieras.
         </p>
         {siguiente ? (
           <Button variant="outline" size="sm" onClick={() => abrir(siguiente.clave)}>

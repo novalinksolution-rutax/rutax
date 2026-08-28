@@ -2,18 +2,23 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { headers } from "next/headers";
+import { ArrowUpRight } from "lucide-react";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import {
+  puedeGestionarCobranza,
   puedeGestionarConfiguracionDte,
+  puedeGestionarLiquidacionesConductores,
+  puedeGestionarPerfilEmpresa,
   puedeGestionarTarifas,
   puedeVerConciliacion,
 } from "@/modules/identidad/capacidades";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 
-import { resolverEstadoOnboarding } from "./estado";
-import { pasosDelAsistente, siguientePendiente, type ClavePaso } from "./pasos";
+import { resolverEstadoOnboarding, type EstadoOnboardingCourier } from "./estado";
+import { pasosDelAsistente, siguientePendiente, type ClavePaso, type PasoAsistente } from "./pasos";
 import { ListaPasos } from "./lista-pasos";
 import { MarcoPaso } from "./marco-paso";
 
@@ -26,11 +31,20 @@ import { PanelFoliosCaf } from "./folios/panel-folios-caf";
 import { PanelTarifas } from "./tarifas/panel-tarifas";
 import { FormularioConexionCobranza } from "./cobranza/formulario-conexion-cobranza";
 
+import { FormularioDatosEmisor } from "./_formularios/datos-emisor";
+import { FormularioDatosCobro } from "./_formularios/datos-cobro";
+import { FormularioRetencion } from "./_formularios/retencion";
+import { FormularioContacto } from "./_formularios/contacto";
+
+// Dos pasos reusan ENTERA la pantalla que ya existe en Configuración, en vez de
+// una copia: la periodicidad con sus avisos y sus rangos calculados por el
+// motor, y el pago por visita con su acuse.
+import { SeccionPeriodos } from "@/app/(tenant)/configuracion/tarifas/_secciones/seccion-periodos";
+import { FormularioRetiro } from "@/app/(tenant)/configuracion/retiro/formulario-retiro";
+
 export const metadata: Metadata = {
   title: "Puesta en marcha",
 };
-
-const CLAVES: ClavePaso[] = ["dte", "folios", "tarifas", "cobranza", "plan"];
 
 /**
  * Puesta en marcha — el asistente.
@@ -39,20 +53,19 @@ const CLAVES: ClavePaso[] = ["dte", "folios", "tarifas", "cobranza", "plan"];
  * -----------------------------------------------------------------------------
  * LISTA Y CUERPO EN LA MISMA PANTALLA
  * -----------------------------------------------------------------------------
- * Era un checklist de cinco tarjetas-enlace: elegir un paso te sacaba a otra
- * ruta y la lista desaparecía. Ahora la lista se queda arriba y el paso elegido
- * se abre debajo, con su encabezado de posición y su pie de continuidad.
+ * Era un checklist de tarjetas-enlace: elegir un paso te sacaba a otra ruta y la
+ * lista desaparecía. Ahora la lista se queda arriba y el paso elegido se abre
+ * debajo, con su encabezado de posición y su pie de continuidad.
  *
- * **Las cuatro rutas de paso siguen existiendo** (`/onboarding/dte` y hermanas):
- * son destino de enlaces guardados y de la vuelta atrás del navegador. Lo que
- * cambia es el camino normal, que ya no salta de pantalla en pantalla.
+ * **Las rutas de paso siguen existiendo** (`/onboarding/dte` y hermanas): son
+ * destino de enlaces guardados y de la vuelta atrás del navegador.
  *
  * -----------------------------------------------------------------------------
- * SE CARGAN LOS CUATRO ESTADOS, NO SOLO EL DEL PASO ABIERTO
+ * SOLO SE CARGA EN DETALLE EL PASO ABIERTO
  * -----------------------------------------------------------------------------
- * Porque la LISTA los necesita: su gracia es que cada renglón dice el dato real
- * («3 rangos vigentes», «sin tarifas»), no un rótulo de estado. Cargar solo el
- * abierto dejaría cuatro renglones mudos. Las cuatro lecturas van en paralelo.
+ * La LISTA ya tiene el dato real de cada renglón desde `resolverEstadoOnboarding`
+ * («3 rangos vigentes», «sin tarifas»). Lo pesado —el formulario del proveedor
+ * DTE, el panel de folios— se pide solo para el que está abierto.
  *
  * -----------------------------------------------------------------------------
  * FALLA DE LECTURA: LO IMPORTANTE ES QUE NO SE DUPLIQUEN LOS FOLIOS
@@ -76,9 +89,14 @@ export default async function PaginaOnboarding({
   const tenantId = sesion.usuario.tenantId;
   const { paso: pasoParam } = await searchParams;
 
-  const puedeDte = puedeGestionarConfiguracionDte(sesion.usuario);
-  const puedeTarifas = puedeGestionarTarifas(sesion.usuario);
-  const puedeCobranza = puedeVerConciliacion(sesion.usuario);
+  const permisos = {
+    dte: puedeGestionarConfiguracionDte(sesion.usuario),
+    tarifas: puedeGestionarTarifas(sesion.usuario),
+    cobranza: puedeVerConciliacion(sesion.usuario),
+    cobro: puedeGestionarCobranza(sesion.usuario),
+    liquidaciones: puedeGestionarLiquidacionesConductores(sesion.usuario),
+    empresa: puedeGestionarPerfilEmpresa(sesion.usuario),
+  };
 
   const estado = await resolverEstadoOnboarding(tenantId).catch(() => null);
 
@@ -99,12 +117,13 @@ export default async function PaginaOnboarding({
   }
 
   const pasos = pasosDelAsistente(estado);
+  const claves = pasos.map((p) => p.clave);
 
   // El paso abierto: el de la URL si es válido, o el primero que falte. Abrir en
   // el primero pendiente es lo que hace que la pantalla sirva sin leerla.
-  const clave: ClavePaso = CLAVES.includes(pasoParam as ClavePaso)
+  const clave: ClavePaso = claves.includes(pasoParam as ClavePaso)
     ? (pasoParam as ClavePaso)
-    : (pasos.find((p) => !p.listo && !p.bloqueado)?.clave ?? "dte");
+    : (pasos.find((p) => !p.listo && !p.bloqueado)?.clave ?? pasos[0].clave);
 
   const activo = pasos.find((p) => p.clave === clave)!;
   const dependencia = activo.dependeDe
@@ -112,14 +131,7 @@ export default async function PaginaOnboarding({
     : null;
   const siguiente = siguientePendiente(pasos, clave);
 
-  // Solo el estado del paso abierto se carga en detalle: los otros cuatro ya
-  // tienen su resumen desde `resolverEstadoOnboarding`.
-  const cuerpo = await cuerpoDelPaso(clave, {
-    tenantId,
-    puedeDte,
-    puedeTarifas,
-    puedeCobranza,
-  });
+  const cuerpo = await cuerpoDelPaso(activo, { tenantId, estado, permisos });
 
   const porcentaje = Math.round((estado.pasosCompletados / estado.totalPasos) * 100);
 
@@ -134,12 +146,12 @@ export default async function PaginaOnboarding({
           </h1>
           <p className="mt-0.5 text-sm text-fg-muted">
             {estado.completo
-              ? "Lo esencial está configurado. Puedes seguir ajustando estos pasos cuando lo necesites."
-              : `Te falta configurar ${estado.faltaParaOperar} para poder operar. Los otros pasos no te bloquean.`}
+              ? "Lo esencial está configurado. Los pasos que queden te van a ir haciendo falta, pero ninguno te detiene."
+              : `Te falta ${estado.faltaParaOperar} para poder operar. Los otros pasos no te bloquean.`}
           </p>
         </div>
-        {/* UN SOLO CONTEO, y sobre los cinco pasos que se ven. Antes la barra
-            decía «1 de 2» encima de cinco tarjetas. */}
+        {/* UN SOLO CONTEO, y sobre los pasos que se ven. Antes la barra decía
+            «1 de 2» encima de cinco tarjetas. */}
         <div className="w-40 shrink-0 space-y-1">
           <p className="rx-num flex items-baseline justify-between text-xs text-fg-muted">
             <span>
@@ -169,6 +181,15 @@ export default async function PaginaOnboarding({
   );
 }
 
+interface Permisos {
+  dte: boolean;
+  tarifas: boolean;
+  cobranza: boolean;
+  cobro: boolean;
+  liquidaciones: boolean;
+  empresa: boolean;
+}
+
 /**
  * El cuerpo del paso elegido.
  *
@@ -177,41 +198,73 @@ export default async function PaginaOnboarding({
  * no se puede.
  */
 async function cuerpoDelPaso(
-  clave: ClavePaso,
-  ctx: { tenantId: string; puedeDte: boolean; puedeTarifas: boolean; puedeCobranza: boolean },
+  paso: PasoAsistente,
+  ctx: { tenantId: string; estado: EstadoOnboardingCourier; permisos: Permisos },
 ) {
-  if (clave === "dte") {
-    if (!ctx.puedeDte) return <SinPermiso que="la facturación electrónica" />;
+  const { estado, permisos } = ctx;
+
+  // Los pasos que ya tienen su pantalla propia se ENLAZAN. Ver la nota de
+  // `seResuelveFuera` en `pasos.ts`: una copia embebida de la nómina de
+  // conductores sería una segunda pantalla que mantener.
+  if (paso.seResuelveFuera) {
+    return <EnlaceAPantalla paso={paso} />;
+  }
+
+  if (paso.clave === "dte") {
+    if (!permisos.dte && !permisos.empresa) return <SinPermiso que="la facturación electrónica" />;
     const r = await obtenerEstadoConfiguracionDte();
     return (
-      <FormularioConfiguracionDte
-        estadoInicial={r.ok ? r.estado : null}
-        errorInicial={r.ok ? null : r.mensaje}
-      />
+      <div className="space-y-6">
+        {/* Los datos del emisor van ARRIBA del proveedor: sin ellos el
+            certificado no emite igual, y ponerlos debajo los deja pareciendo un
+            detalle opcional. */}
+        {permisos.empresa ? (
+          <FormularioDatosEmisor iniciales={await leerDatosEmisor(ctx.tenantId)} />
+        ) : (
+          <SinPermiso que="los datos de tu empresa" />
+        )}
+        {permisos.dte ? (
+          <FormularioConfiguracionDte
+            estadoInicial={r.ok ? r.estado : null}
+            errorInicial={r.ok ? null : r.mensaje}
+          />
+        ) : (
+          <SinPermiso que="el proveedor y el certificado" />
+        )}
+      </div>
     );
   }
 
-  if (clave === "folios") {
-    if (!ctx.puedeDte) return <SinPermiso que="los folios CAF" />;
+  if (paso.clave === "folios") {
+    if (!permisos.dte) return <SinPermiso que="los folios CAF" />;
     const r = await obtenerEstadoFoliosCaf();
     return (
-      <PanelFoliosCaf
-        estadoInicial={r.ok ? r.estado : null}
-        errorInicial={r.ok ? null : r.mensaje}
-      />
+      <PanelFoliosCaf estadoInicial={r.ok ? r.estado : null} errorInicial={r.ok ? null : r.mensaje} />
     );
   }
 
-  if (clave === "tarifas") {
-    if (!ctx.puedeTarifas) return <SinPermiso que="las tarifas" />;
+  if (paso.clave === "tarifas") {
+    if (!permisos.tarifas) return <SinPermiso que="las tarifas" />;
     const r = await obtenerEstadoTarifas();
     return (
       <PanelTarifas estadoInicial={r.ok ? r.estado : null} errorInicial={r.ok ? null : r.mensaje} />
     );
   }
 
-  if (clave === "cobranza") {
-    if (!ctx.puedeCobranza) return <SinPermiso que="la conexión del banco" />;
+  if (paso.clave === "periodos") {
+    if (!permisos.tarifas) return <SinPermiso que="la periodicidad de facturación" />;
+    // La sección entera de Configuración → Tarifas → Períodos, con sus avisos y
+    // sus rangos calculados por `calcularRangoPeriodo`.
+    return <SeccionPeriodos tenantId={ctx.tenantId} />;
+  }
+
+  if (paso.clave === "cobro") {
+    if (!permisos.cobro) return <SinPermiso que="dónde te pagan" />;
+    return <FormularioDatosCobro iniciales={await leerDatosCobro(ctx.tenantId)} />;
+  }
+
+  if (paso.clave === "cobranza") {
+    if (!permisos.cobranza) return <SinPermiso que="la conexión del banco" />;
     const r = await obtenerEstadoConfiguracionCobranza();
     const publicKey = process.env.FINTOC_PUBLIC_KEY ?? process.env.FINTOC_PUBLIC_KEY_TEST ?? null;
 
@@ -242,20 +295,82 @@ async function cuerpoDelPaso(
     );
   }
 
-  // Plan: la suscripción del courier a Rutax es backstage y tiene su propia
-  // pantalla. No se embebe: cobra, y una pantalla de cobro dentro de un
-  // asistente de configuración mezcla dos relaciones distintas.
+  if (paso.clave === "retencion") {
+    if (!permisos.liquidaciones) return <SinPermiso que="la retención de tus conductores" />;
+    return <FormularioRetencion porcentajeActual={estado.retencion.porcentaje} />;
+  }
+
+  if (paso.clave === "retiro") {
+    if (!permisos.tarifas) return <SinPermiso que="el pago por visita a bodega" />;
+    return <FormularioRetiro montoActual={estado.retiro.montoVisitaClp} />;
+  }
+
+  if (paso.clave === "contacto") {
+    if (!permisos.empresa) return <SinPermiso que="los datos de tu empresa" />;
+    return (
+      <FormularioContacto telefono={estado.contacto.telefono} email={estado.contacto.email} />
+    );
+  }
+
+  return <EnlaceAPantalla paso={paso} />;
+}
+
+/**
+ * El cuerpo de un paso que se resuelve en otra pantalla.
+ *
+ * Lleva el resumen otra vez a propósito: el renglón de la lista queda arriba y
+ * fuera del foco cuando el paso está abierto, y mandar a alguien a otra pantalla
+ * sin recordarle qué va a hacer allá es la forma de que vuelva sin haberlo
+ * hecho.
+ */
+function EnlaceAPantalla({ paso }: { paso: PasoAsistente }) {
   return (
     <div className="space-y-3">
-      <p className="text-sm leading-relaxed text-fg-muted">
-        Tu plan en Rutax es lo que nos pagas a nosotros, aparte de lo que tú le cobras a tus
-        sellers. No bloquea nada de lo anterior.
-      </p>
+      <p className="text-sm leading-relaxed text-fg-muted">{paso.resumen}</p>
       <Button asChild variant="outline" size="sm">
-        <Link href="/configuracion/plan">Ver mi plan</Link>
+        <Link href={paso.href}>
+          Ir a {paso.enFrase}
+          <ArrowUpRight className="size-4" aria-hidden="true" />
+        </Link>
       </Button>
     </div>
   );
+}
+
+async function leerDatosEmisor(tenantId: string) {
+  const cliente = crearClienteServiceRole();
+  const { data } = await cliente
+    .schema("identidad")
+    .from("tenants")
+    .select("giro, direccion, comuna, actividad_economica")
+    .eq("id", tenantId)
+    .maybeSingle();
+
+  return {
+    giro: (data?.giro as string | null) ?? null,
+    direccion: (data?.direccion as string | null) ?? null,
+    comuna: (data?.comuna as string | null) ?? null,
+    actividadEconomica: (data?.actividad_economica as string | null) ?? null,
+  };
+}
+
+async function leerDatosCobro(tenantId: string) {
+  const cliente = crearClienteServiceRole();
+  const { data } = await cliente
+    .schema("identidad")
+    .from("courier_datos_cobro")
+    .select("banco, tipo_cuenta, numero_cuenta, rut_titular, nombre_titular, email_aviso")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  return {
+    banco: (data?.banco as string | null) ?? null,
+    tipoCuenta: (data?.tipo_cuenta as string | null) ?? null,
+    numeroCuenta: (data?.numero_cuenta as string | null) ?? null,
+    rutTitular: (data?.rut_titular as string | null) ?? null,
+    nombreTitular: (data?.nombre_titular as string | null) ?? null,
+    emailAviso: (data?.email_aviso as string | null) ?? null,
+  };
 }
 
 function SinPermiso({ que }: { que: string }) {

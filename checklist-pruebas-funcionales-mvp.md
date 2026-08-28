@@ -2056,6 +2056,91 @@ pasan por el lector) · `src/app/(tenant)/configuracion/tarifas/`
       (`config_periodos` con `seller_id`), y el lector los respeta con prueba —
       pero solo se pueden crear a mano en la base.
 
+## Puesta en marcha: de 5 a 14 pasos, en tres bloques — 2026-08-28
+
+**El problema:** el asistente pedía cinco cosas (DTE, folios, tarifas, cobranza,
+plan) y el sistema necesita catorce. Faltaban la bodega, los conductores, los
+sellers, los datos del emisor SII, la cuenta bancaria, la periodicidad, la
+retención, el pago por visita, las zonas y el contacto público — y varios de
+ésos **no eran un ajuste olvidado sino columnas que el motor lee y ninguna
+pantalla escribía nunca**.
+
+**Código bajo prueba:** migración `20260828000002` (columnas del Emisor y
+contacto en `identidad.tenants`, tabla `identidad.courier_datos_cobro`, vista
+`public.tenants` repuesta) · `onboarding/estado.ts` (partido en
+`resolverBloqueoOperativo` + `resolverEstadoOnboarding`) · `onboarding/pasos.ts`
+(catorce pasos en tres bloques) · `onboarding/acciones-datos-courier.ts` ·
+`onboarding/_formularios/*` · `onboarding/{page,lista-pasos,marco-paso}.tsx` ·
+capacidad `gestionar_perfil_empresa` · `src/lib/ui/bancos-chile.ts`.
+
+- [x] **La retención de boleta de terceros ya se puede fijar.**
+      `courier_config_payout` **no tenía un solo escritor en el repositorio** —
+      todas sus apariciones eran `select`— así que a todo conductor
+      independiente se le retenía el `default 0`. Verificado en el navegador:
+      guardar 14,5 creó la PRIMERA fila de esa tabla en la base local.
+- [x] ⚠️ **El upsert manda solo `tenant_id` y `porcentaje_retencion`.**
+      Confirmado tras guardar: `payout_real_habilitado` quedó en `false` y
+      `metodo_default` en `manual`. Mandarlos en el payload los habría pisado
+      con su default y apagado el opt-in de pagos reales de un courier que ya lo
+      tuviera encendido.
+- [x] **El cero se distingue del olvido.** La ausencia de fila es «sin
+      configurar»; un 0 guardado es una decisión legítima (courier con solo
+      conductores dependientes). Las dos ramas fijadas en `pasos.test.ts`.
+- [x] **Los cuatro campos del Emisor SII se piden y se guardan** (giro,
+      dirección, comuna, actividad económica), con su asiento de bitácora y
+      autor. El paso NO se marca listo con el certificado cargado si faltan.
+- [x] **La cuenta a la que le transfiere el seller existe y él la ve.** pgTAP con
+      contraprueba: seller del mismo tenant la lee, seller de otro courier no, y
+      el conductor tampoco.
+- [x] **El teléfono se normaliza a E.164 antes de tocar la base.** Verificado en
+      el navegador: «9 1234 5678» quedó `+56912345678`. El CHECK de la columna lo
+      exige y sin normalizar habría devuelto un error de Postgres en la cara.
+- [x] **RUT de titular con dígito verificador equivocado se rechaza** (probado en
+      vivo con `76.543.210-9`, que es inválido; con `-3` guardó).
+- [x] 14 pasos en 3 bloques, numeración **corrida** (1–14, no reiniciada por
+      bloque), con contador propio por bloque. Fijado en `pasos.test.ts`.
+- [x] Solo sellers, conductores, DTE y tarifas son críticos. **La bodega NO**: sin
+      ella la asignación y el manifiesto funcionan; lo que se cae es el ruteo.
+- [x] El banner del layout pasó a `resolverBloqueoOperativo` (4 consultas). Con el
+      estado completo habrían sido catorce **en cada carga de página** del área
+      autenticada para pintar un aviso de una línea.
+- [x] Vitest 4389/4389 · pgTAP del archivo nuevo 20/20 · typecheck, lint y
+      `npm run build` limpios.
+
+### Dos bugs que solo aparecieron al abrir la pantalla
+
+- [x] 🔴 **`public.tenants` es `select *` y NO recibe las columnas nuevas.**
+      Postgres expande el `select *` al crear la vista y guarda la lista. La app
+      escribía con `service_role` sobre la tabla (el dato quedaba) y leía por la
+      vista con el cliente de sesión: la pantalla decía «falta el giro» con el
+      giro escrito. Peor: como la consulta pedía columnas inexistentes **fallaba
+      entera**, y hasta el nombre del courier salía como «tu courier». Sin error
+      en consola. Repuesta con las columnas y con `security_invoker`, y con pgTAP
+      que lo fija. De paso se repuso `seller_id_gasto_propio`, que arrastraba la
+      misma omisión.
+- [x] 🔴 **El filtro de sellers comparaba contra un valor que no existe en el
+      enum.** `.neq("estado", "inactivo")` sobre `identidad.estado_seller`
+      (`invitado | activo | suspendido`): Postgres rechaza la consulta entera y
+      el conteo cae a 0, o sea «no tienes sellers» teniendo tres, y el banner
+      decía «te falta invitar a tu primer seller». Falla cerrado y en silencio.
+- [x] **El pie del asistente decía «Se guarda solo» y era falso.** La regla 25
+      prohíbe el autoguardado en configuración: cada paso tiene su botón.
+      Prometer lo contrario invita a salirse sin guardar.
+
+### Pendiente
+- [ ] **Ventanas de corte y SLA siguen sin pantalla** (decisión del usuario:
+      fuera de esta pasada). `identidad.ventanas_corte` la leen la Torre y
+      `operacion/metricas.ts`, y **ninguna pantalla la escribe**: la hora de
+      corte y el objetivo de SLA son el default para todos. Ofrecerla como paso
+      exige decidir el esquema — hoy `seller_id` es NOT NULL, así que no existe
+      un valor por defecto del courier.
+- [ ] **La cuenta bancaria todavía no se muestra en el portal del seller.** Se
+      guarda y la RLS ya lo deja leerla; falta pintarla donde el seller la
+      necesita (su pantalla de cobros y la factura).
+- [ ] **`gestionar_perfil_empresa` no tiene pgTAP de matriz de roles.** Está en
+      el catálogo, en la matriz (dueño + administración) y en las etiquetas
+      legibles, con las pruebas de TypeScript en verde.
+
 ## Reportería: responsive — 2026-08-28
 
 Medido en local a tres anchos, no mirado a ojo.

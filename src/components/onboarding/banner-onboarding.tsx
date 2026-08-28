@@ -26,7 +26,14 @@ import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
-  /** Qué falta para operar, ya nombrado: «facturación», «tarifas». */
+  /**
+   * Qué falta para operar, como frase CON VERBO: «cargar tus conductores»,
+   * «configurar la facturación electrónica».
+   *
+   * Lleva el verbo dentro desde que el asistente dejó de ser solo ajustes: un
+   * conductor se carga y un seller se invita, así que «te falta configurar tus
+   * conductores» describía mal lo que hay que ir a hacer.
+   */
   faltaParaOperar: string | null;
 }
 
@@ -39,8 +46,8 @@ export function BannerOnboarding({ faltaParaOperar }: Props) {
         <div className="flex items-center gap-2 text-sm text-attention-fg">
           <ShieldAlert className="size-4 shrink-0" aria-hidden="true" />
           <span>
-            Te falta configurar <strong className="font-medium">{faltaParaOperar}</strong> para
-            poder operar.
+            Te falta <strong className="font-medium">{faltaParaOperar}</strong> para poder
+            operar.
           </span>
         </div>
         <Button
