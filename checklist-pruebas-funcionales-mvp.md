@@ -1963,7 +1963,56 @@ lo estén: es lo que deja auditar al motor entrega→dinero.
       Ley 21.431, y no le hace falta para pagar). Lo que se le cobró al seller
       **no aparece** en el del conductor (es el margen del courier).
 
+### Verificado en el navegador
+- [x] **En producción, con sesión de dueño.** Y el pase sirvió: destapó que la
+      columna «Fuente» mostraba «—» en TODAS las filas. El `select` a
+      `operacion.pedidos` se había quedado sin `fuente` ni `referencia_externa`
+      mientras el tipo sí las declaraba — **nada falla**, PostgREST devuelve
+      filas válidas y TypeScript no puede leer un string de `select` contra un
+      tipo. Las pruebas tampoco podían verlo: el cliente falso devuelve lo que
+      se le da y nunca ejerce el `select`. La red quedó en COMPILACIÓN, sobre el
+      literal que de verdad viaja, y nombra la columna que falte.
+- [x] Rango, totales, desglose por fuente, detalle y visitas, con datos reales.
+
+## Reportería: descarga en Excel — 2026-08-28
+
+- [x] XLSX **además** del CSV, no en vez de: el CSV es para máquinas (se importa
+      a un contable), el XLSX para personas (se abre, se filtra, se imprime). El
+      CSV sigue siendo el que responde sin parámetros, para que un fallo del
+      armado del XLSX no deje sin salida.
+- [x] Montos como **números** con formato de moneda, panel congelado y
+      autofiltro. Es lo que decide si la planilla sirve o hay que teclearla.
+- [x] El logotipo en **una sola imagen** (símbolo + palabra), rasterizada una vez
+      en el repo: dibujar la palabra en el servidor exigiría la tipografía
+      instalada donde corre la función.
+- [x] ⚠️ Verificado contra producción y no contra los archivos de estilo, que lo
+      desmentían: la paleta viva es teal `#00b89a` (no el `#2a3ca0` de
+      `globals.css`) y la tipografía es **Chivo**, no la Archivo del sistema de
+      marca.
+- [x] Barrido de UUID sobre las celdas reales del libro, con los ids poblados a
+      propósito para que la prueba demuestre que no salen.
+
+## Reportería: responsive — 2026-08-28
+
+Medido en local a tres anchos, no mirado a ojo.
+
+- [x] **375 px** — la tabla de detalle pedía 1.354 px en una ventana de 310:
+      **4,37× de arrastre lateral para leer una entrega**. Ahora es una ficha por
+      fila (`FichaFila390`), que es la regla del arquetipo P1 que esta pantalla
+      incumplía: «el teléfono no es una reducción; la fila se reacomoda».
+- [x] **768 px** — ⚠️ con el corte en `sm` la tabla reaparecía a 640 y seguía
+      pidiendo **1,96×**. El corte va en `lg`: diez columnas de dinero necesitan
+      un escritorio.
+- [x] Los cuatro resúmenes pasaron de 1,22–1,54× a **1,00×** dejando que su
+      columna de nombre se parta.
+- [x] **1440 px** — todas las tablas a 1,00×, sin desbordamiento de página.
+- [x] La barra de rango, ordenada por lo que hace cada bloque: en teléfono, las
+      dos fechas en mitades iguales, «Ver» a lo ancho y las descargas alineadas a
+      la misma grilla; de `sm` para arriba, una fila.
+
 ### Pendiente
-- [ ] **Verlo en el navegador con sesión.** Compila, el gate redirige y el build
-      pasa, pero no lo he visto renderizado: entrar exige escribir una
-      contraseña y eso no lo hago. Falta ese pase antes de darlo por cerrado.
+- [ ] **Las seis entregas de agosto siguen sin su línea de liquidación.** La
+      causa está identificada y ya corregida (`6444e49`, un período cerrado
+      impedía pagarle al conductor), así que no nacen nuevas — pero el arreglo
+      **no repone las que faltan**. Mientras no se regeneren, esas seis entregas
+      no tienen registro de pago al conductor.
