@@ -54,6 +54,7 @@ import {
 import { puntoUsable } from "./distancias-tramo";
 import { obtenerAnclaFinRuta } from "./punto-termino-conductor";
 import { calcularRuta } from "./ruteo";
+import { GoogleComputeRoutesAdapter } from "@/modules/integraciones/ruteo/adaptadores/google-compute-routes";
 import {
   aplicarSecuenciaParadasRpc,
   pedidoIdsDesdeSecuencia,
@@ -452,9 +453,15 @@ async function resolverRuta(entrada: {
   // mientras haya una parada fijada; se gana que todo lo que se muestra sea
   // cierto.
   //
-  // El estado deseable es otro y queda anotado: pedirle la geometría del orden
-  // YA DECIDIDO a `Compute Routes` de Google, que se cobra POR PETICIÓN (una
-  // por ruta) y no por parada. Ese es el siguiente paso del ruteo.
+  // ✅ **Y desde el 2026-08-27 la geometría no se pierde.** Con fijadas, el
+  // motor local decide el orden y `Compute Routes` lo DIBUJA — dos APIs
+  // distintas para dos preguntas distintas: «en qué orden ir» y «por dónde pasa
+  // la calle». Compute Routes cobra por petición y no por parada, así que
+  // trazar 30 paradas cuesta lo mismo que trazar 3.
+  //
+  // Hacía falta desde que el conductor puede arrastrar una parada o tocar «Ir a
+  // esta ahora»: fijar dejó de ser el caso raro, y tocar el orden una vez
+  // costaba la geometría de calle de todo el día.
   const hayFijadas = entrada.paradas.some((p) => p.ordenFijo !== null);
 
   if (puerto !== null && !hayFijadas) {
@@ -510,13 +517,64 @@ async function resolverRuta(entrada: {
     paradas: entrada.paradas,
   });
 
+  // El orden ya está decidido —y respeta las fijadas—; lo único que falta es
+  // por dónde pasa la calle. Se pide aparte, y su fallo NO invalida la ruta:
+  // sin trazado la pantalla dibuja la recta punteada, que es honesta sobre lo
+  // que sabe. Perder el orden por no poder dibujarlo sería mucho peor.
+  const tramos = await trazarSecuencia(entrada.origen, local.secuencia, entrada.paradas);
+
   return {
     secuencia: local.secuencia,
-    distanciaTotalM: local.distanciaTotalM,
-    duracionTotalS: null,
-    tramos: null,
-    proveedor: "local",
+    // Con trazado, el kilometraje es el REAL por calle y no la recta: sumarlo
+    // acá evita que la pantalla muestre 66 km de recta bajo una línea de 90.
+    distanciaTotalM: tramos
+      ? tramos.reduce((a, t) => a + t.distanciaM, 0)
+      : local.distanciaTotalM,
+    duracionTotalS: tramos ? tramos.reduce((a, t) => a + t.duracionS, 0) : null,
+    tramos,
+    proveedor: tramos ? "google" : "local",
   };
+}
+
+/**
+ * Le pide a Compute Routes la geometría de un orden que ya está decidido.
+ *
+ * Devuelve `null` —sin lanzar— ante cualquier problema: proveedor apagado,
+ * parada sin coordenada, o un fallo de red. **No poder dibujar una ruta no es
+ * motivo para no tenerla.**
+ *
+ * ⚠️ El punto de término NO entra: acá el destino sí saldría dibujado, y la
+ * polilínea tiene que terminar en la última parada (canal 3 del §4.3).
+ */
+async function trazarSecuencia(
+  origen: Punto,
+  secuencia: readonly { pedidoId: string; orden: number }[],
+  paradas: readonly ParadaDelManifiesto[],
+): Promise<TramoRuta[] | null> {
+  if (obtenerPuertoOptimizacion() === null || secuencia.length === 0) return null;
+
+  const porId = new Map(paradas.map((p) => [p.pedidoId, p]));
+  const puntos: Punto[] = [origen];
+  for (const s of secuencia) {
+    const parada = porId.get(s.pedidoId);
+    const punto = parada ? puntoUsable(parada.lat, parada.long) : null;
+    // Una sola parada sin coordenada rompe la correspondencia tramo↔salto, y un
+    // trazado desalineado dibuja la línea por un lado y los números por otro.
+    // Se descarta el trazado entero: mejor recta honesta que línea mentirosa.
+    if (!punto) return null;
+    puntos.push(punto);
+  }
+
+  try {
+    return await new GoogleComputeRoutesAdapter().trazarRuta(puntos);
+  } catch (causa) {
+    if (!(causa instanceof ErrorRuteo)) throw causa;
+    console.error(
+      "[ruta-manifiesto] no se pudo trazar por calle, queda la recta:",
+      causa.message,
+    );
+    return null;
+  }
 }
 
 /**
