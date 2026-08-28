@@ -86,6 +86,24 @@ function inicioDelMes(hoy: string): string {
 
 const ES_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Qué compone el total que se le paga a los conductores.
+ *
+ * 🔴 El caso de CERO entregas pagadas tiene texto propio, y no es cosmética:
+ * «0 entregas más 4 visitas» es la frase que salió en producción y se lee como
+ * un error de plural, cuando en realidad está diciendo algo grave — que el total
+ * es puro retiro y que **ninguna entrega llegó a tener su pago**. Un dato así no
+ * puede depender de que alguien note el cero.
+ */
+function notaDelPago(entregas: number, visitas: number): string {
+  const e = (n: number) => `${n} ${n === 1 ? "entrega" : "entregas"}`;
+  const v = (n: number) => `${n} ${n === 1 ? "visita" : "visitas"} a bodega`;
+  if (entregas === 0 && visitas === 0) return "Sin pagos en el rango.";
+  if (entregas === 0) return `Solo ${v(visitas)}: ninguna entrega tiene su pago.`;
+  if (visitas === 0) return `${e(entregas)}. Sin visitas a bodega en el rango.`;
+  return `${e(entregas)} más ${v(visitas)}.`;
+}
+
 export default async function PaginaReporteria({
   searchParams,
 }: {
@@ -257,11 +275,7 @@ export default async function PaginaReporteria({
             <Resumen
               titulo="Se le paga a los conductores"
               valor={formatearCLP(reporte.totalPago)}
-              nota={
-                reporte.visitas.length > 0
-                  ? `${entregasPagadas} ${entregasPagadas === 1 ? "entrega" : "entregas"} más ${reporte.visitas.length} ${reporte.visitas.length === 1 ? "visita" : "visitas"} a bodega.`
-                  : `${entregasPagadas} ${entregasPagadas === 1 ? "entrega" : "entregas"}. Sin visitas a bodega en el rango.`
-              }
+              nota={notaDelPago(entregasPagadas, reporte.visitas.length)}
             />
             <Resumen
               titulo="Diferencia"
