@@ -1,5 +1,5 @@
 /**
- * Las tres secciones del módulo de tarifas — la parte PURA.
+ * Las cuatro secciones del módulo de tarifas — la parte PURA.
  * =============================================================================
  *
  * ⚠️ **Este archivo NO lleva `"use client"`, y esa es toda su razón de ser.**
@@ -23,11 +23,12 @@ export const SECCIONES_TARIFAS = [
   { clave: "tarifas", etiqueta: "Tarifas" },
   { clave: "zonas", etiqueta: "Zonas" },
   { clave: "retiro", etiqueta: "Retiro" },
+  { clave: "periodos", etiqueta: "Períodos" },
 ] as const;
 
 export type SeccionTarifas = (typeof SECCIONES_TARIFAS)[number]["clave"];
 
-/** Sanea `?seccion=`: cualquier cosa que no sea una de las tres cae en tarifas. */
+/** Sanea `?seccion=`: cualquier cosa que no sea una de las cuatro cae en tarifas. */
 export function sanearSeccionTarifas(valor: string | undefined | null): SeccionTarifas {
   return SECCIONES_TARIFAS.some((s) => s.clave === valor) ? (valor as SeccionTarifas) : "tarifas";
 }

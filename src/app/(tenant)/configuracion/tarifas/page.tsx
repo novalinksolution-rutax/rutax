@@ -12,13 +12,14 @@ import { sanearSeccionTarifas } from "./secciones";
 import { SeccionTarifas, esCajonTarifa } from "./_secciones/seccion-tarifas";
 import { SeccionZonas } from "./_secciones/seccion-zonas";
 import { SeccionRetiro } from "./_secciones/seccion-retiro";
+import { SeccionPeriodos } from "./_secciones/seccion-periodos";
 
 export const metadata: Metadata = {
   title: "Tarifas",
 };
 
 /**
- * El módulo de tarifas: Tarifas · Zonas · Retiro.
+ * El módulo de tarifas: Tarifas · Zonas · Retiro · Períodos.
  * =============================================================================
  *
  * -----------------------------------------------------------------------------
@@ -66,7 +67,7 @@ export default async function PaginaTarifas({
 
   if (!puedeGestionarTarifas(sesion.usuario)) {
     return (
-      <SinPermisoConfiguracion frase="Las tarifas, las zonas y el pago por retiro solo los pueden ver y cambiar el dueño de la cuenta o administración." />
+      <SinPermisoConfiguracion frase="Las tarifas, las zonas, el pago por retiro y la periodicidad de facturación solo los pueden ver y cambiar el dueño de la cuenta o administración." />
     );
   }
 
@@ -80,7 +81,7 @@ export default async function PaginaTarifas({
       titulo="Tarifas"
       /* Lenguaje de negocio, no jerga, y ahora tiene que cubrir las tres: lo que
          cobras, cómo agrupas para cobrarlo, y la otra mitad de lo que pagas. */
-      bajada="Lo que le cobras a cada seller y lo que le pagas al conductor: por entrega, por zona y por cada visita a bodega. Sin una tarifa vigente, una entrega se hace y no se puede cobrar."
+      bajada="Lo que le cobras a cada seller y lo que le pagas al conductor —por entrega, por zona y por cada visita a bodega— y cada cuánto le pasas la cuenta. Sin una tarifa vigente, una entrega se hace y no se puede cobrar."
       ancho="tabla"
     >
       <BarraSeccionesTarifas activa={seccion} />
@@ -90,6 +91,7 @@ export default async function PaginaTarifas({
       )}
       {seccion === "zonas" && <SeccionZonas />}
       {seccion === "retiro" && <SeccionRetiro tenantId={tenantId} />}
+      {seccion === "periodos" && <SeccionPeriodos tenantId={tenantId} />}
     </PantallaConfiguracion>
   );
 }

@@ -16,6 +16,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { TipoPeriodoFacturacion } from './tipos';
+import { leerPeriodicidadFacturacion } from './config-periodos';
 import {
   diaSemanaCalendario,
   fechaLocalEnSantiago,
@@ -138,19 +139,9 @@ export async function obtenerOCrearPeriodoCobroAbierto(
 ): Promise<string> {
   const { tenantId, sellerId, fechaHecho } = params;
 
-  // 1. Leer configuración de período: primero para el seller, luego para el tenant.
-  const { data: configRows } = await cliente
-    .schema('dinero')
-    .from('config_periodos')
-    .select('tipo_periodo, seller_id')
-    .eq('tenant_id', tenantId)
-    .eq('activa', true)
-    .or(`seller_id.eq.${sellerId},seller_id.is.null`)
-    .order('seller_id', { ascending: false, nullsFirst: false }) // seller-específico primero
-    .limit(2);
-
-  const tipoPeriodo: TipoPeriodoFacturacion =
-    (configRows?.[0]?.tipo_periodo as TipoPeriodoFacturacion | undefined) ?? 'mensual';
+  // 1. Leer configuración de período: el override del seller gana sobre el default
+  //    del tenant. La consulta y el respaldo viven en `config-periodos.ts`.
+  const tipoPeriodo = await leerPeriodicidadFacturacion(cliente, { tenantId, sellerId });
 
   // 2. Calcular rango del período.
   const { fechaInicio, fechaFin } = calcularRangoPeriodo(fechaHecho, tipoPeriodo);
@@ -234,18 +225,9 @@ export async function obtenerOCrearLiquidacionAbierta(
 ): Promise<string> {
   const { tenantId, driverId, fechaHecho } = params;
 
-  // 1. Leer configuración de período del tenant (las liquidaciones siguen el período del tenant).
-  const { data: configRows } = await cliente
-    .schema('dinero')
-    .from('config_periodos')
-    .select('tipo_periodo')
-    .eq('tenant_id', tenantId)
-    .is('seller_id', null)
-    .eq('activa', true)
-    .limit(1);
-
-  const tipoPeriodo: TipoPeriodoFacturacion =
-    (configRows?.[0]?.tipo_periodo as TipoPeriodoFacturacion | undefined) ?? 'mensual';
+  // 1. Leer configuración de período del tenant (las liquidaciones siguen el período
+  //    del tenant, nunca el override de un seller: un conductor reparte de varios).
+  const tipoPeriodo = await leerPeriodicidadFacturacion(cliente, { tenantId });
 
   // 2. Calcular rango del período.
   const { fechaInicio, fechaFin } = calcularRangoPeriodo(fechaHecho, tipoPeriodo);

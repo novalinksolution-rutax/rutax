@@ -1992,6 +1992,70 @@ lo estén: es lo que deja auditar al motor entrega→dinero.
 - [x] Barrido de UUID sobre las celdas reales del libro, con los ids poblados a
       propósito para que la prueba demuestre que no salen.
 
+## Periodicidad de facturación del courier — 2026-08-28
+
+**El bug:** `dinero.config_periodos` la leía el motor desde el primer día y
+**no la escribía nadie** — el único `insert` del repositorio estaba en los seeds
+de demo. La lectura caía siempre en el respaldo del código (`?? 'mensual'`), así
+que **todo courier facturaba mensual, quisiera o no, y no tenía dónde
+cambiarlo**. No fallaba nada: el período salía del mes calendario y se cerraba
+solo. Se descubriría al emitir la primera factura, con las líneas ya repartidas
+en el período equivocado.
+
+**Código bajo prueba:** migración `20260828000001_dinero_fijar_periodicidad_facturacion.sql`
+(función `dinero.fijar_periodicidad_facturacion`) · `src/modules/dinero/config-periodos.ts`
+(lector único) · `src/modules/dinero/periodos.ts` (las dos lecturas duplicadas
+pasan por el lector) · `src/app/(tenant)/configuracion/tarifas/`
+(`periodicidad.ts`, `acciones-periodicidad.ts`, `formulario-periodicidad.tsx`,
+`_secciones/seccion-periodos.tsx`, cuarta sección `?seccion=periodos`).
+
+- [x] **El cambio es atómico.** Desactivar la vigente + insertar la nueva van en
+      una sola transacción: el índice único parcial impone el orden y, sueltas,
+      un fallo en la segunda dejaba al tenant **sin ninguna fila activa** — que
+      no falla, vuelve a caer en `'mensual'`. Verificado en local: tras el
+      cambio queda exactamente 1 activa y la anterior se conserva inactiva.
+- [x] **El candado impide partir un período en curso.** Con un período abierto
+      que ya tiene líneas, el cambio se niega y la configuración no se mueve.
+      Cerrado ese período, vuelve a aplicar.
+- [x] ⚠️ **El candado mira las LÍNEAS, no `periodos_cobro.total_lineas`.**
+      Demostrado en local: el período abierto marcaba `total_lineas = 0`
+      teniendo una línea real (esa columna se rellena al cerrar). Confiársela
+      habría dejado el candado abierto justo cuando debía cerrarse.
+- [x] **Contraprueba del candado**: un período abierto SIN líneas no bloquea —
+      un candado que bloqueara siempre también pasaría la prueba anterior y
+      dejaría la periodicidad imposible de cambiar.
+- [x] **Reafirmar el mismo valor es un no-op**, no una fila de historial por
+      pulsación de Guardar.
+- [x] **ACL**: `service_role` ejecuta; `authenticated` y `anon` no. (`create or
+      replace function` no resetea la ACL — por eso se asevera.)
+- [x] **Un tipo fuera del CHECK se rechaza** (23514), no se guarda.
+- [x] **La pantalla y el motor no pueden divergir**: los rangos que muestra cada
+      opción los calcula `calcularRangoPeriodo`, la misma función que usa el
+      motor al crear el período. Verificado en el navegador el 28-ago: semanal
+      24–30 ago, quincenal 16–31 ago, mensual 1–31 ago.
+- [x] **«Heredado» y «elegido» se distinguen.** Sin fila activa la pantalla dice
+      «Hoy estás facturando mensual, pero nadie lo eligió» y marca la opción
+      como «en uso, sin elegir»; con fila, «vigente». Es el estado real de
+      producción hoy para todo courier.
+- [x] **Guardado real desde la interfaz** (dueño): la marca «vigente» se movió,
+      el acuse dijo la consecuencia («…cierran en modo quincenal. Una entrega de
+      hoy cae en 16 ago – 31 ago»), la fila quedó escrita y la bitácora registró
+      `dinero.periodicidad_facturacion_actualizada` **con autor** y con
+      `tipo_anterior`/`tipo_nuevo`. Sin errores de consola.
+- [x] Vitest 4376/4376 · pgTAP del archivo nuevo 17/17 · typecheck y lint
+      limpios.
+
+### Pendiente
+- [ ] **`dia_cierre` sigue siendo una columna muerta.** `calcularRangoPeriodo`
+      NO la lee: quincenal está clavado en 1–15 / 16–fin y semanal en
+      lunes–domingo. Se escribe NULL a propósito y la pantalla no la ofrece —
+      exponer un campo que no cambia nada es el molde del formulario que promete
+      y cuya escritura no cumple. Si un courier pide cerrar otro día, son las
+      dos mitades a la vez: motor y pantalla.
+- [ ] **Los overrides por seller no tienen interfaz.** El motor ya los resuelve
+      (`config_periodos` con `seller_id`), y el lector los respeta con prueba —
+      pero solo se pueden crear a mano en la base.
+
 ## Reportería: responsive — 2026-08-28
 
 Medido en local a tres anchos, no mirado a ojo.
