@@ -112,15 +112,18 @@ export function Bandeja({
         excluido={{ clave: "cerrada", etiqueta: "Cerradas", conteo: conteos.cerrada }}
         activo={cajonActivo}
         onSeleccionar={irAlCajon}
-        total={conteos.total}
+        // «Activas» y no «Todos»: sin cajón elegido esta pantalla muestra lo
+        // que sigue VIVO, que es lo que necesita quien la abre. El rótulo
+        // anterior prometía todas y no mostraba las resueltas ni las cerradas.
+        etiquetaTodos="Activas"
+        total={conteos.abierta + conteos.en_gestion}
       />
 
       {incidencias.length === 0 ? (
-        <EmptyState
-          icon={CheckCircle2}
-          titulo="Sin incidencias abiertas"
-          descripcion="Las entregas de hoy cerraron sin problemas reportados. Cuando un conductor reporte algo, aparece acá y te llega un aviso."
-        />
+        // El vacío habla del CAJÓN que se está mirando. Antes decía siempre
+        // «sin incidencias abiertas», así que abrir «Cerradas» y no tener
+        // ninguna respondía por otra pregunta.
+        <EmptyState icon={CheckCircle2} {...vacioDelCajon(cajonActivo)} />
       ) : (
         <div className="border border-line">
           <div
@@ -327,3 +330,42 @@ export function formatearAntiguedad(desde: string): string {
   return resto === 0 ? `${horas} h` : `${horas} h ${String(resto).padStart(2, "0")}`;
 }
 
+/**
+ * Qué dice el estado vacío según el cajón abierto.
+ *
+ * Un vacío que responde por otra pregunta hace dudar de si el filtro funcionó.
+ */
+function vacioDelCajon(cajon: EstadoIncidencia | null): {
+  titulo: string;
+  descripcion: string;
+} {
+  switch (cajon) {
+    case "abierta":
+      return {
+        titulo: "Ninguna incidencia abierta",
+        descripcion:
+          "Cuando un conductor reporte un problema en una entrega, aparece acá y te llega un aviso.",
+      };
+    case "en_gestion":
+      return {
+        titulo: "Ninguna en gestión",
+        descripcion: "Acá aparecen las incidencias que alguien de tu equipo ya tomó.",
+      };
+    case "resuelta":
+      return {
+        titulo: "Ninguna resuelta todavía",
+        descripcion: "Las incidencias que se cierran con una solución aparecen acá.",
+      };
+    case "cerrada":
+      return {
+        titulo: "Ninguna cerrada",
+        descripcion: "Acá quedan las que se archivaron sin resolver.",
+      };
+    default:
+      return {
+        titulo: "Sin incidencias activas",
+        descripcion:
+          "Las entregas cerraron sin problemas reportados. Cuando un conductor reporte algo, aparece acá y te llega un aviso.",
+      };
+  }
+}

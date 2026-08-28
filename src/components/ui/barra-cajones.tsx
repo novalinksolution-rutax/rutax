@@ -106,6 +106,7 @@ export function BarraCajones({
   activo,
   onSeleccionar,
   total,
+  etiquetaTodos = "Todos",
   className,
 }: {
   cajones: Cajon[]
@@ -123,6 +124,17 @@ export function BarraCajones({
   /** Total real del conjunto filtrado, incluido el excluido. */
   /** `null` = no se pudo leer. Ver el comentario de `conteo`. */
   total: number | null
+  /**
+   * Cómo se llama el cajón por defecto. `"Todos"` salvo que se diga otra cosa.
+   *
+   * 🔴 Existe porque en Incidencias «Todos» MENTÍA. Esa pantalla, sin cajón
+   * elegido, muestra a propósito solo lo que sigue vivo —abiertas y en
+   * gestión—, que es lo correcto para quien la abre. Pero el chip decía «Todos»
+   * con un 1 al lado, se tocaba, y no aparecía nada: la única incidencia estaba
+   * resuelta. Un rótulo que promete lo que la pantalla no hace es peor que no
+   * tener el chip.
+   */
+  etiquetaTodos?: string
   className?: string
 }) {
   const sumaCajones = cajones.reduce((acc, c) => acc + (c.conteo ?? 0), 0)
@@ -171,7 +183,7 @@ export function BarraCajones({
         )}
       >
         <BotonCajon
-          etiqueta="Todos"
+          etiqueta={etiquetaTodos}
           conteo={total}
           activo={activo === null}
           onClick={() => onSeleccionar(null)}
