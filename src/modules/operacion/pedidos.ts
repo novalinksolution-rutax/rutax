@@ -35,6 +35,7 @@ import type {
 import { GRUPOS_ESTADO_PEDIDO } from "./tipos";
 import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
 import { ahoraEnSantiago, hoyEnSantiago } from "@/lib/fecha-santiago";
+import { filtroPedidosDelDia } from "./dia-operativo";
 import { resolverZona } from "./zonas";
 import { evaluarVentanaCorte } from "./ventanas-corte";
 import { resolverTarifaVigente } from "./tarifas";
@@ -329,7 +330,12 @@ function aplicarFiltrosPedidos(
   // Día exacto (excluyente) o rango. `fecha` gana si vino: preserva el
   // comportamiento histórico y los deep-links de la Torre (`?fecha=…`).
   if (filtros.fecha) {
-    query = query.eq("fecha_compromiso", filtros.fecha);
+    // 🔴 La MISMA regla que el Dashboard y las métricas: del día, o sin fecha y
+    // creado ese día. Antes era un `.eq` pelado, y en SQL un NULL no satisface
+    // ninguna comparación — así que el Dashboard decía «1 de 27» y esta lista
+    // mostraba 17. Los diez de diferencia eran pedidos reales, contados por una
+    // pantalla y ocultos por la única donde se podían tocar.
+    query = query.or(filtroPedidosDelDia(filtros.fecha));
   } else {
     if (filtros.fechaDesde) query = query.gte("fecha_compromiso", filtros.fechaDesde);
     if (filtros.fechaHasta) query = query.lte("fecha_compromiso", filtros.fechaHasta);

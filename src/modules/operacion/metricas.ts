@@ -10,6 +10,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { filtroPedidosDelDia } from "./dia-operativo";
 import type { MetricasOperativas, EstadoPedido, ImpactoSla } from "./tipos";
 import {
   ahoraEnSantiago,
@@ -92,12 +93,7 @@ export async function obtenerMetricasDelDia(
       .from("pedidos")
       .select("id, estado, destinatario_comuna, sla_cumplido")
       .eq("tenant_id", tenantId)
-      .or(
-        `fecha_compromiso.eq.${fechaStr},` +
-          `and(fecha_compromiso.is.null,` +
-          `creado_en.gte.${desde.toISOString()},` +
-          `creado_en.lt.${hasta.toISOString()})`,
-      )
+      .or(filtroPedidosDelDia(fechaStr))
       .range(rangoDesde, rangoHasta),
   );
 

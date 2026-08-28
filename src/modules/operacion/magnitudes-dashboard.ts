@@ -41,6 +41,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { filtroPedidosDelDia } from "./dia-operativo";
 import {
   combinarFechaHoraSantiago,
   fechaLocalEnSantiago,
@@ -49,23 +50,6 @@ import {
   sumarDiasCalendario,
 } from "@/lib/fecha-santiago";
 import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
-
-/**
- * El filtro de «pedidos del día», idéntico al de `obtenerMetricasDelDia`: por
- * fecha de compromiso, o creados ese día cuando no tienen una (el same-day sin
- * fecha fija). Se repite acá a propósito en vez de exportarse desde `metricas`:
- * son la misma regla y tienen que moverse juntas, así que va con esta nota en
- * los dos lados.
- */
-function filtroPedidosDelDia(fechaStr: string): string {
-  const { desde, hasta } = limitesDelDiaSantiago(fechaStr);
-  return (
-    `fecha_compromiso.eq.${fechaStr},` +
-    `and(fecha_compromiso.is.null,` +
-    `creado_en.gte.${desde.toISOString()},` +
-    `creado_en.lt.${hasta.toISOString()})`
-  );
-}
 
 const ESTADOS_ENTREGADO = ["entregado", "entregado_manual"] as const;
 
