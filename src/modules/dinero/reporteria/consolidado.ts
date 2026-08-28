@@ -216,6 +216,41 @@ interface FilaPedido {
   destinatario_comuna: string | null;
 }
 
+/**
+ * El `select` que se le manda a `operacion.pedidos`, y su guarda.
+ * =============================================================================
+ *
+ * 🔴 **Existe por un bug que llegó a producción el 2026-08-28.** El `select` era
+ * un literal suelto y se quedó sin `fuente` ni `referencia_externa` mientras la
+ * interfaz `FilaPedido` sí las declaraba. **Nada falló**: PostgREST devolvió
+ * filas válidas sin esas columnas, y TypeScript no puede comparar un string de
+ * `select` contra un tipo. El resultado en pantalla fue que **todas las filas
+ * mostraron «—» como fuente** y el desglose por fuente colapsó en un solo grupo
+ * sin sentido — justo la parte recién construida para que Falabella entrara
+ * sola. Un dato que falta acá no da error: da un guion.
+ *
+ * La guarda se hace sobre el LITERAL, que es exactamente lo que viaja a
+ * PostgREST — no sobre una lista paralela que podría desincronizarse de él, ni
+ * sobre un `join()` dinámico, que además rompe la inferencia del cliente.
+ */
+const SELECT_PEDIDO =
+  "id, fuente, tipo_pedido, referencia_externa, codigo_interno, ml_order_id, ml_shipment_id, destinatario_nombre, destinatario_comuna" as const;
+
+/** Parte un literal por su separador. Es lo que deja leer el `select` como tipo. */
+type Partir<S extends string, D extends string> = S extends `${infer A}${D}${infer B}`
+  ? [A, ...Partir<B, D>]
+  : [S];
+
+/**
+ * Si `FilaPedido` gana un campo que el `select` no pide, esto **deja de
+ * compilar** y el mensaje nombra el que falta.
+ */
+type ColumnasFaltantes = Exclude<keyof FilaPedido, Partir<typeof SELECT_PEDIDO, ", ">[number]>;
+const _elSelectPideTodoLoQueSeLee: ColumnasFaltantes extends never
+  ? true
+  : ["Falta pedirle estas columnas a operacion.pedidos:", ColumnasFaltantes] = true;
+void _elSelectPideTodoLoQueSeLee;
+
 /** Cuántos ids caben en un `.in()` sin que la URL se vuelva un 414. */
 const TAMANO_LOTE_IDS = 100;
 
@@ -331,7 +366,7 @@ export async function obtenerReporteConsolidado(
       .schema("operacion")
       .from("pedidos")
       .select(
-        "id, tipo_pedido, codigo_interno, ml_order_id, ml_shipment_id, destinatario_nombre, destinatario_comuna",
+        SELECT_PEDIDO,
       )
       .eq("tenant_id", tenantId)
       .in("id", lote);
