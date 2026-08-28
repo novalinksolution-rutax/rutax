@@ -2141,6 +2141,96 @@ capacidad `gestionar_perfil_empresa` · `src/lib/ui/bancos-chile.ts`.
       el catálogo, en la matriz (dueño + administración) y en las etiquetas
       legibles, con las pruebas de TypeScript en verde.
 
+## Interruptor de áreas: Rutax apaga por courier lo que no es productivo — 2026-08-28
+
+**El encargo:** el módulo de dinero no está productivo y el primer courier real
+empieza a operar. Rutax necesita apagar «esta parte no está lista» por courier,
+alcanzando a TODOS sus usuarios —los de hoy y los que cree mañana— sin tocar
+roles, conservando lo que sí es valioso: ver los cobros, lo que se le debe a cada
+conductor, lo que se le debe cobrar a cada seller y la reportería.
+
+**Código bajo prueba:** migración `20260828000003` (tabla `plataforma.areas_habilitadas`
++ sembrado de couriers existentes) · `src/modules/identidad/areas-producto.ts` ·
+`capacidades.ts` (el interruptor dentro de `tieneCapacidad`, capacidades nuevas
+`ver_periodos_cobro` y `ver_liquidaciones`) · `usuario-actual.ts` ·
+`usuario-actual-servidor.ts` y `autenticar-bearer.ts` (carga de áreas) ·
+`superficie-courier.ts` (`obtenerAreasHabilitadas`) · `plataforma/areas-courier.ts` ·
+`admin/couriers/[tenantId]/{page,panel-areas,areas-actions}` ·
+`dinero/jobs/conciliar-periodo.ts` · `onboarding/pasos.ts`.
+
+- [x] **El interruptor va en `tieneCapacidad`**, así que cubre las ~50 puertas
+      existentes sin tocar ninguna y una pantalla nueva no se lo puede saltar si
+      la gatea con una capacidad.
+- [x] 🔴 **Ver y hacer, separados.** Con las cinco áreas apagadas, en Dinero
+      quedan **Períodos, Liquidaciones y Reportería** y desaparecen Conciliación
+      y Cobranza. **Contraprueba en el navegador**: al reencender vuelven los
+      cinco destinos. Sin ella, un interruptor que escondiera siempre habría
+      pasado igual.
+- [x] **Surte efecto en la siguiente navegación**, sin cerrar sesión ni esperar a
+      que se renueve el token: las áreas se leen por request en
+      `obtenerSesionActual`, que ya está memoizada con `cache()`.
+- [x] **`areasHabilitadas` es OBLIGATORIO en el tipo.** La primera versión usaba
+      un default silencioso; hacerlo obligatorio convirtió el descuido en error
+      de compilación y el compilador listó los 47 sitios a declarar. Aun así se
+      lee con `?? []`: un objeto sin tipar hacía que `.includes` lanzara un
+      TypeError, y lanzar en la función que arma la navegación deja la página en
+      blanco — negar solo esconde un botón.
+- [x] **La app nativa del conductor entra por `autenticar-bearer`**, no por
+      `obtenerSesionActual`. Sin cargar ahí las áreas, el conductor habría
+      perdido su liquidación aunque Rutax la tuviera abierta.
+- [x] **Jobs**: `ejecutar-payout` queda cubierto gratis (nunca nace de un cron,
+      solo de la acción humana que la capacidad bloquea); `cerrar-periodo` NO se
+      apaga —cerrar no es facturar, y sin él el courier vería un solo período
+      gigante que nunca rota—; el único con comprobación explícita es
+      `conciliar-periodo`, porque lo dispara el cierre.
+- [x] **Backstage probado con sesión real** (login + segundo factor): apagar pide
+      confirmación y encender no, el contador se mueve 5→4→5, y queda el asiento
+      `plataforma.area_apagada` con actor `super_admin` y autor.
+- [x] **El asistente encoge de 15 a 9 pasos** con todo apagado, renumerado sin
+      huecos. El paso de facturación se partió en dos para que «Los datos de tu
+      empresa» sobreviva: es identidad tributaria, no configuración DTE.
+- [x] pgTAP 11/11 · Vitest 4410/4410 · typecheck, lint y build limpios.
+
+### Tres bugs que solo aparecieron al abrir la pantalla
+
+- [x] 🔴 **Reintroduje el defecto de los dos conteos.** El encabezado del
+      asistente decía «13 de 14» encima de nueve renglones, porque el conteo
+      salía de `estado.ts` y la lista ya venía filtrada. Es el MISMO defecto de
+      los dos conteos a 25 px que ese archivo ya había corregido una vez.
+- [x] 🔴 **La liquidación del conductor no quedaba gateada por ninguna área.**
+      Mapeé `ver_documentos_propios` por tipo de usuario creyendo que servía al
+      seller y al conductor; la matriz dice otra cosa — el conductor usa
+      `ver_liquidacion_propia`. Lo destapó una prueba.
+- [x] **La frase de cierre prometía lo apagado**: «ya puedes facturar a tus
+      sellers y liquidar a tus conductores» con esas dos cosas apagadas.
+
+### Y uno de coste, en un componente compartido
+
+- [x] 🔴 **`CampoDireccion` buscaba AL MONTAR, no solo al escribir.** Con el
+      formulario precargado —editar una bodega, volver al paso de la empresa—
+      abría una lista que nadie pidió sobre una dirección ya decidida. Google
+      cobra **por sesión de autocompletado**, así que cada apertura era una
+      sesión facturada sin una tecla. Alcanzaba a bodegas del courier y del
+      seller. ⚠️ El guard compara contra el VALOR INICIAL y no una bandera «ya
+      monté»: StrictMode monta, desmonta y remonta, el `ref` sobrevive y el
+      segundo pase busca igual — comprobado en el navegador antes de cambiarlo.
+
+### Estado y pendientes
+- [x] **Los couriers que YA existen nacen ENCENDIDOS** (decisión del usuario): la
+      migración los siembra con las cinco, así que el despliegue no les cambió
+      nada. Los couriers NUEVOS nacen apagados — son dos cosas distintas y el
+      sembrado no toca el default.
+- [ ] **Ventanas de corte y SLA siguen sin pantalla.** `identidad.ventanas_corte`
+      la leen la Torre y `operacion/metricas.ts` y ninguna pantalla la escribe.
+      Ofrecerla exige decidir el esquema: hoy `seller_id` es NOT NULL, así que no
+      existe un valor por defecto del courier.
+- [ ] **La cuenta bancaria no se pinta en el portal del seller.** Se guarda y la
+      RLS ya lo permite; falta mostrarla donde el seller la necesita.
+- [ ] **El panel de áreas exige `admin_total` + AAL2 incluso para LEER.** Un
+      `soporte_lectura` no ve qué áreas tiene un courier (la ficha se muestra sin
+      el panel). Es conservador a propósito; si estorba, el gate de lectura se
+      puede bajar a `exigirSuperAdmin`.
+
 ## Reportería: responsive — 2026-08-28
 
 Medido en local a tres anchos, no mirado a ojo.
