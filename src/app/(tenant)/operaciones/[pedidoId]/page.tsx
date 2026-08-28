@@ -36,6 +36,7 @@ import { BadgeEstado } from "@/components/ui/badge-estado";
 import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { PanelTrazabilidadFinanciera } from "@/components/dinero/panel-trazabilidad-financiera";
+import { AvisoLineaFaltante } from "./boton-regenerar-dinero";
 import {
   traducirEstadoPedido,
   traducirTipoIncidencia,
@@ -574,6 +575,18 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
                 pedidoEntregado={pedidoEntregado}
                 abrirPorDefecto={sp.traza === "1"}
               />
+
+              {/* 🔴 El hueco, con su salida. Una línea ANULADA no es un hueco:
+                  es una decisión con autor y motivo, y ofrecer regenerarla sería
+                  proponer deshacerla por la puerta de atrás. Solo cuenta como
+                  falta la que no existe. */}
+              {pedidoEntregado && (
+                <AvisoLineaFaltante
+                  pedidoId={pedido.id}
+                  faltaCobro={!traza.cobro}
+                  faltaLiquidacion={!traza.liquidacion}
+                />
+              )}
             </section>
           )}
         </div>
