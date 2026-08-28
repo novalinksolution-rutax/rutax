@@ -776,27 +776,6 @@ export const jobGenerarLineas = inngest.createFunction(
       return existente.id as string;
     });
 
-    // Paso 3: Asignar línea de cobro a su período.
-    await step.run('asignar-periodo-cobro', async () => {
-      if (!lineaCobroId) return;
-
-      const supabase = crearClienteServiceRole();
-      const periodoId = await obtenerOCrearPeriodoCobroAbierto(supabase, {
-        tenantId,
-        sellerId,
-        fechaHecho: new Date(fechaTransicion),
-      });
-
-      // UPDATE solo si la línea aún no tiene período asignado (idempotente).
-      await supabase
-        .schema('dinero')
-        .from('lineas_cobro')
-        .update({ periodo_cobro_id: periodoId, actualizado_en: new Date().toISOString() })
-        .eq('id', lineaCobroId)
-        .eq('tenant_id', tenantId)
-        .is('periodo_cobro_id', null);
-    });
-
     // Paso 4: Generar línea de liquidación (idempotente con ON CONFLICT DO NOTHING).
     const lineaLiquidacionId = await step.run('generar-linea-liquidacion', async () => {
       if (!elegibilidad.generaLiquidacion || !driverIdAsignado) {
@@ -1130,5 +1109,42 @@ export const jobGenerarLineas = inngest.createFunction(
       generaLiquidacion: elegibilidad.generaLiquidacion,
       lineaLiquidacionId,
     };
+
+    // 🔴 Paso movido al FINAL el 2026-08-27, y el porqué importa.
+    //
+    // Archivar la línea de cobro en su período puede fallar de forma legítima
+    // —el período del seller está cerrado— y ese fallo es RETRYABLE a
+    // propósito: hace falta que un humano lo abra. Pero los pasos de Inngest
+    // son secuenciales, así que mientras esto vivía ANTES de la liquidación, un
+    // período cerrado **impedía pagarle al conductor**.
+    //
+    // Pasó en producción: `RX-8HCZ-0PPB` quedó con su línea de cobro y sin
+    // línea de liquidación, mientras las cinco entregas anteriores tenían las
+    // dos. El conductor hizo el viaje igual; que el seller tenga el mes cerrado
+    // no es asunto suyo.
+    //
+    // Son dos hechos independientes y ahora el orden lo respeta: primero se
+    // registra todo lo que ocurrió, y al final se archiva. Si el archivo falla,
+    // el reintento sigue existiendo y la conciliación ya levanta
+    // `linea_cobro_sin_periodo` — que es exactamente la red que corresponde.
+    await step.run('asignar-periodo-cobro', async () => {
+      if (!lineaCobroId) return;
+
+      const supabase = crearClienteServiceRole();
+      const periodoId = await obtenerOCrearPeriodoCobroAbierto(supabase, {
+        tenantId,
+        sellerId,
+        fechaHecho: new Date(fechaTransicion),
+      });
+
+      // UPDATE solo si la línea aún no tiene período asignado (idempotente).
+      await supabase
+        .schema('dinero')
+        .from('lineas_cobro')
+        .update({ periodo_cobro_id: periodoId, actualizado_en: new Date().toISOString() })
+        .eq('id', lineaCobroId)
+        .eq('tenant_id', tenantId)
+        .is('periodo_cobro_id', null);
+    });
   },
 );

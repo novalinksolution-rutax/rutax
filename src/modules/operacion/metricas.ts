@@ -17,7 +17,6 @@ import {
   horaAMinutos,
   fechaLocalEnSantiago,
   hoyEnSantiago,
-  limitesDelDiaSantiago,
   sumarDiasCalendario,
   diaSemanaCalendario,
 } from "@/lib/fecha-santiago";
@@ -65,13 +64,11 @@ export async function obtenerMetricasDelDia(
 ): Promise<MetricasOperativas> {
   const fechaStr = fechaLocalEnSantiago(fecha);
 
-  // Los bordes del día van en calendario de SANTIAGO. Antes se pegaba
-  // `T00:00:00.000Z`/`T23:59:59.999Z` a una fecha civil chilena, lo que corría
-  // la ventana 3–4 h: los pedidos creados después de las 20:00 caían en el día
-  // siguiente y faltaban en las métricas de hoy, mientras entraban los de la
-  // noche anterior. El helper además es semiabierto, así que no se pierde el
-  // último milisegundo del día como pasaba con `23:59:59.999`.
-  const { desde, hasta } = limitesDelDiaSantiago(fechaStr);
+  // Los bordes del día los pone `filtroPedidosDelDia`, en calendario de
+  // SANTIAGO. Antes se pegaba `T00:00:00.000Z`/`T23:59:59.999Z` a una fecha
+  // civil chilena, lo que corría la ventana 3–4 h: los pedidos creados después
+  // de las 20:00 caían en el día siguiente y faltaban en las métricas de hoy,
+  // mientras entraban los de la noche anterior.
 
   // Pedidos del día (por fecha_compromiso o creados ese día).
   // service_role accede al esquema directo (las vistas `public` son para el
