@@ -25,9 +25,18 @@ import { pluralizar } from "../_lib/estado-preparacion";
 export function CargaPorComuna({
   errorCarga,
   filas,
+  bultosRetiradosHoy,
 }: {
   errorCarga: boolean;
   filas: readonly CargaComunaRetiro[];
+  /**
+   * Cuántos bultos se retiraron hoy EN TOTAL, despachados o no.
+   *
+   * Hace falta solo para el vacío: sin este dato, «no hay nada pendiente» y «no
+   * se ha retirado nada» son indistinguibles desde acá, y son dos días
+   * completamente distintos.
+   */
+  bultosRetiradosHoy: number;
 }) {
   return (
     <section aria-labelledby="carga-comuna-heading" className="space-y-3">
@@ -35,7 +44,12 @@ export function CargaPorComuna({
         <h2 id="carga-comuna-heading" className="text-sm font-semibold text-muted-foreground">
           Carga por comuna
         </h2>
-        <p className="text-xs text-muted-foreground">Bultos ya retirados, agrupados por comuna de destino.</p>
+        {/* «Por despachar» y no «ya retirados»: el bulto sale de esta lista en
+            cuanto su manifiesto se confirma. El rótulo viejo prometía todo lo
+            retirado del día y mostraba solo lo pendiente. */}
+        <p className="text-xs text-muted-foreground">
+          Lo retirado que falta por despachar, agrupado por comuna de destino.
+        </p>
       </div>
 
       {errorCarga ? (
@@ -46,7 +60,15 @@ export function CargaPorComuna({
           No pudimos cargar la carga por comuna. Intenta recargar la página.
         </div>
       ) : filas.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Todavía no hay bultos retirados.</p>
+        // 🔴 Decía siempre «todavía no hay bultos retirados», y con 17 retirados
+        // y todos despachados eso era FALSO — contradecía al encabezado de la
+        // misma pantalla, que en ese momento decía «17 bultos retirados hoy».
+        // Un vacío que contradice la cifra de al lado hace dudar de las dos.
+        <p className="text-sm text-muted-foreground">
+          {bultosRetiradosHoy > 0
+            ? `Nada por despachar: los ${bultosRetiradosHoy} bultos de hoy ya están en un manifiesto confirmado o en la calle.`
+            : "Todavía no hay bultos retirados."}
+        </p>
       ) : (
         <ul className="divide-y divide-border rounded-lg border border-border">
           {/* El máximo de la lista es el 100 % de la barra. Es una comparación

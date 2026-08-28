@@ -223,7 +223,11 @@ export default async function PaginaPreparacionDelDia() {
             />
 
             <div className="space-y-6">
-              <CargaPorComuna errorCarga={errorCarga} filas={cargaPorComuna} />
+              <CargaPorComuna
+                errorCarga={errorCarga}
+                filas={cargaPorComuna}
+                bultosRetiradosHoy={magnitudes?.bultosRetiradosHoy ?? 0}
+              />
               {puedeAsignar && <BloqueAsignacion tenantId={tenantId} fecha={fecha} />}
             </div>
           </div>
