@@ -124,8 +124,13 @@ anterior cuando una salga mala.
 ### 🟢 Menores — anotados para no re-descubrirlos
 
 **3.10 ·** `android.permissions` declara `READ_EXTERNAL_STORAGE`, que en Android 13+
-ya no hace nada (`expo-image-picker` moderno no lo necesita). Un permiso de más
-en la ficha de la app, sin efecto funcional.
+ya no hace nada (`expo-image-picker` moderno no lo necesita).
+**Se decidió NO quitarlo.** Estaba en el plan de limpieza y se revirtió al
+mirarlo de cerca: en Android 12 y anteriores ese permiso **sí** gobierna el
+acceso a la galería, y ése es justo el teléfono que puede tener un repartidor.
+La ganancia de sacarlo era cosmética —un permiso de más en la ficha— y el riesgo
+era romper «adjuntar evidencia desde galería» en el hardware más viejo de la
+flota. No compensa.
 
 **3.11 ·** El proyecto está en **Expo SDK 54**; hoy ya existen SDK 55 y 56.
 **Recomiendo NO subir ahora**: SDK 54 está soportado, el código está verde, y una
@@ -176,6 +181,8 @@ aparte.
 | Actualizaciones | **Se agrega EAS Update** (OTA). |
 | Google Maps | **Hay que crear la clave**; Google Cloud con facturación. |
 | Alcance | **Flota completa de un courier real (≈10-20 conductores).** |
+| Verificación de desarrollador | **Cuenta de distribución limitada gratuita** (tope 20 dispositivos). Ver la alerta en §8. |
+| Repo conductor | Los cambios van **directo a `master`** de `rutax-conductor`. |
 
 ---
 
@@ -188,10 +195,7 @@ aparte.
    actualizar al que ya está instalado — hay que desinstalar y reinstalar en cada
    teléfono, perdiendo la sesión del conductor.
 2. **Los archivos del logo.**
-3. **Verificación de desarrollador de Android** (§4): ¿se registra la cuenta de
-   distribución limitada gratuita —que topa en 20 dispositivos y calza justo—, o
-   se paga desde ya la completa de US$25 pensando en el segundo courier?
-4. **Plan de Expo**: el tier gratuito da 15 builds Android al mes. Para un primer
+3. **Plan de Expo**: el tier gratuito da 15 builds Android al mes. Para un primer
    despliegue alcanza de sobra; conviene confirmar que no hay apuro por el plan
    pagado.
 
@@ -202,11 +206,15 @@ aparte.
 Cada etapa termina en algo verificable. La 1 y la 2 no dependen de ninguna
 respuesta pendiente.
 
-**Etapa 1 — Sanear el proyecto para que compile bien** *(sin dependencias)*
-`npx expo install expo-asset` · quitar `READ_EXTERNAL_STORAGE` · declarar
-`android.buildType: "apk"` en los perfiles de sideload · apuntar
-`EXPO_PUBLIC_API_URL` a `rutax.io` · fijar `versionCode`, `appVersionSource` y
-`autoIncrement`. Verificable con `expo-doctor` limpio, typecheck y pruebas verdes.
+**Etapa 1 — Sanear el proyecto para que compile bien** ✅ **HECHA** (2026-08-29,
+`rutax-conductor@59761f7`)
+`expo-asset` fijado en `~12.0.13` · los tres perfiles de `eas.json` declaran
+`buildType: "apk"` · `production` pasa a `distribution: "internal"` ·
+`EXPO_PUBLIC_API_URL` apunta a `rutax.io` · versionado remoto con `autoIncrement`
+en `production`. `READ_EXTERNAL_STORAGE` se mantiene, por §3.10.
+Verificado: `expo-doctor` 16/18 —los dos que fallan son *fetches* de red
+bloqueados por el proxy del entorno, no problemas del proyecto—, typecheck limpio
+y 263 pruebas verdes. El *porqué* de cada decisión quedó en `ENTORNOS.md`.
 
 **Etapa 2 — Assets de marca** *(depende del logo)*
 Ícono, adaptive icon y splash con el `#1E3A5F` que ya usa la app.
@@ -246,3 +254,30 @@ repartir después.
 a producción, **un retiro registrado es un retiro de verdad**, con sus bultos, y
 el retiro se le paga al conductor por visita a bodega. Para pruebas de humo, un
 conductor de prueba — no uno que cobre.
+
+---
+
+## 8. ⚠️ La deuda con fecha: el tope de 20 dispositivos
+
+Se eligió la **cuenta de distribución limitada gratuita** de Google. Es la
+decisión correcta para este piloto —gratis, sin ID de gobierno, solo un email—
+pero deja dos cabos que hay que vigilar, porque ninguno avisa antes de morder:
+
+1. **El tope es de 20 dispositivos en total**, sumando todas las apps de esa
+   cuenta, y **cada teléfono se enrola a mano**. Con 10-20 conductores el margen
+   es de cero a diez. El día que el courier contrate al conductor 21 —o entre un
+   segundo courier— la instalación simplemente no procede, y el arreglo es migrar
+   a distribución completa (US$25 + ID de gobierno + registrar la llave de firma).
+   **No es un trámite de un rato**, así que conviene empezarlo antes de
+   necesitarlo, no el día que un conductor nuevo no puede instalar.
+2. **La aplicación es global durante 2027.** Chile no está en la primera ola
+   (30-sep-2026: Brasil, Indonesia, Singapur y Tailandia), así que el piloto corre
+   sin fricción. Pero el modelo «cada courier instala un APK que le pasamos» no
+   sobrevive a 2027 sin verificación, y a esa altura publicar en Play Store deja
+   de ser opcional.
+
+**Lo que esto significa para el producto:** la publicación en Play Store pasa de
+«algún día» a un ítem con ventana. Vale la pena planificarla mientras es una
+decisión y no una urgencia — sobre todo porque Play tiene sus propios plazos
+(ficha, política de privacidad, y para cuentas nuevas un período de prueba
+cerrada con testers antes de poder publicar).
