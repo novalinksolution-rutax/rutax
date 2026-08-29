@@ -18,7 +18,7 @@ vi.mock('@/lib/supabase/service-role', () => ({
 }));
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
-import { obtenerMetricasNegocio } from './metricas-negocio';
+import { mesDesplazado, obtenerMetricasNegocio } from './metricas-negocio';
 
 function crearMockSupabase(secuencia: Array<{ data: unknown; error: unknown }>) {
   let i = 0;
@@ -36,8 +36,6 @@ function crearMockSupabase(secuencia: Array<{ data: unknown; error: unknown }>) 
   return q;
 }
 
-const PLAN_A = { id: 'plan-a', precio_mensual_clp: 19990, precio_anual_clp: 199900 };
-const PLAN_B = { id: 'plan-b', precio_mensual_clp: 49990, precio_anual_clp: 499900 };
 
 describe('obtenerMetricasNegocio', () => {
   beforeEach(() => {
@@ -64,17 +62,43 @@ describe('obtenerMetricasNegocio', () => {
     vi.mocked(crearClienteServiceRole).mockReturnValue(
       crearMockSupabase([
         { data: suscripciones, error: null },
-        { data: [PLAN_A, PLAN_B], error: null },
         { data: [{ monto_clp: 19990 }, { monto_clp: 16452 }], error: null }, // pagos del mes
         { data: [{ monto_clp: 19990 }, { monto_clp: 5000 }], error: null }, // vencidos
+        // Serie de facturado: dos meses reales y el resto de la ventana en cero.
+        {
+          data: [
+            { periodo_inicio: '2026-06-01', monto_clp: 200_000 },
+            { periodo_inicio: '2026-07-01', monto_clp: 120_000 },
+            { periodo_inicio: '2026-07-15', monto_clp: 5_000 },
+            // Fuera de la ventana (el reloj está en julio, la ventana llega a
+            // febrero): no debe aparecer ni crear un mes suelto en la serie.
+            { periodo_inicio: '2025-12-01', monto_clp: 999_999 },
+          ],
+          error: null,
+        },
       ]) as unknown as ReturnType<typeof crearClienteServiceRole>,
     );
 
     const m = await obtenerMetricasNegocio();
 
-    // MRR = 19990 (s1, mensual) + round(499900/12)=41658 (s2, anual → mensual)
-    expect(m.mrrClp).toBe(61648);
-    expect(m.arrClp).toBe(61648 * 12);
+    // 🔴 Ya no hay MRR: con el cobro por pedido efectivo no existe un monto
+    // contratado. Lo que se mide es lo FACTURADO, agrupado por el mes del
+    // período — no por cuándo se generó la fila, que con cobro vencido es el mes
+    // siguiente.
+    // Los dos períodos de julio se suman, incluido el ajuste de mitad de mes.
+    expect(m.facturadoPorMes.find((x) => x.mes === '2026-07')?.montoClp).toBe(125_000);
+    expect(m.facturadoPorMes.find((x) => x.mes === '2026-06')?.montoClp).toBe(200_000);
+
+    // 🔴 Un período FUERA de la ventana no entra ni se inventa un mes propio.
+    expect(m.facturadoPorMes.find((x) => x.mes === '2025-12')).toBeUndefined();
+    expect(m.facturadoPorMes.some((x) => x.montoClp === 999_999)).toBe(false);
+
+    // Seis meses, del más antiguo al más reciente, aunque algunos vayan en cero:
+    // un mes sin facturar es un cero, no un hueco que descoloque la serie.
+    expect(m.facturadoPorMes).toHaveLength(6);
+    expect(m.facturadoPorMes.map((x) => x.mes)).toEqual([
+      '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07',
+    ]);
 
     expect(m.couriersPorEstado).toEqual({ trial: 1, activa: 2, suspendida: 1, cancelada: 2 });
 
@@ -100,26 +124,42 @@ describe('obtenerMetricasNegocio', () => {
 
     const m = await obtenerMetricasNegocio();
 
-    expect(m.mrrClp).toBe(0);
-    expect(m.arrClp).toBe(0);
+    expect(m.facturadoPorMes.every((x) => x.montoClp === 0)).toBe(true);
     expect(m.churnMes).toEqual({ canceladas: 0, activasAlInicioAprox: 0, tasa: 0 });
     expect(m.couriersPorEstado).toEqual({ trial: 0, activa: 0, suspendida: 0, cancelada: 0 });
   });
 
   it('el override de características NUNCA afecta el MRR (se ignora — el precio viene solo del plan)', async () => {
-    // Ni siquiera se consulta `caracteristicas_override` — la fila de
-    // suscripción usada aquí no la trae, y el cálculo de MRR igual funciona
-    // usando exclusivamente `planes.precio_mensual_clp`.
+    // `caracteristicas_override` no interviene: la serie sale de lo facturado,
+    // no de precios de plan.
     vi.mocked(crearClienteServiceRole).mockReturnValue(
       crearMockSupabase([
         { data: [{ id: 's1', estado: 'activa', periodicidad: 'mensual', plan_id: 'plan-a', cancelada_en: null }], error: null },
-        { data: [PLAN_A], error: null },
         { data: [], error: null },
         { data: [], error: null },
       ]) as unknown as ReturnType<typeof crearClienteServiceRole>,
     );
 
     const m = await obtenerMetricasNegocio();
-    expect(m.mrrClp).toBe(19990);
+    expect(m.facturadoPorMes).toHaveLength(6);
+  });
+});
+
+describe('mesDesplazado', () => {
+  it('retrocede meses dentro del mismo año', () => {
+    expect(mesDesplazado('2026-08-28', 0)).toBe('2026-08');
+    expect(mesDesplazado('2026-08-28', 5)).toBe('2026-03');
+  });
+
+  it('🔴 cruza el año hacia atrás sin dar el mes 0', () => {
+    // La serie de seis meses mirada en febrero llega a septiembre del año
+    // anterior. Restar del número de mes a secas habría dado «2026-00».
+    expect(mesDesplazado('2027-02-10', 5)).toBe('2026-09');
+    expect(mesDesplazado('2027-01-01', 1)).toBe('2026-12');
+  });
+
+  it('no se apoya en días: febrero no descoloca la cuenta', () => {
+    // Restar 30 días por mes se salta febrero y duplica los de 31.
+    expect(mesDesplazado('2028-03-31', 1)).toBe('2028-02');
   });
 });

@@ -57,6 +57,14 @@ export default async function PaginaMetricas() {
     resultadoNegocio.status === "fulfilled" ? resultadoNegocio.value : null;
   const errorCarga = resultadoNegocio.status === "rejected";
 
+  // La serie viene del más antiguo al más reciente: el último es el mes en
+  // curso y el anterior, el último cerrado. `?? 0` y no un condicional: con un
+  // courier recién dado de alta la serie puede traer meses en cero, que es una
+  // cifra legítima, no un hueco.
+  const serie = metricas?.facturadoPorMes ?? [];
+  const facturadoMesActual = serie.at(-1)?.montoClp ?? 0;
+  const facturadoMesAnterior = serie.at(-2)?.montoClp ?? 0;
+
   const metricasUso: MetricasUsoPlataforma | null =
     resultadoUso.status === "fulfilled" ? resultadoUso.value : null;
   const errorCargaUso = resultadoUso.status === "rejected";
@@ -70,8 +78,8 @@ export default async function PaginaMetricas() {
       <div>
         <h1 className="text-2xl font-semibold">Métricas de negocio</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Salud financiera de Rutax como negocio: ingreso recurrente, cobros del mes, morosidad, churn y couriers
-          por estado de suscripción.
+          Salud financiera de Rutax como negocio: lo facturado mes a mes, los cobros, la morosidad,
+          el churn y los couriers por estado de suscripción.
         </p>
       </div>
 
@@ -86,23 +94,29 @@ export default async function PaginaMetricas() {
         <EmptyState
           icon={BarChart3}
           titulo="Aún no hay couriers con suscripción"
-          descripcion="Cuando se activen las primeras suscripciones, el MRR, ingresos, morosidad y churn aparecerán aquí."
+          descripcion="Cuando se factura el primer período, lo facturado, los cobros, la morosidad y el churn aparecen aquí."
         />
       ) : (
         <>
+          {/* Los dos últimos meses de la serie, para las tarjetas de arriba. La
+              serie viene ordenada del más antiguo al más reciente. */}
           {/* KPIs principales */}
           <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {/* 🔴 Aquí estaban MRR y ARR. Se retiraron con la cuota plana: con
+                el cobro por pedido efectivo NO existe un monto contratado, así
+                que un «ingreso recurrente» sería una estimación presentada como
+                un hecho. Lo que se muestra ahora es lo facturado de verdad. */}
             <TarjetaKPI
               icon={TrendingUp}
-              etiqueta="MRR"
-              valor={formatearCLP(metricas.mrrClp)}
-              ayuda="Ingreso recurrente mensual (solo suscripciones activas)"
+              etiqueta="Facturado el mes pasado"
+              valor={formatearCLP(facturadoMesAnterior)}
+              ayuda="Suma de los períodos de ese mes, incluidos ajustes"
             />
             <TarjetaKPI
               icon={CalendarRange}
-              etiqueta="ARR"
-              valor={formatearCLP(metricas.arrClp)}
-              ayuda="MRR × 12"
+              etiqueta="Van este mes"
+              valor={formatearCLP(facturadoMesActual)}
+              ayuda="Lo facturado del mes en curso, hasta hoy"
             />
             <TarjetaKPI
               icon={Wallet}
@@ -193,7 +207,7 @@ function SeccionUsoPlataforma({
           <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             <strong className="font-medium text-foreground">GMV</strong> = valor de entregas que el motor
             procesó al cerrar períodos de cobro, sumado entre todos los couriers. Es el negocio <em>de los couriers</em>,
-            no el ingreso de Rutax (el ingreso de Rutax es el MRR arriba).
+            no el ingreso de Rutax (el de Rutax es lo facturado, arriba).
           </div>
 
           <div>

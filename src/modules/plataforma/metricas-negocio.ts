@@ -17,13 +17,26 @@
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { ahoraEnSantiago, combinarFechaHoraSantiago, sumarDiasCalendario } from '@/lib/fecha-santiago';
-import type { EstadoSuscripcion, Periodicidad } from './tipos';
+import type { EstadoSuscripcion } from './tipos';
+
+/** Cuántos meses trae la serie de facturado. Seis: medio año se lee de un vistazo. */
+const MESES_SERIE = 6;
 
 export interface MetricasNegocio {
-  /** Monthly Recurring Revenue (CLP entero) — solo suscripciones `activa`. */
-  mrrClp: number;
-  /** MRR * 12. */
-  arrClp: number;
+  /**
+   * Lo FACTURADO por mes, del más antiguo al más reciente.
+   *
+   * 🔴 Reemplaza al MRR/ARR, y no es una simplificación: con el cobro por pedido
+   * efectivo **no existe un monto contratado**. Lo que paga un courier depende de
+   * cuánto despachó, y solo se sabe cuando el mes cerró. Un «MRR» ahí sería una
+   * estimación presentada como si fuera un contrato — y en reparto, que es
+   * estacional, se equivocaría justo en diciembre.
+   *
+   * Se agrupa por `periodo_inicio` y no por cuándo se generó la fila: el período
+   * de agosto se crea el 1 de septiembre (se cobra vencido), y atribuirlo a
+   * septiembre diría que agosto no facturó nada.
+   */
+  facturadoPorMes: Array<{ mes: string; montoClp: number }>;
   /** Conteo de suscripciones por estado (incluye los 4 estados, aunque sean 0). */
   couriersPorEstado: Record<EstadoSuscripcion, number>;
   /** Suma de pagos `confirmado` cuyo `pagado_en` cae en el mes calendario
@@ -53,20 +66,21 @@ export interface MetricasNegocio {
   };
 }
 
-function precioMensualEquivalente(args: {
-  periodicidad: Periodicidad;
-  precioMensualClp: number;
-  precioAnualClp: number;
-}): number {
-  // El override de características (`caracteristicas_override`) NUNCA cambia
-  // precio — el MRR se deriva EXCLUSIVAMENTE de `planes.precio_*_clp`.
-  if (args.periodicidad === 'anual') {
-    return Math.round(args.precioAnualClp / 12);
-  }
-  return args.precioMensualClp;
-}
 
 /** Límites [inicio, finExclusivo) del mes calendario Santiago actual, como instantes UTC. */
+/**
+ * El mes ('YYYY-MM') que está `atras` meses antes del de `hoy` ('YYYY-MM-DD').
+ *
+ * Aritmética de mes CIVIL y no de días: restar 30 días se salta febrero y
+ * duplica los meses de 31. Exportada para poder fijar el cruce de año sin
+ * montar la función entera.
+ */
+export function mesDesplazado(hoy: string, atras: number): string {
+  const [anio, mes] = hoy.split('-').map(Number);
+  const total = anio * 12 + (mes - 1) - atras;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`;
+}
+
 function limitesMesActualSantiago(): { inicio: Date; finExclusivo: Date } {
   const { fecha: hoy } = ahoraEnSantiago();
   const inicioMes = `${hoy.slice(0, 7)}-01`;
@@ -88,18 +102,10 @@ export async function obtenerMetricasNegocio(): Promise<MetricasNegocio> {
   if (errSusc) throw new Error(`Error al leer suscripciones: ${errSusc.message}`);
   const suscripciones = suscData ?? [];
 
-  // 2. Planes (catálogo completo — tabla pequeña) para resolver precios.
-  const { data: planesData, error: errPlanes } = await supabase
-    .schema('plataforma')
-    .from('planes')
-    .select('id, precio_mensual_clp, precio_anual_clp');
-  if (errPlanes) throw new Error(`Error al leer planes: ${errPlanes.message}`);
-  const planesMap = new Map(
-    (planesData ?? []).map((p) => [
-      p.id as string,
-      { mensual: Number(p.precio_mensual_clp), anual: Number(p.precio_anual_clp) },
-    ]),
-  );
+  // ⚠️ Acá se leía el catálogo de planes, y se retiró con el MRR: era su única
+  // razón de existir. Con el cobro por pedido efectivo el ingreso no sale del
+  // precio de un plan, sale de lo que se facturó — así que esta pantalla ya no
+  // necesita saber qué planes hay, y es una consulta menos por visita.
 
   const { inicio: inicioMes, finExclusivo: finMesExclusivo } = limitesMesActualSantiago();
   const inicioMesMs = inicioMes.getTime();
@@ -111,29 +117,17 @@ export async function obtenerMetricasNegocio(): Promise<MetricasNegocio> {
     suspendida: 0,
     cancelada: 0,
   };
-  let mrrClp = 0;
   let canceladasMes = 0;
 
   for (const s of suscripciones) {
     const estado = s.estado as EstadoSuscripcion;
     couriersPorEstado[estado] = (couriersPorEstado[estado] ?? 0) + 1;
 
-    if (estado === 'activa') {
-      const precios = planesMap.get(s.plan_id as string) ?? { mensual: 0, anual: 0 };
-      mrrClp += precioMensualEquivalente({
-        periodicidad: (s.periodicidad as Periodicidad) ?? 'mensual',
-        precioMensualClp: precios.mensual,
-        precioAnualClp: precios.anual,
-      });
-    }
-
     if (estado === 'cancelada' && s.cancelada_en) {
       const t = new Date(s.cancelada_en as string).getTime();
       if (t >= inicioMesMs && t < finMesMs) canceladasMes += 1;
     }
   }
-
-  const arrClp = mrrClp * 12;
 
   // 3. Ingresos del mes: pagos `confirmado` cuyo `pagado_en` cae en el mes
   // calendario Santiago actual. Incluye ajustes de proración a propósito
@@ -157,13 +151,42 @@ export async function obtenerMetricasNegocio(): Promise<MetricasNegocio> {
   if (errVencidos) throw new Error(`Error al leer períodos vencidos: ${errVencidos.message}`);
   const morosidadTotalClp = (vencidos ?? []).reduce((acc, p) => acc + Math.round(Number(p.monto_clp)), 0);
 
+  // 4b. Lo FACTURADO por mes — reemplaza al MRR/ARR (ver JSDoc de `facturadoPorMes`).
+  //
+  // Se suman TODOS los conceptos: el cobro del mes, los ajustes de proración y
+  // los créditos por devolución. Un ajuste es dinero que entró o salió de verdad,
+  // y excluirlo daría una serie que no cuadra con lo que el courier pagó.
+  //
+  // Se leen los últimos MESES_SERIE meses por `periodo_inicio`. La ventana se
+  // arma acá y no con un `group by` en SQL porque PostgREST no agrupa, y traer
+  // los períodos de medio año de una decena de couriers son pocas filas.
+  const hoySantiago = ahoraEnSantiago().fecha;
+  const desdeSerie = `${mesDesplazado(hoySantiago, MESES_SERIE - 1)}-01`;
+  const { data: periodosSerie, error: errSerie } = await supabase
+    .schema('plataforma')
+    .from('periodos_suscripcion')
+    .select('periodo_inicio, monto_clp')
+    .gte('periodo_inicio', desdeSerie);
+  if (errSerie) throw new Error(`Error al leer los períodos facturados: ${errSerie.message}`);
+
+  const porMes = new Map<string, number>();
+  for (let i = MESES_SERIE - 1; i >= 0; i -= 1) porMes.set(mesDesplazado(hoySantiago, i), 0);
+  for (const p of periodosSerie ?? []) {
+    const mes = String(p.periodo_inicio).slice(0, 7);
+    // Solo los meses de la ventana: un `periodo_inicio` anterior no se inventa
+    // una fila nueva en el mapa, que dejaría la serie con huecos desordenados.
+    if (porMes.has(mes)) {
+      porMes.set(mes, (porMes.get(mes) ?? 0) + Math.round(Number(p.monto_clp)));
+    }
+  }
+  const facturadoPorMes = [...porMes.entries()].map(([mes, montoClp]) => ({ mes, montoClp }));
+
   // 5. Churn del mes — aproximación documentada (ver JSDoc de `churnMes`).
   const activasAlInicioAprox = couriersPorEstado.activa + canceladasMes;
   const tasa = activasAlInicioAprox > 0 ? canceladasMes / activasAlInicioAprox : 0;
 
   return {
-    mrrClp,
-    arrClp,
+    facturadoPorMes,
     couriersPorEstado,
     ingresosMesClp,
     morosidadTotalClp,
