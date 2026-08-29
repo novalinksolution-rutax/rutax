@@ -628,9 +628,14 @@ export async function crearPlan(opts: {
   adminSecret: string;
   nombre: string;
   descripcion?: string | null;
-  precioMensualClp: number;
-  precioAnualClp: number;
-  limitePedidosMes?: number | null;
+  /**
+   * CLP por pedido efectivo. Es el eje del cobro desde 2026-08-28 y por eso es
+   * OBLIGATORIO: la modalidad de cuota plana quedó retirada, y un plan sin
+   * tarifa no cobraría nada sin que nada fallara.
+   */
+  precioPorPedidoClp: number;
+  /** Piso mensual. `null` o 0 = sin piso. No aplica el primer mes del courier. */
+  minimoMensualClp?: number | null;
   caracteristicas?: Record<string, unknown>;
   /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
    *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
@@ -641,10 +646,9 @@ export async function crearPlan(opts: {
   const nombre = opts.nombre.trim();
   if (!nombre) throw new Error('El nombre del plan no puede estar vacío.');
 
-  validarPrecioClp(opts.precioMensualClp, 'precioMensualClp');
-  validarPrecioClp(opts.precioAnualClp, 'precioAnualClp');
-  if (opts.limitePedidosMes !== undefined && opts.limitePedidosMes !== null) {
-    validarEnteroNoNegativo(opts.limitePedidosMes, 'limitePedidosMes');
+  validarPrecioClp(opts.precioPorPedidoClp, 'precioPorPedidoClp');
+  if (opts.minimoMensualClp !== undefined && opts.minimoMensualClp !== null) {
+    validarEnteroNoNegativo(opts.minimoMensualClp, 'minimoMensualClp');
   }
   const caracteristicas = sanearJsonbPlano(opts.caracteristicas ?? {}, 'caracteristicas');
 
@@ -662,9 +666,8 @@ export async function crearPlan(opts: {
     entidadId: null,
     detalle: {
       nombre,
-      precio_mensual_clp: opts.precioMensualClp,
-      precio_anual_clp: opts.precioAnualClp,
-      limite_pedidos_mes: opts.limitePedidosMes ?? null,
+      precio_por_pedido_clp: opts.precioPorPedidoClp,
+      minimo_mensual_clp: opts.minimoMensualClp ?? null,
     },
   });
 
@@ -674,9 +677,16 @@ export async function crearPlan(opts: {
     .insert({
       nombre,
       descripcion: opts.descripcion ?? null,
-      precio_mensual_clp: opts.precioMensualClp,
-      precio_anual_clp: opts.precioAnualClp,
-      limite_pedidos_mes: opts.limitePedidosMes ?? null,
+      precio_por_pedido_clp: opts.precioPorPedidoClp,
+      minimo_mensual_clp: opts.minimoMensualClp ?? null,
+      // ⚠️ Vestigiales, y en CERO a propósito. Las dos columnas son NOT NULL de
+      // la migración original y no se pueden omitir; ponerles el precio de una
+      // cuota que ya no se cobra dejaría una cifra que alguien puede leer como
+      // vigente. Cero dice lo que es: acá no se cobra por mes.
+      precio_mensual_clp: 0,
+      precio_anual_clp: 0,
+      // Los topes se retiraron: con comisión, más pedidos es más ingreso.
+      limite_pedidos_mes: null,
       caracteristicas,
       activo: true,
     })
@@ -699,9 +709,10 @@ export async function actualizarPlan(opts: {
   planId: string;
   nombre?: string;
   descripcion?: string | null;
-  precioMensualClp?: number;
-  precioAnualClp?: number;
-  limitePedidosMes?: number | null;
+  /** CLP por pedido efectivo. */
+  precioPorPedidoClp?: number;
+  /** Piso mensual. `null` = sin piso. */
+  minimoMensualClp?: number | null;
   caracteristicas?: Record<string, unknown>;
   /** UUID real del super-admin actor (vía `exigirActorAdmin()`). `null` = sin
    *  actor declarado (compat con callers previos al gap 3, F2-mínimo). */
@@ -728,17 +739,15 @@ export async function actualizarPlan(opts: {
     cambios.nombre = nombre;
   }
   if (opts.descripcion !== undefined) cambios.descripcion = opts.descripcion;
-  if (opts.precioMensualClp !== undefined) {
-    validarPrecioClp(opts.precioMensualClp, 'precioMensualClp');
-    cambios.precio_mensual_clp = opts.precioMensualClp;
+  if (opts.precioPorPedidoClp !== undefined) {
+    validarPrecioClp(opts.precioPorPedidoClp, 'precioPorPedidoClp');
+    cambios.precio_por_pedido_clp = opts.precioPorPedidoClp;
   }
-  if (opts.precioAnualClp !== undefined) {
-    validarPrecioClp(opts.precioAnualClp, 'precioAnualClp');
-    cambios.precio_anual_clp = opts.precioAnualClp;
-  }
-  if (opts.limitePedidosMes !== undefined) {
-    if (opts.limitePedidosMes !== null) validarEnteroNoNegativo(opts.limitePedidosMes, 'limitePedidosMes');
-    cambios.limite_pedidos_mes = opts.limitePedidosMes;
+  if (opts.minimoMensualClp !== undefined) {
+    if (opts.minimoMensualClp !== null) {
+      validarEnteroNoNegativo(opts.minimoMensualClp, 'minimoMensualClp');
+    }
+    cambios.minimo_mensual_clp = opts.minimoMensualClp;
   }
   if (opts.caracteristicas !== undefined) {
     cambios.caracteristicas = sanearJsonbPlano(opts.caracteristicas, 'caracteristicas');

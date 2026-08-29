@@ -24,6 +24,14 @@ function filaToPlan(f: Record<string, any>): Plan {
     id: f.id,
     nombre: f.nombre,
     descripcion: f.descripcion ?? null,
+    precioPorPedidoClp:
+      f.precio_por_pedido_clp !== null && f.precio_por_pedido_clp !== undefined
+        ? Number(f.precio_por_pedido_clp)
+        : null,
+    minimoMensualClp:
+      f.minimo_mensual_clp !== null && f.minimo_mensual_clp !== undefined
+        ? Number(f.minimo_mensual_clp)
+        : null,
     precioMensualClp: Number(f.precio_mensual_clp),
     precioAnualClp: Number(f.precio_anual_clp),
     limitePedidosMes: f.limite_pedidos_mes !== null && f.limite_pedidos_mes !== undefined
@@ -95,7 +103,7 @@ export async function obtenerPlanesActivos(): Promise<Plan[]> {
     .from('planes')
     .select('*')
     .eq('activo', true)
-    .order('precio_mensual_clp', { ascending: true });
+    .order('precio_por_pedido_clp', { ascending: true, nullsFirst: false });
 
   if (error) throw new Error(`Error al obtener planes activos: ${error.message}`);
   return (data ?? []).map(filaToPlan);
@@ -114,7 +122,7 @@ export async function obtenerTodosLosPlanes(): Promise<Plan[]> {
     .schema('plataforma')
     .from('planes')
     .select('*')
-    .order('precio_mensual_clp', { ascending: true });
+    .order('precio_por_pedido_clp', { ascending: true, nullsFirst: false });
 
   if (error) throw new Error(`Error al obtener el catálogo de planes: ${error.message}`);
   return (data ?? []).map(filaToPlan);

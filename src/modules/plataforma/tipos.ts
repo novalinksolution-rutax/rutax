@@ -42,6 +42,16 @@ export interface Plan {
   id: string;
   nombre: string;
   descripcion: string | null;
+  /** CLP por pedido entregado y asignado en Rutax. Es el eje del cobro. */
+  precioPorPedidoClp: number | null;
+  /** Piso mensual. `null` = sin piso. No aplica el primer mes del courier. */
+  minimoMensualClp: number | null;
+  /**
+   * ⚠️ Vestigiales: la modalidad de cuota plana se retiró el 2026-08-28. Se
+   * conservan en el tipo porque los planes desactivados —y los períodos ya
+   * cobrados con ellos— siguen teniendo estos valores, y borrarlos dejaría sin
+   * explicación una boleta histórica.
+   */
   precioMensualClp: number;
   precioAnualClp: number;
   limitePedidosMes: number | null;

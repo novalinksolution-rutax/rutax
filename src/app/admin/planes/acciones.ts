@@ -77,9 +77,8 @@ export async function accionCrearPlan(formData: FormData) {
       actorUsuarioId,
       nombre: String(formData.get("nombre") ?? ""),
       descripcion: (formData.get("descripcion") as string) || null,
-      precioMensualClp: parseNumeroObligatorio(formData.get("precio_mensual_clp")),
-      precioAnualClp: parseNumeroObligatorio(formData.get("precio_anual_clp")),
-      limitePedidosMes: parseNumeroOpcional(formData.get("limite_pedidos_mes")),
+      precioPorPedidoClp: parseNumeroObligatorio(formData.get("precio_por_pedido_clp")),
+      minimoMensualClp: parseNumeroOpcional(formData.get("minimo_mensual_clp")),
       caracteristicas: construirCaracteristicas(formData),
     });
   } catch (err) {
@@ -97,9 +96,8 @@ export async function accionActualizarPlan(formData: FormData) {
       planId: String(formData.get("plan_id") ?? ""),
       nombre: String(formData.get("nombre") ?? ""),
       descripcion: (formData.get("descripcion") as string) || null,
-      precioMensualClp: parseNumeroObligatorio(formData.get("precio_mensual_clp")),
-      precioAnualClp: parseNumeroObligatorio(formData.get("precio_anual_clp")),
-      limitePedidosMes: parseNumeroOpcional(formData.get("limite_pedidos_mes")),
+      precioPorPedidoClp: parseNumeroObligatorio(formData.get("precio_por_pedido_clp")),
+      minimoMensualClp: parseNumeroOpcional(formData.get("minimo_mensual_clp")),
       caracteristicas: construirCaracteristicas(formData, previas),
     });
   } catch (err) {

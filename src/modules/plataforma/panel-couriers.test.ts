@@ -54,6 +54,8 @@ function suscripcion(overrides: Partial<SuscripcionConPlan> = {}): SuscripcionCo
       id: 'plan-starter',
       nombre: 'Starter',
       descripcion: null,
+      precioPorPedidoClp: 40,
+      minimoMensualClp: null,
       precioMensualClp: 19990,
       precioAnualClp: 199900,
       limitePedidosMes: 500,

@@ -184,8 +184,7 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
         crearPlan({
           adminSecret: SECRETO,
           nombre: 'Starter',
-          precioMensualClp: -1,
-          precioAnualClp: 199900,
+          precioPorPedidoClp: -1,
         }),
       ).rejects.toThrow(/entero y no negativo/i);
       expect(registrarEnBitacora).not.toHaveBeenCalled();
@@ -194,15 +193,14 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
         crearPlan({
           adminSecret: SECRETO,
           nombre: 'Starter',
-          precioMensualClp: 1990.5,
-          precioAnualClp: 199900,
-        }),
+          precioPorPedidoClp: 1990.5,
+                  }),
       ).rejects.toThrow(/entero y no negativo/i);
     });
 
     it('rechaza nombre vacío', async () => {
       await expect(
-        crearPlan({ adminSecret: SECRETO, nombre: '   ', precioMensualClp: 1000, precioAnualClp: 10000 }),
+        crearPlan({ adminSecret: SECRETO, nombre: '   ', precioPorPedidoClp: 40 }),
       ).rejects.toThrow(/nombre.*no puede estar vacío/i);
     });
 
@@ -211,8 +209,7 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
         crearPlan({
           adminSecret: SECRETO,
           nombre: 'Starter',
-          precioMensualClp: 1000,
-          precioAnualClp: 10000,
+          precioPorPedidoClp: 1000,
           // @ts-expect-error — valor inválido deliberado para el test
           caracteristicas: ['no', 'es', 'un', 'objeto'],
         }),
@@ -229,10 +226,8 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
       const resultado = await crearPlan({
         adminSecret: SECRETO,
         nombre: 'Growth',
-        precioMensualClp: 39990,
-        precioAnualClp: 399900,
-        limitePedidosMes: 2000,
-        caracteristicas: { conductores_max: 15 },
+        precioPorPedidoClp: 39990,
+                caracteristicas: { conductores_max: 15 },
         actorUsuarioId: 'ad000000-0000-0000-0000-000000000001',
       });
 
@@ -257,8 +252,7 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
       await crearPlan({
         adminSecret: SECRETO,
         nombre: 'Growth',
-        precioMensualClp: 39990,
-        precioAnualClp: 399900,
+        precioPorPedidoClp: 39990,
         caracteristicas: {
           conductores_max: 15,
           api_publica: true,
@@ -311,7 +305,7 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
       const resultado = await actualizarPlan({
         adminSecret: SECRETO,
         planId: 'plan-1',
-        precioMensualClp: 44990,
+        precioPorPedidoClp: 44990,
         actorUsuarioId: 'ad000000-0000-0000-0000-000000000001',
       });
 
@@ -324,7 +318,7 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
           actorTipo: 'super_admin',
           accion: 'plataforma.plan_actualizado',
           entidadId: 'plan-1',
-          detalle: expect.objectContaining({ campos_editados: ['precio_mensual_clp'] }),
+          detalle: expect.objectContaining({ campos_editados: ['precio_por_pedido_clp'] }),
         }),
       );
     });
@@ -337,7 +331,7 @@ describe('acciones de plataforma — actorUsuarioId hacia la bitácora', () => {
       );
 
       await expect(
-        actualizarPlan({ adminSecret: SECRETO, planId: 'plan-1', precioAnualClp: -5 }),
+        actualizarPlan({ adminSecret: SECRETO, planId: 'plan-1', precioPorPedidoClp: -5 }),
       ).rejects.toThrow(/entero y no negativo/i);
       expect(registrarEnBitacora).not.toHaveBeenCalled();
     });

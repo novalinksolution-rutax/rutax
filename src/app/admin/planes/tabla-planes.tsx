@@ -122,49 +122,46 @@ function DialogFormularioPlan({ plan, onGuardado, trigger }: PropsFormulario) {
             />
           </div>
 
+          {/* 🔴 Un plan es «tarifa por pedido + mínimo». Las cuotas mensual y
+              anual se retiraron del formulario con la modalidad plana: dejarlas
+              a la vista invitaba a llenar un precio que ya no se cobra. */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="precio_mensual_clp">Precio mensual (CLP)</Label>
+              <Label htmlFor="precio_por_pedido_clp">Por pedido entregado (CLP)</Label>
               <Input
-                id="precio_mensual_clp"
-                name="precio_mensual_clp"
+                id="precio_por_pedido_clp"
+                name="precio_por_pedido_clp"
                 type="number"
                 min={0}
                 step={1}
                 required
-                defaultValue={plan?.precioMensualClp ?? 0}
+                defaultValue={plan?.precioPorPedidoClp ?? ""}
+                placeholder="40"
               />
+              <p className="text-xs text-muted-foreground">
+                Se cobra por cada pedido que el courier entregó y que fue asignado en Rutax. Los
+                que ML reporta como entregados pero despachó el propio seller no cuentan.
+              </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="precio_anual_clp">Precio anual (CLP)</Label>
+              <Label htmlFor="minimo_mensual_clp">Mínimo mensual (CLP)</Label>
               <Input
-                id="precio_anual_clp"
-                name="precio_anual_clp"
+                id="minimo_mensual_clp"
+                name="minimo_mensual_clp"
                 type="number"
                 min={0}
                 step={1}
-                required
-                defaultValue={plan?.precioAnualClp ?? 0}
+                defaultValue={plan?.minimoMensualClp ?? ""}
+                placeholder="Vacío = sin mínimo"
               />
+              <p className="text-xs text-muted-foreground">
+                Se cobra el mayor entre esto y las entregas del mes. No se aplica el primer mes
+                del courier.
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="limite_pedidos_mes">Límite de pedidos/mes</Label>
-              <Input
-                id="limite_pedidos_mes"
-                name="limite_pedidos_mes"
-                type="number"
-                min={0}
-                step={1}
-                defaultValue={plan?.limitePedidosMes ?? ""}
-                placeholder="Vacío = ilimitado"
-              />
-              <p className="text-xs text-muted-foreground">
-                Informativo: nunca bloquea la ingesta de pedidos, solo avisa al courier.
-              </p>
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="conductores_max">Máximo de conductores</Label>
               <Input
@@ -357,9 +354,8 @@ export function TablaPlanes({ planes, puedeEscribir }: Props) {
                 <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-2">Plan</th>
                   <th className="px-4 py-2">Estado</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Precio/mes</th>
-                  <th className="hidden px-4 py-2 md:table-cell">Precio/año</th>
-                  <th className="hidden px-4 py-2 lg:table-cell">Límite pedidos</th>
+                  <th className="hidden px-4 py-2 sm:table-cell">Por pedido</th>
+                  <th className="hidden px-4 py-2 md:table-cell">Mínimo/mes</th>
                   <th className="hidden px-4 py-2 lg:table-cell">Conductores</th>
                   <th className="px-4 py-2 text-right">
                     <span className="sr-only">Acciones</span>
@@ -381,14 +377,25 @@ export function TablaPlanes({ planes, puedeEscribir }: Props) {
                         etiqueta={p.activo ? "Activo" : "Inactivo"}
                       />
                     </td>
+                    {/* Los planes de cuota plana quedaron desactivados el
+                        2026-08-28 y no tienen tarifa por pedido. Se muestra su
+                        cuota entre paréntesis en vez de un guion: siguen
+                        explicando las boletas que ya se cobraron con ellos. */}
                     <td className="hidden px-4 py-3 tabular-nums font-mono sm:table-cell">
-                      {formatearCLP(p.precioMensualClp)}
+                      {p.precioPorPedidoClp === null ? (
+                        <span className="text-muted-foreground">
+                          cuota {formatearCLP(p.precioMensualClp)}
+                        </span>
+                      ) : (
+                        formatearCLP(p.precioPorPedidoClp)
+                      )}
                     </td>
                     <td className="hidden px-4 py-3 tabular-nums font-mono md:table-cell">
-                      {formatearCLP(p.precioAnualClp)}
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-                      {p.limitePedidosMes === null ? "Ilimitado" : p.limitePedidosMes.toLocaleString("es-CL")}
+                      {p.minimoMensualClp === null ? (
+                        <span className="text-muted-foreground">sin mínimo</span>
+                      ) : (
+                        formatearCLP(p.minimoMensualClp)
+                      )}
                     </td>
                     <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
                       {conductoresMaxDePlan(p) || "Ilimitado"}
