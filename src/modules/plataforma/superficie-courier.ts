@@ -70,6 +70,19 @@ export interface PeriodoActualCourier {
   montoClp: number;
   estado: EstadoPeriodo;
   venceEn: string | null;
+  /**
+   * De dónde sale el monto: entregas contadas y tarifa aplicada, congeladas al
+   * cerrar el mes.
+   *
+   * 🔴 Es el dato del COURIER, y este es el sitio donde más falta hace: con una
+   * comisión, la cifra cambia todos los meses y sin el desglose la boleta es un
+   * número que hay que creer. Son sus propias entregas y su propia tarifa: no
+   * hay nada de otro tenant acá.
+   *
+   * `null` en los períodos de cuota plana y en los ajustes.
+   */
+  pedidosEfectivos: number | null;
+  tarifaAplicadaClp: number | null;
 }
 
 /** Una entrada del historial de pagos — curada, SIN link ni ids externos. */
@@ -170,6 +183,8 @@ export async function obtenerMiPlan(tenantId: string): Promise<VistaMiPlan | nul
         montoClp: masReciente.montoClp,
         estado: masReciente.estado,
         venceEn: masReciente.venceEn,
+        pedidosEfectivos: masReciente.pedidosEfectivos,
+        tarifaAplicadaClp: masReciente.tarifaAplicadaClp,
       }
     : null;
 

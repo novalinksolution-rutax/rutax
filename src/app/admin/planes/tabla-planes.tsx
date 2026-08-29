@@ -30,9 +30,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 
 import { EmptyState } from "@/components/ui/empty-state";
+import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import type { Plan } from "@/modules/plataforma/tipos";
+import { textoTarifaPlan } from "../tarifa-plan";
 import { TooltipSoloLectura } from "../tooltip-solo-lectura";
 import { accionCrearPlan, accionActualizarPlan, accionActivarDesactivarPlan } from "./acciones";
 import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
@@ -299,6 +301,51 @@ interface Props {
   puedeEscribir: boolean;
 }
 
+/**
+ * Editar + activar/desactivar. Extraído porque lo usan la ficha del teléfono y
+ * la fila de escritorio: duplicarlo garantizaba que un día uno de los dos se
+ * quedara sin el gate de `puedeEscribir` y el rol de solo lectura pudiera
+ * apretar un botón que no le corresponde.
+ */
+function AccionesPlan({
+  plan,
+  puedeEscribir,
+  onCambiado,
+  alineadoALaDerecha = false,
+}: {
+  plan: Plan;
+  puedeEscribir: boolean;
+  onCambiado: () => void;
+  alineadoALaDerecha?: boolean;
+}) {
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-2 ${alineadoALaDerecha ? "justify-end" : ""}`}
+    >
+      {puedeEscribir ? (
+        <DialogFormularioPlan
+          plan={plan}
+          onGuardado={onCambiado}
+          trigger={
+            <Button variant="outline" size="sm">
+              <Pencil className="size-3.5" aria-hidden="true" />
+              Editar
+            </Button>
+          }
+        />
+      ) : (
+        <TooltipSoloLectura>
+          <Button variant="outline" size="sm" disabled>
+            <Pencil className="size-3.5" aria-hidden="true" />
+            Editar
+          </Button>
+        </TooltipSoloLectura>
+      )}
+      <BotonActivarDesactivar plan={plan} puedeEscribir={puedeEscribir} onCambiado={onCambiado} />
+    </div>
+  );
+}
+
 function BotonNuevoPlan({ puedeEscribir, onGuardado }: { puedeEscribir: boolean; onGuardado: () => void }) {
   if (!puedeEscribir) {
     return (
@@ -347,89 +394,105 @@ export function TablaPlanes({ planes, puedeEscribir }: Props) {
           accion={<BotonNuevoPlan puedeEscribir={puedeEscribir} onGuardado={() => router.refresh()} />}
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Catálogo de planes">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Plan</th>
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Por pedido</th>
-                  <th className="hidden px-4 py-2 md:table-cell">Mínimo/mes</th>
-                  <th className="hidden px-4 py-2 lg:table-cell">Conductores</th>
-                  <th className="px-4 py-2 text-right">
-                    <span className="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {planes.map((p) => (
-                  <tr key={p.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{p.nombre}</p>
-                      {p.descripcion && (
-                        <p className="max-w-xs truncate text-xs text-muted-foreground">{p.descripcion}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <DistintivoEstado
-                        tono={p.activo ? "neutral" : "inert"}
-                        etiqueta={p.activo ? "Activo" : "Inactivo"}
-                      />
-                    </td>
-                    {/* Los planes de cuota plana quedaron desactivados el
-                        2026-08-28 y no tienen tarifa por pedido. Se muestra su
-                        cuota entre paréntesis en vez de un guion: siguen
-                        explicando las boletas que ya se cobraron con ellos. */}
-                    <td className="hidden px-4 py-3 tabular-nums font-mono sm:table-cell">
-                      {p.precioPorPedidoClp === null ? (
-                        <span className="text-muted-foreground">
-                          cuota {formatearCLP(p.precioMensualClp)}
-                        </span>
-                      ) : (
-                        formatearCLP(p.precioPorPedidoClp)
-                      )}
-                    </td>
-                    <td className="hidden px-4 py-3 tabular-nums font-mono md:table-cell">
-                      {p.minimoMensualClp === null ? (
-                        <span className="text-muted-foreground">sin mínimo</span>
-                      ) : (
-                        formatearCLP(p.minimoMensualClp)
-                      )}
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-                      {conductoresMaxDePlan(p) || "Ilimitado"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        {puedeEscribir ? (
-                          <DialogFormularioPlan
-                            plan={p}
-                            onGuardado={() => router.refresh()}
-                            trigger={
-                              <Button variant="outline" size="sm">
-                                <Pencil className="size-3.5" aria-hidden="true" />
-                                Editar
-                              </Button>
-                            }
-                          />
-                        ) : (
-                          <TooltipSoloLectura>
-                            <Button variant="outline" size="sm" disabled>
-                              <Pencil className="size-3.5" aria-hidden="true" />
-                              Editar
-                            </Button>
-                          </TooltipSoloLectura>
-                        )}
-                        <BotonActivarDesactivar plan={p} puedeEscribir={puedeEscribir} onCambiado={() => router.refresh()} />
-                      </div>
-                    </td>
+        <>
+          {/* Teléfono: una ficha por plan, con sus acciones debajo. La fila no
+              es un enlace, así que dos botones no compiten con nada. */}
+          <ul className="divide-y divide-border overflow-hidden rounded-lg border bg-card shadow-sm sm:hidden">
+            {planes.map((p) => (
+              <li key={p.id} className="space-y-2 px-4 py-2">
+                <FichaFila390
+                  estado={
+                    <DistintivoEstado
+                      tono={p.activo ? "neutral" : "inert"}
+                      etiqueta={p.activo ? "Activo" : "Inactivo"}
+                    />
+                  }
+                  clasificacion={`${conductoresMaxDePlan(p) || "∞"} conductores`}
+                  titulo={p.nombre}
+                  // La tarifa es lo que define a un plan: va en la línea de
+                  // detalle antes que la descripción, que es texto de venta.
+                  detalle={textoTarifaPlan(p)}
+                />
+                {p.descripcion && (
+                  <p className="text-xs text-muted-foreground">{p.descripcion}</p>
+                )}
+                <AccionesPlan
+                  plan={p}
+                  puedeEscribir={puedeEscribir}
+                  onCambiado={() => router.refresh()}
+                />
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden overflow-hidden rounded-lg border bg-card shadow-sm sm:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" aria-label="Catálogo de planes">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-2">Plan</th>
+                    <th className="px-4 py-2">Estado</th>
+                    <th className="px-4 py-2">Por pedido</th>
+                    <th className="px-4 py-2">Mínimo/mes</th>
+                    <th className="px-4 py-2">Conductores</th>
+                    <th className="px-4 py-2 text-right">
+                      <span className="sr-only">Acciones</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {planes.map((p) => (
+                    <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{p.nombre}</p>
+                        {p.descripcion && (
+                          <p className="max-w-xs truncate text-xs text-muted-foreground">{p.descripcion}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <DistintivoEstado
+                          tono={p.activo ? "neutral" : "inert"}
+                          etiqueta={p.activo ? "Activo" : "Inactivo"}
+                        />
+                      </td>
+                      {/* Los planes de cuota plana quedaron desactivados el
+                          2026-08-28 y no tienen tarifa por pedido. Se muestra su
+                          cuota en vez de un guion: siguen explicando las boletas
+                          que ya se cobraron con ellos. */}
+                      <td className="px-4 py-3 whitespace-nowrap tabular-nums font-mono">
+                        {p.precioPorPedidoClp === null ? (
+                          <span className="text-muted-foreground">
+                            cuota {formatearCLP(p.precioMensualClp)}
+                          </span>
+                        ) : (
+                          formatearCLP(p.precioPorPedidoClp)
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap tabular-nums font-mono">
+                        {p.minimoMensualClp === null ? (
+                          <span className="text-muted-foreground">sin mínimo</span>
+                        ) : (
+                          formatearCLP(p.minimoMensualClp)
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {conductoresMaxDePlan(p) || "Ilimitado"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <AccionesPlan
+                          plan={p}
+                          puedeEscribir={puedeEscribir}
+                          onCambiado={() => router.refresh()}
+                          alineadoALaDerecha
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

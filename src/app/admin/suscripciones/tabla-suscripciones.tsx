@@ -25,9 +25,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { Building2 } from "lucide-react";
-import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { BADGE_ESTADO_SUSCRIPCION, traducirEstadoSuscripcion } from "@/lib/ui/traduccion-estados";
+import { textoTarifaPlan } from "../tarifa-plan";
 import type { SuscripcionConPlan } from "@/modules/plataforma/tipos";
 import type { Plan } from "@/modules/plataforma/tipos";
 import { TooltipSoloLectura } from "../tooltip-solo-lectura";
@@ -127,9 +128,13 @@ function DialogNuevaSuscripcion({
                 <SelectValue placeholder="Seleccionar plan…" />
               </SelectTrigger>
               <SelectContent>
+                {/* 🔴 Decía «Comisión $40 — $0/mes» y el $0 venía de la cuota
+                    plana, que en todo plan vigente vale 0. Elegir el plan con
+                    el que se le va a cobrar a un courier leyendo «$0» es el
+                    peor sitio posible para esa cifra. */}
                 {planes.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
-                    {p.nombre} — {formatearCLP(p.precioMensualClp)}/mes
+                    {p.nombre} — {textoTarifaPlan(p)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -369,55 +374,90 @@ export function TablaSuscripciones({ suscripciones, planes, tenantsSinSuscripcio
           }
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Suscripciones de couriers">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Courier</th>
-                  <th className="px-4 py-2">Plan</th>
-                  <th className="px-4 py-2">Estado</th>
-                  <th className="hidden px-4 py-2 sm:table-cell">Activa desde</th>
-                  <th className="hidden px-4 py-2 md:table-cell">Trial hasta</th>
-                  <th className="hidden px-4 py-2 lg:table-cell">Precio/mes</th>
-                  <th className="px-4 py-2 text-right">
-                    <span className="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {suscripciones.map((s) => (
-                  <tr key={s.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 font-medium">
-                      {s.nombreFantasiaTenant ?? (
-                        <span className="font-mono text-xs text-muted-foreground">{s.tenantId.slice(0, 8)}…</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">{s.plan.nombre}</td>
-                    <td className="px-4 py-3">
-                      <BadgeEstado
-                        variante={BADGE_ESTADO_SUSCRIPCION[s.estado]} eje="suscripcion" valor={s.estado}
-                        texto={traducirEstadoSuscripcion(s.estado)}
-                      />
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                      {formatearFecha(s.activaDesde)}
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                      {formatearFecha(s.trialHasta)}
-                    </td>
-                    <td className="hidden px-4 py-3 tabular-nums font-mono lg:table-cell">
-                      {formatearCLP(s.plan.precioMensualClp)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <AccionesSuscripcion suscripcion={s} puedeEscribir={puedeEscribir} />
-                    </td>
+        <>
+          {/* Teléfono: una ficha por suscripción. Nada se esconde.
+              Las acciones van DEBAJO y no al costado: la fila no es un enlace,
+              así que no hay ambigüedad, y «Cobros» junto a «Cancelar la
+              suscripción» en 375 px de ancho es un toque equivocado esperando
+              a ocurrir. */}
+          <ul className="divide-y divide-border overflow-hidden rounded-lg border bg-card shadow-sm sm:hidden">
+            {suscripciones.map((s) => (
+              <li key={s.id} className="space-y-2 px-4 py-2">
+                <FichaFila390
+                  estado={
+                    <BadgeEstado
+                      variante={BADGE_ESTADO_SUSCRIPCION[s.estado]}
+                      eje="suscripcion"
+                      valor={s.estado}
+                      texto={traducirEstadoSuscripcion(s.estado)}
+                    />
+                  }
+                  clasificacion={s.plan.nombre}
+                  titulo={s.nombreFantasiaTenant ?? `${s.tenantId.slice(0, 8)}…`}
+                  detalle={`${textoTarifaPlan(s.plan)} · desde ${formatearFecha(s.activaDesde)}${
+                    s.trialHasta ? ` · prueba hasta ${formatearFecha(s.trialHasta)}` : ""
+                  }`}
+                />
+                <AccionesSuscripcion suscripcion={s} puedeEscribir={puedeEscribir} />
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden overflow-hidden rounded-lg border bg-card shadow-sm sm:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" aria-label="Suscripciones de couriers">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-2">Courier</th>
+                    <th className="px-4 py-2">Plan</th>
+                    <th className="px-4 py-2">Estado</th>
+                    <th className="px-4 py-2">Activa desde</th>
+                    <th className="px-4 py-2">Trial hasta</th>
+                    {/* 🔴 Era «Precio/mes» y mostraba `precioMensualClp`, que
+                        desde el 2026-08-28 vale 0 en todo plan vigente: la
+                        columna decía «$0» de cada courier que sí paga. Ahora
+                        muestra la tarifa real —comisión y piso—, que es lo que
+                        se le cobra. */}
+                    <th className="px-4 py-2">Tarifa</th>
+                    <th className="px-4 py-2 text-right">
+                      <span className="sr-only">Acciones</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {suscripciones.map((s) => (
+                    <tr key={s.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 font-medium">
+                        {s.nombreFantasiaTenant ?? (
+                          <span className="font-mono text-xs text-muted-foreground">{s.tenantId.slice(0, 8)}…</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">{s.plan.nombre}</td>
+                      <td className="px-4 py-3">
+                        <BadgeEstado
+                          variante={BADGE_ESTADO_SUSCRIPCION[s.estado]} eje="suscripcion" valor={s.estado}
+                          texto={traducirEstadoSuscripcion(s.estado)}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {formatearFecha(s.activaDesde)}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {formatearFecha(s.trialHasta)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap tabular-nums font-mono">
+                        {textoTarifaPlan(s.plan)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <AccionesSuscripcion suscripcion={s} puedeEscribir={puedeEscribir} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

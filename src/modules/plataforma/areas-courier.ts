@@ -7,13 +7,19 @@
  * solo ejerce Rutax.
  *
  * -----------------------------------------------------------------------------
- * POR QUÉ EXIGE `exigirSuperAdminEscritura` Y NO SOLO `exigirSuperAdmin`
+ * ESCRIBIR PIDE AAL2; LEER NO
  * -----------------------------------------------------------------------------
  * Encender un área le abre a un courier una parte del producto que Rutax declaró
  * no productiva; apagarla se la quita a todos sus usuarios de golpe. Es una
  * decisión de escritura con consecuencia inmediata sobre un cliente que está
- * operando, así que pide `admin_total` + AAL2 — el mismo listón que el resto de
- * las escrituras del backstage. `soporte_lectura` no la ejerce.
+ * operando, así que `fijarAreaDelCourier` pide `admin_total` + AAL2 — el mismo
+ * listón que el resto de las escrituras del backstage. `soporte_lectura` no la
+ * ejerce.
+ *
+ * Las dos lecturas (`listarAreasDelCourier`, `areasApagadasPorTenant`) piden
+ * solo `exigirSuperAdmin`. Ponerles el gate de escritura —como estaba— dejaba a
+ * `soporte_lectura` sin poder ver qué tenía apagado el courier que llama
+ * preguntando justamente por eso.
  *
  * -----------------------------------------------------------------------------
  * ⚠️ APAGAR ES BORRAR LA FILA, Y ESO PIERDE LA NOTA
@@ -27,7 +33,7 @@
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { AREAS_PRODUCTO, esAreaProducto, type AreaProducto } from '@/modules/identidad/areas-producto';
-import { exigirSuperAdminEscritura } from './autorizacion-admin';
+import { exigirSuperAdmin, exigirSuperAdminEscritura } from './autorizacion-admin';
 
 export interface AreaDelCourier {
   area: AreaProducto;
@@ -44,7 +50,13 @@ export interface AreaDelCourier {
  * reconstruir el resto, y ahí es donde se pierde un área nueva.
  */
 export async function listarAreasDelCourier(tenantId: string): Promise<AreaDelCourier[]> {
-  await exigirSuperAdminEscritura();
+  // ⚠️ LEER exige `exigirSuperAdmin`, no `…Escritura`. Estaba al revés: pedía
+  // permiso de escritura (rol `admin_total` + AAL2) para una consulta, y el
+  // efecto era que `soporte_lectura` —el rol que atiende al courier que llama
+  // preguntando por qué no le aparece un botón— no podía ni ver qué áreas tenía
+  // apagadas. El gate de escritura sigue donde corresponde: en
+  // `fijarAreaDelCourier`.
+  await exigirSuperAdmin();
 
   const supabase = crearClienteServiceRole();
   const { data, error } = await supabase
@@ -129,4 +141,57 @@ export async function fijarAreaDelCourier(params: {
     entidadId: tenantId,
     detalle: { area, nota },
   });
+}
+
+/**
+ * Qué áreas tiene APAGADAS cada courier, en una sola consulta.
+ *
+ * 🔴 Existe porque el interruptor sin panorama no sirve. Con `listarAreasDelCourier`
+ * se puede ver el estado de UN courier entrando a su ficha; la pregunta que se
+ * hace de verdad —«¿a quién le tengo algo apagado?»— exigía abrir uno por uno.
+ * Con veinte couriers eso no se hace, y un área que quedó apagada «hasta que
+ * esté listo» se queda apagada para siempre sin que nadie se entere.
+ *
+ * Devuelve las APAGADAS y no las encendidas a propósito: lo normal es tenerlas
+ * todas, así que la lista vacía es el caso sano y la pantalla solo tiene que
+ * pintar la excepción.
+ *
+ * ⚠️ NO reusa `listarAreasDelCourier` en un bucle: serían N consultas para
+ * pintar una lista. Es una sola con `in`, y por eso también hereda el corte de
+ * PostgREST en 1000 filas — con cinco áreas por courier eso son 200 couriers,
+ * muy por encima de la escala de Rutax, pero cuando deje de serlo esta consulta
+ * empieza a mentir en silencio. Anotado acá para que se encuentre.
+ */
+export async function areasApagadasPorTenant(
+  tenantIds: readonly string[],
+): Promise<Map<string, AreaProducto[]>> {
+  const apagadas = new Map<string, AreaProducto[]>();
+  if (tenantIds.length === 0) return apagadas;
+
+  const supabase = crearClienteServiceRole();
+  const { data, error } = await supabase
+    .schema('plataforma')
+    .from('areas_habilitadas')
+    .select('tenant_id, area')
+    .in('tenant_id', [...tenantIds]);
+
+  if (error) throw new Error(`No se pudieron leer las áreas de los couriers: ${error.message}`);
+
+  // Fila = encendida, ausencia = apagada. Se invierte acá y no en la consulta
+  // porque «no hay fila» no se puede pedir con un `where`.
+  const encendidasPorTenant = new Map<string, Set<string>>();
+  for (const fila of data ?? []) {
+    const tid = fila.tenant_id as string;
+    const set = encendidasPorTenant.get(tid) ?? new Set<string>();
+    set.add(fila.area as string);
+    encendidasPorTenant.set(tid, set);
+  }
+
+  for (const tenantId of tenantIds) {
+    const encendidas = encendidasPorTenant.get(tenantId) ?? new Set<string>();
+    const faltantes = AREAS_PRODUCTO.filter((a) => !encendidas.has(a));
+    if (faltantes.length > 0) apagadas.set(tenantId, faltantes);
+  }
+
+  return apagadas;
 }

@@ -14,6 +14,15 @@
  * por eso pasa por `DialogConfirmacionDinero` (mismo componente que usan las
  * acciones irreversibles de dinero; es un confirmador genérico, no exclusivo
  * de ese módulo — ver `configuracion/plan/cambiar-plan.tsx`) antes de publicar.
+ *
+ * -----------------------------------------------------------------------------
+ * 🔴 EN EL TELÉFONO LA FILA SE REACOMODA, NO SE RECORTA
+ * -----------------------------------------------------------------------------
+ * La tabla escondía **Tipo, Vigencia y Quién/cuándo** con `hidden sm:table-cell`
+ * / `md:table-cell` / `lg:table-cell` — el arquetipo P1 que el resto del producto
+ * ya tiene (`FichaFila390`, ver nómina, incidencias y reportería) y que este
+ * backstage nunca recibió. De 640 px para arriba ahora se ven las seis columnas;
+ * si no caben, la tabla scrollea dentro de su propia caja, nunca la página.
  */
 
 import { useState, useTransition } from "react";
@@ -45,6 +54,11 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
+import { FichaFila390 } from "@/components/ui/ficha-fila-390";
+import {
+  formatearFecha as formatearFechaCl,
+  formatearFechaHora as formatearFechaHoraCl,
+} from "@/lib/formato-cl";
 import { TooltipSoloLectura } from "../tooltip-solo-lectura";
 import type { Comunicacion, TipoComunicacion } from "@/modules/plataforma/comunicaciones";
 import type { UrgenciaAviso } from "@/lib/avisos/obtener-avisos";
@@ -74,28 +88,20 @@ const VARIANTE_BADGE_NIVEL: Record<UrgenciaAviso, "info" | "warning" | "error"> 
   urgente: "error",
 };
 
-const FORMATEADOR_FECHA_HORA = new Intl.DateTimeFormat("es-CL", {
-  timeZone: "America/Santiago",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-const FORMATEADOR_FECHA = new Intl.DateTimeFormat("es-CL", {
-  timeZone: "America/Santiago",
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
+/**
+ * Fechas por el helper compartido, no por formateadores propios.
+ *
+ * Los dos que vivian aqui repetian `timeZone: "America/Santiago"` y a
+ * `FORMATEADOR_FECHA_HORA` le faltaba `hour12: false`: imprimia
+ * "28-08-2026, 10:09 p. m." donde el resto del producto dice "28-08-2026 22:09".
+ * La red mecanica del repo solo exige `timeZone`, asi que este se le colaba.
+ */
 function formatearFechaHora(iso: string): string {
-  return FORMATEADOR_FECHA_HORA.format(new Date(iso));
+  return formatearFechaHoraCl(iso);
 }
 
 function formatearFecha(iso: string): string {
-  return FORMATEADOR_FECHA.format(new Date(iso));
+  return formatearFechaCl(iso);
 }
 
 // =============================================================================
@@ -444,75 +450,117 @@ export function TablaComunicaciones({ comunicaciones, puedeEscribir }: Props) {
           accion={<BotonNuevaComunicacion puedeEscribir={puedeEscribir} onPublicada={() => router.refresh()} />}
         />
       ) : (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Comunicaciones publicadas a los couriers">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <th scope="col" className="px-4 py-2">Comunicación</th>
-                  <th scope="col" className="hidden px-4 py-2 sm:table-cell">Tipo</th>
-                  <th scope="col" className="px-4 py-2">Nivel</th>
-                  <th scope="col" className="px-4 py-2">Estado</th>
-                  <th scope="col" className="hidden px-4 py-2 md:table-cell">Vigencia</th>
-                  <th scope="col" className="hidden px-4 py-2 lg:table-cell">Quién / cuándo</th>
-                  <th scope="col" className="px-4 py-2 text-right">
-                    <span className="sr-only">Acciones</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {comunicaciones.map((c) => (
-                  <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-start gap-2">
-                        <div className="min-w-0">
-                          <p className="font-medium">{c.titulo}</p>
-                          <p className="max-w-xs truncate text-xs text-muted-foreground">{c.cuerpo}</p>
-                        </div>
-                        {c.enviarEmail && (
-                          <Mail
-                            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                            aria-label="Enviada también por email"
-                          />
-                        )}
-                      </div>
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
-                      {ETIQUETA_TIPO[c.tipo]}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={VARIANTE_BADGE_NIVEL[c.nivel]}>{ETIQUETA_NIVEL[c.nivel]}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
+        <>
+          {/* Teléfono: una ficha por comunicación. Nada se esconde.
+              No es un enlace (esta pantalla no tiene detalle propio), así que
+              va sin chevron y con la acción principal —activar/desactivar—
+              a la vista, en vez de escondida en la ficha. */}
+          <ul className="divide-y divide-border overflow-hidden rounded-lg border bg-card shadow-sm sm:hidden">
+            {comunicaciones.map((c) => (
+              <li key={c.id} className="flex items-center gap-3 px-4 py-2">
+                <FichaFila390
+                  className="flex-1"
+                  estado={
+                    <>
                       <DistintivoEstado
                         tono={c.activa ? "neutral" : "inert"}
                         etiqueta={c.activa ? "Activa" : "Inactiva"}
                       />
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                      {c.vigenteHasta ? `Hasta ${formatearFecha(c.vigenteHasta)}` : "Sin expiración"}
-                    </td>
-                    <td className="hidden px-4 py-3 lg:table-cell">
-                      <div className="flex flex-col">
-                        <span className="text-foreground">{c.creadoPorNombre ?? "—"}</span>
-                        <span className="text-xs text-muted-foreground">{formatearFechaHora(c.creadoEn)}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end">
-                        <BotonActivarDesactivar
-                          comunicacion={c}
-                          puedeEscribir={puedeEscribir}
-                          onCambiado={() => router.refresh()}
-                        />
-                      </div>
-                    </td>
+                      {/* El nivel sube junto al estado, no al tipo: es la
+                          señal de urgencia («Urgente» pinta error) y compite
+                          por atención con la actividad, no con la
+                          clasificación neutra de abajo. */}
+                      <Badge variant={VARIANTE_BADGE_NIVEL[c.nivel]}>{ETIQUETA_NIVEL[c.nivel]}</Badge>
+                    </>
+                  }
+                  clasificacion={ETIQUETA_TIPO[c.tipo]}
+                  titulo={c.titulo}
+                  // El cuerpo del mensaje no entra acá: no es una columna que
+                  // se esconde (vive siempre junto al título, en la misma
+                  // celda «Comunicación»), y es prosa larga que no cabe en la
+                  // línea mono de una sola línea. Lo que sí se recupera es lo
+                  // que las columnas Vigencia y Quién/cuándo se llevaban.
+                  detalle={`${c.vigenteHasta ? `Hasta ${formatearFecha(c.vigenteHasta)}` : "Sin expiración"} · ${c.creadoPorNombre ?? "—"} · ${formatearFechaHora(c.creadoEn)}`}
+                />
+                <BotonActivarDesactivar
+                  comunicacion={c}
+                  puedeEscribir={puedeEscribir}
+                  onCambiado={() => router.refresh()}
+                />
+              </li>
+            ))}
+          </ul>
+
+          <div className="hidden overflow-hidden rounded-lg border bg-card shadow-sm sm:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" aria-label="Comunicaciones publicadas a los couriers">
+                <thead>
+                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <th scope="col" className="px-4 py-2">Comunicación</th>
+                    <th scope="col" className="px-4 py-2">Tipo</th>
+                    <th scope="col" className="px-4 py-2">Nivel</th>
+                    <th scope="col" className="px-4 py-2">Estado</th>
+                    <th scope="col" className="px-4 py-2">Vigencia</th>
+                    <th scope="col" className="px-4 py-2">Quién / cuándo</th>
+                    <th scope="col" className="px-4 py-2 text-right">
+                      <span className="sr-only">Acciones</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {comunicaciones.map((c) => (
+                    <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium">{c.titulo}</p>
+                            <p className="max-w-xs truncate text-xs text-muted-foreground">{c.cuerpo}</p>
+                          </div>
+                          {c.enviarEmail && (
+                            <Mail
+                              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                              aria-label="Enviada también por email"
+                            />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {ETIQUETA_TIPO[c.tipo]}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={VARIANTE_BADGE_NIVEL[c.nivel]}>{ETIQUETA_NIVEL[c.nivel]}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <DistintivoEstado
+                          tono={c.activa ? "neutral" : "inert"}
+                          etiqueta={c.activa ? "Activa" : "Inactiva"}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {c.vigenteHasta ? `Hasta ${formatearFecha(c.vigenteHasta)}` : "Sin expiración"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col">
+                          <span className="text-foreground">{c.creadoPorNombre ?? "—"}</span>
+                          <span className="text-xs text-muted-foreground">{formatearFechaHora(c.creadoEn)}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end">
+                          <BotonActivarDesactivar
+                            comunicacion={c}
+                            puedeEscribir={puedeEscribir}
+                            onCambiado={() => router.refresh()}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

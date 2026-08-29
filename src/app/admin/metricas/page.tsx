@@ -133,6 +133,24 @@ export default async function PaginaMetricas() {
             />
           </section>
 
+          {/* La serie de seis meses. Se calculaba entera y solo se dibujaban
+              sus dos últimos valores, en las tarjetas de arriba: el dato ya
+              estaba pagado y nadie lo veía. Y es el único sitio del backstage
+              que responde la pregunta que importa con una comisión —«¿esto
+              está creciendo?»—, que dos tarjetas sueltas no pueden contestar. */}
+          <section className="rounded-lg border bg-card p-4">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Facturado por mes
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Los últimos seis meses, incluido el que va corriendo. Un mes en cero es un
+              mes sin períodos facturados, no un hueco de datos.
+            </p>
+            <div className="mt-4">
+              <SerieFacturado serie={serie} />
+            </div>
+          </section>
+
           {/* Churn + couriers por estado */}
           <section className="grid gap-4 lg:grid-cols-3">
             <div className="rounded-lg border bg-card p-4 lg:col-span-1">
@@ -382,4 +400,86 @@ function BarrasCouriersPorEstado({
       })}
     </div>
   );
+}
+
+/**
+ * Los seis meses de facturación, en barras verticales.
+ *
+ * Sin librería de gráficos a propósito: son seis valores y un máximo. Traer una
+ * dependencia de charts al bundle del backstage por esto sería pagar peso y
+ * superficie de mantención por una división.
+ *
+ * ⚠️ Las barras se escalan contra el MAYOR de la serie, no contra una escala
+ * fija. Con una comisión los montos arrancan chicos y crecen mucho: una escala
+ * fija dejaría los primeros meses invisibles justo cuando son los únicos que
+ * hay. La consecuencia asumida es que la altura no se puede comparar entre
+ * visitas —por eso cada barra lleva su monto escrito encima.
+ *
+ * ⚠️ El mes en curso va rayado y rotulado «va corriendo»: es el único de la
+ * serie que todavía puede subir, y dibujarlo igual que los cerrados haría leer
+ * una caída donde solo hay un mes a medio andar.
+ */
+function SerieFacturado({ serie }: { serie: Array<{ mes: string; montoClp: number }> }) {
+  if (serie.length === 0) {
+    return <p className="text-sm text-muted-foreground">Sin períodos facturados todavía.</p>;
+  }
+
+  const maximo = Math.max(...serie.map((p) => p.montoClp), 1);
+  const ultimo = serie.length - 1;
+
+  return (
+    <div
+      className="flex items-end gap-2 sm:gap-3"
+      role="img"
+      aria-label={`Facturado por mes: ${serie
+        .map((p) => `${nombreMesCorto(p.mes)} ${formatearCLP(p.montoClp)}`)
+        .join(", ")}`}
+    >
+      {serie.map((punto, i) => {
+        const pct = Math.round((punto.montoClp / maximo) * 100);
+        const enCurso = i === ultimo;
+        return (
+          <div key={punto.mes} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+            <span className="w-full truncate text-center text-[10px] tabular-nums text-muted-foreground">
+              {punto.montoClp === 0 ? "—" : formatearCLP(punto.montoClp)}
+            </span>
+            {/* La caja siempre mide lo mismo para que las barras se apoyen en
+                una misma línea base aunque el mes valga cero. */}
+            <div className="flex h-24 w-full items-end">
+              <div
+                className={cn(
+                  "w-full rounded-t transition-all",
+                  enCurso
+                    ? "bg-[repeating-linear-gradient(45deg,var(--color-info)_0,var(--color-info)_3px,transparent_3px,transparent_6px)] border border-info/60"
+                    : "bg-info",
+                  // Un mes en cero deja una línea de 2 px en vez de nada: «cero»
+                  // y «no hay dato» tienen que verse distinto.
+                  punto.montoClp === 0 && "h-0.5 bg-border",
+                )}
+                style={punto.montoClp === 0 ? undefined : { height: `${Math.max(pct, 4)}%` }}
+              />
+            </div>
+            <span className="text-[11px] text-muted-foreground">{nombreMesCorto(punto.mes)}</span>
+            {enCurso && (
+              <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                va corriendo
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** '2026-08' → 'ago'. Sin `new Date()`: el mes ya viene resuelto en el
+ *  calendario de Santiago y volver a pasarlo por Date lo movería al huso del
+ *  runtime, que en Vercel es UTC. */
+const MESES_CORTOS = [
+  "ene", "feb", "mar", "abr", "may", "jun",
+  "jul", "ago", "sep", "oct", "nov", "dic",
+];
+function nombreMesCorto(mes: string): string {
+  const n = Number(mes.slice(5, 7));
+  return MESES_CORTOS[n - 1] ?? mes;
 }

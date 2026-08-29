@@ -66,7 +66,26 @@ function FilaPeriodo({ periodo, puedeEscribir }: { periodo: PeriodoConPago; pued
       <td className="px-4 py-3 whitespace-nowrap">
         {formatearFecha(periodo.periodoInicio)} – {formatearFecha(periodo.periodoFin)}
       </td>
-      <td className="px-4 py-3 tabular-nums font-mono">{formatearCLP(periodo.montoClp)}</td>
+      <td className="px-4 py-3 tabular-nums font-mono">
+        {formatearCLP(periodo.montoClp)}
+        {/* 🔴 De dónde sale el monto. La migración guarda `pedidos_efectivos` y
+            `tarifa_aplicada_clp` justamente para poder contestar «¿por qué me
+            cobraste esto?» —recalcularlo meses después da otro número, porque
+            los pedidos cambian de estado— y hasta acá NADIE las leía: se
+            escribían en cada cierre y no se mostraban en ninguna pantalla.
+
+            Cuando el monto NO cuadra con entregas × tarifa, mandó el mínimo del
+            plan; se dice, en vez de dejar al que mira restando. */}
+        {periodo.pedidosEfectivos !== null && periodo.tarifaAplicadaClp !== null ? (
+          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+            {periodo.pedidosEfectivos.toLocaleString("es-CL")} ×{" "}
+            {formatearCLP(periodo.tarifaAplicadaClp)}
+            {periodo.pedidosEfectivos * periodo.tarifaAplicadaClp < periodo.montoClp
+              ? " · mínimo del plan"
+              : ""}
+          </span>
+        ) : null}
+      </td>
       <td className="px-4 py-3">
         <BadgeEstado
           variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodo.estado]} eje="periodo-suscripcion" valor={periodo.estado}

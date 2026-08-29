@@ -85,6 +85,17 @@ function filaToPeriodoSuscripcion(f: Record<string, any>): PeriodoSuscripcion {
     // Columna de la migración 20260712000004 (Ola 2 F2, item I). Default
     // defensivo 'periodo' por si la fila viene de un mock de prueba incompleto.
     concepto: (f.concepto ?? 'periodo') as PeriodoSuscripcion['concepto'],
+    // Columnas de la migración 20260828000004 (cobro por pedido efectivo).
+    // ⚠️ `?? null` y NUNCA `?? 0`: un cero diría que ese mes no hubo entregas,
+    // y lo que pasa en los períodos viejos es que nadie las contó.
+    pedidosEfectivos:
+      f.pedidos_efectivos === null || f.pedidos_efectivos === undefined
+        ? null
+        : Number(f.pedidos_efectivos),
+    tarifaAplicadaClp:
+      f.tarifa_aplicada_clp === null || f.tarifa_aplicada_clp === undefined
+        ? null
+        : Number(f.tarifa_aplicada_clp),
   };
 }
 

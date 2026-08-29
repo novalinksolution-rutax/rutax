@@ -121,6 +121,25 @@ export function MiPlan({ miPlan, entitlements, consumo, contador }: Props) {
                 {formatearFecha(periodoActual.periodoInicio)} – {formatearFecha(periodoActual.periodoFin)}
               </p>
               <p className="text-2xl font-semibold tabular-nums">{formatearCLPOGuion(periodoActual.montoClp)}</p>
+              {/* 🔴 De dónde sale la cifra. Con una comisión el monto cambia
+                  todos los meses, así que una boleta sin desglose es un número
+                  que hay que creer. Las dos columnas se venían guardando en
+                  cada cierre justamente para esto y no se mostraban en ninguna
+                  parte — ni acá ni en el backstage.
+
+                  Si el monto es mayor que entregas × tarifa, mandó el mínimo
+                  del plan: se dice, en vez de dejar al courier restando. */}
+              {periodoActual.pedidosEfectivos !== null && periodoActual.tarifaAplicadaClp !== null ? (
+                <p className="text-xs text-fg-muted">
+                  <span className="tabular-nums">{periodoActual.pedidosEfectivos}</span>{" "}
+                  {periodoActual.pedidosEfectivos === 1 ? "entrega" : "entregas"} ×{" "}
+                  {formatearCLPOGuion(periodoActual.tarifaAplicadaClp)}
+                  {periodoActual.pedidosEfectivos * periodoActual.tarifaAplicadaClp <
+                  periodoActual.montoClp
+                    ? " · se aplicó el mínimo de tu plan"
+                    : ""}
+                </p>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <BadgeEstado variante={BADGE_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} eje="periodo-suscripcion" valor={periodoActual.estado} texto={TEXTO_ESTADO_PERIODO_SUSCRIPCION[periodoActual.estado]} />
                 {periodoActual.estado === "pendiente" && periodoActual.venceEn ? (

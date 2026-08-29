@@ -145,6 +145,19 @@ export interface PeriodoSuscripcion {
   venceEn: string | null;
   generadoEn: string;
   concepto: ConceptoPeriodo;
+  /**
+   * Cómo se compuso el monto, congelado al cerrar el mes.
+   *
+   * 🔴 Existen para responder «¿por qué me cobraste esto?». Recalcularlo meses
+   * después da OTRO número, porque los pedidos cambian de estado — así que si
+   * esto no se muestra, la pregunta no tiene respuesta y estas dos columnas
+   * son peso muerto en la tabla.
+   *
+   * `null` en los períodos de cuota plana anteriores al 2026-08-28 y en los
+   * ajustes: rellenarlos con 0 diría «ese mes no hubo entregas», que es falso.
+   */
+  pedidosEfectivos: number | null;
+  tarifaAplicadaClp: number | null;
 }
 
 export interface PagoPlataforma {

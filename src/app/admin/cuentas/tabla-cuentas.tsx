@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
+import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { formatearFecha } from "@/lib/formato-cl";
 import type {
   CuentaListada,
@@ -174,17 +175,37 @@ export function TablaCuentas({
               dejar su WhatsApp.
             </p>
           </div>
+          {/*
+            Homologado a `FichaFila390` (pieza compartida del arquetipo P1;
+            ver `tabla-couriers.tsx`) en vez de los cuatro `<span>` sueltos que
+            tenía antes. Esta lista ya no se arrastraba a 375 px, así que esto
+            no es un arreglo de overflow: es reusar la pieza en vez de
+            reinventarla, sin perder ningún dato.
+
+            El tipo (Conductor/Seller) sube a `estado` —el casillero del
+            distintivo con tono, aunque acá el tono sea "neutral"— porque es
+            lo que YA se pintaba como badge; inventar un tono para `e.estado`
+            (activo/inactivo/invitado/suspendido, dos enums SQL distintos
+            mezclados en un solo `string`) exigiría un `eje` de
+            `BadgeEstado` que hoy no existe para esta unión, y el precio de
+            acertarlo mal es peor que dejarlo como etiqueta sin color. Por
+            eso `e.estado` baja a `clasificacion`: sigue visible, solo que
+            sin el riesgo de un tono inventado. */}
           <ul className="divide-y divide-border rounded-lg border border-border">
             {sinCuenta.map((e) => (
-              <li key={`${e.tipo}-${e.id}`} className="flex flex-wrap items-center gap-2 p-3 text-sm">
-                <BadgeEstado
-                  variante="neutral"
-                  texto={e.tipo === "conductor" ? "Conductor" : "Seller"}
-                  conPunto={false}
+              <li key={`${e.tipo}-${e.id}`} className="flex items-center gap-3 px-4 py-2">
+                <FichaFila390
+                  estado={
+                    <BadgeEstado
+                      variante="neutral"
+                      texto={e.tipo === "conductor" ? "Conductor" : "Seller"}
+                      conPunto={false}
+                    />
+                  }
+                  clasificacion={e.estado}
+                  titulo={e.nombre}
+                  detalle={e.courierNombre}
                 />
-                <span className="font-medium">{e.nombre}</span>
-                <span className="text-muted-foreground">· {e.courierNombre}</span>
-                <span className="text-xs text-muted-foreground">({e.estado})</span>
               </li>
             ))}
           </ul>

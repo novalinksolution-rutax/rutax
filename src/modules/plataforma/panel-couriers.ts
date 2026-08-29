@@ -30,6 +30,8 @@
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { obtenerTodasSuscripciones } from './consultas';
 import { obtenerSaludJobs, obtenerBacklogSistema, type SaludJob, type BacklogSistema } from './salud';
+import { areasApagadasPorTenant } from './areas-courier';
+import type { AreaProducto } from '@/modules/identidad/areas-producto';
 import type { EstadoSuscripcion, Periodicidad } from './tipos';
 
 /** Semáforo de salud del courier — derivado de estado de suscripción + morosidad. */
@@ -52,6 +54,15 @@ export interface CourierPanelItem {
    *  otro caso. NO incluye salud operativa/técnica (eso es system-wide, ver
    *  `saludSistema`). */
   salud: NivelSaludCourier;
+  /**
+   * Las áreas de producto que Rutax le tiene APAGADAS. Vacío = las cinco
+   * encendidas, que es lo normal.
+   *
+   * ⚠️ NO entra en `salud`. Un área apagada es una decisión deliberada de
+   * Rutax, no un problema del courier: pintarla de rojo junto a la morosidad
+   * haría que el semáforo dejara de significar «hay que llamar a este».
+   */
+  areasApagadas: AreaProducto[];
 }
 
 export interface PanelCouriers {
@@ -119,6 +130,11 @@ export async function obtenerPanelCouriers(): Promise<PanelCouriers> {
     periodosVencidosPorTenant.set(tid, (periodosVencidosPorTenant.get(tid) ?? 0) + 1);
   }
 
+  // Las áreas apagadas van en la misma pasada: sin esto, saber a quién le falta
+  // algo encendido obligaba a abrir courier por courier, y con eso un área que
+  // se apagó «hasta que esté listo» se queda apagada sin que nadie se entere.
+  const apagadasPorTenant = await areasApagadasPorTenant(tenantIds);
+
   const couriers: CourierPanelItem[] = suscripciones.map((s) => {
     const periodosVencidos = periodosVencidosPorTenant.get(s.tenantId) ?? 0;
     return {
@@ -130,6 +146,7 @@ export async function obtenerPanelCouriers(): Promise<PanelCouriers> {
       periodicidad: s.periodicidad,
       periodosVencidos,
       salud: derivarSaludCourier(s.estado, periodosVencidos),
+      areasApagadas: apagadasPorTenant.get(s.tenantId) ?? [],
     };
   });
 

@@ -350,7 +350,11 @@ export function ContenidoDrillDown({ datos }: { datos: ObservabilidadTenant }) {
                     <th scope="col" className="px-4 py-2">
                       Evento
                     </th>
-                    <th scope="col" className="hidden px-4 py-2 sm:table-cell">
+                    {/* Sin `hidden sm:table-cell`: en el teléfono la entidad
+                        era justamente lo que se caía, y una alerta sin decir
+                        sobre QUÉ es solo un titular. Si las tres columnas no
+                        caben, la tabla scrollea dentro de su caja. */}
+                    <th scope="col" className="px-4 py-2">
                       Entidad
                     </th>
                   </tr>
@@ -362,7 +366,7 @@ export function ContenidoDrillDown({ datos }: { datos: ObservabilidadTenant }) {
                         {formatearFechaHora(a.creadoEn)}
                       </td>
                       <td className="px-4 py-3">{traducirAccionAlerta(a.accion)}</td>
-                      <td className="hidden px-4 py-3 sm:table-cell">
+                      <td className="px-4 py-3">
                         <div className="flex flex-col">
                           <span>{traducirEntidadTipo(a.entidadTipo)}</span>
                           {a.entidadId ? (

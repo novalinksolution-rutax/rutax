@@ -14,6 +14,7 @@ import {
   type ConexionSalud,
 } from "@/modules/plataforma/salud-integraciones";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
+import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { formatearFechaHora } from "@/lib/formato-cl";
 import {
@@ -64,6 +65,16 @@ export const dynamic = "force-dynamic";
  * seller** —es su cuenta de Mercado Libre— y ningún atajo desde acá cambia eso.
  * Lo que sí hace es llevar a la ficha del courier, que es desde donde se le
  * escribe o se entra a su cuenta con la sesión de soporte auditada.
+ *
+ * -----------------------------------------------------------------------------
+ * 🔴 EN EL TELÉFONO LA FILA SE REACOMODA, NO SE RECORTA
+ * -----------------------------------------------------------------------------
+ * La tabla escondía **Fuente** con `hidden sm:table-cell` — justo la columna
+ * que dice si esta conexión puede vencer (solo Mercado Libre expira; Shopify
+ * se revoca, ver arriba). Con la fila recortada, el motivo de la desconexión
+ * era lo que se perdía en el teléfono. Ahora sube a la clasificación de la
+ * ficha (arquetipo P1, `FichaFila390`) y de 640 px para arriba se ven las
+ * cuatro columnas completas.
  */
 
 const ETIQUETA_CAJON: Record<CajonSalud, string> = {
@@ -141,27 +152,53 @@ export default async function PaginaSaludIntegraciones({
             : `No hay conexiones en «${ETIQUETA_CAJON[cajonActivo!].toLowerCase()}».`}
         </p>
       ) : (
-        <div className="overflow-x-auto border border-line bg-bg-raised">
-          {/* Densidad 32: es una pantalla de uso interno con varias empresas a
-              la vista, y lo que importa es cuántas filas caben. */}
-          <Table densidad="compact" aria-label="Conexiones de todos los couriers">
-            <TableHeader>
-              <TableRow className="bg-muted/40">
-                {/* La empresa primero, siempre: quien mira esto tiene que
-                    llamar al courier, no al seller. */}
-                <TableHead className="px-3">Empresa</TableHead>
-                <TableHead className="px-3">Cuenta</TableHead>
-                <TableHead className="hidden px-3 sm:table-cell">Fuente</TableHead>
-                <TableHead className="px-3">Estado</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visibles.map((c) => (
-                <FilaSalud key={c.id} conexion={c} cajon={clasificarConexion(c, ahoraMs)} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          {/* Teléfono: una ficha por conexión. Nada se esconde. No es un
+              enlace (esta pantalla no navega a ninguna parte, ver arriba), así
+              que va sin chevron. */}
+          <ul className="divide-y divide-line overflow-hidden border border-line bg-bg-raised sm:hidden">
+            {visibles.map((c) => {
+              const cajon = clasificarConexion(c, ahoraMs);
+              return (
+                <li key={c.id} className="flex items-center gap-3 px-3 py-2">
+                  <FichaFila390
+                    className="flex-1"
+                    estado={<DistintivoDeCajon cajon={cajon} />}
+                    clasificacion={etiquetaFuentePedido(c.fuente)}
+                    titulo={c.empresa}
+                    // Cuenta y seller no son una columna escondida —viven
+                    // siempre junto a Empresa—, pero en la ficha no hay una
+                    // segunda columna donde ponerlas: bajan a la línea mono
+                    // junto con el detalle del estado, que tampoco se pierde.
+                    detalle={`${c.cuenta} · ${c.seller} · ${detalleEstado(c, cajon)}`}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="hidden overflow-x-auto border border-line bg-bg-raised sm:block">
+            {/* Densidad 32: es una pantalla de uso interno con varias empresas a
+                la vista, y lo que importa es cuántas filas caben. */}
+            <Table densidad="compact" aria-label="Conexiones de todos los couriers">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  {/* La empresa primero, siempre: quien mira esto tiene que
+                      llamar al courier, no al seller. */}
+                  <TableHead className="px-3">Empresa</TableHead>
+                  <TableHead className="px-3">Cuenta</TableHead>
+                  <TableHead className="px-3">Fuente</TableHead>
+                  <TableHead className="px-3">Estado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibles.map((c) => (
+                  <FilaSalud key={c.id} conexion={c} cajon={clasificarConexion(c, ahoraMs)} />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -211,7 +248,7 @@ function FilaSalud({ conexion, cajon }: { conexion: ConexionSalud; cajon: CajonS
           <span className="text-xs text-fg-muted">{conexion.seller}</span>
         </div>
       </TableCell>
-      <TableCell className="hidden px-3 text-fg-muted sm:table-cell">
+      <TableCell className="px-3 text-fg-muted">
         {etiquetaFuentePedido(conexion.fuente)}
       </TableCell>
       <TableCell className="px-3">
@@ -219,12 +256,7 @@ function FilaSalud({ conexion, cajon }: { conexion: ConexionSalud; cajon: CajonS
             contenedor en columna y se estira al ancho de la celda —una
             barra de color de 368 px donde debería haber una etiqueta. */}
         <div className="flex flex-col items-start gap-0.5">
-          <DistintivoEstado
-            tono={cajon === "caida" ? "fault" : cajon === "vence_pronto" ? "attention" : "balanced"}
-            etiqueta={
-              cajon === "caida" ? "Caída" : cajon === "vence_pronto" ? "Vence pronto" : "Sana"
-            }
-          />
+          <DistintivoDeCajon cajon={cajon} />
           {/* El detalle en texto, no en el distintivo: el distintivo dice la
               familia y tiene que caber en una celda de 32 px de alto. */}
           <span className="rx-num text-xs text-fg-muted tabular-nums">
@@ -233,6 +265,19 @@ function FilaSalud({ conexion, cajon }: { conexion: ConexionSalud; cajon: CajonS
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+/**
+ * El mismo distintivo lo pinta la tabla de escritorio y la ficha del
+ * teléfono — se saca a una función para que no diverjan con el tiempo.
+ */
+function DistintivoDeCajon({ cajon }: { cajon: CajonSalud }) {
+  return (
+    <DistintivoEstado
+      tono={cajon === "caida" ? "fault" : cajon === "vence_pronto" ? "attention" : "balanced"}
+      etiqueta={cajon === "caida" ? "Caída" : cajon === "vence_pronto" ? "Vence pronto" : "Sana"}
+    />
   );
 }
 
