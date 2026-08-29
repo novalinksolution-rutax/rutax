@@ -38,6 +38,12 @@
 
 import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
+import {
+  calcularMontoComision,
+  contarPedidosEfectivosDelMes,
+  esPrimerPeriodoCobrado,
+  mesAnteriorDe,
+} from '../cobro-por-pedido';
 import { ahoraEnSantiago, sumarDiasCalendario, fechaLocalEnSantiago } from '@/lib/fecha-santiago';
 
 // =============================================================================
@@ -67,6 +73,29 @@ export function aniversarioMasRecienteDesde(fechaAncla: string, hoy: string): st
   const [anioHoy] = hoy.split('-').map(Number);
   const candidatoEsteAnio = fechaConDiaClamp(anioHoy, mesAncla, diaAncla);
   return candidatoEsteAnio <= hoy ? candidatoEsteAnio : fechaConDiaClamp(anioHoy - 1, mesAncla, diaAncla);
+}
+
+/**
+ * Los límites del período de un plan de COMISIÓN: el mes que acaba de cerrar.
+ *
+ * 🔴 Vencido, no adelantado, y no es un capricho: el 1 de agosto nadie sabe
+ * cuántas entregas tendrá agosto. El cron del día 1 factura el mes anterior.
+ *
+ * Función pura y aparte de `calcularPeriodoSuscripcion` porque el MONTO no se
+ * puede calcular acá — depende de contar entregas contra la base. Esto resuelve
+ * el «qué mes»; el «cuánto» lo pone el job con `calcularMontoComision`.
+ */
+export function calcularPeriodoComision(hoy: string): {
+  periodoInicio: string;
+  periodoFin: string;
+  venceEn: string;
+  mes: string;
+} {
+  const mes = mesAnteriorDe(hoy);
+  const [anio, mesNum] = mes.split('-').map(Number);
+  const periodoInicio = `${mes}-01`;
+  const periodoFin = fechaConDiaClamp(anio, mesNum, ultimoDiaDelMes(anio, mesNum));
+  return { periodoInicio, periodoFin, venceEn: sumarDiasCalendario(periodoFin, 5), mes };
 }
 
 export interface EntradaCalculoPeriodo {
@@ -145,19 +174,34 @@ export const jobGenerarPeriodosSuscripcion = inngest.createFunction(
       const { data: planesData, error: planesError } = await supabase
         .schema('plataforma')
         .from('planes')
-        .select('id, precio_mensual_clp, precio_anual_clp')
+        .select('id, precio_mensual_clp, precio_anual_clp, precio_por_pedido_clp, minimo_mensual_clp')
         .in('id', planIds);
 
       if (planesError) throw new Error(`Error al leer planes: ${planesError.message}`);
       const planesMap = new Map(
         (planesData ?? []).map((p) => [
           p.id as string,
-          { mensual: Number(p.precio_mensual_clp), anual: Number(p.precio_anual_clp) },
+          {
+            mensual: Number(p.precio_mensual_clp),
+            anual: Number(p.precio_anual_clp),
+            // `null` = plan de cuota plana. Su presencia es lo que distingue una
+            // suscripción de comisión, sin una columna «tipo» que pueda quedar
+            // en desacuerdo con los precios.
+            porPedido:
+              p.precio_por_pedido_clp === null ? null : Number(p.precio_por_pedido_clp),
+            minimoMensual:
+              p.minimo_mensual_clp === null ? null : Number(p.minimo_mensual_clp),
+          },
         ]),
       );
 
       return suscLista.map((s) => {
-        const precios = planesMap.get(s.plan_id as string) ?? { mensual: 0, anual: 0 };
+        const precios = planesMap.get(s.plan_id as string) ?? {
+          mensual: 0,
+          anual: 0,
+          porPedido: null,
+          minimoMensual: null,
+        };
         const activaDesde = (s.activa_desde as string | null) ?? null;
         // Ancla del aniversario: `activa_desde` si existe; si no, la fecha
         // civil (Santiago) de `creada_en`.
@@ -170,6 +214,8 @@ export const jobGenerarPeriodosSuscripcion = inngest.createFunction(
           periodicidad: (s.periodicidad as 'mensual' | 'anual' | null) ?? 'mensual',
           precioMensualClp: precios.mensual,
           precioAnualClp: precios.anual,
+          precioPorPedidoClp: precios.porPedido,
+          minimoMensualClp: precios.minimoMensual,
           fechaAncla,
         };
       });
@@ -190,14 +236,62 @@ export const jobGenerarPeriodosSuscripcion = inngest.createFunction(
 
       const promesas = suscripciones.map(async (susc) => {
         try {
-          const { periodoInicio, periodoFin, montoClp, venceEn } = calcularPeriodoSuscripcion({
-            estado: susc.estado,
-            periodicidad: susc.periodicidad,
-            precioMensualClp: susc.precioMensualClp,
-            precioAnualClp: susc.precioAnualClp,
-            fechaAncla: susc.fechaAncla,
-            hoy,
-          });
+          // 🔴 La presencia de `precioPorPedidoClp` es lo que distingue una
+          // suscripción de comisión. No hay una columna «tipo de plan» a
+          // propósito: sería un segundo sitio que puede quedar en desacuerdo con
+          // los precios, y el desacuerdo se descubriría en una boleta.
+          const esComision = susc.precioPorPedidoClp !== null;
+
+          let periodoInicio: string;
+          let periodoFin: string;
+          let venceEn: string;
+          let montoClp: number;
+          let pedidosEfectivos: number | null = null;
+          let tarifaAplicadaClp: number | null = null;
+
+          if (esComision) {
+            const p = calcularPeriodoComision(hoy);
+            periodoInicio = p.periodoInicio;
+            periodoFin = p.periodoFin;
+            venceEn = p.venceEn;
+
+            if (susc.estado === 'trial') {
+              // Igual que en los planes planos: el trial genera período con
+              // monto 0 para dejar registro, pero no se cobra.
+              montoClp = 0;
+              pedidosEfectivos = 0;
+              tarifaAplicadaClp = susc.precioPorPedidoClp;
+            } else {
+              const [entregas, primerCobro] = await Promise.all([
+                contarPedidosEfectivosDelMes(supabase, { tenantId: susc.tenantId, mes: p.mes }),
+                esPrimerPeriodoCobrado(supabase, susc.id),
+              ]);
+              const calculo = calcularMontoComision({
+                pedidosEfectivos: entregas,
+                tarifa: {
+                  precioPorPedidoClp: susc.precioPorPedidoClp as number,
+                  minimoMensualClp: susc.minimoMensualClp,
+                },
+                esPrimerMes: primerCobro,
+              });
+              montoClp = calculo.montoClp;
+              pedidosEfectivos = calculo.pedidosEfectivos;
+              tarifaAplicadaClp = calculo.tarifaAplicadaClp;
+            }
+          } else {
+            const p = calcularPeriodoSuscripcion({
+              estado: susc.estado,
+              periodicidad: susc.periodicidad,
+              precioMensualClp: susc.precioMensualClp,
+              precioAnualClp: susc.precioAnualClp,
+              fechaAncla: susc.fechaAncla,
+              hoy,
+            });
+            periodoInicio = p.periodoInicio;
+            periodoFin = p.periodoFin;
+            venceEn = p.venceEn;
+            montoClp = p.montoClp;
+          }
 
           // INSERT con ignorancia de conflicto (idempotencia del cron)
           // maybeSingle() devuelve null si el INSERT fue ignorado por conflict
@@ -212,6 +306,11 @@ export const jobGenerarPeriodosSuscripcion = inngest.createFunction(
               monto_clp: montoClp,
               estado: 'pendiente',
               vence_en: venceEn,
+              // Cómo se compuso el monto. Sin esto, «¿por qué me cobraste esto?»
+              // solo se responde recalculando — y recalcular meses después da
+              // otro número, porque los pedidos cambian de estado.
+              pedidos_efectivos: pedidosEfectivos,
+              tarifa_aplicada_clp: tarifaAplicadaClp,
             })
             .select('id')
             .maybeSingle();

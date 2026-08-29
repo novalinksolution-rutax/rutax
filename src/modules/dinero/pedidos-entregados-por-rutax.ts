@@ -50,7 +50,25 @@ export interface RangoPeriodo {
 }
 
 /**
- * Los ids de los pedidos de un seller que **Rutax entregó** dentro del rango.
+ * Los ids de los pedidos que **Rutax entregó** dentro del rango.
+ *
+ * `sellerId` es OPCIONAL, y esa es la única diferencia entre los dos usos:
+ *   · Con seller — el cobro courier→seller (motor entrega→dinero).
+ *   · Sin seller — TODO el tenant, que es lo que Rutax le factura al courier
+ *     cuando su plan cobra por pedido efectivo.
+ *
+ * ⚠️ **Es una sola función a propósito.** Escribir un contador aparte en
+ * `plataforma` habría dejado dos definiciones de «qué entrega cuenta», y la
+ * segunda se olvidaría de preguntar por la asignación — que es exactamente el
+ * bug de las 109 excepciones, esta vez cobrándoselo al courier. Una definición,
+ * dos llamadores.
+ *
+ * ⚠️ Y OJO CON LA DIRECCIÓN DEL ERROR, QUE SE INVIERTE. Acá abajo dice que el
+ * predicado es «lo más permisivo que sigue siendo cierto» porque excluir un
+ * pedido propio le esconde plata AL COURIER. Cuando lo llama `plataforma`, el
+ * que cobra es Rutax: ahí lo permisivo sobrefactura al cliente. La regla no
+ * cambia —un pedido asignado y entregado ES trabajo que Rutax hizo posible— pero
+ * quien la toque debe saber que ahora hay alguien al otro lado de la mesa.
  *
  * Dos consultas y no un `join`: PostgREST no cruza esquemas (`operacion` →
  * `operacion` sí, pero la relación pedidos↔asignaciones es ambigua y atarse al
@@ -60,24 +78,27 @@ export interface RangoPeriodo {
  */
 export async function listarPedidosEntregadosPorRutax(
   supabase: SupabaseClient,
-  entrada: { tenantId: string; sellerId: string; rango: RangoPeriodo },
+  entrada: { tenantId: string; sellerId?: string; rango: RangoPeriodo },
 ): Promise<string[]> {
   const { tenantId, sellerId, rango } = entrada;
 
   const entregados = await leerTodasLasFilas<{ id: string }>(
-    `pedidos entregados del seller ${sellerId}`,
-    (desde, hasta) =>
-      supabase
+    sellerId ? `pedidos entregados del seller ${sellerId}` : `pedidos entregados del tenant`,
+    (desde, hasta) => {
+      const base = supabase
         .schema("operacion")
         .from("pedidos")
         .select("id")
         .eq("tenant_id", tenantId)
-        .eq("seller_id", sellerId)
         .in("estado", ESTADOS_ENTREGADO)
         .gte("actualizado_en", rango.desdeIso)
-        .lt("actualizado_en", rango.hastaIso)
-        .order("id")
-        .range(desde, hasta),
+        .lt("actualizado_en", rango.hastaIso);
+      // El filtro por seller va ANTES de ordenar y paginar: encadenarlo después
+      // del `range` funciona, pero deja el orden de construcción dependiendo de
+      // un detalle interno del cliente que nadie debería tener que comprobar.
+      const filtrada = sellerId ? base.eq("seller_id", sellerId) : base;
+      return filtrada.order("id").range(desde, hasta);
+    },
   );
 
   const ids = entregados.map((p) => p.id);
