@@ -41,19 +41,20 @@ import {
   TEXTO_ESTADO_PAGO_SUSCRIPCION,
   traducirMetodoPago,
 } from "@/lib/ui/traduccion-estados";
-import type { VistaMiPlan, Entitlements, PlanPublico } from "@/modules/plataforma/superficie-courier";
+import type { VistaMiPlan, Entitlements } from "@/modules/plataforma/superficie-courier";
 import { EMAIL_SOPORTE_RUTAX, MAILTO_SOPORTE_RUTAX } from "@/lib/contacto-rutax";
 import type { ConsumoTenant } from "@/modules/plataforma/consumo";
 import type { EstadoPago } from "@/modules/plataforma/tipos";
 import { BloqueCobroAutomatico } from "./bloque-cobro-automatico";
-import { CambiarPlan } from "./cambiar-plan";
+import type { ContadorDelMes } from "@/modules/plataforma/contador-comision";
 
 interface Props {
   miPlan: VistaMiPlan;
   entitlements: Entitlements;
+  /** El contador del mes. `null` si el plan no es de comisión. */
+  contador: ContadorDelMes | null;
   consumo: ConsumoTenant;
   /** Catálogo de planes activos — alimenta la sección "Cambiar de plan". */
-  planes: PlanPublico[];
 }
 
 function diasRestantesHasta(fechaIso: string): number {
@@ -61,7 +62,7 @@ function diasRestantesHasta(fechaIso: string): number {
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 }
 
-export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
+export function MiPlan({ miPlan, entitlements, consumo, contador }: Props) {
   const { plan, periodoActual, historialPagos } = miPlan;
 
   return (
@@ -72,8 +73,14 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           <h1 className="text-2xl font-semibold">{plan.nombre}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             <BadgeEstado variante={BADGE_ESTADO_SUSCRIPCION[miPlan.estado]} eje="suscripcion" valor={miPlan.estado} texto={TEXTO_ESTADO_SUSCRIPCION[miPlan.estado]} />
+            {/* 🔴 La periodicidad se retiró con la cuota plana: con comisión
+                siempre se factura mensual y vencido, así que decir «Facturación
+                mensual» era repetir lo único posible. Lo que sí importa es el
+                piso, porque explica una boleta que no cuadra con las entregas. */}
             <span className="text-muted-foreground">
-              {miPlan.periodicidad === "mensual" ? "Facturación mensual" : "Facturación anual"}
+              {plan.minimoMensualClp && plan.minimoMensualClp > 0
+                ? `Mínimo ${formatearCLP(plan.minimoMensualClp)} al mes`
+                : "Sin mínimo mensual"}
             </span>
             {miPlan.estado === "trial" && miPlan.trialHasta ? (
               <span className="text-muted-foreground">
@@ -85,9 +92,13 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
         </div>
         <div className="text-left sm:text-right">
           <p className="text-2xl font-semibold tabular-nums">
-            {formatearCLP(miPlan.periodicidad === "mensual" ? plan.precioMensualClp : plan.precioAnualClp)}
+            {plan.precioPorPedidoClp === null
+              ? formatearCLP(plan.precioMensualClp)
+              : formatearCLP(plan.precioPorPedidoClp)}
           </p>
-          <p className="text-xs text-muted-foreground">{miPlan.periodicidad === "mensual" ? "por mes" : "por año"}</p>
+          <p className="text-xs text-muted-foreground">
+            {plan.precioPorPedidoClp === null ? "por mes" : "por pedido entregado"}
+          </p>
         </div>
       </div>
 
@@ -128,46 +139,61 @@ export function MiPlan({ miPlan, entitlements, consumo, planes }: Props) {
           )}
         </section>
 
-        <section aria-labelledby="consumo-titulo" className="border border-line bg-bg-raised p-5">
-          <h2 id="consumo-titulo" className="mb-3 font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
-            Consumo del plan
+        {/* 🔴 EL CONTADOR DEL MES, que es lo que hace creer el modelo.
+            Con una cuota plana el courier sabía el día 1 lo que iba a pagar; con
+            una comisión lo sabría recién al llegar la boleta. Acá lo ve correr.
+
+            Lo que dice es «lo que llevas», NO «lo que vas a pagar»: el mes no ha
+            cerrado, una entrega de hoy puede devolverse mañana, y la tarifa que
+            se cobra es la vigente al cerrar. */}
+        <section aria-labelledby="contador-titulo" className="border border-line bg-bg-raised p-5">
+          <h2 id="contador-titulo" className="mb-3 font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
+            Lo que llevas este mes
           </h2>
-          <div className="space-y-4">
-            <BloqueConsumo
-              etiqueta="Pedidos este mes"
-              usados={consumo.pedidosMes}
-              limite={entitlements.limitePedidosMes}
-            />
-            <BloqueConsumo
-              etiqueta="Conductores activos"
-              usados={consumo.conductoresActivos}
-              limite={entitlements.conductoresMax}
-            />
-          </div>
+          {contador ? (
+            <div className="space-y-2">
+              <p className="text-2xl font-semibold tabular-nums">
+                {formatearCLP(contador.montoClp)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                <span className="tabular-nums">{contador.pedidosEfectivos}</span>{" "}
+                {contador.pedidosEfectivos === 1 ? "entrega" : "entregas"} ×{" "}
+                {formatearCLP(contador.precioPorPedidoClp)}
+              </p>
+              {contador.aplicoMinimo ? (
+                <p className="text-sm text-muted-foreground">
+                  Se aplica el mínimo de {formatearCLP(contador.minimoMensualClp ?? 0)}: tus
+                  entregas de este mes suman menos.
+                </p>
+              ) : null}
+              {contador.esPrimerMes ? (
+                <p className="text-sm text-muted-foreground">
+                  Tu primer mes no lleva mínimo: se cobra solo lo que entregaste.
+                </p>
+              ) : null}
+              <p className="text-xs text-fg-subtle">
+                Cuenta las entregas que hiciste y que quedaron asignadas en Rutax. Se actualiza
+                cada pocos minutos y se cierra el último día del mes.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <BloqueConsumo
+                etiqueta="Conductores activos"
+                usados={consumo.conductoresActivos}
+                limite={entitlements.conductoresMax}
+              />
+            </div>
+          )}
         </section>
       </div>
 
-      {/* 3. Cambiar de plan — no aplica a una suscripción cancelada (mismo
-          guard que `cambiarPlanCourier`, ver `superficie-courier.ts`); el
-          banner de arriba ya invita a contactar a Rutax para reactivarla. */}
-      {miPlan.estado !== "cancelada" ? (
-        <div id="cambiar-plan" className="scroll-mt-24">
-        <CambiarPlan
-          planes={planes}
-          planActual={plan}
-          // Lo que este courier usa hoy: sin esto el comparador es una tabla
-          // de precios, y esa ya está en el sitio comercial.
-          uso={{ conductores: consumo.conductoresActivos, pedidosMes: consumo.pedidosMes }}
-          periodicidadActual={miPlan.periodicidad}
-          periodoActual={
-            periodoActual
-              ? { periodoInicio: periodoActual.periodoInicio, periodoFin: periodoActual.periodoFin }
-              : null
-          }
-          cambioPendiente={miPlan.cambioPendiente}
-        />
-        </div>
-      ) : null}
+      {/* 🔴 Aquí estaba «Cambiar de plan». Se retiró con la cuota plana: con una
+          sola modalidad no hay entre qué elegir, y una pantalla que ofrece una
+          decisión inexistente es peor que una que no la ofrece. Con él se fue su
+          proración, que arrastraba un hallazgo de severidad alta por comparar
+          precios de unidades de tiempo distintas. Si el courier quiere otra
+          tarifa, la conversación es con Rutax. */}
 
       {/* 4. Historial de pagos */}
       <section id="historial-pagos" aria-labelledby="historial-pagos-titulo" className="scroll-mt-24 space-y-3">

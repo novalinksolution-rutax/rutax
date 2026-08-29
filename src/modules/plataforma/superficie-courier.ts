@@ -50,6 +50,12 @@ export interface PlanPublico {
   id: string;
   nombre: string;
   descripcion: string | null;
+  /** CLP por pedido entregado. `null` en los planes de cuota plana, retirados. */
+  precioPorPedidoClp: number | null;
+  /** Piso mensual. `null` = sin piso. */
+  minimoMensualClp: number | null;
+  /** ⚠️ Vestigial: la cuota plana se retiró. Se conserva porque los planes
+   *  desactivados —y las boletas cobradas con ellos— siguen teniéndola. */
   precioMensualClp: number;
   precioAnualClp: number;
   limitePedidosMes: number | null;
@@ -121,6 +127,8 @@ function planPublicoDesde(plan: Plan): PlanPublico {
     id: plan.id,
     nombre: plan.nombre,
     descripcion: plan.descripcion,
+    precioPorPedidoClp: plan.precioPorPedidoClp,
+    minimoMensualClp: plan.minimoMensualClp,
     precioMensualClp: plan.precioMensualClp,
     precioAnualClp: plan.precioAnualClp,
     limitePedidosMes: plan.limitePedidosMes,

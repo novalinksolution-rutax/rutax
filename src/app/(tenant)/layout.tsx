@@ -240,7 +240,6 @@ export default async function LayoutTenant({ children }: { children: React.React
   const opcionesPlan: ItemNav[] = puedeGestionarSuscripcion(u)
     ? [
         { href: "/configuracion/plan", etiqueta: "Resumen del plan", icono: "plan" },
-        { href: "/configuracion/plan#cambiar-plan", etiqueta: "Cambiar de plan", icono: "cambiar-plan" },
         { href: "/configuracion/plan#historial-pagos", etiqueta: "Historial de pagos", icono: "periodos" },
         { href: "/configuracion/plan#cobro-automatico", etiqueta: "Cobro automático", icono: "pagos" },
       ]

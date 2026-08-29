@@ -1,6 +1,21 @@
 "use server";
 
 /**
+ * ⚠️ Acá vivían `crearSuscripcionInicialAction` (alta self-serve) y
+ * `solicitarCambioDePlanAction` (cambio de plan con proración). Se retiraron el
+ * 2026-08-28 con la cuota plana: con una sola modalidad el courier no tiene
+ * entre qué elegir, y su tarifa la fija Rutax desde el backstage.
+ *
+ * Lo que queda es el cobro automático, que sigue siendo una decisión del courier.
+ *
+ * ⚠️ La capa de dominio NO se tocó: `cambiarPlanCourier`, el evento
+ * `plataforma/plan.cambiado`, el job `aplicar-cambios-plan` y su notificación
+ * siguen existiendo, ahora sin ningún llamador desde la app. Retirarlos es una
+ * limpieza aparte — se anota en vez de hacerse a la carrera, porque toca el
+ * borde del motor de cobro.
+ */
+
+/**
  * Server Actions · "Mi plan" — suscripción del courier a Rutax (F1, backstage
  * `plataforma`). RBAC: `gestionar_suscripcion` (solo dueño — ver `capacidades.ts`).
  *
@@ -14,15 +29,10 @@ import { revalidatePath } from "next/cache";
 import { exigirSesionActual, type SesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarSuscripcion } from "@/modules/identidad/capacidades";
 import {
-  crearSuscripcionInicial,
   iniciarEnrolamientoMandato,
   cancelarMandatoAutoCobro,
-  cambiarPlanCourier,
-  type ResultadoCambioPlan,
 } from "@/modules/plataforma/superficie-courier";
-import type { Periodicidad } from "@/modules/plataforma/tipos";
 
-type ResultadoAccion = { ok: true; suscripcionId: string } | { ok: false; error: string };
 
 /**
  * Preámbulo común a las acciones de esta pantalla: exige sesión, exige rol
@@ -43,37 +53,6 @@ async function exigirGestionSuscripcion(): Promise<SesionActual> {
     throw new Error("No autorizado.");
   }
   return sesion;
-}
-
-// =============================================================================
-// crearSuscripcionInicialAction
-// =============================================================================
-
-/**
- * Da de alta la suscripción del propio tenant (self-serve, estado inicial
- * `trial`). Idempotente: si el tenant ya tiene suscripción, la acción
- * subyacente devuelve la existente en vez de fallar.
- */
-export async function crearSuscripcionInicialAction(planId: string): Promise<ResultadoAccion> {
-  try {
-    // Solo roles internos del courier (nunca seller/conductor/super_admin) —
-    // el super_admin da de alta suscripciones vía `plataforma/acciones.ts`
-    // (asignarPlan), no por esta puerta self-serve.
-    const sesion = await exigirGestionSuscripcion();
-
-    const resultado = await crearSuscripcionInicial({
-      // `tenantId` sale del claim del JWT (mismo que impone RLS), nunca de un
-      // parámetro del cliente — el courier no puede nombrar otro tenant.
-      tenantId: sesion.usuario.tenantId!,
-      planId,
-      actorUsuarioId: sesion.usuarioId,
-    });
-
-    revalidatePath("/configuracion/plan");
-    return { ok: true, suscripcionId: resultado.suscripcionId };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Error al crear la suscripción." };
-  }
 }
 
 // =============================================================================
@@ -129,38 +108,4 @@ export async function desactivarAutoCobroAction(): Promise<{ ok: true } | { ok: 
   }
 }
 
-// =============================================================================
-// solicitarCambioDePlanAction — cambio de plan self-serve con proración (F2)
-// =============================================================================
 
-type ResultadoCambioPlanAction = ResultadoCambioPlan | { ok: false; error: string };
-
-/**
- * Solicita el cambio de plan (y, opcionalmente, la periodicidad) de la
- * suscripción del propio tenant. Self-serve, sin gate de aprobación humana
- * adicional (a diferencia de la emisión de DTE) — la decisión de negocio (ver
- * `superficie-courier.ts`, `cambiarPlanCourier`) es: un UPGRADE es inmediato y
- * genera un cargo de proración; un DOWNGRADE es diferido al fin del ciclo
- * vigente, sin cobro.
- */
-export async function solicitarCambioDePlanAction(
-  nuevoPlanId: string,
-  nuevaPeriodicidad?: Periodicidad,
-): Promise<ResultadoCambioPlanAction> {
-  try {
-    const sesion = await exigirGestionSuscripcion();
-
-    const resultado = await cambiarPlanCourier({
-      // `tenantId` sale del claim del JWT — nunca de un parámetro del cliente.
-      tenantId: sesion.usuario.tenantId!,
-      nuevoPlanId,
-      nuevaPeriodicidad,
-      actorUsuarioId: sesion.usuarioId,
-    });
-
-    revalidatePath("/configuracion/plan");
-    return resultado;
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Error al cambiar de plan." };
-  }
-}

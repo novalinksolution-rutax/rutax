@@ -35,17 +35,15 @@ vi.mock("next/cache", () => ({
 
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import {
-  crearSuscripcionInicial,
   iniciarEnrolamientoMandato,
   cancelarMandatoAutoCobro,
-  cambiarPlanCourier,
 } from "@/modules/plataforma/superficie-courier";
-import {
-  crearSuscripcionInicialAction,
-  activarAutoCobroAction,
-  desactivarAutoCobroAction,
-  solicitarCambioDePlanAction,
-} from "./actions";
+// ⚠️ `crearSuscripcionInicialAction` y `solicitarCambioDePlanAction` se
+// retiraron el 2026-08-28 con la cuota plana. El rechazo adversarial por rol se
+// conserva ENTERO sobre la acción que queda: lo que protege no es una acción en
+// particular, es que ninguna Server Action de esta pantalla acepte un tenant que
+// no venga del claim.
+import { activarAutoCobroAction, desactivarAutoCobroAction } from "./actions";
 import type { SesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import type { Rol } from "@/modules/identidad/roles";
@@ -90,10 +88,10 @@ describe("Server Actions de plan — rechazo adversarial, cada rol/tipoUsuario N
       crearSesion({ tipoUsuario: "seller", rol: "seller", sellerId: "seller-1", tenantId: TENANT_A }),
     );
 
-    const resultado = await crearSuscripcionInicialAction("plan-1");
+    const resultado = await activarAutoCobroAction();
 
     expect(resultado).toEqual({ ok: false, error: "No autorizado." });
-    expect(crearSuscripcionInicial).not.toHaveBeenCalled();
+    expect(iniciarEnrolamientoMandato).not.toHaveBeenCalled();
   });
 
   it("conductor: rechazado ('No autorizado.')", async () => {
@@ -127,10 +125,10 @@ describe("Server Actions de plan — rechazo adversarial, cada rol/tipoUsuario N
         crearSesion({ tipoUsuario: "interno", rol, tenantId: TENANT_A }),
       );
 
-      const resultado = await crearSuscripcionInicialAction("plan-1");
+      const resultado = await activarAutoCobroAction();
 
       expect(resultado).toEqual({ ok: false, error: "No autorizado." });
-      expect(crearSuscripcionInicial).not.toHaveBeenCalled();
+      expect(iniciarEnrolamientoMandato).not.toHaveBeenCalled();
     },
   );
 
@@ -139,10 +137,10 @@ describe("Server Actions de plan — rechazo adversarial, cada rol/tipoUsuario N
       crearSesion({ tipoUsuario: "interno", rol: "dueno", tenantId: null }),
     );
 
-    const resultado = await crearSuscripcionInicialAction("plan-1");
+    const resultado = await activarAutoCobroAction();
 
     expect(resultado).toEqual({ ok: false, error: "No autorizado." });
-    expect(crearSuscripcionInicial).not.toHaveBeenCalled();
+    expect(iniciarEnrolamientoMandato).not.toHaveBeenCalled();
   });
 
   it("usuario invitado/suspendido con rol dueno: rechazado (RNF-03 — estado de cuenta manda sobre el rol)", async () => {
@@ -150,31 +148,21 @@ describe("Server Actions de plan — rechazo adversarial, cada rol/tipoUsuario N
       crearSesion({ tipoUsuario: "interno", rol: "dueno", tenantId: TENANT_A, estado: "suspendido" }),
     );
 
-    const resultado = await crearSuscripcionInicialAction("plan-1");
+    const resultado = await activarAutoCobroAction();
 
     expect(resultado).toEqual({ ok: false, error: "No autorizado." });
-    expect(crearSuscripcionInicial).not.toHaveBeenCalled();
+    expect(iniciarEnrolamientoMandato).not.toHaveBeenCalled();
   });
 
   it("sin sesión activa: el error de exigirSesionActual() se propaga como { ok:false }", async () => {
     vi.mocked(exigirSesionActual).mockRejectedValue(new Error("No hay una sesión activa."));
 
-    const resultado = await crearSuscripcionInicialAction("plan-1");
+    const resultado = await activarAutoCobroAction();
 
     expect(resultado).toEqual({ ok: false, error: "No hay una sesión activa." });
-    expect(crearSuscripcionInicial).not.toHaveBeenCalled();
+    expect(iniciarEnrolamientoMandato).not.toHaveBeenCalled();
   });
 
-  it("solicitarCambioDePlanAction — seller: rechazado, NUNCA llega a cambiarPlanCourier", async () => {
-    vi.mocked(exigirSesionActual).mockResolvedValue(
-      crearSesion({ tipoUsuario: "seller", rol: "seller", sellerId: "seller-1", tenantId: TENANT_A }),
-    );
-
-    const resultado = await solicitarCambioDePlanAction("plan-growth");
-
-    expect(resultado).toEqual({ ok: false, error: "No autorizado." });
-    expect(cambiarPlanCourier).not.toHaveBeenCalled();
-  });
 });
 
 // =============================================================================
@@ -182,20 +170,25 @@ describe("Server Actions de plan — rechazo adversarial, cada rol/tipoUsuario N
 // =============================================================================
 
 describe("Server Actions de plan — camino feliz (dueño), tenant forzado por el claim", () => {
-  it("crearSuscripcionInicialAction: usa tenantId/actorUsuarioId del CLAIM, nunca de otro canal", async () => {
+  it("activarAutoCobroAction: usa tenantId/actorUsuarioId del CLAIM, nunca de otro canal", async () => {
+    // Lo que protege esta prueba no es la acción: es que el tenant SIEMPRE salga
+    // del claim y nunca de un parámetro. Cuando se retiró el alta self-serve,
+    // esta cobertura se mudó a la acción que queda en la pantalla.
     vi.mocked(exigirSesionActual).mockResolvedValue(crearSesion({ rol: "dueno", tenantId: TENANT_A }));
-    vi.mocked(crearSuscripcionInicial).mockResolvedValue({ ok: true, suscripcionId: "susc-1" });
+    vi.mocked(iniciarEnrolamientoMandato).mockResolvedValue({
+      ok: true,
+      urlEnrolamiento: "https://fintoc.example/enrolar",
+    });
 
-    const resultado = await crearSuscripcionInicialAction("plan-1");
+    const resultado = await activarAutoCobroAction();
 
-    expect(resultado).toEqual({ ok: true, suscripcionId: "susc-1" });
-    expect(crearSuscripcionInicial).toHaveBeenCalledWith({
+    expect(resultado).toEqual({ ok: true, urlEnrolamiento: "https://fintoc.example/enrolar" });
+    expect(iniciarEnrolamientoMandato).toHaveBeenCalledWith({
       tenantId: TENANT_A,
-      planId: "plan-1",
       actorUsuarioId: USUARIO_ID,
     });
     // Nunca se le pasó el tenant equivocado, sin importar qué exista "afuera".
-    expect(crearSuscripcionInicial).not.toHaveBeenCalledWith(
+    expect(iniciarEnrolamientoMandato).not.toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: OTRO_TENANT }),
     );
   });
@@ -242,24 +235,4 @@ describe("Server Actions de plan — camino feliz (dueño), tenant forzado por e
     expect(iniciarEnrolamientoMandato).not.toHaveBeenCalled();
   });
 
-  it("solicitarCambioDePlanAction: usa tenantId/actorUsuarioId del claim y propaga el resultado tipado", async () => {
-    vi.mocked(exigirSesionActual).mockResolvedValue(crearSesion({ rol: "dueno", tenantId: TENANT_A }));
-    vi.mocked(cambiarPlanCourier).mockResolvedValue({
-      ok: true,
-      tipo: "upgrade",
-      montoAjuste: 16452,
-      efectivoDesde: null,
-    });
-
-    const resultado = await solicitarCambioDePlanAction("plan-growth", "mensual");
-
-    expect(resultado).toEqual({ ok: true, tipo: "upgrade", montoAjuste: 16452, efectivoDesde: null });
-    expect(cambiarPlanCourier).toHaveBeenCalledWith({
-      tenantId: TENANT_A,
-      nuevoPlanId: "plan-growth",
-      nuevaPeriodicidad: "mensual",
-      actorUsuarioId: USUARIO_ID,
-    });
-    expect(cambiarPlanCourier).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: OTRO_TENANT }));
-  });
 });

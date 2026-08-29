@@ -4,16 +4,14 @@ import { ShieldAlert } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarSuscripcion } from "@/modules/identidad/capacidades";
 import {
-  obtenerCatalogoPlanesPublico,
   obtenerMiPlan,
   obtenerEntitlementsTenant,
-  type PlanPublico,
   type VistaMiPlan,
   type Entitlements,
 } from "@/modules/plataforma/superficie-courier";
 import { obtenerConsumoTenant, type ConsumoTenant } from "@/modules/plataforma/consumo";
 import { EstadoError } from "@/components/onboarding/estado-pantalla";
-import { SelectorDePlanes } from "./selector-de-planes";
+import { obtenerContadorDelMes, type ContadorDelMes } from "@/modules/plataforma/contador-comision";
 import { MiPlan } from "./mi-plan";
 
 export const metadata: Metadata = {
@@ -21,13 +19,13 @@ export const metadata: Metadata = {
 };
 
 type ResultadoCarga =
-  | { tipo: "selector"; planes: PlanPublico[] }
+  | { tipo: "sin-suscripcion" }
   | {
       tipo: "mi-plan";
       miPlan: VistaMiPlan;
       entitlements: Entitlements;
       consumo: ConsumoTenant;
-      planes: PlanPublico[];
+      contador: ContadorDelMes | null;
     }
   | { tipo: "error" };
 
@@ -67,20 +65,26 @@ export default async function PaginaMiPlan() {
     const miPlan = await obtenerMiPlan(tenantId);
 
     if (!miPlan) {
-      const planes = await obtenerCatalogoPlanesPublico();
-      resultado = { tipo: "selector", planes };
+      // 🔴 Ya no se ofrece un catálogo para elegir. Con una sola modalidad no hay
+      // entre qué decidir, y la tarifa de cada courier la fija Rutax al armar su
+      // suscripción desde el backstage. Mostrarle una lista con una sola opción
+      // sería pedirle que confirme algo que ya está decidido.
+      resultado = { tipo: "sin-suscripcion" };
     } else {
-      // Catálogo también en "Mi plan": alimenta el cambio de plan self-serve
-      // (F2, item I) y resuelve el nombre del plan destino de un downgrade
-      // pendiente. Nota: si un plan se desactivó DESPUÉS de que el courier lo
-      // contratara (p. ej. su propio plan actual, o el destino de un downgrade
-      // ya programado), no aparece aquí — ver el fallback en `mi-plan.tsx`.
-      const [entitlements, consumo, planes] = await Promise.all([
+      // El catálogo ya no se pide: alimentaba el cambio de plan self-serve, que
+      // se retiró con la cuota plana. Lo que sí se pide es el contador del mes,
+      // cacheado cinco minutos por tenant.
+      const [entitlements, consumo, contador] = await Promise.all([
         obtenerEntitlementsTenant(tenantId),
         obtenerConsumoTenant(tenantId),
-        obtenerCatalogoPlanesPublico(),
+        obtenerContadorDelMes({
+          tenantId,
+          suscripcionId: miPlan.suscripcionId,
+          precioPorPedidoClp: miPlan.plan.precioPorPedidoClp,
+          minimoMensualClp: miPlan.plan.minimoMensualClp,
+        }),
       ]);
-      resultado = { tipo: "mi-plan", miPlan, entitlements, consumo, planes };
+      resultado = { tipo: "mi-plan", miPlan, entitlements, consumo, contador };
     }
   } catch (error) {
     console.error("Error al cargar la pantalla de plan:", error);
@@ -93,8 +97,20 @@ export default async function PaginaMiPlan() {
     );
   }
 
-  if (resultado.tipo === "selector") {
-    return <SelectorDePlanes planes={resultado.planes} />;
+  if (resultado.tipo === "sin-suscripcion") {
+    return (
+      <div className="mx-auto max-w-2xl space-y-3">
+        <h1 className="font-heading text-2xl font-semibold">Tu plan en Rutax</h1>
+        <p className="border border-line bg-bg-sunken px-4 py-3.5 text-sm leading-relaxed text-fg-muted">
+          Todavía no tienes un plan asignado. Rutax te cobra una tarifa por cada pedido que
+          entregas, y esa tarifa la acordamos contigo — escríbenos a{" "}
+          <a href="mailto:admin@rutax.io" className="font-medium underline underline-offset-4">
+            admin@rutax.io
+          </a>{" "}
+          y la dejamos configurada. Mientras tanto puedes operar con normalidad.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -102,7 +118,7 @@ export default async function PaginaMiPlan() {
       miPlan={resultado.miPlan}
       entitlements={resultado.entitlements}
       consumo={resultado.consumo}
-      planes={resultado.planes}
+      contador={resultado.contador}
     />
   );
 }
