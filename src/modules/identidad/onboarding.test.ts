@@ -17,6 +17,8 @@ interface EstadoFalso {
   tenants: Array<Record<string, unknown>>;
   perfiles: Array<Record<string, unknown>>;
   bitacora: Array<Record<string, unknown>>;
+  /** Filas escritas en `plataforma.areas_habilitadas` — una por área encendida. */
+  areas: Array<Record<string, unknown>>;
   /** Opciones con las que se llamó a `inviteUserByEmail` — para poder afirmar sobre `redirectTo`. */
   opcionesInvitacion: Array<{ redirectTo?: string; data?: Record<string, unknown> } | undefined>;
 }
@@ -24,9 +26,10 @@ interface EstadoFalso {
 function crearClienteFalso(opciones?: {
   fallarEnPerfil?: boolean;
   fallarEnInsertTenant?: { code?: string; message?: string };
+  fallarEnAreas?: { code?: string; message?: string };
   emailYaExiste?: boolean;
 }) {
-  const estado: EstadoFalso = { usuariosAuth: [], tenants: [], perfiles: [], bitacora: [], opcionesInvitacion: [] };
+  const estado: EstadoFalso = { usuariosAuth: [], tenants: [], perfiles: [], bitacora: [], areas: [], opcionesInvitacion: [] };
   let contadorId = 0;
   const nuevoId = (prefijo: string) => `${prefijo}-${++contadorId}`;
 
@@ -48,6 +51,11 @@ function crearClienteFalso(opciones?: {
       ),
       deleteUser: vi.fn(async (id: string) => {
         estado.usuariosAuth = estado.usuariosAuth.filter((u) => u.id !== id);
+        // Espeja `usuarios_perfil.id → auth.users(id) ON DELETE CASCADE`: borrar
+        // el usuario Auth arrastra su perfil. Sin esto el doble no reproduce la
+        // razón por la que la compensación debe borrar el usuario ANTES que el
+        // tenant, y el test no protegería ese orden.
+        estado.perfiles = estado.perfiles.filter((p) => p.id !== id);
         return { data: {}, error: null };
       }),
     },
@@ -74,6 +82,13 @@ function crearClienteFalso(opciones?: {
         }),
         delete: () => ({
           eq: async (_col: string, valor: string) => {
+            // Espeja `usuarios_perfil.tenant_id → tenants(id) ON DELETE RESTRICT`:
+            // si un perfil todavía apunta a este tenant, la base rechaza el
+            // borrado. Así el doble castiga el orden equivocado de compensación
+            // (borrar el tenant antes que el usuario Auth que arrastra el perfil).
+            if (estado.perfiles.some((p) => p.tenant_id === valor)) {
+              return { data: null, error: { code: "23503", message: 'update or delete on table "tenants" violates foreign key constraint on table "usuarios_perfil"' } };
+            }
             estado.tenants = estado.tenants.filter((t) => t.id !== valor);
             return { data: null, error: null };
           },
@@ -102,10 +117,29 @@ function crearClienteFalso(opciones?: {
       };
     }
 
+    if (tabla === "areas_habilitadas") {
+      return {
+        insert: async (filas: Array<Record<string, unknown>>) => {
+          if (opciones?.fallarEnAreas) {
+            return { data: null, error: opciones.fallarEnAreas };
+          }
+          estado.areas.push(...filas);
+          return { data: null, error: null };
+        },
+      };
+    }
+
     throw new Error(`Tabla no soportada en el doble de prueba: ${tabla}`);
   }
 
-  return { cliente: { auth, from } as never, estado };
+  // `crearTenantConDueno` alcanza `plataforma.areas_habilitadas` vía
+  // `cliente.schema("plataforma").from(...)`; el resto de las tablas van por
+  // `from(...)` directo (esquema `identidad`, el default del cliente). El doble
+  // ignora QUÉ esquema se pide y enruta por nombre de tabla, que en este alta
+  // no colisiona.
+  const schema = (_nombre: string) => ({ from });
+
+  return { cliente: { auth, from, schema } as never, estado };
 }
 
 const ENTRADA_VALIDA = {
@@ -191,6 +225,28 @@ describe("crearTenantConDueno — camino feliz", () => {
     });
     expect(perfil.seller_id).toBeUndefined();
     expect(perfil.driver_id).toBeUndefined();
+  });
+
+  it("🔴 el courier nace con las CINCO áreas de producto encendidas", async () => {
+    // Decisión del usuario: «que nazcan encendidos». La ausencia de fila es
+    // «apagada», así que un alta que no escriba las cinco deja al courier sin
+    // poder terminar su puesta en marcha (folios_caf gatea el paso DTE, uno de
+    // los bloqueantes). Se afirma el conjunto exacto, no un conteo: un conteo
+    // pasaría aunque se encendiera cinco veces la misma área.
+    const resultado = await crearTenantConDueno(cliente, ENTRADA_VALIDA);
+    const areasEncendidas = new Set(estado.areas.map((f) => f.area));
+    expect(areasEncendidas).toEqual(
+      new Set([
+        "emision_facturas",
+        "folios_caf",
+        "pago_conductores",
+        "conciliacion_cobranza",
+        "suscripcion_rutax",
+      ]),
+    );
+    for (const fila of estado.areas) {
+      expect(fila.tenant_id).toBe(resultado.tenantId);
+    }
   });
 
   it("normaliza el RUT a forma canónica antes de persistir", async () => {
@@ -337,6 +393,28 @@ describe("crearTenantConDueno — falla a medio camino: compensación", () => {
 
     expect(estado.usuariosAuth).toHaveLength(0);
     expect(estado.tenants).toHaveLength(0);
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  it("🔴 si falla el INSERT de áreas, deshace el tenant y el usuario Auth (no deja un courier inoperable)", async () => {
+    // Un tenant con dueño invitado pero sin áreas es peor que un alta fallida:
+    // el correo de invitación ya salió y la persona entraría a un producto que
+    // no la deja avanzar. El alta se deshace entera para poder reintentar limpio.
+    const { cliente, estado } = crearClienteFalso({
+      fallarEnAreas: { code: "XX000", message: "fallo al encender áreas" },
+    });
+
+    await expect(crearTenantConDueno(cliente, ENTRADA_VALIDA)).rejects.toThrow();
+
+    // Nada queda en pie. El perfil se va por la cascada al borrar el usuario
+    // Auth; el tenant, después, ya sin referencias. Si la compensación borrara
+    // en el orden inverso, el `delete` del tenant chocaría con la FK restrict y
+    // este test fallaría — que es justo lo que debe custodiar.
+    expect(estado.tenants).toHaveLength(0);
+    expect(estado.usuariosAuth).toHaveLength(0);
+    expect(estado.perfiles).toHaveLength(0);
+    expect(estado.areas).toHaveLength(0);
+    // Y la bitácora no registra un alta que no se completó.
     expect(estado.bitacora).toHaveLength(0);
   });
 });

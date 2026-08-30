@@ -26,6 +26,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { registrarEnBitacora } from "./auditoria";
+import { AREAS_PRODUCTO } from "./areas-producto";
 import { resolverUrlBaseApp } from "./enlace-invitacion";
 import { ErrorConflicto, ErrorValidacion } from "./errores";
 import { normalizarYValidarRut } from "./rut";
@@ -88,8 +89,18 @@ export interface CrearTenantConDuenoResultado {
   duenoUsuarioId: string;
 }
 
-/** Forma mínima del cliente service_role que esta función necesita — facilita pruebas con dobles. */
-type ClienteServicio = Pick<SupabaseClient, "auth" | "from">;
+/**
+ * Forma mínima del cliente service_role que esta función necesita — facilita
+ * pruebas con dobles.
+ *
+ * ⚠️ Se enumeran los métodos en vez de escribir `SupabaseClient` a secas. No es
+ * estilo: tiparlo como `SupabaseClient` hace que `ClienteServicio` deje de
+ * calzar con lo que devuelve `crearClienteServiceRole()` y **tumba el build de
+ * producción sin que el typecheck ni las pruebas lo noten** (mordió el
+ * 2026-08-25, commit `5f5044f`). `schema` se sumó para encender las áreas de
+ * producto, que viven en `plataforma`.
+ */
+type ClienteServicio = Pick<SupabaseClient, "auth" | "from" | "schema">;
 
 function validarEntrada(input: CrearTenantConDuenoInput): { rutNormalizado: string } {
   const { tenant, dueno } = input;
@@ -206,7 +217,57 @@ export async function crearTenantConDueno(
     throw new Error(`No se pudo crear el perfil del dueño: ${perfilError.message}`);
   }
 
-  // --- 4. Bitácora -------------------------------------------------------------
+  // --- 4. Áreas de producto: el courier nace con las cinco ENCENDIDAS ----------
+  // 🔴 Decisión del usuario (2026-08-28): «que nazcan encendidos, yo apago
+  // cuando esté listo». El modelo de `plataforma.areas_habilitadas` es «la fila
+  // significa encendida, la ausencia es apagada», así que un tenant sin filas
+  // no tiene NADA encendido — que es exactamente lo contrario.
+  //
+  // No es cosmético: `folios_caf` gatea `gestionar_configuracion_dte`, y el
+  // paso DTE es uno de los CUATRO que bloquean operar (`resolverBloqueoOperativo`).
+  // Un courier nacido sin áreas no puede terminar su puesta en marcha, y la
+  // única salida es que alguien de Rutax se lo encienda a mano.
+  //
+  // ⚠️ Va acá dentro y no en el llamador. El alta tiene hoy dos puertas —el
+  // autoservicio de `/registro` y el backstage— y encender las áreas fuera
+  // obligaría a las dos a acordarse: la que se olvidara crearía couriers
+  // inoperables en silencio. Esta función ya es «la ÚNICA puerta para crear un
+  // tenant»; que también sea la única que lo deja utilizable.
+  //
+  // ⚠️ La lista sale de `AREAS_PRODUCTO`, que es el catálogo del código. No se
+  // escribe a mano acá: el CHECK de la base ya es la segunda mitad de esa lista
+  // y una tercera copia terminaría discrepando de las otras dos.
+  const { error: areasError } = await cliente
+    .schema("plataforma")
+    .from("areas_habilitadas")
+    .insert(
+      AREAS_PRODUCTO.map((area) => ({
+        tenant_id: tenantId,
+        area,
+        habilitada_por: input.actor.usuarioId,
+        nota: "Encendida al dar de alta el courier.",
+      })),
+    );
+
+  if (areasError) {
+    // Se deshace el alta entera. Un tenant a medias —con dueño invitado y sin
+    // áreas— es peor que un alta fallida: el correo de invitación ya salió y la
+    // persona entraría a un producto que no la deja avanzar. Fallar acá permite
+    // reintentar limpio.
+    //
+    // ⚠️ ORDEN: primero el usuario Auth, DESPUÉS el tenant. A esta altura el
+    // perfil YA existe y apunta al tenant con `on delete restrict`, así que
+    // borrar el tenant primero fallaría por la FK. Borrar el usuario Auth
+    // arrastra el perfil por `on delete cascade` (usuarios_perfil.id →
+    // auth.users), y recién entonces el tenant queda sin referencias.
+    // (Es el orden inverso al de las ramas de arriba, donde el perfil aún no
+    // existe y da lo mismo.)
+    await deshacerUsuarioAuth(cliente, duenoUsuarioId);
+    await deshacerTenant(cliente, tenantId);
+    throw new Error(`No se pudieron encender las áreas del courier: ${areasError.message}`);
+  }
+
+  // --- 5. Bitácora -------------------------------------------------------------
   // Sin secretos: solo nombres, email (dato de contacto, no credencial) e ids.
   await registrarEnBitacora(cliente as unknown as SupabaseClient, {
     tenantId,
