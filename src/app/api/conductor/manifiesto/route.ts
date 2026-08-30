@@ -246,17 +246,29 @@ export async function GET(request: NextRequest) {
         /** El conductor fijó esta parada a mano: el motor no la mueve. */
         fijada: ruta?.fijado === true,
         /**
-         * Geometría del tramo que LLEGA a esta parada, por calle. `null` cuando
-         * la ruta la calculó el motor local (líneas rectas, sin trazado).
+         * Geometría del tramo que LLEGA a esta parada, por calle.
+         *
+         * ⚠️ **`polilinea` puede ser null con el tramo presente, y esa
+         * diferencia importa.** Antes se descartaba el tramo ENTERO cuando la
+         * polilínea faltaba, y con él la distancia — así el conductor no podía
+         * distinguir «tramo de cero metros» de «esto nunca se ruteó».
+         *
+         * Ocurre de verdad: dos paradas en la misma dirección (mismo edificio,
+         * misma oficina) geocodifican al mismo punto, el tramo mide 0 m y
+         * Google no devuelve polilínea porque no hay nada que dibujar. Con la
+         * regla vieja, esas dos paradas tiraban abajo el trazado por calle de
+         * TODA la ruta. Visto en producción el 2026-08-29: 3 de 5 tramos con
+         * geometría y el mapa dibujando rectas.
+         *
+         * `tramo: null` queda para lo que de verdad significa: acá no se ruteó.
          */
-        tramo:
-          ruta && ruta.polilinea !== null
-            ? {
-                polilinea: ruta.polilinea,
-                distanciaM: ruta.distanciaM,
-                duracionS: ruta.duracionS,
-              }
-            : null,
+        tramo: ruta
+          ? {
+              polilinea: ruta.polilinea,
+              distanciaM: ruta.distanciaM,
+              duracionS: ruta.duracionS,
+            }
+          : null,
       };
     });
 
