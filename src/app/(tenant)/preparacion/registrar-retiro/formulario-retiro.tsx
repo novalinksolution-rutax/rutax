@@ -54,6 +54,12 @@ export interface BodegaOpcion {
   id: string;
   nombre: string;
   comuna: string | null;
+  /**
+   * El seller DUEÑO de la bodega — que no es necesariamente el de los bultos.
+   * Se declara para poder contrastarlo: el dato ya viajaba en el objeto y solo
+   * faltaba nombrarlo.
+   */
+  sellerId: string;
   sellerNombre: string;
 }
 
@@ -82,6 +88,28 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
 
   const conductorElegido = conductores.find((c) => c.id === conductorId);
   const bodegaElegida = bodegas.find((b) => b.id === bodegaId);
+
+  /**
+   * Los marcados que son de OTRO seller que el dueño de la bodega.
+   *
+   * ⚠️ **No se bloquea, se avisa.** Un bulto ajeno aparecido en una bodega es
+   * un hecho legítimo y además valioso: la propia base lo cuenta como
+   * `bultos_de_otro_seller` y su comentario dice que «es exactamente la clase
+   * de descuadre que el retiro existe para destapar». La app del conductor ya
+   * lo trata así —acepta el escaneo, lo marca «no es de esta bodega» y le da un
+   * acuse distinto—; esta pantalla era la única que lo dejaba pasar en silencio.
+   *
+   * Y aquí importa más que en terreno: el retiro **le paga la visita al
+   * conductor**, así que registrar cinco bultos de Prieba en la bodega de
+   * NovalinkShop sin decir nada deja un cobro respaldado por un acta que no
+   * cuadra, y nadie se entera hasta la conciliación.
+   */
+  const ajenos = useMemo(() => {
+    if (!bodegaElegida) return [] as PedidoPendienteDeRetiro[];
+    return registrables.filter(
+      (p) => seleccion.has(p.id) && p.sellerId !== bodegaElegida.sellerId,
+    );
+  }, [registrables, seleccion, bodegaElegida]);
 
   const listo = conductorId !== "" && bodegaId !== "" && seleccion.size > 0;
 
@@ -252,6 +280,29 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
         </p>
       )}
 
+      {ajenos.length > 0 && bodegaElegida && (
+        <div
+          className="flex items-start gap-3 border border-attention-line bg-attention-bg p-3 text-sm text-attention-fg"
+          role="status"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <div className="space-y-1">
+            <p className="font-medium">
+              {ajenos.length} bulto{ajenos.length === 1 ? "" : "s"} no {ajenos.length === 1 ? "es" : "son"} de esta bodega
+            </p>
+            <p className="opacity-90">
+              Esta bodega es de <strong>{bodegaElegida.sellerNombre}</strong> y{" "}
+              {ajenos.length === 1 ? "ese pedido pertenece" : "esos pedidos pertenecen"} a otro
+              seller. Se puede registrar igual —pasa en terreno y queda como hallazgo—, pero
+              revisa que sea eso y no la bodega equivocada.
+            </p>
+            <p className="font-mono text-xs opacity-80">
+              {ajenos.map((p) => p.codigoVisible).join(" · ")}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <Button onClick={() => setConfirmando(true)} disabled={!listo || pendiente}>
           <PackageCheck className="mr-2 size-4" />
@@ -274,6 +325,17 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
             <strong>se le paga la visita a {conductorElegido?.nombre ?? "el conductor"}</strong> y{" "}
             <strong>se le avisa por WhatsApp al seller</strong> que le retiraron sus pedidos.
             Regístralo solo si la visita ocurrió de verdad.
+            {ajenos.length > 0 && bodegaElegida ? (
+              <>
+                {" "}
+                Ojo:{" "}
+                <strong>
+                  {ajenos.length} de esos bultos no {ajenos.length === 1 ? "es" : "son"} de{" "}
+                  {bodegaElegida.sellerNombre}
+                </strong>
+                , así que el acta va a quedar con ese descuadre.
+              </>
+            ) : null}
           </>
         }
         onConfirmar={registrar}
