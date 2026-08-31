@@ -279,10 +279,13 @@ export function pasosDelAsistente(
       titulo: "Los datos de tu empresa",
       enFrase: "los datos de tu empresa",
       resumen: emisorCompleto
-        ? "Giro, dirección, comuna y actividad económica cargados."
+        ? "Razón social, RUT, giro, dirección, comuna y actividad cargados."
         : `Falta ${listaEnFrase(estado.dte.camposEmisorFaltantes)} de tu empresa.`,
       listo: emisorCompleto,
-      critico: false,
+      // Crítico: con el alta por correo, razón social y RUT nacen vacíos y el
+      // courier no puede operar sin ellos (`resolverBloqueoOperativo` los exige
+      // primero). Antes no era crítico porque el alta siempre los traía.
+      critico: true,
       dependeDe: null,
       bloqueado: false,
       motivoBloqueo: null,

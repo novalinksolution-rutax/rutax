@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerPanelCouriers } from "@/modules/plataforma/panel-couriers";
-import { obtenerPlanesActivos } from "@/modules/plataforma/consultas";
-import type { Plan } from "@/modules/plataforma/tipos";
 import { tieneSesionAdmin, obtenerRolAdminActual } from "../sesion-admin";
 import { TablaCouriers } from "./tabla-couriers";
 import { DialogNuevoCourier } from "./dialog-nuevo-courier";
@@ -22,25 +20,21 @@ export default async function PaginaCouriers() {
     redirect("/admin/login");
   }
 
-  let couriers: Awaited<ReturnType<typeof obtenerPanelCouriers>>["couriers"] = [];
-  let planes: Plan[] = [];
+  type Panel = Awaited<ReturnType<typeof obtenerPanelCouriers>>;
+  let couriers: Panel["couriers"] = [];
+  let invitados: Panel["couriersSinSuscripcion"] = [];
   let errorCarga = false;
 
   // El rol decide si se muestra el botón de alta (crear courier es escritura,
   // `admin_total` + AAL2). Es solo UX: el gate real vive en `accionCrearCourier`
   // vía `exigirActorAdmin`. `soporte_lectura` ve la lista, no el botón.
-  const [rolAdmin] = await Promise.all([obtenerRolAdminActual()]);
+  const rolAdmin = await obtenerRolAdminActual();
   const puedeCrear = rolAdmin === "admin_total";
 
   try {
-    const [panel, planesActivos] = await Promise.all([
-      obtenerPanelCouriers(),
-      // Los planes alimentan el select del alta. Si falla, el alta sigue
-      // pudiendo crear el courier «sin plan»; no vale tumbar la página por eso.
-      obtenerPlanesActivos().catch(() => [] as Plan[]),
-    ]);
+    const panel = await obtenerPanelCouriers();
     couriers = panel.couriers;
-    planes = planesActivos;
+    invitados = panel.couriersSinSuscripcion;
   } catch {
     errorCarga = true;
   }
@@ -56,7 +50,7 @@ export default async function PaginaCouriers() {
             suscripción — aquí es solo lectura.
           </p>
         </div>
-        {puedeCrear ? <DialogNuevoCourier planes={planes} /> : null}
+        {puedeCrear ? <DialogNuevoCourier /> : null}
       </div>
 
       {errorCarga ? (
@@ -67,7 +61,7 @@ export default async function PaginaCouriers() {
           No se pudo cargar el panel de couriers. Intenta recargar la página.
         </div>
       ) : (
-        <TablaCouriers couriers={couriers} />
+        <TablaCouriers couriers={couriers} invitados={invitados} />
       )}
     </div>
   );

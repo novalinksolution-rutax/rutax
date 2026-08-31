@@ -254,6 +254,40 @@ describe("crearTenantConDueno — camino feliz", () => {
     expect(estado.tenants[0].rut).toBe("76543210-3");
   });
 
+  it("🔴 alta por correo (sin razón social ni RUT): crea el tenant con esos dos en NULL", async () => {
+    // Es el alta del backstage: solo el nombre provisional y el correo del dueño.
+    // razón social y RUT los pone el dueño en su puesta en marcha, así que la
+    // fila nace con NULL —nunca con cadena vacía, que no distinguiría «falta» de
+    // «vacío a propósito»—.
+    const resultado = await crearTenantConDueno(cliente, {
+      tenant: { nombreFantasia: "Courier de dueno@nuevo.cl" },
+      dueno: { email: "dueno@nuevo.cl", nombreCompleto: "dueno@nuevo.cl" },
+      actor: { usuarioId: "admin-1", tipo: "super_admin" },
+    });
+    expect(resultado.tenantId).toBeTruthy();
+    expect(estado.tenants[0]).toMatchObject({
+      nombre_fantasia: "Courier de dueno@nuevo.cl",
+      razon_social: null,
+      rut: null,
+      estado: "onboarding",
+    });
+    // Y aun así nace con sus cinco áreas: el alta por correo no puede dejarlo
+    // inoperable «por venir con menos datos».
+    expect(new Set(estado.areas.map((f) => f.area)).size).toBe(5);
+  });
+
+  it("🔴 un RUT presente pero inválido se rechaza aunque sea opcional", async () => {
+    // «Opcional» no significa «se acepta basura»: la puerta que sí lo trae
+    // (`/registro`) no debe poder colar un DV incorrecto.
+    await expect(
+      crearTenantConDueno(cliente, {
+        tenant: { nombreFantasia: "X", razonSocial: "X SpA", rut: "76543210-9" },
+        dueno: { email: "otro@nuevo.cl", nombreCompleto: "Otro" },
+        actor: { usuarioId: null, tipo: "sistema" },
+      }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+
   it("normaliza el email del dueño a minúsculas antes de invitar y auditar", async () => {
     await crearTenantConDueno(cliente, ENTRADA_VALIDA);
     expect(estado.usuariosAuth[0].email).toBe("dueno@despachosrapidos.cl");

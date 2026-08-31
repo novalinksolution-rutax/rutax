@@ -61,9 +61,17 @@ export function resolverRedirectToActivacionCuenta(): string | undefined {
 
 export interface DatosTenant {
   nombreFantasia: string;
-  razonSocial: string;
-  /** RUT del courier — formato `NNNNNNNN-DV`; se normaliza y valida (módulo 11) antes de persistir. */
-  rut: string;
+  /**
+   * Razón social. OPCIONAL desde 2026-08-30: el alta por correo del backstage
+   * no la conoce y la deja en NULL; el dueño la completa en su puesta en marcha.
+   * El autoservicio de `/registro` sí la sigue exigiendo, en su formulario.
+   */
+  razonSocial?: string;
+  /**
+   * RUT del courier — formato `NNNNNNNN-DV`; se normaliza y valida (módulo 11)
+   * antes de persistir. OPCIONAL, misma razón que `razonSocial`.
+   */
+  rut?: string;
   /** Default `America/Santiago` — Localización Chile (CLAUDE.md). Casi nunca debería variar en el MVP. */
   zonaHoraria?: string;
 }
@@ -102,21 +110,33 @@ export interface CrearTenantConDuenoResultado {
  */
 type ClienteServicio = Pick<SupabaseClient, "auth" | "from" | "schema">;
 
-function validarEntrada(input: CrearTenantConDuenoInput): { rutNormalizado: string } {
+function validarEntrada(input: CrearTenantConDuenoInput): { rutNormalizado: string | null } {
   const { tenant, dueno } = input;
 
   if (!tenant.nombreFantasia.trim()) {
     throw new ErrorValidacion("El nombre de fantasía del courier es obligatorio.");
   }
-  if (!tenant.razonSocial.trim()) {
-    throw new ErrorValidacion("La razón social del courier es obligatoria.");
+
+  // Razón social y RUT son OPCIONALES (alta por correo del backstage: los pone
+  // el dueño después). PERO si vienen, se validan igual que siempre: aceptar un
+  // RUT inválido «porque es opcional» dejaría pasar basura por la puerta que sí
+  // los trae (el autoservicio de `/registro`).
+  if (tenant.razonSocial !== undefined && !tenant.razonSocial.trim()) {
+    // Distinto de «no vino»: vino vacío, que es un error del formulario que sí
+    // lo pide.
+    throw new ErrorValidacion("La razón social del courier no puede ir en blanco.");
   }
-  const rutNormalizado = normalizarYValidarRut(tenant.rut);
-  if (!rutNormalizado) {
-    throw new ErrorValidacion(
-      "El RUT del courier no es válido (formato esperado NNNNNNNN-DV con dígito verificador correcto).",
-    );
+
+  let rutNormalizado: string | null = null;
+  if (tenant.rut !== undefined && tenant.rut.trim() !== "") {
+    rutNormalizado = normalizarYValidarRut(tenant.rut);
+    if (!rutNormalizado) {
+      throw new ErrorValidacion(
+        "El RUT del courier no es válido (formato esperado NNNNNNNN-DV con dígito verificador correcto).",
+      );
+    }
   }
+
   if (!dueno.email.trim() || !dueno.email.includes("@")) {
     throw new ErrorValidacion("El email del dueño es obligatorio y debe ser un correo válido.");
   }
@@ -180,7 +200,10 @@ export async function crearTenantConDueno(
     .from("tenants")
     .insert({
       nombre_fantasia: input.tenant.nombreFantasia.trim(),
-      razon_social: input.tenant.razonSocial.trim(),
+      // `null` cuando el alta por correo no los trae — el dueño los completa en
+      // su puesta en marcha. Nunca cadena vacía: la columna distingue «no puesto
+      // todavía» (NULL, y el bloqueo operativo lo exige) de un dato real.
+      razon_social: input.tenant.razonSocial?.trim() || null,
       rut: rutNormalizado,
       estado: "onboarding",
       zona_horaria: zonaHoraria,

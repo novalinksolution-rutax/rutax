@@ -69,10 +69,28 @@ export async function accionGuardarDatosEmisor(formData: FormData): Promise<Resu
     return { ok: false, mensaje: "No tienes permiso para editar los datos de la empresa." };
   }
 
+  // nombre_fantasia, razon_social y rut se suman a los cuatro de siempre: con el
+  // alta por correo llegan provisional/NULL y este paso los vuelve reales. Son
+  // los que un DTE necesita para identificar al emisor.
+  const nombreFantasia = texto(formData.get("nombre_fantasia"));
+  const razonSocial = texto(formData.get("razon_social"));
+  const rutCrudo = texto(formData.get("rut"));
   const giro = texto(formData.get("giro"));
   const direccion = texto(formData.get("direccion"));
   const comuna = texto(formData.get("comuna"));
   const actividad = texto(formData.get("actividad_economica"));
+
+  if (!nombreFantasia) return { ok: false, mensaje: "El nombre de tu empresa es obligatorio." };
+  if (!razonSocial) return { ok: false, mensaje: "La razón social es obligatoria: va impresa en cada factura." };
+
+  // El RUT se valida con dígito verificador (módulo 11), como en el alta.
+  const rutNormalizado = normalizarYValidarRut(rutCrudo);
+  if (!rutNormalizado) {
+    return {
+      ok: false,
+      mensaje: "El RUT no es válido (formato NNNNNNNN-DV con dígito verificador correcto).",
+    };
+  }
 
   if (!giro) return { ok: false, mensaje: "El giro es obligatorio: va impreso en cada factura." };
   if (giro.length > 80) {
@@ -98,9 +116,27 @@ export async function accionGuardarDatosEmisor(formData: FormData): Promise<Resu
     const { error } = await supabase
       .schema("identidad")
       .from("tenants")
-      .update({ giro, direccion, comuna, actividad_economica: actividad })
+      .update({
+        nombre_fantasia: nombreFantasia,
+        razon_social: razonSocial,
+        rut: rutNormalizado,
+        giro,
+        direccion,
+        comuna,
+        actividad_economica: actividad,
+      })
       .eq("id", tenantId);
-    if (error) throw new Error(error.message);
+    if (error) {
+      // 23505 = choque con `tenants_rut_uk`: ese RUT ya es de otro courier. Es
+      // el momento en que la unicidad se comprueba de verdad (nace en NULL).
+      if ((error as { code?: string }).code === "23505") {
+        return {
+          ok: false,
+          mensaje: "Ese RUT ya está registrado para otro courier en Rutax. Revisa que sea el correcto.",
+        };
+      }
+      throw new Error(error.message);
+    }
 
     await registrarEnBitacora(supabase, {
       tenantId,
@@ -109,13 +145,22 @@ export async function accionGuardarDatosEmisor(formData: FormData): Promise<Resu
       accion: "identidad.datos_emisor_actualizados",
       entidadTipo: "tenant",
       entidadId: tenantId,
-      detalle: { giro, direccion, comuna, actividad_economica: actividad },
+      // El RUT no es secreto (va en cada DTE), pero se anota normalizado.
+      detalle: {
+        nombre_fantasia: nombreFantasia,
+        razon_social: razonSocial,
+        rut: rutNormalizado,
+        giro,
+        direccion,
+        comuna,
+        actividad_economica: actividad,
+      },
     });
 
     revalidatePath(RUTA_ASISTENTE);
     return {
       ok: true,
-      acuse: "Listo: tus facturas ya salen con el giro, la dirección y la actividad de tu empresa.",
+      acuse: "Listo: tu empresa quedó con su nombre, razón social, RUT y los datos de facturación.",
     };
   } catch (err) {
     return { ok: false, mensaje: mensajeDeError(err, "los datos de tu empresa") };

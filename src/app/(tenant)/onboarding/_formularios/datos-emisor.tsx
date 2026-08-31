@@ -56,6 +56,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
+import { esRutValido } from "@/modules/identidad/rut";
 
 import {
   SeccionConfiguracion,
@@ -64,16 +66,40 @@ import {
 import { accionGuardarDatosEmisor } from "../acciones-datos-courier";
 
 export interface DatosEmisorIniciales {
+  nombreFantasia: string | null;
+  razonSocial: string | null;
+  rut: string | null;
   giro: string | null;
   direccion: string | null;
   comuna: string | null;
   actividadEconomica: string | null;
 }
 
+/** El mismo mensaje que produce el backend, como en `/registro`: el dueño no
+ *  debería ver un texto distinto según dónde escriba su RUT. */
+const MENSAJE_RUT_INVALIDO = "El dígito verificador no corresponde a este RUT.";
+const MENSAJE_RUT_FORMATO = "Ingresa el RUT con el formato 12.345.678-9.";
+
 export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIniciales }) {
   const [comuna, setComuna] = useState(iniciales.comuna ?? "");
   const [direccion, setDireccion] = useState(iniciales.direccion ?? "");
   const [direccionElegida, setDireccionElegida] = useState(false);
+  // El alta por correo deja el nombre como «Courier de <correo>» (provisional):
+  // no se precarga en el campo para no invitar a dejarlo así; si el dueño ya lo
+  // fijó antes, sí se muestra. Se distingue por el prefijo.
+  const fantasiaProvisional = (iniciales.nombreFantasia ?? "").startsWith("Courier de ");
+  const [rut, setRut] = useState(iniciales.rut ?? "");
+  const [errorRut, setErrorRut] = useState<string | null>(null);
+
+  function validarRutAlPerderFoco() {
+    const limpio = limpiarMascaraRut(rut);
+    if (!limpio) return;
+    if (!/^[0-9]{1,8}-[0-9kK]$/.test(limpio)) {
+      setErrorRut(MENSAJE_RUT_FORMATO);
+      return;
+    }
+    if (!esRutValido(limpio)) setErrorRut(MENSAJE_RUT_INVALIDO);
+  }
 
   // El catálogo de la RM más, si hace falta, la comuna que trajo el buscador o
   // la que ya estaba guardada. Un `Set` para no duplicar la que ya esté.
@@ -88,11 +114,63 @@ export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIni
   return (
     <SeccionConfiguracion
       titulo="Los datos de tu empresa en la factura"
-      descripcion="Van impresos en cada documento que emitas y el SII los exige. Tu razón social y tu RUT ya los tenemos del alta."
+      descripcion="Van impresos en cada documento que emitas y el SII los exige. Complétalos: hasta que estén, no puedes operar."
       etiquetaAccion="Guardar los datos"
       onGuardar={guardar}
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="emisor-fantasia">Nombre de tu empresa</Label>
+          <Input
+            id="emisor-fantasia"
+            name="nombre_fantasia"
+            required
+            maxLength={120}
+            defaultValue={fantasiaProvisional ? "" : (iniciales.nombreFantasia ?? "")}
+            placeholder="Ej: Despachos del Centro"
+          />
+          <p className="text-xs text-fg-muted">Es como se llama tu courier en Rutax y en el seguimiento.</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="emisor-razon">Razón social</Label>
+          <Input
+            id="emisor-razon"
+            name="razon_social"
+            required
+            maxLength={160}
+            defaultValue={iniciales.razonSocial ?? ""}
+            placeholder="Ej: Despachos del Centro SpA"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="emisor-rut">RUT de la empresa</Label>
+          {/* El campo visible NO lleva `name`: se envía el RUT ya limpio por un
+              hidden, para que el server reciba `NNNNNNNN-DV` sin puntos. */}
+          <Input
+            id="emisor-rut"
+            inputMode="text"
+            autoComplete="off"
+            required
+            placeholder="76.543.210-9"
+            value={rut}
+            onChange={(e) => {
+              setRut(enmascararRut(e.target.value));
+              setErrorRut(null);
+            }}
+            onBlur={validarRutAlPerderFoco}
+            aria-invalid={errorRut ? true : undefined}
+            aria-describedby={errorRut ? "emisor-rut-error" : undefined}
+          />
+          <input type="hidden" name="rut" value={limpiarMascaraRut(rut)} />
+          {errorRut ? (
+            <p id="emisor-rut-error" className="text-xs text-destructive">
+              {errorRut}
+            </p>
+          ) : null}
+        </div>
+
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="emisor-giro">Giro</Label>
           <Input

@@ -51,7 +51,11 @@ import {
   BADGE_ESTADO_SUSCRIPCION,
 } from "@/lib/ui/traduccion-estados";
 import { DESCRIPCION_AREAS, type AreaProducto } from "@/modules/identidad/areas-producto";
-import type { CourierPanelItem, NivelSaludCourier } from "@/modules/plataforma/panel-couriers";
+import type {
+  CourierInvitadoItem,
+  CourierPanelItem,
+  NivelSaludCourier,
+} from "@/modules/plataforma/panel-couriers";
 import type { Periodicidad } from "@/modules/plataforma/tipos";
 
 const TEXTO_PERIODICIDAD: Record<Periodicidad, string> = {
@@ -94,11 +98,50 @@ function AreasApagadas({ areas }: { areas: readonly AreaProducto[] }) {
   );
 }
 
-interface Props {
-  couriers: CourierPanelItem[];
+/**
+ * Los couriers recién invitados que aún no tienen suscripción.
+ *
+ * Se muestran aparte de la tabla —y arriba— porque no son lo mismo: son couriers
+ * a los que les falta un paso, no filas del panel normal. Cada uno dice CUÁL es
+ * el paso que falta: que el dueño entre y complete sus datos, o que Rutax le
+ * asigne un plan. Sin esto, el courier que acabas de invitar por correo no se
+ * vería en ninguna parte hasta tener plan.
+ */
+function SeccionInvitados({ invitados }: { invitados: CourierInvitadoItem[] }) {
+  if (invitados.length === 0) return null;
+  return (
+    <section className="rounded-lg border border-dashed border-border bg-muted/20 p-4">
+      <h2 className="text-sm font-medium">Invitados, aún sin suscripción</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Couriers a los que ya invitaste. No aparecen en el panel de abajo hasta que
+        tengan un plan.
+      </p>
+      <ul className="mt-3 divide-y divide-border">
+        {invitados.map((c) => (
+          <li key={c.tenantId} className="flex items-center justify-between gap-3 py-2">
+            <span className="min-w-0 truncate text-sm font-medium">
+              {c.nombreFantasia ?? `${c.tenantId.slice(0, 8)}…`}
+            </span>
+            {c.datosPendientes ? (
+              <Badge variant="warning">Esperando que el dueño complete sus datos</Badge>
+            ) : (
+              <Button asChild variant="outline" size="sm">
+                <Link href="/admin/suscripciones">Asignar plan</Link>
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
-export function TablaCouriers({ couriers }: Props) {
+interface Props {
+  couriers: CourierPanelItem[];
+  invitados: CourierInvitadoItem[];
+}
+
+export function TablaCouriers({ couriers, invitados }: Props) {
   const [busqueda, setBusqueda] = useState("");
 
   const filtrados = useMemo(() => {
@@ -112,22 +155,26 @@ export function TablaCouriers({ couriers }: Props) {
 
   if (couriers.length === 0) {
     return (
-      <EmptyState
-        icon={Building2}
-        tono="arranque"
-        titulo="Sin couriers con suscripción"
-        descripcion="Cuando asignes un plan a un courier desde Suscripciones, aparecerá aquí."
-        accion={
-          <Button asChild size="sm">
-            <Link href="/admin/suscripciones">Ir a Suscripciones</Link>
-          </Button>
-        }
-      />
+      <div className="space-y-4">
+        <SeccionInvitados invitados={invitados} />
+        <EmptyState
+          icon={Building2}
+          tono="arranque"
+          titulo="Sin couriers con suscripción"
+          descripcion="Cuando asignes un plan a un courier desde Suscripciones, aparecerá aquí."
+          accion={
+            <Button asChild size="sm">
+              <Link href="/admin/suscripciones">Ir a Suscripciones</Link>
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <SeccionInvitados invitados={invitados} />
       <div className="relative w-full max-w-xs">
         <Search
           className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"

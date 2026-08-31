@@ -84,15 +84,19 @@ describe("pasosDelAsistente — forma de la lista", () => {
     }
   });
 
-  it("solo sellers, conductores, DTE y tarifas son críticos", () => {
+  it("son críticos empresa, sellers, conductores, DTE y tarifas", () => {
     // El resto no bloquea operar. Que estén en la lista no los vuelve requisitos.
     //
+    // ⚠️ EMPRESA es crítica desde el alta por correo: razón social y RUT nacen
+    // vacíos y el courier no opera sin ellos (`resolverBloqueoOperativo`).
     // ⚠️ La BODEGA no es crítica a propósito: sin ella la asignación y el
     // manifiesto funcionan igual; lo que se cae es el ruteo, que es otra frase.
     const criticos = pasosDelAsistente(estadoBase())
       .filter((p) => p.critico)
       .map((p) => p.clave);
-    expect(criticos).toEqual(["sellers", "conductores", "dte", "tarifas"]);
+    // El orden es el del asistente: operar (sellers, conductores) y luego
+    // cobrar (empresa, dte, tarifas).
+    expect(criticos).toEqual(["sellers", "conductores", "empresa", "dte", "tarifas"]);
   });
 
   it("los cinco pasos con pantalla propia se marcan como resueltos fuera", () => {

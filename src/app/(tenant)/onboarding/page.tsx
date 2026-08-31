@@ -347,11 +347,16 @@ async function leerDatosEmisor(tenantId: string) {
   const { data } = await cliente
     .schema("identidad")
     .from("tenants")
-    .select("giro, direccion, comuna, actividad_economica")
+    // nombre_fantasia, razon_social y rut se suman a los cuatro de siempre: con
+    // el alta por correo llegan como provisional/NULL y el dueño los fija acá.
+    .select("nombre_fantasia, razon_social, rut, giro, direccion, comuna, actividad_economica")
     .eq("id", tenantId)
     .maybeSingle();
 
   return {
+    nombreFantasia: (data?.nombre_fantasia as string | null) ?? null,
+    razonSocial: (data?.razon_social as string | null) ?? null,
+    rut: (data?.rut as string | null) ?? null,
     giro: (data?.giro as string | null) ?? null,
     direccion: (data?.direccion as string | null) ?? null,
     comuna: (data?.comuna as string | null) ?? null,

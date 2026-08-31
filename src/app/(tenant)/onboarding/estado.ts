@@ -42,8 +42,18 @@ export type EstadoPasoTarifas = "sin_tarifas" | "configuradas";
 export type EstadoPasoCobranza = "pendiente" | "conectado" | "con_problemas";
 export type EstadoPasoPlan = "sin_suscripcion" | "trial" | "activa" | "suspendida" | "cancelada";
 
-/** Los cuatro campos del bloque Emisor que el SII exige y `tenants` no tenía. */
+/**
+ * Los campos del bloque Emisor que el courier tiene que completar.
+ *
+ * `razon_social` y `rut` van primero: con el alta por correo el courier nace sin
+ * ellos (NULL) y son la base de todo (identifican al emisor, van en cada DTE).
+ * `nombre_fantasia` NO entra: siempre tiene un valor —al menos el provisional
+ * del alta— así que como «campo faltante» daría siempre completo; su edición se
+ * ofrece en el formulario, no se exige por esta lista.
+ */
 export const CAMPOS_EMISOR = [
+  { columna: "razon_social", etiqueta: "razón social" },
+  { columna: "rut", etiqueta: "RUT" },
   { columna: "giro", etiqueta: "giro" },
   { columna: "direccion", etiqueta: "dirección" },
   { columna: "comuna", etiqueta: "comuna" },
@@ -151,7 +161,16 @@ export function proveedorGestionaFolios(proveedorDte: string | null): boolean {
 export async function resolverBloqueoOperativo(tenantId: string): Promise<string | null> {
   const supabase = await createClient();
 
-  const [sellersRes, conductoresRes, tarifasRes, dteRes] = await Promise.all([
+  const [empresaRes, sellersRes, conductoresRes, tarifasRes, dteRes] = await Promise.all([
+    // 🔴 La identidad de la empresa va PRIMERO. Con el alta por correo el courier
+    // nace sin razón social ni RUT (los dos NULL), y esos dos son la base de
+    // todo: van en cada DTE y el RUT identifica al courier. Es el primer dato que
+    // el dueño tiene que poner, antes que sellers o conductores.
+    supabase
+      .from("tenants")
+      .select("razon_social, rut")
+      .eq("id", tenantId)
+      .maybeSingle(),
     supabase
       .from("sellers")
       .select("id", { count: "exact", head: true })
@@ -177,6 +196,14 @@ export async function resolverBloqueoOperativo(tenantId: string): Promise<string
       .eq("tenant_id", tenantId)
       .maybeSingle(),
   ]);
+
+  // Sin razón social O sin RUT, el courier no puede facturar ni ser identificado:
+  // es el bloqueo más fundamental. Un string vacío cuenta como falta —la columna
+  // guarda NULL, pero por si acaso.
+  const empresa = empresaRes.data as { razon_social: string | null; rut: string | null } | null;
+  if (!empresa?.razon_social?.trim() || !empresa?.rut?.trim()) {
+    return "completar los datos de tu empresa";
+  }
 
   if ((sellersRes.count ?? 0) === 0) return "invitar a tu primer seller";
   if ((conductoresRes.count ?? 0) === 0) return "cargar tus conductores";
@@ -230,7 +257,9 @@ export async function resolverEstadoOnboarding(tenantId: string): Promise<Estado
   ] = await Promise.all([
     supabase
       .from("tenants")
-      .select("nombre_fantasia, giro, direccion, comuna, actividad_economica, telefono_contacto, email_contacto")
+      .select(
+        "nombre_fantasia, razon_social, rut, giro, direccion, comuna, actividad_economica, telefono_contacto, email_contacto",
+      )
       .eq("id", tenantId)
       .maybeSingle(),
     supabase

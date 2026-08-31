@@ -65,8 +65,27 @@ export interface CourierPanelItem {
   areasApagadas: AreaProducto[];
 }
 
+/**
+ * Un courier recién invitado que TODAVÍA no tiene suscripción — nace así con el
+ * alta por correo del backstage. No entra en `couriers` (esa lista se arma
+ * desde las suscripciones y este no tiene), pero tiene que verse: si no, el
+ * courier que acabas de invitar desaparece hasta que alguien le ponga un plan.
+ */
+export interface CourierInvitadoItem {
+  tenantId: string;
+  nombreFantasia: string | null;
+  /**
+   * `true` si el dueño aún no completó su puesta en marcha (razón social o RUT
+   * en NULL). Distingue «invitado, esperando que el dueño entre» de «con datos,
+   * esperando que Rutax le asigne un plan».
+   */
+  datosPendientes: boolean;
+}
+
 export interface PanelCouriers {
   couriers: CourierPanelItem[];
+  /** Couriers invitados sin suscripción todavía. Puede venir vacío. */
+  couriersSinSuscripcion: CourierInvitadoItem[];
   /**
    * Salud TÉCNICA del sistema — system-wide, no desglosada por tenant (ver
    * nota de alcance arriba). Compuesta de `salud.ts` sin reimplementar su
@@ -105,15 +124,24 @@ export async function obtenerPanelCouriers(): Promise<PanelCouriers> {
   ]);
 
   const saludSistema = { jobs: saludJobs, backlog };
+  const supabase = crearClienteServiceRole();
+
+  // Los couriers invitados que aún no tienen suscripción se calculan SIEMPRE,
+  // incluso cuando no hay ninguna suscripción todavía (el primer courier de
+  // Rutax): si no, el primer alta por correo no se vería en ninguna parte.
+  const tenantIdsConSusc = new Set(suscripciones.map((s) => s.tenantId));
+  const couriersSinSuscripcion = await obtenerCouriersInvitadosSinSuscripcion(
+    supabase,
+    tenantIdsConSusc,
+  );
 
   if (suscripciones.length === 0) {
-    return { couriers: [], saludSistema };
+    return { couriers: [], couriersSinSuscripcion, saludSistema };
   }
 
   // Morosidad barata: contar períodos 'vencido' por tenant en una sola query
   // (el estado 'vencido' ya lo asigna el job `plataforma/marcarMorosidad` —
   // aquí solo se cuenta, no se re-detecta).
-  const supabase = crearClienteServiceRole();
   const tenantIds = suscripciones.map((s) => s.tenantId);
   const { data: periodosVencidosData, error } = await supabase
     .schema('plataforma')
@@ -150,5 +178,35 @@ export async function obtenerPanelCouriers(): Promise<PanelCouriers> {
     };
   });
 
-  return { couriers, saludSistema };
+  return { couriers, couriersSinSuscripcion, saludSistema };
+}
+
+/**
+ * Tenants que no están en el conjunto que tiene suscripción. PostgREST no hace
+ * `NOT IN (subquery)`, así que se traen todos y se filtran en memoria — a la
+ * escala de couriers de Rutax es barato, y es el mismo patrón de
+ * `obtenerTodosLosTenantsSinSuscripcion`.
+ *
+ * Se lee `razon_social` y `rut` solo para saber si el dueño ya hizo su puesta
+ * en marcha; NO se exponen sus valores en el tipo de salida.
+ */
+async function obtenerCouriersInvitadosSinSuscripcion(
+  supabase: ReturnType<typeof crearClienteServiceRole>,
+  tenantIdsConSusc: Set<string>,
+): Promise<CourierInvitadoItem[]> {
+  const { data, error } = await supabase
+    .schema('identidad')
+    .from('tenants')
+    .select('id, nombre_fantasia, razon_social, rut')
+    .order('creado_en', { ascending: false });
+
+  if (error) throw new Error(`Error al leer couriers sin suscripción: ${error.message}`);
+
+  return (data ?? [])
+    .filter((t) => !tenantIdsConSusc.has(t.id as string))
+    .map((t) => ({
+      tenantId: t.id as string,
+      nombreFantasia: (t.nombre_fantasia ?? null) as string | null,
+      datosPendientes: t.razon_social == null || t.rut == null,
+    }));
 }
