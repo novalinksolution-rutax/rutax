@@ -487,7 +487,7 @@ function PanelContenido({
             del contenedor: sin eso, en un escritorio de 1440 la zona se
             desplegaba dentro de una columna de 430 px. El tablero define para
             esa anchura el trato plegado, tras «Más acciones». */}
-        <ZonaConsecuenciaPanel datos={datos} />
+        <ZonaConsecuenciaPanel datos={datos} onCerrar={onCerrar} />
 
         {datos.puede.verBitacora && datos.bitacora.length > 0 && (
           <Bloque titulo="Bitácora de este pedido">
@@ -537,7 +537,13 @@ function PanelContenido({
  * el tablero pide es que la zona sea reconocible en las dos superficies. Lo que
  * cambia es la caja, no la pieza.
  */
-function ZonaConsecuenciaPanel({ datos }: { datos: VistaPreviaPedido }) {
+function ZonaConsecuenciaPanel({
+  datos,
+  onCerrar,
+}: {
+  datos: VistaPreviaPedido;
+  onCerrar: () => void;
+}) {
   const { cancelar, anularCobro, anularLiquidacion } = datos.puede;
   if (!cancelar && !anularCobro && !anularLiquidacion) return null;
 
@@ -592,6 +598,7 @@ function ZonaConsecuenciaPanel({ datos }: { datos: VistaPreviaPedido }) {
             sellerNombre={datos.dinero?.sellerNombre ?? null}
             conductorNombre={datos.quien?.conductorNombre ?? null}
             seguimientoEsDeRutax={!podLoGobiernaLaFuente(datos.fuente)}
+            onCancelado={onCerrar}
           />
         </FilaConsecuencia>
       )}

@@ -71,6 +71,17 @@ interface Props {
   conductorNombre: string | null;
   /** `false` en Flex, donde el seguimiento del comprador lo gobierna Mercado Libre. */
   seguimientoEsDeRutax: boolean;
+  /**
+   * Se llama justo después de cancelar con éxito. Opcional a propósito: en la
+   * página completa del pedido (`[pedidoId]/page.tsx`) no hay "panel" que
+   * cerrar, y quedarse ahí viendo el pedido ya Cancelado es lo correcto.
+   *
+   * Quien SÍ lo necesita es el panel lateral de `/operaciones`
+   * (`vista-previa.tsx`): sin esto, cancelar dejaba el panel abierto mostrando
+   * el mismo pedido —ya cancelado— en vez de volver a la lista, que es donde
+   * el coordinador quiere estar para seguir con el siguiente.
+   */
+  onCancelado?: () => void;
 }
 
 export function DialogCancelarPedido({
@@ -79,6 +90,7 @@ export function DialogCancelarPedido({
   sellerNombre,
   conductorNombre,
   seguimientoEsDeRutax,
+  onCancelado,
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -122,6 +134,9 @@ export function DialogCancelarPedido({
       }
       setOpen(false);
       reiniciar();
+      // Antes del refresh: el panel se cierra ya mismo, sin esperar al viaje
+      // al servidor — la lista de atrás se pone al día sola cuando llegue.
+      onCancelado?.();
       toast.success("Pedido cancelado", {
         description: "El pedido quedó en estado Cancelado y se avisó en la bitácora.",
       });
