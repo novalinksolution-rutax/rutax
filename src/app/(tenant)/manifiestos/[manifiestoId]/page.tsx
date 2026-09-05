@@ -292,15 +292,6 @@ export default async function PaginaDetalleManifiesto({ params, searchParams }: 
   const enRuta = manifiesto.estado === "en_ruta";
   const hayPedidos = pedidosAsignados.length > 0;
 
-  // Rutear NO se limita al borrador, a propósito: reordenar a media tarde —
-  // porque una calle se cortó o porque el motor mandó al conductor a cruzar el
-  // Mapocho dos veces — es el caso de uso, no la excepción. El único límite es
-  // el que impone la propia función SQL: un manifiesto `completado` o
-  // `cancelado` no se rutea, porque sería reescribir historia.
-  const manifiestoCerrado =
-    manifiesto.estado === "completado" || manifiesto.estado === "cancelado";
-  const puedeRutear = puedeAsignar && !manifiestoCerrado;
-
   // Paradas que NO llegaron a un estado final. Es lo que el diálogo de cierre
   // le advierte al coordinador: cerrar el manifiesto NO las entrega, y seguirán
   // apareciendo para asignar hasta que alguien les dé estado.
@@ -412,15 +403,14 @@ export default async function PaginaDetalleManifiesto({ params, searchParams }: 
               </p>
             </div>
           ) : hayPedidos ? (
-            /* El panel es un componente de cliente porque el reordenamiento
-               manual vive en el navegador: mover una parada recalcula los tramos
-               en el acto y solo se va al servidor al guardar, con la secuencia
-               completa. */
+            /* El panel es un componente de cliente por convención con el
+               resto de esta pantalla, pero desde 2026-09-05 es de solo
+               lectura: el cálculo y el reordenamiento manual se retiraron de
+               la web (ver la cabecera de panel-ruta.tsx). */
             <PanelRuta
               manifiestoId={manifiestoId}
               paradas={paradas}
               origen={origenRuta}
-              puedeRutear={puedeRutear}
               puedeQuitar={esBorrador && puedeAsignar}
             />
           ) : (

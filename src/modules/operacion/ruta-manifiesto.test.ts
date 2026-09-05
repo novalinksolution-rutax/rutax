@@ -40,6 +40,7 @@ import {
   obtenerOrigenRutaDelCourier,
   ErrorManifiestoNoEncontrado,
   ErrorSinBodegaOrigen,
+  recalcularRutaTrasCambio,
 } from "./ruta-manifiesto";
 
 const TENANT_A = "10000000-0000-0000-0000-000000000001";
@@ -172,6 +173,92 @@ function manifiestoFila(driverId: string, overrides: Fila = {}): Fila {
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+// =============================================================================
+// recalcularRutaTrasCambio — el gatillo automático (2026-09-05)
+// =============================================================================
+
+describe("recalcularRutaTrasCambio", () => {
+  const origen = { lat: -33.45, long: -70.66 };
+  const parada = { lat: -33.4, long: -70.6 };
+
+  function clienteConUnaParada() {
+    return crearClienteFake({
+      manifiestos: [manifiestoFila(DRIVER_CON_ANCLA)],
+      courierBodegas: [bodegaFila({ lat: origen.lat, long: origen.long })],
+      asignacionesPedido: [asignacionFila(PEDIDO_1, parada)],
+    });
+  }
+
+  it("NO llama al motor cuando el manifiesto sigue en 'borrador'", async () => {
+    // El coordinador todavía lo está armando por lotes parciales: recalcular
+    // acá pagaría a Google por cada bulto en vez de una vez por manifiesto.
+    //
+    // ⚠️ El camino de éxito se deja LISTO PARA FUNCIONAR (misma configuración
+    // que la prueba de 'confirmado'/'en_ruta' de abajo): si la guarda de
+    // estado desapareciera, esta llamada SÍ terminaría invocando el RPC. Sin
+    // eso, un `calcularYAplicarRutaManifiesto` que fallara por cualquier otro
+    // motivo (p. ej. sin mockear `obtenerAnclaFinRuta`) daría el mismo
+    // resultado observable —el RPC nunca se llama— sin que la guarda tuviera
+    // nada que ver, y la prueba pasaría igual con la guarda borrada.
+    vi.mocked(obtenerAnclaFinRuta).mockResolvedValue(null);
+    vi.mocked(aplicarSecuenciaParadasRpc).mockResolvedValue({
+      totalParadas: 1,
+      totalSinSecuencia: 0,
+      totalPreviasLimpiadas: 0,
+    });
+
+    await recalcularRutaTrasCambio(clienteConUnaParada(), {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      estadoManifiesto: "borrador",
+      actorUsuarioId: ACTOR_1,
+      motivo: "prueba",
+    });
+
+    expect(aplicarSecuenciaParadasRpc).not.toHaveBeenCalled();
+  });
+
+  it.each(["confirmado", "en_ruta"] as const)(
+    "SÍ recalcula cuando el manifiesto está '%s'",
+    async (estado) => {
+      vi.mocked(obtenerAnclaFinRuta).mockResolvedValue(null);
+      vi.mocked(aplicarSecuenciaParadasRpc).mockResolvedValue({
+        totalParadas: 1,
+        totalSinSecuencia: 0,
+        totalPreviasLimpiadas: 0,
+      });
+
+      await recalcularRutaTrasCambio(clienteConUnaParada(), {
+        tenantId: TENANT_A,
+        manifiestoId: MANIFIESTO_1,
+        estadoManifiesto: estado,
+        actorUsuarioId: ACTOR_1,
+        motivo: "prueba",
+      });
+
+      expect(aplicarSecuenciaParadasRpc).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("🔴 si el ruteo falla, NO propaga el error — el hecho que lo disparó ya ocurrió", async () => {
+    // Mismo principio que el motor de dinero: el paso que puede negarse va al
+    // final, y su fallo no se lleva por delante lo que ya se confirmó.
+    vi.mocked(obtenerAnclaFinRuta).mockResolvedValue(null);
+    vi.mocked(aplicarSecuenciaParadasRpc).mockRejectedValue(new Error("Google no respondió"));
+
+    await expect(
+      recalcularRutaTrasCambio(clienteConUnaParada(), {
+        tenantId: TENANT_A,
+        manifiestoId: MANIFIESTO_1,
+        estadoManifiesto: "en_ruta",
+        actorUsuarioId: ACTOR_1,
+        motivo: "prueba",
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 
 // =============================================================================
 // 1. obtenerOrigenRutaDelCourier — selección de la bodega de origen

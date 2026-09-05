@@ -52,6 +52,7 @@ import {
 } from "@/modules/integraciones/ruteo";
 
 import { puntoUsable } from "./distancias-tramo";
+import type { EstadoManifiesto } from "./tipos";
 import { obtenerAnclaFinRuta } from "./punto-termino-conductor";
 import { calcularRuta } from "./ruteo";
 import { GoogleComputeRoutesAdapter } from "@/modules/integraciones/ruteo/adaptadores/google-compute-routes";
@@ -619,4 +620,83 @@ async function listarParadasDelManifiesto(
       } satisfies ParadaDelManifiesto;
     })
     .filter((p): p is ParadaDelManifiesto => p !== null);
+}
+
+
+// =============================================================================
+// recalcularRutaTrasCambio — el gatillo automático (2026-09-05)
+// =============================================================================
+
+/**
+ * Estados en los que un cambio de paradas amerita recalcular sola la ruta.
+ *
+ * Reemplaza al botón «Calcular ruta» de la web (retirado el mismo día, ver
+ * `docs/arquitectura/retiro-y-ruteo.md` §7): el gatillo deja de ser un clic del
+ * coordinador y pasa a ser cada evento que cambia qué hay que repartir.
+ *
+ * `borrador` queda AFUERA a propósito. El coordinador arma el manifiesto en
+ * vivo a lo largo de la mañana, por lotes parciales (CLAUDE.md, "asignación en
+ * vivo e incremental") — recalcular en cada asignación parcial sería pagarle a
+ * Google por cada bulto en vez de una vez por manifiesto. El primer cálculo de
+ * verdad ocurre cuando el manifiesto deja de estar en borrador: al confirmarlo
+ * (si ya tiene todo) o, si le siguen llegando pedidos después, en el próximo
+ * evento de esta lista.
+ */
+export const ESTADOS_QUE_ACEPTAN_RECALCULO_AUTOMATICO: readonly EstadoManifiesto[] = [
+  "confirmado",
+  "en_ruta",
+];
+
+/**
+ * Recalcula la ruta de un manifiesto si el cambio lo amerita — y si falla, NO
+ * se lleva por delante el hecho que lo disparó.
+ * =============================================================================
+ * El gatillo compartido de los eventos que invalidan una secuencia ya
+ * calculada: iniciar ruta, agregar un pedido a un manifiesto que ya salió de
+ * `borrador`, y traspasar bultos entre conductores (los dos lados: el que
+ * pierde la parada y el que la gana).
+ *
+ * No cubre «mover una parada a mano» ni «ir a esta ahora»: esos dos ya llaman
+ * directo a `calcularYAplicarRutaManifiesto` desde
+ * `api/conductor/manifiesto/ruta`, con sus propias fijaciones — pasar por acá
+ * les haría perder la parada que el conductor acaba de anclar con la mano.
+ *
+ * ⚠️ **Nunca lanza.** El evento que lo dispara —agregar un pedido, traspasar un
+ * bulto, iniciar la ruta— YA OCURRIÓ cuando esto se llama. Si el ruteo falla,
+ * lo correcto es dejar esas paradas sin secuencia (la app ya sabe mostrar
+ * «ordenar la ruta» para ese caso, el mismo estado 3 de siempre) y no deshacer
+ * el hecho principal. Es el mismo principio que ya rige el motor de dinero: el
+ * paso que puede negarse va al final, y su fallo no arrastra lo que ya se
+ * confirmó (ver `gotcha_paso_intermedio_que_falla_arrastra_lo_de_atras`).
+ *
+ * Por eso el llamador NUNCA hace `await` sobre el resultado esperando que algo
+ * cambie en su propia respuesta: esto es un efecto de mejor esfuerzo, no un
+ * paso del que dependa lo que el usuario pidió.
+ */
+export async function recalcularRutaTrasCambio(
+  cliente: SupabaseClient,
+  input: {
+    tenantId: string;
+    manifiestoId: string;
+    estadoManifiesto: EstadoManifiesto;
+    actorUsuarioId: string;
+    /** Para el mensaje de log, no para la bitácora — qué lo disparó. */
+    motivo: string;
+  },
+): Promise<void> {
+  if (!ESTADOS_QUE_ACEPTAN_RECALCULO_AUTOMATICO.includes(input.estadoManifiesto)) {
+    return;
+  }
+  try {
+    await calcularYAplicarRutaManifiesto(cliente, {
+      tenantId: input.tenantId,
+      manifiestoId: input.manifiestoId,
+      actorUsuarioId: input.actorUsuarioId,
+    });
+  } catch (err) {
+    console.error(
+      `[recalcularRutaTrasCambio] (${input.motivo}) no se pudo recalcular el manifiesto '${input.manifiestoId}':`,
+      err instanceof Error ? err.message : err,
+    );
+  }
 }

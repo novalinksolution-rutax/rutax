@@ -52,6 +52,8 @@ import {
   type ResultadoAsignacionEnBloque,
 } from "@/modules/operacion/asignacion-rpc";
 import { alinearPedidosNuevosConManifiestoEnRuta } from "@/modules/operacion/manifiestos-same-day";
+import { recalcularRutaTrasCambio } from "@/modules/operacion/ruta-manifiesto";
+import type { EstadoManifiesto } from "@/modules/operacion/tipos";
 
 // =============================================================================
 // Tipos de respuesta — mismo molde que manifiestos/actions.ts (actionMarcarConductorNoDisponible)
@@ -126,6 +128,41 @@ export async function actionAsignarPedidosEnBloque(
         "[preparacion/asignar] asignados pero sin poner al día con la ruta en curso:",
         err instanceof Error ? err.message : err,
       );
+    }
+
+    // El gatillo del recálculo automático (retiro del botón "Calcular ruta"
+    // de la web, 2026-09-05): un pedido que se suma a un manifiesto que YA
+    // salió de 'borrador' invalida cualquier secuencia calculada antes. Uno
+    // recién creado nace siempre en 'borrador' —lo dice `manifiestoCreado`,
+    // sin necesidad de preguntarle nada a la base— así que solo vale la pena
+    // leer el estado cuando se REUTILIZÓ uno existente.
+    //
+    // Va DESPUÉS y en su propio try/catch, mismo criterio que el bloque de
+    // arriba: si esto falla, la asignación ya quedó hecha y es lo que no
+    // puede perderse.
+    if (!resultado.manifiestoCreado) {
+      try {
+        const { data: manifiestoActual } = await cliente
+          .from("manifiestos")
+          .select("estado")
+          .eq("id", resultado.manifiestoId)
+          .eq("tenant_id", sesion.usuario.tenantId)
+          .maybeSingle();
+        if (manifiestoActual) {
+          await recalcularRutaTrasCambio(cliente, {
+            tenantId: sesion.usuario.tenantId,
+            manifiestoId: resultado.manifiestoId,
+            estadoManifiesto: manifiestoActual.estado as EstadoManifiesto,
+            actorUsuarioId: sesion.usuarioId,
+            motivo: "pedidos-agregados-en-bloque",
+          });
+        }
+      } catch (err) {
+        console.error(
+          "[preparacion/asignar] asignados pero no se pudo disparar el recálculo de ruta:",
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
 
     // La bandeja de asignación y el bloque de /preparacion leen cifras en

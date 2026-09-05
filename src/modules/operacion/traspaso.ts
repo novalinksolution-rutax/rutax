@@ -31,6 +31,9 @@ import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { parsearCodigoBulto } from "./retiro/parser-codigo";
 import { buscarPedidosPorCodigos, type PedidoCandidatoRetiro } from "./retiro/dto-pedido";
 import { traspasarPedidosRpc, type ResultadoTraspaso } from "./traspaso-rpc";
+import { recalcularRutaTrasCambio } from "./ruta-manifiesto";
+import { obtenerManifiestoVigenteDelConductor } from "./manifiesto-vigente";
+import type { EstadoManifiesto } from "./tipos";
 
 /** Por qué un bulto escaneado no se traspasó. */
 export type MotivoNoTraspasado =
@@ -170,6 +173,73 @@ export async function traspasarBultosEscaneados(
     entrada.tenantId,
     resultado?.origenes ?? {},
   );
+
+  // --- 6. El gatillo del recálculo automático (2026-09-05) --------------------
+  // Un traspaso mueve una parada entre DOS manifiestos: el del que la pierde y
+  // el del que la gana. Los dos pueden quedar con una secuencia que ya no
+  // corresponde a lo que llevan.
+  //
+  // Cada intento va en SU PROPIO try/catch: que falle el recálculo del
+  // receptor no debería impedir que se intente el de cada conductor de
+  // origen, y viceversa. Es mejor esfuerzo — el traspaso YA ocurrió, y es lo
+  // que no puede perderse.
+  if (resultado && resultado.totalTraspasados > 0) {
+    const fecha = fechaLocalEnSantiago(new Date());
+
+    // El receptor. Mismo criterio que la asignación en bloque: recién creado
+    // nace 'borrador' y no hace falta preguntarle nada a la base.
+    if (!resultado.manifiestoCreado) {
+      try {
+        const { data: manifiestoReceptor } = await cliente
+          .from("manifiestos")
+          .select("estado")
+          .eq("id", resultado.manifiestoId)
+          .eq("tenant_id", entrada.tenantId)
+          .maybeSingle();
+        if (manifiestoReceptor) {
+          await recalcularRutaTrasCambio(cliente, {
+            tenantId: entrada.tenantId,
+            manifiestoId: resultado.manifiestoId as string,
+            estadoManifiesto: manifiestoReceptor.estado as EstadoManifiesto,
+            actorUsuarioId: entrada.actorUsuarioId,
+            motivo: "traspaso-recibido",
+          });
+        }
+      } catch (err) {
+        console.error(
+          "[traspaso] no se pudo disparar el recálculo del receptor:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    // Cada conductor de ORIGEN perdió una parada de SU manifiesto vigente.
+    // `origenes` ya viene deduplicado por conductor (`resolverNombresDeOrigen`
+    // agrupa por id), así que no hace falta deduplicar de nuevo acá.
+    for (const { conductorId: conductorOrigenId } of origenes) {
+      try {
+        const manifiestoOrigen = await obtenerManifiestoVigenteDelConductor(cliente, {
+          tenantId: entrada.tenantId,
+          driverId: conductorOrigenId,
+          fecha,
+        });
+        if (manifiestoOrigen) {
+          await recalcularRutaTrasCambio(cliente, {
+            tenantId: entrada.tenantId,
+            manifiestoId: manifiestoOrigen.id,
+            estadoManifiesto: manifiestoOrigen.estado as EstadoManifiesto,
+            actorUsuarioId: entrada.actorUsuarioId,
+            motivo: "traspaso-enviado",
+          });
+        }
+      } catch (err) {
+        console.error(
+          `[traspaso] no se pudo disparar el recálculo del origen '${conductorOrigenId}':`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
 
   return {
     manifiestoId: resultado?.manifiestoId ?? null,

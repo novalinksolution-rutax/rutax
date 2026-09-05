@@ -40,9 +40,14 @@ vi.mock("@/modules/operacion/manifiestos-same-day", () => ({
   transicionarPedidosSameDayAEnRuta: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/modules/operacion/ruta-manifiesto", () => ({
+  recalcularRutaTrasCambio: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { transicionarPedidosSameDayAEnRuta } from "@/modules/operacion/manifiestos-same-day";
+import { recalcularRutaTrasCambio } from "@/modules/operacion/ruta-manifiesto";
 import { POST } from "./route";
 
 const TENANT_A = "10000000-0000-0000-0000-000000000001";
@@ -189,6 +194,34 @@ describe("POST /api/conductor/manifiesto/iniciar — control positivo", () => {
     expect(usuarioConductor.usuarioId).not.toBe(DRIVER_1);
     const args = vi.mocked(transicionarPedidosSameDayAEnRuta).mock.calls[0];
     expect(args[5]).not.toBe(DRIVER_1);
+
+    // El gatillo del recálculo automático: dispara con el manifiesto propio,
+    // ya en 'en_ruta', y con la identidad real del conductor — nunca la del
+    // driver_id.
+    expect(recalcularRutaTrasCambio).toHaveBeenCalledWith(cliente, {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      estadoManifiesto: "en_ruta",
+      actorUsuarioId: usuarioConductor.usuarioId,
+      motivo: "iniciar-ruta",
+    });
+  });
+
+  it("🔴 si recalcularRutaTrasCambio lanza igual (rompiendo su propio contrato), 'iniciar ruta' sigue devolviendo 200", async () => {
+    // El estado 'en_ruta' ya se escribió: un Google caído no puede convertir
+    // un "iniciar ruta" que sí funcionó en un 500 que le miente al conductor.
+    vi.mocked(autenticarBearer).mockResolvedValue(usuarioConductor);
+    vi.mocked(recalcularRutaTrasCambio).mockRejectedValueOnce(new Error("nunca debería pasar"));
+    const cliente = crearCliente({
+      manifiestoLeido: { estado: "confirmado", driver_id: DRIVER_1 },
+    });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    const res = await POST(req({ manifiestoId: MANIFIESTO_1 }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ exito: true });
   });
 
   it("manifiesto propio pero NO 'confirmado' → 409, no transiciona nada", async () => {

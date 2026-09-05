@@ -3,6 +3,7 @@ import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeConfirmarManifiestoPropio } from "@/modules/identidad/capacidades";
 import { transicionarPedidosSameDayAEnRuta } from "@/modules/operacion/manifiestos-same-day";
+import { recalcularRutaTrasCambio } from "@/modules/operacion/ruta-manifiesto";
 
 /**
  * POST /api/conductor/manifiesto/iniciar
@@ -88,6 +89,31 @@ export async function POST(request: NextRequest) {
       // la bitácora. `autenticarBearer` lo devuelve aparte justo para esto.
       usuario.usuarioId,
     );
+
+    // El gatillo del recálculo automático (retiro del botón "Calcular ruta"
+    // de la web, 2026-09-05): el conductor sale a las 16:00 en punto, así que
+    // este es el último momento seguro para ordenar la ruta antes de que la
+    // necesite de verdad.
+    //
+    // `recalcularRutaTrasCambio` ya promete no lanzar nunca — pero el estado
+    // 'en_ruta' YA SE ESCRIBIÓ arriba, así que este try/catch es cinturón y
+    // tirantes: si algún día ese contrato se rompe por accidente, un Google
+    // caído no puede convertir un "iniciar ruta" que sí funcionó en un 500
+    // que le miente al conductor.
+    try {
+      await recalcularRutaTrasCambio(cliente, {
+        tenantId,
+        manifiestoId: body.manifiestoId,
+        estadoManifiesto: "en_ruta",
+        actorUsuarioId: usuario.usuarioId,
+        motivo: "iniciar-ruta",
+      });
+    } catch (err) {
+      console.error(
+        "[api/conductor/manifiesto/iniciar] recalcularRutaTrasCambio no debía lanzar:",
+        err instanceof Error ? err.message : err,
+      );
+    }
 
     return NextResponse.json({ exito: true });
   } catch (err) {

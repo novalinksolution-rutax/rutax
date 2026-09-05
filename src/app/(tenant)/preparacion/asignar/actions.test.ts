@@ -33,10 +33,15 @@ vi.mock("@/modules/operacion/manifiestos-same-day", () => ({
   alinearPedidosNuevosConManifiestoEnRuta: vi.fn(),
 }));
 
+vi.mock("@/modules/operacion/ruta-manifiesto", () => ({
+  recalcularRutaTrasCambio: vi.fn(),
+}));
+
 import { exigirSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { asignarPedidosEnBloqueRpc } from "@/modules/operacion/asignacion-rpc";
 import { alinearPedidosNuevosConManifiestoEnRuta } from "@/modules/operacion/manifiestos-same-day";
+import { recalcularRutaTrasCambio } from "@/modules/operacion/ruta-manifiesto";
 import { revalidatePath } from "next/cache";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { actionAsignarPedidosEnBloque } from "./actions";
@@ -81,6 +86,25 @@ function resultadoOk(overrides: Partial<ResultadoAsignacionEnBloque> = {}): Resu
     omitidos: [],
     ...overrides,
   };
+}
+
+/**
+ * Cliente falso que además sabe responder `.from("manifiestos").select("estado")
+ * .eq(...).eq(...).maybeSingle()` — el fixture del `beforeEach` (un objeto
+ * `{ marca: ... }` sin `.from`) alcanza para el resto de las pruebas, pero el
+ * gatillo del recálculo automático sí necesita leer el estado del manifiesto
+ * reutilizado.
+ */
+function clienteConEstadoManifiesto(estado: string | null) {
+  const builder: Record<string, unknown> = {};
+  const self = () => builder;
+  builder.select = vi.fn(self);
+  builder.eq = vi.fn(self);
+  builder.maybeSingle = vi.fn(async () => ({
+    data: estado === null ? null : { estado },
+    error: null,
+  }));
+  return { from: vi.fn(() => builder) } as unknown as ReturnType<typeof crearClienteServiceRole>;
 }
 
 beforeEach(() => {
@@ -215,6 +239,79 @@ describe("actionAsignarPedidosEnBloque — camino feliz", () => {
 
     expect(resultado).toMatchObject({ ok: true, datos: { puestosEnRuta: false } });
     expect(revalidatePath).toHaveBeenCalledWith("/preparacion/asignar");
+  });
+});
+
+describe("actionAsignarPedidosEnBloque — el gatillo del recálculo automático", () => {
+  it("manifiestoCreado: true → nace 'borrador', no se lee el estado ni se dispara nada", async () => {
+    // No hace falta ni preguntarle a la base: un manifiesto recién creado
+    // siempre nace en 'borrador'.
+    vi.mocked(asignarPedidosEnBloqueRpc).mockResolvedValue(
+      resultadoOk({ manifiestoCreado: true }),
+    );
+    const cliente = clienteConEstadoManifiesto("confirmado");
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    await actionAsignarPedidosEnBloque(CONDUCTOR_1, [PEDIDO_1]);
+
+    expect(cliente.from).not.toHaveBeenCalled();
+    expect(recalcularRutaTrasCambio).not.toHaveBeenCalled();
+  });
+
+  it.each(["confirmado", "en_ruta"] as const)(
+    "manifiesto REUTILIZADO y '%s' → dispara el recálculo con ese estado",
+    async (estado) => {
+      vi.mocked(asignarPedidosEnBloqueRpc).mockResolvedValue(
+        resultadoOk({ manifiestoCreado: false }),
+      );
+      const cliente = clienteConEstadoManifiesto(estado);
+      vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+      await actionAsignarPedidosEnBloque(CONDUCTOR_1, [PEDIDO_1]);
+
+      expect(recalcularRutaTrasCambio).toHaveBeenCalledWith(cliente, {
+        tenantId: TENANT_A,
+        manifiestoId: MANIFIESTO_1,
+        estadoManifiesto: estado,
+        actorUsuarioId: USUARIO_ID,
+        motivo: "pedidos-agregados-en-bloque",
+      });
+    },
+  );
+
+  it("manifiesto reutilizado pero SIGUE en 'borrador' → se llama igual, y es recalcularRutaTrasCambio quien decide no hacer nada", async () => {
+    // La guarda de estados vive adentro del helper (ruta-manifiesto.test.ts la
+    // prueba a fondo); acá solo se confirma que este llamador no filtra antes
+    // de tiempo y le pasa el estado real, sea cual sea.
+    vi.mocked(asignarPedidosEnBloqueRpc).mockResolvedValue(
+      resultadoOk({ manifiestoCreado: false }),
+    );
+    const cliente = clienteConEstadoManifiesto("borrador");
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    await actionAsignarPedidosEnBloque(CONDUCTOR_1, [PEDIDO_1]);
+
+    expect(recalcularRutaTrasCambio).toHaveBeenCalledWith(
+      cliente,
+      expect.objectContaining({ estadoManifiesto: "borrador" }),
+    );
+  });
+
+  it("🔴 si falla la lectura del estado, la asignación NO se pierde", async () => {
+    vi.mocked(asignarPedidosEnBloqueRpc).mockResolvedValue(
+      resultadoOk({ manifiestoCreado: false }),
+    );
+    const cliente = {
+      from: vi.fn(() => {
+        throw new Error("se cayó la lectura del estado");
+      }),
+    } as unknown as ReturnType<typeof crearClienteServiceRole>;
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    const resultado = await actionAsignarPedidosEnBloque(CONDUCTOR_1, [PEDIDO_1]);
+
+    expect(resultado).toMatchObject({ ok: true });
+    expect(recalcularRutaTrasCambio).not.toHaveBeenCalled();
   });
 });
 

@@ -16,6 +16,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./traspaso-rpc", () => ({ traspasarPedidosRpc: vi.fn() }));
+vi.mock("./ruta-manifiesto", () => ({ recalcularRutaTrasCambio: vi.fn() }));
+vi.mock("./manifiesto-vigente", () => ({ obtenerManifiestoVigenteDelConductor: vi.fn() }));
 vi.mock("./retiro/dto-pedido", async (original) => ({
   ...(await original<typeof import("./retiro/dto-pedido")>()),
   buscarPedidosPorCodigos: vi.fn(),
@@ -24,6 +26,8 @@ vi.mock("./retiro/dto-pedido", async (original) => ({
 import { traspasarPedidosRpc } from "./traspaso-rpc";
 import { buscarPedidosPorCodigos } from "./retiro/dto-pedido";
 import { traspasarBultosEscaneados, ErrorLoteExcedido, MAX_BULTOS_POR_TRASPASO } from "./traspaso";
+import { recalcularRutaTrasCambio } from "./ruta-manifiesto";
+import { obtenerManifiestoVigenteDelConductor } from "./manifiesto-vigente";
 
 const TENANT = "10000000-0000-0000-0000-000000000001";
 const PEDRO = "40000000-0000-0000-0000-000000000002";
@@ -60,7 +64,44 @@ beforeEach(() => {
   // entre pruebas ya mordió antes en este proyecto.
   vi.mocked(buscarPedidosPorCodigos).mockReset();
   vi.mocked(traspasarPedidosRpc).mockReset();
+  vi.mocked(recalcularRutaTrasCambio).mockReset().mockResolvedValue(undefined);
+  vi.mocked(obtenerManifiestoVigenteDelConductor).mockReset();
 });
+
+/**
+ * Cliente falso más completo que `clienteFalso`: además de resolver nombres de
+ * origen (tabla `conductores`), sabe responder
+ * `.from("manifiestos").select("estado").eq(...).eq(...).maybeSingle()` — lo
+ * que necesita el gatillo del recálculo automático para leer el estado del
+ * manifiesto RECEPTOR reutilizado.
+ */
+function clienteConManifiestoReceptor(estado: string | null) {
+  return {
+    from: (tabla: string) => {
+      if (tabla === "conductores") {
+        return {
+          select: () => ({
+            eq: () => ({
+              in: async () => ({ data: [{ id: "juan-id", nombre_completo: "Juan Pérez" }] }),
+            }),
+          }),
+        };
+      }
+      if (tabla === "manifiestos") {
+        const builder: Record<string, unknown> = {};
+        const self = () => builder;
+        builder.select = vi.fn(self);
+        builder.eq = vi.fn(self);
+        builder.maybeSingle = vi.fn(async () => ({
+          data: estado === null ? null : { estado },
+          error: null,
+        }));
+        return builder;
+      }
+      throw new Error(`from() inesperado: ${tabla}`);
+    },
+  } as never;
+}
 
 describe("traspasarBultosEscaneados", () => {
   it("un código ILEGIBLE no tumba el lote: vuelve con su motivo y los demás se traspasan", async () => {
@@ -217,5 +258,171 @@ describe("traspasarBultosEscaneados", () => {
 
     expect(buscarPedidosPorCodigos).not.toHaveBeenCalled();
     expect(traspasarPedidosRpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("traspasarBultosEscaneados — el gatillo del recálculo automático", () => {
+  function traspasoOk(overrides: Partial<Awaited<ReturnType<typeof traspasarPedidosRpc>>> = {}) {
+    vi.mocked(buscarPedidosPorCodigos).mockResolvedValue(
+      new Map([[CODIGO_FLEX, candidato(PEDIDO_1, CODIGO_FLEX)]]),
+    );
+    vi.mocked(traspasarPedidosRpc).mockResolvedValue({
+      manifiestoId: "man-receptor",
+      manifiestoCreado: false,
+      totalSolicitados: 1,
+      totalTraspasados: 1,
+      totalOmitidos: 0,
+      omitidos: {},
+      origenes: { [PEDIDO_1]: "juan-id" },
+      ...overrides,
+    });
+  }
+
+  it("recalcula el manifiesto del RECEPTOR cuando se reutilizó uno 'confirmado'/'en_ruta'", async () => {
+    traspasoOk();
+    vi.mocked(obtenerManifiestoVigenteDelConductor).mockResolvedValue(null);
+    const cliente = clienteConManifiestoReceptor("en_ruta");
+
+    await traspasarBultosEscaneados(cliente, {
+      tenantId: TENANT,
+      conductorReceptorId: PEDRO,
+      actorUsuarioId: USUARIO,
+      codigos: [CODIGO_FLEX],
+    });
+
+    expect(recalcularRutaTrasCambio).toHaveBeenCalledWith(cliente, {
+      tenantId: TENANT,
+      manifiestoId: "man-receptor",
+      estadoManifiesto: "en_ruta",
+      actorUsuarioId: USUARIO,
+      motivo: "traspaso-recibido",
+    });
+  });
+
+  it("receptor con manifiestoCreado: true → nace 'borrador', no se lee el estado", async () => {
+    traspasoOk({ manifiestoCreado: true });
+    vi.mocked(obtenerManifiestoVigenteDelConductor).mockResolvedValue(null);
+    // Este cliente NO sabe responder .from("manifiestos"): si el código
+    // intentara leer el estado igual, la prueba lo delataría por completo
+    // (lanzaría dentro del try/catch y `recalcularRutaTrasCambio` seguiría sin
+    // llamarse, pero por la razón EQUIVOCADA — así que se comprueba también
+    // que el intento de recálculo del receptor específicamente no ocurrió).
+    await traspasarBultosEscaneados(clienteFalso, {
+      tenantId: TENANT,
+      conductorReceptorId: PEDRO,
+      actorUsuarioId: USUARIO,
+      codigos: [CODIGO_FLEX],
+    });
+
+    expect(recalcularRutaTrasCambio).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ motivo: "traspaso-recibido" }),
+    );
+  });
+
+  it("recalcula el manifiesto vigente de CADA conductor de ORIGEN", async () => {
+    traspasoOk();
+    vi.mocked(obtenerManifiestoVigenteDelConductor).mockResolvedValue({
+      id: "man-juan",
+      nombre: "Reparto",
+      fechaOperacion: "2026-09-05",
+      estado: "en_ruta",
+    });
+    const cliente = clienteConManifiestoReceptor("borrador");
+
+    await traspasarBultosEscaneados(cliente, {
+      tenantId: TENANT,
+      conductorReceptorId: PEDRO,
+      actorUsuarioId: USUARIO,
+      codigos: [CODIGO_FLEX],
+    });
+
+    expect(obtenerManifiestoVigenteDelConductor).toHaveBeenCalledWith(cliente, {
+      tenantId: TENANT,
+      driverId: "juan-id",
+      fecha: expect.any(String),
+    });
+    expect(recalcularRutaTrasCambio).toHaveBeenCalledWith(cliente, {
+      tenantId: TENANT,
+      manifiestoId: "man-juan",
+      estadoManifiesto: "en_ruta",
+      actorUsuarioId: USUARIO,
+      motivo: "traspaso-enviado",
+    });
+  });
+
+  it("origen SIN manifiesto vigente hoy → no dispara nada para él, sin lanzar", async () => {
+    traspasoOk();
+    vi.mocked(obtenerManifiestoVigenteDelConductor).mockResolvedValue(null);
+    const cliente = clienteConManifiestoReceptor("borrador");
+
+    await expect(
+      traspasarBultosEscaneados(cliente, {
+        tenantId: TENANT,
+        conductorReceptorId: PEDRO,
+        actorUsuarioId: USUARIO,
+        codigos: [CODIGO_FLEX],
+      }),
+    ).resolves.toBeDefined();
+
+    expect(recalcularRutaTrasCambio).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ motivo: "traspaso-enviado" }),
+    );
+  });
+
+  it("🔴 si el receptor falla, el traspaso NO se pierde y el origen se intenta igual", async () => {
+    traspasoOk();
+    vi.mocked(obtenerManifiestoVigenteDelConductor).mockResolvedValue({
+      id: "man-juan",
+      nombre: "Reparto",
+      fechaOperacion: "2026-09-05",
+      estado: "confirmado",
+    });
+    // Cliente cuyo .from("manifiestos") (la lectura del RECEPTOR) explota.
+    const cliente = {
+      from: (tabla: string) => {
+        if (tabla === "conductores") {
+          return {
+            select: () => ({
+              eq: () => ({
+                in: async () => ({ data: [{ id: "juan-id", nombre_completo: "Juan Pérez" }] }),
+              }),
+            }),
+          };
+        }
+        throw new Error("se cayó la lectura del receptor");
+      },
+    } as never;
+
+    const r = await traspasarBultosEscaneados(cliente, {
+      tenantId: TENANT,
+      conductorReceptorId: PEDRO,
+      actorUsuarioId: USUARIO,
+      codigos: [CODIGO_FLEX],
+    });
+
+    // El traspaso en sí no se ve afectado.
+    expect(r.totalTraspasados).toBe(1);
+    // Y el ORIGEN, que no depende de esa lectura, sí se intentó.
+    expect(recalcularRutaTrasCambio).toHaveBeenCalledWith(
+      cliente,
+      expect.objectContaining({ motivo: "traspaso-enviado" }),
+    );
+  });
+
+  it("sin ningún bulto traspasado (todos omitidos) → no se dispara nada", async () => {
+    traspasoOk({ totalTraspasados: 0 });
+    const cliente = clienteConManifiestoReceptor("en_ruta");
+
+    await traspasarBultosEscaneados(cliente, {
+      tenantId: TENANT,
+      conductorReceptorId: PEDRO,
+      actorUsuarioId: USUARIO,
+      codigos: [CODIGO_FLEX],
+    });
+
+    expect(recalcularRutaTrasCambio).not.toHaveBeenCalled();
+    expect(obtenerManifiestoVigenteDelConductor).not.toHaveBeenCalled();
   });
 });
