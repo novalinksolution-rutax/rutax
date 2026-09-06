@@ -133,8 +133,28 @@ export class GoogleRouteOptimizationAdapter {
     const proyecto = leerProyectoGoogle();
     const token = await obtenerTokenAcceso();
 
+    // =========================================================================
+    // 🔴 VENTANA DE TIEMPO GLOBAL — SIN ESTO NO SE OPTIMIZA NADA (2026-09-06)
+    // =========================================================================
+    // `globalStartTime`/`globalEndTime` NO son opcionales para nuestro uso: si
+    // no se envían, Google los toma por defecto como **época 0 (1970)**, o sea
+    // una ventana de duración CERO. Ninguna entrega cabe en cero segundos, así
+    // que el solver descarta TODAS las paradas con
+    // `CANNOT_BE_PERFORMED_WITHIN_VEHICLE_TIME_WINDOWS` y devuelve una ruta
+    // vacía — y el mapa cae a la línea recta. Diagnosticado en producción con
+    // el `validationErrors`/`skippedShipments` de la propia respuesta.
+    //
+    // No modelamos horarios reales (Flex con hora comprometida quedó fuera de la
+    // v1): basta una ventana amplia que contenga cualquier jornada. 36 h desde
+    // ahora cubre de sobra un reparto que arranca a las 16:00 y corta a las 22:00.
+    const ahoraMs = Date.now();
+    const globalStartTime = new Date(ahoraMs).toISOString();
+    const globalEndTime = new Date(ahoraMs + 36 * 60 * 60 * 1000).toISOString();
+
     const cuerpo = {
       model: {
+        globalStartTime,
+        globalEndTime,
         shipments: paradas.map((p) => ({
           deliveries: [{ arrivalLocation: { latitude: p.lat, longitude: p.long } }],
         })),
@@ -145,6 +165,13 @@ export class GoogleRouteOptimizationAdapter {
             ...(destino
               ? { endLocation: { latitude: destino.lat, longitude: destino.long } }
               : {}),
+            // 🔴 Un costo NO NULO le da al solver un objetivo que optimizar; sin
+            // él, Google avisa `WARNING_MODEL_NEEDS_OBJECTIVE_OR_NONZERO_COST` y
+            // el orden que devuelve no está optimizado. `costPerHour` minimiza el
+            // TIEMPO de conducción (con tráfico, que es lo que le importa al
+            // conductor en hora punta), no los kilómetros. El valor absoluto da
+            // igual —solo hay un vehículo—: lo que cuenta es que sea > 0.
+            costPerHour: 1,
           },
         ],
       },
@@ -179,42 +206,10 @@ export class GoogleRouteOptimizationAdapter {
     }
 
     let datos: RespuestaGoogle;
-    let cuerpoTexto: string;
     try {
-      cuerpoTexto = await respuesta.text();
-      datos = JSON.parse(cuerpoTexto) as RespuestaGoogle;
+      datos = (await respuesta.json()) as RespuestaGoogle;
     } catch {
       throw new ErrorRuteoProveedor('la respuesta no era JSON legible');
-    }
-
-    // 🔎 DIAGNÓSTICO TEMPORAL (2026-09-06). La ruta sale punteada aunque
-    // optimizeTours responde 200: se sospecha que la respuesta no trae
-    // polilíneas de transición. Loguea SOLO la PRESENCIA de campos y el
-    // tamaño —jamás el cuerpo ni una coordenada—, para saber si Google devuelve
-    // geometría y bajo qué clave. QUITAR tras diagnosticar.
-    {
-      const suelto = datos as unknown as {
-        skippedShipments?: { reasons?: { code?: unknown }[] }[];
-        validationErrors?: {
-          code?: unknown;
-          displayName?: unknown;
-          fields?: { name?: unknown }[];
-        }[];
-      };
-      console.log(
-        '[diag-ruteo] razones:',
-        JSON.stringify({
-          // Códigos y nombres de campo — NUNCA valores (podrían ser coordenadas).
-          validationErrors: (suelto.validationErrors ?? []).map((e) => ({
-            code: e.code,
-            displayName: e.displayName,
-            campos: (e.fields ?? []).map((f) => f.name),
-          })),
-          skippedReasons: (suelto.skippedShipments ?? []).map((s) =>
-            (s.reasons ?? []).map((r) => r.code),
-          ),
-        }),
-      );
     }
 
     return interpretarRespuesta(datos, paradas);

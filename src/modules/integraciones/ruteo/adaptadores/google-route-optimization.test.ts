@@ -14,9 +14,15 @@
  * condición dura del §4 (negarse no puede quedar a la vista del jefe).
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./google-credenciales', () => ({
+  leerProyectoGoogle: () => 'proyecto-x',
+  obtenerTokenAcceso: async () => 'token-x',
+}));
 
 import {
+  GoogleRouteOptimizationAdapter,
   interpretarRespuesta,
   segundosDesdeDuracion,
   tramosVisibles,
@@ -177,5 +183,60 @@ describe('interpretarRespuesta', () => {
     expect(() => interpretarRespuesta({ routes: [] }, PARADAS)).toThrow(
       /no traía ninguna ruta/,
     );
+  });
+});
+
+describe('optimizarRuta — el request que Google exige para no descartar todo', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubFetch(cuerpos: Record<string, unknown>[]) {
+    const fetchMock = vi.fn(async (_url: string, init: { body: string }) => {
+      cuerpos.push(JSON.parse(init.body));
+      return {
+        ok: true,
+        json: async () => respuestaConAncla(),
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  }
+
+  const ENTRADA = {
+    origen: { lat: -33.45, long: -70.66 },
+    destino: { lat: -33.5, long: -70.7 },
+    paradas: PARADAS,
+  };
+
+  it('🔴 manda globalStartTime/globalEndTime — sin ellos Google usa una ventana de duración CERO y descarta TODAS las paradas', async () => {
+    // El bug real (2026-09-06): sin ventana global, la respuesta traía
+    // skippedShipments con CANNOT_BE_PERFORMED_WITHIN_VEHICLE_TIME_WINDOWS y la
+    // ruta salía vacía → línea recta. La ventana tiene que existir y durar > 0.
+    const cuerpos: Record<string, unknown>[] = [];
+    stubFetch(cuerpos);
+    await new GoogleRouteOptimizationAdapter().optimizarRuta(ENTRADA);
+
+    const model = cuerpos[0].model as Record<string, unknown>;
+    expect(typeof model.globalStartTime).toBe('string');
+    expect(typeof model.globalEndTime).toBe('string');
+    const inicio = new Date(model.globalStartTime as string).getTime();
+    const fin = new Date(model.globalEndTime as string).getTime();
+    expect(fin - inicio).toBeGreaterThan(60 * 60 * 1000); // más de una hora
+  });
+
+  it('🔴 el vehículo lleva un costo NO NULO — sin él el solver no optimiza (WARNING_MODEL_NEEDS_OBJECTIVE_OR_NONZERO_COST)', async () => {
+    const cuerpos: Record<string, unknown>[] = [];
+    stubFetch(cuerpos);
+    await new GoogleRouteOptimizationAdapter().optimizarRuta(ENTRADA);
+
+    const model = cuerpos[0].model as { vehicles: Record<string, unknown>[] };
+    const costo = model.vehicles[0].costPerHour as number;
+    expect(typeof costo).toBe('number');
+    expect(costo).toBeGreaterThan(0);
+  });
+
+  it('sigue pidiendo las polilíneas de transición', async () => {
+    const cuerpos: Record<string, unknown>[] = [];
+    stubFetch(cuerpos);
+    await new GoogleRouteOptimizationAdapter().optimizarRuta(ENTRADA);
+    expect(cuerpos[0].populateTransitionPolylines).toBe(true);
   });
 });
