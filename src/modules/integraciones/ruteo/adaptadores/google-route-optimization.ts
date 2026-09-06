@@ -206,10 +206,35 @@ export class GoogleRouteOptimizationAdapter {
     }
 
     let datos: RespuestaGoogle;
+    let cuerpoTexto: string;
     try {
-      datos = (await respuesta.json()) as RespuestaGoogle;
+      cuerpoTexto = await respuesta.text();
+      datos = JSON.parse(cuerpoTexto) as RespuestaGoogle;
     } catch {
       throw new ErrorRuteoProveedor('la respuesta no era JSON legible');
+    }
+
+    // 🔎 DIAG TEMP v2 (2026-09-06): tras el arreglo de ventana global + costo,
+    // ver si el descarte desapareció y si ya vienen polilíneas. Solo forma —sin
+    // cuerpo ni coordenadas. QUITAR.
+    {
+      const s = datos as unknown as {
+        routes?: { visits?: unknown[]; transitions?: { routePolyline?: { points?: string } }[] }[];
+        skippedShipments?: { reasons?: { code?: unknown }[] }[];
+        validationErrors?: { displayName?: unknown }[];
+      };
+      const trans = s.routes?.[0]?.transitions ?? [];
+      console.log(
+        '[diag2] ',
+        JSON.stringify({
+          visitas: s.routes?.[0]?.visits?.length ?? 0,
+          transiciones: trans.length,
+          conPolilinea: trans.filter((t) => typeof t.routePolyline?.points === 'string').length,
+          skipped: s.skippedShipments?.length ?? 0,
+          skipReasons: (s.skippedShipments ?? []).map((x) => (x.reasons ?? []).map((r) => r.code)),
+          validationErrors: (s.validationErrors ?? []).map((e) => e.displayName),
+        }),
+      );
     }
 
     return interpretarRespuesta(datos, paradas);
