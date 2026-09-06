@@ -192,24 +192,32 @@ export class GoogleRouteOptimizationAdapter {
     // polilíneas de transición. Loguea SOLO la PRESENCIA de campos y el
     // tamaño —jamás el cuerpo ni una coordenada—, para saber si Google devuelve
     // geometría y bajo qué clave. QUITAR tras diagnosticar.
-    console.log(
-      '[diag-ruteo] forma respuesta:',
-      JSON.stringify({
-        bytes: cuerpoTexto.length,
-        tieneRoutePolyline: cuerpoTexto.includes('routePolyline'),
-        tienePolyline: cuerpoTexto.includes('polyline'),
-        tienePoints: cuerpoTexto.includes('"points"'),
-        tieneTransitions: cuerpoTexto.includes('transitions'),
-        tieneEncodedPolyline: cuerpoTexto.includes('encodedPolyline'),
-        rutas: datos.routes?.length ?? 0,
-        visitas: datos.routes?.[0]?.visits?.length ?? 0,
-        transiciones: datos.routes?.[0]?.transitions?.length ?? 0,
-        clavesRuta: datos.routes?.[0] ? Object.keys(datos.routes[0]) : [],
-        clavesPrimeraTransicion: datos.routes?.[0]?.transitions?.[0]
-          ? Object.keys(datos.routes[0].transitions[0] as Record<string, unknown>)
-          : [],
-      }),
-    );
+    {
+      const suelto = datos as unknown as {
+        routes?: unknown[];
+        skippedShipments?: unknown[];
+      };
+      const ruta0 = suelto.routes?.[0];
+      console.log(
+        '[diag-ruteo] forma respuesta:',
+        JSON.stringify({
+          bytes: cuerpoTexto.length,
+          clavesTop: datos ? Object.keys(datos as Record<string, unknown>) : [],
+          rutas: suelto.routes?.length ?? 0,
+          ruta0EsNull: suelto.routes ? ruta0 === null : 'sin-routes',
+          clavesRuta0:
+            ruta0 && typeof ruta0 === 'object'
+              ? Object.keys(ruta0 as Record<string, unknown>)
+              : [],
+          skipped: suelto.skippedShipments?.length ?? 'n/a',
+          clavesSkipped0:
+            suelto.skippedShipments?.[0] && typeof suelto.skippedShipments[0] === 'object'
+              ? Object.keys(suelto.skippedShipments[0] as Record<string, unknown>)
+              : [],
+          tieneRoutePolyline: cuerpoTexto.includes('routePolyline'),
+        }),
+      );
+    }
 
     return interpretarRespuesta(datos, paradas);
   }
