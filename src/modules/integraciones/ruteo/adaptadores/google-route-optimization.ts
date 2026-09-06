@@ -204,20 +204,44 @@ export class GoogleRouteOptimizationAdapter {
       );
     }
 
-    // DIAG TEMP: leer el texto ANTES del check para poder registrar el motivo
-    // de un 400 (el error de Google describe qué campo del request está mal —
-    // sin coordenadas de destinatarios).
+    // DIAG TEMP (2026-09-06): leer el texto ANTES del check para poder registrar
+    // el motivo de un 400 (el error de Google describe qué campo del request está
+    // mal — sin coordenadas de destinatarios).
     const cuerpoTexto = await respuesta.text();
+
+    // 🔎 DIAG TEMP — LA PREGUNTA QUE FALTA RESPONDER. El descarte
+    // `CANNOT_BE_PERFORMED_WITHIN_VEHICLE_TIME_WINDOWS` con una ventana de 36 h
+    // solo tiene una causa plausible que quede: el ORIGEN está lejísimos de las
+    // paradas, y el tiempo de viaje no cabe en la ventana. Eso pasa si la app
+    // manda un GPS obsoleto (el emulador arranca en California). Se registra la
+    // DISTANCIA origen→primera parada en km —un escalar, no una coordenada: no
+    // dice DÓNDE está ninguno de los dos, solo cuán lejos—. ~20 km ⇒ los dos en
+    // Santiago (el origen NO es la causa); ~9.000 km ⇒ GPS obsoleto. QUITAR.
+    const km = (a: { lat: number; long: number }, b: { lat: number; long: number }) => {
+      const R = 6371;
+      const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+      const dLon = ((b.long - a.long) * Math.PI) / 180;
+      const s =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((a.lat * Math.PI) / 180) *
+          Math.cos((b.lat * Math.PI) / 180) *
+          Math.sin(dLon / 2) ** 2;
+      return Math.round(R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)));
+    };
+    console.log(
+      '[diagRO] ',
+      JSON.stringify({ kmOrigenAPrimeraParada: km(origen, paradas[0]), destinoHayAncla: !!destino }),
+    );
 
     if (!respuesta.ok) {
       try {
         const err = JSON.parse(cuerpoTexto) as { error?: { status?: unknown; message?: unknown } };
         console.log(
-          '[diag400] ',
+          '[diagRO400] ',
           JSON.stringify({ http: respuesta.status, status: err.error?.status, message: err.error?.message }),
         );
       } catch {
-        console.log('[diag400] cuerpo no-JSON, http', respuesta.status);
+        console.log('[diagRO400] cuerpo no-JSON, http', respuesta.status);
       }
       const reintentable = respuesta.status >= 500 || respuesta.status === 429;
       throw new ErrorRuteoProveedor(`respondió ${respuesta.status}`, reintentable);
@@ -230,9 +254,8 @@ export class GoogleRouteOptimizationAdapter {
       throw new ErrorRuteoProveedor('la respuesta no era JSON legible');
     }
 
-    // 🔎 DIAG TEMP v2 (2026-09-06): tras el arreglo de ventana global + costo,
-    // ver si el descarte desapareció y si ya vienen polilíneas. Solo forma —sin
-    // cuerpo ni coordenadas. QUITAR.
+    // 🔎 DIAG TEMP: ¿se descartó todo, o ya viene la ruta? Solo forma —sin
+    // cuerpo ni coordenadas. QUITAR junto con el bloque de arriba.
     {
       const s = datos as unknown as {
         routes?: { visits?: unknown[]; transitions?: { routePolyline?: { points?: string } }[] }[];
@@ -241,7 +264,7 @@ export class GoogleRouteOptimizationAdapter {
       };
       const trans = s.routes?.[0]?.transitions ?? [];
       console.log(
-        '[diag2] ',
+        '[diagRO2] ',
         JSON.stringify({
           visitas: s.routes?.[0]?.visits?.length ?? 0,
           transiciones: trans.length,

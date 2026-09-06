@@ -72,11 +72,15 @@ describe('trazarRuta · travelMode según el vehículo', () => {
       cuerpos.push(JSON.parse(init.body));
       // Una pierna por salto: para 2 puntos, 1 pierna. Así el adaptador no
       // rechaza la ruta por desajuste tramo↔salto.
+      // El adaptador lee `.text()` (para poder diagnosticar un 200 sin piernas o
+      // un no-ok sin re-consumir el cuerpo) y luego hace `JSON.parse`.
+      const cuerpo = JSON.stringify({
+        routes: [{ legs: [{ distanceMeters: 100, duration: '60s', polyline: { encodedPolyline: 'abc' } }] }],
+      });
       return {
         ok: true,
-        json: async () => ({
-          routes: [{ legs: [{ distanceMeters: 100, duration: '60s', polyline: { encodedPolyline: 'abc' } }] }],
-        }),
+        text: async () => cuerpo,
+        json: async () => JSON.parse(cuerpo),
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);

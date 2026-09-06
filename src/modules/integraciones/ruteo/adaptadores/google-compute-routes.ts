@@ -175,14 +175,28 @@ export class GoogleComputeRoutesAdapter {
       );
     }
 
+    // DIAG TEMP (2026-09-06): leer el texto ANTES del check para poder ver por
+    // qué un 200 vuelve sin piernas (o qué dice un no-ok). Sin coordenadas: solo
+    // status, claves de primer nivel y conteos.
+    const cuerpoTexto = await respuesta.text();
+
     if (!respuesta.ok) {
+      try {
+        const err = JSON.parse(cuerpoTexto) as { error?: { status?: unknown; message?: unknown } };
+        console.log(
+          '[diagCR] ',
+          JSON.stringify({ http: respuesta.status, status: err.error?.status, message: err.error?.message }),
+        );
+      } catch {
+        console.log('[diagCR] cuerpo no-JSON, http', respuesta.status);
+      }
       const reintentable = respuesta.status >= 500 || respuesta.status === 429;
       throw new ErrorRuteoProveedor(`trazado: respondió ${respuesta.status}`, reintentable);
     }
 
     let datos: RespuestaComputeRoutes;
     try {
-      datos = (await respuesta.json()) as RespuestaComputeRoutes;
+      datos = JSON.parse(cuerpoTexto) as RespuestaComputeRoutes;
     } catch {
       throw new ErrorRuteoProveedor('trazado: la respuesta no era JSON legible');
     }
@@ -192,6 +206,18 @@ export class GoogleComputeRoutesAdapter {
     // adivinar: se descarta el trazado entero y la pantalla cae a la recta, que
     // al menos es honesta sobre lo que sabe.
     if (piernas.length !== pedazo.length - 1) {
+      // 🔎 DIAG TEMP: un 200 sin piernas suele traer un objeto vacío `{}` (Google
+      // no encontró ruta) o un `routes:[]`. Ver la forma sin exponer geometría.
+      console.log(
+        '[diagCR200] ',
+        JSON.stringify({
+          claves: Object.keys(datos as Record<string, unknown>),
+          rutas: datos.routes?.length ?? 0,
+          piernas: piernas.length,
+          puntosEnPedazo: pedazo.length,
+          modo,
+        }),
+      );
       throw new ErrorRuteoProveedor(
         `trazado: se esperaban ${pedazo.length - 1} piernas y llegaron ${piernas.length}`,
       );
