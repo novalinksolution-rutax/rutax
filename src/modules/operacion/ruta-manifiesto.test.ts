@@ -684,3 +684,106 @@ describe("calcularYAplicarRutaManifiesto — origenEnParadaId (ir a esta ahora)"
     expect(resultado.totalParadas).toBeGreaterThanOrEqual(2);
   });
 });
+
+// =============================================================================
+// liberarFijacionesPrevias — el bug encontrado en vivo (2026-09-06):
+// una SEGUNDA «ir a esta ahora» chocaba con la fijación de la primera
+// =============================================================================
+
+describe("calcularYAplicarRutaManifiesto — liberarFijacionesPrevias", () => {
+  const bodega = { lat: -33.4, long: -70.6 };
+  const p1 = { lat: -33.41, long: -70.6 };
+  const p2 = { lat: -33.42, long: -70.6 };
+
+  /**
+   * P1 llega YA fijada en #1 — el residuo persistido de una «ir a esta ahora»
+   * ANTERIOR, de hace horas, sin relación con la que se está pidiendo ahora.
+   */
+  function clienteConP1YaFijada() {
+    return crearClienteFake({
+      manifiestos: [manifiestoFila(DRIVER_SIN_ANCLA)],
+      courierBodegas: [bodegaFila({ lat: bodega.lat, long: bodega.long })],
+      asignacionesPedido: [
+        asignacionFila(PEDIDO_1, p1, { orden_ruta: 1, orden_fijado: true }),
+        asignacionFila(PEDIDO_2, p2, { orden_ruta: 2, orden_fijado: false }),
+      ],
+    });
+  }
+
+  beforeEach(() => {
+    vi.mocked(obtenerAnclaFinRuta).mockResolvedValue(null);
+    vi.mocked(aplicarSecuenciaParadasRpc).mockResolvedValue({
+      totalParadas: 2,
+      totalSinSecuencia: 0,
+      totalPreviasLimpiadas: 0,
+    });
+  });
+
+  it("🔴 EL BUG: sin liberar, una «ir a esta ahora» sobre P2 pierde el desempate contra la fijación vieja de P1", async () => {
+    // Exactamente lo que se vio en vivo: se pide P2 al frente, pero P1 —fijada
+    // desde antes, sin relación con este pedido— gana el desempate de
+    // `fusionarConFijas` («gana la primera») y se queda en #1. Por fuera se ve
+    // como un botón que no hizo nada.
+    await calcularYAplicarRutaManifiesto(clienteConP1YaFijada(), {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      actorUsuarioId: ACTOR_1,
+      fijarAdicionales: [{ pedidoId: PEDIDO_2, orden: 1 }],
+      origenEnParadaId: PEDIDO_2,
+      // liberarFijacionesPrevias: omitido — el comportamiento viejo.
+    });
+
+    const llamada = vi.mocked(aplicarSecuenciaParadasRpc).mock.calls[0][1];
+    expect(llamada.pedidoIdsEnOrden[0]).toBe(PEDIDO_1); // el bug: P1 sigue primera.
+  });
+
+  it("✅ EL ARREGLO: con liberarFijacionesPrevias, P2 sí pasa a ser la #1 y P1 queda libre", async () => {
+    await calcularYAplicarRutaManifiesto(clienteConP1YaFijada(), {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      actorUsuarioId: ACTOR_1,
+      fijarAdicionales: [{ pedidoId: PEDIDO_2, orden: 1 }],
+      origenEnParadaId: PEDIDO_2,
+      liberarFijacionesPrevias: true,
+    });
+
+    const llamada = vi.mocked(aplicarSecuenciaParadasRpc).mock.calls[0][1];
+    expect(llamada.pedidoIdsEnOrden).toEqual([PEDIDO_2, PEDIDO_1]);
+  });
+
+  it("«Ordenar» (accion optimizar, sin fijarAdicionales) también libera: nada queda pegado a una fijación vieja", async () => {
+    // Es el otro botón afectado: «Ordenar» / «Ordenar desde aquí» promete una
+    // reoptimización COMPLETA, y no puede seguir respetando una fijación de
+    // una «ir a esta ahora» de hace tres horas.
+    await calcularYAplicarRutaManifiesto(clienteConP1YaFijada(), {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      actorUsuarioId: ACTOR_1,
+      liberarFijacionesPrevias: true,
+    });
+
+    // Sin ninguna fijación, el motor local ordena por cercanía a la bodega:
+    // P1 (0.01) antes que P2 (0.02) — el resultado natural, no uno forzado.
+    const llamada = vi.mocked(aplicarSecuenciaParadasRpc).mock.calls[0][1];
+    expect(llamada.pedidoIdsEnOrden).toEqual([PEDIDO_1, PEDIDO_2]);
+    // Y ninguna quedó marcada como fijada: la próxima "ir a esta ahora" no
+    // tiene con qué chocar.
+    expect(llamada.fijados).toEqual([false, false]);
+  });
+
+  it("el arrastre normal (sin liberar) SIGUE respetando una fijación de otra parada — no es el bug, es la función", async () => {
+    // Mover P2 con un arrastre plano no debe tocar la fijación de P1: esa
+    // persistencia es la promesa del arrastre («deja el resto como estaba»),
+    // y esta prueba evita que alguien la borre "arreglando" el otro caso.
+    await calcularYAplicarRutaManifiesto(clienteConP1YaFijada(), {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      actorUsuarioId: ACTOR_1,
+      fijarAdicionales: [{ pedidoId: PEDIDO_2, orden: 2 }],
+      // Ni origenEnParadaId ni liberarFijacionesPrevias: arrastre plano.
+    });
+
+    const llamada = vi.mocked(aplicarSecuenciaParadasRpc).mock.calls[0][1];
+    expect(llamada.pedidoIdsEnOrden[0]).toBe(PEDIDO_1); // P1 sigue fijada en #1.
+  });
+});

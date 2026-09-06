@@ -207,6 +207,14 @@ export async function POST(request: NextRequest) {
         ? { lat: ubicacion.lat, long: ubicacion.long, nombre: "Donde estás ahora" }
         : undefined,
       origenEnParadaId,
+      // «Optimizar» (Ordenar / Ordenar desde aquí) promete una reoptimización
+      // COMPLETA, y «ir a esta ahora» promete reordenar el RESTO libremente —
+      // ninguno de los dos puede seguir atado a una fijación de una acción
+      // anterior no relacionada. El arrastre plano (`mover` sin
+      // `reoptimizarDesdeParada`) NO entra acá a propósito: su promesa es la
+      // opuesta, «deja el resto como estaba». Ver la nota en
+      // `calcularYAplicarRutaManifiesto`.
+      liberarFijacionesPrevias: accion === "optimizar" || origenEnParadaId !== undefined,
     });
 
     return NextResponse.json({

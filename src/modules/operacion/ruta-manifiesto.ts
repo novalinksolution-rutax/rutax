@@ -311,9 +311,42 @@ export async function calcularYAplicarRutaManifiesto(
      * el GPS del conductor. El llamador pasa uno u otro, nunca los dos.
      */
     origenEnParadaId?: string;
+    /**
+     * Libera CUALQUIER fijación manual previa (de un «ir a esta ahora» o un
+     * arrastre de otro día) antes de rutear — salvo las que este mismo cálculo
+     * vuelve a pedir vía `fijarAdicionales` (las cerradas, y la que se acaba de
+     * mover). `false`/`undefined` = comportamiento de siempre: una fijación
+     * sobrevive a los recálculos hasta que alguien la mueva.
+     *
+     * 🔴 **El bug que esto arregla (encontrado en vivo, 2026-09-06).** Una
+     * fijación de «ir a esta ahora» es PERMANENTE por diseño —es lo que evita
+     * que el motor deshaga la corrección del conductor— pero nadie contemplaba
+     * que una *segunda* «ir a esta ahora», sobre OTRA parada, chocara con la
+     * primera: las dos terminaban pidiendo la posición #1, y
+     * `fusionarConFijas` tiene una regla de desempate explícita («gana la
+     * primera») que hacía que la fijación VIEJA ganara siempre. Por fuera se
+     * veía como un botón que no hace nada — «ir a esta ahora» y «Ordenar
+     * desde aquí» quedaban permanentemente atados a la primera parada que
+     * alguien hubiera adelantado en el día.
+     *
+     * La promesa de los dos gestos que lo activan es «reordena LIBREMENTE el
+     * resto», así que «el resto» no puede seguir cargando una fijación de una
+     * acción anterior no relacionada. El arrastre normal NO pasa esto: su
+     * promesa es la opuesta («deja el resto como estaba»), y ahí la
+     * persistencia sigue siendo la función, no el bug.
+     */
+    liberarFijacionesPrevias?: boolean;
   },
 ): Promise<ResultadoRuteoManifiesto> {
-  const { tenantId, manifiestoId, actorUsuarioId, fijarAdicionales, origenAlternativo, origenEnParadaId } = input;
+  const {
+    tenantId,
+    manifiestoId,
+    actorUsuarioId,
+    fijarAdicionales,
+    origenAlternativo,
+    origenEnParadaId,
+    liberarFijacionesPrevias,
+  } = input;
 
   // --- 1. El manifiesto, para saber de qué conductor es --------------------
   const { data: manifiesto, error: errorManifiesto } = await cliente
@@ -362,11 +395,17 @@ export async function calcularYAplicarRutaManifiesto(
     (fijarAdicionales ?? []).map((f) => [f.pedidoId, f.orden] as const),
   );
   const paradasConFijacion: ParadaDelManifiesto[] =
-    extra.size === 0
+    extra.size === 0 && !liberarFijacionesPrevias
       ? paradas
-      : paradas.map((p) =>
-          extra.has(p.pedidoId) ? { ...p, ordenFijo: extra.get(p.pedidoId) as number } : p,
-        );
+      : paradas.map((p) => {
+          if (extra.has(p.pedidoId)) return { ...p, ordenFijo: extra.get(p.pedidoId) as number };
+          // Ver `liberarFijacionesPrevias`: cualquier parada que NO sea parte
+          // de ESTE cálculo (cerrada, o la que se acaba de mover) vuelve a
+          // quedar libre — es lo que impide que una fijación de hace tres
+          // horas gane el desempate contra la que el conductor acaba de pedir.
+          if (liberarFijacionesPrevias) return { ...p, ordenFijo: null };
+          return p;
+        });
 
   // --- 3. El ancla. Variable local, y hasta aquí llega ----------------------
   // Se lee DESPUÉS del origen para que un fallo de configuración de bodega
