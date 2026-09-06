@@ -190,11 +190,15 @@ describe('optimizarRuta — el request que Google exige para no descartar todo',
   afterEach(() => vi.unstubAllGlobals());
 
   function stubFetch(cuerpos: Record<string, unknown>[]) {
+    const cuerpoOk = JSON.stringify(respuestaConAncla());
     const fetchMock = vi.fn(async (_url: string, init: { body: string }) => {
       cuerpos.push(JSON.parse(init.body));
       return {
         ok: true,
-        json: async () => respuestaConAncla(),
+        // El adaptador lee `.text()` (para poder diagnosticar un 400 sin
+        // re-consumir el cuerpo) y luego hace `JSON.parse`.
+        text: async () => cuerpoOk,
+        json: async () => JSON.parse(cuerpoOk),
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -220,6 +224,11 @@ describe('optimizarRuta — el request que Google exige para no descartar todo',
     const inicio = new Date(model.globalStartTime as string).getTime();
     const fin = new Date(model.globalEndTime as string).getTime();
     expect(fin - inicio).toBeGreaterThan(60 * 60 * 1000); // más de una hora
+    // ⚠️ SIN milisegundos: Route Optimization devuelve 400 «`nanos` must be
+    // unset» ante el `.000Z` de `toISOString()`. El timestamp NO puede tener
+    // fracción de segundo.
+    expect(model.globalStartTime).not.toContain('.');
+    expect(model.globalEndTime).not.toContain('.');
   });
 
   it('🔴 el vehículo lleva un costo NO NULO — sin él el solver no optimiza (WARNING_MODEL_NEEDS_OBJECTIVE_OR_NONZERO_COST)', async () => {

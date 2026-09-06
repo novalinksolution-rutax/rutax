@@ -147,9 +147,13 @@ export class GoogleRouteOptimizationAdapter {
     // No modelamos horarios reales (Flex con hora comprometida quedó fuera de la
     // v1): basta una ventana amplia que contenga cualquier jornada. 36 h desde
     // ahora cubre de sobra un reparto que arranca a las 16:00 y corta a las 22:00.
+    // ⚠️ SIN milisegundos: Route Optimization exige un Timestamp con `nanos`
+    // UNSET y devuelve 400 («`nanos` must be unset») ante el `.000Z` que agrega
+    // `toISOString()`. Se recorta la fracción de segundo.
+    const sinNanos = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
     const ahoraMs = Date.now();
-    const globalStartTime = new Date(ahoraMs).toISOString();
-    const globalEndTime = new Date(ahoraMs + 36 * 60 * 60 * 1000).toISOString();
+    const globalStartTime = sinNanos(ahoraMs);
+    const globalEndTime = sinNanos(ahoraMs + 36 * 60 * 60 * 1000);
 
     const cuerpo = {
       model: {
