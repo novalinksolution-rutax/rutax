@@ -200,15 +200,27 @@ export class GoogleRouteOptimizationAdapter {
       );
     }
 
+    // DIAG TEMP: leer el texto ANTES del check para poder registrar el motivo
+    // de un 400 (el error de Google describe qué campo del request está mal —
+    // sin coordenadas de destinatarios).
+    const cuerpoTexto = await respuesta.text();
+
     if (!respuesta.ok) {
+      try {
+        const err = JSON.parse(cuerpoTexto) as { error?: { status?: unknown; message?: unknown } };
+        console.log(
+          '[diag400] ',
+          JSON.stringify({ http: respuesta.status, status: err.error?.status, message: err.error?.message }),
+        );
+      } catch {
+        console.log('[diag400] cuerpo no-JSON, http', respuesta.status);
+      }
       const reintentable = respuesta.status >= 500 || respuesta.status === 429;
       throw new ErrorRuteoProveedor(`respondió ${respuesta.status}`, reintentable);
     }
 
     let datos: RespuestaGoogle;
-    let cuerpoTexto: string;
     try {
-      cuerpoTexto = await respuesta.text();
       datos = JSON.parse(cuerpoTexto) as RespuestaGoogle;
     } catch {
       throw new ErrorRuteoProveedor('la respuesta no era JSON legible');
