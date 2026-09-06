@@ -194,27 +194,25 @@ export class GoogleRouteOptimizationAdapter {
     // geometría y bajo qué clave. QUITAR tras diagnosticar.
     {
       const suelto = datos as unknown as {
-        routes?: unknown[];
-        skippedShipments?: unknown[];
+        skippedShipments?: { reasons?: { code?: unknown }[] }[];
+        validationErrors?: {
+          code?: unknown;
+          displayName?: unknown;
+          fields?: { name?: unknown }[];
+        }[];
       };
-      const ruta0 = suelto.routes?.[0];
       console.log(
-        '[diag-ruteo] forma respuesta:',
+        '[diag-ruteo] razones:',
         JSON.stringify({
-          bytes: cuerpoTexto.length,
-          clavesTop: datos ? Object.keys(datos as Record<string, unknown>) : [],
-          rutas: suelto.routes?.length ?? 0,
-          ruta0EsNull: suelto.routes ? ruta0 === null : 'sin-routes',
-          clavesRuta0:
-            ruta0 && typeof ruta0 === 'object'
-              ? Object.keys(ruta0 as Record<string, unknown>)
-              : [],
-          skipped: suelto.skippedShipments?.length ?? 'n/a',
-          clavesSkipped0:
-            suelto.skippedShipments?.[0] && typeof suelto.skippedShipments[0] === 'object'
-              ? Object.keys(suelto.skippedShipments[0] as Record<string, unknown>)
-              : [],
-          tieneRoutePolyline: cuerpoTexto.includes('routePolyline'),
+          // Códigos y nombres de campo — NUNCA valores (podrían ser coordenadas).
+          validationErrors: (suelto.validationErrors ?? []).map((e) => ({
+            code: e.code,
+            displayName: e.displayName,
+            campos: (e.fields ?? []).map((f) => f.name),
+          })),
+          skippedReasons: (suelto.skippedShipments ?? []).map((s) =>
+            (s.reasons ?? []).map((r) => r.code),
+          ),
         }),
       );
     }
