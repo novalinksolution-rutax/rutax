@@ -179,11 +179,37 @@ export class GoogleRouteOptimizationAdapter {
     }
 
     let datos: RespuestaGoogle;
+    let cuerpoTexto: string;
     try {
-      datos = (await respuesta.json()) as RespuestaGoogle;
+      cuerpoTexto = await respuesta.text();
+      datos = JSON.parse(cuerpoTexto) as RespuestaGoogle;
     } catch {
       throw new ErrorRuteoProveedor('la respuesta no era JSON legible');
     }
+
+    // 🔎 DIAGNÓSTICO TEMPORAL (2026-09-06). La ruta sale punteada aunque
+    // optimizeTours responde 200: se sospecha que la respuesta no trae
+    // polilíneas de transición. Loguea SOLO la PRESENCIA de campos y el
+    // tamaño —jamás el cuerpo ni una coordenada—, para saber si Google devuelve
+    // geometría y bajo qué clave. QUITAR tras diagnosticar.
+    console.log(
+      '[diag-ruteo] forma respuesta:',
+      JSON.stringify({
+        bytes: cuerpoTexto.length,
+        tieneRoutePolyline: cuerpoTexto.includes('routePolyline'),
+        tienePolyline: cuerpoTexto.includes('polyline'),
+        tienePoints: cuerpoTexto.includes('"points"'),
+        tieneTransitions: cuerpoTexto.includes('transitions'),
+        tieneEncodedPolyline: cuerpoTexto.includes('encodedPolyline'),
+        rutas: datos.routes?.length ?? 0,
+        visitas: datos.routes?.[0]?.visits?.length ?? 0,
+        transiciones: datos.routes?.[0]?.transitions?.length ?? 0,
+        clavesRuta: datos.routes?.[0] ? Object.keys(datos.routes[0]) : [],
+        clavesPrimeraTransicion: datos.routes?.[0]?.transitions?.[0]
+          ? Object.keys(datos.routes[0].transitions[0] as Record<string, unknown>)
+          : [],
+      }),
+    );
 
     return interpretarRespuesta(datos, paradas);
   }
