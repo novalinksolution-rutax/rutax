@@ -543,3 +543,97 @@ describe("calcularYAplicarRutaManifiesto — un ancla corrupta se descarta en si
     expect(resultado.totalParadas).toBe(1);
   });
 });
+
+// =============================================================================
+// origenEnParadaId — «ir a esta ahora» reoptimiza el resto DESDE la parada
+// =============================================================================
+
+describe("calcularYAplicarRutaManifiesto — origenEnParadaId (ir a esta ahora)", () => {
+  // Tres paradas en una línea norte-sur, para que el orden óptimo dependa
+  // SOLO de desde dónde se sale. P3 es la más lejana de la bodega.
+  const PEDIDO_3 = "50000000-0000-0000-0000-000000000003";
+  const bodega = { lat: -33.4, long: -70.6 };
+  const cerca = { lat: -33.41, long: -70.6 }; // P1: a 0.01 de la bodega
+  const medio = { lat: -33.42, long: -70.6 }; // P2: a 0.02 de la bodega
+  const lejos = { lat: -33.5, long: -70.6 }; // P3: a 0.10 de la bodega
+
+  function clienteTresParadas() {
+    return crearClienteFake({
+      manifiestos: [manifiestoFila(DRIVER_SIN_ANCLA)],
+      courierBodegas: [bodegaFila({ lat: bodega.lat, long: bodega.long })],
+      asignacionesPedido: [
+        asignacionFila(PEDIDO_1, cerca),
+        asignacionFila(PEDIDO_2, medio),
+        asignacionFila(PEDIDO_3, lejos),
+      ],
+    });
+  }
+
+  beforeEach(() => {
+    vi.mocked(obtenerAnclaFinRuta).mockResolvedValue(null);
+    vi.mocked(aplicarSecuenciaParadasRpc).mockResolvedValue({
+      totalParadas: 3,
+      totalSinSecuencia: 0,
+      totalPreviasLimpiadas: 0,
+    });
+  });
+
+  it("SIN origenEnParadaId: fija P3 al frente y el resto se ordena desde la BODEGA (P1 antes que P2)", async () => {
+    // La bodega está cerca de P1: saliendo de ahí, el resto es P1 (0.01) y
+    // luego P2 (0.02). P3 va primero por la fijación, pero la cola conserva el
+    // orden óptimo-desde-bodega.
+    await calcularYAplicarRutaManifiesto(clienteTresParadas(), {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      actorUsuarioId: ACTOR_1,
+      fijarAdicionales: [{ pedidoId: PEDIDO_3, orden: 1 }],
+    });
+
+    const llamada = vi.mocked(aplicarSecuenciaParadasRpc).mock.calls[0][1];
+    expect(llamada.pedidoIdsEnOrden).toEqual([PEDIDO_3, PEDIDO_1, PEDIDO_2]);
+  });
+
+  it("🔴 CON origenEnParadaId=P3: el resto se ordena DESDE P3, así que la cola se invierte (P2 antes que P1)", async () => {
+    // Ese es el arreglo de «ir a esta ahora»: saliendo de P3 (la más al sur),
+    // lo más cercano es P2 (0.08) y después P1 (0.09) — al revés que desde la
+    // bodega. Si el origen NO cambiara, la cola seguiría siendo [P1, P2] y esta
+    // prueba fallaría.
+    await calcularYAplicarRutaManifiesto(clienteTresParadas(), {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      actorUsuarioId: ACTOR_1,
+      fijarAdicionales: [{ pedidoId: PEDIDO_3, orden: 1 }],
+      origenEnParadaId: PEDIDO_3,
+    });
+
+    const llamada = vi.mocked(aplicarSecuenciaParadasRpc).mock.calls[0][1];
+    expect(llamada.pedidoIdsEnOrden).toEqual([PEDIDO_3, PEDIDO_2, PEDIDO_1]);
+  });
+
+  it("origenEnParadaId de una parada SIN coordenada usable cae a la bodega, sin fallar", async () => {
+    // P3 sin coordenada: no puede ser el origen. La ruta se calcula igual desde
+    // la bodega en vez de lanzar — «ir a esta ahora» nunca debe romperse por eso.
+    const cliente = crearClienteFake({
+      manifiestos: [manifiestoFila(DRIVER_SIN_ANCLA)],
+      courierBodegas: [bodegaFila({ lat: bodega.lat, long: bodega.long })],
+      asignacionesPedido: [
+        asignacionFila(PEDIDO_1, cerca),
+        asignacionFila(PEDIDO_2, medio),
+        asignacionFila(PEDIDO_3, { lat: null, long: null }),
+      ],
+    });
+
+    const resultado = await calcularYAplicarRutaManifiesto(cliente, {
+      tenantId: TENANT_A,
+      manifiestoId: MANIFIESTO_1,
+      actorUsuarioId: ACTOR_1,
+      origenEnParadaId: PEDIDO_3,
+    });
+
+    // No lanzó, y las dos ubicables entraron a la secuencia (P3 sin coordenada
+    // queda sin ubicar, no rompe el cálculo).
+    const llamada = vi.mocked(aplicarSecuenciaParadasRpc).mock.calls[0][1];
+    expect(new Set(llamada.pedidoIdsEnOrden)).toEqual(new Set([PEDIDO_1, PEDIDO_2]));
+    expect(resultado.totalParadas).toBeGreaterThanOrEqual(2);
+  });
+});

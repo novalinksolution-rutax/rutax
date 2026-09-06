@@ -283,9 +283,34 @@ export async function calcularYAplicarRutaManifiesto(
      * de ahí.
      */
     origenAlternativo?: { lat: number; long: number; nombre: string };
+    /**
+     * «Ir a esta ahora»: reoptimizar el RESTO tomando esta parada como punto de
+     * partida (2026-09-05).
+     *
+     * 🔴 **El problema que resuelve.** Fijar una parada al frente (vía
+     * `fijarAdicionales`) la pone en el #1, pero el resto se seguía optimizando
+     * desde la BODEGA — así que si ya venían en orden óptimo-desde-bodega, no se
+     * movían: la parada saltaba al frente y todo lo demás quedaba igual. Para un
+     * «ir a esta ahora» eso no sirve: el conductor quiere «desvíame a esta, y el
+     * resto ordénalo bien saliendo de ahí».
+     *
+     * **Cómo lo hace.** El origen del cálculo pasa a ser la coordenada de ESTA
+     * parada. El motor optimiza las libres como una cadena que sale de ese
+     * punto (vecino más cercano desde ahí), y `fijarAdicionales` la deja clavada
+     * en el #1. No usa GPS —decisión del usuario, 2026-09-05—: es predecible y
+     * no depende de señal ni de permiso de ubicación.
+     *
+     * Si la parada no tiene coordenada usable, se cae a la bodega en silencio:
+     * un «ir a esta ahora» nunca debe fallar por eso — al menos queda fijada al
+     * frente, que es lo que el conductor pidió.
+     *
+     * Es EXCLUYENTE con `origenAlternativo`: uno es la parada elegida, el otro
+     * el GPS del conductor. El llamador pasa uno u otro, nunca los dos.
+     */
+    origenEnParadaId?: string;
   },
 ): Promise<ResultadoRuteoManifiesto> {
-  const { tenantId, manifiestoId, actorUsuarioId, fijarAdicionales, origenAlternativo } = input;
+  const { tenantId, manifiestoId, actorUsuarioId, fijarAdicionales, origenAlternativo, origenEnParadaId } = input;
 
   // --- 1. El manifiesto, para saber de qué conductor es --------------------
   const { data: manifiesto, error: errorManifiesto } = await cliente
@@ -309,10 +334,22 @@ export async function calcularYAplicarRutaManifiesto(
     listarParadasDelManifiesto(cliente, tenantId, manifiestoId),
   ]);
 
-  const origen = origenAlternativo ?? bodega;
-  // Solo se exige bodega cuando la ruta sale de ella. Con origen alternativo, un
-  // courier sin bodega configurada no puede bloquear a un conductor que ya está
-  // en la calle.
+  // «Ir a esta ahora»: el origen es la coordenada de la parada elegida, si es
+  // usable. Se resuelve sobre las paradas YA leídas —sin consulta extra— y cae
+  // a la bodega en silencio si esa parada no tiene coordenada: el gesto nunca
+  // debe fallar por eso. Ver la nota de `origenEnParadaId`.
+  const origenParada = origenEnParadaId
+    ? (() => {
+        const p = paradas.find((x) => x.pedidoId === origenEnParadaId);
+        const punto = p ? puntoUsable(p.lat, p.long) : null;
+        return punto ? { lat: punto.lat, long: punto.long, nombre: "Tu próxima parada" } : null;
+      })()
+    : null;
+
+  const origen = origenParada ?? origenAlternativo ?? bodega;
+  // Solo se exige bodega cuando la ruta sale de ella. Con origen alternativo (o
+  // con la parada elegida), un courier sin bodega configurada no puede bloquear
+  // a un conductor que ya está en la calle.
   if (!origen) throw new ErrorSinBodegaOrigen();
 
   // La fijación que llega del gesto del conductor se aplica ANTES de rutear, y

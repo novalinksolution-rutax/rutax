@@ -71,6 +71,14 @@ interface CuerpoRuta {
    * en cada cálculo ni en segundo plano.
    */
   desdeMiUbicacion?: unknown;
+  /**
+   * «Ir a esta ahora» (2026-09-05): solo con `mover`. Cuando es `true`, además
+   * de fijar la parada al frente, el resto se reoptimiza tomando ESA parada
+   * como punto de partida (no la bodega). Es la diferencia entre «ir a esta
+   * ahora» —que reordena el resto— y arrastrar una parada —que deja el resto
+   * como estaba. Ver `origenEnParadaId` en `ruta-manifiesto.ts`.
+   */
+  reoptimizarDesdeParada?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -140,6 +148,11 @@ export async function POST(request: NextRequest) {
 
   // --- Validación del gesto --------------------------------------------------
 
+  // «Ir a esta ahora»: la parada desde la que reoptimizar el resto. Se resuelve
+  // en el bloque `mover` y viaja al cálculo. Vive acá afuera porque `pedidoId`
+  // es local al `if`.
+  let origenEnParadaId: string | undefined;
+
   if (accion === "mover") {
     const pedidoId = cuerpo.pedidoId;
     const posicion = cuerpo.posicion;
@@ -169,6 +182,13 @@ export async function POST(request: NextRequest) {
 
     // Va al final para que gane a cualquier ancla previa de la misma parada.
     fijaciones.push({ pedidoId, orden: posicion });
+
+    // «Ir a esta ahora»: además de fijarla al frente, el resto se reoptimiza
+    // saliendo de ESTA parada. Un arrastre normal no manda el flag y conserva
+    // el comportamiento de siempre (fija una, deja el resto como estaba).
+    if (cuerpo.reoptimizarDesdeParada === true) {
+      origenEnParadaId = pedidoId;
+    }
   }
 
   try {
@@ -186,6 +206,7 @@ export async function POST(request: NextRequest) {
       origenAlternativo: ubicacion
         ? { lat: ubicacion.lat, long: ubicacion.long, nombre: "Donde estás ahora" }
         : undefined,
+      origenEnParadaId,
     });
 
     return NextResponse.json({
