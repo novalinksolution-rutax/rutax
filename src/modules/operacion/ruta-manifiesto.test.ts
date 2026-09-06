@@ -41,6 +41,7 @@ import {
   ErrorManifiestoNoEncontrado,
   ErrorSinBodegaOrigen,
   recalcularRutaTrasCambio,
+  modoTrazadoDelConductor,
 } from "./ruta-manifiesto";
 
 const TENANT_A = "10000000-0000-0000-0000-000000000001";
@@ -114,10 +115,13 @@ function crearClienteFake(opts: {
   manifiestos?: Fila[];
   courierBodegas?: Fila[];
   asignacionesPedido?: Fila[];
+  /** Filas de `identidad.conductores` — para leer el `vehiculo`. */
+  conductores?: Fila[];
 }) {
   const manifiestos = opts.manifiestos ?? [];
   const courierBodegas = opts.courierBodegas ?? [];
   const asignacionesPedido = opts.asignacionesPedido ?? [];
+  const conductores = opts.conductores ?? [];
 
   const from = vi.fn((tabla: string) => {
     if (tabla === "manifiestos") return builderTabla(manifiestos);
@@ -130,6 +134,9 @@ function crearClienteFake(opts: {
       return {
         from: vi.fn((tabla: string) => {
           if (tabla === "courier_bodegas") return builderTabla(courierBodegas);
+          // El motor lee el vehículo del conductor para decidir el modo del
+          // trazado. Un conductor ausente cae a DRIVE (auto), como antes.
+          if (tabla === "conductores") return builderTabla(conductores);
           throw new Error(`from() inesperado en esquema identidad: ${tabla}`);
         }),
       };
@@ -170,8 +177,48 @@ function manifiestoFila(driverId: string, overrides: Fila = {}): Fila {
   return { id: MANIFIESTO_1, tenant_id: TENANT_A, driver_id: driverId, ...overrides };
 }
 
+function conductorFila(id: string, vehiculo: "moto" | "auto" | null): Fila {
+  return { id, tenant_id: TENANT_A, vehiculo };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+// =============================================================================
+// modoTrazadoDelConductor — el vehículo decide el modo del TRAZADO (2026-09-05)
+// =============================================================================
+
+describe("modoTrazadoDelConductor", () => {
+  it("moto → TWO_WHEELER", async () => {
+    const cliente = crearClienteFake({ conductores: [conductorFila(DRIVER_CON_ANCLA, "moto")] });
+    expect(await modoTrazadoDelConductor(cliente, TENANT_A, DRIVER_CON_ANCLA)).toBe("TWO_WHEELER");
+  });
+
+  it("auto → DRIVE", async () => {
+    const cliente = crearClienteFake({ conductores: [conductorFila(DRIVER_CON_ANCLA, "auto")] });
+    expect(await modoTrazadoDelConductor(cliente, TENANT_A, DRIVER_CON_ANCLA)).toBe("DRIVE");
+  });
+
+  it("sin declarar (null) → DRIVE: rutea como siempre lo hizo", async () => {
+    const cliente = crearClienteFake({ conductores: [conductorFila(DRIVER_CON_ANCLA, null)] });
+    expect(await modoTrazadoDelConductor(cliente, TENANT_A, DRIVER_CON_ANCLA)).toBe("DRIVE");
+  });
+
+  it("conductor ausente o driverId nulo → DRIVE, sin lanzar", async () => {
+    const cliente = crearClienteFake({ conductores: [] });
+    expect(await modoTrazadoDelConductor(cliente, TENANT_A, DRIVER_CON_ANCLA)).toBe("DRIVE");
+    expect(await modoTrazadoDelConductor(cliente, TENANT_A, null)).toBe("DRIVE");
+  });
+
+  it("exige el tenant: un conductor de otro courier no se lee como propio", async () => {
+    // La fila existe pero con otro tenant → no matchea → DRIVE, nunca el
+    // vehículo de una ficha ajena.
+    const cliente = crearClienteFake({
+      conductores: [{ id: DRIVER_CON_ANCLA, tenant_id: "otro-tenant", vehiculo: "moto" }],
+    });
+    expect(await modoTrazadoDelConductor(cliente, TENANT_A, DRIVER_CON_ANCLA)).toBe("DRIVE");
+  });
 });
 
 // =============================================================================

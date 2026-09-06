@@ -55,7 +55,10 @@ import { puntoUsable } from "./distancias-tramo";
 import type { EstadoManifiesto } from "./tipos";
 import { obtenerAnclaFinRuta } from "./punto-termino-conductor";
 import { calcularRuta } from "./ruteo";
-import { GoogleComputeRoutesAdapter } from "@/modules/integraciones/ruteo/adaptadores/google-compute-routes";
+import {
+  GoogleComputeRoutesAdapter,
+  type ModoTrazado,
+} from "@/modules/integraciones/ruteo/adaptadores/google-compute-routes";
 import {
   aplicarSecuenciaParadasRpc,
   pedidoIdsDesdeSecuencia,
@@ -377,11 +380,22 @@ export async function calcularYAplicarRutaManifiesto(
   const ancla: Punto | null =
     anclaLeida === null ? null : puntoUsable(anclaLeida.lat, anclaLeida.long);
 
+  // El vehículo del conductor decide el modo del TRAZADO —no el orden—: moto →
+  // TWO_WHEELER, auto o sin declarar → DRIVE. El solver de Google no tiene modo
+  // de moto (solo DRIVING/WALKING), así que lo que cambia es por dónde pasa la
+  // calle y la ETA, nunca la secuencia. Ver `modoTrazadoDelConductor`.
+  const modoTrazado = await modoTrazadoDelConductor(
+    cliente,
+    tenantId,
+    manifiesto.driver_id as string,
+  );
+
   // --- 4. Motor -------------------------------------------------------------
   const ruta = await resolverRuta({
     origen: { lat: origen.lat, long: origen.long },
     destino: ancla,
     paradas: paradasConFijacion,
+    modoTrazado,
   });
 
   // --- 5. Persistir la secuencia COMPLETA ----------------------------------
@@ -474,6 +488,8 @@ async function resolverRuta(entrada: {
   origen: Punto;
   destino: Punto | null;
   paradas: readonly ParadaDelManifiesto[];
+  /** Auto → `DRIVE`, moto → `TWO_WHEELER`. Solo afecta el TRAZADO, no el orden. */
+  modoTrazado: ModoTrazado;
 }): Promise<RutaResuelta> {
   const puerto = obtenerPuertoOptimizacion();
 
@@ -518,6 +534,32 @@ async function resolverRuta(entrada: {
         destino: entrada.destino,
         paradas: ubicables,
       });
+
+      // 🏍️ Moto: el solver ya decidió el ORDEN (en DRIVING, el único modo que
+      // ofrece), pero su geometría y su ETA son de auto. Se re-traza esa misma
+      // secuencia con Compute Routes en TWO_WHEELER —una petición barata, por
+      // request y no por parada— para que el camino y los tiempos sean de moto.
+      // Es el costo asumido de «moto completa» (decisión del usuario, 2026-09-05).
+      // Si el re-trazado falla, queda la geometría de auto del solver: mejor eso
+      // que perder la ruta.
+      if (entrada.modoTrazado === "TWO_WHEELER") {
+        const tramosMoto = await trazarSecuencia(
+          entrada.origen,
+          optimizada.secuencia,
+          entrada.paradas,
+          entrada.modoTrazado,
+        );
+        if (tramosMoto) {
+          return {
+            secuencia: optimizada.secuencia,
+            distanciaTotalM: tramosMoto.reduce((a, t) => a + t.distanciaM, 0),
+            duracionTotalS: tramosMoto.reduce((a, t) => a + t.duracionS, 0),
+            tramos: tramosMoto,
+            proveedor: "google",
+          };
+        }
+      }
+
       return {
         secuencia: optimizada.secuencia,
         distanciaTotalM: optimizada.distanciaTotalM,
@@ -559,7 +601,12 @@ async function resolverRuta(entrada: {
   // por dónde pasa la calle. Se pide aparte, y su fallo NO invalida la ruta:
   // sin trazado la pantalla dibuja la recta punteada, que es honesta sobre lo
   // que sabe. Perder el orden por no poder dibujarlo sería mucho peor.
-  const tramos = await trazarSecuencia(entrada.origen, local.secuencia, entrada.paradas);
+  const tramos = await trazarSecuencia(
+    entrada.origen,
+    local.secuencia,
+    entrada.paradas,
+    entrada.modoTrazado,
+  );
 
   return {
     secuencia: local.secuencia,
@@ -588,6 +635,7 @@ async function trazarSecuencia(
   origen: Punto,
   secuencia: readonly { pedidoId: string; orden: number }[],
   paradas: readonly ParadaDelManifiesto[],
+  modoTrazado: ModoTrazado,
 ): Promise<TramoRuta[] | null> {
   if (obtenerPuertoOptimizacion() === null || secuencia.length === 0) return null;
 
@@ -604,7 +652,7 @@ async function trazarSecuencia(
   }
 
   try {
-    return await new GoogleComputeRoutesAdapter().trazarRuta(puntos);
+    return await new GoogleComputeRoutesAdapter().trazarRuta(puntos, modoTrazado);
   } catch (causa) {
     if (!(causa instanceof ErrorRuteo)) throw causa;
     console.error(
@@ -659,6 +707,38 @@ async function listarParadasDelManifiesto(
     .filter((p): p is ParadaDelManifiesto => p !== null);
 }
 
+
+/**
+ * El modo de trazado del conductor del manifiesto: moto → `TWO_WHEELER`, auto o
+ * SIN DECLARAR → `DRIVE`.
+ *
+ * El «sin declarar» (columna `NULL`) cae a `DRIVE` a propósito: es el modo que
+ * el sistema ya usaba para todos antes de esta función, así que un conductor al
+ * que nadie le puso vehículo rutea EXACTAMENTE como hasta ahora. La app obliga a
+ * elegir uno de los dos (por defecto Auto), así que el `NULL` es solo el estado
+ * de los que existían antes de la función.
+ *
+ * Nunca lanza por el vehículo: si la lectura falla o el conductor no aparece, se
+ * cae a `DRIVE`. El modo de trazado es una mejora del dibujo, no algo por lo que
+ * valga la pena tumbar el cálculo de una ruta que por lo demás está bien.
+ */
+export async function modoTrazadoDelConductor(
+  cliente: SupabaseClient,
+  tenantId: string,
+  driverId: string | null,
+): Promise<ModoTrazado> {
+  if (!driverId) return "DRIVE";
+  const { data, error } = await cliente
+    .schema("identidad")
+    .from("conductores")
+    .select("vehiculo")
+    .eq("id", driverId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error || !data) return "DRIVE";
+  return data.vehiculo === "moto" ? "TWO_WHEELER" : "DRIVE";
+}
 
 // =============================================================================
 // recalcularRutaTrasCambio — el gatillo automático (2026-09-05)

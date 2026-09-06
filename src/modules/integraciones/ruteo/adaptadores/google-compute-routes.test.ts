@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { partirEnPedazos } from './google-compute-routes';
+vi.mock('./google-credenciales', () => ({
+  leerProyectoGoogle: () => 'proyecto-x',
+  obtenerTokenAcceso: async () => 'token-x',
+}));
+
+import { GoogleComputeRoutesAdapter, partirEnPedazos } from './google-compute-routes';
 
 /** Puntos sintéticos: lo que importa acá es el troceado, no la geografía. */
 const puntos = (n: number) => Array.from({ length: n }, (_, i) => ({ lat: -33 - i / 1000, long: -70 }));
@@ -56,5 +61,43 @@ describe('partirEnPedazos', () => {
     const pedazos = partirEnPedazos(puntos(2));
     expect(pedazos).toHaveLength(1);
     expect(saltosCubiertos(pedazos)).toBe(1);
+  });
+});
+
+describe('trazarRuta · travelMode según el vehículo', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubFetch(cuerpos: unknown[]) {
+    const fetchMock = vi.fn(async (_url: string, init: { body: string }) => {
+      cuerpos.push(JSON.parse(init.body));
+      // Una pierna por salto: para 2 puntos, 1 pierna. Así el adaptador no
+      // rechaza la ruta por desajuste tramo↔salto.
+      return {
+        ok: true,
+        json: async () => ({
+          routes: [{ legs: [{ distanceMeters: 100, duration: '60s', polyline: { encodedPolyline: 'abc' } }] }],
+        }),
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  }
+
+  const dosPuntos = [
+    { lat: -33.45, long: -70.66 },
+    { lat: -33.4, long: -70.6 },
+  ];
+
+  it('por defecto va en DRIVE (auto), y no cambia a quien no pasa el modo', async () => {
+    const cuerpos: Record<string, unknown>[] = [];
+    stubFetch(cuerpos);
+    await new GoogleComputeRoutesAdapter().trazarRuta(dosPuntos);
+    expect(cuerpos[0].travelMode).toBe('DRIVE');
+  });
+
+  it('moto → TWO_WHEELER llega tal cual al request de Google', async () => {
+    const cuerpos: Record<string, unknown>[] = [];
+    stubFetch(cuerpos);
+    await new GoogleComputeRoutesAdapter().trazarRuta(dosPuntos, 'TWO_WHEELER');
+    expect(cuerpos[0].travelMode).toBe('TWO_WHEELER');
   });
 });

@@ -54,6 +54,20 @@ const TIMEOUT_MS = 20_000;
 /** Lo que Compute Routes acepta por petición. Google lo impone, no nosotros. */
 const MAX_INTERMEDIOS = 25;
 
+/**
+ * El modo de viaje del trazado, según el vehículo del conductor.
+ *
+ * `DRIVE` (auto) es el valor por defecto e histórico. `TWO_WHEELER` (moto) pide
+ * a Google un camino y una ETA de vehículo de dos ruedas motorizado —maniobras y
+ * tiempos que un auto no hace igual—; **Chile está entre los países soportados**
+ * (`developers.google.com/maps/documentation/routes/coverage-two-wheeled`).
+ *
+ * ⚠️ Ojo con el falso amigo: el SOLVER de Route Optimization (el que decide el
+ * ORDEN) NO tiene modo de moto —solo `DRIVING`/`WALKING`—, así que el vehículo
+ * cambia el TRAZADO y la ETA, no la secuencia. Esto es solo el trazado.
+ */
+export type ModoTrazado = 'DRIVE' | 'TWO_WHEELER';
+
 interface RespuestaComputeRoutes {
   routes?: {
     legs?: {
@@ -100,9 +114,12 @@ export class GoogleComputeRoutesAdapter {
    * Traza por calle una secuencia YA ordenada.
    *
    * @param puntos origen seguido de las paradas, en orden de visita.
+   * @param modo modo de viaje del vehículo del conductor (auto→`DRIVE`,
+   *   moto→`TWO_WHEELER`). Por defecto `DRIVE`, que es el histórico y el que
+   *   deja intacto a quien no pasa el argumento (y a las pruebas viejas).
    * @returns un tramo por cada salto: origen→1, 1→2, …, (n-1)→n.
    */
-  async trazarRuta(puntos: readonly Punto[]): Promise<TramoRuta[]> {
+  async trazarRuta(puntos: readonly Punto[], modo: ModoTrazado = 'DRIVE'): Promise<TramoRuta[]> {
     if (puntos.length < 2) return [];
 
     // Se lee ANTES de la primera llamada: un fallo de configuración no debe
@@ -112,17 +129,19 @@ export class GoogleComputeRoutesAdapter {
 
     const tramos: TramoRuta[] = [];
     for (const pedazo of partirEnPedazos(puntos)) {
-      tramos.push(...(await this.pedirPedazo(pedazo, token)));
+      tramos.push(...(await this.pedirPedazo(pedazo, token, modo)));
     }
     return tramos;
   }
 
-  private async pedirPedazo(pedazo: readonly Punto[], token: string): Promise<TramoRuta[]> {
+  private async pedirPedazo(pedazo: readonly Punto[], token: string, modo: ModoTrazado): Promise<TramoRuta[]> {
     const cuerpo = {
       origin: comoWaypoint(pedazo[0]),
       destination: comoWaypoint(pedazo[pedazo.length - 1]),
       intermediates: pedazo.slice(1, -1).map(comoWaypoint),
-      travelMode: 'DRIVE',
+      // Auto o moto según el conductor. TWO_WHEELER da un camino y una ETA de
+      // dos ruedas; Chile está soportado (ver `ModoTrazado`).
+      travelMode: modo,
       // Con tráfico: el conductor sale a las 16:00 en hora punta y una ruta que
       // ignora el atochamiento no le sirve para decidir nada.
       routingPreference: 'TRAFFIC_AWARE',
