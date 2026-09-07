@@ -10,7 +10,11 @@ import {
   puedeGestionarBodegas,
   puedeGestionarUsuariosYRoles,
   puedeVerBitacoraAuditoria,
+  puedeAjustarOperacionDiaria,
 } from "@/modules/identidad/capacidades";
+import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
+import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { PanelPedidosPrueba } from "./_componentes/panel-pedidos-prueba";
 
 export const metadata: Metadata = {
   title: "Configuración",
@@ -232,6 +236,16 @@ export default async function ConfiguracionIndex() {
 
   const bancoConectado = Boolean(cobranza?.link_token_ref);
 
+  // Herramienta TEMPORAL de QA (crear pedidos same-day de prueba). Mismo gate
+  // que el alta real; solo cargamos los sellers si el usuario puede usarla.
+  const puedeCrearPrueba = puedeAjustarOperacionDiaria(u);
+  const sellersPrueba = puedeCrearPrueba
+    ? (await obtenerSellersDelTenant(tenantId).catch(() => [])).map((s) => ({
+        id: s.id,
+        nombre: s.nombre,
+      }))
+    : [];
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
@@ -293,6 +307,10 @@ export default async function ConfiguracionIndex() {
             </li>
           ))}
       </ul>
+
+      {puedeCrearPrueba ? (
+        <PanelPedidosPrueba sellers={sellersPrueba} comunas={COMUNAS_RM} />
+      ) : null}
     </div>
   );
 }
