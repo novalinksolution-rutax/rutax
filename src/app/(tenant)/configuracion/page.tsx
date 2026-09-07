@@ -245,6 +245,20 @@ export default async function ConfiguracionIndex() {
         nombre: s.nombre,
       }))
     : [];
+  const sameDayActivos = puedeCrearPrueba
+    ? await contarCrudo("pedidos", "operacion", (q) =>
+        q
+          .eq("tenant_id", tenantId)
+          .eq("tipo_pedido", "same_day")
+          .in("estado", [
+            "pendiente_asignacion",
+            "asignado",
+            "en_ruta",
+            "fallido",
+            "fallido_manual",
+          ]),
+      )
+    : 0;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -309,7 +323,11 @@ export default async function ConfiguracionIndex() {
       </ul>
 
       {puedeCrearPrueba ? (
-        <PanelPedidosPrueba sellers={sellersPrueba} comunas={COMUNAS_RM} />
+        <PanelPedidosPrueba
+          sellers={sellersPrueba}
+          comunas={COMUNAS_RM}
+          sameDayActivos={sameDayActivos ?? 0}
+        />
       ) : null}
     </div>
   );

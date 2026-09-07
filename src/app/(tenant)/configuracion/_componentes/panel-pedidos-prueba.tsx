@@ -18,12 +18,15 @@
  */
 
 import { useState } from "react";
-import { Loader2, FlaskConical, Check } from "lucide-react";
+import { Loader2, FlaskConical, Check, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { actionCrearSameDayPrueba } from "../acciones-prueba";
+import {
+  actionCrearSameDayPrueba,
+  actionCancelarSameDayActivos,
+} from "../acciones-prueba";
 
 /** Igual que el tope por tanda del servidor. */
 const TANDA = 5;
@@ -32,9 +35,11 @@ const MAX_CANTIDAD = 100;
 export function PanelPedidosPrueba({
   sellers,
   comunas,
+  sameDayActivos,
 }: {
   sellers: { id: string; nombre: string }[];
   comunas: readonly string[];
+  sameDayActivos: number;
 }) {
   const [sellerId, setSellerId] = useState(sellers[0]?.id ?? "");
   const [comuna, setComuna] = useState(comunas[0] ?? "");
@@ -72,6 +77,50 @@ export function PanelPedidosPrueba({
 
     setCorriendo(false);
     setResultado({ tipo: "ok", n: hechos });
+  }
+
+  // ── Cancelar en lote ──────────────────────────────────────────────────────
+  const [activos, setActivos] = useState(sameDayActivos);
+  const [cancelando, setCancelando] = useState(false);
+  const [cancelados, setCancelados] = useState(0);
+  const [confirmar, setConfirmar] = useState(false);
+  const [resCancel, setResCancel] = useState<
+    { tipo: "ok"; n: number } | { tipo: "error"; mensaje: string } | null
+  >(null);
+
+  async function cancelarTodos() {
+    setCancelando(true);
+    setConfirmar(false);
+    setResCancel(null);
+    setCancelados(0);
+
+    let total = 0;
+    // Itera tandas hasta que no queden (o hasta que una tanda no avance, para no
+    // ciclar sobre pedidos que fallan siempre).
+    for (;;) {
+      const r = await actionCancelarSameDayActivos();
+      total += r.cancelados;
+      setCancelados(total);
+      setActivos(r.restantes);
+      if (r.mensaje) {
+        setCancelando(false);
+        setResCancel({ tipo: "error", mensaje: r.mensaje });
+        return;
+      }
+      if (r.restantes === 0) break;
+      if (r.cancelados === 0) {
+        // No avanzó: quedan pedidos que no se pudieron cancelar (carrera o estado).
+        setCancelando(false);
+        setResCancel({
+          tipo: "error",
+          mensaje: `Se cancelaron ${total}. Quedan ${r.restantes} que no se pudieron cancelar ahora.`,
+        });
+        return;
+      }
+    }
+
+    setCancelando(false);
+    setResCancel({ tipo: "ok", n: total });
   }
 
   const sinSellers = sellers.length === 0;
@@ -173,6 +222,63 @@ export function PanelPedidosPrueba({
           ) : null}
         </div>
       )}
+
+      {/* ── Limpieza: cancelar los same-day activos ──────────────────────── */}
+      <div className="mt-5 border-t border-dashed border-line pt-4">
+        <h3 className="text-sm font-medium text-fg">Limpiar pedidos same-day</h3>
+        <p className="mt-1 text-sm text-fg-muted">
+          Cancela todos los pedidos same-day activos con el motivo «{`este era un pedido de prueba`}
+          ». No toca pedidos Flex ni los ya entregados o cancelados.
+        </p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {activos > 0 && !confirmar && !cancelando ? (
+            <Button variant="outline" onClick={() => setConfirmar(true)}>
+              <Trash2 className="size-4" aria-hidden="true" />
+              Cancelar {activos} {activos === 1 ? "pedido activo" : "pedidos activos"}
+            </Button>
+          ) : null}
+
+          {confirmar && !cancelando ? (
+            <>
+              <span className="text-sm font-medium text-fg">
+                ¿Cancelar {activos} {activos === 1 ? "pedido" : "pedidos"}? No se puede deshacer.
+              </span>
+              <Button
+                onClick={cancelarTodos}
+                className="bg-fault-fg text-white hover:bg-fault-fg/90"
+              >
+                Sí, cancelar
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirmar(false)}>
+                No
+              </Button>
+            </>
+          ) : null}
+
+          {cancelando ? (
+            <span className="flex items-center gap-2 text-sm font-medium text-fg">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              Cancelando… {cancelados}
+            </span>
+          ) : null}
+
+          {!cancelando && activos === 0 && !resCancel ? (
+            <span className="text-sm text-fg-subtle">No hay pedidos same-day activos.</span>
+          ) : null}
+
+          {!cancelando && resCancel?.tipo === "ok" ? (
+            <span className="flex items-center gap-1.5 text-sm font-medium text-balanced-fg">
+              <Check className="size-4" aria-hidden="true" />
+              {resCancel.n} {resCancel.n === 1 ? "pedido cancelado" : "pedidos cancelados"}.
+            </span>
+          ) : null}
+        </div>
+
+        {!cancelando && resCancel?.tipo === "error" ? (
+          <p className="mt-2 text-sm text-attention-fg">{resCancel.mensaje}</p>
+        ) : null}
+      </div>
     </div>
   );
 }
