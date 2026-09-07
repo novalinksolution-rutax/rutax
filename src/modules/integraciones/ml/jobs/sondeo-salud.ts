@@ -38,7 +38,7 @@ export const jobSondeoSaludConexiones = inngest.createFunction(
   {
     id: "ml/sondeoSaludConexiones",
     name: "ML · Sondeo de salud de conexiones",
-    triggers: [{ cron: "*/15 * * * *" }],
+    triggers: [{ cron: "*/15 6-22 * * *" }],
     retries: 2,
   },
   async ({ step, logger }) => {

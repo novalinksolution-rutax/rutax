@@ -74,7 +74,7 @@ export const jobPollingEstadosPedidos = inngest.createFunction(
   {
     id: "ml/pollingEstadosPedidos",
     name: "ML · Polling de estados de pedidos (respaldo webhook)",
-    triggers: [{ cron: "*/15 * * * *" }],
+    triggers: [{ cron: "*/15 6-22 * * *" }],
     retries: 2,
   },
   async ({ step, logger }) => {

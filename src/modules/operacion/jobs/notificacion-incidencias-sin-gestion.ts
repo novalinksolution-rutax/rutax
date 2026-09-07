@@ -103,7 +103,7 @@ export const jobNotificacionIncidenciasSinGestion = inngest.createFunction(
   {
     id: 'operacion/notificacionIncidenciasSinGestion',
     name: 'Operación · Notificar incidencias sin gestión',
-    triggers: [{ cron: '*/30 * * * *' }],
+    triggers: [{ cron: '*/30 8-22 * * *' }],
     retries: 1,
   },
   async ({ step, logger }) => {
