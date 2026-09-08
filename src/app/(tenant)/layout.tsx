@@ -311,13 +311,7 @@ export default async function LayoutTenant({ children }: { children: React.React
       grupos={grupos}
       itemsInferiores={itemsInferiores}
       itemsSettings={itemsSettings}
-      // Herramienta de QA (pedidos de relleno): NUNCA en producción. Solo local
-      // y deploys de preview. Fuera de prod se sigue gateando por capacidad.
-      extrasSettings={
-        process.env.VERCEL_ENV !== "production" && puedeAjustarOperacionDiaria(u) ? (
-          <LanzadorHerramientaPrueba />
-        ) : undefined
-      }
+      extrasSettings={puedeAjustarOperacionDiaria(u) ? <LanzadorHerramientaPrueba /> : undefined}
       itemPlan={itemPlan}
       opcionesPlan={opcionesPlan}
       opcionesCuenta={opcionesCuenta}
