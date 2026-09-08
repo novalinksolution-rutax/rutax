@@ -1,47 +1,24 @@
+import { redirect } from "next/navigation";
+
 /**
- * Vista del manifiesto — deep-link (Flujo 2).
+ * El detalle del manifiesto ya no es una pantalla propia.
  * =============================================================================
- * Server Component delgado: carga el payload compartido y lo pinta con el mismo
- * renderer que usa el panel lateral del listado (`ContenidoManifiesto`), para
- * que la página y el panel no puedan divergir.
+ * Todo lo que mostraba —ruta, acciones y bitácora— vive ahora en el panel
+ * lateral que se abre al tocar una fila del listado. Esta ruta se conserva solo
+ * como REDIRECCIÓN: cualquier enlace viejo o marcador a `/manifiestos/[id]`
+ * cae en el listado con el panel de ese manifiesto abierto (`?abrir=`), en vez
+ * de una 404.
  *
- * La página se conserva como destino de enlaces directos y del botón atrás; el
- * uso habitual —tocar una fila— abre el panel sin salir del listado.
+ * Las piezas de este directorio (`contenido-manifiesto`, `datos-detalle`,
+ * `panel-ruta`, `boton-*`) siguen aquí: las usa el panel. Un directorio de ruta
+ * sin `page.tsx` propio no es una pantalla, y el redirect de arriba es el único
+ * `page.tsx` que queda.
  */
-
-import { notFound, redirect } from "next/navigation";
-import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
-import { cargarDetalleManifiesto } from "./datos-detalle";
-import { ContenidoManifiesto } from "./contenido-manifiesto";
-
-interface Props {
+export default async function DetalleManifiestoRedirect({
+  params,
+}: {
   params: Promise<{ manifiestoId: string }>;
-  searchParams: Promise<{ volver?: string }>;
-}
-
-export default async function PaginaDetalleManifiesto({ params, searchParams }: Props) {
-  const sesion = await obtenerSesionActual();
-  if (!sesion) redirect("/login");
-  if (!sesion.usuario.tenantId) redirect("/login");
-
+}) {
   const { manifiestoId } = await params;
-  const { volver } = await searchParams;
-
-  const datos = await cargarDetalleManifiesto(
-    crearClienteServiceRole(),
-    sesion.usuario.tenantId,
-    sesion.usuario,
-    manifiestoId,
-  );
-
-  if (!datos) notFound();
-
-  return (
-    <div className="space-y-6">
-      <Retorno href={destinoRetorno("/manifiestos", volver)} etiqueta="Volver a manifiestos" />
-      <ContenidoManifiesto datos={datos} />
-    </div>
-  );
+  redirect(`/manifiestos?abrir=${manifiestoId}`);
 }

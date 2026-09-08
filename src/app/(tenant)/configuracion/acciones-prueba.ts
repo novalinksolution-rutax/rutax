@@ -27,10 +27,39 @@ import { crearPedidoSameDay, cancelarPedido } from "@/modules/operacion/pedidos"
 import { guardarCoordenadaElegida } from "@/modules/operacion/coordenada-elegida";
 import { puntoAleatorioEnComuna } from "@/lib/geo/punto-en-comuna";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { obtenerSellersDelTenant } from "@/lib/datos-tenant/sellers";
 import { revalidatePath } from "next/cache";
 
 /** Tope por llamada: el cliente pide de a pocos para poder mostrar el avance. */
 const TOPE_POR_TANDA = 5;
+
+export interface OpcionesPrueba {
+  sellers: { id: string; nombre: string }[];
+  comunas: readonly string[];
+  sameDayActivos: number;
+}
+
+/**
+ * Lo que el popup de la herramienta necesita para armarse. Se carga al ABRIR el
+ * modal (no en cada carga de página): así el layout no paga esta consulta en
+ * todo el backoffice. Devuelve `null` si no hay sesión o no tiene permiso.
+ */
+export async function actionOpcionesPrueba(): Promise<OpcionesPrueba | null> {
+  const sesion = await exigirSesionActual();
+  if (!sesion.usuario.tenantId) return null;
+  if (!puedeAjustarOperacionDiaria(sesion.usuario)) return null;
+
+  const [sellers, activos] = await Promise.all([
+    obtenerSellersDelTenant(sesion.usuario.tenantId).catch(() => []),
+    actionContarSameDayActivos(),
+  ]);
+
+  return {
+    sellers: sellers.map((s) => ({ id: s.id, nombre: s.nombre })),
+    comunas: COMUNAS_RM,
+    sameDayActivos: activos,
+  };
+}
 
 export type ResultadoPrueba =
   | { ok: true; creados: number }

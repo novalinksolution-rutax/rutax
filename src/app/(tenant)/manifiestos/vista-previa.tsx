@@ -13,7 +13,12 @@
  * `router.refresh()` que disparan las acciones (confirmar, cancelar, redistribuir).
  */
 
-import { ProveedorVistaPreviaLateral } from "@/components/ui/vista-previa-lateral";
+import { useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import {
+  ProveedorVistaPreviaLateral,
+  useVistaPreviaLateral,
+} from "@/components/ui/vista-previa-lateral";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
   traducirEstadoManifiesto,
@@ -23,6 +28,32 @@ import { accionVistaPreviaManifiesto } from "./vista-previa-actions";
 import { ContenidoManifiesto } from "./[manifiestoId]/contenido-manifiesto";
 import type { DatosDetalleManifiesto } from "./[manifiestoId]/datos-detalle";
 import type { ReactNode } from "react";
+
+/**
+ * Abre el panel para el manifiesto que venga en `?abrir=` (deep-link redirigido
+ * desde la vieja ruta de detalle) y limpia el parámetro para que «atrás» no lo
+ * reabra. Vive dentro del proveedor para tener su contexto.
+ */
+function AutoAbrirDesdeUrl() {
+  const ctx = useVistaPreviaLateral();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const abrir = params.get("abrir");
+
+  useEffect(() => {
+    if (!abrir || !ctx) return;
+    ctx.abrir(abrir);
+    const next = new URLSearchParams(params.toString());
+    next.delete("abrir");
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    // Solo cuando cambia `abrir`: no reabrir en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abrir]);
+
+  return null;
+}
 
 export function ProveedorVistaPreviaManifiestos({ children }: { children: ReactNode }) {
   return (
@@ -60,6 +91,7 @@ export function ProveedorVistaPreviaManifiestos({ children }: { children: ReactN
         cuerpo: (d) => <ContenidoManifiesto datos={d} enPanel />,
       }}
     >
+      <AutoAbrirDesdeUrl />
       {children}
     </ProveedorVistaPreviaLateral>
   );

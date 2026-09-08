@@ -245,6 +245,32 @@ export function FilaManifiesto({
 }
 
 /**
+ * El nombre del conductor como botón que abre el panel. Da acceso por teclado
+ * (Enter) a lo que la fila entera hace al clic, ahora que el detalle ya no es
+ * una página a la que enlazar.
+ */
+export function BotonAbrirManifiesto({
+  id,
+  children,
+  className,
+}: {
+  id: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  const vistaPrevia = useVistaPreviaLateral();
+  return (
+    <button
+      type="button"
+      onClick={() => vistaPrevia?.abrir(id)}
+      className={cn("text-left hover:underline", className)}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
  * La tarjeta de manifiesto en teléfono. Abre el mismo panel lateral (hoja
  * inferior) que la fila de escritorio.
  */

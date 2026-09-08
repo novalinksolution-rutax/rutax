@@ -36,10 +36,13 @@ export function PanelPedidosPrueba({
   sellers,
   comunas,
   sameDayActivos,
+  sinMarco = false,
 }: {
   sellers: { id: string; nombre: string }[];
   comunas: readonly string[];
   sameDayActivos: number;
+  /** Dentro de un modal: sin el marco punteado ni el encabezado propio. */
+  sinMarco?: boolean;
 }) {
   const [sellerId, setSellerId] = useState(sellers[0]?.id ?? "");
   const [comuna, setComuna] = useState(comunas[0] ?? "");
@@ -126,12 +129,18 @@ export function PanelPedidosPrueba({
   const sinSellers = sellers.length === 0;
 
   return (
-    <div className="rounded-lg border border-dashed border-line bg-bg-sunken/40 p-4">
-      <div className="flex items-center gap-2">
-        <FlaskConical className="size-4 text-fg-muted" aria-hidden="true" />
-        <h2 className="font-medium text-fg">Herramienta de prueba · Pedidos same-day</h2>
-      </div>
-      <p className="mt-1 text-sm text-fg-muted">
+    <div
+      className={
+        sinMarco ? "" : "rounded-lg border border-dashed border-line bg-bg-sunken/40 p-4"
+      }
+    >
+      {sinMarco ? null : (
+        <div className="flex items-center gap-2">
+          <FlaskConical className="size-4 text-fg-muted" aria-hidden="true" />
+          <h2 className="font-medium text-fg">Herramienta de prueba · Pedidos same-day</h2>
+        </div>
+      )}
+      <p className={sinMarco ? "text-sm text-fg-muted" : "mt-1 text-sm text-fg-muted"}>
         Crea pedidos de relleno para probar asignación, ruteo y el mapa. Temporal — no es parte
         del producto.
       </p>

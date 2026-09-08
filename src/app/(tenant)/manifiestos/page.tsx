@@ -42,10 +42,10 @@ import {
   CeldaAvance,
   FilaManifiesto,
   FilaManifiestoMovil,
+  BotonAbrirManifiesto,
 } from "./piezas-listado";
 import { ChevronRight } from "lucide-react";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
-import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 import { ListaAtenuable } from "@/components/ui/vista-previa-lateral";
 
 interface SearchParams {
@@ -308,12 +308,9 @@ export default async function PaginaManifiestos({
                           se busca a quién le tocó qué. El nombre queda debajo,
                           que es donde sirve para hablar del documento. */}
                       <TableCell className="px-4">
-                        <EnlaceDetalle
-                          href={`/manifiestos/${m.id}`}
-                          className="font-medium hover:underline"
-                        >
+                        <BotonAbrirManifiesto id={m.id} className="font-medium">
                           {nombreConductorPorId[m.driverId] ?? m.driverId}
-                        </EnlaceDetalle>
+                        </BotonAbrirManifiesto>
                         <span className="block truncate text-xs text-muted-foreground">
                           {m.nombre}
                         </span>

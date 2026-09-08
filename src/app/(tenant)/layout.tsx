@@ -23,6 +23,7 @@ import {
   puedeGestionarBodegas,
 } from "@/modules/identidad/capacidades";
 import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
+import { LanzadorHerramientaPrueba } from "@/app/(tenant)/configuracion/_componentes/lanzador-herramienta-prueba";
 import { destinosMovil } from "@/components/app-shell/destinos-movil";
 import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
 import { resolverBloqueoOperativo } from "@/app/(tenant)/onboarding/estado";
@@ -310,6 +311,7 @@ export default async function LayoutTenant({ children }: { children: React.React
       grupos={grupos}
       itemsInferiores={itemsInferiores}
       itemsSettings={itemsSettings}
+      extrasSettings={puedeAjustarOperacionDiaria(u) ? <LanzadorHerramientaPrueba /> : undefined}
       itemPlan={itemPlan}
       opcionesPlan={opcionesPlan}
       opcionesCuenta={opcionesCuenta}

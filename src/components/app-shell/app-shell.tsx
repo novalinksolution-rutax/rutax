@@ -157,6 +157,14 @@ interface AppShellProps {
    * se renderiza y el teléfono se queda como estaba.
    */
   destinosMovil?: ItemNav[]
+  /**
+   * Contenido extra al pie de la navegación anidada de Configuración (Settings).
+   * Hoy: el lanzador de la herramienta de QA (un botón que abre un popup). Es un
+   * `ReactNode` ya renderizado —cruza la frontera servidor→cliente como `banner`
+   * o `adornoCuenta`— así el layout de servidor puede montar un componente
+   * cliente aquí. Vacío en admin/portal/conductor.
+   */
+  extrasSettings?: React.ReactNode
   children: React.ReactNode
 }
 
@@ -468,6 +476,7 @@ export function AppShell({
   mostrarBusqueda = true,
   destinosMovil = [],
   banner,
+  extrasSettings,
   children,
 }: AppShellProps) {
   const pathname = usePathname()
@@ -722,6 +731,10 @@ export function AppShell({
             onNavegar={enSheet ? () => setMenuAbierto(false) : undefined}
           />
         ))}
+        {/* Extras al pie de Configuración (hoy: herramienta de QA). Solo cuando
+            la barra no está colapsada — un popup no tiene sentido tras un ícono
+            sin rótulo. */}
+        {extrasSettings && !colapsadoLocal ? extrasSettings : null}
       </nav>
       {bloquePlan(colapsadoLocal, enSheet ? () => setMenuAbierto(false) : undefined)}
       {bloqueCuenta(colapsadoLocal, enSheet)}
