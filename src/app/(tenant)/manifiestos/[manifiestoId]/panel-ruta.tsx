@@ -29,7 +29,7 @@
 
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { AlertTriangle, MapPin } from "lucide-react";
 
@@ -45,50 +45,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  distanciasPorTramo,
-  formatearDistancia,
-  puntoUsable,
-  totalDistanciaM,
-} from "@/modules/operacion/distancias-tramo";
+import { puntoUsable } from "@/modules/operacion/distancias-tramo";
 import { etiquetaFechaCivilCorta } from "@/lib/ui/rango-fecha";
-import {
-  calcularHolguraRuta,
-  formatearDuracionCorta,
-  formatearHoraDeMinutos,
-  HORA_CORTE,
-  minutosSantiagoAhora,
-} from "@/modules/operacion/holgura-ruta";
 
 import { BotonQuitarPedido } from "./boton-quitar-pedido";
-
-// =============================================================================
-// El "ahora" de la holgura — hidratación segura (mismo idioma que
-// `preparacion/_componentes/reloj-visita.tsx`)
-// =============================================================================
-//
-// `useSyncExternalStore` y no `useState` + `useEffect` con un `setState`
-// síncrono: evita a la vez (a) que `react-hooks/set-state-in-effect` marque
-// error por llamar `setState` dentro del cuerpo del efecto, y (b) el
-// mismatch de hidratación de leer el reloj directo en el render (servidor y
-// cliente casi nunca coinciden al segundo). No hace falta re-suscribirse a
-// nada: a diferencia del reloj de una visita en vivo, esta estimación no
-// necesita actualizarse mientras la pantalla está abierta — una lectura al
-// montar alcanza.
-
-/** No hay nada a lo que re-suscribirse: una sola lectura, al hidratar. */
-function suscribirNoOp(): () => void {
-  return () => {};
-}
-
-function leerMinutosAhora(): number | null {
-  return minutosSantiagoAhora();
-}
-
-/** Durante SSR (y el primer paint de cliente, antes de hidratar) no hay reloj de cliente que leer todavía. */
-function leerMinutosEnServidor(): number | null {
-  return null;
-}
 
 // =============================================================================
 // Contrato con la página
@@ -129,37 +89,10 @@ interface Props {
 // =============================================================================
 
 export function PanelRuta({ manifiestoId, paradas, origen, puedeQuitar }: Props) {
-  // `null` hasta que la hidratación termine es un estado válido: la frase de
-  // holgura simplemente no aparece todavía.
-  const ahoraMin = useSyncExternalStore(suscribirNoOp, leerMinutosAhora, leerMinutosEnServidor);
-
-  const tramos = useMemo(
-    () => (origen ? distanciasPorTramo(origen, paradas) : paradas.map(() => null)),
-    [origen, paradas],
-  );
-
-  const totalM = useMemo(() => (origen ? totalDistanciaM(tramos) : null), [origen, tramos]);
-
   const paradasAbiertas = useMemo(() => paradas.filter((p) => !p.cerrada).length, [paradas]);
 
   // Índice de la primera parada abierta: la que el conductor tiene por delante.
   const indiceSiguiente = useMemo(() => paradas.findIndex((p) => !p.cerrada), [paradas]);
-
-  // Sin "orden propuesto" que comparar, guardado y propuesto son el mismo
-  // número: `calcularHolguraRuta` da `minutosDelCambio = 0` en ese caso, y la
-  // frase de "tu cambio agrega/ahorra" no se pinta (ver más abajo).
-  const holgura = useMemo(
-    () =>
-      ahoraMin === null
-        ? null
-        : calcularHolguraRuta({
-            paradasAbiertas,
-            metrosGuardados: totalM,
-            metrosPropuestos: totalM,
-            ahoraMin,
-          }),
-    [ahoraMin, paradasAbiertas, totalM],
-  );
 
   // Solo las ABIERTAS: una parada ya entregada sin coordenada no es un problema
   // que resolver — el conductor llegó igual.
@@ -181,15 +114,6 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeQuitar }: Props)
           {origen ? (
             <>
               Sale desde <span className="text-foreground">{origen.nombre}</span>
-              {totalM !== null && (
-                <>
-                  {" · "}
-                  <span className="tabular-nums text-foreground">
-                    {formatearDistancia(totalM)}
-                  </span>{" "}
-                  en línea recta
-                </>
-              )}
             </>
           ) : (
             "Sin bodega de origen configurada."
@@ -213,40 +137,6 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeQuitar }: Props)
         </div>
       )}
 
-      {/* La frase de holgura: no "cuántos kilómetros", sino "alcanza". */}
-      {holgura && hayParadas && (
-        <div className="space-y-1 rounded-lg border border-line bg-surface-2 px-4 py-3">
-          <p className="text-sm leading-relaxed">
-            {holgura.margenMin >= 0 ? (
-              <>
-                Sigue cerrando antes de las {HORA_CORTE}:00, con{" "}
-                <span className="rx-num text-fg">
-                  {formatearDuracionCorta(holgura.margenMin)}
-                </span>{" "}
-                de margen.
-              </>
-            ) : (
-              <span className="text-fault-fg">
-                Con este orden cierra a las{" "}
-                <span className="rx-num">
-                  {formatearHoraDeMinutos(holgura.cierreEstimadoMin).hora}
-                </span>
-                {formatearHoraDeMinutos(holgura.cierreEstimadoMin).cruzaMedianoche
-                  ? " de mañana"
-                  : ""}
-                , {formatearDuracionCorta(holgura.margenMin)} después del corte.
-              </span>
-            )}{" "}
-            <span className="text-fg-muted">
-              Estimado sobre {paradasAbiertas}{" "}
-              {paradasAbiertas === 1 ? "parada abierta" : "paradas abiertas"} a{" "}
-              {holgura.supuestos.minutosPorParada} min cada una y{" "}
-              {holgura.supuestos.kmhLineaRecta} km/h, con distancias en línea recta.
-            </span>
-          </p>
-        </div>
-      )}
-
       <DataTable
         toolbar={
           <span className="rx-num text-sm text-fg-muted">
@@ -262,9 +152,6 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeQuitar }: Props)
             <TableRow className="bg-muted/40">
               <TableHead className="px-4 text-center" title="Orden de visita">
                 #
-              </TableHead>
-              <TableHead className="px-4 text-right" title="Distancia en línea recta desde la parada anterior">
-                Tramo
               </TableHead>
               <TableHead className="px-4">Estado</TableHead>
               <TableHead className="px-4">Dirección</TableHead>
@@ -288,9 +175,6 @@ export function PanelRuta({ manifiestoId, paradas, origen, puedeQuitar }: Props)
                 >
                   <TableCell className="px-4 text-center font-semibold tabular-nums text-muted-foreground">
                     {idx + 1}
-                  </TableCell>
-                  <TableCell className="px-4 text-right tabular-nums text-muted-foreground">
-                    {formatearDistancia(tramos[idx] ?? null)}
                   </TableCell>
                   <TableCell className="px-4">
                     <span className="flex flex-wrap items-center gap-1.5">

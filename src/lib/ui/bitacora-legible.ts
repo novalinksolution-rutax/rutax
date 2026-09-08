@@ -16,8 +16,8 @@
  */
 
 import { formatearFechaHora, formatearClp } from "@/lib/formato-cl";
-import { traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
-import type { EstadoPedido } from "@/modules/operacion/tipos";
+import { traducirEstadoPedido, traducirEstadoManifiesto } from "@/lib/ui/traduccion-estados";
+import type { EstadoPedido, EstadoManifiesto } from "@/modules/operacion/tipos";
 
 // ─── Acciones → frase en tercera persona (el autor va aparte) ────────────────
 
@@ -218,6 +218,56 @@ const ETIQUETAS_CLAVE: Record<string, string> = {
   rol_anterior: "Rol anterior",
   rol_nuevo: "Rol nuevo",
   telefono: "Teléfono",
+  // Fechas y marcas de tiempo
+  fecha_operacion: "Fecha de operación",
+  asignado_en: "Asignado",
+  desasignado_en: "Desasignado",
+  confirmado_en: "Confirmado",
+  completado_en: "Completado",
+  cancelada_en: "Cancelada",
+  cancelado_en: "Cancelado",
+  pagado_en: "Pagado",
+  creado_en: "Creado",
+  actualizado_en: "Actualizado",
+  trial_hasta: "Prueba hasta",
+  activa_desde: "Activa desde",
+  cambio_efectivo_desde: "Cambio efectivo desde",
+  periodo_fin: "Fin del período",
+  periodo_inicio: "Inicio del período",
+  // Cambios (de → a)
+  desde: "Desde",
+  hacia: "Hacia",
+  habilitada_anterior: "Antes habilitada",
+  habilitada_nueva: "Ahora habilitada",
+  mandato_estado: "Estado del mandato",
+  mandato_estado_anterior: "Estado anterior del mandato",
+  plan_anterior_id: "Plan anterior",
+  periodicidad: "Periodicidad",
+  periodicidad_desde: "Periodicidad anterior",
+  periodicidad_hacia: "Periodicidad nueva",
+  // Operación / redistribución
+  driver_id: "Conductor",
+  disponible: "Disponible",
+  paradas_abiertas: "Paradas abiertas",
+  pedidos_asignados: "Pedidos asignados",
+  pedidos_redistribuidos: "Pedidos redistribuidos",
+  pedidos_sin_conductor: "Pedidos sin conductor",
+  tipo: "Tipo",
+  estado: "Estado",
+  descripcion: "Descripción",
+  concepto: "Concepto",
+  notas: "Notas",
+  mensaje: "Mensaje",
+  metodo: "Método",
+  origen: "Origen",
+  // Dinero / suscripción
+  monto_ajuste: "Ajuste",
+  minimo_mensual_clp: "Mínimo mensual",
+  limite_pedidos_mes: "Límite de pedidos al mes",
+  auto_cobro_habilitado: "Cobro automático",
+  pago_externo_id: "ID de pago externo",
+  link_pago_url: "Enlace de pago",
+  idempotente: "Idempotente",
 };
 
 const ESTADOS_PEDIDO_VALIDOS = new Set<string>([
@@ -231,6 +281,24 @@ const ESTADOS_PEDIDO_VALIDOS = new Set<string>([
   "devuelto",
   "cancelado",
 ]);
+
+const ESTADOS_MANIFIESTO_VALIDOS = new Set<string>([
+  "borrador",
+  "confirmado",
+  "en_ruta",
+  "completado",
+  "cancelado",
+]);
+
+/** Claves cuyo valor suele ser un estado (de pedido o de manifiesto). */
+const CLAVES_ESTADO = new Set<string>(["estado", "estado_anterior", "estado_nuevo", "desde", "hacia"]);
+
+/** Traduce un valor de estado; prueba pedido y luego manifiesto. `null` si no calza. */
+function traducirEstado(valor: string): string | null {
+  if (ESTADOS_PEDIDO_VALIDOS.has(valor)) return traducirEstadoPedido(valor as EstadoPedido);
+  if (ESTADOS_MANIFIESTO_VALIDOS.has(valor)) return traducirEstadoManifiesto(valor as EstadoManifiesto);
+  return null;
+}
 
 /** La etiqueta legible de una clave del detalle, o una versión humanizada. */
 export function etiquetaClaveDetalle(clave: string): string {
@@ -260,8 +328,9 @@ export function formatearValorDetalle(clave: string, valor: unknown): string {
   }
 
   if (typeof valor === "string") {
-    if ((clave === "estado_anterior" || clave === "estado_nuevo") && ESTADOS_PEDIDO_VALIDOS.has(valor)) {
-      return traducirEstadoPedido(valor as EstadoPedido);
+    if (CLAVES_ESTADO.has(clave)) {
+      const traducido = traducirEstado(valor);
+      if (traducido) return traducido;
     }
     if (ISO_FECHA.test(valor)) {
       try {

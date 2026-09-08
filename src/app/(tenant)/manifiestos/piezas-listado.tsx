@@ -11,9 +11,17 @@
 
 import type { ReactNode } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { BarraCajones, type Cajon } from "@/components/ui/barra-cajones";
 import { TableRow } from "@/components/ui/table";
+import { BadgeEstado } from "@/components/ui/badge-estado";
+import { useVistaPreviaLateral } from "@/components/ui/vista-previa-lateral";
+import {
+  traducirEstadoManifiesto,
+  BADGE_ESTADO_MANIFIESTO,
+} from "@/lib/ui/traduccion-estados";
 import { hrefConRetorno } from "@/components/app-shell/retorno";
+import { cn } from "@/lib/utils";
 import type { EstadoManifiesto } from "@/modules/operacion/tipos";
 import {
   avanceEnFalla,
@@ -196,32 +204,83 @@ export function CeldaAvance({
  * pierde la vista desde la que se entró.
  */
 export function FilaManifiesto({
+  id,
   href,
   children,
 }: {
+  /** Manifiesto a abrir en el panel lateral. */
+  id: string;
   href: string;
   children: ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const vistaPrevia = useVistaPreviaLateral();
   const query = searchParams.toString();
   const actual = query ? `${pathname}?${query}` : pathname;
 
   return (
     <TableRow
       onClick={(evento) => {
+        // Un clic sobre un enlace/botón hace lo suyo (el nombre del conductor
+        // sigue navegando al detalle: deep-link y acceso por teclado).
         if ((evento.target as HTMLElement).closest("a,button,input,select,[role='button']")) {
           return;
         }
-        router.push(hrefConRetorno(href, actual));
+        // Tocar la fila abre el panel; si no hay proveedor (no debería), cae al
+        // detalle como antes.
+        if (vistaPrevia) vistaPrevia.abrir(id);
+        else router.push(hrefConRetorno(href, actual));
       }}
-      // 52 px con el dedo, densidad normal con el puntero. Mismo criterio que la
-      // fila de Pedidos: por `pointer-coarse`, no por ancho — un iPad de 1024 px
-      // es táctil y un portátil del mismo ancho no.
-      className="cursor-pointer pointer-coarse:[&>td]:h-row-touch"
+      className={cn(
+        "cursor-pointer pointer-coarse:[&>td]:h-row-touch",
+        vistaPrevia?.id === id &&
+          "[&>td:first-child]:border-l-2 [&>td:first-child]:border-l-brand",
+      )}
     >
       {children}
     </TableRow>
+  );
+}
+
+/**
+ * La tarjeta de manifiesto en teléfono. Abre el mismo panel lateral (hoja
+ * inferior) que la fila de escritorio.
+ */
+export function FilaManifiestoMovil({
+  id,
+  nombreConductor,
+  estado,
+  facts,
+}: {
+  id: string;
+  nombreConductor: string;
+  estado: EstadoManifiesto;
+  facts: string | null;
+}) {
+  const vistaPrevia = useVistaPreviaLateral();
+  return (
+    <button
+      type="button"
+      onClick={() => vistaPrevia?.abrir(id)}
+      className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate font-medium">{nombreConductor}</span>
+          <BadgeEstado
+            variante={BADGE_ESTADO_MANIFIESTO[estado]}
+            eje="manifiesto"
+            valor={estado}
+            texto={traducirEstadoManifiesto(estado)}
+          />
+        </span>
+        {facts ? (
+          <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">{facts}</span>
+        ) : null}
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+    </button>
   );
 }

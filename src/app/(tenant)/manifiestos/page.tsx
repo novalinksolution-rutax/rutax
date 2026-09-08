@@ -37,10 +37,16 @@ import {
   type ConteosManifiesto,
   type ContextoManifiestos,
 } from "@/modules/operacion/listado-manifiestos";
-import { CajonesManifiestos, CeldaAvance, FilaManifiesto } from "./piezas-listado";
+import {
+  CajonesManifiestos,
+  CeldaAvance,
+  FilaManifiesto,
+  FilaManifiestoMovil,
+} from "./piezas-listado";
 import { ChevronRight } from "lucide-react";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
+import { ListaAtenuable } from "@/components/ui/vista-previa-lateral";
 
 interface SearchParams {
   estado?: string;
@@ -213,6 +219,7 @@ export default async function PaginaManifiestos({
         />
       ) : (
         !errorCarga && (
+          <ListaAtenuable>
           <DataTable
             toolbar={
               <CajonesManifiestos
@@ -243,9 +250,9 @@ export default async function PaginaManifiestos({
               />
             }
           >
-            {/* Teléfono: una tarjeta por manifiesto. La tabla estirada dejaba
-                Estado y Conductor pegados a los bordes con un vacío enorme en
-                medio; en tarjeta la info va junta y se lee de un vistazo. */}
+            {/* Teléfono: una tarjeta por manifiesto que abre el panel lateral
+                (hoja inferior). La tabla estirada dejaba Estado y Conductor
+                pegados a los bordes con un vacío enorme en medio. */}
             <ul className="divide-y divide-border sm:hidden">
               {manifiestos.map((m) => {
                 const avance = contexto.avance[m.id] ?? null;
@@ -257,30 +264,12 @@ export default async function PaginaManifiestos({
                 if (m.confirmadoEn) partes.push(`sale ${formatearHora(m.confirmadoEn)}`);
                 return (
                   <li key={m.id}>
-                    <EnlaceDetalle
-                      href={`/manifiestos/${m.id}`}
-                      className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {nombreConductorPorId[m.driverId] ?? m.driverId}
-                          </span>
-                          <BadgeEstado
-                            variante={BADGE_ESTADO_MANIFIESTO[m.estado]}
-                            eje="manifiesto"
-                            valor={m.estado}
-                            texto={traducirEstadoManifiesto(m.estado)}
-                          />
-                        </span>
-                        {partes.length > 0 ? (
-                          <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
-                            {partes.join(" · ")}
-                          </span>
-                        ) : null}
-                      </span>
-                      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    </EnlaceDetalle>
+                    <FilaManifiestoMovil
+                      id={m.id}
+                      nombreConductor={nombreConductorPorId[m.driverId] ?? m.driverId}
+                      estado={m.estado}
+                      facts={partes.length > 0 ? partes.join(" · ") : null}
+                    />
                   </li>
                 );
               })}
@@ -304,7 +293,7 @@ export default async function PaginaManifiestos({
                   const avance = contexto.avance[m.id] ?? null;
                   const redis = contexto.redistribucion[m.id] ?? null;
                   return (
-                    <FilaManifiesto key={m.id} href={`/manifiestos/${m.id}`}>
+                    <FilaManifiesto key={m.id} id={m.id} href={`/manifiestos/${m.id}`}>
                       <TableCell className="px-4">
                         <BadgeEstado
                           variante={BADGE_ESTADO_MANIFIESTO[m.estado]}
@@ -360,6 +349,7 @@ export default async function PaginaManifiestos({
               </TableBody>
             </Table>
           </DataTable>
+          </ListaAtenuable>
         )
       )}
     </div>
