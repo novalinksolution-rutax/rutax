@@ -177,7 +177,7 @@ export function FormularioAgendar({ telefonoDirecto }: { telefonoDirecto: string
           id="whatsapp"
           etiqueta="WhatsApp"
           tipo="tel"
-          ayuda="Es como coordinamos. Pedir solo correo alarga esto tres días."
+          ayuda="Es como coordinamos contigo."
           valor={datos.whatsapp}
           onChange={(v) => set("whatsapp", v)}
           error={error && !error.ok && error.campo === "whatsapp" ? error.mensaje : null}

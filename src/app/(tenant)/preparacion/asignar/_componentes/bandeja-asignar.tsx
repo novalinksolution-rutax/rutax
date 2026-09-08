@@ -341,7 +341,7 @@ export function BandejaAsignar({
           icon={Boxes}
           tono="arranque"
           titulo="Todavía no hay pedidos para asignar"
-          descripcion="Los conductores están retirando en bodega. En cuanto cierren una visita, sus pedidos van a aparecer acá. Si el retiro ya ocurrió pero no se pudo escanear, regístralo desde la oficina."
+          descripcion="Cuando un conductor cierre una visita, sus pedidos aparecen acá. Si un retiro ya ocurrió pero no se pudo escanear, regístralo desde la oficina."
           accion={
             // La segunda salida NO es decorativa: sin ella, un conductor sin
             // batería bloquea el día entero y esta pantalla es donde el

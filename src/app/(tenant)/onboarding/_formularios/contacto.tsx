@@ -39,7 +39,7 @@ export function FormularioContacto({
   return (
     <SeccionConfiguracion
       titulo="Cómo te contacta quien espera un paquete"
-      descripcion="Se muestra en la página de seguimiento que ve el destinatario, que hoy solo lleva tu nombre. Con uno de los dos basta."
+      descripcion="Se muestra en la página de seguimiento que ve el destinatario. Con uno de los dos basta."
       etiquetaAccion="Guardar el contacto"
       onGuardar={guardar}
     >

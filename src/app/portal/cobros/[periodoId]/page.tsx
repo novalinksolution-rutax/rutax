@@ -425,8 +425,8 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
               {dte
                 ? "Este período está cerrado: la factura de arriba es la definitiva y no se modifica. Si hubo un ajuste posterior, va con nota de crédito."
                 : periodo.estado === "abierto"
-                  ? `Este período sigue abierto: cada entrega que hagamos se suma acá. Cuando ${nombreCourier} lo cierre y lo facture, aparece la factura en PDF con su folio. Los impuestos los muestra el documento, no esta pantalla.`
-                  : `Este período ya está cerrado, así que la cifra no se mueve más. Falta que ${nombreCourier} emita la factura; cuando lo haga, el PDF con su folio aparece acá. Los impuestos los muestra el documento, no esta pantalla.`}
+                  ? `Este período sigue abierto: cada entrega se suma acá. Cuando ${nombreCourier} lo cierre y lo facture, verás la factura en PDF con su folio.`
+                  : `Este período está cerrado: la cifra ya no cambia. Falta que ${nombreCourier} emita la factura; cuando lo haga, verás el PDF con su folio.`}
             </p>
           </>
         )}

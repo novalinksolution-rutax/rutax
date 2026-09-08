@@ -47,7 +47,7 @@ export default async function RegistrarRetiroPage() {
         icon={ShieldAlert}
         tono="filtro"
         titulo="No tienes acceso a esta pantalla"
-        descripcion="Registrar un retiro genera el pago de la visita al conductor, así que requiere el mismo permiso que asignar pedidos."
+        descripcion="Necesitas el permiso para asignar pedidos."
         accion={
           <Button asChild variant="outline" size="sm">
             <Link href="/preparacion">Volver a Preparación del día</Link>
@@ -85,7 +85,7 @@ export default async function RegistrarRetiroPage() {
           icon={ShieldAlert}
           tono="arranque"
           titulo="Todavía no hay bodegas de seller cargadas"
-          descripcion="Un retiro ocurre en la bodega de un seller, así que primero hay que cargarlas en Configuración."
+          descripcion="Primero carga las bodegas de tus sellers en Configuración."
           accion={
             <Button asChild variant="outline" size="sm">
               <Link href="/configuracion/bodegas">Ir a Bodegas</Link>

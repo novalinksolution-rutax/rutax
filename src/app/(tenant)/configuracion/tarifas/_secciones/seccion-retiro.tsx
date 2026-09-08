@@ -101,10 +101,9 @@ export async function SeccionRetiro({ tenantId }: { tenantId: string }) {
                 Las visitas a bodega no se están pagando
               </p>
               <p className="text-sm text-warning-subtle-foreground">
-                No definiste un monto por visita y tus tarifas tampoco dicen cuánto le pagas al
-                conductor por entrega, así que no hay de dónde sacar la cifra. Las visitas que
-                cierren tus conductores quedan como excepción bloqueante en la bandeja de
-                conciliación hasta que definas uno de los dos.
+                No definiste un monto por visita ni cuánto le pagas al conductor por entrega. Las
+                visitas que cierren tus conductores quedan como excepción bloqueante en la bandeja
+                de conciliación hasta que definas uno de los dos.
               </p>
             </div>
           </div>

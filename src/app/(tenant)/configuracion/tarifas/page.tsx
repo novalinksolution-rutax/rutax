@@ -81,7 +81,7 @@ export default async function PaginaTarifas({
       titulo="Tarifas"
       /* Lenguaje de negocio, no jerga, y ahora tiene que cubrir las tres: lo que
          cobras, cómo agrupas para cobrarlo, y la otra mitad de lo que pagas. */
-      bajada="Lo que le cobras a cada seller y lo que le pagas al conductor —por entrega, por zona y por cada visita a bodega— y cada cuánto le pasas la cuenta. Sin una tarifa vigente, una entrega se hace y no se puede cobrar."
+      bajada="Lo que le cobras a cada seller y lo que le pagas al conductor —por entrega, por zona y por cada visita a bodega— y cada cuánto le pasas la cuenta."
       ancho="tabla"
     >
       <BarraSeccionesTarifas activa={seccion} />

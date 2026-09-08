@@ -234,9 +234,8 @@ export function PanelTorre({
           pero quien nota el descuadre sin esta línea lo lee como que una de las
           dos pantallas miente. */}
       <p className="border-t border-border px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
-        Esta pantalla cuenta lo que el conductor cerró en la app. En los pedidos
-        de Flex el estado oficial lo confirma Mercado Envíos y llega después, así
-        que la Torre puede ir por delante de lo que muestra Pedidos.
+        Cuenta lo que el conductor cerró en la app. En Flex puede ir por delante
+        de Pedidos, porque el estado oficial de Mercado Envíos llega después.
       </p>
     </Tabs>
   );

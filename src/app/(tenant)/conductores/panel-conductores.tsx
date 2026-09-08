@@ -166,7 +166,7 @@ export function DialogNuevoConductor({
         </Button>
       }
       titulo="Crear conductor"
-      subtitulo="Entra a la nómina. Se marca disponible él, desde su app."
+      subtitulo="Se suma a tu nómina. La disponibilidad la marca él, desde su app."
     >
       <form onSubmit={guardar} className="space-y-4">
         <div className="space-y-2">
