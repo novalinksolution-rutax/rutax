@@ -54,6 +54,10 @@ interface Props {
   /** Nombre del param de paginación a resetear al cambiar el filtro. */
   paramPagina?: string;
   id?: string;
+  /** Clases del botón disparador. Por defecto ancho fijo `w-52`; una barra que
+   *  quiera el control a ancho completo (p. ej. dos filtros lado a lado en
+   *  móvil) pasa el suyo. */
+  className?: string;
 }
 
 const DOW = ["L", "M", "M", "J", "V", "S", "D"];
@@ -69,6 +73,7 @@ export function FiltroFecha({
   paramHasta = "fecha_hasta",
   paramPagina = "pagina",
   id,
+  className,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -181,9 +186,10 @@ export function FiltroFecha({
             aria-labelledby={id && label ? `${id}-label` : undefined}
             aria-label={label ? undefined : "Filtrar por fecha"}
             className={cn(
-              "flex h-9 w-52 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors",
+              "flex h-9 items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors",
               "hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
               hayFecha ? "text-foreground" : "text-muted-foreground",
+              className ?? "w-52",
             )}
           >
             <CalendarDays className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

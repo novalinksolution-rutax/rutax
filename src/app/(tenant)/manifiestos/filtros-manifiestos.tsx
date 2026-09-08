@@ -65,7 +65,7 @@ export function FiltrosManifiestos({
   );
 
   return (
-    <div className="flex flex-wrap items-end gap-3">
+    <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
       <div className="flex flex-col gap-1">
         <label htmlFor="f-estado-m" className="text-xs font-medium text-muted-foreground">
           Estado
@@ -74,7 +74,7 @@ export function FiltrosManifiestos({
           value={filtroEstado || TODOS}
           onValueChange={(v) => actualizar("estado", v === TODOS ? "" : v)}
         >
-          <SelectTrigger id="f-estado-m" size="default" className="h-9 w-52">
+          <SelectTrigger id="f-estado-m" size="default" className="h-9 w-full sm:w-52">
             <SelectValue placeholder="Todos" />
           </SelectTrigger>
           <SelectContent>
@@ -95,6 +95,7 @@ export function FiltrosManifiestos({
         exacto={filtroFecha}
         desde={filtroFechaDesde}
         hasta={filtroFechaHasta}
+        className="w-full sm:w-52"
       />
 
       {hayFiltros && (
@@ -103,7 +104,7 @@ export function FiltrosManifiestos({
           variant="ghost"
           size="sm"
           onClick={() => router.push(pathname)}
-          className="h-9 text-muted-foreground"
+          className="col-span-2 h-9 justify-self-start text-muted-foreground sm:col-span-1"
         >
           Limpiar
         </Button>

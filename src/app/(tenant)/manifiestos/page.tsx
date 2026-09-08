@@ -4,7 +4,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Plus, Truck } from "lucide-react";
+import { Truck } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGenerarManifiestos } from "@/modules/identidad/capacidades";
@@ -39,7 +39,7 @@ import {
 } from "@/modules/operacion/listado-manifiestos";
 import { CajonesManifiestos, CeldaAvance, FilaManifiesto } from "./piezas-listado";
 import { ChevronRight } from "lucide-react";
-import { parsearRangoFecha } from "@/lib/filtros/fecha";
+import { parsearRangoFecha } from "@/lib/filtros/fecha";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 
 interface SearchParams {
@@ -171,16 +171,6 @@ export default async function PaginaManifiestos({
             </p>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          {puedeCrear && (
-            <Button asChild>
-              <Link href="/preparacion/asignar">
-                <Plus className="size-4" aria-hidden="true" />
-                Asignar pedidos
-              </Link>
-            </Button>
-          )}
-        </div>
       </div>
 
       {/* Filtros */}
@@ -253,7 +243,50 @@ export default async function PaginaManifiestos({
               />
             }
           >
-            <Table densidad="comfortable" aria-label="Lista de manifiestos">
+            {/* Teléfono: una tarjeta por manifiesto. La tabla estirada dejaba
+                Estado y Conductor pegados a los bordes con un vacío enorme en
+                medio; en tarjeta la info va junta y se lee de un vistazo. */}
+            <ul className="divide-y divide-border sm:hidden">
+              {manifiestos.map((m) => {
+                const avance = contexto.avance[m.id] ?? null;
+                const partes: string[] = [];
+                if (avance) {
+                  partes.push(`${avance.paradas} ${avance.paradas === 1 ? "parada" : "paradas"}`);
+                  if (avance.porcentaje !== null) partes.push(`${avance.porcentaje}%`);
+                }
+                if (m.confirmadoEn) partes.push(`sale ${formatearHora(m.confirmadoEn)}`);
+                return (
+                  <li key={m.id}>
+                    <EnlaceDetalle
+                      href={`/manifiestos/${m.id}`}
+                      className="flex min-h-14 items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {nombreConductorPorId[m.driverId] ?? m.driverId}
+                          </span>
+                          <BadgeEstado
+                            variante={BADGE_ESTADO_MANIFIESTO[m.estado]}
+                            eje="manifiesto"
+                            valor={m.estado}
+                            texto={traducirEstadoManifiesto(m.estado)}
+                          />
+                        </span>
+                        {partes.length > 0 ? (
+                          <span className="mt-0.5 block text-xs tabular-nums text-muted-foreground">
+                            {partes.join(" · ")}
+                          </span>
+                        ) : null}
+                      </span>
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    </EnlaceDetalle>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <Table densidad="comfortable" aria-label="Lista de manifiestos" className="hidden sm:table">
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead className="px-4">Estado</TableHead>

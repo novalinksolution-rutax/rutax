@@ -52,6 +52,11 @@ import { ChevronDown, ChevronRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { formatearFechaHora } from "@/lib/formato-cl";
+import {
+  fraseAccion,
+  etiquetaClaveDetalle,
+  formatearValorDetalle,
+} from "@/lib/ui/bitacora-legible";
 import type { FilaBitacoraPlataforma } from "@/modules/plataforma/bitacora-consulta";
 import type { ActorTipo } from "@/modules/identidad/auditoria";
 
@@ -74,17 +79,6 @@ const TEXTO_ACTOR_TIPO: Record<ActorTipo, string> = {
  */
 function formatearFecha(iso: string): string {
   return formatearFechaHora(iso);
-}
-
-function formatearValorDetalle(valor: unknown): string {
-  if (valor === null || valor === undefined) return "—";
-  if (typeof valor === "string") return valor;
-  if (typeof valor === "number" || typeof valor === "boolean") return String(valor);
-  try {
-    return JSON.stringify(valor);
-  } catch {
-    return String(valor);
-  }
 }
 
 interface Props {
@@ -141,7 +135,7 @@ export function TablaBitacora({ filas, total, limite, offset, queryStringSinOffs
               }
               clasificacion={f.actorNombre ? TEXTO_ACTOR_TIPO[f.actorTipo] : undefined}
               titulo={f.actorNombre ?? TEXTO_ACTOR_TIPO[f.actorTipo]}
-              detalle={[f.accion, courierTexto, entidadTexto].join(" · ")}
+              detalle={[fraseAccion(f.accion), courierTexto, entidadTexto].join(" · ")}
             />
           );
           return (
@@ -167,8 +161,8 @@ export function TablaBitacora({ filas, total, limite, offset, queryStringSinOffs
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-1 border-t border-border bg-muted/20 px-4 py-3">
                   {detalleEntries.map(([clave, valor]) => (
                     <div key={clave} className="flex gap-2 text-xs">
-                      <dt className="font-mono font-medium text-muted-foreground">{clave}:</dt>
-                      <dd className="break-all">{formatearValorDetalle(valor)}</dd>
+                      <dt className="font-medium text-muted-foreground">{etiquetaClaveDetalle(clave)}:</dt>
+                      <dd className="break-words">{formatearValorDetalle(clave, valor)}</dd>
                     </div>
                   ))}
                 </dl>
@@ -204,7 +198,7 @@ export function TablaBitacora({ filas, total, limite, offset, queryStringSinOffs
                         {formatearFecha(f.creadoEn)}
                       </td>
                       <td className="px-4 py-3">
-                        <code className="font-mono text-xs">{f.accion}</code>
+                        <span title={f.accion}>{fraseAccion(f.accion)}</span>
                       </td>
                       <td className="px-4 py-3">
                         {f.actorNombre ? (
@@ -261,8 +255,8 @@ export function TablaBitacora({ filas, total, limite, offset, queryStringSinOffs
                           <dl className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
                             {detalleEntries.map(([clave, valor]) => (
                               <div key={clave} className="flex gap-2 text-xs">
-                                <dt className="font-mono font-medium text-muted-foreground">{clave}:</dt>
-                                <dd className="break-all">{formatearValorDetalle(valor)}</dd>
+                                <dt className="font-medium text-muted-foreground">{etiquetaClaveDetalle(clave)}:</dt>
+                                <dd className="break-words">{formatearValorDetalle(clave, valor)}</dd>
                               </div>
                             ))}
                           </dl>
