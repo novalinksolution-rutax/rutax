@@ -4,6 +4,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeConfirmarManifiestoPropio } from "@/modules/identidad/capacidades";
 import { transicionarPedidosSameDayAEnRuta } from "@/modules/operacion/manifiestos-same-day";
 import { recalcularRutaTrasCambio } from "@/modules/operacion/ruta-manifiesto";
+import { registrarConsumo } from "@/lib/consumo";
 
 /**
  * POST /api/conductor/manifiesto/iniciar
@@ -115,8 +116,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    void registrarConsumo({
+      tipoEvento: "manifiesto.iniciar",
+      superficie: "api_route",
+      tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/manifiesto/iniciar",
+      resultado: "ok",
+    });
     return NextResponse.json({ exito: true });
   } catch (err) {
+    void registrarConsumo({
+      tipoEvento: "manifiesto.iniciar",
+      superficie: "api_route",
+      tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/manifiesto/iniciar",
+      resultado: "error",
+    });
     console.error("[api/conductor/manifiesto/iniciar]", err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Error al iniciar la ruta" }, { status: 500 });
   }

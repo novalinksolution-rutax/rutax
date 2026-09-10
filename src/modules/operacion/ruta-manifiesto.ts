@@ -57,8 +57,10 @@ import { obtenerAnclaFinRuta } from "./punto-termino-conductor";
 import { calcularRuta } from "./ruteo";
 import {
   GoogleComputeRoutesAdapter,
+  partirEnPedazos,
   type ModoTrazado,
 } from "@/modules/integraciones/ruteo/adaptadores/google-compute-routes";
+import { registrarConsumo } from "@/lib/consumo";
 import {
   aplicarSecuenciaParadasRpc,
   pedidoIdsDesdeSecuencia,
@@ -435,6 +437,8 @@ export async function calcularYAplicarRutaManifiesto(
     destino: ancla,
     paradas: paradasConFijacion,
     modoTrazado,
+    tenantId,
+    actorUsuarioId,
   });
 
   // --- 5. Persistir la secuencia COMPLETA ----------------------------------
@@ -529,6 +533,9 @@ async function resolverRuta(entrada: {
   paradas: readonly ParadaDelManifiesto[];
   /** Auto → `DRIVE`, moto → `TWO_WHEELER`. Solo afecta el TRAZADO, no el orden. */
   modoTrazado: ModoTrazado;
+  /** Solo para telemetría de consumo (`src/lib/consumo`); nunca gobierna el ruteo. */
+  tenantId?: string;
+  actorUsuarioId?: string;
 }): Promise<RutaResuelta> {
   const puerto = obtenerPuertoOptimizacion();
 
@@ -574,6 +581,19 @@ async function resolverRuta(entrada: {
         paradas: ubicables,
       });
 
+      // Telemetría de consumo: Route Optimization cobra POR PARADA. Fire-and-
+      // forget, nunca gobierna el ruteo (ver `src/lib/consumo`).
+      void registrarConsumo({
+        tipoEvento: "ruteo.optimizar",
+        superficie: "adaptador",
+        tenantId: entrada.tenantId,
+        usuarioId: entrada.actorUsuarioId,
+        proveedorCosto: "google_route_optimization",
+        sku: "single_vehicle",
+        unidades: optimizada.secuencia.length,
+        resultado: "ok",
+      });
+
       // 🏍️ Moto: el solver ya decidió el ORDEN (en DRIVING, el único modo que
       // ofrece), pero su geometría y su ETA son de auto. Se re-traza esa misma
       // secuencia con Compute Routes en TWO_WHEELER —una petición barata, por
@@ -587,6 +607,8 @@ async function resolverRuta(entrada: {
           optimizada.secuencia,
           entrada.paradas,
           entrada.modoTrazado,
+          entrada.tenantId,
+          entrada.actorUsuarioId,
         );
         if (tramosMoto) {
           return {
@@ -636,6 +658,17 @@ async function resolverRuta(entrada: {
     paradas: entrada.paradas,
   });
 
+  // Telemetría: cayó al motor local (haversine). Sin `proveedorCosto` y con
+  // `unidades:0` a propósito — mide el AHORRO de no haber ido al proveedor.
+  void registrarConsumo({
+    tipoEvento: "ruteo.optimizar",
+    superficie: "adaptador",
+    tenantId: entrada.tenantId,
+    usuarioId: entrada.actorUsuarioId,
+    unidades: 0,
+    resultado: "ok",
+  });
+
   // El orden ya está decidido —y respeta las fijadas—; lo único que falta es
   // por dónde pasa la calle. Se pide aparte, y su fallo NO invalida la ruta:
   // sin trazado la pantalla dibuja la recta punteada, que es honesta sobre lo
@@ -645,6 +678,8 @@ async function resolverRuta(entrada: {
     local.secuencia,
     entrada.paradas,
     entrada.modoTrazado,
+    entrada.tenantId,
+    entrada.actorUsuarioId,
   );
 
   return {
@@ -675,6 +710,9 @@ async function trazarSecuencia(
   secuencia: readonly { pedidoId: string; orden: number }[],
   paradas: readonly ParadaDelManifiesto[],
   modoTrazado: ModoTrazado,
+  /** Solo para telemetría de consumo; nunca gobierna el trazado. */
+  tenantId?: string,
+  actorUsuarioId?: string,
 ): Promise<TramoRuta[] | null> {
   if (obtenerPuertoOptimizacion() === null || secuencia.length === 0) return null;
 
@@ -691,7 +729,20 @@ async function trazarSecuencia(
   }
 
   try {
-    return await new GoogleComputeRoutesAdapter().trazarRuta(puntos, modoTrazado);
+    const tramos = await new GoogleComputeRoutesAdapter().trazarRuta(puntos, modoTrazado);
+    // Telemetría: Compute Routes cobra POR PETICIÓN, no por parada — una ruta
+    // larga se parte en tramos de hasta 25 intermedios (`partirEnPedazos`).
+    void registrarConsumo({
+      tipoEvento: "ruteo.trazar",
+      superficie: "adaptador",
+      tenantId,
+      usuarioId: actorUsuarioId,
+      proveedorCosto: "google_compute_routes",
+      sku: "essentials",
+      unidades: partirEnPedazos(puntos).length,
+      resultado: "ok",
+    });
+    return tramos;
   } catch (causa) {
     if (!(causa instanceof ErrorRuteo)) throw causa;
     console.error(

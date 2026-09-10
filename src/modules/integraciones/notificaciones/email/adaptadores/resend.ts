@@ -21,6 +21,7 @@
  */
 
 import type { EnviarEmailArgs, PuertoEmail, ResultadoEnvioEmail } from '../puerto-email';
+import { registrarConsumo } from '@/lib/consumo';
 
 const RESEND_BASE_URL = 'https://api.resend.com';
 const TIMEOUT_MS = 8000;
@@ -93,13 +94,34 @@ export class ResendEmailAdapter implements PuertoEmail {
         const cuerpo = await respuesta.json().catch(() => null);
         const errorDescripcion =
           extraerErrorResend(cuerpo) ?? `Resend respondió ${respuesta.status}`;
+        void registrarConsumo({
+          tipoEvento: 'email.enviar',
+          superficie: 'adaptador',
+          proveedorCosto: 'resend',
+          unidades: 1,
+          resultado: 'error',
+        });
         return { enviado: false, modo: 'real', errorDescripcion };
       }
 
       const cuerpo = (await respuesta.json()) as RespuestaResendOk;
+      void registrarConsumo({
+        tipoEvento: 'email.enviar',
+        superficie: 'adaptador',
+        proveedorCosto: 'resend',
+        unidades: 1,
+        resultado: 'ok',
+      });
       return { enviado: true, modo: 'real', proveedorId: cuerpo.id };
     } catch {
       // Red/timeout — nunca exponer la api key. El llamador decide si reintentar.
+      void registrarConsumo({
+        tipoEvento: 'email.enviar',
+        superficie: 'adaptador',
+        proveedorCosto: 'resend',
+        unidades: 1,
+        resultado: 'error',
+      });
       return { enviado: false, modo: 'real', errorDescripcion: 'error de red al contactar Resend' };
     }
   }

@@ -33,6 +33,10 @@ const GRUPOS_ADMIN: GrupoNav[] = [
     titulo: "Plataforma",
     items: [
       { href: "/admin/metricas", etiqueta: "Métricas", icono: "metricas" },
+      // Costo/uso de APIs de terceros (ruteo, geocoding, WhatsApp) que Rutax
+      // paga por su cuenta — "pagos" (Banknote) porque es plata que SALE,
+      // distinto de "metricas" (el pulso del negocio de Rutax).
+      { href: "/admin/consumo", etiqueta: "Consumo", icono: "pagos" },
       { href: "/admin/salud", etiqueta: "Salud", icono: "salud" },
       // La otra salud: la de las conexiones de los sellers de todos los
       // couriers. Va aparte de la de jobs porque responde otra pregunta —

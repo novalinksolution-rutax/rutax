@@ -7,6 +7,7 @@ import { actualizarEstadoPedido } from "@/modules/operacion/pedidos";
 import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import { ErrorValidacion } from "@/modules/identidad/errores";
 import type { TipoIncidencia } from "@/modules/operacion/tipos";
+import { registrarConsumo } from "@/lib/consumo";
 
 /**
  * POST /api/conductor/pedidos/[pedidoId]/no-entregar
@@ -88,6 +89,15 @@ export async function POST(
         },
         usuario,
       );
+      void registrarConsumo({
+        tipoEvento: "entrega.fallar",
+        superficie: "api_route",
+        tenantId: usuario.tenantId,
+        usuarioId: usuario.usuarioId,
+        tipoUsuario: "conductor",
+        recurso: "/api/conductor/pedidos/[pedidoId]/no-entregar",
+        resultado: "ok",
+      });
       return NextResponse.json({ exito: true });
     }
 
@@ -119,8 +129,26 @@ export async function POST(
       usuario,
     );
 
+    void registrarConsumo({
+      tipoEvento: "entrega.fallar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/pedidos/[pedidoId]/no-entregar",
+      resultado: "ok",
+    });
     return NextResponse.json({ exito: true });
   } catch (err) {
+    void registrarConsumo({
+      tipoEvento: "entrega.fallar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/pedidos/[pedidoId]/no-entregar",
+      resultado: "error",
+    });
     const mensaje =
       err instanceof ErrorValidacion
         ? err.message

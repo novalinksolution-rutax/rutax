@@ -31,6 +31,7 @@ import {
   type ErrorReintentable,
   type OpcionesReintento,
 } from "../resiliencia";
+import { registrarConsumo } from "@/lib/consumo";
 
 export const ML_API_BASE_URL = "https://api.mercadolibre.com";
 
@@ -141,6 +142,19 @@ export async function peticionMl<T>(peticion: PeticionMl): Promise<T> {
         retryAfterMs,
       );
     }
+
+    // Telemetría de consumo: ML no cobra, pero se cuenta para vigilar la CUOTA
+    // de tasa. Camino MUY caliente — se registra una sola vez por llamada
+    // exitosa (no en cada retry interno), sin costo (proveedorCosto='ml' vale
+    // 0 en el tarifario).
+    void registrarConsumo({
+      tipoEvento: "ml.request",
+      superficie: "adaptador",
+      proveedorCosto: "ml",
+      recurso: peticion.ruta,
+      unidades: 1,
+      resultado: "ok",
+    });
 
     return (await respuesta.json()) as T;
   }, peticion.opcionesReintento);

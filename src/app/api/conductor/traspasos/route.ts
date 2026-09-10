@@ -41,6 +41,7 @@ import {
   ErrorLoteExcedido,
   MAX_BULTOS_POR_TRASPASO,
 } from "@/modules/operacion/traspaso";
+import { registrarConsumo } from "@/lib/consumo";
 
 export async function POST(request: NextRequest) {
   const usuario = await autenticarBearer(request.headers.get("authorization"));
@@ -90,8 +91,28 @@ export async function POST(request: NextRequest) {
       codigos: codigos as string[],
     });
 
+    void registrarConsumo({
+      tipoEvento: "traspaso.recibir",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/traspasos",
+      unidades: codigos.length,
+      resultado: "ok",
+    });
     return NextResponse.json(resultado, { status: 200 });
   } catch (err) {
+    void registrarConsumo({
+      tipoEvento: "traspaso.recibir",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/traspasos",
+      unidades: codigos.length,
+      resultado: err instanceof ErrorLoteExcedido ? "omitido" : "error",
+    });
     if (err instanceof ErrorLoteExcedido) {
       return NextResponse.json(
         { error: err.message, codigo: err.codigo, maximo: MAX_BULTOS_POR_TRASPASO },

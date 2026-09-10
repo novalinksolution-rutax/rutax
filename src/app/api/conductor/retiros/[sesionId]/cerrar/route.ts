@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cerrarSesionRetiro } from "@/modules/operacion/retiro/sesiones";
+import { registrarConsumo } from "@/lib/consumo";
 
 /**
  * POST /api/conductor/retiros/:sesionId/cerrar
@@ -58,8 +59,26 @@ export async function POST(
       actorUsuarioId: usuario.usuarioId,
     });
 
+    void registrarConsumo({
+      tipoEvento: "retiro.cerrar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/retiros/[sesionId]/cerrar",
+      resultado: "ok",
+    });
     return NextResponse.json(resultado);
   } catch (err) {
+    void registrarConsumo({
+      tipoEvento: "retiro.cerrar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/retiros/[sesionId]/cerrar",
+      resultado: "error",
+    });
     console.error(
       "[api/conductor/retiros/:sesionId/cerrar]",
       err instanceof Error ? err.message : "error desconocido",

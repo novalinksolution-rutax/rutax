@@ -42,6 +42,7 @@ import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { obtenerPuertoGeocoding, type PuertoGeocoding } from './puerto';
 import { calcularClaveHash, resolverComunaCanonica } from './normalizacion';
 import type { EstadoGeocoding, ProveedorGeocoding, ResultadoGeocoding } from './tipos';
+import { registrarConsumo } from '@/lib/consumo';
 
 // ---------------------------------------------------------------------------
 // Inyección de dependencia del puerto (para tests sin red).
@@ -202,6 +203,17 @@ export async function resolverCoordenadaConCache(
     direccion,
     comuna,
     timeoutMs,
+  });
+
+  // Telemetría de consumo: SOLO en MISS (llamada real a Google). Un cache HIT
+  // no cuesta nada y no se registra. Sin tenant/usuario — este helper es
+  // compartido y no conoce ese contexto (ver cabecera del archivo).
+  void registrarConsumo({
+    tipoEvento: 'geocoding.resolver',
+    superficie: 'adaptador',
+    proveedorCosto: 'google_geocoding',
+    unidades: 1,
+    resultado: res.resuelto ? 'ok' : 'degradado',
   });
 
   // UPSERT en cache (on conflict clave_hash). Resultado compartido por toda

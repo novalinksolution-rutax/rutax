@@ -3,6 +3,7 @@ import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { completarManifiesto } from "@/modules/operacion/manifiestos";
 import { ErrorConflicto } from "@/modules/identidad/errores";
+import { registrarConsumo } from "@/lib/consumo";
 
 /**
  * POST /api/conductor/manifiesto/completar
@@ -46,8 +47,26 @@ export async function POST(request: NextRequest) {
       usuario,
       usuario.usuarioId,
     );
+    void registrarConsumo({
+      tipoEvento: "manifiesto.completar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/manifiesto/completar",
+      resultado: "ok",
+    });
     return NextResponse.json({ exito: true });
   } catch (err) {
+    void registrarConsumo({
+      tipoEvento: "manifiesto.completar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/manifiesto/completar",
+      resultado: err instanceof ErrorConflicto ? "omitido" : "error",
+    });
     if (err instanceof ErrorConflicto) {
       return NextResponse.json({ error: err.message }, { status: 409 });
     }

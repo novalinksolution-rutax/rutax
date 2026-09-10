@@ -42,6 +42,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { autenticarBearer } from "@/lib/supabase/autenticar-bearer";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { registrarConsumo } from "@/lib/consumo";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { leerParadasYAnclarCerradas } from "@/modules/operacion/ruteo/anclas-cerradas";
 import { obtenerManifiestoVigenteDelConductor } from "@/modules/operacion/manifiesto-vigente";
@@ -217,6 +218,21 @@ export async function POST(request: NextRequest) {
       liberarFijacionesPrevias: accion === "optimizar" || origenEnParadaId !== undefined,
     });
 
+    void registrarConsumo({
+      tipoEvento:
+        accion === "optimizar"
+          ? "ruta.optimizar"
+          : origenEnParadaId !== undefined
+            ? "ruta.ir_a_esta_ahora"
+            : "ruta.reordenar",
+      superficie: "api_route",
+      tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/manifiesto/ruta",
+      resultado: "ok",
+    });
+
     return NextResponse.json({
       ok: true,
       totalParadas: resumen.totalParadas,
@@ -231,15 +247,40 @@ export async function POST(request: NextRequest) {
       desdeMiUbicacion: ubicacion !== null,
     });
   } catch (err) {
+    const tipoEventoError =
+      accion === "optimizar"
+        ? "ruta.optimizar"
+        : origenEnParadaId !== undefined
+          ? "ruta.ir_a_esta_ahora"
+          : "ruta.reordenar";
+
     if (err instanceof ErrorSecuenciaDesincronizada) {
       // Le cambiaron la ruta mientras arrastraba. Reintentar con la misma lista
       // falla igual: la app tiene que recargar el manifiesto.
+      void registrarConsumo({
+        tipoEvento: tipoEventoError,
+        superficie: "api_route",
+        tenantId,
+        usuarioId: usuario.usuarioId,
+        tipoUsuario: "conductor",
+        recurso: "/api/conductor/manifiesto/ruta",
+        resultado: "error",
+      });
       return NextResponse.json(
         { error: "Tu ruta cambió mientras la movías. Vuelve a cargarla.", recargar: true },
         { status: 409 },
       );
     }
     if (err instanceof ErrorSinBodegaOrigen) {
+      void registrarConsumo({
+        tipoEvento: tipoEventoError,
+        superficie: "api_route",
+        tenantId,
+        usuarioId: usuario.usuarioId,
+        tipoUsuario: "conductor",
+        recurso: "/api/conductor/manifiesto/ruta",
+        resultado: "error",
+      });
       return NextResponse.json(
         { error: "Tu courier todavía no configuró la bodega de salida." },
         { status: 409 },
@@ -249,6 +290,15 @@ export async function POST(request: NextRequest) {
       "[api/conductor/manifiesto/ruta]",
       err instanceof Error ? err.message : "error desconocido",
     );
+    void registrarConsumo({
+      tipoEvento: tipoEventoError,
+      superficie: "api_route",
+      tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/manifiesto/ruta",
+      resultado: "error",
+    });
     return NextResponse.json({ error: "No se pudo reordenar tu ruta." }, { status: 500 });
   }
 }

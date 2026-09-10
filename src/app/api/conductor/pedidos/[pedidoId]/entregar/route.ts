@@ -6,6 +6,7 @@ import { registrarCierreConductor } from "@/modules/operacion/cierre-conductor";
 import { actualizarEstadoPedido } from "@/modules/operacion/pedidos";
 import { podLoGobiernaLaFuente } from "@/modules/operacion/fuente";
 import { ErrorValidacion } from "@/modules/identidad/errores";
+import { registrarConsumo } from "@/lib/consumo";
 
 /**
  * POST /api/conductor/pedidos/[pedidoId]/entregar
@@ -103,6 +104,15 @@ export async function POST(
         { pedidoId, tenantId: usuario.tenantId, resultado: "entregado", fotoObjectPath: body.fotoObjectPath, geo },
         usuario,
       );
+      void registrarConsumo({
+        tipoEvento: "entrega.cerrar",
+        superficie: "api_route",
+        tenantId: usuario.tenantId,
+        usuarioId: usuario.usuarioId,
+        tipoUsuario: "conductor",
+        recurso: "/api/conductor/pedidos/[pedidoId]/entregar",
+        resultado: "ok",
+      });
       return NextResponse.json({
         exito: true,
         esValido: true,
@@ -132,6 +142,16 @@ export async function POST(
       );
     }
 
+    void registrarConsumo({
+      tipoEvento: "entrega.cerrar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/pedidos/[pedidoId]/entregar",
+      resultado: pod.esValido ? "ok" : "degradado",
+    });
+
     return NextResponse.json({
       exito: true,
       esValido: pod.esValido,
@@ -143,6 +163,15 @@ export async function POST(
       motivoRevision: pod.esValido ? null : motivoDeRevision(pod),
     });
   } catch (err) {
+    void registrarConsumo({
+      tipoEvento: "entrega.cerrar",
+      superficie: "api_route",
+      tenantId: usuario.tenantId,
+      usuarioId: usuario.usuarioId,
+      tipoUsuario: "conductor",
+      recurso: "/api/conductor/pedidos/[pedidoId]/entregar",
+      resultado: "error",
+    });
     const mensaje =
       err instanceof ErrorValidacion
         ? err.message

@@ -35,6 +35,7 @@
 
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { capturarMensaje } from "@/lib/observabilidad";
+import { registrarConsumo } from "@/lib/consumo";
 import { obtenerPuertoWhatsApp } from "./fabrica-whatsapp";
 import { obtenerPlantilla, clavesEventoConocidas } from "./catalogo-plantillas";
 import type { PuertoWhatsApp } from "./puerto-whatsapp";
@@ -296,6 +297,21 @@ async function enviarAUnContacto(args: ArgsEnvioUnitario): Promise<DetalleEnvio>
         origen: "whatsapp:envio",
       });
     }
+
+    // Telemetría de consumo: DESPUÉS de reservar la fila y de llamar a Meta con
+    // éxito. Reusa la MISMA clave de idempotencia por contacto (única por
+    // `(tenant_id, contacto_id, clave_idempotencia)`), para no doble-contar un
+    // reintento del job que retoma esta fila.
+    void registrarConsumo({
+      tipoEvento: "whatsapp.enviar",
+      superficie: "adaptador",
+      tenantId,
+      proveedorCosto: "whatsapp_cloud",
+      sku: "utility",
+      unidades: 1,
+      resultado: "ok",
+      claveIdempotencia: `whatsapp:${tenantId}:${contacto.id}:${claveIdempotencia}`,
+    });
 
     return { contactoId: contacto.id, resultado: "enviado", metaMessageId: resultado.metaMessageId };
   }
