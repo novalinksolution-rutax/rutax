@@ -12,6 +12,13 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     exclude: ["**/node_modules/**"],
     globals: false,
+    // Los tests son de dominio puro y rápidos (~800ms el archivo más pesado sin
+    // cobertura), pero un puñado hace `await import()` dinámico dentro del cuerpo
+    // del test; bajo la instrumentación de v8 en la suite completa ese import se
+    // vuelve lento y cruzaba el timeout por defecto de 5s en el CI, tumbando el
+    // job de coverage por timeout (no por aserción). 20s da holgura sin esconder
+    // un cuelgue real.
+    testTimeout: 20_000,
     // Cobertura con piso (trinquete): el CI corre `npm run coverage` y falla si
     // un cambio baja la cobertura bajo estos umbrales. Fijados unos puntos bajo
     // la base medida (junio 2026: ~67% stmts / 60% branch / 75% fn / 70% lines)
