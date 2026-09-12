@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
-import { resolverEstadoPuestaEnMarcha, PASOS_PUESTA_EN_MARCHA } from "./estado";
+import { resolverEstadoPuestaEnMarcha } from "./estado";
+import { PASOS_PUESTA_EN_MARCHA } from "./tipos";
 import { Wizard } from "./wizard";
 
 export const metadata: Metadata = {

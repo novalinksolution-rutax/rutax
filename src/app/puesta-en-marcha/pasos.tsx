@@ -43,7 +43,7 @@ import { accionFijarPeriodicidad } from "@/app/(tenant)/configuracion/tarifas/ac
 import { accionGuardarConfigRetiro } from "@/app/(tenant)/configuracion/retiro/actions";
 import { accionGuardarTarifaPlana, accionGuardarZonaCobertura } from "./actions";
 import { SelectorComunas } from "./selector-comunas";
-import type { DatosInicialesPaso } from "./estado";
+import type { DatosInicialesPaso } from "./tipos";
 
 // -----------------------------------------------------------------------------
 // Marco común de un paso

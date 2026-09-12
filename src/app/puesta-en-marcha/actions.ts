@@ -34,8 +34,10 @@ import { resolverEstadoPuestaEnMarcha } from "./estado";
 
 type Resultado = { ok: true } | { ok: false; mensaje: string };
 
-/** El nombre de la única zona que el wizard crea: la cobertura del courier. */
-export const NOMBRE_ZONA_COBERTURA = "Cobertura";
+// El nombre de la única zona que el wizard crea: la cobertura del courier. NO se
+// exporta: un módulo "use server" solo puede exportar funciones async (exportar
+// una constante rompe el build de producción, y ni typecheck ni tests lo ven).
+const NOMBRE_ZONA_COBERTURA = "Cobertura";
 
 // =============================================================================
 // 1. Tarifa plana
