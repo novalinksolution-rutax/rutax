@@ -9,7 +9,6 @@ import {
   puedeVerReportesEjecutivos,
   puedeGenerarManifiestos,
   puedeGestionarUsuariosYRoles,
-  puedeGestionarConfiguracionDte,
   puedeGestionarTarifas,
   puedeGestionarIncidencias,
   puedeVerPeriodosCobro,
@@ -25,8 +24,6 @@ import {
 import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
 import { LanzadorHerramientaPrueba } from "@/app/(tenant)/configuracion/_componentes/lanzador-herramienta-prueba";
 import { destinosMovil } from "@/components/app-shell/destinos-movil";
-import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
-import { resolverBloqueoOperativo } from "@/app/(tenant)/onboarding/estado";
 import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarEventosConciliacion } from "@/modules/dinero/index";
@@ -63,6 +60,24 @@ export default async function LayoutTenant({ children }: { children: React.React
   // Sellers → su portal.
   if (sesion.usuario.tipoUsuario === "seller") {
     redirect("/portal");
+  }
+
+  // 🔴 Puesta en marcha OBLIGATORIA (2026-09-12): sin ella no se entra al
+  // backoffice. El wizard vive en /puesta-en-marcha (fuera de este layout, sin
+  // sidebar, sin escapes de navegación). Reemplaza al banner sugerente de antes:
+  // ya no se "avisa" que falta configurar; se redirige y se exige. La
+  // completitud es EXPLÍCITA (`puesta_en_marcha_completada_en`), no derivada de
+  // un conteo frágil. Se lee con service-role directo sobre `identidad.tenants`
+  // para no depender de qué columnas exponga la vista public.
+  const svcPuesta = crearClienteServiceRole();
+  const { data: estadoPuesta } = await svcPuesta
+    .schema("identidad")
+    .from("tenants")
+    .select("puesta_en_marcha_completada_en")
+    .eq("id", sesion.usuario.tenantId)
+    .maybeSingle();
+  if (!estadoPuesta?.puesta_en_marcha_completada_en) {
+    redirect("/puesta-en-marcha");
   }
 
   const supabase = await createClient();
@@ -192,9 +207,10 @@ export default async function LayoutTenant({ children }: { children: React.React
   // misma razón por la que el bloque de marca perdió su desplegable (ver más
   // abajo). Lo que le pagas a Rutax tampoco es «cómo está armado tu courier»,
   // que es lo que esta sub-navegación reúne.
-  const itemsSettings: ItemNav[] = [
-    { href: "/onboarding", etiqueta: "Puesta en marcha", icono: "puesta-en-marcha" },
-  ];
+  // La "Puesta en marcha" ya no es un ítem de configuración: es el wizard
+  // obligatorio de `/puesta-en-marcha`, que un courier ya activo no revisita
+  // (la edición posterior de esos datos vivirá en Configuración).
+  const itemsSettings: ItemNav[] = [];
   if (puedeGestionarTarifas(u)) {
     // ⚠️ **Zonas y Retiro ya no son entradas propias (26-08-2026).** Son las
     // otras dos secciones del módulo de tarifas: la zona es la clave por la que
@@ -285,17 +301,10 @@ export default async function LayoutTenant({ children }: { children: React.React
     administracion: "Administración",
   };
 
-  const puedeActuarSobreOnboarding = puedeGestionarConfiguracionDte(sesion.usuario);
-  // ⚠️ La lectura LIGERA, no el estado completo del asistente. El banner usa un
-  // solo campo y esto corre en CADA carga de página del área autenticada:
-  // con los catorce pasos, el estado completo serían catorce consultas por
-  // navegación para pintar un aviso de una línea.
-  const [faltaParaOperar, avisos] = await Promise.all([
-    puedeActuarSobreOnboarding && sesion.usuario.tenantId
-      ? resolverBloqueoOperativo(sesion.usuario.tenantId)
-      : Promise.resolve(null),
-    obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId),
-  ]);
+  // El bloqueo de "puede operar" ya no vive acá: es el gate de puesta en marcha
+  // de arriba, que redirige al wizard. Quien llega hasta este punto ya la
+  // completó, así que el layout solo carga sus avisos.
+  const avisos = await obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId);
 
   // Los cuatro destinos del teléfono salen de la MISMA navegación que ya se
   // filtró por capacidad arriba: no hay una segunda lista que se desincronice.
@@ -389,9 +398,6 @@ export default async function LayoutTenant({ children }: { children: React.React
       }}
       avisos={avisos}
       destinosMovil={destinos}
-      // `null` ya significa «no falta nada»: el propio banner no se pinta sin
-      // frase, así que no hace falta una segunda condición que pueda discrepar.
-      banner={<BannerOnboarding faltaParaOperar={faltaParaOperar} />}
     >
       {children}
     </AppShell>
