@@ -56,7 +56,7 @@ import { normalizarYValidarRut } from "@/modules/identidad/rut";
 
 type Resultado = { ok: true; acuse: string } | { ok: false; mensaje: string };
 
-const RUTA_ASISTENTE = "/onboarding";
+const RUTA_ASISTENTE = "/puesta-en-marcha";
 
 // =============================================================================
 // 1. Datos del emisor (bloque Emisor del SII)

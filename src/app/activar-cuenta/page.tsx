@@ -54,9 +54,10 @@ export default async function PaginaActivarCuenta({ searchParams }: PageProps) {
 
   // Si el perfil ya está activo (p. ej. recargó esta pantalla tras activarse,
   // o reutiliza una pestaña vieja), no tiene sentido pedirle contraseña de
-  // nuevo — lo mandamos directo a donde ya debería estar.
+  // nuevo — lo mandamos directo al wizard de puesta en marcha (que a su vez lo
+  // suelta al backoffice si ya lo completó).
   if (sesion.usuario.estado === "activo") {
-    redirect("/onboarding");
+    redirect("/puesta-en-marcha");
   }
 
   let nombreFantasia: string | null = null;

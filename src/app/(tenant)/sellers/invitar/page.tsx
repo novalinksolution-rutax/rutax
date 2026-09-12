@@ -37,7 +37,7 @@ export default async function PaginaInvitarSeller() {
           </p>
         </div>
         <Button asChild variant="outline" size="sm">
-          <Link href="/onboarding">Volver al panel de activación</Link>
+          <Link href="/sellers">Volver a Sellers</Link>
         </Button>
       </div>
     );

@@ -123,10 +123,10 @@ export async function definirContrasenaInicial(
   }
 
   // Refrescar el JWT para que los claims reflejen `estado_usuario: activo`
-  // de inmediato — sin esto, el usuario llegaría al panel de onboarding con
-  // una sesión que el hook todavía resuelve como `invitado` (sin capacidades).
+  // de inmediato — sin esto, el usuario llegaría al wizard de puesta en marcha
+  // con una sesión que el hook todavía resuelve como `invitado` (sin capacidades).
   await supabase.auth.refreshSession();
 
-  revalidatePath("/onboarding");
+  revalidatePath("/puesta-en-marcha");
   return { ok: true };
 }

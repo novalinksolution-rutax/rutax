@@ -77,7 +77,7 @@ export function FormularioActivacion({ enlaceInvalido, nombreFantasia, nombreSug
     try {
       const resultado = await definirContrasenaInicial({ nombreCompleto, contrasena });
       if (resultado.ok) {
-        router.push("/onboarding");
+        router.push("/puesta-en-marcha");
         router.refresh();
         return;
       }
