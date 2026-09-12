@@ -470,7 +470,7 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
         <section aria-labelledby="cumplimiento-titulo">
           <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
             <h2 id="cumplimiento-titulo" className="font-heading text-base font-semibold">
-              Cumplimiento por seller
+              SLA por seller
             </h2>
             <span className="text-xs text-fg-muted">objetivo pactado por seller</span>
           </div>
