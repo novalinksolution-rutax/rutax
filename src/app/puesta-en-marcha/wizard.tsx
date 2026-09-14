@@ -21,7 +21,7 @@ import {
   PASOS_PUESTA_EN_MARCHA,
   type ClavePaso,
   type DatosInicialesPaso,
-} from "./estado";
+} from "./pasos-definicion";
 import {
   PasoEmpresa,
   PasoTarifa,
