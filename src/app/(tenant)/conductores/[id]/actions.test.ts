@@ -99,6 +99,7 @@ interface FilaConductor {
   id: string;
   tenant_id: string;
   nombre_completo: string;
+  telefono?: string | null;
 }
 
 interface FilaPerfil {
@@ -115,7 +116,8 @@ interface FilaInvitacion {
   tipo_usuario: string;
   estado: string;
   expira_en: string;
-  email: string;
+  email: string | null;
+  telefono?: string | null;
   token: string;
 }
 
@@ -176,11 +178,14 @@ function crearClienteFalso(seed: SeedFalso = {}) {
   return { cliente: cliente as unknown as ReturnType<typeof crearClienteServiceRole>, estado };
 }
 
+const TELEFONO_A = "56911111111";
+
 function conductorFalso(overrides: Partial<FilaConductor> = {}): FilaConductor {
   return {
     id: DRIVER_A,
     tenant_id: TENANT_A,
     nombre_completo: "Juan Pérez",
+    telefono: TELEFONO_A,
     ...overrides,
   };
 }
@@ -228,13 +233,17 @@ describe("invitarConductor", () => {
     expect(crearInvitacion).not.toHaveBeenCalled();
   });
 
-  it("rechaza un correo inválido sin tocar la base de datos", async () => {
-    const { cliente } = crearClienteFalso({ conductores: [conductorFalso()] });
+  it("F4.a: rechaza si el conductor no tiene teléfono registrado, sin tocar crearInvitacion", async () => {
+    const { cliente } = crearClienteFalso({ conductores: [conductorFalso({ telefono: null })] });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
 
-    const resultado = await invitarConductor(DRIVER_A, "no-es-un-correo");
+    const resultado = await invitarConductor(DRIVER_A, "conductor@example.com");
 
-    expect(resultado).toEqual({ ok: false, tipo: "validacion", mensaje: "Ingresa un correo válido." });
+    expect(resultado).toEqual({
+      ok: false,
+      tipo: "validacion",
+      mensaje: "Primero registra el teléfono del conductor para poder invitarlo.",
+    });
     expect(crearInvitacion).not.toHaveBeenCalled();
   });
 
@@ -336,17 +345,19 @@ describe("invitarConductor", () => {
     expect(resultado.ok).toBe(true);
   });
 
-  it("invita correctamente: delega a crearInvitacion con tipoUsuario/rol/driverId coherentes", async () => {
+  it("invita correctamente: delega a crearInvitacion con tipoUsuario/rol/driverId/telefono coherentes", async () => {
     const { cliente } = crearClienteFalso({ conductores: [conductorFalso()] });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
     vi.mocked(crearInvitacion).mockResolvedValue({
       id: "inv-1",
       token: "token-secreto",
       expiraEn: EN_UNA_HORA,
-      emailEnviado: true,
+      emailEnviado: false,
     });
 
-    const resultado = await invitarConductor(DRIVER_A, "  Conductor@Example.com  ");
+    // El segundo argumento (correo) queda IGNORADO desde F4.a — se mantiene
+    // por compatibilidad de firma con el diálogo actual del frontend.
+    const resultado = await invitarConductor(DRIVER_A, "cualquier-cosa-se-ignora");
 
     expect(crearInvitacion).toHaveBeenCalledTimes(1);
     const [clienteRecibido, actorRecibido, actorUsuarioIdRecibido, inputRecibido] = vi.mocked(crearInvitacion).mock
@@ -355,15 +366,20 @@ describe("invitarConductor", () => {
     expect(actorRecibido).toEqual(crearUsuario());
     expect(actorUsuarioIdRecibido).toBe(USUARIO_ID);
     expect(inputRecibido).toEqual({
-      email: "conductor@example.com", // normalizado: trim + minúsculas
       tipoUsuario: "conductor",
       rol: "conductor",
       driverId: DRIVER_A,
+      telefono: TELEFONO_A, // sale de la ficha del conductor, nunca del argumento
     });
 
     expect(resultado).toEqual({
       ok: true,
-      invitacion: { email: "conductor@example.com", expiraEn: EN_UNA_HORA, emailEnviado: true },
+      invitacion: {
+        email: "",
+        telefonoMascara: "+56 9 **** 1111",
+        expiraEn: EN_UNA_HORA,
+        emailEnviado: false,
+      },
     });
   });
 

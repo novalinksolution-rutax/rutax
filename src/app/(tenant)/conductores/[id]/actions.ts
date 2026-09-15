@@ -11,6 +11,16 @@
  * `crearInvitacion` (ya valida coherencia tipo_usuario↔rol↔driver_id y
  * registra en bitácora) sin duplicar esa lógica aquí.
  *
+ * ⚠️ F4.a (2026-09-15): el conductor entra por TELÉFONO, no por correo — el
+ * número YA vive en su fila de `conductores` (se guarda desde la ficha, vía
+ * `actualizarTelefonoConductor`). Esta acción ya NO usa el correo que recibe
+ * como segundo parámetro para invitar: lo IGNORA, y en su lugar lee el
+ * teléfono del conductor. El parámetro se mantiene, sin usarlo, para no
+ * romper la firma que hoy llama `acceso-app-conductor.tsx` (diálogo que
+ * todavía pide un correo) — ESE diálogo queda obsoleto y hay que rehacerlo
+ * (ver reporte de la tarea F4.a): ya no corresponde pedir nada, el teléfono
+ * sale solo de la ficha del conductor.
+ *
  * Por qué el chequeo de "¿ya tiene cuenta o invitación pendiente?" vive ACÁ y
  * no solo en la UI: invitar dos veces al mismo conductor —o no saber si ya se
  * invitó— es exactamente la fricción que este botón viene a quitar (encargo).
@@ -41,19 +51,24 @@ import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { crearInvitacion } from "@/modules/identidad/invitaciones";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
+import { enmascararTelefono } from "@/lib/telefono-cl";
 
 // -----------------------------------------------------------------------------
 // 1. Invitar
 // -----------------------------------------------------------------------------
 
 export interface ConductorInvitado {
-  email: string;
-  expiraEn: string;
   /**
-   * `true` solo si el correo SALIÓ de verdad. En sandbox (o sin URL pública
-   * declarada) es `false` — la UI debe ofrecer "Copiar enlace" en vez de
-   * prometer un correo que nadie va a recibir.
+   * Vestigial desde F4.a: el conductor ya no recibe correo. Queda como
+   * cadena vacía para no romper el tipo que ya consume
+   * `acceso-app-conductor.tsx` — ese componente debe rehacerse para leer
+   * `telefonoMascara` en vez de `email`.
    */
+  email: string;
+  /** Teléfono del conductor, ENMASCARADO (`+56 9 **** 1234`) — nunca entero. */
+  telefonoMascara: string;
+  expiraEn: string;
+  /** Siempre `false` desde F4.a: no hay correo que enviar. */
   emailEnviado: boolean;
 }
 
@@ -91,10 +106,16 @@ function mapearErrorInvitacion(error: unknown): AccionInvitarConductorResultado 
 /**
  * Invita a un conductor YA CREADO a la app (`tipoUsuario: 'conductor'`,
  * `rol: 'conductor'`, `driverId` obligatorio — ver `crearInvitacion`).
+ *
+ * `_correoIgnorado`: segundo parámetro histórico, de la era en que el
+ * conductor entraba por correo. Desde F4.a se IGNORA por completo — el
+ * teléfono sale de la propia ficha del conductor, nunca de un formulario. Se
+ * mantiene solo para no romper la firma que hoy invoca
+ * `acceso-app-conductor.tsx`.
  */
 export async function invitarConductor(
   driverId: string,
-  email: string,
+  _correoIgnorado: string,
 ): Promise<AccionInvitarConductorResultado> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) {
@@ -108,11 +129,6 @@ export async function invitarConductor(
     };
   }
 
-  const emailNormalizado = email.trim().toLowerCase();
-  if (!emailNormalizado || !emailNormalizado.includes("@")) {
-    return { ok: false, tipo: "validacion", mensaje: "Ingresa un correo válido." };
-  }
-
   const tenantId = sesion.usuario.tenantId;
   const cliente = crearClienteServiceRole();
 
@@ -121,7 +137,7 @@ export async function invitarConductor(
   // esta cláusula y no la base — mismo criterio que el resto de `identidad`.
   const { data: conductor, error: errorConductor } = await cliente
     .from("conductores")
-    .select("id, nombre_completo")
+    .select("id, nombre_completo, telefono")
     .eq("id", driverId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -135,6 +151,14 @@ export async function invitarConductor(
   }
   if (!conductor) {
     return { ok: false, tipo: "validacion", mensaje: "No encontramos a este conductor." };
+  }
+  const telefono = (conductor as { telefono?: string | null }).telefono ?? null;
+  if (!telefono) {
+    return {
+      ok: false,
+      tipo: "validacion",
+      mensaje: "Primero registra el teléfono del conductor para poder invitarlo.",
+    };
   }
 
   // Ya tiene cuenta → no duplicar (ver nota de cabecera: driver_id no es
@@ -195,10 +219,10 @@ export async function invitarConductor(
   let creada;
   try {
     creada = await crearInvitacion(cliente, sesion.usuario, sesion.usuarioId, {
-      email: emailNormalizado,
       tipoUsuario: "conductor",
       rol: "conductor",
       driverId,
+      telefono,
     });
   } catch (error) {
     return mapearErrorInvitacion(error);
@@ -207,7 +231,8 @@ export async function invitarConductor(
   return {
     ok: true,
     invitacion: {
-      email: emailNormalizado,
+      email: "", // vestigial desde F4.a — ver `ConductorInvitado`.
+      telefonoMascara: enmascararTelefono(telefono),
       expiraEn: creada.expiraEn,
       emailEnviado: creada.emailEnviado,
     },
@@ -291,6 +316,19 @@ export async function obtenerInvitacionPendienteConductor(
     return {
       ok: false,
       mensaje: "Esta invitación venció. Vuelve a invitarlo para generar una nueva.",
+    };
+  }
+
+  // F4.a (2026-09-15): toda invitación de conductor NUEVA va por teléfono
+  // (`email` queda NULL — ver `crearInvitacionConductorPorTelefono`). Un
+  // enlace `/invitacion/<token>` ya no le sirve de nada al conductor: ese
+  // canje pasa por WhatsApp OTP en la app nativa, no por un link web. Solo
+  // una invitación RESIDUAL, creada antes de este cambio, tendría `email`
+  // — a esa sí se le sigue entregando el enlace de abajo.
+  if (!data.email) {
+    return {
+      ok: false,
+      mensaje: "Este conductor entra por teléfono desde la app — ya no hay un enlace que copiar.",
     };
   }
 

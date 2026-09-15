@@ -32,6 +32,8 @@ import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import { enviarEmailInvitacion, type MotivoNoEnviado } from "./notificaciones-invitacion";
 import { esRolInterno, type Rol } from "./roles";
 import { buscarCuentaPorEmail, mensajeCorreoOcupado } from "./cuenta-por-email";
+import { buscarPerfilPorAuthUserId } from "./onboarding";
+import { normalizarTelefonoE164, enmascararTelefono } from "@/lib/telefono-cl";
 
 /**
  * Forma mínima del cliente service_role que estas funciones necesitan.
@@ -60,13 +62,24 @@ function generarToken(): string {
 export type TipoUsuarioInvitacion = "interno" | "seller" | "conductor";
 
 export interface CrearInvitacionInput {
-  email: string;
+  /**
+   * Obligatorio para `seller`/`interno`. Para `tipoUsuario === 'conductor'`
+   * debe ir ausente/`null` — el conductor entra por `telefono` (F4.a,
+   * 2026-09-15), nunca por correo.
+   */
+  email?: string | null;
   tipoUsuario: TipoUsuarioInvitacion;
   rol: Rol;
   /** Obligatorio y solo válido si `tipoUsuario === 'seller'`. */
   sellerId?: string | null;
   /** Obligatorio y solo válido si `tipoUsuario === 'conductor'`. */
   driverId?: string | null;
+  /**
+   * Obligatorio y SOLO válido si `tipoUsuario === 'conductor'` (F4.a). Se
+   * acepta en cualquier formato que `normalizarTelefonoE164` reconozca — se
+   * normaliza acá, el llamador no tiene que hacerlo.
+   */
+  telefono?: string | null;
   /** Override de vigencia, en milisegundos desde ahora. Por defecto 7 días. */
   vigenciaMs?: number;
 }
@@ -96,6 +109,9 @@ function validarCoherenciaTipoUsuario(input: CrearInvitacionInput): void {
     if (input.rol !== "seller") {
       throw new ErrorValidacion("Una invitación de tipo 'seller' debe tener rol 'seller'.");
     }
+    if (input.telefono) {
+      throw new ErrorValidacion("Una invitación de tipo 'seller' no debe llevar teléfono — usa correo.");
+    }
   } else if (input.tipoUsuario === "conductor") {
     if (!input.driverId) {
       throw new ErrorValidacion("Una invitación de tipo 'conductor' requiere driver_id.");
@@ -106,6 +122,11 @@ function validarCoherenciaTipoUsuario(input: CrearInvitacionInput): void {
     if (input.rol !== "conductor") {
       throw new ErrorValidacion("Una invitación de tipo 'conductor' debe tener rol 'conductor'.");
     }
+    if (input.email) {
+      throw new ErrorValidacion(
+        "Una invitación de tipo 'conductor' va por teléfono (F4.a) — no debe llevar correo.",
+      );
+    }
   } else {
     // interno
     if (input.sellerId || input.driverId) {
@@ -115,6 +136,9 @@ function validarCoherenciaTipoUsuario(input: CrearInvitacionInput): void {
       throw new ErrorValidacion(
         "Una invitación interna debe tener un rol interno (dueno, supervisor, coordinador o administracion).",
       );
+    }
+    if (input.telefono) {
+      throw new ErrorValidacion("Una invitación interna no debe llevar teléfono — usa correo.");
     }
   }
 }
@@ -140,10 +164,19 @@ export async function crearInvitacion(
     // pero lo dejamos explícito: sin tenant no hay a qué invitar.
     throw new ErrorValidacion("El usuario que invita no pertenece a un tenant.");
   }
-  if (!input.email.trim() || !input.email.includes("@")) {
+  validarCoherenciaTipoUsuario(input);
+
+  // El conductor entra por TELÉFONO (F4.a): rama enteramente distinta — sin
+  // barrera de correo (no aplica) y sin `enviarEmailInvitacion` (no hay
+  // correo que mandar; el conductor recibe el OTP de WhatsApp fuera de este
+  // módulo, en la app nativa).
+  if (input.tipoUsuario === "conductor") {
+    return crearInvitacionConductorPorTelefono(cliente, actor, actorUsuarioId, input);
+  }
+
+  if (!input.email || !input.email.trim() || !input.email.includes("@")) {
     throw new ErrorValidacion("El email de la invitación es obligatorio y debe ser válido.");
   }
-  validarCoherenciaTipoUsuario(input);
 
   const email = input.email.trim().toLowerCase();
 
@@ -246,6 +279,105 @@ export async function crearInvitacion(
     expiraEn: data.expira_en as string,
     emailEnviado: envio.enviado,
     emailMotivo: envio.motivo,
+  };
+}
+
+/**
+ * Rama CONDUCTOR de `crearInvitacion` (F4.a, 2026-09-15) — invita por
+ * TELÉFONO, nunca por correo.
+ *
+ * Diferencias deliberadas frente a la rama seller/interno:
+ *   - No corre `buscarCuentaPorEmail` (esa barrera es de correo; el conductor
+ *     no tiene).
+ *   - No llama a `enviarEmailInvitacion` — no hay canal de correo que usar; el
+ *     conductor recibe su código por WhatsApp OTP desde la app nativa, fuera
+ *     de este módulo.
+ *   - El duplicado NO se comprueba en código (a diferencia de la barrera de
+ *     correo): se confía en el índice único parcial
+ *     `invitaciones_telefono_pendiente_conductor_uk` (migración
+ *     `20260915000001`) y se traduce su 23505 a un mensaje accionable. Es
+ *     más simple y es exactamente lo que ya hace `revocarInvitacion`/
+ *     `aceptarInvitacion` con su propio candado de concurrencia.
+ *   - `token` se genera igual (columna NOT NULL) pero queda VESTIGIAL para el
+ *     conductor: nunca se expone ni se entrega — el canje real es
+ *     `aceptarInvitacionPorTelefono`, que resuelve por `telefono`.
+ *   - Bitácora con `telefono_mascara` (últimos 4 dígitos), NUNCA el número
+ *     entero — es dato personal de trabajador (Ley 21.431).
+ */
+async function crearInvitacionConductorPorTelefono(
+  cliente: ClienteServicio,
+  actor: UsuarioActual,
+  actorUsuarioId: string,
+  input: CrearInvitacionInput,
+): Promise<InvitacionCreada> {
+  const normalizado = normalizarTelefonoE164(input.telefono);
+  if (!normalizado.valido) {
+    throw new ErrorValidacion(
+      "El teléfono del conductor es obligatorio y debe ser un número válido para poder invitarlo.",
+    );
+  }
+  const telefono = normalizado.telefonoE164;
+
+  const token = generarToken();
+  const vigenciaMs = input.vigenciaMs ?? VIGENCIA_INVITACION_MS;
+  const expiraEn = new Date(Date.now() + vigenciaMs).toISOString();
+
+  // `.schema("identidad")` obligatorio — ver la nota extensa en `crearInvitacion`
+  // sobre `token`, columna ausente en `public.invitaciones`.
+  const { data, error } = await cliente
+    .schema("identidad")
+    .from("invitaciones")
+    .insert({
+      tenant_id: actor.tenantId as string,
+      email: null,
+      telefono,
+      tipo_usuario: input.tipoUsuario,
+      rol: input.rol,
+      seller_id: null,
+      driver_id: input.driverId ?? null,
+      token,
+      estado: "pendiente",
+      expira_en: expiraEn,
+    })
+    .select("id, token, expira_en")
+    .single();
+
+  if (error) {
+    // 23505 = choca con `invitaciones_telefono_pendiente_conductor_uk`: ya
+    // hay una invitación PENDIENTE para este mismo conductor en este tenant.
+    if (error.code === "23505") {
+      throw new ErrorConflicto("Este conductor ya tiene una invitación pendiente.");
+    }
+    throw new Error(`No se pudo crear la invitación: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error("No se pudo crear la invitación: desconocido");
+  }
+
+  await registrarEnBitacora(cliente as unknown as SupabaseClient, {
+    tenantId: actor.tenantId as string,
+    actorUsuarioId,
+    actorTipo: "usuario",
+    accion: "invitacion.creada",
+    entidadTipo: "invitacion",
+    entidadId: data.id as string,
+    detalle: {
+      // NUNCA el teléfono entero — dato personal de trabajador (Ley 21.431).
+      telefono_mascara: enmascararTelefono(telefono),
+      tipo_usuario: input.tipoUsuario,
+      rol: input.rol,
+      driver_id: input.driverId ?? null,
+      expira_en: expiraEn,
+      // `token` tampoco va nunca a la bitácora, igual que en la rama de correo.
+    },
+  });
+
+  return {
+    id: data.id as string,
+    token: data.token as string,
+    expiraEn: data.expira_en as string,
+    // No hay correo que enviar: el conductor entra por WhatsApp OTP.
+    emailEnviado: false,
   };
 }
 
@@ -393,6 +525,138 @@ export async function aceptarInvitacion(
   });
 
   return { tenantId, usuarioId: input.usuarioAuthId, rol };
+}
+
+// -----------------------------------------------------------------------------
+// 2b. Aceptar invitación por TELÉFONO (F4.a) — canje del conductor tras el
+//     WhatsApp OTP. Hermana de `aceptarInvitacion`, NO su reemplazo: delega en
+//     ella para la provisión real (una sola fuente de verdad de las
+//     transiciones de `usuarios_perfil`/`invitaciones`), y se limita a
+//     resolver "cuál invitación" a partir del teléfono en vez de un token.
+// -----------------------------------------------------------------------------
+
+export interface AceptarInvitacionPorTelefonoInput {
+  /** E.164 sin `+` — el que trae el propio token de Auth, NUNCA uno del body. */
+  telefonoE164: string;
+  usuarioAuthId: string;
+  nombreCompleto: string;
+  /** Cuando el conductor ya eligió courier en el selector (resultado `seleccionar_courier`). */
+  tenantId?: string;
+}
+
+export interface CourierParaSeleccionar {
+  tenantId: string;
+  nombreCourier: string;
+}
+
+export type ResultadoAceptarPorTelefono =
+  | { ok: true; tenantId: string; usuarioId: string; rol: Rol }
+  | { ok: false; motivo: "sin_invitacion" }
+  | { ok: false; motivo: "seleccionar_courier"; couriers: CourierParaSeleccionar[] };
+
+/** Nombre de respaldo si no se pudo leer el del courier — solo para el selector multi-tenant. */
+const NOMBRE_COURIER_GENERICO_SELECTOR = "Courier";
+
+async function leerNombreCourier(cliente: ClienteServicio, tenantId: string): Promise<string> {
+  try {
+    const { data } = await cliente.from("tenants").select("nombre_fantasia").eq("id", tenantId).maybeSingle();
+    const nombre = (data as { nombre_fantasia?: string } | null)?.nombre_fantasia;
+    return nombre && nombre.trim() ? nombre.trim() : NOMBRE_COURIER_GENERICO_SELECTOR;
+  } catch {
+    return NOMBRE_COURIER_GENERICO_SELECTOR;
+  }
+}
+
+/**
+ * Acepta una invitación de conductor por TELÉFONO (en vez de por token).
+ *
+ * Flujo:
+ *   1. IDEMPOTENCIA — si `usuarioAuthId` ya tiene `usuarios_perfil`, es un
+ *      reintento del canje (doble tap, refresh de la app apenas hecho el
+ *      OTP): se devuelve el tenant/rol ya provisionados, sin tocar
+ *      `invitaciones` de nuevo (mismo criterio que
+ *      `aplicarAceptacionInvitacionPasswordless`, F3).
+ *   2. Se buscan invitaciones `pendiente`, `tipo_usuario = 'conductor'`, con
+ *      ese `telefono` — vigentes (no expiradas se filtra en código, igual
+ *      que `aceptarInvitacion`, y no con `.gt()` en la consulta).
+ *   3. Cero resultados → `sin_invitacion`.
+ *   4. Más de un tenant (un conductor puede trabajar para varios couriers —
+ *      §11.1) y sin `tenantId` para desambiguar → `seleccionar_courier` con
+ *      la lista; NO se provisiona nada todavía.
+ *   5. Exactamente una (o el `tenantId` la desambigua a una) → delega en
+ *      `aceptarInvitacion` por su `token` — la ÚNICA fuente de verdad de la
+ *      provisión de `usuarios_perfil`. No se duplica ese INSERT/UPDATE acá.
+ *
+ * El teléfono NUNCA va a logs ni a la bitácora entero — acá ni siquiera se
+ * registra bitácora propia: la deja `aceptarInvitacion` (con el email de la
+ * fila, que para conductor es `null`).
+ */
+export async function aceptarInvitacionPorTelefono(
+  cliente: ClienteServicio,
+  input: AceptarInvitacionPorTelefonoInput,
+): Promise<ResultadoAceptarPorTelefono> {
+  const perfilExistente = await buscarPerfilPorAuthUserId(cliente, input.usuarioAuthId);
+  if (perfilExistente?.tenantId) {
+    return {
+      ok: true,
+      tenantId: perfilExistente.tenantId,
+      usuarioId: input.usuarioAuthId,
+      rol: perfilExistente.rol as Rol,
+    };
+  }
+
+  const telefono = input.telefonoE164.trim();
+  if (!telefono) {
+    return { ok: false, motivo: "sin_invitacion" };
+  }
+
+  // `.schema("identidad")` obligatorio: se resuelve `token` para delegar en
+  // `aceptarInvitacion` — la misma barrera que en el resto del archivo.
+  const { data, error } = await cliente
+    .schema("identidad")
+    .from("invitaciones")
+    .select("id, tenant_id, token, estado, expira_en")
+    .eq("tipo_usuario", "conductor")
+    .eq("estado", "pendiente")
+    .eq("telefono", telefono);
+
+  if (error) {
+    throw new Error(`No se pudo resolver la invitación por teléfono: ${error.message}`);
+  }
+
+  const ahora = Date.now();
+  const vigentes = ((data ?? []) as Array<Record<string, unknown>>).filter(
+    (fila) => new Date(fila.expira_en as string).getTime() > ahora,
+  );
+
+  if (vigentes.length === 0) {
+    return { ok: false, motivo: "sin_invitacion" };
+  }
+
+  let elegida = vigentes[0];
+  if (vigentes.length > 1) {
+    if (input.tenantId) {
+      const encontrada = vigentes.find((fila) => fila.tenant_id === input.tenantId);
+      if (!encontrada) return { ok: false, motivo: "sin_invitacion" };
+      elegida = encontrada;
+    } else {
+      const couriers = await Promise.all(
+        vigentes.map(async (fila) => ({
+          tenantId: fila.tenant_id as string,
+          nombreCourier: await leerNombreCourier(cliente, fila.tenant_id as string),
+        })),
+      );
+      return { ok: false, motivo: "seleccionar_courier", couriers };
+    }
+  }
+
+  const aceptada = await aceptarInvitacion(cliente, {
+    token: elegida.token as string,
+    usuarioAuthId: input.usuarioAuthId,
+    nombreCompleto: input.nombreCompleto,
+  });
+
+  return { ok: true, tenantId: aceptada.tenantId, usuarioId: aceptada.usuarioId, rol: aceptada.rol };
 }
 
 // -----------------------------------------------------------------------------

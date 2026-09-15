@@ -1,6 +1,6 @@
 import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 import { beforeEach, describe, expect, it } from "vitest";
-import { aceptarInvitacion, crearInvitacion, revocarInvitacion } from "./invitaciones";
+import { aceptarInvitacion, aceptarInvitacionPorTelefono, crearInvitacion, revocarInvitacion } from "./invitaciones";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import type { UsuarioActual } from "./usuario-actual";
 import {
@@ -32,8 +32,11 @@ interface EstadoFalso {
   bitacora: Array<Record<string, unknown>>;
 }
 
-function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[] }) {
-  const perfiles: Array<Record<string, unknown>> = [];
+/** Nombres de tenant para el selector multi-courier (`aceptarInvitacionPorTelefono`). */
+const NOMBRES_TENANT: Record<string, string> = {};
+
+function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[]; perfiles?: Array<Record<string, unknown>> }) {
+  const perfiles: Array<Record<string, unknown>> = seed?.perfiles ? [...seed.perfiles] : [];
   const bitacora: Array<Record<string, unknown>> = [];
 
   const { cliente, estado: estadoInvitaciones } = crearClienteInvitacionesFalso({
@@ -41,6 +44,24 @@ function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[] }) {
     otrasTablas: (tabla) => {
       if (tabla === "usuarios_perfil") {
         return {
+          // Idempotencia de `aceptarInvitacionPorTelefono`: lee el perfil por
+          // `id` (uuid de auth) antes de reintentar el canje.
+          select: () => {
+            const filtros: Array<[string, unknown]> = [];
+            const builder = {
+              eq(campo: string, valor: unknown) {
+                filtros.push([campo, valor]);
+                return builder;
+              },
+              async maybeSingle() {
+                const fila = perfiles.find((p) =>
+                  filtros.every(([campo, valor]) => (p as Record<string, unknown>)[campo] === valor),
+                );
+                return { data: fila ?? null, error: null };
+              },
+            };
+            return builder;
+          },
           upsert: async (fila: Record<string, unknown>) => {
             const idx = perfiles.findIndex((p) => p.id === fila.id);
             if (idx >= 0) perfiles[idx] = fila;
@@ -51,14 +72,18 @@ function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[] }) {
       }
 
       // `crearInvitacion` lee el nombre del courier para el correo de invitación
-      // (ver notificaciones-invitacion.ts). Es cosmético — si no está, el correo
-      // sale con un nombre genérico — pero se modela igual para que el doble no
-      // dependa del `catch` de la función de producción.
+      // (ver notificaciones-invitacion.ts); `aceptarInvitacionPorTelefono` lo
+      // lee para el selector multi-courier. Cosmético en ambos casos — si no
+      // está, cae a un nombre genérico — pero se modela igual para que el
+      // doble no dependa del `catch` de la función de producción.
       if (tabla === "tenants") {
         return {
           select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: { nombre_fantasia: "Courier de Prueba" }, error: null }),
+            eq: (_campo: string, valor: unknown) => ({
+              maybeSingle: async () => ({
+                data: { nombre_fantasia: NOMBRES_TENANT[valor as string] ?? "Courier de Prueba" },
+                error: null,
+              }),
             }),
           }),
         };
@@ -87,6 +112,10 @@ const TENANT_B = "99999999-9999-9999-9999-999999999999";
 const SELLER_A = "22222222-2222-2222-2222-222222222222";
 const DRIVER_A = "33333333-3333-3333-3333-333333333333";
 const ACTOR_USUARIO_ID = "actor-usuario-1";
+const TELEFONO_CONDUCTOR = "56911111111";
+
+NOMBRES_TENANT[TENANT_A] = "Despachos del Centro";
+NOMBRES_TENANT[TENANT_B] = "Courier del Sur";
 
 function dueno(overrides?: Partial<UsuarioActual>): UsuarioActual {
   return {
@@ -282,6 +311,117 @@ describe("crearInvitacion", () => {
     expect(estadoRoto.invitaciones).toHaveLength(1);
     expect(estadoRoto.invitaciones[0].estado).toBe("pendiente");
   });
+
+  // ---------------------------------------------------------------------------
+  // F4.a (2026-09-15): el conductor entra por TELÉFONO, no por correo.
+  // ---------------------------------------------------------------------------
+  describe("rama conductor por teléfono (F4.a)", () => {
+    it("exige teléfono: rechaza sin él, sin tocar la base", async () => {
+      await expect(
+        crearInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, {
+          tipoUsuario: "conductor",
+          rol: "conductor",
+          driverId: DRIVER_A,
+        }),
+      ).rejects.toBeInstanceOf(ErrorValidacion);
+
+      expect(estado.invitaciones).toHaveLength(0);
+    });
+
+    it("rechaza un teléfono con formato inválido", async () => {
+      await expect(
+        crearInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, {
+          tipoUsuario: "conductor",
+          rol: "conductor",
+          driverId: DRIVER_A,
+          telefono: "no-es-un-telefono",
+        }),
+      ).rejects.toBeInstanceOf(ErrorValidacion);
+
+      expect(estado.invitaciones).toHaveLength(0);
+    });
+
+    it("prohíbe llevar correo — la coherencia contacto↔tipo es del conductor por teléfono", async () => {
+      await expect(
+        crearInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, {
+          tipoUsuario: "conductor",
+          rol: "conductor",
+          driverId: DRIVER_A,
+          telefono: TELEFONO_CONDUCTOR,
+          email: "no-deberia-llevar@example.com",
+        }),
+      ).rejects.toBeInstanceOf(ErrorValidacion);
+
+      expect(estado.invitaciones).toHaveLength(0);
+    });
+
+    it("crea la invitación con email NULL y telefono normalizado, SIN enviar correo", async () => {
+      const resultado = await crearInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, {
+        tipoUsuario: "conductor",
+        rol: "conductor",
+        driverId: DRIVER_A,
+        telefono: "9 1111 1111", // formato "humano" — se normaliza a E.164
+      });
+
+      expect(resultado.emailEnviado).toBe(false);
+      expect(estado.invitaciones).toHaveLength(1);
+      const fila = estado.invitaciones[0];
+      expect(fila.tenant_id).toBe(TENANT_A);
+      expect(fila.email).toBeNull();
+      expect(fila.telefono).toBe(TELEFONO_CONDUCTOR);
+      expect(fila.driver_id).toBe(DRIVER_A);
+      expect(fila.estado).toBe("pendiente");
+
+      // Nunca se intentó el envío de correo (no hay entrada de email en bitácora).
+      const acciones = estado.bitacora.map((b) => b.accion);
+      expect(acciones).toContain("invitacion.creada");
+      expect(acciones.some((a) => String(a).startsWith("invitacion.email_"))).toBe(false);
+    });
+
+    it("registra en bitácora el teléfono ENMASCARADO, nunca entero", async () => {
+      await crearInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, {
+        tipoUsuario: "conductor",
+        rol: "conductor",
+        driverId: DRIVER_A,
+        telefono: TELEFONO_CONDUCTOR,
+      });
+
+      const entrada = estado.bitacora.find((b) => b.accion === "invitacion.creada");
+      expect(JSON.stringify(entrada!.detalle)).not.toContain(TELEFONO_CONDUCTOR);
+      expect(JSON.stringify(entrada!.detalle).toLowerCase()).not.toContain("token");
+    });
+
+    it("traduce el choque con el índice único de teléfono pendiente a ErrorConflicto", async () => {
+      const clienteBase = cliente as { auth: unknown; from: unknown; schema: unknown };
+      const clienteConError = {
+        ...clienteBase,
+        schema: (nombre: string) => {
+          if (nombre !== "identidad") throw new Error("esquema inesperado");
+          return {
+            from: () => ({
+              insert: () => ({
+                select: () => ({
+                  single: async () => ({
+                    data: null,
+                    error: { code: "23505", message: "duplicate key value" },
+                  }),
+                }),
+              }),
+            }),
+          };
+        },
+      };
+
+      await expect(
+        crearInvitacion(clienteConError as never, dueno(), ACTOR_USUARIO_ID, {
+          tipoUsuario: "conductor",
+          rol: "conductor",
+          driverId: DRIVER_A,
+          telefono: TELEFONO_CONDUCTOR,
+        }),
+      ).rejects.toBeInstanceOf(ErrorConflicto);
+    });
+  });
 });
 
 // =============================================================================
@@ -426,6 +566,159 @@ describe("aceptarInvitacion", () => {
     });
     const detalle = estado.bitacora[0].detalle as Record<string, unknown>;
     expect(JSON.stringify(detalle).toLowerCase()).not.toContain("token");
+  });
+});
+
+// =============================================================================
+// aceptarInvitacionPorTelefono (F4.a) — canje del conductor tras WhatsApp OTP
+// =============================================================================
+describe("aceptarInvitacionPorTelefono", () => {
+  function invitacionConductor(overrides?: Partial<FilaInvitacion>): FilaInvitacion {
+    return {
+      id: "inv-conductor-1",
+      tenant_id: TENANT_A,
+      email: null,
+      telefono: TELEFONO_CONDUCTOR,
+      tipo_usuario: "conductor",
+      rol: "conductor",
+      seller_id: null,
+      driver_id: DRIVER_A,
+      token: "token-conductor-vestigial",
+      estado: "pendiente",
+      expira_en: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      ...overrides,
+    };
+  }
+
+  it("sin ninguna invitación con ese teléfono devuelve 'sin_invitacion'", async () => {
+    const { cliente } = crearClienteFalso({ invitaciones: [] });
+
+    const resultado = await aceptarInvitacionPorTelefono(cliente, {
+      telefonoE164: TELEFONO_CONDUCTOR,
+      usuarioAuthId: "auth-conductor-1",
+      nombreCompleto: "Pedro Conductor",
+    });
+
+    expect(resultado).toEqual({ ok: false, motivo: "sin_invitacion" });
+  });
+
+  it("una invitación pendiente pero VENCIDA cuenta como 'sin_invitacion'", async () => {
+    const { cliente } = crearClienteFalso({
+      invitaciones: [invitacionConductor({ expira_en: new Date(Date.now() - 60_000).toISOString() })],
+    });
+
+    const resultado = await aceptarInvitacionPorTelefono(cliente, {
+      telefonoE164: TELEFONO_CONDUCTOR,
+      usuarioAuthId: "auth-conductor-1",
+      nombreCompleto: "Pedro Conductor",
+    });
+
+    expect(resultado).toEqual({ ok: false, motivo: "sin_invitacion" });
+  });
+
+  it("exactamente UNA invitación vigente: acepta delegando en aceptarInvitacion por su token", async () => {
+    const { cliente, estado } = crearClienteFalso({ invitaciones: [invitacionConductor()] });
+
+    const resultado = await aceptarInvitacionPorTelefono(cliente, {
+      telefonoE164: TELEFONO_CONDUCTOR,
+      usuarioAuthId: "auth-conductor-1",
+      nombreCompleto: "Pedro Conductor",
+    });
+
+    expect(resultado).toEqual({ ok: true, tenantId: TENANT_A, usuarioId: "auth-conductor-1", rol: "conductor" });
+
+    expect(estado.perfiles).toHaveLength(1);
+    expect(estado.perfiles[0]).toMatchObject({
+      id: "auth-conductor-1",
+      tenant_id: TENANT_A,
+      tipo_usuario: "conductor",
+      driver_id: DRIVER_A,
+      seller_id: null,
+      rol: "conductor",
+      estado: "activo",
+    });
+    expect(estado.invitaciones[0].estado).toBe("aceptada");
+
+    // El teléfono NUNCA va a la bitácora entero.
+    for (const fila of estado.bitacora) {
+      expect(JSON.stringify(fila.detalle)).not.toContain(TELEFONO_CONDUCTOR);
+    }
+  });
+
+  it("MÁS DE UN COURIER con invitación vigente y sin tenantId: devuelve 'seleccionar_courier' sin provisionar nada", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      invitaciones: [
+        invitacionConductor({ id: "inv-tenant-a", tenant_id: TENANT_A, driver_id: DRIVER_A }),
+        invitacionConductor({ id: "inv-tenant-b", tenant_id: TENANT_B, driver_id: DRIVER_A, token: "token-b" }),
+      ],
+    });
+
+    const resultado = await aceptarInvitacionPorTelefono(cliente, {
+      telefonoE164: TELEFONO_CONDUCTOR,
+      usuarioAuthId: "auth-conductor-2",
+      nombreCompleto: "Pedro Conductor",
+    });
+
+    expect(resultado).toMatchObject({
+      ok: false,
+      motivo: "seleccionar_courier",
+      couriers: expect.arrayContaining([
+        { tenantId: TENANT_A, nombreCourier: "Despachos del Centro" },
+        { tenantId: TENANT_B, nombreCourier: "Courier del Sur" },
+      ]),
+    });
+    expect(estado.perfiles).toHaveLength(0);
+    expect(estado.invitaciones.every((f) => f.estado === "pendiente")).toBe(true);
+  });
+
+  it("con tenantId provisto, desambigua entre couriers y acepta la de ESE tenant", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      invitaciones: [
+        invitacionConductor({ id: "inv-tenant-a", tenant_id: TENANT_A, token: "token-a" }),
+        invitacionConductor({ id: "inv-tenant-b", tenant_id: TENANT_B, token: "token-b" }),
+      ],
+    });
+
+    const resultado = await aceptarInvitacionPorTelefono(cliente, {
+      telefonoE164: TELEFONO_CONDUCTOR,
+      usuarioAuthId: "auth-conductor-3",
+      nombreCompleto: "Pedro Conductor",
+      tenantId: TENANT_B,
+    });
+
+    expect(resultado).toEqual({ ok: true, tenantId: TENANT_B, usuarioId: "auth-conductor-3", rol: "conductor" });
+    expect(estado.invitaciones.find((f) => f.tenant_id === TENANT_B)!.estado).toBe("aceptada");
+    expect(estado.invitaciones.find((f) => f.tenant_id === TENANT_A)!.estado).toBe("pendiente");
+  });
+
+  it("IDEMPOTENCIA: si el usuario de Auth ya tiene perfil, no reintenta el canje", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      invitaciones: [invitacionConductor()],
+      perfiles: [
+        {
+          id: "auth-conductor-ya-activo",
+          tenant_id: TENANT_A,
+          tipo_usuario: "conductor",
+          rol: "conductor",
+          estado: "activo",
+        },
+      ],
+    });
+
+    const resultado = await aceptarInvitacionPorTelefono(cliente, {
+      telefonoE164: TELEFONO_CONDUCTOR,
+      usuarioAuthId: "auth-conductor-ya-activo",
+      nombreCompleto: "Pedro Conductor",
+    });
+
+    expect(resultado).toEqual({
+      ok: true,
+      tenantId: TENANT_A,
+      usuarioId: "auth-conductor-ya-activo",
+      rol: "conductor",
+    });
+    // La invitación sigue PENDIENTE — el reintento no debió tocarla.
+    expect(estado.invitaciones[0].estado).toBe("pendiente");
   });
 });
 

@@ -60,11 +60,16 @@ import type { PostgrestError } from "@supabase/supabase-js";
 // descalce, no perpetuarlo.
 // -----------------------------------------------------------------------------
 
-/** Columnas de `public.invitaciones` HOY — migraciones 20260807000001 (§C) y 20260807000002 (§3). Sin `token`, a propósito. */
+/**
+ * Columnas de `public.invitaciones` HOY — migraciones 20260807000001 (§C),
+ * 20260807000002 (§3) y 20260915000001 (§5, agrega `telefono` — F4.a: el
+ * conductor entra por teléfono, no por correo). Sin `token`, a propósito.
+ */
 const COLUMNAS_VISTA_PUBLIC_INVITACIONES = [
   "id",
   "tenant_id",
   "email",
+  "telefono",
   "tipo_usuario",
   "rol",
   "seller_id",
@@ -84,7 +89,8 @@ const COLUMNAS_TABLA_BASE_INVITACIONES = [...COLUMNAS_VISTA_PUBLIC_INVITACIONES,
 export interface FilaInvitacionFalsa {
   id: string;
   tenant_id: string;
-  email: string;
+  email: string | null;
+  telefono?: string | null;
   tipo_usuario: string;
   rol: string;
   seller_id: string | null;

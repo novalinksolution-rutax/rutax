@@ -43,6 +43,7 @@ import { accionAnularLiquidacionPedido } from "@/app/(tenant)/operaciones/[pedid
 import { accionAnularLineaLiquidacion } from "./actions-linea";
 import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./acceso-app-conductor";
 import { DatosContactoConductor, type OrigenCorreo } from "./datos-contacto-conductor";
+import { enmascararTelefono } from "@/lib/telefono-cl";
 
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 
@@ -135,9 +136,12 @@ async function resolverEstadoAccesoApp(
     };
   }
 
+  // F4.a (2026-09-15): la invitación del conductor va por TELÉFONO, no por
+  // correo — ya no se selecciona `email`/`email_estado`/`email_motivo` (WhatsApp
+  // no se rastrea con esos campos; ver `enmascararTelefono`).
   const { data: invitacionData } = await cliente
     .from("invitaciones")
-    .select("email, estado, expira_en, email_estado, email_motivo")
+    .select("telefono, estado, expira_en")
     .eq("driver_id", driverId)
     .eq("tenant_id", tenantId)
     .eq("tipo_usuario", "conductor")
@@ -150,11 +154,9 @@ async function resolverEstadoAccesoApp(
   }
 
   const invitacion = invitacionData as {
-    email: string;
+    telefono: string | null;
     estado: string;
     expira_en: string;
-    email_estado: string | null;
-    email_motivo: string | null;
   };
   const expiraEnMs = new Date(invitacion.expira_en).getTime();
   const vigente = invitacion.estado === "pendiente" && expiraEnMs > Date.now();
@@ -163,12 +165,15 @@ async function resolverEstadoAccesoApp(
     return {
       acceso: {
         tipo: "invitacion_pendiente",
-        email: invitacion.email,
+        // `telefono` puede faltar solo en una invitación RESIDUAL creada antes de
+        // F4.a (por correo) — ver migración 20260915000001. No hay mascara que
+        // mostrar en ese caso puntual, así que se degrada a "—".
+        telefonoMascara: invitacion.telefono ? enmascararTelefono(invitacion.telefono) : "—",
         expiraEn: invitacion.expira_en,
-        emailEstado: invitacion.email_estado ?? null,
-        emailMotivo: invitacion.email_motivo ?? null,
       },
-      correo: { tipo: "invitacion_pendiente", email: invitacion.email },
+      // Una invitación por teléfono no es un contacto de correo: no hay email
+      // que mostrar en la sección de datos de contacto.
+      correo: { tipo: "sin_cuenta" },
     };
   }
 
@@ -334,6 +339,7 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
       <AccesoAppConductor
         driverId={driverId}
         nombreConductor={conductor.nombre_completo as string}
+        telefonoConductor={(conductor.telefono as string | null) ?? null}
         puedeInvitar={puedeInvitarUsuarios(sesion.usuario)}
         estadoInicial={estadoAccesoApp.acceso}
       />

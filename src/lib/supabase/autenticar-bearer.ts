@@ -78,3 +78,43 @@ export async function autenticarBearer(
     return null;
   }
 }
+
+/**
+ * Verifica un Bearer token de Supabase Auth SIN depender de los custom claims
+ * de `usuarios_perfil` (`tipo_usuario`/`tenant_id`/`driver_id`…).
+ *
+ * Existe para el canje de invitación del conductor por TELÉFONO (F4.a):
+ * en ese momento el `usuarios_perfil` todavía NO existe —es justo lo que el
+ * canje va a crear—, así que `autenticarBearer` no sirve: sus claims
+ * resolverían a los valores por defecto (`tipo_usuario: 'interno'`,
+ * `estado: 'invitado'`) porque el `custom_access_token_hook` no tiene nada
+ * de negocio que inyectar todavía. Lo único que hace falta acá es la
+ * identidad de Auth y su teléfono VERIFICADO por WhatsApp OTP — Supabase lo
+ * guarda en `user.phone`, en E.164 sin `+`, solo tras un `verifyOtp` exitoso.
+ *
+ * Nunca confíes en un teléfono que venga del body de la petición: solo el
+ * que trae el propio token autenticado es de fiar.
+ */
+export async function autenticarBearerSoloAuth(
+  authorizationHeader: string | null,
+): Promise<{ usuarioId: string; telefono: string | null } | null> {
+  if (!authorizationHeader?.startsWith("Bearer ")) return null;
+  const token = authorizationHeader.slice(7);
+  if (!token) return null;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return null;
+
+  const admin = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const {
+    data: { user },
+    error,
+  } = await admin.auth.getUser(token);
+  if (error || !user) return null;
+
+  return { usuarioId: user.id, telefono: user.phone ?? null };
+}

@@ -12,14 +12,17 @@
  * backend (`actions.ts`) repite el mismo chequeo antes de crear la invitación
  * — ocultar el botón en la UI no basta (CLAUDE.md).
  *
- * "Copiar enlace" es obligatorio, no opcional (el correo puede no llegar —
- * sandbox, rebote): mismo patrón que `sellers/boton-copiar-invitacion.tsx`,
- * el token se pide bajo demanda (nunca viaja en el HTML de la página) y cada
- * entrega queda auditada (`obtenerInvitacionPendienteConductor`).
+ * ⚠️ F4.a (2026-09-15): el conductor ya NO entra por correo. Se le invita por
+ * su TELÉFONO y recibe un código por WhatsApp en la app nativa — sin correo,
+ * sin PIN, sin enlace web que copiar. El diálogo deja de pedir nada: es una
+ * confirmación sobre el teléfono que ya vive en la ficha (sección de arriba,
+ * `DatosContactoConductor` / `EditorTelefonoConductor`). Si el conductor no
+ * tiene teléfono todavía, no se ofrece el botón de invitar — se pide cargarlo
+ * primero, porque ocultar sin más deja al courier sin saber qué hacer.
  */
 
-import { useId, useState, type FormEvent } from "react";
-import { Check, Copy, Loader2, ShieldAlert, Smartphone, UserPlus } from "lucide-react";
+import { useState } from "react";
+import { Smartphone, TriangleAlert, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -35,32 +38,38 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { formatearFecha } from "@/lib/formato-cl";
-import { invitarConductor, obtenerInvitacionPendienteConductor } from "./actions";
+import { enmascararTelefono } from "@/lib/telefono-cl";
+import { invitarConductor } from "./actions";
 
 export type EstadoAccesoAppConductor =
   | { tipo: "cuenta_activa" }
   | { tipo: "cuenta_suspendida" }
   | {
       tipo: "invitacion_pendiente";
-      email: string;
+      /** Últimos 4 dígitos, ya enmascarado (`+56 9 **** 5571`). Nunca el número entero. */
+      telefonoMascara: string;
       expiraEn: string;
-      emailEstado: string | null;
-      emailMotivo: string | null;
     }
   | { tipo: "sin_acceso"; ultimaInvitacionVencida: string | null };
 
 interface Props {
   driverId: string;
   nombreConductor: string;
+  /** E.164 sin `+`, o `null` si el conductor todavía no tiene teléfono cargado. */
+  telefonoConductor: string | null;
   puedeInvitar: boolean;
   estadoInicial: EstadoAccesoAppConductor;
 }
 
-export function AccesoAppConductor({ driverId, nombreConductor, puedeInvitar, estadoInicial }: Props) {
+export function AccesoAppConductor({
+  driverId,
+  nombreConductor,
+  telefonoConductor,
+  puedeInvitar,
+  estadoInicial,
+}: Props) {
   const [estado, setEstado] = useState<EstadoAccesoAppConductor>(estadoInicial);
 
   return (
@@ -93,11 +102,10 @@ export function AccesoAppConductor({ driverId, nombreConductor, puedeInvitar, es
           <div className="flex flex-wrap items-center gap-2">
             <DistintivoEstado tono="neutral" etiqueta="Invitación pendiente" />
             <span className="text-sm text-muted-foreground">
-              Enviada a {estado.email} · vence el {formatearFecha(estado.expiraEn)}
+              Le llega por WhatsApp al {estado.telefonoMascara} · vence el{" "}
+              {formatearFecha(estado.expiraEn)}
             </span>
           </div>
-          {avisoEntrega(estado.emailEstado, estado.emailMotivo)}
-          <BotonCopiarInvitacion driverId={driverId} nombreConductor={nombreConductor} />
         </div>
       )}
 
@@ -115,40 +123,35 @@ export function AccesoAppConductor({ driverId, nombreConductor, puedeInvitar, es
             </p>
           )}
           {puedeInvitar && (
-            <DialogInvitarConductor
-              driverId={driverId}
-              nombreConductor={nombreConductor}
-              onInvitado={(invitacion) =>
-                setEstado({
-                  tipo: "invitacion_pendiente",
-                  email: invitacion.email,
-                  expiraEn: invitacion.expiraEn,
-                  emailEstado: null,
-                  emailMotivo: null,
-                })
-              }
-            />
+            <>
+              {telefonoConductor ? (
+                <DialogInvitarConductor
+                  driverId={driverId}
+                  nombreConductor={nombreConductor}
+                  telefonoConductor={telefonoConductor}
+                  onInvitado={(invitacion) =>
+                    setEstado({
+                      tipo: "invitacion_pendiente",
+                      telefonoMascara: invitacion.telefonoMascara,
+                      expiraEn: invitacion.expiraEn,
+                    })
+                  }
+                />
+              ) : (
+                <div className="flex items-start gap-2 border border-attention-line bg-attention-bg px-3 py-2.5 text-sm text-attention-fg">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  <p className="leading-relaxed">
+                    Primero registra el teléfono del conductor para poder invitarlo por WhatsApp — usa
+                    el campo de teléfono en la sección de arriba.
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
     </div>
   );
-}
-
-/** Mismo criterio que `sellers/page.tsx` → `avisoEntrega`: solo dice algo cuando hay algo que hacer. */
-function avisoEntrega(estado: string | null, motivo: string | null) {
-  if (estado === "rebotado") {
-    return (
-      <p className="text-xs font-medium text-destructive">
-        El correo rebotó — no llegó
-        {motivo ? <span className="block font-normal text-muted-foreground">{motivo}</span> : null}
-      </p>
-    );
-  }
-  if (estado === "marcado_spam") {
-    return <p className="text-xs font-medium text-warning">Llegó, pero lo marcaron como spam</p>;
-  }
-  return null;
 }
 
 // -----------------------------------------------------------------------------
@@ -158,37 +161,26 @@ function avisoEntrega(estado: string | null, motivo: string | null) {
 function DialogInvitarConductor({
   driverId,
   nombreConductor,
+  telefonoConductor,
   onInvitado,
 }: {
   driverId: string;
   nombreConductor: string;
-  onInvitado: (invitacion: { email: string; expiraEn: string; emailEnviado: boolean }) => void;
+  telefonoConductor: string;
+  onInvitado: (invitacion: { telefonoMascara: string; expiraEn: string }) => void;
 }) {
-  const idBase = useId();
   const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function resetear() {
-    setEmail("");
-    setError(null);
-    setEnviando(false);
-  }
-
-  async function manejarEnvio(evento: FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
+  async function manejarInvitar() {
     if (enviando) return;
     setError(null);
-
-    const correo = email.trim().toLowerCase();
-    if (!correo || !correo.includes("@")) {
-      setError("Ingresa un correo válido.");
-      return;
-    }
-
     setEnviando(true);
-    const resultado = await invitarConductor(driverId, correo);
+
+    // El 2º parámetro es vestigial (ver `actions.ts`): la acción ignora
+    // cualquier valor y lee el teléfono directo de la fila del conductor.
+    const resultado = await invitarConductor(driverId, "");
     setEnviando(false);
 
     if (!resultado.ok) {
@@ -196,29 +188,20 @@ function DialogInvitarConductor({
       return;
     }
 
-    // El mensaje refleja lo que REALMENTE pasó con el correo — prometer un
-    // envío que no ocurrió deja al conductor esperando y al courier sin saber
-    // por qué nunca entró (mismo criterio que `formulario-invitar-seller.tsx`).
-    if (resultado.invitacion.emailEnviado) {
-      toast.success(`Invitamos a ${nombreConductor}.`, {
-        description: `Enviamos el correo a ${resultado.invitacion.email}. Si no le llega, usa "Copiar enlace" aquí mismo.`,
-      });
-    } else {
-      toast.success(`Creamos la invitación de ${nombreConductor}.`, {
-        description: 'No pudimos enviar el correo. Usa "Copiar enlace" para mandárselo tú.',
-      });
-    }
+    toast.success(`Invitamos a ${nombreConductor}.`, {
+      description: `Le llegará un código por WhatsApp al ${resultado.invitacion.telefonoMascara}.`,
+    });
 
     onInvitado(resultado.invitacion);
     setOpen(false);
-    resetear();
+    setError(null);
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        if (!v) resetear();
+        if (!v) setError(null);
         setOpen(v);
       }}
     >
@@ -232,135 +215,30 @@ function DialogInvitarConductor({
         <DialogHeader>
           <DialogTitle>Invitar a {nombreConductor} a la app</DialogTitle>
           <DialogDescription>
-            Le enviaremos un correo para que active su cuenta y elija su PIN de 6 números. Con ese
-            PIN entra a la app — no tiene que recordar ninguna contraseña.
+            Le enviaremos un código por WhatsApp al número{" "}
+            <span className="font-medium text-foreground">{enmascararTelefono(telefonoConductor)}</span>{" "}
+            para que entre a la app del conductor. No necesita correo ni contraseña.
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={manejarEnvio} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor={`${idBase}-email`}>Correo del conductor</Label>
-            <Input
-              id={`${idBase}-email`}
-              type="email"
-              autoFocus
-              autoComplete="off"
-              placeholder="conductor@ejemplo.cl"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setError(null);
-              }}
-              disabled={enviando}
-              aria-invalid={Boolean(error)}
-              aria-describedby={error ? `${idBase}-email-error` : `${idBase}-email-ayuda`}
-            />
-            {/* ⚠️ **Acá nace el error más probable del día uno.** Este campo pedía
-                un correo sin decir para qué servía, así que se escribía el que
-                hubiera a mano — y después el conductor, a las 16:00 en la bodega,
-                intenta entrar con SU correo y la app le dice que no está
-                registrado. Él no puede arreglarlo: tiene que llamar a quien
-                escribió esto.
-                Decirlo acá cuesta una línea; no decirlo cuesta una llamada en el
-                peor momento del día. */}
-            <p id={`${idBase}-email-ayuda`} className="text-sm text-fg-muted">
-              Es el correo con el que va a entrar a la app. Si usa Gmail, pon ese mismo.
-            </p>
-          </div>
+        {error && (
+          <Alert variant="destructive">
+            <TriangleAlert />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-          {error && (
-            <Alert variant="destructive" id={`${idBase}-email-error`}>
-              <ShieldAlert />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={enviando}>
-                Cancelar
-              </Button>
-            </DialogClose>
-            <Button type="submit" loading={enviando}>
-              {enviando ? "Invitando…" : "Enviar invitación"}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline" disabled={enviando}>
+              Cancelar
             </Button>
-          </DialogFooter>
-        </form>
+          </DialogClose>
+          <Button type="button" loading={enviando} onClick={manejarInvitar}>
+            {enviando ? "Invitando…" : "Invitar a la app"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Botón "Copiar enlace" — mismo patrón que `sellers/boton-copiar-invitacion.tsx`,
-// adaptado a conductor. No se reusa el componente de sellers directamente: vive
-// en la carpeta de `sellers/` y su acción está atada a `sellerId`; duplicar
-// esta pieza pequeña evita acoplar dos módulos que hoy no comparten frontera.
-// -----------------------------------------------------------------------------
-
-function BotonCopiarInvitacion({ driverId, nombreConductor }: { driverId: string; nombreConductor: string }) {
-  const [cargando, setCargando] = useState(false);
-  const [copiado, setCopiado] = useState(false);
-  /** Solo se llena si el portapapeles falló — es el plan B visible. */
-  const [enlaceVisible, setEnlaceVisible] = useState<string | null>(null);
-
-  async function manejarClic() {
-    if (cargando) return;
-    setCargando(true);
-    setEnlaceVisible(null);
-
-    const resultado = await obtenerInvitacionPendienteConductor(driverId);
-    setCargando(false);
-
-    if (!resultado.ok) {
-      toast.error(resultado.mensaje);
-      return;
-    }
-
-    const enlace = `${window.location.origin}/invitacion/${resultado.token}`;
-
-    try {
-      await navigator.clipboard.writeText(enlace);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
-      toast.success(`Enlace de ${nombreConductor} copiado — mándaselo a ${resultado.email}.`, {
-        description: "Es de un solo uso: quien lo abra entra como este conductor.",
-      });
-    } catch {
-      setEnlaceVisible(enlace);
-      toast.warning("No pudimos copiarlo solo — cópialo del campo de abajo.");
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={manejarClic}
-        disabled={cargando}
-        aria-label={`Copiar enlace de invitación de ${nombreConductor}`}
-      >
-        {cargando ? (
-          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-        ) : copiado ? (
-          <Check className="size-3.5" aria-hidden="true" />
-        ) : (
-          <Copy className="size-3.5" aria-hidden="true" />
-        )}
-        {copiado ? "Copiado" : "Copiar enlace"}
-      </Button>
-
-      {enlaceVisible ? (
-        <input
-          readOnly
-          autoFocus
-          value={enlaceVisible}
-          onFocus={(e) => e.currentTarget.select()}
-          className="w-full min-w-0 rounded-md border border-input bg-background px-2 py-1 font-mono text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-          aria-label={`Enlace de invitación de ${nombreConductor}`}
-        />
-      ) : null}
-    </div>
   );
 }
