@@ -3,38 +3,36 @@
 /**
  * Server Actions — aceptación de invitación (Pantallas C y J, lado invitado).
  *
- * Capa delgada de "ruta de servidor": resuelve el caso "persona nueva" vs.
- * "persona ya tiene cuenta" (criterio del documento de UX §2.2 Pantalla J —
- * "el backend resuelve esto vía `usuarioAuthId`") y delega SIEMPRE a
- * `aceptarInvitacion` para dejar `usuarios_perfil` consistente. No duplica
- * la validación de token/expiración/estado — esa vive única y exclusivamente
- * en `aceptarInvitacion`; aquí solo se resuelve "qué formulario mostrar" y
- * "cómo se crea/identifica el usuario de Auth detrás del token".
+ * Capa delgada de "ruta de servidor" sobre la aceptación PASSWORDLESS (Google
+ * o código OTP, F3) de seller y equipo interno — `guardarBorradorInvitacion`/
+ * `enviarCodigoInvitacion`/`verificarCodigoInvitacion`, al final del archivo,
+ * reusando la infra de F1. No duplica la validación de token/expiración/
+ * estado — esa vive única y exclusivamente en `aceptarInvitacion`
+ * (`@/modules/identidad/invitaciones`), a la que delega SIEMPRE
+ * `aplicarAceptacionInvitacionPasswordless`.
+ *
+ * ⚠️ **El conductor no pasa por ninguna función de este archivo.** Hasta el
+ * 2026-09-15 (F4) seguía definiendo un PIN de 6 dígitos con
+ * `aceptarInvitacionComoPersonaNueva`, retirada ese día: hoy se invita por
+ * TELÉFONO (`crearInvitacion` con `tipoUsuario: 'conductor'`) y entra por
+ * WhatsApp OTP desde la app nativa. `page.tsx` intercepta cualquier fila
+ * `valida` con `rol === 'conductor'` (solo puede ser una invitación de antes
+ * de esa fecha) antes de llegar a un formulario.
  *
  * Por qué `service_role` aquí también: resolver la invitación por token y
  * crear/ubicar el usuario de Auth ocurre ANTES de que exista una sesión con
- * claims del tenant (exactamente la situación que `aceptarInvitacion` ya
- * documenta — "el invitado puede no tener todavía sesión"). El propio
- * `aceptarInvitacion` exige un cliente con privilegios suficientes para
- * resolver `invitaciones`/`usuarios_perfil` fuera de RLS normal.
- *
- * F3 (login sin contraseña, 2026-09) agrega, al final del archivo,
- * `guardarBorradorInvitacion`/`enviarCodigoInvitacion`/`verificarCodigoInvitacion`
- * — la aceptación SIN contraseña (Google o código OTP) para seller y equipo
- * interno, reusando la infra de F1. El CONDUCTOR no pasa por ahí: sigue con
- * `aceptarInvitacionComoPersonaNueva` (PIN), arriba en este mismo archivo.
+ * claims del tenant. `aceptarInvitacion` exige un cliente con privilegios
+ * suficientes para resolver `invitaciones`/`usuarios_perfil` fuera de RLS
+ * normal.
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { aceptarInvitacion } from "@/modules/identidad/invitaciones";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
-import { rechazarPin, TEXTO_RECHAZO } from "@/modules/identidad/pin-conductor";
 import type { Rol } from "@/modules/identidad/roles";
 import {
   aplicarAceptacionInvitacionPasswordless,
   buscarInvitacionPorToken,
-  guardarWhatsAppInvitado,
 } from "@/modules/identidad/aceptacion-invitacion-passwordless";
 import {
   guardarBorrador as guardarBorradorInvitacionCookie,
@@ -133,244 +131,23 @@ async function existeCuentaConEmail(cliente: ClienteAdmin, email: string): Promi
 }
 
 // -----------------------------------------------------------------------------
-// 2. Aceptar — caso "persona nueva" (define su contraseña)
+// `aceptarInvitacionComoPersonaNueva` (PIN del conductor) y
+// `aceptarInvitacionComoPersonaExistente` (confirmación con contraseña) se
+// retiraron el 2026-09-15 (F4, cutover passwordless): el conductor se invita
+// por TELÉFONO (`crearInvitacion` con `tipoUsuario: 'conductor'`) y entra por
+// WhatsApp OTP desde la app nativa — nunca por este token. `page.tsx`
+// intercepta cualquier fila `valida` con `rol === 'conductor'` (solo puede
+// ser una invitación vieja) antes de llegar a un formulario. Ningún otro rol
+// usaba estas dos funciones: seller/interno ya pasaban por la variante
+// PASSWORDLESS de más abajo (F3).
 // -----------------------------------------------------------------------------
-
-export interface AceptarComoPersonaNuevaEntrada {
-  token: string;
-  nombreCompleto: string;
-  contrasena: string;
-  /**
-   * WhatsApp del seller, opcional. El formulario solo lo pide cuando la
-   * invitación es de tipo `seller` — un interno del courier o un conductor no
-   * representan a nadie a quien Rutax le mande avisos de retiro.
-   */
-  telefonoWhatsApp?: string;
-  /**
-   * ⚠️ La casilla de consentimiento. Sin ella el teléfono NO se guarda.
-   *
-   * Vive en ESTA pantalla y no en una del courier porque el permiso lo tiene
-   * que dar el interesado. Es el respaldo más fuerte que existe ante Meta, y la
-   * razón del rediseño del 2026-08-25.
-   *
-   * ⚠️ Se puso primero, por error, en `/activar-cuenta` — que es el flujo del
-   * DUEÑO del courier, donde `tipo_usuario` nunca es `seller` y el campo no se
-   * mostraba jamás. El seller entra por acá, con token. Los dos caminos se
-   * parecen y no son el mismo.
-   */
-  aceptaWhatsApp?: boolean;
-}
-
-export type AceptarInvitacionResultado =
-  | { ok: true }
-  | { ok: false; tipo: "validacion" | "conflicto" | "no_encontrado" | "desconocido"; mensaje: string };
-
-/**
- * Crea el usuario de Auth (ya probó control del correo al llegar con el token
- * válido — `email_confirm: true`) con la contraseña que define, y deja
- * `usuarios_perfil` consistente vía `aceptarInvitacion`.
- */
-export async function aceptarInvitacionComoPersonaNueva(
-  entrada: AceptarComoPersonaNuevaEntrada,
-): Promise<AceptarInvitacionResultado> {
-  const nombreCompleto = entrada.nombreCompleto.trim();
-  if (!nombreCompleto) {
-    return { ok: false, tipo: "validacion", mensaje: "Tu nombre completo es obligatorio." };
-  }
-
-  const cliente = crearClienteServiceRole();
-
-  // Releer la invitación para obtener el email exacto — nunca confiar en un
-  // valor que el cliente pudo manipular en el formulario.
-  //
-  // `.schema("identidad")` obligatorio: se filtra POR `token`, ausente en
-  // `public.invitaciones` (vista sin `token` desde la migración
-  // 20260807000001, a propósito). Sin esto, el SELECT falla con 42703 y nadie
-  // puede activar su cuenta como "persona nueva". No quitar esto.
-  const { data: invitacion, error: buscarError } = await cliente
-    .schema("identidad")
-    .from("invitaciones")
-    .select("email, rol")
-    .eq("token", entrada.token.trim())
-    .maybeSingle();
-
-  if (buscarError || !invitacion) {
-    return { ok: false, tipo: "no_encontrado", mensaje: "Este enlace ya no es válido." };
-  }
-
-  const email = (invitacion.email as string).trim().toLowerCase();
-
-  /**
-   * ⚠️ **El conductor define un PIN de 6 dígitos, no una contraseña.**
-   *
-   * El rol se lee **de la invitación**, no de lo que mandó el formulario: si
-   * viniera del cliente, cualquiera podría declararse conductor para saltarse la
-   * regla de 8 caracteres y dejar su cuenta con seis dígitos.
-   *
-   * Y la comprobación vive acá, en el servidor, aunque la pantalla ya la haga:
-   * un formulario se salta, una Server Action no. Es la mitad que manda.
-   */
-  const esConductor = invitacion.rol === "conductor";
-  if (esConductor) {
-    const problema = rechazarPin(entrada.contrasena);
-    if (problema) {
-      return { ok: false, tipo: "validacion", mensaje: TEXTO_RECHAZO[problema] };
-    }
-  } else if (entrada.contrasena.length < 8) {
-    return { ok: false, tipo: "validacion", mensaje: "La contraseña debe tener al menos 8 caracteres." };
-  }
-
-  const { data: creado, error: crearError } = await cliente.auth.admin.createUser({
-    email,
-    password: entrada.contrasena,
-    email_confirm: true,
-    user_metadata: { nombre_completo: nombreCompleto },
-  });
-
-  if (crearError || !creado?.user) {
-    const mensaje = (crearError?.message ?? "").toLowerCase();
-    if (mensaje.includes("already") || mensaje.includes("registered") || mensaje.includes("exists")) {
-      return {
-        ok: false,
-        tipo: "conflicto",
-        mensaje: "Ya existe una cuenta con este correo. Intenta iniciar sesión en lugar de crear una nueva.",
-      };
-    }
-    return {
-      ok: false,
-      tipo: "desconocido",
-      mensaje: "No pudimos crear tu cuenta por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
-    };
-  }
-
-  return finalizarAceptacion(cliente, entrada.token, creado.user.id, nombreCompleto);
-}
-
-// -----------------------------------------------------------------------------
-// 3. Aceptar — caso "persona ya tiene cuenta" (confirma, sin pedir contraseña)
-// -----------------------------------------------------------------------------
-
-export interface AceptarComoPersonaExistenteEntrada {
-  token: string;
-}
-
-/**
- * La persona ya tiene cuenta (en este u otro tenant). Si ya inició sesión
- * (mismo correo), aceptamos directo con su `usuarioId` de sesión — la
- * fricción más evitable de todas (criterio #4: nunca pedir un dato que el
- * sistema ya tiene). Si no hay sesión activa con ese correo, le pedimos
- * iniciar sesión primero (no podemos "aceptar en su nombre" sin probar que es
- * efectivamente esa persona).
- */
-export async function aceptarInvitacionComoPersonaExistente(
-  entrada: AceptarComoPersonaExistenteEntrada,
-): Promise<AceptarInvitacionResultado | { ok: false; tipo: "requiere_inicio_sesion"; mensaje: string; email: string }> {
-  const cliente = crearClienteServiceRole();
-
-  // `.schema("identidad")` obligatorio: se filtra POR `token`, ausente en
-  // `public.invitaciones` (vista sin `token` desde la migración
-  // 20260807000001, a propósito). Sin esto, el SELECT falla con 42703 y nadie
-  // puede confirmar la invitación como "persona ya existente". No quitar esto.
-  const { data: invitacion, error: buscarError } = await cliente
-    .schema("identidad")
-    .from("invitaciones")
-    .select("email")
-    .eq("token", entrada.token.trim())
-    .maybeSingle();
-
-  if (buscarError || !invitacion) {
-    return { ok: false, tipo: "no_encontrado", mensaje: "Este enlace ya no es válido." };
-  }
-
-  const emailInvitacion = (invitacion.email as string).trim().toLowerCase();
-
-  const supabaseSesion = await createClient();
-  const {
-    data: { user: usuarioSesion },
-  } = await supabaseSesion.auth.getUser();
-
-  if (!usuarioSesion || (usuarioSesion.email ?? "").trim().toLowerCase() !== emailInvitacion) {
-    return {
-      ok: false,
-      tipo: "requiere_inicio_sesion",
-      mensaje: `Esta invitación es para ${emailInvitacion}. Inicia sesión con esa cuenta para aceptarla.`,
-      email: emailInvitacion,
-    };
-  }
-
-  const nombreCompleto =
-    typeof usuarioSesion.user_metadata?.["nombre_completo"] === "string"
-      ? (usuarioSesion.user_metadata["nombre_completo"] as string)
-      : emailInvitacion;
-
-  return finalizarAceptacion(cliente, entrada.token, usuarioSesion.id, nombreCompleto);
-}
-
-// -----------------------------------------------------------------------------
-// Helper compartido — delega SIEMPRE a `aceptarInvitacion` (única fuente de
-// verdad de las transiciones de estado de la invitación y del perfil).
-// -----------------------------------------------------------------------------
-
-async function finalizarAceptacion(
-  cliente: ClienteAdmin,
-  token: string,
-  usuarioAuthId: string,
-  nombreCompleto: string,
-  whatsapp?: { telefono: string | undefined; acepta: boolean },
-): Promise<AceptarInvitacionResultado> {
-  try {
-    const aceptada = await aceptarInvitacion(cliente, {
-      token: token.trim(),
-      usuarioAuthId,
-      nombreCompleto,
-    });
-
-    // Después de que el perfil quedó consistente, nunca antes: si el WhatsApp
-    // se guardara primero y la aceptación fallara, quedaría un consentimiento
-    // colgando de un seller cuya cuenta no llegó a existir.
-    if (whatsapp) {
-      await guardarWhatsAppInvitado(cliente, {
-        tenantId: aceptada.tenantId,
-        usuarioAuthId,
-        telefono: whatsapp.telefono,
-        acepta: whatsapp.acepta,
-      });
-    }
-    return { ok: true };
-  } catch (error) {
-    if (error instanceof ErrorNoEncontrado) {
-      return { ok: false, tipo: "no_encontrado", mensaje: "Este enlace ya no es válido." };
-    }
-    if (error instanceof ErrorConflicto) {
-      return { ok: false, tipo: "conflicto", mensaje: error.message };
-    }
-    if (error instanceof ErrorValidacion) {
-      return { ok: false, tipo: "validacion", mensaje: error.message };
-    }
-    return {
-      ok: false,
-      tipo: "desconocido",
-      mensaje: "No pudimos completar la activación por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
-    };
-  }
-}
-
-// `guardarWhatsAppInvitado` (antes `guardarWhatsAppDelSellerInvitado`, privada
-// de este archivo) se factorizó a `@/modules/identidad/aceptacion-invitacion-passwordless`
-// para que el flujo con contraseña (arriba) y el passwordless (F3, más abajo)
-// comparta una sola implementación del mismo `insert` + bitácora — dos copias
-// del mismo efecto terminan discrepando con el tiempo. Sigue siendo el ORIGEN
-// preferido de todo destinatario de notificaciones (el número lo pone su
-// dueño y el consentimiento lo marca él mismo), best-effort, y solo para
-// sellers.
 
 // =============================================================================
 // F3 — Aceptación PASSWORDLESS (Google o código OTP), para seller y equipo
-// interno. El CONDUCTOR NO pasa por acá: sigue con
-// `aceptarInvitacionComoPersonaNueva` (PIN), arriba en este archivo —
-// `buscarInvitacionPorToken` (del módulo compartido) trata el token de un
-// conductor como "no encontrado", así que las tres funciones de abajo lo
-// bloquean sin tener que acordarse de filtrarlo cada una por su cuenta.
+// interno. El CONDUCTOR NO pasa por acá — `buscarInvitacionPorToken` (del
+// módulo compartido) trata su token como "no encontrado", así que las tres
+// funciones de abajo lo bloquean sin tener que acordarse de filtrarlo cada
+// una por su cuenta.
 //
 // Reusa la infra de F1 (alta de empresa): la misma cookie firmada de un solo
 // uso para sobrevivir el viaje a Google (`borrador-invitacion.ts`, molde de

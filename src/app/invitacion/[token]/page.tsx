@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
 
 import { resolverInvitacionPorToken } from "./actions";
-import { EstadosFinales } from "./estados-finales";
+import { EstadosFinales, FinalInvitacionConductorPorApp } from "./estados-finales";
 import { FormularioAceptacion } from "./formulario-aceptacion";
 
 export const metadata: Metadata = {
@@ -64,6 +64,15 @@ export default async function PaginaAceptarInvitacion({ params, searchParams }: 
 
   if (estado.estado !== "valida") {
     return <EstadosFinales estado={estado} token={token} />;
+  }
+
+  // Fila `valida` pero de un CONDUCTOR: solo puede ser una invitación creada
+  // antes del 2026-09-15 (F4), cuando el conductor todavía se invitaba por
+  // correo con este mismo token. Hoy `crearInvitacion` nunca genera una de
+  // estas para `rol === 'conductor'` — entra por teléfono, fuera de esta
+  // pantalla — así que no hay `FormularioAceptacion` que mostrarle.
+  if (estado.rol === "conductor") {
+    return <FinalInvitacionConductorPorApp />;
   }
 
   return (

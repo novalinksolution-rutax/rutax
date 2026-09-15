@@ -1,4 +1,5 @@
 
+import { redirect } from "next/navigation";
 import { UserRound } from "lucide-react";
 import { exigirSuperAdmin, type ActorSuperAdmin } from "@/modules/plataforma/autorizacion-admin";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +8,6 @@ import { BannerSuplantacion } from "@/components/app-shell/banner-suplantacion";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { leerSoporteActivo } from "@/modules/plataforma/soporte";
 import { cerrarSesionAdmin } from "./acciones-sesion";
-import { FormularioLoginAdmin } from "./formulario-login-admin";
 import { DistintivoBackstage } from "./distintivo-backstage";
 import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
 import { PanelEnrolamientoTotp } from "./seguridad/panel-enrolamiento-totp";
@@ -69,8 +69,11 @@ const GRUPOS_ADMIN: GrupoNav[] = [
  * admin). NO exige AAL2 por sí sola: este layout decide qué renderizar según
  * el AAL resuelto de la sesión:
  *
- *   - Sin sesión de super-admin (`exigirSuperAdmin` lanza) → formulario de
- *     login (`FormularioLoginAdmin`).
+ *   - Sin sesión de super-admin (`exigirSuperAdmin` lanza) → `redirect("/login")`
+ *     (F4.d, 2026-09-15: el backstage dejó de tener su propio formulario de
+ *     correo+contraseña — el super-admin entra por `/login` como cualquier
+ *     otro usuario, y `/` lo enruta a `/admin/suscripciones` por su
+ *     `tipo_usuario === 'super_admin'`; ver `src/app/page.tsx`).
  *   - Sesión válida, SIN ningún factor TOTP enrolado
  *     (`aal==='aal1' && aalSiguiente==='aal1'`) → pantalla de enrolamiento
  *     INLINE (`PanelEnrolamientoTotp`, `./seguridad/panel-enrolamiento-totp.tsx`,
@@ -96,13 +99,14 @@ const GRUPOS_ADMIN: GrupoNav[] = [
  * este mismo layout resolviendo su propio estado de MFA — ningún `children`
  * (ninguna página hija) se renderiza sin AAL2.
  *
- * NOTA de implementación: este layout NO llama `redirect()` — solo cambia qué
- * árbol renderiza según el estado del actor. Ojo si se copia este patrón a
- * una página que sí redirija: Next.js implementa `redirect()` lanzando un
- * error especial (`NEXT_REDIRECT`) que un `catch` genérico atraparía por error
- * si ambos conviven en el mismo `try` (gotcha ya conocido en este repo —
- * ver `login/page.tsx`, que resuelve el booleano DENTRO del `try` pero llama
- * `redirect()` fuera de él).
+ * NOTA de implementación: el `redirect("/login")` de la rama "sin actor" va
+ * FUERA del `try`/`catch` que resuelve `exigirSuperAdmin()` — a propósito.
+ * Next.js implementa `redirect()` lanzando un error especial (`NEXT_REDIRECT`)
+ * que un `catch` genérico atraparía por error si ambos convivieran en el
+ * mismo `try` (gotcha ya conocido en este repo — ver `login/page.tsx`, que
+ * resuelve el booleano DENTRO del `try` pero llama `redirect()` fuera de él).
+ * El resto del layout (AAL1/AAL2) sigue sin llamar `redirect()`: solo cambia
+ * qué árbol renderiza según el estado del actor.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   let actor: ActorSuperAdmin | null = null;
@@ -112,8 +116,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     actor = null;
   }
 
+  // F4.d (2026-09-15): el backstage ya no tiene login propio. Sin sesión de
+  // super-admin, se manda a la puerta única del producto — `/` enruta un
+  // `super_admin` autenticado de vuelta a `/admin/suscripciones` (ver
+  // `src/app/page.tsx`), así que el viaje de ida y vuelta es transparente.
   if (!actor) {
-    return <FormularioLoginAdmin />;
+    redirect("/login");
   }
 
   if (actor.aal !== "aal2") {

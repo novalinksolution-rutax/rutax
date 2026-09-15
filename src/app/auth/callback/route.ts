@@ -34,10 +34,10 @@
  * revisa PRIMERO — antes de registro y de login — distinguida por la cookie de
  * `borrador-invitacion.ts` (nunca por un parámetro manipulable): alguien está
  * aceptando una invitación de seller o de equipo interno por Google. El
- * CONDUCTOR no pasa por acá — sigue con su PIN, vía
- * `aceptarInvitacionComoPersonaNueva` en `invitacion/[token]/actions.ts`; el
- * módulo compartido (`aceptacion-invitacion-passwordless.ts`) lo bloquea
- * tratando su token como "no encontrado".
+ * CONDUCTOR no pasa por acá: desde F4 (2026-09-15) se invita por teléfono y
+ * entra por WhatsApp OTP desde la app nativa, nunca por este callback; el
+ * módulo compartido (`aceptacion-invitacion-passwordless.ts`) bloquea su
+ * token tratándolo como "no encontrado".
  */
 
 import { type NextRequest, NextResponse } from "next/server";

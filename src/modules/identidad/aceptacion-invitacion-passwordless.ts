@@ -5,11 +5,11 @@
  * =============================================================================
  * F1 le quitó la contraseña al alta de EMPRESA (Google o código OTP, vía
  * `provisionarTenantParaAuthUser`); F3 hace lo mismo para la ACEPTACIÓN de
- * invitación de seller y equipo interno. El CONDUCTOR queda intacto: sigue
- * definiendo su PIN de 6 dígitos vía `aceptarInvitacionComoPersonaNueva`
- * (`invitacion/[token]/actions.ts`) — este módulo lo bloquea explícitamente
- * (ver `buscarInvitacionPorToken`) para que nadie pueda forzar el token de un
- * conductor por este camino.
+ * invitación de seller y equipo interno. El CONDUCTOR no pasa por acá: desde
+ * F4 (2026-09-15) se invita por TELÉFONO y entra por WhatsApp OTP desde la
+ * app nativa (`aceptarInvitacionPorTelefono`, `identidad/invitaciones.ts`) —
+ * este módulo lo bloquea explícitamente (ver `buscarInvitacionPorToken`) para
+ * que nadie pueda forzar el token de un conductor por este camino.
  *
  * NO reemplaza `aceptarInvitacion` (`identidad/invitaciones.ts`, intocable):
  * sigue siendo la única fuente de verdad de las transiciones de
@@ -22,10 +22,8 @@
  *     limpieza de la cookie terminara), NO se reintenta `aceptarInvitacion`
  *     — la invitación ya quedaría `aceptada` y lanzaría `ErrorConflicto`.
  *   - El destino post-aceptación (seller → conectar ML; interno → raíz).
- *   - Reaplicar el WhatsApp del seller, con el mismo criterio best-effort que
- *     el flujo con contraseña (`guardarWhatsAppInvitado`, factorizado desde
- *     `invitacion/[token]/actions.ts` para que ambos flujos compartan una
- *     sola implementación).
+ *   - Reaplicar el WhatsApp del seller (`guardarWhatsAppInvitado`,
+ *     best-effort, más abajo en este mismo archivo).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";

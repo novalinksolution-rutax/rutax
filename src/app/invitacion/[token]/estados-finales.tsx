@@ -62,6 +62,30 @@ import type { EstadoInvitacionPublica } from "./actions";
 
 type FinalInvitacion = Exclude<EstadoInvitacionPublica, { estado: "valida" }>;
 
+/**
+ * El sexto final, aparte del switch de abajo: una invitación de CONDUCTOR que
+ * de algún modo sigue `valida` (fila creada antes del 2026-09-15, cuando el
+ * conductor todavía se invitaba por correo con un token web).
+ *
+ * Desde F4 (rediseño de onboarding) el conductor se invita por TELÉFONO y
+ * entra por WhatsApp OTP desde la app nativa — nunca por este enlace. No es
+ * un error del sistema ni de la persona: es un camino que dejó de existir. Por
+ * eso no reutiliza ninguno de los cinco tonos de arriba tal cual (no venció,
+ * no la cancelaron, no es un enlace roto) y por eso, igual que los otros
+ * cuatro finales sin formulario, es servidor puro — a quien le llega este
+ * enlace viejo no hay que bajarle el bundle de `FormularioAceptacion`.
+ */
+export function FinalInvitacionConductorPorApp() {
+  return (
+    <Final
+      tono="neutral"
+      rotulo="Solo por la app"
+      titulo="Los conductores entran por la app de Rutax"
+      cuerpo="Este enlace ya no se usa: hoy el conductor entra a Rutax desde la app, con su número de teléfono y sin contraseña. Pídele a tu coordinador que te invite de nuevo si todavía no puedes entrar."
+    />
+  );
+}
+
 export function EstadosFinales({ estado, token }: { estado: FinalInvitacion; token: string }) {
   switch (estado.estado) {
     // ── 1 · Ya se usó ────────────────────────────────────────────────────
