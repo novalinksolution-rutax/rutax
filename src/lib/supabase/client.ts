@@ -1,16 +1,29 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { dominioCookieSupabase } from "./dominio-cookie";
 
 /**
  * Cliente de Supabase para el NAVEGADOR.
  * =====================================================================
  * `createBrowserClient` memoiza: todas las llamadas devuelven la MISMA
  * instancia (`@supabase/ssr` guarda un singleton en módulo).
+ *
+ * `cookieOptions.domain` se deriva del host actual con
+ * `dominioCookieSupabase` (ver ese módulo para el porqué): en `rutax.io`/
+ * `www.rutax.io` las cookies de sesión —incluido el `code_verifier` de
+ * PKCE— quedan en el dominio compartido `.rutax.io` para que sobrevivan
+ * al 308 de `www` al apex. En local/preview no se fija `domain` (cookie
+ * host-only, comportamiento por defecto de la librería).
  */
 export function createClient(): SupabaseClient {
+  const dominio = dominioCookieSupabase(
+    typeof window !== "undefined" ? window.location.hostname : undefined,
+  );
+
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    dominio ? { cookieOptions: { domain: dominio } } : undefined,
   );
 }
 
