@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { crearTenantConDueno, resolverRedirectToActivacionCuenta } from "./onboarding";
+import {
+  activarPerfilDueno,
+  buscarPerfilPorAuthUserId,
+  crearTenantConDueno,
+  provisionarTenantParaAuthUser,
+  resolverRedirectToActivacionCuenta,
+} from "./onboarding";
 import { ErrorConflicto, ErrorValidacion } from "./errores";
 
 // -----------------------------------------------------------------------------
@@ -105,6 +111,39 @@ function crearClienteFalso(opciones?: {
           estado.perfiles.push(fila);
           return { data: null, error: null };
         },
+        // `buscarPerfilPorAuthUserId`: select().eq('id', ...).maybeSingle()
+        select: (_columnas: string) => ({
+          eq: (_col: string, valor: string) => ({
+            maybeSingle: async () => {
+              const perfil = estado.perfiles.find((p) => p.id === valor);
+              return { data: perfil ?? null, error: null };
+            },
+          }),
+        }),
+        // `deshacerPerfil` (compensación en autoservicio): delete().eq('id', ...)
+        delete: () => ({
+          eq: async (_col: string, valor: string) => {
+            estado.perfiles = estado.perfiles.filter((p) => p.id !== valor);
+            return { data: null, error: null };
+          },
+        }),
+        // `activarPerfilDueno`: update({estado:'activo'}).eq('id',...).eq('estado','invitado').select().maybeSingle()
+        update: (cambios: Record<string, unknown>) => ({
+          eq: (col1: string, valor1: string) => ({
+            eq: (col2: string, valor2: string) => ({
+              select: (_columnas: string) => ({
+                maybeSingle: async () => {
+                  const perfil = estado.perfiles.find(
+                    (p) => p[col1] === valor1 && p[col2] === valor2,
+                  );
+                  if (!perfil) return { data: null, error: null };
+                  Object.assign(perfil, cambios);
+                  return { data: { tenant_id: perfil.tenant_id, rol: perfil.rol }, error: null };
+                },
+              }),
+            }),
+          }),
+        }),
       };
     }
 
@@ -343,9 +382,12 @@ describe("crearTenantConDueno — redirectTo de activación (no depender de la p
     }
   });
 
-  it("resolverRedirectToActivacionCuenta arma la URL sobre APP_PUBLIC_URL + /activar-cuenta", () => {
+  it("resolverRedirectToActivacionCuenta arma la URL sobre APP_PUBLIC_URL + /dashboard", () => {
+    // F1 retiró `/activar-cuenta`: el dueño invitado por el backstage ya no
+    // define contraseña, así que el destino tras aceptar el enlace pasa a ser
+    // directo su panel.
     process.env.APP_PUBLIC_URL = "https://rutax.io";
-    expect(resolverRedirectToActivacionCuenta()).toBe("https://rutax.io/activar-cuenta");
+    expect(resolverRedirectToActivacionCuenta()).toBe("https://rutax.io/dashboard");
   });
 
   it("resolverRedirectToActivacionCuenta es undefined si el entorno no declara ninguna URL", () => {
@@ -359,10 +401,10 @@ describe("crearTenantConDueno — redirectTo de activación (no depender de la p
     await crearTenantConDueno(cliente, ENTRADA_VALIDA);
 
     expect(estado.opcionesInvitacion).toHaveLength(1);
-    expect(estado.opcionesInvitacion[0]?.redirectTo).toBe("https://rutax.io/activar-cuenta");
+    expect(estado.opcionesInvitacion[0]?.redirectTo).toBe("https://rutax.io/dashboard");
   });
 
-  it("no manda un redirectTo vacío ni la ruta relativa sola — siempre absoluto sobre /activar-cuenta", async () => {
+  it("no manda un redirectTo vacío ni la ruta relativa sola — siempre absoluto sobre /dashboard", async () => {
     process.env.APP_PUBLIC_URL = "https://rutax.io/";
     const { cliente, estado } = crearClienteFalso();
 
@@ -371,8 +413,126 @@ describe("crearTenantConDueno — redirectTo de activación (no depender de la p
     const redirectTo = estado.opcionesInvitacion[0]?.redirectTo;
     expect(redirectTo).toBeTruthy();
     expect(redirectTo).not.toBe("");
-    expect(redirectTo).not.toBe("/activar-cuenta");
-    expect(redirectTo).toMatch(/^https?:\/\/.+\/activar-cuenta$/);
+    expect(redirectTo).not.toBe("/dashboard");
+    expect(redirectTo).toMatch(/^https?:\/\/.+\/dashboard$/);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// F1 — el mismo cliente falso de arriba sirve para probar la mitad reusable
+// (`provisionarTenantParaAuthUser`) directo, como la usa el autoservicio de
+// `/registro` y `/auth/callback`: sin `inviteUserByEmail` de por medio, con un
+// `authUserId` que YA existe (lo resolvió Google o `verifyOtp`).
+// -----------------------------------------------------------------------------
+describe("provisionarTenantParaAuthUser — autoservicio (estado activo, sin compensar el auth user)", () => {
+  it("crea tenant + perfil ACTIVO (sin invitar por correo) para un authUserId preexistente", async () => {
+    const { cliente, estado } = crearClienteFalso();
+    // Simula que Google/verifyOtp ya resolvió esta identidad — sin pasar por
+    // `inviteUserByEmail`.
+    estado.usuariosAuth.push({ id: "auth-google-1", email: "dueno@despachosrapidos.cl" });
+
+    const resultado = await provisionarTenantParaAuthUser(
+      cliente,
+      "auth-google-1",
+      ENTRADA_VALIDA,
+      { estado: "activo", compensarAuthUser: false },
+    );
+
+    expect(resultado.duenoUsuarioId).toBe("auth-google-1");
+    expect(estado.perfiles).toHaveLength(1);
+    expect(estado.perfiles[0]).toMatchObject({ id: "auth-google-1", estado: "activo", rol: "dueno" });
+  });
+
+  it("🔴 si falla el INSERT de áreas, deshace el PERFIL (no el usuario Auth, que no es nuestro)", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      fallarEnAreas: { code: "XX000", message: "fallo al encender áreas" },
+    });
+    estado.usuariosAuth.push({ id: "auth-google-1", email: "dueno@despachosrapidos.cl" });
+
+    await expect(
+      provisionarTenantParaAuthUser(cliente, "auth-google-1", ENTRADA_VALIDA, {
+        estado: "activo",
+        compensarAuthUser: false,
+      }),
+    ).rejects.toThrow();
+
+    // El usuario Auth NUNCA se toca (no es nuestro): sigue existiendo.
+    expect(estado.usuariosAuth.some((u) => u.id === "auth-google-1")).toBe(true);
+    // Pero el perfil y el tenant a medio crear sí se deshacen.
+    expect(estado.perfiles).toHaveLength(0);
+    expect(estado.tenants).toHaveLength(0);
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  it("si falla el INSERT de tenants (RUT duplicado), NO borra el usuario Auth cuando compensarAuthUser es false", async () => {
+    const { cliente, estado } = crearClienteFalso();
+    estado.usuariosAuth.push({ id: "auth-google-1", email: "primero@nuevo.cl" });
+    await provisionarTenantParaAuthUser(cliente, "auth-google-1", ENTRADA_VALIDA, {
+      estado: "activo",
+      compensarAuthUser: false,
+    });
+
+    estado.usuariosAuth.push({ id: "auth-google-2", email: "segundo@nuevo.cl" });
+    await expect(
+      provisionarTenantParaAuthUser(
+        cliente,
+        "auth-google-2",
+        { ...ENTRADA_VALIDA, dueno: { email: "segundo@nuevo.cl", nombreCompleto: "Segundo" } },
+        { estado: "activo", compensarAuthUser: false },
+      ),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+
+    expect(estado.usuariosAuth.some((u) => u.id === "auth-google-2")).toBe(true);
+  });
+});
+
+describe("buscarPerfilPorAuthUserId", () => {
+  it("devuelve null cuando no hay perfil para ese authUserId", async () => {
+    const { cliente } = crearClienteFalso();
+    await expect(buscarPerfilPorAuthUserId(cliente, "sin-perfil")).resolves.toBeNull();
+  });
+
+  it("devuelve tenantId/tipoUsuario/rol cuando el perfil existe", async () => {
+    const { cliente, estado } = crearClienteFalso();
+    await crearTenantConDueno(cliente, ENTRADA_VALIDA);
+    const authUserId = estado.usuariosAuth[0].id;
+
+    const perfil = await buscarPerfilPorAuthUserId(cliente, authUserId);
+    expect(perfil).toEqual({
+      tenantId: estado.tenants[0].id,
+      tipoUsuario: "interno",
+      rol: "dueno",
+      estado: "invitado",
+    });
+  });
+});
+
+describe("activarPerfilDueno", () => {
+  it("transiciona invitado → activo y registra usuario.activado en bitácora", async () => {
+    const { cliente, estado } = crearClienteFalso();
+    await crearTenantConDueno(cliente, ENTRADA_VALIDA);
+    const authUserId = estado.usuariosAuth[0].id;
+    expect(estado.perfiles[0].estado).toBe("invitado");
+
+    const resultado = await activarPerfilDueno(cliente, authUserId);
+
+    expect(resultado).toEqual({ tenantId: estado.tenants[0].id, rol: "dueno" });
+    expect(estado.perfiles[0].estado).toBe("activo");
+    const entrada = estado.bitacora.find((b) => b.accion === "usuario.activado");
+    expect(entrada).toMatchObject({ actor_usuario_id: authUserId, entidad_id: authUserId });
+  });
+
+  it("🔴 idempotente: si ya estaba activo, no hace nada y devuelve null (doble clic en el enlace)", async () => {
+    const { cliente, estado } = crearClienteFalso();
+    await crearTenantConDueno(cliente, ENTRADA_VALIDA);
+    const authUserId = estado.usuariosAuth[0].id;
+    await activarPerfilDueno(cliente, authUserId);
+    const bitacoraTrasLaPrimera = estado.bitacora.length;
+
+    const segundaVez = await activarPerfilDueno(cliente, authUserId);
+
+    expect(segundaVez).toBeNull();
+    expect(estado.bitacora).toHaveLength(bitacoraTrasLaPrimera);
   });
 });
 

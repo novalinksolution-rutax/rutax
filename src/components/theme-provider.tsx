@@ -43,16 +43,16 @@ import type { ComponentProps } from "react"
  * **no toca la preferencia guardada**, así que quien pasa por el login no se
  * lleva el tema claro al resto del producto.
  *
- * ⚠️ **Son las TRES de la puerta, no una.** La decisión fue «claro fijo solo en
- * el login», y al llegar el diseño de recuperar contraseña el tablero zanjó que
- * esas dos pantallas **no son un flujo aparte: son la misma puerta con otro
- * cuerpo** — misma columna, mismo lienzo, misma marca. Dejarlas siguiendo el
- * tema del sistema haría que pedir un enlace cambiara de color a media puerta.
+ * ⚠️ **Antes eran TRES rutas de la misma puerta** (login + recuperar +
+ * restablecer contraseña, misma columna `MarcoPuerta`, mismo lienzo, misma
+ * marca). F1 retiró las otras dos (`/recuperar-contrasena`,
+ * `/restablecer-contrasena` ya no existen: el login es sin contraseña,
+ * Google o código por correo) — queda una sola puerta, y una sola ruta acá.
  *
  * El resto de las pantallas sin sesión —registro, activar, legales, seguimiento—
  * sigue la regla 44.
  */
-const RUTAS_EN_CLARO = ["/login", "/recuperar-contrasena", "/restablecer-contrasena"]
+const RUTAS_EN_CLARO = ["/login"]
 
 export function ThemeProvider({ children, ...props }: ComponentProps<typeof NextThemesProvider>) {
   const ruta = usePathname()

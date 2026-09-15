@@ -6,11 +6,16 @@ export const metadata: Metadata = {
   title: "Crea tu cuenta de courier",
 };
 
+interface PaginaRegistroProps {
+  searchParams: Promise<{ error?: string }>;
+}
+
 /** Pantalla A — Alta de la empresa (RF-006). Landing pública / auto-servicio. */
-export default function PaginaRegistro() {
+export default async function PaginaRegistro({ searchParams }: PaginaRegistroProps) {
+  const { error } = await searchParams;
   return (
     <PantallaSinSesion marca={{ tipo: "rutax" }}>
-      <FormularioAltaEmpresa />
+      <FormularioAltaEmpresa errorInicial={error} />
     </PantallaSinSesion>
   );
 }

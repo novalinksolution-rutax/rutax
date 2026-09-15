@@ -6,9 +6,9 @@ que dispara Supabase Auth directamente (no pasan por Resend ni por
 
 | Archivo | Plantilla en el panel de Supabase | Cuándo se dispara |
 |---|---|---|
-| `reset-password.html` | **Reset Password** | El usuario pide "¿Olvidaste tu contraseña?" (`src/app/recuperar-contrasena/actions.ts`, vía `resetPasswordForEmail`). |
-| `invite-user.html` | **Invite user** | Se da de alta un courier nuevo (`crearTenantConDueno` → `auth.admin.inviteUserByEmail`, `src/modules/identidad/onboarding.ts`), incluido el reenvío "¿no te llegó?" de `src/app/registro/actions.ts`. |
-| `magic-link.html` | **Magic Link** | **El código de 6 dígitos con el que entra el conductor a la app nativa** (bloque B5b, regla 81). Lo dispara `pedirCodigo()` del repo `rutax-conductor` vía `signInWithOtp`. Ya no la dispara nada del repo web. |
+| `reset-password.html` | **Reset Password** | ⚠️ **RETIRADA (F1, 2026-09, login sin contraseña).** `src/app/recuperar-contrasena/` y `src/app/restablecer-contrasena/` se eliminaron del repo — ya no hay password que recuperar en `/login` (courier, seller ni conductor-web). El archivo `.html` se conserva sin desligar del panel a propósito (la sesión que cierre F1 decide si también se borra ahí); si sigue pegada en el panel hosted, es inerte: nada del código la dispara. |
+| `invite-user.html` | **Invite user** | Se da de alta un courier nuevo (`crearTenantConDueno` → `auth.admin.inviteUserByEmail`, `src/modules/identidad/onboarding.ts`). Sigue siendo EXCLUSIVA del backstage: el autoservicio de `/registro` (F1) ya no manda ningún enlace, entra por Google o por código OTP verificado inline — por eso el reenvío "¿no te llegó?" también se retiró. |
+| `magic-link.html` | **Magic Link** | **El código de 6 dígitos.** Dos consumidores desde F1: la app nativa del conductor (`pedirCodigo()` del repo `rutax-conductor`, regla 81) y, desde F1, también el login/registro por código del courier/seller en el repo web (`src/app/login/actions.ts`, `src/app/registro/actions.ts`, vía `signInWithOtp`/`verifyOtp`) — MISMA plantilla, sin tocarla: sigue siendo un código de 6 dígitos, nunca un enlace. |
 
 ## Lo más importante: Supabase NO lee estos archivos
 
@@ -120,21 +120,23 @@ La forma correcta, usada en las tres plantillas de esta carpeta:
 
 - **`invite-user.html`**
   ```
-  {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/activar-cuenta
+  {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/dashboard
   ```
-  Verificado contra `src/app/activar-cuenta/page.tsx` (existe; pantalla "Define
-  tu contraseña" del dueño recién dado de alta) y contra el comentario de
-  `src/app/auth/confirm/route.ts` (documenta explícitamente que
-  `inviteUserByEmail` entrega el control a `/activar-cuenta`).
+  ⚠️ **F1 (2026-09) cambió el destino de `/activar-cuenta` a `/dashboard`.**
+  Ya no hay "Define tu contraseña": `/auth/confirm/route.ts` activa el perfil
+  (`activarPerfilDueno`, `estado: invitado → activo` + bitácora
+  `usuario.activado`) en el mismo paso que canjea el `token_hash`, para
+  `type=invite`, y de ahí sigue directo a `next`. Verificado contra
+  `src/app/auth/confirm/route.ts` y `src/modules/identidad/onboarding.ts`.
 
   **Decisión deliberada:** no se usa `{{ .RedirectTo }}` (la variable que
   Supabase llenaría con el `redirectTo` absoluto que ya manda
   `resolverRedirectToActivacionCuenta()` en `onboarding.ts`, algo como
-  `https://tu-dominio.cl/activar-cuenta`) como valor de `next`. Si se hiciera,
+  `https://tu-dominio.cl/dashboard`) como valor de `next`. Si se hiciera,
   `/auth/confirm/route.ts` construye el destino final como `${origin}${next}` —
   con una URL absoluta en `next` el resultado sería una URL duplicada y rota
-  (`https://tu-dominio.clhttps://tu-dominio.cl/activar-cuenta`). `next` debe
-  ser siempre una **ruta relativa**; escribir `/activar-cuenta` a mano logra el
+  (`https://tu-dominio.clhttps://tu-dominio.cl/dashboard`). `next` debe
+  ser siempre una **ruta relativa**; escribir `/dashboard` a mano logra el
   mismo destino sin ese riesgo.
 
   Copy de "vence en 7 días" tomado literal de

@@ -47,10 +47,11 @@
   · **No hay «Hola,» suelto.** El molde no tiene región de saludo: va marca,
     titular con el hecho, y contexto. El nombre no se pierde — se dobla dentro
     del párrafo, que es donde hace trabajo.
-  · **El botón dice «Crear mi contraseña»** y no «Activar mi cuenta», porque es
-    exactamente lo que pide la pantalla que abre (`/activar-cuenta` se titula
-    «Define tu contraseña»). Un botón que promete otra cosa que la pantalla de
-    destino se lee como un error aunque funcione.
+  · **El botón dice «Entrar a Rutax»** (F1, 2026-09: se retiró `/activar-cuenta`
+    y con ella la contraseña — el enlace activa el perfil por su cuenta, vía
+    `/auth/confirm`, y entra directo al panel). Antes decía «Crear mi
+    contraseña»: un botón que promete algo que ya no existe se lee como un
+    error aunque funcione.
 -->
   <head>
     <meta charset="utf-8" />
@@ -107,7 +108,7 @@
                 <!-- El nombre va dentro del párrafo, no en un saludo suelto: si
                      Supabase no trae el dato, la frase sigue entera. -->
                 <div style="margin:9px 0 0 0; font-size:14px; line-height:1.6; color:#3E4D53;">
-                  {{ if .Data.nombre_completo }}{{ .Data.nombre_completo }}, tu{{ else }}Tu{{ end }} cuenta de courier ya está creada. Define tu contraseña y quedas dentro; desde ahí configuras tu operación.
+                  {{ if .Data.nombre_completo }}{{ .Data.nombre_completo }}, tu{{ else }}Tu{{ end }} cuenta de courier ya está creada. Entra con este enlace; desde ahí configuras tu operación.
                 </div>
 
                 <!-- Un botón, y uno solo. El fondo se declara DOS veces —en el
@@ -121,11 +122,11 @@
                   <tr>
                     <td bgcolor="#00B89A" style="background-color:#00B89A; border-radius:3px;">
                       <a
-                        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/activar-cuenta"
+                        href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/dashboard"
                         target="_blank"
                         style="display:block; padding:14px 18px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#04231E; text-decoration:none;"
                       >
-                        Crear mi contraseña
+                        Entrar a Rutax
                       </a>
                     </td>
                   </tr>
@@ -136,9 +137,9 @@
                 <div style="margin:14px 0 0 0; font-size:12.5px; line-height:1.6; color:#3E4D53;">
                   Si el botón no funciona, copia y pega esta dirección:<br />
                   <a
-                    href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/activar-cuenta"
+                    href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/dashboard"
                     style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:11px; color:#007D69; word-break:break-all;"
-                  >{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/activar-cuenta</a>
+                  >{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=invite&amp;next=/dashboard</a>
                 </div>
 
                 <div style="margin:14px 0 0 0; font-size:12.5px; line-height:1.6; color:#3E4D53;">

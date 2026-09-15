@@ -27,7 +27,9 @@ export default async function LayoutPortal({
     redirect("/login");
   }
   if (sesion.usuario.estado === "invitado") {
-    redirect("/activar-cuenta");
+    // F1 retiró `/activar-cuenta` (ver `(tenant)/layout.tsx` para el mismo
+    // cambio y su razón) — fallback defensivo al login.
+    redirect("/login");
   }
   if (sesion.usuario.tipoUsuario !== "seller" || !sesion.usuario.sellerId) {
     redirect("/");

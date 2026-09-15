@@ -46,15 +46,21 @@ export const metadata: Metadata = {
  * usa Rutax? Agenda una demostración» le habla solo al dueño y le afirma a un
  * seller algo que no le consta. En su lugar va algo que le sirve a los tres.
  */
-export default async function PaginaLogin() {
+interface PaginaLoginProps {
+  searchParams: Promise<{ error?: string }>;
+}
+
+export default async function PaginaLogin({ searchParams }: PaginaLoginProps) {
   const sesion = await obtenerSesionActual();
   if (sesion?.usuario.tenantId) {
     redirect("/");
   }
 
+  const { error } = await searchParams;
+
   return (
     <MarcoPuerta>
-      <FormularioLogin />
+      <FormularioLogin errorInicial={error} />
     </MarcoPuerta>
   );
 }

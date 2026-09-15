@@ -29,10 +29,8 @@
  * idénticas entre sí.
  */
 
-import Link from "next/link";
 import type * as React from "react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // =============================================================================
@@ -124,37 +122,26 @@ export function BloqueCorreo({ email }: { email: string | null }) {
 // =============================================================================
 
 /**
- * ⚠️ **No hay un formulario de cambio de contraseña, y es una decisión.**
- *
- * Se delega en el flujo de recuperación que ya existe: un segundo camino para lo
- * mismo son dos sitios donde equivocarse, y ése ya manda su correo y deja su
- * rastro. Además cubre el caso que un formulario en pantalla no cubre — que
- * alguien te haya dejado la sesión abierta en un computador prestado y te cambie
- * la clave sin saber la anterior.
+ * ⚠️ **No hay un formulario de cambio de contraseña, y ya no hay un flujo de
+ * recuperación al que enlazar** (`/recuperar-contrasena` se retiró con F1:
+ * el equipo del courier, los sellers y los conductores entran sin
+ * contraseña, con Google o con un código de 6 dígitos por correo). El
+ * backstage de Rutax sigue con contraseña, pero todavía sin una pantalla de
+ * autoservicio propia — por eso acá no hay un botón que abra un flujo que no
+ * existe: se ofrece la salida que sí funciona hoy, escribirnos.
  */
-export function ContenidoContrasena({
-  email,
-  href = "/recuperar-contrasena",
-}: {
-  email: string | null;
-  href?: string;
-}) {
+export function ContenidoContrasena({ email }: { email: string | null }) {
   return (
-    <>
-      <p className="text-sm leading-relaxed text-fg-muted">
-        Se cambia por el mismo camino que si la olvidaras: te mandamos un enlace a{" "}
-        {email ?? "tu correo"} y la defines ahí. Así nadie puede cambiártela por tenerte la sesión
-        abierta en un computador prestado.
-      </p>
-      <Button asChild variant="outline" size="sm">
-        <Link href={href}>Cambiar mi contraseña</Link>
-      </Button>
-    </>
+    <p className="text-sm leading-relaxed text-fg-muted">
+      {email
+        ? `Escríbenos si necesitas cambiarla o tienes problemas para entrar con ${email}.`
+        : "Escríbenos si tienes problemas para entrar."}
+    </p>
   );
 }
 
 /** El mismo contenido, ya dentro de la caja cuadrada de configuración. */
-export function SeccionContrasena(props: { email: string | null; href?: string }) {
+export function SeccionContrasena(props: { email: string | null }) {
   return (
     <SeccionPerfil titulo="Tu contraseña">
       <ContenidoContrasena {...props} />

@@ -262,6 +262,13 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
+#
+# ⚠️ F1 (2026-09, login sin contraseña del courier) NO desactiva esto (H7). El
+# "sin contraseña" es una decisión de SUPERFICIE (no se ofrece el formulario de
+# password, no se llama signInWithPassword/updateUser({password})) — no una de
+# infraestructura de Auth. Apagar enable_signup mataría el código OTP de email
+# (signInWithOtp con shouldCreateUser:true en `/registro`), que es el fallback
+# que este mismo F1 introduce. Dejar esto en `true` es intencional.
 enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
@@ -285,7 +292,14 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# ⚠️ Subido de 2 a 30 (H10, F1) SOLO para poder probar el código OTP en local:
+# con 2/hora, dos intentos de "enviar código" (registro + login, o un reintento
+# tras equivocarse) agotan el cupo y el tercer correo del entorno local
+# (Inbucket) simplemente no sale — sin error visible, parece que el código no
+# llegó. Esto es LOCAL únicamente (`config.toml` no aplica al proyecto hosted,
+# ver `supabase/templates/README.md`); en producción el límite real de Auth se
+# ajusta en el panel si hace falta.
+email_sent = 30
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -429,6 +443,21 @@ max_frequency = "5s"
 # Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
+#
+# Google — camino PRINCIPAL de login del courier (F1, 2026-09, sin contraseña).
+# `@supabase/ssr` usa PKCE por defecto, así que el canje ocurre en
+# `src/app/auth/callback/route.ts` (exchangeCodeForSession) — NO en
+# `src/app/auth/confirm/route.ts` (ese es para enlaces de correo/token_hash).
+# Credenciales: crear un OAuth Client ID de tipo "Web application" en Google
+# Cloud Console; el "Authorized redirect URI" registrado ahí debe ser EXACTO:
+#   <APP_PUBLIC_URL>/auth/callback   (producción/staging)
+#   http://127.0.0.1:54321/auth/v1/callback   (local — el que expone el propio
+#     Auth de Supabase local; ver el paso a paso en .env.example)
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+
 [auth.external.apple]
 enabled = false
 client_id = ""

@@ -45,7 +45,13 @@ export default async function LayoutTenant({ children }: { children: React.React
     redirect("/login");
   }
   if (sesion.usuario.estado === "invitado") {
-    redirect("/activar-cuenta");
+    // F1 retiró `/activar-cuenta`: la activación (invitado → activo) ahora la
+    // hace `/auth/confirm` en el mismo paso que canjea el enlace de invitación
+    // (ver `activarPerfilDueno`), así que en operación normal esta rama nunca
+    // se alcanza con una sesión viva. Fallback defensivo: si por lo que sea
+    // llegara alguien con sesión pero sin activar, se manda al login en vez de
+    // a una ruta que ya no existe.
+    redirect("/login");
   }
   if (!sesion.usuario.tenantId) {
     redirect("/login");

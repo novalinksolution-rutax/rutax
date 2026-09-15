@@ -1,65 +1,249 @@
 "use server";
 
 /**
- * Server Action — alta de empresa (Pantalla A, RF-006).
+ * Server Actions — alta de empresa por autoservicio (F1, login sin
+ * contraseña del courier).
+ * =============================================================================
+ * F1 partió lo que antes era un solo paso (`altaDeEmpresa`, formulario → tenant
+ * ya creado, correo de activación) en dos:
  *
- * Capa delgada de "ruta de servidor": valida la forma del input recibido del
- * formulario, arma el `cliente` `service_role` (única vez que este código de
- * `app/**` lo hace — y solo porque `crearTenantConDueno` lo EXIGE por
- * contrato: en el alta no existe todavía sesión/tenant_id que autorice nada),
- * y delega toda la lógica de negocio a `crearTenantConDueno`. No duplica
- * validaciones de negocio — solo traduce el resultado a algo que el formulario
- * cliente pueda usar sin filtrar detalles de servidor.
+ *   1. `guardarBorradorTenant` — valida el formulario de 5 campos (igual que
+ *      antes) y lo guarda en una cookie firmada (`borrador-registro.ts`). NO
+ *      crea nada todavía: sin identidad resuelta, no hay a quién asignarle el
+ *      tenant.
+ *   2. Resolver la identidad — Google (`/auth/callback`) o código OTP
+ *      (`enviarCodigoRegistro` + `verificarCodigoRegistro`, acá). Recién ahí
+ *      se provisiona el tenant, con el mismo borrador leído de la cookie.
  *
- * Camino de auto-servicio (decisión de `ux-ui`, §0 del documento): el actor es
- * `{ usuarioId: null, tipo: 'sistema' }` — "el propio interesado se da de alta".
+ * `altaDeEmpresa` y `reenviarCorreoActivacion` se RETIRAN: la primera creaba
+ * el tenant de un solo golpe con `inviteUserByEmail` (correo con enlace, y una
+ * contraseña por definir) — incompatible con "sin contraseña"; la segunda
+ * reenviaba ESE enlace, que ya no existe en el autoservicio (solo el
+ * backstage sigue invitando por correo, vía `crearTenantConDueno`, sin
+ * cambios).
+ *
+ * ⚠️ El formulario de 5 campos (`nombreFantasia`, `razonSocial`, `rut`,
+ * `nombreDueno`, `emailDueno`) NO cambia en F1 — el "arranque mínimo" (menos
+ * campos) es F2, no se adelanta acá.
  */
 
-import { crearTenantConDueno, resolverRedirectToActivacionCuenta } from "@/modules/identidad/onboarding";
-import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
+import { normalizarYValidarRut } from "@/modules/identidad/rut";
+import {
+  guardarBorrador,
+  leerBorrador,
+  limpiarBorrador,
+  type BorradorTenant,
+} from "@/lib/identidad/borrador-registro";
+import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { mensajeCorreoOcupado } from "@/modules/identidad/cuenta-por-email";
+import {
+  activarPerfilDueno,
+  buscarPerfilPorAuthUserId,
+  provisionarTenantParaAuthUser,
+} from "@/modules/identidad/onboarding";
+import { ErrorConflicto } from "@/modules/identidad/errores";
 
-export interface AltaEmpresaEntrada {
+// -----------------------------------------------------------------------------
+// 1. guardarBorradorTenant
+// -----------------------------------------------------------------------------
+
+export interface GuardarBorradorTenantEntrada {
   nombreFantasia: string;
   razonSocial: string;
   rut: string;
   nombreDueno: string;
   emailDueno: string;
+  aceptaTerminos: boolean;
 }
 
-export type AltaEmpresaResultado =
-  | { ok: true; email: string }
-  | { ok: false; tipo: "validacion" | "conflicto_rut" | "conflicto_email" | "desconocido"; mensaje: string };
+export type GuardarBorradorTenantResultado =
+  | { ok: true }
+  | { ok: false; campo?: keyof GuardarBorradorTenantEntrada; mensaje: string };
 
-export async function altaDeEmpresa(entrada: AltaEmpresaEntrada): Promise<AltaEmpresaResultado> {
-  try {
-    const cliente = crearClienteServiceRole();
+export async function guardarBorradorTenant(
+  entrada: GuardarBorradorTenantEntrada,
+): Promise<GuardarBorradorTenantResultado> {
+  const nombreFantasia = entrada.nombreFantasia?.trim() ?? "";
+  if (!nombreFantasia) {
+    return { ok: false, campo: "nombreFantasia", mensaje: "El nombre de fantasía de tu empresa es obligatorio." };
+  }
 
-    await crearTenantConDueno(cliente, {
-      tenant: {
-        nombreFantasia: entrada.nombreFantasia,
-        razonSocial: entrada.razonSocial,
-        rut: entrada.rut,
-      },
-      dueno: {
-        email: entrada.emailDueno,
-        nombreCompleto: entrada.nombreDueno,
-      },
-      actor: { usuarioId: null, tipo: "sistema" },
-    });
+  const razonSocial = entrada.razonSocial?.trim() ?? "";
+  if (!razonSocial) {
+    return { ok: false, campo: "razonSocial", mensaje: "La razón social de tu empresa es obligatoria." };
+  }
 
-    return { ok: true, email: entrada.emailDueno.trim().toLowerCase() };
-  } catch (error) {
-    if (error instanceof ErrorValidacion) {
-      return { ok: false, tipo: "validacion", mensaje: error.message };
+  const rutNormalizado = normalizarYValidarRut(entrada.rut ?? "");
+  if (!rutNormalizado) {
+    return {
+      ok: false,
+      campo: "rut",
+      mensaje: "El RUT de tu empresa no es válido (verifica el dígito verificador).",
+    };
+  }
+
+  const nombreDueno = entrada.nombreDueno?.trim() ?? "";
+  if (!nombreDueno) {
+    return { ok: false, campo: "nombreDueno", mensaje: "Tu nombre completo es obligatorio." };
+  }
+
+  const emailDueno = entrada.emailDueno?.trim().toLowerCase() ?? "";
+  if (!emailDueno || !emailDueno.includes("@")) {
+    return { ok: false, campo: "emailDueno", mensaje: "Tu correo es obligatorio y debe ser un correo válido." };
+  }
+
+  // H6: un consentimiento premarcado no es consentimiento — se exige explícito
+  // y bloqueante, no un "al continuar aceptas" de relleno.
+  if (entrada.aceptaTerminos !== true) {
+    return {
+      ok: false,
+      campo: "aceptaTerminos",
+      mensaje: "Debes aceptar los términos y condiciones y la política de privacidad para continuar.",
+    };
+  }
+
+  const borrador: BorradorTenant = {
+    nombreFantasia,
+    razonSocial,
+    rut: rutNormalizado,
+    nombreDueno,
+    emailDueno,
+    aceptaTerminos: true,
+  };
+
+  await guardarBorrador(borrador);
+
+  return { ok: true };
+}
+
+// -----------------------------------------------------------------------------
+// 2. Código OTP — enviarCodigoRegistro / verificarCodigoRegistro
+//
+// El envío (`signInWithOtp` con `shouldCreateUser: true`) se hace aquí, en
+// servidor, y no en el cliente: así queda simétrico con `verificarCodigoRegistro`
+// (mismo módulo, mismo criterio de errores) y no duplica la construcción del
+// cliente Supabase en un componente. H1: a diferencia del login, el registro
+// SÍ debe poder crear la cuenta si no existe.
+// -----------------------------------------------------------------------------
+
+export interface EnviarCodigoRegistroResultado {
+  ok: boolean;
+  mensaje: string;
+}
+
+export async function enviarCodigoRegistro(email: string): Promise<EnviarCodigoRegistroResultado> {
+  const correo = email.trim().toLowerCase();
+  if (!correo || !correo.includes("@")) {
+    return { ok: false, mensaje: "Ingresa un correo válido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithOtp({
+    email: correo,
+    // H1: en REGISTRO sí se crea la cuenta si el correo no la tiene — a
+    // diferencia del login (`shouldCreateUser: false` en `login/actions.ts`).
+    options: { shouldCreateUser: true },
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      mensaje: "No pudimos enviar el código. Intenta de nuevo en unos minutos.",
+    };
+  }
+
+  return { ok: true, mensaje: `Te enviamos un código a ${correo}. Dura 10 minutos.` };
+}
+
+export type VerificarCodigoRegistroResultado =
+  | { ok: true }
+  | {
+      ok: false;
+      tipo: "codigo_invalido" | "sin_borrador" | "correo_ocupado" | "conflicto_rut" | "desconocido";
+      mensaje: string;
+    };
+
+export async function verificarCodigoRegistro(
+  email: string,
+  codigo: string,
+): Promise<VerificarCodigoRegistroResultado> {
+  const correo = email.trim().toLowerCase();
+  const token = codigo.trim();
+  if (!correo || !token) {
+    return { ok: false, tipo: "codigo_invalido", mensaje: "Ingresa el correo y el código." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.verifyOtp({ type: "email", email: correo, token });
+
+  if (error || !data.user) {
+    return { ok: false, tipo: "codigo_invalido", mensaje: "El código no es válido o venció. Pide uno nuevo." };
+  }
+
+  const authUserId = data.user.id;
+  const admin = crearClienteServiceRole();
+
+  // H2 + H5 combinados (ver el comentario de `buscarPerfilPorAuthUserId` en
+  // onboarding.ts para el porqué de este chequeo y no `buscarCuentaPorEmail`).
+  const perfilExistente = await buscarPerfilPorAuthUserId(admin, authUserId);
+  if (perfilExistente) {
+    if (perfilExistente.tipoUsuario === "interno" && perfilExistente.rol === "dueno") {
+      // H5 — reintento del mismo registro (doble pestaña, código reenviado).
+      // Defensa adicional (caso de borde, ver `buscarPerfilPorAuthUserId`): si
+      // este perfil sigue `invitado`, se activa igual — nunca se deja una
+      // sesión con `estado: invitado` camino al layout del tenant.
+      if (perfilExistente.estado === "invitado") {
+        await activarPerfilDueno(admin, authUserId);
+      }
+      await limpiarBorrador();
+      await supabase.auth.refreshSession();
+      return { ok: true };
     }
-    if (error instanceof ErrorConflicto) {
-      const esRut = /rut/i.test(error.message);
-      return {
-        ok: false,
-        tipo: esRut ? "conflicto_rut" : "conflicto_email",
-        mensaje: error.message,
-      };
+
+    // H2 — este correo YA es otra cosa en Rutax. No se crea un segundo perfil.
+    await supabase.auth.signOut();
+    return {
+      ok: false,
+      tipo: "correo_ocupado",
+      mensaje: mensajeCorreoOcupado({ existe: true, tipoEnMiCourier: null }),
+    };
+  }
+
+  const borrador = await leerBorrador();
+  if (!borrador) {
+    await supabase.auth.signOut();
+    return {
+      ok: false,
+      tipo: "sin_borrador",
+      mensaje: "Tu sesión de registro venció. Vuelve a completar el formulario.",
+    };
+  }
+
+  try {
+    await provisionarTenantParaAuthUser(
+      admin,
+      authUserId,
+      {
+        tenant: { nombreFantasia: borrador.nombreFantasia, razonSocial: borrador.razonSocial, rut: borrador.rut },
+        dueno: { email: borrador.emailDueno, nombreCompleto: borrador.nombreDueno },
+        actor: { usuarioId: null, tipo: "sistema" },
+      },
+      { estado: "activo", compensarAuthUser: false },
+    );
+  } catch (err) {
+    await supabase.auth.signOut();
+    // No borramos el usuario Auth acá: a esta altura ya sabemos que NO tenía
+    // perfil (arriba), pero no tenemos forma barata de saber si Supabase lo
+    // creó recién en este intento o si es un huérfano de otro origen — se deja
+    // para revisión, igual que `/admin/cuentas` (marca `sin_perfil`). El
+    // camino de Google (`/auth/callback`) SÍ puede decidirlo, con la
+    // heurística de `created_at`/`last_sign_in_at` — acá, con código OTP,
+    // ambos timestamps son igual de recientes en cualquier caso porque
+    // `verifyOtp` los actualiza siempre, así que la heurística no discrimina
+    // nada y se prefiere no borrar.
+    if (err instanceof ErrorConflicto && /rut/i.test(err.message)) {
+      return { ok: false, tipo: "conflicto_rut", mensaje: err.message };
     }
     return {
       ok: false,
@@ -67,58 +251,10 @@ export async function altaDeEmpresa(entrada: AltaEmpresaEntrada): Promise<AltaEm
       mensaje: "No pudimos crear tu cuenta por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
     };
   }
-}
 
-/**
- * Reenvía el correo de invitación inicial — acción de "¿no te llegó?" de la
- * Pantalla B. Throttle real (anti-abuso) es responsabilidad de `backend`/
- * `devops` a nivel de infraestructura; aquí solo se evita reintentar sobre un
- * email que ya pasó por sesión y delegamos al método estándar de Supabase Auth
- * (reenvía a un usuario `invitado` existente).
- */
-export interface ReenviarCorreoActivacionResultado {
-  ok: boolean;
-  mensaje: string;
-}
+  await limpiarBorrador();
+  // H4: refrescar el JWT para que tenant_id/rol/estado lleguen de inmediato.
+  await supabase.auth.refreshSession();
 
-export async function reenviarCorreoActivacion(email: string): Promise<ReenviarCorreoActivacionResultado> {
-  const correo = email.trim().toLowerCase();
-  if (!correo || !correo.includes("@")) {
-    return { ok: false, mensaje: "No reconocemos ese correo." };
-  }
-
-  try {
-    const cliente = crearClienteServiceRole();
-    const { data, error } = await cliente.auth.admin.listUsers();
-    if (error) {
-      return {
-        ok: false,
-        mensaje: "No pudimos reenviar el correo por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
-      };
-    }
-
-    const usuario = data.users.find((u) => (u.email ?? "").toLowerCase() === correo);
-    if (!usuario) {
-      // No revelamos si el correo existe o no (mismo criterio que "no
-      // verificar antes de invitar" del Flujo 2) — respuesta neutra.
-      return { ok: true, mensaje: `Si ${correo} tiene una activación pendiente, te reenviamos el enlace.` };
-    }
-
-    const { error: errorInvitacion } = await cliente.auth.admin.inviteUserByEmail(correo, {
-      redirectTo: resolverRedirectToActivacionCuenta(),
-    });
-    if (errorInvitacion) {
-      return {
-        ok: false,
-        mensaje: "No pudimos reenviar el correo por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
-      };
-    }
-
-    return { ok: true, mensaje: `Te reenviamos el enlace de activación a ${correo}.` };
-  } catch {
-    return {
-      ok: false,
-      mensaje: "No pudimos reenviar el correo por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
-    };
-  }
+  return { ok: true };
 }
