@@ -7,7 +7,9 @@
  *     del body — no hay ni forma de mandarlo por ahí.
  *   - `sin_invitacion` / `seleccionar_courier` / éxito se traducen 1:1 al
  *     shape de respuesta acordado.
- *   - Falta el nombre completo en el body → 400, sin tocar el módulo de dominio.
+ *   - Sin nombre en el body NO es error: el conductor no lo escribe, se deriva de
+ *     su ficha (`identidad.conductores`); el módulo recibe `nombreCompleto:
+ *     undefined` y sigue.
  *
  * Molde: `src/app/api/conductor/manifiesto/iniciar/route.test.ts` (`vi.mock`
  * de `autenticar-bearer` y `service-role`, `Request` crudo como `NextRequest`).
@@ -61,13 +63,21 @@ describe("POST /api/conductor/aceptar-invitacion", () => {
     expect(aceptarInvitacionPorTelefono).not.toHaveBeenCalled();
   });
 
-  it("rechaza sin nombreCompleto en el body, sin llamar al módulo de dominio", async () => {
+  it("sin nombreCompleto en el body NO es error: delega con nombreCompleto undefined (el server lo deriva de la ficha)", async () => {
     vi.mocked(autenticarBearerSoloAuth).mockResolvedValue({ usuarioId: "auth-1", telefono: "56911111111" });
+    vi.mocked(aceptarInvitacionPorTelefono).mockResolvedValue({
+      ok: true,
+      tenantId: "tenant-1",
+      usuarioId: "auth-1",
+      rol: "conductor",
+    });
 
     const respuesta = await POST(crearRequest({}));
 
-    expect(respuesta.status).toBe(400);
-    expect(aceptarInvitacionPorTelefono).not.toHaveBeenCalled();
+    expect(respuesta.status).toBe(200);
+    expect(aceptarInvitacionPorTelefono).toHaveBeenCalledTimes(1);
+    const [, argumentos] = vi.mocked(aceptarInvitacionPorTelefono).mock.calls[0];
+    expect(argumentos.nombreCompleto).toBeUndefined();
   });
 
   it("el teléfono viaja SIEMPRE desde el token, nunca desde el body", async () => {

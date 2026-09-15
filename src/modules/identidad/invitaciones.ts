@@ -539,7 +539,13 @@ export interface AceptarInvitacionPorTelefonoInput {
   /** E.164 sin `+` — el que trae el propio token de Auth, NUNCA uno del body. */
   telefonoE164: string;
   usuarioAuthId: string;
-  nombreCompleto: string;
+  /**
+   * OPCIONAL y solo de respaldo: el conductor NO escribe su nombre. Se deriva de
+   * `identidad.conductores` (la ficha que creó el coordinador) por el `driver_id`
+   * de la invitación. Si por algún motivo esa lectura no diera nombre, se usa
+   * este como último recurso.
+   */
+  nombreCompleto?: string;
   /** Cuando el conductor ya eligió courier en el selector (resultado `seleccionar_courier`). */
   tenantId?: string;
 }
@@ -565,6 +571,37 @@ async function leerNombreCourier(cliente: ClienteServicio, tenantId: string): Pr
   } catch {
     return NOMBRE_COURIER_GENERICO_SELECTOR;
   }
+}
+
+/**
+ * El nombre del conductor sale de su FICHA (`identidad.conductores`), no del
+ * cliente: el conductor entra por WhatsApp OTP y nunca escribe su nombre. Lo
+ * definió el coordinador al darlo de alta (`crearConductor` exige ≥2 caracteres),
+ * así que la lectura por `(id, tenant_id)` normalmente trae un nombre válido.
+ *
+ * `respaldo` es el último recurso (lo que —si acaso— mandó el cliente). Si ni la
+ * ficha ni el respaldo dan un nombre, se lanza: `aceptarInvitacion` exige nombre
+ * no vacío y provisionar un perfil sin nombre dejaría la nómina rota en silencio.
+ */
+async function leerNombreConductor(
+  cliente: ClienteServicio,
+  driverId: string | null,
+  tenantId: string,
+  respaldo: string | undefined,
+): Promise<string> {
+  if (driverId) {
+    const { data } = await cliente
+      .schema("identidad")
+      .from("conductores")
+      .select("nombre_completo")
+      .eq("id", driverId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    const nombre = (data as { nombre_completo?: string } | null)?.nombre_completo;
+    if (nombre && nombre.trim()) return nombre.trim();
+  }
+  if (respaldo && respaldo.trim()) return respaldo.trim();
+  throw new ErrorValidacion("No pudimos resolver el nombre del conductor para completar el ingreso.");
 }
 
 /**
@@ -615,7 +652,7 @@ export async function aceptarInvitacionPorTelefono(
   const { data, error } = await cliente
     .schema("identidad")
     .from("invitaciones")
-    .select("id, tenant_id, token, estado, expira_en")
+    .select("id, tenant_id, token, estado, expira_en, driver_id")
     .eq("tipo_usuario", "conductor")
     .eq("estado", "pendiente")
     .eq("telefono", telefono);
@@ -650,10 +687,20 @@ export async function aceptarInvitacionPorTelefono(
     }
   }
 
+  // El nombre NO viene del cliente: el conductor no lo escribe. Se deriva de la
+  // ficha que creó el coordinador (`identidad.conductores`), por el `driver_id`
+  // de la invitación resuelta. El `input.nombreCompleto` es solo respaldo.
+  const nombreCompleto = await leerNombreConductor(
+    cliente,
+    elegida.driver_id as string | null,
+    elegida.tenant_id as string,
+    input.nombreCompleto,
+  );
+
   const aceptada = await aceptarInvitacion(cliente, {
     token: elegida.token as string,
     usuarioAuthId: input.usuarioAuthId,
-    nombreCompleto: input.nombreCompleto,
+    nombreCompleto,
   });
 
   return { ok: true, tenantId: aceptada.tenantId, usuarioId: aceptada.usuarioId, rol: aceptada.rol };

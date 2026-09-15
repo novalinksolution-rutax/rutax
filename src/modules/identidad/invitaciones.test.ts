@@ -35,6 +35,9 @@ interface EstadoFalso {
 /** Nombres de tenant para el selector multi-courier (`aceptarInvitacionPorTelefono`). */
 const NOMBRES_TENANT: Record<string, string> = {};
 
+/** Nombre de la ficha del conductor por driver_id — lo deriva `aceptarInvitacionPorTelefono`. */
+const NOMBRES_CONDUCTOR: Record<string, string> = {};
+
 function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[]; perfiles?: Array<Record<string, unknown>> }) {
   const perfiles: Array<Record<string, unknown>> = seed?.perfiles ? [...seed.perfiles] : [];
   const bitacora: Array<Record<string, unknown>> = [];
@@ -98,6 +101,29 @@ function crearClienteFalso(seed?: { invitaciones?: FilaInvitacion[]; perfiles?: 
         };
       }
 
+      // `aceptarInvitacionPorTelefono` deriva el nombre del conductor de su ficha
+      // (`identidad.conductores`) por el driver_id de la invitación — el conductor
+      // no lo escribe. El doble devuelve el nombre sembrado en NOMBRES_CONDUCTOR.
+      if (tabla === "conductores") {
+        return {
+          select: () => {
+            const filtros: Array<[string, unknown]> = [];
+            const builder = {
+              eq(campo: string, valor: unknown) {
+                filtros.push([campo, valor]);
+                return builder;
+              },
+              async maybeSingle() {
+                const id = filtros.find(([campo]) => campo === "id")?.[1] as string | undefined;
+                const nombre = id ? NOMBRES_CONDUCTOR[id] : undefined;
+                return { data: nombre ? { nombre_completo: nombre } : null, error: null };
+              },
+            };
+            return builder;
+          },
+        };
+      }
+
       throw new Error(`Tabla no soportada en el doble de prueba: ${tabla}`);
     },
   });
@@ -116,6 +142,7 @@ const TELEFONO_CONDUCTOR = "56911111111";
 
 NOMBRES_TENANT[TENANT_A] = "Despachos del Centro";
 NOMBRES_TENANT[TENANT_B] = "Courier del Sur";
+NOMBRES_CONDUCTOR[DRIVER_A] = "Pedro Conductor Soto";
 
 function dueno(overrides?: Partial<UsuarioActual>): UsuarioActual {
   return {
@@ -643,6 +670,19 @@ describe("aceptarInvitacionPorTelefono", () => {
     for (const fila of estado.bitacora) {
       expect(JSON.stringify(fila.detalle)).not.toContain(TELEFONO_CONDUCTOR);
     }
+  });
+
+  it("deriva el nombre de la ficha del conductor (identidad.conductores), NO del body", async () => {
+    const { cliente, estado } = crearClienteFalso({ invitaciones: [invitacionConductor()] });
+
+    // Se llama SIN nombreCompleto (el conductor no lo escribe): debe salir de la ficha.
+    const resultado = await aceptarInvitacionPorTelefono(cliente, {
+      telefonoE164: TELEFONO_CONDUCTOR,
+      usuarioAuthId: "auth-conductor-sin-nombre",
+    });
+
+    expect(resultado).toMatchObject({ ok: true, tenantId: TENANT_A });
+    expect(estado.perfiles[0].nombre_completo).toBe("Pedro Conductor Soto");
   });
 
   it("MÁS DE UN COURIER con invitación vigente y sin tenantId: devuelve 'seleccionar_courier' sin provisionar nada", async () => {

@@ -66,10 +66,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 });
   }
 
-  const nombreCompleto = typeof cuerpo.nombreCompleto === "string" ? cuerpo.nombreCompleto.trim() : "";
-  if (!nombreCompleto) {
-    return NextResponse.json({ error: "Falta tu nombre completo" }, { status: 400 });
-  }
+  // El nombre NO se exige al cliente: el conductor no lo escribe. Lo deriva
+  // `aceptarInvitacionPorTelefono` de su ficha (`identidad.conductores`, creada
+  // por el coordinador). Si el cliente lo manda, viaja solo como respaldo.
+  const nombreCompleto =
+    typeof cuerpo.nombreCompleto === "string" && cuerpo.nombreCompleto.trim()
+      ? cuerpo.nombreCompleto.trim()
+      : undefined;
   const tenantId = typeof cuerpo.tenantId === "string" && cuerpo.tenantId.trim() ? cuerpo.tenantId.trim() : undefined;
 
   try {
