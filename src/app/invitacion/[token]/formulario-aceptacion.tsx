@@ -46,9 +46,21 @@
  * «Débil» a secas deja a la persona probando cosas al azar. Cada tramo nombra el
  * cambio concreto que sube el siguiente escalón, que es lo único que se puede
  * accionar sin adivinar.
+ *
+ * -----------------------------------------------------------------------------
+ * F3 (2026-09) · SELLER Y EQUIPO INTERNO YA NO DEFINEN CONTRASEÑA
+ * -----------------------------------------------------------------------------
+ * `FormularioAceptacion` bifurca por `rol` **antes** de mirar `variante`: el
+ * conductor (único que sigue con PIN) sigue exactamente el camino de siempre
+ * — `FormularioDefinirContrasena`/`FormularioConfirmarAceptacion`, sin tocar
+ * una línea. Cualquier otro rol (seller, dueño, supervisor, coordinador,
+ * administración) va a `FormularioPasswordless`, más abajo: Google o código
+ * de 6 dígitos, igual que `/login` y `/registro` de F1. La distinción
+ * persona_nueva/persona_existente deja de gobernar esa UI — Google y código
+ * sirven para las dos por igual, y quién exista o no lo resuelve el backend.
  */
 
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -57,12 +69,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
+import { createClient } from "@/lib/supabase/client";
+import { IconoGoogle } from "@/components/identidad/icono-google";
+import { IngresaCodigo } from "@/components/identidad/ingresa-codigo";
 import type { Rol } from "@/modules/identidad/roles";
 import { LARGO_PIN, rechazarPin, soloDigitosPin, TEXTO_RECHAZO } from "@/modules/identidad/pin-conductor";
 
 import {
   aceptarInvitacionComoPersonaExistente,
   aceptarInvitacionComoPersonaNueva,
+  enviarCodigoInvitacion,
+  guardarBorradorInvitacion,
+  verificarCodigoInvitacion,
   type EstadoInvitacionPublica,
 } from "./actions";
 
@@ -82,16 +100,33 @@ export function FormularioAceptacion({
   token,
   info,
   esPrimerDueno,
+  errorInicial,
 }: {
   token: string;
   info: InvitacionValida;
   /** La invitación es la del primer dueño de un tenant recién creado (Pantalla C). */
   esPrimerDueno: boolean;
+  /** `?error=` — de esta pantalla (Google) o del callback de F3. */
+  errorInicial?: string;
 }) {
-  return info.variante === "persona_nueva" ? (
-    <FormularioDefinirContrasena token={token} info={info} esPrimerDueno={esPrimerDueno} />
-  ) : (
-    <FormularioConfirmarAceptacion token={token} info={info} />
+  // ⚠️ El CONDUCTOR es el único que sigue por el camino de siempre (PIN). El
+  // rol viene de la INVITACIÓN, resuelta en el servidor — no es algo que este
+  // componente pueda torcer.
+  if (info.rol === "conductor") {
+    return info.variante === "persona_nueva" ? (
+      <FormularioDefinirContrasena token={token} info={info} esPrimerDueno={esPrimerDueno} />
+    ) : (
+      <FormularioConfirmarAceptacion token={token} info={info} />
+    );
+  }
+
+  return (
+    <FormularioPasswordless
+      token={token}
+      info={info}
+      esPrimerDueno={esPrimerDueno}
+      errorInicial={errorInicial}
+    />
   );
 }
 
@@ -482,6 +517,237 @@ function FormularioConfirmarAceptacion({
         {enviando ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
         {enviando ? "Confirmando…" : "Aceptar e ingresar"}
       </Button>
+    </Tarjeta>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// F3 — Variante PASSWORDLESS: seller y equipo interno (Pantallas C y J, sin
+// contraseña). Google o código de 6 dígitos, cualquiera de los dos vale sin
+// importar si ya existe cuenta o no — esa distinción la resuelve el backend
+// (`aplicarAceptacionInvitacionPasswordless`), no esta pantalla.
+// -----------------------------------------------------------------------------
+
+/**
+ * Traduce `?error=` — regla 45: ni confirma ni niega más de lo que el propio
+ * backend ya decidió. `email_no_calza` viene del callback de Google
+ * (`/auth/callback`); los otros dos, de cualquiera de los dos caminos.
+ */
+function errorPasswordlessDesdeUrl(codigo: string | undefined): string | null {
+  switch (codigo) {
+    case "email_no_calza":
+      return "Esa invitación es para otro correo. Entra con el correo al que te la enviaron, o pide un código.";
+    case "invitacion_invalida":
+      return "Este enlace ya no es válido. Recarga la página para ver el estado real de tu invitación.";
+    case "error_sistema":
+      return "No pudimos completar la activación por un problema de nuestro sistema. Intenta de nuevo en unos minutos.";
+    default:
+      return null;
+  }
+}
+
+function FormularioPasswordless({
+  token,
+  info,
+  esPrimerDueno,
+  errorInicial,
+}: {
+  token: string;
+  info: InvitacionValida;
+  esPrimerDueno: boolean;
+  errorInicial?: string;
+}) {
+  const router = useRouter();
+  const idBase = useId();
+
+  // El rol viene de la INVITACIÓN, resuelta en el servidor: solo un seller
+  // representa a alguien a quien Rutax le manda avisos de retiro.
+  const esSeller = info.rol === "seller";
+
+  const [paso, setPaso] = useState<"inicio" | "codigo">("inicio");
+  const [telefonoWhatsApp, setTelefonoWhatsApp] = useState("");
+  const [aceptaWhatsApp, setAceptaWhatsApp] = useState(false);
+  const [enviandoGoogle, setEnviandoGoogle] = useState(false);
+  const [enviandoCodigo, setEnviandoCodigo] = useState(false);
+  const [error, setError] = useState<string | null>(() => errorPasswordlessDesdeUrl(errorInicial));
+  // El `destino` real (`/portal/conectar-ml` o `/`) lo devuelve
+  // `verificarCodigoInvitacion` recién al verificar — `IngresaCodigo` solo
+  // avisa "ok", así que se guarda acá para usarlo en `onExito`.
+  const destinoTrasCodigo = useRef<string>("/");
+
+  const cargando = enviandoGoogle || enviandoCodigo;
+
+  const opcionesWhatsApp = esSeller
+    ? { telefonoWhatsApp: telefonoWhatsApp.trim() || undefined, optInWhatsApp: aceptaWhatsApp }
+    : undefined;
+
+  async function manejarGoogle() {
+    setError(null);
+    setEnviandoGoogle(true);
+    try {
+      // El TOKEN (y el opt-in de WhatsApp, si aplica) tienen que sobrevivir el
+      // viaje a Google — se guardan en la cookie firmada ANTES de salir del
+      // sitio; `/auth/callback` la lee de vuelta.
+      const borrador = await guardarBorradorInvitacion(token, opcionesWhatsApp);
+      if (!borrador.ok) {
+        setError(borrador.mensaje);
+        setEnviandoGoogle(false);
+        return;
+      }
+
+      const supabase = createClient();
+      const { error: errorOauth } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
+
+      if (errorOauth) {
+        setError("No pudimos conectar con Google. Intenta de nuevo.");
+        setEnviandoGoogle(false);
+        return;
+      }
+      // Sin error: el navegador ya está redirigiendo a Google. El estado de
+      // carga se queda encendido a propósito — no hay a qué volver acá.
+    } catch {
+      setError("No pudimos conectarnos. Revisa tu conexión e intenta de nuevo.");
+      setEnviandoGoogle(false);
+    }
+  }
+
+  async function manejarEnviarCodigo() {
+    setError(null);
+    setEnviandoCodigo(true);
+    const resultado = await enviarCodigoInvitacion(token);
+    setEnviandoCodigo(false);
+
+    if (!resultado.ok) {
+      setError(resultado.mensaje);
+      return;
+    }
+    setPaso("codigo");
+  }
+
+  if (paso === "codigo") {
+    return (
+      <Tarjeta>
+        <IngresaCodigo
+          email={info.email}
+          onVerificar={async (codigo) => {
+            const resultado = await verificarCodigoInvitacion(token, codigo, opcionesWhatsApp);
+            if (!resultado.ok) {
+              return { ok: false, mensaje: resultado.mensaje };
+            }
+            destinoTrasCodigo.current = resultado.destino;
+            return { ok: true };
+          }}
+          onReenviar={() => enviarCodigoInvitacion(token)}
+          onExito={() => {
+            router.push(destinoTrasCodigo.current);
+            router.refresh();
+          }}
+        />
+      </Tarjeta>
+    );
+  }
+
+  return (
+    <Tarjeta>
+      <h1 className="font-heading text-xl leading-tight font-semibold">
+        {esPrimerDueno ? `Activa ${info.nombreTenant}` : "Acepta tu invitación"}
+      </h1>
+      <p className="mt-2 text-sm leading-relaxed text-fg-muted">
+        {esPrimerDueno ? (
+          <>Estás a un paso. Continúa con Google o con un código y la cuenta queda operativa.</>
+        ) : (
+          <>
+            <span className="font-medium text-fg">{info.nombreTenant}</span> te invitó como{" "}
+            {NOMBRES_ROL[info.rol]}. Continúa con Google o con un código para entrar.
+          </>
+        )}
+      </p>
+      {/* El correo se muestra y NO se puede editar: es a quien se invitó. */}
+      <p className="rx-num mt-3 border border-line-subtle bg-bg-inset px-3 py-2 text-sm text-fg-muted">
+        {info.email}
+      </p>
+
+      {/*
+        El WhatsApp del seller, y su consentimiento — mismo criterio que
+        `guardarWhatsAppInvitado` (opcional, y sin la casilla marcada no se
+        guarda nada). Va acá porque el permiso lo tiene que dar el interesado.
+      */}
+      {esSeller ? (
+        <div className="mt-4 space-y-3 rounded-md border border-border bg-bg-subtle p-3">
+          <div className="space-y-2">
+            <Label htmlFor={`${idBase}-whatsapp`}>
+              Tu WhatsApp <span className="font-normal text-fg-muted">(opcional)</span>
+            </Label>
+            <Input
+              id={`${idBase}-whatsapp`}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="+56 9 1234 5678"
+              value={telefonoWhatsApp}
+              onChange={(e) => setTelefonoWhatsApp(e.target.value)}
+              readOnly={cargando}
+            />
+            <p className="text-sm text-fg-muted">
+              Para avisarte cuando retiremos pedidos desde tu bodega.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id={`${idBase}-acepta-whatsapp`}
+              checked={aceptaWhatsApp}
+              onCheckedChange={(v) => setAceptaWhatsApp(v === true)}
+              className="mt-0.5"
+            />
+            <Label
+              htmlFor={`${idBase}-acepta-whatsapp`}
+              className="cursor-pointer text-sm font-normal leading-relaxed"
+            >
+              Acepto recibir avisos de mis entregas por WhatsApp. Puedo darme de baja
+              respondiendo <span className="font-medium">BAJA</span> en cualquier momento.
+            </Label>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Embebido y persistente: si se va sola, la persona no alcanza a leerlo. */}
+      {error ? (
+        <Alert variant="destructive" className="mt-4">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <div className="mt-5 space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={manejarGoogle}
+          disabled={cargando}
+        >
+          {enviandoGoogle ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <IconoGoogle className="size-4" />
+          )}
+          {enviandoGoogle ? "Conectando con Google…" : "Continuar con Google"}
+        </Button>
+
+        <div className="flex items-center gap-3 text-xs text-fg-subtle">
+          <span className="h-px flex-1 bg-line" />
+          o con un código
+          <span className="h-px flex-1 bg-line" />
+        </div>
+
+        <Button type="button" className="w-full" onClick={manejarEnviarCodigo} disabled={cargando}>
+          {enviandoCodigo ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+          {enviandoCodigo ? "Enviando código…" : "Enviar código a mi correo"}
+        </Button>
+      </div>
     </Tarjeta>
   );
 }

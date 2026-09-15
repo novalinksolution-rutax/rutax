@@ -68,7 +68,7 @@ export default async function PaginaPortalSeller() {
   const hoy = hoyEnSantiago();
   const cliente = crearClienteServiceRole();
 
-  const [resultado, conexionesShopify, pedidosHoy, tenantFila] = await Promise.all([
+  const [resultado, conexionesShopify, pedidosHoy, tenantFila, bodegasActivas] = await Promise.all([
     obtenerConexionesPropia(),
     obtenerConexionesShopifyPropia(),
     // Los pedidos del día, en una lectura: los conteos salen en memoria en vez
@@ -80,6 +80,15 @@ export default async function PaginaPortalSeller() {
       .eq("seller_id", sellerId)
       .eq("fecha_compromiso", hoy),
     cliente.from("tenants").select("nombre_fantasia").eq("id", tenantId).maybeSingle(),
+    // Mismo criterio que `/portal/bodegas`: cuenta ACTIVAS, no todas — una
+    // bodega desactivada no es una dirección adonde el courier vaya a ir.
+    cliente
+      .schema("identidad")
+      .from("seller_bodegas")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("seller_id", sellerId)
+      .eq("activa", true),
   ]);
 
   const nombreCourier =
@@ -120,6 +129,12 @@ export default async function PaginaPortalSeller() {
       ).length
     : 0;
 
+  // Sin bodega activa el courier no tiene dónde ir a retirar. No es una falla
+  // (por eso ámbar, `attention-*`, y no `fault-*`) ni bloquea nada acá: el
+  // seller puede seguir viendo su día mientras la agrega. En error, se calla
+  // — no se afirma «te falta» sobre un dato que no se pudo leer.
+  const sinBodegaActiva = bodegasActivas.error ? false : (bodegasActivas.count ?? 0) === 0;
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       {/* 1 · La conexión caída, ARRIBA DE TODO. Sin sus cuentas conectadas los
@@ -136,6 +151,20 @@ export default async function PaginaPortalSeller() {
             Mientras esté así, tus pedidos nuevos no le llegan a {nombreCourier}. Vuelve a
             conectarla desde abajo.
           </p>
+        </div>
+      ) : null}
+
+      {/* 1b · Sin bodega, no bloquea, pero exige acción: sin ella nadie va a
+             retirar los pedidos de este seller. */}
+      {sinBodegaActiva ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-attention-line bg-attention-bg px-4 py-3.5">
+          <p className="text-sm leading-relaxed text-attention-fg">
+            <strong className="font-medium">Falta tu dirección de bodega.</strong> Sin ella no
+            podemos retirar tus pedidos.
+          </p>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/portal/bodegas">Agregar bodega</Link>
+          </Button>
         </div>
       ) : null}
 

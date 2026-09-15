@@ -15,7 +15,13 @@ export const metadata: Metadata = {
 
 interface PageProps {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ dueno?: string }>;
+  /**
+   * `dueno` distingue el saludo de la Pantalla C (ver más abajo). `error`
+   * llega del callback de Google (F3: `email_no_calza` | `invitacion_invalida`
+   * | `error_sistema`) o de un intento fallido dentro de esta misma pantalla —
+   * nunca decide qué variante mostrar, solo qué aviso encabeza el formulario.
+   */
+  searchParams: Promise<{ dueno?: string; error?: string }>;
 }
 
 /**
@@ -52,7 +58,7 @@ interface PageProps {
  */
 export default async function PaginaAceptarInvitacion({ params, searchParams }: PageProps) {
   const { token } = await params;
-  const { dueno } = await searchParams;
+  const { dueno, error } = await searchParams;
 
   const estado = await resolverInvitacionPorToken(token);
 
@@ -65,7 +71,12 @@ export default async function PaginaAceptarInvitacion({ params, searchParams }: 
       marca={{ tipo: "courier", nombre: estado.nombreTenant }}
       pie="Si no esperabas esta invitación, ignórala: sin abrirla no se crea ninguna cuenta."
     >
-      <FormularioAceptacion token={token} info={estado} esPrimerDueno={dueno === "1"} />
+      <FormularioAceptacion
+        token={token}
+        info={estado}
+        esPrimerDueno={dueno === "1"}
+        errorInicial={error}
+      />
     </PantallaSinSesion>
   );
 }
