@@ -9,6 +9,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import {
   contarAsignablesSinAsignar,
+  detectarSellersAsignablesSinTarifa,
   listarComunasConAsignables,
   listarPedidosAsignables,
   obtenerCargaConductoresDelDia,
@@ -16,6 +17,7 @@ import {
   type FiltroAsignables,
   type PedidoAsignable,
 } from "@/modules/operacion/asignacion";
+import type { SellerSinTarifa } from "@/modules/operacion/retiro/expectativa";
 import { listarConductores } from "@/modules/operacion/conductores";
 import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { Button } from "@/components/ui/button";
@@ -90,6 +92,8 @@ interface DatosBandeja {
   comunasCatalogo: ComunaOpcion[];
   sellers: SellerOpcion[];
   conductores: ConductorOpcion[];
+  /** Aviso "sin tarifa" (tarifa → $0), sobre el UNIVERSO del día, no la página. */
+  sinTarifa: SellerSinTarifa[];
 }
 
 // =============================================================================
@@ -216,6 +220,7 @@ async function cargarDatosBandeja(
       comunasCatalogo: [],
       sellers: [],
       conductores: [],
+      sinTarifa: [],
     };
   }
 
@@ -244,12 +249,18 @@ async function cargarDatosBandeja(
       obtenerCargaConductoresDelDia(cliente, { tenantId, fecha }),
     ]);
 
-  // Enriquecimiento decorativo (chip de cuenta ML) — NO dentro del
-  // `Promise.all` de arriba: no debe hacer más lento el camino crítico ni,
-  // sobre todo, tumbar la carga si falla (ya se protege sola con su propio
-  // try/catch, pero se separa también para que su latencia no bloquee el
-  // resto).
-  const origenPorPedido = await resolverOrigenPorPedido(cliente, tenantId, pedidos);
+  // Enriquecimiento decorativo (chip de cuenta ML) y el aviso de tarifa —
+  // NINGUNO de los dos dentro del `Promise.all` de arriba: no deben hacer más
+  // lento el camino crítico ni, sobre todo, tumbar la carga si fallan. El
+  // aviso de tarifa consulta el UNIVERSO del día (no la página actual, ver
+  // `detectarSellersAsignablesSinTarifa`), así que va aparte con su propio
+  // best-effort — un fallo ahí no debe dejar la bandeja entera en error_carga.
+  const [origenPorPedido, sinTarifa] = await Promise.all([
+    resolverOrigenPorPedido(cliente, tenantId, pedidos),
+    detectarSellersAsignablesSinTarifa(cliente, { tenantId, fecha }).catch(
+      () => [] as SellerSinTarifa[],
+    ),
+  ]);
 
   const conductores: ConductorOpcion[] = conductoresRaw
     .filter((c) => c.estado === "activo")
@@ -266,7 +277,17 @@ async function cargarDatosBandeja(
       return a.nombre.localeCompare(b.nombre, "es");
     });
 
-  return { totalRetiradosHoy, totalSinAsignar, pedidos, totalFiltro, origenPorPedido, comunasCatalogo, sellers, conductores };
+  return {
+    totalRetiradosHoy,
+    totalSinAsignar,
+    pedidos,
+    totalFiltro,
+    origenPorPedido,
+    comunasCatalogo,
+    sellers,
+    conductores,
+    sinTarifa,
+  };
 }
 
 export default async function PaginaAsignarPedidos({
@@ -376,6 +397,7 @@ export default async function PaginaAsignarPedidos({
         hayFiltros={hayFiltros}
         conductores={datos.conductores}
         conductorInicialId={conductorInicialId}
+        sinTarifa={datos.sinTarifa}
       />
     </div>
   );

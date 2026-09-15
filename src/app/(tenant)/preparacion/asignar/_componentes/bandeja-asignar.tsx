@@ -30,10 +30,12 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Boxes, SearchX } from "lucide-react";
 import { toast } from "sonner";
 import type { EstadoAsignable, PedidoAsignable } from "@/modules/operacion/asignacion";
+import type { SellerSinTarifa } from "@/modules/operacion/retiro/expectativa";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { IndicadorEnVivo } from "@/components/tiempo-real/indicador-en-vivo";
+import { AvisoSinTarifa } from "@/components/operacion/aviso-sin-tarifa";
 import { actionAsignarPedidosEnBloque } from "../actions";
 import { actionResolverSeleccionCompleta } from "../seleccion-completa";
 import {
@@ -72,6 +74,8 @@ export interface BandejaAsignarProps {
   hayFiltros: boolean;
   conductores: ConductorOpcion[];
   conductorInicialId: string | null;
+  /** Aviso "sin tarifa" (tarifa → $0), sobre el UNIVERSO del día, no la página. */
+  sinTarifa: SellerSinTarifa[];
 }
 
 export function BandejaAsignar({
@@ -92,6 +96,7 @@ export function BandejaAsignar({
   hayFiltros,
   conductores,
   conductorInicialId,
+  sinTarifa,
 }: BandejaAsignarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -304,6 +309,13 @@ export function BandejaAsignar({
           onSenal={() => setCambiosPendientes((n) => n + 1)}
         />
       </div>
+
+      {/* El aviso "sin tarifa" (tarifa → $0): mismo componente, misma
+          respuesta, que en Preparación del día — ver `AvisoSinTarifa`. Va
+          antes de los cajones: es el reparo que más importa de la pantalla,
+          y el coordinador está a punto de comprometer estos pedidos a un
+          conductor. */}
+      <AvisoSinTarifa sinTarifa={sinTarifa} />
 
       {/* La barra de cajones del sistema. Antes eran tres chips escritos a mano
           dentro de «Filtros» —Todos · Sin asignar · Asignados— **sin una sola

@@ -61,6 +61,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
+import type { TipoPedido } from "../tipos";
 
 import { abrirVisitaBodega } from "./bodegas";
 import { registrarLoteEscaneos, type ResultadoEscaneo } from "./escaneos";
@@ -321,6 +322,12 @@ export interface PedidoPendienteDeRetiro {
   sellerId: string;
   /** `false` si no tiene ningún código: se muestra, pero no se puede registrar. */
   registrable: boolean;
+  /**
+   * Régimen de tarifa del pedido (Flex vs. same-day). Se agregó SOLO para
+   * alimentar `detectarPedidosSinTarifa` (el aviso "sin tarifa" de la
+   * pantalla) — `registrarRetiroDesdeWeb` no lo usa ni lo necesita.
+   */
+  tipoPedido: TipoPedido;
 }
 
 /**
@@ -346,7 +353,7 @@ export async function listarPedidosPendientesDeRetiro(
   const { data, error } = await cliente
     .schema("operacion")
     .from("pedidos")
-    .select("id, ml_shipment_id, codigo_interno, destinatario_comuna, seller_id")
+    .select("id, ml_shipment_id, codigo_interno, destinatario_comuna, seller_id, tipo_pedido")
     .eq("tenant_id", entrada.tenantId)
     .eq("situacion_retiro", "pendiente")
     .eq("estado", "pendiente_asignacion")
@@ -369,6 +376,7 @@ export async function listarPedidosPendientesDeRetiro(
       destinatarioComuna: (fila.destinatario_comuna as string | null) ?? null,
       sellerId: fila.seller_id as string,
       registrable: codigo !== null,
+      tipoPedido: fila.tipo_pedido as TipoPedido,
     };
   });
 }

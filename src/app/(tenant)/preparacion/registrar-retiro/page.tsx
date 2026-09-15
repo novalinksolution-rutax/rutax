@@ -10,8 +10,11 @@ import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { listarConductores } from "@/modules/operacion/conductores";
 import { listarBodegasParaConductor } from "@/modules/operacion/retiro/bodegas";
 import { listarPedidosPendientesDeRetiro } from "@/modules/operacion/retiro/registro-web";
+import { detectarPedidosSinTarifa } from "@/modules/operacion/tarifas";
+import type { SellerSinTarifa } from "@/modules/operacion/retiro/expectativa";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { AvisoSinTarifa } from "@/components/operacion/aviso-sin-tarifa";
 
 import { FormularioRetiro } from "./formulario-retiro";
 
@@ -96,12 +99,68 @@ export default async function RegistrarRetiroPage() {
     );
   }
 
+  // El aviso "sin tarifa" (tarifa → $0), mismo componente que Preparación del
+  // día y la bandeja de asignación. Acá NO hace falta una consulta nueva: la
+  // pantalla ya trae, para TODO el día, los pedidos pendientes de retiro
+  // (`pedidos`, capado en 500 — ver `listarPedidosPendientesDeRetiro`) y las
+  // bodegas con su seller (`bodegas`, que ya resuelve el nombre). Es
+  // best-effort: si falla, la pantalla se sigue viendo bien, solo sin aviso.
+  const sinTarifa = await construirAvisoSinTarifa(cliente, { tenantId, fecha, pedidos, bodegas }).catch(
+    () => [] as SellerSinTarifa[],
+  );
+
   return (
     <div className="space-y-6">
       <Cabecera />
+      <AvisoSinTarifa sinTarifa={sinTarifa} />
       <FormularioRetiro conductores={conductores} bodegas={bodegas} pedidos={pedidos} />
     </div>
   );
+}
+
+/**
+ * Sellers con pedidos pendientes de retiro hoy sin tarifa vigente para su
+ * régimen. Usa `detectarPedidosSinTarifa` (mismo detector que la bandeja de
+ * asignación y el detalle de manifiesto) sobre los pedidos que la propia
+ * pantalla ya cargó — sin una consulta adicional grande.
+ *
+ * El nombre del seller sale de `bodegas` (ya trae `sellerNombre`), no de una
+ * consulta aparte: solo se ofrecen sellers con bodega en esta pantalla.
+ */
+async function construirAvisoSinTarifa(
+  cliente: ReturnType<typeof crearClienteServiceRole>,
+  entrada: {
+    tenantId: string;
+    fecha: string;
+    pedidos: Awaited<ReturnType<typeof listarPedidosPendientesDeRetiro>>;
+    bodegas: Awaited<ReturnType<typeof listarBodegasParaConductor>>;
+  },
+): Promise<SellerSinTarifa[]> {
+  const { tenantId, fecha, pedidos, bodegas } = entrada;
+  if (pedidos.length === 0) return [];
+
+  const sinTarifaIds = await detectarPedidosSinTarifa(
+    cliente,
+    { tenantId, fecha },
+    pedidos.map((p) => ({ id: p.id, sellerId: p.sellerId, tipoPedido: p.tipoPedido })),
+  );
+  if (sinTarifaIds.size === 0) return [];
+
+  const bultosPorSeller = new Map<string, number>();
+  for (const p of pedidos) {
+    if (!sinTarifaIds.has(p.id)) continue;
+    bultosPorSeller.set(p.sellerId, (bultosPorSeller.get(p.sellerId) ?? 0) + 1);
+  }
+
+  const nombrePorSeller = new Map(bodegas.map((b) => [b.sellerId, b.sellerNombre]));
+
+  return [...bultosPorSeller.entries()]
+    .map(([sellerId, bultos]) => ({
+      id: sellerId,
+      nombre: nombrePorSeller.get(sellerId) || "Seller sin nombre",
+      bultos,
+    }))
+    .sort((a, b) => b.bultos - a.bultos);
 }
 
 function Cabecera() {

@@ -16,6 +16,10 @@
  * «Crear pedido same-day» y se resuelve igual: el aviso dice lo que el sistema
  * puede verificar, y nombra a quién hay que configurársela.
  *
+ * El banner en sí (el bloque ámbar por seller) vive en
+ * `@/components/operacion/aviso-sin-tarifa` — se extrajo para reusarlo,
+ * idéntico, en la bandeja de asignación y en "Registrar retiro".
+ *
  * -----------------------------------------------------------------------------
  * LA ESTIMACIÓN DECLARA SUS SUPUESTOS
  * -----------------------------------------------------------------------------
@@ -25,10 +29,9 @@
  * merece.
  */
 
-import Link from "next/link";
-import { AlertTriangle, Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Users } from "lucide-react";
 import { formatearHora } from "@/lib/formato-cl";
+import { AvisoSinTarifa } from "@/components/operacion/aviso-sin-tarifa";
 import {
   calcularConductoresNecesarios,
   MINUTOS_POR_PARADA,
@@ -59,27 +62,7 @@ export function CierreDelDia({
 
   return (
     <div className="space-y-2">
-      {sinTarifa.map((seller) => (
-        <div
-          key={seller.id}
-          className="flex flex-wrap items-center gap-x-3 gap-y-2 border border-attention-line bg-attention-bg px-3 py-2.5 text-sm text-attention-fg"
-          role="status"
-        >
-          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
-          <span>
-            <strong className="font-medium">{seller.nombre}</strong> no tiene tarifa
-            configurada, así que {textoEntregas(seller.bultos)} no se podrían cobrar.
-          </span>
-          {/* La acción va PEGADA al aviso: quien lee esto está a un clic de
-              arreglarlo, y mandarlo a buscar la pantalla de tarifas es perder
-              justamente el margen que este aviso acaba de ganar. */}
-          <Button asChild size="sm" variant="outline" className="ms-auto">
-            <Link href={`/configuracion/tarifas?seller=${encodeURIComponent(seller.id)}`}>
-              Configurar la tarifa
-            </Link>
-          </Button>
-        </div>
-      ))}
+      <AvisoSinTarifa sinTarifa={sinTarifa} />
 
       {estimacion.aplicable ? (
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -106,10 +89,6 @@ export function CierreDelDia({
       ) : null}
     </div>
   );
-}
-
-function textoEntregas(bultos: number): string {
-  return bultos === 1 ? "esa entrega" : `esas ${bultos} entregas`;
 }
 
 /**

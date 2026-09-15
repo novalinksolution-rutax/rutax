@@ -144,8 +144,11 @@ import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
 import { resolverComunaCanonica } from "@/modules/integraciones/geocoding/normalizacion";
 import { resolverNombresSellers } from "./retiro/dto-pedido";
+import type { SellerSinTarifa } from "./retiro/expectativa";
 import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import { ESTADOS_TERMINALES_PEDIDO } from "./metricas";
+import { detectarPedidosSinTarifa } from "./tarifas";
+import type { TipoPedido } from "./tipos";
 
 // =============================================================================
 // La segunda reja — fuente de verdad única
@@ -608,4 +611,74 @@ export async function contarAsignablesSinAsignar(
   }
 
   return count ?? 0;
+}
+
+// =============================================================================
+// detectarSellersAsignablesSinTarifa
+// =============================================================================
+
+/**
+ * Sellers con carga asignable HOY (las mismas dos rejas del resto del
+ * módulo) que no tienen tarifa vigente para el régimen de cada pedido —el
+ * aviso "esto se va a entregar y no se va a poder cobrar" (tarifa → $0).
+ *
+ * Usa `detectarPedidosSinTarifa` (`./tarifas`), el MISMO detector que corre
+ * en el detalle de manifiesto: resuelve por `(seller, tipo_pedido)`, no por
+ * un régimen fijo. Es a propósito distinto de `obtenerExpectativaDelDia`
+ * (`./retiro/expectativa.ts`), que fija `tipoEntrega: 'same_day'` porque esa
+ * pantalla es específicamente el retiro en bodega — acá la bandeja mezcla
+ * Flex y same-day, y fijar el régimen daría falsos positivos (o falsos
+ * negativos) en cuanto hubiera un seller con ambos tipos.
+ *
+ * ⚠️ **Sobre el UNIVERSO DEL DÍA, nunca sobre la página visible.** La bandeja
+ * pagina de a 50 y filtra por comuna/seller/texto/estado; calcularlo solo
+ * sobre `pedidos` (la página actual) diría "sin reparo" con el seller sin
+ * tarifa escondido en la página siguiente — peor que no decir nada.
+ */
+export async function detectarSellersAsignablesSinTarifa(
+  cliente: SupabaseClient,
+  entrada: { tenantId: string; fecha: string },
+): Promise<SellerSinTarifa[]> {
+  const { hasta } = limitesDelDiaSantiago(entrada.fecha);
+
+  const filas = await leerTodasLasFilas<{ id: string; seller_id: string; tipo_pedido: TipoPedido }>(
+    "asignables del día para el aviso de tarifa",
+    (ini, fin) =>
+      cliente
+        .schema("operacion")
+        .from("pedidos")
+        .select("id, seller_id, tipo_pedido")
+        .eq("tenant_id", entrada.tenantId)
+        .eq("situacion_retiro", "retirado")
+        .in("estado", ESTADOS_ASIGNABLES)
+        .lt("retirado_en", hasta.toISOString())
+        .order("id", { ascending: true })
+        .range(ini, fin),
+  );
+  if (filas.length === 0) return [];
+
+  const sinTarifaIds = await detectarPedidosSinTarifa(
+    cliente,
+    { tenantId: entrada.tenantId, fecha: entrada.fecha },
+    filas.map((f) => ({ id: f.id, sellerId: f.seller_id, tipoPedido: f.tipo_pedido })),
+  );
+  if (sinTarifaIds.size === 0) return [];
+
+  const bultosPorSeller = new Map<string, number>();
+  for (const f of filas) {
+    if (!sinTarifaIds.has(f.id)) continue;
+    bultosPorSeller.set(f.seller_id, (bultosPorSeller.get(f.seller_id) ?? 0) + 1);
+  }
+
+  const nombresSellers = await resolverNombresSellers(cliente, entrada.tenantId, [
+    ...bultosPorSeller.keys(),
+  ]);
+
+  return [...bultosPorSeller.entries()]
+    .map(([sellerId, bultos]) => ({
+      id: sellerId,
+      nombre: nombresSellers.get(sellerId) ?? "Seller sin nombre",
+      bultos,
+    }))
+    .sort((a, b) => b.bultos - a.bultos);
 }
