@@ -39,6 +39,7 @@ vi.mock('@/modules/identidad/auditoria', () => ({
 
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { inngest } from '@/lib/inngest/cliente';
+import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import {
   cerrarPeriodoManualmente,
   emitirFacturaPeriodo,
@@ -128,6 +129,47 @@ function crearMockSupabaseConEventoPendiente() {
 // =============================================================================
 // Tests de cerrarPeriodoManualmente
 // =============================================================================
+
+/**
+ * Mock secuencial de `cerrarPeriodoManualmente`. A diferencia de las otras
+ * acciones de este archivo, su flujo mezcla dos formas de terminar una
+ * consulta: `.maybeSingle()` explícito (lectura del período) y `await`
+ * DIRECTO sobre la cadena (`leerPeriodicidadTenant` termina en `.limit()`, la
+ * suma de `lineas_cobro` y el UPDATE terminan en `.eq()`). Por eso el mock es
+ * "thenable": además de exponer `.maybeSingle()`, el propio objeto resuelve
+ * su siguiente respuesta de `secuencia` cuando se le hace `await` sin pasar
+ * por `.maybeSingle()`.
+ *
+ * Orden real de `secuencia`, tal como el código las pide:
+ *   1. lectura del período           (vía `.maybeSingle()`)
+ *   2. `leerPeriodicidadTenant`      (await directo, termina en `.limit()`)
+ *   3. suma de `lineas_cobro`        (await directo, termina en `.eq()`)
+ *   4. UPDATE de `periodos_cobro`     (await directo, termina en `.eq()`)
+ */
+function crearMockCierrePeriodo(secuencia: Array<{ data: unknown; error: unknown }>) {
+  let i = 0;
+  const siguiente = () => secuencia[i++] ?? { data: null, error: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mock: any = {};
+  for (const metodo of ['schema', 'from', 'select', 'eq', 'is', 'order', 'limit', 'update', 'insert']) {
+    mock[metodo] = vi.fn(() => mock);
+  }
+  mock.maybeSingle = vi.fn(() => Promise.resolve(siguiente()));
+  mock.then = (resolve: (v: unknown) => void) => resolve(siguiente());
+  return mock;
+}
+
+const PERIODO_ABIERTO = {
+  id: 'periodo-001',
+  tenant_id: 'tenant-a',
+  seller_id: 'seller-a',
+  fecha_inicio: '2026-06-01',
+  fecha_fin: '2026-06-30',
+  estado: 'abierto',
+};
+
+/** Fila de `dinero.config_periodos` que hace `leerPeriodicidadTenant` devolver `explicita: true`. */
+const PERIODICIDAD_EXPLICITA = [{ tipo_periodo: 'mensual', creado_en: '2026-01-01T00:00:00Z' }];
 
 describe('cerrarPeriodoManualmente — RBAC', () => {
   beforeEach(() => {
@@ -222,36 +264,13 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
   it('rol dueno → pasa el check RBAC (no lanza por permisos)', async () => {
     const usuario = usuarioConRol('dueno');
 
-    // Configurar el mock de Supabase para que el flujo siga
-    const mockQuery = {
-      schema: vi.fn().mockReturnThis(),
-      from: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      update: vi.fn().mockReturnThis(),
-      is: vi.fn().mockReturnThis(),
-      // maybeSingle para leer el período
-      maybeSingle: vi.fn()
-        .mockResolvedValueOnce({
-          data: {
-            id: 'periodo-001',
-            tenant_id: 'tenant-a',
-            seller_id: 'seller-a',
-            fecha_inicio: '2026-06-01',
-            fecha_fin: '2026-06-30',
-            estado: 'abierto',
-          },
-          error: null,
-        }),
-    };
-    // Para el select de líneas (devuelve array vacío)
-    mockQuery.select.mockReturnValueOnce({
-      ...mockQuery,
-      eq: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-      }),
-    });
-    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+    const mock = crearMockCierrePeriodo([
+      { data: PERIODO_ABIERTO, error: null },
+      { data: PERIODICIDAD_EXPLICITA, error: null },
+      { data: [], error: null },
+      { data: null, error: null },
+    ]);
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mock as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     // No debe lanzar ErrorValidacion por permisos
     // El RBAC pasa; el resto del flujo puede fallar por el mock incompleto,
@@ -266,39 +285,70 @@ describe('cerrarPeriodoManualmente — RBAC', () => {
   it('rol administracion → pasa el check RBAC (no lanza por permisos)', async () => {
     const usuario = usuarioConRol('administracion');
 
-    const mockQuery = {
-      schema: vi.fn().mockReturnThis(),
-      from: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      update: vi.fn().mockReturnThis(),
-      is: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn()
-        .mockResolvedValueOnce({
-          data: {
-            id: 'periodo-001',
-            tenant_id: 'tenant-a',
-            seller_id: 'seller-a',
-            fecha_inicio: '2026-06-01',
-            fecha_fin: '2026-06-30',
-            estado: 'abierto',
-          },
-          error: null,
-        }),
-    };
-    mockQuery.select.mockReturnValueOnce({
-      ...mockQuery,
-      eq: vi.fn().mockReturnValue({
-        eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-      }),
-    });
-    vi.mocked(crearClienteServiceRole).mockReturnValue(mockQuery as unknown as ReturnType<typeof crearClienteServiceRole>);
+    const mock = crearMockCierrePeriodo([
+      { data: PERIODO_ABIERTO, error: null },
+      { data: PERIODICIDAD_EXPLICITA, error: null },
+      { data: [], error: null },
+      { data: null, error: null },
+    ]);
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mock as unknown as ReturnType<typeof crearClienteServiceRole>);
 
     try {
       await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuario, 'actor-001');
     } catch (err) {
       expect(err).not.toBeInstanceOf(ErrorValidacion);
     }
+  });
+});
+
+// =============================================================================
+// Gate 2 (F2b, onboarding-rediseno.md §6): periodicidad explícita — SOLO en
+// el cierre MANUAL. El cron automático `cerrar-periodo` no lleva este gate
+// (sigue cerrando con el respaldo documentado); acá se prueba solo la acción
+// humana `cerrarPeriodoManualmente`.
+// =============================================================================
+
+describe('cerrarPeriodoManualmente — Gate 2 (periodicidad explícita)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('sin periodicidad explícita (el motor usa el respaldo) → ErrorValidacion accionable, no toca líneas ni bitácora', async () => {
+    const mock = crearMockCierrePeriodo([
+      { data: PERIODO_ABIERTO, error: null },
+      // `leerPeriodicidadTenant` sin fila → explicita: false.
+      { data: [], error: null },
+    ]);
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mock as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await expect(
+      cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001'),
+    ).rejects.toThrow(/periodicidad/i);
+
+    expect(mock.update).not.toHaveBeenCalled();
+    expect(registrarEnBitacora).not.toHaveBeenCalled();
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('con periodicidad explícita → cierra normalmente y publica dinero/periodo.cerrado', async () => {
+    const mock = crearMockCierrePeriodo([
+      { data: PERIODO_ABIERTO, error: null },
+      { data: PERIODICIDAD_EXPLICITA, error: null },
+      { data: [{ monto_final_clp: 1000 }], error: null },
+      { data: null, error: null }, // UPDATE ok
+    ]);
+    vi.mocked(crearClienteServiceRole).mockReturnValue(mock as unknown as ReturnType<typeof crearClienteServiceRole>);
+
+    await cerrarPeriodoManualmente('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001');
+
+    expect(mock.update).toHaveBeenCalled();
+    expect(registrarEnBitacora).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ accion: 'dinero.periodo_cerrado_manual' }),
+    );
+    expect(inngest.send).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'dinero/periodo.cerrado' }),
+    );
   });
 });
 
@@ -1226,6 +1276,11 @@ function crearMockPeriodo(estado: string, extra: Record<string, unknown> = {}) {
         // (folio_actual <= folio_hasta) en el happy path.
         folio_actual: 10,
         folio_hasta: 100,
+        // Gate 1 (F2b, onboarding-rediseno.md §6): `courier_datos_cobro`
+        // reusa este MISMO objeto (mismo mock para toda tabla) — sin este
+        // campo, el gate de datos de cobro bloquearía todos los tests que
+        // hoy esperan llegar hasta la emisión.
+        numero_cuenta: '000123456789',
         ...extra,
       },
       error: null,
@@ -1315,7 +1370,10 @@ describe('emitirFacturaPeriodo — compuerta de aprobación (B1-1)', () => {
         .fn()
         // 1ª llamada: lectura del período (cerrado).
         .mockResolvedValueOnce({ data: periodoData, error: null })
-        // 2ª llamada: `hayFolioDisponible` — sin CAF vigente tipo 33.
+        // 2ª llamada: Gate 1 (F2b) — datos de cobro completos, para que el
+        // test siga probando específicamente el bloqueo de folios.
+        .mockResolvedValueOnce({ data: { numero_cuenta: '000123456789' }, error: null })
+        // 3ª llamada: `hayFolioDisponible` — sin CAF vigente tipo 33.
         .mockResolvedValueOnce({ data: null, error: null }),
     };
     vi.mocked(crearClienteServiceRole).mockReturnValue(
@@ -1326,5 +1384,89 @@ describe('emitirFacturaPeriodo — compuerta de aprobación (B1-1)', () => {
       emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001'),
     ).rejects.toBeInstanceOf(ErrorValidacion);
     expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Gate 1 (F2b, onboarding-rediseno.md §6): datos de cobro bancarios.
+  // Sin cuenta configurada el seller no sabe a dónde transferirle al courier
+  // — bloqueo duro, ANTES de tocar folios/modo/bitácora.
+  // ---------------------------------------------------------------------------
+
+  it('sin fila de datos de cobro → ErrorValidacion accionable, NO publica el evento', async () => {
+    const periodoData = {
+      id: 'periodo-001',
+      tenant_id: 'tenant-a',
+      seller_id: 'seller-a',
+      fecha_inicio: '2026-06-01',
+      fecha_fin: '2026-06-30',
+      estado: 'cerrado',
+      monto_total_clp: 11400,
+      documento_dte_id: null,
+    };
+    const mockSecuencial = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: periodoData, error: null })
+        // Gate 1: sin fila en `courier_datos_cobro`.
+        .mockResolvedValueOnce({ data: null, error: null }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      mockSecuencial as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001'),
+    ).rejects.toThrow(/datos de cobro/i);
+    expect(inngest.send).not.toHaveBeenCalled();
+    expect(registrarEnBitacora).not.toHaveBeenCalled();
+  });
+
+  it('con numero_cuenta vacío (solo espacios) → ErrorValidacion, igual que sin fila', async () => {
+    const periodoData = {
+      id: 'periodo-001',
+      tenant_id: 'tenant-a',
+      seller_id: 'seller-a',
+      fecha_inicio: '2026-06-01',
+      fecha_fin: '2026-06-30',
+      estado: 'cerrado',
+      monto_total_clp: 11400,
+      documento_dte_id: null,
+    };
+    const mockSecuencial = {
+      schema: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      maybeSingle: vi
+        .fn()
+        .mockResolvedValueOnce({ data: periodoData, error: null })
+        .mockResolvedValueOnce({ data: { numero_cuenta: '   ' }, error: null }),
+    };
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      mockSecuencial as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+
+    await expect(
+      emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001'),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('con datos de cobro completos → pasa el gate y sigue hasta publicar el evento', async () => {
+    vi.mocked(crearClienteServiceRole).mockReturnValue(
+      crearMockPeriodo('cerrado') as unknown as ReturnType<typeof crearClienteServiceRole>,
+    );
+
+    await emitirFacturaPeriodo('tenant-a', 'periodo-001', usuarioConRol('dueno'), 'actor-001');
+
+    expect(inngest.send).toHaveBeenCalledTimes(1);
   });
 });

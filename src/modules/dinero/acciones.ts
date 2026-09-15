@@ -34,6 +34,7 @@ import { conciliarPagoPersistido } from './aplicar-pago';
 import { esEstadoTerminal } from './matching-pago';
 import { montosDesdeNeto } from './montos';
 import { modoDtePlataforma } from './modo-dte';
+import { leerPeriodicidadTenant } from './config-periodos';
 import type { TipoAccionDinero } from './preflight';
 import { calcularMontoPayout, type TipoRelacionConductor } from './jobs/calculo-payout';
 import { hayFolioDisponible } from './folios';
@@ -100,6 +101,19 @@ export async function cerrarPeriodoManualmente(
   if (!periodo) throw new ErrorValidacion(`Período ${periodoId} no encontrado en el tenant.`);
   if (periodo.estado !== 'abierto') {
     throw new ErrorValidacion(`El período ya está en estado '${periodo.estado}' — solo se pueden cerrar períodos abiertos.`);
+  }
+
+  // Gate just-in-time (F2b, onboarding-rediseno.md §6), SOLO para el cierre
+  // MANUAL: si el courier nunca eligió periodicidad explícita, el motor está
+  // usando `PERIODICIDAD_POR_DEFECTO` como respaldo silencioso — cerrar en la
+  // periodicidad equivocada mezcla líneas de períodos distintos. El cron
+  // automático `cerrar-periodo` NO lleva este gate a propósito: sigue
+  // cerrando con el respaldo documentado, para no detener la operación.
+  const periodicidad = await leerPeriodicidadTenant(supabase, tenantId);
+  if (!periodicidad.explicita) {
+    throw new ErrorValidacion(
+      'Elige tu periodicidad de facturación antes de cerrar tu primer período.',
+    );
   }
 
   // Calcular totales desde las líneas de cobro.
@@ -371,6 +385,25 @@ export async function emitirFacturaPeriodo(
     throw new ErrorValidacion(
       `Solo se puede facturar un período en estado 'cerrado'. Estado actual: '${periodo.estado}'. ` +
         'Cierra el período y revísalo antes de emitir la factura.',
+    );
+  }
+
+  // Gate just-in-time (F2b, onboarding-rediseno.md §6): datos de cobro
+  // bancarios. Sin cuenta configurada el seller no sabe a dónde transferirle
+  // al courier — bloqueo duro, ANTES de la bitácora (si falla acá, no debe
+  // quedar asiento de "emisión solicitada").
+  const { data: datosCobro, error: errorDatosCobro } = await supabase
+    .schema('identidad')
+    .from('courier_datos_cobro')
+    .select('numero_cuenta')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (errorDatosCobro) {
+    throw new Error(`Error al leer datos de cobro: ${errorDatosCobro.message}`);
+  }
+  if (!datosCobro?.numero_cuenta || String(datosCobro.numero_cuenta).trim().length === 0) {
+    throw new ErrorValidacion(
+      'Configura dónde te pagan (datos de cobro) antes de emitir facturas.',
     );
   }
 
