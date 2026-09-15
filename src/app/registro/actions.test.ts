@@ -41,7 +41,6 @@ import { enviarCodigoRegistro, guardarBorradorTenant, verificarCodigoRegistro } 
 
 const ENTRADA_VALIDA = {
   nombreFantasia: "Despachos Rápidos SpA",
-  razonSocial: "Despachos Rápidos Sociedad por Acciones",
   rut: "76.543.210-3", // cuerpo 76543210 → DV módulo 11 = 3
   nombreDueno: "María Pérez",
   emailDueno: "Dueno@DespachosRapidos.cl",
@@ -82,7 +81,6 @@ describe("guardarBorradorTenant", () => {
     expect(resultado).toEqual({ ok: true });
     expect(guardarBorrador).toHaveBeenCalledWith({
       nombreFantasia: "Despachos Rápidos SpA",
-      razonSocial: "Despachos Rápidos Sociedad por Acciones",
       rut: "76543210-3",
       nombreDueno: "María Pérez",
       emailDueno: "dueno@despachosrapidos.cl",
@@ -146,7 +144,6 @@ describe("verificarCodigoRegistro", () => {
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
     vi.mocked(leerBorrador).mockResolvedValue({
       nombreFantasia: "Despachos Rápidos SpA",
-      razonSocial: "Despachos Rápidos Sociedad por Acciones",
       rut: "76543210-3",
       nombreDueno: "María Pérez",
       emailDueno: "dueno@nuevo.cl",
@@ -236,7 +233,6 @@ describe("verificarCodigoRegistro", () => {
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
     vi.mocked(leerBorrador).mockResolvedValue({
       nombreFantasia: "X",
-      razonSocial: "X SpA",
       rut: "76543210-3",
       nombreDueno: "Otro",
       emailDueno: "otro@nuevo.cl",
@@ -258,7 +254,6 @@ describe("verificarCodigoRegistro", () => {
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
     vi.mocked(leerBorrador).mockResolvedValue({
       nombreFantasia: "X",
-      razonSocial: "X SpA",
       rut: "76543210-3",
       nombreDueno: "Otro",
       emailDueno: "otro@nuevo.cl",

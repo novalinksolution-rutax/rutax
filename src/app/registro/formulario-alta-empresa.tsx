@@ -3,11 +3,16 @@
 /**
  * Pantalla A — Alta de la empresa (RF-006), F1 (login sin contraseña).
  * =============================================================================
- * Mismo formulario de 5 campos de siempre (`nombreFantasia`, `razonSocial`,
- * `rut`, `nombreDueno`, `emailDueno`) y el mismo checkbox de consentimiento
- * bloqueante (Ley 21.719) — eso NO cambia en F1.
+ * Arranque MÍNIMO (rediseño de onboarding, doc §6): 4 campos
+ * (`nombreFantasia`, `rut`, `nombreDueno`, `emailDueno`) y el mismo checkbox
+ * de consentimiento bloqueante (Ley 21.719). La razón social YA NO se pide
+ * aquí — se difiere al hub de onboarding («datos de tu empresa»,
+ * `(tenant)/onboarding/_formularios/datos-emisor.tsx`), que es donde el
+ * dueño la completa antes de que el motor de dinero la necesite (gateado
+ * por F2b). El tenant nace con `razon_social = null`.
  *
- * Lo que cambia es el desenlace. Antes el botón llamaba a `altaDeEmpresa`
+ * Lo que cambia respecto al F1 original es el desenlace. Antes el botón
+ * llamaba a `altaDeEmpresa`
  * (creaba el tenant de un golpe y mandaba un correo para "crear tu
  * contraseña"). Ahora no hay contraseña que crear: hay DOS caminos, y los
  * dos arrancan guardando el mismo borrador (`guardarBorradorTenant`) porque
@@ -40,7 +45,6 @@ const MENSAJE_RUT_FORMATO = "Ingresa el RUT con el formato 12.345.678-9.";
 
 interface CamposFormulario {
   nombreFantasia: string;
-  razonSocial: string;
   rut: string;
   nombreDueno: string;
   emailDueno: string;
@@ -48,7 +52,6 @@ interface CamposFormulario {
 
 interface ErroresFormulario {
   nombreFantasia?: string;
-  razonSocial?: string;
   rut?: string;
   nombreDueno?: string;
   emailDueno?: string;
@@ -56,7 +59,6 @@ interface ErroresFormulario {
 
 const CAMPOS_INICIALES: CamposFormulario = {
   nombreFantasia: "",
-  razonSocial: "",
   rut: "",
   nombreDueno: "",
   emailDueno: "",
@@ -100,7 +102,6 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
   // rechaza pasarle a `ref=` un acceso a miembro de un objeto armado en cada
   // render (`refs.rut`), aunque cada valor venga de un `useRef` legítimo.
   const refNombreFantasia = useRef<HTMLInputElement>(null);
-  const refRazonSocial = useRef<HTMLInputElement>(null);
   const refRut = useRef<HTMLInputElement>(null);
   const refNombreDueno = useRef<HTMLInputElement>(null);
   const refEmailDueno = useRef<HTMLInputElement>(null);
@@ -109,7 +110,6 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
   function refDeCampo(campo: keyof CamposFormulario): RefObject<HTMLInputElement | null> {
     const mapa: Record<keyof CamposFormulario, RefObject<HTMLInputElement | null>> = {
       nombreFantasia: refNombreFantasia,
-      razonSocial: refRazonSocial,
       rut: refRut,
       nombreDueno: refNombreDueno,
       emailDueno: refEmailDueno,
@@ -147,9 +147,6 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
     if (!campos.nombreFantasia.trim()) {
       nuevosErrores.nombreFantasia = "El nombre de fantasía de tu empresa es obligatorio.";
     }
-    if (!campos.razonSocial.trim()) {
-      nuevosErrores.razonSocial = "La razón social de tu empresa es obligatoria.";
-    }
 
     const rutLimpio = limpiarMascaraRut(campos.rut);
     if (!rutLimpio) {
@@ -181,7 +178,6 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
   async function guardarBorrador(): Promise<boolean> {
     const resultado = await guardarBorradorTenant({
       nombreFantasia: campos.nombreFantasia,
-      razonSocial: campos.razonSocial,
       rut: limpiarMascaraRut(campos.rut),
       nombreDueno: campos.nombreDueno,
       emailDueno: campos.emailDueno,
@@ -292,26 +288,6 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
               {errores.nombreFantasia ? (
                 <p id={`${idBase}-nombreFantasia-error`} role="alert" className="text-sm text-destructive">
                   {errores.nombreFantasia}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor={`${idBase}-razonSocial`}>Razón social</Label>
-              <Input
-                id={`${idBase}-razonSocial`}
-                ref={refRazonSocial}
-                autoComplete="off"
-                placeholder="Ej: Despachos Rápidos Sociedad por Acciones"
-                value={campos.razonSocial}
-                onChange={(e) => actualizarCampo("razonSocial", e.target.value)}
-                readOnly={enviando}
-                aria-invalid={Boolean(errores.razonSocial)}
-                aria-describedby={errores.razonSocial ? `${idBase}-razonSocial-error` : undefined}
-              />
-              {errores.razonSocial ? (
-                <p id={`${idBase}-razonSocial-error`} role="alert" className="text-sm text-destructive">
-                  {errores.razonSocial}
                 </p>
               ) : null}
             </div>

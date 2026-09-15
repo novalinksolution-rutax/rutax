@@ -22,9 +22,11 @@
  * backstage sigue invitando por correo, vía `crearTenantConDueno`, sin
  * cambios).
  *
- * ⚠️ El formulario de 5 campos (`nombreFantasia`, `razonSocial`, `rut`,
- * `nombreDueno`, `emailDueno`) NO cambia en F1 — el "arranque mínimo" (menos
- * campos) es F2, no se adelanta acá.
+ * ⚠️ Arranque MÍNIMO (rediseño de onboarding, doc §6): el formulario pasó de
+ * 5 campos a 4 (`nombreFantasia`, `rut`, `nombreDueno`, `emailDueno`). La
+ * razón social YA NO se guarda en el borrador ni se pasa a
+ * `provisionarTenantParaAuthUser` — se difiere al hub de onboarding, que la
+ * escribe después. El tenant nace con `razon_social = null`.
  */
 
 import { normalizarYValidarRut } from "@/modules/identidad/rut";
@@ -50,7 +52,6 @@ import { ErrorConflicto } from "@/modules/identidad/errores";
 
 export interface GuardarBorradorTenantEntrada {
   nombreFantasia: string;
-  razonSocial: string;
   rut: string;
   nombreDueno: string;
   emailDueno: string;
@@ -67,11 +68,6 @@ export async function guardarBorradorTenant(
   const nombreFantasia = entrada.nombreFantasia?.trim() ?? "";
   if (!nombreFantasia) {
     return { ok: false, campo: "nombreFantasia", mensaje: "El nombre de fantasía de tu empresa es obligatorio." };
-  }
-
-  const razonSocial = entrada.razonSocial?.trim() ?? "";
-  if (!razonSocial) {
-    return { ok: false, campo: "razonSocial", mensaje: "La razón social de tu empresa es obligatoria." };
   }
 
   const rutNormalizado = normalizarYValidarRut(entrada.rut ?? "");
@@ -105,7 +101,6 @@ export async function guardarBorradorTenant(
 
   const borrador: BorradorTenant = {
     nombreFantasia,
-    razonSocial,
     rut: rutNormalizado,
     nombreDueno,
     emailDueno,
@@ -225,7 +220,7 @@ export async function verificarCodigoRegistro(
       admin,
       authUserId,
       {
-        tenant: { nombreFantasia: borrador.nombreFantasia, razonSocial: borrador.razonSocial, rut: borrador.rut },
+        tenant: { nombreFantasia: borrador.nombreFantasia, rut: borrador.rut },
         dueno: { email: borrador.emailDueno, nombreCompleto: borrador.nombreDueno },
         actor: { usuarioId: null, tipo: "sistema" },
       },

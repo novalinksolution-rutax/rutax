@@ -40,7 +40,8 @@
  * visitante) podría reproducirla dentro de la ventana de 30 minutos — el mismo
  * nivel de exposición que cualquier cookie de sesión corta, y aceptable para
  * datos que de todos modos el propio dueño está a punto de declarar como
- * públicos de su empresa (nombre de fantasía, razón social, RUT).
+ * públicos de su empresa (nombre de fantasía, RUT). La razón social ya no
+ * viaja acá — arranque mínimo (doc §6): se difiere al hub de onboarding.
  */
 
 import { cookies } from "next/headers";
@@ -60,7 +61,6 @@ export const DURACION_BORRADOR_MINUTOS = 30;
 /** Forma del borrador — SIEMPRE con RUT ya normalizado y términos aceptados. */
 export interface BorradorTenant {
   nombreFantasia: string;
-  razonSocial: string;
   /** Normalizado (`NNNNNNNN-DV`) — `guardarBorrador` nunca acepta uno inválido. */
   rut: string;
   nombreDueno: string;
@@ -131,7 +131,6 @@ function verificarYExtraerPayload(token: string): PayloadBorrador | null {
     const bruto = JSON.parse(Buffer.from(cuerpo, "base64url").toString("utf8")) as Partial<PayloadBorrador>;
     if (
       typeof bruto.nombreFantasia !== "string" ||
-      typeof bruto.razonSocial !== "string" ||
       typeof bruto.rut !== "string" ||
       typeof bruto.nombreDueno !== "string" ||
       typeof bruto.emailDueno !== "string" ||
@@ -142,7 +141,6 @@ function verificarYExtraerPayload(token: string): PayloadBorrador | null {
     }
     return {
       nombreFantasia: bruto.nombreFantasia,
-      razonSocial: bruto.razonSocial,
       rut: bruto.rut,
       nombreDueno: bruto.nombreDueno,
       emailDueno: bruto.emailDueno,

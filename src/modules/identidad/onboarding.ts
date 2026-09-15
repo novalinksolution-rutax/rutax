@@ -79,7 +79,9 @@ export interface DatosTenant {
   /**
    * Razón social. OPCIONAL desde 2026-08-30: el alta por correo del backstage
    * no la conoce y la deja en NULL; el dueño la completa en su puesta en marcha.
-   * El autoservicio de `/registro` sí la sigue exigiendo, en su formulario.
+   * Desde el rediseño de onboarding (doc §6, 2026-09) el autoservicio de
+   * `/registro` TAMPOCO la pide — arranque mínimo (nombre de fantasía + RUT) y
+   * la razón social se difiere al hub de onboarding, igual que el backstage.
    */
   razonSocial?: string;
   /**

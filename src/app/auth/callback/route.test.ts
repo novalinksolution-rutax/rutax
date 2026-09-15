@@ -42,7 +42,6 @@ const AUTH_USER_ID = "11111111-1111-1111-1111-111111111111";
 
 const BORRADOR = {
   nombreFantasia: "Despachos Rápidos SpA",
-  razonSocial: "Despachos Rápidos Sociedad por Acciones",
   rut: "76543210-3",
   nombreDueno: "María Pérez",
   emailDueno: "dueno@despachosrapidos.cl",
@@ -172,7 +171,7 @@ describe("GET /auth/callback — camino REGISTRO (hay borrador)", () => {
       expect.anything(),
       AUTH_USER_ID,
       expect.objectContaining({
-        tenant: { nombreFantasia: BORRADOR.nombreFantasia, razonSocial: BORRADOR.razonSocial, rut: BORRADOR.rut },
+        tenant: { nombreFantasia: BORRADOR.nombreFantasia, rut: BORRADOR.rut },
         dueno: { email: BORRADOR.emailDueno, nombreCompleto: BORRADOR.nombreDueno },
       }),
       { estado: "activo", compensarAuthUser: false },

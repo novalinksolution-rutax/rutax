@@ -33,7 +33,6 @@ import {
 
 const DATOS: BorradorTenant = {
   nombreFantasia: "Despachos Rápidos SpA",
-  razonSocial: "Despachos Rápidos Sociedad por Acciones",
   rut: "76543210-3",
   nombreDueno: "María Pérez",
   emailDueno: "dueno@despachosrapidos.cl",

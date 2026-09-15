@@ -56,7 +56,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronRight, Minus, Plus, Users } from "lucide-react";
+import { ChevronRight, Minus, Plus, TriangleAlert, Users } from "lucide-react";
 import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -215,6 +215,24 @@ export function PanelNomina({
           }
         />
       </div>
+
+      {/* Aviso SUAVE (doc de rediseño de onboarding §6): gate just-in-time al
+          dar de alta el primer conductor, sin zonas todavía. No bloquea crear
+          — el ruteo simplemente no tiene por dónde ordenar las paradas hasta
+          que existan zonas, y eso se avisa, no se impide. */}
+      {zonas.length === 0 ? (
+        <div className="flex items-start gap-2 border border-attention-line bg-attention-bg px-4 py-3 text-sm text-attention-fg">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p className="leading-relaxed">
+            Aún no configuraste tus zonas de cobertura. Sin zonas, el ruteo no tiene por dónde
+            ordenar las paradas.{" "}
+            <Link href="/configuracion/zonas" className="font-medium underline underline-offset-4">
+              Configúralas ahora
+            </Link>
+            .
+          </p>
+        </div>
+      ) : null}
 
       {/* La barra solo aparece si hay a quién filtrar: con la nómina entera
           activa, un solo cajón no separa nada y es decoración.

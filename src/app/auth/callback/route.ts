@@ -150,7 +150,6 @@ export async function GET(request: NextRequest) {
         {
           tenant: {
             nombreFantasia: borrador.nombreFantasia,
-            razonSocial: borrador.razonSocial,
             rut: borrador.rut,
           },
           dueno: { email: borrador.emailDueno, nombreCompleto: borrador.nombreDueno },
