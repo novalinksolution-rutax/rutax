@@ -117,7 +117,7 @@ export class CloudApiWhatsAppAdapter implements PuertoWhatsApp {
     // `components` se omite ENTERO cuando la plantilla no tiene variables.
     // Mandar un `body` con `parameters: []` a `hello_world` es un 400 —
     // Meta valida que la forma calce exactamente con la plantilla aprobada.
-    const componentes =
+    const componentes: unknown[] =
       args.variables.length > 0
         ? [
             {
@@ -126,6 +126,30 @@ export class CloudApiWhatsAppAdapter implements PuertoWhatsApp {
             },
           ]
         : [];
+
+    // Plantilla de AUTENTICACIÓN (código de un solo uso): Meta EXIGE, además del
+    // cuerpo, un componente de botón que lleva el MISMO código. Es el botón
+    // «Copiar código». El código aparece DOS VECES en el payload —en el body y
+    // en el botón—, ambas con el mismo valor (`variables[0]`).
+    //
+    // Forma verificada contra la doc de Meta y proveedores (2026-09-15):
+    //   { type: "button", sub_type: "url", index: "0",
+    //     parameters: [{ type: "text", text: "<CODIGO>" }] }
+    // Fuentes:
+    //   https://developers.facebook.com/docs/whatsapp/cloud-api/guides/send-message-templates
+    //   https://docs.360dialog.com/docs/resources/authentication-messages
+    //
+    // El botón es `sub_type: "url"` aunque para el usuario diga «Copiar código»:
+    // Meta convierte el botón OTP a tipo URL al crear la plantilla, y al enviar
+    // se referencia como tal. `index` es "0" (primer y único botón).
+    if (args.esPlantillaAutenticacion && args.variables.length > 0) {
+      componentes.push({
+        type: "button",
+        sub_type: "url",
+        index: "0",
+        parameters: [{ type: "text", text: args.variables[0] }],
+      });
+    }
 
     const cuerpoPeticion = {
       messaging_product: "whatsapp",

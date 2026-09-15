@@ -68,6 +68,20 @@ export interface DefinicionPlantilla {
    * para que un desajuste de cantidad se detecte antes de gastar la llamada.
    */
   variables: readonly string[];
+  /**
+   * ¿Es una plantilla de categoría **authentication** (código de un solo uso)?
+   *
+   * Las plantillas de autenticación NO se envían como una utility normal: además
+   * del parámetro de cuerpo `{{1}}` (el código), Meta EXIGE un componente de
+   * botón (`sub_type: "url"`) que lleva el MISMO código —es el botón «Copiar
+   * código». El adaptador arma ese segundo componente solo cuando esta marca es
+   * `true`; ver `cloud-api.ts`. Sin la marca, un envío de auth-template se va sin
+   * el botón y Meta lo rechaza con un 400.
+   *
+   * Verificado contra la doc de Meta / proveedores (2026-09-15): la forma exacta
+   * del envío está citada en `cloud-api.ts`.
+   */
+  esAutenticacion?: boolean;
 }
 
 /**
@@ -126,6 +140,32 @@ export const CATALOGO_PLANTILLAS = {
     nombre: "notificacion_retiro_pedidos",
     idioma: "es",
     variables: ["nombreDestinatario", "cantidadPedidos", "nombreBodega", "nombreConductor"],
+  },
+
+  /**
+   * Código de acceso del CONDUCTOR (F4.b). Es la ENTREGA del OTP que Supabase
+   * genera y valida para el login por teléfono/WhatsApp — Supabase invoca el
+   * «Send SMS hook» (`POST /api/hooks/send-sms`) y nosotros mandamos este
+   * mensaje. Supabase hace el rate-limiting y la unicidad del código; acá solo
+   * se entrega.
+   *
+   * Plantilla aprobada en la WABA de producción de Rutax (2026-09-15), categoría
+   * **authentication**, botón **Copiar código**:
+   *   Cuerpo:  «Tu código de verificación es {{1}}. Por tu seguridad, no lo
+   *             compartas. Vence en 10 minutos.»
+   *   Botón:   «Copiar código»
+   *
+   * ⚠️ `esAutenticacion: true` NO es adorno: hace que el adaptador arme el
+   * componente de botón con el mismo código. Sin él, Meta rechaza el envío.
+   *
+   * ⚠️ Una sola variable: el código. NUNCA se loguea (es una credencial de un
+   * solo uso).
+   */
+  acceso_conductor: {
+    nombre: "codigo_acceso_conductor",
+    idioma: "es",
+    variables: ["codigo"],
+    esAutenticacion: true,
   },
 } as const satisfies Record<string, DefinicionPlantilla>;
 

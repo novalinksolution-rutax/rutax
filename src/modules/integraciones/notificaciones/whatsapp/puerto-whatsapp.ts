@@ -49,6 +49,19 @@ export interface EnviarPlantillaArgs {
    * plantilla sin variables (`hello_world`).
    */
   variables: string[];
+  /**
+   * ¿Es una plantilla de categoría **authentication** (código de un solo uso)?
+   *
+   * Cuando es `true`, el adaptador arma —además del componente `body`— el
+   * componente de **botón** (`sub_type: "url"`, `index: "0"`) que la Cloud API
+   * EXIGE para el botón «Copiar código», con el MISMO código que va en el cuerpo
+   * (`variables[0]`). Es un requisito de Meta para las plantillas de auth: sin el
+   * botón, el envío se rechaza con 400.
+   *
+   * Se toma de la definición del catálogo (`DefinicionPlantilla.esAutenticacion`),
+   * no lo inventa el llamador.
+   */
+  esPlantillaAutenticacion?: boolean;
 }
 
 export interface ResultadoEnvioWhatsApp {
