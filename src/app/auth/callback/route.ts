@@ -29,6 +29,15 @@
  * que trae la cookie recién fijada por `exchangeCodeForSession` puede no
  * reflejar aún `tenant_id`/`rol`/`estado_usuario` (el perfil se escribió DESPUÉS
  * de que la sesión existiera), y el layout del tenant rebotaría a `/login`.
+ *
+ * F3 (login sin contraseña, 2026-09) suma una TERCERA rama, ACEPTACIÓN, que se
+ * revisa PRIMERO — antes de registro y de login — distinguida por la cookie de
+ * `borrador-invitacion.ts` (nunca por un parámetro manipulable): alguien está
+ * aceptando una invitación de seller o de equipo interno por Google. El
+ * CONDUCTOR no pasa por acá — sigue con su PIN, vía
+ * `aceptarInvitacionComoPersonaNueva` en `invitacion/[token]/actions.ts`; el
+ * módulo compartido (`aceptacion-invitacion-passwordless.ts`) lo bloquea
+ * tratando su token como "no encontrado".
  */
 
 import { type NextRequest, NextResponse } from "next/server";
@@ -36,10 +45,18 @@ import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { leerBorrador, limpiarBorrador } from "@/lib/identidad/borrador-registro";
 import {
+  leerBorrador as leerBorradorInvitacion,
+  limpiarBorrador as limpiarBorradorInvitacion,
+} from "@/lib/identidad/borrador-invitacion";
+import {
   activarPerfilDueno,
   buscarPerfilPorAuthUserId,
   provisionarTenantParaAuthUser,
 } from "@/modules/identidad/onboarding";
+import {
+  aplicarAceptacionInvitacionPasswordless,
+  buscarInvitacionPorToken,
+} from "@/modules/identidad/aceptacion-invitacion-passwordless";
 import { ErrorConflicto } from "@/modules/identidad/errores";
 import { resolverUrlBaseApp } from "@/modules/identidad/enlace-invitacion";
 
@@ -112,6 +129,66 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = crearClienteServiceRole();
+
+  // ---------------------------------------------------------------------
+  // Camino ACEPTACIÓN (F3): hay un borrador de invitación esperando. Va
+  // PRIMERO — antes de registro y de login — porque las tres cookies pueden
+  // convivir en el mismo navegador y ésta es la más específica.
+  // ---------------------------------------------------------------------
+  const borradorInvitacion = await leerBorradorInvitacion();
+  if (borradorInvitacion) {
+    const invitacionToken = borradorInvitacion.token;
+    const invitacion = await buscarInvitacionPorToken(admin, invitacionToken);
+
+    if (!invitacion) {
+      // Token inexistente, expirado/revocado/ya aceptado, o de un conductor
+      // (bloqueado a propósito — ver cabecera). La pantalla pública de la
+      // invitación vuelve a resolver el estado real por su cuenta.
+      await supabase.auth.signOut();
+      await limpiarBorradorInvitacion();
+      return NextResponse.redirect(`${origin}/invitacion/${invitacionToken}?error=invitacion_invalida`);
+    }
+
+    const emailGoogle = (user.email ?? "").trim().toLowerCase();
+    if (emailGoogle !== invitacion.email) {
+      // El correo que Google verificó no es el de la invitación — no se
+      // acepta en su nombre. NUNCA se borra este usuario Auth: es una
+      // identidad Google legítima, solo que no es a quien se invitó.
+      await supabase.auth.signOut();
+      await limpiarBorradorInvitacion();
+      return NextResponse.redirect(`${origin}/invitacion/${invitacionToken}?error=email_no_calza`);
+    }
+
+    const nombreCompleto =
+      typeof user.user_metadata?.["nombre_completo"] === "string"
+        ? (user.user_metadata["nombre_completo"] as string)
+        : emailGoogle;
+
+    try {
+      const resultado = await aplicarAceptacionInvitacionPasswordless(admin, {
+        token: invitacionToken,
+        usuarioAuthId: user.id,
+        nombreCompleto,
+        whatsapp: {
+          telefono: borradorInvitacion.telefonoWhatsApp,
+          acepta: borradorInvitacion.optInWhatsApp === true,
+        },
+      });
+
+      await limpiarBorradorInvitacion();
+      await supabase.auth.refreshSession();
+      return NextResponse.redirect(`${origin}${resultado.destino}`);
+    } catch {
+      // El correo ya calzaba con una invitación resoluble; si de todos modos
+      // falla (expiró/se revocó/se aceptó justo entre medio, o un error de
+      // infraestructura), no hay nada mejor que ofrecer que volver a la
+      // pantalla pública — ella resuelve el estado real por su cuenta.
+      await supabase.auth.signOut();
+      await limpiarBorradorInvitacion();
+      return NextResponse.redirect(`${origin}/invitacion/${invitacionToken}?error=error_sistema`);
+    }
+  }
+
   const perfilExistente = await buscarPerfilPorAuthUserId(admin, user.id);
   const borrador = await leerBorrador();
 

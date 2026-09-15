@@ -17,6 +17,12 @@
  * documenta — "el invitado puede no tener todavía sesión"). El propio
  * `aceptarInvitacion` exige un cliente con privilegios suficientes para
  * resolver `invitaciones`/`usuarios_perfil` fuera de RLS normal.
+ *
+ * F3 (login sin contraseña, 2026-09) agrega, al final del archivo,
+ * `guardarBorradorInvitacion`/`enviarCodigoInvitacion`/`verificarCodigoInvitacion`
+ * — la aceptación SIN contraseña (Google o código OTP) para seller y equipo
+ * interno, reusando la infra de F1. El CONDUCTOR no pasa por ahí: sigue con
+ * `aceptarInvitacionComoPersonaNueva` (PIN), arriba en este mismo archivo.
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -25,8 +31,14 @@ import { aceptarInvitacion } from "@/modules/identidad/invitaciones";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
 import { rechazarPin, TEXTO_RECHAZO } from "@/modules/identidad/pin-conductor";
 import type { Rol } from "@/modules/identidad/roles";
-import { registrarEnBitacora } from "@/modules/identidad/auditoria";
-import { normalizarTelefonoE164 } from "@/modules/integraciones/notificaciones/whatsapp";
+import {
+  aplicarAceptacionInvitacionPasswordless,
+  buscarInvitacionPorToken,
+  guardarWhatsAppInvitado,
+} from "@/modules/identidad/aceptacion-invitacion-passwordless";
+import {
+  guardarBorrador as guardarBorradorInvitacionCookie,
+} from "@/lib/identidad/borrador-invitacion";
 
 // -----------------------------------------------------------------------------
 // 1. Resolver invitación por token — solo lectura, sin mutar nada.
@@ -317,7 +329,12 @@ async function finalizarAceptacion(
     // se guardara primero y la aceptación fallara, quedaría un consentimiento
     // colgando de un seller cuya cuenta no llegó a existir.
     if (whatsapp) {
-      await guardarWhatsAppDelSellerInvitado(cliente, aceptada, usuarioAuthId, whatsapp);
+      await guardarWhatsAppInvitado(cliente, {
+        tenantId: aceptada.tenantId,
+        usuarioAuthId,
+        telefono: whatsapp.telefono,
+        acepta: whatsapp.acepta,
+      });
     }
     return { ok: true };
   } catch (error) {
@@ -338,74 +355,180 @@ async function finalizarAceptacion(
   }
 }
 
-/**
- * Guarda el WhatsApp que el seller escribió al canjear su invitación.
- * =============================================================================
- * Este es el ORIGEN preferido de todo destinatario de notificaciones: el número
- * lo pone su dueño y el consentimiento lo marca él mismo. Es la razón de que el
- * campo viva acá y no en una pantalla del courier — hasta el 2026-08-25 era el
- * courier quien AFIRMABA el permiso de otra empresa.
- *
- * ⚠️ **BEST-EFFORT: nunca hace fallar la activación.** La persona está entrando
- * a su cuenta por primera vez; dejarla afuera porque no se pudo guardar un
- * teléfono sería desproporcionado. Si falla, lo pone después en «Mi perfil».
- *
- * Sin consentimiento marcado NO se guarda nada: un número sin permiso no sirve
- * y tenerlo guardado solo invita a usarlo.
- *
- * El tipo y el seller se leen del PERFIL ya escrito, no de la invitación: es la
- * única fuente que refleja lo que de verdad quedó en base tras el upsert.
- */
-async function guardarWhatsAppDelSellerInvitado(
-  cliente: ClienteAdmin,
-  aceptada: { tenantId: string },
-  usuarioAuthId: string,
-  whatsapp: { telefono: string | undefined; acepta: boolean },
-): Promise<void> {
-  if (!whatsapp.acepta || !whatsapp.telefono?.trim()) return;
+// `guardarWhatsAppInvitado` (antes `guardarWhatsAppDelSellerInvitado`, privada
+// de este archivo) se factorizó a `@/modules/identidad/aceptacion-invitacion-passwordless`
+// para que el flujo con contraseña (arriba) y el passwordless (F3, más abajo)
+// comparta una sola implementación del mismo `insert` + bitácora — dos copias
+// del mismo efecto terminan discrepando con el tiempo. Sigue siendo el ORIGEN
+// preferido de todo destinatario de notificaciones (el número lo pone su
+// dueño y el consentimiento lo marca él mismo), best-effort, y solo para
+// sellers.
 
-  const normalizado = normalizarTelefonoE164(whatsapp.telefono);
-  if (!normalizado.valido) return;
+// =============================================================================
+// F3 — Aceptación PASSWORDLESS (Google o código OTP), para seller y equipo
+// interno. El CONDUCTOR NO pasa por acá: sigue con
+// `aceptarInvitacionComoPersonaNueva` (PIN), arriba en este archivo —
+// `buscarInvitacionPorToken` (del módulo compartido) trata el token de un
+// conductor como "no encontrado", así que las tres funciones de abajo lo
+// bloquean sin tener que acordarse de filtrarlo cada una por su cuenta.
+//
+// Reusa la infra de F1 (alta de empresa): la misma cookie firmada de un solo
+// uso para sobrevivir el viaje a Google (`borrador-invitacion.ts`, molde de
+// `borrador-registro.ts`) y el mismo `verifyOtp` para el código. La
+// diferencia es que el "borrador" es solo el TOKEN (más el opt-in de
+// WhatsApp del seller, si aplica) — a quién pertenece la invitación ya lo
+// sabe la fila de `invitaciones`; no hay un formulario de datos que juntar
+// antes de resolver la identidad.
+// =============================================================================
+
+export interface GuardarBorradorInvitacionOpciones {
+  telefonoWhatsApp?: string;
+  optInWhatsApp?: boolean;
+}
+
+export type GuardarBorradorInvitacionResultado =
+  | { ok: true }
+  | { ok: false; tipo: "invitacion_invalida"; mensaje: string };
+
+/**
+ * Guarda el token (y, si viene, el opt-in de WhatsApp del seller) en la
+ * cookie firmada — para el botón "Continuar con Google". Valida que el token
+ * siga vigente y que NO sea de un conductor antes de guardar: no tiene
+ * sentido sobrevivir el viaje a Google con un token que ya no sirve, o que de
+ * todos modos terminaría bloqueado en el callback.
+ */
+export async function guardarBorradorInvitacion(
+  token: string,
+  opciones?: GuardarBorradorInvitacionOpciones,
+): Promise<GuardarBorradorInvitacionResultado> {
+  const limpio = token.trim();
+  const estado = await resolverInvitacionPorToken(limpio);
+  if (estado.estado !== "valida" || estado.rol === "conductor") {
+    return { ok: false, tipo: "invitacion_invalida", mensaje: "Este enlace ya no es válido." };
+  }
+
+  await guardarBorradorInvitacionCookie({
+    token: limpio,
+    optInWhatsApp: opciones?.optInWhatsApp === true ? true : undefined,
+    telefonoWhatsApp: opciones?.telefonoWhatsApp?.trim() || undefined,
+  });
+
+  return { ok: true };
+}
+
+export interface EnviarCodigoInvitacionResultado {
+  ok: boolean;
+  mensaje: string;
+}
+
+/**
+ * Envía el código de 6 dígitos al correo DE LA INVITACIÓN — nunca al que
+ * mande el cliente: así no hay forma de mandarse un código a un correo ajeno
+ * y usarlo para canjear la invitación de otra persona. `shouldCreateUser:
+ * true` porque, para esta identidad, puede ser el primer inicio de sesión de
+ * toda su vida en Rutax (igual que `enviarCodigoRegistro`, H1 de F1).
+ */
+export async function enviarCodigoInvitacion(token: string): Promise<EnviarCodigoInvitacionResultado> {
+  const admin = crearClienteServiceRole();
+  const invitacion = await buscarInvitacionPorToken(admin, token);
+  if (!invitacion) {
+    return { ok: false, mensaje: "Este enlace ya no es válido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithOtp({
+    email: invitacion.email,
+    options: { shouldCreateUser: true },
+  });
+
+  if (error) {
+    return { ok: false, mensaje: "No pudimos enviar el código. Intenta de nuevo en unos minutos." };
+  }
+
+  return { ok: true, mensaje: `Te enviamos un código a ${invitacion.email}. Dura 10 minutos.` };
+}
+
+export interface VerificarCodigoInvitacionOpciones {
+  telefonoWhatsApp?: string;
+  optInWhatsApp?: boolean;
+}
+
+export type VerificarCodigoInvitacionResultado =
+  | { ok: true; destino: string }
+  | {
+      ok: false;
+      tipo: "codigo_invalido" | "invitacion_invalida" | "conflicto" | "desconocido";
+      mensaje: string;
+    };
+
+/**
+ * Verifica el código de 6 dígitos contra el correo DE LA INVITACIÓN, y si
+ * calza, deja el perfil consistente (`aplicarAceptacionInvitacionPasswordless`,
+ * con su idempotencia) y reaplica el WhatsApp si corresponde.
+ *
+ * El calce de correo es INTRÍNSECO acá — a diferencia del callback de
+ * Google, donde la identidad la resuelve un tercero: `verifyOtp` solo puede
+ * tener éxito con el MISMO correo al que se le mandó el código (el de la
+ * invitación), así que no hace falta un chequeo adicional de "email_no_calza".
+ */
+export async function verificarCodigoInvitacion(
+  token: string,
+  codigo: string,
+  opciones?: VerificarCodigoInvitacionOpciones,
+): Promise<VerificarCodigoInvitacionResultado> {
+  const limpio = token.trim();
+  const codigoLimpio = codigo.trim();
+  if (!limpio || !codigoLimpio) {
+    return { ok: false, tipo: "codigo_invalido", mensaje: "Ingresa el código." };
+  }
+
+  const admin = crearClienteServiceRole();
+  const invitacion = await buscarInvitacionPorToken(admin, limpio);
+  if (!invitacion) {
+    return { ok: false, tipo: "invitacion_invalida", mensaje: "Este enlace ya no es válido." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: "email",
+    email: invitacion.email,
+    token: codigoLimpio,
+  });
+
+  if (error || !data.user) {
+    return { ok: false, tipo: "codigo_invalido", mensaje: "El código no es válido o venció. Pide uno nuevo." };
+  }
+
+  const nombreCompleto =
+    typeof data.user.user_metadata?.["nombre_completo"] === "string"
+      ? (data.user.user_metadata["nombre_completo"] as string)
+      : invitacion.email;
 
   try {
-    const { data: perfil } = await cliente
-      .schema("identidad")
-      .from("usuarios_perfil")
-      .select("tipo_usuario, seller_id, tenant_id")
-      .eq("id", usuarioAuthId)
-      .maybeSingle();
-
-    // Solo sellers: nadie más representa a alguien a quien Rutax le avise.
-    if (!perfil || perfil.tipo_usuario !== "seller" || !perfil.seller_id) return;
-
-    const ahora = new Date().toISOString();
-    const { error } = await cliente
-      .schema("integraciones")
-      .from("whatsapp_contactos")
-      .insert({
-        tenant_id: (perfil.tenant_id as string) ?? aceptada.tenantId,
-        seller_id: perfil.seller_id as string,
-        telefono_e164: normalizado.telefonoE164,
-        origen: "perfil_seller",
-        opt_in_estado: "otorgado",
-        opt_in_en: ahora,
-      });
-
-    // 23505 = ya existía (se reintentó el canje). No es un error: el número ya
-    // está donde tiene que estar.
-    if (error && error.code !== "23505") return;
-
-    await registrarEnBitacora(cliente, {
-      tenantId: (perfil.tenant_id as string) ?? aceptada.tenantId,
-      actorUsuarioId: usuarioAuthId,
-      actorTipo: "usuario",
-      accion: "whatsapp.consentimiento_otorgado",
-      entidadTipo: "seller",
-      entidadId: perfil.seller_id as string,
-      // El teléfono NO va en el detalle: es dato personal.
-      detalle: { origen: "perfil_seller", via: "canje_de_invitacion" },
+    const resultado = await aplicarAceptacionInvitacionPasswordless(admin, {
+      token: limpio,
+      usuarioAuthId: data.user.id,
+      nombreCompleto,
+      whatsapp: { telefono: opciones?.telefonoWhatsApp, acepta: opciones?.optInWhatsApp === true },
     });
-  } catch {
-    // Ver la cabecera: la activación ya ocurrió y no se revierte por esto.
+
+    await supabase.auth.refreshSession();
+    return { ok: true, destino: resultado.destino };
+  } catch (error2) {
+    await supabase.auth.signOut();
+    if (error2 instanceof ErrorNoEncontrado) {
+      return { ok: false, tipo: "invitacion_invalida", mensaje: "Este enlace ya no es válido." };
+    }
+    if (error2 instanceof ErrorConflicto) {
+      return { ok: false, tipo: "conflicto", mensaje: error2.message };
+    }
+    if (error2 instanceof ErrorValidacion) {
+      return { ok: false, tipo: "invitacion_invalida", mensaje: error2.message };
+    }
+    return {
+      ok: false,
+      tipo: "desconocido",
+      mensaje: "No pudimos completar la activación por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+    };
   }
 }

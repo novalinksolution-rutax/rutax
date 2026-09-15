@@ -21,20 +21,38 @@ vi.mock("@/lib/identidad/borrador-registro", () => ({
   limpiarBorrador: vi.fn(),
 }));
 
+vi.mock("@/lib/identidad/borrador-invitacion", () => ({
+  leerBorrador: vi.fn(),
+  limpiarBorrador: vi.fn(),
+}));
+
 vi.mock("@/modules/identidad/onboarding", () => ({
   buscarPerfilPorAuthUserId: vi.fn(),
   provisionarTenantParaAuthUser: vi.fn(),
   activarPerfilDueno: vi.fn(),
 }));
 
+vi.mock("@/modules/identidad/aceptacion-invitacion-passwordless", () => ({
+  buscarInvitacionPorToken: vi.fn(),
+  aplicarAceptacionInvitacionPasswordless: vi.fn(),
+}));
+
 import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { leerBorrador, limpiarBorrador } from "@/lib/identidad/borrador-registro";
+import {
+  leerBorrador as leerBorradorInvitacion,
+  limpiarBorrador as limpiarBorradorInvitacion,
+} from "@/lib/identidad/borrador-invitacion";
 import {
   activarPerfilDueno,
   buscarPerfilPorAuthUserId,
   provisionarTenantParaAuthUser,
 } from "@/modules/identidad/onboarding";
+import {
+  aplicarAceptacionInvitacionPasswordless,
+  buscarInvitacionPorToken,
+} from "@/modules/identidad/aceptacion-invitacion-passwordless";
 import { ErrorConflicto } from "@/modules/identidad/errores";
 import { GET } from "./route";
 
@@ -87,6 +105,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(leerBorrador).mockResolvedValue(null);
   vi.mocked(limpiarBorrador).mockResolvedValue(undefined);
+  vi.mocked(leerBorradorInvitacion).mockResolvedValue(null);
+  vi.mocked(limpiarBorradorInvitacion).mockResolvedValue(undefined);
   vi.mocked(crearClienteServiceRole).mockReturnValue(adminFalso() as never);
 });
 
@@ -269,5 +289,129 @@ describe("GET /auth/callback — camino REGISTRO (hay borrador)", () => {
     const res = await GET(peticion({ code: "un-code" }));
 
     expect(destino(res)).toEqual({ ruta: "/registro", error: "conflicto_rut" });
+  });
+});
+
+describe("GET /auth/callback — camino ACEPTACIÓN (F3, hay borrador de invitación)", () => {
+  const BORRADOR_INVITACION = { token: "tok-invitacion-1" };
+
+  it("va PRIMERO: con borrador de invitación presente, ni siquiera mira el borrador de registro", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorInvitacion).mockResolvedValue(BORRADOR_INVITACION);
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "dueno@despachosrapidos.cl", rol: "supervisor" });
+    vi.mocked(aplicarAceptacionInvitacionPasswordless).mockResolvedValue({
+      tenantId: "t-1",
+      rol: "supervisor",
+      destino: "/",
+    });
+
+    await GET(peticion({ code: "un-code" }));
+
+    expect(leerBorrador).not.toHaveBeenCalled();
+    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
+  });
+
+  it("seller: acepta y redirige al destino que devuelve la aceptación (/portal/conectar-ml)", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorInvitacion).mockResolvedValue({
+      token: "tok-seller",
+      optInWhatsApp: true,
+      telefonoWhatsApp: "+56912345678",
+    });
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "dueno@despachosrapidos.cl", rol: "seller" });
+    vi.mocked(aplicarAceptacionInvitacionPasswordless).mockResolvedValue({
+      tenantId: "t-1",
+      rol: "seller",
+      destino: "/portal/conectar-ml",
+    });
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(aplicarAceptacionInvitacionPasswordless).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        token: "tok-seller",
+        usuarioAuthId: AUTH_USER_ID,
+        whatsapp: { telefono: "+56912345678", acepta: true },
+      }),
+    );
+    expect(limpiarBorradorInvitacion).toHaveBeenCalledTimes(1);
+    expect(supa.auth.refreshSession).toHaveBeenCalledTimes(1);
+    expect(destino(res)).toEqual({ ruta: "/portal/conectar-ml", error: null });
+  });
+
+  it("interno: acepta y redirige a / ", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorInvitacion).mockResolvedValue(BORRADOR_INVITACION);
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "dueno@despachosrapidos.cl", rol: "supervisor" });
+    vi.mocked(aplicarAceptacionInvitacionPasswordless).mockResolvedValue({
+      tenantId: "t-1",
+      rol: "supervisor",
+      destino: "/",
+    });
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(destino(res)).toEqual({ ruta: "/", error: null });
+  });
+
+  it("🔴 el correo de Google NO calza con el de la invitación → email_no_calza, sin aceptar nada", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorInvitacion).mockResolvedValue({ token: "tok-otro-correo" });
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "otra-persona@ejemplo.cl", rol: "supervisor" });
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(aplicarAceptacionInvitacionPasswordless).not.toHaveBeenCalled();
+    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(limpiarBorradorInvitacion).toHaveBeenCalledTimes(1);
+    expect(destino(res)).toEqual({ ruta: "/invitacion/tok-otro-correo", error: "email_no_calza" });
+  });
+
+  it("token de invitación inválido/inexistente → invitacion_invalida", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorInvitacion).mockResolvedValue({ token: "tok-muerto" });
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue(null);
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(aplicarAceptacionInvitacionPasswordless).not.toHaveBeenCalled();
+    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(destino(res)).toEqual({ ruta: "/invitacion/tok-muerto", error: "invitacion_invalida" });
+  });
+
+  it("🔴 el CONDUCTOR no pasa por este camino: `buscarInvitacionPorToken` ya lo trata como inexistente", async () => {
+    // El módulo compartido filtra rol='conductor' devolviendo null (ver su
+    // propia prueba unitaria); acá se afirma que el callback, al recibir ese
+    // null, se comporta exactamente igual que con un token inválido —nunca
+    // acepta ni crea un perfil de conductor por este camino sin contraseña.
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorInvitacion).mockResolvedValue({ token: "tok-conductor" });
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue(null);
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(aplicarAceptacionInvitacionPasswordless).not.toHaveBeenCalled();
+    expect(destino(res)).toEqual({ ruta: "/invitacion/tok-conductor", error: "invitacion_invalida" });
+  });
+
+  it("la aceptación falla (p. ej. invitación revocada justo entre medio) → error_sistema, sesión cerrada", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorInvitacion).mockResolvedValue({ token: "tok-1" });
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "dueno@despachosrapidos.cl", rol: "supervisor" });
+    vi.mocked(aplicarAceptacionInvitacionPasswordless).mockRejectedValue(new ErrorConflicto("La invitación ya no está disponible."));
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(limpiarBorradorInvitacion).toHaveBeenCalledTimes(1);
+    expect(destino(res)).toEqual({ ruta: "/invitacion/tok-1", error: "error_sistema" });
   });
 });

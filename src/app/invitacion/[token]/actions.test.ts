@@ -34,12 +34,31 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(),
 }));
 
+vi.mock("@/lib/identidad/borrador-invitacion", () => ({
+  guardarBorrador: vi.fn(),
+}));
+
+vi.mock("@/modules/identidad/aceptacion-invitacion-passwordless", () => ({
+  buscarInvitacionPorToken: vi.fn(),
+  aplicarAceptacionInvitacionPasswordless: vi.fn(),
+  guardarWhatsAppInvitado: vi.fn(),
+}));
+
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { createClient } from "@/lib/supabase/server";
+import { guardarBorrador as guardarBorradorInvitacionCookie } from "@/lib/identidad/borrador-invitacion";
+import {
+  aplicarAceptacionInvitacionPasswordless,
+  buscarInvitacionPorToken,
+} from "@/modules/identidad/aceptacion-invitacion-passwordless";
+import { ErrorConflicto } from "@/modules/identidad/errores";
 import {
   resolverInvitacionPorToken,
   aceptarInvitacionComoPersonaNueva,
   aceptarInvitacionComoPersonaExistente,
+  guardarBorradorInvitacion,
+  enviarCodigoInvitacion,
+  verificarCodigoInvitacion,
 } from "./actions";
 import {
   crearClienteInvitacionesFalso,
@@ -350,5 +369,209 @@ describe("aceptarInvitacionComoPersonaExistente", () => {
     const resultado = await aceptarInvitacionComoPersonaExistente({ token: TOKEN_VALIDO });
 
     expect(resultado).toMatchObject({ ok: false, tipo: "requiere_inicio_sesion" });
+  });
+});
+
+// =============================================================================
+// F3 — passwordless: guardarBorradorInvitacion / enviarCodigoInvitacion /
+// verificarCodigoInvitacion
+// =============================================================================
+
+function authFalsoListUsersVacio() {
+  return { admin: { listUsers: vi.fn().mockResolvedValue({ data: { users: [] }, error: null }) } };
+}
+
+describe("guardarBorradorInvitacion (F3)", () => {
+  it("token inválido → invitacion_invalida, sin guardar la cookie", async () => {
+    const { cliente } = crearClienteInvitacionesFalso({ invitaciones: [] });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(conAuthFalso(cliente, authFalsoListUsersVacio()));
+
+    const resultado = await guardarBorradorInvitacion("no-existe");
+
+    expect(resultado).toEqual({ ok: false, tipo: "invitacion_invalida", mensaje: "Este enlace ya no es válido." });
+    expect(guardarBorradorInvitacionCookie).not.toHaveBeenCalled();
+  });
+
+  it("🔴 token de un CONDUCTOR → invitacion_invalida (sigue con su PIN, no con este camino)", async () => {
+    const bitacora: Array<Record<string, unknown>> = [];
+    const perfiles: Array<Record<string, unknown>> = [];
+    const { cliente } = crearClienteInvitacionesFalso({
+      invitaciones: [invitacionFalsa({ tipo_usuario: "conductor", rol: "conductor", driver_id: "driver-1" })],
+      otrasTablas: otrasTablasBase(bitacora, perfiles),
+    });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(conAuthFalso(cliente, authFalsoListUsersVacio()));
+
+    const resultado = await guardarBorradorInvitacion(TOKEN_VALIDO);
+
+    expect(resultado).toEqual({ ok: false, tipo: "invitacion_invalida", mensaje: "Este enlace ya no es válido." });
+    expect(guardarBorradorInvitacionCookie).not.toHaveBeenCalled();
+  });
+
+  it("token válido de un seller → guarda la cookie con el token y el opt-in de WhatsApp", async () => {
+    const bitacora: Array<Record<string, unknown>> = [];
+    const perfiles: Array<Record<string, unknown>> = [];
+    const { cliente } = crearClienteInvitacionesFalso({
+      invitaciones: [invitacionFalsa({ tipo_usuario: "seller", rol: "seller", seller_id: "seller-1" })],
+      otrasTablas: otrasTablasBase(bitacora, perfiles),
+    });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(conAuthFalso(cliente, authFalsoListUsersVacio()));
+
+    const resultado = await guardarBorradorInvitacion(TOKEN_VALIDO, {
+      optInWhatsApp: true,
+      telefonoWhatsApp: "+56 9 1234 5678",
+    });
+
+    expect(resultado).toEqual({ ok: true });
+    expect(guardarBorradorInvitacionCookie).toHaveBeenCalledWith({
+      token: TOKEN_VALIDO,
+      optInWhatsApp: true,
+      telefonoWhatsApp: "+56 9 1234 5678",
+    });
+  });
+
+  it("sin opt-in de WhatsApp (equipo interno) → guarda solo el token", async () => {
+    const bitacora: Array<Record<string, unknown>> = [];
+    const perfiles: Array<Record<string, unknown>> = [];
+    const { cliente } = crearClienteInvitacionesFalso({
+      invitaciones: [invitacionFalsa()],
+      otrasTablas: otrasTablasBase(bitacora, perfiles),
+    });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(conAuthFalso(cliente, authFalsoListUsersVacio()));
+
+    const resultado = await guardarBorradorInvitacion(TOKEN_VALIDO);
+
+    expect(resultado).toEqual({ ok: true });
+    expect(guardarBorradorInvitacionCookie).toHaveBeenCalledWith({
+      token: TOKEN_VALIDO,
+      optInWhatsApp: undefined,
+      telefonoWhatsApp: undefined,
+    });
+  });
+});
+
+describe("enviarCodigoInvitacion (F3)", () => {
+  it("token inválido → ok:false, sin llamar a signInWithOtp", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue(null);
+    const supa = { auth: { signInWithOtp: vi.fn() } };
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+
+    const resultado = await enviarCodigoInvitacion("no-existe");
+
+    expect(resultado.ok).toBe(false);
+    expect(supa.auth.signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("token válido → manda el código al correo DE LA INVITACIÓN, con shouldCreateUser:true", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "seller@ejemplo.cl", rol: "seller" });
+    const supa = { auth: { signInWithOtp: vi.fn().mockResolvedValue({ error: null }) } };
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+
+    const resultado = await enviarCodigoInvitacion(TOKEN_VALIDO);
+
+    expect(supa.auth.signInWithOtp).toHaveBeenCalledWith({
+      email: "seller@ejemplo.cl",
+      options: { shouldCreateUser: true },
+    });
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("Supabase falla al enviar el código → ok:false, sin filtrar el detalle técnico", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "seller@ejemplo.cl", rol: "seller" });
+    const supa = { auth: { signInWithOtp: vi.fn().mockResolvedValue({ error: { message: "boom interno" } }) } };
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+
+    const resultado = await enviarCodigoInvitacion(TOKEN_VALIDO);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.mensaje).not.toContain("boom");
+  });
+});
+
+describe("verificarCodigoInvitacion (F3)", () => {
+  it("token inválido → invitacion_invalida, sin verificar código", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue(null);
+
+    const resultado = await verificarCodigoInvitacion("no-existe", "123456");
+
+    expect(resultado).toMatchObject({ ok: false, tipo: "invitacion_invalida" });
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it("código inválido → codigo_invalido, sin aceptar nada", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "seller@ejemplo.cl", rol: "seller" });
+    const supa = {
+      auth: { verifyOtp: vi.fn().mockResolvedValue({ data: { user: null }, error: { message: "malo" } }) },
+    };
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+
+    const resultado = await verificarCodigoInvitacion(TOKEN_VALIDO, "000000");
+
+    expect(resultado).toMatchObject({ ok: false, tipo: "codigo_invalido" });
+    expect(aplicarAceptacionInvitacionPasswordless).not.toHaveBeenCalled();
+  });
+
+  it("código válido → acepta y devuelve el destino que resuelve aplicarAceptacionInvitacionPasswordless", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "seller@ejemplo.cl", rol: "seller" });
+    const supa = {
+      auth: {
+        verifyOtp: vi
+          .fn()
+          .mockResolvedValue({ data: { user: { id: "auth-seller-1", user_metadata: {} } }, error: null }),
+        refreshSession: vi.fn().mockResolvedValue({ data: {}, error: null }),
+        signOut: vi.fn().mockResolvedValue({ error: null }),
+      },
+    };
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(aplicarAceptacionInvitacionPasswordless).mockResolvedValue({
+      tenantId: "t-1",
+      rol: "seller",
+      destino: "/portal/conectar-ml",
+    });
+
+    const resultado = await verificarCodigoInvitacion(TOKEN_VALIDO, "123456", {
+      optInWhatsApp: true,
+      telefonoWhatsApp: "+56 9 1234 5678",
+    });
+
+    expect(aplicarAceptacionInvitacionPasswordless).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        token: TOKEN_VALIDO,
+        usuarioAuthId: "auth-seller-1",
+        whatsapp: { telefono: "+56 9 1234 5678", acepta: true },
+      }),
+    );
+    expect(supa.auth.refreshSession).toHaveBeenCalledTimes(1);
+    expect(resultado).toEqual({ ok: true, destino: "/portal/conectar-ml" });
+  });
+
+  it("🔴 el CONDUCTOR no pasa por acá: `buscarInvitacionPorToken` ya lo trata como inexistente", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue(null);
+
+    const resultado = await verificarCodigoInvitacion("tok-conductor", "123456");
+
+    expect(resultado).toMatchObject({ ok: false, tipo: "invitacion_invalida" });
+    expect(aplicarAceptacionInvitacionPasswordless).not.toHaveBeenCalled();
+  });
+
+  it("la aceptación falla con conflicto (invitación ya no disponible) → tipo conflicto, cierra sesión", async () => {
+    vi.mocked(buscarInvitacionPorToken).mockResolvedValue({ email: "seller@ejemplo.cl", rol: "seller" });
+    const supa = {
+      auth: {
+        verifyOtp: vi
+          .fn()
+          .mockResolvedValue({ data: { user: { id: "auth-seller-1", user_metadata: {} } }, error: null }),
+        signOut: vi.fn().mockResolvedValue({ error: null }),
+      },
+    };
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(aplicarAceptacionInvitacionPasswordless).mockRejectedValue(
+      new ErrorConflicto("La invitación ya no está disponible."),
+    );
+
+    const resultado = await verificarCodigoInvitacion(TOKEN_VALIDO, "123456");
+
+    expect(resultado).toMatchObject({ ok: false, tipo: "conflicto" });
+    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
   });
 });
