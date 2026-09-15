@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
  * es el que redirige aquí cuando el courier aún no lo completó.
  *
  * Guards:
- *  · sin sesión → /login; invitado (sin contraseña) → /activar-cuenta.
+ *  · sin sesión → /login; invitado → /login (F1 retiró `/activar-cuenta`: la
+ *    activación ahora la hace `/auth/confirm`, así que esta rama es un fallback
+ *    defensivo — nunca se alcanza en operación normal, ver `(tenant)/layout`).
  *  · conductor/seller → sus superficies; nunca hacen puesta en marcha.
  *  · ya completada → /; no se vuelve al wizard.
  *  · no-dueño de un courier a medio configurar → pantalla de espera (no puede
@@ -26,7 +28,7 @@ export default async function LayoutPuestaEnMarcha({
 }) {
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
-  if (sesion.usuario.estado === "invitado") redirect("/activar-cuenta");
+  if (sesion.usuario.estado === "invitado") redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
   if (sesion.usuario.tipoUsuario === "conductor") redirect("/conductor");
   if (sesion.usuario.tipoUsuario === "seller") redirect("/portal");
