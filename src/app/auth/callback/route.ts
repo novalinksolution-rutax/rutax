@@ -59,6 +59,7 @@ import {
 } from "@/modules/identidad/aceptacion-invitacion-passwordless";
 import { ErrorConflicto } from "@/modules/identidad/errores";
 import { resolverUrlBaseApp } from "@/modules/identidad/enlace-invitacion";
+import { capturarMensaje } from "@/lib/observabilidad";
 
 /** Umbral para considerar que un usuario Auth es "recién creado por este canje". */
 const UMBRAL_IDENTIDAD_RECIEN_CREADA_MS = 60_000;
@@ -111,12 +112,28 @@ export async function GET(request: NextRequest) {
     // ML-equivalente de "el visitante canceló/rechazó" — Google no manda
     // `error` de forma tan consistente como ML, así que cualquier llegada sin
     // `code` se trata igual: de vuelta al login, sin canjear nada.
+    // Puede ser benigno (el usuario canceló en Google), por eso `warning`.
+    await capturarMensaje("Callback OAuth sin `code`", "warning", {
+      origen: "auth:callback",
+      extra: { fase: "sin_code" },
+    });
     return NextResponse.redirect(`${origin}/login?error=oauth_invalido`);
   }
 
   const supabase = await createClient();
   const { error: errorCanje } = await supabase.auth.exchangeCodeForSession(code);
   if (errorCanje) {
+    // ⚠️ INSTRUMENTACIÓN (2026-09-15): este es el fallo intermitente reportado
+    // ("primer intento con Google da error, el segundo entra"). Se sospecha una
+    // carrera del `code_verifier` de PKCE (cookie ausente/mal calzada). El motivo
+    // real de GoTrue/la librería NO llegaba a ningún lado porque acá se redirigía
+    // sin registrarlo. Se captura para diagnosticar y luego arreglar con precisión.
+    // El mensaje de error del canje NO trae secretos (es tipo "invalid flow
+    // state"/"code verifier..."), y `extra` pasa igual por la redacción de PII.
+    await capturarMensaje("Falló exchangeCodeForSession en el callback OAuth", "error", {
+      origen: "auth:callback",
+      extra: { fase: "exchange_code", motivo: errorCanje.message, codigo_error: errorCanje.code ?? null },
+    });
     return NextResponse.redirect(`${origin}/login?error=oauth_invalido`);
   }
 
@@ -125,6 +142,12 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
+    // Canje "sin error" pero sesión vacía — no debería pasar; si aparece, es otra
+    // forma de la misma carrera de cookies (sesión fijada pero no legible aún).
+    await capturarMensaje("Canje OAuth OK pero getUser devolvió null", "error", {
+      origen: "auth:callback",
+      extra: { fase: "get_user_null" },
+    });
     return NextResponse.redirect(`${origin}/login?error=oauth_invalido`);
   }
 
