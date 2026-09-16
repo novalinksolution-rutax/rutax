@@ -123,16 +123,27 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { error: errorCanje } = await supabase.auth.exchangeCodeForSession(code);
   if (errorCanje) {
-    // ⚠️ INSTRUMENTACIÓN (2026-09-15): este es el fallo intermitente reportado
-    // ("primer intento con Google da error, el segundo entra"). Se sospecha una
-    // carrera del `code_verifier` de PKCE (cookie ausente/mal calzada). El motivo
-    // real de GoTrue/la librería NO llegaba a ningún lado porque acá se redirigía
-    // sin registrarlo. Se captura para diagnosticar y luego arreglar con precisión.
-    // El mensaje de error del canje NO trae secretos (es tipo "invalid flow
-    // state"/"code verifier..."), y `extra` pasa igual por la redacción de PII.
+    // ⚠️ INSTRUMENTACIÓN (2026-09-15): el fallo `pkce_code_verifier_not_found`.
+    // Se enriquece con el HOST donde corre el callback y los NOMBRES de las
+    // cookies `sb-*` presentes (NUNCA sus valores — los nombres no son secretos y
+    // `extra` pasa igual por la redacción de PII), más un booleano de si llegó la
+    // cookie del `code_verifier`. Con eso se distingue: (a) el callback corre en
+    // `www` o en el apex, y (b) si el navegador está mandando o no el verifier —
+    // que es lo que decide si el arreglo de dominio de cookie sirvió.
+    const nombresCookiesSb = request.cookies
+      .getAll()
+      .map((c) => c.name)
+      .filter((n) => n.startsWith("sb-"));
     await capturarMensaje("Falló exchangeCodeForSession en el callback OAuth", "error", {
       origen: "auth:callback",
-      extra: { fase: "exchange_code", motivo: errorCanje.message, codigo_error: errorCanje.code ?? null },
+      extra: {
+        fase: "exchange_code",
+        motivo: errorCanje.message,
+        codigo_error: errorCanje.code ?? null,
+        host: request.headers.get("host"),
+        hay_cookie_verifier: nombresCookiesSb.some((n) => n.includes("code-verifier")),
+        cookies_sb: nombresCookiesSb,
+      },
     });
     return NextResponse.redirect(`${origin}/login?error=oauth_invalido`);
   }
