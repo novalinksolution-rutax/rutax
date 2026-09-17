@@ -234,6 +234,38 @@ describe("darDeBajaCuenta — borde del último dueño activo", () => {
   });
 });
 
+describe("darDeBajaCuenta — interno invitado (nunca activó)", () => {
+  it("se ELIMINA (borra auth.users), no se desactiva", async () => {
+    const cliente = crearClienteOrquestacion({
+      "identidad.usuarios_perfil#single": [
+        filaPerfil({ tipo_usuario: "interno", rol: "dueno", estado: "invitado" }),
+      ],
+    });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    const resultado = await darDeBajaCuenta({ actorUsuarioId: ACTOR, usuarioId: "usuario-1" });
+
+    expect(resultado).toEqual({ ok: true, accion: "eliminada" });
+    expect(cliente.auth.admin.deleteUser).toHaveBeenCalledWith("usuario-1");
+  });
+
+  it("interno ACTIVO se desactiva, nunca se elimina", async () => {
+    const cliente = crearClienteOrquestacion({
+      "identidad.usuarios_perfil#single": [
+        filaPerfil({ tipo_usuario: "interno", rol: "supervisor", estado: "activo" }),
+      ],
+      // esUltimoDuenoActivo no aplica (no es dueño); el #bare es el UPDATE.
+      "identidad.usuarios_perfil#bare": [{ error: null }],
+    });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    const resultado = await darDeBajaCuenta({ actorUsuarioId: ACTOR, usuarioId: "usuario-1" });
+
+    expect(resultado).toEqual({ ok: true, accion: "desactivada" });
+    expect(cliente.auth.admin.deleteUser).not.toHaveBeenCalled();
+  });
+});
+
 describe("darDeBajaCuenta — seller multi-courier", () => {
   it("bloquea SOLO la membresía mostrada y repunta a la otra membresía activa (sin tocar la sesión)", async () => {
     const cliente = crearClienteOrquestacion({
@@ -428,6 +460,25 @@ describe("previsualizarBajaCuenta — espeja darDeBajaCuenta sin mutar", () => {
     });
     // Es SOLO lectura: nunca se llega a mutar auth ni la base.
     expect(cliente.auth.admin.updateUserById).not.toHaveBeenCalled();
+    expect(cliente.auth.admin.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it("interno invitado (nunca activó) → eliminada", async () => {
+    const cliente = crearClienteOrquestacion({
+      "identidad.usuarios_perfil#single": [
+        filaPerfil({ tipo_usuario: "interno", rol: "dueno", estado: "invitado" }),
+      ],
+    });
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    const resultado = await previsualizarBajaCuenta("usuario-1");
+
+    expect(resultado).toEqual({
+      ok: true,
+      accionPrevista: "eliminada",
+      tipoUsuario: "interno",
+      otrosCouriersActivos: 0,
+    });
     expect(cliente.auth.admin.deleteUser).not.toHaveBeenCalled();
   });
 

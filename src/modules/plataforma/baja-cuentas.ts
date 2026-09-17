@@ -476,8 +476,7 @@ export async function darDeBajaCuenta(entrada: {
   }
 
   if (perfil.tipoUsuario === "interno") {
-    // Nunca produce "eliminada": no hay mismatch posible que bloquear.
-    return darDeBajaInterno(cliente, perfil, entrada.actorUsuarioId);
+    return darDeBajaInterno(cliente, perfil, entrada.actorUsuarioId, entrada.accionEsperada);
   }
   if (perfil.tipoUsuario === "conductor") {
     return darDeBajaConductor(cliente, perfil, entrada.actorUsuarioId, entrada.accionEsperada);
@@ -489,7 +488,20 @@ async function darDeBajaInterno(
   cliente: SupabaseClient,
   perfil: PerfilCuenta,
   actorUsuarioId: string,
+  accionEsperada: AccionBaja | undefined,
 ): Promise<ResultadoBaja> {
+  // Un interno que NUNCA activó (invitación no canjeada, `estado='invitado'`) es
+  // un placeholder sin historia operativa: se ELIMINA. Uno activo/suspendido se
+  // DESACTIVA (pudo crear cosas; conservarlo es más seguro). El "último dueño
+  // ACTIVO" ya se bloqueó antes en `darDeBajaCuenta`; un dueño invitado no es
+  // activo, así que borrarlo puede dejar el tenant sin dueño — decisión del
+  // usuario (se limpia el courier de prueba; el tenant huérfano se gestiona
+  // aparte, en Suscripciones).
+  const accion: AccionBaja = perfil.estado === "invitado" ? "eliminada" : "desactivada";
+  if (chocaConLoEsperado(accion, accionEsperada)) {
+    return { ok: false, motivo: MOTIVO_CAMBIO_DE_SITUACION };
+  }
+
   await registrarEnBitacora(cliente, {
     tenantId: perfil.tenantId,
     actorUsuarioId,
@@ -497,8 +509,18 @@ async function darDeBajaInterno(
     accion: "cuenta.dada_de_baja",
     entidadTipo: "usuario_perfil",
     entidadId: perfil.id,
-    detalle: { tipo_usuario: "interno", rol: perfil.rol, accion: "desactivada" },
+    detalle: { tipo_usuario: "interno", rol: perfil.rol, accion_planeada: accion },
   });
+
+  if (accion === "eliminada") {
+    // El interno no tiene ficha que borrar; eliminar `auth.users` cascadea el
+    // perfil (`usuarios_perfil.id → auth.users on delete cascade`). Un invitado
+    // nunca creó nada, así que ninguna FK restrict lo bloquea. Si alguna lo
+    // hiciera, `deleteUser` falla atómico (nada se borra) y lanza — se ve el
+    // error, no queda a medias.
+    await eliminarUsuarioAuth(cliente, perfil.id);
+    return { ok: true, accion: "eliminada" };
+  }
 
   const { error } = await cliente
     .schema("identidad")
@@ -938,7 +960,13 @@ export async function previsualizarBajaCuenta(usuarioId: string): Promise<Previs
     return { ok: false, motivo: MOTIVO_SUPER_ADMIN_BAJA };
   }
   if (perfil.tipoUsuario === "interno") {
-    return { ok: true, accionPrevista: "desactivada", tipoUsuario: "interno", otrosCouriersActivos: 0 };
+    // Invitado que nunca activó → se elimina; activo/suspendido → se desactiva.
+    return {
+      ok: true,
+      accionPrevista: perfil.estado === "invitado" ? "eliminada" : "desactivada",
+      tipoUsuario: "interno",
+      otrosCouriersActivos: 0,
+    };
   }
 
   const tipo: TipoEntidadFinanciera = perfil.tipoUsuario === "seller" ? "seller" : "conductor";
