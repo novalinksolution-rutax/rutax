@@ -13,22 +13,22 @@
  * `estadoInicial` (traído por el servidor con `obtenerEstadoWizardSellerAction`)
  * ya trae los pasos completados, y el wizard abre en el primero que falte.
  *
- * El geocoding de la bodega es SÍNCRONO en la Server Action — este componente
- * solo manda dirección + comuna y muestra lo que la acción devuelve
- * (`geoResuelta`), nunca llama a un proveedor de mapas por su cuenta.
+ * La dirección de la bodega usa el buscador con autocompletado compartido
+ * (`CampoDireccion`): al elegir de la lista, la coordenada y la comuna quedan
+ * resueltas en el momento. Si se teclea sin elegir, el geocoding corre igual,
+ * SÍNCRONO, en `guardarPasoBodegaAction`; una bodega sin ubicar se guarda de
+ * todos modos y el courier la corrige después.
  */
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
-  Check,
   CheckCircle2,
   Loader2,
   MapPin,
   Phone,
   ShieldAlert,
-  TriangleAlert,
   Truck,
   User,
 } from "lucide-react";
@@ -113,10 +113,6 @@ export function WizardAltaSeller({
   const [contactoNombreBodega, setContactoNombreBodega] = useState(estadoInicial.bodega?.contactoNombre ?? "");
   const [contactoTelefonoBodega, setContactoTelefonoBodega] = useState(
     estadoInicial.bodega?.contactoTelefono ?? "",
-  );
-  const [bodegaGuardada, setBodegaGuardada] = useState(Boolean(estadoInicial.bodega));
-  const [geoResuelta, setGeoResuelta] = useState<boolean | null>(
-    estadoInicial.bodega ? estadoInicial.bodega.geoEstado === "resuelto" : null,
   );
 
   // ── Paso 3 · WhatsApp ─────────────────────────────────────────────────────
@@ -207,13 +203,7 @@ export function WizardAltaSeller({
       setError(r.mensaje);
       return;
     }
-    setBodegaGuardada(true);
-    setGeoResuelta(r.datos.geoResuelta);
-  }
-
-  function editarBodega() {
-    setBodegaGuardada(false);
-    setGeoResuelta(null);
+    irA(3);
   }
 
   async function guardarWhatsapp(e: FormEvent) {
@@ -408,10 +398,7 @@ export function WizardAltaSeller({
               autoFocus
               placeholder="Ej: Bodega Quilicura"
               value={nombreBodega}
-              onChange={(e) => {
-                setNombreBodega(e.target.value);
-                if (bodegaGuardada) editarBodega();
-              }}
+              onChange={(e) => setNombreBodega(e.target.value)}
               disabled={guardando}
               required
             />
@@ -435,7 +422,6 @@ export function WizardAltaSeller({
                     setLatBodega(null);
                     setLongBodega(null);
                   }
-                  if (bodegaGuardada) editarBodega();
                 }}
                 onElegir={(d) => {
                   setDireccionBodega(d.direccionCorta ?? d.direccion);
@@ -448,7 +434,6 @@ export function WizardAltaSeller({
                   setLatBodega(d.lat);
                   setLongBodega(d.long);
                   setDireccionBodegaElegida(d.lat != null && d.long != null);
-                  if (bodegaGuardada) editarBodega();
                 }}
                 buscar={sugerirDireccionSellerAction}
                 resolver={resolverDireccionSellerAction}
@@ -458,10 +443,7 @@ export function WizardAltaSeller({
               <Label htmlFor="comunaBodega">Comuna</Label>
               <Select
                 value={comunaBodega}
-                onValueChange={(v) => {
-                  setComunaBodega(v);
-                  if (bodegaGuardada) editarBodega();
-                }}
+                onValueChange={(v) => setComunaBodega(v)}
                 disabled={guardando}
               >
                 <SelectTrigger id="comunaBodega" className="h-9 w-full">
@@ -517,30 +499,13 @@ export function WizardAltaSeller({
             </div>
           </div>
 
-          {bodegaGuardada && geoResuelta !== null ? (
-            <Alert variant={geoResuelta ? "default" : undefined}>
-              {geoResuelta ? <Check /> : <TriangleAlert />}
-              <AlertDescription>
-                {geoResuelta
-                  ? "Ubicamos tu bodega correctamente."
-                  : "No pudimos ubicar tu bodega en el mapa automáticamente. Igual quedó guardada — tu courier puede corregirla más adelante."}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => irA(1)} disabled={guardando}>
               Volver
             </Button>
-            {bodegaGuardada ? (
-              <Button type="button" className="flex-1" onClick={() => irA(3)} disabled={guardando}>
-                Continuar
-              </Button>
-            ) : (
-              <Button type="submit" loading={guardando} className="flex-1">
-                Guardar y ubicar bodega
-              </Button>
-            )}
+            <Button type="submit" loading={guardando} className="flex-1">
+              Continuar
+            </Button>
           </div>
         </form>
       ) : null}
