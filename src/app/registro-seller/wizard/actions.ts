@@ -44,6 +44,10 @@ import {
   FUENTES_DECLARABLES,
   type DatosAltaSellerAutoservicio,
 } from "@/modules/identidad/alta-seller-autoservicio";
+import {
+  obtenerPuertoAutocompletado,
+  type SugerenciaDireccion,
+} from "@/modules/integraciones/geocoding/autocompletado";
 import { ErrorConflicto, ErrorValidacion } from "@/modules/identidad/errores";
 
 type Resultado<T> = { ok: true; datos: T } | { ok: false; mensaje: string };
@@ -68,6 +72,51 @@ export async function obtenerEstadoWizardSellerAction(): Promise<Resultado<Estad
   const g = await exigirWizardVigente();
   if (!g.ok) return g;
   return { ok: true, datos: g.estado };
+}
+
+// -----------------------------------------------------------------------------
+// Autocompletado de dirección de la bodega
+// -----------------------------------------------------------------------------
+// Mismo puerto que el alta same-day (`obtenerPuertoAutocompletado`), pero gateado
+// por la sesión del WIZARD, no por `puedeUsarBusquedaDeDirecciones`: el seller
+// aún no tiene perfil ni capacidad (se crean en el commit final), así que el gate
+// interno no aplica — basta con que tenga un wizard vigente.
+export type ResultadoSugerenciasSeller =
+  | { ok: true; sugerencias: SugerenciaDireccion[] }
+  | { ok: false; motivo: "sin_permiso" | "proveedor" };
+
+export async function sugerirDireccionSellerAction(
+  consulta: string,
+  sesion: string,
+): Promise<ResultadoSugerenciasSeller> {
+  const g = await exigirWizardVigente();
+  if (!g.ok) return { ok: false, motivo: "sin_permiso" };
+  try {
+    return { ok: true, sugerencias: await obtenerPuertoAutocompletado().sugerir({ consulta, sesion }) };
+  } catch (error) {
+    // El proveedor no puede bloquear el alta: el campo acepta texto libre y el
+    // geocoding al guardar sigue corriendo. Se registra sin la consulta (es una
+    // dirección) ni nada que pueda traer la clave.
+    console.error(
+      "[registro-seller/wizard] el proveedor de autocompletado falló:",
+      error instanceof Error ? error.message : "error desconocido",
+    );
+    return { ok: false, motivo: "proveedor" };
+  }
+}
+
+export async function resolverDireccionSellerAction(id: string, sesion: string) {
+  const g = await exigirWizardVigente();
+  if (!g.ok) return null;
+  try {
+    return await obtenerPuertoAutocompletado().resolver({ id, sesion });
+  } catch (error) {
+    console.error(
+      "[registro-seller/wizard] el proveedor no pudo resolver la dirección elegida:",
+      error instanceof Error ? error.message : "error desconocido",
+    );
+    return null;
+  }
 }
 
 // -----------------------------------------------------------------------------

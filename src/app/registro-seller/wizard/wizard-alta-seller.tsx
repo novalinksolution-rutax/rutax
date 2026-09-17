@@ -51,6 +51,8 @@ import { esRutValido } from "@/modules/identidad/rut";
 import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
+import { CampoDireccion } from "@/components/ui/campo-direccion";
+import { comunaDelCatalogo } from "@/app/(tenant)/operaciones/nuevo/reglas-alta";
 import { FUENTES_DECLARABLES } from "@/modules/identidad/alta-seller-autoservicio";
 import type { EstadoWizardAltaSeller, FuenteWizardSeller } from "@/lib/identidad/borrador-wizard-seller";
 import {
@@ -60,6 +62,8 @@ import {
   guardarPasoEmpresaAction,
   guardarPasoFuentesAction,
   guardarPasoWhatsappAction,
+  resolverDireccionSellerAction,
+  sugerirDireccionSellerAction,
 } from "./actions";
 
 const MENSAJE_RUT_INVALIDO = "El dígito verificador no corresponde a este RUT.";
@@ -100,6 +104,11 @@ export function WizardAltaSeller({
   const [nombreBodega, setNombreBodega] = useState(estadoInicial.bodega?.nombre ?? "");
   const [direccionBodega, setDireccionBodega] = useState(estadoInicial.bodega?.direccion ?? "");
   const [comunaBodega, setComunaBodega] = useState(estadoInicial.bodega?.comuna ?? "");
+  const [latBodega, setLatBodega] = useState<number | null>(estadoInicial.bodega?.lat ?? null);
+  const [longBodega, setLongBodega] = useState<number | null>(estadoInicial.bodega?.long ?? null);
+  const [direccionBodegaElegida, setDireccionBodegaElegida] = useState(
+    estadoInicial.bodega?.lat != null && estadoInicial.bodega?.long != null,
+  );
   const [instruccionesBodega, setInstruccionesBodega] = useState(estadoInicial.bodega?.instruccionesAcceso ?? "");
   const [contactoNombreBodega, setContactoNombreBodega] = useState(estadoInicial.bodega?.contactoNombre ?? "");
   const [contactoTelefonoBodega, setContactoTelefonoBodega] = useState(
@@ -188,6 +197,10 @@ export function WizardAltaSeller({
       instruccionesAcceso: instruccionesBodega || undefined,
       contactoNombre: contactoNombreBodega || undefined,
       contactoTelefono: contactoTelefonoBodega || undefined,
+      // Si eligió del buscador, la coordenada ya viene resuelta y la Server
+      // Action la usa tal cual (no re-geocodifica).
+      lat: latBodega ?? undefined,
+      long: longBodega ?? undefined,
     });
     setGuardando(false);
     if (!r.ok) {
@@ -407,16 +420,38 @@ export function WizardAltaSeller({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="direccionBodega">Dirección</Label>
-              <Input
+              <CampoDireccion
                 id="direccionBodega"
+                valor={direccionBodega}
+                elegida={direccionBodegaElegida}
                 placeholder="Calle y número"
-                value={direccionBodega}
-                onChange={(e) => {
-                  setDireccionBodega(e.target.value);
+                required
+                onCambio={(v) => {
+                  setDireccionBodega(v);
+                  // Teclear tras haber elegido invalida la coordenada: ya no
+                  // corresponde a lo que dice el campo.
+                  if (direccionBodegaElegida) {
+                    setDireccionBodegaElegida(false);
+                    setLatBodega(null);
+                    setLongBodega(null);
+                  }
                   if (bodegaGuardada) editarBodega();
                 }}
-                disabled={guardando}
-                required
+                onElegir={(d) => {
+                  setDireccionBodega(d.direccionCorta ?? d.direccion);
+                  // La comuna la llena la dirección elegida — pero solo si cae en
+                  // el catálogo de la RM (el Select no acepta otra).
+                  const comuna = comunaDelCatalogo(d.comuna);
+                  if (comuna && (COMUNAS_RM as readonly string[]).includes(comuna)) {
+                    setComunaBodega(comuna);
+                  }
+                  setLatBodega(d.lat);
+                  setLongBodega(d.long);
+                  setDireccionBodegaElegida(d.lat != null && d.long != null);
+                  if (bodegaGuardada) editarBodega();
+                }}
+                buscar={sugerirDireccionSellerAction}
+                resolver={resolverDireccionSellerAction}
               />
             </div>
             <div className="space-y-1.5">
