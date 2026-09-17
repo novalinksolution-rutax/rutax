@@ -29,7 +29,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Select,
@@ -61,7 +60,18 @@ import {
 const MENSAJE_RUT_INVALIDO = "El dígito verificador no corresponde a este RUT.";
 const MENSAJE_RUT_FORMATO = "Ingresa el RUT con el formato 12.345.678-9.";
 
-const TITULOS_PASO = ["Tu empresa", "Tu contacto", "Tu bodega", "Tus fuentes de pedidos"];
+/**
+ * Los cuatro pasos con su ícono y su título. El título vive ACÁ y no dentro de
+ * cada formulario porque ahora lo encabeza la banda de cabecera: tener dos
+ * fuentes de verdad («Tu bodega» arriba, «Dónde retira el conductor» abajo) era
+ * justo la duplicación que se retiró.
+ */
+const PASOS = [
+  { icono: Building2, titulo: "Los datos de tu empresa" },
+  { icono: User, titulo: "Tu contacto" },
+  { icono: MapPin, titulo: "Dónde retira el conductor" },
+  { icono: Truck, titulo: "De dónde vienen tus pedidos" },
+] as const;
 
 /** Same-day: la fuente que todo seller tiene sin conectar nada. Fija, siempre elegida. */
 const FUENTE_FIJA: FuenteWizardSeller = "rutax_manual";
@@ -261,28 +271,49 @@ export function WizardAltaSeller({
     router.push("/portal");
   }
 
-  const total = TITULOS_PASO.length;
-  const porcentaje = Math.round(((paso + 1) / total) * 100);
+  const total = PASOS.length;
+  const IconoPaso = PASOS[paso].icono;
 
+  // La regla de acento de 2px del borde superior es el ÚNICO subrayado del
+  // sistema (rx-tokens §8). El ADN NO tiene sombras: la jerarquía se construye
+  // con escalón de fondo, borde y esa regla.
   return (
-    <div className="w-full max-w-xl space-y-5 border border-line bg-bg-raised p-6">
-      <div className="space-y-2">
-        <p className="text-sm text-fg-muted">
-          Te estás sumando como seller de <span className="font-medium text-fg">{nombreFantasia}</span>.
-        </p>
-        <div className="space-y-1.5">
-          <Progress value={porcentaje} />
-          {/* Sin porcentaje y sin repetir el título: la barra ya muestra el avance
-              y el encabezado de cada paso («Dónde retira el conductor») dice lo
-              mismo que `TITULOS_PASO` pero mejor. Queda solo el conteo, que es
-              lo único que la barra no comunica con precisión. */}
-          <p className="rx-num text-xs text-fg-muted">
+    <div className="w-full max-w-xl border border-line border-t-2 border-t-primary bg-bg-raised">
+      <header className="flex flex-col gap-3 border-b border-line-subtle bg-bg-inset px-5 py-4 sm:px-6">
+        <div className="flex items-baseline justify-between gap-4">
+          {/* `--rx-text-9` existe exactamente para esto: etiqueta mono en caja
+              alta con tracking. Antes era mono a 12.5px en caja baja. */}
+          <p className="rx-num text-[length:var(--rx-text-9)] font-semibold tracking-[var(--rx-track-caps)] text-fg-muted uppercase">
             Paso {paso + 1} de {total}
           </p>
+          <p className="truncate text-[length:var(--rx-text-11)] text-fg-muted">{nombreFantasia}</p>
         </div>
-      </div>
 
-      {error ? (
+        {/* Progreso por TRAMOS, no barra: el sistema marca con reglas de 2px
+            (`--rx-border-mark`), no con píldoras redondeadas. */}
+        <div className="flex gap-1" aria-hidden="true">
+          {PASOS.map((_, i) => (
+            <span
+              key={i}
+              className={cn(
+                "h-0.5 flex-1 transition-colors duration-(--motion-base) ease-standard",
+                i <= paso ? "bg-primary" : "bg-line-subtle",
+              )}
+            />
+          ))}
+        </div>
+
+        <h2 className="font-heading flex items-center gap-2 text-[length:var(--rx-text-19)] leading-tight font-semibold tracking-[var(--rx-track-heading)] text-fg">
+          <IconoPaso className="size-[18px] shrink-0 text-accent-text" aria-hidden="true" />
+          {PASOS[paso].titulo}
+        </h2>
+      </header>
+
+      {/* Los campos van al alto de fila del PORTAL (52px), la superficie a la
+          que este seller está entrando. Estaban en 32px: densidad de backstage,
+          bajo el objetivo táctil mínimo de 44px. */}
+      <div className="flex flex-col gap-5 px-5 py-5 sm:px-6 [&_input:not([type=checkbox])]:h-(--rx-row-portal)">
+        {error ? (
         <Alert variant="destructive">
           <ShieldAlert />
           <AlertDescription>{error}</AlertDescription>
@@ -301,10 +332,6 @@ export function WizardAltaSeller({
         {/* ── Paso 0 · Empresa ── */}
       {paso === 0 ? (
         <form onSubmit={guardarEmpresa} noValidate className="space-y-4">
-          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
-            <Building2 className="size-4" aria-hidden="true" />
-            Los datos de tu empresa
-          </legend>
 
           <div className="space-y-1.5">
             <Label htmlFor="razonSocial">Razón social</Label>
@@ -351,7 +378,7 @@ export function WizardAltaSeller({
             </span>
           </label>
 
-          <Button type="submit" loading={guardando} disabled={!aceptaDatos} className="h-11 w-full">
+          <Button type="submit" loading={guardando} disabled={!aceptaDatos} className="h-(--rx-row-portal) w-full">
             Continuar
           </Button>
         </form>
@@ -360,10 +387,6 @@ export function WizardAltaSeller({
       {/* ── Paso 1 · Contacto ── */}
       {paso === 1 ? (
         <form onSubmit={guardarContacto} noValidate className="space-y-4">
-          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
-            <User className="size-4" aria-hidden="true" />
-            Tu contacto
-          </legend>
 
           <div className="space-y-1.5">
             <Label htmlFor="nombreContacto">Tu nombre</Label>
@@ -421,14 +444,14 @@ export function WizardAltaSeller({
           </label>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(0)} disabled={guardando} className="h-11">
+            <Button type="button" variant="outline" onClick={() => irA(0)} disabled={guardando} className="h-(--rx-row-portal)">
               Volver
             </Button>
             <Button
               type="submit"
               loading={guardando}
               disabled={!aceptaWhatsapp || Boolean(errorTelefono)}
-              className="h-11 flex-1"
+              className="h-(--rx-row-portal) flex-1"
             >
               Continuar
             </Button>
@@ -439,10 +462,6 @@ export function WizardAltaSeller({
       {/* ── Paso 2 · Bodega ── */}
       {paso === 2 ? (
         <form onSubmit={guardarBodega} noValidate className="space-y-4">
-          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
-            <MapPin className="size-4" aria-hidden="true" />
-            Dónde retira el conductor
-          </legend>
 
           <div className="space-y-1.5">
             <Label htmlFor="nombreBodega">Nombre de la bodega</Label>
@@ -499,7 +518,7 @@ export function WizardAltaSeller({
                 onValueChange={(v) => setComunaBodega(v)}
                 disabled={guardando}
               >
-                <SelectTrigger id="comunaBodega" className="h-9 w-full">
+                <SelectTrigger id="comunaBodega" className="w-full data-[size=default]:h-(--rx-row-portal)">
                   <SelectValue placeholder="Selecciona una comuna" />
                 </SelectTrigger>
                 <SelectContent>
@@ -553,10 +572,10 @@ export function WizardAltaSeller({
           </div>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(1)} disabled={guardando} className="h-11">
+            <Button type="button" variant="outline" onClick={() => irA(1)} disabled={guardando} className="h-(--rx-row-portal)">
               Volver
             </Button>
-            <Button type="submit" loading={guardando} className="h-11 flex-1">
+            <Button type="submit" loading={guardando} className="h-(--rx-row-portal) flex-1">
               Continuar
             </Button>
           </div>
@@ -566,10 +585,6 @@ export function WizardAltaSeller({
       {/* ── Paso 3 · Fuentes ── */}
       {paso === 3 ? (
         <form onSubmit={terminar} noValidate className="space-y-4">
-          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
-            <Truck className="size-4" aria-hidden="true" />
-            De dónde vienen tus pedidos
-          </legend>
           {/* "Podrás conectar la cuenta correspondiente después, desde tu portal" narraba
               mecánica interna: al seller, en este momento, no le sirve saber dónde se
               conecta después. Queda solo la restricción que gobierna el botón. */}
@@ -608,16 +623,17 @@ export function WizardAltaSeller({
           ) : null}
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(2)} disabled={guardando} className="h-11">
+            <Button type="button" variant="outline" onClick={() => irA(2)} disabled={guardando} className="h-(--rx-row-portal)">
               Volver
             </Button>
-            <Button type="submit" loading={guardando} className="h-11 flex-1">
+            <Button type="submit" loading={guardando} className="h-(--rx-row-portal) flex-1">
               {!guardando && <CheckCircle2 className="size-4" aria-hidden="true" />}
               Terminar y activar mi cuenta
             </Button>
           </div>
         </form>
-      ) : null}
+        ) : null}
+        </div>
       </div>
     </div>
   );
