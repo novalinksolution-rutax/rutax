@@ -1,0 +1,18 @@
+-- =============================================================================
+-- Forzar a PostgREST a recargar su caché de esquema
+-- =============================================================================
+-- La función `identidad.eliminar_cuenta_persona` (migración `20260917000001`,
+-- el borrado duro atómico de cuentas) se creó pero PostgREST no la tenía en su
+-- caché de esquema al primer uso real. Resultado: `.schema("identidad").rpc(
+-- "eliminar_cuenta_persona", …)` devolvía "función no encontrada" (PGRST202), el
+-- envoltorio `eliminarCuentaPersonaRpc` lo trataba como fallo y degradaba a
+-- DESACTIVACIÓN en silencio — el borrado duro de un seller/conductor nunca
+-- eliminaba de verdad: dejaba la ficha `suspendido`. Se descubrió al re-registrar
+-- un seller "eliminado" y chocar con el unique `(tenant_id, rut)` de una fila que
+-- seguía viva.
+--
+-- `NOTIFY pgrst, 'reload schema'` es la vía documentada de Supabase para que
+-- PostgREST relea el catálogo y publique la función. Es idempotente (un NOTIFY
+-- sin escuchas es un no-op), así que re-aplicar esta migración no hace daño.
+-- =============================================================================
+notify pgrst, 'reload schema';

@@ -22,6 +22,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { capturarMensaje } from "@/lib/observabilidad";
 
 export type TipoPersonaEliminable = "seller" | "conductor";
 
@@ -49,5 +50,17 @@ export async function eliminarCuentaPersonaRpc(
     p_entidad_id: entrada.entidadId,
   });
 
-  return !error;
+  if (error) {
+    // La degradación a desactivación sigue siendo el camino correcto, pero NO en
+    // silencio: si la RPC falla siempre (p. ej. PostgREST no ve la función, o una
+    // FK restrict no enumerada), el "borrado" nunca borra y nadie se entera. Se
+    // registra el código/motivo (nunca ids de personas más allá de lo que el
+    // propio error traiga; sin PII).
+    await capturarMensaje("La RPC eliminar_cuenta_persona falló; la baja degrada a desactivación", "warning", {
+      origen: "plataforma:baja-cuentas",
+      extra: { tipo: entrada.tipo, codigo: error.code ?? null, motivo: error.message },
+    });
+    return false;
+  }
+  return true;
 }
