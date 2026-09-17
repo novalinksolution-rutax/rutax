@@ -27,7 +27,6 @@ import {
   CheckCircle2,
   Loader2,
   MapPin,
-  Phone,
   ShieldAlert,
   Truck,
   User,
@@ -61,7 +60,6 @@ import {
   guardarPasoContactoAction,
   guardarPasoEmpresaAction,
   guardarPasoFuentesAction,
-  guardarPasoWhatsappAction,
   resolverDireccionSellerAction,
   sugerirDireccionSellerAction,
 } from "./actions";
@@ -69,15 +67,15 @@ import {
 const MENSAJE_RUT_INVALIDO = "El dígito verificador no corresponde a este RUT.";
 const MENSAJE_RUT_FORMATO = "Ingresa el RUT con el formato 12.345.678-9.";
 
-const TITULOS_PASO = ["Tu empresa", "Tu contacto", "Tu bodega", "WhatsApp de retiro", "Tus fuentes de pedidos"];
+const TITULOS_PASO = ["Tu empresa", "Tu contacto", "Tu bodega", "Tus fuentes de pedidos"];
 
 /** El paso por el que hay que abrir, según lo que ya esté guardado. */
 function pasoInicial(estado: EstadoWizardAltaSeller): number {
   if (!estado.empresa) return 0;
+  // El paso de contacto guarda también el WhatsApp: si hay contacto, hay ambos.
   if (!estado.contacto) return 1;
   if (!estado.bodega) return 2;
-  if (!estado.whatsapp) return 3;
-  return 4;
+  return 3;
 }
 
 export function WizardAltaSeller({
@@ -96,9 +94,12 @@ export function WizardAltaSeller({
   const [aceptaDatos, setAceptaDatos] = useState(estadoInicial.empresa?.aceptaConsentimientoDatos ?? false);
   const [errorRut, setErrorRut] = useState<string | null>(null);
 
-  // ── Paso 1 · Contacto ─────────────────────────────────────────────────────
+  // ── Paso 1 · Contacto + WhatsApp de retiro (mismo número) ─────────────────
   const [nombreContacto, setNombreContacto] = useState(estadoInicial.contacto?.nombreContacto ?? "");
-  const [telefonoContacto, setTelefonoContacto] = useState(estadoInicial.contacto?.telefono ?? "");
+  const [telefonoContacto, setTelefonoContacto] = useState(
+    estadoInicial.contacto?.telefono ?? estadoInicial.whatsapp?.telefono ?? "",
+  );
+  const [aceptaWhatsapp, setAceptaWhatsapp] = useState(estadoInicial.whatsapp?.acepta ?? false);
 
   // ── Paso 2 · Bodega ───────────────────────────────────────────────────────
   const [nombreBodega, setNombreBodega] = useState(estadoInicial.bodega?.nombre ?? "");
@@ -115,11 +116,7 @@ export function WizardAltaSeller({
     estadoInicial.bodega?.contactoTelefono ?? "",
   );
 
-  // ── Paso 3 · WhatsApp ─────────────────────────────────────────────────────
-  const [telefonoWhatsapp, setTelefonoWhatsapp] = useState(estadoInicial.whatsapp?.telefono ?? "");
-  const [aceptaWhatsapp, setAceptaWhatsapp] = useState(estadoInicial.whatsapp?.acepta ?? false);
-
-  // ── Paso 4 · Fuentes ──────────────────────────────────────────────────────
+  // ── Paso 3 · Fuentes ──────────────────────────────────────────────────────
   const [fuentes, setFuentes] = useState<FuenteWizardSeller[]>(estadoInicial.fuentes ?? []);
 
   const [guardando, setGuardando] = useState(false);
@@ -171,7 +168,8 @@ export function WizardAltaSeller({
     setGuardando(true);
     const r = await guardarPasoContactoAction({
       nombreContacto,
-      telefono: telefonoContacto || undefined,
+      telefono: telefonoContacto,
+      acepta: aceptaWhatsapp,
     });
     setGuardando(false);
     if (!r.ok) {
@@ -204,20 +202,6 @@ export function WizardAltaSeller({
       return;
     }
     irA(3);
-  }
-
-  async function guardarWhatsapp(e: FormEvent) {
-    e.preventDefault();
-    if (guardando) return;
-    setError(null);
-    setGuardando(true);
-    const r = await guardarPasoWhatsappAction({ telefono: telefonoWhatsapp, acepta: aceptaWhatsapp });
-    setGuardando(false);
-    if (!r.ok) {
-      setError(r.mensaje);
-      return;
-    }
-    irA(4);
   }
 
   function alternarFuente(f: FuenteWizardSeller) {
@@ -361,7 +345,7 @@ export function WizardAltaSeller({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="telefonoContacto">Teléfono (opcional)</Label>
+            <Label htmlFor="telefonoContacto">Número de WhatsApp</Label>
             <Input
               id="telefonoContacto"
               type="tel"
@@ -369,14 +353,34 @@ export function WizardAltaSeller({
               value={telefonoContacto}
               onChange={(e) => setTelefonoContacto(e.target.value)}
               disabled={guardando}
+              required
             />
+            <p className="text-xs text-fg-subtle">
+              A este número te avisamos cuando el conductor retira tus pedidos.
+            </p>
           </div>
+
+          <label className="flex items-start gap-2.5 text-sm">
+            <Checkbox
+              checked={aceptaWhatsapp}
+              onCheckedChange={(v) => setAceptaWhatsapp(v === true)}
+              disabled={guardando}
+              className="mt-0.5"
+            />
+            <span>
+              Autorizo a que me avisen por este WhatsApp sobre el retiro de mis pedidos, según la{" "}
+              <a href="/privacidad" target="_blank" rel="noreferrer" className="font-medium underline underline-offset-4">
+                política de privacidad
+              </a>
+              .
+            </span>
+          </label>
 
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => irA(0)} disabled={guardando}>
               Volver
             </Button>
-            <Button type="submit" loading={guardando} className="flex-1">
+            <Button type="submit" loading={guardando} disabled={!aceptaWhatsapp} className="flex-1">
               Continuar
             </Button>
           </div>
@@ -510,60 +514,8 @@ export function WizardAltaSeller({
         </form>
       ) : null}
 
-      {/* ── Paso 3 · WhatsApp ── */}
+      {/* ── Paso 3 · Fuentes ── */}
       {paso === 3 ? (
-        <form onSubmit={guardarWhatsapp} noValidate className="space-y-4">
-          <legend className="flex items-center gap-2 text-sm font-semibold text-fg">
-            <Phone className="size-4" aria-hidden="true" />
-            WhatsApp de retiro
-          </legend>
-          <p className="text-sm leading-relaxed text-fg-muted">
-            A este número te avisamos cuando el conductor retira tus pedidos.
-          </p>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="telefonoWhatsapp">Número de WhatsApp</Label>
-            <Input
-              id="telefonoWhatsapp"
-              type="tel"
-              autoFocus
-              placeholder="+56 9 1234 5678"
-              value={telefonoWhatsapp}
-              onChange={(e) => setTelefonoWhatsapp(e.target.value)}
-              disabled={guardando}
-              required
-            />
-          </div>
-
-          <label className="flex items-start gap-2.5 text-sm">
-            <Checkbox
-              checked={aceptaWhatsapp}
-              onCheckedChange={(v) => setAceptaWhatsapp(v === true)}
-              disabled={guardando}
-              className="mt-0.5"
-            />
-            <span>
-              Autorizo a que me avisen por este WhatsApp sobre el retiro de mis pedidos, según la{" "}
-              <a href="/privacidad" target="_blank" rel="noreferrer" className="font-medium underline underline-offset-4">
-                política de privacidad
-              </a>
-              .
-            </span>
-          </label>
-
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(2)} disabled={guardando}>
-              Volver
-            </Button>
-            <Button type="submit" loading={guardando} disabled={!aceptaWhatsapp} className="flex-1">
-              Continuar
-            </Button>
-          </div>
-        </form>
-      ) : null}
-
-      {/* ── Paso 4 · Fuentes ── */}
-      {paso === 4 ? (
         <form onSubmit={terminar} noValidate className="space-y-4">
           <legend className="flex items-center gap-2 text-sm font-semibold text-fg">
             <Truck className="size-4" aria-hidden="true" />
@@ -598,7 +550,7 @@ export function WizardAltaSeller({
           ) : null}
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(3)} disabled={guardando}>
+            <Button type="button" variant="outline" onClick={() => irA(2)} disabled={guardando}>
               Volver
             </Button>
             <Button type="submit" loading={guardando} className="flex-1">

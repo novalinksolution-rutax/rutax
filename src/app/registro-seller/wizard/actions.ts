@@ -162,7 +162,9 @@ export async function guardarPasoEmpresaAction(entrada: EntradaPasoEmpresa): Pro
 // -----------------------------------------------------------------------------
 export interface EntradaPasoContacto {
   nombreContacto: string;
-  telefono?: string;
+  /** El número es a la vez el contacto y el WhatsApp de retiro. */
+  telefono: string;
+  acepta: boolean;
 }
 
 export async function guardarPasoContactoAction(entrada: EntradaPasoContacto): Promise<Resultado<null>> {
@@ -172,14 +174,20 @@ export async function guardarPasoContactoAction(entrada: EntradaPasoContacto): P
   const nombreContacto = entrada.nombreContacto?.trim() ?? "";
   if (!nombreContacto) return { ok: false, mensaje: "Tu nombre de contacto es obligatorio." };
 
-  let telefono: string | undefined;
-  if (entrada.telefono?.trim()) {
-    const normalizado = normalizarTelefonoE164(entrada.telefono);
-    if (!normalizado.valido) return { ok: false, mensaje: "Ese teléfono no tiene un formato válido." };
-    telefono = normalizado.telefonoE164;
+  const normalizado = normalizarTelefonoE164(entrada.telefono ?? "");
+  if (!normalizado.valido) return { ok: false, mensaje: "Ese WhatsApp no tiene un formato válido." };
+  if (entrada.acepta !== true) {
+    return { ok: false, mensaje: "Necesitamos tu autorización para avisarte por WhatsApp." };
   }
 
-  await guardarBorradorWizard({ ...g.estado, contacto: { nombreContacto, telefono } });
+  // El mismo número es el contacto del seller y el WhatsApp de retiro: se guarda
+  // en los dos destinos (seller_identidades.telefono y whatsapp_contactos), así
+  // el opt-in se pide una sola vez, junto al número, y sin un paso aparte.
+  await guardarBorradorWizard({
+    ...g.estado,
+    contacto: { nombreContacto, telefono: normalizado.telefonoE164 },
+    whatsapp: { telefono: normalizado.telefonoE164, acepta: true },
+  });
   return { ok: true, datos: null };
 }
 
@@ -276,31 +284,7 @@ export async function guardarPasoBodegaAction(entrada: EntradaPasoBodega): Promi
 }
 
 // -----------------------------------------------------------------------------
-// Paso 4 — WhatsApp de retiro + consentimiento
-// -----------------------------------------------------------------------------
-export interface EntradaPasoWhatsapp {
-  telefono: string;
-  acepta: boolean;
-}
-
-export async function guardarPasoWhatsappAction(entrada: EntradaPasoWhatsapp): Promise<Resultado<null>> {
-  const g = await exigirWizardVigente();
-  if (!g.ok) return g;
-
-  if (entrada.acepta !== true) {
-    return { ok: false, mensaje: "Necesitamos tu autorización para avisarte por WhatsApp." };
-  }
-  const normalizado = normalizarTelefonoE164(entrada.telefono);
-  if (!normalizado.valido) {
-    return { ok: false, mensaje: "Ese WhatsApp no tiene un formato válido." };
-  }
-
-  await guardarBorradorWizard({ ...g.estado, whatsapp: { telefono: normalizado.telefonoE164, acepta: true } });
-  return { ok: true, datos: null };
-}
-
-// -----------------------------------------------------------------------------
-// Paso 5 — fuentes declaradas
+// Fuentes declaradas
 // -----------------------------------------------------------------------------
 export interface EntradaPasoFuentes {
   fuentes: FuenteWizardSeller[];
