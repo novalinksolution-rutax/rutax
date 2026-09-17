@@ -289,7 +289,16 @@ export function WizardAltaSeller({
         </Alert>
       ) : null}
 
-      {/* ── Paso 0 · Empresa ── */}
+      {/* Los pasos entran con el mismo gesto que el resto del sistema
+          (`empty-state.tsx`): el wizard era la unica superficie sin movimiento,
+          y sin el los 4 pasos se sustituyen de golpe, sin senal de avance.
+          `key={paso}` re-dispara la animacion en cada cambio; la duracion sale
+          del token `--motion-base` y `motion-reduce` la anula. */}
+      <div
+        key={paso}
+        className="animate-in fade-in-0 slide-in-from-right-2 ease-out [animation-duration:var(--motion-base)] motion-reduce:animate-none"
+      >
+        {/* ── Paso 0 · Empresa ── */}
       {paso === 0 ? (
         <form onSubmit={guardarEmpresa} noValidate className="space-y-4">
           <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
@@ -609,6 +618,7 @@ export function WizardAltaSeller({
           </div>
         </form>
       ) : null}
+      </div>
     </div>
   );
 }
