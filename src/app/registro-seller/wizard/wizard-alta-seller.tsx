@@ -41,6 +41,7 @@ import {
 import { esRutValido } from "@/modules/identidad/rut";
 import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
 import { formatearTelefonoLegible, normalizarTelefonoE164 } from "@/lib/telefono-cl";
+import { cn } from "@/lib/utils";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { CampoDireccion } from "@/components/ui/campo-direccion";
@@ -61,6 +62,9 @@ const MENSAJE_RUT_INVALIDO = "El dígito verificador no corresponde a este RUT."
 const MENSAJE_RUT_FORMATO = "Ingresa el RUT con el formato 12.345.678-9.";
 
 const TITULOS_PASO = ["Tu empresa", "Tu contacto", "Tu bodega", "Tus fuentes de pedidos"];
+
+/** Same-day: la fuente que todo seller tiene sin conectar nada. Fija, siempre elegida. */
+const FUENTE_FIJA: FuenteWizardSeller = "rutax_manual";
 
 /** El paso por el que hay que abrir, según lo que ya esté guardado. */
 function pasoInicial(estado: EstadoWizardAltaSeller): number {
@@ -114,7 +118,13 @@ export function WizardAltaSeller({
   );
 
   // ── Paso 3 · Fuentes ──────────────────────────────────────────────────────
-  const [fuentes, setFuentes] = useState<FuenteWizardSeller[]>(estadoInicial.fuentes ?? []);
+  // Same-day (despacho propio de Rutax) no requiere conectar ninguna cuenta, así
+  // que todo seller lo tiene: nace elegida y fija (no se puede desmarcar).
+  const [fuentes, setFuentes] = useState<FuenteWizardSeller[]>(() => {
+    const iniciales = new Set<FuenteWizardSeller>(estadoInicial.fuentes ?? []);
+    iniciales.add(FUENTE_FIJA);
+    return Array.from(iniciales);
+  });
 
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -218,6 +228,7 @@ export function WizardAltaSeller({
   }
 
   function alternarFuente(f: FuenteWizardSeller) {
+    if (f === FUENTE_FIJA) return; // Same-day siempre incluida.
     setFuentes((actual) => (actual.includes(f) ? actual.filter((x) => x !== f) : [...actual, f]));
   }
 
@@ -555,19 +566,28 @@ export function WizardAltaSeller({
           </p>
 
           <div className="space-y-2">
-            {FUENTES_DECLARABLES.map((f) => (
-              <label
-                key={f}
-                className="flex cursor-pointer items-center gap-2.5 border border-line px-3 py-2.5 text-sm"
-              >
-                <Checkbox
-                  checked={fuentes.includes(f)}
-                  onCheckedChange={() => alternarFuente(f)}
-                  disabled={guardando}
-                />
-                <span className="font-medium text-fg">{etiquetaFuentePedido(f)}</span>
-              </label>
-            ))}
+            {FUENTES_DECLARABLES.map((f) => {
+              const fija = f === FUENTE_FIJA;
+              return (
+                <label
+                  key={f}
+                  className={cn(
+                    "flex items-center gap-2.5 border border-line px-3 py-2.5 text-sm",
+                    fija ? "cursor-default" : "cursor-pointer",
+                  )}
+                >
+                  <Checkbox
+                    checked={fija ? true : fuentes.includes(f)}
+                    onCheckedChange={() => alternarFuente(f)}
+                    disabled={guardando || fija}
+                  />
+                  <span className={cn("font-medium", fija ? "text-fg-muted" : "text-fg")}>
+                    {etiquetaFuentePedido(f)}
+                  </span>
+                  {fija ? <span className="ml-auto text-xs text-fg-subtle">Incluido</span> : null}
+                </label>
+              );
+            })}
           </div>
 
           {errorFinal ? (
