@@ -38,6 +38,20 @@
  * entra por WhatsApp OTP desde la app nativa, nunca por este callback; el
  * módulo compartido (`aceptacion-invitacion-passwordless.ts`) bloquea su
  * token tratándolo como "no encontrado".
+ *
+ * RF-010 rediseño (2026-09-16) suma una CUARTA rama, REGISTRO-SELLER,
+ * revisada junto a ACEPTACIÓN (antes de registro/login de courier):
+ * distinguida por la cookie de `borrador-registro-seller.ts` — el visitante
+ * venía de la landing pública de un enlace permanente de un courier
+ * (`/registro-seller/[token]`), que guardó el `tenantId` del enlace ANTES de
+ * mandarlo a Google. Tres desenlaces, vía `verificarBarreraAutoRegistroSeller`:
+ * (a) identidad bloqueante (conductor/interno/super_admin) → rebota a la
+ * landing con error, sin borrar el usuario Auth (identidad legítima
+ * preexistente); (b) ya es seller de ESE MISMO courier → idempotente, lo
+ * conmuta a ese courier (`cambiarCourierActivo`) y lo manda al portal; (c)
+ * barrera OK → arranca el wizard (`borrador-wizard-seller.ts`) y redirige a
+ * `/registro-seller/wizard`, donde el commit real ocurre al terminar
+ * (`commitAltaSellerAutoservicio`).
  */
 
 import { type NextRequest, NextResponse } from "next/server";
@@ -49,6 +63,11 @@ import {
   limpiarBorrador as limpiarBorradorInvitacion,
 } from "@/lib/identidad/borrador-invitacion";
 import {
+  leerBorrador as leerBorradorRegistroSeller,
+  limpiarBorrador as limpiarBorradorRegistroSeller,
+} from "@/lib/identidad/borrador-registro-seller";
+import { guardarBorrador as guardarBorradorWizardSeller } from "@/lib/identidad/borrador-wizard-seller";
+import {
   activarPerfilDueno,
   buscarPerfilPorAuthUserId,
   provisionarTenantParaAuthUser,
@@ -57,6 +76,8 @@ import {
   aplicarAceptacionInvitacionPasswordless,
   buscarInvitacionPorToken,
 } from "@/modules/identidad/aceptacion-invitacion-passwordless";
+import { verificarBarreraAutoRegistroSeller } from "@/modules/identidad/barrera-auto-registro-seller";
+import { cambiarCourierActivo } from "@/modules/identidad/seller-membresias";
 import { ErrorConflicto } from "@/modules/identidad/errores";
 import { resolverUrlBaseApp } from "@/modules/identidad/enlace-invitacion";
 import { capturarMensaje } from "@/lib/observabilidad";
@@ -221,6 +242,51 @@ export async function GET(request: NextRequest) {
       await limpiarBorradorInvitacion();
       return NextResponse.redirect(`${origin}/invitacion/${invitacionToken}?error=error_sistema`);
     }
+  }
+
+  // ---------------------------------------------------------------------
+  // Camino REGISTRO-SELLER (RF-010 rediseño): hay un borrador de
+  // "intent=registro-seller" esperando — el visitante venía de la landing
+  // pública de un enlace de courier. Va junto a ACEPTACIÓN — antes de
+  // REGISTRO/LOGIN de courier — por ser el borrador más específico.
+  // ---------------------------------------------------------------------
+  const borradorSeller = await leerBorradorRegistroSeller();
+  if (borradorSeller) {
+    const barrera = await verificarBarreraAutoRegistroSeller(admin, user.id, borradorSeller.tenantId);
+
+    if (!barrera.ok && barrera.motivo === "identidad_no_es_seller") {
+      // Esta identidad YA es otra cosa en Rutax (conductor/interno/
+      // super_admin) — no se crea un segundo perfil encima. NUNCA se borra:
+      // es una identidad Google legítima preexistente.
+      await supabase.auth.signOut();
+      await limpiarBorradorRegistroSeller();
+      return NextResponse.redirect(
+        `${origin}/registro-seller/${borradorSeller.enlaceToken}?error=correo_ocupado`,
+      );
+    }
+
+    if (!barrera.ok && barrera.motivo === "ya_tiene_membresia_en_este_courier") {
+      // Idempotencia: ya es seller de ESTE courier (reintento, o volvió a
+      // abrir el enlace). Lo dejamos entrar y de paso lo conmutamos a este
+      // courier — clickeó el enlace queriendo operar acá.
+      try {
+        await cambiarCourierActivo(admin, { authUserId: user.id, tenantId: borradorSeller.tenantId });
+      } catch {
+        // Best-effort: si el switch falla (p. ej. su membresía está
+        // bloqueada), igual entra con el courier que tuviera activo — nunca
+        // se bloquea un login por esto.
+      }
+      await limpiarBorradorRegistroSeller();
+      await supabase.auth.refreshSession();
+      return NextResponse.redirect(`${origin}/portal`);
+    }
+
+    // Barrera OK: arranca el wizard. Se inicializa su cookie con el
+    // tenantId del enlace (inmutable durante todo el wizard) y se limpia el
+    // borrador de intent — de un solo uso.
+    await guardarBorradorWizardSeller({ tenantId: borradorSeller.tenantId });
+    await limpiarBorradorRegistroSeller();
+    return NextResponse.redirect(`${origin}/registro-seller/wizard`);
   }
 
   const perfilExistente = await buscarPerfilPorAuthUserId(admin, user.id);

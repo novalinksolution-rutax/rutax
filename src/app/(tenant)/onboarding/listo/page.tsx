@@ -125,10 +125,10 @@ export default async function PaginaOnboardingListo() {
         </h2>
         <div className="flex flex-col gap-2">
           <AccionDeEstreno
-            href="/sellers/invitar"
+            href="/sellers"
             icono={<Store className="size-4" aria-hidden="true" />}
-            titulo="Invita a tu primer seller"
-            detalle="Conecta su cuenta de Mercado Libre o su tienda y sus pedidos empiezan a entrar solos."
+            titulo="Comparte tu enlace con tu primer seller"
+            detalle="Entra con Google, completa sus datos y su cuenta queda activa al instante — sin que invites a nadie de a uno."
           />
           <AccionDeEstreno
             href="/conductores"

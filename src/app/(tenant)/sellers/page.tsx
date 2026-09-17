@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { PanelInvitarSeller } from "./panel-invitar-seller";
+import { PanelEnlaceSeller } from "./enlace/panel-enlace-seller";
 import { Store } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -39,6 +39,9 @@ export const metadata: Metadata = {
 // bloque 0.3 del rediseño: acá era un mapa suelto que no pasaba por el sistema
 // de tonos.
 
+/** Recién unido: se unió por el enlace de autoservicio hace ≤3 días. */
+const HORAS_RECIEN_UNIDO = 72;
+
 interface SellerFila {
   id: string;
   razonSocial: string;
@@ -52,6 +55,8 @@ interface SellerFila {
   invitacionEmailMotivo: string | null;
   /** Todas las cuentas ML del seller (0 a N) — para "Sincronizar ahora". */
   conexiones: ConexionMlResumen[];
+  /** `true` si se creó hace ≤72 h — quien acaba de unirse por el enlace. */
+  esReciente: boolean;
 }
 
 interface EstadoEnvioInvitacion {
@@ -108,7 +113,7 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
     cliente
       .from("sellers")
       .select(
-        "id, razon_social, rut, estado, conexiones_seller_ml!conexiones_seller_ml_seller_id_fkey(id, alias, ml_nickname, ml_user_id, estado_salud)",
+        "id, razon_social, rut, estado, creado_en, conexiones_seller_ml!conexiones_seller_ml_seller_id_fkey(id, alias, ml_nickname, ml_user_id, estado_salud)",
       )
       .eq("tenant_id", tenantId)
       .order("razon_social"),
@@ -126,6 +131,10 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
     const conexionUnica = listaConexiones[0] ?? null;
     const id = s.id as string;
     const envio = pendientes.get(id);
+    const creadoEn = s.creado_en as string | null;
+    const horasDesdeCreacion = creadoEn
+      ? (Date.now() - new Date(creadoEn).getTime()) / (1000 * 60 * 60)
+      : Number.POSITIVE_INFINITY;
     return {
       id,
       razonSocial: s.razon_social as string,
@@ -139,8 +148,21 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
         id: c.id,
         etiqueta: etiquetaConexionMl({ alias: c.alias, mlNickname: c.ml_nickname, mlUserId: c.ml_user_id }),
       })),
+      esReciente: horasDesdeCreacion <= HORAS_RECIEN_UNIDO,
     };
   });
+}
+
+/** «Nuevo» — quien se unió hace poco por el enlace de autoservicio. */
+function DistintivoRecienUnido() {
+  return (
+    <span
+      className="shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase"
+      title="Se unió hace poco por el enlace de registro"
+    >
+      Nuevo
+    </span>
+  );
 }
 
 /**
@@ -176,7 +198,9 @@ function avisoEntrega(estado: string | null, motivo: string | null) {
  * Punto de entrada al que apuntan tanto la barra superior como el dashboard
  * ("Conexiones de ML caídas" → "ver todos los sellers"). Vista de solo
  * lectura con estado de cuenta y salud de la conexión ML; el alta de nuevos
- * sellers vive en /sellers/invitar.
+ * sellers ya no es un formulario del courier: comparte su enlace permanente
+ * (panel "Enlace para sellers", `enlace/panel-enlace-seller.tsx`) y cada
+ * seller entra solo por `/registro-seller/[token]`.
  */
 export default async function PaginaSellers() {
   const sesion = await obtenerSesionActual();
@@ -184,7 +208,16 @@ export default async function PaginaSellers() {
     redirect("/login");
   }
 
-  const sellers = await cargarSellers(sesion.usuario.tenantId);
+  const cliente = crearClienteServiceRole();
+  const [sellers, { data: tenant }] = await Promise.all([
+    cargarSellers(sesion.usuario.tenantId),
+    cliente
+      .from("tenants")
+      .select("nombre_fantasia")
+      .eq("id", sesion.usuario.tenantId)
+      .maybeSingle(),
+  ]);
+  const nombreFantasia = (tenant?.nombre_fantasia as string | null)?.trim() || "tu courier";
   const puedeInvitar = puedeInvitarUsuarios(sesion.usuario);
   // La columna solo aparece si hay algo que entregar: una tabla con una columna
   // vacía permanente le cobra ancho a las demás sin dar nada a cambio.
@@ -213,17 +246,17 @@ export default async function PaginaSellers() {
           </p>
         </div>
         {/* Panel, no navegación: la pregunta que trae a alguien acá suele ser
-            «¿ya invité a este?», y la respuesta está en la tabla de atrás. */}
-        {puedeInvitar && <PanelInvitarSeller />}
+            «¿cuál es mi enlace?», y la respuesta está en este mismo panel. */}
+        {puedeInvitar && <PanelEnlaceSeller nombreFantasia={nombreFantasia} />}
       </div>
 
       {sellers.length === 0 ? (
         <EmptyState
           icon={Store}
           titulo="Todavía no tienes sellers"
-          descripcion="Invita a tus clientes para que conecten sus cuentas de Mercado Libre o Shopify y sus pedidos lleguen solos."
+          descripcion="Comparte tu enlace de registro con tus clientes: entran con Google, completan sus datos y quedan activos al instante."
           accion={
-            puedeInvitar ? <PanelInvitarSeller etiqueta="Invitar a tu primer seller" /> : undefined
+            puedeInvitar ? <PanelEnlaceSeller nombreFantasia={nombreFantasia} /> : undefined
           }
         />
       ) : (
@@ -251,12 +284,15 @@ export default async function PaginaSellers() {
             {sellers.map((seller) => (
               <li key={seller.id} className="space-y-2.5 px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
-                  <EnlaceDetalle
-                    href={`/sellers/${seller.id}`}
-                    className="min-w-0 font-medium hover:underline"
-                  >
-                    {seller.razonSocial}
-                  </EnlaceDetalle>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <EnlaceDetalle
+                      href={`/sellers/${seller.id}`}
+                      className="min-w-0 font-medium hover:underline"
+                    >
+                      {seller.razonSocial}
+                    </EnlaceDetalle>
+                    {seller.esReciente ? <DistintivoRecienUnido /> : null}
+                  </span>
                   <BadgeEstado
                     variante={BADGE_ESTADO_SELLER[seller.estado as EstadoSeller] ?? "warning"}
                     texto={traducirEstadoSeller(seller.estado)}
@@ -339,12 +375,15 @@ export default async function PaginaSellers() {
                       centrales del dominio. Ahora el nombre abre su ficha y la
                       fila entera abre la vista previa. */}
                   <TableCell className="px-4 font-medium">
-                    <EnlaceDetalle
-                      href={`/sellers/${seller.id}`}
-                      className="hover:underline"
-                    >
-                      {seller.razonSocial}
-                    </EnlaceDetalle>
+                    <span className="flex items-center gap-2">
+                      <EnlaceDetalle
+                        href={`/sellers/${seller.id}`}
+                        className="hover:underline"
+                      >
+                        {seller.razonSocial}
+                      </EnlaceDetalle>
+                      {seller.esReciente ? <DistintivoRecienUnido /> : null}
+                    </span>
                   </TableCell>
                   <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums xl:table-cell">
                     {seller.rut}

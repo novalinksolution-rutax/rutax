@@ -7,7 +7,7 @@
  * `(tenant)/layout.tsx`.
  */
 
-import { UserRound } from "lucide-react";
+import { ArrowLeftRight, UserRound } from "lucide-react";
 import { cerrarSesion } from "@/lib/identidad/cerrar-sesion";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
@@ -15,6 +15,8 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerAvisosSeller } from "@/lib/avisos/obtener-avisos-seller";
 import { AppShell, type GrupoNav } from "@/components/app-shell/app-shell";
 import { destinosMovil } from "@/components/app-shell/destinos-movil";
+import { listarMisMembresiasSeller } from "@/modules/identidad/seller-membresias";
+import type { EnlaceMenuCuenta } from "@/components/app-shell/menu-cuenta";
 
 export default async function LayoutPortal({
   children,
@@ -36,7 +38,7 @@ export default async function LayoutPortal({
   }
 
   const cliente = crearClienteServiceRole();
-  const [{ data: seller }, avisos] = await Promise.all([
+  const [{ data: seller }, avisos, membresias] = await Promise.all([
     cliente
       .from("sellers")
       .select("razon_social")
@@ -44,6 +46,11 @@ export default async function LayoutPortal({
       .eq("tenant_id", sesion.usuario.tenantId)
       .maybeSingle(),
     obtenerAvisosSeller(sesion.usuario.sellerId),
+    // Multi-courier (RF-010 rediseño): el switcher solo se muestra con MÁS de
+    // una membresía — con una sola no hay nada que elegir (CLAUDE.md: "no
+    // recargar la UI cuando hay una sola"). Fallo silencioso a `[]`: no vale
+    // la pena tumbar todo el portal por no poder mostrar un enlace opcional.
+    listarMisMembresiasSeller(cliente, sesion.usuarioId, sesion.usuario.tenantId).catch(() => []),
   ]);
 
   // Agrupada por objetivo, mismo patrón que (tenant)/layout.tsx: "Inicio" suelto
@@ -70,6 +77,27 @@ export default async function LayoutPortal({
     },
   ];
 
+  // Mismo criterio que "Mi perfil": el ícono va YA RENDERIZADO porque este
+  // layout es de SERVIDOR y `EnlaceMenuCuenta` lo consume un Client Component
+  // (`MenuCuenta`) — pasar el componente sin renderizar tumba el árbol entero
+  // (gotcha ya mordido el 2026-08-14, ver `menu-cuenta.tsx`).
+  const enlacesCuenta: EnlaceMenuCuenta[] = [
+    {
+      href: "/portal/perfil",
+      etiqueta: "Mi perfil",
+      subtitulo: "Tus datos y tus avisos",
+      icono: <UserRound className="size-4" aria-hidden="true" />,
+    },
+  ];
+  if (membresias.length > 1) {
+    enlacesCuenta.push({
+      href: "/portal/seleccionar-courier",
+      etiqueta: "Cambiar de courier",
+      subtitulo: `Eres seller de ${membresias.length} couriers`,
+      icono: <ArrowLeftRight className="size-4" aria-hidden="true" />,
+    });
+  }
+
   return (
     <AppShell
       nombreFantasia={(seller?.razon_social as string | undefined) ?? "Portal del seller"}
@@ -78,27 +106,12 @@ export default async function LayoutPortal({
       etiquetaMarca="Tienda"
       densidad="relajada"
       grupos={grupos}
-      /* «Mi perfil» vive en el bloque de cuenta del pie del sidebar, igual que
-         en el backoffice del courier (encargo del usuario, 26-08-2026: que el
-         bloque con tu nombre lleve a alguna parte, en todos los roles).
-
-         ⚠️ Y salió del grupo «Mi cuenta» de la navegación: tenerlo en los dos
-         sitios es la misma duplicación que el usuario ya reclamó con «Mi plan»
-         apareciendo tres veces. El sitio donde alguien busca sus propios datos
-         es donde está su nombre.
-
-         ⚠️ El ícono va YA RENDERIZADO, no como componente: este layout es de
-         servidor y una función no cruza la frontera hacia un Client Component
-         — se lleva por delante todo lo que el layout envuelve, con typecheck y
-         lint en verde. */
-      enlacesCuenta={[
-        {
-          href: "/portal/perfil",
-          etiqueta: "Mi perfil",
-          subtitulo: "Tus datos y tus avisos",
-          icono: <UserRound className="size-4" aria-hidden="true" />,
-        },
-      ]}
+      // «Mi perfil» vive en el bloque de cuenta del pie del sidebar, igual que
+      // en el backoffice del courier (encargo del usuario, 26-08-2026: que el
+      // bloque con tu nombre lleve a alguna parte, en todos los roles). Con
+      // más de una membresía, «Cambiar de courier» se suma al lado — ver
+      // `enlacesCuenta` más arriba.
+      enlacesCuenta={enlacesCuenta}
       accionSalir={async () => {
         "use server";
         await cerrarSesion("/portal/login");

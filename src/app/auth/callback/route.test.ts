@@ -26,6 +26,15 @@ vi.mock("@/lib/identidad/borrador-invitacion", () => ({
   limpiarBorrador: vi.fn(),
 }));
 
+vi.mock("@/lib/identidad/borrador-registro-seller", () => ({
+  leerBorrador: vi.fn(),
+  limpiarBorrador: vi.fn(),
+}));
+
+vi.mock("@/lib/identidad/borrador-wizard-seller", () => ({
+  guardarBorrador: vi.fn(),
+}));
+
 vi.mock("@/modules/identidad/onboarding", () => ({
   buscarPerfilPorAuthUserId: vi.fn(),
   provisionarTenantParaAuthUser: vi.fn(),
@@ -37,6 +46,14 @@ vi.mock("@/modules/identidad/aceptacion-invitacion-passwordless", () => ({
   aplicarAceptacionInvitacionPasswordless: vi.fn(),
 }));
 
+vi.mock("@/modules/identidad/barrera-auto-registro-seller", () => ({
+  verificarBarreraAutoRegistroSeller: vi.fn(),
+}));
+
+vi.mock("@/modules/identidad/seller-membresias", () => ({
+  cambiarCourierActivo: vi.fn(),
+}));
+
 import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { leerBorrador, limpiarBorrador } from "@/lib/identidad/borrador-registro";
@@ -44,6 +61,11 @@ import {
   leerBorrador as leerBorradorInvitacion,
   limpiarBorrador as limpiarBorradorInvitacion,
 } from "@/lib/identidad/borrador-invitacion";
+import {
+  leerBorrador as leerBorradorRegistroSeller,
+  limpiarBorrador as limpiarBorradorRegistroSeller,
+} from "@/lib/identidad/borrador-registro-seller";
+import { guardarBorrador as guardarBorradorWizardSeller } from "@/lib/identidad/borrador-wizard-seller";
 import {
   activarPerfilDueno,
   buscarPerfilPorAuthUserId,
@@ -53,6 +75,8 @@ import {
   aplicarAceptacionInvitacionPasswordless,
   buscarInvitacionPorToken,
 } from "@/modules/identidad/aceptacion-invitacion-passwordless";
+import { verificarBarreraAutoRegistroSeller } from "@/modules/identidad/barrera-auto-registro-seller";
+import { cambiarCourierActivo } from "@/modules/identidad/seller-membresias";
 import { ErrorConflicto } from "@/modules/identidad/errores";
 import { GET } from "./route";
 
@@ -107,6 +131,9 @@ beforeEach(() => {
   vi.mocked(limpiarBorrador).mockResolvedValue(undefined);
   vi.mocked(leerBorradorInvitacion).mockResolvedValue(null);
   vi.mocked(limpiarBorradorInvitacion).mockResolvedValue(undefined);
+  vi.mocked(leerBorradorRegistroSeller).mockResolvedValue(null);
+  vi.mocked(limpiarBorradorRegistroSeller).mockResolvedValue(undefined);
+  vi.mocked(guardarBorradorWizardSeller).mockResolvedValue(undefined);
   vi.mocked(crearClienteServiceRole).mockReturnValue(adminFalso() as never);
 });
 
@@ -413,5 +440,93 @@ describe("GET /auth/callback — camino ACEPTACIÓN (F3, hay borrador de invitac
     expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
     expect(limpiarBorradorInvitacion).toHaveBeenCalledTimes(1);
     expect(destino(res)).toEqual({ ruta: "/invitacion/tok-1", error: "error_sistema" });
+  });
+});
+
+describe("GET /auth/callback — camino REGISTRO-SELLER (RF-010 rediseño, hay borrador de intent)", () => {
+  const BORRADOR_SELLER = { tenantId: "t-courier-1", enlaceToken: "tok-enlace-1" };
+
+  it("barrera OK: arranca el wizard (guarda su cookie, limpia el intent, redirige a /registro-seller/wizard)", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorRegistroSeller).mockResolvedValue(BORRADOR_SELLER);
+    vi.mocked(verificarBarreraAutoRegistroSeller).mockResolvedValue({ ok: true });
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(guardarBorradorWizardSeller).toHaveBeenCalledWith({ tenantId: "t-courier-1" });
+    expect(limpiarBorradorRegistroSeller).toHaveBeenCalledTimes(1);
+    expect(cambiarCourierActivo).not.toHaveBeenCalled();
+    expect(destino(res)).toEqual({ ruta: "/registro-seller/wizard", error: null });
+  });
+
+  it("identidad ya es otra cosa (conductor/interno/super_admin): rebota a la landing, SIN borrar el usuario Auth", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorRegistroSeller).mockResolvedValue(BORRADOR_SELLER);
+    vi.mocked(verificarBarreraAutoRegistroSeller).mockResolvedValue({
+      ok: false,
+      motivo: "identidad_no_es_seller",
+      tipoActual: "conductor",
+    });
+    const admin = adminFalso();
+    vi.mocked(crearClienteServiceRole).mockReturnValue(admin as never);
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
+    expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+    expect(limpiarBorradorRegistroSeller).toHaveBeenCalledTimes(1);
+    expect(guardarBorradorWizardSeller).not.toHaveBeenCalled();
+    expect(destino(res)).toEqual({ ruta: "/registro-seller/tok-enlace-1", error: "correo_ocupado" });
+  });
+
+  it("idempotente: ya es seller de ESTE courier → conmuta a él y entra a /portal", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorRegistroSeller).mockResolvedValue(BORRADOR_SELLER);
+    vi.mocked(verificarBarreraAutoRegistroSeller).mockResolvedValue({
+      ok: false,
+      motivo: "ya_tiene_membresia_en_este_courier",
+    });
+    vi.mocked(cambiarCourierActivo).mockResolvedValue({ tenantId: "t-courier-1", sellerId: "seller-1" });
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(cambiarCourierActivo).toHaveBeenCalledWith(expect.anything(), {
+      authUserId: AUTH_USER_ID,
+      tenantId: "t-courier-1",
+    });
+    expect(supa.auth.signOut).not.toHaveBeenCalled();
+    expect(supa.auth.refreshSession).toHaveBeenCalledTimes(1);
+    expect(limpiarBorradorRegistroSeller).toHaveBeenCalledTimes(1);
+    expect(destino(res)).toEqual({ ruta: "/portal", error: null });
+  });
+
+  it("idempotente: si el switch falla igual entra a /portal (best-effort, nunca bloquea el login)", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorRegistroSeller).mockResolvedValue(BORRADOR_SELLER);
+    vi.mocked(verificarBarreraAutoRegistroSeller).mockResolvedValue({
+      ok: false,
+      motivo: "ya_tiene_membresia_en_este_courier",
+    });
+    vi.mocked(cambiarCourierActivo).mockRejectedValue(new Error("membresía bloqueada"));
+
+    const res = await GET(peticion({ code: "un-code" }));
+
+    expect(destino(res)).toEqual({ ruta: "/portal", error: null });
+  });
+
+  it("va junto a ACEPTACIÓN: con borrador de intent presente, ni siquiera mira el borrador de registro de courier", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth({}) });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerBorradorRegistroSeller).mockResolvedValue(BORRADOR_SELLER);
+    vi.mocked(verificarBarreraAutoRegistroSeller).mockResolvedValue({ ok: true });
+
+    await GET(peticion({ code: "un-code" }));
+
+    expect(leerBorrador).not.toHaveBeenCalled();
+    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
   });
 });

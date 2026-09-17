@@ -21,6 +21,7 @@ import { etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import type { Zona } from "@/modules/operacion/tipos";
 import { VentanasCorteSeller } from "./ventanas-corte-seller";
+import { ControlMembresiaAutoservicio } from "./control-membresia-autoservicio";
 
 export const metadata: Metadata = {
   title: "Ficha del seller",
@@ -98,7 +99,7 @@ export default async function PaginaFichaSeller({
 
   if (!seller) notFound();
 
-  const [conexionesMl, conexionesShopify, bodegas, tarifas, periodos, pedidosHoy, zonasActivas] =
+  const [conexionesMl, conexionesShopify, bodegas, tarifas, periodos, pedidosHoy, zonasActivas, membresia] =
     await Promise.all([
       // ⚠️ Las dos van por el esquema `identidad` y no por la vista de
       // `public`: `desconectada_por_usuario_id` NO está en las vistas a
@@ -163,6 +164,19 @@ export default async function PaginaFichaSeller({
         .eq("tenant_id", tenantId)
         .eq("activa", true)
         .order("nombre"),
+      // Membresía de autoservicio (RF-010 rediseño) — deny-all por RLS al
+      // seller/courier normal, pero `service_role` la lee filtrada por
+      // tenant_id+seller_id, igual que `bloquearSellerMembresia`. `null` si
+      // este seller nunca se registró por el enlace (p. ej. lo dio de alta el
+      // courier a mano, o entró antes de este rediseño): en ese caso no hay
+      // membresía que bloquear.
+      cliente
+        .schema("identidad")
+        .from("seller_membresias")
+        .select("estado")
+        .eq("tenant_id", tenantId)
+        .eq("seller_id", sellerId)
+        .maybeSingle(),
     ]);
 
   const filasMl = (conexionesMl.data ?? []) as Record<string, unknown>[];
@@ -196,6 +210,21 @@ export default async function PaginaFichaSeller({
           />
         </div>
       </div>
+
+      {/* --- Su acceso a Rutax (autoservicio) ------------------------------
+          Solo existe si este seller se unió por el enlace de registro
+          (RF-010 rediseño): un seller dado de alta a mano por el courier, o
+          uno de antes de este rediseño, no tiene fila en `seller_membresias`
+          y no hay nada que bloquear/desbloquear acá. */}
+      {membresia.data ? (
+        <Bloque titulo="Su acceso a Rutax" vacio="" vacioSiNoHay={false}>
+          <ControlMembresiaAutoservicio
+            sellerId={sellerId}
+            razonSocial={seller.razon_social as string}
+            estadoInicial={membresia.data.estado as "activa" | "bloqueada"}
+          />
+        </Bloque>
+      ) : null}
 
       {/* --- Sus fuentes de pedidos --------------------------------------- */}
       <Bloque
