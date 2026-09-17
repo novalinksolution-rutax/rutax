@@ -56,6 +56,7 @@ import {
   cambiarCourierActivo,
 } from "@/modules/identidad/seller-membresias";
 import { tieneRelacionConPedidosODinero, darDeBajaCuenta, previsualizarBajaCuenta } from "./baja-cuentas";
+import { RpcEliminarCuentaNoDisponibleError } from "./eliminar-cuenta-persona-rpc";
 
 const ACTOR = "ad000000-0000-0000-0000-000000000001";
 
@@ -415,6 +416,48 @@ describe("darDeBajaCuenta — degradación (RPC falla) → desactivación", () =
       "usuario-1",
       expect.objectContaining({ ban_duration: expect.any(String) }),
     );
+    expect(cliente.auth.admin.deleteUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("darDeBajaCuenta — PGRST202 (RPC fuera del caché) NO degrada en silencio", () => {
+  // El bug del 17-sep: la RPC no estaba en el caché de esquema de PostgREST →
+  // PGRST202 → el envoltorio lo trataba como "falló" → degradaba a desactivación
+  // → la ficha sobrevivía como huérfano invisible (choque de RUT al re-registrar).
+  // Ahora PGRST202 LANZA en vez de degradar, para que el admin reintente.
+  it("seller: la RPC devuelve PGRST202 → LANZA, y jamás toca auth.users", async () => {
+    const cliente = crearClienteOrquestacion(
+      {
+        "identidad.usuarios_perfil#single": [
+          filaPerfil({
+            tipo_usuario: "seller",
+            rol: "seller",
+            estado: "activo",
+            seller_id: "seller-unico",
+            tenant_id: "tenant-1",
+          }),
+        ],
+        "identidad.seller_membresias#bare": [
+          {
+            data: [{ id: "m1", tenant_id: "tenant-1", seller_id: "seller-unico", estado: "activa" }],
+            error: null,
+          },
+        ],
+        "identidad.usuarios_perfil#bare": [{ count: 0, error: null }],
+      },
+      {
+        rpcError: {
+          code: "PGRST202",
+          message: "Could not find the function identidad.eliminar_cuenta_persona in the schema cache",
+        },
+      },
+    );
+    vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
+
+    await expect(darDeBajaCuenta({ actorUsuarioId: ACTOR, usuarioId: "usuario-1" })).rejects.toBeInstanceOf(
+      RpcEliminarCuentaNoDisponibleError,
+    );
+    // Nunca se borró la cuenta de Auth: NO hay desactivación falsa con huérfano.
     expect(cliente.auth.admin.deleteUser).not.toHaveBeenCalled();
   });
 });

@@ -20,6 +20,7 @@ import {
   type ResultadoBaja,
   type ResultadoReactivacion,
 } from "@/modules/plataforma/baja-cuentas";
+import { RpcEliminarCuentaNoDisponibleError } from "@/modules/plataforma/eliminar-cuenta-persona-rpc";
 
 const RUTA = "/admin/cuentas";
 
@@ -53,7 +54,18 @@ export async function darDeBajaCuentaAction(
     return { ok: false, motivo: MOTIVO_SIN_PERMISO };
   }
 
-  const resultado = await darDeBajaCuenta({ actorUsuarioId, usuarioId, accionEsperada });
+  let resultado: ResultadoBaja;
+  try {
+    resultado = await darDeBajaCuenta({ actorUsuarioId, usuarioId, accionEsperada });
+  } catch (error) {
+    // El borrado duro requería la RPC y PostgREST aún no la publicaba: NO se dio
+    // de baja nada (mejor eso que una desactivación falsa con huérfano). Se le
+    // pide al admin reintentar. Cualquier otro error se relanza (500 real).
+    if (error instanceof RpcEliminarCuentaNoDisponibleError) {
+      return { ok: false, motivo: error.message };
+    }
+    throw error;
+  }
   if (resultado.ok) revalidatePath(RUTA);
   return resultado;
 }
