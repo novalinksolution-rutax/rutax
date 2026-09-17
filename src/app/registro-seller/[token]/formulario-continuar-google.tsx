@@ -81,10 +81,6 @@ export function FormularioContinuarGoogle({
     <div className="w-full max-w-sm space-y-5 border border-line bg-bg-raised p-6">
       <div className="space-y-1.5 text-center">
         <h1 className="font-heading text-xl leading-tight font-semibold">Súmate como seller</h1>
-        <p className="text-sm leading-relaxed text-fg-muted">
-          Entra con tu cuenta de Google y completa tus datos — quedas activo al instante, sin
-          esperar aprobación.
-        </p>
       </div>
 
       {error ? (

@@ -254,7 +254,7 @@ export default async function PaginaSellers() {
         <EmptyState
           icon={Store}
           titulo="Todavía no tienes sellers"
-          descripcion="Comparte tu enlace de registro con tus clientes: entran con Google, completan sus datos y quedan activos al instante."
+          descripcion="Comparte tu enlace de registro con tus clientes para que se sumen."
           accion={
             puedeInvitar ? <PanelEnlaceSeller nombreFantasia={nombreFantasia} /> : undefined
           }

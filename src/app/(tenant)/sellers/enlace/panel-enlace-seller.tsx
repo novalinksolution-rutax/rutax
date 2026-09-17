@@ -77,7 +77,7 @@ export function PanelEnlaceSeller({ nombreFantasia }: { nombreFantasia: string }
 
   const url = token && typeof window !== "undefined" ? `${window.location.origin}/registro-seller/${token}` : "";
   const textoWhatsapp = url
-    ? `Hola 👋 Te paso el enlace para sumarte como cliente de ${nombreFantasia} en Rutax. Entra con tu cuenta de Google y completa tus datos, quedas activo al tiro: ${url}`
+    ? `Hola 👋 ${nombreFantasia} te invita a sumarte como seller en Rutax: ${url}`
     : "";
 
   function copiar(texto: string, que: "enlace" | "whatsapp") {

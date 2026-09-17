@@ -228,7 +228,7 @@ export function WizardAltaSeller({
     setErrorFinal(null);
 
     if (fuentes.length === 0) {
-      setError("Declara al menos una fuente de pedidos para continuar.");
+      setError("Selecciona al menos una fuente de pedidos para continuar.");
       return;
     }
 
@@ -299,7 +299,7 @@ export function WizardAltaSeller({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="rut">RUT de tu empresa</Label>
+            <Label htmlFor="rut">RUT</Label>
             <Input
               id="rut"
               inputMode="text"
@@ -341,7 +341,7 @@ export function WizardAltaSeller({
         <form onSubmit={guardarContacto} noValidate className="space-y-4">
           <legend className="flex items-center gap-2 text-sm font-semibold text-fg">
             <User className="size-4" aria-hidden="true" />
-            Quién es el contacto
+            Tu contacto
           </legend>
 
           <div className="space-y-1.5">
