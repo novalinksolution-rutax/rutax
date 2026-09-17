@@ -37,6 +37,12 @@ export function DialogBajaCuenta({
   const [comprobante, setComprobante] = useState<ComprobanteActo | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // Etiqueta para mostrar y para confirmar: el correo si lo tiene, si no el
+  // nombre. Una cuenta de teléfono (sin correo) no puede pedir "escribe el
+  // correo" — no hay ninguno.
+  const tieneCorreo = cuenta.email !== "(sin correo)" && cuenta.email.includes("@");
+  const etiqueta = tieneCorreo ? cuenta.email : cuenta.nombreCompleto?.trim() || "esta cuenta";
+
   const cargarPreview = useCallback(() => {
     setCargandoPreview(true);
     setPreview(null);
@@ -66,8 +72,8 @@ export function DialogBajaCuenta({
           titulo: resultado.accion === "eliminada" ? "Cuenta eliminada" : "Cuenta desactivada",
           cuerpo:
             resultado.accion === "eliminada"
-              ? `Se eliminó ${cuenta.email} y sus conexiones.`
-              : `${cuenta.email} quedó desactivada.`,
+              ? `Se eliminó ${etiqueta} y sus conexiones.`
+              : `${etiqueta} quedó desactivada.`,
         });
         router.refresh();
       } else {
@@ -77,6 +83,13 @@ export function DialogBajaCuenta({
   }
 
   const eliminada = preview?.ok === true && preview.accionPrevista === "eliminada";
+  // Una cuenta "sin perfil" no tiene ficha ni datos que perder — solo una fila
+  // de Auth huérfana. No merece confirmación tipeada (y como suele no tener
+  // correo, pedirla la volvía imposible de eliminar). El resto de los borrados
+  // (seller/conductor con ficha) sí la piden: el correo, o el nombre si no hay.
+  const esSinPerfil = preview?.ok === true && preview.tipoUsuario === null;
+  const requiereTipeo = eliminada && !esSinPerfil;
+  const fraseConfirmacion = tieneCorreo ? cuenta.email : cuenta.nombreCompleto?.trim() || "ELIMINAR";
   const bloqueada = preview !== null && preview.ok === false;
   const otrosCouriersActivos = preview?.ok === true ? preview.otrosCouriersActivos : 0;
 
@@ -109,8 +122,8 @@ export function DialogBajaCuenta({
             setErrorConfirmar(null);
           }
         }}
-        peldano={eliminada ? 3 : 1}
-        titulo={`Dar de baja a ${cuenta.email}`}
+        peldano={requiereTipeo ? 3 : 1}
+        titulo={`Dar de baja a ${etiqueta}`}
         consecuencia={
           cargandoPreview || !preview
             ? null
@@ -120,7 +133,7 @@ export function DialogBajaCuenta({
                 ? "Se elimina permanentemente."
                 : "Se desactiva la cuenta. Se puede reactivar."
         }
-        confirmacion={eliminada ? { frase: cuenta.email } : undefined}
+        confirmacion={requiereTipeo ? { frase: fraseConfirmacion } : undefined}
         autor={{ nombre: autorNombre, cuando: formatearFechaHora(new Date()) }}
         avisos={avisos}
         cargando={isPending}
