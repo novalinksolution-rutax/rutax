@@ -1,0 +1,13 @@
+-- =============================================================================
+-- Recargar el caché de esquema de PostgREST (otra vez)
+-- =============================================================================
+-- `identidad.alta_seller_autoservicio` (migración `20260917000003`) ya trae su
+-- propio `notify` al final, pero el alta sigue fallando en producción con el
+-- error genérico, y `PGRST202` (la función no está en el caché) es uno de los
+-- candidatos. Esta migración vuelve a pedir la recarga, que es idempotente y
+-- barata (un NOTIFY sin escuchas es un no-op).
+--
+-- Si tras esto el alta sigue fallando, NO era el caché: el código del motor que
+-- ahora muestra la pantalla («código XXXXX») lo dirá.
+-- =============================================================================
+notify pgrst, 'reload schema';

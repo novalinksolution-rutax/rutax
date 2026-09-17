@@ -41,9 +41,11 @@ import {
 } from "@/modules/identidad/barrera-auto-registro-seller";
 import {
   commitAltaSellerAutoservicio,
+  ErrorAltaSellerInfraestructura,
   FUENTES_DECLARABLES,
   type DatosAltaSellerAutoservicio,
 } from "@/modules/identidad/alta-seller-autoservicio";
+import { capturarExcepcion } from "@/lib/observabilidad";
 import {
   obtenerPuertoAutocompletado,
   type SugerenciaDireccion,
@@ -383,10 +385,24 @@ export async function finalizarAltaSellerAction(): Promise<ResultadoFinalizarAlt
   } catch (err) {
     if (err instanceof ErrorConflicto) return { ok: false, tipo: "conflicto", mensaje: err.message };
     if (err instanceof ErrorValidacion) return { ok: false, tipo: "incompleto", mensaje: err.message };
+
+    // ⚠️ Este catch NO se traga el error. Tragárselo fue lo que hizo indepurable
+    // el alta: la pantalla decía «problema de nuestro sistema» y no quedaba
+    // rastro de la causa ni en el servidor ni en pantalla. Ahora va a Sentry con
+    // su contexto, y el código del motor se muestra: en un fallo inesperado es
+    // el único dato que convierte «no funciona» en algo accionable.
+    await capturarExcepcion(err, {
+      origen: "registro-seller:finalizar-alta",
+      extra: { tenant_id: estado.tenantId },
+    });
+
+    const codigo = err instanceof ErrorAltaSellerInfraestructura ? err.codigo : null;
     return {
       ok: false,
       tipo: "desconocido",
-      mensaje: "No pudimos completar tu registro por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
+      mensaje: codigo
+        ? `No pudimos completar tu registro por un problema de nuestro sistema. Intenta de nuevo en unos minutos. (código ${codigo})`
+        : "No pudimos completar tu registro por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
     };
   }
 }

@@ -30,6 +30,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ClienteServicio } from "./onboarding";
 import { registrarEnBitacora } from "./auditoria";
+import { capturarMensaje } from "@/lib/observabilidad";
 import { ErrorConflicto, ErrorValidacion } from "./errores";
 import { normalizarYValidarRut } from "./rut";
 import { normalizarTelefonoE164 } from "@/lib/telefono-cl";
@@ -45,6 +46,20 @@ export type FuenteDeclarada = (typeof FUENTES_DECLARABLES)[number];
  * cambia (mismo criterio que documenta la columna en la migración).
  */
 export const VERSION_CONSENTIMIENTO_DATOS_SELLER = "2026-09-alta-seller-v1";
+
+/**
+ * La RPC del alta falló por algo que NO es de dominio (ni RUT ocupado ni perfil
+ * inválido): un `PGRST202` porque PostgREST todavía no publica la función, una
+ * FK, un CHECK. Lleva el `codigo` del motor para que la pantalla pueda mostrarlo
+ * y podamos diagnosticar sin acceso a los logs — antes esto se perdía y el alta
+ * era indepurable desde fuera.
+ */
+export class ErrorAltaSellerInfraestructura extends Error {
+  constructor(readonly codigo: string) {
+    super(`El alta de seller falló en la RPC (código ${codigo}).`);
+    this.name = "ErrorAltaSellerInfraestructura";
+  }
+}
 
 export interface DatosBodegaResuelta {
   nombre: string;
@@ -218,7 +233,16 @@ export async function commitAltaSellerAutoservicio(
     // Cualquier otro error (incluida la RPC fuera del caché de PostgREST,
     // PGRST202) se PROPAGA duro: el Server Action lo muestra como «intenta de
     // nuevo», nunca como un alta a medias. La RPC ya hizo rollback completo.
-    throw new Error(`No se pudo completar tu registro: ${error.message}`);
+    //
+    // ⚠️ Y se REGISTRA con su código. Tragarse este error fue lo que dejó el
+    // alta indepurable: la pantalla decía «problema de nuestro sistema» y en el
+    // servidor no quedaba rastro de la causa. Sin PII: solo código y el mensaje
+    // del motor (nunca el payload, que lleva RUT, dirección y teléfono).
+    await capturarMensaje("El alta de seller por autoservicio falló en la RPC atómica", "error", {
+      origen: "identidad:alta-seller-autoservicio",
+      extra: { codigo: error.code ?? null, motivo: error.message, detalle: error.details ?? null },
+    });
+    throw new ErrorAltaSellerInfraestructura(error.code ?? "desconocido");
   }
 
   const salida = (data ?? {}) as { seller_id?: string; es_primera_membresia?: boolean };
