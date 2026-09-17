@@ -371,17 +371,9 @@ export async function finalizarAltaSellerAction(): Promise<ResultadoFinalizarAlt
     fuentes: estado.fuentes,
   };
 
+  let resultado: Awaited<ReturnType<typeof commitAltaSellerAutoservicio>>;
   try {
-    const resultado = await commitAltaSellerAutoservicio(admin, input);
-    await limpiarBorradorWizard();
-
-    // Refrescar el JWT: recién se creó/reapuntó usuarios_perfil.
-    const supabase = await createClient();
-    await supabase.auth.refreshSession();
-
-    revalidatePath("/portal");
-
-    return { ok: true, datos: { tenantId: resultado.tenantId, primeraMembresia: resultado.esPrimeraMembresia } };
+    resultado = await commitAltaSellerAutoservicio(admin, input);
   } catch (err) {
     if (err instanceof ErrorConflicto) return { ok: false, tipo: "conflicto", mensaje: err.message };
     if (err instanceof ErrorValidacion) return { ok: false, tipo: "incompleto", mensaje: err.message };
@@ -405,4 +397,28 @@ export async function finalizarAltaSellerAction(): Promise<ResultadoFinalizarAlt
         : "No pudimos completar tu registro por un problema de nuestro sistema. Intenta de nuevo en unos minutos.",
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // POST-COMMIT — nada de acá puede reportar un fallo
+  // ---------------------------------------------------------------------------
+  // El alta ya está hecha y fue ATÓMICA: el seller existe, con su membresía y su
+  // perfil. Limpiar el borrador, refrescar el JWT y revalidar son comodidades,
+  // no parte del alta. Antes vivían dentro del mismo `try` que el commit, así
+  // que un fallo en cualquiera de las tres convertía un alta EXITOSA en
+  // «problema de nuestro sistema» — y el seller re-intentaba y chocaba con su
+  // propio RUT, que ya estaba tomado. Se registran y se siguen de largo.
+  try {
+    await limpiarBorradorWizard();
+    // Refrescar el JWT: recién se creó/reapuntó usuarios_perfil.
+    const supabase = await createClient();
+    await supabase.auth.refreshSession();
+    revalidatePath("/portal");
+  } catch (err) {
+    await capturarExcepcion(err, {
+      origen: "registro-seller:post-alta",
+      extra: { tenant_id: estado.tenantId, nota: "el alta SI se completó; falló un paso posterior" },
+    });
+  }
+
+  return { ok: true, datos: { tenantId: resultado.tenantId, primeraMembresia: resultado.esPrimeraMembresia } };
 }
