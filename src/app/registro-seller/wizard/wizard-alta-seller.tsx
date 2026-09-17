@@ -270,14 +270,15 @@ export function WizardAltaSeller({
         <p className="text-sm text-fg-muted">
           Te estás sumando como seller de <span className="font-medium text-fg">{nombreFantasia}</span>.
         </p>
-        <div className="space-y-1">
-          <p className="rx-num flex items-baseline justify-between text-xs text-fg-muted">
-            <span>
-              Paso {paso + 1} de {total} · {TITULOS_PASO[paso]}
-            </span>
-            <span>{porcentaje}%</span>
-          </p>
+        <div className="space-y-1.5">
           <Progress value={porcentaje} />
+          {/* Sin porcentaje y sin repetir el título: la barra ya muestra el avance
+              y el encabezado de cada paso («Dónde retira el conductor») dice lo
+              mismo que `TITULOS_PASO` pero mejor. Queda solo el conteo, que es
+              lo único que la barra no comunica con precisión. */}
+          <p className="rx-num text-xs text-fg-muted">
+            Paso {paso + 1} de {total}
+          </p>
         </div>
       </div>
 
@@ -291,7 +292,7 @@ export function WizardAltaSeller({
       {/* ── Paso 0 · Empresa ── */}
       {paso === 0 ? (
         <form onSubmit={guardarEmpresa} noValidate className="space-y-4">
-          <legend className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
             <Building2 className="size-4" aria-hidden="true" />
             Los datos de tu empresa
           </legend>
@@ -350,7 +351,7 @@ export function WizardAltaSeller({
       {/* ── Paso 1 · Contacto ── */}
       {paso === 1 ? (
         <form onSubmit={guardarContacto} noValidate className="space-y-4">
-          <legend className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
             <User className="size-4" aria-hidden="true" />
             Tu contacto
           </legend>
@@ -429,7 +430,7 @@ export function WizardAltaSeller({
       {/* ── Paso 2 · Bodega ── */}
       {paso === 2 ? (
         <form onSubmit={guardarBodega} noValidate className="space-y-4">
-          <legend className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
             <MapPin className="size-4" aria-hidden="true" />
             Dónde retira el conductor
           </legend>
@@ -556,7 +557,7 @@ export function WizardAltaSeller({
       {/* ── Paso 3 · Fuentes ── */}
       {paso === 3 ? (
         <form onSubmit={terminar} noValidate className="space-y-4">
-          <legend className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <legend className="font-heading flex items-center gap-2 text-lg leading-tight font-semibold text-fg">
             <Truck className="size-4" aria-hidden="true" />
             De dónde vienen tus pedidos
           </legend>
