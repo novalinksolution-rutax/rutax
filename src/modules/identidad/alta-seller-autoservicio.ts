@@ -2,42 +2,33 @@
  * Commit atómico del alta de seller por autoservicio (RF-010 rediseño) — el
  * paso final del wizard, tras Google + `verificarBarreraAutoRegistroSeller`.
  * =============================================================================
- * Orden de escritura (documentado en el handoff §8 de la migración
- * `20260916000001`), con compensación best-effort si un paso falla a medio
- * camino (no hay transacción cross-tabla entre `service_role` y varias
- * llamadas PostgREST — mismo criterio que `provisionarTenantParaAuthUser`):
+ * TODA la escritura vive en UNA transacción SQL: la RPC
+ * `identidad.alta_seller_autoservicio` (migración `20260917000003`). Este
+ * módulo solo: (a) valida la entrada (`validarEntrada`, ANTES), (b) arma el
+ * payload y llama la RPC, y (c) escribe la bitácora (DESPUÉS, con el
+ * `es_primera_membresia` que la RPC devuelve).
  *
- *   1. `identidad.seller_identidades` — upsert por `auth_user_id` (empresa
- *      COMPARTIDA entre couriers).
- *   2. `identidad.sellers` — la fila de ESTE courier, `estado='activo'` (nace
- *      sin aprobación).
- *   3. `identidad.seller_bodegas` — la bodega del wizard. Geocoding YA
- *      resuelto por el LLAMADOR (Server Action): CLAUDE.md exige que el
- *      geocoding de bodegas sea síncrono en la Server Action, no aquí.
- *   4. `integraciones.whatsapp_contactos` — origen `perfil_seller`.
- *   5. `identidad.seller_fuentes_declaradas` — `rutax_manual` nace
- *      `conectada`; el resto, `pendiente`.
- *   6. `identidad.seller_membresias` — el vínculo identidad↔courier, nace
- *      `activa`.
- *   7. `usuarios_perfil` — 1:1. Primera membresía: se CREA. Si la identidad ya
- *      era seller de otro courier: se REAPUNTA la fila activa a ESTE courier
- *      (acaba de unirse, debe aterrizar acá — mismo criterio que el switcher
- *      de `seller-membresias.ts`).
- *   8. Bitácora — al final: no hay evento Inngest ni integración externa que
- *      preceder en este commit (a diferencia de `dinero/acciones.ts`), así
- *      que no aplica "bitácora antes del efecto externo"; se audita cuando
- *      todo quedó consistente, mismo criterio que `tenant.alta`.
+ * POR QUÉ UNA RPC Y NO INSERTS SUELTOS DESDE ACÁ
+ * -----------------------------------------------------------------------------
+ * Antes esto eran 7 `.insert()` de PostgREST —cada uno su propia transacción—
+ * con una compensación best-effort que, al fallar, dejaba una fila `sellers`
+ * HUÉRFANA: su `(tenant_id, rut)` ocupado pero sin perfil ni membresía. Esa fila
+ * es invisible en el backstage (que lista `usuarios_perfil`/`auth.users`, no
+ * `sellers`), así que no se podía borrar desde la UI y el re-intento chocaba para
+ * siempre con `sellers_tenant_rut_uk` («Esa empresa ya tiene una cuenta con este
+ * courier»). La RPC hace todo o nada: si algo falla, rollback completo — cero
+ * huérfanos — y además RECLAMA un huérfano preexistente del mismo `(tenant,rut)`
+ * si no tiene dueño (un re-intento se auto-cura). Ver la migración para el
+ * detalle de reclamo vs. conflicto legítimo.
  *
- * El LLAMADOR debe haber pasado `verificarBarreraAutoRegistroSeller` antes de
- * invocar esto — esta función repite el chequeo mínimo (perfil existente y no
- * es seller) como defensa en profundidad, pero no vuelve a consultar
- * `seller_membresias` (el `insert` de más abajo ya lo hace de facto: 23505 si
- * la barrera se saltó una carrera).
+ * La RPC computa `es_primera_membresia` (crea `usuarios_perfil` si no existe,
+ * o reapunta la fila 1:1 a ESTE courier si la identidad ya era seller de otro) y
+ * rechaza con `P0001` si el perfil existente no es de tipo seller (defensa en
+ * profundidad — `verificarBarreraAutoRegistroSeller` ya debió bloquearlo antes).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ClienteServicio } from "./onboarding";
-import { buscarPerfilPorAuthUserId } from "./onboarding";
 import { registrarEnBitacora } from "./auditoria";
 import { ErrorConflicto, ErrorValidacion } from "./errores";
 import { normalizarYValidarRut } from "./rut";
@@ -173,47 +164,10 @@ function esErrorDeRutDuplicadoEnTenant(error: { code?: string; message?: string 
 }
 
 /**
- * Best-effort: deshace lo insertado si un paso posterior falla. Nunca lanza —
- * si la compensación falla, queda una fila huérfana que requiere limpieza
- * manual, pero preferimos eso a enmascarar el error original.
- *
- * Orden: `seller_bodegas` tiene FK `on delete restrict` hacia `sellers` — hay
- * que borrarla ANTES de poder borrar la fila de `sellers`. Las demás
- * (`seller_membresias`, `seller_fuentes_declaradas`, `whatsapp_contactos`)
- * cascadean solas al borrar `sellers`, pero se borran explícitas igual, por
- * claridad y para no depender de que el `on delete cascade` siga vigente.
- */
-async function deshacerAltaSeller(cliente: ClienteServicio, sellerId: string): Promise<void> {
-  try {
-    await cliente.schema("identidad").from("seller_membresias").delete().eq("seller_id", sellerId);
-  } catch {
-    /* best-effort */
-  }
-  try {
-    await cliente.schema("identidad").from("seller_fuentes_declaradas").delete().eq("seller_id", sellerId);
-  } catch {
-    /* best-effort */
-  }
-  try {
-    await cliente.schema("integraciones").from("whatsapp_contactos").delete().eq("seller_id", sellerId);
-  } catch {
-    /* best-effort */
-  }
-  try {
-    await cliente.schema("identidad").from("seller_bodegas").delete().eq("seller_id", sellerId);
-  } catch {
-    /* best-effort */
-  }
-  try {
-    await cliente.from("sellers").delete().eq("id", sellerId);
-  } catch {
-    /* best-effort */
-  }
-}
-
-/**
- * Commit atómico del alta de seller por autoservicio. Se asume que el
- * llamador YA pasó `verificarBarreraAutoRegistroSeller` — ver cabecera.
+ * Commit del alta de seller por autoservicio. La escritura entera la hace la RPC
+ * atómica `identidad.alta_seller_autoservicio`; acá solo se valida (antes), se
+ * arma el payload y se audita (después). Se asume que el llamador YA pasó
+ * `verificarBarreraAutoRegistroSeller` — ver cabecera.
  */
 export async function commitAltaSellerAutoservicio(
   cliente: ClienteServicio,
@@ -221,181 +175,61 @@ export async function commitAltaSellerAutoservicio(
 ): Promise<ResultadoAltaSellerAutoservicio> {
   const { rutNormalizado, telefonoContacto, whatsappE164 } = validarEntrada(input);
 
-  // ¿Es su primera membresía? Se resuelve ANTES de escribir nada: decide si
-  // el paso 7 crea `usuarios_perfil` o solo reapunta la fila activa existente.
-  const perfilExistente = await buscarPerfilPorAuthUserId(cliente, input.authUserId);
-  if (perfilExistente && perfilExistente.tipoUsuario !== "seller") {
-    // Defensa en profundidad — `verificarBarreraAutoRegistroSeller` ya debió
-    // bloquear esto antes de llegar aquí.
-    throw new ErrorValidacion("Esta cuenta no puede registrarse como seller.");
-  }
-  const esPrimeraMembresia = perfilExistente === null;
-
-  const ahora = new Date().toISOString();
-
-  // 1) seller_identidades — upsert por auth_user_id (empresa COMPARTIDA).
-  const { error: errorIdentidad } = await cliente
-    .schema("identidad")
-    .from("seller_identidades")
-    .upsert(
-      {
-        auth_user_id: input.authUserId,
-        razon_social: input.empresa.razonSocial.trim(),
-        rut: rutNormalizado,
-        nombre_contacto: input.contacto.nombreContacto.trim(),
-        telefono: telefonoContacto,
-        // La marca temporal es CUÁNDO consintió (se selló en el wizard), no el
-        // momento del commit — así el asiento de consentimiento no miente la hora.
-        consentimiento_datos_en: input.empresa.consentimientoDatosEn,
-        consentimiento_version: VERSION_CONSENTIMIENTO_DATOS_SELLER,
-      },
-      { onConflict: "auth_user_id" },
-    );
-
-  if (errorIdentidad) {
-    throw new Error(`No se pudo guardar los datos de tu empresa: ${errorIdentidad.message}`);
-  }
-
-  // 2) identidad.sellers — la fila de ESTE courier. estado='activo': nace
-  //    sin aprobación (decisión de producto de este alcance).
-  const { data: sellerCreado, error: errorSeller } = await cliente
-    .from("sellers")
-    .insert({
-      tenant_id: input.tenantId,
-      razon_social: input.empresa.razonSocial.trim(),
-      rut: rutNormalizado,
-      nombre_contacto: input.contacto.nombreContacto.trim(),
-      email_contacto: input.email.trim().toLowerCase(),
-      estado: "activo",
-    })
-    .select("id")
-    .single();
-
-  if (errorSeller || !sellerCreado) {
-    if (esErrorDeRutDuplicadoEnTenant(errorSeller)) {
-      throw new ErrorConflicto("Esa empresa ya tiene una cuenta con este courier.");
-    }
-    throw new Error(`No se pudo registrar tu empresa en este courier: ${errorSeller?.message ?? "desconocido"}`);
-  }
-
-  const sellerId = sellerCreado.id as string;
-
-  // 3) seller_bodegas — geocoding YA resuelto por el llamador.
-  const { error: errorBodega } = await cliente
-    .schema("identidad")
-    .from("seller_bodegas")
-    .insert({
-      tenant_id: input.tenantId,
-      seller_id: sellerId,
+  const payload = {
+    auth_user_id: input.authUserId,
+    tenant_id: input.tenantId,
+    rut: rutNormalizado,
+    razon_social: input.empresa.razonSocial.trim(),
+    nombre_contacto: input.contacto.nombreContacto.trim(),
+    email: input.email,
+    telefono_contacto: telefonoContacto,
+    // La marca temporal es CUÁNDO consintió (se selló en el wizard), no el
+    // momento del commit — así el asiento de consentimiento no miente la hora.
+    consentimiento_datos_en: input.empresa.consentimientoDatosEn,
+    consentimiento_version: VERSION_CONSENTIMIENTO_DATOS_SELLER,
+    whatsapp_e164: whatsappE164,
+    bodega: {
       nombre: input.bodega.nombre.trim(),
       direccion: input.bodega.direccion.trim(),
       comuna: input.bodega.comuna,
       instrucciones_acceso: input.bodega.instruccionesAcceso?.trim() || null,
       contacto_nombre: input.bodega.contactoNombre?.trim() || null,
       contacto_telefono: input.bodega.contactoTelefono?.trim() || null,
-      // Primera y única bodega de ESTE seller (fila nueva de `sellers`, no
-      // comparte `seller_id` con otro courier): nace principal sin ambigüedad.
-      es_principal: true,
-      activa: true,
       lat: input.bodega.lat,
       long: input.bodega.long,
       geo_estado: input.bodega.geoEstado,
       geo_confianza: input.bodega.geoConfianza,
       geocodificado_en: input.bodega.geocodificadoEn,
-    });
+    },
+    fuentes: input.fuentes,
+  };
 
-  if (errorBodega) {
-    await deshacerAltaSeller(cliente, sellerId);
-    throw new Error(`No se pudo registrar tu bodega: ${errorBodega.message}`);
-  }
-
-  // 4) whatsapp_contactos — origen 'perfil_seller'. `whatsappE164`/`acepta` ya
-  //    están validados (`validarEntrada` exige el opt-in explícito).
-  const { error: errorWhatsapp } = await cliente
-    .schema("integraciones")
-    .from("whatsapp_contactos")
-    .insert({
-      tenant_id: input.tenantId,
-      seller_id: sellerId,
-      telefono_e164: whatsappE164,
-      origen: "perfil_seller",
-      opt_in_estado: "otorgado",
-      opt_in_en: ahora,
-    });
-
-  if (errorWhatsapp) {
-    await deshacerAltaSeller(cliente, sellerId);
-    throw new Error(`No se pudo registrar tu WhatsApp de retiro: ${errorWhatsapp.message}`);
-  }
-
-  // 5) seller_fuentes_declaradas — rutax_manual nace 'conectada'; el resto, 'pendiente'.
-  const { error: errorFuentes } = await cliente
+  const { data, error } = await cliente
     .schema("identidad")
-    .from("seller_fuentes_declaradas")
-    .insert(
-      input.fuentes.map((fuente) => ({
-        tenant_id: input.tenantId,
-        seller_id: sellerId,
-        fuente,
-        estado: fuente === "rutax_manual" ? "conectada" : "pendiente",
-      })),
-    );
+    .rpc("alta_seller_autoservicio", { p_payload: payload });
 
-  if (errorFuentes) {
-    await deshacerAltaSeller(cliente, sellerId);
-    throw new Error(`No se pudieron guardar tus fuentes de pedidos: ${errorFuentes.message}`);
+  if (error) {
+    if (esErrorDeRutDuplicadoEnTenant(error)) {
+      throw new ErrorConflicto("Esa empresa ya tiene una cuenta con este courier.");
+    }
+    if (error.code === "P0001") {
+      throw new ErrorValidacion("Esta cuenta no puede registrarse como seller.");
+    }
+    // Cualquier otro error (incluida la RPC fuera del caché de PostgREST,
+    // PGRST202) se PROPAGA duro: el Server Action lo muestra como «intenta de
+    // nuevo», nunca como un alta a medias. La RPC ya hizo rollback completo.
+    throw new Error(`No se pudo completar tu registro: ${error.message}`);
   }
 
-  // 6) seller_membresias — el vínculo identidad↔courier, nace 'activa'.
-  const { error: errorMembresia } = await cliente
-    .schema("identidad")
-    .from("seller_membresias")
-    .insert({
-      auth_user_id: input.authUserId,
-      tenant_id: input.tenantId,
-      seller_id: sellerId,
-      estado: "activa",
-    });
-
-  if (errorMembresia) {
-    await deshacerAltaSeller(cliente, sellerId);
-    if (errorMembresia.code === "23505") {
-      throw new ErrorConflicto("Ya tienes una cuenta de seller con este courier.");
-    }
-    throw new Error(`No se pudo activar tu membresía: ${errorMembresia.message}`);
+  const salida = (data ?? {}) as { seller_id?: string; es_primera_membresia?: boolean };
+  if (!salida.seller_id) {
+    throw new Error("El alta no devolvió un seller válido.");
   }
+  const sellerId = salida.seller_id;
+  const esPrimeraMembresia = salida.es_primera_membresia === true;
 
-  // 7) usuarios_perfil — 1:1. Primera membresía: se crea. Si ya existía (era
-  //    seller de otro courier), se reapunta la fila activa a ESTE courier —
-  //    el seller acaba de unirse y debe aterrizar acá (mismo criterio que
-  //    `cambiarCourierActivo` en `seller-membresias.ts`).
-  if (esPrimeraMembresia) {
-    const { error: errorPerfil } = await cliente.from("usuarios_perfil").insert({
-      id: input.authUserId,
-      tenant_id: input.tenantId,
-      nombre_completo: input.contacto.nombreContacto.trim(),
-      tipo_usuario: "seller",
-      seller_id: sellerId,
-      rol: "seller",
-      estado: "activo",
-    });
-    if (errorPerfil) {
-      await deshacerAltaSeller(cliente, sellerId);
-      throw new Error(`No se pudo crear tu perfil de acceso: ${errorPerfil.message}`);
-    }
-  } else {
-    const { error: errorPerfil } = await cliente
-      .from("usuarios_perfil")
-      .update({ tenant_id: input.tenantId, seller_id: sellerId })
-      .eq("id", input.authUserId);
-    if (errorPerfil) {
-      await deshacerAltaSeller(cliente, sellerId);
-      throw new Error(`No se pudo cambiar tu courier activo: ${errorPerfil.message}`);
-    }
-  }
-
-  // 8) Bitácora — después de escribir todo (ver cabecera: sin evento Inngest
-  //    ni integración externa que preceder en este commit).
+  // Bitácora — después del commit atómico (sin evento Inngest ni integración
+  // externa que preceder, mismo criterio que `tenant.alta`).
   await registrarEnBitacora(cliente as unknown as SupabaseClient, {
     tenantId: input.tenantId,
     actorUsuarioId: input.authUserId,
