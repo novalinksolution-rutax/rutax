@@ -597,7 +597,14 @@ export function WizardAltaSeller({
                 <label
                   key={f}
                   className={cn(
-                    "flex items-center gap-2.5 border border-line px-3 py-2.5 text-sm",
+                    // Alto de fila del portal y estado elegido con el par teñido
+                    // del ADN (accent-deep + accent-line): antes las tres filas
+                    // eran cajas idénticas a un input y no se leían elegibles.
+                    "flex min-h-(--rx-row-portal) items-center gap-2.5 border px-3 text-sm",
+                    "transition-colors duration-(--motion-fast) ease-standard",
+                    (fija ? true : fuentes.includes(f))
+                      ? "border-accent-line bg-accent-deep"
+                      : "border-line hover:border-fg-muted",
                     fija ? "cursor-default" : "cursor-pointer",
                   )}
                 >
