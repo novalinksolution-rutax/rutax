@@ -22,6 +22,7 @@
 
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { esRolValido, type Rol } from "@/modules/identidad/roles";
 import type { UsuarioActual } from "@/modules/identidad/usuario-actual";
 import { obtenerAreasHabilitadas } from "@/modules/plataforma/superficie-courier";
@@ -61,6 +62,54 @@ function leerRol(claims: Record<string, unknown>): Rol {
   // Fail-closed: un rol desconocido/ausente se resuelve al más acotado posible
   // que el tipo por defecto ('interno') admite — nunca a 'dueno'.
   return "supervisor";
+}
+
+/**
+ * Lee `usuarios_perfil.estado` EN VIVO — no el claim `estado_usuario` del JWT.
+ * =============================================================================
+ * El `custom_access_token_hook` escribe ese claim SOLO al emitir/refrescar el
+ * token (migración 0001 §6). Si un super-admin suspende una cuenta desde
+ * `/admin/cuentas` (`src/modules/plataforma/baja-cuentas.ts`) DESPUÉS de que
+ * esa persona ya tiene un access token vigente, el claim sigue diciendo
+ * `activo` hasta que el token expire y se refresque — hasta ~1 hora. Sin esta
+ * lectura, nada bloquea navegar con ese token: `estaActivo()`/`tieneCapacidad()`
+ * seguirían aprobando cualquier acción.
+ *
+ * Esta lectura SÍ ve el cambio al instante: es la misma fila, no el claim
+ * cacheado. Es la pieza que de verdad expulsa a alguien con sesión viva; la
+ * revocación de sesión (`ban_duration` en Supabase Auth) es la otra mitad —
+ * corta el refresco FUTURO del token, pero no el que ya está en la cookie.
+ *
+ * ⚠️ Con `service_role`, no con el cliente de la sesión (RLS). La política
+ * `usuarios_perfil_select` exige `id = auth.uid()` **Y** `tenant_id =
+ * identidad.claim_tenant_id()` — el segundo término lee el claim del MISMO
+ * JWT que esta función existe para no confiar; si algún día `tenant_id`
+ * pudiera divergir entre la fila y el claim (hoy no ocurre, pero nada lo
+ * impide), la lectura con el cliente de sesión fallaría en silencio (cero
+ * filas) justo en el caso que más importa. `service_role` bypasea RLS y
+ * hace la lectura una verdad independiente del propio token — mismo patrón
+ * que `autenticarBearer` en `src/lib/supabase/autenticar-bearer.ts`. Si la
+ * consulta falla (red, Postgres caído), se devuelve `null` y el llamador
+ * conserva el estado del claim: un hipo transitorio de esta lectura extra no
+ * puede expulsar a todo el mundo de golpe — el fail-closed real de esta
+ * función es el gate de `estaActivo()`, no esta lectura.
+ */
+async function leerEstadoVivo(usuarioId: string): Promise<UsuarioActual["estado"] | null> {
+  try {
+    const { data, error } = await crearClienteServiceRole()
+      .schema("identidad")
+      .from("usuarios_perfil")
+      .select("estado")
+      .eq("id", usuarioId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    const estado = (data as { estado?: unknown }).estado;
+    if (estado === "activo" || estado === "invitado" || estado === "suspendido") return estado;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -127,13 +176,18 @@ export const obtenerSesionActual = cache(async function obtenerSesionActual(): P
   // a sí mismo.
   const areasHabilitadas = tenantId ? await obtenerAreasHabilitadas(tenantId) : [];
 
+  // Estado EN VIVO (ver `leerEstadoVivo` arriba) — gana sobre el claim del JWT
+  // cuando la lectura funciona. `null` (fila sin perfil, o la lectura falló)
+  // conserva el fallback de siempre: el claim, o 'invitado' si tampoco existe.
+  const estadoVivo = await leerEstadoVivo(user.id);
+
   const usuario: UsuarioActual = {
     tenantId,
     tipoUsuario: leerTipoUsuario(claims),
     sellerId: leerClaimTexto(claims, "seller_id"),
     driverId: leerClaimTexto(claims, "driver_id"),
     rol: leerRol(claims),
-    estado: leerEstadoUsuario(claims),
+    estado: estadoVivo ?? leerEstadoUsuario(claims),
     areasHabilitadas,
   };
 

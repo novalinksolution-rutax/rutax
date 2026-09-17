@@ -24,6 +24,9 @@ export async function GET(request: NextRequest, { params }: Props) {
   ) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
+  if (usuario.estado !== "activo") {
+    return NextResponse.json({ error: "Cuenta inactiva" }, { status: 403 });
+  }
 
   const { evidenciaId } = await params;
 

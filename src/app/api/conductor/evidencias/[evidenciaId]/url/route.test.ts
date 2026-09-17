@@ -24,43 +24,25 @@ import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
  *   ...
  *   if (esConductor && evidencia.conductor_id !== actor.driverId) throw ErrorValidacion(...)
  *
- * ⚠️ SOBRE EL "HALLAZGO YA VERIFICADO" DEL ENUNCIADO DE QA — RE-VERIFICADO
- * AQUÍ Y NO SE REPRODUCE COMO COMPORTAMIENTO OBSERVABLE:
- * ---------------------------------------------------------------------------
- * Es LITERALMENTE CIERTO que esta es la ÚNICA de las 9 rutas cuyo `route.ts`
- * NO tiene la línea explícita `if (usuario.estado !== "activo") return 403`
- * que sí tienen `manifiesto/route.ts:26-28`, `evidencias/route.ts`,
+ * ⚠️ HALLAZGO CERRADO (MUST-FIX #3 de la auditoría de baja de cuentas,
+ * 2026-09-17): esta era la ÚNICA de las rutas Bearer del conductor cuyo
+ * `route.ts` NO tenía la línea explícita `if (usuario.estado !== "activo")
+ * return 403` que sí tienen `manifiesto/route.ts:26-28`, `evidencias/route.ts`,
  * `entregar/route.ts`, etc. justo después del guard de 401.
  *
- * PERO el test "conductor SUSPENDIDO..." de abajo (ejecutado de verdad contra
- * `obtenerUrlFirmadaEvidencia`, sin mockear esa función) demuestra que el
- * resultado observable NO es 200: es **403**. La razón es que
- * `obtenerUrlFirmadaEvidencia` llama a `puedeMarcarEvidenciasPropias(actor)`,
- * que delega en `tieneCapacidad()` (capacidades.ts:339-342):
+ * Antes del fix, el resultado observable YA era 403 (no 200) para un conductor
+ * suspendido, pero por una vía INDIRECTA: `obtenerUrlFirmadaEvidencia` llama a
+ * `puedeMarcarEvidenciasPropias(actor)`, que delega en `tieneCapacidad()`
+ * (`estaActivo()` primero) — protección real, pero implícita y frágil (se
+ * habría roto en silencio si esa cadena de capacidades cambiara alguna vez).
  *
- *   export function tieneCapacidad(usuario, capacidad) {
- *     if (!estaActivo(usuario)) return false;   // ← estaActivo = estado === 'activo'
- *     return MATRIZ_ROL_CAPACIDADES[usuario.rol].includes(capacidad);
- *   }
- *
- * Es decir: TODA capacidad de conductor (incluida `marcar_evidencias_propias`,
- * que también usan `registrarPruebaEntrega`, `registrarCierreConductor` y
- * `registrarEvidenciaEntrega`) exige `estado === 'activo'` de forma
- * transitiva e implícita, aunque la ruta no lo pida por su cuenta. Un
- * conductor `suspendido` cae en `ErrorValidacion("El conductor no tiene
- * capacidad para ver sus evidencias.")` → 403, NO en un 200 con la foto.
- *
- * Conclusión de QA: el hallazgo original describe correctamente el CÓDIGO
- * (falta la línea explícita) pero NO el COMPORTAMIENTO (sí rechaza, por una
- * ruta distinta). No es un "0 de severidad" — sigue siendo la única ruta que
- * depende de una protección IMPLÍCITA en vez de un guard explícito y legible
- * (si algún día `puedeMarcarEvidenciasPropias` cambiara de forma, o si
- * `obtenerUrlFirmadaEvidencia` se reutilizara desde un actor que no pase por
- * esa capacidad, el hueco SÍ se abriría) — pero HOY, para el actor conductor
- * vía esta ruta Bearer, no hay fuga. Recomendación: agregar la línea
- * explícita de todos modos, por CONSISTENCIA y defensa en profundidad
- * legible — no por urgencia de seguridad. Reportado a la sesión principal
- * para que reasigne la severidad con esta evidencia.
+ * Con el fix, la ruta agrega el guard explícito espejando
+ * `manifiesto/route.ts:28-30`: un conductor `estado !== 'activo'` recibe
+ * `{ error: "Cuenta inactiva" }` con 403 ANTES de llegar a
+ * `obtenerUrlFirmadaEvidencia` — mismo código, mismo mensaje que el resto de
+ * las rutas Bearer del conductor, y ya no depende de la cadena de RBAC
+ * transitiva para expulsar a una cuenta dada de baja
+ * (`src/modules/plataforma/baja-cuentas.ts`).
  *
  * Molde de aislamiento (spy sobre `.eq`, `data: null` = "no es tuyo") copiado
  * de `src/app/api/operaciones/[pedidoId]/etiqueta/route.test.ts`.
@@ -204,8 +186,8 @@ describe("GET /api/conductor/evidencias/:evidenciaId/url — control positivo", 
   });
 });
 
-describe("GET /api/conductor/evidencias/:evidenciaId/url — re-verificación del hallazgo de estado (ver cabecera del archivo)", () => {
-  it("conductor SUSPENDIDO NO obtiene la URL firmada — 403 vía RBAC transitivo (tieneCapacidad → estaActivo), aunque la ruta no comprueba `estado` por su cuenta", async () => {
+describe("GET /api/conductor/evidencias/:evidenciaId/url — guard explícito de estado (ver cabecera del archivo)", () => {
+  it("conductor SUSPENDIDO NO obtiene la URL firmada — 403 explícito ('Cuenta inactiva'), sin llegar a tocar Supabase", async () => {
     vi.mocked(autenticarBearer).mockResolvedValue({ ...usuarioConductor, estado: "suspendido" });
     const cliente = crearCliente({ evidencia: evidenciaFila({ conductor_id: DRIVER_1 }) });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
@@ -213,22 +195,23 @@ describe("GET /api/conductor/evidencias/:evidenciaId/url — re-verificación de
     const res = await GET(req(), ctx());
     const body = await res.json();
 
-    // Comportamiento REAL verificado (no el que describía el enunciado de QA):
-    // rechaza igual, por `puedeMarcarEvidenciasPropias` → `tieneCapacidad`
-    // → `estaActivo`. Si algún día esa cadena cambiara y dejara de exigir
-    // `estado === 'activo'`, este test empezaría a fallar (200) y ahí sí
-    // correspondería agregar el guard explícito que hoy falta en la ruta.
+    // El guard explícito (espejo de manifiesto/route.ts:28-30) corta ANTES de
+    // llegar a obtenerUrlFirmadaEvidencia — mismo código y mensaje que el
+    // resto de las rutas Bearer del conductor.
     expect(res.status).toBe(403);
-    expect(body.error).toBe("El conductor no tiene capacidad para ver sus evidencias.");
+    expect(body.error).toBe("Cuenta inactiva");
+    expect(crearClienteServiceRole).not.toHaveBeenCalled();
   });
 
-  it("conductor INVITADO (aún no activó su cuenta) tampoco obtiene la URL — mismo mecanismo", async () => {
+  it("conductor INVITADO (aún no activó su cuenta) tampoco obtiene la URL — mismo guard explícito", async () => {
     vi.mocked(autenticarBearer).mockResolvedValue({ ...usuarioConductor, estado: "invitado" });
     const cliente = crearCliente({ evidencia: evidenciaFila({ conductor_id: DRIVER_1 }) });
     vi.mocked(crearClienteServiceRole).mockReturnValue(cliente);
 
     const res = await GET(req(), ctx());
+    const body = await res.json();
 
     expect(res.status).toBe(403);
+    expect(body.error).toBe("Cuenta inactiva");
   });
 });

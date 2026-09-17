@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerPanelCuentas } from "@/modules/plataforma/panel-cuentas";
+import { exigirSuperAdmin } from "@/modules/plataforma/autorizacion-admin";
 import { tieneSesionAdmin } from "../sesion-admin";
 import { TablaCuentas } from "./tabla-cuentas";
 
@@ -26,6 +27,20 @@ export const dynamic = "force-dynamic";
 export default async function PaginaCuentasAdmin() {
   if (!(await tieneSesionAdmin())) {
     redirect("/admin/login");
+  }
+
+  // Quién puede accionar (dar de baja / reactivar) y con qué nombre firma —
+  // `soporte_lectura` solo mira; `admin_total` con AAL2 es quien ya validó
+  // `tieneSesionAdmin()`, así que esta segunda lectura (memoizada por request)
+  // no puede fallar en la práctica, pero se degrada a "sin accionar" si lo hace.
+  let puedeAccionar = false;
+  let autorNombre = "";
+  try {
+    const actor = await exigirSuperAdmin();
+    puedeAccionar = actor.rolAdmin === "admin_total" && actor.aal === "aal2";
+    autorNombre = actor.nombre;
+  } catch {
+    // queda en `false` / "" — ver arriba.
   }
 
   let panel: Awaited<ReturnType<typeof obtenerPanelCuentas>> | null = null;
@@ -74,7 +89,12 @@ export default async function PaginaCuentasAdmin() {
             <Dato rotulo="Nunca activaron" valor={panel.resumen.invitadosSinActivar} />
           </div>
 
-          <TablaCuentas cuentas={panel.cuentas} sinCuenta={panel.sinCuenta} />
+          <TablaCuentas
+            cuentas={panel.cuentas}
+            sinCuenta={panel.sinCuenta}
+            puedeAccionar={puedeAccionar}
+            autorNombre={autorNombre}
+          />
         </>
       )}
     </div>

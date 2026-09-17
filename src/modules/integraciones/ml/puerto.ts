@@ -49,6 +49,7 @@
 import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cifrarSecreto, descifrarSecreto } from "../secretos";
+import { olvidarSecreto } from "../secretos/cifrado";
 import type { ReferenciaSecreto } from "../secretos/tipos";
 import { ML_AUTH_BASE_URL, ErrorHttpMl, peticionMl, peticionBinariaMl } from "./cliente-http";
 import { CacheIdempotencia } from "../resiliencia";
@@ -1070,4 +1071,63 @@ async function marcarRequiereRevinculacionSync(
   }
 
   return aConexionPublica(data as unknown as FilaConexionInterna);
+}
+
+/**
+ * Revoca UNA conexión ML — variante ADMINISTRATIVA de `desconectarConexionMlPropia`
+ * (`src/app/portal/actions.ts`), para el backstage de plataforma (dar de baja la
+ * cuenta de un seller desde `/admin/cuentas`). Mismo efecto exacto (apaga la
+ * ingesta, olvida los tokens) y el mismo orden de escrituras — la única
+ * diferencia es que el llamador YA resolvió su propia autorización (gate de
+ * super-admin) y no hay sesión de seller que comprobar acá.
+ *
+ * NO llama a la API de Mercado Libre: no existe endpoint de revocación
+ * documentado (ver cabecera del archivo). Es exactamente lo mismo que hace la
+ * variante del seller — apagar la ingesta, no revocarle el permiso a ML.
+ */
+export async function revocarConexionMlPorAdministrador(entrada: {
+  conexionId: string;
+  tenantId: string;
+  actorUsuarioId: string;
+}): Promise<void> {
+  const supabase = crearClienteServiceRole();
+
+  const { data: refs } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .select("access_token_ref, refresh_token_ref")
+    .eq("id", entrada.conexionId)
+    .eq("tenant_id", entrada.tenantId)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .schema("identidad")
+    .from("conexiones_seller_ml")
+    .update({
+      estado_salud: "desvinculada",
+      desconectada_desde: new Date().toISOString(),
+      desconectada_por_usuario_id: entrada.actorUsuarioId,
+      access_token_ref: null,
+      refresh_token_ref: null,
+      token_expira_en: null,
+      ultimo_error: null,
+    })
+    .eq("id", entrada.conexionId)
+    .eq("tenant_id", entrada.tenantId);
+
+  if (error) {
+    throw new Error(`No se pudo revocar la conexión ML: ${error.message}`);
+  }
+
+  // Los secretos, al final y sin tumbar la operación si fallan — mismo criterio
+  // que `desconectarConexionMlPropia`: llegados acá la conexión ya no ingiere,
+  // que es lo que se pidió. Un secreto huérfano es basura, no un agujero.
+  try {
+    await Promise.all([
+      olvidarSecreto((refs?.access_token_ref as string | null) ?? null, entrada.tenantId),
+      olvidarSecreto((refs?.refresh_token_ref as string | null) ?? null, entrada.tenantId),
+    ]);
+  } catch {
+    // Silencio deliberado.
+  }
 }

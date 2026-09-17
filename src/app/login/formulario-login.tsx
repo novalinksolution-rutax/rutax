@@ -63,6 +63,10 @@ function errorDesdeUrl(codigo: string | undefined): ErrorLogin | null {
       return {
         mensaje: "No pudimos activar tu cuenta. Intenta de nuevo o pide ayuda a quien te invitó.",
       };
+    case "cuenta_suspendida":
+      return {
+        mensaje: "Esta cuenta fue dada de baja. Contacta a quien administra tu courier.",
+      };
     default:
       return null;
   }

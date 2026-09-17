@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { formatearFecha } from "@/lib/formato-cl";
+import { DialogBajaCuenta } from "./dialog-baja-cuenta";
+import { BotonReactivarCuenta } from "./boton-reactivar-cuenta";
 import type {
   CuentaListada,
   EntidadSinCuenta,
@@ -23,27 +25,23 @@ import type {
 /** Qué significa cada marca, dicho para quien tiene que resolverla. */
 const EXPLICACION: Record<MarcaCuenta, { texto: string; detalle: string; grave: boolean }> = {
   invitacion_en_conflicto: {
-    texto: "Invitación va a pisar esta cuenta",
-    detalle:
-      "Hay una invitación pendiente a este correo de un tipo distinto. Si se canjea, el perfil se sobrescribe y la cuenta deja de ser lo que es. Revoca esa invitación.",
+    texto: "Invitación conflictiva",
+    detalle: "Si se canjea, sobrescribe el rol. Revócala.",
     grave: true,
   },
   sin_perfil: {
     texto: "Sin perfil",
-    detalle:
-      "Existe en Auth y ocupa el correo, pero no tiene perfil: puede iniciar sesión y no ve nada.",
+    detalle: "Entra y no ve nada.",
     grave: true,
   },
   entidad_compartida: {
     texto: "Dos cuentas para la misma ficha",
-    detalle:
-      "Hay más de una cuenta apuntando al mismo seller o conductor. Cualquiera de las dos entra como esa persona, y la de más suele ser un descuido de una invitación repetida.",
+    detalle: "Una es probablemente un error. Ambas entran como la misma persona.",
     grave: true,
   },
   invitado_sin_activar: {
-    texto: "Nunca activó",
-    detalle:
-      "Le llegó la invitación y no la canjeó. Un seller así tampoco puede dejar su WhatsApp, porque el número lo pone él desde su portal.",
+    texto: "Invitación no canjeada",
+    detalle: "",
     grave: false,
   },
 };
@@ -71,12 +69,42 @@ function Marcas({ marcas }: { marcas: MarcaCuenta[] }) {
   );
 }
 
+/**
+ * "Dar de baja" / "Reactivar", o nada si no corresponde:
+ *  - `soporte_lectura` (o sin sesión válida) no ve ninguna acción.
+ *  - Una cuenta de plataforma no se toca desde aquí (el backend la rechaza
+ *    igual; ocultar el botón evita el viaje al servidor para nada).
+ *  - Suspendida → Reactivar. El resto → Dar de baja.
+ */
+function AccionesCuenta({
+  cuenta,
+  puedeAccionar,
+  autorNombre,
+}: {
+  cuenta: CuentaListada;
+  puedeAccionar: boolean;
+  autorNombre: string;
+}) {
+  if (!puedeAccionar || cuenta.tipoUsuario === "super_admin") {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  if (cuenta.estado === "suspendido") {
+    return <BotonReactivarCuenta cuenta={cuenta} />;
+  }
+  return <DialogBajaCuenta cuenta={cuenta} autorNombre={autorNombre} />;
+}
+
 export function TablaCuentas({
   cuentas,
   sinCuenta,
+  puedeAccionar,
+  autorNombre,
 }: {
   cuentas: CuentaListada[];
   sinCuenta: EntidadSinCuenta[];
+  /** `admin_total` con AAL2 en esta sesión. `soporte_lectura` no acciona. */
+  puedeAccionar: boolean;
+  autorNombre: string;
 }) {
   const [filtro, setFiltro] = useState("");
   const [soloProblemas, setSoloProblemas] = useState(false);
@@ -107,7 +135,7 @@ export function TablaCuentas({
           size="sm"
           onClick={() => setSoloProblemas((v) => !v)}
         >
-          Solo las que tienen algo
+          Solo las que tienen problemas
         </Button>
         <span className="text-sm text-muted-foreground">
           {visibles.length} de {cuentas.length}
@@ -124,6 +152,9 @@ export function TablaCuentas({
               <th className="p-3 font-medium">Representa a</th>
               <th className="p-3 font-medium">Último ingreso</th>
               <th className="p-3 font-medium">Marca</th>
+              <th className="p-3 font-medium">
+                <span className="sr-only">Acciones</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -153,6 +184,9 @@ export function TablaCuentas({
                       {EXPLICACION[c.marcas[0]].detalle}
                     </p>
                   ) : null}
+                </td>
+                <td className="p-3">
+                  <AccionesCuenta cuenta={c} puedeAccionar={puedeAccionar} autorNombre={autorNombre} />
                 </td>
               </tr>
             ))}

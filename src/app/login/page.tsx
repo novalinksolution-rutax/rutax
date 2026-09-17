@@ -52,7 +52,14 @@ interface PaginaLoginProps {
 
 export default async function PaginaLogin({ searchParams }: PaginaLoginProps) {
   const sesion = await obtenerSesionActual();
-  if (sesion?.usuario.tenantId) {
+  // ⚠️ `estado !== 'suspendido'` es lo que impide un bucle de redirects: una
+  // cuenta dada de baja (`plataforma/baja-cuentas.ts`) todavía puede traer una
+  // sesión de Auth viva y un `tenantId` en el claim, así que sin este segundo
+  // filtro `/` la mandaría de vuelta a su layout, que la expulsa otra vez para
+  // acá (ver `(tenant)/layout.tsx` / `portal/layout.tsx`) — ida y vuelta
+  // infinita. Con el filtro, se queda en el formulario (con el aviso de
+  // `?error=cuenta_suspendida`) en vez de rebotar.
+  if (sesion?.usuario.tenantId && sesion.usuario.estado !== "suspendido") {
     redirect("/");
   }
 

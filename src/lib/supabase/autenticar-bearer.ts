@@ -56,6 +56,36 @@ export async function autenticarBearer(
     // `tieneCapacidad`, que no sabe por qué puerta entró la sesión.
     const areasHabilitadas = tenantId ? await obtenerAreasHabilitadas(tenantId) : [];
 
+    const estadoDelClaim = (["activo", "invitado", "suspendido"] as const).includes(
+      estadoUsuario as "activo",
+    )
+      ? (estadoUsuario as UsuarioActual["estado"])
+      : "invitado";
+
+    // Estado EN VIVO — mismo motivo que `leerEstadoVivo` de
+    // `usuario-actual-servidor.ts`: `estado_usuario` es un claim del JWT y solo
+    // se refresca al emitir/renovar el token, así que una cuenta suspendida
+    // DESPUÉS de emitido ese token seguiría entrando por Bearer hasta que
+    // expire (la app Expo lo refresca solo cuando el que ya tiene se vence).
+    // `admin` acá YA es `service_role` (arriba), así que esta lectura no
+    // depende de RLS. Si falla, se conserva el claim — mismo criterio de "no
+    // expulsar a todos por un hipo transitorio".
+    let estado = estadoDelClaim;
+    try {
+      const { data: perfil } = await admin
+        .schema("identidad")
+        .from("usuarios_perfil")
+        .select("estado")
+        .eq("id", user.id)
+        .maybeSingle();
+      const estadoVivo = (perfil as { estado?: unknown } | null)?.estado;
+      if (estadoVivo === "activo" || estadoVivo === "invitado" || estadoVivo === "suspendido") {
+        estado = estadoVivo;
+      }
+    } catch {
+      // Se conserva estadoDelClaim.
+    }
+
     return {
       usuarioId: user.id,
       areasHabilitadas,
@@ -68,11 +98,7 @@ export async function autenticarBearer(
       sellerId: typeof payload["seller_id"] === "string" ? payload["seller_id"] : null,
       driverId: typeof payload["driver_id"] === "string" ? payload["driver_id"] : null,
       rol: esRolValido(rol) ? rol : "supervisor",
-      estado: (["activo", "invitado", "suspendido"] as const).includes(
-        estadoUsuario as "activo",
-      )
-        ? (estadoUsuario as UsuarioActual["estado"])
-        : "invitado",
+      estado,
     };
   } catch {
     return null;

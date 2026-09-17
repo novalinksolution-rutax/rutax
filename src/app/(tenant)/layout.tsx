@@ -56,6 +56,13 @@ export default async function LayoutTenant({ children }: { children: React.React
     // a una ruta que ya no existe.
     redirect("/login");
   }
+  if (sesion.usuario.estado === "suspendido") {
+    // Cuenta dada de baja desde `/admin/cuentas` (`plataforma/baja-cuentas.ts`).
+    // `estaActivo()` ya niega toda capacidad —así que sin esto el shell se
+    // dibujaría igual, vacío— pero un shell vacío no explica nada. Esta
+    // ramita expulsa derecho al login, con el mismo criterio que "invitado".
+    redirect("/login?error=cuenta_suspendida");
+  }
   if (!sesion.usuario.tenantId) {
     redirect("/login");
   }

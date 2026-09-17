@@ -54,6 +54,7 @@ export const metadata: Metadata = {
 export default async function PaginaConductorRetirada() {
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
+  if (sesion.usuario.estado === "suspendido") redirect("/login?error=cuenta_suspendida");
   if (sesion.usuario.tipoUsuario !== "conductor") redirect("/");
 
   return (

@@ -33,6 +33,13 @@ export default async function LayoutPortal({
     // cambio y su razón) — fallback defensivo al login.
     redirect("/login");
   }
+  if (sesion.usuario.estado === "suspendido") {
+    // Cuenta/membresía dada de baja desde `/admin/cuentas`. Ver el comentario
+    // gemelo en `(tenant)/layout.tsx`. Va a `/login` directo y no a
+    // `/portal/login`: esa ruta solo redirige a `/login` sin arrastrar el
+    // query string (es `neutra` — no sabe de qué courier se trata todavía).
+    redirect("/login?error=cuenta_suspendida");
+  }
   if (sesion.usuario.tipoUsuario !== "seller" || !sesion.usuario.sellerId) {
     redirect("/");
   }
