@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 import { esRutValido } from "@/modules/identidad/rut";
 import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
+import { formatearTelefonoLegible, normalizarTelefonoE164 } from "@/lib/telefono-cl";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { CampoDireccion } from "@/components/ui/campo-direccion";
@@ -95,6 +96,7 @@ export function WizardAltaSeller({
     estadoInicial.contacto?.telefono ?? estadoInicial.whatsapp?.telefono ?? "",
   );
   const [aceptaWhatsapp, setAceptaWhatsapp] = useState(estadoInicial.whatsapp?.acepta ?? false);
+  const [errorTelefono, setErrorTelefono] = useState<string | null>(null);
 
   // ── Paso 2 · Bodega ───────────────────────────────────────────────────────
   const [nombreBodega, setNombreBodega] = useState(estadoInicial.bodega?.nombre ?? "");
@@ -136,6 +138,22 @@ export function WizardAltaSeller({
       return;
     }
     if (!esRutValido(limpio)) setErrorRut(MENSAJE_RUT_INVALIDO);
+  }
+
+  /** Al salir del campo, deja el número en la forma que WhatsApp necesita — o avisa. */
+  function normalizarWhatsappAlPerderFoco() {
+    const bruto = telefonoContacto.trim();
+    if (!bruto) {
+      setErrorTelefono(null);
+      return;
+    }
+    const r = normalizarTelefonoE164(bruto);
+    if (r.valido) {
+      setTelefonoContacto(formatearTelefonoLegible(r.telefonoE164));
+      setErrorTelefono(null);
+    } else {
+      setErrorTelefono("Escríbelo como +56 9 1234 5678.");
+    }
   }
 
   async function guardarEmpresa(e: FormEvent) {
@@ -344,15 +362,25 @@ export function WizardAltaSeller({
             <Input
               id="telefonoContacto"
               type="tel"
+              inputMode="tel"
               placeholder="+56 9 1234 5678"
               value={telefonoContacto}
-              onChange={(e) => setTelefonoContacto(e.target.value)}
+              onChange={(e) => {
+                setTelefonoContacto(e.target.value);
+                setErrorTelefono(null);
+              }}
+              onBlur={normalizarWhatsappAlPerderFoco}
               disabled={guardando}
+              aria-invalid={Boolean(errorTelefono)}
               required
             />
-            <p className="text-xs text-fg-subtle">
-              A este número te avisamos cuando el conductor retira tus pedidos.
-            </p>
+            {errorTelefono ? (
+              <p className="text-xs text-destructive">{errorTelefono}</p>
+            ) : (
+              <p className="text-xs text-fg-subtle">
+                A este número te avisamos cuando el conductor retira tus pedidos.
+              </p>
+            )}
           </div>
 
           <label className="flex items-start gap-2.5 text-sm">
@@ -375,7 +403,12 @@ export function WizardAltaSeller({
             <Button type="button" variant="outline" onClick={() => irA(0)} disabled={guardando}>
               Volver
             </Button>
-            <Button type="submit" loading={guardando} disabled={!aceptaWhatsapp} className="flex-1">
+            <Button
+              type="submit"
+              loading={guardando}
+              disabled={!aceptaWhatsapp || Boolean(errorTelefono)}
+              className="flex-1"
+            >
               Continuar
             </Button>
           </div>
