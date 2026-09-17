@@ -561,10 +561,10 @@ export function WizardAltaSeller({
             <Truck className="size-4" aria-hidden="true" />
             De dónde vienen tus pedidos
           </legend>
-          <p className="text-sm leading-relaxed text-fg-muted">
-            Elige al menos una. Podrás conectar la cuenta correspondiente después, desde tu
-            portal.
-          </p>
+          {/* "Podrás conectar la cuenta correspondiente después, desde tu portal" narraba
+              mecánica interna: al seller, en este momento, no le sirve saber dónde se
+              conecta después. Queda solo la restricción que gobierna el botón. */}
+          <p className="text-sm leading-relaxed text-fg-muted">Elige al menos una.</p>
 
           <div className="space-y-2">
             {FUENTES_DECLARABLES.map((f) => {
