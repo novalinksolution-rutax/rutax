@@ -22,15 +22,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Building2,
-  CheckCircle2,
-  Loader2,
-  MapPin,
-  ShieldAlert,
-  Truck,
-  User,
-} from "lucide-react";
+import { Building2, CheckCircle2, MapPin, ShieldAlert, Truck, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,8 +64,11 @@ const TITULOS_PASO = ["Tu empresa", "Tu contacto", "Tu bodega", "Tus fuentes de 
 /** El paso por el que hay que abrir, según lo que ya esté guardado. */
 function pasoInicial(estado: EstadoWizardAltaSeller): number {
   if (!estado.empresa) return 0;
-  // El paso de contacto guarda también el WhatsApp: si hay contacto, hay ambos.
-  if (!estado.contacto) return 1;
+  // El paso de contacto guarda el número Y el WhatsApp de retiro. Se exige que
+  // ambos estén: un borrador viejo (de antes de fusionar los pasos) puede tener
+  // contacto sin whatsapp — en ese caso hay que volver al paso de contacto a
+  // capturar el número, o el commit final fallaría por whatsapp faltante.
+  if (!estado.contacto || !estado.whatsapp) return 1;
   if (!estado.bodega) return 2;
   return 3;
 }
@@ -554,11 +549,7 @@ export function WizardAltaSeller({
               Volver
             </Button>
             <Button type="submit" loading={guardando} className="flex-1">
-              {guardando ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <CheckCircle2 className="size-4" aria-hidden="true" />
-              )}
+              {!guardando && <CheckCircle2 className="size-4" aria-hidden="true" />}
               Terminar y activar mi cuenta
             </Button>
           </div>
