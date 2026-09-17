@@ -342,7 +342,7 @@ export function WizardAltaSeller({
             </span>
           </label>
 
-          <Button type="submit" loading={guardando} disabled={!aceptaDatos} className="w-full">
+          <Button type="submit" loading={guardando} disabled={!aceptaDatos} className="h-11 w-full">
             Continuar
           </Button>
         </form>
@@ -412,14 +412,14 @@ export function WizardAltaSeller({
           </label>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(0)} disabled={guardando}>
+            <Button type="button" variant="outline" onClick={() => irA(0)} disabled={guardando} className="h-11">
               Volver
             </Button>
             <Button
               type="submit"
               loading={guardando}
               disabled={!aceptaWhatsapp || Boolean(errorTelefono)}
-              className="flex-1"
+              className="h-11 flex-1"
             >
               Continuar
             </Button>
@@ -544,10 +544,10 @@ export function WizardAltaSeller({
           </div>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(1)} disabled={guardando}>
+            <Button type="button" variant="outline" onClick={() => irA(1)} disabled={guardando} className="h-11">
               Volver
             </Button>
-            <Button type="submit" loading={guardando} className="flex-1">
+            <Button type="submit" loading={guardando} className="h-11 flex-1">
               Continuar
             </Button>
           </div>
@@ -599,10 +599,10 @@ export function WizardAltaSeller({
           ) : null}
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => irA(2)} disabled={guardando}>
+            <Button type="button" variant="outline" onClick={() => irA(2)} disabled={guardando} className="h-11">
               Volver
             </Button>
-            <Button type="submit" loading={guardando} className="flex-1">
+            <Button type="submit" loading={guardando} className="h-11 flex-1">
               {!guardando && <CheckCircle2 className="size-4" aria-hidden="true" />}
               Terminar y activar mi cuenta
             </Button>
