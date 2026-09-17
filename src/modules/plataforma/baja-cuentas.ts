@@ -457,7 +457,7 @@ export async function darDeBajaCuenta(entrada: {
     await registrarEnBitacora(cliente, {
       tenantId: null,
       actorUsuarioId: entrada.actorUsuarioId,
-      actorTipo: "usuario",
+      actorTipo: "super_admin",
       accion: "cuenta.dada_de_baja",
       entidadTipo: "usuario_auth",
       entidadId: entrada.usuarioId,
@@ -493,7 +493,7 @@ async function darDeBajaInterno(
   await registrarEnBitacora(cliente, {
     tenantId: perfil.tenantId,
     actorUsuarioId,
-    actorTipo: "usuario",
+    actorTipo: "super_admin",
     accion: "cuenta.dada_de_baja",
     entidadTipo: "usuario_perfil",
     entidadId: perfil.id,
@@ -603,7 +603,7 @@ async function darDeBajaConductor(
   await registrarEnBitacora(cliente, {
     tenantId,
     actorUsuarioId,
-    actorTipo: "usuario",
+    actorTipo: "super_admin",
     accion: "cuenta.dada_de_baja",
     entidadTipo: "usuario_perfil",
     entidadId: perfil.id,
@@ -805,7 +805,7 @@ async function darDeBajaSeller(
   await registrarEnBitacora(cliente, {
     tenantId,
     actorUsuarioId,
-    actorTipo: "usuario",
+    actorTipo: "super_admin",
     accion: "cuenta.dada_de_baja",
     entidadTipo: "usuario_perfil",
     entidadId: perfil.id,
@@ -1036,7 +1036,7 @@ export async function reactivarCuenta(entrada: {
   await registrarEnBitacora(cliente, {
     tenantId: perfil.tenantId,
     actorUsuarioId: entrada.actorUsuarioId,
-    actorTipo: "usuario",
+    actorTipo: "super_admin",
     accion: "cuenta.reactivada",
     entidadTipo: "usuario_perfil",
     entidadId: perfil.id,
