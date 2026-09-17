@@ -44,6 +44,8 @@ export interface CuentaListada {
   tipoUsuario: string | null;
   rol: string | null;
   estado: string | null;
+  /** `null` cuando la cuenta no tiene perfil — por eso no tiene tenant. */
+  tenantId: string | null;
   courierNombre: string | null;
   /** El seller o el conductor al que representa. `null` para internos. */
   representaA: string | null;
@@ -56,6 +58,7 @@ export interface EntidadSinCuenta {
   tipo: "conductor" | "seller";
   id: string;
   nombre: string;
+  tenantId: string;
   courierNombre: string;
   estado: string;
 }
@@ -212,6 +215,7 @@ export async function obtenerPanelCuentas(): Promise<PanelCuentas> {
       tipoUsuario: perfil?.tipo_usuario ?? null,
       rol: perfil?.rol ?? null,
       estado: perfil?.estado ?? null,
+      tenantId: perfil?.tenant_id ?? null,
       courierNombre: perfil?.tenant_id ? (nombreCourier.get(perfil.tenant_id) ?? null) : null,
       representaA: perfil?.seller_id
         ? (nombreSeller.get(perfil.seller_id) ?? null)
@@ -239,6 +243,7 @@ export async function obtenerPanelCuentas(): Promise<PanelCuentas> {
         tipo: "conductor" as const,
         id: c.id,
         nombre: c.nombre_completo,
+        tenantId: c.tenant_id,
         courierNombre: nombreCourier.get(c.tenant_id) ?? "Courier sin nombre",
         estado: c.estado,
       })),
@@ -248,6 +253,7 @@ export async function obtenerPanelCuentas(): Promise<PanelCuentas> {
         tipo: "seller" as const,
         id: s.id,
         nombre: s.razon_social,
+        tenantId: s.tenant_id,
         courierNombre: nombreCourier.get(s.tenant_id) ?? "Courier sin nombre",
         estado: s.estado,
       })),
