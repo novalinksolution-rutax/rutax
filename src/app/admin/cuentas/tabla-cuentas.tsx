@@ -101,7 +101,8 @@ function Marcas({ marcas }: { marcas: MarcaCuenta[] }) {
  *  - `soporte_lectura` (o sin sesión válida) no ve ninguna acción.
  *  - Una cuenta de plataforma no se toca desde aquí (el backend la rechaza
  *    igual; ocultar el botón evita el viaje al servidor para nada).
- *  - Suspendida → Reactivar. El resto → Dar de baja.
+ *  - Suspendida → Reactivar Y Dar de baja (para poder eliminar una ya
+ *    desactivada sin reactivarla antes). El resto → Dar de baja.
  */
 function AccionesCuenta({
   cuenta,
@@ -116,7 +117,12 @@ function AccionesCuenta({
     return <span className="text-muted-foreground">—</span>;
   }
   if (cuenta.estado === "suspendido") {
-    return <BotonReactivarCuenta cuenta={cuenta} />;
+    return (
+      <div className="flex items-center gap-2">
+        <BotonReactivarCuenta cuenta={cuenta} />
+        <DialogBajaCuenta cuenta={cuenta} autorNombre={autorNombre} />
+      </div>
+    );
   }
   return <DialogBajaCuenta cuenta={cuenta} autorNombre={autorNombre} />;
 }
