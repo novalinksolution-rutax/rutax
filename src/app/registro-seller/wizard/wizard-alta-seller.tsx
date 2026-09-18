@@ -113,7 +113,12 @@ export function WizardAltaSeller({
   const [errorTelefono, setErrorTelefono] = useState<string | null>(null);
 
   // ── Paso 2 · Bodega ───────────────────────────────────────────────────────
-  const [nombreBodega, setNombreBodega] = useState(estadoInicial.bodega?.nombre ?? "");
+  /**
+   * En el alta el seller tiene UNA bodega: pedirle que la bautice es trabajo sin
+   * recompensa. Nace con un nombre por defecto y la renombra desde el portal el
+   * día que abra la segunda. El borrador conserva el nombre si ya venía puesto.
+   */
+  const nombreBodega = estadoInicial.bodega?.nombre?.trim() || "Bodega principal";
   const [direccionBodega, setDireccionBodega] = useState(estadoInicial.bodega?.direccion ?? "");
   const [comunaBodega, setComunaBodega] = useState(estadoInicial.bodega?.comuna ?? "");
   const [latBodega, setLatBodega] = useState<number | null>(estadoInicial.bodega?.lat ?? null);
@@ -122,10 +127,6 @@ export function WizardAltaSeller({
     estadoInicial.bodega?.lat != null && estadoInicial.bodega?.long != null,
   );
   const [instruccionesBodega, setInstruccionesBodega] = useState(estadoInicial.bodega?.instruccionesAcceso ?? "");
-  const [contactoNombreBodega, setContactoNombreBodega] = useState(estadoInicial.bodega?.contactoNombre ?? "");
-  const [contactoTelefonoBodega, setContactoTelefonoBodega] = useState(
-    estadoInicial.bodega?.contactoTelefono ?? "",
-  );
 
   // ── Paso 3 · Fuentes ──────────────────────────────────────────────────────
   // Same-day (despacho propio de Rutax) no requiere conectar ninguna cuenta, así
@@ -222,8 +223,10 @@ export function WizardAltaSeller({
       direccion: direccionBodega,
       comuna: comunaBodega,
       instruccionesAcceso: instruccionesBodega || undefined,
-      contactoNombre: contactoNombreBodega || undefined,
-      contactoTelefono: contactoTelefonoBodega || undefined,
+      // El contacto de bodega ya no se pide en el alta (el paso anterior captura
+      // nombre y WhatsApp del seller); se conserva lo que traiga el borrador.
+      contactoNombre: estadoInicial.bodega?.contactoNombre || undefined,
+      contactoTelefono: estadoInicial.bodega?.contactoTelefono || undefined,
       // Si eligió del buscador, la coordenada ya viene resuelta y la Server
       // Action la usa tal cual (no re-geocodifica).
       lat: latBodega ?? undefined,
@@ -463,18 +466,6 @@ export function WizardAltaSeller({
       {paso === 2 ? (
         <form onSubmit={guardarBodega} noValidate className="space-y-4">
 
-          <div className="space-y-1.5">
-            <Label htmlFor="nombreBodega">Nombre de la bodega</Label>
-            <Input
-              id="nombreBodega"
-              autoFocus
-              placeholder="Ej: Bodega Quilicura"
-              value={nombreBodega}
-              onChange={(e) => setNombreBodega(e.target.value)}
-              disabled={guardando}
-              required
-            />
-          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -547,29 +538,6 @@ export function WizardAltaSeller({
             </p>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="contactoNombreBodega">A quién llamar (opcional)</Label>
-              <Input
-                id="contactoNombreBodega"
-                placeholder="Nombre del jefe de bodega"
-                value={contactoNombreBodega}
-                onChange={(e) => setContactoNombreBodega(e.target.value)}
-                disabled={guardando}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="contactoTelefonoBodega">Su teléfono (opcional)</Label>
-              <Input
-                id="contactoTelefonoBodega"
-                type="tel"
-                placeholder="+56 9 1234 5678"
-                value={contactoTelefonoBodega}
-                onChange={(e) => setContactoTelefonoBodega(e.target.value)}
-                disabled={guardando}
-              />
-            </div>
-          </div>
 
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => irA(1)} disabled={guardando} className="h-(--rx-row-portal)">
