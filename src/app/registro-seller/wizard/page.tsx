@@ -62,7 +62,15 @@ export default async function PaginaWizardAltaSeller() {
   const nombreFantasia = (tenant?.nombre_fantasia as string | null)?.trim() || "tu courier";
 
   return (
-    <PantallaSinSesion marca={{ tipo: "courier", nombre: nombreFantasia }}>
+    // El ADN no tiene sombras, así que la tarjeta no "flota" con elevación: se
+    // apoya en un pozo de luz. El degradado va del fondo de página (--rx-bg) al
+    // hundido (--rx-bg-sunken) hacia los bordes, sin colores nuevos.
+    // `sm:` a propósito: en teléfono el seller abre esto desde WhatsApp y la
+    // tarjeta debe ocupar la pantalla, no flotar en el medio.
+    <PantallaSinSesion
+      marca={{ tipo: "courier", nombre: nombreFantasia }}
+      className="sm:bg-[radial-gradient(ellipse_at_center,var(--rx-bg)_0%,var(--rx-bg-sunken)_72%)]"
+    >
       <WizardAltaSeller estadoInicial={estado} nombreFantasia={nombreFantasia} />
     </PantallaSinSesion>
   );

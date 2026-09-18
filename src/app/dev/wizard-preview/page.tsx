@@ -68,7 +68,10 @@ export default async function PaginaPreviewWizard({
   const estado = estadoParaPaso(Number.isFinite(n) ? Math.min(Math.max(n, 0), 3) : 0);
 
   return (
-    <PantallaSinSesion marca={{ tipo: "courier", nombre: "Novalink" }}>
+    <PantallaSinSesion
+      marca={{ tipo: "courier", nombre: "Novalink" }}
+      className="sm:bg-[radial-gradient(ellipse_at_center,var(--rx-bg)_0%,var(--rx-bg-sunken)_72%)]"
+    >
       <WizardAltaSeller estadoInicial={estado} nombreFantasia="Novalink" />
     </PantallaSinSesion>
   );
