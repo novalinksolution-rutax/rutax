@@ -58,7 +58,7 @@ export function armarRespuestaPedido(estado: EstadoPedidoSeller | null): string 
 
 export function armarRespuestaRetiro(retiro: RetiroDelDiaSeller): string {
   if (retiro.visitas.length === 0) {
-    return `Todavía no hay retiro hoy. Esperados: ${retiro.esperadosHoy}.`;
+    return `Sin retiro hoy. ${retiro.esperadosHoy} pedidos por retirar.`;
   }
 
   const cargados = retiro.visitas.reduce((s, v) => s + v.cargados, 0);
@@ -75,12 +75,16 @@ export function armarRespuestaRetiro(retiro: RetiroDelDiaSeller): string {
 
 /** Nunca se manda a quien pidió la baja (el webhook filtra ANTES de publicar el evento). */
 export function armarMenu(): string {
-  return "Escribe el código de tu pedido o la palabra RETIRO.";
+  return "Envía un código o RETIRO.";
 }
 
 /** §5: ningún contacto con consentimiento vigente para este número. */
 export function armarRespuestaSinContacto(): string {
-  return `No tenemos este número asociado a tu cuenta. Pídele a tu courier que lo agregue desde ${urlPortal()}/portal.`;
+  // ⚠️ El número lo registra el PROPIO seller en su perfil — no el courier ni
+  // Rutax (CLAUDE.md, WhatsApp: «el campo se pide al activar la cuenta y se
+  // corrige en /portal/perfil»). Mandarlo a pedírselo a otro es mandarlo a
+  // esperar por algo que puede hacer solo en treinta segundos.
+  return `Número no registrado. Agrégalo en tu perfil: ${urlPortal()}/portal/perfil`;
 }
 
 /**
@@ -89,5 +93,8 @@ export function armarRespuestaSinContacto(): string {
  * error no se puede deshacer.
  */
 export function armarRespuestaAmbigua(): string {
-  return `Este número está asociado a más de una cuenta. Revisa tus pedidos en ${urlPortal()}/portal.`;
+  // Este mensaje lo lee alguien que quedó sin canal por algo que no hizo mal.
+  // Acá lo corto gana a lo breve: tiene que entender por qué no le
+  // respondemos y adónde ir.
+  return `Este número está en más de una cuenta. Revisa tus pedidos en ${urlPortal()}/portal`;
 }

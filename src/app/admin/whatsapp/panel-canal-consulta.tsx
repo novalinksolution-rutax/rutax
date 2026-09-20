@@ -87,8 +87,8 @@ function FilaCourier({ fila, onCambio }: { fila: FilaCanalConsultaCourier; onCam
             <p className="text-xs font-medium text-warning">
               {fila.contadores.cortadasPorCanalApagado}{" "}
               {fila.contadores.cortadasPorCanalApagado === 1
-                ? "consulta sin responder por canal apagado"
-                : "consultas sin responder por canal apagado"}
+                ? "consulta no respondida (canal apagado)"
+                : "consultas no respondidas (canal apagado)"}
             </p>
           ) : null}
           {fila.config.actualizadoEn ? (
@@ -131,7 +131,7 @@ function FilaCourier({ fila, onCambio }: { fila: FilaCanalConsultaCourier; onCam
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor={`consultas-${fila.tenantId}`}>Consultas por hora</Label>
+              <Label htmlFor={`consultas-${fila.tenantId}`}>Límite de consultas/h</Label>
               <Input
                 id={`consultas-${fila.tenantId}`}
                 type="number"
@@ -143,7 +143,7 @@ function FilaCourier({ fila, onCambio }: { fila: FilaCanalConsultaCourier; onCam
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor={`sinmatch-${fila.tenantId}`}>Intentos sin match por hora</Label>
+              <Label htmlFor={`sinmatch-${fila.tenantId}`}>Sondeos fallidos por hora</Label>
               <Input
                 id={`sinmatch-${fila.tenantId}`}
                 type="number"
@@ -215,7 +215,7 @@ export function PanelCanalConsulta({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <ContadorGlobal
           valor={globales.contactosAmbiguos}
-          etiqueta="Números que resuelven a más de un contacto, sin canal"
+          etiqueta="Números con múltiples contactos"
           destacado={globales.contactosAmbiguos > 0}
         />
         <ContadorGlobal valor={globales.sinContacto} etiqueta="Números sin contacto registrado" />
@@ -223,8 +223,8 @@ export function PanelCanalConsulta({
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <ContadorGlobal valor={globales.respondidasSinTenant} etiqueta="Avisos neutros enviados" />
-        <ContadorGlobal valor={globales.avisoNeutroOmitido} etiqueta="Avisos neutros omitidos (ya avisado en 24 h)" />
+        <ContadorGlobal valor={globales.respondidasSinTenant} etiqueta="Respuestas neutras enviadas" />
+        <ContadorGlobal valor={globales.avisoNeutroOmitido} etiqueta="Respuestas neutras omitidas (ya avisado en 24 h)" />
         <ContadorGlobal valor={globales.sinAlcance} etiqueta="Mensajes sin alcance" />
       </div>
 
