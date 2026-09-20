@@ -30,9 +30,11 @@ vi.mock("@/modules/operacion/ventanas-corte", () => ({
 
 import { inngest } from "@/lib/inngest/cliente";
 import {
+  elegirOrderIdDeLista,
   guardarPedidoFlex,
   ingestarShipmentsMl,
   leerOrderIdDeShipment,
+  obtenerOrderIdDeShipmentMl,
   type ContextoIngestaMl,
   type DatosShipmentMl,
   type ShipmentMl,
@@ -865,5 +867,200 @@ describe("ingestarShipmentsMl — lote", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(registro.insert).toHaveLength(0);
     expect(resumen.procesados).toBe(0);
+  });
+});
+
+// =============================================================================
+// El id de la ORDEN cuando ML ya no lo devuelve dentro del shipment
+// =============================================================================
+//
+// Doc oficial (developers.mercadolibre.com.ar/es_ar/envios, consultada el
+// 2026-09-20): desde el 12/10/2025 `order_id` y `external_reference` están
+// descontinuados en los recursos de shipments. El reemplazo es
+// `GET /shipments/{id}/orders` con `X-New-Domain: true`. Sin esto, TODO pedido
+// que entra por webhook nace con `ml_order_id` nulo — que es exactamente lo que
+// se encontró en producción (93 de 132).
+
+/** Stub que distingue `/shipments/{id}` de `/shipments/{id}/orders`. */
+function stubShipmentsYOrdenes(
+  shipments: Record<string, unknown>,
+  ordenes: Record<string, { status?: number; cuerpo?: unknown }>,
+) {
+  const fetchMock = vi.fn(async (url: string) => {
+    const partes = String(url).split("?")[0].split("/");
+    if (partes[partes.length - 1] === "orders") {
+      const id = partes[partes.length - 2];
+      const config = ordenes[id];
+      if (!config) return respuestaFalsa({ status: 404, json: { message: "not found" } });
+      return respuestaFalsa({ status: config.status ?? 200, json: config.cuerpo ?? [] });
+    }
+    const id = partes[partes.length - 1];
+    const s = shipments[id];
+    if (!s) return respuestaFalsa({ status: 404, json: { message: "not found" } });
+    return respuestaFalsa({ json: s });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+describe("elegirOrderIdDeLista", () => {
+  it("toma la primera orden con id, tal como la devuelve ML", () => {
+    expect(
+      elegirOrderIdDeLista([
+        { order_id: "2000017906826300", pack_id: "1" },
+        { order_id: "2000017906826399" },
+      ]),
+    ).toBe("2000017906826300");
+  });
+
+  it("salta las filas sin id en vez de devolver basura", () => {
+    expect(elegirOrderIdDeLista([{ order_id: null }, { order_id: "  " }, { order_id: 42 }])).toBe(
+      "42",
+    );
+  });
+
+  it("lista vacía o ausente → null (nunca se inventa un id)", () => {
+    expect(elegirOrderIdDeLista([])).toBeNull();
+    expect(elegirOrderIdDeLista(null)).toBeNull();
+  });
+});
+
+describe("obtenerOrderIdDeShipmentMl — GET /shipments/{id}/orders", () => {
+  it("pega a la ruta correcta con la cabecera X-New-Domain (no x-format-new)", async () => {
+    const fetchMock = stubShipmentsYOrdenes(
+      {},
+      { "111": { cuerpo: [{ order_id: "2000017906826300", seller_id: 9 }] } },
+    );
+
+    await expect(obtenerOrderIdDeShipmentMl("111", TOKEN_FIXTURE)).resolves.toBe(
+      "2000017906826300",
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      { headers: Record<string, string> },
+    ];
+    expect(url).toBe("https://api.mercadolibre.com/shipments/111/orders");
+    expect(init.headers["X-New-Domain"]).toBe("true");
+    expect(init.headers.authorization).toBe(`Bearer ${TOKEN_FIXTURE}`);
+  });
+
+  it("204 No Content (envío sin órdenes) → null, NO un error", async () => {
+    // La doc lo documenta como caso válido («caso raro»). Con un cuerpo vacío,
+    // `respuesta.json()` lanzaría SyntaxError y el llamador lo leería como fallo.
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 204,
+      headers: { get: () => null },
+      json: async () => {
+        throw new SyntaxError("Unexpected end of JSON input");
+      },
+      text: async () => "",
+      clone() {
+        return this;
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(obtenerOrderIdDeShipmentMl("111", TOKEN_FIXTURE)).resolves.toBeNull();
+  });
+
+  it("un 404 se PROPAGA — el llamador decide, y acá un 404 no significa nada", async () => {
+    stubShipmentsYOrdenes({}, {});
+    await expect(obtenerOrderIdDeShipmentMl("999", TOKEN_FIXTURE)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});
+
+describe("ingestarShipmentsMl — el ml_order_id del camino webhook", () => {
+  const sinOrderId = () => shipmentFlex({ order_id: null });
+
+  it("resuelve el id de orden con /orders cuando el shipment ya no lo trae", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    stubShipmentsYOrdenes(
+      { "111": sinOrderId() },
+      { "111": { cuerpo: [{ order_id: "2000017906826300" }] } },
+    );
+
+    const resumen = await ingestarShipmentsMl(
+      comoSupabase(cliente),
+      [{ shipmentId: "111" }],
+      CTX,
+      TOKEN_FIXTURE,
+    );
+
+    expect(registro.insert[0].ml_order_id).toBe("2000017906826300");
+    expect(resumen.ordenIdResueltos).toBe(1);
+  });
+
+  it("NO gasta la llamada extra cuando el llamador ya conoce la orden", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    const fetchMock = stubShipmentsYOrdenes({ "111": sinOrderId() }, {});
+
+    await ingestarShipmentsMl(
+      comoSupabase(cliente),
+      [{ shipmentId: "111", mlOrderId: "2000000001" }],
+      CTX,
+      TOKEN_FIXTURE,
+    );
+
+    const rutas = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(rutas.some((r) => r.endsWith("/orders"))).toBe(false);
+    expect(registro.insert[0].ml_order_id).toBe("2000000001");
+  });
+
+  it("no pregunta por las órdenes de un envío que no es Flex", async () => {
+    const { cliente } = crearSupabaseFalso();
+    const fetchMock = stubShipmentsYOrdenes(
+      { "222": shipmentFlex({ order_id: null, logistic: { type: "fulfillment" } }) },
+      { "222": { cuerpo: [{ order_id: "2000000002" }] } },
+    );
+
+    await ingestarShipmentsMl(
+      comoSupabase(cliente),
+      [{ shipmentId: "222" }],
+      CTX,
+      TOKEN_FIXTURE,
+    );
+
+    const rutas = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(rutas.some((r) => r.endsWith("/orders"))).toBe(false);
+  });
+
+  it("si /orders falla, el pedido se guarda igual (sin id de orden)", async () => {
+    const { cliente, registro } = crearSupabaseFalso();
+    stubShipmentsYOrdenes({ "111": sinOrderId() }, {}); // /orders → 404
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    const resumen = await ingestarShipmentsMl(
+      comoSupabase(cliente),
+      [{ shipmentId: "111" }],
+      CTX,
+      TOKEN_FIXTURE,
+      { logger },
+    );
+
+    expect(resumen.insertados).toBe(1);
+    expect(resumen.ordenIdIlegibles).toBe(1);
+    // La columna se OMITE del payload; no se escribe un null encima de nada.
+    expect(registro.insert[0]).not.toHaveProperty("ml_order_id");
+    expect(logger.warn.mock.calls.flat().join(" ")).not.toContain(TOKEN_FIXTURE);
+  });
+
+  it("ML sin órdenes para el envío (204) se cuenta como sin dato, no como fallo", async () => {
+    const { cliente } = crearSupabaseFalso();
+    stubShipmentsYOrdenes({ "111": sinOrderId() }, { "111": { cuerpo: [] } });
+
+    const resumen = await ingestarShipmentsMl(
+      comoSupabase(cliente),
+      [{ shipmentId: "111" }],
+      CTX,
+      TOKEN_FIXTURE,
+    );
+
+    expect(resumen.ordenIdSinDato).toBe(1);
+    expect(resumen.ordenIdIlegibles).toBe(0);
+    expect(resumen.insertados).toBe(1);
   });
 });

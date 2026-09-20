@@ -53,7 +53,7 @@ las solicitudes»), y con ella el JSON **cambia de forma**:
 | Domicilio del destinatario | `destination.shipping_address` | `receiver_address` |
 | Nombre del destinatario | `destination.receiver_name` | — |
 | Plazos de entrega | `lead_time.*` | `shipping_option.*` |
-| `order_id` / `external_reference` | **descontinuados** (no se devuelven) | presentes |
+| `order_id` / `external_reference` | **descontinuados** (no se devuelven) → ver `/shipments/{id}/orders` abajo | presentes |
 
 ⚠️ **La doc de ML se contradice consigo misma en `logistic_type`**: la página de envíos muestra el
 nodo anidado, y la de Mercado Envíos 2 muestra el plano (en un ejemplo que llama a `/shipments/{id}`
@@ -63,6 +63,33 @@ sin la cabecera). No está zanjado → **leer las dos ubicaciones, defensivament
 solo llega en ME1. Y ojo con la consecuencia de arrastre: como el JSON nuevo de **órdenes** ya no
 trae datos de envío, la dirección y la comuna del pedido Flex **tienen que salir del shipment**;
 si se leen de la orden quedan todas en «Dirección pendiente» / «Santiago».
+
+### El `order_id` salió del shipment: ahora es `/shipments/{id}/orders` (2026-09-20)
+
+Con `x-format-new` **no hay ningún campo** dentro de `GET /shipments/{id}` que traiga el id de la
+orden: la doc oficial dice, textual, que «a partir del 12 de octubre de 2025, los campos
+`order_id` y `external_reference` serán descontinuados en los recursos de shipments y dejarán de
+ser retornados en las respuestas». Su reemplazo es un recurso propio:
+
+```
+curl -X GET -H 'Authorization: Bearer $ACCESS_TOKEN' -H 'X-New-Domain:true' https://api.mercadolibre.com/shipments/$SHIPMENT_ID/orders
+```
+
+⚠️ **La cabecera NO es la misma.** Acá va `X-New-Domain: true` (obligatoria «en todas las
+llamadas»), no `x-format-new`. Respuesta 200: un array de
+`{order_id, pack_id, item_id, variation_id, user_product_id, seller_id, requested_quantity}`,
+con `order_id` de tipo String y marcado como «dato inmutable». **204 No Content** cuando el envío
+no tiene órdenes («caso raro») — un cuerpo vacío que revienta cualquier `.json()` ingenuo. 404 si
+el envío no existe, y acá un 404 **no** significa cancelación (regla del repo).
+
+Por qué importa: el id de la orden (16 dígitos) es el ÚNICO código que el seller ve en su panel de
+Ventas, y es por el que busca su pedido por WhatsApp. El camino del webhook solo conoce el envío,
+así que sin este recurso todo pedido ingerido por webhook queda con `ml_order_id` nulo — pasó en
+producción: 93 de 132 pedidos Flex. Costo: **una llamada extra por envío**, y solo cuando no
+venimos de `/orders/search` (ahí el id ya viaja gratis en la orden).
+
+Fuente: [.ar es_ar/envios](https://developers.mercadolibre.com.ar/es_ar/envios), sección «Órdenes
+asociadas a un envío» (consultada el 2026-09-20; la página declara última actualización 18/09/2026).
 
 ### Plazos: qué campo es la fecha de entrega (y cuál NO)
 

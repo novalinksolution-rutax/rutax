@@ -70,6 +70,18 @@ export const ENCABEZADO_FORMATO_NUEVO_ML: Readonly<Record<string, string>> = Obj
 });
 
 /**
+ * Cabecera OBLIGATORIA del recurso «órdenes asociadas a un envío»
+ * (`GET /shipments/{id}/orders`). Ojo: **no es la misma** que la de
+ * `/shipments/{id}` — ahí va `x-format-new: true`. La doc oficial es explícita:
+ * «En este nuevo recurso, es obligatorio enviar el header `X-New-Domain: true`
+ * en todas las llamadas» (developers.mercadolibre.com.ar/es_ar/envios,
+ * «Órdenes asociadas a un envío», consultada el 2026-09-20).
+ */
+export const ENCABEZADO_DOMINIO_NUEVO_ML: Readonly<Record<string, string>> = Object.freeze({
+  "X-New-Domain": "true",
+});
+
+/**
  * Tipo logístico de Mercado Libre que corresponde a Flex (el seller/courier
  * hace el last-mile). Es el ÚNICO que este SaaS ingiere: Full (`fulfillment`),
  * Colecta (`cross_docking`) y Agencia (`drop_off`/`xd_drop_off`) los despacha
@@ -329,12 +341,20 @@ export function calleDeDireccion(direccion: DireccionShipmentMl | null): string 
 /**
  * Id de la orden a partir del shipment, cuando ML lo trae.
  *
- * Existe para el camino del WEBHOOK, que solo conoce el `shipment_id`: sin esto
- * el pedido entraría con `ml_order_id` nulo y se perdería la trazabilidad
- * venta↔envío. Se lee de forma defensiva —`order_id` plano (legacy) y
- * `orders[0].id`— y **puede devolver `null` legítimamente**: el formato nuevo
- * de shipments no garantiza el campo. Nunca se inventa un id, y el llamador
- * NUNCA sobrescribe con `null` un `ml_order_id` ya guardado.
+ * ⚠️ **Con `x-format-new: true` esto devuelve `null` SIEMPRE, y no es un bug
+ * nuestro** (verificado contra la doc oficial el 2026-09-20): «A partir del 12
+ * de octubre de 2025, los campos `order_id` y `external_reference` serán
+ * descontinuados en los recursos de shipments y dejarán de ser retornados en
+ * las respuestas». Como la cabecera es obligatoria desde esa misma fecha, el
+ * camino del WEBHOOK —el único que no conoce la orden— se quedaba con
+ * `ml_order_id` nulo en el 100% de los pedidos. Eso explica los 93 de 132 sin
+ * id de orden en producción.
+ *
+ * Se CONSERVA como primer intento gratis (cuesta cero llamadas y cubre una
+ * respuesta legacy o un `orders[]` que ML llegue a incluir). Cuando devuelve
+ * `null`, el llamador resuelve con `obtenerOrderIdDeShipmentMl`, que sí tiene
+ * costo de red. Nunca se inventa un id, y NUNCA se sobrescribe con `null` un
+ * `ml_order_id` ya guardado.
  */
 export function leerOrderIdDeShipment(shipment: ShipmentMl | null | undefined): string | null {
   const plano = shipment?.order_id;
@@ -346,6 +366,71 @@ export function leerOrderIdDeShipment(shipment: ShipmentMl | null | undefined): 
     return String(primera).trim();
   }
   return null;
+}
+
+/** Una fila de `GET /shipments/{id}/orders` (solo lo que consumimos). */
+export interface OrdenDeShipmentMl {
+  order_id?: string | number | null;
+  pack_id?: string | number | null;
+  seller_id?: number | string | null;
+}
+
+/**
+ * Elige QUÉ orden representa al envío cuando ML devuelve varias.
+ *
+ * Un envío puede agrupar varias órdenes (un carrito: mismo `pack_id`, varias
+ * `order_id`). Rutax modela un pedido = una entrega, así que guarda UNA. Se
+ * toma la **primera de la lista tal como la devuelve ML**, sin ordenar ni
+ * inventar criterio: cualquiera de ellas es un código real que el seller ve en
+ * su panel de Ventas, que es exactamente para lo que se usa la columna (buscar
+ * el pedido por WhatsApp). Ordenar "por la menor" daría una ilusión de
+ * criterio sin ganar nada.
+ */
+export function elegirOrderIdDeLista(
+  filas: readonly OrdenDeShipmentMl[] | null | undefined,
+): string | null {
+  for (const fila of filas ?? []) {
+    const crudo = fila?.order_id;
+    if (crudo === null || crudo === undefined) continue;
+    const texto = String(crudo).trim();
+    if (texto !== "") return texto;
+  }
+  return null;
+}
+
+/**
+ * `GET /shipments/{id}/orders` — el id de la ORDEN a partir del envío.
+ *
+ * Es el reemplazo oficial del `order_id` que ML descontinuó dentro de
+ * `/shipments/{id}` (ver `leerOrderIdDeShipment`). Doc oficial consultada el
+ * 2026-09-20 en developers.mercadolibre.com.ar/es_ar/envios, sección «Órdenes
+ * asociadas a un envío»:
+ *   · `curl -H 'X-New-Domain:true' https://api.mercadolibre.com/shipments/$ID/orders`
+ *   · 200 → array de `{order_id, pack_id, item_id, variation_id,
+ *     user_product_id, seller_id, requested_quantity}` — `order_id` es String
+ *     y la doc lo marca como «dato inmutable».
+ *   · **204 No Content** → «Shipment no tiene orders (caso raro)». Por eso la
+ *     petición va con `cuerpoVacioEsNulo`: un 204 es «no hay dato», no un fallo.
+ *   · 404 → el envío no existe. **Se propaga como `ErrorHttpMl`**: el llamador
+ *     decide, y en este proyecto un 404 no se interpreta como nada (jamás como
+ *     cancelación).
+ *
+ * Costo: UNA llamada por envío. Solo se paga cuando no conocemos ya la orden.
+ */
+export async function obtenerOrderIdDeShipmentMl(
+  shipmentId: string,
+  accessToken: string,
+): Promise<string | null> {
+  const respuesta = await peticionMl<OrdenDeShipmentMl[] | null>({
+    metodo: "GET",
+    ruta: `/shipments/${encodeURIComponent(shipmentId)}/orders`,
+    accessToken,
+    encabezadosExtra: { ...ENCABEZADO_DOMINIO_NUEVO_ML },
+    cuerpoVacioEsNulo: true,
+  });
+  // ML documenta un array; si algún día devuelve otra forma, se trata como
+  // «no hay dato» en vez de romper la ingesta.
+  return Array.isArray(respuesta) ? elegirOrderIdDeLista(respuesta) : null;
 }
 
 /**
@@ -656,6 +741,12 @@ export interface ResumenIngestaMl {
   erroresPersistencia: number;
   primerErrorPersistencia: string | null;
   diagnostico: DiagnosticoShipmentMl | null;
+  /** Envíos cuyo `ml_order_id` hubo que resolver con `/shipments/{id}/orders`. */
+  ordenIdResueltos: number;
+  /** ML no devolvió orden para ese envío (204 o lista vacía). Sin drama. */
+  ordenIdSinDato: number;
+  /** La consulta de órdenes del envío falló. NO impide guardar el pedido. */
+  ordenIdIlegibles: number;
 }
 
 function resumenVacio(): ResumenIngestaMl {
@@ -669,6 +760,9 @@ function resumenVacio(): ResumenIngestaMl {
     erroresPersistencia: 0,
     primerErrorPersistencia: null,
     diagnostico: null,
+    ordenIdResueltos: 0,
+    ordenIdSinDato: 0,
+    ordenIdIlegibles: 0,
   };
 }
 
@@ -1130,12 +1224,47 @@ export async function ingestarShipmentsMl(
     }
 
     const crudo = lote.crudos.get(entrada.shipmentId) ?? null;
+
+    // ---------------------------------------------------------------------
+    // El id de la ORDEN — el único código que el seller ve en su panel de
+    // Ventas de ML, y por el que busca su pedido por WhatsApp.
+    //
+    // Tres fuentes, de la más barata a la más cara:
+    //   1. `entrada.mlOrderId` — lo trae el llamador que vino de
+    //      `/orders/search` (cron fase A y backfill). Cero llamadas.
+    //   2. El propio shipment. Gratis, pero con `x-format-new` ML ya NO
+    //      devuelve `order_id`: en la práctica siempre `null`.
+    //   3. `GET /shipments/{id}/orders` — UNA llamada extra. Es el camino del
+    //      WEBHOOK, que solo conoce el envío. Sin este paso, un pedido que
+    //      entra por webhook nace sin `ml_order_id` para siempre.
+    //
+    // Se consulta DESPUÉS del filtro a Flex a propósito: no se gasta una
+    // llamada por cada envío Full/Colecta/Agencia que igual se descarta.
+    // Y si falla, se guarda el pedido igual: perder el id de la orden es peor
+    // que perder el pedido entero, pero mucho menos peor.
+    // ---------------------------------------------------------------------
+    let mlOrderIdDelShipment = leerOrderIdDeShipment(crudo);
+    if (!entrada.mlOrderId && !mlOrderIdDelShipment) {
+      try {
+        mlOrderIdDelShipment = await obtenerOrderIdDeShipmentMl(entrada.shipmentId, accessToken);
+        if (mlOrderIdDelShipment) resumen.ordenIdResueltos += 1;
+        else resumen.ordenIdSinDato += 1;
+      } catch (error) {
+        resumen.ordenIdIlegibles += 1;
+        const detalle = error instanceof ErrorHttpMl ? `HTTP ${error.status}` : "error de red";
+        opciones.logger?.warn(
+          `Ingesta ML: no se pudo resolver el id de orden del envío ` +
+            `${entrada.shipmentId} (${detalle}). El pedido se guarda igual.`,
+        );
+      }
+    }
+
     const resultado = await guardarPedidoFlex(
       supabase,
       ctx,
       entrada,
       datos,
-      leerOrderIdDeShipment(crudo),
+      mlOrderIdDelShipment,
     );
 
     if (resultado.estado === "error") {

@@ -35,6 +35,9 @@ import {
   jobIngestaPedidosMl,
   jobSincronizarConexionMl,
 } from "@/modules/integraciones/ml/jobs/ingesta-pedidos-ml";
+// Barrido hacia atrás del `ml_order_id` (por evento, no por cron: es un trabajo
+// que se agota). Ver el encabezado del archivo.
+import { jobRellenarOrderIdMl } from "@/modules/integraciones/ml/jobs/rellenar-order-id";
 
 // Jobs de Shopify (segunda fuente de pedidos). Cada 15 min y no cada 30 como
 // ML: aquí NO hay webhook de respaldo — los webhooks de Shopify exigirían que el
@@ -152,6 +155,8 @@ const funciones = [
   // Ingesta continua Flex (webhook + cron de respaldo + botón manual)
   jobIngestaPedidosMl,
   jobSincronizarConexionMl,
+  // Relleno del id de orden de ML en pedidos que entraron por webhook
+  jobRellenarOrderIdMl,
   // Ingesta Shopify (cron cada 15 min + botón "Sincronizar ahora"). Misma
   // rutina para los dos: no hay camino manual que pueda divergir del automático.
   jobIngestaPedidosShopify,

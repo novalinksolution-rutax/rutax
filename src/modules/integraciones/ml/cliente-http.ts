@@ -93,6 +93,16 @@ export interface PeticionMl {
   accessToken?: string;
   encabezadosExtra?: Record<string, string>;
   opcionesReintento?: OpcionesReintento;
+  /**
+   * Trata un cuerpo VACÍO como `null` en vez de reventar al parsear JSON.
+   *
+   * Existe por `GET /shipments/{id}/orders`, que documenta **204 No Content**
+   * cuando el envío no tiene órdenes asociadas. Sin esta bandera, `respuesta
+   * .json()` sobre un cuerpo vacío lanza un `SyntaxError` — un error NO
+   * reintentable que el llamador leería como «falló la llamada» cuando lo que
+   * ML dijo es «no hay nada». Solo se activa donde la doc documenta el 204.
+   */
+  cuerpoVacioEsNulo?: boolean;
 }
 
 /**
@@ -155,6 +165,12 @@ export async function peticionMl<T>(peticion: PeticionMl): Promise<T> {
       unidades: 1,
       resultado: "ok",
     });
+
+    if (peticion.cuerpoVacioEsNulo) {
+      const texto = await respuesta.text();
+      if (texto.trim() === "") return null as T;
+      return JSON.parse(texto) as T;
+    }
 
     return (await respuesta.json()) as T;
   }, peticion.opcionesReintento);

@@ -295,6 +295,34 @@ export interface EventoSincronizacionShopifySolicitada {
  * NO lleva tokens ni referencias a secretos: el job resuelve la conexión por su
  * `conexionId` y descifra el token dentro del paso, nunca en el payload.
  */
+/**
+ * Barrido hacia atrás del `ml_order_id` de pedidos Flex que lo tienen en NULL.
+ *
+ * Se dispara A MANO (no hay cron) porque es un trabajo que se agota: desde que
+ * la ingesta resuelve el id con `GET /shipments/{id}/orders`, no nacen pedidos
+ * nuevos sin él. Consumido por `jobRellenarOrderIdMl`
+ * (`integraciones/ml/jobs/rellenar-order-id.ts`).
+ *
+ * Es SOLO LECTURA contra ML y reejecutable: cada corrida mira únicamente los
+ * que siguen en `null`, y el UPDATE exige `ml_order_id is null`, así que nunca
+ * pisa un id ya guardado.
+ *
+ * `conexionId` acota a una cuenta ML; `tope` acota el gasto de llamadas de la
+ * corrida (una por pedido). Sin ninguno de los dos, barre todas las conexiones
+ * activas con el tope por defecto.
+ */
+export interface EventoRellenoOrderIdMlSolicitado {
+  name: 'ml/orderId.relleno-solicitado';
+  data: {
+    /** Limita el barrido a una conexión. Ausente/`null` = todas las activas. */
+    conexionId?: string | null;
+    /** Tope de pedidos por conexión en esta corrida. */
+    tope?: number | null;
+    /** UUID de auth de quien lo pidió, o `null` si lo disparó el sistema. */
+    actorUsuarioId?: string | null;
+  };
+}
+
 export interface EventoSincronizacionMlSolicitada {
   name: 'ml/sincronizacion.solicitada';
   data: {
