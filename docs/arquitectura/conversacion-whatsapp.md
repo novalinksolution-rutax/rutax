@@ -480,3 +480,37 @@ en esa pantalla.
 ⚠️ **El contador de ambiguos NO puede ser por courier**, y no es una limitación de la
 pantalla: un contacto ambiguo no tiene tenant por definición, y el CHECK de la base lo impone.
 Va como contador global.
+
+## 16. ⚠️ La WABA tiene que estar suscrita a la app (2026-09-20)
+
+**Síntoma:** el canal encendido, el webhook configurado, `messages` suscrito, y aun así un
+mensaje real del seller **nunca llegaba**. Ni un POST en los registros del servidor. El
+botón «Probar» de Meta sí funcionaba de punta a punta, lo que hacía ver el problema como si
+fuera del código.
+
+**Causa:** configurar el webhook en el panel de la app **NO** hace que la cuenta de WhatsApp
+(WABA) le entregue el tráfico. Es un paso aparte, solo por API:
+
+```
+POST /{WABA_ID}/subscribed_apps      → {"success": true}
+GET  /{WABA_ID}/subscribed_apps      → verifica quién está suscrito
+```
+
+⚠️ **El botón «Probar» del panel no pasa por la WABA**, así que pasa aunque la suscripción
+falte. No sirve para descartar esto; al contrario, engaña.
+
+Es el mismo patrón del `POST /{phone-number-id}/register` con el PIN: estar en la WABA no
+habilita el uso por API. **Con cada número o cuenta nueva hay que repetirlo.**
+
+**Lo que había suscrito:** una app de Meta llamada **«Business Agent»** (id
+`1143680903703001`, `link: whatsapp.com`), que Meta engancha sola a la WABA. Es el **Meta
+Business Agent**, su agente de IA que contesta 24/7; para nuestro número está en «Empezar»,
+o sea **no activado**. No la creamos nosotros y no aparece en las apps del desarrollador
+(ahí solo está Rutax API).
+
+⚠️ **No encender el Meta Business Agent.** Contestaría los mensajes de los sellers con una IA
+genérica, en paralelo a nuestro bot determinista, sin saber nada de pedidos ni de retiros —
+y choca de frente con §8 y con el gate de IA del proyecto.
+
+**Y para que no se repita la confusión:** el aviso de retiro que llega al seller lo manda
+**Rutax API**, la misma app. No existe ni existió una app aparte para eso.
