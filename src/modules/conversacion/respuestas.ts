@@ -104,6 +104,11 @@ export function armarMenu(): string {
     "Envía el código de un pedido y te digo cómo va. Puedes mandar varios.",
     "Ejemplo: RX-7K2M-9PQR",
     "RETIRO: cómo fue el retiro de hoy.",
+    // ⚠️ Se enseñan los COMANDOS, no los ice-breakers (§17): los ice-breakers
+    // solo aparecen en una conversación nueva, así que quien está leyendo esto
+    // —que ya escribió— no los va a ver nunca. Decirle que existen sería
+    // mandarlo a buscar algo que no está.
+    "Atajos: escribe /",
   ].join("\n");
 }
 
