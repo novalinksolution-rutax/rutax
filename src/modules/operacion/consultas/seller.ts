@@ -74,6 +74,7 @@ export type AlcanceSeller = {
 /** La unión discriminada que produce SOLO el envoltorio del parser de `conversacion`. */
 export type IdentificadorPedido =
   | { tipo: "ml_shipment_id"; valor: string }
+  | { tipo: "ml_order_id"; valor: string }
   | { tipo: "codigo_interno"; valor: string };
 
 export interface EstadoPedidoSeller {
@@ -99,7 +100,15 @@ export async function estadoDePedidoParaSeller(
   entrada: AlcanceSeller,
   identificador: IdentificadorPedido,
 ): Promise<EstadoPedidoSeller | null> {
-  const columna = identificador.tipo === "ml_shipment_id" ? "ml_shipment_id" : "codigo_interno";
+  // ⚠️ El mapeo va acá, con la unión ya decidida por el parser. Nunca se
+  // adivina la columna por el largo del valor dentro de la consulta: eso es el
+  // bug del eje otra vez, escondido en un `if`.
+  const COLUMNA_POR_TIPO = {
+    ml_shipment_id: "ml_shipment_id",
+    ml_order_id: "ml_order_id",
+    codigo_interno: "codigo_interno",
+  } as const;
+  const columna = COLUMNA_POR_TIPO[identificador.tipo];
 
   const { data, error } = await cliente
     .from("pedidos")

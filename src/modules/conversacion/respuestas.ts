@@ -73,7 +73,11 @@ export function armarRespuestaPedidos(resultados: ResultadoPedidoConsultado[], s
       noEncontrados.push(r.codigoConsultado);
       continue;
     }
-    const partes = [`${r.estado.codigo} · ${TEXTOS_ESTADO[r.estado.estado] ?? r.estado.estado}`];
+    // ⚠️ Se responde con el código que el seller ESCRIBIÓ, no con el nuestro.
+    // Si preguntó por el id de la orden (lo único que ve en su panel de ML) y
+    // le contestamos con el id del envío, tiene que adivinar de cuál de sus
+    // pedidos le estamos hablando.
+    const partes = [`${r.codigoConsultado} · ${TEXTOS_ESTADO[r.estado.estado] ?? r.estado.estado}`];
     if (r.estado.parada) partes.push(`Parada ${r.estado.parada.numero} de ${r.estado.parada.de}.`);
     lineas.push(partes.join(" "));
   }

@@ -60,3 +60,31 @@ describe("reconocerCodigosEnMensaje — el envoltorio de §6.1", () => {
   });
 
 });
+
+describe("id de ORDEN de Mercado Libre — el único código que el seller ve", () => {
+  it("16 dígitos se buscan como ml_order_id, no como envío", () => {
+    const [reconocido] = reconocerCodigosEnMensaje("2000015104287145");
+    expect(reconocido.identificador).toEqual({ tipo: "ml_order_id", valor: "2000015104287145" });
+  });
+
+  it("11 dígitos siguen siendo el id del envío", () => {
+    const [reconocido] = reconocerCodigosEnMensaje("44760788901");
+    expect(reconocido.identificador).toEqual({ tipo: "ml_shipment_id", valor: "44760788901" });
+  });
+
+  it("con el # delante, como lo copia del panel de ML", () => {
+    const [reconocido] = reconocerCodigosEnMensaje("#2000015104287145");
+    expect(reconocido.identificador).toEqual({ tipo: "ml_order_id", valor: "2000015104287145" });
+  });
+
+  it("la clasificación NO cambia: sigue contando como sondeo numérico", () => {
+    const [reconocido] = reconocerCodigosEnMensaje("2000015104287145");
+    expect(reconocido.clasificacion).toBe("flex_manual");
+  });
+
+  it("el comando con el id de orden se resuelve en un solo mensaje", () => {
+    const reconocidos = reconocerCodigosEnMensaje("/pedido 2000015104287145");
+    expect(reconocidos).toHaveLength(1);
+    expect(reconocidos[0].identificador.tipo).toBe("ml_order_id");
+  });
+});

@@ -37,6 +37,16 @@ import type { IdentificadorPedido } from "../operacion/consultas/seller";
  */
 export type ClasificacionCodigo = "codigo_interno" | "ml_shipment_id" | "flex_manual";
 
+/**
+ * Desde cuántos dígitos una ristra numérica se busca como id de ORDEN y no de
+ * envío.
+ *
+ * Medido contra producción (2026-09-20): los `ml_order_id` guardados tienen
+ * **16** dígitos (`2000015104287145`) y los `ml_shipment_id` **11**
+ * (`44760788901`). El 13 deja margen a los dos lados sin que se pisen.
+ */
+const LARGO_MIN_ID_ORDEN = 13;
+
 export interface CodigoReconocido {
   clasificacion: ClasificacionCodigo;
   identificador: IdentificadorPedido;
@@ -58,7 +68,14 @@ export function reconocerCodigosEnMensaje(texto: string): CodigoReconocido[] {
   const tokens = texto.trim().split(/\s+/).filter((t) => t.length > 0);
   const reconocidos: CodigoReconocido[] = [];
 
-  for (const token of tokens) {
+  for (const tokenCrudo of tokens) {
+    // ⚠️ El panel de Ventas de Mercado Libre muestra el id de la orden con
+    // almohadilla (`#2000015104287145`), y el seller copia justo eso. Se quita
+    // SOLO la almohadilla inicial: limpiar más rompería el JSON del QR de
+    // Flex, que empieza con `{` y es un token válido.
+    const token = tokenCrudo.replace(/^#+/, "");
+    if (token.length === 0) continue;
+
     const parseado = parsearCodigoBulto(token);
 
     // El «no» que el parser no da: acá se descarta, y con él se descarta
@@ -77,9 +94,22 @@ export function reconocerCodigosEnMensaje(texto: string): CodigoReconocido[] {
     // flex_qr | flex_manual → mismo identificador (ml_shipment_id), distinta
     // clasificación para el conteo de sondeo de §6.1.
     if (parseado.mlShipmentId) {
+      // ⚠️ El seller NO ve el id del envío en ningún lado: en su panel de
+      // Ventas de Mercado Libre lo que aparece es el id de la ORDEN
+      // (`#2000015104287145`). Los dos son ristras de dígitos, así que hay que
+      // distinguirlos por largo: la orden tiene 16 y el envío 11.
+      // Sin esto, el seller pega lo único que puede copiar y recibe
+      // «no encontramos» — que además es indistinguible de «no es tuyo», así
+      // que concluye que el bot está roto.
+      const esIdDeOrden = parseado.mlShipmentId.length >= LARGO_MIN_ID_ORDEN;
       reconocidos.push({
+        // La clasificación NO cambia: sigue siendo una ristra numérica escrita
+        // a mano, que es lo que el detector de sondeo de §6.1 cuenta. Lo que
+        // cambia es contra qué columna se busca.
         clasificacion: parseado.formato === "flex_qr" ? "ml_shipment_id" : "flex_manual",
-        identificador: { tipo: "ml_shipment_id", valor: parseado.mlShipmentId },
+        identificador: esIdDeOrden
+          ? { tipo: "ml_order_id", valor: parseado.mlShipmentId }
+          : { tipo: "ml_shipment_id", valor: parseado.mlShipmentId },
       });
     }
   }
