@@ -88,3 +88,19 @@ describe("id de ORDEN de Mercado Libre — el único código que el seller ve", 
     expect(reconocidos[0].identificador.tipo).toBe("ml_order_id");
   });
 });
+
+describe("códigos separados por coma — tal como los enseña el menú", () => {
+  it("«/pedido 2000017906826300, 2000017909507518» reconoce LOS DOS", () => {
+    const reconocidos = reconocerCodigosEnMensaje("/pedido 2000017906826300, 2000017909507518");
+    expect(reconocidos).toHaveLength(2);
+    expect(reconocidos.map((r) => r.identificador.valor)).toEqual([
+      "2000017906826300",
+      "2000017909507518",
+    ]);
+  });
+
+  it("sin limpiar la coma se perdería el primero — la red de ese bug", () => {
+    const [primero] = reconocerCodigosEnMensaje("2000017906826300,");
+    expect(primero?.identificador).toEqual({ tipo: "ml_order_id", valor: "2000017906826300" });
+  });
+});

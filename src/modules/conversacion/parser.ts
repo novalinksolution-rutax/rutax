@@ -73,7 +73,11 @@ export function reconocerCodigosEnMensaje(texto: string): CodigoReconocido[] {
     // almohadilla (`#2000015104287145`), y el seller copia justo eso. Se quita
     // SOLO la almohadilla inicial: limpiar más rompería el JSON del QR de
     // Flex, que empieza con `{` y es un token válido.
-    const token = tokenCrudo.replace(/^#+/, "");
+    // También se quita la puntuación FINAL, porque el ejemplo que enseña el
+    // menú separa los códigos con coma y el seller va a copiarlo tal cual:
+    // sin esto, `2000017906826300,` no se reconoce y solo respondería el
+    // último de la lista. El JSON del QR termina en `}`, así que no lo toca.
+    const token = tokenCrudo.replace(/^#+/, "").replace(/[,.;:]+$/, "");
     if (token.length === 0) continue;
 
     const parseado = parsearCodigoBulto(token);

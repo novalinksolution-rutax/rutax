@@ -43,11 +43,16 @@ const TEXTOS_ESTADO: Record<string, string> = {
 /**
  * El código que se muestra como ejemplo.
  *
- * ⚠️ Es un `ml_shipment_id` de Flex, no un `RX-XXXX-XXXX` de same-day: la
- * operación real de los couriers hoy es toda Flex, y un ejemplo con el formato
- * que el seller nunca ve no le enseña nada (decisión del usuario, 2026-09-20).
+ * ⚠️ Es un `ml_order_id` de Flex (16 dígitos), no un `ml_shipment_id` ni un
+ * `RX-XXXX-XXXX` de same-day: la operación real de los couriers hoy es toda
+ * Flex, y **el id de la orden es el único código que el seller ve** en su panel
+ * de Ventas de Mercado Libre. Un ejemplo con un formato que nunca tiene a mano
+ * no le enseña nada (decisión del usuario, 2026-09-20).
  */
-const CODIGO_DE_EJEMPLO = "44760788901";
+const CODIGO_DE_EJEMPLO = "2000017906826300";
+
+/** El segundo del ejemplo, para enseñar que se pueden mandar varios juntos. */
+const CODIGO_DE_EJEMPLO_2 = "2000017909507518";
 
 /** Un código consultado, con o sin resultado — insumo de `armarRespuestaPedidos`. */
 export interface ResultadoPedidoConsultado {
@@ -121,15 +126,18 @@ export function armarMenu(): string {
   // Los emojis van como ETIQUETA de cada línea, para escanear el mensaje en un
   // teléfono. Nada de 👋 al abrir ni 😊 al cerrar: ahí un canal operativo
   // empieza a sonar a bot.
-  // ⚠️ La línea del comando ES el ejemplo, con el código pegado: así se escribe
-  // una sola vez en vez de mandar `/pedido` y esperar a que le pidan el código
-  // (idea del usuario, 2026-09-20). Ya funcionaba —el reconocedor de códigos
-  // corre antes que las palabras— y lo único que faltaba era decirlo.
+  // ⚠️ El ejemplo va al final y con DOS códigos separados por coma: se escribe
+  // una sola vez —comando y código en el mismo mensaje— y de paso muestra que
+  // se pueden mandar varios, que contado en prosa nadie entiende (idea del
+  // usuario, 2026-09-20). Para que ese ejemplo funcione tal como se copia, el
+  // parser limpia la coma pegada al número.
   return [
-    `📦 */pedido ${CODIGO_DE_EJEMPLO}* — cómo va un pedido`,
+    "📦 */pedido* — cómo va un pedido",
     "🚚 */retiro* — el retiro de hoy",
     "",
     "Puedes mandar varios códigos juntos.",
+    "",
+    `Ejemplo: /pedido ${CODIGO_DE_EJEMPLO}, ${CODIGO_DE_EJEMPLO_2}`,
   ].join("\n");
 }
 
@@ -144,7 +152,7 @@ export function armarAyudaConsultarPedido(): string {
   return [
     "Mándame el comando con el código 📦",
     `Ejemplo: /pedido ${CODIGO_DE_EJEMPLO}`,
-    "Puedes poner varios códigos en el mismo mensaje.",
+    "Puedes poner varios códigos en el mismo mensaje, separados por coma.",
   ].join("\n");
 }
 
