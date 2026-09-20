@@ -51,3 +51,23 @@ describe("determinarIntencion — varios códigos por mensaje", () => {
     expect(intencion.codigos[0]).toEqual(intencion.codigos[1]);
   });
 });
+
+describe("comando /pedido — la intención que evita el bucle", () => {
+  it("«/pedido» NO cae al menú: el menú anuncia ese comando", () => {
+    expect(determinarIntencion("/pedido").tipo).toBe("como_consultar");
+    expect(determinarIntencion("pedido").tipo).toBe("como_consultar");
+  });
+
+  it("un código gana sobre la palabra: «pedido 44760788901» se consulta", () => {
+    const intencion = determinarIntencion("pedido 44760788901");
+    expect(intencion.tipo).toBe("consulta_pedido");
+  });
+
+  it("«/retiro» sigue mandando sobre la ayuda", () => {
+    expect(determinarIntencion("/retiro").tipo).toBe("retiro_del_dia");
+  });
+
+  it("una frase larga con la palabra pedido NO dispara la ayuda", () => {
+    expect(determinarIntencion("hola quiero saber de mi pedido de ayer por favor").tipo).toBe("menu");
+  });
+});

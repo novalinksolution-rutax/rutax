@@ -40,6 +40,15 @@ const TEXTOS_ESTADO: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
+/**
+ * El código que se muestra como ejemplo.
+ *
+ * ⚠️ Es un `ml_shipment_id` de Flex, no un `RX-XXXX-XXXX` de same-day: la
+ * operación real de los couriers hoy es toda Flex, y un ejemplo con el formato
+ * que el seller nunca ve no le enseña nada (decisión del usuario, 2026-09-20).
+ */
+const CODIGO_DE_EJEMPLO = "44760788901";
+
 /** Un código consultado, con o sin resultado — insumo de `armarRespuestaPedidos`. */
 export interface ResultadoPedidoConsultado {
   /** El identificador con el que se consultó (`ml_shipment_id` o `codigo_interno`), NUNCA el texto crudo del mensaje. */
@@ -100,15 +109,34 @@ export function armarRespuestaRetiro(retiro: RetiroDelDiaSeller): string {
 
 /** Nunca se manda a quien pidió la baja (el webhook filtra ANTES de publicar el evento). */
 export function armarMenu(): string {
+  // ⚠️ Se enseñan los COMANDOS, no los ice-breakers (§17): los ice-breakers
+  // solo aparecen en una conversación NUEVA, así que quien está leyendo esto
+  // —que ya escribió— no los va a ver nunca. Nombrárselos sería mandarlo a
+  // buscar algo que en su pantalla no existe.
+  //
+  // Los emojis van como ETIQUETA de cada línea, para escanear el mensaje en un
+  // teléfono. Nada de 👋 al abrir ni 😊 al cerrar: ahí un canal operativo
+  // empieza a sonar a bot.
   return [
-    "Envía el código de un pedido y te digo cómo va. Puedes mandar varios.",
-    "Ejemplo: RX-7K2M-9PQR",
-    "RETIRO: cómo fue el retiro de hoy.",
-    // ⚠️ Se enseñan los COMANDOS, no los ice-breakers (§17): los ice-breakers
-    // solo aparecen en una conversación nueva, así que quien está leyendo esto
-    // —que ya escribió— no los va a ver nunca. Decirle que existen sería
-    // mandarlo a buscar algo que no está.
-    "Atajos: escribe /",
+    "📦 */pedido* — cómo va un pedido",
+    "🚚 */retiro* — el retiro de hoy",
+    "",
+    `O envíame el código directo. Ejemplo: ${CODIGO_DE_EJEMPLO}`,
+  ].join("\n");
+}
+
+/**
+ * Respuesta al comando `/pedido`.
+ *
+ * ⚠️ NO puede ser el menú. El menú anuncia `/pedido`, así que si `/pedido`
+ * devolviera el menú, el seller leería «usa /pedido», lo escribiría y recibiría
+ * otra vez lo mismo: un bucle del que no se sale.
+ */
+export function armarAyudaConsultarPedido(): string {
+  return [
+    "Envíame el código del pedido 📦",
+    `Ejemplo: ${CODIGO_DE_EJEMPLO}`,
+    "Puedes mandar varios en un mismo mensaje.",
   ].join("\n");
 }
 

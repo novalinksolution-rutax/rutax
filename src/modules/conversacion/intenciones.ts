@@ -25,6 +25,7 @@ export const TOPE_CODIGOS_POR_MENSAJE = 5;
 export type Intencion =
   | { tipo: "consulta_pedido"; codigos: CodigoReconocido[]; sobrante: number }
   | { tipo: "retiro_del_dia" }
+  | { tipo: "como_consultar" }
   | { tipo: "menu" };
 
 /** Marcas diacríticas combinantes que deja sueltas `normalize("NFD")`. */
@@ -41,20 +42,33 @@ function normalizarTexto(texto: string): string {
     .trim();
 }
 
+/**
+ * Palabras con las que el seller pide ayuda para consultar un pedido.
+ *
+ * ⚠️ Existe por el comando `/pedido` que el menú anuncia (§17): sin esta
+ * intención, `/pedido` caería al menú, y el menú dice «usa /pedido» — un bucle
+ * en el que el seller nunca llega a nada.
+ */
+const PALABRAS_COMO_CONSULTAR = new Set(["PEDIDO", "PEDIDOS", "CODIGO", "CODIGOS"]);
+
 /** Palabras con las que el seller pregunta por el retiro del día. */
 const PALABRAS_RETIRO = new Set(["RETIRO", "RETIROS"]);
 
 /** Cuántas palabras puede tener el mensaje para seguir contando como esa intención. */
 const MAX_PALABRAS_INTENCION = 4;
 
-function esIntencionRetiro(texto: string): boolean {
+function coincideConPalabras(texto: string, vocabulario: Set<string>): boolean {
   const normalizado = normalizarTexto(texto);
   if (normalizado.length === 0) return false;
 
   const palabras = normalizado.split(" ");
   if (palabras.length > MAX_PALABRAS_INTENCION) return false;
 
-  return palabras.some((p) => PALABRAS_RETIRO.has(p));
+  return palabras.some((p) => vocabulario.has(p));
+}
+
+function esIntencionRetiro(texto: string): boolean {
+  return coincideConPalabras(texto, PALABRAS_RETIRO);
 }
 
 /**
@@ -76,6 +90,7 @@ export function determinarIntencion(texto: string | null): Intencion {
   }
 
   if (esIntencionRetiro(texto)) return { tipo: "retiro_del_dia" };
+  if (coincideConPalabras(texto, PALABRAS_COMO_CONSULTAR)) return { tipo: "como_consultar" };
 
   return { tipo: "menu" };
 }

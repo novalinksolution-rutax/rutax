@@ -68,6 +68,7 @@ import {
   armarRespuestaPedidos,
   armarRespuestaRetiro,
   armarMenu,
+  armarAyudaConsultarPedido,
   armarRespuestaSinContacto,
   armarRespuestaAmbigua,
   type ResultadoPedidoConsultado,
@@ -226,6 +227,11 @@ export async function procesarConsulta(entrada: {
     const retiro = await retiroDelDiaParaSeller(cliente, alcance, hoy);
     huboMatch = retiro.esperadosHoy > 0;
     respuestaTexto = armarRespuestaRetiro(retiro);
+  } else if (intencion.tipo === "como_consultar") {
+    // `/pedido`: pidió ayuda, no consultó nada. No es sondeo ni match.
+    clasificacion = "sin_match";
+    huboMatch = null;
+    respuestaTexto = armarAyudaConsultarPedido();
   } else {
     clasificacion = "sin_match";
     huboMatch = null;

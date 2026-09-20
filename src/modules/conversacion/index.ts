@@ -15,6 +15,7 @@ export {
   armarRespuestaPedidos,
   armarRespuestaRetiro,
   armarMenu,
+  armarAyudaConsultarPedido,
   armarRespuestaSinContacto,
   armarRespuestaAmbigua,
   type ResultadoPedidoConsultado,
