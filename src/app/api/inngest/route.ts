@@ -65,6 +65,10 @@ import { jobEnviarWhatsApp } from "@/modules/integraciones/notificaciones/whatsa
 // `pideBaja === false`. Vive en `conversacion`, no en `integraciones`: el
 // webhook publica el hecho, este módulo decide qué responder.
 import { jobResponderMensajeWhatsApp } from "@/modules/conversacion/jobs/responder-mensaje";
+// Borra a los 90 dias el texto que escriben los sellers (dato personal). La
+// funcion de base existia y nadie la llamaba: este job es el escritor que
+// faltaba.
+import { jobPurgarTextoEntrantesWhatsApp } from "@/modules/conversacion/jobs/purgar-texto-entrantes";
 
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
@@ -160,6 +164,7 @@ const funciones = [
   jobNotificacionConexionCaida,
   jobEnviarWhatsApp,
   jobResponderMensajeWhatsApp,
+  jobPurgarTextoEntrantesWhatsApp,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
   jobPurgarEvidencias,
