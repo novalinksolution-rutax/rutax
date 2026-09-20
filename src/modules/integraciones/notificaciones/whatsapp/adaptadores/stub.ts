@@ -18,9 +18,19 @@
 
 import type {
   EnviarPlantillaArgs,
+  EnviarTextoArgs,
   PuertoWhatsApp,
   ResultadoEnvioWhatsApp,
 } from "../puerto-whatsapp";
+
+const RESULTADO_STUB: Omit<ResultadoEnvioWhatsApp, "errorDescripcion"> = {
+  enviado: false,
+  modo: "stub",
+  // No es reintentable: el stub no falló, simplemente no envía. Marcarlo
+  // reintentable haría que el job diera cuatro vueltas en cada corrida de
+  // desarrollo.
+  reintentable: false,
+};
 
 export class StubWhatsAppAdapter implements PuertoWhatsApp {
   async enviarPlantilla(args: EnviarPlantillaArgs): Promise<ResultadoEnvioWhatsApp> {
@@ -29,14 +39,12 @@ export class StubWhatsAppAdapter implements PuertoWhatsApp {
         `idioma="${args.idioma}" variables=${args.variables.length}`,
     );
 
-    return {
-      enviado: false,
-      modo: "stub",
-      // No es reintentable: el stub no falló, simplemente no envía. Marcarlo
-      // reintentable haría que el job diera cuatro vueltas en cada corrida de
-      // desarrollo.
-      reintentable: false,
-      errorDescripcion: "Modo sandbox: el mensaje no se envió a WhatsApp.",
-    };
+    return { ...RESULTADO_STUB, errorDescripcion: "Modo sandbox: el mensaje no se envió a WhatsApp." };
+  }
+
+  async enviarTexto(args: EnviarTextoArgs): Promise<ResultadoEnvioWhatsApp> {
+    console.info(`[whatsapp:stub] no se envió texto (modo sandbox). largo=${args.texto.length}`);
+
+    return { ...RESULTADO_STUB, errorDescripcion: "Modo sandbox: el mensaje no se envió a WhatsApp." };
   }
 }

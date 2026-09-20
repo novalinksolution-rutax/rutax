@@ -80,7 +80,26 @@ export interface ResultadoEnvioWhatsApp {
   reintentable: boolean;
 }
 
+export interface EnviarTextoArgs {
+  /** E.164 SIN el `+`, ya normalizado. */
+  telefonoE164: string;
+  /** El cuerpo del mensaje. Meta exige texto libre dentro de la ventana de servicio de 24 h. */
+  texto: string;
+}
+
 /** Contrato que todo adaptador concreto de WhatsApp debe cumplir. */
 export interface PuertoWhatsApp {
   enviarPlantilla(args: EnviarPlantillaArgs): Promise<ResultadoEnvioWhatsApp>;
+  /**
+   * Manda un mensaje de TEXTO LIBRE (`type: "text"`), no una plantilla.
+   *
+   * Solo es válido dentro de la ventana de servicio de 24 h que abre un
+   * mensaje entrante — que es exactamente el caso de uso de `conversacion`
+   * (§1: "un mensaje entrante abre la ventana de servicio de 24 h, y dentro de
+   * esa ventana las respuestas no se cobran. No hay plantilla nueva que
+   * aprobar en Meta"). Fuera de esa ventana, Meta rechaza el envío — es el
+   * mismo comportamiento que tendría cualquier respuesta humana desde la app
+   * de WhatsApp Business.
+   */
+  enviarTexto(args: EnviarTextoArgs): Promise<ResultadoEnvioWhatsApp>;
 }

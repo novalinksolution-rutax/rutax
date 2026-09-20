@@ -60,6 +60,12 @@ import { jobNotificacionConexionCaida } from "@/modules/integraciones/notificaci
 // deshace porque la Cloud API esté caída).
 import { jobEnviarWhatsApp } from "@/modules/integraciones/notificaciones/whatsapp/jobs/enviar-whatsapp";
 
+// Conversación por WhatsApp (consulta de estado del seller). Consume
+// `whatsapp/mensaje.recibido`, publicado por el webhook SOLO cuando
+// `pideBaja === false`. Vive en `conversacion`, no en `integraciones`: el
+// webhook publica el hecho, este módulo decide qué responder.
+import { jobResponderMensajeWhatsApp } from "@/modules/conversacion/jobs/responder-mensaje";
+
 // Jobs de operación
 import { jobNotificacionIncidenciasSinGestion } from "@/modules/operacion/jobs/notificacion-incidencias-sin-gestion";
 import { jobPurgarEvidencias } from "@/modules/operacion/jobs/purgar-evidencias";
@@ -153,6 +159,7 @@ const funciones = [
   jobGeocodificarPedido,
   jobNotificacionConexionCaida,
   jobEnviarWhatsApp,
+  jobResponderMensajeWhatsApp,
   // Jobs de operación
   jobNotificacionIncidenciasSinGestion,
   jobPurgarEvidencias,

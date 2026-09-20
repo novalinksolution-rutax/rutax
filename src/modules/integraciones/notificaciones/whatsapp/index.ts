@@ -15,6 +15,7 @@
 export type {
   PuertoWhatsApp,
   EnviarPlantillaArgs,
+  EnviarTextoArgs,
   ResultadoEnvioWhatsApp,
 } from "./puerto-whatsapp";
 export { obtenerPuertoWhatsApp, whatsappSandboxActivo, whatsappConfigurado } from "./fabrica-whatsapp";

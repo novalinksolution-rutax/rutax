@@ -34,6 +34,7 @@
 
 import type {
   EnviarPlantillaArgs,
+  EnviarTextoArgs,
   PuertoWhatsApp,
   ResultadoEnvioWhatsApp,
 } from "../puerto-whatsapp";
@@ -112,8 +113,6 @@ export class CloudApiWhatsAppAdapter implements PuertoWhatsApp {
   }
 
   async enviarPlantilla(args: EnviarPlantillaArgs): Promise<ResultadoEnvioWhatsApp> {
-    const url = `${GRAPH_BASE_URL}/${this.config.version}/${this.config.phoneNumberId}/messages`;
-
     // `components` se omite ENTERO cuando la plantilla no tiene variables.
     // Mandar un `body` con `parameters: []` a `hello_world` es un 400 —
     // Meta valida que la forma calce exactamente con la plantilla aprobada.
@@ -162,6 +161,28 @@ export class CloudApiWhatsAppAdapter implements PuertoWhatsApp {
         ...(componentes.length > 0 ? { components: componentes } : {}),
       },
     };
+
+    return this.enviarPeticion(cuerpoPeticion);
+  }
+
+  /**
+   * Texto libre (`type: "text"`), para las respuestas de `conversacion`
+   * dentro de la ventana de servicio de 24 h. Mismo camino de red y de
+   * manejo de errores que `enviarPlantilla` — `preview_url: false` porque
+   * ninguna respuesta de este canal necesita previsualizar un link.
+   */
+  async enviarTexto(args: EnviarTextoArgs): Promise<ResultadoEnvioWhatsApp> {
+    return this.enviarPeticion({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: args.telefonoE164,
+      type: "text",
+      text: { preview_url: false, body: args.texto },
+    });
+  }
+
+  private async enviarPeticion(cuerpoPeticion: unknown): Promise<ResultadoEnvioWhatsApp> {
+    const url = `${GRAPH_BASE_URL}/${this.config.version}/${this.config.phoneNumberId}/messages`;
 
     let respuesta: Response;
     try {

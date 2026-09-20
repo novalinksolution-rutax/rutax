@@ -39,6 +39,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Ver src/lib/test-stubs/server-only.ts: el paquete real no está
+      // instalado (no hace falta para el build de Next) y Vitest no lo
+      // resuelve al importarlo transitivamente.
+      "server-only": path.resolve(__dirname, "./src/lib/test-stubs/server-only.ts"),
     },
   },
 });

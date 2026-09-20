@@ -879,3 +879,58 @@ export interface EventoWhatsAppSolicitado {
     variables: string[];
   };
 }
+
+// =============================================================================
+// `conversacion` — consulta de estado del seller por WhatsApp.
+// =============================================================================
+
+/**
+ * Publicado por `POST /api/webhooks/whatsapp` (webhook de Meta), consumido por
+ * el job de `conversacion` que responde la consulta.
+ *
+ * Ver `docs/arquitectura/conversacion-whatsapp.md` §9 para el porqué de cada
+ * decisión de este evento en particular:
+ *
+ *  - **Se publica SOLO si `pideBaja === false`.** El webhook ya corrió
+ *    `esSolicitudDeBaja` y ya revocó el consentimiento cuando aplica; la regla
+ *    "nunca se le manda un menú a quien pidió la baja" la impone la AUSENCIA
+ *    del evento, no un `if` dentro de `conversacion`.
+ *  - **La fila de `integraciones.whatsapp_mensajes_entrantes` se reserva ANTES
+ *    de publicar**, igual que en los salientes: `mensajeEntranteId` es esa
+ *    fila, y es donde `conversacion` escribe `resolucion`, `clasificacion` y
+ *    `hubo_match` una vez que resuelve la consulta.
+ *  - **`id` determinístico** `consulta-whatsapp-${metaMessageId}` al publicar:
+ *    Meta no firma un timestamp (no hay anti-replay posible en el webhook), así
+ *    que la deduplicación de Inngest sobre ese id es la única barrera contra
+ *    responder la misma consulta dos veces.
+ *
+ * ⚠️ **ESTE EVENTO NO LLEVA `tenantId`, Y ES EL ÚNICO DE ESTE ARCHIVO EN ESA
+ * SITUACIÓN. NO ES UN OLVIDO.** En el instante en que se publica todavía no se
+ * sabe de qué courier es: eso es justamente lo que `resolverAlcanceDesdeContacto`
+ * (en `conversacion`) tiene que averiguar a partir del teléfono. Si vas a
+ * "corregir" esto agregando `tenantId`, primero lee §5/§5.1 del documento de
+ * arquitectura: un teléfono puede resolver a `sin_contacto` o a `ambiguo` (dos
+ * couriers), y en ninguno de los dos casos hay un tenant que poner aquí.
+ *
+ * ⚠️ **`texto` es dato personal en crudo y queda en el log de eventos de
+ * Inngest.** Va acotado en largo (mismo tope que la columna `texto`, 300
+ * caracteres) y la fila de origen se purga a los 90 días — el evento no se
+ * purga, pero es efímero en la telemetría de Inngest. **Nunca se agrega el
+ * `hash_code` del QR de Flex a este payload**, ni aquí ni en ningún lugar
+ * fuera de `bultos_retiro_qr`.
+ */
+export interface EventoMensajeWhatsAppRecibido {
+  name: 'whatsapp/mensaje.recibido';
+  data: {
+    /** El `wamid.***` de Meta. */
+    metaMessageId: string;
+    /** `integraciones.whatsapp_mensajes_entrantes.id` — la fila YA reservada. */
+    mensajeEntranteId: string;
+    /** Quién escribió. `null` si Meta mandó algo ilegible (resolución `ilegible`). */
+    telefonoE164: string | null;
+    /** El texto tal como lo normalizó el webhook. `null` si no era de texto. */
+    texto: string | null;
+    /** ISO timestamptz — la hora que declara Meta, no la nuestra. */
+    recibidoEn: string;
+  };
+}
