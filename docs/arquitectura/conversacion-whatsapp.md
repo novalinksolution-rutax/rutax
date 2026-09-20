@@ -514,3 +514,32 @@ y choca de frente con §8 y con el gate de IA del proyecto.
 
 **Y para que no se repita la confusión:** el aviso de retiro que llega al seller lo manda
 **Rutax API**, la misma app. No existe ni existió una app aparte para eso.
+
+## 17. Ice-breakers y comandos del número (2026-09-20)
+
+El canal se explica solo con lo que Meta ofrece en el propio número, **sin gastar mensajes
+ni plantillas**. Configurado por API sobre el `phone-number-id`:
+
+```
+POST /{phone-number-id}/conversational_automation
+GET  /{phone-number-id}?fields=conversational_automation      (verifica)
+```
+
+Lo que quedó puesto:
+- **prompts (ice-breakers):** «Retiro de hoy» y «Consultar un pedido». Se muestran **antes**
+  de que la persona escriba, y **solo en una conversación nueva**: quien ya tiene hilo
+  abierto con el número no los ve.
+- **commands:** `/retiro` y `/pedido`, que aparecen al escribir `/`.
+- `enable_welcome_message: false`. Activarlo hace que Meta avise cuando alguien abre el chat
+  sin escribir, y eso es maquinaria nueva (otro evento que atender) para poco.
+
+⚠️ **Los comandos no son un eje nuevo: llegan como texto normal.** `/retiro` cae en el
+normalizador de §8 —que borra la puntuación— y resuelve a `RETIRO`, la intención que ya
+existe. `/pedido` resuelve a `PEDIDO`, que no es intención conocida y **cae al menú a
+propósito**: el menú es justamente el que enseña a mandar un código. No hay que agregarle
+una rama al enrutador.
+
+**Descartado (y por qué):** un enlace `wa.me` con el código pre-llenado desde el portal.
+Suena útil hasta que se nota que **el seller que está en el portal ya ve el estado ahí
+mismo** (decisión del usuario, 2026-09-20). Solo tendría sentido fuera del portal —un
+correo, por ejemplo—, y eso es otro caso, más chico.
