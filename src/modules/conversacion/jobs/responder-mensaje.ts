@@ -63,12 +63,14 @@ import { resolverAlcanceDesdeContacto } from "../alcance";
 import { determinarIntencion } from "../intenciones";
 import { excedeTopeDeAbuso, detectaBarridoDeCodigos } from "../abuso";
 import { leerConfigCanalConsulta } from "../canal";
+import type { ClasificacionCodigo } from "../parser";
 import {
-  armarRespuestaPedido,
+  armarRespuestaPedidos,
   armarRespuestaRetiro,
   armarMenu,
   armarRespuestaSinContacto,
   armarRespuestaAmbigua,
+  type ResultadoPedidoConsultado,
 } from "../respuestas";
 
 /** Espejo del CHECK `texto is null or length(texto) <= 300`. */
@@ -204,10 +206,20 @@ export async function procesarConsulta(entrada: {
   let respuestaTexto: string;
 
   if (intencion.tipo === "consulta_pedido") {
-    clasificacion = intencion.codigo.clasificacion;
-    const estado = await estadoDePedidoParaSeller(cliente, alcance, intencion.codigo.identificador);
-    huboMatch = estado !== null;
-    respuestaTexto = armarRespuestaPedido(estado);
+    // Cada código itera la función de dominio con el MISMO alcance — nunca un
+    // `in (...)` armado a mano (§ mejora "varios códigos").
+    const resultados: ResultadoPedidoConsultado[] = [];
+    const itemsParaClasificar: Array<{ clasificacion: ClasificacionCodigo; huboMatch: boolean }> = [];
+    for (const codigo of intencion.codigos) {
+      const estado = await estadoDePedidoParaSeller(cliente, alcance, codigo.identificador);
+      resultados.push({ codigoConsultado: codigo.identificador.valor, estado });
+      itemsParaClasificar.push({ clasificacion: codigo.clasificacion, huboMatch: estado !== null });
+    }
+
+    const fila = clasificacionParaFilaEntrante(itemsParaClasificar);
+    clasificacion = fila.clasificacion;
+    huboMatch = fila.huboMatch;
+    respuestaTexto = armarRespuestaPedidos(resultados, intencion.sobrante);
   } else if (intencion.tipo === "retiro_del_dia") {
     clasificacion = "intencion_retiro";
     const hoy = fechaLocalEnSantiago(new Date());
@@ -272,6 +284,35 @@ export async function procesarConsulta(entrada: {
     motivo: intencion.tipo,
     errorEnvio: envio.errorDescripcion,
   };
+}
+
+/**
+ * Reduce los códigos de un mensaje (1 a `TOPE_CODIGOS_POR_MENSAJE`) a la
+ * `clasificacion`/`hubo_match` de UNA fila — el CHECK de la migración
+ * `20260920000001` guarda una sola clasificación por mensaje, no un arreglo.
+ *
+ * ⚠️ No es un promedio ni "la del primer código": es la MÁS RIESGOSA de las
+ * presentes, por el orden `flex_manual > ml_shipment_id > codigo_interno`.
+ * `flex_manual` es la que alimenta la detección de barrido (§6.1, sonda de
+ * existencia de pedidos) y es la que tiene que sobrevivir si el mensaje trae
+ * una mezcla — perderla porque venía junto a un código interno escondería el
+ * sondeo. Dentro del grupo elegido, `huboMatch` es "alguno de esos coincidió":
+ * un solo match dentro del grupo riesgoso ya lo saca de "sondeo sin match".
+ */
+function clasificacionParaFilaEntrante(
+  items: Array<{ clasificacion: ClasificacionCodigo; huboMatch: boolean }>,
+): { clasificacion: ClasificacionCodigo; huboMatch: boolean } {
+  const PRIORIDAD: ClasificacionCodigo[] = ["flex_manual", "ml_shipment_id", "codigo_interno"];
+
+  for (const candidata of PRIORIDAD) {
+    const delGrupo = items.filter((i) => i.clasificacion === candidata);
+    if (delGrupo.length > 0) {
+      return { clasificacion: candidata, huboMatch: delGrupo.some((i) => i.huboMatch) };
+    }
+  }
+
+  // No debería alcanzarse con `items.length > 0` garantizado por el llamador.
+  return { clasificacion: "codigo_interno", huboMatch: items.some((i) => i.huboMatch) };
 }
 
 async function actualizarFilaEntrante(

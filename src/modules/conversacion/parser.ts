@@ -87,14 +87,3 @@ export function reconocerCodigosEnMensaje(texto: string): CodigoReconocido[] {
   return reconocidos;
 }
 
-/**
- * El primero de los códigos reconocidos, o `null`.
- *
- * La v1 responde sobre UN pedido por mensaje — si el seller manda dos códigos
- * en la misma línea, se contesta el primero. Ampliar a "varios por mensaje" es
- * una decisión de producto, no una limitación técnica de este archivo.
- */
-export function primerCodigoReconocido(texto: string): CodigoReconocido | null {
-  const [primero] = reconocerCodigosEnMensaje(texto);
-  return primero ?? null;
-}

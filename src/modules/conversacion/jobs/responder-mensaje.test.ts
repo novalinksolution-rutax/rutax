@@ -276,3 +276,127 @@ describe("procesarConsulta — motivo_no_respondido por rama", () => {
     });
   });
 });
+
+describe("procesarConsulta — varios códigos en un mismo mensaje", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    actualizaciones.length = 0;
+    countAvisosPrevios = 0;
+    resolverAlcanceDesdeContacto.mockResolvedValue(ALCANCE_RESUELTO);
+    leerConfigCanalConsulta.mockResolvedValue(CONFIG_ENCENDIDA);
+    excedeTopeDeAbuso.mockResolvedValue(false);
+    detectaBarridoDeCodigos.mockResolvedValue(false);
+    retiroDelDiaParaSeller.mockResolvedValue({ esperadosHoy: 0, visitas: [] });
+    enviarTexto.mockResolvedValue({ enviado: true });
+  });
+
+  it("dos códigos ⇒ itera la función de dominio dos veces, con el MISMO alcance, y arma una sola respuesta", async () => {
+    estadoDePedidoParaSeller.mockImplementation((_c: unknown, _alcance: unknown, id: { valor: string }) =>
+      Promise.resolve(
+        id.valor === "RX-AB12-CD34"
+          ? { codigo: "RX-AB12-CD34", estado: "en_ruta", ultimoHito: null, parada: null }
+          : null,
+      ),
+    );
+
+    const resultado = await procesarConsultaImport({
+      mensajeEntranteId: "msg-multi",
+      telefonoE164: "56911112222",
+      texto: "RX-AB12-CD34 RX-ZZ99-ZZ99",
+    });
+
+    expect(estadoDePedidoParaSeller).toHaveBeenCalledTimes(2);
+    for (const llamada of estadoDePedidoParaSeller.mock.calls) {
+      expect(llamada[1]).toEqual({ tenantId: "tenant-1", sellerId: "seller-1" });
+    }
+    expect(resultado.respondido).toBe(true);
+
+    const textoEnviado = enviarTexto.mock.calls[0][0].texto as string;
+    expect(textoEnviado).toContain("RX-AB12-CD34");
+    expect(textoEnviado).toContain("No encontramos: RX-ZZ99-ZZ99");
+  });
+
+  it("5 códigos ⇒ UNA sola consulta de tope de abuso (un mensaje no pesa como 5)", async () => {
+    estadoDePedidoParaSeller.mockResolvedValue(null);
+    const codigos = Array.from({ length: 5 }, (_, i) => `RX-AB${i}2-CD34`).join(" ");
+
+    await procesarConsultaImport({ mensajeEntranteId: "msg-5", telefonoE164: "56911112222", texto: codigos });
+
+    expect(excedeTopeDeAbuso).toHaveBeenCalledTimes(1);
+    expect(estadoDePedidoParaSeller).toHaveBeenCalledTimes(5);
+  });
+
+  it("más de 5 códigos ⇒ solo se consultan los primeros 5 y se avisa cuántos quedaron fuera", async () => {
+    estadoDePedidoParaSeller.mockResolvedValue(null);
+    const codigos = Array.from({ length: 8 }, (_, i) => `RX-AB${i}2-CD34`).join(" ");
+
+    await procesarConsultaImport({ mensajeEntranteId: "msg-8", telefonoE164: "56911112222", texto: codigos });
+
+    expect(estadoDePedidoParaSeller).toHaveBeenCalledTimes(5);
+    const textoEnviado = enviarTexto.mock.calls[0][0].texto as string;
+    expect(textoEnviado).toContain("3 código");
+  });
+
+  it("códigos repetidos en el mismo mensaje se consultan cada uno", async () => {
+    estadoDePedidoParaSeller.mockResolvedValue(null);
+
+    await procesarConsultaImport({
+      mensajeEntranteId: "msg-rep",
+      telefonoE164: "56911112222",
+      texto: "RX-AB12-CD34 RX-AB12-CD34",
+    });
+
+    expect(estadoDePedidoParaSeller).toHaveBeenCalledTimes(2);
+  });
+
+  it("un solo código ⇒ se sigue comportando como antes (no se rompe)", async () => {
+    estadoDePedidoParaSeller.mockResolvedValue({
+      codigo: "RX-AB12-CD34",
+      estado: "entregado",
+      ultimoHito: null,
+      parada: null,
+    });
+
+    const resultado = await procesarConsultaImport({
+      mensajeEntranteId: "msg-uno",
+      telefonoE164: "56911112222",
+      texto: "RX-AB12-CD34",
+    });
+
+    expect(estadoDePedidoParaSeller).toHaveBeenCalledTimes(1);
+    expect(resultado.respondido).toBe(true);
+    const patchConClasificacion = actualizaciones.find((a) => a.patch.clasificacion);
+    expect(patchConClasificacion?.patch.clasificacion).toBe("codigo_interno");
+    expect(patchConClasificacion?.patch.hubo_match).toBe(true);
+  });
+
+  it("mezcla de flex_manual sin match y codigo_interno con match ⇒ la fila se clasifica flex_manual sin match (no esconde el sondeo)", async () => {
+    estadoDePedidoParaSeller.mockImplementation((_c: unknown, _alcance: unknown, id: { valor: string }) =>
+      Promise.resolve(
+        id.valor === "RX-AB12-CD34"
+          ? { codigo: "RX-AB12-CD34", estado: "en_ruta", ultimoHito: null, parada: null }
+          : null,
+      ),
+    );
+
+    await procesarConsultaImport({
+      mensajeEntranteId: "msg-mix",
+      telefonoE164: "56911112222",
+      texto: "RX-AB12-CD34 987654321",
+    });
+
+    const patchConClasificacion = actualizaciones.find((a) => a.patch.clasificacion);
+    expect(patchConClasificacion?.patch.clasificacion).toBe("flex_manual");
+    expect(patchConClasificacion?.patch.hubo_match).toBe(false);
+  });
+});
+
+/** Import perezoso para reusar el mismo mock de módulo entre describes. */
+async function procesarConsultaImport(entrada: {
+  mensajeEntranteId: string;
+  telefonoE164: string | null;
+  texto: string | null;
+}) {
+  const { procesarConsulta } = await import("./responder-mensaje");
+  return procesarConsulta(entrada);
+}

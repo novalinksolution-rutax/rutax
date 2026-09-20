@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reconocerCodigosEnMensaje, primerCodigoReconocido } from "./parser";
+import { reconocerCodigosEnMensaje } from "./parser";
 
 // Payload real capturado escaneando una etiqueta Flex (docs/arquitectura/retiro-y-ruteo.md §3).
 const PAYLOAD_FLEX_REAL =
@@ -11,7 +11,6 @@ describe("reconocerCodigosEnMensaje — el envoltorio de §6.1", () => {
     // subyacente jamás dice "no" (todo cae a `desconocido` con éxito). El
     // envoltorio es el que sí sabe decir que acá no hay nada.
     expect(reconocerCodigosEnMensaje("hola cómo va mi pedido")).toEqual([]);
-    expect(primerCodigoReconocido("hola cómo va mi pedido")).toBeNull();
   });
 
   it("reconoce el JSON completo del QR de Flex como un único token", () => {
@@ -60,8 +59,4 @@ describe("reconocerCodigosEnMensaje — el envoltorio de §6.1", () => {
     expect(reconocidos[1].clasificacion).toBe("flex_manual");
   });
 
-  it("primerCodigoReconocido devuelve solo el primero", () => {
-    const primero = primerCodigoReconocido("RX-AB12-CD34 y también 44760788897");
-    expect(primero?.clasificacion).toBe("codigo_interno");
-  });
 });

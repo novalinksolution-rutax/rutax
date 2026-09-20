@@ -5,16 +5,25 @@
  * 1. ¿Es una baja? NO se evalúa acá: `conversacion` no recibe el evento si
  *    `pideBaja === true` (lo impone la ausencia del evento — ver
  *    `EventoMensajeWhatsAppRecibido` en `src/lib/inngest/eventos.ts`).
- * 2. ¿Trae uno o más códigos? → el envoltorio de `parser.ts`.
+ * 2. ¿Trae uno o más códigos? → el envoltorio de `parser.ts`. Hasta
+ *    `TOPE_CODIGOS_POR_MENSAJE` se consultan; el resto se cuenta en
+ *    `sobrante` y NUNCA se recorta en silencio (§ mejora "varios códigos").
  * 3. ¿Calza con una intención conocida? → hoy solo "retiro", normalizado
  *    igual que la baja (mayúsculas, sin tildes, sin puntuación).
  * 4. Nada calza → menú de botones. El fallo NUNCA es un «no te entendí» a secas.
  */
 
-import { primerCodigoReconocido, type CodigoReconocido } from "./parser";
+import { reconocerCodigosEnMensaje, type CodigoReconocido } from "./parser";
+
+/**
+ * Un mensaje con 5 códigos es UNA consulta, no cinco — el tope de abuso (§9)
+ * cuenta mensajes entrantes, no códigos. Este tope es de "cuántos pedidos
+ * respondemos en la misma respuesta", nada más.
+ */
+export const TOPE_CODIGOS_POR_MENSAJE = 5;
 
 export type Intencion =
-  | { tipo: "consulta_pedido"; codigo: CodigoReconocido }
+  | { tipo: "consulta_pedido"; codigos: CodigoReconocido[]; sobrante: number }
   | { tipo: "retiro_del_dia" }
   | { tipo: "menu" };
 
@@ -57,8 +66,14 @@ function esIntencionRetiro(texto: string): boolean {
 export function determinarIntencion(texto: string | null): Intencion {
   if (!texto) return { tipo: "menu" };
 
-  const codigo = primerCodigoReconocido(texto);
-  if (codigo) return { tipo: "consulta_pedido", codigo };
+  const codigos = reconocerCodigosEnMensaje(texto);
+  if (codigos.length > 0) {
+    return {
+      tipo: "consulta_pedido",
+      codigos: codigos.slice(0, TOPE_CODIGOS_POR_MENSAJE),
+      sobrante: Math.max(0, codigos.length - TOPE_CODIGOS_POR_MENSAJE),
+    };
+  }
 
   if (esIntencionRetiro(texto)) return { tipo: "retiro_del_dia" };
 

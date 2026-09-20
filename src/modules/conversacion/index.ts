@@ -8,15 +8,16 @@
  */
 
 export { resolverAlcanceDesdeContacto, type AlcanceSeller, type ResolucionAlcance } from "./alcance";
-export { reconocerCodigosEnMensaje, primerCodigoReconocido, type CodigoReconocido, type ClasificacionCodigo } from "./parser";
-export { determinarIntencion, type Intencion } from "./intenciones";
+export { reconocerCodigosEnMensaje, type CodigoReconocido, type ClasificacionCodigo } from "./parser";
+export { determinarIntencion, TOPE_CODIGOS_POR_MENSAJE, type Intencion } from "./intenciones";
 export { excedeTopeDeAbuso, detectaBarridoDeCodigos } from "./abuso";
 export {
-  armarRespuestaPedido,
+  armarRespuestaPedidos,
   armarRespuestaRetiro,
   armarMenu,
   armarRespuestaSinContacto,
   armarRespuestaAmbigua,
+  type ResultadoPedidoConsultado,
 } from "./respuestas";
 export { leerConfigCanalConsulta, type ConfigCanalConsulta } from "./canal";
 export {

@@ -5,11 +5,14 @@
  * menú de botones. Nada de lo que responde lo redacta un modelo de lenguaje»
  * (§1). Este archivo es TODO el copy de la v1.
  *
- * ⚠️ MÍNIMO A PROPÓSITO, Y SIN CERRAR. El copy final lo revisa `copywriter`
- * (gate obligatorio del proyecto): cada string de acá está marcado como texto
- * de trabajo, no definitivo. Se optó por lo más corto posible en vez de
- * adornar, siguiendo la regla del proyecto («menos texto» es a menudo la
- * respuesta correcta) — pero la decisión final de tono es de `copywriter`.
+ * Revisado por `copywriter` el 2026-09-20 y corregido tras probarlo con un
+ * seller real: sin saludos, sin emojis, sin «gracias por escribir».
+ *
+ * ⚠️ **El menú es el mensaje que más se lee**, porque es lo que recibe quien
+ * todavía no sabe usar el canal. Por eso son tres líneas y no una: la primera
+ * versión decía solo «Envía un código o RETIRO» y el usuario probó, no supo
+ * qué hacer después, y no había forma de descubrir que se pueden mandar
+ * varios. Enseñar acá es la excepción que gana su texto.
  *
  * Reglas duras que SÍ son de este archivo, no de copy:
  *  - Sin dirección, sin nombre del destinatario, sin nombre de conductor, sin
@@ -37,20 +40,42 @@ const TEXTOS_ESTADO: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
-/** Ejemplo del §7: `4476 0788 901 · En ruta`. */
-export function armarRespuestaPedido(estado: EstadoPedidoSeller | null): string {
-  if (!estado) {
-    // No distingue «no existe» de «no es tuyo» (§5/§6 regla 4): la
-    // indistinguibilidad es intencional.
-    return "No encontramos ese pedido.";
+/** Un código consultado, con o sin resultado — insumo de `armarRespuestaPedidos`. */
+export interface ResultadoPedidoConsultado {
+  /** El identificador con el que se consultó (`ml_shipment_id` o `codigo_interno`), NUNCA el texto crudo del mensaje. */
+  codigoConsultado: string;
+  estado: EstadoPedidoSeller | null;
+}
+
+/**
+ * Respuesta agrupada de hasta `TOPE_CODIGOS_POR_MENSAJE` pedidos (§ mejora
+ * "varios códigos"): una línea por pedido encontrado (`código · estado` y la
+ * parada si la hay), los no encontrados juntos al final SIN distinguir
+ * «no existe» de «no es tuyo» (§5/§6 regla 4, sigue intacta con varios), y si
+ * el mensaje traía más de 5 códigos, cuántos quedaron fuera — nunca se
+ * recortan en silencio.
+ */
+export function armarRespuestaPedidos(resultados: ResultadoPedidoConsultado[], sobrante = 0): string {
+  const lineas: string[] = [];
+  const noEncontrados: string[] = [];
+
+  for (const r of resultados) {
+    if (!r.estado) {
+      noEncontrados.push(r.codigoConsultado);
+      continue;
+    }
+    const partes = [`${r.estado.codigo} · ${TEXTOS_ESTADO[r.estado.estado] ?? r.estado.estado}`];
+    if (r.estado.parada) partes.push(`Parada ${r.estado.parada.numero} de ${r.estado.parada.de}.`);
+    lineas.push(partes.join(" "));
   }
 
-  const lineas = [`${estado.codigo} · ${TEXTOS_ESTADO[estado.estado] ?? estado.estado}`];
+  if (noEncontrados.length > 0) {
+    lineas.push(`No encontramos: ${noEncontrados.join(", ")}.`);
+  }
 
-  const partes: string[] = [];
-  if (estado.ultimoHito) partes.push(estado.ultimoHito.texto);
-  if (estado.parada) partes.push(`Parada ${estado.parada.numero} de ${estado.parada.de}.`);
-  if (partes.length > 0) lineas.push(partes.join(" "));
+  if (sobrante > 0) {
+    lineas.push(`${sobrante} código${sobrante === 1 ? "" : "s"} más sin revisar (máximo 5 por mensaje).`);
+  }
 
   lineas.push(`${urlPortal()}/portal`);
   return lineas.join("\n");
@@ -75,7 +100,11 @@ export function armarRespuestaRetiro(retiro: RetiroDelDiaSeller): string {
 
 /** Nunca se manda a quien pidió la baja (el webhook filtra ANTES de publicar el evento). */
 export function armarMenu(): string {
-  return "Envía un código o RETIRO.";
+  return [
+    "Envía el código de un pedido y te digo cómo va. Puedes mandar varios.",
+    "Ejemplo: RX-7K2M-9PQR",
+    "RETIRO: cómo fue el retiro de hoy.",
+  ].join("\n");
 }
 
 /** §5: ningún contacto con consentimiento vigente para este número. */
