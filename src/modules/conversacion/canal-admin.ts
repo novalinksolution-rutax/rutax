@@ -123,24 +123,36 @@ export async function guardarConfigCanalConsulta(
 
   const ahora = new Date().toISOString();
 
-  // Upsert manual (no `.upsert()`): `tenant_id` es la PK y el patrón del
-  // resto del backstage de WhatsApp es "insert si no existe, update si sí",
-  // para que quede explícito cuál de los dos ocurrió si algo falla.
-  const { error } = await cliente
-    .schema("integraciones")
-    .from("whatsapp_canal_consulta_config")
-    .upsert(
-      {
-        tenant_id: entrada.tenantId,
-        canal_activo: entrada.canalActivo,
-        tope_consultas_hora: entrada.topeConsultasHora,
-        tope_intentos_sin_match_hora: entrada.topeIntentosSinMatchHora,
-        actualizado_por: entrada.actorUsuarioId,
-        actualizado_en: ahora,
-        nota: entrada.nota,
-      },
-      { onConflict: "tenant_id" },
-    );
+  // ⚠️ NO se usa `.upsert()`, y no es estilo: **en un upsert de PostgREST toda
+  // columna del payload se escribe TAMBIÉN en el UPDATE**, y `tenant_id` está
+  // fuera del GRANT de update a propósito (mover la config de un courier a
+  // otro con un update le pisaría el canal al tenant equivocado en silencio).
+  // El upsert fallaba siempre con 42501 «permission denied» al reconfigurar un
+  // courier que ya tenía fila. Por eso: SELECT y después insert o update
+  // acotado, sin `tenant_id` ni `creado_en` en el update.
+  const camposEditables = {
+    canal_activo: entrada.canalActivo,
+    tope_consultas_hora: entrada.topeConsultasHora,
+    tope_intentos_sin_match_hora: entrada.topeIntentosSinMatchHora,
+    actualizado_por: entrada.actorUsuarioId,
+    actualizado_en: ahora,
+    nota: entrada.nota,
+  };
+
+  const tabla = () => cliente.schema("integraciones").from("whatsapp_canal_consulta_config");
+
+  const { data: existente, error: errorLectura } = await tabla()
+    .select("tenant_id")
+    .eq("tenant_id", entrada.tenantId)
+    .maybeSingle();
+
+  if (errorLectura) {
+    return { ok: false, mensaje: "No se pudo guardar la configuración del canal." };
+  }
+
+  const { error } = existente
+    ? await tabla().update(camposEditables).eq("tenant_id", entrada.tenantId)
+    : await tabla().insert({ tenant_id: entrada.tenantId, ...camposEditables });
 
   if (error) {
     return { ok: false, mensaje: "No se pudo guardar la configuración del canal." };
