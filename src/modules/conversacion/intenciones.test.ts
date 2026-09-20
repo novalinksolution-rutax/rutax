@@ -71,3 +71,20 @@ describe("comando /pedido — la intención que evita el bucle", () => {
     expect(determinarIntencion("hola quiero saber de mi pedido de ayer por favor").tipo).toBe("menu");
   });
 });
+
+describe("comando + código en un solo mensaje — lo que el menú enseña", () => {
+  it("«/pedido 44760788901» consulta directo, sin pedir el código aparte", () => {
+    const intencion = determinarIntencion("/pedido 44760788901");
+    expect(intencion.tipo).toBe("consulta_pedido");
+    if (intencion.tipo === "consulta_pedido") {
+      expect(intencion.codigos).toHaveLength(1);
+      expect(intencion.codigos[0].clasificacion).toBe("flex_manual");
+    }
+  });
+
+  it("«/pedido» con varios códigos los toma todos", () => {
+    const intencion = determinarIntencion("/pedido 44760788901 44760788902");
+    expect(intencion.tipo).toBe("consulta_pedido");
+    if (intencion.tipo === "consulta_pedido") expect(intencion.codigos).toHaveLength(2);
+  });
+});

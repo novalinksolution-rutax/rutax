@@ -117,11 +117,15 @@ export function armarMenu(): string {
   // Los emojis van como ETIQUETA de cada línea, para escanear el mensaje en un
   // teléfono. Nada de 👋 al abrir ni 😊 al cerrar: ahí un canal operativo
   // empieza a sonar a bot.
+  // ⚠️ La línea del comando ES el ejemplo, con el código pegado: así se escribe
+  // una sola vez en vez de mandar `/pedido` y esperar a que le pidan el código
+  // (idea del usuario, 2026-09-20). Ya funcionaba —el reconocedor de códigos
+  // corre antes que las palabras— y lo único que faltaba era decirlo.
   return [
-    "📦 */pedido* — cómo va un pedido",
+    `📦 */pedido ${CODIGO_DE_EJEMPLO}* — cómo va un pedido`,
     "🚚 */retiro* — el retiro de hoy",
     "",
-    `O envíame el código directo. Ejemplo: ${CODIGO_DE_EJEMPLO}`,
+    "Puedes mandar varios códigos juntos.",
   ].join("\n");
 }
 
@@ -134,9 +138,9 @@ export function armarMenu(): string {
  */
 export function armarAyudaConsultarPedido(): string {
   return [
-    "Envíame el código del pedido 📦",
-    `Ejemplo: ${CODIGO_DE_EJEMPLO}`,
-    "Puedes mandar varios en un mismo mensaje.",
+    "Mándame el comando con el código 📦",
+    `Ejemplo: /pedido ${CODIGO_DE_EJEMPLO}`,
+    "Puedes poner varios códigos en el mismo mensaje.",
   ].join("\n");
 }
 
