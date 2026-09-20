@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerPanelDestinatarios } from "@/modules/plataforma/whatsapp-destinatarios";
+import { obtenerTodasSuscripciones } from "@/modules/plataforma/consultas";
+import { obtenerPanelCanalConsulta } from "@/modules/conversacion";
+import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { tieneSesionAdmin } from "../sesion-admin";
 import { TablaDestinatarios } from "./tabla-destinatarios";
+import { PanelCanalConsulta } from "./panel-canal-consulta";
 
 export const metadata: Metadata = {
   title: "WhatsApp · Rutax Admin",
@@ -31,49 +35,78 @@ export default async function PaginaWhatsAppAdmin() {
     panel = null;
   }
 
+  // Ventana de contadores del canal de consulta: últimas 24 h, igual que el
+  // resto de contadores "en vivo" del backstage (sin asumir el día calendario
+  // de Santiago, que no aporta nada acá).
+  const hasta = new Date();
+  const desde = new Date(hasta.getTime() - 24 * 60 * 60 * 1000);
+
+  let canalConsulta: Awaited<ReturnType<typeof obtenerPanelCanalConsulta>> | null = null;
+  try {
+    const suscripciones = await obtenerTodasSuscripciones();
+    const cliente = crearClienteServiceRole();
+    canalConsulta = await obtenerPanelCanalConsulta(
+      cliente,
+      suscripciones.map((s) => ({
+        tenantId: s.tenantId,
+        nombreCourier: s.nombreFantasiaTenant ?? `${s.tenantId.slice(0, 8)}…`,
+      })),
+      desde,
+      hasta,
+    );
+  } catch {
+    canalConsulta = null;
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">WhatsApp</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A quién le avisamos cuando se retiran pedidos. El número propio lo pone cada seller en su
-          portal; acá se pueden sumar otros —su pareja, su jefe de bodega— y detener los que
-          reclamen.
-        </p>
       </div>
 
-      {panel === null ? (
-        <div role="alert" className="rounded-lg border border-destructive/50 p-4 text-sm">
-          No se pudieron cargar los destinatarios.
-        </div>
-      ) : (
-        <>
-          {/*
-            El contador que existe para que no sea un silencio: un seller sin
-            número con consentimiento NO recibe su aviso de retiro y nada falla
-            — el envío termina en `sin_destinatarios` y el run queda verde. Es
-            la clase de agujero que se descubre tres semanas después.
-          */}
-          {panel.sellersSinDestinatario > 0 ? (
-            <div className="rounded-lg border border-warning/50 bg-warning/5 p-4 text-sm">
-              <p className="font-medium">
-                {panel.sellersSinDestinatario}{" "}
-                {panel.sellersSinDestinatario === 1
-                  ? "seller no recibe avisos"
-                  : "sellers no reciben avisos"}
-                .
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                Sus retiros se cierran igual, pero nadie se entera. De esos,{" "}
-                {panel.sellersInvitadosSinNumero} nunca ha entrado al portal, así que no ha tenido
-                dónde dejar su número.
-              </p>
-            </div>
-          ) : null}
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Consultas</h2>
+        {canalConsulta === null ? (
+          <div role="alert" className="rounded-lg border border-destructive/50 p-4 text-sm">
+            No se pudo cargar el canal de consulta.
+          </div>
+        ) : (
+          <PanelCanalConsulta couriers={canalConsulta.couriers} globales={canalConsulta.globales} />
+        )}
+      </section>
 
-          <TablaDestinatarios sellers={panel.sellers} />
-        </>
-      )}
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Destinatarios de avisos de retiro</h2>
+        <p className="text-sm text-muted-foreground">
+          El número propio lo pone cada seller en su portal; acá se pueden sumar otros —su pareja,
+          su jefe de bodega— y detener los que reclamen.
+        </p>
+
+        {panel === null ? (
+          <div role="alert" className="rounded-lg border border-destructive/50 p-4 text-sm">
+            No se pudieron cargar los destinatarios.
+          </div>
+        ) : (
+          <>
+            {panel.sellersSinDestinatario > 0 ? (
+              <div className="rounded-lg border border-warning/50 bg-warning/5 p-4 text-sm">
+                <p className="font-medium">
+                  {panel.sellersSinDestinatario}{" "}
+                  {panel.sellersSinDestinatario === 1
+                    ? "seller no recibe avisos"
+                    : "sellers no reciben avisos"}
+                  .
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  De esos, {panel.sellersInvitadosSinNumero} nunca ha entrado al portal.
+                </p>
+              </div>
+            ) : null}
+
+            <TablaDestinatarios sellers={panel.sellers} />
+          </>
+        )}
+      </section>
     </div>
   );
 }

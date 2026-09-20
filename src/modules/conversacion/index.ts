@@ -18,3 +18,23 @@ export {
   armarRespuestaSinContacto,
   armarRespuestaAmbigua,
 } from "./respuestas";
+export { leerConfigCanalConsulta, type ConfigCanalConsulta } from "./canal";
+export {
+  MOTIVOS_NO_RESPONDIDO,
+  MOTIVOS_DE_CORTE_DEL_CANAL,
+  type MotivoNoRespondido,
+} from "./motivo-no-respondido";
+export {
+  obtenerConfigCanalConsulta,
+  guardarConfigCanalConsulta,
+  contadoresCanalConsultaPorCourier,
+  contadoresCanalConsultaGlobales,
+  obtenerPanelCanalConsulta,
+  type ConfigCanalConsultaAdmin,
+  type GuardarConfigCanalConsultaEntrada,
+  type ResultadoGuardarConfigCanal,
+  type ContadoresCanalConsultaPorCourier,
+  type ContadoresCanalConsultaGlobales,
+  type FilaCanalConsultaCourier,
+  type PanelCanalConsulta,
+} from "./canal-admin";

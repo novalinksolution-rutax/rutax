@@ -9,27 +9,23 @@
  * Los índices que resuelven estas dos consultas ya existen en la migración
  * `20260920000001` (`idx_whatsapp_entrantes_contacto_hora`,
  * `idx_whatsapp_entrantes_sondeo_numerico`).
+ *
+ * ⚠️ Los topes YA NO son constantes acá: viven en
+ * `integraciones.whatsapp_canal_consulta_config` (migración `20260920000002`)
+ * y el llamador (`jobs/responder-mensaje.ts`) los lee una vez por mensaje con
+ * `leerConfigCanalConsulta` y los pasa por parámetro. Dos fuentes para el
+ * mismo número es la trampa que ya mordió con el tope de cuentas ML.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** ~20 consultas por contacto y por hora (§9). No es por costo: el entrante es gratis. */
-export const TOPE_CONSULTAS_POR_HORA = 20;
-
-/**
- * N intentos `flex_manual` SIN match en una hora es señal de barrido (§6.1):
- * un teléfono probando números de envío al azar para ver cuáles existen. Un
- * match fallido y uno exitoso no pesan igual, y por eso se cuenta aparte del
- * tope general.
- */
-export const UMBRAL_INTENTOS_SIN_MATCH = 5;
-
 const UNA_HORA_MS = 60 * 60 * 1000;
 
-/** ¿Este contacto ya superó el tope de consultas de la última hora? */
+/** ¿Este contacto ya superó `topeConsultasHora` en la última hora? */
 export async function excedeTopeDeAbuso(
   cliente: SupabaseClient,
   contactoId: string,
+  topeConsultasHora: number,
   ahora: Date = new Date(),
 ): Promise<boolean> {
   const desde = new Date(ahora.getTime() - UNA_HORA_MS);
@@ -44,16 +40,18 @@ export async function excedeTopeDeAbuso(
   if (error) {
     throw new Error(`No se pudo contar los mensajes entrantes de WhatsApp: ${error.message}`);
   }
-  return (count ?? 0) >= TOPE_CONSULTAS_POR_HORA;
+  return (count ?? 0) >= topeConsultasHora;
 }
 
 /**
- * ¿Este contacto está barriendo códigos? N `flex_manual` SIN match en la
- * última hora, contados aparte del tope general (§6.1).
+ * ¿Este contacto está barriendo códigos? `topeIntentosSinMatchHora`
+ * `flex_manual` SIN match en la última hora, contados aparte del tope
+ * general (§6.1).
  */
 export async function detectaBarridoDeCodigos(
   cliente: SupabaseClient,
   contactoId: string,
+  topeIntentosSinMatchHora: number,
   ahora: Date = new Date(),
 ): Promise<boolean> {
   const desde = new Date(ahora.getTime() - UNA_HORA_MS);
@@ -70,5 +68,5 @@ export async function detectaBarridoDeCodigos(
   if (error) {
     throw new Error(`No se pudo contar el sondeo de códigos de WhatsApp: ${error.message}`);
   }
-  return (count ?? 0) >= UMBRAL_INTENTOS_SIN_MATCH;
+  return (count ?? 0) >= topeIntentosSinMatchHora;
 }

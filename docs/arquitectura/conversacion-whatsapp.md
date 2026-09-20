@@ -1,6 +1,7 @@
 # Conversación por WhatsApp — consulta de estado del seller
 
-> **Estado:** alcance aprobado por el usuario (2026-09-20). Sin construir.
+> **Estado:** v1 construida y desplegada (2026-09-20), con el **canal apagado por courier**
+> hasta que el copy pase por `copywriter`. Se enciende desde `/admin/whatsapp` (§15).
 > **Fuente de verdad de este alcance.** Si otro documento dice lo contrario, gana este.
 
 ## 1. Qué es, en una frase
@@ -430,3 +431,52 @@ Va escrito acá porque es el que alguien va a querer cruzar con toda la buena in
 - `src/modules/operacion/retiro/parser-codigo.ts` — `parsearCodigoBulto`.
 - `docs/arquitectura/retiro-y-ruteo.md` — la sesión de retiro, que es lo que responde la
   consulta de retiro.
+
+## 15. Control desde el backstage (submódulo de `/admin/whatsapp`)
+
+El canal lo controla **Rutax**, no el courier, como el resto de WhatsApp. Vive como una
+sección dentro de `/admin/whatsapp`, no como pantalla aparte.
+
+- **`integraciones.whatsapp_canal_consulta_config`**: una fila por courier (`tenant_id` es PK
+  y FK, así que no existe fila global). Guarda `canal_activo` y los dos topes.
+- ⚠️ **`canal_activo` nace en `false`, y ése es el punto.** La feature se desplegó antes de
+  que el copy pasara por `copywriter`: el canal existe apagado y se enciende a mano.
+- ⚠️ **La ausencia de fila NO es `false` por sí sola**: un `select` sin fila devuelve cero
+  filas, que en TypeScript es `null`. Por eso se lee con
+  `public.whatsapp_canal_consulta_config(p_tenant_id)`, que **siempre devuelve una fila** —
+  apagada y con los topes por defecto— más un `configurado` que distingue «apagado a mano»
+  de «nunca configurado». **Nunca un select crudo a la tabla.**
+- **Los topes viven solo en la base.** Las constantes que estaban en `abuso.ts` se borraron:
+  dos fuentes con el mismo número y nada que las ate es la trampa del tope de cuentas ML.
+- Un CHECK ata los dos topes: el corte por barrido no puede ser mayor que el tope general,
+  o el general cortaría siempre primero y la protección contra sondeo sería una protección
+  muerta que la pantalla mostraría como viva.
+
+### 15.1 Por qué el motivo de corte es columna propia
+
+`integraciones.whatsapp_mensajes_entrantes.motivo_no_respondido` (migración `20260920000003`)
+con seis valores: `respondido`, `canal_apagado`, `tope_consultas`, `barrido_codigos`,
+`sin_alcance`, `aviso_neutro_omitido`.
+
+⚠️ **No es un valor más de `clasificacion`, y no por gusto: meterlo ahí rompe el detector de
+barrido.** El corte se decide contando `clasificacion = 'flex_manual' and hubo_match = false`
+de la última hora, y la fila que corta es ella misma uno de los intentos contados. Escribirle
+`barrido_codigos` a `clasificacion` **borraría el `flex_manual` que el detector cuenta**: el
+corte se auto-invisibiliza para el mensaje siguiente. Son dos ejes — `clasificacion` dice qué
+trajo el mensaje, el motivo dice por qué no se respondió.
+
+⚠️ **`null` no significa «se respondió»**: significa que el job todavía no tocó la fila, que
+es un estado real porque el webhook la reserva antes de publicar el evento. Si el caso normal
+fuera el nulo, un job caído a la mitad y una respuesta exitosa serían la misma fila. De ahí
+sale el contador de **pendientes**.
+
+### 15.2 El contador que no puede faltar
+
+⚠️ **`cortadasPorCanalApagado` alto es el fallo silencioso de este canal**: el seller escribe,
+nadie le responde, y nada falla — el job termina en verde. Va arriba y en ámbar, igual que el
+contador de contactos ambiguos (§5.1) y que el de «N sellers no reciben avisos» que ya existía
+en esa pantalla.
+
+⚠️ **El contador de ambiguos NO puede ser por courier**, y no es una limitación de la
+pantalla: un contacto ambiguo no tiene tenant por definición, y el CHECK de la base lo impone.
+Va como contador global.

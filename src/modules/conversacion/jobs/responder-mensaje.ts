@@ -21,15 +21,32 @@
  * 1. Resolver alcance (§5/§5.1).
  * 2. Si no está resuelto → responder neutro (como mucho una vez cada 24 h) y
  *    terminar. NUNCA se llega a leer un pedido sin alcance resuelto.
- * 3. Tope de abuso — ANTES de gastar una consulta a `operacion`.
- * 4. Determinar intención y consultar `operacion` (solo lectura).
- * 5. Escribir `clasificacion`/`hubo_match` en la fila — ANTES de chequear el
+ * 3. ⚠️ INTERRUPTOR DEL CANAL (migración `20260920000002`) — lo primero que se
+ *    mira una vez que hay `tenantId`, ANTES del tope de abuso y ANTES de tocar
+ *    `operacion`. Si `canal_activo` es `false` (courier sin fila incluido):
+ *    NO se responde nada, la fila entrante queda con `resolucion: "resuelto"`
+ *    (la identidad SÍ se resolvió) y el job termina en ÉXITO, no en error —
+ *    apagar el canal no es una falla transitoria que Inngest deba reintentar.
+ * 4. Tope de abuso — ANTES de gastar una consulta a `operacion`. El tope y el
+ *    umbral de barrido salen de la config leída en el paso 3, no de una
+ *    constante.
+ * 5. Determinar intención y consultar `operacion` (solo lectura).
+ * 6. Escribir `clasificacion`/`hubo_match` en la fila — ANTES de chequear el
  *    corte por barrido, porque el corte cuenta sobre esas columnas y tiene que
  *    ver ESTE intento para reaccionar a él, no solo a los anteriores.
- * 6. Corte por barrido — si corta, NO se responde y NO hay bitácora (no hubo
+ * 7. Corte por barrido — si corta, NO se responde y NO hay bitácora (no hubo
  *    acceso a datos que auditar).
- * 7. Bitácora ANTES de llamar a Meta (regla dura del proyecto).
- * 8. Enviar por el puerto de WhatsApp.
+ * 8. Bitácora ANTES de llamar a Meta (regla dura del proyecto).
+ * 9. Enviar por el puerto de WhatsApp.
+ *
+ * -----------------------------------------------------------------------------
+ * `motivo_no_respondido` (migración `20260920000003`)
+ * -----------------------------------------------------------------------------
+ * Cada salida sin respuesta escribe su motivo explícito — ver
+ * `src/modules/conversacion/motivo-no-respondido.ts`. "Canal apagado" y "tope
+ * de abuso" ya NO quedan indistinguibles: cada uno escribe el suyo. El corte
+ * por barrido (§6.1) también queda persistido como tal, no solo contado en
+ * memoria. La superficie de contadores de `canal-admin.ts` usa esta columna.
  */
 
 import { inngest } from "@/lib/inngest/cliente";
@@ -45,6 +62,7 @@ import {
 import { resolverAlcanceDesdeContacto } from "../alcance";
 import { determinarIntencion } from "../intenciones";
 import { excedeTopeDeAbuso, detectaBarridoDeCodigos } from "../abuso";
+import { leerConfigCanalConsulta } from "../canal";
 import {
   armarRespuestaPedido,
   armarRespuestaRetiro,
@@ -98,7 +116,8 @@ export const jobResponderMensajeWhatsApp = inngest.createFunction(
   },
 );
 
-async function procesarConsulta(entrada: {
+/** Exportado solo para pruebas (`responder-mensaje.test.ts`). */
+export async function procesarConsulta(entrada: {
   mensajeEntranteId: string;
   telefonoE164: string | null;
   texto: string | null;
@@ -108,7 +127,10 @@ async function procesarConsulta(entrada: {
   const resolucion = await resolverAlcanceDesdeContacto(cliente, entrada.telefonoE164);
 
   if (resolucion.resolucion === "ilegible") {
-    await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, { resolucion: "ilegible" });
+    await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, {
+      resolucion: "ilegible",
+      motivo_no_respondido: "sin_alcance",
+    });
     return { respondido: false, reintentable: false, motivo: "ilegible" };
   }
 
@@ -120,7 +142,13 @@ async function procesarConsulta(entrada: {
   if (resolucion.resolucion === "sin_contacto" || resolucion.resolucion === "ambiguo") {
     const yaAvisado = await yaSeAvisoEnLasUltimas24h(cliente, telefono, [resolucion.resolucion]);
 
-    await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, { resolucion: resolucion.resolucion });
+    // El motivo depende de si el aviso neutro sale o se omite por la ventana
+    // de 24 h (§5), así que va DESPUÉS de esa decisión — no se puede escribir
+    // en el mismo update que fija `resolucion`.
+    await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, {
+      resolucion: resolucion.resolucion,
+      motivo_no_respondido: yaAvisado ? "aviso_neutro_omitido" : "respondido",
+    });
 
     if (yaAvisado) {
       return { respondido: false, reintentable: false, motivo: `${resolucion.resolucion}_ya_avisado` };
@@ -142,12 +170,29 @@ async function procesarConsulta(entrada: {
   // ---- resuelto --------------------------------------------------------
   const { alcance, contactoId } = resolucion;
 
-  if (await excedeTopeDeAbuso(cliente, contactoId)) {
+  // Paso 3: interruptor del canal — lo primero que se mira con tenantId en
+  // mano. `false` incluye al courier sin fila (nace apagado). No es un fallo
+  // transitorio: la fila queda registrada y el job termina en éxito.
+  const config = await leerConfigCanalConsulta(cliente, alcance.tenantId);
+
+  if (!config.canalActivo) {
     await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, {
       resolucion: "resuelto",
       tenant_id: alcance.tenantId,
       seller_id: alcance.sellerId,
       contacto_id: contactoId,
+      motivo_no_respondido: "canal_apagado",
+    });
+    return { respondido: false, reintentable: false, motivo: "canal_apagado" };
+  }
+
+  if (await excedeTopeDeAbuso(cliente, contactoId, config.topeConsultasHora)) {
+    await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, {
+      resolucion: "resuelto",
+      tenant_id: alcance.tenantId,
+      seller_id: alcance.sellerId,
+      contacto_id: contactoId,
+      motivo_no_respondido: "tope_consultas",
     });
     return { respondido: false, reintentable: false, motivo: "tope_abuso" };
   }
@@ -177,6 +222,8 @@ async function procesarConsulta(entrada: {
 
   // Se escribe ANTES de chequear el barrido: el corte de §6.1 cuenta sobre
   // estas columnas y tiene que ver ESTE intento para poder reaccionar a él.
+  // `motivo_no_respondido` queda SIN tocar (NULL un instante): escribir
+  // `respondido` acá sería mentir si el barrido corta dos líneas más abajo.
   await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, {
     resolucion: "resuelto",
     tenant_id: alcance.tenantId,
@@ -187,11 +234,20 @@ async function procesarConsulta(entrada: {
     ...saneaTextoParaGuardar(entrada.texto),
   });
 
-  if (clasificacion === "flex_manual" && !huboMatch && (await detectaBarridoDeCodigos(cliente, contactoId))) {
+  if (
+    clasificacion === "flex_manual" &&
+    !huboMatch &&
+    (await detectaBarridoDeCodigos(cliente, contactoId, config.topeIntentosSinMatchHora))
+  ) {
     // No se responde y NO hay bitácora: no hubo acceso a un dato que auditar,
     // el sondeo se cortó antes de contestar nada.
+    await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, {
+      motivo_no_respondido: "barrido_codigos",
+    });
     return { respondido: false, reintentable: false, motivo: "barrido" };
   }
+
+  await actualizarFilaEntrante(cliente, entrada.mensajeEntranteId, { motivo_no_respondido: "respondido" });
 
   // Bitácora ANTES de llamar a Meta — regla dura del proyecto (CLAUDE.md).
   // `actorTipo: "sistema"` con `contacto_id` en el detalle; NUNCA el teléfono.
