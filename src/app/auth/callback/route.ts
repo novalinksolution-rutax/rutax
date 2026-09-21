@@ -162,8 +162,13 @@ export async function GET(request: NextRequest) {
         motivo: errorCanje.message,
         codigo_error: errorCanje.code ?? null,
         host: request.headers.get("host"),
-        hay_cookie_verifier: nombresCookiesSb.some((n) => n.includes("code-verifier")),
-        cookies_sb: nombresCookiesSb,
+        // ⚠️ Estos nombres NO pueden contener «cookie»: el filtro de PII de
+        // `redaccion.ts` borra toda clave que lo contenga, y con los nombres
+        // viejos (`hay_cookie_verifier`, `cookies_sb`) el diagnóstico llegó a
+        // Sentry TACHADO durante 6 días — justo la respuesta que se buscaba.
+        // No guardan nada secreto: un sí/no y NOMBRES de cookie, nunca valores.
+        llego_verificador_pkce: nombresCookiesSb.some((n) => n.includes("code-verifier")),
+        nombres_sb_recibidos: nombresCookiesSb,
       },
     });
     return NextResponse.redirect(`${origin}/login?error=oauth_invalido`);

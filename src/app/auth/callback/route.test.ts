@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 /**
  * Pruebas del callback PKCE de Google — `GET /auth/callback` (F1).
  *
@@ -114,10 +115,15 @@ function adminFalso() {
   return { auth: { admin: { deleteUser: vi.fn(async () => ({ error: null })) } } };
 }
 
-function peticion(params: { code?: string } = {}) {
+function peticion(params: { code?: string; cookies?: string } = {}) {
   const query = new URLSearchParams();
   if (params.code !== undefined) query.set("code", params.code);
-  return new Request(`http://localhost/auth/callback?${query.toString()}`) as unknown as import("next/server").NextRequest;
+  // NextRequest de verdad y no un Request casteado: el callback lee
+  // `request.cookies` para el diagnóstico del canje, y un Request a secas no
+  // las tiene. El casteo escondía eso y la prueba caía con un TypeError que
+  // parecía un bug de producción.
+  const cabeceras = params.cookies ? { cookie: params.cookies } : undefined;
+  return new NextRequest(`http://localhost/auth/callback?${query.toString()}`, { headers: cabeceras });
 }
 
 function destino(res: Response): { ruta: string; error: string | null } {
@@ -528,5 +534,33 @@ describe("GET /auth/callback — camino REGISTRO-SELLER (RF-010 rediseño, hay b
 
     expect(leerBorrador).not.toHaveBeenCalled();
     expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /auth/callback — el diagnóstico del canje llega LEGIBLE a Sentry", () => {
+  it("lo que el callback REALMENTE manda sobrevive a la redacción de PII", async () => {
+    const observabilidad = await import("@/lib/observabilidad");
+    const espia = vi.spyOn(observabilidad, "capturarMensaje").mockResolvedValue(undefined as never);
+    const { redactarSensible } = await import("@/lib/observabilidad/redaccion");
+
+    const supa = clienteSupabaseFalso({
+      user: usuarioAuth(),
+      errorCanje: { message: "PKCE code verifier not found", code: "pkce_code_verifier_not_found" } as never,
+    });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+
+    await GET(peticion({ code: "un-code", cookies: "sb-abc-auth-token=x" }));
+
+    const llamada = espia.mock.calls.find((c) => /exchangeCodeForSession/.test(String(c[0])));
+    expect(llamada, "el callback dejó de reportar el canje fallido").toBeDefined();
+    const extra = (llamada![2] as { extra: Record<string, unknown> }).extra;
+    const redactado = redactarSensible(extra) as Record<string, unknown>;
+
+    // ⚠️ Se prueba contra las claves que manda el CÓDIGO, no contra una copia:
+    // si alguien vuelve a nombrarlas con «cookie», el filtro las tacha, esta
+    // prueba cae, y el bug de PKCE no vuelve a quedar sin diagnóstico.
+    const sobrevivientes = Object.values(redactado).filter((v) => v === false || v === true);
+    expect(sobrevivientes, "el sí/no del verificador PKCE llegó tachado").toContain(false);
+    espia.mockRestore();
   });
 });
