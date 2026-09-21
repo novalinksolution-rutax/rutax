@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { motivoCronSinSalud } from './verificar-salud';
+import { motivoCronSinSalud, corresponderVigilar } from './verificar-salud';
 
 const AHORA = Date.parse('2026-07-09T12:00:00Z');
 const haceHoras = (h: number) => new Date(AHORA - h * 3_600_000).toISOString();
@@ -48,5 +48,29 @@ describe('motivoCronSinSalud', () => {
     expect(
       motivoCronSinSalud({ estado: 'ejecutando', error: null, ultimo_ok_en: null }, 2, AHORA),
     ).toBeNull();
+  });
+});
+
+describe("corresponderVigilar — el descanso nocturno no es un cron muerto", () => {
+  const ventana = { desde: 6, hasta: 22 };
+
+  it("un cron sin horario se vigila siempre", () => {
+    expect(corresponderVigilar(undefined, 2, 3)).toBe(true);
+  });
+
+  it("de madrugada NO se vigila: es el descanso (la falsa alarma del 21-sep)", () => {
+    expect(corresponderVigilar(ventana, 2, 3)).toBe(false);
+    expect(corresponderVigilar(ventana, 2, 23)).toBe(false);
+  });
+
+  it("a las 6 recién arranca: se espera a que haya tenido tiempo de correr", () => {
+    expect(corresponderVigilar(ventana, 2, 6)).toBe(false);
+    expect(corresponderVigilar(ventana, 2, 7)).toBe(false);
+  });
+
+  it("contraprueba: dentro del horario SÍ se vigila, o la red no detectaría nada", () => {
+    expect(corresponderVigilar(ventana, 2, 8)).toBe(true);
+    expect(corresponderVigilar(ventana, 2, 15)).toBe(true);
+    expect(corresponderVigilar(ventana, 2, 22)).toBe(true);
   });
 });

@@ -38,14 +38,34 @@ const TZ = 'America/Santiago';
  * agregar un cron crítico nuevo. Los no listados no se vigilan por staleness
  * (siguen registrando telemetría y visibles en el tablero).
  */
-const CRONS_VIGILADOS: ReadonlyArray<{ jobId: string; maxHoras: number; descripcion: string }> = [
+interface CronVigilado {
+  jobId: string;
+  maxHoras: number;
+  descripcion: string;
+  /**
+   * Horario del cron en hora de Santiago, si NO corre las 24 h. Debe calzar con
+   * el `TZ=America/Santiago … desde-hasta` de su definición.
+   *
+   * ⚠️ Sin esto el vigía confunde el descanso nocturno con un cron muerto: el
+   * sondeo de ML corre de 6 a 22, así que cada madrugada pasan ~7 h sin
+   * ejecutarse y un `maxHoras: 2` alarma todos los días. Pasó el 21-sep.
+   */
+  ventana?: { desde: number; hasta: number };
+}
+
+const CRONS_VIGILADOS: ReadonlyArray<CronVigilado> = [
   { jobId: 'dinero/cerrarPeriodo', maxHoras: 27, descripcion: 'Cierre diario de períodos de cobro (02:00)' },
   { jobId: 'dinero/generarLiquidacionConductor', maxHoras: 27, descripcion: 'Generación diaria de liquidaciones (02:00)' },
   { jobId: 'dinero/conciliarTresFuentes', maxHoras: 27, descripcion: 'Conciliación diaria de 3 fuentes (02:30)' },
   { jobId: 'dinero/alertaMorosidad', maxHoras: 27, descripcion: 'Alerta diaria de morosidad (09:00)' },
   { jobId: 'dinero/alertaFoliosProximos', maxHoras: 27, descripcion: 'Alerta diaria de folios CAF (09:00)' },
   { jobId: 'ml/refrescarTokens', maxHoras: 2, descripcion: 'Refresco de tokens ML (cada 30 min)' },
-  { jobId: 'ml/sondeoSaludConexiones', maxHoras: 2, descripcion: 'Sondeo de salud de conexiones ML (cada 15 min)' },
+  {
+    jobId: 'ml/sondeoSaludConexiones',
+    maxHoras: 2,
+    descripcion: 'Sondeo de salud de conexiones ML (cada 15 min, 6-22 h)',
+    ventana: { desde: 6, hasta: 22 },
+  },
   { jobId: 'plataforma/generarPeriodos', maxHoras: 24 * 33, descripcion: 'Generación mensual de períodos de suscripción' },
   { jobId: 'plataforma/marcarMorosidad', maxHoras: 27, descripcion: 'Marcar morosidad de suscripción (08:00)' },
   { jobId: 'plataforma/reintentarCobroVencido', maxHoras: 27, descripcion: 'Dunning: reintento de auto-cobro vencido (08:30)' },
@@ -70,6 +90,32 @@ interface FilaSaludJob {
   error: string | null;
   iniciado_en: string | null;
   ultimo_ok_en: string | null;
+}
+
+/** Hora actual en Santiago (0-23). */
+function horaEnSantiago(ahoraMs: number): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }).format(
+      new Date(ahoraMs),
+    ),
+  );
+}
+
+/**
+ * ¿Corresponde vigilar la antigüedad de este cron a esta hora?
+ *
+ * Un cron con horario se vigila solo cuando ya tuvo tiempo de correr: desde
+ * `desde + maxHoras` (a las 6 arranca; a las 8 ya debió haber corrido) hasta
+ * `hasta` inclusive. Fuera de eso la ausencia es el descanso, no una falla.
+ * Un cron sin `ventana` se vigila siempre.
+ */
+export function corresponderVigilar(
+  ventana: CronVigilado['ventana'],
+  maxHoras: number,
+  horaSantiago: number,
+): boolean {
+  if (!ventana) return true;
+  return horaSantiago >= ventana.desde + Math.ceil(maxHoras) && horaSantiago <= ventana.hasta;
 }
 
 /**
@@ -122,7 +168,9 @@ export const jobVerificarSalud = inngest.createFunction(
 
       const alertados: Array<{ jobId: string; motivo: string }> = [];
 
+      const horaSantiago = horaEnSantiago(ahoraMs);
       for (const vig of CRONS_VIGILADOS) {
+        if (!corresponderVigilar(vig.ventana, vig.maxHoras, horaSantiago)) continue;
         const fila = porJob.get(vig.jobId);
         const motivo = motivoCronSinSalud(fila, vig.maxHoras, ahoraMs);
         if (!motivo) continue;
