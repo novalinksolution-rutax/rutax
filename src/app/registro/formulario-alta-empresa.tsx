@@ -39,6 +39,7 @@ import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
 import { createClient } from "@/lib/supabase/client";
 import { IconoGoogle } from "@/components/identidad/icono-google";
 import { enviarCodigoRegistro, guardarBorradorTenant } from "./actions";
+import { iniciarLoginConGoogle } from "@/lib/supabase/iniciar-login-google";
 
 const MENSAJE_RUT_INVALIDO = "El dígito verificador no corresponde a este RUT.";
 const MENSAJE_RUT_FORMATO = "Ingresa el RUT con el formato 12.345.678-9.";
@@ -211,10 +212,10 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
       }
 
       const supabase = createClient();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
+      const { error } = await iniciarLoginConGoogle(
+        supabase,
+        `${window.location.origin}/auth/callback`,
+      );
 
       if (error) {
         setErrorGeneral({ tipo: "oauth", mensaje: "No pudimos conectar con Google. Intenta de nuevo." });

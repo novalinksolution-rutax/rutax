@@ -23,6 +23,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { IconoGoogle } from "@/components/identidad/icono-google";
 import { createClient } from "@/lib/supabase/client";
 import { iniciarRegistroSellerAction } from "./actions";
+import { iniciarLoginConGoogle } from "@/lib/supabase/iniciar-login-google";
 
 /** Traduce `?error=` que puede mandar `/auth/callback` de vuelta a esta landing. */
 function errorDesdeUrl(codigo: string | undefined): string | null {
@@ -61,10 +62,10 @@ export function FormularioContinuarGoogle({
       }
 
       const supabase = createClient();
-      const { error: errorOAuth } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
+      const { error: errorOAuth } = await iniciarLoginConGoogle(
+        supabase,
+        `${window.location.origin}/auth/callback`,
+      );
 
       if (errorOAuth) {
         setError("No pudimos conectar con Google. Intenta de nuevo.");

@@ -37,6 +37,7 @@ import { createClient } from "@/lib/supabase/client";
 import { IconoGoogle } from "@/components/identidad/icono-google";
 import { IngresaCodigo } from "@/components/identidad/ingresa-codigo";
 import { enviarCodigoLogin, verificarCodigoLogin } from "./actions";
+import { iniciarLoginConGoogle } from "@/lib/supabase/iniciar-login-google";
 
 /** Pasado esto, entrar dejó de parecer normal y hay que decirlo. */
 const MS_TARDANZA = 4000;
@@ -110,10 +111,10 @@ export function FormularioLogin({ errorInicial }: { errorInicial?: string }) {
 
     try {
       const supabase = createClient();
-      const { error: errorOauth } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
+      const { error: errorOauth } = await iniciarLoginConGoogle(
+        supabase,
+        `${window.location.origin}/auth/callback`,
+      );
 
       if (errorOauth) {
         setError({ mensaje: "No pudimos conectar con Google. Intenta de nuevo." });

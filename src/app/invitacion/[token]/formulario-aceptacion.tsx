@@ -49,6 +49,7 @@ import { createClient } from "@/lib/supabase/client";
 import { IconoGoogle } from "@/components/identidad/icono-google";
 import { IngresaCodigo } from "@/components/identidad/ingresa-codigo";
 import type { Rol } from "@/modules/identidad/roles";
+import { iniciarLoginConGoogle } from "@/lib/supabase/iniciar-login-google";
 
 import {
   enviarCodigoInvitacion,
@@ -175,10 +176,10 @@ function FormularioPasswordless({
       }
 
       const supabase = createClient();
-      const { error: errorOauth } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
-      });
+      const { error: errorOauth } = await iniciarLoginConGoogle(
+        supabase,
+        `${window.location.origin}/auth/callback`,
+      );
 
       if (errorOauth) {
         setError("No pudimos conectar con Google. Intenta de nuevo.");
