@@ -6,11 +6,15 @@ investigado y validado en vivo (§5b); diseño ratificado por `arquitecto`; migr
 eventos + webhook por-tenant + job de matching + cron de morosidad + acciones de
 resolución manual, y pantallas (onboarding "conectar banco", bandeja de revisión,
 estado de cobro en `(tenant)` y `portal`). QA halló y corrigió 2 bugs de doble
-imputación. Verde: typecheck, 607 Vitest, 168 pgTAP. **Pendiente:** validar la
-forma/firma del webhook real `transfer.inbound.succeeded` en ambiente de
-integración (el sandbox no lo dispara), y conectar el flujo 2 (suscripción). El
+imputación. Verde: typecheck, 607 Vitest, 168 pgTAP. **Pendiente:** conectar el flujo 2 (suscripción). El
 adaptador Fintoc NO emite cobros reales sin cuenta productiva (KYC) — sigue en
 modo prueba.
+
+**Actualización 2026-09-26 — el pendiente del webhook `transfer.inbound.succeeded`
+está CERRADO, y cerrarlo destapó un bug que habría anulado la conciliación
+automática en producción.** La FIRMA estaba bien (ahora anclada al vector oficial
+del SDK de Fintoc, no a nuestra propia aritmética); la FORMA del payload estaba mal
+leída. Detalle en §5c.
 
 **Por qué Fintoc (y no Khipu):** un solo proveedor cubre los DOS flujos del
 frente (conciliación de cobranza + suscripción recurrente), con un solo KYC y un
@@ -171,11 +175,97 @@ remitente.** El matching de cobranza, por tanto:
    `transfer_id`; en producción la glosa (`comment`) PUEDE traer datos útiles
    pero **no es confiable** como llave única → solo señal auxiliar.
 
-### Pendiente de validar (no observable en sandbox)
-- Forma del webhook `transfer.inbound.succeeded` y su **firma** (el sandbox no
-  dispara webhooks de transferencia entrante de forma trivial) → se valida con un
-  endpoint de prueba o en el ambiente de integración. La validación de firma es
-  obligatoria (Fintoc sí firma, a diferencia de ML).
+### Pendiente de validar (no observable en sandbox) — CERRADO el 2026-09-26, ver §5c
+- ~~Forma del webhook `transfer.inbound.succeeded` y su **firma**~~ → resuelto en §5c.
+
+## 5c. Cierre del pendiente del webhook `transfer.inbound.succeeded` (26-sep-2026)
+
+Se cerró SIN necesidad de que Fintoc disparara el evento, usando fuentes
+autoritativas descargables. Dos mitades con resultados opuestos.
+
+### La FIRMA estaba correcta — y ahora está ANCLADA, no supuesta
+Nuestro esquema (header `Fintoc-Signature`, `t=<ts>,v1=<hex>`, HMAC-SHA256 sobre
+`"<timestamp>.<raw_body>"`, tolerancia 300 s, comparación de tiempo constante) se
+verificó contra el **SDK oficial `fintoc@1.27.0`** (`lib/webhook.js`, clase
+`WebhookSignature`): coincide campo por campo. Solo existe `v1`; no hay v2 ni
+multi-secreto.
+
+⚠️ **El harness anterior no probaba nada.** `scripts/validacion-firma-webhook-fintoc.mjs`
+firmaba con un HMAC escrito dentro del propio script y lo verificaba con una
+reimplementación del algoritmo en el mismo script. Un error compartido por ambos
+lados habría pasado en verde con la integración rota — el mismo patrón de los tests
+de `conciliar-periodo` que reimplementaban la lógica y del pgTAP que reponía el
+CHECK que debía detectar. **Tercera aparición del mismo defecto en el proyecto.**
+Los tests de firma de `adaptador.test.ts` tenían la misma debilidad (firmaban con su
+propio `firmar()`).
+
+La prueba real ahora es `src/modules/integraciones/pagos/vector-oficial-fintoc.test.ts`:
+usa el **vector publicado por el SDK** (payload, secreto `whsec_test_secret`,
+`t=1743890251`, firma `11b98dd8f5500109246aa4d9875fad2e97d462560b012a5f50ff924411de0b0f`).
+Esa firma la produjo el código de Fintoc, no el nuestro. El vector se pasa por las
+DOS implementaciones que tiene el repo (el helper compartido
+`firma-webhook-fintoc.ts` que usan payout/suscripción, y el método propio del
+`FintocAdapter` que usa cobranza), así que también prueba que no divergieron.
+
+### La FORMA estaba MAL — bug real, silencioso, en el diferenciador
+**El `data` de `transfer.inbound.succeeded` NO es un `Movement`: es un objeto
+`Transfer`, y los campos clave tienen otro nombre.**
+
+| Dato | `Movement` (API de movimientos) | `Transfer` (webhook) |
+| --- | --- | --- |
+| Contraparte | `sender_account.holder_id` | **`counterparty.holder_id`** |
+| Clase | `type: 'transfer' \| 'other'` | **`object: 'transfer'`** (no hay `type`) |
+| Dirección | signo de `amount` | **`direction: 'inbound' \| 'outbound'`** |
+| Formato del RUT | sin puntos ni guion (`745931278`) | **con guion** (`74.593.127-8`) |
+
+`mapearMovimiento` solo leía los nombres del `Movement`. Consecuencia en
+producción: **toda** transferencia real habría entrado con
+`contraparteRutNormalizado: null` y `tipo: 'otro'` → el paso 2 del matching (atribuir
+por RUT) nunca habría encontrado al seller → **el 100% de los pagos caía a
+`sin_atribuir`**, dejando la conciliación automática —el diferenciador del
+producto— convertida en triaje manual. Y sin fallar: el webhook responde 200, la
+fila se escribe, ningún job se cae, ninguna alerta suena. Solo se habría notado
+como "la conciliación automática no sirve".
+
+Corregido en `fintoc/adaptador.ts`: la contraparte se lee de
+`sender_account ?? counterparty`; la clase acepta `type === 'transfer'`,
+`object === 'transfer'` o la presencia de `direction`; y `esEntrante` usa
+`direction` como señal **autoritativa** cuando viene, cayendo al signo del monto
+solo para los `Movement` (que no traen `direction`). **El monto se conserva tal cual
+lo reporta el proveedor** — nunca se reescribe una cifra de dinero para que calce con
+la dirección. `normalizarRut` ya toleraba ambos formatos de RUT: esa decisión
+defensiva de junio es la que evitó un segundo bug aquí.
+
+Regresión: 8 tests nuevos en `fintoc/adaptador.test.ts` (verificados fallando 3 con
+el bug reintroducido a propósito, para no repetir el caso de las pruebas que pasan
+en verde con el bug vivo) y 10 en
+`src/app/api/webhooks/fintoc/[tenantId]/route.test.ts` — **la ruta de cobranza era el
+único webhook de Fintoc sin pruebas de ruta**. Ese test, a diferencia del de payout,
+NO mockea la firma: ejerce la cadena real (HMAC real → adaptador real → ruta real).
+
+### El sandbox SÍ puede disparar el evento
+La premisa de §5b ("el sandbox no lo dispara trivialmente") es falsa: Fintoc expone
+un endpoint para **simular la recepción de una transferencia entrante**
+(`docs.fintoc.com/reference/receive-an-inbound-transfer`, referenciado por el SDK de
+Python). Es el camino para la validación en vivo antes de producción.
+
+### Dos hallazgos NO corregidos (decisión pendiente del dueño)
+1. **No hay respaldo si el webhook se pierde.** `listarMovimientos` —la única parte
+   de este frente validada en vivo contra la API real en junio— **no tiene un solo
+   llamador en el repositorio**. El webhook es la ÚNICA vía por la que un pago entra
+   a `pagos_recibidos`. Si Fintoc no entrega un evento (caída del endpoint,
+   despliegue, 5xx sostenido), ese pago **no se concilia nunca y nadie se entera**:
+   el período queda impago, el cron de morosidad alerta al seller que sí pagó. El
+   diseño original preveía `account.refresh_intent.succeeded` como respaldo de
+   polling; nunca se cableó. Es el patrón de fallo silencioso que el proyecto ya
+   corrigió dos veces (la ingesta de pedidos Flex que no existía, y el aviso de
+   WhatsApp sin destinatarios que quedaba verde).
+2. **La ruta exige `FINTOC_SECRET_KEY` para validar una firma que no la necesita.**
+   `crearPuertoConciliacionPagos` llama a `leerSecretKeyOrg()`, que **lanza** si la
+   variable falta, y en la ruta esa llamada está FUERA del `try`. Si la key no está
+   cargada (o se rota mal), cada webhook responde 500 y Fintoc reintenta en bucle,
+   en vez de degradar limpio. Validar la firma solo necesita el secreto por-tenant;
+   el constructor del adaptador ya acepta `null` como secret key.
 
 ## 6. Próximos pasos (orden de construcción)
 1. `arquitecto` ratifica el modelo de datos (¿`pagado` en el enum vs derivado?) y

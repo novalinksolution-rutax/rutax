@@ -1,146 +1,204 @@
 /**
- * Harness de VALIDACIÓN de la firma de webhook de Fintoc.
+ * Emisor de un webhook `transfer.inbound.succeeded` FIRMADO contra un endpoint real.
  * =============================================================================
  *
- * Objetivo: validar nuestra implementación de `validarFirmaWebhook` SIN depender
- * de que Fintoc dispare un webhook real (el sandbox no los emite de forma
- * trivial para transferencias entrantes — ver `docs/arquitectura/cobranza-fintoc.md`
- * §5b "Pendiente de validar"). Construye un payload + firma de prueba con el
- * MISMO esquema que la doc oficial de Fintoc
- * (https://docs.fintoc.com/docs/webhooks-validating) y verifica que:
- *   1) una firma válida se ACEPTA,
- *   2) una firma manipulada se RECHAZA,
- *   3) un cuerpo alterado tras firmar se RECHAZA,
- *   4) un timestamp viejo (replay) se RECHAZA.
+ * QUÉ HACE: construye el evento con la forma REAL del objeto `Transfer` de Fintoc,
+ * lo firma con el secreto del Webhook Endpoint del tenant (mismo esquema que
+ * Fintoc: HMAC-SHA256 hex sobre "<ts>.<raw_body>", header `t=,v1=`) y lo POSTea a
+ * `/api/webhooks/fintoc/{tenantId}`. Sirve para probar el endpoint DESPLEGADO
+ * antes de que se mueva dinero real.
  *
- * Reimplementa el MISMO algoritmo del adaptador (`validarFirmaWebhook`) en JS
- * puro, para no requerir transpilar TS en este script `.mjs`. Si ambos
- * coinciden, queda demostrado que el esquema (HMAC-SHA256 sobre
- * "<timestamp>.<raw_body>", header `t=,v1=`, tolerancia 300 s) está bien armado.
+ * POR QUÉ SE REESCRIBIÓ (2026-09-26): la versión anterior reimplementaba el
+ * algoritmo de firma DENTRO del propio script y lo verificaba contra esa misma
+ * reimplementación. No probaba una sola línea del código de producción: si ambos
+ * lados compartían un error, el script decía "✓ TODOS los casos pasaron" con la
+ * integración rota. Es el patrón que ya mordió al proyecto dos veces (los tests de
+ * `conciliar-periodo` que reimplementaban la lógica, y el pgTAP que reponía el
+ * CHECK que debía detectar).
  *
- * Uso:  node scripts/validacion-firma-webhook-fintoc.mjs
+ * DÓNDE VIVE AHORA LA PRUEBA DEL ALGORITMO (no aquí):
+ *  - `src/modules/integraciones/pagos/vector-oficial-fintoc.test.ts` — ancla
+ *    nuestro verificador al VECTOR OFICIAL del SDK `fintoc@1.27.0` (firma
+ *    producida por Fintoc, no por nosotros).
+ *  - `src/app/api/webhooks/fintoc/[tenantId]/route.test.ts` — la ruta completa con
+ *    firma real y la forma real del evento.
+ * Este script NO reemplaza a esos tests: prueba el DESPLIEGUE (URL, secreto
+ * cargado, ruta viva), no la matemática.
+ *
+ * ⚠️ EFECTO REAL: un evento con firma válida CREA una fila en
+ * `dinero.pagos_recibidos` y puede conciliar un período, marcando como pagada una
+ * factura que nadie pagó. Por eso, contra una URL que no sea local, el script
+ * exige `--si-esto-es-produccion-lo-asumo` y usa ids reconocibles (prefijo
+ * `tr_PRUEBA_`) para que la fila se pueda encontrar y borrar después.
+ *
+ * Uso:
+ *   node scripts/validacion-firma-webhook-fintoc.mjs \
+ *     --url http://localhost:3000 \
+ *     --tenant 11111111-2222-3333-4444-555555555555 \
+ *     --secreto whsec_... \
+ *     [--rut 74.593.127-8] [--monto 238000] [--caso firma-invalida|replay|saliente]
+ *
+ * El secreto puede venir también en la variable de entorno FINTOC_WEBHOOK_SECRETO
+ * para no dejarlo en el historial del shell.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 
-const TOLERANCIA_SEGUNDOS = 300;
-
-function linea(s = "") {
-  console.log(s);
-}
-
-/** Construye un header `Fintoc-Signature` válido (lo que Fintoc enviaría). */
-function firmar(cuerpoCrudo, secreto, timestampSeg) {
-  const firma = createHmac("sha256", secreto)
-    .update(`${timestampSeg}.${cuerpoCrudo}`, "utf8")
-    .digest("hex");
-  return `t=${timestampSeg},v1=${firma}`;
-}
-
-/** Réplica del algoritmo del adaptador (debe coincidir byte a byte). */
-function validarFirmaWebhook({ cuerpoCrudo, firmaHeader, secretoWebhook }) {
-  if (!firmaHeader || typeof firmaHeader !== "string") return false;
-
-  let timestamp = null;
-  let firmaRecibida = null;
-  for (const segmento of firmaHeader.split(",")) {
-    const i = segmento.indexOf("=");
-    if (i === -1) continue;
-    const clave = segmento.slice(0, i).trim();
-    const valor = segmento.slice(i + 1).trim();
-    if (clave === "t") {
-      const n = Number(valor);
-      if (Number.isFinite(n)) timestamp = n;
-    } else if (clave === "v1") {
-      firmaRecibida = valor;
+function leerArgs(argv) {
+  const args = {};
+  for (let i = 2; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (!a.startsWith("--")) continue;
+    const clave = a.slice(2);
+    const siguiente = argv[i + 1];
+    if (!siguiente || siguiente.startsWith("--")) {
+      args[clave] = true;
+    } else {
+      args[clave] = siguiente;
+      i += 1;
     }
   }
-  if (timestamp === null || !firmaRecibida) return false;
-
-  const ahoraSeg = Math.floor(Date.now() / 1000);
-  if (Math.abs(ahoraSeg - timestamp) > TOLERANCIA_SEGUNDOS) return false;
-
-  const esperada = createHmac("sha256", secretoWebhook)
-    .update(`${timestamp}.${cuerpoCrudo}`, "utf8")
-    .digest("hex");
-
-  const a = Buffer.from(esperada, "utf8");
-  const b = Buffer.from(firmaRecibida, "utf8");
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+  return args;
 }
 
-function caso(nombre, esperado, real) {
-  const ok = esperado === real;
-  linea(`${ok ? "✓" : "✗"} ${nombre} → esperado=${esperado}, real=${real}`);
-  return ok;
+function salirConError(mensaje) {
+  console.error(`✗ ${mensaje}`);
+  process.exit(1);
 }
 
-function main() {
-  const secreto = "whsec_demo_para_harness";
-  const cuerpo = JSON.stringify({
-    id: "evt_DyzYBwdC07ao5MqG",
+/** Firma como firma Fintoc. Mismo esquema anclado al vector oficial del SDK. */
+function firmar(cuerpoCrudo, secreto, tsSeg) {
+  const firma = createHmac("sha256", secreto).update(`${tsSeg}.${cuerpoCrudo}`, "utf8").digest("hex");
+  return `t=${tsSeg},v1=${firma}`;
+}
+
+/**
+ * Evento con la forma REAL del `Transfer` de Fintoc (verificada contra la doc
+ * oficial y el SDK, sep-2026): `object: 'transfer'`, `direction`, y la contraparte
+ * en `counterparty` — NO `sender_account`, que es del recurso `Movement`.
+ */
+function construirEvento({ montoClp, rut, direction }) {
+  const marca = Date.now();
+  return {
+    id: `evt_PRUEBA_${marca}`,
     type: "transfer.inbound.succeeded",
     mode: "test",
+    object: "event",
+    created_at: new Date().toISOString(),
     data: {
-      id: "mov_abc123",
-      amount: 150000,
+      id: `tr_PRUEBA_${marca}`,
+      object: "transfer",
+      direction,
+      status: "succeeded",
+      amount: montoClp,
       currency: "CLP",
-      type: "transfer",
-      post_date: "2026-06-10T12:00:00Z",
-      status: "confirmed",
-      sender_account: { holder_id: "745931278", holder_name: "Seller SpA" },
+      post_date: new Date().toISOString(),
+      transaction_date: new Date().toISOString(),
+      comment: "PRUEBA DE ENDPOINT — NO ES UN PAGO REAL",
+      reference_id: `REF_PRUEBA_${marca}`,
+      counterparty: {
+        holder_id: rut,
+        holder_name: "Seller de Prueba SpA",
+        account_number: "998877665544",
+        type: "checking_account",
+      },
     },
-  });
+  };
+}
+
+async function main() {
+  const args = leerArgs(process.argv);
+
+  const base = (args.url ?? "http://localhost:3000").replace(/\/+$/, "");
+  const tenantId = args.tenant;
+  const secreto = args.secreto ?? process.env.FINTOC_WEBHOOK_SECRETO;
+  const montoClp = Number(args.monto ?? 238000);
+  const rut = args.rut ?? "74.593.127-8";
+  const caso = args.caso ?? "valido";
+
+  if (!tenantId) salirConError("falta --tenant <uuid del courier>");
+  if (!secreto) {
+    salirConError(
+      "falta el secreto del Webhook Endpoint: pásalo con --secreto o en FINTOC_WEBHOOK_SECRETO",
+    );
+  }
+  if (!Number.isInteger(montoClp) || montoClp <= 0) {
+    salirConError("--monto debe ser un entero CLP positivo");
+  }
+
+  const esLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(base);
+  if (!esLocal && args["si-esto-es-produccion-lo-asumo"] !== true) {
+    salirConError(
+      `la URL ${base} no es local y un evento firmado CREA una fila de pago real ` +
+        "(y puede marcar pagada una factura impaga). Si de verdad quieres enviarlo, " +
+        "repite el comando con --si-esto-es-produccion-lo-asumo",
+    );
+  }
+
+  const direction = caso === "saliente" ? "outbound" : "inbound";
+  const evento = construirEvento({ montoClp, rut, direction });
+  // El cuerpo se serializa UNA vez: la firma es sobre estos bytes exactos.
+  const cuerpoCrudo = JSON.stringify(evento);
 
   const ahora = Math.floor(Date.now() / 1000);
-  const headerValido = firmar(cuerpo, secreto, ahora);
-  const headerManipulado =
-    headerValido.slice(0, -1) + (headerValido.slice(-1) === "a" ? "b" : "a");
-  const headerViejo = firmar(cuerpo, secreto, ahora - 3600); // replay
+  let firmaHeader;
+  if (caso === "firma-invalida") {
+    firmaHeader = firmar(cuerpoCrudo, `${secreto}_alterado`, ahora);
+  } else if (caso === "replay") {
+    firmaHeader = firmar(cuerpoCrudo, secreto, ahora - 3600);
+  } else {
+    firmaHeader = firmar(cuerpoCrudo, secreto, ahora);
+  }
 
-  linea("=".repeat(78));
-  linea("VALIDACIÓN DE FIRMA DE WEBHOOK FINTOC (HMAC-SHA256 sobre '<ts>.<body>')");
-  linea("Fuente del esquema: https://docs.fintoc.com/docs/webhooks-validating");
-  linea("=".repeat(78));
+  const url = `${base}/api/webhooks/fintoc/${tenantId}`;
+  const esperado = {
+    valido: "200 con {ok:true} y un evento dinero/pago.recibido en Inngest",
+    "firma-invalida": "401 firma_invalida, sin efectos",
+    replay: "401 firma_invalida (fuera de la ventana anti-replay), sin efectos",
+    saliente: "200 con {no_entrante:true}, sin evento",
+  }[caso];
 
-  const resultados = [
-    caso(
-      "firma válida se ACEPTA",
-      true,
-      validarFirmaWebhook({ cuerpoCrudo: cuerpo, firmaHeader: headerValido, secretoWebhook: secreto }),
-    ),
-    caso(
-      "firma manipulada se RECHAZA",
-      false,
-      validarFirmaWebhook({ cuerpoCrudo: cuerpo, firmaHeader: headerManipulado, secretoWebhook: secreto }),
-    ),
-    caso(
-      "cuerpo alterado tras firmar se RECHAZA",
-      false,
-      validarFirmaWebhook({ cuerpoCrudo: cuerpo + " ", firmaHeader: headerValido, secretoWebhook: secreto }),
-    ),
-    caso(
-      "secreto incorrecto se RECHAZA",
-      false,
-      validarFirmaWebhook({ cuerpoCrudo: cuerpo, firmaHeader: headerValido, secretoWebhook: "whsec_otro" }),
-    ),
-    caso(
-      "timestamp viejo (replay) se RECHAZA",
-      false,
-      validarFirmaWebhook({ cuerpoCrudo: cuerpo, firmaHeader: headerViejo, secretoWebhook: secreto }),
-    ),
-    caso(
-      "header con formato inválido se RECHAZA",
-      false,
-      validarFirmaWebhook({ cuerpoCrudo: cuerpo, firmaHeader: "garbage", secretoWebhook: secreto }),
-    ),
-  ];
+  console.log("=".repeat(78));
+  console.log("ENVÍO DE WEBHOOK FIRMADO — transfer.inbound.succeeded");
+  console.log("=".repeat(78));
+  console.log(`destino     : ${url}`);
+  console.log(`caso        : ${caso}`);
+  console.log(`esperado    : ${esperado ?? "(caso desconocido)"}`);
+  console.log(`monto       : ${montoClp} CLP`);
+  console.log(`direction   : ${direction}`);
+  console.log(`transfer id : ${evento.data.id}   ← búscalo para borrar la fila después`);
+  console.log(`firma       : t=…,v1=… (secreto NO se imprime)`);
+  console.log("-".repeat(78));
 
-  linea("=".repeat(78));
-  const todos = resultados.every(Boolean);
-  linea(todos ? "✓ TODOS los casos pasaron." : "✗ HAY casos fallidos — revisa el esquema de firma.");
-  process.exit(todos ? 0 : 1);
+  let respuesta;
+  try {
+    respuesta = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "Fintoc-Signature": firmaHeader },
+      body: cuerpoCrudo,
+    });
+  } catch (error) {
+    salirConError(`no se pudo conectar a ${url}: ${error instanceof Error ? error.message : error}`);
+  }
+
+  const texto = await respuesta.text();
+  console.log(`HTTP ${respuesta.status}`);
+  console.log(texto || "(cuerpo vacío)");
+  console.log("=".repeat(78));
+
+  const okEsperado =
+    caso === "firma-invalida" || caso === "replay" ? respuesta.status === 401 : respuesta.status === 200;
+  if (!okEsperado) {
+    console.error("✗ el endpoint NO respondió lo esperado para este caso.");
+    process.exit(1);
+  }
+  console.log("✓ el endpoint respondió lo esperado.");
+  if (caso === "valido") {
+    console.log(
+      "→ Verifica ahora en Inngest que corrió dinero/conciliarPago, y en " +
+        "dinero.pagos_recibidos que la fila quedó con el RUT de la contraparte atribuido.",
+    );
+  }
 }
 
 main();

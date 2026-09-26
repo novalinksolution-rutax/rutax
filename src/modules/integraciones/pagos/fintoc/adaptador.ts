@@ -82,31 +82,72 @@ const TOLERANCIA_FIRMA_SEGUNDOS = 300;
 // cruza la frontera del adaptador (el núcleo solo ve `MovimientoPago`).
 // ---------------------------------------------------------------------------
 
-interface FintocSenderAccount {
-  /** RUT del titular, SIN puntos ni guion (p. ej. "745931278"). NULLABLE. */
+interface FintocTitularCuenta {
+  /**
+   * RUT del titular. Llega SIN puntos ni guion en un `Movement` (p. ej.
+   * "745931278") pero CON guion en un `Transfer` (p. ej. "11111111-1") — por eso
+   * `normalizarRut` canoniza ambas formas antes de comparar. NULLABLE.
+   */
   holder_id?: string | null;
   holder_name?: string | null;
   number?: string | null;
   institution?: { id?: string; name?: string } | string | null;
 }
 
-interface FintocMovement {
+/**
+ * Forma parcial de los DOS recursos distintos que este adaptador normaliza al
+ * mismo `MovimientoPago`. NO son el mismo objeto, y confundirlos fue un bug real:
+ *
+ * 1. **`Movement`** (API de movimientos, `GET /accounts/{id}/movements`) —
+ *    verificado en vivo jun-2026. Usa `type: 'transfer'|'other'`,
+ *    `sender_account`, y el SIGNO de `amount` indica la dirección.
+ *
+ * 2. **`Transfer`** (el `data` del webhook `transfer.inbound.succeeded`) —
+ *    verificado contra la doc oficial y el SDK sep-2026. Usa
+ *    `object: 'transfer'`, `direction: 'inbound'|'outbound'` y **`counterparty`**
+ *    (NO `sender_account`), y `amount` es el valor de la transferencia: la
+ *    dirección la da `direction`, no el signo.
+ *
+ * ⚠️ El campo de la contraparte y el de la dirección tienen NOMBRE DISTINTO en
+ * cada recurso. Leer solo los del `Movement` deja `contraparteRutNormalizado` en
+ * `null` y `tipo` en `'otro'` para TODA transferencia real que llegue por webhook
+ * — sin que nada falle: el webhook responde 200 y cada pago cae a
+ * `sin_atribuir`, convirtiendo la conciliación automática en triaje manual.
+ */
+interface FintocMovimientoOTransferencia {
   id: string;
-  description?: string | null;
-  /** Entero CLP. Positivo = entra dinero a la cuenta del courier. */
+  /** Entero CLP. En `Movement`, positivo = entra. En `Transfer`, ver `direction`. */
   amount: number;
   currency?: string | null;
   post_date?: string | null;
   transaction_date?: string | null;
-  type?: string | null; // 'transfer' | 'other' | …
-  sender_account?: FintocSenderAccount | null;
-  recipient_account?: unknown;
   comment?: string | null;
   reference_id?: string | null;
+  status?: string | null;
+
+  // --- Solo `Movement` ---
+  description?: string | null;
+  /** 'transfer' | 'other' | … — NO existe en un `Transfer`. */
+  type?: string | null;
+  /** Contraparte en un `Movement`. NULLABLE (~81/300 movimientos lo traen). */
+  sender_account?: FintocTitularCuenta | null;
+  recipient_account?: unknown;
   transfer_id?: string | null;
   document_number?: string | null;
   pending?: boolean | null;
-  status?: string | null;
+
+  // --- Solo `Transfer` (webhook `transfer.inbound.succeeded`) ---
+  /** Tipo de recurso: `'transfer'` en el objeto Transfer. */
+  object?: string | null;
+  /** Dirección AUTORITATIVA de la transferencia; no se infiere del signo. */
+  direction?: string | null;
+  /** Contraparte en un `Transfer` — el equivalente de `sender_account`. */
+  counterparty?: FintocTitularCuenta | null;
+  /** Cuenta propia que recibió/originó la transferencia. */
+  account_number?: unknown;
+  tracking_key?: string | null;
+  receipt_url?: string | null;
+  return_reason?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,11 +256,9 @@ export class FintocAdapter implements PuertoConciliacionPagos {
       const ruta = `/accounts/${encodeURIComponent(cuenta.id)}/movements?${qs.toString()}`;
       const rutaSaneada = `/accounts/${cuenta.id}/movements`;
 
-      const lista = await this.peticion<FintocMovement[] | { data?: FintocMovement[] }>(
-        ruta,
-        secretKey,
-        rutaSaneada,
-      );
+      const lista = await this.peticion<
+        FintocMovimientoOTransferencia[] | { data?: FintocMovimientoOTransferencia[] }
+      >(ruta, secretKey, rutaSaneada);
       const crudos = Array.isArray(lista) ? lista : (lista.data ?? []);
       for (const m of crudos) movimientos.push(this.mapearMovimiento(m));
     }
@@ -278,7 +317,7 @@ export class FintocAdapter implements PuertoConciliacionPagos {
       );
     }
 
-    return this.mapearMovimiento(recurso as FintocMovement);
+    return this.mapearMovimiento(recurso as FintocMovimientoOTransferencia);
   }
 
   // -------------------------------------------------------------------------
@@ -286,19 +325,30 @@ export class FintocAdapter implements PuertoConciliacionPagos {
   // -------------------------------------------------------------------------
 
   /**
-   * Mapea un `Movement` crudo de Fintoc al `MovimientoPago` del dominio.
-   * Incluye la normalización de RUT y `type: 'transfer' → 'transferencia'`.
+   * Mapea un `Movement` (API de movimientos) O un `Transfer` (webhook
+   * `transfer.inbound.succeeded`) al `MovimientoPago` del dominio. Los dos
+   * recursos nombran distinto la contraparte y la dirección — ver la interfaz
+   * `FintocMovimientoOTransferencia`, donde está explicado el bug que causó
+   * leer solo los nombres del `Movement`.
    * Es la frontera: a partir de aquí el núcleo nunca ve la forma de Fintoc.
    */
-  private mapearMovimiento(m: FintocMovement): MovimientoPago {
-    const tipo: TipoMovimientoPago = m.type === "transfer" ? "transferencia" : "otro";
+  private mapearMovimiento(m: FintocMovimientoOTransferencia): MovimientoPago {
     const montoClp = typeof m.amount === "number" ? m.amount : 0;
 
-    // `sender_account` es NULLABLE (~81/300 movimientos lo traen). Si no vino,
-    // contraparte queda en null — NO se infiere (el matching cae a sin_atribuir).
-    const sender = m.sender_account ?? null;
-    const contraparteRutNormalizado = sender ? normalizarRut(sender.holder_id) : null;
-    const contraparteNombre = sender?.holder_name ?? null;
+    // Un `Transfer` no tiene `type`: se identifica por `object: 'transfer'` o por
+    // traer `direction`. Un `Movement` sí trae `type`. Se aceptan las dos señales
+    // para que ambos recursos mapeen a `transferencia` (atribuible a un seller).
+    const esTransferencia =
+      m.type === "transfer" || m.object === "transfer" || typeof m.direction === "string";
+    const tipo: TipoMovimientoPago = esTransferencia ? "transferencia" : "otro";
+
+    // La contraparte se llama `sender_account` en un `Movement` y `counterparty`
+    // en un `Transfer`. Ambos exponen `holder_id`/`holder_name`. Es NULLABLE en
+    // los dos casos (~81/300 movimientos lo traen); si no vino, queda en null —
+    // NO se infiere (el matching cae a `sin_atribuir`, no adivina).
+    const contraparte = m.sender_account ?? m.counterparty ?? null;
+    const contraparteRutNormalizado = contraparte ? normalizarRut(contraparte.holder_id) : null;
+    const contraparteNombre = contraparte?.holder_name ?? null;
 
     // Fecha del movimiento en ISO date. Preferimos `post_date`; si no, la fecha
     // de transacción. Si ninguna vino (sandbox a veces no las puebla), cae a
@@ -307,10 +357,19 @@ export class FintocAdapter implements PuertoConciliacionPagos {
       m.post_date ?? m.transaction_date ?? new Date(),
     );
 
+    // Dirección: en un `Transfer`, `direction` es AUTORITATIVA (el `amount` es el
+    // valor de la transferencia, no un monto con signo). En un `Movement` no hay
+    // `direction` y el signo del monto es la única señal. Se prefiere `direction`
+    // cuando viene; si no, se cae al signo. El monto se conserva TAL CUAL lo
+    // reportó el proveedor — nunca se reescribe una cifra de dinero para que
+    // calce con la dirección.
+    const esEntrante =
+      m.direction === "inbound" ? true : m.direction === "outbound" ? false : montoClp > 0;
+
     return {
       movimientoExternoId: m.id,
       montoClp,
-      esEntrante: montoClp > 0,
+      esEntrante,
       tipo,
       fechaMovimiento,
       contraparteRutNormalizado,

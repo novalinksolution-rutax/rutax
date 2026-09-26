@@ -226,3 +226,131 @@ describe("FintocAdapter — validarFirmaWebhook", () => {
     expect(typeof resultado).toBe("boolean");
   });
 });
+
+// ---------------------------------------------------------------------------
+// REGRESIÓN — forma REAL del evento `transfer.inbound.succeeded`.
+//
+// El `data` de este webhook NO es un `Movement`: es un objeto `Transfer`, con
+// `object: 'transfer'`, `direction: 'inbound'` y **`counterparty`** en vez de
+// `sender_account`, y sin campo `type`. El mapeo original solo leía los nombres
+// del `Movement`, así que toda transferencia real habría entrado con
+// `contraparteRutNormalizado: null` y `tipo: 'otro'` — respondiendo 200 y
+// mandando el 100% de los pagos a `sin_atribuir` sin que nada falle.
+//
+// Fuente de la forma: doc oficial de Fintoc (inbound transfers) + SDK
+// `fintoc@1.27.0`, verificado 2026-09-26. La prueba de que nuestra FIRMA
+// interopera con la de Fintoc vive en `../vector-oficial-fintoc.test.ts`.
+// ---------------------------------------------------------------------------
+
+describe("FintocAdapter — evento transfer.inbound.succeeded (objeto Transfer)", () => {
+  /** Envelope + Transfer con los nombres de campo REALES del webhook. */
+  const eventoReal = {
+    id: "evt_2AaZeLCz0GjOW5zj",
+    type: "transfer.inbound.succeeded",
+    mode: "live",
+    created_at: "2026-09-20T14:03:11.000Z",
+    object: "event",
+    data: {
+      id: "tr_9xKpQn2SGXRhXTKr",
+      object: "transfer",
+      direction: "inbound",
+      status: "succeeded",
+      amount: 238000,
+      currency: "CLP",
+      mode: "live",
+      post_date: "2026-09-20T14:03:05.000Z",
+      transaction_date: "2026-09-20T14:03:05.000Z",
+      comment: "PAGO FACTURA 1042",
+      reference_id: "REF-1042",
+      receipt_url: null,
+      tracking_key: "TRK-7781",
+      return_reason: null,
+      account_number: {
+        id: "acc_courier_001",
+        object: "account_number",
+        number: "001122334455",
+      },
+      // ⚠️ `counterparty`, NO `sender_account`. Y el RUT viene CON guion aquí.
+      counterparty: {
+        holder_id: "74.593.127-8",
+        holder_name: "Falabella Tech SpA",
+        account_number: "998877665544",
+        type: "checking_account",
+        institution: { id: "cl_banco_de_chile", name: "Banco de Chile" },
+      },
+    },
+  };
+
+  it("extrae el RUT de la contraparte desde `counterparty` (no `sender_account`)", () => {
+    const mov = adaptador.normalizarEventoTransferencia(eventoReal);
+
+    // Canonizado: sin puntos ni guion, para comparar contra el RUT del seller.
+    expect(mov.contraparteRutNormalizado).toBe("745931278");
+    expect(mov.contraparteNombre).toBe("Falabella Tech SpA");
+  });
+
+  it("clasifica como `transferencia` aunque el objeto Transfer no traiga `type`", () => {
+    const mov = adaptador.normalizarEventoTransferencia(eventoReal);
+    expect(mov.tipo).toBe("transferencia");
+  });
+
+  it("usa `direction: 'inbound'` como señal autoritativa de entrante", () => {
+    const mov = adaptador.normalizarEventoTransferencia(eventoReal);
+    expect(mov.esEntrante).toBe(true);
+    expect(mov.montoClp).toBe(238000);
+  });
+
+  it("marca NO entrante una transferencia saliente aunque el monto sea positivo", () => {
+    // En un `Transfer` el monto es el valor de la transferencia, no un monto con
+    // signo: fiarse del signo trataría una salida de dinero como un cobro.
+    const saliente = {
+      ...eventoReal,
+      data: { ...eventoReal.data, direction: "outbound" },
+    };
+    const mov = adaptador.normalizarEventoTransferencia(saliente);
+
+    expect(mov.esEntrante).toBe(false);
+    expect(mov.montoClp).toBe(238000); // el monto se conserva tal cual
+  });
+
+  it("toma el id del Transfer como llave de idempotencia", () => {
+    const mov = adaptador.normalizarEventoTransferencia(eventoReal);
+    expect(mov.movimientoExternoId).toBe("tr_9xKpQn2SGXRhXTKr");
+  });
+
+  it("preserva la glosa y el estado del proveedor", () => {
+    const mov = adaptador.normalizarEventoTransferencia(eventoReal);
+    expect(mov.glosa).toBe("PAGO FACTURA 1042");
+    expect(mov.estado).toBe("succeeded");
+  });
+
+  it("sigue mapeando un `Movement` clásico (no rompe la ruta de movimientos)", () => {
+    // El mismo mapeo sirve a `listarMovimientos`, donde SÍ existen `type` y
+    // `sender_account` y el signo del monto es la única señal de dirección.
+    const movement = {
+      id: "mov_abc123",
+      amount: 150000,
+      type: "transfer",
+      status: "confirmed",
+      post_date: "2026-09-20",
+      sender_account: { holder_id: "745931278", holder_name: "Falabella Tech SpA" },
+    };
+    const mov = adaptador.normalizarEventoTransferencia(movement);
+
+    expect(mov.tipo).toBe("transferencia");
+    expect(mov.esEntrante).toBe(true);
+    expect(mov.contraparteRutNormalizado).toBe("745931278");
+  });
+
+  it("deja la contraparte en null si el evento no trae ninguna de las dos formas", () => {
+    const sinContraparte = {
+      ...eventoReal,
+      data: { ...eventoReal.data, counterparty: null },
+    };
+    const mov = adaptador.normalizarEventoTransferencia(sinContraparte);
+
+    // No se inventa un RUT: el matching cae a `sin_atribuir` y lo ve un humano.
+    expect(mov.contraparteRutNormalizado).toBeNull();
+    expect(mov.contraparteNombre).toBeNull();
+  });
+});
