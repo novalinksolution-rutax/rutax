@@ -27,8 +27,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { EstadoError, EstadoVacio } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
+import { cn } from "@/lib/utils";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
-import { describirRol } from "@/modules/identidad/capacidades-legibles";
 import { PermisosPorRol } from "./permisos-por-rol";
 import { DialogoCambiarRol } from "./dialogo-cambiar-rol";
 import type { RolInterno } from "@/modules/identidad/roles";
@@ -136,8 +136,13 @@ export function PanelEquipo({
         <TabsList>
           <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="activos">Activos</TabsTrigger>
+          {/* En teléfono «Invitaciones pendientes» empuja la fila de pestañas
+              contra el borde. El contexto ya lo da el grupo: las otras dos
+              pestañas son «Todos» y «Activos». */}
           <TabsTrigger value="pendientes">
-            Invitaciones pendientes{totalPendientes > 0 ? ` (${totalPendientes})` : ""}
+            <span className="sm:hidden">Pendientes</span>
+            <span className="hidden sm:inline">Invitaciones pendientes</span>
+            {totalPendientes > 0 ? ` (${totalPendientes})` : ""}
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -186,7 +191,43 @@ export function PanelEquipo({
     );
   } else {
     contenido = (
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="rounded-lg border border-border">
+        {/* ─────────────────────────────────────────────────────────────
+            A 375 px la fila deja de ser una fila.
+            ──────────────────────────────────────────────────────────────
+            Mismo patrón que `/sellers` y `/operaciones`: se renderizan LAS
+            DOS formas y CSS elige. Decidirlo en JavaScript midiendo el ancho
+            sería peor — el servidor no sabe el ancho, así que la primera
+            pintura saldría con la forma equivocada y cambiaría delante del
+            usuario.
+
+            🔴 Sin esto, en teléfono había que arrastrar la tabla de lado para
+            llegar a la columna «Acciones» —la única accionable—, y nada en
+            pantalla delataba que estaba ahí.
+            ───────────────────────────────────────────────────────────── */}
+        <ul className="divide-y divide-border md:hidden">
+          {filas.map((fila) =>
+            fila.tipo === "usuario" ? (
+              <TarjetaUsuario
+                key={`tarjeta-usuario-${fila.usuario.id}`}
+                usuario={fila.usuario}
+                puedeGestionar={puedeGestionar}
+                onActualizado={actualizarUsuario}
+              />
+            ) : (
+              <TarjetaInvitacion
+                key={`tarjeta-invitacion-${fila.invitacion.id}`}
+                invitacion={fila.invitacion}
+                puedeInvitar={puedeInvitar}
+                puedeRevocar={puedeRevocar}
+                onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
+                onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
+              />
+            ),
+          )}
+        </ul>
+
+        <div className="hidden overflow-x-auto md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -224,6 +265,7 @@ export function PanelEquipo({
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
     );
   }
@@ -317,29 +359,16 @@ function FilaUsuario({
           </p>
         </div>
       </TableCell>
-      {/* 🔴 `whitespace-normal` NO es opcional acá, y no es cosmético.
-          `TableCell` de shadcn trae `whitespace-nowrap` de fábrica. Con
-          `max-w-72` la CAJA de la celda se queda en 288 px, pero el texto sigue
-          siendo una sola línea y **se pinta fuera**: medido en esta misma
-          pantalla, el párrafo del rol ocupaba 574 px dentro de una caja de 297
-          — 277 px de tinta encima de la columna de al lado.
-
-          ⚠️ Y falla de la peor manera para revisarlo: la caja mide bien.
-          `getBoundingClientRect` de la celda, del párrafo y de todo lo de
-          adentro da correcto, así que una comprobación de solapamiento por
-          rectángulos lo aprueba. Lo que se sale es la TINTA, y eso solo lo dice
-          `scrollWidth` contra `clientWidth`. */}
-      <TableCell className="max-w-72 whitespace-normal align-top">
+      {/* 🔴 Solo la etiqueta del rol, sin el párrafo de capacidades.
+          Acá se listaba `describirRol()` —«Dar de alta gente y cambiarle el
+          rol, … y 21 cosas más»— repetido en CADA fila. Era el texto más largo
+          de la tabla para el dato menos urgente, y ya está contestado, mejor y
+          completo, en «Qué puede hacer cada rol» al pie de la pantalla: los
+          cuatro roles con su «Puede» y su «No puede», derivados del mismo
+          catálogo. Repetirlo por fila obligaba a `max-w-72 whitespace-normal`
+          para que la tinta no se pintara sobre la columna de al lado. */}
+      <TableCell className="align-top">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
-        {/* 🔴 **Qué significa ese rol, DERIVADO del catálogo de capacidades.**
-            La etiqueta sola no dice nada, y para saber qué puede hacer un
-            coordinador había que abrir el panel de CAMBIARLE el rol a alguien:
-            una acción de mutación, solo para quien gestiona usuarios. Esto se
-            lee sin permiso y sin consecuencia, y no puede quedar desincronizado
-            —sale de `MATRIZ_ROL_CAPACIDADES`, no de una frase a mano—. La lista
-            completa de los cuatro roles está arriba, en «Qué puede hacer cada
-            rol». */}
-        <p className="mt-1 text-xs leading-snug text-fg-muted">{describirRol(usuario.rol)}</p>
       </TableCell>
       <TableCell>
         {/* Mismo render que las invitaciones de la columna de al lado: con
@@ -380,25 +409,105 @@ function FilaUsuario({
 }
 
 // -----------------------------------------------------------------------------
-// Fila — invitación, con acciones contextuales según estado (tabla §2.2)
+// Tarjeta — persona (teléfono)
 // -----------------------------------------------------------------------------
+/**
+ * La misma información que la fila, apilada y con las acciones como botones de
+ * verdad.
+ *
+ * ⚠️ En la tabla, cambiar el rol se abre **tocando la fila entera** — un gesto
+ * que en teléfono no se descubre y que compite con el scroll. Acá hay un botón
+ * «Cambiar rol» explícito.
+ */
+function TarjetaUsuario({
+  usuario,
+  puedeGestionar,
+  onActualizado,
+}: {
+  usuario: UsuarioEquipo;
+  puedeGestionar: boolean;
+  onActualizado: (u: UsuarioEquipo) => void;
+}) {
+  const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[usuario.rol];
+  const [panelRolAbierto, setPanelRolAbierto] = useState(false);
+  const activo = usuario.estado === "activo";
 
-function FilaInvitacion({
+  return (
+    <li className="space-y-2.5 px-4 py-3">
+      {/* El nombre y el correo mandan a lo ancho; los dos distintivos —rol y
+          estado— comparten su propia fila debajo. Ponerlos al lado del título
+          le robaba ancho justo al dato más largo: un correo de 34 caracteres
+          se partía a mitad de palabra. */}
+      <p className="break-words font-medium text-foreground">{usuario.nombreCompleto}</p>
+
+      <p className="break-words text-xs text-muted-foreground">
+        {usuario.email ?? "Sin correo registrado"}
+        <span className="text-fg-subtle"> · desde el {formatearFecha(usuario.creadoEn)}</span>
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
+        <DistintivoEstado
+          tono={activo ? "neutral" : "inert"}
+          etiqueta={activo ? "Activo" : "Suspendido"}
+        />
+      </div>
+
+      {puedeGestionar ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {activo ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11 flex-1"
+                onClick={() => setPanelRolAbierto(true)}
+              >
+                Cambiar rol
+              </Button>
+              <DialogoCambiarRol
+                usuarioId={usuario.id}
+                nombre={usuario.nombreCompleto}
+                rolActual={usuario.rol as RolInterno}
+                onCambiado={(rol) => onActualizado({ ...usuario, rol })}
+                abierto={panelRolAbierto}
+                onOpenChange={setPanelRolAbierto}
+              />
+            </>
+          ) : null}
+          <BotonSuspender usuario={usuario} onActualizado={onActualizado} presentacion="boton" />
+        </div>
+      ) : (
+        <p className="text-xs text-fg-muted">Solo el dueño puede cambiarlo</p>
+      )}
+    </li>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Acciones de una invitación — compartidas por la tarjeta (teléfono) y la fila
+// (escritorio).
+// -----------------------------------------------------------------------------
+/**
+ * Las dos formas se renderizan SIEMPRE y CSS elige cuál se ve, así que cada
+ * invitación tiene dos instancias montadas. La lógica vive acá una sola vez para
+ * que no se dupliquen los manejadores ni se desincronicen los textos.
+ *
+ * El estado local (`pendiente`, `mensaje`) sí queda por instancia, y está bien:
+ * es transitorio y solo una de las dos está a la vista. Lo que tiene que
+ * sobrevivir —el estado de la invitación— sube al padre por `onActualizar`.
+ */
+function useAccionesInvitacion({
   invitacion,
-  puedeInvitar,
-  puedeRevocar,
   onActualizar,
   onReemplazarPorNueva,
 }: {
   invitacion: InvitacionEquipo;
-  puedeInvitar: boolean;
-  puedeRevocar: boolean;
   onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
   onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
 }) {
   const [pendiente, setPendiente] = useState<"reenviar" | "reinvitar" | "revocar" | null>(null);
   const [mensaje, setMensaje] = useState<{ tipo: "exito" | "error"; texto: string } | null>(null);
-  const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[invitacion.rol];
 
   async function manejarReenviar() {
     setPendiente("reenviar");
@@ -458,6 +567,100 @@ function FilaInvitacion({
     onActualizar({ estado: "revocada" });
   }
 
+  return { pendiente, mensaje, manejarReenviar, manejarReinvitar, manejarRevocar };
+}
+
+/**
+ * Los botones que corresponden al estado de la invitación, en el mismo orden en
+ * las dos formas. En teléfono se estiran (`flex-1`) y respetan el alto mínimo de
+ * toque; en la tabla van compactos y alineados a la derecha.
+ */
+function AccionesInvitacion({
+  invitacion,
+  puedeInvitar,
+  puedeRevocar,
+  pendiente,
+  onReenviar,
+  onReinvitar,
+  onRevocar,
+  claseBoton,
+}: {
+  invitacion: InvitacionEquipo;
+  puedeInvitar: boolean;
+  puedeRevocar: boolean;
+  pendiente: "reenviar" | "reinvitar" | "revocar" | null;
+  onReenviar: () => void;
+  onReinvitar: () => void;
+  onRevocar: () => void;
+  claseBoton?: string;
+}) {
+  if (invitacion.estado === "pendiente") {
+    return (
+      <>
+        {puedeInvitar ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className={claseBoton}
+            disabled={pendiente !== null}
+            onClick={onReenviar}
+          >
+            {pendiente === "reenviar" ? "Reenviando…" : "Reenviar correo"}
+          </Button>
+        ) : null}
+        {puedeRevocar ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={claseBoton}
+            disabled={pendiente !== null}
+            onClick={onRevocar}
+          >
+            {pendiente === "revocar" ? "Revocando…" : "Revocar"}
+          </Button>
+        ) : null}
+      </>
+    );
+  }
+
+  if ((invitacion.estado === "expirada" || invitacion.estado === "revocada") && puedeInvitar) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className={claseBoton}
+        disabled={pendiente !== null}
+        onClick={onReinvitar}
+      >
+        {pendiente === "reinvitar" ? "Reinvitando…" : "Reinvitar"}
+      </Button>
+    );
+  }
+
+  return null;
+}
+
+// -----------------------------------------------------------------------------
+// Fila — invitación, con acciones contextuales según estado (tabla §2.2)
+// -----------------------------------------------------------------------------
+
+function FilaInvitacion({
+  invitacion,
+  puedeInvitar,
+  puedeRevocar,
+  onActualizar,
+  onReemplazarPorNueva,
+}: {
+  invitacion: InvitacionEquipo;
+  puedeInvitar: boolean;
+  puedeRevocar: boolean;
+  onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
+  onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
+}) {
+  const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[invitacion.rol];
+  const { pendiente, mensaje, manejarReenviar, manejarReinvitar, manejarRevocar } =
+    useAccionesInvitacion({ invitacion, onActualizar, onReemplazarPorNueva });
+
   return (
     <TableRow>
       <TableCell>
@@ -470,13 +673,10 @@ function FilaInvitacion({
           ) : null}
         </div>
       </TableCell>
-      {/* Mismo `whitespace-normal` que en la fila de persona — ver el porqué
-          allá arriba. Las dos filas pintan la misma descripción de rol. */}
-      <TableCell className="max-w-72 whitespace-normal align-top">
+      {/* Solo la etiqueta, igual que en la fila de persona — ver el porqué allá
+          arriba. */}
+      <TableCell className="align-top">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
-        {/* Igual que en la fila de una persona: al invitar es cuando MÁS
-            importa saber qué se está entregando. */}
-        <p className="mt-1 text-xs leading-snug text-fg-muted">{describirRol(invitacion.rol)}</p>
       </TableCell>
       {/* 🔴 UNA sola celda de Estado, no dos.
           Hasta el 26-08-2026 esta fila tenía CINCO celdas contra los CUATRO
@@ -499,28 +699,81 @@ function FilaInvitacion({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {invitacion.estado === "pendiente" ? (
-            <>
-              {puedeInvitar ? (
-                <Button variant="outline" size="sm" disabled={pendiente !== null} onClick={manejarReenviar}>
-                  {pendiente === "reenviar" ? "Reenviando…" : "Reenviar correo"}
-                </Button>
-              ) : null}
-              {puedeRevocar ? (
-                <Button variant="ghost" size="sm" disabled={pendiente !== null} onClick={manejarRevocar}>
-                  {pendiente === "revocar" ? "Revocando…" : "Revocar"}
-                </Button>
-              ) : null}
-            </>
-          ) : null}
-          {(invitacion.estado === "expirada" || invitacion.estado === "revocada") && puedeInvitar ? (
-            <Button variant="outline" size="sm" disabled={pendiente !== null} onClick={manejarReinvitar}>
-              {pendiente === "reinvitar" ? "Reinvitando…" : "Reinvitar"}
-            </Button>
-          ) : null}
+          <AccionesInvitacion
+            invitacion={invitacion}
+            puedeInvitar={puedeInvitar}
+            puedeRevocar={puedeRevocar}
+            pendiente={pendiente}
+            onReenviar={manejarReenviar}
+            onReinvitar={manejarReinvitar}
+            onRevocar={manejarRevocar}
+          />
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Tarjeta — invitación (teléfono)
+// -----------------------------------------------------------------------------
+/**
+ * Lo mismo que la fila, apilado. El motivo del rebote —que en la tabla obligaba
+ * a acotar la celda a `max-w-64` para no estirarla— acá dispone del ancho
+ * completo de la tarjeta, que es justo donde se quiere leer.
+ */
+function TarjetaInvitacion({
+  invitacion,
+  puedeInvitar,
+  puedeRevocar,
+  onActualizar,
+  onReemplazarPorNueva,
+}: {
+  invitacion: InvitacionEquipo;
+  puedeInvitar: boolean;
+  puedeRevocar: boolean;
+  onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
+  onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
+}) {
+  const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[invitacion.rol];
+  const { pendiente, mensaje, manejarReenviar, manejarReinvitar, manejarRevocar } =
+    useAccionesInvitacion({ invitacion, onActualizar, onReemplazarPorNueva });
+
+  return (
+    <li className="space-y-2.5 px-4 py-3">
+      {/* Misma estructura que la tarjeta de persona: el correo a lo ancho, y
+          rol + estado juntos debajo. */}
+      <p className="break-words font-medium text-foreground">{invitacion.email}</p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
+        <BadgeEstadoInvitacion estado={invitacion.estado} />
+      </div>
+
+      <div className="text-sm text-muted-foreground">
+        <p className="leading-snug">{copyDeApoyo(invitacion)}</p>
+        <AvisoEntrega estado={invitacion.emailEstado} motivo={invitacion.emailMotivo} />
+      </div>
+
+      {mensaje ? (
+        <p className={mensaje.tipo === "error" ? "text-xs text-destructive" : "text-xs text-success"}>
+          {mensaje.texto}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
+        <AccionesInvitacion
+          invitacion={invitacion}
+          puedeInvitar={puedeInvitar}
+          puedeRevocar={puedeRevocar}
+          pendiente={pendiente}
+          onReenviar={manejarReenviar}
+          onReinvitar={manejarReinvitar}
+          onRevocar={manejarRevocar}
+          claseBoton="min-h-11 flex-1"
+        />
+      </div>
+    </li>
   );
 }
 
@@ -635,38 +888,68 @@ function copyDeApoyo(invitacion: InvitacionEquipo): string {
 function BotonSuspender({
   usuario,
   onActualizado,
+  presentacion = "enlace",
 }: {
   usuario: UsuarioEquipo;
   onActualizado: (u: UsuarioEquipo) => void;
+  /**
+   * «enlace» en la tabla, donde convive con otras acciones de texto; «boton» en
+   * la tarjeta de teléfono, donde tiene que ser un objetivo de toque de verdad
+   * al lado de «Cambiar rol». Un enlace de 16 px de alto no se acierta con el
+   * pulgar.
+   */
+  presentacion?: "enlace" | "boton";
 }) {
   const [pendiente, iniciarTransicion] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const activo = usuario.estado === "activo";
+
+  function alternar() {
+    iniciarTransicion(async () => {
+      setError(null);
+      const { cambiarEstadoDePersona } = await import("./actions");
+      const r = await cambiarEstadoDePersona(usuario.id, !activo);
+      if (!r.ok) {
+        setError(r.mensaje);
+        return;
+      }
+      onActualizado({ ...usuario, estado: activo ? "suspendido" : "activo" });
+    });
+  }
+
+  const etiqueta = pendiente ? "…" : activo ? "Suspender" : "Reactivar";
+
+  if (presentacion === "boton") {
+    return (
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={pendiente}
+          onClick={alternar}
+          className={cn("min-h-11 w-full", activo ? "text-fault-fg" : "text-accent-text")}
+        >
+          {etiqueta}
+        </Button>
+        {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      </span>
+    );
+  }
 
   return (
     <span className="inline-flex flex-col items-end gap-0.5">
       <button
         type="button"
         disabled={pendiente}
-        onClick={() =>
-          iniciarTransicion(async () => {
-            setError(null);
-            const { cambiarEstadoDePersona } = await import("./actions");
-            const r = await cambiarEstadoDePersona(usuario.id, !activo);
-            if (!r.ok) {
-              setError(r.mensaje);
-              return;
-            }
-            onActualizado({ ...usuario, estado: activo ? "suspendido" : "activo" });
-          })
-        }
+        onClick={alternar}
         className={
           activo
             ? "text-xs font-medium text-fault-fg hover:underline disabled:opacity-50"
             : "text-xs font-medium text-accent-text hover:underline disabled:opacity-50"
         }
       >
-        {pendiente ? "…" : activo ? "Suspender" : "Reactivar"}
+        {etiqueta}
       </button>
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </span>
