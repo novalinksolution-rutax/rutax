@@ -61,8 +61,8 @@ export interface Magnitud {
    * Sin esto la magnitud es un índice, y la regla 1 dice que no.
    */
   denominador?: React.ReactNode;
-  /** La línea de abajo. El `›` lo agrega el componente. */
-  bajada: React.ReactNode;
+  /** La línea de abajo, solo cuando dice algo. El `›` lo agrega el componente. */
+  bajada?: React.ReactNode;
   /** El listado ya filtrado. Obligatorio: ver la regla 2. */
   href: string;
   /** Tiñe el fondo. Solo para lo que está mal. */
@@ -175,14 +175,16 @@ export function TarjetaMagnitud({
         ) : null}
       </p>
 
-      <p
-        className={cn(
-          "line-clamp-3 text-xs leading-snug sm:line-clamp-none",
-          tenida ? null : tintaCifra ? TINTA_POR_TONO[tintaCifra] : "text-fg-muted",
-        )}
-      >
-        {magnitud.bajada} <span aria-hidden="true">›</span>
-      </p>
+      {magnitud.bajada !== undefined ? (
+        <p
+          className={cn(
+            "line-clamp-3 text-xs leading-snug sm:line-clamp-none",
+            tenida ? null : tintaCifra ? TINTA_POR_TONO[tintaCifra] : "text-fg-muted",
+          )}
+        >
+          {magnitud.bajada} <span aria-hidden="true">›</span>
+        </p>
+      ) : null}
     </Link>
   );
 }

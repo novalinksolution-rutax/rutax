@@ -45,22 +45,15 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import {
   obtenerMetricasDelDia,
   obtenerResumenFinancieroDelMes,
-  obtenerSlaPorSeller,
-  type SlaPorSeller,
 } from "@/modules/operacion/metricas";
 import {
   contarConductoresEnRuta,
-  obtenerAsignacionListaEn,
-  obtenerComparacionAyerAEstaHora,
   obtenerSerieEntregasDiarias,
-  type ComparacionAyer,
   type DiaEntregas,
 } from "@/modules/operacion/magnitudes-dashboard";
 import { obtenerPorPagarConductores } from "@/modules/dinero/magnitudes-dashboard";
 import { obtenerFuga } from "@/modules/dinero/analitica";
 import { puedeVerReportesEjecutivos } from "@/modules/identidad/capacidades";
-import { WidgetSlaPorSeller } from "./widget-sla";
-import { RelojSantiago } from "./encabezado-dashboard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GraficoBarras } from "@/components/ui/chart";
@@ -73,11 +66,9 @@ import { esIncidenciaSinGestion } from "@/lib/ui/traduccion-estados";
 import type { EstadoIncidencia } from "@/modules/operacion/tipos";
 import {
   formatearClp,
-  formatearFechaCorta,
   formatearFechaLarga,
-  formatearHora,
 } from "@/lib/formato-cl";
-import { fechaLocalEnSantiago, hoyEnSantiago } from "@/lib/fecha-santiago";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
 import { contarFoliosDisponibles, nivelFolios } from "@/modules/dinero/folios-disponibles";
 
@@ -256,7 +247,7 @@ export default async function PaginaDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="font-heading text-2xl font-semibold">
+        <h1 className="font-heading text-xl font-semibold sm:text-2xl">
           Hoy, {hoy}
         </h1>
         <IndicadorEnVivo
@@ -286,23 +277,16 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
     metricas,
     financiero,
     conductoresEnRuta,
-    comparacion,
     porPagar,
     fuga,
     conexiones,
     incidencias,
     alertaFolios,
-    asignacionListaEn,
-    sla,
     serie,
   ] = await Promise.all([
     seguro(() => obtenerMetricasDelDia(cliente, tenantId, ahora), null),
     seguro(() => obtenerResumenFinancieroDelMes(cliente, tenantId, ahora), null),
     seguro(() => contarConductoresEnRuta(cliente, tenantId, ahora), 0),
-    seguro<ComparacionAyer | null>(
-      () => obtenerComparacionAyerAEstaHora(cliente, tenantId, ahora),
-      null,
-    ),
     seguro(() => obtenerPorPagarConductores(cliente, tenantId), null),
     seguro(
       () =>
@@ -315,8 +299,6 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
     seguro<ConexionCaida[]>(() => cargarConexionesCaidas(tenantId), []),
     seguro<PulsoIncidencias | null>(() => cargarPulsoIncidencias(tenantId), null),
     seguro<AlertaFolios | null>(() => cargarAlertaFolios(tenantId), null),
-    seguro<Date | null>(() => obtenerAsignacionListaEn(cliente, tenantId, ahora), null),
-    seguro<SlaPorSeller[]>(() => obtenerSlaPorSeller(cliente, tenantId, ahora, "mes"), []),
     seguro<DiaEntregas[]>(() => obtenerSerieEntregasDiarias(cliente, tenantId, ahora), []),
   ]);
 
@@ -335,25 +317,18 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
   const entregados =
     (metricas.porEstado["entregado"] ?? 0) + (metricas.porEstado["entregado_manual"] ?? 0);
   const total = metricas.totalPedidos;
-  // ⚠️ ENTREGADOS SOBRE EL TOTAL DEL DÍA, no sobre lo que ya cerró. Ver la nota
-  // larga en `magnitudes-dashboard.ts`: `metricas.tasaEntrega` responde otra
-  // pregunta y a media tarde da 97 % con un cuarto del día hecho.
-  const pctDelDia = total > 0 ? Math.round((entregados / total) * 100) : null;
 
   const fugaAbierta =
     fuga?.porTipo.reduce((acc, t) => acc + t.conteoAbierto, 0) ?? 0;
 
+  // 🔴 Rótulo y cifra, nada más. La bajada va SOLO cuando la tarjeta avisa de
+  // un problema, y entonces dice qué mirar. Lo demás está a un toque: cada
+  // tarjeta enlaza a su listado. (Decisión del usuario, 2026-09-27.)
   const magnitudes: Magnitud[] = [
     {
       rotulo: "Entregados hoy",
       cifra: entregados,
-      denominador: total > 0 ? `de ${total}` : "sin pedidos hoy",
-      bajada:
-        pctDelDia === null
-          ? "Aún no hay pedidos para hoy"
-          : comparacion
-            ? `${pctDelDia} % del día · ayer a esta hora, ${comparacion.pct} %`
-            : `${pctDelDia} % del día`,
+      denominador: total > 0 ? `de ${total}` : undefined,
       href: "/operaciones?estado=entregado",
       tintaCifra: "balanced",
       etiquetaEnlace: `Entregados hoy: ${entregados} de ${total}. Ver los pedidos entregados`,
@@ -361,24 +336,19 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
     {
       rotulo: "En ruta ahora",
       cifra: metricas.porEstado["en_ruta"] ?? 0,
-      bajada:
+      denominador:
         conductoresEnRuta > 0
-          ? `${conductoresEnRuta} ${conductoresEnRuta === 1 ? "conductor" : "conductores"} · ver en la Torre`
-          : "Nadie en ruta todavía · ver en la Torre",
+          ? `${conductoresEnRuta} ${conductoresEnRuta === 1 ? "conductor" : "conductores"}`
+          : undefined,
       href: "/torre-de-control",
       tintaCifra: "progress",
     },
     {
       rotulo: "Incidencias abiertas",
       cifra: incidencias?.abiertas ?? 0,
-      denominador:
-        incidencias && incidencias.sinGestionar > 0
-          ? `· ${incidencias.sinGestionar} sin gestionar`
-          : undefined,
-      bajada:
-        incidencias?.masAntiguaEn
-          ? `La más antigua lleva ${formatearAntiguedad(incidencias.masAntiguaEn, ahora)}`
-          : "Nada abierto",
+      bajada: incidencias?.masAntiguaEn
+        ? `La más antigua, hace ${formatearAntiguedad(incidencias.masAntiguaEn, ahora)}`
+        : undefined,
       href: "/operaciones/incidencias?estado=abierta",
       // El rojo está reservado a la incidencia abierta, y solo si la hay.
       tono: incidencias && incidencias.abiertas > 0 ? "fault" : undefined,
@@ -386,30 +356,18 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
     {
       rotulo: "Rezagados de ayer",
       cifra: metricas.rezagadosAyer,
-      bajada:
-        metricas.rezagadosAyer > 0
-          ? `Sin cerrar desde el ${formatearFechaCorta(ayerDe(ahora))}`
-          : "Ayer cerró completo",
       href: "/operaciones?rezagados=ayer",
       tono: metricas.rezagadosAyer > 0 ? "attention" : undefined,
     },
     {
       rotulo: "Por cobrar este mes",
       cifra: formatearClp(financiero?.porCobrarClp ?? 0),
-      bajada: financiero
-        ? `${financiero.periodosConSaldo} ${financiero.periodosConSaldo === 1 ? "período" : "períodos"} con saldo · neto`
-        : "Sin datos del mes",
       href: "/dinero/periodos",
       escala: "dinero",
     },
     {
       rotulo: "Por pagar a conductores",
       cifra: formatearClp(porPagar?.montoClp ?? 0),
-      bajada: porPagar
-        ? porPagar.cantidad === 0
-          ? "Nada pendiente"
-          : `${porPagar.cantidad} sin pagar · ${porPagar.enBorrador} en borrador`
-        : "Sin datos de liquidaciones",
       href: "/dinero/liquidaciones",
       escala: "dinero",
     },
@@ -418,8 +376,8 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
       cifra: formatearClp(fuga?.fugaDetectadaClp ?? 0),
       bajada:
         fugaAbierta > 0
-          ? `${fugaAbierta} de fuga de ingreso, sin resolver`
-          : "Todo cuadra este mes",
+          ? `${fugaAbierta} ${fugaAbierta === 1 ? "caso" : "casos"} sin resolver`
+          : undefined,
       href: "/dinero/conciliacion",
       escala: "dinero",
       tono: (fuga?.fugaDetectadaClp ?? 0) > 0 ? "fault" : undefined,
@@ -427,18 +385,13 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
     {
       rotulo: "Conexiones caídas",
       cifra: conexiones.length,
+      // Nombra la primera: es a quien hay que llamar.
       bajada:
-        conexiones.length === 0
-          ? "Todas sincronizando"
-          : // ⚠️ «Sin sincronizar desde», no «caída desde». El tablero dibuja lo
-            // segundo y el dato no existe: no hay columna de cuándo se cayó, solo
-            // `ultima_sync_exitosa_en`, que es la última vez que SÍ funcionó.
-            // Decir «caída desde el 19-08» sería afirmar algo que no sabemos.
-            `${conexiones[0].nombre}${
-              conexiones[0].ultimaSyncEn
-                ? `, sin sincronizar desde el ${formatearFechaCorta(conexiones[0].ultimaSyncEn)}`
-                : ", nunca sincronizó"
-            }`,
+        conexiones.length > 0
+          ? conexiones.length === 1
+            ? conexiones[0].nombre
+            : `${conexiones[0].nombre} y ${conexiones.length - 1} más`
+          : undefined,
       href: "/sellers",
       tintaCifra: conexiones.length > 0 ? "attention" : undefined,
     },
@@ -446,15 +399,6 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
 
   return (
     <div className="space-y-6">
-      <p className="flex flex-wrap items-center gap-x-2 text-sm text-fg-muted">
-        <RelojSantiago />
-        <span aria-hidden="true">·</span>
-        <span>
-          {asignacionListaEn
-            ? `asignación lista a las ${formatearHora(asignacionListaEn)}`
-            : "sin manifiestos confirmados todavía"}
-        </span>
-      </p>
 
       {/* La única franja del mosaico, y con motivo: no es una magnitud del día,
           es un bloqueo. Sin folios no se emite ninguna factura. */}
@@ -465,20 +409,11 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
       {/* ------------------------------------------------------------------
           Bajo el pliegue. La regla del bloque es dura: ningún gráfico arriba.
           ------------------------------------------------------------------ */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section aria-labelledby="cumplimiento-titulo">
-          <h2 id="cumplimiento-titulo" className="mb-3 font-heading text-base font-semibold">
-            SLA por seller · este mes
-          </h2>
-          <WidgetSlaPorSeller datos={sla} />
-        </section>
-
         <section aria-labelledby="serie-titulo">
           <h2 id="serie-titulo" className="mb-3 font-heading text-base font-semibold">
-            Entregas por día · últimos 14
+            Entregas · 14 días
           </h2>
           {serie.length > 0 ? (
-            <>
               <GraficoBarras
                 // El último rótulo lleva su cifra —«hoy · 12»— porque es la
                 // única barra que todavía se mueve: quien mira el gráfico a las
@@ -497,14 +432,12 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
                 destacarUltima
                 alto={200}
               />
-            </>
           ) : (
             <p className="text-sm text-fg-muted">
               Todavía no hay entregas registradas en las últimas dos semanas.
             </p>
           )}
-        </section>
-      </div>
+      </section>
     </div>
   );
 }
@@ -525,17 +458,12 @@ function FranjaFolios({ alerta }: { alerta: AlertaFolios }) {
       }`}
     >
       <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
-      <span className="font-medium">
+      <span className="min-w-0 flex-1 font-medium">
         {alerta.agotado
           ? "Sin folios del SII: la emisión de facturas está detenida."
           : `Te quedan ${alerta.foliosRestantes} ${alerta.foliosRestantes === 1 ? "folio" : "folios"} hasta el ${alerta.folioHasta}.`}
       </span>
-      <span className="opacity-90">
-        {alerta.agotado
-          ? "Sube un CAF nuevo para poder volver a facturar."
-          : "Sube un CAF nuevo antes de que se agoten."}
-      </span>
-      <Button asChild variant="outline" className="ms-auto min-h-11">
+      <Button asChild variant="outline" className="min-h-11">
         <Link href="/onboarding/folios">Subir CAF</Link>
       </Button>
     </div>
@@ -562,13 +490,6 @@ function formatearAntiguedad(desde: string, ahora: Date): string {
   }
   const resto = minutos % 60;
   return resto === 0 ? `${horas} h` : `${horas} h ${String(resto).padStart(2, "0")}`;
-}
-
-/** Ayer en calendario de Santiago, como `Date`, para poder formatearlo. */
-function ayerDe(ahora: Date): Date {
-  const hoyStr = fechaLocalEnSantiago(ahora);
-  const [a, m, d] = hoyStr.split("-").map(Number);
-  return new Date(Date.UTC(a, m - 1, d - 1, 12, 0, 0));
 }
 
 function EsqueletoMosaico() {
