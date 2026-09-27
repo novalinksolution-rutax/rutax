@@ -440,7 +440,6 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
                 : ", nunca sincronizó"
             }`,
       href: "/sellers",
-      escala: "dinero",
       tintaCifra: conexiones.length > 0 ? "attention" : undefined,
     },
   ];
@@ -468,21 +467,10 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
           ------------------------------------------------------------------ */}
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="cumplimiento-titulo">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
-            <h2 id="cumplimiento-titulo" className="font-heading text-base font-semibold">
-              SLA por seller
-            </h2>
-            <span className="text-xs text-fg-muted">objetivo pactado por seller</span>
-          </div>
-          <p className="mb-3 text-xs text-fg-muted">
-            Este mes, del día 1 a hoy.
-          </p>
+          <h2 id="cumplimiento-titulo" className="mb-3 font-heading text-base font-semibold">
+            SLA por seller · este mes
+          </h2>
           <WidgetSlaPorSeller datos={sla} />
-          <p className="mt-3 text-xs leading-relaxed text-fg-muted">
-            La marca del objetivo es el porcentaje pactado con cada seller.{" "}
-            <strong className="font-medium text-fg">«Sin datos» es espera, no
-            incumplimiento</strong>: ese seller todavía no ha despachado este mes.
-          </p>
         </section>
 
         <section aria-labelledby="serie-titulo">
@@ -509,10 +497,6 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
                 destacarUltima
                 alto={200}
               />
-              <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                Barra, no línea: son días discretos. Hoy va en tinta porque
-                todavía está creciendo y no se compara con un día cerrado.
-              </p>
             </>
           ) : (
             <p className="text-sm text-fg-muted">
@@ -551,7 +535,7 @@ function FranjaFolios({ alerta }: { alerta: AlertaFolios }) {
           ? "Sube un CAF nuevo para poder volver a facturar."
           : "Sube un CAF nuevo antes de que se agoten."}
       </span>
-      <Button asChild size="sm" variant="outline" className="ms-auto">
+      <Button asChild variant="outline" className="ms-auto min-h-11">
         <Link href="/onboarding/folios">Subir CAF</Link>
       </Button>
     </div>
@@ -591,11 +575,11 @@ function EsqueletoMosaico() {
   return (
     <div className="space-y-6" aria-hidden="true">
       <Skeleton className="h-5 w-64" />
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:flex-wrap sm:gap-3">
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton
             key={i}
-            className="h-[108px] min-w-[200px] grow sm:basis-[calc(25%-0.5625rem)]"
+            className="h-[108px] sm:min-w-[200px] sm:grow sm:basis-[calc(25%-0.5625rem)]"
           />
         ))}
       </div>

@@ -128,8 +128,10 @@ export function TarjetaMagnitud({
       className={cn(
         // `basis` de 25 % menos su parte del gap (0.75rem × 3 ÷ 4): ocho
         // tarjetas caen en dos filas de cuatro sin declarar filas.
-        "flex min-w-[200px] grow flex-col gap-2 border p-4 transition-colors",
-        "sm:basis-[calc(25%-0.5625rem)]",
+        // En teléfono, dos por fila: una sola columna eran ~1.000 px de tarjetas
+        // antes de terminar el resumen.
+        "flex min-w-0 flex-col gap-1.5 border p-3 transition-colors",
+        "sm:min-w-[200px] sm:grow sm:basis-[calc(25%-0.5625rem)] sm:gap-2 sm:p-4",
         "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-text",
         tenida
           ? FONDO_POR_TONO[tono!]
@@ -153,7 +155,9 @@ export function TarjetaMagnitud({
         <span
           className={cn(
             "rx-num leading-none font-semibold",
-            escala === "dinero" ? "text-[30px]" : "text-[34px]",
+            escala === "dinero"
+              ? "text-[20px] sm:text-[30px]"
+              : "text-[28px] sm:text-[34px]",
             tenida ? null : tintaCifra ? TINTA_POR_TONO[tintaCifra] : "text-fg",
           )}
         >
@@ -173,7 +177,7 @@ export function TarjetaMagnitud({
 
       <p
         className={cn(
-          "text-xs leading-snug",
+          "line-clamp-3 text-xs leading-snug sm:line-clamp-none",
           tenida ? null : tintaCifra ? TINTA_POR_TONO[tintaCifra] : "text-fg-muted",
         )}
       >
@@ -219,7 +223,7 @@ export function MosaicoMagnitudes({
   );
 
   return (
-    <div className={cn("flex flex-col gap-3 sm:flex-row sm:flex-wrap", className)}>
+    <div className={cn("grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:flex-wrap sm:gap-3", className)}>
       {magnitudes.map((m) => (
         <TarjetaMagnitud
           key={m.rotulo}

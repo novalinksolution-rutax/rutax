@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Clock, TrendingUp } from "lucide-react";
+import { ChevronDown, Clock, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SemaforoCumplimiento } from "@/components/ui/semaforo-cumplimiento";
 import type { SlaPorSeller, ResumenCorteSeller } from "@/modules/operacion/metricas";
@@ -46,26 +46,62 @@ function formatearCountdown(minutos: number): string {
 // Widget SLA por seller
 // =============================================================================
 
+const TOPE_A_LA_VISTA = 5;
+
 export function WidgetSlaPorSeller({ datos }: { datos: SlaPorSeller[] }) {
   if (datos.length === 0) {
     return (
-      // El vacío NO nombra la ventana: quien compone la pantalla decide si son
-      // 7 días o el mes, y este texto se quedó diciendo «esta semana» cuando el
-      // dashboard pasó a pedir el mes.
       <p className="text-sm text-muted-foreground">
         Todavía no hay pedidos con SLA evaluado en este período.
       </p>
     );
   }
 
+  // 🔴 A la vista solo los que están bajo su objetivo: con 40 sellers la lista
+  // entera eran ~2.400 px en el teléfono para contestar «¿a quién le estoy
+  // fallando?». El resto va plegado. `datos` ya viene del peor al mejor.
+  // Con tope: si media cartera incumple, 25 filas tampoco se leen de un vistazo.
+  const bajoObjetivo = datos
+    .filter((s) => s.slaPct !== null && s.slaPct < s.objetivoPct)
+    .slice(0, TOPE_A_LA_VISTA);
+  const resto = datos.filter((s) => !bajoObjetivo.includes(s));
+  const incumplenPlegados = resto.filter(
+    (s) => s.slaPct !== null && s.slaPct < s.objetivoPct,
+  ).length;
+
   return (
-    <ul className="space-y-3" aria-label="Cumplimiento de SLA por seller">
+    <div className="space-y-3">
+      {bajoObjetivo.length > 0 ? (
+        <ListaSla datos={bajoObjetivo} />
+      ) : (
+        <p className="text-sm text-balanced-fg">Todos cumplen.</p>
+      )}
+      {resto.length > 0 ? (
+        <details className="group">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm text-fg-muted [&::-webkit-details-marker]:hidden">
+            <ChevronDown
+              className="size-4 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+            {bajoObjetivo.length === 0
+              ? "Ver todos"
+              : incumplenPlegados > 0
+                ? `Ver los otros ${resto.length}`
+                : `${resto.length} ${resto.length === 1 ? "cumple" : "cumplen"}`}
+          </summary>
+          <div className="mt-2">
+            <ListaSla datos={resto} />
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function ListaSla({ datos }: { datos: SlaPorSeller[] }) {
+  return (
+    <ul className="space-y-2" aria-label="Cumplimiento de SLA por seller">
       {datos.map((seller) => (
-        // ⚠️ La fila llevaba un punto de color suelto + la cifra + un badge, cada
-        // uno por su lado, y `shadow-xs` contra la regla 4. El punto además
-        // repetía lo que el badge ya decía, y **el objetivo no aparecía en
-        // ninguna parte**: «94 %» a secas no se puede leer — contra 90 es
-        // holgado y contra 97 es incumplimiento.
         <li
           key={seller.sellerId}
           className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-line bg-card px-4 py-3"
