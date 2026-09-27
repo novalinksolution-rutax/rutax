@@ -69,6 +69,8 @@ import {
   formatearFechaLarga,
 } from "@/lib/formato-cl";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { listarVisitasDelDia } from "@/modules/operacion/retiro/preparacion";
+import { obtenerExpectativaDelDia } from "@/modules/operacion/retiro/expectativa";
 import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
 import { contarFoliosDisponibles, nivelFolios } from "@/modules/dinero/folios-disponibles";
 
@@ -217,6 +219,25 @@ async function cargarConexionesCaidas(tenantId: string): Promise<ConexionCaida[]
   ];
 }
 
+/**
+ * Bultos retirados hoy contra los esperados, con las mismas dos funciones que
+ * usa Preparación: una sola definición de «retirado» en todo el producto.
+ */
+async function cargarRetiroDelDia(
+  cliente: ReturnType<typeof crearClienteServiceRole>,
+  tenantId: string,
+): Promise<{ retirados: number; esperados: number }> {
+  const fecha = hoyEnSantiago();
+  const [visitas, expectativa] = await Promise.all([
+    listarVisitasDelDia(cliente, { tenantId, fecha }),
+    obtenerExpectativaDelDia(cliente, { tenantId, fecha }),
+  ]);
+  return {
+    retirados: visitas.reduce((acc, v) => acc + v.vivos.total, 0),
+    esperados: expectativa.total,
+  };
+}
+
 /** Degrada un bloque sin llevarse la pantalla entera. */
 async function seguro<T>(cargar: () => Promise<T>, siFalla: T): Promise<T> {
   try {
@@ -283,6 +304,7 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
     incidencias,
     alertaFolios,
     serie,
+    retiro,
   ] = await Promise.all([
     seguro(() => obtenerMetricasDelDia(cliente, tenantId, ahora), null),
     seguro(() => obtenerResumenFinancieroDelMes(cliente, tenantId, ahora), null),
@@ -300,6 +322,7 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
     seguro<PulsoIncidencias | null>(() => cargarPulsoIncidencias(tenantId), null),
     seguro<AlertaFolios | null>(() => cargarAlertaFolios(tenantId), null),
     seguro<DiaEntregas[]>(() => obtenerSerieEntregasDiarias(cliente, tenantId, ahora), []),
+    seguro(() => cargarRetiroDelDia(cliente, tenantId), null),
   ]);
 
   if (!metricas) {
@@ -308,8 +331,7 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
         role="alert"
         className="border border-attention-line bg-attention-bg px-4 py-3 text-sm text-attention-fg"
       >
-        No pudimos leer las cifras del día. Los pedidos y el dinero siguen
-        accesibles desde la navegación; esta pantalla vuelve sola al recargar.
+        Hubo un error al leer las cifras. Recarga la pantalla.
       </div>
     );
   }
@@ -324,7 +346,24 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
   // 🔴 Rótulo y cifra, nada más. La bajada va SOLO cuando la tarjeta avisa de
   // un problema, y entonces dice qué mirar. Lo demás está a un toque: cada
   // tarjeta enlaza a su listado. (Decisión del usuario, 2026-09-27.)
+  const sinAsignar = metricas.porEstado["pendiente_asignacion"] ?? 0;
+
   const magnitudes: Magnitud[] = [
+    {
+      // Sin tinte a propósito: a primera hora TODO está sin asignar, y pintarlo
+      // sería ruido toda la mañana. La hora de despacho no es un dato del
+      // sistema, así que no hay contra qué encenderlo.
+      rotulo: "Sin asignar",
+      cifra: sinAsignar,
+      denominador: total > 0 ? `de ${total}` : undefined,
+      href: "/operaciones?estado=pendiente_asignacion",
+    },
+    {
+      rotulo: "Retirados hoy",
+      cifra: retiro?.retirados ?? 0,
+      denominador: retiro && retiro.esperados > 0 ? `de ${retiro.esperados}` : undefined,
+      href: "/preparacion",
+    },
     {
       rotulo: "Entregados hoy",
       cifra: entregados,
@@ -434,7 +473,7 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
               />
           ) : (
             <p className="text-sm text-fg-muted">
-              Todavía no hay entregas registradas en las últimas dos semanas.
+              Sin entregas en los últimos 14 días.
             </p>
           )}
       </section>
@@ -497,7 +536,7 @@ function EsqueletoMosaico() {
     <div className="space-y-6" aria-hidden="true">
       <Skeleton className="h-5 w-64" />
       <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:flex-wrap sm:gap-3">
-        {Array.from({ length: 8 }).map((_, i) => (
+        {Array.from({ length: 10 }).map((_, i) => (
           <Skeleton
             key={i}
             className="h-[108px] sm:min-w-[200px] sm:grow sm:basis-[calc(25%-0.5625rem)]"
