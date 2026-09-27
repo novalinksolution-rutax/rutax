@@ -61,6 +61,25 @@ export interface AgrupacionLineasCobro {
   total: number;
 }
 
+/**
+ * La clave de agrupación de una línea.
+ *
+ * 🔴 El motor escribe el concepto con el pedido adentro —«Servicio de entrega
+ * same_day — pedido 5c9dc153-…» (`jobs/generar-lineas.ts`)—, así que agrupar
+ * por el texto crudo daba un grupo por línea: la vista «agrupada» mostraba cada
+ * entrega sola, con su UUID. Se quita la cola del pedido y el tipo interno se
+ * dice como se muestra en el resto del producto. El concepto guardado no se
+ * toca: es lo que va en la línea.
+ */
+export function conceptoParaAgrupar(concepto: string | null | undefined): string {
+  if (!concepto) return 'Sin concepto';
+  return concepto
+    .replace(/\s+—\s+pedido\s+\S+$/u, '')
+    .replace(/\bsame_day\b/g, 'Same-day')
+    .replace(/\bflex\b/g, 'Flex')
+    .trim() || 'Sin concepto';
+}
+
 export function agruparLineasCobro(lineas: LineaCobro[]): AgrupacionLineasCobro {
   const porConcepto = new Map<string, { entregas: number; monto: number; bases: Set<number> }>();
   const ajustes: AjusteAgrupado[] = [];
@@ -68,7 +87,7 @@ export function agruparLineasCobro(lineas: LineaCobro[]): AgrupacionLineasCobro 
   let total = 0;
 
   for (const l of lineas) {
-    const clave = l.concepto || 'Sin concepto';
+    const clave = conceptoParaAgrupar(l.concepto);
     const acumulado = porConcepto.get(clave) ?? { entregas: 0, monto: 0, bases: new Set<number>() };
     acumulado.entregas += 1;
     acumulado.monto += l.montoBaseClp;

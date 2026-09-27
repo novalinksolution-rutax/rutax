@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agruparLineasCobro } from './agrupacion-lineas';
+import { agruparLineasCobro, conceptoParaAgrupar } from './agrupacion-lineas';
 import type { LineaCobro } from './tipos';
 
 /**
@@ -136,5 +136,24 @@ describe('agruparLineasCobro · la tabla tiene que cuadrar', () => {
     const r = agruparLineasCobro([linea({ concepto: '', montoBaseClp: 1000 })]);
     expect(r.conceptos[0].concepto).toBe('Sin concepto');
     expect(r.total).toBe(1000);
+  });
+});
+
+describe('conceptoParaAgrupar — el concepto del motor trae el pedido adentro', () => {
+  it('quita la cola del pedido y dice el tipo como en el resto del producto', () => {
+    expect(conceptoParaAgrupar('Servicio de entrega same_day — pedido 5c9dc153-e495-4c88-8bb9-5bf4df3fd926')).toBe(
+      'Servicio de entrega Same-day',
+    );
+    expect(conceptoParaAgrupar('Servicio de entrega flex — pedido abc')).toBe('Servicio de entrega Flex');
+  });
+
+  it('cinco entregas same-day de pedidos distintos son UN concepto, no cinco', () => {
+    const r = agruparLineasCobro(
+      ['a', 'b', 'c', 'd', 'e'].map((id) =>
+        linea({ concepto: `Servicio de entrega same_day — pedido ${id}`, montoBaseClp: 3000 }),
+      ),
+    );
+    expect(r.conceptos).toHaveLength(1);
+    expect(r.conceptos[0]).toMatchObject({ concepto: 'Servicio de entrega Same-day', entregas: 5, tarifa: 3000 });
   });
 });

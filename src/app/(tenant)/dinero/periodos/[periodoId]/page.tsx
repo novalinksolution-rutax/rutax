@@ -8,18 +8,21 @@
 import type { Metadata } from "next";
 import { redirect, unstable_rethrow } from "next/navigation";
 import Link from "next/link";
-import { Settings, PenLine } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeVerPeriodosCobro } from "@/modules/identidad/capacidades";
 import { obtenerPeriodoCobro } from "@/modules/dinero/index";
 import type { LineaCobro } from "@/modules/dinero/tipos";
-import { formatearCLP, formatearCLPOGuion, formatearAjuste } from "@/lib/ui/formato-moneda";
+import {
+  formatearCLP,
+  formatearCLPOGuion,
+  formatearAjuste,
+} from "@/lib/ui/formato-moneda";
 import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
-import { Badge } from "@/components/ui/badge";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { TablaFinanciera } from "@/components/ui/tabla-financiera";
+import { MasAccionesLineas } from "./mas-acciones-lineas";
 import { agruparLineasCobro } from "@/modules/dinero/agrupacion-lineas";
 import { etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
 
@@ -40,7 +43,10 @@ interface PageProps {
   searchParams: Promise<{ pagina?: string; volver?: string; lineas?: string }>;
 }
 
-export default async function PaginaDetallePeriodo({ params, searchParams }: PageProps) {
+export default async function PaginaDetallePeriodo({
+  params,
+  searchParams,
+}: PageProps) {
   const sesion = await obtenerSesionActual();
   if (!sesion) redirect("/login");
   if (!sesion.usuario.tenantId) redirect("/login");
@@ -85,8 +91,6 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
     // El RUT va en la cabecera porque es lo que sale impreso en la factura: si
     // está mal, se descubre acá o se descubre en el SII.
     sellerRut = (sellerData?.rut as string | null) ?? null;
-
-
   } catch (error) {
     // Ver el comentario equivalente en `dinero/liquidaciones/[liquidacionId]/page.tsx`:
     // `redirect()` (arriba, cuando el período no existe o es de otro tenant)
@@ -95,7 +99,6 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
     unstable_rethrow(error);
     errorCarga = true;
   }
-
 
   // ⚠️ FALLA DE LECTURA. Antes esto reemplazaba la pantalla entera por un
   // `role="alert"`: se perdía el encabezado, el neto y el estado, o sea todo lo
@@ -106,19 +109,22 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   if (errorCarga || !periodo) {
     return (
       <div className="space-y-4">
-        <Retorno href={destinoRetorno("/dinero/periodos", volver)} etiqueta="Volver a períodos" />
+        <Retorno
+          href={destinoRetorno("/dinero/periodos", volver)}
+          etiqueta="Volver a períodos"
+        />
         <div
           role="alert"
           className="border border-fault-line bg-fault-bg px-4 py-3.5 text-sm leading-relaxed text-fault-fg"
         >
-          <strong className="font-medium">No se pudo leer este período.</strong> Existe y puede
-          tener líneas: esta pantalla no las está viendo. No lo cierres, no lo factures y no lo
-          anules hasta poder verlas — recarga en unos segundos.
+          <strong className="font-medium">No se pudo leer este período.</strong>{" "}
+          Existe y puede tener líneas: esta pantalla no las está viendo. No lo
+          cierres, no lo factures y no lo anules hasta poder verlas — recarga en
+          unos segundos.
         </div>
       </div>
     );
   }
-
 
   const lineas: LineaCobro[] = periodo.lineas ?? [];
   const agrupacion = agruparLineasCobro(lineas);
@@ -126,13 +132,19 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
   const offset = (pagina - 1) * LIMITE_LINEAS;
   const lineasPaginadas = lineas.slice(offset, offset + LIMITE_LINEAS);
 
-
   // El código del pedido de cada ajuste. Sin esto la causa dice «ver el pedido»
   // —el mismo texto en las cinco filas— y no se puede saber cuál sin abrirlas
   // una por una. El tablero enlaza «incidencia RX-5M7T»: nombrar el pedido es lo
   // más cerca que se puede estar hoy, porque no existe una ruta por incidencia.
+  // El código del pedido (RX-… o el envío de ML) de los ajustes y de las
+  // líneas de esta página: un UUID no le dice nada a nadie.
   const idsPedidosAjuste = [
-    ...new Set(agrupacion.ajustes.map((a) => a.pedidoId).filter((x): x is string => !!x)),
+    ...new Set([
+      ...agrupacion.ajustes
+        .map((a) => a.pedidoId)
+        .filter((x): x is string => !!x),
+      ...(verUnaPorUna ? lineasPaginadas.map((l) => l.pedidoId) : []),
+    ]),
   ];
   const codigoPorPedido = new Map<string, string>();
   if (idsPedidosAjuste.length > 0) {
@@ -143,14 +155,23 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
       .in("id", idsPedidosAjuste);
     for (const p of (pedidosAjuste ?? []) as Record<string, unknown>[]) {
       const codigo =
-        (p.codigo_interno as string | null) ?? (p.ml_shipment_id as string | null) ?? null;
+        (p.codigo_interno as string | null) ??
+        (p.ml_shipment_id as string | null) ??
+        null;
       if (codigo) codigoPorPedido.set(p.id as string, codigo);
     }
   }
 
+  const urlVista = (vista: "resumen" | "detalle") => {
+    const q = new URLSearchParams({
+      ...(volver ? { volver } : {}),
+      ...(vista === "detalle" ? { lineas: "detalle" } : {}),
+    }).toString();
+    return q ? `?${q}` : `/dinero/periodos/${periodo.id}`;
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Retorno
         href={destinoRetorno(`/dinero/periodos?periodo=${periodo.id}`, volver)}
         etiqueta="Volver a la ficha"
@@ -163,262 +184,314 @@ export default async function PaginaDetallePeriodo({ params, searchParams }: Pag
         <h1 className="font-heading text-2xl font-semibold">{sellerNombre}</h1>
         <p className="rx-num mt-0.5 text-xs text-fg-muted">
           {etiquetaPeriodo(periodo.fechaInicio, periodo.fechaFin)}
-          {sellerRut ? ` · ${sellerRut}` : ""} · {formatearCLPOGuion(agrupacion.total)} neto
+          {sellerRut ? ` · ${sellerRut}` : ""} ·{" "}
+          {formatearCLPOGuion(agrupacion.total)} neto
         </p>
       </div>
 
-      {/* Sección C — Tabla de líneas */}
-      {/* --- Las dos columnas ------------------------------------------------
-          Ancha: las líneas. Angosta: emisión, qué ve el seller y bitácora. Las
-          acciones vivían colgando del encabezado, apretadas contra el borde
-          derecho de una fila que también lleva la cifra grande. */}
-      <div>
-      <section aria-labelledby="lineas-titulo" className="min-w-0">
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2
-            id="lineas-titulo"
-            className="font-mono text-[10px] font-medium tracking-[0.1em] text-fg-subtle uppercase"
-          >
-            Líneas de cobro ·{" "}
-            {verUnaPorUna ? "una por una" : "agrupadas por concepto"}
-          </h2>
-          {lineas.length > 0 ? (
-            <Link
-              // Sin parámetros el href queda en `?`, que funciona pero ensucia
-              // la barra: en ese caso se vuelve a la ruta pelada.
-              href={
-                (() => {
-                  const q = new URLSearchParams({
-                    ...(volver ? { volver } : {}),
-                    ...(verUnaPorUna ? {} : { lineas: "detalle" }),
-                  }).toString();
-                  return q ? `?${q}` : `/dinero/periodos/${periodo.id}`;
-                })()
-              }
-              className="text-xs font-medium text-accent-text hover:underline"
+      {lineas.length === 0 ? (
+        <p className="text-sm text-fg-muted">Sin líneas.</p>
+      ) : (
+        <section aria-label="Líneas de cobro" className="min-w-0 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            {/* Dos vistas del mismo dinero: el resumen por concepto (lo que va a
+                la factura) y el detalle, una línea por entrega. */}
+            <div
+              className="inline-flex rounded-md border border-line p-0.5"
+              role="tablist"
             >
-              {verUnaPorUna
-                ? "← Volver a la vista agrupada"
-                : `Ver las ${lineas.length} una por una ›`}
-            </Link>
-          ) : null}
-          {/* Exportar, al lado de «ver una por una» y no escondido en un menú.
-              El sistema dice por qué existe: «un total sin composición es la
-              cifra que Administración no puede rastrear — y por la que
-              exportaría a Excel». Negar la exportación no evita el Excel; evita
-              que salga de una fuente confiable. */}
-          {lineas.length > 0 ? (
-            <a
-              href={`/dinero/periodos/${periodo.id}/exportar`}
-              className="text-xs font-medium text-fg-muted hover:text-fg hover:underline"
-            >
-              Exportar CSV
-            </a>
-          ) : null}
-          {/* Entrada a la Reportería con las fechas de ESTE período ya puestas.
-              Es el otro camino que pidió el usuario, además del rango libre: acá
-              se ve lo que se le cobra al seller, y allá lo mismo cruzado con lo
-              que se le pagó al conductor por cada una de esas entregas — que es
-              lo que hay que mirar antes de facturar. */}
-          <Link
-            href={`/dinero/reporteria?periodo=${periodo.id}`}
-            className="text-xs font-medium text-fg-muted hover:text-fg hover:underline"
-          >
-            Ver con el pago al conductor ›
-          </Link>
-        </div>
-
-        {lineas.length === 0 ? (
-          <div className="rounded-lg border bg-card px-6 py-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              Este período no tiene líneas todavía. Se agregarán automáticamente a medida que
-              se registren entregas.
-            </p>
-          </div>
-        ) : !verUnaPorUna ? (
-          <div className="overflow-hidden rounded-lg border bg-card">
-            <TablaFinanciera
-              // «neto» y no «bruto»: los impuestos los calcula y los muestra el
-              // documento tributario, no Rutax (regla 22).
-              rotulo="neto"
-              filas={[
-                ...agrupacion.conceptos.map((c) => ({
-                  tipo: "linea" as const,
-                  concepto: c.concepto,
-                  entregas: c.entregas,
-                  tarifa: c.tarifa,
-                  monto: c.monto,
-                })),
-                ...(agrupacion.ajustes.length > 0
-                  ? [
-                      {
-                        tipo: "subtotal" as const,
-                        concepto: "Subtotal de entregas",
-                        entregas: agrupacion.entregasTotales,
-                        monto: agrupacion.subtotalEntregas,
-                      },
-                    ]
-                  : []),
-                ...agrupacion.ajustes.map((aj) => ({
-                  tipo: "ajuste" as const,
-                  concepto: aj.concepto,
-                  monto: aj.monto,
-                  causa: aj.pedidoId
-                    ? {
-                        texto: codigoPorPedido.get(aj.pedidoId) ?? "ver el pedido",
-                        href: `/operaciones/${aj.pedidoId}`,
-                      }
-                    : undefined,
-                })),
-                {
-                  tipo: "total" as const,
-                  concepto: "Total del período",
-                  entregas: agrupacion.entregasTotales,
-                  monto: agrupacion.total,
-                },
-              ]}
-            />
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" aria-label="Líneas de cobro del período">
-                <thead>
-                  <tr className="border-b bg-muted/40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-2">Pedido</th>
-                    <th className="hidden px-4 py-2 sm:table-cell">Fecha entrega</th>
-                    <th className="hidden px-4 py-2 md:table-cell">Tipo</th>
-                    <th className="px-4 py-2">Concepto</th>
-                    <th className="hidden px-4 py-2 text-right lg:table-cell">Monto base</th>
-                    <th className="hidden px-4 py-2 text-right lg:table-cell">Ajuste</th>
-                    <th className="px-4 py-2 text-right">Monto final</th>
-                    <th className="hidden px-4 py-2 text-center xl:table-cell">Origen</th>
-                    <th className="hidden px-4 py-2 text-center xl:table-cell">Por qué</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {lineasPaginadas.map((linea) => (
-                    <FilaLinea key={linea.id} linea={linea} />
-                  ))}
-                </tbody>
-                {/* Fila de totales sticky al pie */}
-                <tfoot className="border-t bg-muted/40">
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-3 text-sm font-semibold"
-                    >
-                      Total: {lineas.length} línea{lineas.length !== 1 ? "s" : ""}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm font-bold tabular-nums">
-                      {formatearCLPOGuion(
-                        lineas.reduce((acc, l) => acc + l.montoFinalClp, 0),
-                      )}
-                    </td>
-                    <td className="hidden xl:table-cell" />
-                    <td className="hidden xl:table-cell" />
-                  </tr>
-                </tfoot>
-              </table>
+              {(["resumen", "detalle"] as const).map((v) => {
+                const activo = (v === "detalle") === verUnaPorUna;
+                return (
+                  <Link
+                    key={v}
+                    href={urlVista(v)}
+                    role="tab"
+                    aria-selected={activo}
+                    className={`flex min-h-11 items-center rounded px-3 text-sm md:min-h-8 ${
+                      activo
+                        ? "bg-accent-bg text-accent-text"
+                        : "text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    {v === "resumen" ? "Resumen" : `Detalle · ${lineas.length}`}
+                  </Link>
+                );
+              })}
             </div>
+            <MasAccionesLineas periodoId={periodo.id} />
+          </div>
 
-            {/* Paginación de líneas */}
-            {totalPaginas > 1 && (
-              <div className="flex items-center justify-between border-t px-4 py-3">
-                <span className="text-xs text-muted-foreground">
-                  Página {pagina} de {totalPaginas}
-                </span>
-                <div className="flex gap-2">
-                  {pagina > 1 && (
+          {!verUnaPorUna ? (
+            <>
+              {/* Teléfono: lista. La tabla financiera pide 34rem y se deslizaba. */}
+              <ul className="divide-y divide-line-subtle rounded-md border border-line md:hidden">
+                {agrupacion.conceptos.map((c) => (
+                  <li
+                    key={c.concepto}
+                    className="flex items-baseline justify-between gap-3 px-3 py-2.5"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm text-fg">
+                        {c.concepto}
+                      </span>
+                      <span className="rx-num block text-xs text-fg-muted">
+                        {c.entregas} {c.entregas === 1 ? "entrega" : "entregas"}
+                        {c.tarifa !== undefined
+                          ? ` × ${formatearCLP(c.tarifa)}`
+                          : ""}
+                      </span>
+                    </span>
+                    <span className="rx-num shrink-0 text-sm">
+                      {formatearCLP(c.monto)}
+                    </span>
+                  </li>
+                ))}
+                {agrupacion.ajustes.map((aj, i) => (
+                  <li
+                    key={`aj-${i}`}
+                    className="flex items-baseline justify-between gap-3 px-3 py-2.5"
+                  >
+                    <span className="min-w-0 text-sm text-fg">
+                      Ajuste
+                      {aj.pedidoId ? (
+                        <Link
+                          href={`/operaciones/${aj.pedidoId}`}
+                          className="rx-num ms-1 text-xs text-accent-text hover:underline"
+                        >
+                          {codigoPorPedido.get(aj.pedidoId) ?? "pedido"}
+                        </Link>
+                      ) : null}
+                    </span>
+                    <span
+                      className={`rx-num shrink-0 text-sm ${aj.monto < 0 ? "text-fault-fg" : "text-balanced-fg"}`}
+                    >
+                      {formatearAjuste(aj.monto).texto}
+                    </span>
+                  </li>
+                ))}
+                <li className="flex items-baseline justify-between gap-3 bg-bg-sunken/50 px-3 py-2.5">
+                  <span className="text-sm font-medium">Total neto</span>
+                  <span className="rx-num text-sm font-semibold">
+                    {formatearCLP(agrupacion.total)}
+                  </span>
+                </li>
+              </ul>
+              <div className="hidden overflow-hidden rounded-md border border-line bg-card md:block">
+                <TablaFinanciera
+                  rotulo="neto"
+                  filas={[
+                    ...agrupacion.conceptos.map((c) => ({
+                      tipo: "linea" as const,
+                      concepto: c.concepto,
+                      entregas: c.entregas,
+                      tarifa: c.tarifa,
+                      monto: c.monto,
+                    })),
+                    ...(agrupacion.ajustes.length > 0
+                      ? [
+                          {
+                            tipo: "subtotal" as const,
+                            concepto: "Subtotal de entregas",
+                            entregas: agrupacion.entregasTotales,
+                            monto: agrupacion.subtotalEntregas,
+                          },
+                        ]
+                      : []),
+                    ...agrupacion.ajustes.map((aj) => ({
+                      tipo: "ajuste" as const,
+                      concepto: aj.concepto,
+                      monto: aj.monto,
+                      causa: aj.pedidoId
+                        ? {
+                            texto:
+                              codigoPorPedido.get(aj.pedidoId) ??
+                              "ver el pedido",
+                            href: `/operaciones/${aj.pedidoId}`,
+                          }
+                        : undefined,
+                    })),
+                    {
+                      tipo: "total" as const,
+                      concepto: "Total del período",
+                      entregas: agrupacion.entregasTotales,
+                      monto: agrupacion.total,
+                    },
+                  ]}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Teléfono: una tarjeta por línea. */}
+              <ul className="divide-y divide-line-subtle rounded-md border border-line md:hidden">
+                {lineasPaginadas.map((l) => {
+                  const ajuste = formatearAjuste(l.ajusteIncidenciaClp);
+                  return (
+                    <li
+                      key={l.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2"
+                    >
+                      <span className="min-w-0">
+                        <Link
+                          href={`/operaciones/${l.pedidoId}`}
+                          className="rx-num flex min-h-8 items-center text-sm text-accent-text hover:underline"
+                        >
+                          {codigoPorPedido.get(l.pedidoId) ??
+                            `${l.pedidoId.slice(0, 8)}…`}
+                        </Link>
+                        <span className="rx-num block text-xs text-fg-muted">
+                          {formatearFechaCorta(l.fechaHecho)} ·{" "}
+                          {etiquetaTipoEntrega(l.tipoPedido)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="rx-num block text-sm font-medium">
+                          {formatearCLP(l.montoFinalClp)}
+                        </span>
+                        {l.ajusteIncidenciaClp !== 0 ? (
+                          <span
+                            className={`rx-num block text-xs ${ajuste.esNegativo ? "text-fault-fg" : "text-balanced-fg"}`}
+                          >
+                            {ajuste.texto}
+                          </span>
+                        ) : null}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="hidden overflow-hidden rounded-md border border-line bg-card md:block">
+                <table
+                  className="w-full text-sm"
+                  aria-label="Líneas de cobro del período"
+                >
+                  <thead>
+                    <tr className="border-b border-line bg-muted/40 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                      <th className="px-4 py-2">Pedido</th>
+                      <th className="px-4 py-2">Fecha</th>
+                      <th className="px-4 py-2">Tipo</th>
+                      <th className="hidden px-4 py-2 text-right lg:table-cell">
+                        Base
+                      </th>
+                      <th className="hidden px-4 py-2 text-right lg:table-cell">
+                        Ajuste
+                      </th>
+                      <th className="px-4 py-2 text-right">Monto</th>
+                      <th className="hidden px-4 py-2 text-center xl:table-cell">
+                        Regla
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line-subtle">
+                    {lineasPaginadas.map((linea) => (
+                      <FilaLinea
+                        key={linea.id}
+                        linea={linea}
+                        codigo={codigoPorPedido.get(linea.pedidoId) ?? null}
+                      />
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t border-line bg-muted/40">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 text-sm font-medium">
+                        {lineas.length}{" "}
+                        {lineas.length === 1 ? "línea" : "líneas"}
+                      </td>
+                      <td className="hidden lg:table-cell" />
+                      <td className="hidden lg:table-cell" />
+                      <td className="rx-num px-4 py-3 text-right font-semibold">
+                        {formatearCLPOGuion(
+                          lineas.reduce((acc, l) => acc + l.montoFinalClp, 0),
+                        )}
+                      </td>
+                      <td className="hidden xl:table-cell" />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {totalPaginas > 1 ? (
+                <div className="flex items-center justify-end gap-2 text-sm">
+                  {/* 🔴 La paginación conserva la vista: antes perdía
+                      `lineas=detalle` y la página 2 volvía al resumen. */}
+                  {pagina > 1 ? (
                     <Link
-                      href={`/dinero/periodos/${periodoId}?pagina=${pagina - 1}`}
-                      className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
+                      href={`${urlVista("detalle")}&pagina=${pagina - 1}`}
+                      className="flex min-h-11 items-center px-3 text-accent-text hover:underline md:min-h-8"
                     >
                       Anterior
                     </Link>
-                  )}
-                  {pagina < totalPaginas && (
+                  ) : null}
+                  <span className="rx-num text-fg-muted">
+                    {pagina} / {totalPaginas}
+                  </span>
+                  {pagina < totalPaginas ? (
                     <Link
-                      href={`/dinero/periodos/${periodoId}?pagina=${pagina + 1}`}
-                      className="rounded border px-3 py-1 text-xs hover:bg-muted transition-colors"
+                      href={`${urlVista("detalle")}&pagina=${pagina + 1}`}
+                      className="flex min-h-11 items-center px-3 text-accent-text hover:underline md:min-h-8"
                     >
                       Siguiente
                     </Link>
-                  )}
+                  ) : null}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      </div>
+              ) : null}
+            </>
+          )}
+        </section>
+      )}
     </div>
   );
 }
-
 
 // =============================================================================
 // Componentes auxiliares
 // =============================================================================
 
-
-function FilaLinea({ linea }: { linea: LineaCobro }) {
+function FilaLinea({
+  linea,
+  codigo,
+}: {
+  linea: LineaCobro;
+  codigo: string | null;
+}) {
   const ajuste = formatearAjuste(linea.ajusteIncidenciaClp);
 
   return (
-    <tr className="hover:bg-muted/30 transition-colors">
-      <td className="px-4 py-3">
+    <tr className="transition-colors hover:bg-muted/30">
+      <td className="px-4 py-2.5">
         <Link
           href={`/operaciones/${linea.pedidoId}`}
           title={linea.pedidoId}
-          className="font-mono text-xs text-primary hover:underline"
+          className="rx-num text-xs text-accent-text hover:underline"
         >
-          {linea.pedidoId.slice(0, 8)}…
+          {codigo ?? `${linea.pedidoId.slice(0, 8)}…`}
         </Link>
       </td>
-      <td className="hidden px-4 py-3 text-muted-foreground sm:table-cell">
+      <td className="rx-num px-4 py-2.5 text-muted-foreground">
         {formatearFechaCorta(linea.fechaHecho)}
       </td>
-      <td className="hidden px-4 py-3 md:table-cell">
-        <Badge variant="neutral" className="capitalize">
-          {etiquetaTipoEntrega(linea.tipoPedido)}
-        </Badge>
+      <td className="px-4 py-2.5 text-muted-foreground">
+        {etiquetaTipoEntrega(linea.tipoPedido)}
       </td>
-      <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">
-        {linea.concepto}
-      </td>
-      <td className="hidden px-4 py-3 text-right tabular-nums text-muted-foreground lg:table-cell">
+      <td className="rx-num hidden px-4 py-2.5 text-right text-muted-foreground lg:table-cell">
         {formatearCLP(linea.montoBaseClp)}
       </td>
-      <td className="hidden px-4 py-3 text-right tabular-nums lg:table-cell">
-        <span
-          className={
-            ajuste.esNegativo
-              ? "text-destructive"
-              : ajuste.esPositivo
+      <td
+        className={`rx-num hidden px-4 py-2.5 text-right lg:table-cell ${
+          ajuste.esNegativo
+            ? "text-destructive"
+            : ajuste.esPositivo
               ? "text-success"
               : "text-muted-foreground"
-          }
-        >
-          {ajuste.texto}
-        </span>
+        }`}
+      >
+        {ajuste.texto}
       </td>
-      <td className="px-4 py-3 text-right tabular-nums font-semibold">
+      <td className="rx-num px-4 py-2.5 text-right font-medium">
         {formatearCLP(linea.montoFinalClp)}
       </td>
-      <td className="hidden px-4 py-3 text-center xl:table-cell">
-        {linea.origenGeneracion === "motor_automatico" ? (
-          <span title="Generado automáticamente por el motor">
-            <Settings className="size-4 text-muted-foreground mx-auto" aria-label="Motor automático" />
-          </span>
-        ) : (
-          <span title="Ajuste manual">
-            <PenLine className="size-4 text-muted-foreground mx-auto" aria-label="Ajuste manual" />
-          </span>
-        )}
-      </td>
-      <td className="hidden px-4 py-3 text-center xl:table-cell">
+      <td className="hidden px-4 py-2.5 text-center xl:table-cell">
         <PopoverSnapshotRegla snapshotRegla={linea.snapshotRegla} iconoSolo />
       </td>
     </tr>
