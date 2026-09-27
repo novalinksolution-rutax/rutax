@@ -239,6 +239,33 @@ grant select, insert, update on public.pedidos    to authenticated;
 grant select, insert, update, delete on operacion.pedidos to service_role;
 grant select, insert, update, delete on public.pedidos    to service_role;
 
+-- 🔴 `anon` se REVOCA explícitamente, y esto se agregó el 2026-09-27 porque la
+-- suposición de más abajo dejó de ser cierta sola.
+--
+-- El §8.9 afirma que `anon` no ve estas columnas. Cuando se escribió, eso se
+-- DABA POR SENTADO: el comentario decía «anon → nada: no tiene grant sobre
+-- pedidos». Pero Supabase trae `alter default privileges in schema public grant
+-- all on tables to anon, authenticated, service_role`, así que TODA vista creada
+-- en `public` —`public.pedidos` incluida— nace con el grant puesto. La afirmación
+-- no era una barrera: era una creencia sobre los defaults del stack.
+--
+-- Y el stack se movió. El CI corre `supabase/setup-cli@v1` con `version: latest`,
+-- así que la imagen se actualizó por su cuenta, el default empezó a alcanzar a
+-- esta vista y el §8.9 pasó a abortar la migración — dejando SIN CORRER todas
+-- las pruebas de aislamiento RLS, no solo ésta.
+--
+-- ⚠️ Que el grant exista NO era una fuga: `operacion.pedidos` tiene RLS enable +
+-- force y `anon` no tiene una sola política, así que habría leído CERO filas. La
+-- barrera de confidencialidad es la RLS de fila, como dice el comentario de
+-- arriba. Esto es defensa en profundidad: quitar el privilegio para que la
+-- barrera no dependa de que nadie escriba nunca una política para `anon`.
+--
+-- Se revoca de las DOS superficies: `config.toml` expone el esquema `operacion`
+-- directo por PostgREST (`Accept-Profile: operacion`), así que revocar solo la
+-- vista de `public` dejaría la tabla base alcanzable.
+revoke all on public.pedidos    from anon;
+revoke all on operacion.pedidos from anon;
+
 -- =============================================================================
 -- RLS — NO se agrega ninguna política, y es decisión, no olvido
 -- =============================================================================
