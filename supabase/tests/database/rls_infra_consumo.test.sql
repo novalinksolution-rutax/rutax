@@ -18,7 +18,11 @@
 
 begin;
 
-select plan(20);
+-- 21, no 20: alguien agregó una aserción y no subió el plan. pgTAP cuenta eso
+-- como fallo («planeaste 20 pruebas pero corrieron 21») aunque las 21 pasen, y
+-- con razón: un plan que no cuadra es la señal de que un `select ok(...)` se
+-- perdió por el camino sin que nadie se entere.
+select plan(21);
 
 -- =============================================================================
 -- BLOQUE 1 · Metadatos: RLS forzada sin políticas en las tres tablas
