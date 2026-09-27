@@ -42,7 +42,7 @@ import {
 
 import type { FichaSeller } from "./_ficha/datos";
 import { accionVistaPreviaSeller } from "./vista-previa-actions";
-import { ControlSincronizarMl } from "./control-sincronizar-ml";
+import { BotonSincronizarCuenta } from "./boton-sincronizar-cuenta";
 import { VentanasCorteSeller } from "./_ficha/ventanas-corte-seller";
 import { MenuSeller } from "./menu-seller";
 
@@ -145,8 +145,8 @@ function Vacio({ children }: { children: ReactNode }) {
 }
 
 function Cuerpo(d: FichaSeller) {
-  const cuentasMl = d.cuentas.filter((c) => c.tipo === "ml" && !c.apagadaPorSeller);
-
+  const hayBotonSincronizar =
+    d.puedeSincronizar && d.cuentas.some((c) => c.tipo === "ml" && !c.apagadaPorSeller);
   return (
     <div className="space-y-3">
       {/* Las tres cifras que responden «cuánto pesa este seller hoy». */}
@@ -172,25 +172,14 @@ function Cuerpo(d: FichaSeller) {
         </Tarjeta>
       ) : null}
 
-      <Tarjeta
-        titulo="Cuentas de pedidos"
-        accion={
-          // La acción va en el título: así se lee que sincroniza ESTAS cuentas.
-          d.puedeSincronizar && cuentasMl.length > 0 ? (
-            <ControlSincronizarMl
-              razonSocial={d.razonSocial}
-              conexiones={cuentasMl.map((c) => ({ id: c.id, etiqueta: c.nombre }))}
-            />
-          ) : null
-        }
-      >
+      <Tarjeta titulo="Cuentas de pedidos">
         {d.cuentas.length === 0 ? (
           <Vacio>Sin cuentas conectadas.</Vacio>
         ) : (
           <ul className="divide-y divide-line-subtle">
             {d.cuentas.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-3 py-1.5">
-                <span className="min-w-0">
+              <li key={c.id} className="flex items-center gap-2 py-1.5">
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-fg">{c.nombre}</span>
                   <span className="block text-xs text-fg-muted">
                     {c.tipo === "ml" ? "Mercado Libre" : "Shopify"}
@@ -211,6 +200,14 @@ function Cuerpo(d: FichaSeller) {
                     texto={c.estadoSalud === "sana" ? "Conectada" : traducirSaludConexion(c.estadoSalud)}
                   />
                 )}
+                {/* Por cuenta: la sincronización es de UNA conexión. Solo ML
+                    (Shopify barre sola cada 15 min) y no la que apagó el seller. */}
+                {d.puedeSincronizar && c.tipo === "ml" && !c.apagadaPorSeller ? (
+                  <BotonSincronizarCuenta conexionId={c.id} etiqueta={c.nombre} />
+                ) : hayBotonSincronizar ? (
+                  // Mismo ancho que el botón: que los estados queden en columna.
+                  <span className="size-11 shrink-0 md:size-8" aria-hidden="true" />
+                ) : null}
               </li>
             ))}
           </ul>
