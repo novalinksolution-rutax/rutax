@@ -243,6 +243,7 @@ export function PanelEquipo({
                     <TarjetaUsuario
                       key={`tarjeta-usuario-${fila.usuario.id}`}
                       usuario={fila.usuario}
+                      mostrarRol={grupo.clave === GRUPO_SIN_ACCESO}
                       puedeGestionar={puedeGestionar}
                       onActualizado={actualizarUsuario}
                     />
@@ -266,11 +267,17 @@ export function PanelEquipo({
           <Table>
             <TableHeader>
               <TableRow>
-                {/* Cuatro columnas: Persona · Rol · Estado · (acciones, sin
-                    rótulo — es una columna de iconos, y ponerle título la haría
-                    pesar más de lo que vale). */}
+                {/* 🔴 NO hay columna «Rol», y su ausencia es la consecuencia de
+                    agrupar: el rol lo dice el encabezado del grupo, así que la
+                    columna habría quedado vacía en casi todas las filas — y una
+                    columna vacía se lee como dato que falta, que es peor que la
+                    redundancia que venía a resolver. El rol aparece junto al
+                    nombre solo donde el grupo NO lo dice: en «Sin acceso» y en
+                    las invitaciones.
+
+                    La de acciones va sin rótulo: es una columna de iconos, y
+                    titularla la haría pesar más de lo que vale. */}
                 <TableHead>Persona</TableHead>
-                <TableHead>Rol</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="w-12">
                   <span className="sr-only">Acciones</span>
@@ -285,6 +292,7 @@ export function PanelEquipo({
                     <FilaUsuario
                       key={`usuario-${fila.usuario.id}`}
                       usuario={fila.usuario}
+                      mostrarRol={grupo.clave === GRUPO_SIN_ACCESO}
                       puedeGestionar={puedeGestionar}
                       onActualizado={actualizarUsuario}
                     />
@@ -333,6 +341,12 @@ interface GrupoFilas {
   titulo: string;
   filas: FilaCombinada[];
 }
+
+/**
+ * El único grupo de personas cuyo encabezado NO dice un rol, así que es el
+ * único donde la fila tiene que mostrarlo.
+ */
+const GRUPO_SIN_ACCESO = "sin-acceso";
 
 /** Orden alfabético de personas, con las reglas del español (tildes, ñ). */
 const porNombre = (a: UsuarioEquipo, b: UsuarioEquipo) =>
@@ -409,7 +423,7 @@ function construirGrupos(estado: EstadoEquipo | null, filtro: Filtro): GrupoFila
       .map((usuario): FilaCombinada => ({ tipo: "usuario", usuario }));
 
     if (suspendidos.length > 0) {
-      grupos.push({ clave: "sin-acceso", titulo: "Sin acceso", filas: suspendidos });
+      grupos.push({ clave: GRUPO_SIN_ACCESO, titulo: "Sin acceso", filas: suspendidos });
     }
   }
 
@@ -446,7 +460,7 @@ function EncabezadoGrupoTarjeta({ titulo, total }: { titulo: string; total: numb
 function EncabezadoGrupoFila({ titulo, total }: { titulo: string; total: number }) {
   return (
     <TableRow className="bg-bg-sunken hover:bg-bg-sunken">
-      <TableCell colSpan={4} className="py-2">
+      <TableCell colSpan={3} className="py-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-fg-muted">{titulo}</span>
         <span className="ml-2 text-xs text-fg-muted tabular-nums">{total}</span>
       </TableCell>
@@ -758,10 +772,13 @@ function MenuAccionesInvitacion({
 
 function FilaUsuario({
   usuario,
+  mostrarRol,
   puedeGestionar,
   onActualizado,
 }: {
   usuario: UsuarioEquipo;
+  /** Solo en «Sin acceso»: en los grupos de rol lo dice el encabezado. */
+  mostrarRol: boolean;
   puedeGestionar: boolean;
   onActualizado: (u: UsuarioEquipo) => void;
 }) {
@@ -776,17 +793,17 @@ function FilaUsuario({
             {usuario.email ?? "Sin correo registrado"}
             <span className="text-fg-subtle"> · desde el {formatearFecha(usuario.creadoEn)}</span>
           </p>
+          {/* 🔴 Nunca el párrafo de capacidades. Acá se listaba
+              `describirRol()` —«Dar de alta gente y cambiarle el rol, … y 21
+              cosas más»— repetido en CADA fila: el texto más largo de la tabla
+              para el dato menos urgente, ya contestado completo en «Qué puede
+              hacer cada rol» al pie, derivado del mismo catálogo. */}
+          {mostrarRol ? (
+            <p className="pt-1">
+              <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
+            </p>
+          ) : null}
         </div>
-      </TableCell>
-      {/* 🔴 Solo la etiqueta del rol, sin el párrafo de capacidades.
-          Acá se listaba `describirRol()` —«Dar de alta gente y cambiarle el
-          rol, … y 21 cosas más»— repetido en CADA fila. Era el texto más largo
-          de la tabla para el dato menos urgente, y ya está contestado, mejor y
-          completo, en «Qué puede hacer cada rol» al pie de la pantalla: los
-          cuatro roles con su «Puede» y su «No puede», derivados del mismo
-          catálogo. */}
-      <TableCell className="align-top">
-        <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
       </TableCell>
       <TableCell>
         <DistintivoEstado
@@ -814,10 +831,13 @@ function FilaUsuario({
  */
 function TarjetaUsuario({
   usuario,
+  mostrarRol,
   puedeGestionar,
   onActualizado,
 }: {
   usuario: UsuarioEquipo;
+  /** Solo en «Sin acceso»: en los grupos de rol lo dice el encabezado. */
+  mostrarRol: boolean;
   puedeGestionar: boolean;
   onActualizado: (u: UsuarioEquipo) => void;
 }) {
@@ -836,7 +856,9 @@ function TarjetaUsuario({
           {usuario.email ?? "Sin correo registrado"}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
+          {mostrarRol ? (
+            <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
+          ) : null}
           <DistintivoEstado
             tono={activo ? "neutral" : "inert"}
             etiqueta={activo ? "Activo" : "Suspendido"}
@@ -871,11 +893,15 @@ function FilaInvitacion({
 
   return (
     <TableRow>
+      {/* El rol va acá, junto al correo: el encabezado de este grupo dice
+          «Invitaciones», no un rol, así que la fila es el único sitio donde se
+          puede saber qué se está entregando — y al invitar es justo cuando más
+          importa. */}
       <TableCell>
         <p className="font-medium text-foreground">{invitacion.email}</p>
-      </TableCell>
-      <TableCell className="align-top">
-        <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
+        <p className="pt-1">
+          <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
+        </p>
       </TableCell>
       {/* El ancho máximo no es decoración: el motivo que manda Resend viene
           recortado a 300 caracteres (`webhook-resend.ts`), y 300 caracteres sin
