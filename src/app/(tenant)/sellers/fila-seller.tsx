@@ -48,3 +48,34 @@ export function FilaSeller({ sellerId, children }: { sellerId: string; children:
     </TableRow>
   );
 }
+
+/**
+ * El nombre del seller: abre su ficha en el panel, sin salir del listado.
+ *
+ * Es un botón y no un enlace porque ya no hay página a la cual ir. Sin
+ * proveedor (si alguien reusa la fila suelta) cae al enlace de siempre, que
+ * redirige al mismo panel.
+ */
+export function NombreSeller({
+  sellerId,
+  className,
+  children,
+}: {
+  sellerId: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  const vistaPrevia = useVistaPreviaLateral();
+  if (!vistaPrevia) {
+    return (
+      <a href={`/sellers?seller=${sellerId}`} className={className}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <button type="button" onClick={() => vistaPrevia.abrir(sellerId)} className={cn("text-left", className)}>
+      {children}
+    </button>
+  );
+}

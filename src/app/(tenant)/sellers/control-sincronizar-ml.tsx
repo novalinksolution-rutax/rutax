@@ -102,6 +102,7 @@ export function ControlSincronizarMl({ razonSocial, conexiones }: Props) {
           type="button"
           variant="outline"
           size="sm"
+          className="min-h-11 sm:min-h-8"
           onClick={() => void sincronizar(conexiones[0].id)}
           disabled={sincronizandoId !== null || enEnfriamiento.has(conexiones[0].id)}
           aria-label={`Sincronizar pedidos de ${razonSocial}`}
@@ -120,6 +121,7 @@ export function ControlSincronizarMl({ razonSocial, conexiones }: Props) {
               type="button"
               variant="outline"
               size="sm"
+              className="min-h-11 sm:min-h-8"
               disabled={sincronizandoId !== null}
               aria-label={`Sincronizar cuentas de Mercado Libre de ${razonSocial}`}
             >

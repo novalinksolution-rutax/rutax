@@ -1,254 +1,251 @@
 "use client";
 
 /**
- * La vista previa del seller, al tocar su fila.
+ * La ficha del seller, en el panel lateral.
  * =============================================================================
  *
- * El chasis vive en `@/components/ui/vista-previa-lateral`. Acá va solo lo que
- * es de esta pantalla.
+ * Era una vista previa con un botón «Ficha completa» que llevaba a otra página,
+ * y cada una mostraba cosas distintas del mismo seller. Ahora el panel ES la
+ * ficha (decisión del usuario, 2026-09-27): se abre al tocar la fila o el
+ * nombre, sin salir del listado. `/sellers/[id]` redirige a `?seller=` y abre
+ * este mismo panel, porque hay correos y pantallas que enlazan ahí.
  *
- * -----------------------------------------------------------------------------
- * QUÉ RESPONDE
- * -----------------------------------------------------------------------------
- * La tabla ya dice quién es y si su conexión está sana. Este panel responde la
- * pregunta siguiente: **cuánto pesa este cliente y cómo se está portando**, que
- * es lo que uno necesita antes de llamarlo o de renegociar una tarifa.
+ * Poco texto a propósito: cada bloque dice el dato, y el vacío dice solo que
+ * falta — no narra la consecuencia.
  *
- * -----------------------------------------------------------------------------
- * 🔴 LAS CIFRAS QUE NO SE PUDIERON LEER NO SE DIBUJAN EN CERO
- * -----------------------------------------------------------------------------
- * Un «0 fallidos» que en realidad es una consulta caída se lee como una buena
- * noticia. Cuando la lectura falla, el bloque lo dice con todas las letras en
- * vez de mostrar un número. Es la misma regla de la barra de cajones de Pedidos.
+ * 🔴 Las cifras que no se pudieron leer no se dibujan en cero: un «0» que en
+ * realidad es una consulta caída se lee como una buena noticia.
  */
 
-import type { ReactNode } from "react";
+import { Suspense, useEffect, type ReactNode } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
   BloqueVistaPrevia,
-  DatoVistaPrevia,
   EnlaceQueCierra,
   ProveedorVistaPreviaLateral,
+  useVistaPreviaLateral,
 } from "@/components/ui/vista-previa-lateral";
-import { formatearCLP } from "@/lib/ui/formato-moneda";
-import { formatearFechaCivilCorta, formatearFechaHora } from "@/lib/formato-cl";
-import { DIAS_VENTANA_SELLER } from "@/modules/identidad/vista-previa-seller-courier";
+import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
+import {
+  BADGE_ESTADO_PERIODO,
+  BADGE_ESTADO_SELLER,
+  BADGE_SALUD_CONEXION,
+  traducirEstadoPeriodoCobro,
+  traducirEstadoSeller,
+  traducirSaludConexion,
+  type EstadoSaludConexion,
+  type EstadoSeller,
+} from "@/lib/ui/traduccion-estados";
 
-import { accionVistaPreviaSeller, type VistaPreviaSellerConPermisos } from "./vista-previa-actions";
+import type { FichaSeller } from "./_ficha/datos";
+import { accionVistaPreviaSeller } from "./vista-previa-actions";
 import { ControlSincronizarMl } from "./control-sincronizar-ml";
-import { traducirSaludConexion } from "@/lib/ui/traduccion-estados";
+import { VentanasCorteSeller } from "./_ficha/ventanas-corte-seller";
+import { ControlMembresiaAutoservicio } from "./_ficha/control-membresia-autoservicio";
 
 export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }) {
   return (
-    <ProveedorVistaPreviaLateral<VistaPreviaSellerConPermisos>
-      etiqueta="Vista previa del seller"
+    <ProveedorVistaPreviaLateral<FichaSeller>
+      etiqueta="Ficha del seller"
       cargar={accionVistaPreviaSeller}
       tituloFalla="No se pudo abrir"
       textoFalla="Vuelve a intentarlo."
-      render={{ encabezado: Encabezado, cuerpo: Cuerpo, pie: Pie }}
+      render={RENDER_FICHA_SELLER}
     >
+      <Suspense fallback={null}>
+        <AbrirDesdeUrl />
+      </Suspense>
       {children}
     </ProveedorVistaPreviaLateral>
   );
 }
 
-function Encabezado(d: VistaPreviaSellerConPermisos) {
+/** `?seller=<id>` abre la ficha: es el destino de la ruta vieja y de los correos. */
+function AbrirDesdeUrl() {
+  const params = useSearchParams();
+  const vista = useVistaPreviaLateral();
+  const id = params.get("seller");
+  const abrir = vista?.abrir;
+  useEffect(() => {
+    if (id && abrir) abrir(id);
+  }, [id, abrir]);
+  return null;
+}
+
+function Encabezado(d: FichaSeller) {
   return (
     <>
       <p className="truncate font-heading text-base font-semibold">{d.razonSocial}</p>
-      {d.rut ? <p className="rx-num mt-0.5 text-xs text-fg-muted">{d.rut}</p> : null}
+      <p className="rx-num mt-0.5 truncate text-xs text-fg-muted">
+        {[d.rut, d.nombreContacto, d.emailContacto].filter(Boolean).join(" · ")}
+      </p>
       {d.estado !== "activo" ? (
-        <p className="mt-2 text-xs font-medium text-attention-fg">
-          Cuenta {d.estado}. No está operando.
-        </p>
+        <div className="mt-2">
+          <BadgeEstado
+            variante={BADGE_ESTADO_SELLER[d.estado as EstadoSeller] ?? "neutral"}
+            eje="seller"
+            valor={d.estado}
+            texto={traducirEstadoSeller(d.estado)}
+          />
+        </div>
       ) : null}
     </>
   );
 }
 
-function Cuerpo(d: VistaPreviaSellerConPermisos, cerrar: () => void) {
+function Vacio({ children }: { children: ReactNode }) {
+  return <p className="text-sm text-fg-muted">{children}</p>;
+}
+
+function Cuerpo(d: FichaSeller) {
+  const cuentasMl = d.cuentas.filter((c) => c.tipo === "ml" && !c.apagadaPorSeller);
+
   return (
     <>
-      {/* ── Volumen ─────────────────────────────────────────────────────────
-          Lo primero, porque es lo que decide si vale la pena el resto de la
-          conversación. */}
-      <BloqueVistaPrevia titulo={`Volumen · últimos ${DIAS_VENTANA_SELLER} días`}>
-        {d.hayMetricas ? (
-          <>
-            <p className="rx-num text-2xl font-semibold text-fg">
-              {d.promedioSemanal.toLocaleString("es-CL")}
-            </p>
-            <p className="mt-0.5 text-xs text-fg-muted">
-              pedidos por semana · {d.pedidosVentana} en total
-            </p>
-          </>
+      <BloqueVistaPrevia titulo="Cuentas">
+        {d.cuentas.length === 0 ? (
+          <Vacio>Sin cuentas conectadas.</Vacio>
         ) : (
-          // 🔴 Rayas, nunca ceros: «0 pedidos» es una afirmación —y falsa—;
-          // «—» dice lo único que sabemos, que es que no lo sabemos.
-          <>
-            <p className="rx-num text-2xl font-semibold text-fg-subtle">—</p>
-            <p className="mt-0.5 text-xs text-fault-fg">
-              No pudimos leer sus pedidos. No son cero: no los pudimos leer.
-            </p>
-          </>
-        )}
-      </BloqueVistaPrevia>
-
-      {d.hayMetricas && d.pedidosVentana > 0 ? (
-        <BloqueVistaPrevia titulo="Cómo terminan">
-          <DatoVistaPrevia rotulo="Entregados">
-            {d.entregados}
-            <span className="ms-1 text-xs text-fg-muted">
-              ({Math.round((d.entregados / d.pedidosVentana) * 100)} %)
-            </span>
-          </DatoVistaPrevia>
-          {/* Un fallido es una entrega que se hizo y no se cobra: es plata, no
-              una estadística. Por eso va en tono de atención aunque sea uno. */}
-          {d.fallidos > 0 ? (
-            <DatoVistaPrevia rotulo="Fallidos o devueltos" tono="atencion">
-              {d.fallidos}
-              <span className="ms-1 text-xs">
-                ({Math.round((d.fallidos / d.pedidosVentana) * 100)} %)
-              </span>
-            </DatoVistaPrevia>
-          ) : (
-            <DatoVistaPrevia rotulo="Fallidos o devueltos">0</DatoVistaPrevia>
-          )}
-          {d.cancelados > 0 ? (
-            <DatoVistaPrevia rotulo="Cancelados">{d.cancelados}</DatoVistaPrevia>
-          ) : null}
-          {d.enCurso > 0 ? (
-            <DatoVistaPrevia rotulo="Todavía en curso">{d.enCurso}</DatoVistaPrevia>
-          ) : null}
-          {d.incidenciasAbiertas > 0 ? (
-            <div className="mt-2">
-              <Button asChild variant="outline" size="sm">
-                <EnlaceQueCierra
-                  href={`/operaciones/incidencias?seller=${d.id}`}
-                  onCerrar={cerrar}
-                >
-                  {d.incidenciasAbiertas}{" "}
-                  {d.incidenciasAbiertas === 1
-                    ? "incidencia abierta"
-                    : "incidencias abiertas"}
-                </EnlaceQueCierra>
-              </Button>
-            </div>
-          ) : null}
-        </BloqueVistaPrevia>
-      ) : null}
-
-      {/* ── Dinero ──────────────────────────────────────────────────────────
-          El período abierto se suma desde las líneas y no del total guardado:
-          ese se escribe al cerrar, así que en un período abierto siempre está
-          desactualizado o vacío. */}
-      <BloqueVistaPrevia titulo="Lo que le estás cobrando">
-        {!d.hayDinero ? (
-          <p className="text-xs text-fault-fg">No pudimos leer sus períodos de cobro.</p>
-        ) : (
-          <>
-            {d.periodoVivoClp !== null ? (
-              <DatoVistaPrevia
-                // Un período CERRADO sin facturar es plata comprometida con una
-                // acción pendiente: va en ámbar. Uno abierto es el curso normal.
-                rotulo={d.periodoVivoEstado === "cerrado" ? "Cerrado, sin facturar" : "Período en curso"}
-                tono={d.periodoVivoEstado === "cerrado" ? "atencion" : "normal"}
-              >
-                {formatearCLP(d.periodoVivoClp)}
-                <span className="ms-1 text-xs text-fg-muted">
-                  ({d.periodoVivoLineas} {d.periodoVivoLineas === 1 ? "línea" : "líneas"} · neto)
-                </span>
-              </DatoVistaPrevia>
-            ) : (
-              <DatoVistaPrevia rotulo="Período en curso">sin período abierto</DatoVistaPrevia>
-            )}
-            {d.ultimoFacturadoClp !== null ? (
-              <DatoVistaPrevia rotulo="Última factura">
-                {formatearCLP(d.ultimoFacturadoClp)}
-                {d.ultimoFacturadoHasta ? (
-                  <span className="ms-1 text-xs text-fg-muted">
-                    hasta {formatearFechaCivilCorta(d.ultimoFacturadoHasta)}
+          <ul className="space-y-2">
+            {d.cuentas.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-fg">{c.nombre}</span>
+                  <span className="block text-xs text-fg-muted">
+                    {c.tipo === "ml" ? "Mercado Libre" : "Shopify"}
                   </span>
-                ) : null}
-              </DatoVistaPrevia>
-            ) : (
-              <DatoVistaPrevia rotulo="Última factura">todavía ninguna</DatoVistaPrevia>
-            )}
-          </>
-        )}
-      </BloqueVistaPrevia>
-
-      <BloqueVistaPrevia titulo="De dónde entran sus pedidos">
-        {d.conexiones.length === 0 ? (
-          <p className="text-sm text-fg-muted">Sin cuentas conectadas.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {d.conexiones.map((c, i) => (
-              <li key={`${c.tipo}-${i}`} className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 truncate text-sm text-fg">{c.nombre}</span>
-                <span
-                  className={
-                    c.estadoSalud === "sana"
-                      ? "shrink-0 text-xs text-fg-muted"
-                      : "shrink-0 text-xs font-medium text-attention-fg"
-                  }
-                >
-                  {c.tipo === "ml" ? "Mercado Libre" : "Shopify"} · {traducirSaludConexion(c.estadoSalud)}
                 </span>
+                {c.apagadaPorSeller ? (
+                  <BadgeEstado
+                    variante="neutral"
+                    eje="conexion"
+                    valor="desconectada_a_proposito"
+                    texto="La apagó el seller"
+                  />
+                ) : c.estadoSalud === "sana" ? null : (
+                  <BadgeEstado
+                    variante={BADGE_SALUD_CONEXION[c.estadoSalud as EstadoSaludConexion] ?? "neutral"}
+                    eje="conexion"
+                    valor={c.estadoSalud}
+                    texto={traducirSaludConexion(c.estadoSalud)}
+                  />
+                )}
               </li>
             ))}
           </ul>
         )}
-        {/* La última sincronización de la conexión más fresca: es lo que dice si
-            «no entran pedidos» es un problema de hoy o de hace una semana. */}
-        {d.conexiones.some((c) => c.ultimaSyncEn) ? (
-          <p className="mt-1.5 text-xs text-fg-subtle">
-            Última sincronización:{" "}
-            {formatearFechaHora(
-              d.conexiones
-                .map((c) => c.ultimaSyncEn)
-                .filter((s): s is string => Boolean(s))
-                .sort()
-                .at(-1) as string,
-            )}
-          </p>
-        ) : null}
-        {/* Sincronizar vive acá, junto a las cuentas que sincroniza, y no
-            repetido en cada fila del listado. */}
-        {d.puedeSincronizar && d.conexiones.some((c) => c.tipo === "ml") ? (
+        {d.puedeSincronizar && cuentasMl.length > 0 ? (
           <div className="mt-2">
             <ControlSincronizarMl
               razonSocial={d.razonSocial}
-              conexiones={d.conexiones
-                .filter((c) => c.tipo === "ml")
-                .map((c) => ({ id: c.id, etiqueta: c.nombre }))}
+              conexiones={cuentasMl.map((c) => ({ id: c.id, etiqueta: c.nombre }))}
             />
           </div>
         ) : null}
       </BloqueVistaPrevia>
 
-      <BloqueVistaPrevia titulo="A quién llamar">
-        <DatoVistaPrevia rotulo="Contacto">{d.nombreContacto ?? "—"}</DatoVistaPrevia>
-        <DatoVistaPrevia rotulo="Correo">{d.emailContacto ?? "—"}</DatoVistaPrevia>
+      <BloqueVistaPrevia titulo="Pedidos">
+        {d.hayMetricas ? (
+          <p className="rx-num text-sm text-fg">
+            <span className="text-lg font-semibold">{d.pedidosHoy}</span> hoy
+            <span className="text-fg-muted"> · ~{d.promedioSemanal.toLocaleString("es-CL")} por semana</span>
+          </p>
+        ) : (
+          <p className="text-xs text-fault-fg">No se pudieron leer.</p>
+        )}
       </BloqueVistaPrevia>
+
+      <BloqueVistaPrevia titulo="Cobro">
+        {d.tarifas.length === 0 ? (
+          <Vacio>Sin tarifa propia.</Vacio>
+        ) : (
+          <ul className="space-y-1">
+            {d.tarifas.map((t) => (
+              <li key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="text-fg">{t.tipoEntrega}</span>
+                <span className="rx-num text-fg-muted">
+                  {formatearCLPOGuion(t.montoClp)} · paga {formatearCLPOGuion(t.montoConductorClp)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {d.periodos.length > 0 ? (
+          <ul className="mt-2 divide-y divide-line border-t border-line">
+            {d.periodos.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-3 py-1.5">
+                <Link
+                  href={`/dinero/periodos/${p.id}`}
+                  className="rx-num flex min-h-11 items-center text-sm hover:underline lg:min-h-0"
+                >
+                  {p.etiqueta}
+                </Link>
+                <span className="flex items-center gap-2">
+                  <span className="rx-num text-sm text-fg-muted">
+                    {formatearCLPOGuion(p.montoClp)}
+                  </span>
+                  <BadgeEstado
+                    variante={BADGE_ESTADO_PERIODO[p.estado as "abierto"] ?? "neutral"}
+                    eje="periodo"
+                    valor={p.estado}
+                    texto={traducirEstadoPeriodoCobro(p.estado as "abierto")}
+                  />
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </BloqueVistaPrevia>
+
+      <BloqueVistaPrevia titulo="Bodegas">
+        {d.bodegas.length === 0 ? (
+          <Vacio>Sin bodegas.</Vacio>
+        ) : (
+          <ul className="space-y-1.5">
+            {d.bodegas.map((b) => (
+              <li key={b.id}>
+                <span className="block text-sm text-fg">{b.nombre}</span>
+                <span className="block text-xs text-fg-muted">
+                  {b.direccion}
+                  {b.comuna ? `, ${b.comuna}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </BloqueVistaPrevia>
+
+      <BloqueVistaPrevia titulo="Hora de corte">
+        <VentanasCorteSeller key={d.id} sellerId={d.id} zonas={d.zonas} />
+      </BloqueVistaPrevia>
+
+      {/* Al fondo: es la única acción con consecuencia de la ficha. */}
+      {d.membresia ? (
+        <BloqueVistaPrevia titulo="Acceso a Rutax">
+          <ControlMembresiaAutoservicio
+            key={d.id}
+            sellerId={d.id}
+            razonSocial={d.razonSocial}
+            estadoInicial={d.membresia}
+          />
+        </BloqueVistaPrevia>
+      ) : null}
     </>
   );
 }
 
-function Pie(d: VistaPreviaSellerConPermisos, cerrar: () => void) {
+function Pie(d: FichaSeller, cerrar: () => void) {
   return (
-    <div className="flex gap-2">
-      <Button asChild variant="outline" size="sm" className="flex-1">
-        <EnlaceQueCierra href={`/operaciones?seller=${d.id}`} onCerrar={cerrar}>
-          Ver sus pedidos
-        </EnlaceQueCierra>
-      </Button>
-      <Button asChild variant="outline" size="sm" className="flex-1">
-        <EnlaceQueCierra href={`/sellers/${d.id}`} onCerrar={cerrar}>
-          Ficha completa
-        </EnlaceQueCierra>
-      </Button>
-    </div>
+    <Button asChild variant="outline" className="min-h-11 w-full lg:min-h-9">
+      <EnlaceQueCierra href={`/operaciones?seller=${d.id}`} onCerrar={cerrar}>
+        Ver sus pedidos
+      </EnlaceQueCierra>
+    </Button>
   );
 }
+
+export const RENDER_FICHA_SELLER = { encabezado: Encabezado, cuerpo: Cuerpo, pie: Pie };

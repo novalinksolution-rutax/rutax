@@ -1,43 +1,23 @@
 "use server";
 
 /**
- * La lectura que alimenta la vista previa lateral del seller.
+ * El lector de la ficha del seller para el panel lateral.
  *
- * ⚠️ Recibe un `sellerId` **del navegador**, así que no se cree nada: sesión y
- * tenant se verifican acá otra vez.
- *
- * ⚠️ **Y exige `tipoUsuario === "interno"`, aunque la pantalla no lo haga.** La
- * pantalla no lo necesita porque `(tenant)` ya está fuera del alcance de un
- * seller; una Server Action, en cambio, se puede invocar desde cualquier sesión
- * autenticada que conozca su id. Sin este filtro, una sesión de seller podría
- * pedir la ficha comercial de OTRO seller del mismo courier — volumen, fallidos
- * y lo que se le está cobrando. Es la clase de fuga que no se ve en ninguna
- * pantalla.
+ * Mismo cierre que el resto de las vistas previas: un id que no es UUID, una
+ * sesión sin tenant o un seller de otro tenant responden igual, `{ ok: false }`.
  */
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
 import { puedeSincronizarConexionesMl } from "@/modules/identidad/capacidades";
-import {
-  armarVistaPreviaSellerCourier,
-  type VistaPreviaSellerCourier,
-} from "@/modules/identidad/vista-previa-seller-courier";
+import { cargarFichaSeller, type FichaSeller } from "./_ficha/datos";
 
 const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Los datos del seller más lo que quien mira puede hacer con ellos. */
-export type VistaPreviaSellerConPermisos = VistaPreviaSellerCourier & {
-  puedeSincronizar: boolean;
-};
+export type RespuestaFichaSeller = { ok: true; datos: FichaSeller } | { ok: false };
 
-export type RespuestaVistaPreviaSeller =
-  | { ok: true; datos: VistaPreviaSellerConPermisos }
-  | { ok: false };
-
-export async function accionVistaPreviaSeller(
-  sellerId: string,
-): Promise<RespuestaVistaPreviaSeller> {
+export async function accionVistaPreviaSeller(sellerId: string): Promise<RespuestaFichaSeller> {
   if (!REGEX_UUID.test(sellerId)) return { ok: false };
 
   const sesion = await obtenerSesionActual();
@@ -45,18 +25,14 @@ export async function accionVistaPreviaSeller(
   if (sesion.usuario.tipoUsuario !== "interno") return { ok: false };
 
   try {
-    const datos = await armarVistaPreviaSellerCourier(
+    const datos = await cargarFichaSeller(
       crearClienteServiceRole(),
       sesion.usuario.tenantId,
       sellerId,
       fechaLocalEnSantiago(new Date()),
+      puedeSincronizarConexionesMl(sesion.usuario),
     );
-    return datos
-      ? {
-          ok: true,
-          datos: { ...datos, puedeSincronizar: puedeSincronizarConexionesMl(sesion.usuario) },
-        }
-      : { ok: false };
+    return datos ? { ok: true, datos } : { ok: false };
   } catch {
     return { ok: false };
   }

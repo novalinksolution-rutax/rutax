@@ -53,7 +53,7 @@ export function PanelZonas({ estadoInicial }: Props) {
           prometió». Estaba detrás de un acordeón y un selector de seller, o sea
           que para cambiarle la hora a Vega Norte había que entrar a una
           pantalla llamada «Zonas» y volver a elegir el seller que uno ya estaba
-          mirando. Ver `sellers/[sellerId]/ventanas-corte-seller.tsx`. */}
+          mirando. Ver `sellers/_ficha/ventanas-corte-seller.tsx`. */}
     </div>
   );
 }

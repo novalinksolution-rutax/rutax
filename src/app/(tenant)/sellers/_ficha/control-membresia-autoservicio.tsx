@@ -19,7 +19,7 @@ import { toast } from "sonner";
 
 import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
-import { bloquearSellerAction, desbloquearSellerAction } from "./actions";
+import { bloquearSellerAction, desbloquearSellerAction } from "./actions-membresia";
 
 export function ControlMembresiaAutoservicio({
   sellerId,
@@ -71,6 +71,7 @@ export function ControlMembresiaAutoservicio({
           etiqueta="Bloquear acceso"
           variant="outline"
           size="sm"
+          className="min-h-11 sm:min-h-8"
           varianteModal="destructive"
           titulo={`Vas a bloquear el acceso de ${razonSocial}`}
           consecuencia="Ya no va a poder entrar a su portal ni operar contigo. No se borra su cuenta ni su historial — puedes restaurarle el acceso cuando quieras."
@@ -83,6 +84,7 @@ export function ControlMembresiaAutoservicio({
           etiqueta="Restaurar acceso"
           variant="outline"
           size="sm"
+          className="min-h-11 sm:min-h-8"
           titulo={`Vas a restaurar el acceso de ${razonSocial}`}
           consecuencia="Va a poder volver a entrar a su portal y operar contigo con normalidad."
           textoConfirmar="Restaurar acceso"

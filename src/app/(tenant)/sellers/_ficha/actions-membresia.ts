@@ -40,7 +40,6 @@ export async function bloquearSellerAction(sellerId: string): Promise<ResultadoB
       sellerId,
       actorUsuarioId: g.usuarioId,
     });
-    revalidatePath(`/sellers/${sellerId}`);
     revalidatePath("/sellers");
     return { ok: true };
   } catch (err) {
@@ -60,7 +59,6 @@ export async function desbloquearSellerAction(sellerId: string): Promise<Resulta
       sellerId,
       actorUsuarioId: g.usuarioId,
     });
-    revalidatePath(`/sellers/${sellerId}`);
     revalidatePath("/sellers");
     return { ok: true };
   } catch (err) {

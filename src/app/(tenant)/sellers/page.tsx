@@ -24,9 +24,8 @@ import {
   type EstadoSaludConexion,
   type EstadoSeller,
 } from "@/lib/ui/traduccion-estados";
-import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 import { ListaAtenuable } from "@/components/ui/vista-previa-lateral";
-import { FilaSeller } from "./fila-seller";
+import { FilaSeller, NombreSeller } from "./fila-seller";
 import { BotonCopiarInvitacion } from "./boton-copiar-invitacion";
 
 export const metadata: Metadata = {
@@ -309,12 +308,12 @@ export default async function PaginaSellers() {
                       className={`space-y-2 px-4 ${requiereAtencion(seller) ? "py-3" : "py-0.5"}`}
                     >
                       <span className="flex min-w-0 items-center gap-2">
-                        <EnlaceDetalle
-                          href={`/sellers/${seller.id}`}
+                        <NombreSeller
+                          sellerId={seller.id}
                           className="flex min-h-11 min-w-0 items-center truncate font-medium hover:underline"
                         >
                           {seller.razonSocial}
-                        </EnlaceDetalle>
+                        </NombreSeller>
                         {seller.esReciente ? <DistintivoRecienUnido /> : null}
                       </span>
                       {requiereAtencion(seller) ? (
@@ -355,9 +354,9 @@ export default async function PaginaSellers() {
                     <FilaSeller key={seller.id} sellerId={seller.id}>
                       <TableCell className="px-4 font-medium">
                         <span className="flex items-center gap-2">
-                          <EnlaceDetalle href={`/sellers/${seller.id}`} className="hover:underline">
+                          <NombreSeller sellerId={seller.id} className="hover:underline">
                             {seller.razonSocial}
-                          </EnlaceDetalle>
+                          </NombreSeller>
                           {seller.esReciente ? <DistintivoRecienUnido /> : null}
                         </span>
                       </TableCell>
