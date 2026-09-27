@@ -18,6 +18,9 @@ import type { Zona } from "@/modules/operacion/tipos";
  */
 export interface FichaSeller extends VistaPreviaSellerCourier {
   puedeSincronizar: boolean;
+  puedeInvitar: boolean;
+  /** Hay una invitación viva que todavía se puede entregar a mano. */
+  invitacionPendiente: boolean;
   pedidosHoy: number;
   /**
    * Las cuentas con la apagada separada de la caída: las dos son
@@ -44,12 +47,12 @@ export async function cargarFichaSeller(
   tenantId: string,
   sellerId: string,
   hoyIso: string,
-  puedeSincronizar: boolean,
+  permisos: { puedeSincronizar: boolean; puedeInvitar: boolean },
 ): Promise<FichaSeller | null> {
   const base = await armarVistaPreviaSellerCourier(cliente, tenantId, sellerId, hoyIso);
   if (!base) return null;
 
-  const [ml, shopify, bodegas, tarifas, periodos, pedidosHoy, zonas, membresia] = await Promise.all([
+  const [ml, shopify, bodegas, tarifas, periodos, pedidosHoy, zonas, membresia, invitacion] = await Promise.all([
     // Por `identidad` y no por `public`: `desconectada_por_usuario_id` no está
     // en las vistas a propósito (ver la migración 20260826000002).
     cliente
@@ -107,6 +110,14 @@ export async function cargarFichaSeller(
       .eq("tenant_id", tenantId)
       .eq("seller_id", sellerId)
       .maybeSingle(),
+    cliente
+      .from("invitaciones")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("seller_id", sellerId)
+      .eq("tipo_usuario", "seller")
+      .eq("estado", "pendiente")
+      .gt("expira_en", new Date().toISOString()),
   ]);
 
   type Fila = Record<string, unknown>;
@@ -129,7 +140,8 @@ export async function cargarFichaSeller(
 
   return {
     ...base,
-    puedeSincronizar,
+    ...permisos,
+    invitacionPendiente: (invitacion.count ?? 0) > 0,
     pedidosHoy: pedidosHoy.count ?? 0,
     cuentas,
     bodegas: ((bodegas.data ?? []) as Fila[]).map((b) => ({

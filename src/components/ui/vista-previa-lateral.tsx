@@ -394,7 +394,7 @@ function Contenido<D>({
               animationFillMode: "backwards",
             }}
           >
-            <div className="min-w-0">{render.encabezado(estado.datos)}</div>
+            <div className="min-w-0 flex-1">{render.encabezado(estado.datos)}</div>
             <BotonCerrar onCerrar={onCerrar} />
           </header>
 

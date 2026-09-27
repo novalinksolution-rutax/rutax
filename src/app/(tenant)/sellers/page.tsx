@@ -4,7 +4,11 @@ import { PanelEnlaceSeller } from "./enlace/panel-enlace-seller";
 import { Store } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
+import {
+  puedeInvitarUsuarios,
+  puedeSincronizarConexionesMl,
+} from "@/modules/identidad/capacidades";
+import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -26,7 +30,7 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { ListaAtenuable } from "@/components/ui/vista-previa-lateral";
 import { FilaSeller, NombreSeller } from "./fila-seller";
-import { BotonCopiarInvitacion } from "./boton-copiar-invitacion";
+import { MenuSeller } from "./menu-seller";
 
 export const metadata: Metadata = {
   title: "Sellers",
@@ -53,6 +57,9 @@ interface SellerFila {
   invitacionEmailMotivo: string | null;
   /** `true` si se creó hace ≤72 h — quien acaba de unirse por el enlace. */
   esReciente: boolean;
+  /** Para el menú: sus cuentas ML (sincronizar) y su acceso (bloquear). */
+  cuentasMl: { id: string; etiqueta: string }[];
+  membresia: "activa" | "bloqueada" | null;
 }
 
 /** Orden de gravedad: la primera que aparezca en esta lista gana. */
@@ -64,6 +71,8 @@ function peorDe(estados: string[]): EstadoSaludConexion | null {
 
 /** Hay algo que hacer con este seller. Define el grupo «Requieren atención». */
 function requiereAtencion(s: SellerFila): boolean {
+  // Suspendido es una decisión ya tomada, no algo que atender: va aparte.
+  if (s.estado === "suspendido") return false;
   return (
     s.estado !== "activo" ||
     s.invitacionPendiente ||
@@ -114,7 +123,7 @@ async function cargarInvitacionesPendientes(
 
 async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
   const cliente = crearClienteServiceRole();
-  const [{ data, error }, ml, shopify, pendientes] = await Promise.all([
+  const [{ data, error }, ml, shopify, pendientes, membresias] = await Promise.all([
     cliente
       .from("sellers")
       .select("id, razon_social, rut, estado, creado_en")
@@ -126,7 +135,7 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
     cliente
       .schema("identidad")
       .from("conexiones_seller_ml")
-      .select("seller_id, estado_salud")
+      .select("id, seller_id, estado_salud, alias, ml_nickname, ml_user_id")
       .eq("tenant_id", tenantId)
       // La cuenta que el seller apagó a propósito no es una caída: es una
       // decisión suya y no pide nada al courier (mismo criterio que el dashboard).
@@ -138,9 +147,32 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
       .eq("tenant_id", tenantId)
       .eq("activa", true),
     cargarInvitacionesPendientes(cliente, tenantId),
+    cliente
+      .schema("identidad")
+      .from("seller_membresias")
+      .select("seller_id, estado")
+      .eq("tenant_id", tenantId),
   ]);
 
   if (error || !data) return [];
+
+  const cuentasMlPorSeller = new Map<string, { id: string; etiqueta: string }[]>();
+  for (const c of (ml.data ?? []) as Record<string, string | null>[]) {
+    const sellerId = c.seller_id as string;
+    cuentasMlPorSeller.set(sellerId, [
+      ...(cuentasMlPorSeller.get(sellerId) ?? []),
+      {
+        id: c.id as string,
+        etiqueta: etiquetaConexionMl({ alias: c.alias, mlNickname: c.ml_nickname, mlUserId: c.ml_user_id }),
+      },
+    ]);
+  }
+  const membresiaPorSeller = new Map(
+    ((membresias.data ?? []) as { seller_id: string; estado: "activa" | "bloqueada" }[]).map((m) => [
+      m.seller_id,
+      m.estado,
+    ]),
+  );
 
   const saludPorSeller = new Map<string, string[]>();
   for (const f of [...(ml.data ?? []), ...(shopify.data ?? [])] as {
@@ -167,6 +199,8 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
       invitacionEmailEstado: envio?.emailEstado ?? null,
       invitacionEmailMotivo: envio?.emailMotivo ?? null,
       esReciente: horasDesdeCreacion <= HORAS_RECIEN_UNIDO,
+      cuentasMl: cuentasMlPorSeller.get(id) ?? [],
+      membresia: membresiaPorSeller.get(id) ?? null,
     };
   });
 }
@@ -233,17 +267,11 @@ function Problemas({ seller }: { seller: SellerFila }) {
           valor={seller.peorSalud}
         />
       ) : null}
+      {/* «Invitado» ya dice que falta aceptar; solo se agrega si el correo no llegó. */}
+      {seller.invitacionPendiente
+        ? avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)
+        : null}
     </>
-  );
-}
-
-function AccionInvitacion({ seller, alinear }: { seller: SellerFila; alinear: "start" | "end" }) {
-  if (!seller.invitacionPendiente) return null;
-  return (
-    <div className={`flex flex-col gap-1.5 ${alinear === "end" ? "items-end" : "items-start"}`}>
-      {avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)}
-      <BotonCopiarInvitacion sellerId={seller.id} razonSocial={seller.razonSocial} />
-    </div>
   );
 }
 
@@ -272,11 +300,26 @@ export default async function PaginaSellers() {
   ]);
   const nombreFantasia = (tenant?.nombre_fantasia as string | null)?.trim() || "tu courier";
   const puedeInvitar = puedeInvitarUsuarios(sesion.usuario);
+  const puedeSincronizar = puedeSincronizarConexionesMl(sesion.usuario);
 
   const grupos = [
-    { titulo: "Requieren atención", lista: sellers.filter(requiereAtencion) },
-    { titulo: "Al día", lista: sellers.filter((s) => !requiereAtencion(s)) },
+    { titulo: "Requieren atención", lista: sellers.filter(requiereAtencion), plegado: false },
+    {
+      titulo: "Al día",
+      lista: sellers.filter((s) => s.estado !== "suspendido" && !requiereAtencion(s)),
+      plegado: false,
+    },
+    // Al final y plegado: es una decisión tomada, no algo que mirar cada día.
+    { titulo: "Suspendidos", lista: sellers.filter((s) => s.estado === "suspendido"), plegado: true },
   ].filter((g) => g.lista.length > 0);
+
+  const menu = (seller: SellerFila) => (
+    <MenuSeller
+      seller={seller}
+      puedeSincronizar={puedeSincronizar}
+      puedeInvitar={puedeInvitar}
+    />
+  );
 
   return (
     <div className="space-y-6">
@@ -298,35 +341,47 @@ export default async function PaginaSellers() {
           {/* Teléfono: las dos formas se renderizan y CSS elige (mismo patrón
               que `/operaciones`). */}
           <div className="md:hidden">
-            {grupos.map((g) => (
-              <section key={g.titulo}>
-                <EncabezadoGrupo titulo={g.titulo} cantidad={g.lista.length} />
+            {grupos.map((g) => {
+              const filas = (
                 <ul className="divide-y divide-border">
                   {g.lista.map((seller) => (
-                    <li
-                      key={seller.id}
-                      className={`space-y-2 px-4 ${requiereAtencion(seller) ? "py-3" : "py-0.5"}`}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
+                    <li key={seller.id} className="flex items-center gap-2 py-1.5 pr-1 pl-4">
+                      <div className="min-w-0 flex-1">
                         <NombreSeller
                           sellerId={seller.id}
-                          className="flex min-h-11 min-w-0 items-center truncate font-medium hover:underline"
+                          className="flex w-full min-w-0 flex-col items-start py-1"
                         >
-                          {seller.razonSocial}
+                          <span className="flex w-full min-w-0 items-center gap-2">
+                            <span className="truncate font-medium">{seller.razonSocial}</span>
+                            {seller.esReciente ? <DistintivoRecienUnido /> : null}
+                          </span>
+                          <span className="rx-num text-xs text-muted-foreground">{seller.rut}</span>
                         </NombreSeller>
-                        {seller.esReciente ? <DistintivoRecienUnido /> : null}
-                      </span>
-                      {requiereAtencion(seller) ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Problemas seller={seller} />
-                        </div>
-                      ) : null}
-                      <AccionInvitacion seller={seller} alinear="start" />
+                        {requiereAtencion(seller) ? (
+                          <div className="flex flex-wrap items-center gap-2 pb-1">
+                            <Problemas seller={seller} />
+                          </div>
+                        ) : null}
+                      </div>
+                      {menu(seller)}
                     </li>
                   ))}
                 </ul>
-              </section>
-            ))}
+              );
+              return g.plegado ? (
+                <details key={g.titulo} className="group">
+                  <summary className="list-none [&::-webkit-details-marker]:hidden">
+                    <EncabezadoGrupo titulo={g.titulo} cantidad={g.lista.length} plegable />
+                  </summary>
+                  {filas}
+                </details>
+              ) : (
+                <section key={g.titulo}>
+                  <EncabezadoGrupo titulo={g.titulo} cantidad={g.lista.length} />
+                  {filas}
+                </section>
+              );
+            })}
           </div>
 
           {/* Atenuar, no tapar: con el panel abierto hay que poder seguir
@@ -336,41 +391,34 @@ export default async function PaginaSellers() {
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead className="px-4">Seller</TableHead>
-                  {/* El RUT vuelve en `xl`, no en `lg`: en `lg` entra la barra
-                      lateral y el lienzo se encoge. */}
-                  <TableHead className="hidden px-4 xl:table-cell">RUT</TableHead>
                   <TableHead className="px-4" />
-                  <TableHead className="px-4" />
+                  <TableHead className="w-12 px-2" />
                 </TableRow>
               </TableHeader>
               {grupos.map((g) => (
                 <TableBody key={g.titulo}>
                   <TableRow className="hover:bg-transparent">
-                    <TableCell colSpan={4} className="!p-0">
+                    <TableCell colSpan={3} className="!p-0">
                       <EncabezadoGrupo titulo={g.titulo} cantidad={g.lista.length} />
                     </TableCell>
                   </TableRow>
                   {g.lista.map((seller) => (
                     <FilaSeller key={seller.id} sellerId={seller.id}>
-                      <TableCell className="px-4 font-medium">
+                      <TableCell className="px-4">
                         <span className="flex items-center gap-2">
-                          <NombreSeller sellerId={seller.id} className="hover:underline">
+                          <NombreSeller sellerId={seller.id} className="font-medium hover:underline">
                             {seller.razonSocial}
                           </NombreSeller>
                           {seller.esReciente ? <DistintivoRecienUnido /> : null}
                         </span>
+                        <span className="rx-num block text-xs text-muted-foreground">{seller.rut}</span>
                       </TableCell>
-                      <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums xl:table-cell">
-                        {seller.rut}
-                      </TableCell>
-                      <TableCell className="px-4">
+                      <TableCell className="px-4 whitespace-normal">
                         <span className="flex flex-wrap items-center gap-2">
                           <Problemas seller={seller} />
                         </span>
                       </TableCell>
-                      <TableCell className="px-4 text-right whitespace-normal">
-                        <AccionInvitacion seller={seller} alinear="end" />
-                      </TableCell>
+                      <TableCell className="px-2 text-right">{menu(seller)}</TableCell>
                     </FilaSeller>
                   ))}
                 </TableBody>
@@ -383,11 +431,23 @@ export default async function PaginaSellers() {
   );
 }
 
-function EncabezadoGrupo({ titulo, cantidad }: { titulo: string; cantidad: number }) {
+function EncabezadoGrupo({
+  titulo,
+  cantidad,
+  plegable = false,
+}: {
+  titulo: string;
+  cantidad: number;
+  plegable?: boolean;
+}) {
   return (
-    <p className="rx-num flex items-baseline justify-between border-b border-border bg-muted/40 px-4 py-1.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+    <p
+      className={`rx-num flex items-baseline justify-between border-b border-border bg-muted/40 px-4 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase ${
+        plegable ? "min-h-11 cursor-pointer items-center" : "py-1.5"
+      }`}
+    >
       <span>{titulo}</span>
-      <span>{cantidad}</span>
+      <span>{plegable ? `${cantidad} ›` : cantidad}</span>
     </p>
   );
 }

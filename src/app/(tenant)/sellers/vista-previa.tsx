@@ -24,7 +24,6 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
-  BloqueVistaPrevia,
   EnlaceQueCierra,
   ProveedorVistaPreviaLateral,
   useVistaPreviaLateral,
@@ -45,7 +44,7 @@ import type { FichaSeller } from "./_ficha/datos";
 import { accionVistaPreviaSeller } from "./vista-previa-actions";
 import { ControlSincronizarMl } from "./control-sincronizar-ml";
 import { VentanasCorteSeller } from "./_ficha/ventanas-corte-seller";
-import { ControlMembresiaAutoservicio } from "./_ficha/control-membresia-autoservicio";
+import { MenuSeller } from "./menu-seller";
 
 export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }) {
   return (
@@ -78,22 +77,66 @@ function AbrirDesdeUrl() {
 
 function Encabezado(d: FichaSeller) {
   return (
-    <>
-      <p className="truncate font-heading text-base font-semibold">{d.razonSocial}</p>
-      <p className="rx-num mt-0.5 truncate text-xs text-fg-muted">
-        {[d.rut, d.nombreContacto, d.emailContacto].filter(Boolean).join(" · ")}
-      </p>
-      {d.estado !== "activo" ? (
-        <div className="mt-2">
-          <BadgeEstado
-            variante={BADGE_ESTADO_SELLER[d.estado as EstadoSeller] ?? "neutral"}
-            eje="seller"
-            valor={d.estado}
-            texto={traducirEstadoSeller(d.estado)}
-          />
-        </div>
-      ) : null}
-    </>
+    <div className="flex items-start gap-2">
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-heading text-lg font-semibold">{d.razonSocial}</p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-2">
+          <span className="rx-num text-xs text-fg-muted">{d.rut}</span>
+          {d.estado !== "activo" ? (
+            <BadgeEstado
+              variante={BADGE_ESTADO_SELLER[d.estado as EstadoSeller] ?? "neutral"}
+              eje="seller"
+              valor={d.estado}
+              texto={traducirEstadoSeller(d.estado)}
+            />
+          ) : null}
+        </p>
+      </div>
+      <MenuSeller
+        enFicha
+        puedeSincronizar={d.puedeSincronizar}
+        puedeInvitar={d.puedeInvitar}
+        seller={{
+          id: d.id,
+          razonSocial: d.razonSocial,
+          cuentasMl: d.cuentas
+            .filter((c) => c.tipo === "ml" && !c.apagadaPorSeller)
+            .map((c) => ({ id: c.id, etiqueta: c.nombre })),
+          invitacionPendiente: d.invitacionPendiente,
+          membresia: d.membresia,
+        }}
+      />
+    </div>
+  );
+}
+
+/** Una sección de la ficha: recuadro con título y, si hace falta, su acción. */
+function Tarjeta({
+  titulo,
+  accion,
+  children,
+}: {
+  titulo: string;
+  accion?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-md border border-line bg-bg-raised">
+      <div className="flex min-h-10 items-center justify-between gap-2 border-b border-line-subtle px-3">
+        <h3 className="text-sm font-medium text-fg">{titulo}</h3>
+        {accion}
+      </div>
+      <div className="px-3 py-2.5">{children}</div>
+    </section>
+  );
+}
+
+function Cifra({ rotulo, children }: { rotulo: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0 px-3 py-2.5">
+      <p className="text-[10px] font-medium tracking-[0.1em] text-fg-muted uppercase">{rotulo}</p>
+      <p className="rx-num mt-1 truncate text-lg font-semibold text-fg">{children}</p>
+    </div>
   );
 }
 
@@ -105,14 +148,48 @@ function Cuerpo(d: FichaSeller) {
   const cuentasMl = d.cuentas.filter((c) => c.tipo === "ml" && !c.apagadaPorSeller);
 
   return (
-    <>
-      <BloqueVistaPrevia titulo="Cuentas">
+    <div className="space-y-3">
+      {/* Las tres cifras que responden «cuánto pesa este seller hoy». */}
+      <div className="grid grid-cols-3 divide-x divide-line rounded-md border border-line bg-bg-raised">
+        <Cifra rotulo="Hoy">{d.hayMetricas ? d.pedidosHoy : "—"}</Cifra>
+        <Cifra rotulo="Por semana">{d.hayMetricas ? `~${Math.round(d.promedioSemanal)}` : "—"}</Cifra>
+        <Cifra rotulo="Por cobrar">
+          {d.hayDinero ? formatearCLPOGuion(d.periodoVivoClp) : "—"}
+        </Cifra>
+      </div>
+
+      {d.nombreContacto || d.emailContacto ? (
+        <Tarjeta titulo="Contacto">
+          {d.nombreContacto ? <p className="text-sm text-fg">{d.nombreContacto}</p> : null}
+          {d.emailContacto ? (
+            <a
+              href={`mailto:${d.emailContacto}`}
+              className="flex min-h-11 items-center text-sm break-all text-accent-text hover:underline lg:min-h-0"
+            >
+              {d.emailContacto}
+            </a>
+          ) : null}
+        </Tarjeta>
+      ) : null}
+
+      <Tarjeta
+        titulo="Cuentas de pedidos"
+        accion={
+          // La acción va en el título: así se lee que sincroniza ESTAS cuentas.
+          d.puedeSincronizar && cuentasMl.length > 0 ? (
+            <ControlSincronizarMl
+              razonSocial={d.razonSocial}
+              conexiones={cuentasMl.map((c) => ({ id: c.id, etiqueta: c.nombre }))}
+            />
+          ) : null
+        }
+      >
         {d.cuentas.length === 0 ? (
           <Vacio>Sin cuentas conectadas.</Vacio>
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-line-subtle">
             {d.cuentas.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-3">
+              <li key={c.id} className="flex items-center justify-between gap-3 py-1.5">
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-fg">{c.nombre}</span>
                   <span className="block text-xs text-fg-muted">
@@ -126,42 +203,23 @@ function Cuerpo(d: FichaSeller) {
                     valor="desconectada_a_proposito"
                     texto="La apagó el seller"
                   />
-                ) : c.estadoSalud === "sana" ? null : (
+                ) : (
                   <BadgeEstado
                     variante={BADGE_SALUD_CONEXION[c.estadoSalud as EstadoSaludConexion] ?? "neutral"}
                     eje="conexion"
                     valor={c.estadoSalud}
-                    texto={traducirSaludConexion(c.estadoSalud)}
+                    texto={c.estadoSalud === "sana" ? "Conectada" : traducirSaludConexion(c.estadoSalud)}
                   />
                 )}
               </li>
             ))}
           </ul>
         )}
-        {d.puedeSincronizar && cuentasMl.length > 0 ? (
-          <div className="mt-2">
-            <ControlSincronizarMl
-              razonSocial={d.razonSocial}
-              conexiones={cuentasMl.map((c) => ({ id: c.id, etiqueta: c.nombre }))}
-            />
-          </div>
-        ) : null}
-      </BloqueVistaPrevia>
+      </Tarjeta>
 
-      <BloqueVistaPrevia titulo="Pedidos">
-        {d.hayMetricas ? (
-          <p className="rx-num text-sm text-fg">
-            <span className="text-lg font-semibold">{d.pedidosHoy}</span> hoy
-            <span className="text-fg-muted"> · ~{d.promedioSemanal.toLocaleString("es-CL")} por semana</span>
-          </p>
-        ) : (
-          <p className="text-xs text-fault-fg">No se pudieron leer.</p>
-        )}
-      </BloqueVistaPrevia>
-
-      <BloqueVistaPrevia titulo="Cobro">
+      <Tarjeta titulo="Tarifa">
         {d.tarifas.length === 0 ? (
-          <Vacio>Sin tarifa propia.</Vacio>
+          <Vacio>La general del courier.</Vacio>
         ) : (
           <ul className="space-y-1">
             {d.tarifas.map((t) => (
@@ -174,20 +232,21 @@ function Cuerpo(d: FichaSeller) {
             ))}
           </ul>
         )}
-        {d.periodos.length > 0 ? (
-          <ul className="mt-2 divide-y divide-line border-t border-line">
+      </Tarjeta>
+
+      {d.periodos.length > 0 ? (
+        <Tarjeta titulo="Períodos">
+          <ul className="divide-y divide-line-subtle">
             {d.periodos.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-3 py-1.5">
+              <li key={p.id} className="flex items-center justify-between gap-3">
                 <Link
                   href={`/dinero/periodos/${p.id}`}
-                  className="rx-num flex min-h-11 items-center text-sm hover:underline lg:min-h-0"
+                  className="flex min-h-11 items-center text-sm hover:underline lg:min-h-9"
                 >
                   {p.etiqueta}
                 </Link>
                 <span className="flex items-center gap-2">
-                  <span className="rx-num text-sm text-fg-muted">
-                    {formatearCLPOGuion(p.montoClp)}
-                  </span>
+                  <span className="rx-num text-sm text-fg-muted">{formatearCLPOGuion(p.montoClp)}</span>
                   <BadgeEstado
                     variante={BADGE_ESTADO_PERIODO[p.estado as "abierto"] ?? "neutral"}
                     eje="periodo"
@@ -198,10 +257,10 @@ function Cuerpo(d: FichaSeller) {
               </li>
             ))}
           </ul>
-        ) : null}
-      </BloqueVistaPrevia>
+        </Tarjeta>
+      ) : null}
 
-      <BloqueVistaPrevia titulo="Bodegas">
+      <Tarjeta titulo="Bodegas">
         {d.bodegas.length === 0 ? (
           <Vacio>Sin bodegas.</Vacio>
         ) : (
@@ -217,24 +276,12 @@ function Cuerpo(d: FichaSeller) {
             ))}
           </ul>
         )}
-      </BloqueVistaPrevia>
+      </Tarjeta>
 
-      <BloqueVistaPrevia titulo="Hora de corte">
+      <Tarjeta titulo="Hora de corte">
         <VentanasCorteSeller key={d.id} sellerId={d.id} zonas={d.zonas} />
-      </BloqueVistaPrevia>
-
-      {/* Al fondo: es la única acción con consecuencia de la ficha. */}
-      {d.membresia ? (
-        <BloqueVistaPrevia titulo="Acceso a Rutax">
-          <ControlMembresiaAutoservicio
-            key={d.id}
-            sellerId={d.id}
-            razonSocial={d.razonSocial}
-            estadoInicial={d.membresia}
-          />
-        </BloqueVistaPrevia>
-      ) : null}
-    </>
+      </Tarjeta>
+    </div>
   );
 }
 

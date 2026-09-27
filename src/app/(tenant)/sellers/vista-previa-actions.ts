@@ -10,7 +10,10 @@
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
-import { puedeSincronizarConexionesMl } from "@/modules/identidad/capacidades";
+import {
+  puedeInvitarUsuarios,
+  puedeSincronizarConexionesMl,
+} from "@/modules/identidad/capacidades";
 import { cargarFichaSeller, type FichaSeller } from "./_ficha/datos";
 
 const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,7 +33,10 @@ export async function accionVistaPreviaSeller(sellerId: string): Promise<Respues
       sesion.usuario.tenantId,
       sellerId,
       fechaLocalEnSantiago(new Date()),
-      puedeSincronizarConexionesMl(sesion.usuario),
+      {
+        puedeSincronizar: puedeSincronizarConexionesMl(sesion.usuario),
+        puedeInvitar: puedeInvitarUsuarios(sesion.usuario),
+      },
     );
     return datos ? { ok: true, datos } : { ok: false };
   } catch {
