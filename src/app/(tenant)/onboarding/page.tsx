@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { headers } from "next/headers";
 import { ArrowUpRight } from "lucide-react";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
@@ -273,19 +272,11 @@ async function cuerpoDelPaso(
     const r = await obtenerEstadoConfiguracionCobranza();
     const publicKey = process.env.FINTOC_PUBLIC_KEY ?? process.env.FINTOC_PUBLIC_KEY_TEST ?? null;
 
-    // El widget de "movements" de Fintoc EXIGE `webhookUrl` (a dónde enviará los
-    // movimientos). Es la URL por-tenant: se prefiere la pública canónica, y si
-    // no está, se deriva del request.
-    let baseUrl = process.env.APP_PUBLIC_URL ?? null;
-    if (!baseUrl) {
-      const h = await headers();
-      const host = h.get("x-forwarded-host") ?? h.get("host");
-      const proto = h.get("x-forwarded-proto") ?? "http";
-      baseUrl = host ? `${proto}://${host}` : null;
-    }
-    const webhookUrl = baseUrl
-      ? `${baseUrl.replace(/\/+$/, "")}/api/webhooks/fintoc/${ctx.tenantId}`
-      : null;
+    // El `webhookUrl` del widget YA NO se arma acá. Lleva un nonce de un solo uso
+    // que se emite justo antes de abrir el widget (`prepararConexionBanco`),
+    // porque es la única autorización que tiene esa notificación: Fintoc no la
+    // firma. Armarlo en el render lo dejaría vivo todo el tiempo que la pestaña
+    // esté abierta.
     const holderType: "business" | "individual" =
       process.env.FINTOC_HOLDER_TYPE === "individual" ? "individual" : "business";
 
@@ -294,7 +285,6 @@ async function cuerpoDelPaso(
         estadoInicial={r.ok ? r.estado : null}
         errorInicial={r.ok ? null : r.mensaje}
         publicKey={publicKey}
-        webhookUrl={webhookUrl}
         holderType={holderType}
       />
     );

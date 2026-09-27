@@ -36,7 +36,7 @@ import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { descifrarSecreto } from "../../secretos";
 import { comoReferenciaSecreto } from "../../secretos/tipos";
 import type { PuertoConciliacionPagos } from "../puerto";
-import { ErrorConfigCobranzaAusente, ErrorPagosProveedor } from "../errores";
+import { ErrorConfigCobranzaAusente } from "../errores";
 import { FintocAdapter, FINTOC_BASE_URL } from "./adaptador";
 
 /**
@@ -45,7 +45,7 @@ import { FintocAdapter, FINTOC_BASE_URL } from "./adaptador";
  * `sk_test_…` (modo prueba) y `sk_live_…` (producción); el modo lo determina el
  * prefijo de la propia key, no una bandera aparte.
  */
-function leerSecretKeyOrg(): string {
+export function leerSecretKeyOrg(): string {
   const key =
     process.env.FINTOC_SECRET_KEY ??
     process.env.FINTOC_SECRET_KEY_TEST ??
@@ -75,110 +75,6 @@ export function crearPuertoConciliacionPagos(
   // de proveedor/modo por tenant). La secret key de la org es compartida.
   void tenantId;
   return new FintocAdapter(leerSecretKeyOrg(), baseUrl);
-}
-
-/**
- * Resultado del canje del `exchange_token` del widget de Fintoc por un Link.
- * Es lo ÚNICO que vuelve a la Server Action de onboarding: el `linkToken` (que
- * ella cifra de inmediato con el módulo `secretos`) y metadatos NO sensibles del
- * primer account para mostrar un alias legible. NUNCA se loguea el `linkToken`.
- */
-export interface CanjeExchangeTokenResultado {
-  /** `link_token` de la cuenta conectada (SECRETO — cifrar y nunca exponer). */
-  linkToken: string;
-  /** Alias legible de la cuenta (institución + número enmascarado), o null. */
-  cuentaBancoAlias: string | null;
-}
-
-/**
- * Canjea el `exchange_token` que devuelve el widget de Fintoc por el `Link`
- * permanente, vía la API de Fintoc (`POST /v1/links/exchange`). El núcleo/UI
- * NUNCA llama a Fintoc directo — esta función (módulo `integraciones`) es la
- * única puerta. La secret key de la org va en el body (contrato de Fintoc para
- * este endpoint) y JAMÁS se loguea ni se propaga a un error.
- *
- * Devuelve el `link_token` en claro SOLO para que la Server Action lo cifre de
- * inmediato con el módulo `secretos` y persista la referencia opaca; nunca se
- * persiste ni se loguea en claro.
- *
- * @param baseUrl inyectable para tests; default = producción de Fintoc.
- */
-export async function canjearExchangeToken(
-  exchangeToken: string,
-  baseUrl: string = FINTOC_BASE_URL,
-): Promise<CanjeExchangeTokenResultado> {
-  const secretKey = leerSecretKeyOrg();
-
-  const respuesta = await fetch(`${baseUrl}/links/exchange`, {
-    method: "POST",
-    headers: {
-      // Auth verificada en vivo: secret key DIRECTA, sin prefijo "Bearer".
-      Authorization: secretKey,
-      accept: "application/json",
-      "content-type": "application/json",
-    },
-    // El endpoint de canje espera el secret key también en el body (contrato
-    // Fintoc). No se loguea este body en ninguna parte.
-    body: JSON.stringify({ exchange_token: exchangeToken, secret_key: secretKey }),
-  });
-
-  if (!respuesta.ok) {
-    const cuerpo = (await respuesta.json().catch(() => null)) as
-      | { error?: { message?: string; code?: string } }
-      | null;
-    const detalle =
-      cuerpo?.error?.message ?? cuerpo?.error?.code ?? "sin detalle del proveedor";
-    // El mensaje NO incluye el exchange_token ni la secret key.
-    throw new ErrorPagosProveedor(respuesta.status, `Fintoc rechazó el canje del token: ${detalle}`);
-  }
-
-  const link = (await respuesta.json().catch(() => null)) as {
-    link_token?: string;
-    institution?: { name?: string } | null;
-    accounts?: Array<{
-      number?: string | null;
-      holder_id?: string | null;
-      institution?: { name?: string } | string | null;
-    }> | null;
-  } | null;
-
-  if (!link?.link_token) {
-    throw new ErrorPagosProveedor(
-      502,
-      "Fintoc no devolvió un link_token al canjear el token de conexión.",
-    );
-  }
-
-  return {
-    linkToken: link.link_token,
-    cuentaBancoAlias: construirAliasCuenta(link),
-  };
-}
-
-/**
- * Construye un alias legible y NO sensible de la cuenta conectada para mostrar
- * en la tarjeta de "banco conectado": institución + número enmascarado. Nunca
- * incluye el `link_token` ni el RUT completo del titular.
- */
-function construirAliasCuenta(link: {
-  institution?: { name?: string } | null;
-  accounts?: Array<{
-    number?: string | null;
-    institution?: { name?: string } | string | null;
-  }> | null;
-}): string | null {
-  const cuenta = link.accounts?.[0] ?? null;
-  const institucion =
-    link.institution?.name ??
-    (typeof cuenta?.institution === "string"
-      ? cuenta.institution
-      : cuenta?.institution?.name) ??
-    null;
-  const numero = cuenta?.number ?? null;
-  const numeroEnmascarado = numero ? `••••${numero.slice(-4)}` : null;
-
-  const partes = [institucion, numeroEnmascarado].filter(Boolean);
-  return partes.length > 0 ? partes.join(" ") : null;
 }
 
 /** Forma interna de la fila de config de cobranza. */

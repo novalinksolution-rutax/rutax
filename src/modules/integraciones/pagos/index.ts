@@ -12,10 +12,41 @@ export {
   crearPuertoConciliacionPagos,
   resolverLinkTokenTenant,
   resolverSecretoWebhookTenant,
-  canjearExchangeToken,
+  leerSecretKeyOrg,
 } from "./fintoc/fabrica";
 
-export type { CanjeExchangeTokenResultado } from "./fintoc/fabrica";
+// ---------------------------------------------------------------------------
+// CONEXIÓN DEL BANCO DEL COURIER (producto "movements" de Fintoc).
+//
+// El `link_token` NO llega por `onSuccess` del widget ni se puede pedir después
+// («can never be retrieved again», doc del Link object): llega UNA vez, por la
+// notificación al `webhookUrl`, y SIN firma. Por eso la autorización de ese
+// webhook es un nonce de un solo uso que abrimos antes de abrir el widget.
+// ---------------------------------------------------------------------------
+
+export {
+  iniciarConexionPendienteCobranza,
+  consumirConexionPendienteCobranza,
+  devolverConexionPendienteCobranza,
+  rutaWebhookCobranza,
+  PARAM_NONCE_CONEXION,
+} from "./fintoc/conexion-pendiente";
+
+export type { ConexionPendienteIniciada } from "./fintoc/conexion-pendiente";
+
+export {
+  esPayloadLinkCreado,
+  leerLinkCreado,
+  TIPO_EVENTO_LINK_CREADO,
+} from "./fintoc/link-creado";
+
+export type { LinkCreadoLeido } from "./fintoc/link-creado";
+
+export {
+  registrarWebhookEndpointCobranza,
+  borrarWebhookEndpointsDeUrl,
+  EVENTOS_WEBHOOK_COBRANZA,
+} from "./fintoc/webhook-endpoints";
 
 export type {
   PuertoConciliacionPagos,

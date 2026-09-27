@@ -44,8 +44,30 @@ POR-TENANT → se cifra y guarda como los tokens de ML). Test mode con
 producción). Idempotencia soportada.
 
 **Conexión de cuenta (Link):** el courier conecta su banco vía el widget de
-Fintoc (`link.created` NO se escucha por webhook — se captura en el widget vía
-exchange token). Se persiste el `link_token` cifrado por tenant.
+Fintoc. Se persiste el `link_token` cifrado por tenant.
+
+> ⚠️ **CORREGIDO (2026-09-26) — lo que decía esta sección era falso y costó un
+> flujo roto en producción.** Decía «se captura en el widget vía exchange token».
+> **No existe ese exchange token en el producto `movements`**: el `onSuccess` real
+> devuelve `{"id":"link_XXX","link":{"id":"link_XXX"}}` (verificado dos veces con
+> una conexión de sandbox completa), y el `link_token` **solo** llega en la
+> notificación que Fintoc dispara al `webhookUrl` del widget, en el instante de
+> crear el Link — después queda `null` para siempre
+> (docs.fintoc.com/reference/link-object: «This attribute will only be returned
+> when creating a Link… can never be retrieved again»).
+>
+> Y **esa notificación llega SIN `Fintoc-Signature`**: la firma existe solo para
+> los *Webhook Endpoints* registrados. Por eso se autoriza con un **nonce de un
+> solo uso y 15 min de vida** (`identidad.cobranza_conexiones_pendientes`,
+> migración `20260926000001`) que viaja en `?flow=` de la URL de notificación.
+>
+> Al aterrizar esa notificación, el webhook **registra programáticamente el
+> Webhook Endpoint real** del tenant (`POST /v1/webhook_endpoints`, verificado
+> contra la doc oficial) y guarda su `secret` cifrado en `secreto_webhook_ref` —
+> columna que antes **nadie escribía**, así que todo `transfer.inbound` moría en
+> 404 `tenant_sin_cobranza`.
+>
+> `canjearExchangeToken` / `POST /links/exchange` se retiraron del repo.
 
 **Movimientos (conciliación) — `GET` List Movements de una cuenta.** Objeto
 `Movement`: `id`, `amount` (positivo = entra dinero), `currency`, `description`,
@@ -115,9 +137,12 @@ Trigger `dinero/pago.recibido`:
   (reusa el patrón de `alerta-folios-proximos` / incidencias sin gestión).
 
 ### 3.5 Onboarding del courier
-Nuevo paso "Conectar banco para cobranza": widget Fintoc → exchange token →
-guardar `link_token` cifrado. Mismo patrón de secreto que certificado DTE / token
-ML (metadatos al cliente, secreto jamás vuelve).
+Nuevo paso "Conectar banco para cobranza": `prepararConexionBanco()` (emite el
+nonce y devuelve el `webhookUrl`) → widget Fintoc → el webhook aterriza y guarda
+el `link_token` cifrado → la pantalla lo detecta sondeando el estado. Mismo patrón
+de secreto que certificado DTE / token ML (metadatos al cliente, secreto jamás
+vuelve). **No hay confirmación sincrónica y no puede haberla** — ver el aviso de
+§ "Conexión de cuenta (Link)".
 
 ---
 

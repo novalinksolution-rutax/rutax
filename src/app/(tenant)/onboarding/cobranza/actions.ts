@@ -12,19 +12,26 @@
  *     `integraciones/secretos` (tipo `token_link_fintoc`) — única vía de cifrado.
  *   - REGLA DE ORO: el valor cifrado NUNCA vuelve al cliente. Esta pantalla solo
  *     conoce metadatos (`cuenta_banco_alias`, `estado_conexion`) — jamás el token.
- *   - El núcleo/UI NUNCA llama a Fintoc directo: el canje del `exchange_token`
- *     del widget por el `link_token` va por el módulo `integraciones/pagos`
- *     (`canjearExchangeToken`).
+ *   - El núcleo/UI NUNCA llama a Fintoc directo.
  *
- * Auditoría: la conexión de cobranza es una acción de acceso/financiera → se
- * registra en bitácora con el autor (`actorUsuarioId`) antes/después del efecto.
+ * ⚠️ AQUÍ NO SE GUARDA LA CONEXIÓN, Y NO ES UN DESCUIDO. El `link_token` del
+ * producto "movements" no llega nunca al navegador: Fintoc lo manda UNA sola vez,
+ * por la notificación al `webhookUrl`, y jamás se puede volver a pedir («the Link
+ * Token is not saved by Fintoc, and can never be retrieved again»). Así que esta
+ * pantalla solo ABRE el flujo —`prepararConexionBanco` emite un ticket de un solo
+ * uso y devuelve la URL de notificación con su nonce— y después SONDEA
+ * `obtenerEstadoConfiguracionCobranza` hasta que el webhook aterrice. Quien
+ * escribe `courier_config_cobranza` y la bitácora es
+ * `/api/webhooks/fintoc/[tenantId]`.
+ *
+ * Hubo una versión anterior que esperaba un `exchangeToken` en `onSuccess` y lo
+ * canjeaba por `POST /links/exchange`. Ese token NO existe en este producto (el
+ * payload real observado es `{id, link:{id}}`): la action se retiró entera.
  */
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeVerConciliacion } from "@/modules/identidad/capacidades";
-import { cifrarSecreto } from "@/modules/integraciones/secretos";
-import { canjearExchangeToken } from "@/modules/integraciones/pagos";
-import { registrarEnBitacora } from "@/modules/identidad/auditoria";
+import { iniciarConexionPendienteCobranza } from "@/modules/integraciones/pagos";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 
 // -----------------------------------------------------------------------------
@@ -83,15 +90,15 @@ export async function obtenerEstadoConfiguracionCobranza(): Promise<
 }
 
 // -----------------------------------------------------------------------------
-// Conectar banco — canjea el exchange_token del widget y guarda el link_token
-// cifrado + courier_config_cobranza.
+// Preparar la conexión — emite el ticket de un solo uso y devuelve la URL de
+// notificación que el widget necesita. Se llama ANTES de `widget.open()`.
 // -----------------------------------------------------------------------------
 
-export type AccionCobranzaResultado =
-  | { ok: true; estado: EstadoConfiguracionCobranza }
-  | { ok: false; tipo: "permiso" | "validacion" | "proveedor" | "desconocido"; mensaje: string };
+export type PrepararConexionResultado =
+  | { ok: true; webhookUrl: string }
+  | { ok: false; tipo: "permiso" | "desconocido"; mensaje: string };
 
-export async function conectarBancoCobranza(exchangeToken: string): Promise<AccionCobranzaResultado> {
+export async function prepararConexionBanco(): Promise<PrepararConexionResultado> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) {
     return { ok: false, tipo: "permiso", mensaje: "No hay una sesión activa." };
@@ -104,94 +111,18 @@ export async function conectarBancoCobranza(exchangeToken: string): Promise<Acci
     };
   }
 
-  const token = (exchangeToken ?? "").trim();
-  if (!token) {
-    return {
-      ok: false,
-      tipo: "validacion",
-      mensaje: "No recibimos la confirmación del banco. Vuelve a intentar la conexión.",
-    };
-  }
-
-  const tenantId = sesion.usuario.tenantId;
-
-  // 1. Canjear el exchange_token por el link_token vía el módulo integraciones
-  //    (el núcleo/UI nunca toca el SDK de Fintoc).
-  let canje;
   try {
-    canje = await canjearExchangeToken(token);
-  } catch {
-    return {
-      ok: false,
-      tipo: "proveedor",
-      mensaje:
-        "No pudimos confirmar la conexión con tu banco. Es posible que el proceso haya expirado — vuelve a intentarlo.",
-    };
-  }
-
-  // 2. Cifrar el link_token (secreto por-tenant) con el mecanismo central.
-  let referenciaLinkToken: string;
-  try {
-    const cifrado = await cifrarSecreto({
-      tenantId,
-      tipoSecreto: "token_link_fintoc",
-      valor: canje.linkToken,
-      venceEn: null,
-      metadata: { proposito: "link_token_cobranza_fintoc" },
+    const { webhookUrl } = await iniciarConexionPendienteCobranza({
+      tenantId: sesion.usuario.tenantId,
+      actorUsuarioId: sesion.usuarioId,
     });
-    referenciaLinkToken = cifrado.referenciaExternaId;
+    return { ok: true, webhookUrl };
   } catch {
+    // El detalle (variable de entorno faltante, error de BD) no va al cliente.
     return {
       ok: false,
       tipo: "desconocido",
-      mensaje:
-        "Confirmamos la conexión pero no pudimos guardarla de forma segura por un problema de nuestro sistema. Intenta de nuevo.",
+      mensaje: "No pudimos iniciar la conexión con tu banco. Intenta de nuevo.",
     };
   }
-
-  // 3. Persistir referencia opaca + metadatos NO sensibles en courier_config_cobranza.
-  const supabase = crearClienteServiceRole();
-  const { error } = await supabase
-    .schema("identidad")
-    .from("courier_config_cobranza")
-    .upsert(
-      {
-        tenant_id: tenantId,
-        link_token_ref: referenciaLinkToken,
-        cuenta_banco_alias: canje.cuentaBancoAlias,
-        estado_conexion: "conectado",
-        actualizado_en: new Date().toISOString(),
-      },
-      { onConflict: "tenant_id" },
-    );
-
-  if (error) {
-    return {
-      ok: false,
-      tipo: "desconocido",
-      mensaje:
-        "Ciframos la conexión pero no pudimos asociarla por un problema de nuestro sistema. Intenta de nuevo.",
-    };
-  }
-
-  // 4. Bitácora — acción de acceso/financiera, con autor (RNF-04). El detalle
-  //    NO incluye el token: solo metadatos no sensibles.
-  await registrarEnBitacora(supabase, {
-    tenantId,
-    actorUsuarioId: sesion.usuarioId,
-    actorTipo: "usuario",
-    accion: "cobranza.banco_conectado",
-    entidadTipo: "courier_config_cobranza",
-    entidadId: tenantId,
-    detalle: { cuenta_banco_alias: canje.cuentaBancoAlias },
-  });
-
-  return {
-    ok: true,
-    estado: {
-      estadoConexion: "conectado",
-      cuentaBancoAlias: canje.cuentaBancoAlias,
-      bancoConectado: true,
-    },
-  };
 }

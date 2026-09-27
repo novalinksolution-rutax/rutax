@@ -3,20 +3,30 @@
 /**
  * Onboarding "Conectar banco para cobranza" — formulario de cliente.
  *
- * Estructura idéntica al patrón "secreto guardado" del onboarding DTE:
- *   estado vacío explicativo → botón que abre el widget de Fintoc → al volver con
- *   el `exchange_token`, Server Action que canjea + guarda → tarjeta de
- *   solo-lectura con el alias de la cuenta + "Reconectar".
+ * Estructura del patrón "secreto guardado" del onboarding DTE: estado vacío
+ * explicativo → botón que abre el widget de Fintoc → tarjeta de solo-lectura con
+ * el alias de la cuenta + "Reconectar".
  *
- * REGLA DE ORO: el `link_token` NUNCA llega al cliente. Esta pantalla solo
- * conoce metadatos (alias de la cuenta, estado de conexión) — jamás el secreto.
- * El widget de Fintoc usa la PUBLIC key (`pk_test_…`/`pk_live_…`), segura para
- * el cliente; devuelve un `exchange_token` de un solo uso que el servidor canjea.
+ * ⚠️ LA CONEXIÓN NO SE CONFIRMA EN `onSuccess`, Y NO SE PUEDE. El widget del
+ * producto "movements" devuelve `{id, link:{id}}` y nada más — no hay
+ * `exchangeToken` que canjear (se verificó dos veces contra el sandbox con una
+ * conexión completa). El `link_token` llega por un camino distinto y asíncrono: la
+ * notificación que Fintoc dispara al `webhookUrl`, que aterriza en
+ * `/api/webhooks/fintoc/[tenantId]` y es la que escribe la conexión.
+ *
+ * Por eso el flujo del cliente es: (1) `prepararConexionBanco()` para obtener el
+ * `webhookUrl` con su nonce de un solo uso, (2) abrir el widget, (3) al cerrarse,
+ * SONDEAR `obtenerEstadoConfiguracionCobranza()` hasta que el webhook haya
+ * aterrizado. El sondeo no es pereza: no existe un canal sincrónico.
+ *
+ * REGLA DE ORO: el `link_token` NUNCA llega al cliente. Esta pantalla solo conoce
+ * metadatos (alias de la cuenta, estado de conexión) — jamás el secreto. El widget
+ * usa la PUBLIC key (`pk_test_…`/`pk_live_…`), segura para el cliente.
  *
  * TODO copy: textos pendientes de pulido por `copywriter`.
  */
 
-import { useState, useTransition, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import { Banknote, CheckCircle2, Landmark, RefreshCw, ShieldAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -25,7 +35,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EstadoError } from "@/components/onboarding/estado-pantalla";
 import {
-  conectarBancoCobranza,
+  obtenerEstadoConfiguracionCobranza,
+  prepararConexionBanco,
   type EstadoConfiguracionCobranza,
 } from "./actions";
 import { BadgeEstado } from "@/components/ui/badge-estado";
@@ -37,6 +48,11 @@ import {
 
 // URL del widget de Fintoc (script oficial). El SDK expone `window.Fintoc`.
 const FINTOC_WIDGET_SRC = "https://js.fintoc.com/v1/";
+
+// Sondeo de confirmación: ~20 intentos cada 2,5 s ≈ 50 s. Fintoc notifica en
+// segundos; el tope está para no dejar la pantalla girando si no llega nunca.
+const INTENTOS_CONFIRMACION = 20;
+const ESPERA_ENTRE_INTENTOS_MS = 2500;
 
 // Forma mínima del SDK de Fintoc que usamos (evita `any` suelto).
 interface FintocWidgetHandler {
@@ -52,7 +68,12 @@ interface FintocSdk {
     /** Obligatorio para "movements": a dónde Fintoc envía los movimientos. */
     webhookUrl?: string;
     country?: string;
-    onSuccess: (datos: { exchangeToken?: string; exchange_token?: string }) => void;
+    /**
+     * En "movements" el payload real es `{id, link:{id}}`: NO trae el
+     * `exchange_token` que documentan otros productos. Se tipa como desconocido
+     * a propósito, para que nadie vuelva a leerle un token que no está.
+     */
+    onSuccess: (datos: unknown) => void;
     onExit?: () => void;
     onEvent?: (evento: unknown) => void;
     onError?: (error: unknown) => void;
@@ -69,13 +90,11 @@ interface Props {
   errorInicial: string | null;
   /** PUBLIC key de Fintoc (`pk_test_…`). Segura para el cliente; null si falta. */
   publicKey: string | null;
-  /** URL de webhook por-tenant que el widget "movements" exige. */
-  webhookUrl: string | null;
   /** Tipo de titular para el widget de Fintoc. `business` en producción. */
   holderType: "business" | "individual";
 }
 
-export function FormularioConexionCobranza({ estadoInicial, errorInicial, publicKey, webhookUrl, holderType }: Props) {
+export function FormularioConexionCobranza({ estadoInicial, errorInicial, publicKey, holderType }: Props) {
   const [estado, setEstado] = useState<EstadoConfiguracionCobranza | null>(estadoInicial);
   const [errorCarga, setErrorCarga] = useState<string | null>(errorInicial);
   const [recargando, setRecargando] = useState(false);
@@ -83,7 +102,6 @@ export function FormularioConexionCobranza({ estadoInicial, errorInicial, public
   async function recargar() {
     setRecargando(true);
     try {
-      const { obtenerEstadoConfiguracionCobranza } = await import("./actions");
       const resultado = await obtenerEstadoConfiguracionCobranza();
       if (resultado.ok) {
         setEstado(resultado.estado);
@@ -117,7 +135,6 @@ export function FormularioConexionCobranza({ estadoInicial, errorInicial, public
         estado={estado}
         onActualizar={setEstado}
         publicKey={publicKey}
-        webhookUrl={webhookUrl}
         holderType={holderType}
       />
     </>
@@ -128,47 +145,76 @@ function SeccionConexion({
   estado,
   onActualizar,
   publicKey,
-  webhookUrl,
   holderType,
 }: {
   estado: EstadoConfiguracionCobranza;
   onActualizar: (estado: EstadoConfiguracionCobranza) => void;
   publicKey: string | null;
-  webhookUrl: string | null;
   holderType: "business" | "individual";
 }) {
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState(false);
   const [abriendoWidget, setAbriendoWidget] = useState(false);
-  const [pendiente, iniciarTransicion] = useTransition();
+  // `confirmando` = el widget cerró bien y estamos esperando que aterrice el
+  // webhook de Fintoc. Es un estado propio, no un `useTransition`: la espera es
+  // de un tercero, no de una Server Action nuestra.
+  const [confirmando, setConfirmando] = useState(false);
   // Handler del widget abierto, para poder cerrarlo si el usuario cancela
   // (escape cuando el widget se cuelga, p. ej. bloqueado por un adblocker).
   const widgetRef = useRef<FintocWidgetHandler | null>(null);
+  // Corta el sondeo si el componente se desmonta o el usuario cancela.
+  const sondeoCanceladoRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      sondeoCanceladoRef.current = true;
+    };
+  }, []);
 
   const cancelarConexion = useCallback(() => {
     widgetRef.current?.destroy?.();
     widgetRef.current = null;
+    sondeoCanceladoRef.current = true;
     setAbriendoWidget(false);
+    setConfirmando(false);
     setError(null);
   }, []);
 
-  const procesarExchangeToken = useCallback(
-    (exchangeToken: string) => {
-      setAbriendoWidget(false);
-      iniciarTransicion(async () => {
-        const resultado = await conectarBancoCobranza(exchangeToken);
-        if (!resultado.ok) {
-          setError(resultado.mensaje);
-          return;
-        }
+  /**
+   * Espera a que el webhook de Fintoc aterrice.
+   *
+   * No hay forma de saberlo en el momento: el `link_token` viaja del servidor de
+   * Fintoc al nuestro por un canal aparte, así que lo único que se puede hacer es
+   * preguntar por el estado hasta que cambie. El tope evita dejar la pantalla
+   * girando para siempre si la notificación nunca llega (y no rompe nada: la
+   * conexión podría confirmarse después, y se verá al recargar).
+   */
+  const esperarConfirmacion = useCallback(async () => {
+    sondeoCanceladoRef.current = false;
+    setConfirmando(true);
+
+    for (let intento = 0; intento < INTENTOS_CONFIRMACION; intento += 1) {
+      await new Promise((resolver) => setTimeout(resolver, ESPERA_ENTRE_INTENTOS_MS));
+      if (sondeoCanceladoRef.current) return;
+
+      const resultado = await obtenerEstadoConfiguracionCobranza();
+      if (sondeoCanceladoRef.current) return;
+
+      if (resultado.ok && resultado.estado.bancoConectado) {
+        setConfirmando(false);
         setExito(true);
         onActualizar(resultado.estado);
-      });
-    },
-    [onActualizar],
-  );
+        return;
+      }
+    }
 
-  const abrirWidget = useCallback(() => {
+    setConfirmando(false);
+    setError(
+      "No pudimos confirmar la conexión con tu banco. Vuelve a intentarlo.",
+    );
+  }, [onActualizar]);
+
+  const abrirWidget = useCallback(async () => {
     setError(null);
     setExito(false);
 
@@ -182,53 +228,35 @@ function SeccionConexion({
       setError("Aún estamos cargando el conector del banco. Espera unos segundos y vuelve a intentar.");
       return;
     }
-    if (!webhookUrl) {
-      setError(
-        "La conexión con tu banco no está disponible en este momento. Falta configurar la URL de notificaciones — contacta a soporte.",
-      );
+
+    // El `webhookUrl` con su nonce se pide AHORA, no en el render: es de un solo
+    // uso y vence en 15 minutos. Es también la única autorización que tendrá la
+    // notificación en la que viene el `link_token`.
+    setAbriendoWidget(true);
+    const preparacion = await prepararConexionBanco();
+    if (!preparacion.ok) {
+      setAbriendoWidget(false);
+      setError(preparacion.mensaje);
       return;
     }
 
     try {
-      setAbriendoWidget(true);
       const widget = window.Fintoc.create({
         publicKey,
         product: "movements",
         holderType,
         country: "cl",
-        webhookUrl,
+        webhookUrl: preparacion.webhookUrl,
         onEvent: (evento) => {
           // Diagnóstico de los estados del widget (sin datos sensibles del banco).
           console.debug("[Fintoc] evento:", evento);
         },
-        onSuccess: (datos) => {
-          // El exchange token viene como `linkIntent.exchangeToken` (camelCase),
-          // pero toleramos variantes por si el SDK cambia el shape.
-          const d = (datos ?? {}) as Record<string, unknown>;
-          const anidado = (d.linkIntent ?? d.link ?? {}) as Record<string, unknown>;
-          const token =
-            (d.exchangeToken as string | undefined) ??
-            (d.exchange_token as string | undefined) ??
-            (d.token as string | undefined) ??
-            (anidado.exchangeToken as string | undefined) ??
-            (anidado.exchange_token as string | undefined) ??
-            "";
-          if (token) {
-            procesarExchangeToken(token);
-          } else {
-            // No vino el token donde lo esperábamos: registramos el shape real
-            // para diagnóstico (es el linkIntent, no credenciales del banco).
-            try {
-              console.warn("[Fintoc] onSuccess SIN exchangeToken — claves:", Object.keys(d));
-              console.warn("[Fintoc] onSuccess SIN exchangeToken — json:", JSON.stringify(datos));
-            } catch {
-              console.warn("[Fintoc] onSuccess SIN exchangeToken — payload:", datos);
-            }
-            setAbriendoWidget(false);
-            setError(
-              "No recibimos la confirmación del banco. Si en la ventana de Fintoc quedaron cuentas con permisos faltantes, vuelve a conectar habilitándolos todos.",
-            );
-          }
+        onSuccess: () => {
+          // El payload NO se lee: en "movements" no trae nada que sirva. La
+          // conexión la confirma el webhook, y aquí solo se empieza a esperar.
+          widgetRef.current = null;
+          setAbriendoWidget(false);
+          void esperarConfirmacion();
         },
         onExit: () => {
           widgetRef.current = null;
@@ -246,9 +274,9 @@ function SeccionConexion({
       setAbriendoWidget(false);
       setError("No pudimos abrir el conector del banco. Intenta recargar la página.");
     }
-  }, [publicKey, webhookUrl, holderType, procesarExchangeToken]);
+  }, [publicKey, holderType, esperarConfirmacion]);
 
-  const trabajando = abriendoWidget || pendiente;
+  const trabajando = abriendoWidget || confirmando;
 
   // Tarjeta de solo-lectura tras conectar (patrón "secreto guardado" del DTE).
   if (estado.bancoConectado) {
@@ -257,8 +285,7 @@ function SeccionConexion({
         <CardHeader>
           <CardTitle className="text-base">Banco conectado para cobranza</CardTitle>
           <CardDescription>
-            Leemos los movimientos de esta cuenta para detectar los pagos de tus sellers y conciliarlos
-            automáticamente. No movemos dinero — solo consultamos.
+            Usamos esta cuenta para conciliar automáticamente los pagos de tus sellers.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -293,7 +320,7 @@ function SeccionConexion({
               variant="outline"
               size="sm"
               className="w-fit shrink-0"
-              onClick={abrirWidget}
+              onClick={() => void abrirWidget()}
               disabled={trabajando}
             >
               {trabajando ? <RefreshCw className="size-4 animate-spin" aria-hidden="true" /> : null}
@@ -318,9 +345,7 @@ function SeccionConexion({
       <CardHeader>
         <CardTitle className="text-base">Conecta tu banco para cobrar a tus sellers</CardTitle>
         <CardDescription>
-          Conectamos tu cuenta bancaria de forma segura (a través de Fintoc) para leer los movimientos y reconocer,
-          solos, los pagos que te hacen tus sellers. No movemos tu dinero ni guardamos tus claves del banco — solo
-          consultamos tus movimientos.
+          Conectamos tu banco de forma segura para conciliar automáticamente los pagos de tus sellers.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -329,9 +354,7 @@ function SeccionConexion({
             <Banknote className="size-5" aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground">
-            Cuando conectes tu banco, cada transferencia que recibas de un seller se cruzará automáticamente con su
-            período facturado. Los pagos que no calcen quedarán en la bandeja de revisión para que los resuelvas a
-            mano.
+            Cada transferencia se reconciliará automáticamente. Los pagos que no calcen van a revisión manual.
           </p>
         </div>
 
@@ -346,14 +369,15 @@ function SeccionConexion({
           <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
-              {pendiente ? "Guardando la conexión…" : "Conectando con tu banco — sigue los pasos en la ventana de Fintoc."}
+              {confirmando
+                ? "Confirmar conexión con tu banco…"
+                : "Abriendo ventana segura — completa los pasos ahí."}
             </p>
-            {abriendoWidget && !pendiente ? (
+            {abriendoWidget && !confirmando ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  ¿No se abrió la ventana del banco o se quedó cargando? Suele ser un{" "}
-                  <strong>bloqueador de anuncios</strong> bloqueando a Fintoc — desactívalo para este sitio
-                  (o agrega <code>fintoc.com</code> a la lista blanca) y vuelve a intentar.
+                  Si la ventana no se abre, desactiva cualquier{" "}
+                  <strong>bloqueador de anuncios</strong> en este sitio y vuelve a intentar.
                 </p>
                 <Button type="button" variant="ghost" size="sm" onClick={cancelarConexion}>
                   Cancelar
@@ -363,7 +387,7 @@ function SeccionConexion({
           </div>
         ) : null}
 
-        <Button onClick={abrirWidget} disabled={trabajando}>
+        <Button onClick={() => void abrirWidget()} disabled={trabajando}>
           {trabajando ? "Conectando…" : "Conectar banco"}
         </Button>
       </CardContent>

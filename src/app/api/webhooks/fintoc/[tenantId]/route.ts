@@ -27,6 +27,42 @@
  * 5. BITÁCORA ANTES del efecto: registrar la recepción del pago.
  * 6. Emitir `dinero/pago.recibido`. Responder 200 rápido. El matching va al job.
  *
+ * -----------------------------------------------------------------------------
+ * DOS CAMINOS, Y NO SON INTERCAMBIABLES
+ * -----------------------------------------------------------------------------
+ * CAMINO 1 — dinero real (`transfer.inbound.*`): llega de un **Webhook Endpoint
+ * REGISTRADO** en Fintoc, que sí va firmado. Exige `Fintoc-Signature` válida
+ * contra el `secreto_webhook_ref` del tenant ANTES de parsear el cuerpo. Es el
+ * flujo original y no cambia: aquí se mueve plata.
+ *
+ * CAMINO 2 — creación del Link (`link.created`): llega del `webhookUrl` que se le
+ * pasa al widget, que es un canal ad-hoc **que Fintoc NO FIRMA** (verificado en
+ * producción: POST con User-Agent Ruby y sin el header; y contra
+ * docs.fintoc.com/docs/webhooks-validating, donde la firma existe solo para los
+ * endpoints registrados). No hay forma de pedirle que lo firme.
+ *
+ * Y es el único canal por el que el `link_token` llega jamás
+ * (docs.fintoc.com/reference/link-object: «This attribute will only be returned
+ * when creating a Link. After that, this field will always be null» / «the Link
+ * Token is not saved by Fintoc, and can never be retrieved again»).
+ *
+ * ⚠️ La autorización del camino 2 NO es una firma: es un NONCE de un solo uso y
+ * vida corta (`identidad.cobranza_conexiones_pendientes`) que nuestro servidor
+ * emitió para ese tenant antes de abrir el widget, y que viaja en la URL
+ * (`?flow=`). Sin un nonce que calce —pendiente, no vencido y de ESE tenant— el
+ * cuerpo no se cree y no hay ningún efecto. Las dos mitades de la validación van
+ * juntas; solo por estado, un ticket olvidado sería una llave eterna.
+ *
+ * ⚠️ Por eso el camino 2 NO puede exigir firma y el camino 1 NO puede aceptar el
+ * nonce: mezclarlos le daría a cualquiera que vea una URL en un log la capacidad
+ * de inyectar un movimiento de dinero.
+ *
+ * Al aterrizar el camino 2 se REGISTRA programáticamente el Webhook Endpoint real
+ * del tenant (`POST /v1/webhook_endpoints`) y se guarda su `secret` cifrado: es lo
+ * que hace que el camino 1 pueda validar firma de ahí en adelante. Antes, ese
+ * `secreto_webhook_ref` no lo escribía nadie y todo `transfer.inbound` moría en
+ * 404 `tenant_sin_cobranza`.
+ *
  * SEGURIDAD:
  * - El secreto de webhook y el `link_token` NUNCA se loguean ni viajan al
  *   evento. `linkTokenRef` es la referencia opaca (uuid), no el token.
@@ -39,10 +75,21 @@ import { inngest } from '@/lib/inngest/cliente';
 import { consumirRateLimit } from '@/lib/rate-limit';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
+import { cifrarSecreto } from '@/modules/integraciones/secretos';
+import { resolverUrlBaseApp } from '@/modules/identidad/enlace-invitacion';
 import {
   crearPuertoConciliacionPagos,
   resolverSecretoWebhookTenant,
   ErrorConfigCobranzaAusente,
+  consumirConexionPendienteCobranza,
+  devolverConexionPendienteCobranza,
+  esPayloadLinkCreado,
+  leerLinkCreado,
+  rutaWebhookCobranza,
+  PARAM_NONCE_CONEXION,
+  leerSecretKeyOrg,
+  registrarWebhookEndpointCobranza,
+  borrarWebhookEndpointsDeUrl,
 } from '@/modules/integraciones/pagos';
 
 interface Params {
@@ -91,10 +138,12 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   // 1. RAW body — necesario para validar la firma sobre los bytes exactos.
   const cuerpoCrudo = await request.text();
 
-  // 2. Header de firma (obligatorio en Fintoc).
+  // 2. Header de firma. Su AUSENCIA no es un error: es la marca del canal ad-hoc
+  //    del widget (camino 2), que Fintoc no firma. Sin firma, la única puerta es
+  //    el nonce de la URL — y nada de dinero pasa por ahí.
   const firmaHeader = request.headers.get('Fintoc-Signature') ?? '';
   if (!firmaHeader) {
-    return NextResponse.json({ error: 'firma_ausente' }, { status: 401 });
+    return await procesarLinkCreado(request, tenantId, cuerpoCrudo);
   }
 
   // 3. Resolver el secreto del tenant y validar la firma.
@@ -197,5 +246,185 @@ export async function POST(request: NextRequest, { params }: Params): Promise<Ne
   });
 
   // Responder 200 lo antes posible — el matching es asíncrono (job).
+  return NextResponse.json({ ok: true }, { status: 200 });
+}
+
+// ---------------------------------------------------------------------------
+// CAMINO 2 — `link.created` del canal ad-hoc del widget (SIN firma).
+// ---------------------------------------------------------------------------
+/**
+ * Aterriza la creación del Link: valida el nonce, cifra el `link_token`, registra
+ * el Webhook Endpoint firmado del tenant y deja la conexión guardada.
+ *
+ * ORDEN DE LOS PASOS, QUE NO ES ARBITRARIO:
+ *  1. Reclamar el nonce (un solo `UPDATE … RETURNING`, así dos entregas
+ *     simultáneas no ganan las dos).
+ *  2. Cifrar el `link_token` — el paso IRRECUPERABLE. Si falla, se devuelve el
+ *     ticket a `pendiente` y se responde 500 para que Fintoc reintente; de otro
+ *     modo el token se perdería para siempre.
+ *  3. Registrar el Webhook Endpoint (recuperable a mano) — si falla, la conexión
+ *     se guarda igual: leer movimientos solo necesita el `link_token`.
+ *  4. Guardar config + bitácora, y responder 200.
+ */
+async function procesarLinkCreado(
+  request: NextRequest,
+  tenantId: string,
+  cuerpoCrudo: string,
+): Promise<NextResponse> {
+  // 1. El nonce de la URL es la única autorización de este camino.
+  const nonce = request.nextUrl.searchParams.get(PARAM_NONCE_CONEXION) ?? '';
+  if (!esUuid(nonce)) {
+    // Sin nonce (o con basura) no se mira el cuerpo. El 401 es el mismo que el de
+    // un nonce ajeno, para no revelar cuál de las dos cosas pasó.
+    return NextResponse.json({ error: 'no_autorizado' }, { status: 401 });
+  }
+
+  // Parsear ANTES de consumir el ticket: un cuerpo malformado no debe quemar el
+  // nonce del courier (Fintoc podría reintentar con el bueno).
+  let payload: unknown;
+  try {
+    payload = JSON.parse(cuerpoCrudo);
+  } catch {
+    return NextResponse.json({ error: 'body_malformado' }, { status: 400 });
+  }
+
+  if (!esPayloadLinkCreado(payload)) {
+    // Otro evento del canal ad-hoc (Fintoc manda también los movimientos por
+    // aquí). 200 para que no reintente; el ticket queda intacto.
+    return NextResponse.json({ ok: true, ignorado: true }, { status: 200 });
+  }
+
+  const link = leerLinkCreado(payload);
+  if (!link) {
+    // Notificación sin `link_token`: NO es la que trae el secreto, así que el
+    // ticket NO se consume (podría venir la buena después). 200 para no provocar
+    // reintentos en bucle de un cuerpo que nunca va a servir.
+    console.warn(
+      `[webhook fintoc] link.created sin link_token para tenant=${tenantId}; ticket intacto.`,
+    );
+    return NextResponse.json({ ok: true, sin_link_token: true }, { status: 200 });
+  }
+
+  // Reclamar el ticket. Cuatro fallos posibles (inexistente, ajeno, usado,
+  // vencido) y una sola respuesta, a propósito.
+  const ticket = await consumirConexionPendienteCobranza({ tenantId, nonce });
+  if (!ticket) {
+    return NextResponse.json({ error: 'no_autorizado' }, { status: 401 });
+  }
+
+  // 2. Cifrar el `link_token` — paso irrecuperable.
+  let referenciaLinkToken: string;
+  try {
+    const cifrado = await cifrarSecreto({
+      tenantId,
+      tipoSecreto: 'token_link_fintoc',
+      valor: link.linkToken,
+      venceEn: null,
+      metadata: { proposito: 'link_token_cobranza_fintoc' },
+    });
+    referenciaLinkToken = cifrado.referenciaExternaId;
+  } catch {
+    await devolverConexionPendienteCobranza({ tenantId, nonce });
+    console.error(
+      `[webhook fintoc] no se pudo cifrar el link_token de tenant=${tenantId}; ` +
+        'ticket devuelto a pendiente para que Fintoc reintente.',
+    );
+    return NextResponse.json({ error: 'error_interno' }, { status: 500 });
+  }
+
+  // 3. Registrar el Webhook Endpoint firmado del tenant. Best effort: si falla, la
+  //    conexión se guarda sin `secreto_webhook_ref` y los `transfer.inbound`
+  //    seguirán rebotando hasta que alguien lo registre — pero el `link_token`,
+  //    que es lo irrecuperable, ya está a salvo.
+  let referenciaSecretoWebhook: string | null = null;
+  let detalleFalloWebhook: string | null = null;
+  try {
+    const urlBase = resolverUrlBaseApp();
+    if (!urlBase) throw new Error('falta la URL pública de la app');
+    // La URL registrada va SIN el `?flow=` — el nonce es de este único flujo.
+    const urlEndpoint = `${urlBase}${rutaWebhookCobranza(tenantId)}`;
+    const secretKey = leerSecretKeyOrg();
+
+    // Reconexión: borrar el endpoint anterior de la misma URL. Si quedara, Fintoc
+    // mandaría cada evento dos veces y la copia firmada con el secreto viejo
+    // respondería 401 para siempre.
+    await borrarWebhookEndpointsDeUrl({ secretKey, url: urlEndpoint });
+
+    const endpoint = await registrarWebhookEndpointCobranza({
+      secretKey,
+      url: urlEndpoint,
+      descripcion: `Rutax cobranza — courier ${tenantId}`,
+    });
+    const cifrado = await cifrarSecreto({
+      tenantId,
+      tipoSecreto: 'secreto_webhook_fintoc',
+      valor: endpoint.secret,
+      venceEn: null,
+      metadata: {
+        proposito: 'secreto_webhook_cobranza_fintoc',
+        webhook_endpoint_id: endpoint.id,
+      },
+    });
+    referenciaSecretoWebhook = cifrado.referenciaExternaId;
+  } catch (error) {
+    // El mensaje NUNCA lleva el secreto ni la secret key de la org.
+    detalleFalloWebhook = error instanceof Error ? error.message : 'error desconocido';
+    console.error(
+      `[webhook fintoc] no se pudo registrar el webhook endpoint de tenant=${tenantId}: ` +
+        `${detalleFalloWebhook}. La conexión se guarda igual; los transfer.inbound no ` +
+        'llegarán firmados hasta que se registre.',
+    );
+  }
+
+  // 4. Guardar la conexión. `estado_conexion = 'conectado'` incluso si el paso 3
+  //    falló: el banco SÍ quedó conectado para leer movimientos, y marcar `error`
+  //    le diría al courier que reconecte — lo que quemaría un `link_token` bueno
+  //    para volver a fallar en lo mismo. El aviso va a la bitácora, no a la UI.
+  const supabase = crearClienteServiceRole();
+  const fila: Record<string, unknown> = {
+    tenant_id: tenantId,
+    link_token_ref: referenciaLinkToken,
+    cuenta_banco_alias: link.cuentaBancoAlias,
+    estado_conexion: 'conectado',
+    actualizado_en: new Date().toISOString(),
+  };
+  // El secreto solo se escribe si se obtuvo: en un upsert de PostgREST toda
+  // columna del payload se escribe TAMBIÉN en el UPDATE, y un `null` borraría el
+  // secreto válido de una conexión anterior.
+  if (referenciaSecretoWebhook) {
+    fila.secreto_webhook_ref = referenciaSecretoWebhook;
+  }
+
+  const { error: errorConfig } = await supabase
+    .schema('identidad')
+    .from('courier_config_cobranza')
+    .upsert(fila, { onConflict: 'tenant_id' });
+
+  if (errorConfig) {
+    await devolverConexionPendienteCobranza({ tenantId, nonce });
+    console.error(
+      `[webhook fintoc] no se pudo guardar la config de cobranza de tenant=${tenantId}: ` +
+        errorConfig.message,
+    );
+    return NextResponse.json({ error: 'error_interno' }, { status: 500 });
+  }
+
+  // BITÁCORA — conectar la cuenta bancaria del courier es una acción de acceso a
+  // datos financieros: lleva autor (el usuario que abrió el widget, guardado en el
+  // ticket). Sin token ni secreto en el detalle.
+  await registrarEnBitacora(supabase, {
+    tenantId,
+    actorUsuarioId: ticket.actorUsuarioId,
+    actorTipo: ticket.actorUsuarioId ? 'usuario' : 'sistema',
+    accion: 'cobranza.banco_conectado',
+    entidadTipo: 'courier_config_cobranza',
+    entidadId: tenantId,
+    detalle: {
+      cuenta_banco_alias: link.cuentaBancoAlias,
+      webhook_endpoint_registrado: referenciaSecretoWebhook !== null,
+      ...(detalleFalloWebhook ? { webhook_endpoint_fallo: detalleFalloWebhook } : {}),
+    },
+  });
+
   return NextResponse.json({ ok: true }, { status: 200 });
 }

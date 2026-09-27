@@ -46,15 +46,24 @@ describe('normalizarEventoRecurrente', () => {
     }
   });
 
-  it('subscription.canceled → mandato_fallido (mandato caído, requiere re-vinculación)', () => {
+  it('payment_method.canceled → mandato_fallido (mandato caído, requiere re-vinculación)', () => {
     const r = normalizarEventoRecurrente(
-      evento('subscription.canceled', { id: 'sub_z', metadata: { tenant_id: 'ten-z' } }),
+      evento('payment_method.canceled', { id: 'pm_z', metadata: { tenant_id: 'ten-z' } }),
     );
     expect(r.tipo).toBe('mandato_fallido');
     if (r.tipo === 'mandato_fallido') {
-      expect(r.mandatoExternoId).toBe('sub_z');
+      expect(r.mandatoExternoId).toBe('pm_z');
       expect(r.tenantId).toBe('ten-z');
     }
+  });
+
+  it('subscription.canceled (evento inexistente en Fintoc) → ignorado', () => {
+    // Regresión: este tipo NO existe en el catálogo real de Fintoc (verificado
+    // contra types-of-events.md) y no debe volver a tratarse como mandato caído.
+    const r = normalizarEventoRecurrente(
+      evento('subscription.canceled', { id: 'sub_z', metadata: { tenant_id: 'ten-z' } }),
+    );
+    expect(r.tipo).toBe('ignorado');
   });
 
   it('payment_intent.succeeded → cobro_exitoso con periodo y monto', () => {

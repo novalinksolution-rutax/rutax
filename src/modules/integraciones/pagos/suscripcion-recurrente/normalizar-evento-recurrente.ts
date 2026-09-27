@@ -11,8 +11,15 @@
  *    Guía "Accept recurring payments": el evento referencia `subscription` y
  *    `payment_method` creados en el enrolamiento.
  *    (https://docs.fintoc.com/docs/accept-recurring-payments)
- *  - `subscription.canceled` → mandato caído (el banco/Fintoc canceló). Se trata
- *    como `mandato_fallido`: el mandato ya no puede cobrar → requiere re-vinculación.
+ *  - `payment_method.canceled` → mandato caído (el banco/Fintoc invalidó el medio
+ *    de pago). Se trata como `mandato_fallido`: el mandato ya no puede cobrar →
+ *    requiere re-vinculación. CORREGIDO 2026-09-26: `subscription.canceled` /
+ *    `.cancelled` / `mandate.failed` NO EXISTEN en el catálogo real de Fintoc
+ *    (verificado contra `types-of-events.md` — 56 eventos enumerados, ninguno con
+ *    ese nombre). El único evento de cancelación de medio de pago recurrente es
+ *    `payment_method.canceled`; `subscription.payment_method_update_failed`
+ *    (sección "Subscriptions") es un fallo puntual al ACTUALIZAR el medio de pago,
+ *    no una cancelación del mandato vigente — no se trata como mandato caído.
  *  - `invoice.payment_succeeded` / `payment_intent.succeeded` → cobro exitoso.
  *  - `invoice.payment_failed` / `payment_intent.failed` / `.rejected` → cobro fallido.
  *  (https://docs.fintoc.com/reference/types-of-events)
@@ -71,7 +78,7 @@ function leerMetadata(object: Record<string, unknown>, clave: string): string | 
 }
 
 const EVENTOS_MANDATO_OK = new Set(['checkout_session.finished']);
-const EVENTOS_MANDATO_CAIDO = new Set(['subscription.canceled', 'subscription.cancelled', 'mandate.failed']);
+const EVENTOS_MANDATO_CAIDO = new Set(['payment_method.canceled']);
 const EVENTOS_COBRO_OK = new Set(['invoice.payment_succeeded', 'payment_intent.succeeded']);
 const EVENTOS_COBRO_FALLO = new Set([
   'invoice.payment_failed',
@@ -121,7 +128,14 @@ export function normalizarEventoRecurrente(payload: unknown): EventoRecurrenteNo
   }
 
   if (EVENTOS_MANDATO_CAIDO.has(tipo)) {
-    const mandatoExternoId = leerIdFlexible(object, 'subscription') ?? leerString(object, 'id') ?? '';
+    // `payment_method.canceled`: `object` ES el payment_method (su propio `id`).
+    // Se prueba también `payment_method`/`subscription` anidados por si el payload
+    // envuelve el recurso, igual que en el resto de la extracción de este archivo.
+    const mandatoExternoId =
+      leerIdFlexible(object, 'payment_method') ??
+      leerIdFlexible(object, 'subscription') ??
+      leerString(object, 'id') ??
+      '';
     if (!mandatoExternoId) return { tipo: 'ignorado', razon: 'evento de mandato sin id' };
     return { tipo: 'mandato_fallido', mandatoExternoId, tenantId, suscripcionId };
   }
