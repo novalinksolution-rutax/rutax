@@ -38,7 +38,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Check, Lock } from "lucide-react";
+import { Check, ChevronDown, Lock } from "lucide-react";
 
 import { BLOQUES, type ClavePaso, type PasoAsistente } from "./pasos";
 
@@ -87,93 +87,136 @@ export function ListaPasos({
         const delBloque = pasos.filter((p) => p.bloque === bloque.clave);
         if (delBloque.length === 0) return null;
         const listos = delBloque.filter((p) => p.listo).length;
+        const cerrado =
+          listos === delBloque.length &&
+          !delBloque.some((p) => p.clave === activo);
+
+        const lista = (
+          <ol className="divide-y divide-line border border-line">
+            {delBloque.map((paso) => {
+              const esActivo = paso.clave === activo;
+              return (
+                <li
+                  key={paso.clave}
+                  ref={esActivo ? filaActiva : undefined}
+                  className="scroll-mt-16 lg:scroll-mt-4"
+                >
+                  <button
+                    type="button"
+                    onClick={() => abrir(paso.clave)}
+                    aria-current={esActivo ? "step" : undefined}
+                    className={`flex min-h-11 w-full items-start gap-3 px-3 py-2.5 text-left sm:px-4 sm:py-3 transition-colors ${
+                      esActivo ? "bg-accent-bg/40" : "hover:bg-bg-sunken"
+                    }`}
+                  >
+                    {/* El número es el orden, y va SIEMPRE — también cuando el paso ya
+              está listo. Reemplazarlo por un tick pierde la posición, que es
+              justo lo que la lista viene a dar. */}
+                    <span
+                      className={`rx-num mt-0.5 flex size-6 shrink-0 items-center justify-center border text-xs ${
+                        paso.listo
+                          ? "border-balanced-line bg-balanced-bg text-balanced-fg"
+                          : paso.critico
+                            ? "border-attention-line text-attention-fg sm:border-line sm:text-fg-muted"
+                            : paso.bloqueado
+                              ? "border-line text-fg-subtle"
+                              : "border-line text-fg-muted"
+                      }`}
+                    >
+                      {paso.listo ? (
+                        <Check className="size-3.5" aria-hidden="true" />
+                      ) : paso.bloqueado ? (
+                        <Lock className="size-3" aria-hidden="true" />
+                      ) : (
+                        paso.numero
+                      )}
+                    </span>
+
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        {/* El número vive en el distintivo de la izquierda y no se
+                  repite acá: «4. Cobranza» al lado de un círculo con un 4
+                  es el mismo dato dos veces. */}
+                        <span className="font-medium text-fg">
+                          {paso.titulo}
+                        </span>
+                        {paso.critico && !paso.listo ? (
+                          <span className="rx-num hidden border border-line px-1.5 py-0.5 text-[10px] leading-none tracking-[0.1em] text-fg-muted uppercase sm:inline">
+                            Necesario para operar
+                          </span>
+                        ) : null}
+                      </span>
+                      {/* El resumen lleva el dato real, no un rótulo de estado: «3
+                rangos vigentes», «sin tarifas: una entrega se hace y no se
+                puede cobrar». */}
+                      <span
+                        className={`mt-0.5 text-sm leading-snug text-fg-muted ${
+                          esActivo ? "block" : "hidden sm:block"
+                        }`}
+                      >
+                        {paso.bloqueado ? paso.motivoBloqueo : paso.resumen}
+                      </span>
+                    </span>
+                  </button>
+                  {esActivo ? (
+                    <div className="border-t border-line px-4 pt-4 pb-4">
+                      {abierto}
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        );
 
         return (
           <section
             key={bloque.clave}
             aria-labelledby={`bloque-${bloque.clave}`}
           >
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-              <h2
-                id={`bloque-${bloque.clave}`}
-                className="text-xs font-medium tracking-[0.08em] text-fg uppercase"
-              >
-                {bloque.titulo}
-              </h2>
-              {/* El conteo del bloque es del bloque, y no compite con el global:
-                  el de arriba dice cuánto falta en total, éste dice si ESTE
-                  grupo ya está resuelto. */}
-              <span className="rx-num text-xs text-fg-subtle">
-                {listos} de {delBloque.length}
-              </span>
-            </div>
-            <ol className="divide-y divide-line border border-line">
-              {delBloque.map((paso) => {
-                const esActivo = paso.clave === activo;
-                return (
-                  <li
-                    key={paso.clave}
-                    ref={esActivo ? filaActiva : undefined}
-                    className="scroll-mt-16 lg:scroll-mt-4"
+            {cerrado ? (
+              // 🔴 Un bloque resuelto se pliega a una línea: en el teléfono, tres
+              // filas con ✓ son media pantalla que no pide nada. Se abre con
+              // un toque para revisar; el bloque con el paso abierto nunca se
+              // pliega.
+              <details className="group">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 border border-line px-3 sm:px-4 [&::-webkit-details-marker]:hidden">
+                  <span
+                    id={`bloque-${bloque.clave}`}
+                    className="flex items-center gap-2 text-xs font-medium tracking-[0.08em] text-fg uppercase"
                   >
-                    <button
-                      type="button"
-                      onClick={() => abrir(paso.clave)}
-                      aria-current={esActivo ? "step" : undefined}
-                      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
-                        esActivo ? "bg-accent-bg/40" : "hover:bg-bg-sunken"
-                      }`}
-                    >
-                      {/* El número es el orden, y va SIEMPRE — también cuando el paso ya
-                  está listo. Reemplazarlo por un tick pierde la posición, que es
-                  justo lo que la lista viene a dar. */}
-                      <span
-                        className={`rx-num mt-0.5 flex size-6 shrink-0 items-center justify-center border text-xs ${
-                          paso.listo
-                            ? "border-balanced-line bg-balanced-bg text-balanced-fg"
-                            : paso.bloqueado
-                              ? "border-line text-fg-subtle"
-                              : "border-line text-fg-muted"
-                        }`}
-                      >
-                        {paso.listo ? (
-                          <Check className="size-3.5" aria-hidden="true" />
-                        ) : paso.bloqueado ? (
-                          <Lock className="size-3" aria-hidden="true" />
-                        ) : (
-                          paso.numero
-                        )}
-                      </span>
-
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-2">
-                          {/* El número vive en el distintivo de la izquierda y no se
-                      repite acá: «4. Cobranza» al lado de un círculo con un 4
-                      es el mismo dato dos veces. */}
-                          <span className="font-medium text-fg">
-                            {paso.titulo}
-                          </span>
-                          {paso.critico && !paso.listo ? (
-                            <span className="rx-num border border-line px-1.5 py-0.5 text-[10px] leading-none tracking-[0.1em] text-fg-muted uppercase">
-                              Necesario para operar
-                            </span>
-                          ) : null}
-                        </span>
-                        {/* El resumen lleva el dato real, no un rótulo de estado: «3
-                    rangos vigentes», «sin tarifas: una entrega se hace y no se
-                    puede cobrar». */}
-                        <span className="mt-0.5 block text-sm leading-snug text-fg-muted">
-                          {paso.bloqueado ? paso.motivoBloqueo : paso.resumen}
-                        </span>
-                      </span>
-                    </button>
-                    {esActivo ? (
-                      <div className="border-t border-line px-4 pt-4 pb-4">{abierto}</div>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
+                    <Check
+                      className="size-3.5 text-balanced-fg"
+                      aria-hidden="true"
+                    />
+                    {bloque.titulo}
+                  </span>
+                  <ChevronDown
+                    className="size-4 text-fg-subtle transition-transform group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <div className="-mt-px">{lista}</div>
+              </details>
+            ) : (
+              <>
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                  <h2
+                    id={`bloque-${bloque.clave}`}
+                    className="text-xs font-medium tracking-[0.08em] text-fg uppercase"
+                  >
+                    {bloque.titulo}
+                  </h2>
+                  {/* El conteo del bloque es del bloque, y no compite con el global:
+                    el de arriba dice cuánto falta en total, éste dice si ESTE
+                    grupo ya está resuelto. */}
+                  <span className="rx-num text-xs text-fg-subtle">
+                    {listos} de {delBloque.length}
+                  </span>
+                </div>
+                {lista}
+              </>
+            )}
           </section>
         );
       })}
