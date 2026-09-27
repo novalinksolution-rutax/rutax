@@ -348,7 +348,7 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
   // tarjeta enlaza a su listado. (Decisión del usuario, 2026-09-27.)
   const sinAsignar = metricas.porEstado["pendiente_asignacion"] ?? 0;
 
-  const magnitudes: Magnitud[] = [
+  const todas: Magnitud[] = [
     {
       // Sin tinte a propósito: a primera hora TODO está sin asignar, y pintarlo
       // sería ruido toda la mañana. La hora de despacho no es un dato del
@@ -435,6 +435,17 @@ async function SeccionMosaico({ tenantId }: { tenantId: string }) {
       tintaCifra: conexiones.length > 0 ? "attention" : undefined,
     },
   ];
+
+  // 🔴 Las alertas aparecen SOLO cuando hay algo. En un día sano, cuatro
+  // tarjetas diciendo «0» eran ruido, y cuando una se enciende destaca de
+  // verdad. (Decisión del usuario, 2026-09-27.)
+  const hayAlerta: Record<string, boolean> = {
+    "Incidencias abiertas": (incidencias?.abiertas ?? 0) > 0,
+    "Rezagados de ayer": metricas.rezagadosAyer > 0,
+    "Dinero que no cuadra": (fuga?.fugaDetectadaClp ?? 0) > 0,
+    "Conexiones caídas": conexiones.length > 0,
+  };
+  const magnitudes = todas.filter((m) => hayAlerta[m.rotulo] ?? true);
 
   return (
     <div className="space-y-6">
