@@ -269,7 +269,7 @@ export function pasosDelAsistente(
       // empresa`, no la configuración DTE. Si vivieran dentro del paso de
       // facturación, apagar el área se los llevaría por delante.
       clave: "empresa",
-      bloque: "cobrar",
+      bloque: "operar",
       titulo: "Los datos de tu empresa",
       enFrase: "los datos de tu empresa",
       resumen: emisorCompleto
@@ -290,7 +290,7 @@ export function pasosDelAsistente(
     },
     {
       clave: "dte",
-      bloque: "cobrar",
+      bloque: "operar",
       titulo: "Facturación electrónica",
       enFrase: "la facturación electrónica",
       resumen: resumenDte,
@@ -303,6 +303,21 @@ export function pasosDelAsistente(
       href: "/onboarding/dte",
       seResuelveFuera: false,
       areaRequerida: "folios_caf",
+    },
+    {
+      clave: "tarifas",
+      bloque: "operar",
+      titulo: "Tarifas",
+      enFrase: "las tarifas",
+      resumen: resumenTarifas,
+      listo: estado.tarifas.estado === "configuradas",
+      critico: true,
+      dependeDe: null,
+      bloqueado: false,
+      motivoBloqueo: null,
+      href: "/onboarding/tarifas",
+      seResuelveFuera: false,
+      areaRequerida: null,
     },
     {
       clave: "folios",
@@ -320,21 +335,6 @@ export function pasosDelAsistente(
       href: "/onboarding/folios",
       seResuelveFuera: false,
       areaRequerida: "folios_caf",
-    },
-    {
-      clave: "tarifas",
-      bloque: "cobrar",
-      titulo: "Tarifas",
-      enFrase: "las tarifas",
-      resumen: resumenTarifas,
-      listo: estado.tarifas.estado === "configuradas",
-      critico: true,
-      dependeDe: null,
-      bloqueado: false,
-      motivoBloqueo: null,
-      href: "/onboarding/tarifas",
-      seResuelveFuera: false,
-      areaRequerida: null,
     },
     {
       clave: "periodos",

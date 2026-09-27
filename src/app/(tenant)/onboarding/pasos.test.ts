@@ -50,8 +50,8 @@ describe("pasosDelAsistente — forma de la lista", () => {
       "bodega",
       "empresa",
       "dte",
-      "folios",
       "tarifas",
+      "folios",
       "periodos",
       "cobro",
       "cobranza",
@@ -71,8 +71,10 @@ describe("pasosDelAsistente — forma de la lista", () => {
       pasos.filter((p) => p.bloque === b.clave).map((p) => p.numero),
     );
     expect(numerosPorBloque).toEqual([
-      [1, 2, 3],
-      [4, 5, 6, 7, 8, 9, 10],
+      // Operar incluye empresa, DTE y tarifas: `resolverBloqueoOperativo`
+      // los exige para operar, así que ponerlos en «Para cobrar» mentía.
+      [1, 2, 3, 4, 5, 6],
+      [7, 8, 9, 10],
       [11, 12, 13, 14, 15],
     ]);
   });
