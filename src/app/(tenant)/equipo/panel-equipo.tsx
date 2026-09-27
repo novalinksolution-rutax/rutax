@@ -3,16 +3,39 @@
 /**
  * Pantalla H — Lista de usuarios e invitaciones: panel de cliente.
  *
- * Una sola tabla con dos grupos visuales (§2.2): "Usuarios activos" e
+ * Una sola lista con dos grupos visuales (§2.2): "Usuarios activos" e
  * "Invitaciones", con pestañas "Todos · Activos · Invitaciones pendientes"
  * para que el dueño se enfoque en "qué necesita seguimiento" sin scrollear
  * una lista mezclada. El botón primario "Invitar persona" abre la Pantalla I
  * en un panel lateral (Sheet) — nunca página completa, para no romper el
  * contexto de "estoy viendo mi equipo".
+ *
+ * -----------------------------------------------------------------------------
+ * 🔴 ESTO ES UN PADRÓN DE PERSONAS, NO UN MURO DE ACCIONES
+ * -----------------------------------------------------------------------------
+ * Cada fila tiene entre una y dos acciones. Pintadas como botones dentro de la
+ * fila, un equipo de 15 personas son 30 botones apilados: la pantalla se lee
+ * como una botonera y la pregunta que de verdad se viene a responder —quién
+ * tiene acceso, con qué rol, y qué invitaciones están en el aire— queda debajo
+ * del ruido.
+ *
+ * Por eso las acciones se recogen en un **menú de desbordamiento (`⋯`)** por
+ * fila, igual que en la bandeja de conciliación (`menu-acciones-conciliacion`).
+ * La fila muestra SOLO información; el `⋯` está a un toque y no compite. Es el
+ * patrón de cualquier lista de miembros que tenga que escalar.
+ *
+ * Dos consecuencias que se heredan de ese menú y conviene no deshacer:
+ *   · **El éxito va por notificación temporal; el error se queda DENTRO del
+ *     menú.** Si el fallo se fuera en cuatro segundos, el usuario vería la fila
+ *     igual que antes sin saber que su acción no ocurrió.
+ *   · La fila **ya no se abre al tocarla**. Antes, cambiar el rol era un clic
+ *     sobre la fila entera: un gesto invisible que en teléfono además compite
+ *     con el scroll. Ahora toda acción entra por el mismo sitio.
  */
 
 import { useMemo, useState, useTransition } from "react";
-import { UserPlus, Users } from "lucide-react";
+import { Loader2, MoreHorizontal, UserPlus, Users } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
@@ -21,6 +44,12 @@ import {
   type EstadoInvitacionEquipo,
 } from "@/lib/ui/traduccion-estados";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -28,7 +57,6 @@ import { DistintivoEstado } from "@/components/ui/distintivo-estado";
 import { EstadoError, EstadoVacio } from "@/components/onboarding/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
-import { describirRol } from "@/modules/identidad/capacidades-legibles";
 import { PermisosPorRol } from "./permisos-por-rol";
 import { DialogoCambiarRol } from "./dialogo-cambiar-rol";
 import type { RolInterno } from "@/modules/identidad/roles";
@@ -136,8 +164,13 @@ export function PanelEquipo({
         <TabsList>
           <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="activos">Activos</TabsTrigger>
+          {/* En teléfono «Invitaciones pendientes» empuja la fila de pestañas
+              contra el borde. El contexto ya lo da el grupo: las otras dos
+              pestañas son «Todos» y «Activos». */}
           <TabsTrigger value="pendientes">
-            Invitaciones pendientes{totalPendientes > 0 ? ` (${totalPendientes})` : ""}
+            <span className="sm:hidden">Pendientes</span>
+            <span className="hidden sm:inline">Invitaciones pendientes</span>
+            {totalPendientes > 0 ? ` (${totalPendientes})` : ""}
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -186,44 +219,80 @@ export function PanelEquipo({
     );
   } else {
     contenido = (
-      <div className="overflow-x-auto rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {/* ⚠️ **Cuatro columnas, como el tablero B3b: Persona · Rol ·
-                  Estado · Acciones.** Había una quinta, «Detalle», gastando el
-                  ancho de una columna entera en una fecha de alta — que ahora va
-                  bajo el correo, donde no compite con nada. Ese ancho es
-                  justamente el que necesitaba el rol para dejar de ser una
-                  etiqueta muda. */}
-              <TableHead>Persona</TableHead>
-              <TableHead>Rol</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filas.map((fila) =>
-              fila.tipo === "usuario" ? (
-                <FilaUsuario
-                  key={`usuario-${fila.usuario.id}`}
-                  usuario={fila.usuario}
-                  puedeGestionar={puedeGestionar}
-                  onActualizado={actualizarUsuario}
-                />
-              ) : (
-                <FilaInvitacion
-                  key={`invitacion-${fila.invitacion.id}`}
-                  invitacion={fila.invitacion}
-                  puedeInvitar={puedeInvitar}
-                  puedeRevocar={puedeRevocar}
-                  onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
-                  onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
-                />
-              ),
-            )}
-          </TableBody>
-        </Table>
+      <div className="rounded-lg border border-border">
+        {/* ─────────────────────────────────────────────────────────────
+            A 375 px la fila deja de ser una fila.
+            ──────────────────────────────────────────────────────────────
+            Mismo patrón que `/sellers` y `/operaciones`: se renderizan LAS
+            DOS formas y CSS elige. Decidirlo en JavaScript midiendo el ancho
+            sería peor — el servidor no sabe el ancho, así que la primera
+            pintura saldría con la forma equivocada y cambiaría delante del
+            usuario.
+
+            🔴 Sin esto, en teléfono había que arrastrar la tabla de lado para
+            llegar a la columna «Acciones» —la única accionable—, y nada en
+            pantalla delataba que estaba ahí.
+            ───────────────────────────────────────────────────────────── */}
+        <ul className="divide-y divide-border md:hidden">
+          {filas.map((fila) =>
+            fila.tipo === "usuario" ? (
+              <TarjetaUsuario
+                key={`tarjeta-usuario-${fila.usuario.id}`}
+                usuario={fila.usuario}
+                puedeGestionar={puedeGestionar}
+                onActualizado={actualizarUsuario}
+              />
+            ) : (
+              <TarjetaInvitacion
+                key={`tarjeta-invitacion-${fila.invitacion.id}`}
+                invitacion={fila.invitacion}
+                puedeInvitar={puedeInvitar}
+                puedeRevocar={puedeRevocar}
+                onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
+                onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
+              />
+            ),
+          )}
+        </ul>
+
+        <div className="hidden overflow-x-auto md:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {/* Cuatro columnas: Persona · Rol · Estado · (acciones, sin
+                    rótulo — es una columna de iconos, y ponerle título la haría
+                    pesar más de lo que vale). */}
+                <TableHead>Persona</TableHead>
+                <TableHead>Rol</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="w-12">
+                  <span className="sr-only">Acciones</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filas.map((fila) =>
+                fila.tipo === "usuario" ? (
+                  <FilaUsuario
+                    key={`usuario-${fila.usuario.id}`}
+                    usuario={fila.usuario}
+                    puedeGestionar={puedeGestionar}
+                    onActualizado={actualizarUsuario}
+                  />
+                ) : (
+                  <FilaInvitacion
+                    key={`invitacion-${fila.invitacion.id}`}
+                    invitacion={fila.invitacion}
+                    puedeInvitar={puedeInvitar}
+                    puedeRevocar={puedeRevocar}
+                    onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
+                    onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
+                  />
+                ),
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     );
   }
@@ -280,7 +349,305 @@ function construirFilas(estado: EstadoEquipo | null, filtro: Filtro): FilaCombin
 }
 
 // -----------------------------------------------------------------------------
-// Fila — usuario activo
+// El disparador del menú — mismo objeto en tarjeta y en fila
+// -----------------------------------------------------------------------------
+/**
+ * `size-11` (44 px) en teléfono y `size-8` en escritorio: el pulgar necesita el
+ * objetivo grande, el puntero no, y una columna de iconos de 44 px en la tabla
+ * engordaría cada fila sin motivo.
+ */
+function DisparadorMenu({ ocupado, etiqueta }: { ocupado: boolean; etiqueta: string }) {
+  return (
+    <DropdownMenuTrigger asChild>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        disabled={ocupado}
+        aria-label={etiqueta}
+        className="size-11 md:size-8"
+      >
+        {ocupado ? (
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <MoreHorizontal className="size-4" aria-hidden="true" />
+        )}
+      </Button>
+    </DropdownMenuTrigger>
+  );
+}
+
+/**
+ * Una opción del menú. En teléfono el alto mínimo de toque manda (44 px) y el
+ * menú se ensancha para que «Reenviar correo» no se parta en dos renglones; en
+ * escritorio vuelve a la densidad compacta del resto de la aplicación.
+ */
+const CLASE_ITEM_MENU = "min-h-11 md:min-h-0";
+const CLASE_CONTENIDO_MENU = "min-w-44";
+
+/** El error de una acción, dentro del menú. Ver la cabecera del archivo. */
+function ErrorEnMenu({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      role="alert"
+      className="mb-1 max-w-64 border-b border-fault-line bg-fault-bg px-2 py-2 text-xs leading-relaxed text-fault-fg"
+    >
+      {children}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Menú de acciones — persona
+// -----------------------------------------------------------------------------
+/**
+ * Cambiar el rol y suspender/reactivar. Se monta una vez por persona y lo usan
+ * las dos formas (tarjeta y fila), así que la lógica no se duplica.
+ *
+ * Suspender NO borra: la persona conserva su historial —sus manifiestos, sus
+ * líneas en la bitácora— y deja de poder entrar. `capacidadesDe` devuelve el
+ * conjunto vacío para quien no está activo, así que el corte vale en toda la
+ * app y no depende de que cada pantalla se acuerde de comprobarlo.
+ */
+function MenuAccionesPersona({
+  usuario,
+  onActualizado,
+}: {
+  usuario: UsuarioEquipo;
+  onActualizado: (u: UsuarioEquipo) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [panelRolAbierto, setPanelRolAbierto] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pendiente, iniciarTransicion] = useTransition();
+  const activo = usuario.estado === "activo";
+
+  function alternarEstado() {
+    iniciarTransicion(async () => {
+      setError(null);
+      const { cambiarEstadoDePersona } = await import("./actions");
+      const r = await cambiarEstadoDePersona(usuario.id, !activo);
+      if (!r.ok) {
+        setError(r.mensaje);
+        return;
+      }
+      setAbierto(false);
+      onActualizado({ ...usuario, estado: activo ? "suspendido" : "activo" });
+      toast.success(
+        activo
+          ? `${usuario.nombreCompleto} ya no puede entrar.`
+          : `${usuario.nombreCompleto} vuelve a tener acceso.`,
+      );
+    });
+  }
+
+  return (
+    <>
+      <DropdownMenu
+        open={abierto}
+        onOpenChange={(v) => {
+          setAbierto(v);
+          if (!v) setError(null);
+        }}
+      >
+        <DisparadorMenu ocupado={pendiente} etiqueta={`Acciones de ${usuario.nombreCompleto}`} />
+        <DropdownMenuContent align="end" className={CLASE_CONTENIDO_MENU}>
+          {error ? (
+            <ErrorEnMenu>
+              <strong>No se pudo aplicar el cambio.</strong> {error}
+            </ErrorEnMenu>
+          ) : null}
+          {/* Cambiar el rol solo tiene sentido sobre alguien activo: a quien
+              está suspendido el rol no le habilita nada. */}
+          {activo ? (
+            <DropdownMenuItem
+              className={CLASE_ITEM_MENU}
+              disabled={pendiente}
+              onSelect={() => {
+                setAbierto(false);
+                setPanelRolAbierto(true);
+              }}
+            >
+              Cambiar rol
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            className={CLASE_ITEM_MENU}
+            variant={activo ? "destructive" : "default"}
+            disabled={pendiente}
+            onSelect={(e) => {
+              // Sin esto el menú se cierra antes de que vuelva el servidor, y
+              // el error no tendría dónde aparecer.
+              e.preventDefault();
+              alternarEstado();
+            }}
+          >
+            {activo ? "Suspender" : "Reactivar"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {activo ? (
+        <DialogoCambiarRol
+          usuarioId={usuario.id}
+          nombre={usuario.nombreCompleto}
+          rolActual={usuario.rol as RolInterno}
+          onCambiado={(rol) => onActualizado({ ...usuario, rol })}
+          abierto={panelRolAbierto}
+          onOpenChange={setPanelRolAbierto}
+        />
+      ) : null}
+    </>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Menú de acciones — invitación
+// -----------------------------------------------------------------------------
+/** Las opciones dependen del estado: pendiente reenvía o revoca; expirada y
+ *  revocada solo se pueden reinvitar. */
+function MenuAccionesInvitacion({
+  invitacion,
+  puedeInvitar,
+  puedeRevocar,
+  onActualizar,
+  onReemplazarPorNueva,
+}: {
+  invitacion: InvitacionEquipo;
+  puedeInvitar: boolean;
+  puedeRevocar: boolean;
+  onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
+  onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [pendiente, setPendiente] = useState<"reenviar" | "reinvitar" | "revocar" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const esPendiente = invitacion.estado === "pendiente";
+  const esReinvitable = invitacion.estado === "expirada" || invitacion.estado === "revocada";
+
+  const puedeReenviar = esPendiente && puedeInvitar;
+  const puedeRevocarla = esPendiente && puedeRevocar;
+  const puedeReinvitar = esReinvitable && puedeInvitar;
+
+  // Sin una sola opción, el `⋯` sería un botón que no hace nada.
+  if (!puedeReenviar && !puedeRevocarla && !puedeReinvitar) return null;
+
+  async function manejarReenviar() {
+    setPendiente("reenviar");
+    setError(null);
+    const resultado = await reenviarInvitacion(invitacion.id);
+    setPendiente(null);
+    if (!resultado.ok) {
+      setError(resultado.mensaje);
+      return;
+    }
+    setAbierto(false);
+    if (resultado.emailEnviado) {
+      toast.success(`Correo reenviado a ${invitacion.email}.`);
+    } else {
+      toast.error("No pudimos enviar el correo. El envío no está habilitado en este entorno.");
+    }
+  }
+
+  async function manejarReinvitar() {
+    setPendiente("reinvitar");
+    setError(null);
+    const resultado = await reinvitarUsuario(invitacion.id);
+    setPendiente(null);
+    if (!resultado.ok) {
+      setError(resultado.mensaje);
+      return;
+    }
+    setAbierto(false);
+    onReemplazarPorNueva({
+      id: crypto.randomUUID(),
+      email: invitacion.email,
+      rol: invitacion.rol,
+      estado: "pendiente",
+      expiraEn: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      creadoEn: new Date().toISOString(),
+    });
+    if (resultado.emailEnviado) {
+      toast.success(`Invitación nueva enviada a ${invitacion.email}.`);
+    } else {
+      toast.error("Creamos la invitación nueva, pero no pudimos enviar el correo.");
+    }
+  }
+
+  async function manejarRevocar() {
+    setPendiente("revocar");
+    setError(null);
+    const resultado = await revocarInvitacionDeEquipo(invitacion.id);
+    setPendiente(null);
+    if (!resultado.ok) {
+      setError(resultado.mensaje);
+      return;
+    }
+    setAbierto(false);
+    onActualizar({ estado: "revocada" });
+    toast.success(`Invitación de ${invitacion.email} cancelada.`);
+  }
+
+  return (
+    <DropdownMenu
+      open={abierto}
+      onOpenChange={(v) => {
+        setAbierto(v);
+        if (!v) setError(null);
+      }}
+    >
+      <DisparadorMenu ocupado={pendiente !== null} etiqueta={`Acciones de la invitación a ${invitacion.email}`} />
+      <DropdownMenuContent align="end" className={CLASE_CONTENIDO_MENU}>
+        {error ? (
+          <ErrorEnMenu>
+            <strong>No se pudo completar.</strong> {error}
+          </ErrorEnMenu>
+        ) : null}
+        {puedeReenviar ? (
+          <DropdownMenuItem
+            className={CLASE_ITEM_MENU}
+            disabled={pendiente !== null}
+            onSelect={(e) => {
+              e.preventDefault();
+              void manejarReenviar();
+            }}
+          >
+            Reenviar correo
+          </DropdownMenuItem>
+        ) : null}
+        {puedeReinvitar ? (
+          <DropdownMenuItem
+            className={CLASE_ITEM_MENU}
+            disabled={pendiente !== null}
+            onSelect={(e) => {
+              e.preventDefault();
+              void manejarReinvitar();
+            }}
+          >
+            Reinvitar
+          </DropdownMenuItem>
+        ) : null}
+        {puedeRevocarla ? (
+          <DropdownMenuItem
+            className={CLASE_ITEM_MENU}
+            variant="destructive"
+            disabled={pendiente !== null}
+            onSelect={(e) => {
+              e.preventDefault();
+              void manejarRevocar();
+            }}
+          >
+            Revocar
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Fila — usuario activo (escritorio)
 // -----------------------------------------------------------------------------
 
 function FilaUsuario({
@@ -294,20 +661,8 @@ function FilaUsuario({
 }) {
   const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[usuario.rol];
 
-  /**
-   * 🔴 La fila entera abre el panel, como en Pedidos, Tarifas y Bodegas.
-   *
-   * Solo la persona ACTIVA: la suspendida tiene su propia acción —reactivarla—
-   * y abrirle un cambio de rol daría un formulario que no se puede aplicar.
-   */
-  const [panelRolAbierto, setPanelRolAbierto] = useState(false);
-  const abrible = puedeGestionar && usuario.estado === "activo";
-
   return (
-    <TableRow
-      onClick={abrible ? () => setPanelRolAbierto(true) : undefined}
-      className={abrible ? "cursor-pointer" : undefined}
-    >
+    <TableRow>
       <TableCell>
         <div className="space-y-0.5">
           <p className="font-medium text-foreground">{usuario.nombreCompleto}</p>
@@ -317,70 +672,80 @@ function FilaUsuario({
           </p>
         </div>
       </TableCell>
-      {/* 🔴 `whitespace-normal` NO es opcional acá, y no es cosmético.
-          `TableCell` de shadcn trae `whitespace-nowrap` de fábrica. Con
-          `max-w-72` la CAJA de la celda se queda en 288 px, pero el texto sigue
-          siendo una sola línea y **se pinta fuera**: medido en esta misma
-          pantalla, el párrafo del rol ocupaba 574 px dentro de una caja de 297
-          — 277 px de tinta encima de la columna de al lado.
-
-          ⚠️ Y falla de la peor manera para revisarlo: la caja mide bien.
-          `getBoundingClientRect` de la celda, del párrafo y de todo lo de
-          adentro da correcto, así que una comprobación de solapamiento por
-          rectángulos lo aprueba. Lo que se sale es la TINTA, y eso solo lo dice
-          `scrollWidth` contra `clientWidth`. */}
-      <TableCell className="max-w-72 whitespace-normal align-top">
+      {/* 🔴 Solo la etiqueta del rol, sin el párrafo de capacidades.
+          Acá se listaba `describirRol()` —«Dar de alta gente y cambiarle el
+          rol, … y 21 cosas más»— repetido en CADA fila. Era el texto más largo
+          de la tabla para el dato menos urgente, y ya está contestado, mejor y
+          completo, en «Qué puede hacer cada rol» al pie de la pantalla: los
+          cuatro roles con su «Puede» y su «No puede», derivados del mismo
+          catálogo. */}
+      <TableCell className="align-top">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
-        {/* 🔴 **Qué significa ese rol, DERIVADO del catálogo de capacidades.**
-            La etiqueta sola no dice nada, y para saber qué puede hacer un
-            coordinador había que abrir el panel de CAMBIARLE el rol a alguien:
-            una acción de mutación, solo para quien gestiona usuarios. Esto se
-            lee sin permiso y sin consecuencia, y no puede quedar desincronizado
-            —sale de `MATRIZ_ROL_CAPACIDADES`, no de una frase a mano—. La lista
-            completa de los cuatro roles está arriba, en «Qué puede hacer cada
-            rol». */}
-        <p className="mt-1 text-xs leading-snug text-fg-muted">{describirRol(usuario.rol)}</p>
       </TableCell>
       <TableCell>
-        {/* Mismo render que las invitaciones de la columna de al lado: con
-            `outline` + colores a mano, "Activo" salía como texto suelto junto a
-            chips ("Pendiente", "Expirada"), dos lenguajes en una misma columna. */}
         <DistintivoEstado
           tono={usuario.estado === "activo" ? "neutral" : "inert"}
           etiqueta={usuario.estado === "activo" ? "Activo" : "Suspendido"}
         />
       </TableCell>
-      {/* 🐞 ACÁ DECÍA «Gestión de rol próximamente». Era la única ocurrencia de
-          esa palabra en todo `src/`, y el estado «Suspendido» de la celda de al
-          lado se pintaba sin que nada llevara a él ni saliera de él. Las tres
-          acciones existen ahora, con su bitácora. */}
-      {/* ⚠️ La celda para la propagación: sin esto, «Suspender» abriría además
-          el panel de cambio de rol por debajo. */}
-      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+      <TableCell className="text-right">
         {puedeGestionar ? (
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            {usuario.estado === "activo" ? (
-              <DialogoCambiarRol
-                usuarioId={usuario.id}
-                nombre={usuario.nombreCompleto}
-                rolActual={usuario.rol as RolInterno}
-                onCambiado={(rol) => onActualizado({ ...usuario, rol })}
-                abierto={panelRolAbierto}
-                onOpenChange={setPanelRolAbierto}
-              />
-            ) : null}
-            <BotonSuspender usuario={usuario} onActualizado={onActualizado} />
-          </div>
-        ) : (
-          <span className="text-xs text-fg-muted">Solo el dueño puede cambiarlo</span>
-        )}
+          <MenuAccionesPersona usuario={usuario} onActualizado={onActualizado} />
+        ) : null}
       </TableCell>
     </TableRow>
   );
 }
 
 // -----------------------------------------------------------------------------
-// Fila — invitación, con acciones contextuales según estado (tabla §2.2)
+// Tarjeta — persona (teléfono)
+// -----------------------------------------------------------------------------
+/**
+ * La misma información que la fila, apilada. El nombre y el correo mandan a lo
+ * ancho y los distintivos —rol y estado— comparten su propia línea: ponerlos al
+ * lado del título le robaba ancho justo al dato más largo, y un correo de 34
+ * caracteres se partía a mitad de palabra.
+ */
+function TarjetaUsuario({
+  usuario,
+  puedeGestionar,
+  onActualizado,
+}: {
+  usuario: UsuarioEquipo;
+  puedeGestionar: boolean;
+  onActualizado: (u: UsuarioEquipo) => void;
+}) {
+  const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[usuario.rol];
+  const activo = usuario.estado === "activo";
+
+  return (
+    <li className="flex items-start gap-2 px-4 py-3">
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="break-words font-medium text-foreground">{usuario.nombreCompleto}</p>
+        {/* Sin la fecha de alta, que sí va en la fila de escritorio. En 343 px
+            empujaba el correo a un segundo renglón y alargaba cada tarjeta por
+            el dato menos urgente del padrón: a quién tiene acceso hoy no le
+            aporta desde cuándo. */}
+        <p className="break-words text-xs text-muted-foreground">
+          {usuario.email ?? "Sin correo registrado"}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{descripcionRol?.etiqueta ?? usuario.rol}</Badge>
+          <DistintivoEstado
+            tono={activo ? "neutral" : "inert"}
+            etiqueta={activo ? "Activo" : "Suspendido"}
+          />
+        </div>
+      </div>
+      {puedeGestionar ? (
+        <MenuAccionesPersona usuario={usuario} onActualizado={onActualizado} />
+      ) : null}
+    </li>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Fila — invitación (escritorio)
 // -----------------------------------------------------------------------------
 
 function FilaInvitacion({
@@ -396,100 +761,17 @@ function FilaInvitacion({
   onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
   onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
 }) {
-  const [pendiente, setPendiente] = useState<"reenviar" | "reinvitar" | "revocar" | null>(null);
-  const [mensaje, setMensaje] = useState<{ tipo: "exito" | "error"; texto: string } | null>(null);
   const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[invitacion.rol];
-
-  async function manejarReenviar() {
-    setPendiente("reenviar");
-    setMensaje(null);
-    const resultado = await reenviarInvitacion(invitacion.id);
-    setPendiente(null);
-    if (!resultado.ok) {
-      setMensaje({ tipo: "error", texto: resultado.mensaje });
-      return;
-    }
-    setMensaje(
-      resultado.emailEnviado
-        ? { tipo: "exito", texto: `Correo reenviado a ${invitacion.email}.` }
-        : {
-            tipo: "error",
-            texto: "No pudimos enviar el correo. El envío de correos no está habilitado en este entorno.",
-          },
-    );
-  }
-
-  async function manejarReinvitar() {
-    setPendiente("reinvitar");
-    setMensaje(null);
-    const resultado = await reinvitarUsuario(invitacion.id);
-    setPendiente(null);
-    if (!resultado.ok) {
-      setMensaje({ tipo: "error", texto: resultado.mensaje });
-      return;
-    }
-    onReemplazarPorNueva({
-      id: crypto.randomUUID(),
-      email: invitacion.email,
-      rol: invitacion.rol,
-      estado: "pendiente",
-      expiraEn: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      creadoEn: new Date().toISOString(),
-    });
-    setMensaje(
-      resultado.emailEnviado
-        ? { tipo: "exito", texto: `Invitación nueva enviada a ${invitacion.email}.` }
-        : {
-            tipo: "error",
-            texto: "Creamos la invitación nueva, pero no pudimos enviar el correo.",
-          },
-    );
-  }
-
-  async function manejarRevocar() {
-    setPendiente("revocar");
-    setMensaje(null);
-    const resultado = await revocarInvitacionDeEquipo(invitacion.id);
-    setPendiente(null);
-    if (!resultado.ok) {
-      setMensaje({ tipo: "error", texto: resultado.mensaje });
-      return;
-    }
-    onActualizar({ estado: "revocada" });
-  }
 
   return (
     <TableRow>
       <TableCell>
-        <div className="space-y-0.5">
-          <p className="font-medium text-foreground">{invitacion.email}</p>
-          {mensaje ? (
-            <p className={mensaje.tipo === "error" ? "text-xs text-destructive" : "text-xs text-success"}>
-              {mensaje.texto}
-            </p>
-          ) : null}
-        </div>
+        <p className="font-medium text-foreground">{invitacion.email}</p>
       </TableCell>
-      {/* Mismo `whitespace-normal` que en la fila de persona — ver el porqué
-          allá arriba. Las dos filas pintan la misma descripción de rol. */}
-      <TableCell className="max-w-72 whitespace-normal align-top">
+      <TableCell className="align-top">
         <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
-        {/* Igual que en la fila de una persona: al invitar es cuando MÁS
-            importa saber qué se está entregando. */}
-        <p className="mt-1 text-xs leading-snug text-fg-muted">{describirRol(invitacion.rol)}</p>
       </TableCell>
-      {/* 🔴 UNA sola celda de Estado, no dos.
-          Hasta el 26-08-2026 esta fila tenía CINCO celdas contra los CUATRO
-          encabezados de la tabla —y contra las cuatro de `FilaUsuario`—. La
-          quinta columna «Detalle» se retiró del encabezado y **se olvidó acá**.
-
-          El navegador no se queja: dibuja la columna huérfana igual, más ancha
-          que el encabezado, y el resultado en producción era el texto del
-          estado impreso ENCIMA de la descripción del rol, con el motivo del
-          rebote saliéndose de la tabla. Se veía como un problema de CSS y era
-          un desajuste de estructura.
-
-          El ancho máximo no es decoración: el motivo que manda Resend viene
+      {/* El ancho máximo no es decoración: el motivo que manda Resend viene
           recortado a 300 caracteres (`webhook-resend.ts`), y 300 caracteres sin
           tope estiran la tabla entera hasta obligar a scroll horizontal. */}
       <TableCell className="max-w-64 whitespace-normal align-top text-sm text-muted-foreground">
@@ -498,29 +780,62 @@ function FilaInvitacion({
         <AvisoEntrega estado={invitacion.emailEstado} motivo={invitacion.emailMotivo} />
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {invitacion.estado === "pendiente" ? (
-            <>
-              {puedeInvitar ? (
-                <Button variant="outline" size="sm" disabled={pendiente !== null} onClick={manejarReenviar}>
-                  {pendiente === "reenviar" ? "Reenviando…" : "Reenviar correo"}
-                </Button>
-              ) : null}
-              {puedeRevocar ? (
-                <Button variant="ghost" size="sm" disabled={pendiente !== null} onClick={manejarRevocar}>
-                  {pendiente === "revocar" ? "Revocando…" : "Revocar"}
-                </Button>
-              ) : null}
-            </>
-          ) : null}
-          {(invitacion.estado === "expirada" || invitacion.estado === "revocada") && puedeInvitar ? (
-            <Button variant="outline" size="sm" disabled={pendiente !== null} onClick={manejarReinvitar}>
-              {pendiente === "reinvitar" ? "Reinvitando…" : "Reinvitar"}
-            </Button>
-          ) : null}
-        </div>
+        <MenuAccionesInvitacion
+          invitacion={invitacion}
+          puedeInvitar={puedeInvitar}
+          puedeRevocar={puedeRevocar}
+          onActualizar={onActualizar}
+          onReemplazarPorNueva={onReemplazarPorNueva}
+        />
       </TableCell>
     </TableRow>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Tarjeta — invitación (teléfono)
+// -----------------------------------------------------------------------------
+/**
+ * El motivo del rebote —que en la tabla obliga a acotar la celda a `max-w-64`
+ * para no estirarla— acá dispone del ancho completo de la tarjeta, que es justo
+ * donde se quiere leer.
+ */
+function TarjetaInvitacion({
+  invitacion,
+  puedeInvitar,
+  puedeRevocar,
+  onActualizar,
+  onReemplazarPorNueva,
+}: {
+  invitacion: InvitacionEquipo;
+  puedeInvitar: boolean;
+  puedeRevocar: boolean;
+  onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
+  onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
+}) {
+  const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[invitacion.rol];
+
+  return (
+    <li className="flex items-start gap-2 px-4 py-3">
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="break-words font-medium text-foreground">{invitacion.email}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{descripcionRol?.etiqueta ?? invitacion.rol}</Badge>
+          <BadgeEstadoInvitacion estado={invitacion.estado} />
+        </div>
+        <div className="text-sm text-muted-foreground">
+          <p className="leading-snug">{copyDeApoyo(invitacion)}</p>
+          <AvisoEntrega estado={invitacion.emailEstado} motivo={invitacion.emailMotivo} />
+        </div>
+      </div>
+      <MenuAccionesInvitacion
+        invitacion={invitacion}
+        puedeInvitar={puedeInvitar}
+        puedeRevocar={puedeRevocar}
+        onActualizar={onActualizar}
+        onReemplazarPorNueva={onReemplazarPorNueva}
+      />
+    </li>
   );
 }
 
@@ -618,57 +933,4 @@ function copyDeApoyo(invitacion: InvitacionEquipo): string {
     default:
       return "—";
   }
-}
-
-
-// -----------------------------------------------------------------------------
-// Suspender / reactivar
-// -----------------------------------------------------------------------------
-/**
- * Las dos transiciones del estado que la tabla ya pintaba sin tener ninguna.
- *
- * Suspender NO borra: la persona conserva su historial —sus manifiestos, sus
- * líneas en la bitácora— y deja de poder entrar. `capacidadesDe` devuelve el
- * conjunto vacío para quien no está activo, así que el corte vale en toda la
- * app y no depende de que cada pantalla se acuerde de comprobarlo.
- */
-function BotonSuspender({
-  usuario,
-  onActualizado,
-}: {
-  usuario: UsuarioEquipo;
-  onActualizado: (u: UsuarioEquipo) => void;
-}) {
-  const [pendiente, iniciarTransicion] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const activo = usuario.estado === "activo";
-
-  return (
-    <span className="inline-flex flex-col items-end gap-0.5">
-      <button
-        type="button"
-        disabled={pendiente}
-        onClick={() =>
-          iniciarTransicion(async () => {
-            setError(null);
-            const { cambiarEstadoDePersona } = await import("./actions");
-            const r = await cambiarEstadoDePersona(usuario.id, !activo);
-            if (!r.ok) {
-              setError(r.mensaje);
-              return;
-            }
-            onActualizado({ ...usuario, estado: activo ? "suspendido" : "activo" });
-          })
-        }
-        className={
-          activo
-            ? "text-xs font-medium text-fault-fg hover:underline disabled:opacity-50"
-            : "text-xs font-medium text-accent-text hover:underline disabled:opacity-50"
-        }
-      >
-        {pendiente ? "…" : activo ? "Suspender" : "Reactivar"}
-      </button>
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
-    </span>
-  );
 }
