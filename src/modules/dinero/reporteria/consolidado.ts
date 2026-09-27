@@ -317,7 +317,12 @@ const n = (v: number | string | null | undefined): number => Number(v ?? 0);
  * ⚠️ Nunca el `id`. Es un UUID: decisión del usuario, y es correcta — un
  * identificador que quien paga no puede cruzar con nada es ruido.
  */
-export function codigoVisible(p: FilaPedido | undefined): string {
+export function codigoVisible(
+  p:
+    | (Pick<FilaPedido, "referencia_externa" | "ml_order_id" | "codigo_interno" | "ml_shipment_id"> &
+        Partial<FilaPedido>)
+    | undefined,
+): string {
   if (!p) return "—";
   return (
     p.referencia_externa ??

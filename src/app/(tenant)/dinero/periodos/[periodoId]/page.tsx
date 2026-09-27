@@ -23,6 +23,7 @@ import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { TablaFinanciera } from "@/components/ui/tabla-financiera";
 import { MasAccionesLineas } from "./mas-acciones-lineas";
+import { codigoVisible } from "@/modules/dinero/reporteria/consolidado";
 import { agruparLineasCobro } from "@/modules/dinero/agrupacion-lineas";
 import { etiquetaPeriodo } from "@/modules/dinero/listado-periodos";
 
@@ -136,8 +137,8 @@ export default async function PaginaDetallePeriodo({
   // —el mismo texto en las cinco filas— y no se puede saber cuál sin abrirlas
   // una por una. El tablero enlaza «incidencia RX-5M7T»: nombrar el pedido es lo
   // más cerca que se puede estar hoy, porque no existe una ruta por incidencia.
-  // El código del pedido (RX-… o el envío de ML) de los ajustes y de las
-  // líneas de esta página: un UUID no le dice nada a nadie.
+  // El código visible del pedido, para los ajustes y las líneas de esta
+  // página: un UUID no le dice nada a nadie.
   const idsPedidosAjuste = [
     ...new Set([
       ...agrupacion.ajustes
@@ -148,17 +149,27 @@ export default async function PaginaDetallePeriodo({
   ];
   const codigoPorPedido = new Map<string, string>();
   if (idsPedidosAjuste.length > 0) {
+    // El código se elige con `codigoVisible`, la misma regla de la
+    // reportería: referencia de la fuente, venta ML, RX-…, envío ML. Nunca el
+    // UUID (decisión del usuario). Va por `operacion` directo, como el resto
+    // del código con service_role.
     const { data: pedidosAjuste } = await cliente
+      .schema("operacion")
       .from("pedidos")
-      .select("id, codigo_interno, ml_shipment_id")
+      .select(
+        "id, referencia_externa, ml_order_id, codigo_interno, ml_shipment_id",
+      )
       .eq("tenant_id", tenantId)
       .in("id", idsPedidosAjuste);
-    for (const p of (pedidosAjuste ?? []) as Record<string, unknown>[]) {
-      const codigo =
-        (p.codigo_interno as string | null) ??
-        (p.ml_shipment_id as string | null) ??
-        null;
-      if (codigo) codigoPorPedido.set(p.id as string, codigo);
+    for (const p of (pedidosAjuste ?? []) as {
+      id: string;
+      referencia_externa: string | null;
+      ml_order_id: string | null;
+      codigo_interno: string | null;
+      ml_shipment_id: string | null;
+    }[]) {
+      const codigo = codigoVisible(p);
+      if (codigo !== "—") codigoPorPedido.set(p.id, codigo);
     }
   }
 
@@ -337,8 +348,7 @@ export default async function PaginaDetallePeriodo({
                           href={`/operaciones/${l.pedidoId}`}
                           className="rx-num flex min-h-8 items-center text-sm text-accent-text hover:underline"
                         >
-                          {codigoPorPedido.get(l.pedidoId) ??
-                            `${l.pedidoId.slice(0, 8)}…`}
+                          {codigoPorPedido.get(l.pedidoId) ?? "Ver pedido"}
                         </Link>
                         <span className="rx-num block text-xs text-fg-muted">
                           {formatearFechaCorta(l.fechaHecho)} ·{" "}
@@ -462,10 +472,9 @@ function FilaLinea({
       <td className="px-4 py-2.5">
         <Link
           href={`/operaciones/${linea.pedidoId}`}
-          title={linea.pedidoId}
           className="rx-num text-xs text-accent-text hover:underline"
         >
-          {codigo ?? `${linea.pedidoId.slice(0, 8)}…`}
+          {codigo ?? "Ver pedido"}
         </Link>
       </td>
       <td className="rx-num px-4 py-2.5 text-muted-foreground">
