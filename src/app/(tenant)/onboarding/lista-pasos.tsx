@@ -36,6 +36,7 @@
  * principio.
  */
 
+import { useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, Lock } from "lucide-react";
 
@@ -44,11 +45,33 @@ import { BLOQUES, type ClavePaso, type PasoAsistente } from "./pasos";
 export function ListaPasos({
   pasos,
   activo,
+  abierto,
 }: {
   pasos: readonly PasoAsistente[];
   activo: ClavePaso;
+  /** El cuerpo del paso activo: se abre DENTRO de su fila, como acordeón. */
+  abierto: ReactNode;
 }) {
   const router = useRouter();
+  const filaActiva = useRef<HTMLLIElement>(null);
+  const primeraPintura = useRef(true);
+
+  // 🔴 El paso se abre en su fila, no debajo de la lista. Con la lista arriba y
+  // el cuerpo abajo, en un teléfono el cuerpo quedaba ~1.100 px más abajo y
+  // tocar una fila no producía nada visible. Al abrir otro, el de arriba se
+  // cierra y la página se corre: se lleva la fila elegida a la vista.
+  useEffect(() => {
+    if (primeraPintura.current) {
+      primeraPintura.current = false;
+      return;
+    }
+    const fila = filaActiva.current;
+    if (!fila) return;
+    const { top } = fila.getBoundingClientRect();
+    if (top < 56 || top > window.innerHeight * 0.6) {
+      fila.scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+  }, [activo]);
   const pathname = usePathname();
   const params = useSearchParams();
 
@@ -84,14 +107,15 @@ export function ListaPasos({
                 {listos} de {delBloque.length}
               </span>
             </div>
-            <p className="mb-2 text-sm leading-snug text-fg-muted">
-              {bloque.proposito}
-            </p>
             <ol className="divide-y divide-line border border-line">
               {delBloque.map((paso) => {
                 const esActivo = paso.clave === activo;
                 return (
-                  <li key={paso.clave}>
+                  <li
+                    key={paso.clave}
+                    ref={esActivo ? filaActiva : undefined}
+                    className="scroll-mt-16 lg:scroll-mt-4"
+                  >
                     <button
                       type="button"
                       onClick={() => abrir(paso.clave)}
@@ -143,6 +167,9 @@ export function ListaPasos({
                         </span>
                       </span>
                     </button>
+                    {esActivo ? (
+                      <div className="border-t border-line px-4 pt-4 pb-4">{abierto}</div>
+                    ) : null}
                   </li>
                 );
               })}

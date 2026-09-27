@@ -84,26 +84,20 @@ export type ClavePaso =
 export interface Bloque {
   clave: ClaveBloque;
   titulo: string;
-  /** La pregunta que responde el bloque, en una línea. */
-  proposito: string;
 }
 
 export const BLOQUES: readonly Bloque[] = [
   {
     clave: "operar",
     titulo: "Para operar",
-    proposito: "Sin esto no sale un paquete.",
   },
   {
     clave: "cobrar",
     titulo: "Para cobrar",
-    proposito: "Sin esto la entrega se hace y no se convierte en plata.",
   },
   {
     clave: "cuadrar",
     titulo: "Para que cuadre",
-    proposito:
-      "No te bloquea, pero mientras no lo toques hay un valor por defecto decidiendo por ti.",
   },
 ] as const;
 

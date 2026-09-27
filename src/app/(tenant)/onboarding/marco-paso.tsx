@@ -35,13 +35,11 @@ import type { PasoAsistente } from "./pasos";
 
 export function MarcoPaso({
   paso,
-  total,
   dependencia,
   siguiente,
   children,
 }: {
   paso: PasoAsistente;
-  total: number;
   /** El paso del que depende, ya resuelto. `null` si no depende de ninguno. */
   dependencia: PasoAsistente | null;
   /** El siguiente pendiente alcanzable, para el pie. `null` si no queda. */
@@ -59,26 +57,7 @@ export function MarcoPaso({
   }
 
   return (
-    <section aria-labelledby={`paso-${paso.clave}`} className="space-y-4">
-      <div>
-        <p className="rx-num text-[10px] tracking-[0.12em] text-fg-muted uppercase">
-          Paso {paso.numero} de {total}
-          {/* La dependencia se DECLARA, esté cumplida o no. Decir «depende del
-              paso 1, que ya está listo» es lo que hace legible el orden; decirlo
-              solo cuando falla convierte la ausencia en silencio. */}
-          {dependencia ? (
-            <>
-              {" · "}
-              depende del paso {dependencia.numero}, que{" "}
-              {dependencia.listo ? "ya está listo" : "todavía no está"}
-            </>
-          ) : null}
-        </p>
-        <h2 id={`paso-${paso.clave}`} className="font-heading mt-0.5 text-xl font-semibold">
-          {paso.titulo}
-        </h2>
-      </div>
-
+    <section aria-label={paso.titulo} className="space-y-4">
       {paso.bloqueado ? (
         <div className="space-y-3">
           <p className="border border-attention-line bg-attention-bg px-4 py-3 text-sm leading-relaxed text-attention-fg">
@@ -87,7 +66,7 @@ export function MarcoPaso({
               <button
                 type="button"
                 onClick={() => abrir(dependencia.clave)}
-                className="font-medium underline"
+                className="inline-flex min-h-11 items-center font-medium underline"
               >
                 Ir al paso {dependencia.numero}
               </button>
@@ -104,17 +83,18 @@ export function MarcoPaso({
         children
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
-        <p className="text-xs text-fg-muted">
-          Cada paso se guarda por su cuenta. Puedes salir y volver cuando quieras.
-        </p>
-        {siguiente ? (
-          <Button variant="outline" size="sm" onClick={() => abrir(siguiente.clave)}>
+      {siguiente ? (
+        <div className="flex justify-end border-t border-line pt-3">
+          <Button
+            variant="outline"
+            className="min-h-11 w-full sm:w-auto"
+            onClick={() => abrir(siguiente.clave)}
+          >
             Seguir con {siguiente.enFrase}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -154,11 +154,11 @@ export default async function PaginaOnboarding({
               ? `${estado.nombreFantasia} ya puede operar`
               : `Pon en marcha ${estado.nombreFantasia}`}
           </h1>
-          <p className="mt-0.5 text-sm text-fg-muted">
-            {estado.completo
-              ? "Lo esencial está configurado. Los pasos que queden te van a ir haciendo falta, pero ninguno te detiene."
-              : `Te falta ${estado.faltaParaOperar} para poder operar. Los otros pasos no te bloquean.`}
-          </p>
+          {estado.completo ? null : (
+            <p className="mt-0.5 text-sm text-fg-muted">
+              Te falta {estado.faltaParaOperar} para poder operar.
+            </p>
+          )}
         </div>
         {/* UN SOLO CONTEO, y sobre los pasos que se ven. Antes la barra decía
             «1 de 2» encima de cinco tarjetas. */}
@@ -178,18 +178,24 @@ export default async function PaginaOnboarding({
           {/* ⚠️ No promete facturar ni liquidar: esas dos cosas pueden estar
               apagadas por Rutax, y prometerlas acá sería mandar al courier a
               buscar un botón que no existe. */}
-          Ya puedes operar y llevar la cuenta de lo que entra y lo que sale.{" "}
-          <Link href="/onboarding/listo" className="font-medium underline">
+          <Link
+            href="/onboarding/listo"
+            className="inline-flex min-h-11 items-center font-medium underline"
+          >
             Ver el resumen y qué hacer ahora ›
           </Link>
         </p>
       ) : null}
 
-      <ListaPasos pasos={pasos} activo={clave} />
-
-      <MarcoPaso paso={activo} total={pasos.length} dependencia={dependencia} siguiente={siguiente}>
-        {cuerpo}
-      </MarcoPaso>
+      <ListaPasos
+        pasos={pasos}
+        activo={clave}
+        abierto={
+          <MarcoPaso paso={activo} dependencia={dependencia} siguiente={siguiente}>
+            {cuerpo}
+          </MarcoPaso>
+        }
+      />
     </div>
   );
 }
