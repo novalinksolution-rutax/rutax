@@ -59,7 +59,7 @@ import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { PermisosPorRol } from "./permisos-por-rol";
 import { DialogoCambiarRol } from "./dialogo-cambiar-rol";
-import type { RolInterno } from "@/modules/identidad/roles";
+import { ROLES_INTERNOS, type RolInterno } from "@/modules/identidad/roles";
 import { FormularioInvitacion } from "./formulario-invitacion";
 import {
   reenviarInvitacion,
@@ -156,7 +156,7 @@ export function PanelEquipo({
 
   const totalPendientes = estado?.invitaciones.filter((inv) => inv.estado === "pendiente").length ?? 0;
 
-  const filas = useMemo(() => construirFilas(estado, filtro), [estado, filtro]);
+  const grupos = useMemo(() => construirGrupos(estado, filtro), [estado, filtro]);
 
   const encabezado = (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -210,7 +210,7 @@ export function PanelEquipo({
         }
       />
     );
-  } else if (filas.length === 0) {
+  } else if (grupos.length === 0) {
     contenido = (
       <EstadoVacio
         titulo="No hay nada que mostrar con este filtro"
@@ -234,25 +234,32 @@ export function PanelEquipo({
             pantalla delataba que estaba ahí.
             ───────────────────────────────────────────────────────────── */}
         <ul className="divide-y divide-border md:hidden">
-          {filas.map((fila) =>
-            fila.tipo === "usuario" ? (
-              <TarjetaUsuario
-                key={`tarjeta-usuario-${fila.usuario.id}`}
-                usuario={fila.usuario}
-                puedeGestionar={puedeGestionar}
-                onActualizado={actualizarUsuario}
-              />
-            ) : (
-              <TarjetaInvitacion
-                key={`tarjeta-invitacion-${fila.invitacion.id}`}
-                invitacion={fila.invitacion}
-                puedeInvitar={puedeInvitar}
-                puedeRevocar={puedeRevocar}
-                onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
-                onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
-              />
-            ),
-          )}
+          {grupos.map((grupo) => (
+            <li key={grupo.clave}>
+              <EncabezadoGrupoTarjeta titulo={grupo.titulo} total={grupo.filas.length} />
+              <ul className="divide-y divide-border border-t border-border">
+                {grupo.filas.map((fila) =>
+                  fila.tipo === "usuario" ? (
+                    <TarjetaUsuario
+                      key={`tarjeta-usuario-${fila.usuario.id}`}
+                      usuario={fila.usuario}
+                      puedeGestionar={puedeGestionar}
+                      onActualizado={actualizarUsuario}
+                    />
+                  ) : (
+                    <TarjetaInvitacion
+                      key={`tarjeta-invitacion-${fila.invitacion.id}`}
+                      invitacion={fila.invitacion}
+                      puedeInvitar={puedeInvitar}
+                      puedeRevocar={puedeRevocar}
+                      onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
+                      onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
+                    />
+                  ),
+                )}
+              </ul>
+            </li>
+          ))}
         </ul>
 
         <div className="hidden overflow-x-auto md:block">
@@ -270,27 +277,30 @@ export function PanelEquipo({
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {filas.map((fila) =>
-                fila.tipo === "usuario" ? (
-                  <FilaUsuario
-                    key={`usuario-${fila.usuario.id}`}
-                    usuario={fila.usuario}
-                    puedeGestionar={puedeGestionar}
-                    onActualizado={actualizarUsuario}
-                  />
-                ) : (
-                  <FilaInvitacion
-                    key={`invitacion-${fila.invitacion.id}`}
-                    invitacion={fila.invitacion}
-                    puedeInvitar={puedeInvitar}
-                    puedeRevocar={puedeRevocar}
-                    onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
-                    onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
-                  />
-                ),
-              )}
-            </TableBody>
+            {grupos.map((grupo) => (
+              <TableBody key={grupo.clave}>
+                <EncabezadoGrupoFila titulo={grupo.titulo} total={grupo.filas.length} />
+                {grupo.filas.map((fila) =>
+                  fila.tipo === "usuario" ? (
+                    <FilaUsuario
+                      key={`usuario-${fila.usuario.id}`}
+                      usuario={fila.usuario}
+                      puedeGestionar={puedeGestionar}
+                      onActualizado={actualizarUsuario}
+                    />
+                  ) : (
+                    <FilaInvitacion
+                      key={`invitacion-${fila.invitacion.id}`}
+                      invitacion={fila.invitacion}
+                      puedeInvitar={puedeInvitar}
+                      puedeRevocar={puedeRevocar}
+                      onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
+                      onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
+                    />
+                  ),
+                )}
+              </TableBody>
+            ))}
           </Table>
         </div>
       </div>
@@ -315,37 +325,133 @@ export function PanelEquipo({
 // -----------------------------------------------------------------------------
 
 type FilaCombinada =
-  | { tipo: "usuario"; usuario: UsuarioEquipo; orden: number }
-  | { tipo: "invitacion"; invitacion: InvitacionEquipo; orden: number };
+  | { tipo: "usuario"; usuario: UsuarioEquipo }
+  | { tipo: "invitacion"; invitacion: InvitacionEquipo };
 
-function construirFilas(estado: EstadoEquipo | null, filtro: Filtro): FilaCombinada[] {
+interface GrupoFilas {
+  clave: string;
+  titulo: string;
+  filas: FilaCombinada[];
+}
+
+/** Orden alfabético de personas, con las reglas del español (tildes, ñ). */
+const porNombre = (a: UsuarioEquipo, b: UsuarioEquipo) =>
+  a.nombreCompleto.localeCompare(b.nombreCompleto, "es");
+
+/**
+ * El padrón, agrupado.
+ * =============================================================================
+ *
+ * 🔴 **Antes esto era una sola lista ordenada por fecha de alta, descendente.**
+ * Desde el ojo de quien mira, ese orden es azar: el dueño podía aparecer en
+ * medio, entre dos coordinadores. La lista no se sentía larga, se sentía un
+ * montón — y de ahí salía el impulso de filtrar por rol.
+ *
+ * Agrupar responde esa necesidad SIN esconder a nadie y sin agregar un control:
+ * se ve el equipo completo y su estructura de un vistazo, y «¿cuántos
+ * coordinadores tengo?» se contesta sin hacer clic. Un desplegable por rol
+ * obligaría a preguntar rol por rol, y con solo cuatro roles cada bolsa sería
+ * diminuta.
+ *
+ * Tres decisiones del orden que no son obvias:
+ *   · **Las invitaciones van primero** porque son lo único que pide acción.
+ *   · **Los roles van en orden de jerarquía**, no alfabético: Dueño ·
+ *     Supervisor · Coordinador · Administración, tal como los declara
+ *     `ROLES_INTERNOS`. Alfabéticamente, «Administración» abriría la lista.
+ *   · **Quien está suspendido sale de su grupo de rol** y baja a «Sin acceso».
+ *     Si contara dentro de «Coordinador · 3», ese 3 mentiría: no son tres
+ *     coordinadores que puedan trabajar hoy. El recuento por rol es justamente
+ *     lo que da valor a agrupar, así que tiene que ser cierto.
+ */
+function construirGrupos(estado: EstadoEquipo | null, filtro: Filtro): GrupoFilas[] {
   if (!estado) return [];
 
-  const usuarios: FilaCombinada[] = estado.usuarios.map((usuario) => ({
-    tipo: "usuario",
-    usuario,
-    orden: new Date(usuario.creadoEn).getTime(),
-  }));
-  // Las invitaciones "aceptadas" ya tienen su usuario en la otra lista — no se
-  // duplican aquí (§2.2: "ya es un usuario activo, aparece en la lista de usuarios").
-  const invitaciones: FilaCombinada[] = estado.invitaciones
-    .filter((inv) => inv.estado !== "aceptada")
-    .map((invitacion) => ({
-      tipo: "invitacion",
-      invitacion,
-      orden: new Date(invitacion.creadoEn).getTime(),
-    }));
+  const grupos: GrupoFilas[] = [];
 
-  let combinadas: FilaCombinada[];
-  if (filtro === "activos") {
-    combinadas = usuarios;
-  } else if (filtro === "pendientes") {
-    combinadas = invitaciones.filter((fila) => fila.tipo === "invitacion" && fila.invitacion.estado === "pendiente");
-  } else {
-    combinadas = [...invitaciones, ...usuarios];
+  // 1. Invitaciones. Las "aceptadas" ya tienen su usuario en la otra lista y no
+  //    se duplican aquí (§2.2). Las pendientes primero: son las accionables.
+  if (filtro !== "activos") {
+    const invitaciones = estado.invitaciones
+      .filter((inv) => inv.estado !== "aceptada")
+      .filter((inv) => filtro !== "pendientes" || inv.estado === "pendiente")
+      .sort((a, b) => {
+        if (a.estado !== b.estado) return a.estado === "pendiente" ? -1 : 1;
+        return new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime();
+      })
+      .map((invitacion): FilaCombinada => ({ tipo: "invitacion", invitacion }));
+
+    if (invitaciones.length > 0) {
+      grupos.push({ clave: "invitaciones", titulo: "Invitaciones", filas: invitaciones });
+    }
   }
 
-  return combinadas.sort((a, b) => b.orden - a.orden);
+  if (filtro !== "pendientes") {
+    // 2. Las personas con acceso, por rol y en orden de jerarquía.
+    for (const rol of ROLES_INTERNOS) {
+      const delRol = estado.usuarios
+        .filter((u) => u.estado === "activo" && u.rol === rol)
+        .sort(porNombre)
+        .map((usuario): FilaCombinada => ({ tipo: "usuario", usuario }));
+
+      if (delRol.length > 0) {
+        grupos.push({
+          clave: `rol-${rol}`,
+          titulo: DESCRIPCIONES_ROLES_INTERNOS[rol]?.etiqueta ?? rol,
+          filas: delRol,
+        });
+      }
+    }
+
+    // 3. Y al final quien ya no entra.
+    const suspendidos = estado.usuarios
+      .filter((u) => u.estado !== "activo")
+      .sort(porNombre)
+      .map((usuario): FilaCombinada => ({ tipo: "usuario", usuario }));
+
+    if (suspendidos.length > 0) {
+      grupos.push({ clave: "sin-acceso", titulo: "Sin acceso", filas: suspendidos });
+    }
+  }
+
+  return grupos;
+}
+
+// -----------------------------------------------------------------------------
+// Encabezados de grupo
+// -----------------------------------------------------------------------------
+/**
+ * En teléfono el encabezado es **pegajoso**, y el `top-14` no es un número
+ * suelto: es el alto exacto de la barra superior del `AppShell`
+ * (`sticky top-0 z-20 h-14`, oculta desde `lg`). Sin ese desplazamiento el
+ * título del grupo se metería debajo de la barra; con un `z` de 20 o más, se le
+ * pondría encima. Si esa barra cambia de alto, este valor cambia con ella.
+ *
+ * Sirve justo cuando hace falta: desplazando un equipo largo, siempre se sabe
+ * de qué rol es la persona que se está mirando.
+ */
+function EncabezadoGrupoTarjeta({ titulo, total }: { titulo: string; total: number }) {
+  return (
+    <div className="sticky top-14 z-10 flex items-center justify-between gap-2 bg-bg-sunken px-4 py-2">
+      <span className="text-xs font-semibold uppercase tracking-wide text-fg-muted">{titulo}</span>
+      <span className="text-xs text-fg-muted tabular-nums">{total}</span>
+    </div>
+  );
+}
+
+/**
+ * En la tabla cada grupo es su propio `<tbody>` — no una fila suelta dentro de
+ * uno compartido—, que es la forma que HTML ya tiene para decir "esto es una
+ * sección". No es pegajoso: en escritorio la lista entra casi siempre completa.
+ */
+function EncabezadoGrupoFila({ titulo, total }: { titulo: string; total: number }) {
+  return (
+    <TableRow className="bg-bg-sunken hover:bg-bg-sunken">
+      <TableCell colSpan={4} className="py-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-fg-muted">{titulo}</span>
+        <span className="ml-2 text-xs text-fg-muted tabular-nums">{total}</span>
+      </TableCell>
+    </TableRow>
+  );
 }
 
 // -----------------------------------------------------------------------------
