@@ -147,7 +147,7 @@ export function ListaPasos({
                 puede cobrar». */}
                   <span
                     className={`mt-0.5 text-sm leading-snug text-fg-muted ${
-                      esActivo ? "block" : "hidden sm:block"
+                      esActivo ? "block" : "hidden"
                     }`}
                   >
                     {paso.bloqueado ? paso.motivoBloqueo : paso.resumen}

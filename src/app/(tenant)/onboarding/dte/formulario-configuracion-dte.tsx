@@ -403,7 +403,7 @@ function TarjetaCertificadoGuardado({
             {proximoAVencer ? <TriangleAlert className="size-5" aria-hidden="true" /> : <FileLock2 className="size-5" aria-hidden="true" />}
           </div>
           <div className="space-y-1">
-            <p className="font-medium text-foreground">Certificado cargado y cifrado</p>
+            <p className="font-medium text-foreground">Certificado cargado</p>
             <p className="text-sm text-muted-foreground">
               {estado.certificadoVenceEn
                 ? `Vence el ${formatearFecha(estado.certificadoVenceEn)}`
@@ -518,7 +518,7 @@ function SeccionCredenciales({
                   <Lock className="size-5" aria-hidden="true" />
                 </div>
                 <div className="space-y-1">
-                  <p className="font-medium text-foreground">Credenciales cargadas y cifradas</p>
+                  <p className="font-medium text-foreground">Credenciales cargadas</p>
                   <p className="text-sm text-muted-foreground">
                     Campos guardados: {proveedor.camposCredenciales.map((c) => c.etiqueta).join(", ")}.
                   </p>

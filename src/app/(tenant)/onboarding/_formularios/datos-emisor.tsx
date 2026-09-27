@@ -113,8 +113,6 @@ export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIni
 
   return (
     <SeccionConfiguracion
-      titulo="Los datos de tu empresa en la factura"
-      descripcion="Van impresos en cada documento que emitas y el SII los exige. Complétalos: hasta que estén, no puedes operar."
       etiquetaAccion="Guardar los datos"
       onGuardar={guardar}
     >

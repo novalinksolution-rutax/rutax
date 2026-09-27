@@ -38,8 +38,7 @@ export function FormularioContacto({
 
   return (
     <SeccionConfiguracion
-      titulo="Cómo te contacta quien espera un paquete"
-      descripcion="Se muestra en la página de seguimiento que ve el destinatario. Con uno de los dos basta."
+      descripcion="Se muestra en la página de seguimiento. Con uno basta."
       etiquetaAccion="Guardar el contacto"
       onGuardar={guardar}
     >
@@ -54,9 +53,6 @@ export function FormularioContacto({
             placeholder="+56 9 1234 5678"
             className="rx-num"
           />
-          <p className="text-xs text-fg-muted">
-            Escríbelo como quieras: lo normalizamos nosotros.
-          </p>
         </div>
 
         <div className="space-y-1.5">

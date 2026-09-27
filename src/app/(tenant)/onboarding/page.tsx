@@ -382,8 +382,7 @@ async function leerDatosCobro(tenantId: string) {
 function SinPermiso({ que }: { que: string }) {
   return (
     <p className="border border-line bg-bg-sunken px-4 py-3.5 text-sm leading-relaxed text-fg-muted">
-      No tienes permiso para configurar {que}: solo el dueño de la cuenta o administración pueden.
-      Si necesitas un cambio acá, pídeselo a esa persona o que te dé acceso.
+      Solo el dueño o administración pueden cambiar {que}.
     </p>
   );
 }

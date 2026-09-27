@@ -95,16 +95,8 @@ export function PanelFoliosCaf({ estadoInicial, errorInicial }: Props) {
     // Lo que corresponde acá es lo que el marco NO puede decir: qué se va a
     // pedir en este paso cuando se desbloquee. El marco lo atenúa; esto lo
     // enumera.
-    return (
-      <div className="space-y-2 border border-line bg-bg-sunken px-4 py-3.5">
-        <p className="text-sm font-medium text-fg">Cuando elijas proveedor, acá vas a ver:</p>
-        <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-fg-muted">
-          <li>Si tu proveedor gestiona los folios con el SII, o si los cargas tú.</li>
-          <li>La carga del archivo CAF que descargas del SII.</li>
-          <li>Los rangos cargados, cuántos folios te quedan y cuáles ya consumiste.</li>
-        </ul>
-      </div>
-    );
+    // El marco del paso ya dice de qué depende; acá no hay nada que mostrar.
+    return null;
   }
 
   if (estado.caso === "gestionado_por_proveedor") {
@@ -314,8 +306,7 @@ function ListaFolios({ folios }: { folios: FolioCaf[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Folios cargados</CardTitle>
-        <CardDescription>Estado y consumo de cada rango. El contenido del archivo permanece cifrado.</CardDescription>
-      </CardHeader>
+              </CardHeader>
       <CardContent className="px-0 sm:px-6">
         <div className="overflow-x-auto">
           <Table>

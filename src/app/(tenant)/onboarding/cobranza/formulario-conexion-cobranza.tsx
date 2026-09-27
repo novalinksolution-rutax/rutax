@@ -32,7 +32,7 @@ import { Banknote, CheckCircle2, Landmark, RefreshCw, ShieldAlert } from "lucide
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EstadoError } from "@/components/onboarding/estado-pantalla";
 import {
   obtenerEstadoConfiguracionCobranza,
@@ -283,10 +283,7 @@ function SeccionConexion({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Banco conectado para cobranza</CardTitle>
-          <CardDescription>
-            Usamos esta cuenta para conciliar automáticamente los pagos de tus sellers.
-          </CardDescription>
+          <CardTitle className="text-base">Banco conectado</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {exito ? (
@@ -343,10 +340,7 @@ function SeccionConexion({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Conecta tu banco para cobrar a tus sellers</CardTitle>
-        <CardDescription>
-          Conectamos tu banco de forma segura para conciliar automáticamente los pagos de tus sellers.
-        </CardDescription>
+        <CardTitle className="text-base">Conecta tu banco</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-start gap-3 rounded-lg border border-dashed border-border bg-muted/20 p-4">

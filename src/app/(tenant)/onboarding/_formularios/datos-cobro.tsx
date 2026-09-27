@@ -63,8 +63,7 @@ export function FormularioDatosCobro({ iniciales }: { iniciales: DatosCobroInici
 
   return (
     <SeccionConfiguracion
-      titulo="La cuenta a la que te transfieren"
-      descripcion="Es lo que tus sellers van a leer para pagarte. Va en la factura y en su portal."
+      descripcion="Va en la factura y en el portal del seller."
       etiquetaAccion="Guardar la cuenta"
       onGuardar={guardar}
     >

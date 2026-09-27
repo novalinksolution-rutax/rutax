@@ -556,7 +556,6 @@ function ListadoTarifas({
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Tarifas vigentes</CardTitle>
-        <CardDescription>Cada cambio crea una nueva versión — el histórico se conserva para futuras liquidaciones.</CardDescription>
       </CardHeader>
       <CardContent className="px-0 sm:px-6">
         <div className="overflow-x-auto">

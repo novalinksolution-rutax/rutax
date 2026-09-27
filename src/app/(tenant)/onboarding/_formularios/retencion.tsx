@@ -45,8 +45,7 @@ export function FormularioRetencion({ porcentajeActual }: { porcentajeActual: nu
 
   return (
     <SeccionConfiguracion
-      titulo="Cuánto le retienes a un conductor independiente"
-      descripcion="Se descuenta de su liquidación cuando emite boleta de honorarios. A los conductores dependientes no se les aplica nunca."
+      descripcion="Solo a conductores independientes que emiten boleta de honorarios."
       etiquetaAccion="Guardar la retención"
       onGuardar={guardar}
     >
