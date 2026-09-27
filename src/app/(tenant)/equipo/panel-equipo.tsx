@@ -48,6 +48,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -136,6 +137,15 @@ export function PanelEquipo({
     setEstado((anterior) =>
       anterior
         ? { ...anterior, invitaciones: anterior.invitaciones.map((inv) => (inv.id === id ? { ...inv, ...cambios } : inv)) }
+        : anterior,
+    );
+  }
+
+  /** Archivada en base: se va de la lista sin recargar la pantalla. */
+  function quitarInvitacion(id: string) {
+    setEstado((anterior) =>
+      anterior
+        ? { ...anterior, invitaciones: anterior.invitaciones.filter((inv) => inv.id !== id) }
         : anterior,
     );
   }
@@ -255,6 +265,7 @@ export function PanelEquipo({
                       puedeRevocar={puedeRevocar}
                       onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
                       onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
+                      onArchivar={() => quitarInvitacion(fila.invitacion.id)}
                     />
                   ),
                 )}
@@ -304,6 +315,7 @@ export function PanelEquipo({
                       puedeRevocar={puedeRevocar}
                       onActualizar={(cambios) => actualizarInvitacion(fila.invitacion.id, cambios)}
                       onReemplazarPorNueva={(nueva) => reemplazarInvitacionPorNueva(fila.invitacion.id, nueva)}
+                      onArchivar={() => quitarInvitacion(fila.invitacion.id)}
                     />
                   ),
                 )}
@@ -632,15 +644,18 @@ function MenuAccionesInvitacion({
   puedeRevocar,
   onActualizar,
   onReemplazarPorNueva,
+  onArchivar,
 }: {
   invitacion: InvitacionEquipo;
   puedeInvitar: boolean;
   puedeRevocar: boolean;
   onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
   onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
+  /** Ya está archivada en base: sacarla también de la lista en pantalla. */
+  onArchivar: () => void;
 }) {
   const [abierto, setAbierto] = useState(false);
-  const [pendiente, setPendiente] = useState<"reenviar" | "reinvitar" | "revocar" | null>(null);
+  const [pendiente, setPendiente] = useState<"reenviar" | "reinvitar" | "revocar" | "archivar" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const esPendiente = invitacion.estado === "pendiente";
@@ -649,9 +664,15 @@ function MenuAccionesInvitacion({
   const puedeReenviar = esPendiente && puedeInvitar;
   const puedeRevocarla = esPendiente && puedeRevocar;
   const puedeReinvitar = esReinvitable && puedeInvitar;
+  /**
+   * Quitar del listado. Solo sobre una invitación ya muerta: esconder una
+   * PENDIENTE dejaría su enlace sirviendo para entrar, sin nada en pantalla
+   * desde donde revocarla. La base impone la misma regla con un CHECK.
+   */
+  const puedeArchivarla = esReinvitable && puedeRevocar;
 
   // Sin una sola opción, el `⋯` sería un botón que no hace nada.
-  if (!puedeReenviar && !puedeRevocarla && !puedeReinvitar) return null;
+  if (!puedeReenviar && !puedeRevocarla && !puedeReinvitar && !puedeArchivarla) return null;
 
   async function manejarReenviar() {
     setPendiente("reenviar");
@@ -693,6 +714,21 @@ function MenuAccionesInvitacion({
     } else {
       toast.error("Creamos la invitación nueva, pero no pudimos enviar el correo.");
     }
+  }
+
+  async function manejarArchivar() {
+    setPendiente("archivar");
+    setError(null);
+    const { archivarInvitacionDeEquipo } = await import("./actions");
+    const resultado = await archivarInvitacionDeEquipo(invitacion.id);
+    setPendiente(null);
+    if (!resultado.ok) {
+      setError(resultado.mensaje);
+      return;
+    }
+    setAbierto(false);
+    onArchivar();
+    toast.success(`Invitación de ${invitacion.email} quitada de la lista.`);
   }
 
   async function manejarRevocar() {
@@ -760,6 +796,24 @@ function MenuAccionesInvitacion({
           >
             Revocar
           </DropdownMenuItem>
+        ) : null}
+        {/* Va separada y SIN el rojo de «Revocar»: no es una acción sobre el
+            acceso —esa invitación ya está muerta— sino sobre la lista. Pintarla
+            como destructiva sugeriría que borra algo, y no borra nada. */}
+        {puedeArchivarla ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className={CLASE_ITEM_MENU}
+              disabled={pendiente !== null}
+              onSelect={(e) => {
+                e.preventDefault();
+                void manejarArchivar();
+              }}
+            >
+              Quitar de la lista
+            </DropdownMenuItem>
+          </>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -882,12 +936,14 @@ function FilaInvitacion({
   puedeRevocar,
   onActualizar,
   onReemplazarPorNueva,
+  onArchivar,
 }: {
   invitacion: InvitacionEquipo;
   puedeInvitar: boolean;
   puedeRevocar: boolean;
   onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
   onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
+  onArchivar: () => void;
 }) {
   const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[invitacion.rol];
 
@@ -918,6 +974,7 @@ function FilaInvitacion({
           puedeRevocar={puedeRevocar}
           onActualizar={onActualizar}
           onReemplazarPorNueva={onReemplazarPorNueva}
+          onArchivar={onArchivar}
         />
       </TableCell>
     </TableRow>
@@ -938,12 +995,14 @@ function TarjetaInvitacion({
   puedeRevocar,
   onActualizar,
   onReemplazarPorNueva,
+  onArchivar,
 }: {
   invitacion: InvitacionEquipo;
   puedeInvitar: boolean;
   puedeRevocar: boolean;
   onActualizar: (cambios: Partial<InvitacionEquipo>) => void;
   onReemplazarPorNueva: (nueva: InvitacionEnviada) => void;
+  onArchivar: () => void;
 }) {
   const descripcionRol = DESCRIPCIONES_ROLES_INTERNOS[invitacion.rol];
 
@@ -966,6 +1025,7 @@ function TarjetaInvitacion({
         puedeRevocar={puedeRevocar}
         onActualizar={onActualizar}
         onReemplazarPorNueva={onReemplazarPorNueva}
+        onArchivar={onArchivar}
       />
     </li>
   );

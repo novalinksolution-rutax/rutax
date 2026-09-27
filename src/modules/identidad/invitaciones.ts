@@ -780,3 +780,92 @@ export async function revocarInvitacion(
     },
   });
 }
+
+// -----------------------------------------------------------------------------
+// 3b. Archivar invitación — quitarla de la lista SIN borrarla
+// -----------------------------------------------------------------------------
+
+export interface ArchivarInvitacionInput {
+  invitacionId: string;
+}
+
+/**
+ * Saca una invitación del listado del equipo, sin perder el registro.
+ *
+ * 🔴 **No es un borrado, y no puede serlo.** Una invitación es un registro de
+ * ACCESO: dice que alguien recibió una vía de entrada al tenant, con un rol
+ * concreto y en una fecha. Borrar la fila destruiría ese hecho. La tabla, de
+ * hecho, no tiene `grant delete` para `authenticated` — a propósito — y esta
+ * función no lo necesita: archivar es un UPDATE que sella `archivada_en`.
+ *
+ * ⚠️ **Solo sobre una invitación que ya está muerta.** Archivar una `pendiente`
+ * sería esconder de la vista un token TODAVÍA VÁLIDO: la invitación seguiría
+ * canjeable y ya nadie la vería en pantalla para revocarla. Por eso hay que
+ * revocarla primero, y por eso la misma regla vive también en la base como
+ * CHECK — si se toca una mitad, se toca la otra.
+ *
+ * Idempotente: archivar dos veces no falla ni mueve la fecha. La segunda pasada
+ * no encuentra fila que actualizar y termina en silencio, que es lo correcto
+ * para una acción de limpieza que el usuario puede repetir sin querer.
+ */
+export async function archivarInvitacion(
+  cliente: ClienteServicio,
+  actor: UsuarioActual,
+  actorUsuarioId: string,
+  input: ArchivarInvitacionInput,
+): Promise<void> {
+  if (!puedeRevocarInvitaciones(actor)) {
+    throw new ErrorValidacion("El usuario no tiene capacidad para archivar invitaciones.");
+  }
+  if (!actor.tenantId) {
+    throw new ErrorValidacion("El usuario que archiva no pertenece a un tenant.");
+  }
+
+  const { data: invitacion, error: buscarError } = await cliente
+    .from("invitaciones")
+    .select("id, tenant_id, email, estado, archivada_en")
+    .eq("id", input.invitacionId)
+    .maybeSingle();
+
+  if (buscarError) {
+    throw new Error(`No se pudo resolver la invitación a archivar: ${buscarError.message}`);
+  }
+  if (!invitacion) {
+    throw new ErrorNoEncontrado("La invitación no existe.");
+  }
+  // P1 a mano, igual que en `revocarInvitacion`: con service_role no hay RLS que
+  // nos frene, así que el aislamiento entre tenants se reafirma en código.
+  if (invitacion.tenant_id !== actor.tenantId) {
+    throw new ErrorNoEncontrado("La invitación no existe.");
+  }
+  if (invitacion.estado === "pendiente") {
+    throw new ErrorConflicto(
+      "Una invitación pendiente no se puede quitar de la lista: revócala primero, si no su enlace seguiría sirviendo para entrar.",
+    );
+  }
+  // Ya estaba archivada: nada que hacer y nada que registrar.
+  if (invitacion.archivada_en) return;
+
+  const { error: actualizarError } = await cliente
+    .from("invitaciones")
+    .update({ archivada_en: new Date().toISOString() })
+    .eq("id", invitacion.id)
+    .is("archivada_en", null);
+
+  if (actualizarError) {
+    throw new Error(`No se pudo quitar la invitación de la lista: ${actualizarError.message}`);
+  }
+
+  await registrarEnBitacora(cliente as unknown as SupabaseClient, {
+    tenantId: actor.tenantId,
+    actorUsuarioId,
+    actorTipo: "usuario",
+    accion: "invitacion.archivada",
+    entidadTipo: "invitacion",
+    entidadId: invitacion.id as string,
+    detalle: {
+      email: invitacion.email,
+      estado: invitacion.estado,
+    },
+  });
+}

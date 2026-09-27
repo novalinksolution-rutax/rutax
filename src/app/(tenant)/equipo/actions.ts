@@ -29,6 +29,7 @@ import {
 } from "@/modules/identidad/capacidades";
 import {
   crearInvitacion,
+  archivarInvitacion,
   revocarInvitacion,
   type TipoUsuarioInvitacion,
 } from "@/modules/identidad/invitaciones";
@@ -104,6 +105,9 @@ export async function obtenerEstadoEquipo(): Promise<
         .select("id, email, rol, estado, expira_en, creado_en, email_estado, email_motivo")
         .eq("tenant_id", sesion.usuario.tenantId)
         .eq("tipo_usuario", "interno")
+        // Las archivadas salieron del listado por decisión del courier. La fila
+        // sigue en base (es un registro de acceso), solo deja de mostrarse.
+        .is("archivada_en", null)
         .order("creado_en", { ascending: false }),
     ]);
 
@@ -356,6 +360,35 @@ export async function revocarInvitacionDeEquipo(invitacionId: string): Promise<A
   const cliente = crearClienteServiceRole();
   try {
     await revocarInvitacion(cliente, sesion.usuario, sesion.usuarioId, { invitacionId });
+  } catch (error) {
+    return mapearError(error);
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Quitar del listado una invitación ya muerta (revocada o expirada). No borra:
+ * sella `archivada_en`. Ver `archivarInvitacion` para el porqué.
+ */
+export async function archivarInvitacionDeEquipo(
+  invitacionId: string,
+): Promise<AccionEquipoResultado> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) {
+    return { ok: false, tipo: "permiso", mensaje: "No hay una sesión activa." };
+  }
+  if (!puedeRevocarInvitaciones(sesion.usuario)) {
+    return {
+      ok: false,
+      tipo: "permiso",
+      mensaje: "No tienes permiso para quitar invitaciones — contacta al dueño de la cuenta.",
+    };
+  }
+
+  const cliente = crearClienteServiceRole();
+  try {
+    await archivarInvitacion(cliente, sesion.usuario, sesion.usuarioId, { invitacionId });
   } catch (error) {
     return mapearError(error);
   }

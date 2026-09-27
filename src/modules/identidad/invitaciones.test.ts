@@ -1,6 +1,12 @@
 import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 import { beforeEach, describe, expect, it } from "vitest";
-import { aceptarInvitacion, aceptarInvitacionPorTelefono, crearInvitacion, revocarInvitacion } from "./invitaciones";
+import {
+  aceptarInvitacion,
+  aceptarInvitacionPorTelefono,
+  archivarInvitacion,
+  crearInvitacion,
+  revocarInvitacion,
+} from "./invitaciones";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "./errores";
 import type { UsuarioActual } from "./usuario-actual";
 import {
@@ -833,6 +839,115 @@ describe("revocarInvitacion", () => {
     const { cliente } = crearClienteFalso({ invitaciones: [invitacionBase()] });
     await expect(
       revocarInvitacion(cliente, dueno({ tenantId: null }), ACTOR_USUARIO_ID, { invitacionId: "inv-a-revocar" }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+  });
+});
+
+// =============================================================================
+// archivarInvitacion — quitarla del listado SIN borrarla
+// =============================================================================
+describe("archivarInvitacion", () => {
+  function invitacionBase(overrides?: Partial<FilaInvitacion>): FilaInvitacion {
+    return {
+      id: "inv-a-archivar",
+      tenant_id: TENANT_A,
+      email: "muerta@example.com",
+      tipo_usuario: "interno",
+      rol: "coordinador",
+      seller_id: null,
+      driver_id: null,
+      token: "token-y",
+      estado: "revocada",
+      expira_en: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      archivada_en: null,
+      ...overrides,
+    };
+  }
+
+  it("rechaza si el actor no tiene capacidad (p. ej. coordinador)", async () => {
+    const { cliente, estado } = crearClienteFalso({ invitaciones: [invitacionBase()] });
+
+    await expect(
+      archivarInvitacion(cliente, coordinador(), ACTOR_USUARIO_ID, { invitacionId: "inv-a-archivar" }),
+    ).rejects.toBeInstanceOf(ErrorValidacion);
+
+    expect(estado.invitaciones[0].archivada_en).toBeNull();
+  });
+
+  it("rechaza archivar una invitación de OTRO tenant (aislamiento con service_role)", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      invitaciones: [invitacionBase({ tenant_id: TENANT_B })],
+    });
+
+    await expect(
+      archivarInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, { invitacionId: "inv-a-archivar" }),
+    ).rejects.toBeInstanceOf(ErrorNoEncontrado);
+
+    expect(estado.invitaciones[0].archivada_en).toBeNull();
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  /**
+   * 🔴 La regla que de verdad importa. Esconder una invitación PENDIENTE
+   * dejaría su enlace sirviendo para entrar y sin nada en pantalla desde donde
+   * revocarla. La base lo impide con un CHECK; esto es su mitad en código.
+   */
+  it("RECHAZA archivar una invitación pendiente — su enlace todavía sirve", async () => {
+    const { cliente, estado } = crearClienteFalso({
+      invitaciones: [invitacionBase({ estado: "pendiente" })],
+    });
+
+    await expect(
+      archivarInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, { invitacionId: "inv-a-archivar" }),
+    ).rejects.toBeInstanceOf(ErrorConflicto);
+
+    expect(estado.invitaciones[0].archivada_en).toBeNull();
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  it.each(["revocada", "expirada"])(
+    "archiva una invitación %s del propio tenant y deja traza en bitácora",
+    async (estadoInicial) => {
+      const { cliente, estado } = crearClienteFalso({
+        invitaciones: [invitacionBase({ estado: estadoInicial })],
+      });
+
+      await archivarInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, { invitacionId: "inv-a-archivar" });
+
+      // La fila SIGUE ahí: archivar no borra. Solo queda sellada.
+      expect(estado.invitaciones).toHaveLength(1);
+      expect(estado.invitaciones[0].archivada_en).toEqual(expect.any(String));
+      expect(estado.invitaciones[0].estado).toBe(estadoInicial);
+
+      expect(estado.bitacora).toHaveLength(1);
+      expect(estado.bitacora[0]).toMatchObject({
+        tenant_id: TENANT_A,
+        actor_usuario_id: ACTOR_USUARIO_ID,
+        accion: "invitacion.archivada",
+        entidad_tipo: "invitacion",
+        entidad_id: "inv-a-archivar",
+      });
+    },
+  );
+
+  it("archivar dos veces no falla ni mueve la fecha ni duplica la bitácora", async () => {
+    const yaArchivada = new Date(Date.now() - 86_400_000).toISOString();
+    const { cliente, estado } = crearClienteFalso({
+      invitaciones: [invitacionBase({ archivada_en: yaArchivada })],
+    });
+
+    await archivarInvitacion(cliente, dueno(), ACTOR_USUARIO_ID, { invitacionId: "inv-a-archivar" });
+
+    expect(estado.invitaciones[0].archivada_en).toBe(yaArchivada);
+    expect(estado.bitacora).toHaveLength(0);
+  });
+
+  it("rechaza si el actor interno no tiene tenant_id (defensivo)", async () => {
+    const { cliente } = crearClienteFalso({ invitaciones: [invitacionBase()] });
+    await expect(
+      archivarInvitacion(cliente, dueno({ tenantId: null }), ACTOR_USUARIO_ID, {
+        invitacionId: "inv-a-archivar",
+      }),
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 });

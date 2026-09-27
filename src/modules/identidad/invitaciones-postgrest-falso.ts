@@ -81,6 +81,7 @@ const COLUMNAS_VISTA_PUBLIC_INVITACIONES = [
   "email_estado",
   "email_estado_en",
   "email_motivo",
+  "archivada_en",
 ] as const;
 
 /** `identidad.invitaciones` (tabla base): las mismas columnas + `token`. */
@@ -102,6 +103,8 @@ export interface FilaInvitacionFalsa {
   email_estado?: string | null;
   email_estado_en?: string | null;
   email_motivo?: string | null;
+  /** Sellada cuando el courier la quita del listado. `null` = se sigue viendo. */
+  archivada_en?: string | null;
   /** Solo alcanzable vía `identidad.invitaciones` — ver cabecera del archivo. */
   token: string;
 }
@@ -186,6 +189,13 @@ interface EstadoTablaInvitaciones {
  * casos — como en Postgres real, la vista es una proyección de la misma fila,
  * no una copia.
  */
+/**
+ * Marca interna para «este filtro es IS NULL». Un símbolo, no `null`: hay que
+ * poder distinguir «filtra por nulo» de «filtra por el valor null» sin que
+ * choquen, y un símbolo nunca puede venir de un dato real.
+ */
+const NULO = Symbol("is-null");
+
 function crearBuilderInvitaciones(estado: EstadoTablaInvitaciones, exponerTablaBase: boolean) {
   const columnasVisibles = new Set<string>(
     exponerTablaBase ? COLUMNAS_TABLA_BASE_INVITACIONES : COLUMNAS_VISTA_PUBLIC_INVITACIONES,
@@ -200,7 +210,12 @@ function crearBuilderInvitaciones(estado: EstadoTablaInvitaciones, exponerTablaB
 
     function filasResueltas(): FilaInvitacionFalsa[] {
       let filas = estado.invitaciones.filter((fila) =>
-        filtros.every(([campo, valor]) => (fila as unknown as Record<string, unknown>)[campo] === valor),
+        filtros.every(([campo, valor]) => {
+          const actual = (fila as unknown as Record<string, unknown>)[campo];
+          // `IS NULL`: la clave ausente también es nula, igual que en Postgres.
+          if (valor === NULO) return actual === null || actual === undefined;
+          return actual === valor;
+        }),
       );
       if (orden) {
         const { campo, ascendente } = orden;
@@ -226,6 +241,11 @@ function crearBuilderInvitaciones(estado: EstadoTablaInvitaciones, exponerTablaB
     const builder = {
       eq(campo: string, valor: unknown) {
         filtros.push([campo, valor]);
+        return builder;
+      },
+      /** `IS NULL` de PostgREST — ver la nota del mismo método en `update`. */
+      is(campo: string, valor: unknown) {
+        filtros.push([campo, valor === null ? NULO : valor]);
         return builder;
       },
       gt(campo: string, valor: unknown) {
@@ -304,6 +324,15 @@ function crearBuilderInvitaciones(estado: EstadoTablaInvitaciones, exponerTablaB
         eq(campo: string, valor: unknown) {
           return builder([...filtros, [campo, valor]]);
         },
+        /**
+         * `IS NULL` de PostgREST. No es azúcar de `.eq(campo, null)`: en SQL
+         * nada es igual a NULL, y acá además hay que tratar «la clave no está
+         * en el objeto» como nulo — una fila de prueba que no declara
+         * `archivada_en` representa una fila sin archivar, igual que en Postgres.
+         */
+        is(campo: string, valor: unknown) {
+          return builder([...filtros, [campo, valor === null ? NULO : valor]]);
+        },
         then(resolve: (v: { data: null; error: PostgrestError | null }) => void) {
           // El filtro `.eq()` (el `WHERE`) SÍ llega a Postgres → 42703.
           // Verificado: `PATCH .../invitaciones?token=eq.x` sin
@@ -315,7 +344,11 @@ function crearBuilderInvitaciones(estado: EstadoTablaInvitaciones, exponerTablaB
             return;
           }
           const idx = estado.invitaciones.findIndex((fila) =>
-            filtros.every(([campo, valor]) => (fila as unknown as Record<string, unknown>)[campo] === valor),
+            filtros.every(([campo, valor]) => {
+              const actual = (fila as unknown as Record<string, unknown>)[campo];
+              if (valor === NULO) return actual === null || actual === undefined;
+              return actual === valor;
+            }),
           );
           if (idx >= 0) {
             estado.invitaciones[idx] = { ...estado.invitaciones[idx], ...cambios } as FilaInvitacionFalsa;
