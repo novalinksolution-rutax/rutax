@@ -143,7 +143,7 @@ export function PanelEnlaceSeller({ nombreFantasia }: { nombreFantasia: string }
       titulo="Enlace de registro"
       subtitulo="Tus sellers entran solos con este enlace — sin que invites a nadie de a uno."
       disparador={
-        <Button size="sm" className="shrink-0">
+        <Button size="sm" className="min-h-11 shrink-0 sm:min-h-8">
           <Link2 className="size-4 shrink-0" aria-hidden="true" />
           Enlace para sellers
         </Button>

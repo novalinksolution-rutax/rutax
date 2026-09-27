@@ -48,6 +48,8 @@ import { sumarDiasCalendario } from "@/lib/fecha-santiago";
 export const DIAS_VENTANA_SELLER = 28;
 
 export interface ConexionSeller {
+  /** Id de la conexión: con él se pide «Sincronizar ahora» (solo ML). */
+  id: string;
   tipo: "ml" | "shopify";
   /** Cómo la nombra el seller, o el identificador de la cuenta. */
   nombre: string;
@@ -131,7 +133,7 @@ export async function armarVistaPreviaSellerCourier(
       cliente
         .schema("identidad")
         .from("conexiones_seller_ml")
-        .select("alias, ml_nickname, ml_user_id, estado_salud, ultima_sync_exitosa_en")
+        .select("id, alias, ml_nickname, ml_user_id, estado_salud, ultima_sync_exitosa_en")
         .eq("tenant_id", tenantId)
         .eq("seller_id", sellerId),
     )
@@ -141,7 +143,7 @@ export async function armarVistaPreviaSellerCourier(
       cliente
         .schema("identidad")
         .from("conexiones_seller_shopify")
-        .select("alias, nombre_tienda, shop_domain, estado_salud, ultima_sync_exitosa_en")
+        .select("id, alias, nombre_tienda, shop_domain, estado_salud, ultima_sync_exitosa_en")
         .eq("tenant_id", tenantId)
         .eq("seller_id", sellerId)
         .eq("activa", true),
@@ -152,6 +154,7 @@ export async function armarVistaPreviaSellerCourier(
 
   const conexiones: ConexionSeller[] = [
     ...conexionesMl.map((c) => ({
+      id: c.id as string,
       tipo: "ml" as const,
       nombre:
         (c.alias as string | null) ??
@@ -161,6 +164,7 @@ export async function armarVistaPreviaSellerCourier(
       ultimaSyncEn: (c.ultima_sync_exitosa_en as string | null) ?? null,
     })),
     ...conexionesShopify.map((c) => ({
+      id: c.id as string,
       tipo: "shopify" as const,
       nombre:
         (c.alias as string | null) ??

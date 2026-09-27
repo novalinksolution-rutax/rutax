@@ -18,6 +18,7 @@
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import { puedeSincronizarConexionesMl } from "@/modules/identidad/capacidades";
 import {
   armarVistaPreviaSellerCourier,
   type VistaPreviaSellerCourier,
@@ -25,8 +26,13 @@ import {
 
 const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Los datos del seller más lo que quien mira puede hacer con ellos. */
+export type VistaPreviaSellerConPermisos = VistaPreviaSellerCourier & {
+  puedeSincronizar: boolean;
+};
+
 export type RespuestaVistaPreviaSeller =
-  | { ok: true; datos: VistaPreviaSellerCourier }
+  | { ok: true; datos: VistaPreviaSellerConPermisos }
   | { ok: false };
 
 export async function accionVistaPreviaSeller(
@@ -45,7 +51,12 @@ export async function accionVistaPreviaSeller(
       sellerId,
       fechaLocalEnSantiago(new Date()),
     );
-    return datos ? { ok: true, datos } : { ok: false };
+    return datos
+      ? {
+          ok: true,
+          datos: { ...datos, puedeSincronizar: puedeSincronizarConexionesMl(sesion.usuario) },
+        }
+      : { ok: false };
   } catch {
     return { ok: false };
   }

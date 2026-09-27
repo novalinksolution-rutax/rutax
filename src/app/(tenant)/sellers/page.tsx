@@ -4,7 +4,7 @@ import { PanelEnlaceSeller } from "./enlace/panel-enlace-seller";
 import { Store } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeSincronizarConexionesMl, puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
+import { puedeInvitarUsuarios } from "@/modules/identidad/capacidades";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -24,20 +24,14 @@ import {
   type EstadoSaludConexion,
   type EstadoSeller,
 } from "@/lib/ui/traduccion-estados";
-import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { EnlaceDetalle } from "@/components/app-shell/enlace-detalle";
 import { ListaAtenuable } from "@/components/ui/vista-previa-lateral";
 import { FilaSeller } from "./fila-seller";
 import { BotonCopiarInvitacion } from "./boton-copiar-invitacion";
-import { ControlSincronizarMl, type ConexionMlResumen } from "./control-sincronizar-ml";
 
 export const metadata: Metadata = {
   title: "Sellers",
 };
-
-// El vocabulario de salud de conexión vive en `traduccion-estados.ts` desde el
-// bloque 0.3 del rediseño: acá era un mapa suelto que no pasaba por el sistema
-// de tonos.
 
 /** Recién unido: se unió por el enlace de autoservicio hace ≤3 días. */
 const HORAS_RECIEN_UNIDO = 72;
@@ -47,16 +41,36 @@ interface SellerFila {
   razonSocial: string;
   rut: string;
   estado: string;
-  estadoSalud: string;
+  /**
+   * La PEOR salud entre todas sus cuentas (ML y Shopify), o `null` si no tiene
+   * ninguna. Antes se mostraba la de la primera cuenta ML: un seller con cuatro
+   * cuentas y una caída salía «conectado».
+   */
+  peorSalud: EstadoSaludConexion | null;
   /** Hay una invitación viva que todavía se puede entregar a mano. */
   invitacionPendiente: boolean;
   /** Qué sabemos de la ENTREGA del correo. `rebotado` es lo accionable. */
   invitacionEmailEstado: string | null;
   invitacionEmailMotivo: string | null;
-  /** Todas las cuentas ML del seller (0 a N) — para "Sincronizar ahora". */
-  conexiones: ConexionMlResumen[];
   /** `true` si se creó hace ≤72 h — quien acaba de unirse por el enlace. */
   esReciente: boolean;
+}
+
+/** Orden de gravedad: la primera que aparezca en esta lista gana. */
+const GRAVEDAD_SALUD: EstadoSaludConexion[] = ["desvinculada", "atencion", "pendiente", "sana"];
+
+function peorDe(estados: string[]): EstadoSaludConexion | null {
+  return GRAVEDAD_SALUD.find((g) => estados.includes(g)) ?? null;
+}
+
+/** Hay algo que hacer con este seller. Define el grupo «Requieren atención». */
+function requiereAtencion(s: SellerFila): boolean {
+  return (
+    s.estado !== "activo" ||
+    s.invitacionPendiente ||
+    s.peorSalud === "desvinculada" ||
+    s.peorSalud === "atencion"
+  );
 }
 
 interface EstadoEnvioInvitacion {
@@ -99,36 +113,45 @@ async function cargarInvitacionesPendientes(
   return mapa;
 }
 
-interface ConexionMlFilaCruda {
-  id: string;
-  alias: string | null;
-  ml_nickname: string | null;
-  ml_user_id: string | null;
-  estado_salud: string;
-}
-
 async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
   const cliente = crearClienteServiceRole();
-  const [{ data, error }, pendientes] = await Promise.all([
+  const [{ data, error }, ml, shopify, pendientes] = await Promise.all([
     cliente
       .from("sellers")
-      .select(
-        "id, razon_social, rut, estado, creado_en, conexiones_seller_ml!conexiones_seller_ml_seller_id_fkey(id, alias, ml_nickname, ml_user_id, estado_salud)",
-      )
+      .select("id, razon_social, rut, estado, creado_en")
       .eq("tenant_id", tenantId)
       .order("razon_social"),
+    // Desde `identidad` y no por la vista `public`: esa vista congeló sus
+    // columnas antes de que existiera `desconectada_por_usuario_id`, y así
+    // debe seguir (ver la migración 20260826000002).
+    cliente
+      .schema("identidad")
+      .from("conexiones_seller_ml")
+      .select("seller_id, estado_salud")
+      .eq("tenant_id", tenantId)
+      // La cuenta que el seller apagó a propósito no es una caída: es una
+      // decisión suya y no pide nada al courier (mismo criterio que el dashboard).
+      .is("desconectada_por_usuario_id", null),
+    cliente
+      .schema("identidad")
+      .from("conexiones_seller_shopify")
+      .select("seller_id, estado_salud")
+      .eq("tenant_id", tenantId)
+      .eq("activa", true),
     cargarInvitacionesPendientes(cliente, tenantId),
   ]);
 
   if (error || !data) return [];
 
+  const saludPorSeller = new Map<string, string[]>();
+  for (const f of [...(ml.data ?? []), ...(shopify.data ?? [])] as {
+    seller_id: string;
+    estado_salud: string;
+  }[]) {
+    saludPorSeller.set(f.seller_id, [...(saludPorSeller.get(f.seller_id) ?? []), f.estado_salud]);
+  }
+
   return (data as Record<string, unknown>[]).map((s) => {
-    const conexionRaw = s.conexiones_seller_ml as ConexionMlFilaCruda | ConexionMlFilaCruda[] | null;
-    const listaConexiones = Array.isArray(conexionRaw) ? conexionRaw : conexionRaw ? [conexionRaw] : [];
-    // La salud mostrada en la columna "Conexión ML" sigue tomando la primera
-    // (comportamiento existente, sin cambios); "Sincronizar ahora" sí necesita
-    // TODAS las cuentas, así que se guardan aparte con su etiqueta ya resuelta.
-    const conexionUnica = listaConexiones[0] ?? null;
     const id = s.id as string;
     const envio = pendientes.get(id);
     const creadoEn = s.creado_en as string | null;
@@ -140,14 +163,10 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
       razonSocial: s.razon_social as string,
       rut: s.rut as string,
       estado: s.estado as string,
-      estadoSalud: conexionUnica?.estado_salud ?? "pendiente",
+      peorSalud: peorDe(saludPorSeller.get(id) ?? []),
       invitacionPendiente: pendientes.has(id),
       invitacionEmailEstado: envio?.emailEstado ?? null,
       invitacionEmailMotivo: envio?.emailMotivo ?? null,
-      conexiones: listaConexiones.map((c) => ({
-        id: c.id,
-        etiqueta: etiquetaConexionMl({ alias: c.alias, mlNickname: c.ml_nickname, mlUserId: c.ml_user_id }),
-      })),
       esReciente: horasDesdeCreacion <= HORAS_RECIEN_UNIDO,
     };
   });
@@ -193,14 +212,49 @@ function avisoEntrega(estado: string | null, motivo: string | null) {
 }
 
 /**
+ * Lo que pide atención de un seller, en distintivos. Vacío si está al día: en
+ * el grupo «Al día» la fila es solo el nombre.
+ */
+function Problemas({ seller }: { seller: SellerFila }) {
+  return (
+    <>
+      {seller.estado !== "activo" ? (
+        <BadgeEstado
+          variante={BADGE_ESTADO_SELLER[seller.estado as EstadoSeller] ?? "warning"}
+          texto={traducirEstadoSeller(seller.estado)}
+          eje="seller"
+          valor={seller.estado}
+        />
+      ) : null}
+      {seller.peorSalud === "desvinculada" || seller.peorSalud === "atencion" ? (
+        <BadgeEstado
+          variante={BADGE_SALUD_CONEXION[seller.peorSalud]}
+          texto={traducirSaludConexion(seller.peorSalud)}
+          eje="conexion"
+          valor={seller.peorSalud}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function AccionInvitacion({ seller, alinear }: { seller: SellerFila; alinear: "start" | "end" }) {
+  if (!seller.invitacionPendiente) return null;
+  return (
+    <div className={`flex flex-col gap-1.5 ${alinear === "end" ? "items-end" : "items-start"}`}>
+      {avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)}
+      <BotonCopiarInvitacion sellerId={seller.id} razonSocial={seller.razonSocial} />
+    </div>
+  );
+}
+
+/**
  * Pantalla — Listado de sellers del courier (RF-010, §3.2).
  *
- * Punto de entrada al que apuntan tanto la barra superior como el dashboard
- * ("Conexiones de ML caídas" → "ver todos los sellers"). Vista de solo
- * lectura con estado de cuenta y salud de la conexión ML; el alta de nuevos
- * sellers ya no es un formulario del courier: comparte su enlace permanente
- * (panel "Enlace para sellers", `enlace/panel-enlace-seller.tsx`) y cada
- * seller entra solo por `/registro-seller/[token]`.
+ * Dos grupos: los que piden algo y los que están al día. La fila de un seller
+ * al día es solo su nombre; los distintivos aparecen únicamente cuando hay un
+ * problema. «Sincronizar» salió de la fila —cada fila repetía el mismo botón— y
+ * vive en el panel lateral, donde se ven sus cuentas.
  */
 export default async function PaginaSellers() {
   const sesion = await obtenerSesionActual();
@@ -219,34 +273,16 @@ export default async function PaginaSellers() {
   ]);
   const nombreFantasia = (tenant?.nombre_fantasia as string | null)?.trim() || "tu courier";
   const puedeInvitar = puedeInvitarUsuarios(sesion.usuario);
-  // La columna solo aparece si hay algo que entregar: una tabla con una columna
-  // vacía permanente le cobra ancho a las demás sin dar nada a cambio.
-  const mostrarColumnaInvitacion = puedeInvitar && sellers.some((s) => s.invitacionPendiente);
 
-  // "Sincronizar ahora": capacidad propia, los CUATRO roles internos. No se
-  // reusa el gate de asignar/reasignar porque ese excluye a `administracion`
-  // por diseño, y traer pedidos no asigna nada a nadie — administración los
-  // necesita para tener qué facturar y conciliar. Igual que la columna de
-  // invitación, no aparece si no hay ninguna cuenta que sincronizar.
-  const puedeSincronizar = puedeSincronizarConexionesMl(sesion.usuario);
-  const mostrarColumnaSincronizar = puedeSincronizar && sellers.some((s) => s.conexiones.length > 0);
+  const grupos = [
+    { titulo: "Requieren atención", lista: sellers.filter(requiereAtencion) },
+    { titulo: "Al día", lista: sellers.filter((s) => !requiereAtencion(s)) },
+  ].filter((g) => g.lista.length > 0);
 
   return (
-    /* 🔴 Sin tope propio: la ruta está en `rutasAnchas` del layout justamente
-       para que la tabla use el lienzo, y un `max-w-4xl` acá lo anulaba en
-       silencio — el `<main>` se ensanchaba a 1800 y la página se quedaba en
-       896, o sea un cuadrado en el centro. El espaciado y el ancho los pone el
-       layout; la página solo apila su contenido. */
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1.5">
-          <h1 className="font-heading text-2xl font-semibold">Sellers</h1>
-          <p className="text-sm text-muted-foreground">
-            Clientes de tu cuenta y el estado de su conexión con sus fuentes de pedidos.
-          </p>
-        </div>
-        {/* Panel, no navegación: la pregunta que trae a alguien acá suele ser
-            «¿cuál es mi enlace?», y la respuesta está en este mismo panel. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-heading text-2xl font-semibold">Sellers</h1>
         {puedeInvitar && <PanelEnlaceSeller nombreFantasia={nombreFantasia} />}
       </div>
 
@@ -254,184 +290,105 @@ export default async function PaginaSellers() {
         <EmptyState
           icon={Store}
           titulo="Todavía no tienes sellers"
-          descripcion="Comparte tu enlace de registro con tus clientes para que se sumen."
           accion={
             puedeInvitar ? <PanelEnlaceSeller nombreFantasia={nombreFantasia} /> : undefined
           }
         />
       ) : (
-        <DataTable
-          toolbar={
-            <span className="text-sm text-muted-foreground tabular-nums">
-              {sellers.length} seller{sellers.length !== 1 ? "s" : ""}
-            </span>
-          }
-        >
-          {/* ─────────────────────────────────────────────────────────────
-              A 375 px la fila deja de ser una fila.
-              ──────────────────────────────────────────────────────────────
-              Mismo patrón que `/operaciones`: se renderizan LAS DOS formas y
-              CSS elige. Decidirlo en JavaScript midiendo el ancho sería peor —
-              el servidor no sabe el ancho, así que la primera pintura saldría
-              con la forma equivocada y cambiaría delante del usuario.
-
-              🔴 Sin esto, en teléfono la tabla se arrastraba 302 px de lado
-              dentro de su caja y la columna «Sincronizar» —la única accionable—
-              vivía fuera de la vista. Cuatro columnas no caben en 342 px por
-              mucho que se recorte cada una.
-              ───────────────────────────────────────────────────────────── */}
-          <ul className="divide-y divide-border md:hidden">
-            {sellers.map((seller) => (
-              <li key={seller.id} className="space-y-2.5 px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <EnlaceDetalle
-                      href={`/sellers/${seller.id}`}
-                      className="min-w-0 font-medium hover:underline"
+        <DataTable>
+          {/* Teléfono: las dos formas se renderizan y CSS elige (mismo patrón
+              que `/operaciones`). */}
+          <div className="md:hidden">
+            {grupos.map((g) => (
+              <section key={g.titulo}>
+                <EncabezadoGrupo titulo={g.titulo} cantidad={g.lista.length} />
+                <ul className="divide-y divide-border">
+                  {g.lista.map((seller) => (
+                    <li
+                      key={seller.id}
+                      className={`space-y-2 px-4 ${requiereAtencion(seller) ? "py-3" : "py-0.5"}`}
                     >
-                      {seller.razonSocial}
-                    </EnlaceDetalle>
-                    {seller.esReciente ? <DistintivoRecienUnido /> : null}
-                  </span>
-                  <BadgeEstado
-                    variante={BADGE_ESTADO_SELLER[seller.estado as EstadoSeller] ?? "warning"}
-                    texto={traducirEstadoSeller(seller.estado)}
-                    eje="seller"
-                    valor={seller.estado}
-                  />
-                </div>
-
-                {/* El RUT sí cabe acá: en la ficha ocupa su propia línea, y es
-                    el dato con el que un courier reconoce a su cliente. */}
-                <p className="font-mono text-xs text-muted-foreground tabular-nums">
-                  {seller.rut}
-                </p>
-
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <BadgeEstado
-                    variante={BADGE_SALUD_CONEXION[seller.estadoSalud as EstadoSaludConexion] ?? "neutral"}
-                    texto={traducirSaludConexion(seller.estadoSalud)}
-                    eje="conexion"
-                    valor={seller.estadoSalud}
-                  />
-                  {mostrarColumnaSincronizar && (
-                    <ControlSincronizarMl
-                      razonSocial={seller.razonSocial}
-                      conexiones={seller.conexiones}
-                    />
-                  )}
-                </div>
-
-                {mostrarColumnaInvitacion && seller.invitacionPendiente && (
-                  <div className="flex flex-col items-start gap-1.5">
-                    {avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)}
-                    <BotonCopiarInvitacion
-                      sellerId={seller.id}
-                      razonSocial={seller.razonSocial}
-                    />
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-
-          {/* Atenuar, no tapar: con el panel abierto hay que poder seguir
-              leyendo las filas de arriba y abajo, y tocar otra tiene que
-              cambiar el panel sin cerrarlo. */}
-          <ListaAtenuable>
-          <Table densidad="comfortable" aria-label="Lista de sellers" className="hidden md:table">
-            <TableHeader>
-              <TableRow className="bg-muted/40">
-                <TableHead className="px-4">Seller</TableHead>
-                {/* 🔴 El RUT se retira hasta `lg`, no hasta `sm`. Con las cinco
-                    columnas visibles la tabla pide ~756 px y entre 640 y 790
-                    desbordaba su caja: aparecía un scroll horizontal y la
-                    columna «Sincronizar» —la única accionable— quedaba fuera de
-                    la vista, sin nada que delatara que estaba ahí. El RUT es el
-                    dato menos urgente de un listado y vive en la ficha.
-
-                    ⚠️ Vuelve en `xl`, no en `lg`, y la razón no es el viewport:
-                    **en `lg` entra la barra lateral y el lienzo se ENCOGE** (734
-                    px a 768 de viewport → 702 px a 1024). El ancho disponible no
-                    crece de forma monótona con la pantalla, así que un punto de
-                    corte elegido mirando solo el viewport reintroduce el
-                    desborde justo en el tamaño más común de portátil. */}
-                <TableHead className="hidden px-4 xl:table-cell">RUT</TableHead>
-                <TableHead className="px-4">Cuenta</TableHead>
-                <TableHead className="px-4">Conexión ML</TableHead>
-                {mostrarColumnaSincronizar && (
-                  <TableHead className="px-4 text-right">Sincronizar</TableHead>
-                )}
-                {mostrarColumnaInvitacion && (
-                  <TableHead className="px-4 text-right">Invitación</TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sellers.map((seller) => (
-                <FilaSeller key={seller.id} sellerId={seller.id}>
-                  {/* 🐞 El listado era TERMINAL: ninguna fila navegaba a
-                      ninguna parte, aunque el seller es uno de los objetos
-                      centrales del dominio. Ahora el nombre abre su ficha y la
-                      fila entera abre la vista previa. */}
-                  <TableCell className="px-4 font-medium">
-                    <span className="flex items-center gap-2">
-                      <EnlaceDetalle
-                        href={`/sellers/${seller.id}`}
-                        className="hover:underline"
-                      >
-                        {seller.razonSocial}
-                      </EnlaceDetalle>
-                      {seller.esReciente ? <DistintivoRecienUnido /> : null}
-                    </span>
-                  </TableCell>
-                  <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums xl:table-cell">
-                    {seller.rut}
-                  </TableCell>
-                  <TableCell className="px-4">
-                    <BadgeEstado
-                      variante={BADGE_ESTADO_SELLER[seller.estado as EstadoSeller] ?? "warning"}
-                      texto={traducirEstadoSeller(seller.estado)}
-                      eje="seller"
-                      valor={seller.estado}
-                    />
-                  </TableCell>
-                  <TableCell className="px-4">
-                    <BadgeEstado
-                      variante={BADGE_SALUD_CONEXION[seller.estadoSalud as EstadoSaludConexion] ?? "neutral"}
-                      texto={traducirSaludConexion(seller.estadoSalud)}
-                      eje="conexion"
-                      valor={seller.estadoSalud}
-                    />
-                  </TableCell>
-                  {mostrarColumnaSincronizar && (
-                    <TableCell className="px-4 text-right whitespace-normal">
-                      <ControlSincronizarMl
-                        razonSocial={seller.razonSocial}
-                        conexiones={seller.conexiones}
-                      />
-                    </TableCell>
-                  )}
-                  {mostrarColumnaInvitacion && (
-                    <TableCell className="px-4 text-right whitespace-normal">
-                      {seller.invitacionPendiente ? (
-                        <div className="flex flex-col items-end gap-1.5">
-                          {avisoEntrega(seller.invitacionEmailEstado, seller.invitacionEmailMotivo)}
-                          <BotonCopiarInvitacion
-                            sellerId={seller.id}
-                            razonSocial={seller.razonSocial}
-                          />
+                      <span className="flex min-w-0 items-center gap-2">
+                        <EnlaceDetalle
+                          href={`/sellers/${seller.id}`}
+                          className="flex min-h-11 min-w-0 items-center truncate font-medium hover:underline"
+                        >
+                          {seller.razonSocial}
+                        </EnlaceDetalle>
+                        {seller.esReciente ? <DistintivoRecienUnido /> : null}
+                      </span>
+                      {requiereAtencion(seller) ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Problemas seller={seller} />
                         </div>
                       ) : null}
+                      <AccionInvitacion seller={seller} alinear="start" />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+
+          {/* Atenuar, no tapar: con el panel abierto hay que poder seguir
+              leyendo las filas y tocar otra cambia el panel sin cerrarlo. */}
+          <ListaAtenuable>
+            <Table densidad="comfortable" aria-label="Lista de sellers" className="hidden md:table">
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="px-4">Seller</TableHead>
+                  {/* El RUT vuelve en `xl`, no en `lg`: en `lg` entra la barra
+                      lateral y el lienzo se encoge. */}
+                  <TableHead className="hidden px-4 xl:table-cell">RUT</TableHead>
+                  <TableHead className="px-4" />
+                  <TableHead className="px-4" />
+                </TableRow>
+              </TableHeader>
+              {grupos.map((g) => (
+                <TableBody key={g.titulo}>
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={4} className="!p-0">
+                      <EncabezadoGrupo titulo={g.titulo} cantidad={g.lista.length} />
                     </TableCell>
-                  )}
-                </FilaSeller>
+                  </TableRow>
+                  {g.lista.map((seller) => (
+                    <FilaSeller key={seller.id} sellerId={seller.id}>
+                      <TableCell className="px-4 font-medium">
+                        <span className="flex items-center gap-2">
+                          <EnlaceDetalle href={`/sellers/${seller.id}`} className="hover:underline">
+                            {seller.razonSocial}
+                          </EnlaceDetalle>
+                          {seller.esReciente ? <DistintivoRecienUnido /> : null}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden px-4 font-mono text-muted-foreground tabular-nums xl:table-cell">
+                        {seller.rut}
+                      </TableCell>
+                      <TableCell className="px-4">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <Problemas seller={seller} />
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-4 text-right whitespace-normal">
+                        <AccionInvitacion seller={seller} alinear="end" />
+                      </TableCell>
+                    </FilaSeller>
+                  ))}
+                </TableBody>
               ))}
-            </TableBody>
-          </Table>
+            </Table>
           </ListaAtenuable>
         </DataTable>
       )}
     </div>
+  );
+}
+
+function EncabezadoGrupo({ titulo, cantidad }: { titulo: string; cantidad: number }) {
+  return (
+    <p className="rx-num flex items-baseline justify-between border-b border-border bg-muted/40 px-4 py-1.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+      <span>{titulo}</span>
+      <span>{cantidad}</span>
+    </p>
   );
 }

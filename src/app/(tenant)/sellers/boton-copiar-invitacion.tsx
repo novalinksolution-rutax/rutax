@@ -64,6 +64,7 @@ export function BotonCopiarInvitacion({ sellerId, razonSocial }: Props) {
       <Button
         variant="outline"
         size="sm"
+        className="min-h-11 sm:min-h-8"
         onClick={manejarClic}
         disabled={cargando}
         aria-label={`Copiar enlace de invitación de ${razonSocial}`}

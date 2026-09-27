@@ -33,18 +33,19 @@ import {
 } from "@/components/ui/vista-previa-lateral";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { formatearFechaCivilCorta, formatearFechaHora } from "@/lib/formato-cl";
-import type { VistaPreviaSellerCourier } from "@/modules/identidad/vista-previa-seller-courier";
 import { DIAS_VENTANA_SELLER } from "@/modules/identidad/vista-previa-seller-courier";
 
-import { accionVistaPreviaSeller } from "./vista-previa-actions";
+import { accionVistaPreviaSeller, type VistaPreviaSellerConPermisos } from "./vista-previa-actions";
+import { ControlSincronizarMl } from "./control-sincronizar-ml";
+import { traducirSaludConexion } from "@/lib/ui/traduccion-estados";
 
 export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }) {
   return (
-    <ProveedorVistaPreviaLateral<VistaPreviaSellerCourier>
+    <ProveedorVistaPreviaLateral<VistaPreviaSellerConPermisos>
       etiqueta="Vista previa del seller"
       cargar={accionVistaPreviaSeller}
-      tituloFalla="No pudimos abrir el seller"
-      textoFalla="No es que el seller no exista: no lo pudimos leer. Ciérralo y vuelve a tocarlo, o abre su ficha completa."
+      tituloFalla="No se pudo abrir"
+      textoFalla="Vuelve a intentarlo."
       render={{ encabezado: Encabezado, cuerpo: Cuerpo, pie: Pie }}
     >
       {children}
@@ -52,7 +53,7 @@ export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }
   );
 }
 
-function Encabezado(d: VistaPreviaSellerCourier) {
+function Encabezado(d: VistaPreviaSellerConPermisos) {
   return (
     <>
       <p className="truncate font-heading text-base font-semibold">{d.razonSocial}</p>
@@ -66,7 +67,7 @@ function Encabezado(d: VistaPreviaSellerCourier) {
   );
 }
 
-function Cuerpo(d: VistaPreviaSellerCourier, cerrar: () => void) {
+function Cuerpo(d: VistaPreviaSellerConPermisos, cerrar: () => void) {
   return (
     <>
       {/* ── Volumen ─────────────────────────────────────────────────────────
@@ -180,9 +181,7 @@ function Cuerpo(d: VistaPreviaSellerCourier, cerrar: () => void) {
 
       <BloqueVistaPrevia titulo="De dónde entran sus pedidos">
         {d.conexiones.length === 0 ? (
-          <p className="text-sm leading-snug text-attention-fg">
-            Sin ninguna cuenta conectada. Sus pedidos no entran solos: hay que cargarlos a mano.
-          </p>
+          <p className="text-sm text-fg-muted">Sin cuentas conectadas.</p>
         ) : (
           <ul className="space-y-1.5">
             {d.conexiones.map((c, i) => (
@@ -190,12 +189,12 @@ function Cuerpo(d: VistaPreviaSellerCourier, cerrar: () => void) {
                 <span className="min-w-0 truncate text-sm text-fg">{c.nombre}</span>
                 <span
                   className={
-                    c.estadoSalud === "conectada" || c.estadoSalud === "activa"
+                    c.estadoSalud === "sana"
                       ? "shrink-0 text-xs text-fg-muted"
                       : "shrink-0 text-xs font-medium text-attention-fg"
                   }
                 >
-                  {c.tipo === "ml" ? "Mercado Libre" : "Shopify"} · {c.estadoSalud}
+                  {c.tipo === "ml" ? "Mercado Libre" : "Shopify"} · {traducirSaludConexion(c.estadoSalud)}
                 </span>
               </li>
             ))}
@@ -215,6 +214,18 @@ function Cuerpo(d: VistaPreviaSellerCourier, cerrar: () => void) {
             )}
           </p>
         ) : null}
+        {/* Sincronizar vive acá, junto a las cuentas que sincroniza, y no
+            repetido en cada fila del listado. */}
+        {d.puedeSincronizar && d.conexiones.some((c) => c.tipo === "ml") ? (
+          <div className="mt-2">
+            <ControlSincronizarMl
+              razonSocial={d.razonSocial}
+              conexiones={d.conexiones
+                .filter((c) => c.tipo === "ml")
+                .map((c) => ({ id: c.id, etiqueta: c.nombre }))}
+            />
+          </div>
+        ) : null}
       </BloqueVistaPrevia>
 
       <BloqueVistaPrevia titulo="A quién llamar">
@@ -225,7 +236,7 @@ function Cuerpo(d: VistaPreviaSellerCourier, cerrar: () => void) {
   );
 }
 
-function Pie(d: VistaPreviaSellerCourier, cerrar: () => void) {
+function Pie(d: VistaPreviaSellerConPermisos, cerrar: () => void) {
   return (
     <div className="flex gap-2">
       <Button asChild variant="outline" size="sm" className="flex-1">
