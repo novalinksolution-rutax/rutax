@@ -137,7 +137,7 @@ interface Props {
  * (384 px) y ese selector gana por especificidad: sin forzarlo, el cajón sale
  * 32 px más ancho que el tablero y nadie se entera mirando el código.
  */
-const ANCHO_CAJON = "w-full sm:max-w-[352px]!";
+const ANCHO_CAJON = "data-[side=right]:w-full sm:max-w-[352px]!";
 
 /**
  * Las cinco columnas de datos, en su proporción — la sexta, el chevrón, va
@@ -844,12 +844,8 @@ function ZonaDeConsecuencia({
   const bloqueada = impedimentos.length > 0;
 
   return (
-    <div className="border border-fault-line p-3">
-      <p className="text-[10px] font-medium tracking-[0.12em] text-fault-fg uppercase">
-        Zona de consecuencia
-      </p>
-
-      <div className="mt-2 border-b border-line-subtle pb-3">
+    <div className="space-y-3 border-t border-line pt-4">
+      <div>
         <SeccionRedistribucion
           conductor={conductor}
           fechaHoy={fechaHoy}
@@ -857,22 +853,13 @@ function ZonaDeConsecuencia({
         />
       </div>
 
-      <div className="mt-3">
-        <p className="text-sm font-medium">Sacar de la nómina</p>
-        <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">
-          Deja de aparecer para asignar. Sus entregas y liquidaciones se conservan.{" "}
-          <strong className="font-medium text-fg">No le quita acceso a la app</strong>.
-        </p>
-        {!puedeGestionarNomina ? (
-          <p className="mt-2 text-xs text-fg-muted">
-            Solo el dueño o administración pueden darlo de baja.
-          </p>
-        ) : (
+      {/* Las consecuencias se leen en el diálogo, justo antes de confirmar. */}
+      <div>
+        {!puedeGestionarNomina ? null : (
           <>
             <Button
               variant="outline"
-              size="sm"
-              className="mt-2 border-fault-line text-fault-fg hover:bg-fault-bg"
+              className="min-h-11 w-full border-fault-line text-fault-fg hover:bg-fault-bg"
               disabled={bloqueada}
               onClick={() => setDialogo(true)}
             >
@@ -938,8 +925,7 @@ function DialogSacarDeNomina({
           <DialogTitle>Sacar a {conductor.nombre} de la nómina</DialogTitle>
         </DialogHeader>
         <p className="text-sm leading-relaxed text-fg-muted">
-          Deja de aparecer para asignar rutas y queda marcado fuera de la nómina. Puedes
-          reincorporarlo después desde el cajón «Fuera de nómina».
+          Deja de aparecer para asignar. Sus entregas y liquidaciones se conservan.
         </p>
         <div className="space-y-1.5">
           <Label htmlFor="motivo-baja">Motivo</Label>
@@ -950,9 +936,6 @@ function DialogSacarDeNomina({
             placeholder="Renunció el 20-08, se va a otra empresa."
             rows={3}
           />
-          <p className="text-xs text-fg-muted">
-            Queda registrado en la bitácora.
-          </p>
         </div>
         {error ? (
           <Alert variant="destructive">

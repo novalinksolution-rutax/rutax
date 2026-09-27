@@ -552,6 +552,7 @@ export function EditorDatosBancarios({
             aria-hidden="true"
           />
           <p className="text-sm font-medium text-foreground">Datos bancarios</p>
+          {!tieneDatos ? <span className="text-sm text-attention-fg">· Falta</span> : null}
         </div>
         {puedeEditar && !editando && (
           <Button variant="ghost" size="sm" onClick={abrirEditor}>
@@ -596,12 +597,7 @@ export function EditorDatosBancarios({
                El aviso pasa a ser lo que siempre fue: un mensaje con su
                consecuencia, en el mismo `Alert` en tono atención que ya usa este
                archivo unas líneas más arriba. Ahí el texto envuelve. */
-            <Alert className="border-warning bg-warning-subtle text-warning-subtle-foreground">
-              <AlertTriangle className="size-4" aria-hidden="true" />
-              <AlertDescription>
-                Sin datos bancarios — no puede recibir pagos.
-              </AlertDescription>
-            </Alert>
+null
           )}
           {exito && (
             <Alert className="bg-success-subtle text-success-subtle-foreground">
@@ -823,23 +819,10 @@ export function SeccionRedistribucion({
           En un panel angosto la disposición correcta es una sola columna: el
           texto usa el ancho completo y el botón va debajo, ancho completo
           también. Nada compite por el mismo espacio. */}
-      <div className="rounded-lg border border-warning bg-warning-subtle/30 px-4 py-3">
-        <p className="text-sm font-medium text-warning-subtle-foreground">
-          Se cayó a mitad de ruta
-        </p>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Reparte sus paradas entre los demás y lo saca de la asignación de hoy. Para volver, se marca desde su app.
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={abrir}
-          className="mt-3 w-full border-warning"
-        >
-          <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
-          Redistribuir sus paradas
-        </Button>
-      </div>
+      <Button variant="outline" onClick={abrir} className="min-h-11 w-full border-warning">
+        <AlertTriangle className="size-4 text-warning" aria-hidden="true" />
+        Redistribuir sus paradas
+      </Button>
 
       {dialogAbierto && (
         <DialogRedistribucion
@@ -922,10 +905,8 @@ function DialogRedistribucion({
                   id="dialog-redistrib-desc"
                   className="mt-2 text-sm text-muted-foreground"
                 >
-                  Se marcará al conductor como no disponible y sus paradas
-                  abiertas de hoy se redistribuirán automáticamente entre los
-                  conductores restantes del pool. Las paradas en ruta o
-                  terminales no se tocan.
+                  Sus paradas abiertas pasan a los demás y deja de estar
+                  disponible hoy.
                 </p>
                 <div className="mt-4 space-y-1.5">
                   <Label htmlFor="motivo-redistribuir">Motivo</Label>
@@ -936,10 +917,6 @@ function DialogRedistribucion({
                     onChange={(e) => onMotivo(e.target.value)}
                     placeholder="Se accidentó y no puede seguir la ruta."
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Queda en la bitácora con tu nombre, junto a la
-                    redistribución.
-                  </p>
                 </div>
               </>
             )}
