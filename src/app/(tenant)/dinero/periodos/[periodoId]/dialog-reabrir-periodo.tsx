@@ -14,6 +14,10 @@
  * Un botón que desaparece hace pensar que la pantalla está incompleta.
  */
 
+import {
+  useAbiertoControlable,
+  type AbiertoControlable,
+} from "../usar-abierto-controlable";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw } from "lucide-react";
@@ -25,12 +29,17 @@ import { accionReabrirPeriodo } from "../actions";
 export function DialogReabrirPeriodo({
   periodoId,
   sellerNombre,
+  abierto: abiertoExterno,
+  onAbiertoChange,
 }: {
   periodoId: string;
   sellerNombre: string;
-}) {
+} & AbiertoControlable) {
   const router = useRouter();
-  const [abierto, setAbierto] = useState(false);
+  const { controlado, abierto, setAbierto } = useAbiertoControlable({
+    abierto: abiertoExterno,
+    onAbiertoChange,
+  });
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -51,10 +60,12 @@ export function DialogReabrirPeriodo({
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setAbierto(true)}>
-        <RotateCcw className="size-4" aria-hidden="true" />
-        Volver a abrir
-      </Button>
+      {controlado ? null : (
+        <Button variant="outline" size="sm" onClick={() => setAbierto(true)}>
+          <RotateCcw className="size-4" aria-hidden="true" />
+          Volver a abrir
+        </Button>
+      )}
 
       <ModalActoExplicito
         open={abierto}
@@ -67,8 +78,9 @@ export function DialogReabrirPeriodo({
         titulo={`Vas a volver a abrir el período de ${sellerNombre}`}
         consecuencia={
           <>
-            Las líneas vuelven al período en curso y las entregas nuevas de este seller
-            caen otra vez acá. <strong>Sus totales se recalculan al cerrarlo de nuevo.</strong>
+            Las líneas vuelven al período en curso y las entregas nuevas de este
+            seller caen otra vez acá.{" "}
+            <strong>Sus totales se recalculan al cerrarlo de nuevo.</strong>
           </>
         }
         motivo={{

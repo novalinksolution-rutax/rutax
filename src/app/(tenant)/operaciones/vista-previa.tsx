@@ -459,7 +459,7 @@ function PanelContenido({
             </p>
             {datos.dinero.periodoId && (
               <Link
-                href={`/dinero/periodos/${datos.dinero.periodoId}`}
+                href={`/dinero/periodos?periodo=${datos.dinero.periodoId}`}
                 className="mt-1 inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg hover:underline"
               >
                 Período {datos.dinero.periodoEtiqueta ?? "de cobro"} ›

@@ -45,6 +45,7 @@ import { accionVistaPreviaSeller } from "./vista-previa-actions";
 import { BotonSincronizarCuenta } from "./boton-sincronizar-cuenta";
 import { VentanasCorteSeller } from "./_ficha/ventanas-corte-seller";
 import { MenuSeller } from "./menu-seller";
+import { CifraFicha, FranjaCifras, TarjetaFicha } from "@/components/ui/ficha-lateral";
 
 export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }) {
   return (
@@ -110,36 +111,6 @@ function Encabezado(d: FichaSeller) {
   );
 }
 
-/** Una sección de la ficha: recuadro con título y, si hace falta, su acción. */
-function Tarjeta({
-  titulo,
-  accion,
-  children,
-}: {
-  titulo: string;
-  accion?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="rounded-md border border-line bg-bg-raised">
-      <div className="flex min-h-10 items-center justify-between gap-2 border-b border-line-subtle px-3">
-        <h3 className="text-sm font-medium text-fg">{titulo}</h3>
-        {accion}
-      </div>
-      <div className="px-3 py-2.5">{children}</div>
-    </section>
-  );
-}
-
-function Cifra({ rotulo, children }: { rotulo: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0 px-3 py-2.5">
-      <p className="text-[10px] font-medium tracking-[0.1em] text-fg-muted uppercase">{rotulo}</p>
-      <p className="rx-num mt-1 truncate text-lg font-semibold text-fg">{children}</p>
-    </div>
-  );
-}
-
 function Vacio({ children }: { children: ReactNode }) {
   return <p className="text-sm text-fg-muted">{children}</p>;
 }
@@ -150,16 +121,16 @@ function Cuerpo(d: FichaSeller) {
   return (
     <div className="space-y-3">
       {/* Las tres cifras que responden «cuánto pesa este seller hoy». */}
-      <div className="grid grid-cols-3 divide-x divide-line rounded-md border border-line bg-bg-raised">
-        <Cifra rotulo="Hoy">{d.hayMetricas ? d.pedidosHoy : "—"}</Cifra>
-        <Cifra rotulo="Por semana">{d.hayMetricas ? `~${Math.round(d.promedioSemanal)}` : "—"}</Cifra>
-        <Cifra rotulo="Por cobrar">
+      <FranjaCifras>
+        <CifraFicha rotulo="Hoy">{d.hayMetricas ? d.pedidosHoy : "—"}</CifraFicha>
+        <CifraFicha rotulo="Por semana">{d.hayMetricas ? `~${Math.round(d.promedioSemanal)}` : "—"}</CifraFicha>
+        <CifraFicha rotulo="Por cobrar">
           {d.hayDinero ? formatearCLPOGuion(d.periodoVivoClp) : "—"}
-        </Cifra>
-      </div>
+        </CifraFicha>
+      </FranjaCifras>
 
       {d.nombreContacto || d.emailContacto ? (
-        <Tarjeta titulo="Contacto">
+        <TarjetaFicha titulo="Contacto">
           {d.nombreContacto ? <p className="text-sm text-fg">{d.nombreContacto}</p> : null}
           {d.emailContacto ? (
             <a
@@ -169,10 +140,10 @@ function Cuerpo(d: FichaSeller) {
               {d.emailContacto}
             </a>
           ) : null}
-        </Tarjeta>
+        </TarjetaFicha>
       ) : null}
 
-      <Tarjeta titulo="Cuentas de pedidos">
+      <TarjetaFicha titulo="Cuentas de pedidos">
         {d.cuentas.length === 0 ? (
           <Vacio>Sin cuentas conectadas.</Vacio>
         ) : (
@@ -212,9 +183,9 @@ function Cuerpo(d: FichaSeller) {
             ))}
           </ul>
         )}
-      </Tarjeta>
+      </TarjetaFicha>
 
-      <Tarjeta titulo="Tarifa">
+      <TarjetaFicha titulo="Tarifa">
         {d.tarifas.length === 0 ? (
           <Vacio>La general del courier.</Vacio>
         ) : (
@@ -229,15 +200,15 @@ function Cuerpo(d: FichaSeller) {
             ))}
           </ul>
         )}
-      </Tarjeta>
+      </TarjetaFicha>
 
       {d.periodos.length > 0 ? (
-        <Tarjeta titulo="Períodos">
+        <TarjetaFicha titulo="Períodos">
           <ul className="divide-y divide-line-subtle">
             {d.periodos.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3">
                 <Link
-                  href={`/dinero/periodos/${p.id}`}
+                  href={`/dinero/periodos?periodo=${p.id}`}
                   className="flex min-h-11 items-center text-sm hover:underline lg:min-h-9"
                 >
                   {p.etiqueta}
@@ -254,10 +225,10 @@ function Cuerpo(d: FichaSeller) {
               </li>
             ))}
           </ul>
-        </Tarjeta>
+        </TarjetaFicha>
       ) : null}
 
-      <Tarjeta titulo="Bodegas">
+      <TarjetaFicha titulo="Bodegas">
         {d.bodegas.length === 0 ? (
           <Vacio>Sin bodegas.</Vacio>
         ) : (
@@ -273,11 +244,11 @@ function Cuerpo(d: FichaSeller) {
             ))}
           </ul>
         )}
-      </Tarjeta>
+      </TarjetaFicha>
 
-      <Tarjeta titulo="Hora de corte">
+      <TarjetaFicha titulo="Hora de corte">
         <VentanasCorteSeller key={d.id} sellerId={d.id} zonas={d.zonas} />
-      </Tarjeta>
+      </TarjetaFicha>
     </div>
   );
 }

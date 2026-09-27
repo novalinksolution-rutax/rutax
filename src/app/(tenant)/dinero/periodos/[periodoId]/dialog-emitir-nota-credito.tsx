@@ -21,6 +21,10 @@
  * registra el override en bitácora antes de emitir.
  */
 
+import {
+  useAbiertoControlable,
+  type AbiertoControlable,
+} from "../usar-abierto-controlable";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileX2 } from "lucide-react";
@@ -44,7 +48,7 @@ import {
   accionRegistrarPreflightOmitido,
 } from "./actions";
 
-interface Props {
+interface Props extends AbiertoControlable {
   periodoId: string;
   sellerNombre: string;
   /** Folio de la factura (DTE 33) que se va a anular. */
@@ -64,9 +68,14 @@ export function DialogEmitirNotaCredito({
   montoTotalClp,
   montoPagadoClp,
   modoDte,
+  abierto: abiertoExterno,
+  onAbiertoChange,
 }: Props) {
   const router = useRouter();
-  const [abierto, setAbierto] = useState(false);
+  const { controlado, abierto, setAbierto } = useAbiertoControlable({
+    abierto: abiertoExterno,
+    onAbiertoChange,
+  });
   const [motivo, setMotivo] = useState("");
   const [comprobante, setComprobante] = useState<ComprobanteActo | null>(null);
   // Regla 56: el fallo de una acción de dinero NO va en notificación temporal.
@@ -74,9 +83,12 @@ export function DialogEmitirNotaCredito({
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const [estadoPreflight, setEstadoPreflight] = useState<EstadoVerificacion>("verificando");
+  const [estadoPreflight, setEstadoPreflight] =
+    useState<EstadoVerificacion>("verificando");
   const [preflight, setPreflight] = useState<ResultadoPreflight | null>(null);
-  const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<string | null>(null);
+  const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<
+    string | null
+  >(null);
   const [continuarSinVerificar, setContinuarSinVerificar] = useState(false);
 
   const motivoValido = motivo.trim().length > 0;
@@ -121,10 +133,17 @@ export function DialogEmitirNotaCredito({
     startTransition(async () => {
       if (verificacionOmitida) {
         try {
-          await accionRegistrarPreflightOmitido("emitir_nota_credito", periodoId, {
-            motivo: estadoPreflight === "no_verificable" ? "preflight_fallido" : "reparos_ignorados",
-            codigos: preflight?.advertencias.map((r) => r.codigo) ?? [],
-          });
+          await accionRegistrarPreflightOmitido(
+            "emitir_nota_credito",
+            periodoId,
+            {
+              motivo:
+                estadoPreflight === "no_verificable"
+                  ? "preflight_fallido"
+                  : "reparos_ignorados",
+              codigos: preflight?.advertencias.map((r) => r.codigo) ?? [],
+            },
+          );
         } catch (err) {
           setErrorAccion(
             `No se pudo registrar que omitiste la verificación: ${
@@ -144,23 +163,32 @@ export function DialogEmitirNotaCredito({
           titulo: "La nota de crédito quedó en curso",
           cuerpo: (
             <>
-              Anula la factura folio {folioFactura} de {sellerNombre}. Te avisamos cuando
-              el SII responda; el resultado aparece en esta misma pantalla.
+              Anula la factura folio {folioFactura} de {sellerNombre}. Te
+              avisamos cuando el SII responda; el resultado aparece en esta
+              misma pantalla.
             </>
           ),
           datos: [
-            { etiqueta: "Factura que se anula", valor: `Folio ${folioFactura}`, mono: true },
+            {
+              etiqueta: "Factura que se anula",
+              valor: `Folio ${folioFactura}`,
+              mono: true,
+            },
           ],
         });
         router.refresh();
       } else {
-        setErrorAccion(resultado.mensaje ?? "No pudimos emitir la nota de crédito.");
+        setErrorAccion(
+          resultado.mensaje ?? "No pudimos emitir la nota de crédito.",
+        );
       }
     });
   }
 
   const resumenCobro =
-    preflight && preflight.resumen.tipoAccion === "emitir_nota_credito" ? preflight.resumen : null;
+    preflight && preflight.resumen.tipoAccion === "emitir_nota_credito"
+      ? preflight.resumen
+      : null;
   const itemLineasAnuladas = preflight?.informativos.find(
     (i) => i.codigo === "lineas_anuladas_excluidas",
   );
@@ -181,10 +209,16 @@ export function DialogEmitirNotaCredito({
 
   return (
     <>
-      <Button variant="destructive" size="sm" onClick={() => setAbierto(true)}>
-        <FileX2 className="size-4" aria-hidden="true" />
-        Emitir nota de crédito
-      </Button>
+      {controlado ? null : (
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => setAbierto(true)}
+        >
+          <FileX2 className="size-4" aria-hidden="true" />
+          Emitir nota de crédito
+        </Button>
+      )}
 
       <ModalActoExplicito
         open={abierto}
@@ -197,9 +231,9 @@ export function DialogEmitirNotaCredito({
         titulo={`Vas a anular la factura de ${sellerNombre}`}
         consecuencia={
           <>
-            Se emite una nota de crédito —documento tributario— que anula la factura
-            completa. <strong>No se puede deshacer</strong>: los montos del período se
-            revierten como si nunca se hubiera facturado.
+            Se emite una nota de crédito —documento tributario— que anula la
+            factura completa. <strong>No se puede deshacer</strong>: los montos
+            del período se revierten como si nunca se hubiera facturado.
           </>
         }
         motivo={{
@@ -207,7 +241,8 @@ export function DialogEmitirNotaCredito({
           onCambio: setMotivo,
           etiqueta: "Motivo de la anulación",
           // Regla 24: quien lo lee no es interno, así que se declara.
-          ayuda: "Queda en la bitácora y en la propia nota de crédito, que el seller recibe.",
+          ayuda:
+            "Queda en la bitácora y en la propia nota de crédito, que el seller recibe.",
           minimo: 1,
         }}
         avisos={
@@ -217,8 +252,9 @@ export function DialogEmitirNotaCredito({
                   tono: "fault" as const,
                   texto: (
                     <>
-                      <strong>No pudimos anular la factura.</strong> {errorAccion} El período
-                      sigue facturado y puedes volver a intentarlo.
+                      <strong>No pudimos anular la factura.</strong>{" "}
+                      {errorAccion} El período sigue facturado y puedes volver a
+                      intentarlo.
                     </>
                   ),
                 },
@@ -245,11 +281,12 @@ export function DialogEmitirNotaCredito({
           />
           {estadoPreflight === "listo" && preflight && (
             <>
-
               <dl className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-4">
                   <dt className="text-muted-foreground">Factura a anular</dt>
-                  <dd className="font-mono font-medium tabular-nums">Folio {folioFactura}</dd>
+                  <dd className="font-mono font-medium tabular-nums">
+                    Folio {folioFactura}
+                  </dd>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <dt className="text-muted-foreground">Monto total</dt>
@@ -264,7 +301,9 @@ export function DialogEmitirNotaCredito({
               {itemLineasAnuladas && (
                 <p className="text-xs text-muted-foreground">
                   {itemLineasAnuladas.titulo}
-                  {itemLineasAnuladas.detalle ? ` ${itemLineasAnuladas.detalle}` : ""}
+                  {itemLineasAnuladas.detalle
+                    ? ` ${itemLineasAnuladas.detalle}`
+                    : ""}
                 </p>
               )}
 
@@ -278,9 +317,12 @@ export function DialogEmitirNotaCredito({
 
           {montoPagadoClp > 0 ? (
             <p className="rounded-md bg-warning-subtle px-3 py-2 text-xs text-warning-subtle-foreground">
-              Hay <strong className="tabular-nums">{formatearCLP(montoPagadoClp)}</strong> ya
-              pagados imputados a este período: volverán a la bandeja de revisión de
-              pagos para reimputarse.
+              Hay{" "}
+              <strong className="tabular-nums">
+                {formatearCLP(montoPagadoClp)}
+              </strong>{" "}
+              ya pagados imputados a este período: volverán a la bandeja de
+              revisión de pagos para reimputarse.
             </p>
           ) : null}
         </div>

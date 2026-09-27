@@ -10,6 +10,10 @@
  * de mensajes.
  */
 
+import {
+  useAbiertoControlable,
+  type AbiertoControlable,
+} from "./usar-abierto-controlable";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -17,7 +21,7 @@ import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
 import { ModalActoExplicito } from "@/components/ui/modal-acto-explicito";
 import { accionCerrarPeriodo } from "./actions";
 
-interface Props {
+interface Props extends AbiertoControlable {
   periodoId: string;
   sellerNombre: string;
   fechaInicio: string;
@@ -39,9 +43,14 @@ export function DialogCerrarPeriodo({
   fechaFin,
   totalLineas,
   montoTotalClp,
+  abierto: abiertoExterno,
+  onAbiertoChange,
 }: Props) {
   const router = useRouter();
-  const [abierto, setAbierto] = useState(false);
+  const { controlado, abierto, setAbierto } = useAbiertoControlable({
+    abierto: abiertoExterno,
+    onAbiertoChange,
+  });
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -67,13 +76,15 @@ export function DialogCerrarPeriodo({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        className="rounded-ctrl bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-      >
-        Cerrar período
-      </button>
+      {controlado ? null : (
+        <button
+          type="button"
+          onClick={() => setAbierto(true)}
+          className="rounded-ctrl bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          Cerrar período
+        </button>
+      )}
 
       <ModalActoExplicito
         open={abierto}
@@ -88,9 +99,10 @@ export function DialogCerrarPeriodo({
         titulo={`Vas a cerrar el período de ${sellerNombre}`}
         consecuencia={
           <>
-            Después de cerrarlo, las entregas nuevas de este seller van al período
-            siguiente. <strong>Todavía no se factura nada</strong>: eso es un paso
-            aparte. Se puede volver a abrir mientras no esté facturado.
+            Después de cerrarlo, las entregas nuevas de este seller van al
+            período siguiente. <strong>Todavía no se factura nada</strong>: eso
+            es un paso aparte. Se puede volver a abrir mientras no esté
+            facturado.
           </>
         }
         resumen={[
@@ -99,10 +111,16 @@ export function DialogCerrarPeriodo({
             valor: `${formatearFechaCorta(fechaInicio)} – ${formatearFechaCorta(fechaFin)}`,
             mono: true,
           },
-          { etiqueta: "Líneas que se consolidan", valor: totalLineas, mono: true },
+          {
+            etiqueta: "Líneas que se consolidan",
+            valor: totalLineas,
+            mono: true,
+          },
         ]}
         total={
-          montoTotalClp !== null ? { etiqueta: "Total del período", monto: montoTotalClp } : undefined
+          montoTotalClp !== null
+            ? { etiqueta: "Total del período", monto: montoTotalClp }
+            : undefined
         }
         avisos={
           error
@@ -111,8 +129,8 @@ export function DialogCerrarPeriodo({
                   tono: "fault",
                   texto: (
                     <>
-                      <strong>No pudimos cerrar el período.</strong> {error} Sigue abierto
-                      y puedes volver a intentarlo.
+                      <strong>No pudimos cerrar el período.</strong> {error}{" "}
+                      Sigue abierto y puedes volver a intentarlo.
                     </>
                   ),
                 },

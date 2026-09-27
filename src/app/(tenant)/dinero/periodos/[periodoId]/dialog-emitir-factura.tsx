@@ -26,6 +26,10 @@
  * override en bitácora antes de emitir.
  */
 
+import {
+  useAbiertoControlable,
+  type AbiertoControlable,
+} from "../usar-abierto-controlable";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
@@ -51,7 +55,7 @@ import {
   accionRegistrarPreflightOmitido,
 } from "./actions";
 
-interface Props {
+interface Props extends AbiertoControlable {
   periodoId: string;
   sellerNombre: string;
   totalLineas: number;
@@ -79,15 +83,23 @@ export function DialogEmitirFactura({
   modoDte,
   composicion,
   autorNombre,
+  abierto: abiertoExterno,
+  onAbiertoChange,
 }: Props) {
   const router = useRouter();
-  const [abierto, setAbierto] = useState(false);
+  const { controlado, abierto, setAbierto } = useAbiertoControlable({
+    abierto: abiertoExterno,
+    onAbiertoChange,
+  });
   const [isPending, startTransition] = useTransition();
   const esReal = modoDte === "real";
 
-  const [estadoPreflight, setEstadoPreflight] = useState<EstadoVerificacion>("verificando");
+  const [estadoPreflight, setEstadoPreflight] =
+    useState<EstadoVerificacion>("verificando");
   const [preflight, setPreflight] = useState<ResultadoPreflight | null>(null);
-  const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<string | null>(null);
+  const [mensajeErrorPreflight, setMensajeErrorPreflight] = useState<
+    string | null
+  >(null);
   const [continuarSinVerificar, setContinuarSinVerificar] = useState(false);
   // Regla 56: **ningún error de dinero va en notificación temporal.** Van
   // embebidos y se quedan. Un toast de 4 segundos sobre una emisión fallida se
@@ -129,7 +141,10 @@ export function DialogEmitirFactura({
       if (verificacionOmitida) {
         try {
           await accionRegistrarPreflightOmitido("emitir_factura", periodoId, {
-            motivo: estadoPreflight === "no_verificable" ? "preflight_fallido" : "reparos_ignorados",
+            motivo:
+              estadoPreflight === "no_verificable"
+                ? "preflight_fallido"
+                : "reparos_ignorados",
             codigos: preflight?.advertencias.map((r) => r.codigo) ?? [],
           });
         } catch (err) {
@@ -163,20 +178,22 @@ export function DialogEmitirFactura({
           titulo: "La emisión quedó en curso",
           cuerpo: esReal ? (
             <>
-              Te avisamos cuando el SII responda. El resultado aparece en esta misma
-              pantalla.
+              Te avisamos cuando el SII responda. El resultado aparece en esta
+              misma pantalla.
             </>
           ) : (
             <>
-              Modo de pruebas: <strong>no se envía al SII</strong>. Te avisamos cuando
-              termine.
+              Modo de pruebas: <strong>no se envía al SII</strong>. Te avisamos
+              cuando termine.
             </>
           ),
           // Solo lo que el resumen de arriba NO dice ya. Repetir seller y total
           // acá los mostraba dos veces — y peor: el resumen trae el NETO del
           // preflight y el período guarda el BRUTO, así que quedaban dos cifras
           // distintas, juntas, sin que ninguna dijera cuál era cuál (regla 18).
-          datos: [{ etiqueta: "Folio", valor: "se asigna al generarse el documento" }],
+          datos: [
+            { etiqueta: "Folio", valor: "se asigna al generarse el documento" },
+          ],
         });
         router.refresh();
       } else {
@@ -186,18 +203,21 @@ export function DialogEmitirFactura({
   }
 
   const resumenCobro =
-    preflight && preflight.resumen.tipoAccion === "emitir_factura" ? preflight.resumen : null;
+    preflight && preflight.resumen.tipoAccion === "emitir_factura"
+      ? preflight.resumen
+      : null;
 
   // Bloqueado se muestra DESHABILITADO CON MOTIVO, nunca oculto: un botón que
   // desaparece hace pensar que la pantalla está incompleta.
-  const avisosModal: { tono: "attention" | "fault"; texto: React.ReactNode }[] = [];
+  const avisosModal: { tono: "attention" | "fault"; texto: React.ReactNode }[] =
+    [];
   if (errorEmision) {
     avisosModal.push({
       tono: "fault",
       texto: (
         <>
-          <strong>No pudimos emitir la factura.</strong> {errorEmision} El período sigue
-          cerrado y puedes volver a intentarlo.
+          <strong>No pudimos emitir la factura.</strong> {errorEmision} El
+          período sigue cerrado y puedes volver a intentarlo.
         </>
       ),
     });
@@ -231,10 +251,12 @@ export function DialogEmitirFactura({
 
   return (
     <>
-      <Button onClick={() => setAbierto(true)} size="sm">
-        <FileText className="size-4" aria-hidden="true" />
-        Emitir factura
-      </Button>
+      {controlado ? null : (
+        <Button onClick={() => setAbierto(true)} size="sm">
+          <FileText className="size-4" aria-hidden="true" />
+          Emitir factura
+        </Button>
+      )}
 
       <ModalActoExplicito
         open={abierto}
@@ -256,14 +278,14 @@ export function DialogEmitirFactura({
           esReal ? (
             <>
               Esto la envía al Servicio de Impuestos Internos y{" "}
-              <strong>no se puede deshacer</strong>: Rutax todavía no emite notas de
-              crédito. Revisa el detalle antes de continuar.
+              <strong>no se puede deshacer</strong>: Rutax todavía no emite
+              notas de crédito. Revisa el detalle antes de continuar.
             </>
           ) : (
             <>
-              Se generará en <strong>modo de pruebas</strong>: no se envía al SII. Es
-              una simulación para probar el flujo; en producción este paso es
-              irreversible.
+              Se generará en <strong>modo de pruebas</strong>: no se envía al
+              SII. Es una simulación para probar el flujo; en producción este
+              paso es irreversible.
             </>
           )
         }

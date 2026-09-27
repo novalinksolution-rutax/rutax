@@ -326,7 +326,7 @@ export function PanelTrazabilidadFinanciera({
                               {traducirEstadoPeriodoCobro(periodo.estado, factura?.folio)}
                             </EtiquetaEstado>
                             <Link
-                              href={`/dinero/periodos/${periodo.id}`}
+                              href={`/dinero/periodos?periodo=${periodo.id}`}
                               className="text-xs font-medium text-primary hover:underline"
                             >
                               Ver período

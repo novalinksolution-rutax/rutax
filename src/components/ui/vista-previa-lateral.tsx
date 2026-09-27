@@ -128,7 +128,17 @@ export function ProveedorVistaPreviaLateral<D>({
   useEffect(() => {
     if (!id) return;
     const alTeclear = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setId(null);
+      if (e.key !== "Escape") return;
+      // 🔴 Si hay un diálogo o un menú abierto encima, Escape es SUYO: cerraba
+      // el diálogo y además el panel, y quien cancelaba una acción perdía la
+      // ficha que estaba mirando.
+      if (
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"]',
+        )
+      )
+        return;
+      setId(null);
     };
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
@@ -223,7 +233,9 @@ export function BloqueVistaPrevia({
 }) {
   return (
     <section>
-      <h3 className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">{titulo}</h3>
+      <h3 className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
+        {titulo}
+      </h3>
       <div className="mt-1.5">{children}</div>
     </section>
   );
@@ -258,7 +270,10 @@ export function DatoVistaPrevia({
 // El panel
 // =============================================================================
 
-type Fase<D> = { fase: "cargando" } | { fase: "listo"; datos: D } | { fase: "falla" };
+type Fase<D> =
+  | { fase: "cargando" }
+  | { fase: "listo"; datos: D }
+  | { fase: "falla" };
 
 /**
  * El contenedor. **Se monta una vez y no se vuelve a montar al cambiar de fila.**
@@ -309,7 +324,10 @@ function Panel<D>({
         onPointerDown={alTomar}
         className="flex shrink-0 cursor-grab touch-none justify-center py-2.5 active:cursor-grabbing lg:hidden"
       >
-        <span className="h-1 w-10 rounded-full bg-line-strong" aria-hidden="true" />
+        <span
+          className="h-1 w-10 rounded-full bg-line-strong"
+          aria-hidden="true"
+        />
         <span className="sr-only">Arrastra hacia abajo para cerrar</span>
       </div>
 
@@ -354,7 +372,10 @@ function Contenido<D>({
     let vigente = true;
     void cargar(id).then(
       (r) => {
-        if (vigente) setEstado(r.ok ? { fase: "listo", datos: r.datos } : { fase: "falla" });
+        if (vigente)
+          setEstado(
+            r.ok ? { fase: "listo", datos: r.datos } : { fase: "falla" },
+          );
       },
       () => {
         if (vigente) setEstado({ fase: "falla" });
@@ -379,7 +400,11 @@ function Contenido<D>({
     >
       {estado.fase === "cargando" && <PanelCargando onCerrar={onCerrar} />}
       {estado.fase === "falla" && (
-        <PanelFalla titulo={tituloFalla} texto={textoFalla} onCerrar={onCerrar} />
+        <PanelFalla
+          titulo={tituloFalla}
+          texto={textoFalla}
+          onCerrar={onCerrar}
+        />
       )}
       {estado.fase === "listo" && (
         <>
@@ -394,7 +419,9 @@ function Contenido<D>({
               animationFillMode: "backwards",
             }}
           >
-            <div className="min-w-0 flex-1">{render.encabezado(estado.datos)}</div>
+            <div className="min-w-0 flex-1">
+              {render.encabezado(estado.datos)}
+            </div>
             <BotonCerrar onCerrar={onCerrar} />
           </header>
 
@@ -422,7 +449,11 @@ function PanelCargando({ onCerrar }: { onCerrar: () => void }) {
       </div>
       <div className="flex-1 space-y-4 p-5">
         {[64, 44, 72].map((alto, i) => (
-          <div key={i} className="animate-pulse rounded bg-muted" style={{ height: alto }} />
+          <div
+            key={i}
+            className="animate-pulse rounded bg-muted"
+            style={{ height: alto }}
+          />
         ))}
       </div>
     </div>

@@ -30,16 +30,13 @@
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { puedeEmitirFacturas } from "@/modules/identidad/capacidades";
-import {
-  armarVistaPreviaPeriodo,
-  type VistaPreviaPeriodo,
-} from "@/modules/dinero/vista-previa-periodo";
+import { puedeEmitirFacturas, puedeVerPeriodosCobro } from "@/modules/identidad/capacidades";
+import { cargarFichaPeriodo, type FichaPeriodo } from "./_ficha/datos";
 
 const REGEX_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type RespuestaVistaPreviaPeriodo =
-  | { ok: true; datos: VistaPreviaPeriodo }
+  | { ok: true; datos: FichaPeriodo }
   | { ok: false };
 
 export async function accionVistaPreviaPeriodo(
@@ -50,14 +47,16 @@ export async function accionVistaPreviaPeriodo(
 
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario?.tenantId) return { ok: false };
-  if (!puedeEmitirFacturas(sesion.usuario)) return { ok: false };
+  // El gate de la PANTALLA (ver): la ficha reemplaza a la página de detalle,
+  // que ya se abría con esta capacidad. Las acciones de dinero piden además
+  // `emitir_facturas`, y el dominio lo vuelve a validar al ejecutarlas.
+  if (!puedeVerPeriodosCobro(sesion.usuario)) return { ok: false };
 
   try {
-    const datos = await armarVistaPreviaPeriodo(
-      crearClienteServiceRole(),
-      sesion.usuario.tenantId,
-      periodoId,
-    );
+    const datos = await cargarFichaPeriodo(crearClienteServiceRole(), sesion.usuario.tenantId, periodoId, {
+      puedeEmitir: puedeEmitirFacturas(sesion.usuario),
+      autorNombre: sesion.nombreCompleto ?? "Tu cuenta",
+    });
     return datos ? { ok: true, datos } : { ok: false };
   } catch {
     // El panel dibuja su propio estado de fallo. No se propaga la excepción:

@@ -45,16 +45,13 @@ import { etiquetaFechaCivilCorta } from "@/lib/ui/rango-fecha";
 import { FiltrosPeriodosForm } from "./filtros-periodos";
 import { IndicadorFolio } from "@/components/ui/indicador-folio";
 import { contarFoliosDisponibles } from "@/modules/dinero/folios-disponibles";
-import { TablaPeriodos, type FilaPeriodoVista } from "./tabla-periodos";
+import { TablaPeriodos, type FilaPeriodoVista, type GrupoPeriodos } from "./tabla-periodos";
 
 export const metadata: Metadata = {
   title: "Períodos de cobro",
 };
 
 const LIMITE = 20;
-
-/** Clave del cajón transversal: no es un estado del período. */
-const CAJON_PROBLEMAS = "problemas";
 
 interface SearchParams {
   seller?: string;
@@ -87,7 +84,6 @@ export default async function PaginaPeriodosCobro({
   const tenantId = sesion.usuario.tenantId;
 
   const filtroSeller = params.seller ?? "";
-  const filtroEstado = params.estado ?? "";
   const pagina = Math.max(1, parseInt(params.pagina ?? "1", 10));
 
   const cliente = crearClienteServiceRole();
@@ -175,41 +171,12 @@ export default async function PaginaPeriodosCobro({
   // Los contadores van sobre el conjunto filtrado MENOS el filtro de estado,
   // que es justo lo que el cajón elige. Un contador que cuenta la página, o que
   // se recalcula con el cajón puesto, es un contador que miente.
-  const conteo = (predicado: (p: PeriodoEnriquecido) => boolean) =>
-    enriquecidos.filter(predicado).length;
-
-  const cajones = [
-    { clave: "abierto", etiqueta: "Abiertos", conteo: conteo((p) => p.estado === "abierto") },
-    { clave: "cerrado", etiqueta: "Cerrados", conteo: conteo((p) => p.estado === "cerrado") },
-    { clave: "facturado", etiqueta: "Facturados", conteo: conteo((p) => p.estado === "facturado") },
-  ];
-  // «Con problemas» CRUZA los estados —un cerrado con excepción y un facturado
-  // que el SII rechazó cuentan los dos—, así que no suma con los de arriba: sus
-  // filas ya están ahí. Va como transversal y la barra lo declara.
-  const cajonTransversal = {
-    clave: CAJON_PROBLEMAS,
-    etiqueta: "Con problemas",
-    conteo: conteo((p) => p.conProblema),
-  };
-  const cajonExcluido = {
-    clave: "anulado",
-    etiqueta: "Anulados",
-    conteo: conteo((p) => p.estado === "anulado"),
-  };
-
-  const visibles =
-    filtroEstado === CAJON_PROBLEMAS
-      ? enriquecidos.filter((p) => p.conProblema)
-      : filtroEstado
-        ? enriquecidos.filter((p) => p.estado === filtroEstado)
-        : enriquecidos;
-
-  const offset = (pagina - 1) * LIMITE;
-  const paginados = visibles.slice(offset, offset + LIMITE);
-  const totalPaginas = Math.ceil(visibles.length / LIMITE);
-
-  const filas: FilaPeriodoVista[] = paginados.map((p) => ({
+  // Agrupado por lo que pide, en vez de cajones de filtro (rediseño 2026-09-27).
+  // Solo «Facturados» se pagina: es el único grupo que crece sin tope; los que
+  // piden acción están acotados por la cantidad de sellers.
+  const aFila = (p: PeriodoEnriquecido): FilaPeriodoVista => ({
     id: p.id,
+    sellerId: p.sellerId,
     sellerNombre: p.sellerNombre,
     sellerRut: p.sellerRut,
     periodoEtiqueta: etiquetaPeriodo(p.fechaInicio, p.fechaFin),
@@ -221,21 +188,36 @@ export default async function PaginaPeriodosCobro({
     folio: p.dte?.folio ?? null,
     estadoSii: p.dte?.estadoSii ?? null,
     estadoCobro: p.estadoCobro,
-    montoPagadoClp: p.montoPagadoClp,
     excepcionesBloqueantes: p.excepcionesBloqueantes,
-    tienePdf: Boolean(p.dte?.pdfRef),
-    tieneXml: Boolean(p.dte?.xmlDteRef),
-  }));
+  });
+  const vivos = enriquecidos.filter((p) => p.estado !== "anulado");
+  const conProblemas = vivos.filter((p) => p.conProblema);
+  const sinProblema = vivos.filter((p) => !p.conProblema);
+  const facturados = sinProblema.filter((p) => p.estado === "facturado");
+  const totalPaginas = Math.max(1, Math.ceil(facturados.length / LIMITE));
+  const offset = (pagina - 1) * LIMITE;
 
-  // ── La bajada del encabezado ─────────────────────────────────────────────
+  const grupos: GrupoPeriodos[] = [
+    { titulo: "Con problemas", lista: conProblemas },
+    { titulo: "Para facturar", lista: sinProblema.filter((p) => p.estado === "cerrado") },
+    { titulo: "Abiertos", lista: sinProblema.filter((p) => p.estado === "abierto") },
+    { titulo: "Facturados", lista: facturados, pagina: true },
+    { titulo: "Anulados", lista: enriquecidos.filter((p) => p.estado === "anulado"), plegado: true },
+  ]
+    .filter((g) => g.lista.length > 0)
+    .map((g) => ({
+      titulo: g.titulo,
+      total: g.lista.length,
+      plegado: g.plegado,
+      filas: (g.pagina ? g.lista.slice(offset, offset + LIMITE) : g.lista).map(aFila),
+    }));
+
   const abiertos = enriquecidos.filter((p) => p.estado === "abierto");
   const cierre = proximoCierreAutomatico(abiertos, hoyEnSantiago());
-  const sellersConPeriodo = new Set(enriquecidos.map((p) => p.sellerId)).size;
 
   function urlPagina(n: number) {
     const sp = new URLSearchParams();
     if (filtroSeller) sp.set("seller", filtroSeller);
-    if (filtroEstado) sp.set("estado", filtroEstado);
     if (n > 1) sp.set("pagina", String(n));
     const s = sp.toString();
     return `/dinero/periodos${s ? `?${s}` : ""}`;
@@ -246,27 +228,13 @@ export default async function PaginaPeriodosCobro({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-heading text-2xl font-semibold">Períodos de cobro</h1>
-          {/* La bajada dice lo que va a pasar solo. El tablero escribe «cierre
-              sugerido», pero acá no hay nada que sugerir: el cron corre a las
-              02:00 y cierra todo período cuya fecha de fin ya pasó. */}
-          {!errorCarga ? (
+          {/* Solo lo que va a pasar solo: el cron de las 02:00 cierra todo
+              período cuya fecha de fin ya pasó. */}
+          {!errorCarga && cierre ? (
             <p className="rx-num mt-0.5 text-xs text-fg-muted">
-              {sellersConPeriodo} {sellersConPeriodo === 1 ? "seller" : "sellers"}
-              {cierre ? (
-                cierre.vencido ? (
-                  <>
-                    {" · "}
-                    {cierre.cuantos} {cierre.cuantos === 1 ? "período venció" : "períodos vencieron"}{" "}
-                    y cierran en la próxima pasada
-                  </>
-                ) : (
-                  <>
-                    {" · "}
-                    {cierre.cuantos} {cierre.cuantos === 1 ? "cierra solo" : "cierran solos"} el{" "}
-                    {etiquetaFechaCivilCorta(cierre.fecha)}
-                  </>
-                )
-              ) : null}
+              {cierre.vencido
+                ? `${cierre.cuantos} ${cierre.cuantos === 1 ? "cierra" : "cierran"} esta noche`
+                : `${cierre.cuantos} ${cierre.cuantos === 1 ? "cierra" : "cierran"} el ${etiquetaFechaCivilCorta(cierre.fecha)}`}
             </p>
           ) : null}
         </div>
@@ -288,7 +256,7 @@ export default async function PaginaPeriodosCobro({
       <FiltrosPeriodosForm
         sellers={sellersDisponibles}
         filtroSeller={filtroSeller}
-        hayFiltroActivo={Boolean(filtroSeller || filtroEstado)}
+        hayFiltroActivo={Boolean(filtroSeller)}
       />
 
       {errorCarga ? (
@@ -296,12 +264,12 @@ export default async function PaginaPeriodosCobro({
           role="alert"
           className="border border-fault-line bg-fault-bg px-4 py-3.5 text-sm leading-relaxed text-fault-fg"
         >
-          <strong className="font-medium">No se pudieron leer los períodos.</strong> No emitas
-          nada hasta poder verlos — recarga en unos segundos.
+          No se pudieron leer los períodos. No emitas nada hasta verlos; recarga en unos
+          segundos.
         </div>
-      ) : visibles.length === 0 ? (
+      ) : grupos.length === 0 ? (
         <div className="border border-line bg-bg-sunken px-6 py-12 text-center">
-          {filtroSeller || filtroEstado ? (
+          {filtroSeller ? (
             <>
               <p className="text-fg-muted">Ningún período cae en este filtro.</p>
               <Link
@@ -312,23 +280,12 @@ export default async function PaginaPeriodosCobro({
               </Link>
             </>
           ) : (
-            <p className="text-fg-muted">
-              Todavía no hay períodos de cobro. Se abren solos con la primera entrega de cada
-              seller.
-            </p>
+            <p className="text-fg-muted">Todavía no hay períodos.</p>
           )}
         </div>
       ) : (
         <>
-          <TablaPeriodos
-            filas={filas}
-            cajones={cajones}
-            cajonExcluido={cajonExcluido}
-            cajonTransversal={cajonTransversal}
-            cajonActivo={filtroEstado || null}
-            totalFiltrado={visibles.length}
-            puedeCerrar
-          />
+          <TablaPeriodos grupos={grupos} />
 
           {totalPaginas > 1 ? (
             <div className="flex items-center justify-end gap-3 text-sm">
