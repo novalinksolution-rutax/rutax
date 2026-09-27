@@ -61,7 +61,6 @@ import { FichaFila390 } from "@/components/ui/ficha-fila-390";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
-import { BarraCajones } from "@/components/ui/barra-cajones";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -172,7 +171,6 @@ export function PanelNomina({
 
   const enNomina = conductores.filter((c) => c.estado === "activo");
   const fuera = conductores.filter((c) => c.estado === "inactivo");
-  const disponiblesHoy = enNomina.filter((c) => c.disponible).length;
 
   const visibles = cajon === "inactivos" ? fuera : enNomina;
   const seleccionado = conductores.find((c) => c.id === seleccionadoId) ?? null;
@@ -192,12 +190,7 @@ export function PanelNomina({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold">Conductores</h1>
-          <p className="rx-num mt-1 text-xs text-fg-muted">
-            {enNomina.length} en nómina · {disponiblesHoy} disponibles hoy
-          </p>
-        </div>
+        <h1 className="font-heading text-2xl font-semibold">Conductores</h1>
         <DialogNuevoConductor
           onCreado={(c) =>
             setConductores((prev) =>
@@ -223,39 +216,15 @@ export function PanelNomina({
       {zonas.length === 0 ? (
         <div className="flex items-start gap-2 border border-attention-line bg-attention-bg px-4 py-3 text-sm text-attention-fg">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <p className="leading-relaxed">
-            Aún no configuraste tus zonas de cobertura. Sin zonas, el ruteo no tiene por dónde
-            ordenar las paradas.{" "}
+          <p>
+            Sin zonas de cobertura.{" "}
             <Link href="/configuracion/zonas" className="font-medium underline underline-offset-4">
-              Configúralas ahora
+              Configurar
             </Link>
-            .
           </p>
         </div>
       ) : null}
 
-      {/* La barra solo aparece si hay a quién filtrar: con la nómina entera
-          activa, un solo cajón no separa nada y es decoración.
-
-          `inactivos` va como cajón EXCLUIDO —tras el separador, en tono inerte—
-          porque no pertenece al conjunto operativo y no debe sumar con «en
-          nómina». Es exactamente el caso para el que la barra tiene esa figura. */}
-      {fuera.length > 0 ? (
-        <BarraCajones
-          cajones={[{ clave: "nomina", etiqueta: "En nómina", conteo: enNomina.length }]}
-          excluido={{
-            clave: "inactivos",
-            etiqueta: "Fuera de nómina",
-            conteo: fuera.length,
-          }}
-          activo={cajon}
-          onSeleccionar={(c) => {
-            setCajon(c);
-            setSeleccionadoId(null);
-          }}
-          total={conductores.length}
-        />
-      ) : null}
 
       {visibles.length === 0 ? (
         <EmptyState
@@ -264,11 +233,6 @@ export function PanelNomina({
             cajon === "inactivos"
               ? "Nadie fuera de la nómina"
               : "Todavía no tienes conductores"
-          }
-          descripcion={
-            cajon === "inactivos"
-              ? "Acá aparecen los conductores que diste de baja, para poder reincorporarlos."
-              : "Crea el primero con «Crear conductor» para empezar a armar el pool del día."
           }
         />
       ) : (
@@ -288,18 +252,55 @@ export function PanelNomina({
             </span>
             <span className="w-4 shrink-0" />
           </div>
-          {visibles.map((c) => (
-            <FilaConductor
-              key={c.id}
-              conductor={c}
-              hoy={estadoInicial.hoy[c.id]}
-              zonas={zonas}
-              seleccionado={c.id === seleccionadoId}
-              onSeleccionar={() => setSeleccionadoId(c.id)}
-            />
-          ))}
+          {/* 🔴 La nómina se agrupa por el hecho del día: quién se marcó y
+              quién no. El grupo reemplaza al distintivo de cada fila, y el que
+              falta queda a la vista sin filtrar nada. */}
+          {(cajon === "inactivos"
+            ? [{ titulo: null, lista: visibles }]
+            : [
+                { titulo: "Disponibles hoy", lista: visibles.filter((c) => c.disponible) },
+                { titulo: "No se han marcado", lista: visibles.filter((c) => !c.disponible) },
+              ]
+          )
+            .filter((g) => g.lista.length > 0)
+            .map((g) => (
+              <div key={g.titulo ?? "fuera"} role="rowgroup">
+                {g.titulo ? (
+                  <p className="rx-num flex items-baseline justify-between border-b border-line bg-bg-sunken/60 px-3 py-1.5 text-[10px] font-medium tracking-[0.08em] text-fg-muted uppercase">
+                    <span>{g.titulo}</span>
+                    <span>{g.lista.length}</span>
+                  </p>
+                ) : null}
+                {g.lista.map((c) => (
+                  <FilaConductor
+                    key={c.id}
+                    conductor={c}
+                    hoy={estadoInicial.hoy[c.id]}
+                    zonas={zonas}
+                    seleccionado={c.id === seleccionadoId}
+                    onSeleccionar={() => setSeleccionadoId(c.id)}
+                  />
+                ))}
+              </div>
+            ))}
         </div>
       )}
+
+      {/* Los que están fuera de la nómina no son parte del día: un enlace al
+          pie, no una barra de filtros con su leyenda. */}
+      {fuera.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            setCajon(cajon === "inactivos" ? null : "inactivos");
+            setSeleccionadoId(null);
+          }}
+          className="inline-flex min-h-11 items-center gap-1 text-sm text-fg-muted hover:text-fg"
+        >
+          {cajon === "inactivos" ? "Volver a la nómina" : `Fuera de nómina · ${fuera.length}`}
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </button>
+      ) : null}
 
       <CajonConductor
         conductor={seleccionado}
@@ -390,40 +391,11 @@ function FilaConductor({
   const nombresZona = conductor.zonaIds
     .map((id) => zonas.find((z) => z.id === id)?.nombre)
     .filter((n): n is string => Boolean(n));
-  const relacion = TEXTO_RELACION_CONDUCTOR[conductor.tipoRelacion] ?? conductor.tipoRelacion;
   const textoZonas = nombresZona.length > 0 ? nombresZona.join(", ") : "Sin zonas";
-  /**
-   * El día, condensado para la ficha de 390 — donde no hay columnas.
-   *
-   * Se prefiere la ruta al cupo: el cupo es una constante del conductor y la
-   * ruta es lo que está pasando. Si no tiene ruta todavía, entonces sí manda el
-   * cupo, que es lo que dice cuánto se le puede dar.
-   */
-  /**
-   * En 390 el vehículo entra en la línea de detalle, no en una fila propia. Y va
-   * PEGADO al cupo, formando un solo segmento —«Auto · 30 paradas»— igual que en
-   * la tabla, donde comparten celda.
-   *
-   * ⚠️ Cuando el vehículo está, el cupo pierde las palabras «de cupo». No es
-   * capricho: esta línea es `truncate`, o sea UNA sola con puntos suspensivos, y
-   * a 375 px ya se cortaba antes de esto —«30 paradas de cupo · Si…»—. El
-   * vehículo delante aporta el contexto que esas dos palabras cargaban, así que
-   * salen y el añadido no le quita ancho a las zonas.
-   *
-   * Se omite cuando no está declarado: en el teléfono el espacio es el recurso
-   * escaso, y «Sin declarar» ahí gasta ancho para decir que falta un dato que se
-   * completa desde el escritorio. En la tabla sí se dice, que es donde el
-   * courier revisa su nómina.
-   */
-  const vehiculoCorto = conductor.vehiculo
-    ? TEXTO_VEHICULO_CONDUCTOR[conductor.vehiculo]
-    : null;
-  const resumenDelDia =
+  const rutaDeHoy =
     hoyDelDia?.manifiestoId && hoyDelDia.paradasTotales > 0
       ? `${hoyDelDia.paradasCerradas} de ${hoyDelDia.paradasTotales} paradas`
-      : vehiculoCorto
-        ? `${conductor.capacidadParadas} paradas`
-        : `${conductor.capacidadParadas} paradas de cupo`;
+      : null;
   const distintivo = <DistintivoEstado tono={hoy.tono} etiqueta={hoy.etiqueta} />;
 
   return (
@@ -445,19 +417,25 @@ function FilaConductor({
       {/* En 390 la ficha; de `sm` hacia arriba, la grilla de columnas. Es el
           MISMO botón: cambia la disposición del contenido, no el objeto
           tocable. */}
-      <FichaFila390
-        className="flex-1 py-2 sm:hidden"
-        estado={distintivo}
-        clasificacion={relacion}
-        titulo={conductor.nombre}
-        detalle={
-          fueraDeNomina
-            ? conductor.rut
-            : [conductor.rut, vehiculoCorto, resumenDelDia, textoZonas]
-                .filter(Boolean)
-                .join(" · ")
-        }
-      />
+      {fueraDeNomina ? (
+        <FichaFila390
+          className="flex-1 py-2 sm:hidden"
+          estado={distintivo}
+          titulo={conductor.nombre}
+          detalle={conductor.rut}
+        />
+      ) : (
+        // En teléfono, el nombre y lo que está haciendo hoy. Nada más: el RUT,
+        // la relación, el vehículo y las zonas viven en el cajón.
+        <span className="flex min-h-[52px] min-w-0 flex-1 flex-col justify-center gap-0.5 py-2 sm:hidden">
+          <span className="truncate text-base leading-tight font-medium text-fg">
+            {conductor.nombre}
+          </span>
+          {rutaDeHoy ? (
+            <span className="rx-num truncate text-xs text-fg-muted">{rutaDeHoy}</span>
+          ) : null}
+        </span>
+      )}
 
       <span className={`hidden flex-1 sm:grid ${COLUMNAS_ANCHO} sm:items-center`}>
         <span className="min-w-0 py-2.5 pr-3">
@@ -466,7 +444,7 @@ function FilaConductor({
               propiedad de la persona, no una quinta magnitud del día, y en
               columna propia gastaba un ancho que ahora usa la ruta. */}
           <span className="mt-1 flex min-w-0 items-center gap-1.5">
-            {distintivo}
+            {fueraDeNomina ? distintivo : null}
             <span className="rx-num min-w-0 truncate text-xs text-fg-muted">
               {/* Sin enlace `tel:` acá: la fila entera ya es pulsable y abre el
                   cajón, y un enlace dentro de un control pulsable se roba el
@@ -617,7 +595,7 @@ function CajonConductor({
               las cosas que hay detrás esconde las otras dos. */}
           <Link
             href={`/conductores/${conductor.id}`}
-            className="flex items-center justify-between gap-2 border-t border-line pt-3 text-sm text-accent-text hover:underline"
+            className="flex min-h-11 items-center justify-between gap-2 border-t border-line pt-2 text-sm text-accent-text hover:underline"
           >
             <span className="min-w-0">Historial, pagos y acceso a la app</span>
             <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
@@ -692,11 +670,9 @@ function DisponibilidadDelDia({ conductor }: { conductor: ConductorEnNomina }) {
           etiqueta={conductor.disponible ? "Se marcó" : "No se ha marcado"}
         />
       </div>
-      <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-        {conductor.disponible
-          ? "Lo marcó él desde su app. Se apaga solo a medianoche."
-          : "Lo marca él desde su app, al empezar su turno. Mientras no lo haga no entra en la asignación automática, y desde acá no se puede marcar por él: si no aparece, hay que llamarlo."}
-      </p>
+      {conductor.disponible ? null : (
+        <p className="mt-1 text-xs text-fg-muted">Se marca desde su app.</p>
+      )}
     </div>
   );
 }
@@ -884,10 +860,8 @@ function ZonaDeConsecuencia({
       <div className="mt-3">
         <p className="text-sm font-medium">Sacar de la nómina</p>
         <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">
-          Deja de aparecer para asignar y no vuelve solo. Sus entregas y
-          liquidaciones se conservan.{" "}
-          <strong className="font-medium text-fg">No le quita el acceso a la app</strong>: eso
-          se maneja en Equipo.
+          Deja de aparecer para asignar. Sus entregas y liquidaciones se conservan.{" "}
+          <strong className="font-medium text-fg">No le quita acceso a la app</strong>.
         </p>
         {!puedeGestionarNomina ? (
           <p className="mt-2 text-xs text-fg-muted">
@@ -977,8 +951,7 @@ function DialogSacarDeNomina({
             rows={3}
           />
           <p className="text-xs text-fg-muted">
-            Queda en la bitácora con tu nombre. Lo va a leer quien revise esta baja dentro de
-            seis meses.
+            Queda registrado en la bitácora.
           </p>
         </div>
         {error ? (

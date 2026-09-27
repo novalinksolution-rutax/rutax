@@ -160,13 +160,12 @@ export function DialogNuevoConductor({
         setOpen(v);
       }}
       disparador={
-        <Button size="sm">
+        <Button size="sm" className="min-h-11 sm:min-h-8">
           <UserPlus className="size-4" aria-hidden="true" />
           Crear conductor
         </Button>
       }
       titulo="Crear conductor"
-      subtitulo="Se suma a tu nómina. La disponibilidad la marca él, desde su app."
     >
       <form onSubmit={guardar} className="space-y-4">
         <div className="space-y-2">
@@ -538,7 +537,7 @@ export function EditorDatosBancarios({
         return;
       }
       onActualizado(resp.datos);
-      setExito("Datos bancarios guardados correctamente.");
+      setExito("Guardado.");
       setEditando(false);
     });
   }
@@ -600,7 +599,7 @@ export function EditorDatosBancarios({
             <Alert className="border-warning bg-warning-subtle text-warning-subtle-foreground">
               <AlertTriangle className="size-4" aria-hidden="true" />
               <AlertDescription>
-                Sin datos bancarios — el conductor no puede recibir pagos.
+                Sin datos bancarios — no puede recibir pagos.
               </AlertDescription>
             </Alert>
           )}
@@ -829,8 +828,7 @@ export function SeccionRedistribucion({
           Se cayó a mitad de ruta
         </p>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Reparte sus paradas abiertas entre los demás y lo saca de la asignación de hoy. Para
-          volver, se marca él desde su app.
+          Reparte sus paradas entre los demás y lo saca de la asignación de hoy. Para volver, se marca desde su app.
         </p>
         <Button
           variant="outline"
