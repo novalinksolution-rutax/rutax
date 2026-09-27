@@ -62,6 +62,8 @@ import {
   actionToggleVentanaCorte,
 } from "@/app/(tenant)/configuracion/zonas/actions";
 
+const TODAS_LAS_ZONAS = "__todas__";
+
 export function VentanasCorteSeller({
   sellerId,
   zonas,
@@ -486,12 +488,18 @@ function FormularioVentanaCorte({
         {zonas.length > 0 && (
           <div className="space-y-2">
             <Label htmlFor="ventana-zona">Override por zona (opcional)</Label>
-            <Select value={zonaId} onValueChange={setZonaId}>
+            {/* 🔴 Radix no acepta `value=""` en un SelectItem: lanza al abrir y
+                tumba la pantalla entera. «Todas» viaja como centinela y se
+                traduce a "" (sin zona) al guardar. */}
+            <Select
+              value={zonaId || TODAS_LAS_ZONAS}
+              onValueChange={(v) => setZonaId(v === TODAS_LAS_ZONAS ? "" : v)}
+            >
               <SelectTrigger id="ventana-zona" className="w-full">
                 <SelectValue placeholder="Por defecto (todas las zonas)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Por defecto</SelectItem>
+                <SelectItem value={TODAS_LAS_ZONAS}>Por defecto</SelectItem>
                 {zonas.map((z) => (
                   <SelectItem key={z.id} value={z.id}>
                     {z.nombre}
