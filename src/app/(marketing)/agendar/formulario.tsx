@@ -35,7 +35,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { accionAgendar, type DatosAgendar, type ResultadoAgendar } from "./acciones";
 
-const FUENTES = ["Mercado Libre Flex", "Shopify", "Same-day propio", "Otra"];
+const FUENTES = ["Mercado Libre Flex", "Shopify", "Pedidos propios", "Otra"];
 const CLAVE_ENVIADO = "rutax:agendar_enviado_v1";
 
 const VACIO: DatosAgendar = {

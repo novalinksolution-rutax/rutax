@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Portada } from "./(marketing)/portada";
+import { PRECIO_POR_ENVIO_CLP } from "./(marketing)/_lib/precio";
 
 /**
  * La raíz hace DOS cosas, y por eso no se partió en dos archivos.
@@ -20,10 +22,10 @@ import { Portada } from "./(marketing)/portada";
  * es un viaje de más justo en la petición que decide si el visitante se queda.
  */
 export const metadata: Metadata = {
-  title: "Rutax · Tu operación Flex, de la colecta al pago",
+  title: "Rutax · Tu operación de reparto, de la colecta a la entrega",
   alternates: { canonical: "/" },
   description:
-    "Software para couriers de última milla en Chile: pedidos de Mercado Libre Flex, Shopify y same-day en un solo panel, con el cobro al seller y el pago al conductor hechos en cada entrega. $60 + IVA por envío.",
+    `Software para couriers de última milla en Chile: recibe los pedidos de tus clientes y gestiona retiros, rutas, entregas y liquidaciones en un solo lugar. ${formatearCLP(PRECIO_POR_ENVIO_CLP)} + IVA por envío.`,
 };
 
 export default async function Home() {

@@ -22,7 +22,7 @@ import { PRECIO_POR_ENVIO_CLP } from "./_lib/precio";
  * Rutax. Maqueta aprobada: https://claude.ai/artifact/3rBPrCvWSryJMVndfwnYnY.
  *
  * Decisiones del usuario que la gobiernan:
- * · **Precio público y por envío**: $60 + IVA, único (`_lib/precio.ts`).
+ * · **Precio público y por envío**: $120 + IVA, único (`_lib/precio.ts`).
  * · **«Comenzar» abre al asesor**, no un autoregistro: el alta de un courier la
  *   hace Rutax desde el backstage. Los tres botones abren el mismo modal.
  * · **WhatsApp de ventas propio**, distinto del número de avisos de la Cloud API.
@@ -56,11 +56,11 @@ function Hero() {
       >
         <div>
           <h1 className="text-[36px] leading-[1.06] font-bold tracking-[-0.036em] text-balance sm:text-[50px]">
-            Tu operación Flex, <span className="text-accent-text">de la colecta al pago.</span>
+            Tu operación de reparto, <span className="text-accent-text">de la colecta a la entrega.</span>
           </h1>
           <p className="mt-5 max-w-[42ch] text-lg text-fg-muted">
-            Gestionamos la cadena completa de Mercado Libre Flex y same-day para que muevas
-            grandes volúmenes de paquetes sin perder el control.
+            Recibe los pedidos de las tiendas de tus clientes y gestiona el retiro, las rutas y
+            las entregas desde un solo lugar.
           </p>
           <p className="mt-3 max-w-[42ch] text-lg text-fg-muted">
             Súmate a Rutax y haz crecer tu operación.

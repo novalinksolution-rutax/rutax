@@ -72,7 +72,7 @@ function destinoEquipo(): string | null {
 
 const ETIQUETA_MOTIVO = { demo: "Demo", ventas: "Ventas", comenzar: "Comenzar" } as const;
 
-const FUENTES_VALIDAS = ["Mercado Libre Flex", "Shopify", "Same-day propio", "Otra"];
+const FUENTES_VALIDAS = ["Mercado Libre Flex", "Shopify", "Pedidos propios", "Otra"];
 
 export async function accionAgendar(datos: EntradaAgendar): Promise<ResultadoAgendar> {
   // La validación es del servidor y no solo del navegador: un formulario que
