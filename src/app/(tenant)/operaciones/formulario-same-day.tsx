@@ -65,7 +65,7 @@ export function FormularioPedidoSameDay({
       abierto={abierto}
       onOpenChange={setAbierto}
       ancho="amplio"
-      titulo="Crear pedido same-day"
+      titulo="Crear pedido"
       subtitulo="Entra a la operación de hoy y genera su etiqueta."
       disparador={
         <Button className="shrink-0">
@@ -80,12 +80,12 @@ export function FormularioPedidoSameDay({
               cortando con puntos suspensivos. El nombre accesible se conserva
               entero para quien no ve el botón. */}
           {variante === "vacio" ? (
-            "Crear pedido same-day"
+            "Crear pedido"
           ) : (
             <>
-              <span className="hidden xl:inline">Crear pedido same-day</span>
+              <span className="hidden xl:inline">Crear pedido</span>
               <span className="hidden sm:inline xl:hidden">Crear</span>
-              <span className="sr-only sm:hidden">Crear pedido same-day</span>
+              <span className="sr-only sm:hidden">Crear pedido</span>
             </>
           )}
         </Button>

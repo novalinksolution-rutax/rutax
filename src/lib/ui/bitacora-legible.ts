@@ -42,7 +42,7 @@ const FRASES_ACCION: Record<string, string> = {
   "operacion.notificacion_incidencia_sin_gestion": "Avisó por incidencias sin gestionar",
   // Operación varias
   "operacion.etiqueta_descargada": "Descargó la etiqueta",
-  "operacion.etiqueta_same_day_descargada": "Descargó la etiqueta same-day",
+  "operacion.etiqueta_same_day_descargada": "Descargó la etiqueta de un pedido propio",
   "operacion.conductor_caido": "Marcó al conductor como caído",
   "operacion.redistribucion_completada": "Redistribuyó los pedidos del conductor",
   "operacion.pedidos_exportados": "Exportó datos de pedidos",

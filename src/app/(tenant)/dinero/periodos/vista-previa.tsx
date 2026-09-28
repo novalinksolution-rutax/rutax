@@ -195,7 +195,7 @@ function Cuerpo(d: FichaPeriodo, cerrar: () => void) {
               <FilaDato rotulo="Flex">{d.porTipoPedido.flex}</FilaDato>
             ) : null}
             {d.porTipoPedido.sameDay > 0 ? (
-              <FilaDato rotulo="Same-day">{d.porTipoPedido.sameDay}</FilaDato>
+              <FilaDato rotulo="Propios">{d.porTipoPedido.sameDay}</FilaDato>
             ) : null}
             {d.lineasConAjuste > 0 ? (
               <FilaDato rotulo="Con ajuste">

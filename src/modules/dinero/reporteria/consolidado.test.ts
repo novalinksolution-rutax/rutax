@@ -424,7 +424,7 @@ describe("obtenerReporteConsolidado", () => {
 
     expect(r.porFuente.map((f) => f.etiqueta).sort()).toEqual([
       "Mercado Libre Flex",
-      "Same-day",
+      "Pedido propio",
       "Shopify",
     ]);
     expect(r.filas.map((f) => f.codigo).sort()).toEqual(["#1001", "2000012345678", "RX-p3"]);

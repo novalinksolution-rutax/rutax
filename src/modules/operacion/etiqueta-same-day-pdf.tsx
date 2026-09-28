@@ -290,7 +290,7 @@ function DocumentoEtiqueta({
         size={formato === "termica" ? TAMANO_TERMICA : "A4"}
         style={estilos.pagina}
       >
-        <Text style={estilos.franja}>SAME-DAY · RUTAX</Text>
+        <Text style={estilos.franja}>ENVÍO · RUTAX</Text>
 
         <View style={estilos.bloqueQr}>
           {/* eslint-disable-next-line jsx-a11y/alt-text -- `Image` de @react-pdf/renderer, no <img> del DOM; no admite `alt`. */}

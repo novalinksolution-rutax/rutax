@@ -9,7 +9,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const fila: FilaReporte = {
   codigo: "RX-8HCZ-0PPB",
   fuente: "rutax_manual",
-  fuenteEtiqueta: "Same-day",
+  fuenteEtiqueta: "Pedido propio",
   tipo: "same_day",
   fechaHecho: "2026-08-27",
   // 🔴 Los ids van poblados a propósito: la prueba tiene que demostrar que NO

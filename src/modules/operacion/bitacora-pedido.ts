@@ -39,7 +39,7 @@ const FRASES: Record<string, string> = {
   "incidencia.resuelta_por_cancelacion": "cerró la incidencia al cancelarse el pedido",
   "incidencia.resuelta_por_devolucion": "cerró la incidencia con la devolución",
   "operacion.etiqueta_descargada": "descargó la etiqueta",
-  "operacion.etiqueta_same_day_descargada": "descargó la etiqueta same-day",
+  "operacion.etiqueta_same_day_descargada": "descargó la etiqueta",
   "operacion.conductor_caido": "marcó al conductor como caído",
   "operacion.redistribucion_completada": "redistribuyó los pedidos del conductor",
   "operacion.pedidos_exportados": "exportó los datos del pedido",

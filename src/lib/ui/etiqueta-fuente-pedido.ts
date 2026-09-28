@@ -27,21 +27,20 @@ const TEXTO_FUENTE: Record<FuentePedido, string> = {
   // «Flex» final se conserva porque sí carga información operativa: es la
   // fuente cuyo POD lo gobierna la app de Mercado Envíos.
   ml_flex: "Mercado Libre Flex",
-  rutax_manual: "Same-day",
+  rutax_manual: "Pedido propio",
   shopify: "Shopify",
 };
 
 const TEXTO_TIPO_ENTREGA: Record<TipoPedido, string> = {
   flex: "Flex",
-  same_day: "Same-day",
+  same_day: "Propio",
 };
 
 /**
  * De dónde vino el pedido, en el lenguaje del courier.
  *
- * `rutax_manual` se muestra como "Same-day" y no como "Manual" a propósito: es
- * el nombre con el que el courier ya llama a ese pedido en toda la operación, y
- * cambiarlo de paso sería renombrar algo que nadie pidió renombrar.
+ * `rutax_manual` se muestra como "Pedido propio" — es como el courier lo llama
+ * en toda la operación (en contraste con Mercado Libre Flex y Shopify).
  *
  * Ante un valor desconocido devuelve el crudo en vez de inventar: si mañana
  * entra una fuente y alguien olvida esta tabla, la pantalla lo delata.

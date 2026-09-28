@@ -71,11 +71,11 @@ export const FRASE_CAPACIDAD: Record<Capacidad, string> = {
      bajo el rótulo «Puedes» habla de un tercero que no existe.
      Si alguna vez se muestran a otro, hay que volver a mirarlas. */
   gestionar_conexion_ml_propia: "Conectar tu tienda o tu cuenta de Mercado Libre",
-  solicitar_same_day: "Pedir un envío same-day",
+  solicitar_same_day: "Pedir un envío propio",
   ver_documentos_propios: "Descargar tus facturas",
   ver_incidencias_propias: "Ver las incidencias de tus pedidos",
   reportar_incidencias_propias: "Reportar un problema con un pedido tuyo",
-  descargar_etiqueta_same_day: "Descargar la etiqueta de un same-day",
+  descargar_etiqueta_same_day: "Descargar la etiqueta de un pedido propio",
   gestionar_pedidos_propios: "Cancelar o editar tus pedidos",
   // --- Del conductor, en su app (misma nota que arriba) ---
   ver_ruta_propia: "Ver tu ruta del día",

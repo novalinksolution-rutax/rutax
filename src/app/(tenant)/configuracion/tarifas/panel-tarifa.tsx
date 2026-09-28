@@ -259,7 +259,7 @@ export function PanelTarifa({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="flex">Flex (Mercado Libre)</SelectItem>
-                  <SelectItem value="same_day">Same-day propio</SelectItem>
+                  <SelectItem value="same_day">Propio</SelectItem>
                 </SelectContent>
               </Select>
             </div>

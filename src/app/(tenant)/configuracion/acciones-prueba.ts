@@ -81,7 +81,7 @@ export async function actionCrearSameDayPrueba(
     return { ok: false, creados: 0, mensaje: "No hay sesión activa." };
   }
   if (!puedeAjustarOperacionDiaria(sesion.usuario)) {
-    return { ok: false, creados: 0, mensaje: "No tienes permiso para crear pedidos same-day." };
+    return { ok: false, creados: 0, mensaje: "No tienes permiso para crear pedidos." };
   }
 
   if (!sellerId) {

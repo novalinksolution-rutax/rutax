@@ -53,7 +53,7 @@ export function LanzadorHerramientaPrueba() {
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Herramienta de prueba · Pedidos same-day</DialogTitle>
+          <DialogTitle>Herramienta de prueba · Pedidos propios</DialogTitle>
         </DialogHeader>
 
         {cargando || !opciones ? (

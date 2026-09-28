@@ -58,7 +58,7 @@ export async function actionCambiarEstadoPedido(formData: FormData) {
   ) {
     return {
       error:
-        "Para cancelar este pedido usa el botón \"Cancelar pedido\": valida que sea same-day y revisa el estado del dinero antes de confirmar.",
+        "Para cancelar este pedido usa el botón \"Cancelar pedido\": valida que sea un pedido propio y revisa el estado del dinero antes de confirmar.",
     };
   }
 
@@ -98,7 +98,7 @@ export async function actionCrearPedidoSameDay(formData: FormData) {
   // La Server Action es invocable directamente, así que la comprobación no puede
   // vivir solo en el render — se impone también en el servidor.
   if (!puedeAjustarOperacionDiaria(sesion.usuario)) {
-    return { error: "No tienes permiso para crear pedidos same-day." };
+    return { error: "No tienes permiso para crear pedidos." };
   }
 
   const destinatarioNombre = formData.get("destinatarioNombre") as string;

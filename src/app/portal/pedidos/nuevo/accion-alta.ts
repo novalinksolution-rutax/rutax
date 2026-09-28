@@ -46,7 +46,7 @@ export async function accionCrearSameDaySeller(
     return { ok: false, mensaje: "Vuelve a iniciar sesión." };
   }
   if (!puedeSolicitarSameDay(sesion.usuario)) {
-    return { ok: false, mensaje: "Tu cuenta no puede crear envíos same-day." };
+    return { ok: false, mensaje: "Tu cuenta no puede crear envíos." };
   }
 
   try {

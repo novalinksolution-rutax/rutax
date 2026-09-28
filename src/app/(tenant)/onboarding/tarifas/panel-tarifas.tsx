@@ -227,7 +227,7 @@ function FormularioTarifaPorDefecto({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="flex">Flex</SelectItem>
-                  <SelectItem value="same_day">Same-day</SelectItem>
+                  <SelectItem value="same_day">Propio</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -468,7 +468,7 @@ function FormularioTarifaEspecifica({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="flex">Flex</SelectItem>
-              <SelectItem value="same_day">Same-day</SelectItem>
+              <SelectItem value="same_day">Propio</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -183,7 +183,7 @@ export async function actionCrearSameDay(datos: DatosAltaSameDay): Promise<Resul
     return { ok: false, mensaje: "No hay sesión activa." };
   }
   if (!puedeAjustarOperacionDiaria(sesion.usuario)) {
-    return { ok: false, mensaje: "No tienes permiso para crear pedidos same-day." };
+    return { ok: false, mensaje: "No tienes permiso para crear pedidos." };
   }
 
   const tenantId = sesion.usuario.tenantId;

@@ -1185,7 +1185,7 @@ export async function crearPedidoSameDay(
 
   if (!tarifaAplicableId) {
     throw new ErrorValidacion(
-      "El seller no tiene una tarifa configurada para entregas same-day — " +
+      "El seller no tiene una tarifa configurada para pedidos propios — " +
         "configúrala en /onboarding/tarifas antes de crear pedidos",
     );
   }

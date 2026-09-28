@@ -320,7 +320,7 @@ export default async function PaginaPedidosSeller({
       {/* Confirmación de envío creado */}
       {pedidoNuevoId && (
         <div role="status" className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
-          ¡Envío same-day solicitado con éxito! Quedará pendiente de asignación hasta que el courier lo asigne a un conductor.
+          Envío solicitado. Queda pendiente hasta que el courier lo asigne a un conductor.
         </div>
       )}
 

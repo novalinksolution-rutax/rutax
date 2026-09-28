@@ -27,7 +27,7 @@ export async function crearSameDayAction(
     return { ok: false, mensaje: "Sesión inválida. Vuelve a iniciar sesión." };
   }
   if (!puedeSolicitarSameDay(sesion.usuario)) {
-    return { ok: false, mensaje: "No tienes permiso para solicitar envíos same-day." };
+    return { ok: false, mensaje: "No tienes permiso para solicitar envíos." };
   }
 
   const nombre = (formData.get("nombre") as string | null)?.trim() ?? "";
@@ -85,7 +85,7 @@ export async function crearSameDayAction(
         return {
           ok: false,
           mensaje:
-            "El courier aún no configuró tarifas para envíos same-day. Contáctalo para habilitarlas.",
+            "El courier aún no configuró tarifas para tus envíos propios. Contáctalo para habilitarlas.",
         };
       }
       return { ok: false, mensaje: err.message };

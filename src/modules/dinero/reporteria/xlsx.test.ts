@@ -9,7 +9,7 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const fila: FilaReporte = {
   codigo: "RX-8HCZ-0PPB",
   fuente: "rutax_manual",
-  fuenteEtiqueta: "Same-day",
+  fuenteEtiqueta: "Pedido propio",
   tipo: "same_day",
   fechaHecho: "2026-08-27",
   // Poblados a propósito: la prueba debe demostrar que NO salen, no que faltaban.
@@ -49,7 +49,7 @@ const reporte = (extra: Partial<ReporteConsolidado> = {}): ReporteConsolidado =>
     },
   ],
   porFuente: [
-    { fuente: "rutax_manual", etiqueta: "Same-day", entregas: 1, totalCobro: 3000, totalPago: 2300 },
+    { fuente: "rutax_manual", etiqueta: "Pedido propio", entregas: 1, totalCobro: 3000, totalPago: 2300 },
   ],
   totalCobro: 3000,
   totalPago: 2300,

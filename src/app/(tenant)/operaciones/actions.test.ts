@@ -110,7 +110,7 @@ describe("actionCambiarEstadoPedido — guard same_day para 'cancelado' (encargo
 
       expect(resultado).toEqual({
         error:
-          "Para cancelar este pedido usa el botón \"Cancelar pedido\": valida que sea same-day y revisa el estado del dinero antes de confirmar.",
+          "Para cancelar este pedido usa el botón \"Cancelar pedido\": valida que sea un pedido propio y revisa el estado del dinero antes de confirmar.",
       });
       expect(actualizarEstadoPedido).not.toHaveBeenCalled();
     },

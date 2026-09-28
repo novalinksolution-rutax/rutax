@@ -159,7 +159,7 @@ export function VacioArranque({ accionCrear }: { accionCrear?: React.ReactNode }
       titulo="Aún no hay pedidos para hoy"
       descripcion={
         accionCrear
-          ? "Los pedidos de tus sellers llegan solos cuando ellos venden. También puedes crear uno same-day a mano."
+          ? "Los pedidos de tus sellers llegan solos cuando ellos venden. También puedes crear uno a mano."
           : "Los pedidos de tus sellers llegan solos cuando ellos venden."
       }
       accion={accionCrear}

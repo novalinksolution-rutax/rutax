@@ -140,7 +140,7 @@ export function evaluarMotivoElegibilidad(entrada: EntradaMotor): MotivosElegibi
     const cobro: MotivoElegibilidad = esGastoPropio
       ? {
           codigo: 'SAME_DAY_GASTO_PROPIO_SIN_COBRO',
-          texto: 'Entrega same-day marcada como gasto propio del courier: no se cobra al seller.',
+          texto: 'Entrega de un pedido propio marcada como gasto del courier: no se cobra al seller.',
         }
       : {
           codigo: 'ENTREGADO_GENERA_COBRO',
@@ -157,7 +157,7 @@ export function evaluarMotivoElegibilidad(entrada: EntradaMotor): MotivosElegibi
       liquidacion = {
         codigo: 'SAME_DAY_GASTO_PROPIO_GENERA_LIQUIDACION',
         texto:
-          'Entrega same-day de gasto propio con conductor asignado: se liquida al conductor ' +
+          'Entrega de un pedido propio como gasto del courier, con conductor asignado: se liquida al conductor ' +
           'aunque no se cobre al seller.',
       };
     } else {

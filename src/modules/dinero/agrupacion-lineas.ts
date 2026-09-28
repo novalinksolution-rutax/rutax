@@ -75,7 +75,7 @@ export function conceptoParaAgrupar(concepto: string | null | undefined): string
   if (!concepto) return 'Sin concepto';
   return concepto
     .replace(/\s+—\s+pedido\s+\S+$/u, '')
-    .replace(/\bsame_day\b/g, 'Same-day')
+    .replace(/\bsame_day\b/g, 'de pedido propio')
     .replace(/\bflex\b/g, 'Flex')
     .trim() || 'Sin concepto';
 }

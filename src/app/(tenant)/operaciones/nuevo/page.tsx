@@ -43,7 +43,7 @@ export default async function PaginaNuevoPedidoSameDay() {
           <ChevronLeft className="size-4" aria-hidden="true" />
           Pedidos
         </Link>
-        <h1 className="mt-1 font-heading text-2xl font-semibold">Crear pedido same-day</h1>
+        <h1 className="mt-1 font-heading text-2xl font-semibold">Crear pedido</h1>
       </div>
 
       <FormularioAltaSameDay

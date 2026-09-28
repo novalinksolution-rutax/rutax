@@ -142,7 +142,7 @@ describe('agruparLineasCobro · la tabla tiene que cuadrar', () => {
 describe('conceptoParaAgrupar — el concepto del motor trae el pedido adentro', () => {
   it('quita la cola del pedido y dice el tipo como en el resto del producto', () => {
     expect(conceptoParaAgrupar('Servicio de entrega same_day — pedido 5c9dc153-e495-4c88-8bb9-5bf4df3fd926')).toBe(
-      'Servicio de entrega Same-day',
+      'Servicio de entrega de pedido propio',
     );
     expect(conceptoParaAgrupar('Servicio de entrega flex — pedido abc')).toBe('Servicio de entrega Flex');
   });
@@ -154,6 +154,6 @@ describe('conceptoParaAgrupar — el concepto del motor trae el pedido adentro',
       ),
     );
     expect(r.conceptos).toHaveLength(1);
-    expect(r.conceptos[0]).toMatchObject({ concepto: 'Servicio de entrega Same-day', entregas: 5, tarifa: 3000 });
+    expect(r.conceptos[0]).toMatchObject({ concepto: 'Servicio de entrega de pedido propio', entregas: 5, tarifa: 3000 });
   });
 });

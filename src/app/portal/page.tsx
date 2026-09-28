@@ -183,7 +183,7 @@ export default async function PaginaPortalSeller() {
           {estadosHoy === null
             ? `Recarga en unos segundos. Si es urgente, escríbele a ${nombreCourier}.`
             : total === 0
-              ? `Cuando entren pedidos por tus cuentas conectadas, o crees uno same-day, van a aparecer acá.`
+              ? `Cuando entren pedidos por tus cuentas conectadas, o crees uno, van a aparecer acá.`
               : entregados === total
                 ? "Todas las entregas del día llegaron a destino."
                 : // «van en camino» afirmaría que ya salieron, y el grupo

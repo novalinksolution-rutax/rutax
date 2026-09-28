@@ -49,21 +49,21 @@ export function PanelCrearSameDay({
       abierto={abierto}
       onOpenChange={setAbierto}
       ancho="amplio"
-      titulo="Crear pedido same-day"
+      titulo="Crear pedido"
       subtitulo="Queda pendiente de asignación hasta que tu courier le asigne un conductor."
       disparador={
         variante === "inicio" ? (
           <Button className="w-full sm:w-auto">
             <Plus className="size-4 shrink-0" aria-hidden="true" />
-            Crear un pedido same-day
+            Crear un pedido
           </Button>
         ) : (
           <Button className="shrink-0">
             <Plus className="size-4 shrink-0" aria-hidden="true" />
             {/* Se acorta por ancho en vez de desbordar la fila del encabezado.
                 El nombre accesible se conserva entero. */}
-            <span className="hidden sm:inline">Crear pedido same-day</span>
-            <span className="sr-only sm:hidden">Crear pedido same-day</span>
+            <span className="hidden sm:inline">Crear pedido</span>
+            <span className="sr-only sm:hidden">Crear pedido</span>
           </Button>
         )
       }

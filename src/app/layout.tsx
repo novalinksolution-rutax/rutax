@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   // Base de las URL canónicas y de las imágenes sociales de cada página.
   metadataBase: new URL("https://rutax.io"),
   title: "Rutax — gestión operativo-financiera",
-  description: "Plataforma para couriers de última milla: operación Flex + same-day y trastienda de dinero.",
+  description: "Plataforma para couriers de última milla: operación de reparto y trastienda de dinero.",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

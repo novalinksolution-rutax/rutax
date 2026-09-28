@@ -137,7 +137,7 @@ export function PanelPedidosPrueba({
       {sinMarco ? null : (
         <div className="flex items-center gap-2">
           <FlaskConical className="size-4 text-fg-muted" aria-hidden="true" />
-          <h2 className="font-medium text-fg">Herramienta de prueba · Pedidos same-day</h2>
+          <h2 className="font-medium text-fg">Herramienta de prueba · Pedidos propios</h2>
         </div>
       )}
       <p className={sinMarco ? "text-sm text-fg-muted" : "mt-1 text-sm text-fg-muted"}>
@@ -234,9 +234,9 @@ export function PanelPedidosPrueba({
 
       {/* ── Limpieza: cancelar los same-day activos ──────────────────────── */}
       <div className="mt-5 border-t border-dashed border-line pt-4">
-        <h3 className="text-sm font-medium text-fg">Limpiar pedidos same-day</h3>
+        <h3 className="text-sm font-medium text-fg">Limpiar pedidos propios</h3>
         <p className="mt-1 text-sm text-fg-muted">
-          Cancela todos los pedidos same-day activos con el motivo «{`este era un pedido de prueba`}
+          Cancela todos los pedidos propios activos con el motivo «{`este era un pedido de prueba`}
           ». No toca pedidos Flex ni los ya entregados o cancelados.
         </p>
 
@@ -273,7 +273,7 @@ export function PanelPedidosPrueba({
           ) : null}
 
           {!cancelando && activos === 0 && !resCancel ? (
-            <span className="text-sm text-fg-subtle">No hay pedidos same-day activos.</span>
+            <span className="text-sm text-fg-subtle">No hay pedidos propios activos.</span>
           ) : null}
 
           {!cancelando && resCancel?.tipo === "ok" ? (
