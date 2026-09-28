@@ -13,6 +13,14 @@ import { cn } from "@/lib/utils";
  * Corre UNA vez al entrar en pantalla y descansa en el estado final. El HTML del
  * servidor ya trae ese estado final, así que sin JS —o con movimiento reducido—
  * se ve el resultado completo, no una tabla a medio llenar.
+ *
+ * ⚠️ **Todo texto que cambia va dentro de un elemento con `key`.** El traductor
+ * de Chrome (y varias extensiones) reemplaza cada nodo de texto por un `<font>`;
+ * si React después edita o quita ese nodo, ya no lo encuentra y la página
+ * entera cae al boundary de error. En teléfono se veía «unos segundos» —lo que
+ * tarda el primer cambio— y luego «No pudimos mostrar esta pantalla». Con `key`,
+ * React reemplaza el elemento completo, que sí sigue siendo suyo. Además la
+ * figura va `translate="no"`: son datos de demostración, no hay nada que traducir.
  */
 
 type Fase = "sin_asignar" | "en_ruta" | "entregado" | "cuadrado";
@@ -66,6 +74,7 @@ export function VitrinaPedidos() {
   return (
     <figure
       ref={ref}
+      translate="no"
       aria-label="Ejemplo con datos de demostración: un pedido se entrega y genera su cobro y su pago"
       className="min-w-0 border border-line border-t-2 border-t-brand bg-bg-raised"
     >
@@ -100,9 +109,13 @@ export function VitrinaPedidos() {
               <td className="rx-num font-mono text-[12.5px]">45872019334</td>
               <td className="max-sm:hidden"><EtiquetaProcedencia procedencia="FLEX" /></td>
               <td className="max-sm:hidden lg:max-xl:hidden">Ñuñoa</td>
-              <td className={asignado ? undefined : "text-fg-subtle"}>{asignado ? "R. Muñoz" : "—"}</td>
+              <td>
+                <span key={asignado ? "asignado" : "vacio"} className={asignado ? undefined : "text-fg-subtle"}>
+                  {asignado ? "R. Muñoz" : "—"}
+                </span>
+              </td>
               <td aria-live="polite">
-                <DistintivoEstado tono={estado.tono} etiqueta={estado.texto} />
+                <DistintivoEstado key={estado.texto} tono={estado.tono} etiqueta={estado.texto} />
               </td>
             </tr>
             <tr>

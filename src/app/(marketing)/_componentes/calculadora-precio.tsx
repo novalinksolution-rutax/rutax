@@ -19,7 +19,7 @@ export function CalculadoraPrecio() {
         <label id="calc-envios" className="text-[15px] font-semibold">
           Envíos al mes
         </label>
-        <output htmlFor="calc-slider" className="rx-num font-mono text-lg font-semibold">
+        <output htmlFor="calc-slider" translate="no" className="rx-num font-mono text-lg font-semibold">
           {formatearMiles(envios)}
         </output>
       </div>
@@ -38,7 +38,9 @@ export function CalculadoraPrecio() {
       </div>
       <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-strong pt-3 font-semibold">
         <span>Al mes, + IVA</span>
-        <span className="rx-num font-mono text-[26px] tracking-tight">
+        {/* `translate="no"`: el traductor de Chrome congela la cifra en su
+            primera versión y deja de seguir al deslizador. */}
+        <span translate="no" className="rx-num font-mono text-[26px] tracking-tight">
           {formatearCLP(envios * PRECIO_POR_ENVIO_CLP)}
         </span>
       </div>
