@@ -49,6 +49,17 @@ export interface DatosAgendar {
   fuentes: string[];
 }
 
+/**
+ * Lo que acepta la acción. Más laxo que `DatosAgendar`: el modal de la portada
+ * no pide correo ni fuentes (el contacto es por WhatsApp).
+ */
+export type EntradaAgendar = Omit<DatosAgendar, "correo" | "fuentes"> & {
+  correo?: string;
+  fuentes?: string[];
+  /** Qué botón abrió el formulario. Va al asunto para saber qué pidió. */
+  motivo?: "demo" | "ventas" | "comenzar";
+};
+
 export type ResultadoAgendar =
   | { ok: true }
   | { ok: false; campo?: keyof DatosAgendar; mensaje: string };
@@ -59,9 +70,11 @@ function destinoEquipo(): string | null {
   return v && v.trim() ? v.trim() : null;
 }
 
+const ETIQUETA_MOTIVO = { demo: "Demo", ventas: "Ventas", comenzar: "Comenzar" } as const;
+
 const FUENTES_VALIDAS = ["Mercado Libre Flex", "Shopify", "Same-day propio", "Otra"];
 
-export async function accionAgendar(datos: DatosAgendar): Promise<ResultadoAgendar> {
+export async function accionAgendar(datos: EntradaAgendar): Promise<ResultadoAgendar> {
   // La validación es del servidor y no solo del navegador: un formulario que
   // solo valida en el cliente valida para quien no tenía intención de saltárselo.
   const nombre = datos.nombre?.trim() ?? "";
@@ -79,7 +92,7 @@ export async function accionAgendar(datos: DatosAgendar): Promise<ResultadoAgend
   // El correo se valida con una forma mínima y no con una expresión exhaustiva:
   // las expresiones «completas» rechazan correos válidos raros, y el que rebota
   // se descubre igual al mandarlo.
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+  if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
     return { ok: false, campo: "correo", mensaje: "Revisa el correo: parece incompleto." };
   }
   // Chile: 8 o 9 dígitos, con o sin +56. Se cuentan dígitos en vez de exigir
@@ -111,7 +124,7 @@ export async function accionAgendar(datos: DatosAgendar): Promise<ResultadoAgend
       para: destino,
       // El asunto lleva lo que califica: el tamaño. Es lo primero que se mira
       // para decidir a qué hora del día se contesta.
-      asunto: `Demo · ${courier} · ${conductores} conductores`,
+      asunto: `${ETIQUETA_MOTIVO[datos.motivo as keyof typeof ETIQUETA_MOTIVO] ?? "Demo"} · ${courier} · ${conductores} conductores`,
       html: envolverEmail({
         marca: "Rutax",
         titular: `${courier} quiere una demostración`,
@@ -123,7 +136,7 @@ export async function accionAgendar(datos: DatosAgendar): Promise<ResultadoAgend
           { etiqueta: "Nombre", valor: nombre },
           { etiqueta: "Courier", valor: courier },
           { etiqueta: "WhatsApp", valor: whatsapp },
-          { etiqueta: "Correo", valor: correo },
+          { etiqueta: "Correo", valor: correo || "no lo dio" },
           { etiqueta: "Conductores", valor: conductores, destacada: true },
           { etiqueta: "Sus pedidos llegan de", valor: fuentes.join(" · ") || "no lo dijo" },
         ],

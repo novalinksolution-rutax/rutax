@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Analytics } from "@vercel/analytics/next";
 
 import { FirmadoPorRutax } from "@/components/ui/marca-rutax";
 
@@ -59,6 +60,7 @@ export default function PaginaAgendar() {
       <div className="mt-16">
         <FirmadoPorRutax />
       </div>
+      <Analytics />
     </div>
   );
 }

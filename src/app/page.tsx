@@ -20,9 +20,9 @@ import { Portada } from "./(marketing)/portada";
  * es un viaje de más justo en la petición que decide si el visitante se queda.
  */
 export const metadata: Metadata = {
-  title: "Rutax · La operación y el dinero de tu courier, en un solo sistema",
+  title: "Rutax · Tu operación Flex, de la colecta al pago",
   description:
-    "Software de última milla para couriers de Santiago. Centraliza los pedidos de Mercado Libre Flex, Shopify y los tuyos, despáchalos con tu flota, y deja hecha la factura al seller y la liquidación del conductor.",
+    "Software para couriers de última milla en Chile: pedidos de Mercado Libre Flex, Shopify y same-day en un solo panel, con el cobro al seller y el pago al conductor hechos en cada entrega. $60 + IVA por envío.",
 };
 
 export default async function Home() {

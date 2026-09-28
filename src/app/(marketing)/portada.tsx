@@ -1,449 +1,501 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/next";
 
-import { Button } from "@/components/ui/button";
-import { FirmadoPorRutax } from "@/components/ui/marca-rutax";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { MarcaRutax } from "@/components/ui/marca-rutax";
+import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { cn } from "@/lib/utils";
 
-import { SecuenciaEntregaDinero } from "./_componentes/secuencia-entrega-dinero";
+import { CalculadoraPrecio } from "./_componentes/calculadora-precio";
+import { BotonVentas, VentasProvider } from "./_componentes/ventas";
+import { VitrinaPedidos } from "./_componentes/vitrina-pedidos";
+import { PRECIO_POR_ENVIO_CLP, WHATSAPP_VENTAS } from "./_lib/precio";
 
 /**
- * La portada de Rutax.
+ * La portada de Rutax — sitio v2 (2026-09-27).
  * =============================================================================
  *
- * -----------------------------------------------------------------------------
- * HASTA HOY NO EXISTÍA, Y ESO ERA UN AGUJERO Y NO UNA OMISIÓN
- * -----------------------------------------------------------------------------
- * `src/app/page.tsx` eran 31 líneas de enrutamiento: quien no tenía sesión iba
- * directo a `/login`. Un courier que llegaba a `rutax.io` encontraba un
- * formulario y ninguna forma de saber qué es esto — y **el registro no tenía un
- * solo enlace entrante** (brecha #9).
+ * Calca la ESTRUCTURA y el relato de rushmile.app —hero · beneficios · cómo
+ * funciona · precios · preguntas · cierre— con copy propio y la identidad de
+ * Rutax. Maqueta aprobada: https://claude.ai/artifact/3rBPrCvWSryJMVndfwnYnY.
  *
- * -----------------------------------------------------------------------------
- * EL TITULAR DICE LO QUE NINGUNA OTRA PÁGINA DEL RUBRO DICE
- * -----------------------------------------------------------------------------
- * De las 17 páginas comparables que se analizaron, **ninguna promete arriba que
- * el software le cobre a sus clientes y le liquide a sus conductores**. Ese es
- * el titular, y pasa la prueba del tapado: contiene el sujeto —courier— y el
- * objeto —operación, dinero—; si los borras, la frase se cae.
+ * Decisiones del usuario que la gobiernan:
+ * · **Precio público y por envío**: $60 + IVA, único (`_lib/precio.ts`).
+ * · **«Comenzar» abre al asesor**, no un autoregistro: el alta de un courier la
+ *   hace Rutax desde el backstage. Los tres botones abren el mismo modal.
+ * · **WhatsApp de ventas propio**, distinto del número de avisos de la Cloud API.
+ * · **Vercel Analytics solo aquí y en `/agendar`**, no en el layout raíz: en el
+ *   raíz mediría también `/tracking/[token]`, y ese token es público y viaja en
+ *   la URL que se comparte con el destinatario.
  *
- * El subtítulo existe para vigilar un riesgo concreto: «el dinero» podría
- * leerse como que Rutax mueve plata. Por eso su segunda mitad es explícita —
- * *deja hecha la factura y la liquidación, cuadradas*—: **lo que hace es dejar
- * las cuentas hechas, no ser un banco.**
- *
- * -----------------------------------------------------------------------------
- * LO QUE NO ESTÁ, Y ES DELIBERADO
- * -----------------------------------------------------------------------------
- * · **La hora de corte no va en el titular.** Es material excelente y va en la
- *   sección 3, en forma de pregunta. Ponerlo arriba como afirmación —«si cierras
- *   a las 16 horas…»— excluye al 95 % de los visitantes que no cierran a esa
- *   hora. Fue el error del intento anterior.
- * · **El ruteo tampoco.** Ninguna empresa de peso se llama «optimizador de
- *   rutas» en su titular; va en su propia sección, después del foso.
- * · **Cero imágenes arriba del pliegue** (regla 79). La velocidad es parte del
- *   argumento: una portada que tarda no puede prometer que ahorra tiempo.
- * · **Ningún logo de cliente inventado.** Rutax está en piloto y lo dice; la
- *   franja que en 15 de 17 páginas son logos, acá es un hecho verificable.
- * · **Precios no se menciona** *(decisión del usuario, 24-08-2026: el modo de
- *   cobro va a ser distinto)*. El CTA lleva el TIEMPO al lado en vez del precio,
- *   que contra un comprador escéptico desactiva más objeciones.
+ * Todo es servidor salvo tres islas: la vitrina del hero, la calculadora y el
+ * modal de ventas.
  */
 export function Portada() {
   return (
-    <div className="mx-auto max-w-5xl px-5 py-12 sm:py-20">
-      {/* ─── 1 · Hero ────────────────────────────────────────────────── */}
-      <section className="space-y-6">
-        <h1 className="font-heading max-w-3xl text-3xl leading-tight font-semibold sm:text-5xl">
-          La operación y el dinero de tu courier, en un solo sistema
-        </h1>
-        <p className="max-w-2xl text-base leading-relaxed text-fg-muted sm:text-lg">
-          <strong className="font-medium text-fg">
-            Software de última milla para couriers de Santiago.
-          </strong>{" "}
-          Centraliza los pedidos de Mercado Libre Flex, Shopify y los tuyos, despáchalos con tu
-          flota, y deja hecha la factura al seller y la liquidación del conductor. Cuadradas, sin
-          planillas.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button asChild size="lg">
-            <Link href="/agendar">Agendar una demostración</Link>
-          </Button>
-          {/* El tiempo al lado del botón, no el precio. */}
-          <span className="text-sm text-fg-muted">
-            30 minutos, con tus propios pedidos en pantalla
-          </span>
-        </div>
-        <p className="text-sm text-fg-muted">
-          Hoy en <strong className="font-medium text-fg">piloto</strong> con couriers de Santiago.
-        </p>
-      </section>
-
-      {/* ─── La secuencia ────────────────────────────────────────────── */}
-      <section className="mt-10 sm:mt-14">
-        <SecuenciaEntregaDinero />
-      </section>
-
-      {/* ─── 2 · Las tres fuentes ────────────────────────────────────── */}
-      <Seccion titulo="Tus pedidos entran solos desde">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Fuente nombre="Mercado Libre Flex" detalle="hasta 10 cuentas por seller" />
-          <Fuente nombre="Shopify" detalle="las tiendas de tus sellers" />
-          <Fuente nombre="Same-day propio" detalle="los que carga tu seller o tú" />
-        </div>
-        <p className="mt-4 text-sm leading-relaxed text-fg-muted">
-          Con dirección y coordenada resueltas.{" "}
-          <strong className="font-medium text-fg">Nadie digita una dirección a mano.</strong>
-        </p>
-      </Seccion>
-
-      {/* ─── 3 · Las cuatro cosas ────────────────────────────────────── */}
-      <Seccion
-        titulo="Cuatro cosas que hace todo courier, trabajes como trabajes"
-        bajada="Cambia el tamaño, cambia el horario, cambia quién retira. Esto no."
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Paso
-            n={1}
-            titulo="Entran"
-            texto="De donde sea que vendan tus sellers, llegan a la misma pantalla con la dirección y la coordenada resueltas."
-          />
-          <Paso
-            n={2}
-            titulo="Se reparten"
-            texto="Filtras, seleccionas un grupo y lo asignas de una vez. Con el dedo en la tablet o con el teclado en el escritorio."
-          />
-          <Paso
-            n={3}
-            titulo="Se prueban"
-            texto="El conductor cierra la parada con foto y ubicación, entregue o no. Esa evidencia sostiene el cobro y la conversación cuando algo se discute."
-          />
-          <Paso
-            n={4}
-            titulo="Se cierran"
-            texto="Cada entrega ya generó su línea de cobro y su línea de pago. Cierras, emites la factura con folio del SII, y transfieres. Sin volver a sumar nada."
-          />
-        </div>
-
-        {/* El detalle operativo va en forma de PREGUNTA, no de afirmación:
-            «si cierras a las 16 horas…» excluye a quien no lo hace. */}
-        <div className="mt-6 divide-y divide-line-subtle border-y border-line-subtle">
-          <Pregunta
-            p="¿Retiras en la bodega del seller o te llegan a la tuya?"
-            r="Las dos."
-          />
-          <Pregunta
-            p="¿Trabajas contra una hora de corte?"
-            r="Si la tienes, la defines por seller. Si no, el sistema no te inventa un reloj."
-          />
-          <Pregunta
-            p="¿Conductores propios o a honorarios?"
-            r="Los dos, y cada uno liquida como corresponde."
-          />
-          <Pregunta
-            p="¿Un seller grande o veinte chicos?"
-            r="Cada uno con su tarifa, su bodega y su período."
-          />
-        </div>
-      </Seccion>
-
-      {/* ─── 4 · El foso ─────────────────────────────────────────────── */}
-      {/* La ÚNICA sección con fondo distinto de toda la portada: el cambio
-          hace de subrayado, y se gasta una sola vez. */}
-      <section className="mt-14 border border-line bg-bg-inset p-6 sm:mt-20 sm:p-10">
-        <h2 className="font-heading max-w-2xl text-2xl leading-tight font-semibold sm:text-3xl">
-          Cada entrega deja hechas sus dos líneas de dinero
-        </h2>
-        <p className="mt-4 max-w-2xl text-base leading-relaxed text-fg-muted">
-          Cuando el conductor cierra la parada, el sistema escribe dos líneas:{" "}
-          <strong className="font-medium text-fg">lo que le cobras al seller</strong> y{" "}
-          <strong className="font-medium text-fg">lo que le pagas al conductor</strong>.
-          Conciliadas, con la tarifa de ese seller en esa comuna.
-        </p>
-        <p className="mt-3 max-w-2xl text-base leading-relaxed text-fg-muted">
-          A fin de mes no sumas: cierras.
-        </p>
-        <blockquote className="mt-6 max-w-2xl border-l-2 border-brand pl-4 text-base leading-relaxed">
-          <strong className="font-medium">
-            Esto es lo que no tiene ningún otro software de última milla.
-          </strong>{" "}
-          Los demás terminan cuando el paquete llega. Acá recién ahí empieza la parte que te quita
-          el fin de semana.
-        </blockquote>
-      </section>
-
-      {/* ─── 5 · Las cuatro superficies ──────────────────────────────── */}
-      <Seccion titulo="Cuatro superficies, y dos llevan tu nombre">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Superficie nombre="Tu backoffice" detalle="Operación, dinero y configuración." />
-          <Superficie
-            nombre="La app de tu conductor"
-            detalle="Su ruta, sus retiros y su liquidación."
-          />
-          <Superficie
-            nombre="El portal de tus sellers"
-            detalle="Con tu nombre arriba, no con el nuestro."
-            tuya
-          />
-          <Superficie
-            nombre="El seguimiento del comprador"
-            detalle="Lleva tu marca. Cada entrega es una impresión de tu courier."
-            tuya
-          />
-        </div>
-      </Seccion>
-
-      {/* ─── 6 · Ruteo ───────────────────────────────────────────────── */}
-      <Seccion
-        titulo="La ruta, ordenada"
-        bajada="Sin digitar direcciones: ya entraron con su coordenada."
-      >
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 border border-line bg-bg-raised p-5">
-          <span className="rx-num text-3xl font-semibold text-fg-muted line-through">390 km</span>
-          <span className="text-fg-muted">en orden alfabético</span>
-          <span className="text-fg-subtle">→</span>
-          <span className="rx-num text-3xl font-semibold">185 km</span>
-          <span className="text-fg-muted">con la ruta ordenada</span>
-        </div>
-        <p className="mt-3 text-sm leading-relaxed text-fg-muted">
-          Una ruta real de <strong className="font-medium text-fg">87 paradas</strong>, medida.{" "}
-          No es un porcentaje promedio.
-        </p>
-      </Seccion>
-
-      {/* ─── 7 · Puesta en marcha ────────────────────────────────────── */}
-      <Seccion
-        titulo="Andando en cuatro pasos, sin dejar de operar"
-        bajada="Lo nuevo y lo que ya usas conviven. No hay un día en que todo tenga que cambiar."
-      >
-        <ol className="divide-y divide-line-subtle border-y border-line-subtle">
-          <Marcha n={1} texto="Conectamos tus fuentes — los pedidos empiezan a entrar el mismo día." />
-          <Marcha n={2} texto="Cargamos tus tarifas y tus zonas — es lo que ya tienes en tu planilla." />
-          <Marcha n={3} texto="Tus conductores bajan la app — la primera ruta en paralelo, para comparar." />
-          <Marcha n={4} texto="Conectamos tu facturación — con tu contador; mientras tanto, simulación." />
-        </ol>
-      </Seccion>
-
-      {/* ─── 8 · Integraciones, con su estado REAL ───────────────────── */}
-      <Seccion titulo="Integraciones">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Integracion
-            categoria="Marketplaces"
-            nombre="Mercado Libre Flex"
-            detalle="Hasta 10 cuentas por seller. La prueba de entrega oficial la sigue gobernando Mercado Envíos, y el sistema se lo dice al conductor."
-            estado="En piloto"
-          />
-          <Integracion
-            categoria="Tiendas"
-            nombre="Shopify"
-            detalle="El seller pega dominio y credencial desde su propio panel."
-            estado="En piloto"
-          />
-          <Integracion
-            categoria="Documentos y dinero"
-            nombre="Facturación electrónica"
-            detalle="Emisión con folio del SII. Se habilita con validez tributaria cuando terminas de probar."
-            estado="En simulación"
-          />
-        </div>
-        <p className="mt-4 border border-attention-line bg-attention-bg px-4 py-3 text-sm leading-relaxed text-attention-fg">
-          <strong className="font-medium">Estado real, sin adornos.</strong> Lectura del banco, en
-          construcción. No listamos integraciones que no existen.
-        </p>
-      </Seccion>
-
-      {/* ─── 9 · Prueba ──────────────────────────────────────────────── */}
-      <Seccion
-        titulo="Estamos en piloto, y lo decimos"
-        bajada="No tenemos veinte logos y no vamos a inventarlos: los ibas a verificar."
-      >
-        {/* Ninguna de las cuatro es un contador animado (regla 74). */}
-        <div className="grid gap-4 sm:grid-cols-4">
-          <Cifra valor="185 km" texto="Una ruta de 87 paradas ordenada, contra 390 alfabético. Medido." />
-          <Cifra valor="0" texto="Direcciones digitadas a mano en un pedido de Flex o Shopify." />
-          <Cifra valor="2" texto="Líneas de dinero por entrega, escritas solas y conciliadas." />
-          <Cifra valor="130" texto="Bultos escaneados seguidos sin mirar la pantalla." />
-        </div>
-      </Seccion>
-
-      {/* ─── 10 · Preguntas ──────────────────────────────────────────── */}
-      {/* Abre con la MÁS DURA. Esconderla la convierte en la objeción que
-          aparece en la demo, cuando ya invertiste media hora. */}
-      <Seccion titulo="Preguntas">
-        <div className="divide-y divide-line-subtle border-y border-line-subtle">
-          <Pregunta
-            p="¿Mis conductores van a usar dos apps?"
-            r="En Flex, sí, y eso no lo cambia ningún software: la prueba de entrega la gobierna Mercado Envíos. Lo que hacemos es que tu conductor no se equivoque — su app le dice cuál manda en cada pedido."
-          />
-          <Pregunta
-            p="¿Tengo que dejar de usar lo que ya uso?"
-            r="No. Lo nuevo y lo viejo conviven mientras compares."
-          />
-          <Pregunta
-            p="¿Emite factura de verdad, con folio?"
-            r="Sí, con folio del SII. Y factura tu empresa, no Rutax: es tu certificado y son tus folios."
-          />
-          <Pregunta
-            p="¿Mis sellers tienen que aprender algo?"
-            r="Entran a un portal con tu nombre a ver sus pedidos y sus cobros. Conectar su cuenta de Mercado Libre les toma un minuto."
-          />
-        </div>
-      </Seccion>
-
-      {/* ─── 11 · Seguridad ──────────────────────────────────────────── */}
-      {/* Va al FINAL: nadie en el rubro la pone arriba, y arriba compite con
-          el argumento. Abajo, cierra. */}
-      <Seccion titulo="Tus datos">
-        <ul className="grid gap-3 sm:grid-cols-3">
-          <Dato texto="Exportación total: lo que entra se puede sacar." />
-          <Dato texto="Aislamiento por empresa, impuesto en la base de datos." />
-          <Dato texto="Todo lo que toca plata queda registrado con autor, fecha y motivo." />
-        </ul>
-      </Seccion>
-
-      {/* ─── 12 · Cierre ─────────────────────────────────────────────── */}
-      <section className="mt-14 border-t border-line pt-10 sm:mt-20">
-        <h2 className="font-heading text-2xl leading-tight font-semibold sm:text-3xl">
-          Media hora, con tus propios pedidos en pantalla
-        </h2>
-        <p className="mt-3 max-w-xl text-base leading-relaxed text-fg-muted">
-          Sin tarjeta, sin compromiso y sin vendedor detrás. Contesta quien construye el producto.
-        </p>
-        <Button asChild size="lg" className="mt-6">
-          <Link href="/agendar">Agendar una demostración</Link>
-        </Button>
-      </section>
-
-      <div className="mt-16">
-        <FirmadoPorRutax />
+    <VentasProvider whatsapp={WHATSAPP_VENTAS}>
+      <div className="flex min-h-full flex-col bg-bg text-fg">
+        <Navegacion />
+        <main className="flex-1">
+          <Hero />
+          <Cifras />
+          <Beneficios />
+          <ComoFunciona />
+          <Precios />
+          <Preguntas />
+          <Cierre />
+        </main>
+        <Pie />
       </div>
+      <Analytics />
+    </VentasProvider>
+  );
+}
+
+const ENVOLTURA = "mx-auto w-full max-w-[1200px] px-4 sm:px-8 lg:px-[52px]";
+
+function Rotulo({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span
+      className={cn(
+        "font-mono text-[11.5px] font-medium tracking-[0.12em] text-fg-muted uppercase",
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Cabeza({ rotulo, titulo }: { rotulo: string; titulo: string }) {
+  return (
+    <div className="mb-9 grid max-w-[680px] gap-3 lg:mb-13">
+      <Rotulo>{rotulo}</Rotulo>
+      <h2 className="text-[28px] leading-[1.12] font-bold tracking-[-0.03em] text-balance sm:text-[40px]">
+        {titulo}
+      </h2>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Piezas de la portada
-// ---------------------------------------------------------------------------
+/* ─── Navegación ───────────────────────────────────────────────────────── */
 
-function Seccion({
-  titulo,
-  bajada,
-  children,
-}: {
-  titulo: string;
-  bajada?: string;
-  children: React.ReactNode;
-}) {
+const SECCIONES = [
+  { href: "#beneficios", texto: "Beneficios" },
+  { href: "#como-funciona", texto: "Cómo funciona" },
+  { href: "#precios", texto: "Precios" },
+  { href: "#preguntas", texto: "Preguntas" },
+];
+
+function Navegacion() {
   return (
-    <section className="mt-14 sm:mt-20">
-      <h2 className="font-heading text-2xl leading-tight font-semibold sm:text-3xl">{titulo}</h2>
-      {bajada ? (
-        <p className="mt-2 max-w-2xl text-base leading-relaxed text-fg-muted">{bajada}</p>
-      ) : null}
-      <div className="mt-6">{children}</div>
+    <header className="sticky top-0 z-20 border-b border-line-subtle bg-bg">
+      <div className={cn(ENVOLTURA, "flex h-16 items-center gap-8")}>
+        <Link href="/" aria-label="Rutax, inicio" className="rounded-ctrl">
+          <MarcaRutax />
+        </Link>
+        <nav aria-label="Secciones" className="max-lg:hidden">
+          <ul className="flex gap-6 text-[14.5px] font-medium text-fg-muted">
+            {SECCIONES.map((s) => (
+              <li key={s.href}>
+                <a href={s.href} className="transition-colors hover:text-fg">
+                  {s.texto}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="ml-auto flex items-center gap-4">
+          <Link
+            href="/login"
+            className="text-[14.5px] font-semibold text-fg-muted hover:text-fg max-[460px]:hidden"
+          >
+            Ingresar
+          </Link>
+          <BotonVentas motivo="ventas" tamano="chico">
+            Hablar con ventas
+          </BotonVentas>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/* ─── Hero ─────────────────────────────────────────────────────────────── */
+
+function Hero() {
+  return (
+    <section className="py-11 sm:py-[clamp(44px,7vw,88px)]">
+      <div
+        className={cn(
+          ENVOLTURA,
+          "grid items-center gap-9 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16"
+        )}
+      >
+        <div>
+          <h1 className="text-[36px] leading-[1.06] font-bold tracking-[-0.036em] text-balance sm:text-[50px]">
+            Tu operación Flex, <span className="text-accent-text">de la colecta al pago.</span>
+          </h1>
+          <p className="mt-5 max-w-[40ch] text-lg text-fg-muted">
+            Pedidos de Mercado Libre, Shopify y same-day en un solo panel. Cada entrega deja
+            hecho el cobro al seller y el pago al conductor.
+          </p>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <BotonVentas motivo="comenzar">Comenzar</BotonVentas>
+            <BotonVentas motivo="demo" variante="secundario">
+              Agendar demo
+            </BotonVentas>
+          </div>
+        </div>
+        <VitrinaPedidos />
+      </div>
     </section>
   );
 }
 
-function Fuente({ nombre, detalle }: { nombre: string; detalle: string }) {
+/* ─── Cifras ───────────────────────────────────────────────────────────── */
+
+const CIFRAS = [
+  { valor: "0", texto: "direcciones digitadas a mano" },
+  { valor: "390 → 185 km", texto: "un día real de 87 paradas, ruteado" },
+  { valor: formatearCLP(0), texto: "implementación y licencias" },
+  { valor: "CLP · DTE · RUT", texto: "hecho para Chile" },
+];
+
+function Cifras() {
   return (
-    <div className="border border-line bg-bg-raised p-4">
-      <p className="font-medium">{nombre}</p>
-      <p className="mt-1 text-sm text-fg-muted">{detalle}</p>
+    <div className="border-y border-line">
+      <dl className={cn(ENVOLTURA, "grid grid-cols-2 lg:grid-cols-4")}>
+        {CIFRAS.map((c, i) => (
+          <div
+            key={c.texto}
+            className={cn(
+              "grid gap-1 py-6 pr-5",
+              i % 2 === 1 && "border-l border-line-subtle pl-5",
+              i >= 2 && "max-lg:border-t max-lg:border-line-subtle",
+              i === 2 && "lg:border-l lg:border-line-subtle lg:pl-5"
+            )}
+          >
+            <dt className="order-2 text-[13.5px] text-fg-muted">{c.texto}</dt>
+            <dd className="rx-num order-1 font-mono text-[clamp(18px,1.9vw,24px)] font-semibold tracking-tight">
+              {c.valor}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
 
-function Paso({ n, titulo, texto }: { n: number; titulo: string; texto: string }) {
-  return (
-    <div className="border border-line bg-bg-raised p-5">
-      <p className="rx-num font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
-        {n} · {titulo}
-      </p>
-      <p className="mt-2 text-sm leading-relaxed text-fg-muted">{texto}</p>
-    </div>
-  );
-}
+/* ─── Beneficios ───────────────────────────────────────────────────────── */
 
-function Pregunta({ p, r }: { p: string; r: string }) {
-  return (
-    <div className="py-4">
-      <p className="text-sm font-medium">{p}</p>
-      <p className="mt-1 text-sm leading-relaxed text-fg-muted">{r}</p>
-    </div>
-  );
-}
+const BENEFICIOS = [
+  {
+    rotulo: "App del conductor",
+    titulo: "Escaneo en el retiro",
+    texto: "El conductor escanea cada bulto en la bodega del seller. Lo que faltó salta solo.",
+  },
+  {
+    rotulo: "Mercado Libre · Shopify",
+    titulo: "Pedidos que entran solos",
+    texto:
+      "Flex, Shopify y same-day llegan al mismo panel con su dirección ubicada. Hasta 10 cuentas de Mercado Libre por seller.",
+  },
+  {
+    rotulo: "En vivo",
+    titulo: "Colectas",
+    texto: "Cuántos bultos retiró cada conductor en cada bodega, al momento.",
+  },
+  {
+    rotulo: "Liquidaciones",
+    titulo: "Pago a conductores",
+    texto: "Cada entrega y cada retiro suman a la liquidación del conductor.",
+  },
+  {
+    rotulo: "Portal del seller",
+    titulo: "Cuenta corriente",
+    texto: "Tus sellers ven sus envíos entregados, lo que te deben y su factura electrónica.",
+  },
+];
 
-function Superficie({
-  nombre,
-  detalle,
-  tuya = false,
-}: {
-  nombre: string;
-  detalle: string;
-  tuya?: boolean;
-}) {
+function Beneficios() {
   return (
-    <div className="border border-line bg-bg-raised p-5">
-      <div className="flex items-center gap-2">
-        <p className="font-medium">{nombre}</p>
-        {tuya ? (
-          <span className="border border-accent-line bg-accent-deep px-1.5 py-0.5 font-mono text-[9px] tracking-[0.1em] text-accent-soft uppercase">
-            Tu marca
-          </span>
-        ) : null}
+    <section id="beneficios" className="scroll-mt-16 py-[clamp(60px,8vw,104px)]">
+      <div className={ENVOLTURA}>
+        <Cabeza rotulo="Beneficios" titulo="Lo que cambia en tu negocio" />
+        <div className="grid border-t-2 border-line-strong sm:grid-cols-2 lg:grid-cols-3">
+          {BENEFICIOS.map((b, i) => (
+            <article
+              key={b.titulo}
+              className={cn(
+                "grid content-start gap-2.5 border-b border-line-subtle py-6 sm:pr-6",
+                // Regla vertical entre columnas: 2 por fila en tablet, 3 en escritorio.
+                i % 2 === 1 && "sm:max-lg:border-l sm:max-lg:border-line-subtle sm:max-lg:pl-6",
+                i % 3 !== 0 && "lg:border-l lg:border-line-subtle lg:pl-6"
+              )}
+            >
+              <Rotulo>{b.rotulo}</Rotulo>
+              <h3 className="text-[19px] font-bold tracking-[-0.018em]">{b.titulo}</h3>
+              <p className="text-[15px] text-fg-muted">{b.texto}</p>
+            </article>
+          ))}
+        </div>
       </div>
-      <p className="mt-1 text-sm leading-relaxed text-fg-muted">{detalle}</p>
-    </div>
+    </section>
   );
 }
 
-function Marcha({ n, texto }: { n: number; texto: string }) {
+/* ─── Cómo funciona ────────────────────────────────────────────────────── */
+
+const PASOS = [
+  { titulo: "Habla con nosotros", texto: "Un asesor crea tu cuenta." },
+  { titulo: "Configura tu cuenta", texto: "Zonas, tarifas, bodegas, conductores y usuarios." },
+  { titulo: "Suma a tus sellers", texto: "Cada uno conecta sus cuentas de Mercado Libre y Shopify." },
+  { titulo: "Sal a repartir", texto: "Los pedidos ya están adentro." },
+];
+
+function ComoFunciona() {
   return (
-    <li className="flex gap-4 py-4">
-      <span className="rx-num shrink-0 font-mono text-sm text-fg-subtle">{n}</span>
-      <span className="text-sm leading-relaxed text-fg-muted">{texto}</span>
-    </li>
+    <section
+      id="como-funciona"
+      className="scroll-mt-16 border-y border-line-subtle bg-bg-raised py-[clamp(60px,8vw,104px)]"
+    >
+      <div className={ENVOLTURA}>
+        <Cabeza rotulo="Cómo funciona" titulo="Operando en cuatro pasos" />
+        <ol className="grid gap-y-9 border-t border-line sm:grid-cols-2 lg:grid-cols-4">
+          {PASOS.map((p, i) => (
+            <li key={p.titulo} className="relative grid content-start gap-2 pt-5 pr-5">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "absolute -top-px left-0 h-0.5 w-9",
+                  i === PASOS.length - 1 ? "bg-brand" : "bg-line-strong"
+                )}
+              />
+              <span className="rx-num font-mono text-[13px] font-semibold text-fg-muted">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <h3 className="text-[19px] font-bold tracking-[-0.018em]">{p.titulo}</h3>
+              <p className="text-[15px] text-fg-muted">{p.texto}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
   );
 }
 
-function Integracion({
-  categoria,
-  nombre,
-  detalle,
-  estado,
-}: {
-  categoria: string;
-  nombre: string;
-  detalle: string;
-  estado: string;
-}) {
+/* ─── Precios ──────────────────────────────────────────────────────────── */
+
+function Precios() {
   return (
-    <div className="border border-line bg-bg-raised p-5">
-      <p className="font-mono text-[10px] tracking-[0.12em] text-fg-subtle uppercase">
-        {categoria}
-      </p>
-      <p className="mt-1 font-medium">{nombre}</p>
-      {/* Cada integración lleva su ESTADO REAL al lado (regla 77). */}
-      <span className="mt-2 inline-block border border-progress-line bg-progress-bg px-2 py-0.5 text-[11px] font-medium text-progress-fg">
-        {estado}
-      </span>
-      <p className="mt-2 text-sm leading-relaxed text-fg-muted">{detalle}</p>
-    </div>
+    <section id="precios" className="scroll-mt-16 py-[clamp(60px,8vw,104px)]">
+      <div className={ENVOLTURA}>
+        <Cabeza rotulo="Precios" titulo="Pagas por envío procesado" />
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+          <div className="rounded-ctrl border border-line bg-bg-raised">
+            <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 py-6">
+              <span className="text-[17px] font-semibold">Por envío</span>
+              <span className="flex items-baseline gap-2">
+                <span className="rx-num font-mono text-[44px] leading-none font-semibold tracking-tight">
+                  {formatearCLP(PRECIO_POR_ENVIO_CLP)}
+                </span>
+                <span className="text-fg-muted">+ IVA</span>
+              </span>
+            </div>
+            <ul className="border-t-2 border-line-strong text-[15px]">
+              {[
+                "Implementación sin costo",
+                "Factura en pesos chilenos",
+              ].map((t) => (
+                <li
+                  key={t}
+                  className="flex min-h-13 items-center border-b border-line-subtle px-5 last:border-b-0"
+                >
+                  {t}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <CalculadoraPrecio />
+        </div>
+      </div>
+    </section>
   );
 }
 
-function Cifra({ valor, texto }: { valor: string; texto: string }) {
+/* ─── Preguntas ────────────────────────────────────────────────────────── */
+
+const PREGUNTAS = [
+  {
+    p: "¿Con qué se integra?",
+    r: "Mercado Libre Flex y Shopify. Tus pedidos same-day los creas en Rutax.",
+  },
+  {
+    p: "¿Cómo cargo mis envíos?",
+    r: "Los de Mercado Libre y Shopify entran solos cuando tu seller conecta su cuenta. Los same-day se ingresan desde el panel.",
+  },
+  {
+    p: "¿Cómo sigo mis envíos?",
+    r: "En la Torre de control ves cuántos paquetes faltan, en qué comunas y qué se atascó. Tu cliente final tiene su propia página de seguimiento.",
+  },
+  {
+    p: "¿Qué aplicaciones incluye?",
+    r: "Una app para Android con la que el conductor retira, sigue su ruta y cierra cada entrega, incluso sin señal. Tu equipo y tus sellers entran desde el navegador.",
+  },
+  {
+    p: "¿Mis conductores van a usar dos apps?",
+    r: "En Flex, sí: la prueba de entrega la sigue gobernando Mercado Envíos. La app de Rutax le dice al conductor cuál manda en cada pedido.",
+  },
+  {
+    p: "¿Para quién es?",
+    r: "Para couriers de última milla en Chile que operan Mercado Libre Flex, same-day o tiendas online.",
+  },
+];
+
+function Preguntas() {
   return (
-    <div className="border border-line bg-bg-raised p-5">
-      <p className="rx-num text-3xl font-semibold">{valor}</p>
-      <p className="mt-2 text-sm leading-relaxed text-fg-muted">{texto}</p>
-    </div>
+    <section
+      id="preguntas"
+      className="scroll-mt-16 border-y border-line-subtle bg-bg-raised py-[clamp(60px,8vw,104px)]"
+    >
+      <div
+        className={cn(
+          ENVOLTURA,
+          "grid gap-7 lg:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] lg:gap-20"
+        )}
+      >
+        <div className="grid content-start gap-3">
+          <Rotulo>Preguntas frecuentes</Rotulo>
+          <h2 className="text-[28px] leading-[1.12] font-bold tracking-[-0.03em] sm:text-[40px]">
+            Antes de empezar
+          </h2>
+        </div>
+        <Accordion
+          type="single"
+          collapsible
+          defaultValue={PREGUNTAS[0]?.p}
+          className="border-t-2 border-line-strong"
+        >
+          {PREGUNTAS.map((q) => (
+            <AccordionItem key={q.p} value={q.p}>
+              <AccordionTrigger className="min-h-16 text-[17px] font-semibold">
+                {q.p}
+              </AccordionTrigger>
+              <AccordionContent className="max-w-[62ch] pr-9 pb-5 text-[15px] text-fg-muted">
+                {q.r}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
+    </section>
   );
 }
 
-function Dato({ texto }: { texto: string }) {
+/* ─── Cierre ───────────────────────────────────────────────────────────── */
+
+function Cierre() {
   return (
-    <li className="border border-line bg-bg-raised p-4 text-sm leading-relaxed text-fg-muted">
-      {texto}
-    </li>
+    // Siempre en el tema oscuro del producto, en los dos temas del sitio.
+    <section id="contacto" data-rx-theme="dark" className="border-t-2 border-brand bg-bg text-fg">
+      <div
+        className={cn(
+          ENVOLTURA,
+          "grid items-end gap-7 py-[clamp(60px,8vw,100px)] md:grid-cols-[minmax(0,1fr)_auto]"
+        )}
+      >
+        <div>
+          <h2 className="text-[30px] leading-[1.12] font-bold tracking-[-0.032em] sm:text-[44px]">
+            ¿Listo para ordenar tu operación?
+          </h2>
+          <p className="mt-3 text-[17px] text-fg-muted">Te mostramos Rutax con tus propios pedidos.</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <BotonVentas motivo="comenzar">Comenzar</BotonVentas>
+          <BotonVentas motivo="ventas" variante="secundario">
+            Hablar con ventas
+          </BotonVentas>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── Pie ──────────────────────────────────────────────────────────────── */
+
+function Pie() {
+  const columnas: { titulo: string; enlaces: { href: string; texto: string; externo?: boolean }[] }[] = [
+    {
+      titulo: "Producto",
+      enlaces: [
+        { href: "#beneficios", texto: "Beneficios" },
+        { href: "#como-funciona", texto: "Cómo funciona" },
+        { href: "#precios", texto: "Precios" },
+      ],
+    },
+    {
+      titulo: "Empresa",
+      enlaces: [
+        { href: "/agendar", texto: "Agendar demo" },
+        { href: "/login", texto: "Ingresar" },
+      ],
+    },
+    {
+      titulo: "Soporte",
+      enlaces: [
+        { href: "#preguntas", texto: "Preguntas frecuentes" },
+        { href: `https://wa.me/${WHATSAPP_VENTAS}`, texto: "WhatsApp", externo: true },
+      ],
+    },
+  ];
+
+  return (
+    <footer data-rx-theme="dark" className="bg-bg pt-11 pb-13 text-sm text-fg-muted">
+      <div className={ENVOLTURA}>
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-[1.5fr_repeat(3,1fr)]">
+          <div className="col-span-2 md:col-span-1">
+            <Link href="/" aria-label="Rutax, inicio" className="text-fg">
+              <MarcaRutax version="completa" />
+            </Link>
+          </div>
+          {columnas.map((c) => (
+            <div key={c.titulo}>
+              <Rotulo>{c.titulo}</Rotulo>
+              <ul className="mt-3 grid gap-2">
+                {c.enlaces.map((e) => (
+                  <li key={e.texto}>
+                    <a
+                      href={e.href}
+                      className="hover:text-fg"
+                      {...(e.externo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                    >
+                      {e.texto}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="mt-10 flex flex-wrap justify-between gap-3 border-t border-line-subtle pt-5 text-[12.5px] text-fg-subtle">
+          <span>© 2026 Rutax · Santiago, Chile</span>
+          <span className="flex gap-4">
+            <Link href="/terminos" className="hover:text-fg">
+              Términos
+            </Link>
+            <Link href="/privacidad" className="hover:text-fg">
+              Privacidad
+            </Link>
+          </span>
+        </div>
+      </div>
+    </footer>
   );
 }
