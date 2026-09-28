@@ -619,6 +619,10 @@ export function montarFlujo(p: PiezasFlujo): () => void {
         `<text class="mono" x="${x}" y="${y + 2.8}" font-size="7.5" font-weight="700" fill="var(--e-pro)" text-anchor="middle">${i + 1}</text>` +
         `<g class="paradaOk" opacity="0">${visto(x, y, 7.4)}</g>`
     ).join("") +
+    // Una casita junto a la última parada: la ruta termina cerca de donde termina el día del
+    // conductor. Sin texto, a propósito (decisión del usuario, 2026-09-28).
+    '<g transform="translate(112 88)"><path d="M0 5.5 L6.5 0 L13 5.5 V13 H0 Z" fill="var(--e-panel)" stroke="var(--e-fg)" stroke-width="1.6" stroke-linejoin="round"/>' +
+    '<rect x="5" y="8" width="3" height="5" fill="var(--e-fg)"/></g>' +
     '<g data-p="vanTel"><circle r="7" fill="var(--e-fg)" opacity=".15"/><circle r="4.5" fill="var(--e-fg)"/></g>' +
     '<rect x="8" y="192" width="122" height="46" rx="10" fill="var(--e-st-bg)"/>' +
     '<text x="16" y="207" font-size="8.5" fill="var(--e-muted)">Siguiente parada</text>' +
