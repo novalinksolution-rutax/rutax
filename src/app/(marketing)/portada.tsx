@@ -44,7 +44,6 @@ export function Portada() {
         <Navegacion />
         <main className="flex-1">
           <Hero />
-          <Cifras />
           <Beneficios />
           <ComoFunciona />
           <Precios />
@@ -60,27 +59,28 @@ export function Portada() {
 
 const ENVOLTURA = "mx-auto w-full max-w-[1200px] px-4 sm:px-8 lg:px-[52px]";
 
-function Rotulo({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <span
-      className={cn(
-        "font-mono text-[11.5px] font-medium tracking-[0.12em] text-fg-muted uppercase",
-        className
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Cabeza({ rotulo, titulo }: { rotulo: string; titulo: string }) {
+/**
+ * Título + bajada de cada sección, en el registro de la referencia (decisión del
+ * usuario, 2026-09-27): el copy habla de lo que el servicio hace, en general, sin
+ * nombrar módulos internos ni detalles del sistema.
+ */
+function Cabeza({ titulo, bajada }: { titulo: string; bajada: string }) {
   return (
     <div className="mb-9 grid max-w-[680px] gap-3 lg:mb-13">
-      <Rotulo>{rotulo}</Rotulo>
       <h2 className="text-[28px] leading-[1.12] font-bold tracking-[-0.03em] text-balance sm:text-[40px]">
         {titulo}
       </h2>
+      <p className="text-[17px] text-fg-muted">{bajada}</p>
     </div>
+  );
+}
+
+/** Rótulo en mono de las columnas del pie. */
+function Rotulo({ children }: { children: ReactNode }) {
+  return (
+    <span className="font-mono text-[11.5px] font-medium tracking-[0.12em] text-fg-muted uppercase">
+      {children}
+    </span>
   );
 }
 
@@ -142,9 +142,12 @@ function Hero() {
           <h1 className="text-[36px] leading-[1.06] font-bold tracking-[-0.036em] text-balance sm:text-[50px]">
             Tu operación Flex, <span className="text-accent-text">de la colecta al pago.</span>
           </h1>
-          <p className="mt-5 max-w-[40ch] text-lg text-fg-muted">
-            Pedidos de Mercado Libre, Shopify y same-day en un solo panel. Cada entrega deja
-            hecho el cobro al seller y el pago al conductor.
+          <p className="mt-5 max-w-[42ch] text-lg text-fg-muted">
+            Gestionamos la cadena completa de Mercado Libre Flex y same-day para que muevas
+            grandes volúmenes de paquetes sin perder el control.
+          </p>
+          <p className="mt-3 max-w-[42ch] text-lg text-fg-muted">
+            Súmate a Rutax y haz crecer tu operación.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <BotonVentas motivo="comenzar">Comenzar</BotonVentas>
@@ -159,68 +162,32 @@ function Hero() {
   );
 }
 
-/* ─── Cifras ───────────────────────────────────────────────────────────── */
-
-const CIFRAS = [
-  { valor: "0", texto: "direcciones digitadas a mano" },
-  { valor: "390 → 185 km", texto: "un día real de 87 paradas, ruteado" },
-  { valor: formatearCLP(0), texto: "implementación y licencias" },
-  { valor: "CLP · DTE · RUT", texto: "hecho para Chile" },
-];
-
-function Cifras() {
-  return (
-    <div className="border-y border-line">
-      <dl className={cn(ENVOLTURA, "grid grid-cols-2 lg:grid-cols-4")}>
-        {CIFRAS.map((c, i) => (
-          <div
-            key={c.texto}
-            className={cn(
-              "grid gap-1 py-6 pr-5",
-              i % 2 === 1 && "border-l border-line-subtle pl-5",
-              i >= 2 && "max-lg:border-t max-lg:border-line-subtle",
-              i === 2 && "lg:border-l lg:border-line-subtle lg:pl-5"
-            )}
-          >
-            <dt className="order-2 text-[13.5px] text-fg-muted">{c.texto}</dt>
-            <dd className="rx-num order-1 font-mono text-[clamp(18px,1.9vw,24px)] font-semibold tracking-tight">
-              {c.valor}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
 /* ─── Beneficios ───────────────────────────────────────────────────────── */
 
 const BENEFICIOS = [
   {
-    rotulo: "App del conductor",
-    titulo: "Escaneo en el retiro",
-    texto: "El conductor escanea cada bulto en la bodega del seller. Lo que faltó salta solo.",
+    titulo: "Escaneo rápido",
+    texto: "Nuestra app escanea cada paquete en segundos para que el retiro no se atrase.",
   },
   {
-    rotulo: "Mercado Libre · Shopify",
-    titulo: "Pedidos que entran solos",
-    texto:
-      "Flex, Shopify y same-day llegan al mismo panel con su dirección ubicada. Hasta 10 cuentas de Mercado Libre por seller.",
+    titulo: "Pedidos centralizados",
+    texto: "Los pedidos de las tiendas online de tus clientes llegan solos a un mismo lugar.",
   },
   {
-    rotulo: "En vivo",
     titulo: "Colectas",
-    texto: "Cuántos bultos retiró cada conductor en cada bodega, al momento.",
+    texto: "Sabe en todo momento cuántos paquetes se retiraron en cada tienda.",
   },
   {
-    rotulo: "Liquidaciones",
-    titulo: "Pago a conductores",
-    texto: "Cada entrega y cada retiro suman a la liquidación del conductor.",
+    titulo: "Finanzas",
+    texto: "Calcula el pago de cada repartidor según sus entregas, zonas y retiros.",
   },
   {
-    rotulo: "Portal del seller",
+    titulo: "Sin costos de implementación",
+    texto: "Sin cobro de alta ni licencias por usuario. Pagas solo por lo que usas.",
+  },
+  {
     titulo: "Cuenta corriente",
-    texto: "Tus sellers ven sus envíos entregados, lo que te deben y su factura electrónica.",
+    texto: "Tus clientes ven el detalle de sus envíos entregados y lo que consumen, en pesos.",
   },
 ];
 
@@ -228,7 +195,10 @@ function Beneficios() {
   return (
     <section id="beneficios" className="scroll-mt-16 py-[clamp(60px,8vw,104px)]">
       <div className={ENVOLTURA}>
-        <Cabeza rotulo="Beneficios" titulo="Lo que cambia en tu negocio" />
+        <Cabeza
+          titulo="Beneficios para tu negocio"
+          bajada="Lo que cambia cuando tu operación corre en Rutax."
+        />
         <div className="grid border-t-2 border-line-strong sm:grid-cols-2 lg:grid-cols-3">
           {BENEFICIOS.map((b, i) => (
             <article
@@ -240,7 +210,6 @@ function Beneficios() {
                 i % 3 !== 0 && "lg:border-l lg:border-line-subtle lg:pl-6"
               )}
             >
-              <Rotulo>{b.rotulo}</Rotulo>
               <h3 className="text-[19px] font-bold tracking-[-0.018em]">{b.titulo}</h3>
               <p className="text-[15px] text-fg-muted">{b.texto}</p>
             </article>
@@ -254,10 +223,16 @@ function Beneficios() {
 /* ─── Cómo funciona ────────────────────────────────────────────────────── */
 
 const PASOS = [
-  { titulo: "Habla con nosotros", texto: "Un asesor crea tu cuenta." },
-  { titulo: "Configura tu cuenta", texto: "Zonas, tarifas, bodegas, conductores y usuarios." },
-  { titulo: "Suma a tus sellers", texto: "Cada uno conecta sus cuentas de Mercado Libre y Shopify." },
-  { titulo: "Sal a repartir", texto: "Los pedidos ya están adentro." },
+  {
+    titulo: "Habla con un asesor",
+    texto: "Te acompaña en la contratación y deja tu cuenta lista para trabajar.",
+  },
+  { titulo: "Configura tu cuenta", texto: "Define tus zonas, tarifas, repartidores y usuarios." },
+  {
+    titulo: "Conecta a tus clientes",
+    texto: "Invítalos a vincular sus tiendas de Mercado Libre y Shopify.",
+  },
+  { titulo: "Empieza a operar", texto: "Todo listo para despachar desde el primer día." },
 ];
 
 function ComoFunciona() {
@@ -267,7 +242,7 @@ function ComoFunciona() {
       className="scroll-mt-16 border-y border-line-subtle bg-bg-raised py-[clamp(60px,8vw,104px)]"
     >
       <div className={ENVOLTURA}>
-        <Cabeza rotulo="Cómo funciona" titulo="Operando en cuatro pasos" />
+        <Cabeza titulo="¿Cómo funciona?" bajada="Empieza a operar en cuatro pasos simples." />
         <ol className="grid gap-y-9 border-t border-line sm:grid-cols-2 lg:grid-cols-4">
           {PASOS.map((p, i) => (
             <li key={p.titulo} className="relative grid content-start gap-2 pt-5 pr-5">
@@ -297,31 +272,19 @@ function Precios() {
   return (
     <section id="precios" className="scroll-mt-16 py-[clamp(60px,8vw,104px)]">
       <div className={ENVOLTURA}>
-        <Cabeza rotulo="Precios" titulo="Pagas por envío procesado" />
+        <Cabeza
+          titulo="Plan de precios"
+          bajada="Implementación sin costo. Cobramos por envío procesado."
+        />
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-          <div className="rounded-ctrl border border-line bg-bg-raised">
-            <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 py-6">
-              <span className="text-[17px] font-semibold">Por envío</span>
-              <span className="flex items-baseline gap-2">
-                <span className="rx-num font-mono text-[44px] leading-none font-semibold tracking-tight">
-                  {formatearCLP(PRECIO_POR_ENVIO_CLP)}
-                </span>
-                <span className="text-fg-muted">+ IVA</span>
+          <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-ctrl border border-line bg-bg-raised px-5 py-6">
+            <span className="text-[17px] font-semibold">Por envío</span>
+            <span className="flex items-baseline gap-2">
+              <span className="rx-num font-mono text-[44px] leading-none font-semibold tracking-tight">
+                {formatearCLP(PRECIO_POR_ENVIO_CLP)}
               </span>
-            </div>
-            <ul className="border-t-2 border-line-strong text-[15px]">
-              {[
-                "Implementación sin costo",
-                "Factura en pesos chilenos",
-              ].map((t) => (
-                <li
-                  key={t}
-                  className="flex min-h-13 items-center border-b border-line-subtle px-5 last:border-b-0"
-                >
-                  {t}
-                </li>
-              ))}
-            </ul>
+              <span className="text-fg-muted">+ IVA</span>
+            </span>
           </div>
           <CalculadoraPrecio />
         </div>
@@ -332,30 +295,32 @@ function Precios() {
 
 /* ─── Preguntas ────────────────────────────────────────────────────────── */
 
+// Solo lo que Rutax hace hoy: no hay carga masiva ni API pública activa, así que
+// ninguna respuesta las promete aunque la referencia sí las mencione.
 const PREGUNTAS = [
   {
-    p: "¿Con qué se integra?",
-    r: "Mercado Libre Flex y Shopify. Tus pedidos same-day los creas en Rutax.",
+    p: "¿Qué integraciones ofrecen?",
+    r: "Nos conectamos con Mercado Libre y con las principales plataformas de comercio electrónico, como Shopify.",
   },
   {
     p: "¿Cómo cargo mis envíos?",
-    r: "Los de Mercado Libre y Shopify entran solos cuando tu seller conecta su cuenta. Los same-day se ingresan desde el panel.",
+    r: "Puedes crearlos a mano o dejar que lleguen solos desde las tiendas online de tus clientes.",
   },
   {
-    p: "¿Cómo sigo mis envíos?",
-    r: "En la Torre de control ves cuántos paquetes faltan, en qué comunas y qué se atascó. Tu cliente final tiene su propia página de seguimiento.",
+    p: "¿Cómo sigo el estado de mis envíos?",
+    r: "Desde un panel ves en tiempo real el estado de cada envío y el avance de tu operación.",
   },
   {
-    p: "¿Qué aplicaciones incluye?",
-    r: "Una app para Android con la que el conductor retira, sigue su ruta y cierra cada entrega, incluso sin señal. Tu equipo y tus sellers entran desde el navegador.",
+    p: "¿Qué aplicaciones incluye el servicio?",
+    r: "Una app móvil para tus repartidores y una plataforma web para tu equipo y tus clientes.",
   },
   {
-    p: "¿Mis conductores van a usar dos apps?",
-    r: "En Flex, sí: la prueba de entrega la sigue gobernando Mercado Envíos. La app de Rutax le dice al conductor cuál manda en cada pedido.",
+    p: "¿En qué moneda se paga el servicio?",
+    r: "En pesos chilenos, con factura electrónica.",
   },
   {
-    p: "¿Para quién es?",
-    r: "Para couriers de última milla en Chile que operan Mercado Libre Flex, same-day o tiendas online.",
+    p: "¿Para quién está pensado el servicio?",
+    r: "Para empresas de última milla que quieren profesionalizar su operación y manejar con eficiencia los envíos de comercio electrónico, tiendas online y entregas en el día.",
   },
 ];
 
@@ -372,10 +337,10 @@ function Preguntas() {
         )}
       >
         <div className="grid content-start gap-3">
-          <Rotulo>Preguntas frecuentes</Rotulo>
           <h2 className="text-[28px] leading-[1.12] font-bold tracking-[-0.03em] sm:text-[40px]">
-            Antes de empezar
+            Preguntas frecuentes
           </h2>
+          <p className="text-[17px] text-fg-muted">Respuestas a lo que más nos preguntan.</p>
         </div>
         <Accordion
           type="single"
@@ -415,7 +380,7 @@ function Cierre() {
           <h2 className="text-[30px] leading-[1.12] font-bold tracking-[-0.032em] sm:text-[44px]">
             ¿Listo para ordenar tu operación?
           </h2>
-          <p className="mt-3 text-[17px] text-fg-muted">Te mostramos Rutax con tus propios pedidos.</p>
+          <p className="mt-3 text-[17px] text-fg-muted">Súmate a Rutax y haz crecer tu operación.</p>
         </div>
         <div className="flex flex-wrap gap-3">
           <BotonVentas motivo="comenzar">Comenzar</BotonVentas>
