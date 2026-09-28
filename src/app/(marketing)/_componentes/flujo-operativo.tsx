@@ -51,7 +51,10 @@ export function FlujoOperativo() {
               className="grid w-full cursor-pointer gap-2 px-1 pt-3 pb-2.5 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent-text sm:px-3"
             >
               <span className="block h-[3px] overflow-hidden bg-line-subtle">
-                <i data-barra="" className="block h-full origin-left scale-x-0 bg-brand" />
+                {/* El avance lo escribe flujo-escena.ts en `transform`. Nada de `scale-x-0`: en
+                    Tailwind 4 esa clase usa la propiedad `scale`, que se multiplica con el
+                    `transform` y deja la barra en cero para siempre. */}
+                <i data-barra="" className="block h-full origin-left bg-brand" style={{ transform: "scaleX(0)" }} />
               </span>
               <span className="truncate text-[11px] font-semibold tracking-[-0.01em] text-fg-subtle transition-colors group-data-[visto]:text-fg sm:text-[13.5px] sm:tracking-normal">
                 {nombre}

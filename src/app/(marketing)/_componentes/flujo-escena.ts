@@ -623,7 +623,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     '<rect x="8" y="192" width="122" height="46" rx="10" fill="var(--e-st-bg)"/>' +
     '<text x="16" y="207" font-size="8.5" fill="var(--e-muted)">Siguiente parada</text>' +
     '<text data-p="sigTel" x="16" y="226" font-size="12" font-weight="700" fill="var(--e-fg)">Parada 1 de 5</text>' +
-    '<text class="mono" x="122" y="226" font-size="10" font-weight="600" fill="var(--e-muted)" text-anchor="end">4 min</text>' +
+    '<text class="mono" x="122" y="207" font-size="8.5" font-weight="600" fill="var(--e-muted)" text-anchor="end">4 min</text>' +
     '<text data-p="progTel" x="10" y="258" font-size="10" fill="var(--e-muted)">0 de 5 entregadas</text>' +
     '<rect x="10" y="266" width="118" height="5" rx="2.5" fill="var(--e-bar)"/><rect data-p="progBar" x="10" y="266" width="0" height="5" rx="2.5" fill="var(--e-accent)"/>';
 
