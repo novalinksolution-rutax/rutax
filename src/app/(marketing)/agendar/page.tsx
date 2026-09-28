@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   title: "Agendar una demostración · Rutax",
   description:
     "Media hora con tus propios pedidos en pantalla. Sin tarjeta, sin compromiso y sin vendedor detrás.",
+  // El fondo del embudo no debe aparecer suelto en resultados de búsqueda.
+  robots: { index: false, follow: true },
 };
 
 /**

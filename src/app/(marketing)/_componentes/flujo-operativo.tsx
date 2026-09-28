@@ -70,7 +70,7 @@ export function FlujoOperativo() {
           <span ref={titulo} aria-live="polite" className="text-[15px] font-semibold">
             Llegan los pedidos
           </span>
-          <span ref={subtitulo} className="text-[13px] text-fg-muted">
+          <span ref={subtitulo} className="min-h-[2lh] text-[13px] text-fg-muted sm:min-h-0">
             Desde las tiendas de tus clientes, sin digitar nada.
           </span>
         </p>

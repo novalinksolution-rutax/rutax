@@ -1,21 +1,17 @@
-import Link from "next/link";
-import type { ReactNode } from "react";
-import { Analytics } from "@vercel/analytics/next";
-
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { MarcaRutax } from "@/components/ui/marca-rutax";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { cn } from "@/lib/utils";
 
 import { CalculadoraPrecio } from "./_componentes/calculadora-precio";
-import { BotonVentas, VentasProvider } from "./_componentes/ventas";
+import { Cabeza, Cierre, ENVOLTURA, MarcoSitio } from "./_componentes/sitio";
+import { BotonVentas } from "./_componentes/ventas";
 import { FlujoOperativo } from "./_componentes/flujo-operativo";
-import { PRECIO_POR_ENVIO_CLP, WHATSAPP_VENTAS } from "./_lib/precio";
+import { PRECIO_POR_ENVIO_CLP } from "./_lib/precio";
 
 /**
  * La portada de Rutax — sitio v2 (2026-09-27).
@@ -30,100 +26,20 @@ import { PRECIO_POR_ENVIO_CLP, WHATSAPP_VENTAS } from "./_lib/precio";
  * · **«Comenzar» abre al asesor**, no un autoregistro: el alta de un courier la
  *   hace Rutax desde el backstage. Los tres botones abren el mismo modal.
  * · **WhatsApp de ventas propio**, distinto del número de avisos de la Cloud API.
- * · **Vercel Analytics solo aquí y en `/agendar`**, no en el layout raíz: en el
- *   raíz mediría también `/tracking/[token]`, y ese token es público y viaja en
- *   la URL que se comparte con el destinatario.
  *
- * Todo es servidor salvo tres islas: la vitrina del hero, la calculadora y el
- * modal de ventas.
+ * El encabezado, el cierre y el pie viven en `_componentes/sitio.tsx`, compartidos
+ * con las páginas de producto.
  */
 export function Portada() {
   return (
-    <VentasProvider whatsapp={WHATSAPP_VENTAS}>
-      <div className="flex min-h-full flex-col bg-bg text-fg">
-        <Navegacion />
-        <main className="flex-1">
-          <Hero />
-          <Beneficios />
-          <ComoFunciona />
-          <Precios />
-          <Preguntas />
-          <Cierre />
-        </main>
-        <Pie />
-      </div>
-      <Analytics />
-    </VentasProvider>
-  );
-}
-
-const ENVOLTURA = "mx-auto w-full max-w-[1200px] px-4 sm:px-8 lg:px-[52px]";
-
-/**
- * Título + bajada de cada sección, en el registro de la referencia (decisión del
- * usuario, 2026-09-27): el copy habla de lo que el servicio hace, en general, sin
- * nombrar módulos internos ni detalles del sistema.
- */
-function Cabeza({ titulo, bajada }: { titulo: string; bajada: string }) {
-  return (
-    <div className="mb-9 grid max-w-[680px] gap-3 lg:mb-13">
-      <h2 className="text-[28px] leading-[1.12] font-bold tracking-[-0.03em] text-balance sm:text-[40px]">
-        {titulo}
-      </h2>
-      <p className="text-[17px] text-fg-muted">{bajada}</p>
-    </div>
-  );
-}
-
-/** Rótulo en mono de las columnas del pie. */
-function Rotulo({ children }: { children: ReactNode }) {
-  return (
-    <span className="font-mono text-[11.5px] font-medium tracking-[0.12em] text-fg-muted uppercase">
-      {children}
-    </span>
-  );
-}
-
-/* ─── Navegación ───────────────────────────────────────────────────────── */
-
-const SECCIONES = [
-  { href: "#beneficios", texto: "Beneficios" },
-  { href: "#como-funciona", texto: "Cómo funciona" },
-  { href: "#precios", texto: "Precios" },
-  { href: "#preguntas", texto: "Preguntas" },
-];
-
-function Navegacion() {
-  return (
-    <header className="sticky top-0 z-20 border-b border-line-subtle bg-bg">
-      <div className={cn(ENVOLTURA, "flex h-16 items-center gap-8")}>
-        <Link href="/" aria-label="Rutax, inicio" className="rounded-ctrl">
-          <MarcaRutax />
-        </Link>
-        <nav aria-label="Secciones" className="max-lg:hidden">
-          <ul className="flex gap-6 text-[14.5px] font-medium text-fg-muted">
-            {SECCIONES.map((s) => (
-              <li key={s.href}>
-                <a href={s.href} className="transition-colors hover:text-fg">
-                  {s.texto}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="ml-auto flex items-center gap-4">
-          <Link
-            href="/login"
-            className="text-[14.5px] font-semibold text-fg-muted hover:text-fg max-[460px]:hidden"
-          >
-            Ingresar
-          </Link>
-          <BotonVentas motivo="ventas" tamano="chico">
-            Hablar con ventas
-          </BotonVentas>
-        </div>
-      </div>
-    </header>
+    <MarcoSitio>
+      <Hero />
+      <Beneficios />
+      <ComoFunciona />
+      <Precios />
+      <Preguntas />
+      <Cierre />
+    </MarcoSitio>
   );
 }
 
@@ -361,106 +277,5 @@ function Preguntas() {
         </Accordion>
       </div>
     </section>
-  );
-}
-
-/* ─── Cierre ───────────────────────────────────────────────────────────── */
-
-function Cierre() {
-  return (
-    // Siempre en el tema oscuro del producto, en los dos temas del sitio.
-    <section id="contacto" data-rx-theme="dark" className="border-t-2 border-brand bg-bg text-fg">
-      <div
-        className={cn(
-          ENVOLTURA,
-          "grid items-end gap-7 py-[clamp(60px,8vw,100px)] md:grid-cols-[minmax(0,1fr)_auto]"
-        )}
-      >
-        <div>
-          <h2 className="text-[30px] leading-[1.12] font-bold tracking-[-0.032em] sm:text-[44px]">
-            ¿Listo para ordenar tu operación?
-          </h2>
-          <p className="mt-3 text-[17px] text-fg-muted">Súmate a Rutax y haz crecer tu operación.</p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <BotonVentas motivo="comenzar">Comenzar</BotonVentas>
-          <BotonVentas motivo="ventas" variante="secundario">
-            Hablar con ventas
-          </BotonVentas>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─── Pie ──────────────────────────────────────────────────────────────── */
-
-function Pie() {
-  const columnas: { titulo: string; enlaces: { href: string; texto: string; externo?: boolean }[] }[] = [
-    {
-      titulo: "Producto",
-      enlaces: [
-        { href: "#beneficios", texto: "Beneficios" },
-        { href: "#como-funciona", texto: "Cómo funciona" },
-        { href: "#precios", texto: "Precios" },
-      ],
-    },
-    {
-      titulo: "Empresa",
-      enlaces: [
-        { href: "/agendar", texto: "Agendar demo" },
-        { href: "/login", texto: "Ingresar" },
-      ],
-    },
-    {
-      titulo: "Soporte",
-      enlaces: [
-        { href: "#preguntas", texto: "Preguntas frecuentes" },
-        { href: `https://wa.me/${WHATSAPP_VENTAS}`, texto: "WhatsApp", externo: true },
-      ],
-    },
-  ];
-
-  return (
-    <footer data-rx-theme="dark" className="bg-bg pt-11 pb-13 text-sm text-fg-muted">
-      <div className={ENVOLTURA}>
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-[1.5fr_repeat(3,1fr)]">
-          <div className="col-span-2 md:col-span-1">
-            <Link href="/" aria-label="Rutax, inicio" className="text-fg">
-              <MarcaRutax version="completa" />
-            </Link>
-          </div>
-          {columnas.map((c) => (
-            <div key={c.titulo}>
-              <Rotulo>{c.titulo}</Rotulo>
-              <ul className="mt-3 grid gap-2">
-                {c.enlaces.map((e) => (
-                  <li key={e.texto}>
-                    <a
-                      href={e.href}
-                      className="hover:text-fg"
-                      {...(e.externo ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                    >
-                      {e.texto}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <div className="mt-10 flex flex-wrap justify-between gap-3 border-t border-line-subtle pt-5 text-[12.5px] text-fg-subtle">
-          <span>© 2026 Rutax · Santiago, Chile</span>
-          <span className="flex gap-4">
-            <Link href="/terminos" className="hover:text-fg">
-              Términos
-            </Link>
-            <Link href="/privacidad" className="hover:text-fg">
-              Privacidad
-            </Link>
-          </span>
-        </div>
-      </div>
-    </footer>
   );
 }

@@ -21,6 +21,7 @@ import { Portada } from "./(marketing)/portada";
  */
 export const metadata: Metadata = {
   title: "Rutax · Tu operación Flex, de la colecta al pago",
+  alternates: { canonical: "/" },
   description:
     "Software para couriers de última milla en Chile: pedidos de Mercado Libre Flex, Shopify y same-day en un solo panel, con el cobro al seller y el pago al conductor hechos en cada entrega. $60 + IVA por envío.",
 };

@@ -29,6 +29,17 @@ import { gsap } from "gsap";
  *   atributos `transform` en cada cuadro. Así el `seek` del riel es exacto.
  * · En pantallas angostas el lienzo pasa a cuadrado y encuadra el centro, donde
  *   ocurre toda la acción: en el teléfono se ve casi del mismo tamaño.
+ * · Un teléfono grande muestra la app en cada momento (retiro, su día, la ruta,
+ *   la evidencia de la entrega). Cuando aparece, la cámara corre la acción a la
+ *   izquierda para dejarle sitio (`cam.tel`).
+ *
+ * -----------------------------------------------------------------------------
+ * «TU EMPRESA», NO RUTAX
+ * -----------------------------------------------------------------------------
+ * La camioneta, la gorra y el uniforme llevan un logo genérico que dice «Tu
+ * empresa», en un naranja que no es de Rutax (decisión del usuario, 2026-09-28):
+ * quien reparte es el courier que nos compra. Rutax aparece solo dentro de la
+ * app, que es lo que vendemos.
  *
  * ⚠️ Dos trampas de GSAP que ya mordieron al construirla:
  * · Un `fromTo` pinta su estado inicial apenas se crea. Si ese estado es visible
@@ -49,10 +60,21 @@ export interface PiezasFlujo {
 
 const NS = "http://www.w3.org/2000/svg";
 const R = Math.PI / 180;
+/** El color de «tu empresa»: intencionalmente ajeno a la paleta de Rutax. */
+const MARCA = "#EF6C3E";
+const MARCA_OSC = "#CF5528";
+/** Logo genérico del courier: un círculo con una flecha, y el nombre si hay sitio. */
+function logoEmpresa(x: number, y: number, r: number, texto?: { tam: number; color: string }) {
+  return (
+    `<circle cx="${x}" cy="${y}" r="${r}" fill="${MARCA}"/>` +
+    `<path d="M${x - r * 0.42} ${y + r * 0.1} L${x - r * 0.05} ${y + r * 0.45} L${x + r * 0.5} ${y - r * 0.35}" fill="none" stroke="#FFFFFF" stroke-width="${Math.max(1.2, r * 0.26)}" stroke-linecap="round" stroke-linejoin="round"/>` +
+    (texto ? `<text x="${x + r + 6}" y="${y + texto.tam * 0.36}" font-size="${texto.tam}" font-weight="700" fill="${texto.color}" letter-spacing="-.3">Tu empresa</text>` : "")
+  );
+}
 
 const LIMITES = [0, 4.9, 11.4, 16.2, 21.4, 29.2];
 /** A dónde salta cada paso del riel: cuando su escena ya está encuadrada, no a mitad del paneo. */
-const ENTRADAS = [0.01, 6.1, 12.0, 16.3, 21.9];
+const ENTRADAS = [0.01, 7.4, 12.0, 17.2, 22.2];
 const TEXTOS: [string, string][] = [
   ["Llegan los pedidos", "Desde las tiendas de tus clientes, sin digitar nada."],
   ["Retiro en bodega", "El conductor escanea cada paquete con la app."],
@@ -70,6 +92,7 @@ const LIENZO = `
   <radialGradient id="fo-luz" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="var(--e-st-glow)"/><stop offset="1" stop-color="var(--e-st-bg)"/></radialGradient>
   <linearGradient id="fo-suelo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--e-st-floor-top)"/><stop offset="1" stop-color="var(--e-st-floor)"/></linearGradient>
   <linearGradient id="fo-haz" x1="0" x2="1"><stop offset="0" stop-color="var(--e-accent)" stop-opacity=".9"/><stop offset="1" stop-color="var(--e-accent)" stop-opacity=".08"/></linearGradient>
+  <clipPath id="fo-pantalla"><rect x="6" y="6" width="138" height="288" rx="21"/></clipPath>
   <filter id="fo-difuso" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="3.2"/></filter>
   <filter id="fo-bokeh" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
   <filter id="fo-elevar" x="-20%" y="-30%" width="140%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#0B1114" flood-opacity=".14"/></filter>
@@ -211,12 +234,12 @@ function persona(padre: Element, o: Aspecto): Rig {
       : `<circle cx="-9" cy="-10" r="8" fill="${o.pelo}"/><circle cx="1" cy="-15" r="8.5" fill="${o.pelo}"/><circle cx="11" cy="-11" r="7" fill="${o.pelo}"/><circle cx="-14" cy="-1" r="6.5" fill="${o.pelo}"/><circle cx="-11" cy="8" r="5" fill="${o.pelo}"/>`;
   const gorra =
     o.estilo === "gorra"
-      ? '<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q17.5 -22 17.5 -6 Z" fill="#00B89A"/><path d="M-16.5 -5 Q-15.5 -22 2 -22 Q-8 -18 -9 -5 Z" fill="#000" opacity=".12"/>' +
-        '<path d="M12 -7.5 Q23 -9 27.5 -4.5 Q20 -2.8 12 -4 Z" fill="#008F78"/>' +
-        '<rect x="-3" y="-16" width="7.5" height="2.2" fill="#0B1114"/><rect x="-.4" y="-12.4" width="7.5" height="2.2" fill="#FFFFFF"/>'
+      ? `<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q17.5 -22 17.5 -6 Z" fill="${MARCA}"/>` + '<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q-8 -18 -9 -5 Z" fill="#000" opacity=".12"/>' +
+        `<path d="M12 -7.5 Q23 -9 27.5 -4.5 Q20 -2.8 12 -4 Z" fill="${MARCA_OSC}"/>` +
+        '<circle cx="2" cy="-13" r="3.6" fill="#FFFFFF"/><path d="M0.6 -12.8 L1.9 -11.6 L3.9 -14.2" fill="none" stroke="#EF6C3E" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>'
       : "";
   const marca = o.marca
-    ? '<rect x="-1" y="-78" width="10" height="3.2" fill="#0B1114"/><rect x="2.6" y="-72.8" width="10" height="3.2" fill="#FFFFFF"/>'
+    ? '<circle cx="5" cy="-73" r="4.6" fill="#FFFFFF"/><path d="M3.1 -72.8 L4.8 -71.2 L7.4 -74.6" fill="none" stroke="#EF6C3E" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
     : "";
 
   const g = nodo(
@@ -354,12 +377,11 @@ export function montarFlujo(p: PiezasFlujo): () => void {
       '<g class="carro">' +
       '<path d="M0 -26 V-80 Q0 -90 10 -90 H104 Q116 -90 124 -80 L150 -52 Q159 -47 159 -37 V-25 Q159 -17 151 -17 H8 Q0 -17 0 -26 Z" fill="var(--e-van)"/>' +
       '<path d="M0 -40 H159 V-25 Q159 -17 151 -17 H8 Q0 -17 0 -26 Z" fill="var(--e-van-sombra)" opacity=".7"/>' +
-      '<rect x="0" y="-44" width="159" height="5" fill="#00B89A"/>' +
+      `<rect x="0" y="-44" width="159" height="5" fill="${MARCA}"/>` +
       '<path d="M111 -82 Q117 -82 121 -76 L142 -52 H111 Z" fill="var(--e-vidrio)"/>' +
       '<path d="M111 -82 Q117 -82 121 -76 L128 -68 L111 -58 Z" fill="#FFFFFF" opacity=".35"/>' +
-      '<g class="chofer"><circle cx="126" cy="-60" r="7.5" fill="#C98E6A"/><path d="M118 -63 Q126 -74 134 -63 Z" fill="#00B89A"/></g>' +
-      '<rect x="14" y="-76" width="26" height="7.5" fill="#0B1114"/><rect x="25.5" y="-64.5" width="26" height="7.5" fill="#00B89A"/>' +
-      '<text x="60" y="-60.5" font-size="21" font-weight="700" fill="#0B1114" letter-spacing="-.5">Rutax</text>' +
+      `<g class="chofer"><circle cx="126" cy="-60" r="7.5" fill="#C98E6A"/><path d="M118 -63 Q126 -74 134 -63 Z" fill="${MARCA}"/></g>` +
+      logoEmpresa(24, -66, 11, { tam: 16, color: "#0B1114" }) +
       '<circle cx="155" cy="-40" r="10" fill="#FFD98A" opacity=".25"/><rect x="152" y="-44" width="6" height="8" rx="2" fill="#FFD98A"/>' +
       '<g class="puertaVan"><rect x="-1" y="-86" width="6" height="66" rx="2" fill="var(--e-van-sombra)"/></g>' +
       "</g>" +
@@ -419,23 +441,12 @@ export function montarFlujo(p: PiezasFlujo): () => void {
       { opacity: "0" }
     )
   );
-  const fono = nodo(
-    E,
-    '<g filter="url(#fo-elevar)"><rect width="150" height="118" rx="16" fill="var(--e-panel)" stroke="var(--e-panel-line)"/></g>' +
-      '<rect x="14" y="16" width="11" height="3.6" fill="var(--e-fg)"/><rect x="18.5" y="22" width="11" height="3.6" fill="var(--e-accent)"/>' +
-      '<text x="36" y="26" font-size="13.5" font-weight="700" fill="var(--e-fg)">Retiro</text>' +
-      '<text x="14" y="52" font-size="11.5" fill="var(--e-muted)">Escaneados</text>' +
-      '<text class="mono" x="14" y="82" font-size="28" font-weight="600" fill="var(--e-fg)"><tspan data-p="cntB">0</tspan><tspan font-size="14" fill="var(--e-muted)" font-weight="500"> / 32</tspan></text>' +
-      '<rect x="14" y="92" width="122" height="7" rx="3.5" fill="var(--e-bar)"/><rect data-p="barB" x="14" y="92" width="0" height="7" rx="3.5" fill="var(--e-accent)"/>' +
-      '<g data-p="listoB" opacity="0"><circle cx="128" cy="26" r="9" fill="var(--e-accent)"/><path d="M124 26 L127 29 L132.5 23" fill="none" stroke="#04231E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>'
-  );
-  gsap.set(fono, { x: BX + 150, y: 28 });
 
   /* 3 · Asignación y carga */
   const PUESTOS = [
     { x: CX + 180, n: "Rosa", c: "#E3A93A", fin: 11 },
     { x: CX + 262, n: "Diego", c: "#2F8FD0", fin: 10 },
-    { x: CX + 344, n: "Camila", c: "#00B89A", fin: 11 },
+    { x: CX + 344, n: "Camila", c: MARCA, fin: 11 },
   ];
   const etiquetas = PUESTOS.map((pu, i) => {
     const g = nodo(
@@ -465,19 +476,6 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   let rayas = "";
   for (let x = 1900; x < 4100; x += 74) rayas += `<rect x="${x}" y="318" width="34" height="4" rx="2" fill="var(--e-st-horizon)"/>`;
   parte("rayas").innerHTML = rayas;
-  const PINES = [2350, 2600, 2850, 3100, 3350];
-  let recorrido = `M${PINES[0] - 120} 150`;
-  PINES.forEach((x, i) => (recorrido += ` L${x} ${i % 2 ? 136 : 156}`));
-  nodo(E, `<path d="${recorrido}" fill="none" stroke="var(--e-line)" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>`);
-  const pines = PINES.map((x, i) =>
-    nodo(
-      E,
-      '<circle class="anillo" r="10" fill="none" stroke="var(--e-accent)" stroke-width="2" opacity="0"/>' +
-        '<path d="M0 0 C-11 -12 -11 -26 0 -26 C11 -26 11 -12 0 0 Z" fill="var(--e-panel)" stroke="var(--e-pro)" stroke-width="2.2"/>' +
-        '<g class="okPin" opacity="0"><path d="M0 0 C-11 -12 -11 -26 0 -26 C11 -26 11 -12 0 0 Z" fill="var(--e-accent)"/><path d="M-4 -16 L-1 -13 L4.5 -19" fill="none" stroke="#04231E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>',
-      { transform: `translate(${x} ${i % 2 ? 136 : 156})` }
-    )
-  );
 
   /* 5 · Entrega: una puerta sola */
   const DX = 3600;
@@ -504,8 +502,8 @@ export function montarFlujo(p: PiezasFlujo): () => void {
 
   /* Actores */
   const camila = persona(actores, {
-    polera: "#00A98D",
-    poleraOsc: "#008C75",
+    polera: MARCA,
+    poleraOsc: MARCA_OSC,
     piel: "#C98E6A",
     pielOsc: "#B27A57",
     pantalon: "#3E5A66",
@@ -538,16 +536,145 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const nucleo = hijo(sello, ".nucleo");
   const onda = hijo<SVGCircleElement>(sello, ".onda");
 
-  const hud = nodo(
+  /* ═══════════════ El teléfono con la app ═══════════════
+   * Pantalla de 138 × 288 dentro de un aparato de 150 × 300. Cada pantalla es un
+   * grupo con su propio fondo, así un fundido entre dos nunca deja ver la de abajo.
+   */
+  const barraApp = (titulo: string, chip?: { texto: string; color: string; ancho: number }) =>
+    '<rect width="138" height="288" fill="var(--e-panel)"/>' +
+    '<rect x="112" y="7" width="14" height="6" rx="1.5" fill="none" stroke="var(--e-fg)" stroke-width="1"/><rect x="113.5" y="8.5" width="9" height="3" rx=".5" fill="var(--e-fg)"/>' +
+    '<rect x="96" y="9" width="2.5" height="4" fill="var(--e-fg)"/><rect x="100" y="7.5" width="2.5" height="5.5" fill="var(--e-fg)"/><rect x="104" y="6" width="2.5" height="7" fill="var(--e-fg)"/>' +
+    '<rect x="12" y="25" width="9" height="3" fill="var(--e-fg)"/><rect x="15.5" y="30" width="9" height="3" fill="var(--e-accent)"/>' +
+    `<text x="30" y="34" font-size="13" font-weight="700" fill="var(--e-fg)">${titulo}</text>` +
+    (chip
+      ? `<rect x="${126 - chip.ancho}" y="24" width="${chip.ancho}" height="14" rx="7" fill="${chip.color}" opacity=".16"/>` +
+        `<text x="${126 - chip.ancho / 2}" y="34" font-size="8.5" font-weight="700" fill="${chip.color}" text-anchor="middle">${chip.texto}</text>`
+      : "") +
+    '<rect y="44" width="138" height="1" fill="var(--e-panel-line)"/>';
+  const visto = (cx: number, cy: number, r: number) =>
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="var(--e-accent)"/><path d="M${cx - r * 0.45} ${cy} L${cx - r * 0.1} ${cy + r * 0.35} L${cx + r * 0.5} ${cy - r * 0.35}" fill="none" stroke="#04231E" stroke-width="${r * 0.28}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const esquinas = (x0: number, y0: number, x1: number, y1: number) =>
+    `<path d="M${x0} ${y0 + 10} V${y0} H${x0 + 10} M${x1 - 10} ${y0} H${x1} V${y0 + 10} M${x1} ${y1 - 10} V${y1} H${x1 - 10} M${x0 + 10} ${y1} H${x0} V${y1 - 10}" fill="none" stroke="var(--e-accent)" stroke-width="2.2" stroke-linecap="round"/>`;
+  let qr = "";
+  for (let f = 0; f < 5; f++) for (let c = 0; c < 5; c++) if ((f * 7 + c * 3 + f * c) % 3 !== 1 || (f < 2 && c < 2)) qr += `<rect x="${56 + c * 5}" y="${74 + f * 5}" width="4.4" height="4.4" fill="#0B1114"/>`;
+
+  // Retiro: el visor escaneando la etiqueta y la lista que se llena
+  const pantRetiro =
+    barraApp("Retiro", { texto: "Bodega", color: "var(--e-accent-text)", ancho: 42 }) +
+    '<rect x="10" y="54" width="118" height="84" rx="10" fill="#0E1417"/>' +
+    `<rect x="46" y="66" width="46" height="60" rx="3" fill="#F4F1EA"/>${qr}<rect x="52" y="104" width="34" height="3" rx="1.5" fill="#0B1114" opacity=".5"/><rect x="52" y="110" width="24" height="3" rx="1.5" fill="#0B1114" opacity=".35"/>` +
+    esquinas(38, 60, 100, 132) +
+    '<rect data-p="scanTel" x="40" y="62" width="58" height="2" rx="1" fill="var(--e-accent)"/>' +
+    '<rect data-p="flashTel" x="10" y="54" width="118" height="84" rx="10" fill="#FFFFFF" opacity="0"/>' +
+    '<text x="10" y="157" font-size="9.5" fill="var(--e-muted)">Escaneados</text>' +
+    '<text class="mono" x="10" y="182" font-size="24" font-weight="600" fill="var(--e-fg)"><tspan data-p="cntB">0</tspan><tspan font-size="12" fill="var(--e-muted)" font-weight="500"> / 32</tspan></text>' +
+    '<rect x="10" y="190" width="118" height="6" rx="3" fill="var(--e-bar)"/><rect data-p="barB" x="10" y="190" width="0" height="6" rx="3" fill="var(--e-accent)"/>' +
+    [206, 226, 246]
+      .map(
+        (y) =>
+          `<g class="filaTel" opacity="0"><rect x="10" y="${y - 9}" width="13" height="11" rx="1.5" fill="var(--e-kraft)"/><rect x="15.5" y="${y - 9}" width="2" height="11" fill="var(--e-tape)"/>` +
+          `<text x="30" y="${y}" font-size="10" font-weight="600" fill="var(--e-fg)">Paquete</text>${visto(122, y - 3.5, 6)}</g>`
+      )
+      .join("") +
+    '<g data-p="listoB" opacity="0"><rect x="10" y="260" width="118" height="20" rx="10" fill="var(--e-accent-deep)"/>' +
+    '<text x="69" y="273.5" font-size="9.5" font-weight="700" fill="var(--e-accent-text)" text-anchor="middle">Retiro completo</text></g>';
+
+  // Su día: lo que le tocó, por comuna
+  const ZONAS: [string, number][] = [
+    ["Ñuñoa", 3],
+    ["Providencia", 4],
+    ["Las Condes", 4],
+  ];
+  const pantDia =
+    barraApp("Mi día", { texto: "Hoy", color: "var(--e-accent-text)", ancho: 30 }) +
+    '<text class="mono" x="10" y="94" font-size="36" font-weight="600" fill="var(--e-fg)">11</text>' +
+    '<text x="10" y="112" font-size="10" fill="var(--e-muted)">pedidos asignados</text>' +
+    ZONAS.map(
+      ([z, n], i) =>
+        `<g class="zonaTel" opacity="0"><text x="10" y="${142 + i * 28}" font-size="11" font-weight="600" fill="var(--e-fg)">${z}</text>` +
+        `<text class="mono" x="128" y="${142 + i * 28}" font-size="11" font-weight="600" fill="var(--e-muted)" text-anchor="end">${n}</text>` +
+        `<rect x="10" y="${148 + i * 28}" width="118" height="4" rx="2" fill="var(--e-bar)"/><rect x="10" y="${148 + i * 28}" width="${(118 * n) / 4}" height="4" rx="2" fill="${MARCA}" opacity=".8"/></g>`
+    ).join("") +
+    '<g data-p="btnIniciar"><rect x="10" y="240" width="118" height="32" rx="9" fill="var(--e-accent)"/>' +
+    '<text x="69" y="260" font-size="11.5" font-weight="700" fill="#04231E" text-anchor="middle">Iniciar ruta</text></g>';
+
+  // La ruta: mapa con el recorrido ordenado y la siguiente parada
+  const RUTA_TEL = "M16 168 L16 136 L52 136 L52 100 L96 100 L96 68 L122 68";
+  const PARADAS_TEL: [number, number, number][] = [
+    [34, 136, 0.243],
+    [52, 112, 0.447],
+    [80, 100, 0.641],
+    [96, 78, 0.825],
+    [122, 68, 1],
+  ];
+  const pantRuta =
+    barraApp("Mi ruta", { texto: "En ruta", color: "var(--e-pro)", ancho: 40 }) +
+    '<rect x="8" y="52" width="122" height="130" rx="10" fill="var(--e-st-bg)" stroke="var(--e-panel-line)"/>' +
+    '<path d="M16 52 V182 M52 52 V182 M96 52 V182 M8 68 H130 M8 100 H130 M8 136 H130 M8 168 H130" stroke="var(--e-panel-line)" stroke-width="5" fill="none"/>' +
+    `<path d="${RUTA_TEL}" fill="none" stroke="var(--e-pro)" stroke-width="3" stroke-dasharray="2 5" stroke-linecap="round" opacity=".45"/>` +
+    `<path data-p="rutaTel" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" d="${RUTA_TEL}" fill="none" stroke="var(--e-pro)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+    PARADAS_TEL.map(
+      ([x, y], i) =>
+        `<circle cx="${x}" cy="${y}" r="7" fill="var(--e-panel)" stroke="var(--e-pro)" stroke-width="2"/>` +
+        `<text class="mono" x="${x}" y="${y + 2.8}" font-size="7.5" font-weight="700" fill="var(--e-pro)" text-anchor="middle">${i + 1}</text>` +
+        `<g class="paradaOk" opacity="0">${visto(x, y, 7.4)}</g>`
+    ).join("") +
+    '<g data-p="vanTel"><circle r="7" fill="var(--e-fg)" opacity=".15"/><circle r="4.5" fill="var(--e-fg)"/></g>' +
+    '<rect x="8" y="192" width="122" height="46" rx="10" fill="var(--e-st-bg)"/>' +
+    '<text x="16" y="207" font-size="8.5" fill="var(--e-muted)">Siguiente parada</text>' +
+    '<text data-p="sigTel" x="16" y="226" font-size="12" font-weight="700" fill="var(--e-fg)">Parada 1 de 5</text>' +
+    '<text class="mono" x="122" y="226" font-size="10" font-weight="600" fill="var(--e-muted)" text-anchor="end">4 min</text>' +
+    '<text data-p="progTel" x="10" y="258" font-size="10" fill="var(--e-muted)">0 de 5 entregadas</text>' +
+    '<rect x="10" y="266" width="118" height="5" rx="2.5" fill="var(--e-bar)"/><rect data-p="progBar" x="10" y="266" width="0" height="5" rx="2.5" fill="var(--e-accent)"/>';
+
+  // La entrega: la foto, y la evidencia que queda registrada
+  const pantEntrega =
+    barraApp("Entrega", { texto: "5 de 5", color: "var(--e-accent-text)", ancho: 36 }) +
+    '<rect x="8" y="54" width="122" height="118" rx="10" fill="#0E1417"/>' +
+    '<rect x="50" y="72" width="38" height="84" rx="2" fill="#2A3D44"/><rect x="54" y="76" width="30" height="80" fill="var(--e-puerta)"/><circle cx="79" cy="118" r="1.8" fill="#F1F6F6"/>' +
+    '<rect x="58" y="140" width="22" height="16" rx="2" fill="var(--e-kraft)"/><rect x="67.5" y="140" width="3" height="16" fill="var(--e-tape)"/>' +
+    esquinas(18, 62, 120, 164) +
+    '<rect data-p="flashFoto" x="8" y="54" width="122" height="118" rx="10" fill="#FFFFFF" opacity="0"/>' +
+    `<g data-p="fotoOk" opacity="0">${visto(116, 68, 9)}</g>` +
+    '<g data-p="ubicTel" opacity="0"><path d="M16 196 C11 190 11 183 16 183 C21 183 21 190 16 196 Z" fill="var(--e-accent)"/><circle cx="16" cy="187.5" r="1.8" fill="var(--e-panel)"/>' +
+    '<text x="28" y="192" font-size="10" font-weight="600" fill="var(--e-fg)">Ubicación registrada</text></g>' +
+    '<g data-p="horaTel" opacity="0"><circle cx="16" cy="211" r="6" fill="none" stroke="var(--e-accent)" stroke-width="1.8"/><path d="M16 208 V211 H18.5" fill="none" stroke="var(--e-accent)" stroke-width="1.6" stroke-linecap="round"/>' +
+    '<text class="mono" x="28" y="214.5" font-size="10" font-weight="600" fill="var(--e-fg)">16:42</text></g>' +
+    '<g data-p="btnFoto"><rect x="10" y="240" width="118" height="32" rx="9" fill="none" stroke="var(--e-accent)" stroke-width="1.6"/>' +
+    '<text x="69" y="260" font-size="11.5" font-weight="700" fill="var(--e-accent-text)" text-anchor="middle">Tomar foto</text></g>' +
+    '<g data-p="btnOk" opacity="0"><rect x="10" y="240" width="118" height="32" rx="9" fill="var(--e-accent)"/>' +
+    '<text x="69" y="260" font-size="11.5" font-weight="700" fill="#04231E" text-anchor="middle">Entregado</text></g>';
+
+  const telG = nodo(
     parte("hud"),
-    '<g filter="url(#fo-elevar)"><rect x="-88" width="176" height="38" rx="19" fill="var(--e-panel)" stroke="var(--e-panel-line)"/></g>' +
-      '<circle cx="-66" cy="19" r="5" fill="var(--e-pro)"/><text x="-54" y="24" font-size="13" font-weight="700" fill="var(--e-fg)">En ruta</text>' +
-      '<text class="mono" data-p="txtRuta" x="72" y="24" font-size="12.5" font-weight="600" fill="var(--e-muted)" text-anchor="end">0 de 5</text>',
-    { transform: "translate(320 26)", opacity: "0" }
+    '<g filter="url(#fo-elevar)"><rect width="150" height="300" rx="26" fill="#0B1114"/></g>' +
+      '<rect x="1.5" y="1.5" width="147" height="297" rx="24.5" fill="none" stroke="#2A3A41" stroke-width="1"/>' +
+      '<g clip-path="url(#fo-pantalla)"><g transform="translate(6 6)">' +
+      `<g data-pant="retiro">${pantRetiro}</g><g data-pant="dia">${pantDia}</g><g data-pant="ruta">${pantRuta}</g><g data-pant="entrega">${pantEntrega}</g>` +
+      "</g></g>" +
+      '<rect x="56" y="11" width="38" height="9" rx="4.5" fill="#0B1114"/>',
+    { opacity: "0" }
   );
+  const pantalla = (n: string) => hijo<SVGGElement>(telG, `[data-pant="${n}"]`);
+  const pRetiro = pantalla("retiro");
+  const pDia = pantalla("dia");
+  const pRuta = pantalla("ruta");
+  const pEntrega = pantalla("entrega");
+  gsap.set([pRetiro, pDia, pRuta, pEntrega], { opacity: 0 });
+  const rutaTel = hijo<SVGPathElement>(telG, '[data-p="rutaTel"]');
+  const largoRuta = rutaTel.getTotalLength();
+  const vanTel = hijo(telG, '[data-p="vanTel"]');
+  const tel = { op: 0, dy: 26 };
+  let angosto = false;
+  function pintarTel() {
+    // En el lienzo cuadrado del teléfono el aparato va más chico y más al borde.
+    const [x, y, e] = angosto ? [368, 40, 0.86] : [474, 30, 1];
+    telG.setAttribute("transform", `translate(${x} ${fx(y + tel.dy)}) scale(${e})`);
+    telG.setAttribute("opacity", fx(tel.op));
+  }
 
   /* Cámara */
-  const cam = { x: 320, y: 188, z: 1, sigue: 0 };
+  const cam = { x: 320, y: 188, z: 1, sigue: 0, tel: 0 };
   let zBase = 1.12;
   const hazEstado = { op: 0, obj: 0 };
 
@@ -571,8 +698,13 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     hazPoly.setAttribute("points", `${fx(m.x + 4)},${fx(m.y + 2)} ${fx(bx - c.w / 2)},${fx(by - c.h)} ${fx(bx - c.w / 2)},${fx(by)}`);
   }
   function pintarCamara() {
-    const cx = cam.x * (1 - cam.sigue) + (van.x + 118) * cam.sigue;
-    mundo.setAttribute("transform", `translate(320 188) scale(${fx(cam.z * zBase)}) translate(${fx(-cx)} ${fx(-cam.y)})`);
+    const cx = cam.x * (1 - cam.sigue) + (van.x + (angosto ? 92 : 118)) * cam.sigue;
+    // Con el teléfono a la vista, la acción se corre a la izquierda y, en el lienzo cuadrado, se aleja un poco.
+    // En el cuadrado, además, la escena baja para que el piso quede abajo y no sobre cielo vacío.
+    const [focoTel, zTel, bajaTel] = angosto ? [236, 0.8, 58] : [240, 1, 0];
+    const foco = 320 + (focoTel - 320) * cam.tel;
+    const esc = cam.z * zBase * (1 + (zTel - 1) * cam.tel);
+    mundo.setAttribute("transform", `translate(${fx(foco)} ${fx(188 + bajaTel * cam.tel)}) scale(${fx(esc)}) translate(${fx(-cx)} ${fx(-cam.y)})`);
     fondoG.setAttribute("transform", `translate(${fx(-(cx * 0.07) % 260)} 0)`);
   }
   const t0 = performance.now();
@@ -583,6 +715,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     pintarVan();
     pintarCamara();
     pintarHaz();
+    pintarTel();
   }
 
   /* Estado inicial */
@@ -590,7 +723,6 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   Object.assign(clienta, { x: DX + 442, y: 290, dir: -1, op: 0 });
   tarjetas.forEach((g) => gsap.set(g, { x: 254, y: 176, scale: 0.2, opacity: 0, transformOrigin: "0% 50%" }));
   gsap.set(pildora, { x: 288, y: 232, opacity: 0, scale: 0.8, transformOrigin: "50% 50%" });
-  gsap.set(fono, { opacity: 0, scale: 0.9, transformOrigin: "50% 100%" });
   gsap.set(nucleo, { scale: 0, transformOrigin: "50% 50%" });
 
   /* ═══════════════ Guion ═══════════════ */
@@ -677,7 +809,6 @@ export function montarFlujo(p: PiezasFlujo): () => void {
 
   /* 2 · Retiro (4.9 – 11.4) */
   tl.to(camila, { shF: -88, elF: -6, telOp: 1, cabeza: 4, duration: 0.4, ease: "back.out(1.6)" }, 7.55);
-  pop(fono, 7.7, 0.85);
   tl.to(cam, { z: 1.07, duration: 3.2, ease: "sine.inOut" }, 7.6);
   cajasB.forEach((c, j) => {
     const ts = 8.1 + j * 0.9;
@@ -693,10 +824,9 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   contador("cntB", 32, 8.1, 2.6);
   const barra = { v: 0 };
   const barB = parte("barB");
-  tl.to(barra, { v: 1, duration: 2.6, ease: "power1.inOut", onUpdate: () => barB.setAttribute("width", fx(122 * barra.v)) }, 8.1);
+  tl.to(barra, { v: 1, duration: 2.6, ease: "power1.inOut", onUpdate: () => barB.setAttribute("width", fx(118 * barra.v)) }, 8.1);
   pop(parte("listoB"), 10.75, 0.4);
   tl.to(camila, { shF: 0, elF: -8, telOp: 0, cabeza: 0, feliz: 1, duration: 0.35 }, 10.95);
-  tl.to(fono, { opacity: 0, y: "-=8", duration: 0.3 }, 11.15);
   tl.to(cam, { x: 1920, z: 1, duration: 1.2 }, 11.3);
   tl.set(camila, { op: 0, feliz: 0 }, 11.6);
 
@@ -705,7 +835,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const destino = [0, 1, 2, 0, 1, 2];
   pila.forEach((c, i) => salto(c, PUESTOS[destino[i]].x, 290 - Math.floor(i / 3) * 30, 12.5 + i * 0.26, 0.5, 70));
   PUESTOS.forEach((pu, i) => contador(`nC${i}`, pu.fin, 12.6 + i * 0.1, 1.9));
-  tl.to(hijo(etiquetas[2], ".marcoEt"), { attr: { stroke: "#00B89A" }, duration: 0.3 }, 14.35);
+  tl.to(hijo(etiquetas[2], ".marcoEt"), { attr: { stroke: MARCA }, duration: 0.3 }, 14.35);
   tl.set(camila, { x: CX - 40, op: 1 }, 12.9);
   caminar(camila, CX + 392, 12.9, 1.6);
   tl.to(van, { puerta: 95, duration: 0.45, ease: "back.out(1.4)" }, 14.0);
@@ -750,19 +880,6 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     },
     17.5
   );
-  tl.to(hud, { opacity: 1, duration: 0.4 }, 17.2);
-  const velocidad = (3400 - (CX + 660)) / 2.8;
-  PINES.forEach((X, i) => {
-    const t = Math.max(17.2, 17.5 + (X - 160 - (CX + 660)) / velocidad);
-    pop(hijo(pines[i], ".okPin"), t, 0.6);
-    tl.fromTo(
-      hijo(pines[i], ".anillo"),
-      { opacity: 0.9, attr: { r: 8 } },
-      { opacity: 0, attr: { r: 26 }, duration: 0.6, ease: "power1.out", immediateRender: false },
-      t
-    );
-  });
-  contador("txtRuta", 5, 17.4, 2.5, (v) => `${Math.min(5, Math.floor(v + 0.15))} de 5`);
   tl.to(van, { x: DX + 128, duration: 1.3, ease: "power2.out" }, 20.3);
   tl.to(
     van,
@@ -775,7 +892,6 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     21.5
   );
   humo(21.55, 3);
-  tl.to(hud, { opacity: 0, duration: 0.3 }, 21.2);
   tl.set(cam, { x: DX + 300 }, 20.8);
   tl.to(cam, { sigue: 0, duration: 1 }, 20.9);
 
@@ -822,6 +938,80 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     27.4
   );
   tl.to(velo, { opacity: 1, duration: 0.5, ease: "none" }, 28.7);
+  /* ═══ La app en el teléfono, al compás de la escena ═══ */
+  const enTel = (sel: string) => hijo(telG, sel);
+  const aparece = (el: Element, t: number) =>
+    tl.fromTo(el, { opacity: 0, x: 10 }, { opacity: 1, x: 0, duration: 0.35, ease: "power3.out" }, t);
+  const toque = (el: Element, t: number) =>
+    tl.to(el, { keyframes: [{ scale: 0.93, duration: 0.1 }, { scale: 1, duration: 0.3, ease: "back.out(2)" }], transformOrigin: "50% 50%" }, t);
+
+  // Retiro: el visor escanea, cada caja suma una fila
+  tl.set(pRetiro, { opacity: 1 }, 7.2);
+  tl.to(cam, { tel: 1, duration: 0.8 }, 7.15);
+  tl.to(tel, { op: 1, dy: 0, duration: 0.55, ease: "power3.out" }, 7.3);
+  tl.fromTo(enTel('[data-p="scanTel"]'), { y: 0 }, { y: 64, duration: 0.45, repeat: 6, yoyo: true, ease: "sine.inOut", immediateRender: false }, 7.7);
+  const filasTel = telG.querySelectorAll(".filaTel");
+  cajasB.forEach((_, j) => {
+    const ts = 8.1 + j * 0.9;
+    tl.fromTo(enTel('[data-p="flashTel"]'), { opacity: 0.8 }, { opacity: 0, duration: 0.3, immediateRender: false }, ts + 0.1);
+    aparece(filasTel[j], ts + 0.3);
+  });
+  tl.to(tel, { op: 0, dy: 26, duration: 0.4, ease: "power2.in" }, 11.05);
+  tl.to(cam, { tel: 0, duration: 0.8 }, 11.1);
+  tl.set(pRetiro, { opacity: 0 }, 11.5);
+
+  // Su día: le llegan sus pedidos, por comuna
+  tl.set(pDia, { opacity: 1 }, 14.1);
+  tl.to(cam, { tel: 1, duration: 0.8 }, 14.1);
+  tl.to(tel, { op: 1, dy: 0, duration: 0.55, ease: "power3.out" }, 14.2);
+  telG.querySelectorAll(".zonaTel").forEach((z, i) => aparece(z, 14.6 + i * 0.18));
+  toque(enTel('[data-p="btnIniciar"]'), 16.0);
+
+  // La ruta: se dibuja mientras la camioneta avanza. Termina en la parada 4:
+  // la 5 es la que se entrega en la escena siguiente.
+  tl.to(pRuta, { opacity: 1, duration: 0.35 }, 16.3);
+  tl.set(pDia, { opacity: 0 }, 16.7);
+  const sigTel = enTel('[data-p="sigTel"]');
+  const progTel = enTel('[data-p="progTel"]');
+  const progBar = enTel('[data-p="progBar"]');
+  const inicio = rutaTel.getPointAtLength(0);
+  vanTel.setAttribute("transform", `translate(${fx(inicio.x)} ${fx(inicio.y)})`);
+  const avance = { p: 0 };
+  const FIN_RUTA = 0.93;
+  tl.to(
+    avance,
+    {
+      p: FIN_RUTA,
+      duration: 2.9,
+      ease: "none",
+      onUpdate: () => {
+        rutaTel.setAttribute("stroke-dashoffset", fx(1 - avance.p));
+        const pt = rutaTel.getPointAtLength(avance.p * largoRuta);
+        vanTel.setAttribute("transform", `translate(${fx(pt.x)} ${fx(pt.y)})`);
+        const hechas = PARADAS_TEL.filter(([, , f]) => avance.p >= f - 0.001).length;
+        sigTel.textContent = `Parada ${Math.min(5, hechas + 1)} de 5`;
+        progTel.textContent = `${hechas} de 5 entregadas`;
+        progBar.setAttribute("width", fx((118 * hechas) / 5));
+      },
+    },
+    17.4
+  );
+  telG.querySelectorAll(".paradaOk").forEach((g, i) => {
+    const f = PARADAS_TEL[i][2];
+    if (f <= FIN_RUTA) pop(g, 17.4 + (f / FIN_RUTA) * 2.9 - 0.05, 0.5);
+  });
+
+  // La entrega: la foto, y la evidencia que queda registrada
+  tl.to(pEntrega, { opacity: 1, duration: 0.35 }, 21.8);
+  tl.set(pRuta, { opacity: 0 }, 22.2);
+  toque(enTel('[data-p="btnFoto"]'), 25.9);
+  tl.fromTo(enTel('[data-p="flashFoto"]'), { opacity: 0.95 }, { opacity: 0, duration: 0.5, ease: "power1.out", immediateRender: false }, 26.15);
+  pop(enTel('[data-p="fotoOk"]'), 26.35, 0.4);
+  aparece(enTel('[data-p="ubicTel"]'), 26.55);
+  aparece(enTel('[data-p="horaTel"]'), 26.75);
+  tl.to(enTel('[data-p="btnFoto"]'), { opacity: 0, duration: 0.2 }, 27.0);
+  pop(enTel('[data-p="btnOk"]'), 27.0, 0.85);
+
   tl.set({}, {}, 29.2);
   // Al reiniciar, el velo se levanta en vez de cortar.
   tl.eventCallback("onRepeat", () => {
@@ -857,7 +1047,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   gsap.ticker.add(tick);
 
   function encuadre() {
-    const angosto = figura.clientWidth < 560;
+    angosto = figura.clientWidth < 560;
     figura.toggleAttribute("data-angosto", angosto);
     zBase = angosto ? 1 : 1.12;
     lienzo.setAttribute("viewBox", angosto ? "140 8 360 360" : "0 0 640 360");
