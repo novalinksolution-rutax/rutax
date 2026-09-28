@@ -4,14 +4,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { cn } from "@/lib/utils";
 
 import { CalculadoraPrecio } from "./_componentes/calculadora-precio";
 import { Cabeza, Cierre, ENVOLTURA, MarcoSitio } from "./_componentes/sitio";
 import { BotonVentas } from "./_componentes/ventas";
 import { FlujoOperativo } from "./_componentes/flujo-operativo";
-import { PRECIO_POR_ENVIO_CLP } from "./_lib/precio";
+import { TablaTramos } from "./_componentes/tabla-tramos";
 
 /**
  * La portada de Rutax — sitio v2 (2026-09-27).
@@ -22,7 +21,8 @@ import { PRECIO_POR_ENVIO_CLP } from "./_lib/precio";
  * Rutax. Maqueta aprobada: https://claude.ai/artifact/3rBPrCvWSryJMVndfwnYnY.
  *
  * Decisiones del usuario que la gobiernan:
- * · **Precio público y por envío**: $120 + IVA, único (`_lib/precio.ts`).
+ * · **Precio público por entrega, en tramos**: $120 → $60 según volumen, mínimo
+ *   $60.000, solo entregas efectivas (`_lib/precio.ts`).
  * · **«Comenzar» abre al asesor**, no un autoregistro: el alta de un courier la
  *   hace Rutax desde el backstage. Los tres botones abren el mismo modal.
  * · **WhatsApp de ventas propio**, distinto del número de avisos de la Cloud API.
@@ -190,18 +190,10 @@ function Precios() {
       <div className={ENVOLTURA}>
         <Cabeza
           titulo="Plan de precios"
-          bajada="Implementación sin costo. Cobramos por envío procesado."
+          bajada="Implementación sin costo. Pagas solo por las entregas, y mientras más haces, menos pagas por cada una."
         />
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-          <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-ctrl border border-line bg-bg-raised px-5 py-6">
-            <span className="text-[17px] font-semibold">Por envío</span>
-            <span className="flex items-baseline gap-2">
-              <span className="rx-num font-mono text-[44px] leading-none font-semibold tracking-tight">
-                {formatearCLP(PRECIO_POR_ENVIO_CLP)}
-              </span>
-              <span className="text-fg-muted">+ IVA</span>
-            </span>
-          </div>
+          <TablaTramos />
           <CalculadoraPrecio />
         </div>
       </div>

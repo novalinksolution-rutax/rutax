@@ -94,7 +94,7 @@ export default function PaginaCobros() {
 
       <VerTambien
         enlaces={[
-          { href: "/precios", titulo: "Precios", texto: "Un precio simple, por envío procesado." },
+          { href: "/precios", titulo: "Precios", texto: "Pagas por entrega, y menos mientras más haces." },
           { href: "/integraciones/mercado-libre-flex", titulo: "Mercado Libre Flex", texto: "Tus pedidos Flex, sin digitar una dirección." },
         ]}
       />

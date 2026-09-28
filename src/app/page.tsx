@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { Portada } from "./(marketing)/portada";
-import { PRECIO_POR_ENVIO_CLP } from "./(marketing)/_lib/precio";
+import { MINIMO_MENSUAL_CLP, PRECIO_BASE_CLP } from "./(marketing)/_lib/precio";
 
 /**
  * La raíz hace DOS cosas, y por eso no se partió en dos archivos.
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   title: "Rutax · Tu operación de reparto, de la colecta a la entrega",
   alternates: { canonical: "/" },
   description:
-    `Software para couriers de última milla en Chile: recibe los pedidos de tus clientes y gestiona retiros, rutas, entregas y liquidaciones en un solo lugar. ${formatearCLP(PRECIO_POR_ENVIO_CLP)} + IVA por envío.`,
+    `Software para couriers de última milla en Chile: recibe los pedidos de tus clientes y gestiona retiros, rutas, entregas y liquidaciones en un solo lugar. Pagas por entrega efectiva, desde ${formatearCLP(PRECIO_BASE_CLP)} + IVA según tu volumen, con un mínimo de ${formatearCLP(MINIMO_MENSUAL_CLP)} al mes.`,
 };
 
 export default async function Home() {
