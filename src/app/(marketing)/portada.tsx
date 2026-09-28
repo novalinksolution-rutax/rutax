@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 import { CalculadoraPrecio } from "./_componentes/calculadora-precio";
 import { BotonVentas, VentasProvider } from "./_componentes/ventas";
-import { VitrinaPedidos } from "./_componentes/vitrina-pedidos";
+import { FlujoOperativo } from "./_componentes/flujo-operativo";
 import { PRECIO_POR_ENVIO_CLP, WHATSAPP_VENTAS } from "./_lib/precio";
 
 /**
@@ -135,7 +135,7 @@ function Hero() {
       <div
         className={cn(
           ENVOLTURA,
-          "grid items-center gap-9 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-16"
+          "grid items-center gap-9 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-14"
         )}
       >
         <div>
@@ -156,7 +156,7 @@ function Hero() {
             </BotonVentas>
           </div>
         </div>
-        <VitrinaPedidos />
+        <FlujoOperativo />
       </div>
     </section>
   );

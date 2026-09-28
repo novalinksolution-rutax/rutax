@@ -1,0 +1,82 @@
+/*
+ * Tokens de la escena animada del hero (flujo-escena.ts).
+ *
+ * Todos llevan el prefijo `--e-` a propósito: `--accent` y `--muted` ya existen
+ * en el puente de shadcn con otro significado, y redefinirlos aquí cambiaría el
+ * color de cualquier utilidad de Tailwind que viva dentro de la figura.
+ * Los de marca salen de los tokens `--rx-*`; los de la ilustración (cartón,
+ * camioneta, puerta, luz del escenario) son propios de esta escena.
+ */
+.flujo-op {
+  --e-fg: var(--rx-fg);
+  --e-bg: var(--rx-bg);
+  --e-muted: var(--rx-fg-muted);
+  --e-line: var(--rx-line);
+  --e-raised: var(--rx-bg-raised);
+  --e-accent: var(--rx-accent);
+  --e-accent-text: var(--rx-accent-text);
+  --e-accent-deep: var(--rx-accent-deep);
+  --e-accent-line: var(--rx-accent-line);
+  --e-pro: var(--rx-progress-fg);
+
+  --e-st-bg: #e6eff1;
+  --e-st-glow: #ffffff;
+  --e-st-floor: #d9e6e8;
+  --e-st-floor-top: #e2ecee;
+  --e-st-horizon: #cbdcdf;
+  --e-st-bokeh-a: #c3ebe2;
+  --e-st-bokeh-b: #d3e6f2;
+  --e-st-shadow: #0b1114;
+  --e-st-shadow-op: 0.2;
+  --e-panel: #ffffff;
+  --e-panel-line: #d5e2e4;
+  --e-bar: #e3ecee;
+  --e-kraft: #dcb88d;
+  --e-kraft-osc: #b58b5e;
+  --e-tape: #efdabd;
+  --e-van: #ffffff;
+  --e-van-sombra: #d5e1e3;
+  --e-vidrio: #a9d4e0;
+  --e-puerta: #0b6f60;
+  --e-marco: #c9d8db;
+  --e-hoja: #4e9f68;
+}
+
+.dark .flujo-op {
+  --e-st-bg: #0b1417;
+  --e-st-glow: #172a30;
+  --e-st-floor: #0f1a1e;
+  --e-st-floor-top: #132126;
+  --e-st-horizon: #1c2f35;
+  --e-st-bokeh-a: #0c3b33;
+  --e-st-bokeh-b: #0f2b3b;
+  --e-st-shadow: #000000;
+  --e-st-shadow-op: 0.45;
+  --e-panel: #101a1e;
+  --e-panel-line: #24363c;
+  --e-bar: #1c2a30;
+  --e-kraft: #c29c70;
+  --e-kraft-osc: #94704a;
+  --e-tape: #d8bc96;
+  --e-van: #e3ecee;
+  --e-van-sombra: #b3c4c8;
+  --e-vidrio: #44707e;
+  --e-puerta: #0c7d6c;
+  --e-marco: #2a3d44;
+  --e-hoja: #3f8757;
+}
+
+.flujo-op .lienzo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: var(--e-st-bg);
+}
+.flujo-op[data-angosto] .lienzo {
+  aspect-ratio: 1 / 1;
+}
+.flujo-op .lienzo .mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
