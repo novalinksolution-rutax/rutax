@@ -40,6 +40,10 @@
   --e-puerta: #0b6f60;
   --e-marco: #c9d8db;
   --e-hoja: #4e9f68;
+  /* escenarios insinuados y luz de la bodega */
+  --e-silueta: #d3e1e4;
+  --e-ventana: #f4f9fa;
+  --e-rayo: #ffffff;
 }
 
 .dark .flujo-op {
@@ -64,6 +68,9 @@
   --e-puerta: #0c7d6c;
   --e-marco: #2a3d44;
   --e-hoja: #3f8757;
+  --e-silueta: #15232a;
+  --e-ventana: #1d3038;
+  --e-rayo: #bfe8e0;
 }
 
 .flujo-op .lienzo {

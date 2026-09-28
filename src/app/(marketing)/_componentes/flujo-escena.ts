@@ -96,6 +96,17 @@ const LIENZO = `
   <filter id="fo-difuso" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="3.2"/></filter>
   <filter id="fo-bokeh" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
   <filter id="fo-elevar" x="-20%" y="-30%" width="140%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#0B1114" flood-opacity=".14"/></filter>
+  <!-- Volumen: capas de luz que van ENCIMA del color base, así sirven para cualquier color
+       y en los dos temas. La luz viene de arriba a la derecha (hacia donde miran). -->
+  <linearGradient id="fo-vol-h" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".2"/><stop offset=".45" stop-color="#000" stop-opacity="0"/><stop offset=".78" stop-color="#FFF" stop-opacity="0"/><stop offset="1" stop-color="#FFF" stop-opacity=".22"/></linearGradient>
+  <linearGradient id="fo-vol-v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF" stop-opacity=".28"/><stop offset=".45" stop-color="#FFF" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".16"/></linearGradient>
+  <radialGradient id="fo-esfera" cx="68%" cy="30%" r="75%"><stop offset="0" stop-color="#FFF" stop-opacity=".3"/><stop offset=".5" stop-color="#FFF" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".16"/></radialGradient>
+  <linearGradient id="fo-brillo" x1="0" x2="1"><stop offset="0" stop-color="#FFF" stop-opacity="0"/><stop offset=".5" stop-color="#FFF" stop-opacity=".55"/><stop offset="1" stop-color="#FFF" stop-opacity="0"/></linearGradient>
+  <linearGradient id="fo-foco" x1="0" x2="1"><stop offset="0" stop-color="#FFD98A" stop-opacity=".45"/><stop offset="1" stop-color="#FFD98A" stop-opacity="0"/></linearGradient>
+  <linearGradient id="fo-rayo" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="var(--e-rayo)" stop-opacity=".5"/><stop offset="1" stop-color="var(--e-rayo)" stop-opacity="0"/></linearGradient>
+  <radialGradient id="fo-halo"><stop offset="0" stop-color="#FFD98A" stop-opacity=".4"/><stop offset="1" stop-color="#FFD98A" stop-opacity="0"/></radialGradient>
+  <filter id="fo-lejos" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="1.4"/></filter>
+  <filter id="fo-humo" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="2.2"/></filter>
   <linearGradient id="fo-fh" x1="0" x2="1"><stop offset="0" stop-color="#000"/><stop offset=".13" stop-color="#FFF"/><stop offset=".87" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
   <linearGradient id="fo-fv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000"/><stop offset=".15" stop-color="#FFF"/><stop offset=".78" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
   <mask id="fo-mh" maskUnits="userSpaceOnUse" x="-400" y="-400" width="1440" height="1160"><rect data-p="mascaraH" width="640" height="360" fill="url(#fo-fh)"/></mask>
@@ -108,6 +119,10 @@ const LIENZO = `
   <rect x="-400" y="-400" width="1440" height="1160" fill="url(#fo-luz)"/>
   <g data-p="fondo" opacity=".75"></g>
   <g data-p="mundo">
+    <!-- Escenarios insinuados: siluetas desenfocadas y tenues detrás de la acción. La ciudad
+         lleva paralaje (se mueve más lento que el piso); el resto va a la misma profundidad. -->
+    <g data-p="ciudad" filter="url(#fo-lejos)" opacity="0"></g>
+    <g data-p="lejos" filter="url(#fo-lejos)"></g>
     <rect x="-800" y="290" width="6000" height="500" fill="url(#fo-suelo)"/>
     <rect x="-800" y="289" width="6000" height="1.5" fill="var(--e-st-horizon)"/>
     <g data-p="rayas"></g>
@@ -139,12 +154,23 @@ function hijo<T extends Element = SVGGElement>(padre: Element, selector: string)
 }
 
 function cajaSVG(w: number, h: number) {
+  const x0 = -w / 2;
+  const et = { x: x0 + 5, y: -h * 0.5, w: w * 0.3, h: h * 0.28 };
+  let barras = "";
+  for (let i = 0; i < 5; i++) barras += `<rect x="${et.x + 2 + i * (et.w - 4) / 5}" y="${et.y + et.h * 0.5}" width="${i % 2 ? 0.7 : 1.2}" height="${et.h * 0.36}" fill="#0B1114" opacity=".7"/>`;
   return (
-    `<rect x="${-w / 2}" y="${-h}" width="${w}" height="${h}" rx="3" fill="var(--e-kraft)"/>` +
+    `<rect x="${x0}" y="${-h}" width="${w}" height="${h}" rx="3" fill="var(--e-kraft)"/>` +
+    // cara lateral en sombra y la tapa, que recibe la luz
     `<rect x="${w / 2 - w * 0.32}" y="${-h}" width="${w * 0.32}" height="${h}" rx="3" fill="var(--e-kraft-osc)" opacity=".45"/>` +
-    `<rect x="-3" y="${-h}" width="6" height="${h}" fill="var(--e-tape)"/>` +
-    `<rect x="${-w / 2 + 5}" y="${-h * 0.45}" width="${w * 0.28}" height="${h * 0.24}" rx="1.2" fill="#FFFFFF" opacity=".88"/>` +
-    `<rect x="${-w / 2}" y="-3" width="${w}" height="3" rx="1.5" fill="#000" opacity=".1"/>`
+    `<rect x="${x0}" y="${-h}" width="${w}" height="${Math.max(3, h * 0.16)}" rx="3" fill="#FFF" opacity=".16"/>` +
+    `<rect x="${x0}" y="${-h}" width="${w}" height="${h}" rx="3" fill="url(#fo-vol-v)"/>` +
+    // cinta con su reflejo
+    `<rect x="-3" y="${-h}" width="6" height="${h}" fill="var(--e-tape)"/><rect x="-1.6" y="${-h}" width="1" height="${h}" fill="#FFF" opacity=".5"/>` +
+    // etiqueta de envío con su código de barras
+    `<rect x="${et.x}" y="${et.y}" width="${et.w}" height="${et.h}" rx="1.2" fill="#FFFFFF" opacity=".92"/>` +
+    `<rect x="${et.x + 2}" y="${et.y + 2}" width="${et.w * 0.55}" height="1.2" fill="#0B1114" opacity=".45"/>${barras}` +
+    `<rect x="${x0}" y="-3" width="${w}" height="3" rx="1.5" fill="#000" opacity=".12"/>` +
+    `<rect x="${x0 + 0.4}" y="${-h + 0.4}" width="${w - 0.8}" height="${h - 0.8}" rx="2.8" fill="none" stroke="var(--e-kraft-osc)" stroke-opacity=".55" stroke-width=".8"/>`
   );
 }
 
@@ -180,7 +206,9 @@ interface Rig {
   cab: SVGGElement;
   coleta: SVGGElement | null;
   ojo: SVGGElement;
+  cejas: SVGGElement;
   boca: SVGPathElement;
+  bocaAbierta: SVGPathElement;
   tel: SVGGElement;
   carga: SVGGElement;
   x: number;
@@ -200,6 +228,8 @@ interface Rig {
   telOp: number;
   cargaOp: number;
   feliz: number;
+  /** 0 a 1: concentración (cejas abajo, mirada entrecerrada), p. ej. al escanear. */
+  foco: number;
   semilla: number;
 }
 
@@ -218,60 +248,90 @@ interface Aspecto {
 /** Origen en los pies, mira a la derecha. Cadera (0,-46), hombro (0,-82), cuello (0,-90). */
 function persona(padre: Element, o: Aspecto): Rig {
   const zapato = "#1C262B";
+  const suela = "#E9F2F3";
+  // Pierna: muslo y canilla con un filo de luz en el frente, y zapatilla con suela y cordones.
   const pierna = (t: "B" | "F") => {
     const c = t === "B" ? o.pantalonOsc : o.pantalon;
     return (
       `<g class="muslo${t}"><line y2="22" stroke="${c}" stroke-width="12.5" stroke-linecap="round"/>` +
+      '<line x1="3" y1="2" x2="3" y2="20" stroke="#FFF" stroke-opacity=".13" stroke-width="1.8" stroke-linecap="round"/>' +
       `<g class="rodilla${t}"><line y2="20" stroke="${c}" stroke-width="11" stroke-linecap="round"/>` +
-      `<path d="M-6 17.5 Q-6.5 25 1 25 H12.5 Q15.5 25 14.5 21.5 Q13 17 5 16.5 Z" fill="${zapato}"/></g></g>`
+      '<line x1="2.6" y1="1" x2="2.6" y2="16" stroke="#FFF" stroke-opacity=".11" stroke-width="1.6" stroke-linecap="round"/>' +
+      `<path d="M-6 17.5 Q-6.5 25 1 25 H12.5 Q15.5 25 14.5 21.5 Q13 17 5 16.5 Z" fill="${zapato}"/>` +
+      `<path d="M-6.4 22.6 H15 Q15.2 25 12.5 25 H1 Q-6 25 -6.4 22.6 Z" fill="${suela}" opacity=".9"/>` +
+      '<path d="M3 18.6 L6 17.9 M5 19.8 L8 19.1" stroke="#FFF" stroke-opacity=".55" stroke-width=".8" stroke-linecap="round"/></g></g>'
     );
   };
+  // Brazo: manga con puño, antebrazo y una mano con pulgar (ya no un círculo).
   const brazo = (t: "B" | "F", item = "") => {
     const c = t === "B" ? o.poleraOsc : o.polera;
     const piel = t === "B" ? o.pielOsc : o.piel;
     return (
       `<g class="hombro${t}"><line y2="15" stroke="${c}" stroke-width="10.5" stroke-linecap="round"/>` +
-      `<g class="codo${t}"><line y2="14" stroke="${piel}" stroke-width="7.5" stroke-linecap="round"/><circle cy="17.5" r="4.9" fill="${piel}"/>${item}</g></g>`
+      `<line y1="11.5" y2="14.5" stroke="${o.poleraOsc}" stroke-width="10.8" stroke-linecap="butt"/>` +
+      `<g class="codo${t}"><line y2="14" stroke="${piel}" stroke-width="7.5" stroke-linecap="round"/>` +
+      `<path d="M-4.6 14.2 Q-5.4 21.4 -0.6 22.8 Q4.2 23.8 5 18.6 Q5.4 14.6 3 13.6 Z" fill="${piel}"/>` +
+      `<path d="M3.2 15.2 Q6.8 15 6.4 18.4" fill="none" stroke="${o.pielOsc}" stroke-width="1.2" stroke-linecap="round"/>${item}</g></g>`
     );
   };
   const tel =
-    '<g class="tel"><g transform="rotate(-12)"><rect x="-4" y="9" width="10.5" height="17" rx="2.4" fill="#0B1114"/><rect x="-2.4" y="11" width="7.3" height="12" rx="1.3" fill="#00D6B4"/></g></g>';
+    '<g class="tel"><g transform="rotate(-12)"><rect x="-4" y="9" width="10.5" height="17" rx="2.4" fill="#0B1114"/><rect x="-2.4" y="11" width="7.3" height="12" rx="1.3" fill="#00D6B4"/>' +
+    '<rect x="-2.4" y="11" width="3" height="12" rx="1.3" fill="#FFF" opacity=".25"/></g></g>';
+  // Pelo con mechones; la coleta lleva su elástico.
   const pelo =
     o.estilo === "gorra"
       ? `<path d="M-17 -1 Q-19 -17 -3 -19 L0 6 Q-12 12 -17 -1 Z" fill="${o.pelo}"/>` +
-        `<g class="coleta" transform="translate(-15 -3)"><path d="M0 0 Q-9 6 -7 20 Q-2 14 3 4 Z" fill="${o.pelo}"/></g>`
-      : `<circle cx="-9" cy="-10" r="8" fill="${o.pelo}"/><circle cx="1" cy="-15" r="8.5" fill="${o.pelo}"/><circle cx="11" cy="-11" r="7" fill="${o.pelo}"/><circle cx="-14" cy="-1" r="6.5" fill="${o.pelo}"/><circle cx="-11" cy="8" r="5" fill="${o.pelo}"/>`;
+        `<path d="M-6 -6 Q-2.5 -2.5 -3.4 2.6" fill="none" stroke="${o.pelo}" stroke-width="2.4" stroke-linecap="round"/>` +
+        `<g class="coleta" transform="translate(-15 -3)"><path d="M0 0 Q-9 6 -7 20 Q-2 14 3 4 Z" fill="${o.pelo}"/>` +
+        `<path d="M-2 5 Q-6 10 -5.5 16" fill="none" stroke="#FFF" stroke-opacity=".12" stroke-width="1.2" stroke-linecap="round"/>` +
+        `<ellipse cx="0.6" cy="1.6" rx="3" ry="2" fill="${MARCA_OSC}"/></g>`
+      : `<circle cx="-9" cy="-10" r="8" fill="${o.pelo}"/><circle cx="1" cy="-15" r="8.5" fill="${o.pelo}"/><circle cx="11" cy="-11" r="7" fill="${o.pelo}"/><circle cx="-14" cy="-1" r="6.5" fill="${o.pelo}"/><circle cx="-11" cy="8" r="5" fill="${o.pelo}"/>` +
+        '<circle cx="3" cy="-18" r="2.6" fill="#FFF" opacity=".12"/><circle cx="12" cy="-14" r="2" fill="#FFF" opacity=".1"/><circle cx="-8" cy="-14" r="2.2" fill="#FFF" opacity=".1"/>';
+  // Gorra con costura, botón y visera con volumen.
   const gorra =
     o.estilo === "gorra"
-      ? `<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q17.5 -22 17.5 -6 Z" fill="${MARCA}"/>` + '<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q-8 -18 -9 -5 Z" fill="#000" opacity=".12"/>' +
-        `<path d="M12 -7.5 Q23 -9 27.5 -4.5 Q20 -2.8 12 -4 Z" fill="${MARCA_OSC}"/>` +
-        '<circle cx="2" cy="-13" r="3.6" fill="#FFFFFF"/><path d="M0.6 -12.8 L1.9 -11.6 L3.9 -14.2" fill="none" stroke="#EF6C3E" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>'
+      ? `<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q17.5 -22 17.5 -6 Z" fill="${MARCA}"/>` +
+        '<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q-8 -18 -9 -5 Z" fill="#000" opacity=".12"/>' +
+        '<path d="M-16.5 -5 Q-15.5 -22 2 -22 Q17.5 -22 17.5 -6 Z" fill="url(#fo-esfera)"/>' +
+        `<path d="M2 -22 Q3 -13 2.5 -5.5" fill="none" stroke="${MARCA_OSC}" stroke-width=".9" stroke-dasharray="1.4 1.2"/>` +
+        `<circle cx="2" cy="-22" r="1.6" fill="${MARCA_OSC}"/>` +
+        `<path d="M12 -7.5 Q23 -9 27.5 -4.5 Q20 -2.8 12 -4 Z" fill="${MARCA_OSC}"/><path d="M12 -7.5 Q23 -9 27.5 -4.5 Q19 -6.5 12 -6.2 Z" fill="#FFF" opacity=".18"/>` +
+        '<circle cx="-6" cy="-13" r="3.6" fill="#FFFFFF"/><path d="M-7.4 -12.8 L-6.1 -11.6 L-4.1 -14.2" fill="none" stroke="#EF6C3E" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>'
       : "";
   const marca = o.marca
-    ? '<circle cx="5" cy="-73" r="4.6" fill="#FFFFFF"/><path d="M3.1 -72.8 L4.8 -71.2 L7.4 -74.6" fill="none" stroke="#EF6C3E" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
+    ? '<circle cx="6" cy="-71" r="4.6" fill="#FFFFFF"/><path d="M4.1 -70.8 L5.8 -69.2 L8.4 -72.6" fill="none" stroke="#EF6C3E" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>'
     : "";
+  const torso = "M-14 -86 Q-17.5 -66 -13.5 -45 H13.5 Q17.5 -66 14 -86 Q0 -92 -14 -86 Z";
 
   const g = nodo(
     padre,
     '<ellipse cx="3" cy="1" rx="23" ry="4.8" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)" filter="url(#fo-difuso)"/>' +
+      '<ellipse cx="3" cy="0.6" rx="11" ry="2.2" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)"/>' +
       '<g class="todo">' +
       pierna("B") +
       '<g class="sup">' +
       brazo("B") +
       `<rect x="-4" y="-94" width="8" height="10" fill="${o.pielOsc}"/>` +
-      `<path d="M-14 -86 Q-17.5 -66 -13.5 -45 H13.5 Q17.5 -66 14 -86 Q0 -92 -14 -86 Z" fill="${o.polera}"/>` +
+      `<path d="${torso}" fill="${o.polera}"/>` +
       '<path d="M-14 -86 Q-17.5 -66 -13.5 -45 H-5 Q-9 -66 -6 -89.5 Z" fill="#000" opacity=".13"/>' +
+      `<path d="${torso}" fill="url(#fo-vol-h)"/>` +
+      // cuello de polo, tapeta con botones y los pliegues de la cintura
+      `<path d="M-7.5 -88.6 L0 -81 L7.5 -88.6 L4.2 -90.6 L0 -85.4 L-4.2 -90.6 Z" fill="${o.poleraOsc}"/>` +
+      `<path d="M0 -81 V-73" stroke="${o.poleraOsc}" stroke-width="1.3"/><circle cx="1.6" cy="-78.5" r=".8" fill="#FFF" opacity=".7"/><circle cx="1.6" cy="-75" r=".8" fill="#FFF" opacity=".7"/>` +
+      '<path d="M-10 -56 Q-5 -53.5 -1 -56.5 M3 -58 Q7 -55.5 10.5 -57.5" fill="none" stroke="#000" stroke-opacity=".14" stroke-width="1.1" stroke-linecap="round"/>' +
       `<path d="M-13.5 -50 H13.5 V-44 Q0 -41 -13.5 -44 Z" fill="${o.pantalon}"/>` +
+      '<rect x="-13.5" y="-50" width="27" height="1.6" fill="#000" opacity=".22"/><rect x="5" y="-49.6" width="4.4" height="3.4" rx=".8" fill="#C6D6D8"/>' +
       marca +
       '<g class="cabeza">' +
       pelo +
       `<circle r="17" fill="${o.piel}"/>` +
-      '<path d="M1 -17 A17 17 0 0 0 1 17 A12 17 0 0 1 1 -17 Z" fill="#000" opacity=".08"/>' +
-      `<circle cx="-2" cy="2" r="3.8" fill="${o.pielOsc}"/>` +
+      '<circle r="17" fill="url(#fo-esfera)"/>' +
+      `<circle cx="-2" cy="2" r="3.8" fill="${o.pielOsc}"/><path d="M-3.2 0.4 Q-1 2 -2.6 4" fill="none" stroke="#000" stroke-opacity=".15" stroke-width=".9" stroke-linecap="round"/>` +
       `<path d="M16.4 -1 Q19 2.4 16 4" fill="none" stroke="${o.pielOsc}" stroke-width="1.6" stroke-linecap="round"/>` +
       '<circle cx="11" cy="5" r="3.3" fill="#F08A7E" opacity=".32"/>' +
       '<g class="ojo" transform="translate(9 -1.5)"><ellipse rx="2.2" ry="2.9" fill="#0B1114"/><circle cx=".8" cy="-1.1" r=".8" fill="#FFFFFF"/></g>' +
-      `<path d="M5.5 -7.6 Q9 -9.8 13 -7.8" fill="none" stroke="${o.pelo}" stroke-width="1.7" stroke-linecap="round"/>` +
+      `<g class="cejas"><path d="M5.5 -7.6 Q9 -9.8 13 -7.8" fill="none" stroke="${o.pelo}" stroke-width="1.8" stroke-linecap="round"/></g>` +
+      '<path class="bocaAbierta" d="M8 7.2 Q11 12.4 14.4 6.8 Q11 8.4 8 7.2 Z" fill="#6B2E24" opacity="0"/>' +
       '<path class="boca" d="M8 7.5 Q11 10 14.2 7" fill="none" stroke="#6B2E24" stroke-width="1.7" stroke-linecap="round"/>' +
       gorra +
       "</g>" +
@@ -296,7 +356,9 @@ function persona(padre: Element, o: Aspecto): Rig {
     cab: hijo(g, ".cabeza"),
     coleta: g.querySelector<SVGGElement>(".coleta"),
     ojo: hijo(g, ".ojo"),
+    cejas: hijo(g, ".cejas"),
     boca: hijo<SVGPathElement>(g, ".boca"),
+    bocaAbierta: hijo<SVGPathElement>(g, ".bocaAbierta"),
     tel: hijo(g, ".tel"),
     carga: hijo(g, ".carga"),
     x: 0,
@@ -316,6 +378,7 @@ function persona(padre: Element, o: Aspecto): Rig {
     telOp: 0,
     cargaOp: 0,
     feliz: 0,
+    foco: 0,
     semilla: Math.random() * 6,
   };
 }
@@ -343,9 +406,14 @@ function pintarPersona(r: Rig, t: number) {
     const giro = 8 + 16 * a * Math.sin(r.fase * 2 - 1.1) + Math.sin(t * 1.7) * 2 * (1 - a) - r.inclina;
     r.coleta.setAttribute("transform", `translate(-15 -3) rotate(${fx(giro)})`);
   }
-  const ojo = (t + r.semilla) % 3.4 < 0.12 ? 0.12 : 1; // parpadeo
-  r.ojo.setAttribute("transform", `translate(9 -1.5) scale(1 ${ojo})`);
-  r.boca.setAttribute("d", `M8 7.5 Q11 ${fx(10 + r.feliz * 2.4)} 14.2 7`);
+  // Parpadeo, y la mirada se entrecierra con la concentración.
+  const ojo = ((t + r.semilla) % 3.4 < 0.12 ? 0.12 : 1) * (1 - 0.3 * r.foco);
+  r.ojo.setAttribute("transform", `translate(9 -1.5) scale(1 ${fx(ojo)})`);
+  // Cejas: bajan y se juntan al concentrarse; suben un poco al sonreír.
+  r.cejas.setAttribute("transform", `translate(0 ${fx(1.5 * r.foco - 0.8 * r.feliz)}) rotate(${fx(-9 * r.foco)} 9 -8)`);
+  r.boca.setAttribute("d", `M8 7.5 Q11 ${fx(10 + r.feliz * 2.4 - r.foco * 2)} 14.2 7`);
+  // Con mucha alegría, la sonrisa se abre.
+  r.bocaAbierta.setAttribute("opacity", fx(Math.max(0, (r.feliz - 0.45) / 0.55)));
   r.tel.setAttribute("opacity", fx(r.telOp));
   r.carga.setAttribute("opacity", fx(r.cargaOp));
 }
@@ -380,37 +448,150 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     nodo(fondoG, `<circle cx="${b[0]}" cy="${b[1]}" r="${b[2]}" fill="var(--e-st-bokeh-${b[3]})" filter="url(#fo-bokeh)"/>`);
   }
 
+
+  /* ═══ Escenarios insinuados ═══
+   * Siluetas en un solo tono, desenfocadas y tenues: dicen «bodega», «calle», «casa»
+   * sin competir con la acción. Todo va detrás de los actores y dentro de la máscara.
+   */
+  const S = "var(--e-silueta)";
+  let siluetas = "";
+  // 1 · La base: dos ventanales
+  for (const x of [60, 470]) {
+    siluetas +=
+      `<rect x="${x}" y="92" width="112" height="156" rx="3" fill="${S}"/>` +
+      `<rect x="${x + 6}" y="98" width="100" height="144" fill="var(--e-ventana)"/>` +
+      `<path d="M${x + 56} 98 V242 M${x + 6} 170 H${x + 106}" stroke="${S}" stroke-width="5"/>`;
+  }
+  // 2 · La bodega del cliente: portón de lamas y una estantería con cajas
+  siluetas += `<rect x="806" y="120" width="150" height="170" rx="2" fill="${S}"/>`;
+  for (let y = 132; y < 290; y += 11) siluetas += `<rect x="810" y="${y}" width="142" height="1.6" fill="#000" opacity=".07"/>`;
+  for (const x of [1150, 1285, 1420]) siluetas += `<rect x="${x}" y="104" width="7" height="186" fill="${S}"/>`;
+  for (const y of [150, 204, 258]) {
+    siluetas += `<rect x="1150" y="${y}" width="277" height="6" fill="${S}"/>`;
+    for (const [dx, w, h] of [[10, 40, 30], [58, 30, 24], [150, 46, 34], [204, 34, 26]] as const) {
+      siluetas += `<rect x="${1150 + dx}" y="${y - h}" width="${w}" height="${h}" rx="2" fill="${S}"/>`;
+    }
+  }
+  // un rayo de luz entra por arriba
+  siluetas += '<path d="M880 -30 L968 -30 L1190 290 L1010 290 Z" fill="url(#fo-rayo)"/>';
+  // 3 · La bodega del courier: estanterías con pallets a los costados
+  for (const x0 of [1606, 2078]) {
+    for (const x of [x0, x0 + 150]) siluetas += `<rect x="${x}" y="118" width="7" height="172" fill="${S}"/>`;
+    for (const y of [176, 236]) {
+      siluetas += `<rect x="${x0}" y="${y}" width="157" height="6" fill="${S}"/>`;
+      siluetas += `<rect x="${x0 + 12}" y="${y - 34}" width="58" height="34" rx="2" fill="${S}"/><rect x="${x0 + 82}" y="${y - 26}" width="52" height="26" rx="2" fill="${S}"/>`;
+    }
+  }
+  // 4 · La ruta: faroles al borde del camino (la ciudad lejana va aparte, con paralaje)
+  for (let x = 2290; x < 4200; x += 300) {
+    siluetas +=
+      `<rect x="${x}" y="168" width="4" height="122" fill="${S}"/><path d="M${x + 2} 170 Q${x + 2} 160 ${x + 16} 160 H${x + 22}" fill="none" stroke="${S}" stroke-width="4"/>` +
+      `<rect x="${x + 18}" y="159" width="12" height="5" rx="2" fill="${S}"/><circle cx="${x + 24}" cy="168" r="24" fill="url(#fo-halo)"/>`;
+  }
+  // 5 · La entrega: fachada con su ventana encendida y una reja baja
+  siluetas +=
+    `<rect x="3924" y="156" width="250" height="134" fill="${S}"/>` +
+    `<rect x="4112" y="190" width="52" height="44" rx="2" fill="#FFD98A" opacity=".22"/><path d="M4138 190 V234 M4112 212 H4164" stroke="${S}" stroke-width="3"/>` +
+    '<path d="M3900 156 L4049 104 L4198 156 Z" fill="' + S + '"/>';
+  for (let x = 3812; x < 3924; x += 12) siluetas += `<rect x="${x}" y="258" width="5" height="32" rx="2" fill="${S}"/>`;
+  siluetas += `<rect x="3808" y="266" width="116" height="4" fill="${S}"/>`;
+  parte("lejos").innerHTML = siluetas;
+
+  // La ciudad lejana: edificios con ventanas; aparece al salir a ruta.
+  let ciudad = "";
+  let cxEd = 380;
+  let semillaEd = 7;
+  const azar = () => ((semillaEd = (semillaEd * 9301 + 49297) % 233280) / 233280);
+  while (cxEd < 3300) {
+    const w = 40 + Math.round(azar() * 50);
+    const h = 60 + Math.round(azar() * 100);
+    ciudad += `<rect x="${cxEd}" y="${289 - h}" width="${w - 6}" height="${h}" fill="${S}"/>`;
+    for (let vy = 289 - h + 10; vy < 276; vy += 16) {
+      for (let vx = cxEd + 6; vx < cxEd + w - 14; vx += 12) {
+        if (azar() > 0.55) ciudad += `<rect x="${vx}" y="${vy}" width="5" height="7" fill="var(--e-ventana)"/>`;
+      }
+    }
+    cxEd += w;
+  }
+  const ciudadG = parte("ciudad");
+  ciudadG.innerHTML = ciudad;
+
+  // Polvo flotando en el rayo de luz de la bodega
+  const motasG = nodo(E, "");
+  const motas = Array.from({ length: 18 }, (_, i) => ({
+    el: nodo(motasG, '<circle r="1.3" fill="var(--e-rayo)"/>'),
+    bx: 930 + ((i * 53) % 190),
+    by: 30 + ((i * 97) % 240),
+    fase: i * 1.7,
+  }));
+
   /* Camioneta */
+  const CARROCERIA = "M0 -26 V-80 Q0 -90 10 -90 H104 Q116 -90 124 -80 L150 -52 Q159 -47 159 -37 V-25 Q159 -17 151 -17 H8 Q0 -17 0 -26 Z";
+  // Rueda: neumático con su flanco, llanta con volumen, cinco pernos y la tapa central.
+  const rueda = (cx: number) => {
+    let pernos = "";
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      pernos += `<circle cx="${fx(Math.cos(a) * 3.6)}" cy="${fx(Math.sin(a) * 3.6)}" r=".9" fill="#56696F"/>`;
+    }
+    return (
+      `<g class="rueda" data-cx="${cx}"><circle r="13.5" fill="#1C262B"/><circle r="11.2" fill="none" stroke="#2A3A41" stroke-width="1.6"/>` +
+      '<circle r="7" fill="#C6D6D8"/><circle r="7" fill="url(#fo-esfera)"/>' +
+      `${pernos}<circle r="1.8" fill="#8FA3A9"/></g>`
+    );
+  };
   const vanG = nodo(
     actores,
     '<ellipse cx="80" cy="1" rx="86" ry="6" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)" filter="url(#fo-difuso)"/>' +
+      '<ellipse cx="80" cy="0.5" rx="64" ry="2.6" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)"/>' +
       '<g class="lineas" opacity="0"><rect x="-58" y="-70" width="40" height="3" rx="1.5" fill="var(--e-muted)" opacity=".5"/><rect x="-44" y="-50" width="30" height="3" rx="1.5" fill="var(--e-muted)" opacity=".4"/><rect x="-66" y="-32" width="46" height="3" rx="1.5" fill="var(--e-muted)" opacity=".35"/></g>' +
+      '<g class="polvo"></g>' +
       '<g class="carro">' +
-      '<path d="M0 -26 V-80 Q0 -90 10 -90 H104 Q116 -90 124 -80 L150 -52 Q159 -47 159 -37 V-25 Q159 -17 151 -17 H8 Q0 -17 0 -26 Z" fill="var(--e-van)"/>' +
+      `<clipPath id="fo-van-clip"><path d="${CARROCERIA}"/></clipPath>` +
+      // haz de los focos, por delante y bajo la carrocería
+      '<path d="M158 -42 L236 -62 L236 -20 Z" fill="url(#fo-foco)" opacity=".55"/>' +
+      `<path d="${CARROCERIA}" fill="var(--e-van)"/>` +
       '<path d="M0 -40 H159 V-25 Q159 -17 151 -17 H8 Q0 -17 0 -26 Z" fill="var(--e-van-sombra)" opacity=".7"/>' +
-      `<rect x="0" y="-44" width="159" height="5" fill="${MARCA}"/>` +
+      `<path d="${CARROCERIA}" fill="url(#fo-vol-v)"/>` +
+      // arcos de rueda
+      '<path d="M15 -17 A19 19 0 0 1 53 -17 Z M105 -17 A19 19 0 0 1 143 -17 Z" fill="#0B1114" opacity=".32"/>' +
+      `<rect x="0" y="-44" width="159" height="5" fill="${MARCA}"/><rect x="0" y="-44" width="159" height="1.4" fill="#FFF" opacity=".3"/>` +
+      // costuras: puerta corredera y puerta de la cabina, con sus manillas
+      '<path d="M72 -86 V-20 M110 -84 V-20" stroke="#0B1114" stroke-opacity=".18" stroke-width="1.2"/>' +
+      '<rect x="75" y="-55" width="10" height="2.8" rx="1.4" fill="#8FA3A9"/><rect x="113" y="-50" width="8" height="2.6" rx="1.3" fill="#8FA3A9"/>' +
       '<path d="M111 -82 Q117 -82 121 -76 L142 -52 H111 Z" fill="var(--e-vidrio)"/>' +
       '<path d="M111 -82 Q117 -82 121 -76 L128 -68 L111 -58 Z" fill="#FFFFFF" opacity=".35"/>' +
       `<g class="chofer"><circle cx="126" cy="-60" r="7.5" fill="#C98E6A"/><path d="M118 -63 Q126 -74 134 -63 Z" fill="${MARCA}"/></g>` +
+      '<path d="M122 -79 L140 -54" stroke="#FFF" stroke-opacity=".5" stroke-width="1.6" stroke-linecap="round"/>' +
+      // espejo, luces y parachoques
+      '<path d="M139 -63 h6 q2 0 2 2 v4 q0 2 -2 2 h-4 z" fill="#1C262B"/>' +
       // Tiene que terminar antes de la cabina (x = 111): con letra 16 se metía en la ventana.
       logoEmpresa(18, -64, 9, { tam: 13.5, color: "#0B1114" }) +
       '<circle cx="155" cy="-40" r="10" fill="#FFD98A" opacity=".25"/><rect x="152" y="-44" width="6" height="8" rx="2" fill="#FFD98A"/>' +
+      '<rect x="-1" y="-52" width="3.4" height="9" rx="1.2" fill="#E5484D"/>' +
+      '<rect x="151" y="-24" width="11" height="7" rx="2.2" fill="#56696F"/><rect x="-3" y="-24" width="9" height="7" rx="2.2" fill="#56696F"/>' +
+      '<rect x="151" y="-24" width="11" height="1.6" rx=".8" fill="#FFF" opacity=".3"/>' +
+      // un brillo que recorre la carrocería cuando anda
+      `<g clip-path="url(#fo-van-clip)"><rect class="brillo" x="-70" y="-96" width="44" height="84" fill="url(#fo-brillo)"/></g>` +
       '<g class="puertaVan"><rect x="-1" y="-86" width="6" height="66" rx="2" fill="var(--e-van-sombra)"/></g>' +
       "</g>" +
-      '<g class="rueda" data-cx="34"><circle r="13.5" fill="#1C262B"/><circle r="6.5" fill="#C6D6D8"/><path d="M-6 0H6M0 -6V6" stroke="#1C262B" stroke-width="2"/></g>' +
-      '<g class="rueda" data-cx="124"><circle r="13.5" fill="#1C262B"/><circle r="6.5" fill="#C6D6D8"/><path d="M-6 0H6M0 -6V6" stroke="#1C262B" stroke-width="2"/></g>' +
-      '<g class="humo"></g>'
+      rueda(34) +
+      rueda(124) +
+      '<g class="humo" filter="url(#fo-humo)"></g>'
   );
   const ruedas = Array.from(vanG.querySelectorAll<SVGGElement>(".rueda"));
   const carroG = hijo(vanG, ".carro");
   const lineasG = hijo(vanG, ".lineas");
   const choferG = hijo(vanG, ".chofer");
   const puertaVan = hijo(vanG, ".puertaVan");
+  const brilloVan = hijo(vanG, ".brillo");
   const humoG = hijo(vanG, ".humo");
-  const humos = Array.from({ length: 6 }, () => nodo(humoG, '<circle r="6" fill="var(--e-muted)" opacity=".35"/>', { opacity: "0" }));
+  const humos = Array.from({ length: 8 }, () => nodo(humoG, '<circle r="6" fill="var(--e-muted)" opacity=".4"/>', { opacity: "0" }));
+  // polvo que levantan las ruedas traseras
+  const polvos = Array.from({ length: 8 }, () => nodo(hijo(vanG, ".polvo"), '<circle r="3.4" fill="var(--e-kraft-osc)" opacity=".4"/>', { opacity: "0" }));
 
   const CX = 1600;
-  const van = { x: CX + 430, y: 290, op: 1, sx: 1, sy: 1, rot: 0, puerta: 0, lineas: 0, chofer: 0 };
+  const van = { x: CX + 430, y: 290, op: 1, sx: 1, sy: 1, rot: 0, puerta: 0, lineas: 0, chofer: 0, brillo: 0 };
 
   /* 1 · Pedidos: notificaciones que salen del teléfono */
   const TARJ: [string, string][] = [
@@ -418,14 +599,16 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     ["Shopify", "#95BF47"],
     ["Tu tienda", "#00B89A"],
   ];
-  const tarjetas = TARJ.map(([nombre, color]) =>
+  const tarjetas = TARJ.map(([nombre, color], k) =>
     nodo(
       E,
       '<g filter="url(#fo-elevar)"><rect width="196" height="46" rx="12" fill="var(--e-panel)" stroke="var(--e-panel-line)"/></g>' +
         `<circle cx="24" cy="23" r="12" fill="${color}" opacity=".22"/><path d="M17 19 L19 14 H29 L31 19 Z M18 20 H30 V30 H18 Z" fill="${color}"/>` +
         `<text x="46" y="21" font-size="14.5" font-weight="700" fill="var(--e-fg)">${nombre}</text>` +
         '<text x="46" y="36" font-size="11.5" fill="var(--e-muted)">Nuevo pedido</text>' +
-        '<circle cx="180" cy="23" r="4" fill="var(--e-accent)"/>'
+        '<circle cx="180" cy="23" r="4" fill="var(--e-accent)"/>' +
+        `<clipPath id="fo-tj${k}"><rect width="196" height="46" rx="12"/></clipPath>` +
+        `<g clip-path="url(#fo-tj${k})"><g class="brilloTj"><rect x="-80" y="-10" width="42" height="66" fill="url(#fo-brillo)" transform="skewX(-18)"/></g></g>`
     )
   );
   const pildora = nodo(
@@ -445,6 +628,14 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     { x: BX + 222, y: 218 },
   ];
   const haz = nodo(E, '<polygon points="0,0 0,0 0,0" fill="url(#fo-haz)"/>', { opacity: "0" });
+  // El punto del láser sobre la caja, con la línea que barre la etiqueta.
+  const laser = nodo(
+    E,
+    '<circle r="6.5" fill="var(--e-accent)" opacity=".28"/><circle r="2.4" fill="var(--e-accent)"/>' +
+      '<rect class="lineaScan" x="-3" y="-.8" width="14" height="1.6" rx=".8" fill="var(--e-accent)"/>',
+    { opacity: "0" }
+  );
+  const lineaScan = hijo(laser, ".lineaScan");
   const hazPoly = haz.firstChild as SVGPolygonElement;
   const vistos = cajasB.map(() =>
     nodo(
@@ -680,12 +871,12 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const rutaTel = hijo<SVGPathElement>(telG, '[data-p="rutaTel"]');
   const largoRuta = rutaTel.getTotalLength();
   const vanTel = hijo(telG, '[data-p="vanTel"]');
-  const tel = { op: 0, dy: 26 };
+  const tel = { op: 0, dy: 26, dx: 0 };
   let angosto = false;
   function pintarTel() {
     // En el lienzo cuadrado del teléfono el aparato va más chico y más al borde.
     const [x, y, e] = angosto ? [368, 40, 0.86] : [474, 30, 1];
-    telG.setAttribute("transform", `translate(${x} ${fx(y + tel.dy)}) scale(${e})`);
+    telG.setAttribute("transform", `translate(${fx(x + tel.dx)} ${fx(y + tel.dy)}) scale(${e})`);
     telG.setAttribute("opacity", fx(tel.op));
   }
 
@@ -693,6 +884,8 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const cam = { x: 320, y: 188, z: 1, sigue: 0, tel: 0 };
   let zBase = 1.12;
   const hazEstado = { op: 0, obj: 0 };
+  /** Estado de la ambientación: la ciudad lejana solo existe en la ruta y la entrega. */
+  const ambiente = { ciudad: 0 };
 
   function pintarVan() {
     vanG.setAttribute("transform", `translate(${fx(van.x)} ${fx(van.y)})`);
@@ -703,15 +896,19 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     puertaVan.setAttribute("transform", `rotate(${fx(-van.puerta)} 2 -86)`);
     lineasG.setAttribute("opacity", fx(van.lineas));
     choferG.setAttribute("opacity", fx(van.chofer));
+    brilloVan.setAttribute("transform", `translate(${fx(van.brillo * 290)} 0) skewX(-18)`);
   }
-  function pintarHaz() {
+  function pintarHaz(t: number) {
     haz.setAttribute("opacity", fx(hazEstado.op));
+    laser.setAttribute("opacity", fx(hazEstado.op));
     if (hazEstado.op <= 0) return;
     const m = mano(camila);
     const c = cajasB[hazEstado.obj];
     const bx = Number(gsap.getProperty(c.el, "x"));
     const by = Number(gsap.getProperty(c.el, "y"));
     hazPoly.setAttribute("points", `${fx(m.x + 4)},${fx(m.y + 2)} ${fx(bx - c.w / 2)},${fx(by - c.h)} ${fx(bx - c.w / 2)},${fx(by)}`);
+    laser.setAttribute("transform", `translate(${fx(bx - c.w / 2 + 7)} ${fx(by - c.h * 0.45)})`);
+    lineaScan.setAttribute("transform", `translate(0 ${fx(Math.sin(t * 16) * c.h * 0.32)})`);
   }
   function pintarCamara() {
     const cx = cam.x * (1 - cam.sigue) + (van.x + (angosto ? 92 : 118)) * cam.sigue;
@@ -722,6 +919,9 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     const esc = cam.z * zBase * (1 + (zTel - 1) * cam.tel);
     mundo.setAttribute("transform", `translate(${fx(foco)} ${fx(188 + bajaTel * cam.tel)}) scale(${fx(esc)}) translate(${fx(-cx)} ${fx(-cam.y)})`);
     fondoG.setAttribute("transform", `translate(${fx(-(cx * 0.07) % 260)} 0)`);
+    // Paralaje: la ciudad lejana avanza a menos de la mitad de la velocidad del piso.
+    ciudadG.setAttribute("transform", `translate(${fx(cx * 0.45)} 0)`);
+    ciudadG.setAttribute("opacity", fx(ambiente.ciudad * 0.9));
   }
   const t0 = performance.now();
   function pintarTodo() {
@@ -730,8 +930,13 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     pintarPersona(clienta, t);
     pintarVan();
     pintarCamara();
-    pintarHaz();
+    pintarHaz(t);
     pintarTel();
+    // El polvo flota lento en el rayo de luz de la bodega, y titila.
+    for (const m of motas) {
+      m.el.setAttribute("transform", `translate(${fx(m.bx + Math.sin(t * 0.35 + m.fase) * 9)} ${fx(m.by + Math.sin(t * 0.22 + m.fase * 1.3) * 16)})`);
+      m.el.setAttribute("opacity", fx(0.3 + 0.3 * Math.sin(t * 1.3 + m.fase)));
+    }
   }
 
   /* Estado inicial */
@@ -768,6 +973,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     tl.to(c.sq, { rotation: 0, duration: d * 0.8, ease: "power1.inOut" }, t + 0.27);
     tl.to(c.sq, { scaleY: 0.74, scaleX: 1.2, duration: 0.07, ease: "power2.in" }, t + 0.13 + d - 0.03);
     tl.to(c.sq, { scaleY: 1, scaleX: 1, duration: 0.5, ease: "elastic.out(1,.42)" }, t + 0.13 + d + 0.04);
+    if (y1 >= 288) polvito(x1, t + 0.13 + d);
   }
   function pop(el: Element, t: number, esc = 0.6) {
     tl.fromTo(el, { opacity: 0, scale: esc, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.5, ease: "back.out(1.8)" }, t);
@@ -1029,6 +1235,72 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   aparece(enTel('[data-p="horaTel"]'), 26.75);
   tl.to(enTel('[data-p="btnFoto"]'), { opacity: 0, duration: 0.2 }, 27.0);
   pop(enTel('[data-p="btnOk"]'), 27.0, 0.85);
+
+  /* ═══ Capa de detalle: destellos, polvo, expresiones y brillos ═══ */
+  /** Destello: partículas que salen en abanico desde un punto y se apagan. */
+  function chispas(x: number, y: number, t: number, color = "var(--e-accent)", n = 8, radio = 20) {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.35;
+      const el = nodo(frente, `<circle r="${i % 2 ? 1.4 : 2}" fill="${color}"/>`, { opacity: "0" });
+      tl.fromTo(
+        el,
+        { opacity: 1, x, y, scale: 1 },
+        { opacity: 0, x: x + Math.cos(a) * radio, y: y + Math.sin(a) * radio, scale: 0.4, duration: 0.55, ease: "power2.out", immediateRender: false },
+        t
+      );
+    }
+  }
+  /** Polvito que levanta una caja al caer al piso. */
+  function polvito(x: number, t: number) {
+    for (const lado of [-1, 1]) {
+      for (let i = 0; i < 2; i++) {
+        const el = nodo(frente, '<circle r="3" fill="var(--e-kraft-osc)" opacity=".35"/>', { opacity: "0" });
+        tl.fromTo(
+          el,
+          { opacity: 0.6, x: x + lado * 8, y: 288, scale: 0.5, transformOrigin: "50% 50%" },
+          { opacity: 0, x: x + lado * (22 + i * 9), y: 283 - i * 3, scale: 1.5, duration: 0.5, ease: "power2.out", immediateRender: false },
+          t
+        );
+      }
+    }
+  }
+
+  // Las notificaciones reciben un brillo al asentarse.
+  tarjetas.forEach((g, k) => tl.to(hijo(g, ".brilloTj"), { x: 300, duration: 0.8, ease: "power2.inOut" }, 0.45 + k * 0.62 + 0.55));
+
+  // Expresiones: atenta al leer los pedidos, concentrada al escanear, contenta al cargar.
+  tl.to(camila, { foco: 0.35, duration: 0.3 }, 0.3).to(camila, { foco: 0, duration: 0.3 }, 1.9);
+  tl.to(camila, { foco: 1, duration: 0.35 }, 7.6).to(camila, { foco: 0, duration: 0.3 }, 10.9);
+  tl.to(camila, { feliz: 0.5, duration: 0.3 }, 14.5).to(camila, { feliz: 0, duration: 0.3 }, 16.0);
+  tl.to(camila, { foco: 0.4, duration: 0.2 }, 23.2).to(camila, { foco: 0, duration: 0.3 }, 24.2);
+
+  // Cada paquete escaneado: destello sobre la caja y el teléfono vibra.
+  cajasB.forEach((c, j) => {
+    const ts = 8.1 + j * 0.9;
+    chispas(Number(gsap.getProperty(c.el, "x")), Number(gsap.getProperty(c.el, "y")) - c.h - 14, ts + 0.16);
+    tl.to(tel, { keyframes: [{ dx: 1.8, duration: 0.04 }, { dx: -1.8, duration: 0.05 }, { dx: 1.1, duration: 0.05 }, { dx: 0, duration: 0.05 }] }, ts + 0.1);
+  });
+
+  // La camioneta: un brillo recorre la carrocería y las ruedas levantan polvo.
+  tl.fromTo(van, { brillo: 0 }, { brillo: 1, duration: 1.3, ease: "power1.inOut", repeat: 1, immediateRender: false }, 17.5);
+  tl.fromTo(van, { brillo: 0 }, { brillo: 1, duration: 1.1, ease: "power1.inOut", immediateRender: false }, 21.7);
+  polvos.forEach((pv, i) => {
+    tl.fromTo(
+      pv,
+      { opacity: 0.55, x: 30, y: -4, scale: 0.5, transformOrigin: "50% 50%" },
+      { opacity: 0, x: -16 - i * 2, y: -15, scale: 1.8, duration: 0.7, ease: "power1.out", repeat: 3, immediateRender: false },
+      17.45 + i * 0.09
+    );
+  });
+
+  // La ciudad lejana aparece al salir a ruta.
+  tl.to(ambiente, { ciudad: 1, duration: 1.2 }, 15.2);
+
+  // La foto: un destello en el teléfono de Camila. El sello: destellos en dos colores.
+  const manoFoto = mano({ ...camila, x: DX + 360, y: 290, dir: 1, esc: 1, shF: -112, elF: -24 });
+  chispas(manoFoto.x, manoFoto.y - 4, 26.15, "#FFFFFF", 10, 16);
+  chispas(DX + 250, 96, 26.45, "var(--e-accent)", 12, 52);
+  chispas(DX + 250, 96, 26.52, MARCA, 8, 38);
 
   tl.set({}, {}, 29.2);
   // Al reiniciar, el velo se levanta en vez de cortar.
