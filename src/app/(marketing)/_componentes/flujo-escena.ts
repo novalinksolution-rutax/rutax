@@ -381,7 +381,8 @@ export function montarFlujo(p: PiezasFlujo): () => void {
       '<path d="M111 -82 Q117 -82 121 -76 L142 -52 H111 Z" fill="var(--e-vidrio)"/>' +
       '<path d="M111 -82 Q117 -82 121 -76 L128 -68 L111 -58 Z" fill="#FFFFFF" opacity=".35"/>' +
       `<g class="chofer"><circle cx="126" cy="-60" r="7.5" fill="#C98E6A"/><path d="M118 -63 Q126 -74 134 -63 Z" fill="${MARCA}"/></g>` +
-      logoEmpresa(24, -66, 11, { tam: 16, color: "#0B1114" }) +
+      // Tiene que terminar antes de la cabina (x = 111): con letra 16 se metía en la ventana.
+      logoEmpresa(18, -64, 9, { tam: 13.5, color: "#0B1114" }) +
       '<circle cx="155" cy="-40" r="10" fill="#FFD98A" opacity=".25"/><rect x="152" y="-44" width="6" height="8" rx="2" fill="#FFD98A"/>' +
       '<g class="puertaVan"><rect x="-1" y="-86" width="6" height="66" rx="2" fill="var(--e-van-sombra)"/></g>' +
       "</g>" +
