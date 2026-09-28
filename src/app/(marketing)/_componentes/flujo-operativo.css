@@ -78,13 +78,32 @@
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 9;
-  /* Sin fondo propio: la escena se funde en el de la página (máscaras en flujo-escena.ts). */
+  /* Sin fondo propio: la escena se funde en el de la página. El fundido es una máscara CSS
+     (dos degradados que se intersectan) y no una máscara SVG: Safari de iPhone rehacía la
+     máscara SVG en CPU en cada cuadro y la animación se arrastraba. */
   background: transparent;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 13%, #000 87%, transparent),
+    linear-gradient(to bottom, transparent, #000 15%, #000 78%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, transparent, #000 13%, #000 87%, transparent),
+    linear-gradient(to bottom, transparent, #000 15%, #000 78%, transparent);
+  mask-composite: intersect;
+  /* Capa propia de composición: el navegador no repinta la página al mover la escena. */
+  will-change: transform;
+  transform: translateZ(0);
+}
+/* El teléfono de la app, encima de la escena y fuera del fundido. */
+.flujo-op .lienzo-hud {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 .flujo-op[data-angosto] .lienzo {
   aspect-ratio: 1 / 1;
 }
-.flujo-op .lienzo .mono {
+.flujo-op svg .mono {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }

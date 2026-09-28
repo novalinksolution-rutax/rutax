@@ -18,6 +18,7 @@ const PASOS = ["Pedidos", "Retiro", "Asignación", "En ruta", "Entregado"];
 export function FlujoOperativo() {
   const figura = useRef<HTMLElement>(null);
   const lienzo = useRef<SVGSVGElement>(null);
+  const hud = useRef<SVGSVGElement>(null);
   const riel = useRef<HTMLOListElement>(null);
   const titulo = useRef<HTMLSpanElement>(null);
   const subtitulo = useRef<HTMLSpanElement>(null);
@@ -25,7 +26,7 @@ export function FlujoOperativo() {
   const icono = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
-    if (!figura.current || !lienzo.current || !riel.current || !titulo.current || !subtitulo.current || !pausa.current || !icono.current) return;
+    if (!figura.current || !lienzo.current || !hud.current || !riel.current || !titulo.current || !subtitulo.current || !pausa.current || !icono.current) return;
     return montarFlujo({
       figura: figura.current,
       lienzo: lienzo.current,
@@ -34,6 +35,7 @@ export function FlujoOperativo() {
       subtitulo: subtitulo.current,
       pausa: pausa.current,
       iconoPausa: icono.current,
+      hud: hud.current,
     });
   }, []);
 
@@ -65,8 +67,11 @@ export function FlujoOperativo() {
         ))}
       </ol>
 
-      <div translate="no">
+      {/* Dos lienzos superpuestos: la escena (con los bordes fundidos) y, encima, el
+          teléfono de la app, que queda nítido fuera del fundido. */}
+      <div translate="no" className="relative">
         <svg ref={lienzo} className="lienzo" viewBox="0 0 640 360" aria-hidden="true" />
+        <svg ref={hud} className="lienzo-hud" viewBox="0 0 640 360" aria-hidden="true" />
       </div>
 
       <figcaption className="flex min-h-16 items-center justify-between gap-3 px-1 py-3 sm:px-3">

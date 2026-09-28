@@ -56,6 +56,8 @@ export interface PiezasFlujo {
   subtitulo: HTMLElement;
   pausa: HTMLButtonElement;
   iconoPausa: SVGSVGElement;
+  /** Segundo lienzo, encima del primero y fuera del fundido: el teléfono de la app. */
+  hud: SVGSVGElement;
 }
 
 const NS = "http://www.w3.org/2000/svg";
@@ -92,10 +94,6 @@ const LIENZO = `
   <radialGradient id="fo-luz" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="var(--e-st-glow)" stop-opacity=".9"/><stop offset=".75" stop-color="var(--e-st-glow)" stop-opacity="0"/></radialGradient>
   <linearGradient id="fo-suelo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--e-st-floor-top)"/><stop offset="1" stop-color="var(--e-st-floor)"/></linearGradient>
   <linearGradient id="fo-haz" x1="0" x2="1"><stop offset="0" stop-color="var(--e-accent)" stop-opacity=".9"/><stop offset="1" stop-color="var(--e-accent)" stop-opacity=".08"/></linearGradient>
-  <clipPath id="fo-pantalla"><rect x="6" y="6" width="138" height="288" rx="21"/></clipPath>
-  <filter id="fo-difuso" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="3.2"/></filter>
-  <filter id="fo-bokeh" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
-  <filter id="fo-elevar" x="-20%" y="-30%" width="140%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#0B1114" flood-opacity=".14"/></filter>
   <!-- Volumen: capas de luz que van ENCIMA del color base, así sirven para cualquier color
        y en los dos temas. La luz viene de arriba a la derecha (hacia donde miran). -->
   <linearGradient id="fo-vol-h" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".2"/><stop offset=".45" stop-color="#000" stop-opacity="0"/><stop offset=".78" stop-color="#FFF" stop-opacity="0"/><stop offset="1" stop-color="#FFF" stop-opacity=".22"/></linearGradient>
@@ -105,24 +103,24 @@ const LIENZO = `
   <linearGradient id="fo-foco" x1="0" x2="1"><stop offset="0" stop-color="#FFD98A" stop-opacity=".45"/><stop offset="1" stop-color="#FFD98A" stop-opacity="0"/></linearGradient>
   <linearGradient id="fo-rayo" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="var(--e-rayo)" stop-opacity=".5"/><stop offset="1" stop-color="var(--e-rayo)" stop-opacity="0"/></linearGradient>
   <radialGradient id="fo-halo"><stop offset="0" stop-color="#FFD98A" stop-opacity=".4"/><stop offset="1" stop-color="#FFD98A" stop-opacity="0"/></radialGradient>
-  <filter id="fo-lejos" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="1.4"/></filter>
-  <filter id="fo-humo" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="2.2"/></filter>
-  <linearGradient id="fo-fh" x1="0" x2="1"><stop offset="0" stop-color="#000"/><stop offset=".13" stop-color="#FFF"/><stop offset=".87" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
-  <linearGradient id="fo-fv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000"/><stop offset=".15" stop-color="#FFF"/><stop offset=".78" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
-  <mask id="fo-mh" maskUnits="userSpaceOnUse" x="-400" y="-400" width="1440" height="1160"><rect data-p="mascaraH" width="640" height="360" fill="url(#fo-fh)"/></mask>
-  <mask id="fo-mv" maskUnits="userSpaceOnUse" x="-400" y="-400" width="1440" height="1160"><rect data-p="mascaraV" width="640" height="360" fill="url(#fo-fv)"/></mask>
+  <!-- Sin filtros de desenfoque: Safari de iPhone los redibuja en CPU en cada cuadro y la
+       animación se arrastra. Lo suave se logra con degradados radiales, que son casi gratis. -->
+  <radialGradient id="fo-sombra"><stop offset="0" stop-color="var(--e-st-shadow)" stop-opacity=".9"/><stop offset="1" stop-color="var(--e-st-shadow)" stop-opacity="0"/></radialGradient>
+  <radialGradient id="fo-bokeh-a"><stop offset="0" stop-color="var(--e-st-bokeh-a)"/><stop offset="1" stop-color="var(--e-st-bokeh-a)" stop-opacity="0"/></radialGradient>
+  <radialGradient id="fo-bokeh-b"><stop offset="0" stop-color="var(--e-st-bokeh-b)"/><stop offset="1" stop-color="var(--e-st-bokeh-b)" stop-opacity="0"/></radialGradient>
+  <radialGradient id="fo-humo-g"><stop offset="0" stop-color="var(--e-muted)" stop-opacity=".5"/><stop offset="1" stop-color="var(--e-muted)" stop-opacity="0"/></radialGradient>
 </defs>
-<!-- La escena no tiene fondo propio: deja ver el de la página, y sus cuatro bordes se
-     funden en él (dos máscaras anidadas: una horizontal y una vertical). El teléfono de
-     la app queda fuera de la máscara, nítido, flotando sobre la escena. -->
-<g mask="url(#fo-mh)"><g mask="url(#fo-mv)">
+<!-- La escena no tiene fondo propio: deja ver el de la página. El fundido de los bordes
+     es una máscara CSS sobre el <svg> (flujo-operativo.css), que Safari compone en GPU; el
+     teléfono de la app va en otro <svg> encima, fuera del fundido. -->
+<g>
   <rect x="-400" y="-400" width="1440" height="1160" fill="url(#fo-luz)"/>
   <g data-p="fondo" opacity=".75"></g>
   <g data-p="mundo">
     <!-- Escenarios insinuados: siluetas desenfocadas y tenues detrás de la acción. La ciudad
          lleva paralaje (se mueve más lento que el piso); el resto va a la misma profundidad. -->
-    <g data-p="ciudad" filter="url(#fo-lejos)" opacity="0"></g>
-    <g data-p="lejos" filter="url(#fo-lejos)"></g>
+    <g data-p="ciudad" opacity="0"></g>
+    <g data-p="lejos"></g>
     <rect x="-800" y="290" width="6000" height="500" fill="url(#fo-suelo)"/>
     <rect x="-800" y="289" width="6000" height="1.5" fill="var(--e-st-horizon)"/>
     <g data-p="rayas"></g>
@@ -132,8 +130,7 @@ const LIENZO = `
   </g>
   <rect data-p="flash" x="-400" y="-400" width="1440" height="1160" fill="#FFFFFF" opacity="0"/>
   <rect data-p="velo" x="-400" y="-400" width="1440" height="1160" fill="var(--e-bg)" opacity="0"/>
-</g></g>
-<g data-p="hud"></g>`;
+</g>`;
 
 /* ───────────────────────── utilidades ───────────────────────── */
 
@@ -305,7 +302,7 @@ function persona(padre: Element, o: Aspecto): Rig {
 
   const g = nodo(
     padre,
-    '<ellipse cx="3" cy="1" rx="23" ry="4.8" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)" filter="url(#fo-difuso)"/>' +
+    '<ellipse cx="3" cy="1" rx="23" ry="4.8" fill="url(#fo-sombra)" style="opacity:var(--e-st-shadow-op)"/>' +
       '<ellipse cx="3" cy="0.6" rx="11" ry="2.2" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)"/>' +
       '<g class="todo">' +
       pierna("B") +
@@ -432,7 +429,13 @@ function mano(r: Rig) {
 export function montarFlujo(p: PiezasFlujo): () => void {
   const { figura, lienzo } = p;
   lienzo.innerHTML = LIENZO;
-  const parte = (n: string) => hijo<SVGGElement>(lienzo, `[data-p="${n}"]`);
+  // Busca en los dos lienzos: la escena y el del teléfono (los contadores de la app viven ahí).
+  const parte = (n: string): SVGGElement => {
+    const sel = `[data-p="${n}"]`;
+    const el = lienzo.querySelector<SVGGElement>(sel) ?? p.hud.querySelector<SVGGElement>(sel);
+    if (!el) throw new Error(`flujo-escena: falta ${sel}`);
+    return el;
+  };
   const mundo = parte("mundo");
   const fondoG = parte("fondo");
   const E = parte("escenas");
@@ -440,12 +443,12 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const frente = parte("frente");
   const flash = parte("flash");
   const velo = parte("velo");
-  const mascaraH = parte("mascaraH");
-  const mascaraV = parte("mascaraV");
+  p.hud.innerHTML = '<defs><clipPath id="fo-pantalla"><rect x="6" y="6" width="138" height="288" rx="21"/></clipPath></defs>';
+  const hudG = nodo(p.hud, "");
 
   /* Luces desenfocadas del fondo, con paralaje */
   for (const b of [[80, 90, 70, "a"], [330, 60, 50, "b"], [560, 120, 80, "a"], [820, 70, 60, "b"], [1060, 110, 70, "a"], [1300, 60, 55, "b"]] as const) {
-    nodo(fondoG, `<circle cx="${b[0]}" cy="${b[1]}" r="${b[2]}" fill="var(--e-st-bokeh-${b[3]})" filter="url(#fo-bokeh)"/>`);
+    nodo(fondoG, `<circle cx="${b[0]}" cy="${b[1]}" r="${b[2] * 1.5}" fill="url(#fo-bokeh-${b[3]})"/>`);
   }
 
 
@@ -542,7 +545,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   };
   const vanG = nodo(
     actores,
-    '<ellipse cx="80" cy="1" rx="86" ry="6" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)" filter="url(#fo-difuso)"/>' +
+    '<ellipse cx="80" cy="1" rx="86" ry="6" fill="url(#fo-sombra)" style="opacity:var(--e-st-shadow-op)"/>' +
       '<ellipse cx="80" cy="0.5" rx="64" ry="2.6" fill="var(--e-st-shadow)" style="opacity:var(--e-st-shadow-op)"/>' +
       '<g class="lineas" opacity="0"><rect x="-58" y="-70" width="40" height="3" rx="1.5" fill="var(--e-muted)" opacity=".5"/><rect x="-44" y="-50" width="30" height="3" rx="1.5" fill="var(--e-muted)" opacity=".4"/><rect x="-66" y="-32" width="46" height="3" rx="1.5" fill="var(--e-muted)" opacity=".35"/></g>' +
       '<g class="polvo"></g>' +
@@ -577,7 +580,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
       "</g>" +
       rueda(34) +
       rueda(124) +
-      '<g class="humo" filter="url(#fo-humo)"></g>'
+      '<g class="humo"></g>'
   );
   const ruedas = Array.from(vanG.querySelectorAll<SVGGElement>(".rueda"));
   const carroG = hijo(vanG, ".carro");
@@ -586,7 +589,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const puertaVan = hijo(vanG, ".puertaVan");
   const brilloVan = hijo(vanG, ".brillo");
   const humoG = hijo(vanG, ".humo");
-  const humos = Array.from({ length: 8 }, () => nodo(humoG, '<circle r="6" fill="var(--e-muted)" opacity=".4"/>', { opacity: "0" }));
+  const humos = Array.from({ length: 8 }, () => nodo(humoG, '<circle r="9" fill="url(#fo-humo-g)"/>', { opacity: "0" }));
   // polvo que levantan las ruedas traseras
   const polvos = Array.from({ length: 8 }, () => nodo(hijo(vanG, ".polvo"), '<circle r="3.4" fill="var(--e-kraft-osc)" opacity=".4"/>', { opacity: "0" }));
 
@@ -602,7 +605,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const tarjetas = TARJ.map(([nombre, color], k) =>
     nodo(
       E,
-      '<g filter="url(#fo-elevar)"><rect width="196" height="46" rx="12" fill="var(--e-panel)" stroke="var(--e-panel-line)"/></g>' +
+      '<rect width="196" height="46" rx="12" fill="#0B1114" opacity=".1" transform="translate(0 6)"/><rect width="196" height="46" rx="12" fill="var(--e-panel)" stroke="var(--e-panel-line)"/>' +
         `<circle cx="24" cy="23" r="12" fill="${color}" opacity=".22"/><path d="M17 19 L19 14 H29 L31 19 Z M18 20 H30 V30 H18 Z" fill="${color}"/>` +
         `<text x="46" y="21" font-size="14.5" font-weight="700" fill="var(--e-fg)">${nombre}</text>` +
         '<text x="46" y="36" font-size="11.5" fill="var(--e-muted)">Nuevo pedido</text>' +
@@ -613,7 +616,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   );
   const pildora = nodo(
     E,
-    '<g filter="url(#fo-elevar)"><rect width="196" height="52" rx="26" fill="var(--e-fg)"/></g>' +
+    '<rect width="196" height="52" rx="26" fill="#0B1114" opacity=".1" transform="translate(0 6)"/><rect width="196" height="52" rx="26" fill="var(--e-fg)"/>' +
       '<text class="mono" x="24" y="34" font-size="22" font-weight="600" fill="var(--e-bg)"><tspan data-p="cntA">0</tspan></text>' +
       '<text x="72" y="32" font-size="13.5" font-weight="600" fill="var(--e-bg)" opacity=".8">pedidos hoy</text>'
   );
@@ -654,7 +657,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const etiquetas = PUESTOS.map((pu, i) => {
     const g = nodo(
       E,
-      '<g filter="url(#fo-elevar)"><rect class="marcoEt" x="-38" width="76" height="46" rx="10" fill="var(--e-panel)" stroke="var(--e-panel-line)" stroke-width="1.5"/></g>' +
+      '<rect x="-38" width="76" height="46" rx="10" fill="#0B1114" opacity=".1" transform="translate(0 6)"/><rect class="marcoEt" x="-38" width="76" height="46" rx="10" fill="var(--e-panel)" stroke="var(--e-panel-line)" stroke-width="1.5"/>' +
         `<circle cx="-22" cy="16" r="8" fill="${pu.c}"/><circle cx="-22" cy="13.5" r="3.4" fill="#FFFFFF" opacity=".9"/><path d="M-27.5 21 Q-22 15.5 -16.5 21 Z" fill="#FFFFFF" opacity=".9"/>` +
         `<text x="-9" y="20" font-size="12.5" font-weight="700" fill="var(--e-fg)">${pu.n}</text>` +
         `<text class="mono" data-p="nC${i}" x="-30" y="37" font-size="11.5" font-weight="600" fill="var(--e-muted)">0</text>` +
@@ -733,7 +736,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     '<circle class="onda" r="36" fill="none" stroke="var(--e-accent)" stroke-width="3" opacity="0"/>' +
       '<g class="nucleo"><circle r="34" fill="var(--e-accent-deep)" stroke="var(--e-accent)" stroke-width="3"/>' +
       '<path class="check" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" d="M-14 1 L-4 11 L15 -9" fill="none" stroke="var(--e-accent-text)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></g>' +
-      '<g class="rotulo" opacity="0"><g filter="url(#fo-elevar)"><rect x="-56" y="46" width="112" height="30" rx="15" fill="var(--e-fg)"/></g><text y="66" font-size="14.5" font-weight="700" fill="var(--e-bg)" text-anchor="middle">Entregado</text></g>',
+      '<g class="rotulo" opacity="0"><rect x="-56" y="46" width="112" height="30" rx="15" fill="#0B1114" opacity=".1" transform="translate(0 6)"/><rect x="-56" y="46" width="112" height="30" rx="15" fill="var(--e-fg)"/><text y="66" font-size="14.5" font-weight="700" fill="var(--e-bg)" text-anchor="middle">Entregado</text></g>',
     { transform: `translate(${DX + 250} 96)` }
   );
   const nucleo = hijo(sello, ".nucleo");
@@ -853,8 +856,8 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     '<text x="69" y="260" font-size="11.5" font-weight="700" fill="#04231E" text-anchor="middle">Entregado</text></g>';
 
   const telG = nodo(
-    parte("hud"),
-    '<g filter="url(#fo-elevar)"><rect width="150" height="300" rx="26" fill="#0B1114"/></g>' +
+    hudG,
+    '<rect width="150" height="300" rx="26" fill="#0B1114" opacity=".1" transform="translate(0 6)"/><rect width="150" height="300" rx="26" fill="#0B1114"/>' +
       '<rect x="1.5" y="1.5" width="147" height="297" rx="24.5" fill="none" stroke="#2A3A41" stroke-width="1"/>' +
       '<g clip-path="url(#fo-pantalla)"><g transform="translate(6 6)">' +
       `<g data-pant="retiro">${pantRetiro}</g><g data-pant="dia">${pantDia}</g><g data-pant="ruta">${pantRuta}</g><g data-pant="entrega">${pantEntrega}</g>` +
@@ -882,6 +885,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
 
   /* Cámara */
   const cam = { x: 320, y: 188, z: 1, sigue: 0, tel: 0 };
+  let camX = 320;
   let zBase = 1.12;
   const hazEstado = { op: 0, obj: 0 };
   /** Estado de la ambientación: la ciudad lejana solo existe en la ruta y la entrega. */
@@ -912,6 +916,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   }
   function pintarCamara() {
     const cx = cam.x * (1 - cam.sigue) + (van.x + (angosto ? 92 : 118)) * cam.sigue;
+    camX = cx;
     // Con el teléfono a la vista, la acción se corre a la izquierda y, en el lienzo cuadrado, se aleja un poco.
     // En el cuadrado, además, la escena baja para que el piso quede abajo y no sobre cielo vacío.
     const [focoTel, zTel, bajaTel] = angosto ? [236, 0.8, 58] : [240, 1, 0];
@@ -926,14 +931,18 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const t0 = performance.now();
   function pintarTodo() {
     const t = (performance.now() - t0) / 1000;
-    pintarPersona(camila, t);
-    pintarPersona(clienta, t);
+    // Un personaje invisible no se redibuja: solo se asegura su opacidad en cero.
+    for (const r of [camila, clienta]) {
+      if (r.op > 0.001) pintarPersona(r, t);
+      else r.el.setAttribute("opacity", "0");
+    }
     pintarVan();
     pintarCamara();
     pintarHaz(t);
     pintarTel();
     // El polvo flota lento en el rayo de luz de la bodega, y titila.
-    for (const m of motas) {
+    // El polvo de la bodega solo se mueve cuando la cámara está en la bodega.
+    if (Math.abs(camX - 1120) < 700) for (const m of motas) {
       m.el.setAttribute("transform", `translate(${fx(m.bx + Math.sin(t * 0.35 + m.fase) * 9)} ${fx(m.by + Math.sin(t * 0.22 + m.fase * 1.3) * 16)})`);
       m.el.setAttribute("opacity", fx(0.3 + 0.3 * Math.sin(t * 1.3 + m.fase)));
     }
@@ -1342,13 +1351,7 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     zBase = angosto ? 1 : 1.12;
     const caja = angosto ? [140, 8, 360, 360] : [0, 0, 640, 360];
     lienzo.setAttribute("viewBox", caja.join(" "));
-    // El fundido de los bordes sigue al cuadro visible, que en el teléfono es otro.
-    for (const m of [mascaraH, mascaraV]) {
-      m.setAttribute("x", String(caja[0]));
-      m.setAttribute("y", String(caja[1]));
-      m.setAttribute("width", String(caja[2]));
-      m.setAttribute("height", String(caja[3]));
-    }
+    p.hud.setAttribute("viewBox", caja.join(" "));
   }
   const ro = new ResizeObserver(encuadre);
   ro.observe(figura);
@@ -1401,5 +1404,6 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     p.pausa.removeEventListener("click", alPausar);
     alSaltar.forEach(({ boton, fn }) => boton.removeEventListener("click", fn));
     lienzo.innerHTML = "";
+    p.hud.innerHTML = "";
   };
 }
