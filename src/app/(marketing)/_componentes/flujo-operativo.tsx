@@ -41,9 +41,10 @@ export function FlujoOperativo() {
     <figure
       ref={figura}
       aria-label="Un día de trabajo con Rutax: llegan los pedidos, se retiran en bodega, se reparten, salen en ruta y se entregan"
-      className="flujo-op m-0 min-w-0 overflow-hidden border border-line border-t-2 border-t-brand bg-bg-raised"
+      className="flujo-op m-0 min-w-0"
     >
-      <ol ref={riel} className="m-0 grid list-none grid-cols-5 border-b border-line-subtle p-0">
+      {/* Sin marco ni fondo: la animación va insertada en la página, no en una ventana. */}
+      <ol ref={riel} className="m-0 grid list-none grid-cols-5 p-0">
         {PASOS.map((nombre, i) => (
           <li key={nombre} className="group" data-visto={i === 0 ? "" : undefined}>
             <button
@@ -68,7 +69,7 @@ export function FlujoOperativo() {
         <svg ref={lienzo} className="lienzo" viewBox="0 0 640 360" aria-hidden="true" />
       </div>
 
-      <figcaption className="flex min-h-16 items-center justify-between gap-3 border-t border-line-subtle bg-bg-sunken px-4 py-3">
+      <figcaption className="flex min-h-16 items-center justify-between gap-3 px-1 py-3 sm:px-3">
         <p className="m-0 grid">
           <span ref={titulo} aria-live="polite" className="text-[15px] font-semibold">
             Llegan los pedidos

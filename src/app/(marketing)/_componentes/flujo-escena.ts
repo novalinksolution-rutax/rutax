@@ -89,27 +89,36 @@ const ICONO_PLAY = '<path d="M3 1.5 L12.5 7 L3 12.5 Z" fill="currentColor"/>';
 
 const LIENZO = `
 <defs>
-  <radialGradient id="fo-luz" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="var(--e-st-glow)"/><stop offset="1" stop-color="var(--e-st-bg)"/></radialGradient>
+  <radialGradient id="fo-luz" cx="50%" cy="38%" r="70%"><stop offset="0" stop-color="var(--e-st-glow)" stop-opacity=".9"/><stop offset=".75" stop-color="var(--e-st-glow)" stop-opacity="0"/></radialGradient>
   <linearGradient id="fo-suelo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--e-st-floor-top)"/><stop offset="1" stop-color="var(--e-st-floor)"/></linearGradient>
   <linearGradient id="fo-haz" x1="0" x2="1"><stop offset="0" stop-color="var(--e-accent)" stop-opacity=".9"/><stop offset="1" stop-color="var(--e-accent)" stop-opacity=".08"/></linearGradient>
   <clipPath id="fo-pantalla"><rect x="6" y="6" width="138" height="288" rx="21"/></clipPath>
   <filter id="fo-difuso" x="-50%" y="-200%" width="200%" height="500%"><feGaussianBlur stdDeviation="3.2"/></filter>
   <filter id="fo-bokeh" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
   <filter id="fo-elevar" x="-20%" y="-30%" width="140%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#0B1114" flood-opacity=".14"/></filter>
+  <linearGradient id="fo-fh" x1="0" x2="1"><stop offset="0" stop-color="#000"/><stop offset=".13" stop-color="#FFF"/><stop offset=".87" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
+  <linearGradient id="fo-fv" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000"/><stop offset=".15" stop-color="#FFF"/><stop offset=".78" stop-color="#FFF"/><stop offset="1" stop-color="#000"/></linearGradient>
+  <mask id="fo-mh" maskUnits="userSpaceOnUse" x="-400" y="-400" width="1440" height="1160"><rect data-p="mascaraH" width="640" height="360" fill="url(#fo-fh)"/></mask>
+  <mask id="fo-mv" maskUnits="userSpaceOnUse" x="-400" y="-400" width="1440" height="1160"><rect data-p="mascaraV" width="640" height="360" fill="url(#fo-fv)"/></mask>
 </defs>
-<rect x="-400" y="-400" width="1440" height="1160" fill="url(#fo-luz)"/>
-<g data-p="fondo" opacity=".75"></g>
-<g data-p="mundo">
-  <rect x="-800" y="290" width="6000" height="500" fill="url(#fo-suelo)"/>
-  <rect x="-800" y="289" width="6000" height="1.5" fill="var(--e-st-horizon)"/>
-  <g data-p="rayas"></g>
-  <g data-p="escenas"></g>
-  <g data-p="actores"></g>
-  <g data-p="frente"></g>
-</g>
-<g data-p="hud"></g>
-<rect data-p="flash" x="-400" y="-400" width="1440" height="1160" fill="#FFFFFF" opacity="0"/>
-<rect data-p="velo" x="-400" y="-400" width="1440" height="1160" fill="var(--e-raised)" opacity="0"/>`;
+<!-- La escena no tiene fondo propio: deja ver el de la página, y sus cuatro bordes se
+     funden en él (dos máscaras anidadas: una horizontal y una vertical). El teléfono de
+     la app queda fuera de la máscara, nítido, flotando sobre la escena. -->
+<g mask="url(#fo-mh)"><g mask="url(#fo-mv)">
+  <rect x="-400" y="-400" width="1440" height="1160" fill="url(#fo-luz)"/>
+  <g data-p="fondo" opacity=".75"></g>
+  <g data-p="mundo">
+    <rect x="-800" y="290" width="6000" height="500" fill="url(#fo-suelo)"/>
+    <rect x="-800" y="289" width="6000" height="1.5" fill="var(--e-st-horizon)"/>
+    <g data-p="rayas"></g>
+    <g data-p="escenas"></g>
+    <g data-p="actores"></g>
+    <g data-p="frente"></g>
+  </g>
+  <rect data-p="flash" x="-400" y="-400" width="1440" height="1160" fill="#FFFFFF" opacity="0"/>
+  <rect data-p="velo" x="-400" y="-400" width="1440" height="1160" fill="var(--e-bg)" opacity="0"/>
+</g></g>
+<g data-p="hud"></g>`;
 
 /* ───────────────────────── utilidades ───────────────────────── */
 
@@ -363,6 +372,8 @@ export function montarFlujo(p: PiezasFlujo): () => void {
   const frente = parte("frente");
   const flash = parte("flash");
   const velo = parte("velo");
+  const mascaraH = parte("mascaraH");
+  const mascaraV = parte("mascaraV");
 
   /* Luces desenfocadas del fondo, con paralaje */
   for (const b of [[80, 90, 70, "a"], [330, 60, 50, "b"], [560, 120, 80, "a"], [820, 70, 60, "b"], [1060, 110, 70, "a"], [1300, 60, 55, "b"]] as const) {
@@ -943,6 +954,8 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     27.4
   );
   tl.to(velo, { opacity: 1, duration: 0.5, ease: "none" }, 28.7);
+  // El velo vive dentro de la máscara y no cubre el teléfono: se va con él.
+  tl.to(tel, { op: 0, dy: 10, duration: 0.45, ease: "power1.in" }, 28.65);
   /* ═══ La app en el teléfono, al compás de la escena ═══ */
   const enTel = (sel: string) => hijo(telG, sel);
   const aparece = (el: Element, t: number) =>
@@ -1055,7 +1068,15 @@ export function montarFlujo(p: PiezasFlujo): () => void {
     angosto = figura.clientWidth < 560;
     figura.toggleAttribute("data-angosto", angosto);
     zBase = angosto ? 1 : 1.12;
-    lienzo.setAttribute("viewBox", angosto ? "140 8 360 360" : "0 0 640 360");
+    const caja = angosto ? [140, 8, 360, 360] : [0, 0, 640, 360];
+    lienzo.setAttribute("viewBox", caja.join(" "));
+    // El fundido de los bordes sigue al cuadro visible, que en el teléfono es otro.
+    for (const m of [mascaraH, mascaraV]) {
+      m.setAttribute("x", String(caja[0]));
+      m.setAttribute("y", String(caja[1]));
+      m.setAttribute("width", String(caja[2]));
+      m.setAttribute("height", String(caja[3]));
+    }
   }
   const ro = new ResizeObserver(encuadre);
   ro.observe(figura);

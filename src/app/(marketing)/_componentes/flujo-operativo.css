@@ -71,7 +71,8 @@
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 9;
-  background: var(--e-st-bg);
+  /* Sin fondo propio: la escena se funde en el de la página (máscaras en flujo-escena.ts). */
+  background: transparent;
 }
 .flujo-op[data-angosto] .lienzo {
   aspect-ratio: 1 / 1;
