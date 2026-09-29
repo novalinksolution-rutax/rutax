@@ -20,7 +20,7 @@
 
 begin;
 
-select plan(38);
+select plan(39);
 
 create or replace function test_iniciar_sesion(
   p_user_id      uuid,
@@ -61,8 +61,11 @@ $$;
 
 -- -----------------------------------------------------------------------------
 -- Fixtures (como postgres, bypass RLS).
---   A y B: couriers "existentes" (creados hace dos días). A tiene una conexión
---          ML; B no tiene ninguna.
+--   A y B: couriers "existentes" (creados hace dos días) que YA OPERAN: cada uno
+--          tiene una tarifa activa (el backfill solo marca a quien opera,
+--          20260929000002). A además tiene una conexión ML; B no.
+--   D:     courier "existente" pero VACÍO (sin bodega, tarifa ni pedidos): el
+--          caso de producción que el primer backfill marcó por error.
 --   C:     courier "nuevo" (creado ahora), a mitad de su puesta en marcha.
 -- -----------------------------------------------------------------------------
 do $$
@@ -70,12 +73,14 @@ declare
   t_a uuid := 'aaaaaaaa-0000-0000-0000-0000000c0f01';
   t_b uuid := 'bbbbbbbb-0000-0000-0000-0000000c0f01';
   t_c uuid := 'cccccccc-0000-0000-0000-0000000c0f01';
+  t_d uuid := 'dddddddd-0000-0000-0000-0000000c0f01';
   s_a uuid := 'aaaaaaaa-1111-0000-0000-0000000c0f01';
 begin
   insert into identidad.tenants (id, nombre_fantasia, razon_social, rut, estado, creado_en)
   values (t_a, 'Courier A', 'Courier A SpA', '76000001-1', 'activo',     now() - interval '2 days'),
          (t_b, 'Courier B', 'Courier B SpA', '76000002-K', 'activo',     now() - interval '2 days'),
-         (t_c, 'Courier C', null,            '76000003-8', 'onboarding', now())
+         (t_c, 'Courier C', null,            '76000003-8', 'onboarding', now()),
+         (t_d, 'Courier D', null,            '76000004-6', 'onboarding', now() - interval '2 days')
   on conflict (id) do nothing;
 
   insert into identidad.sellers (id, tenant_id, razon_social, rut, estado)
@@ -84,6 +89,11 @@ begin
 
   insert into identidad.conexiones_seller_ml (tenant_id, seller_id, ml_user_id)
   values (t_a, s_a, 990000001);
+
+  -- A y B operan: una tarifa activa cada uno. D no tiene nada.
+  insert into identidad.tarifas (tenant_id, tipo_entrega, monto_clp, monto_conductor_clp, vigente_desde)
+  values (t_a, 'same_day', 3000, 2000, '2026-01-01'),
+         (t_b, 'same_day', 3000, 2000, '2026-01-01');
 
   insert into auth.users (id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data, aud, role)
   values
@@ -135,6 +145,12 @@ select is_empty(
   $$ select 1 from identidad.courier_config_operacion
       where tenant_id = 'cccccccc-0000-0000-0000-0000000c0f01' $$,
   'backfill: el courier NUEVO (creado después del corte) no recibe fila ⇒ sigue bloqueado'
+);
+
+select is_empty(
+  $$ select 1 from identidad.courier_config_operacion
+      where tenant_id = 'dddddddd-0000-0000-0000-0000000c0f01' $$,
+  'backfill: un courier EXISTENTE pero vacío (sin bodega, tarifa ni pedidos) no recibe fila ⇒ hace la puesta en marcha'
 );
 
 -- No pisa filas: se altera A a mano y se re-ejecuta el backfill.
