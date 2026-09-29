@@ -27,7 +27,11 @@ export type TipoSecreto =
   // cumplimientos, así que es un secreto de pleno derecho. A diferencia de ML no
   // hay refresh ni expiración — el token vive hasta que el comerciante
   // desinstala la app. Espejo del enum SQL `identidad.tipo_secreto`.
-  | "token_admin_shopify";
+  | "token_admin_shopify"
+  // Shopify desde 2026 (migración 20260928000001): Client ID + Client secret de
+  // la app del Dev Dashboard del seller, como JSON compacto. Rutax los canjea
+  // por un token de 24 h cuando lo necesita; el token no se guarda.
+  | "credencial_app_shopify";
 
 /**
  * Referencia opaca devuelta tras cifrar: lo único que las tablas de negocio

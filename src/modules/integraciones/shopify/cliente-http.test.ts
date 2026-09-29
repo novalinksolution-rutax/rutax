@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   peticionShopify,
+  canjearCredencialesApp,
   normalizarShopDomain,
   esShopDomainValido,
   esperaPorBalde,
@@ -310,5 +311,57 @@ describe("peticionShopify", () => {
 
     expect((error as ErrorHttpShopify).reintentable).toBe(true);
     expect((error as ErrorHttpShopify).retryAfterMs).toBe(3000);
+  });
+});
+
+describe("canjearCredencialesApp (client credentials grant)", () => {
+  it("manda el secreto en el cuerpo form-urlencoded, nunca en la URL, y lee token, scopes y expiración", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      respuesta({ access_token: "tok_24h", scope: "read_orders,write_fulfillments", expires_in: 86399 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const antes = Date.now();
+    const r = await canjearCredencialesApp({
+      shopDomain: TIENDA,
+      clientId: "cid",
+      clientSecret: "shh-secreto",
+      opcionesReintento: SIN_REINTENTOS,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`https://${TIENDA}/admin/oauth/access_token`);
+    expect(String(url)).not.toContain("shh-secreto");
+    expect(init.headers["content-type"]).toBe("application/x-www-form-urlencoded");
+    const cuerpo = new URLSearchParams(init.body as string);
+    expect(cuerpo.get("grant_type")).toBe("client_credentials");
+    expect(cuerpo.get("client_id")).toBe("cid");
+    expect(cuerpo.get("client_secret")).toBe("shh-secreto");
+
+    expect(r.accessToken).toBe("tok_24h");
+    expect(r.scopes).toEqual(["read_orders", "write_fulfillments"]);
+    expect(r.expiraEn.getTime()).toBeGreaterThanOrEqual(antes + 86_398_000);
+  });
+
+  it("un 400 (credenciales malas o app no instalada) es definitivo, no reintentable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respuesta({ error: "invalid_client" }, { status: 400 })));
+    const error = await canjearCredencialesApp({
+      shopDomain: TIENDA,
+      clientId: "cid",
+      clientSecret: "malo",
+      opcionesReintento: SIN_REINTENTOS,
+    }).catch((e) => e);
+    expect(error).toBeInstanceOf(ErrorHttpShopify);
+    expect(error.status).toBe(400);
+    expect(esErrorReintentable(error)).toBe(false);
+  });
+
+  it("no toca la red si el dominio no es *.myshopify.com: el secreto no sale hacia un host ajeno", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      canjearCredencialesApp({ shopDomain: "evil.com", clientId: "c", clientSecret: "s" }),
+    ).rejects.toBeInstanceOf(ErrorShopDomainInvalido);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

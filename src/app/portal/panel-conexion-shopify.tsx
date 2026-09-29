@@ -5,7 +5,7 @@
  *
  * La diferencia de fondo con el de ML no es visual: allá el seller aprieta un
  * botón y Mercado Libre se encarga del resto. Acá tiene que ir a su propio admin
- * de Shopify, crear una app, marcar cuatro permisos y volver con un token. Ese
+ * de Shopify, crear una app, marcar cuatro permisos y volver con sus credenciales. Ese
  * es el paso donde este flujo se rompe en la vida real, así que la pantalla
  * dedica más espacio a explicarlo que a mostrar el estado — y cuando falta un
  * permiso, lo nombra en vez de decir "faltan permisos".
@@ -146,7 +146,7 @@ export function PanelConexionesShopify({
 
                   {/* Peldaño 3 · hay que escribir el dominio de la tienda. No
                       porque sea catastrófico —los pedidos ya traídos se quedan y
-                      volver es pegar el token otra vez— sino porque el error de
+                      volver es pegar las credenciales otra vez— sino porque el error de
                       este flujo no es «desconectar sin querer», es
                       **desconectar la tienda equivocada** de una lista donde
                       todas se llaman parecido. Escribirla obliga a leer cuál.
@@ -168,7 +168,7 @@ export function PanelConexionesShopify({
                         <>
                           <strong>Dejamos de traer los pedidos de esta tienda.</strong> Los que ya
                           entraron se quedan como están, y puedes volver a conectarla cuando quieras
-                          — hay que pegar el token otra vez.
+                          — hay que pegar las credenciales otra vez.
                           <br />
                           <br />
                           Esto <strong>no</strong> desinstala la app de tu tienda: eso se hace desde
@@ -212,7 +212,8 @@ function DialogoTienda({
 }) {
   const esAlta = estado.modo === "alta";
   const [shopDomain, setShopDomain] = useState(esAlta ? "" : estado.conexion.shopDomain);
-  const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const [etiqueta, setEtiqueta] = useState(esAlta ? "" : (estado.conexion.filtroEtiqueta ?? ""));
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -226,10 +227,11 @@ function DialogoTienda({
     const resultado = esAlta
       ? await conectarTiendaShopify({
           shopDomain,
-          accessToken: token,
+          clientId,
+          clientSecret,
           filtroEtiqueta: etiqueta.trim() || null,
         })
-      : await reconectarTiendaShopify({ conexionId: estado.conexion.id, accessToken: token });
+      : await reconectarTiendaShopify({ conexionId: estado.conexion.id, clientId, clientSecret });
 
     setEnviando(false);
     if (resultado.ok) {
@@ -244,37 +246,40 @@ function DialogoTienda({
     <Dialog open onOpenChange={(v) => !v && onCerrar()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{esAlta ? "Conectar tu tienda Shopify" : "Reponer el token de acceso"}</DialogTitle>
-          <DialogDescription>
-            {esAlta
-              ? "Necesitamos que crees una app privada en tu tienda y nos pegues su token. Toma unos cinco minutos."
-              : "Pega el token nuevo. La tienda y su historial de sincronización se mantienen."}
-          </DialogDescription>
+          <DialogTitle>{esAlta ? "Conectar tu tienda Shopify" : "Reconectar la tienda"}</DialogTitle>
+          <DialogDescription>Se hace desde el admin de tu tienda.</DialogDescription>
         </DialogHeader>
 
-        {esAlta ? (
-          <ol className="list-decimal space-y-1.5 rounded-md bg-muted/50 px-5 py-3 text-sm text-muted-foreground">
-            <li>
-              En el admin de tu tienda, entra a <span className="font-medium text-foreground">Configuración → Apps y canales de venta → Desarrollar apps</span>.
-            </li>
-            <li>
-              Crea una app —ponle el nombre que quieras, por ejemplo <span className="font-medium text-foreground">Rutax</span>— y abre la pestaña de configuración de la Admin API.
-            </li>
-            <li>
-              Marca estos cuatro permisos:
-              <ul className="mt-1 space-y-0.5">
-                {SCOPES_REQUERIDOS.map((s) => (
-                  <li key={s}>
-                    <code className="rounded bg-background px-1 py-0.5 text-xs text-foreground">{s}</code>
-                  </li>
-                ))}
-              </ul>
-            </li>
-            <li>
-              Instala la app y copia el <span className="font-medium text-foreground">Admin API access token</span>. Shopify te lo muestra una sola vez.
-            </li>
-          </ol>
-        ) : null}
+        {/* Los pasos van también al reconectar: quien reconecta suele ser
+            quien borró o rehízo la app, y necesita el mismo camino. Desde el
+            1-ene-2026 Shopify ya no deja crear apps en el admin: se crean en
+            el Dev Dashboard, y el acceso son dos valores, no un token. */}
+        <ol className="list-decimal space-y-1.5 rounded-md bg-muted/50 px-5 py-3 text-sm text-muted-foreground">
+          <li>
+            Entra a <span className="font-medium text-foreground">Configuración → Apps → Desarrollar apps</span> y
+            elige <span className="font-medium text-foreground">Crear apps en el Dev Dashboard</span>.
+          </li>
+          <li>
+            Crea una app llamada <span className="font-medium text-foreground">Rutax</span> y, en su versión, marca
+            estos permisos:
+            <ul className="mt-1 space-y-0.5">
+              {SCOPES_REQUERIDOS.map((s) => (
+                <li key={s}>
+                  <code className="rounded bg-background px-1 py-0.5 text-xs text-foreground">{s}</code>
+                </li>
+              ))}
+            </ul>
+          </li>
+          <li>
+            Aprieta <span className="font-medium text-foreground">Lanzar</span> y después{" "}
+            <span className="font-medium text-foreground">Instalar app</span>.
+          </li>
+          <li>
+            En <span className="font-medium text-foreground">Credenciales</span> de la app, copia el{" "}
+            <span className="font-medium text-foreground">ID de cliente</span> y el{" "}
+            <span className="font-medium text-foreground">Secreto del cliente</span>.
+          </li>
+        </ol>
 
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -290,16 +295,27 @@ function DialogoTienda({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="shopify-token">Admin API access token</Label>
+            <Label htmlFor="shopify-client-id">ID de cliente</Label>
             <Input
-              id="shopify-token"
+              id="shopify-client-id"
+              value={clientId}
+              disabled={enviando}
+              onChange={(e) => setClientId(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="shopify-client-secret">Secreto del cliente</Label>
+            <Input
+              id="shopify-client-secret"
               // `password` para que no quede a la vista de quien pase por detrás
               // ni lo capture un gestor de contraseñas como si fuera un usuario.
               type="password"
-              value={token}
+              value={clientSecret}
               disabled={enviando}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="shpat_…"
+              onChange={(e) => setClientSecret(e.target.value)}
               autoComplete="off"
             />
           </div>
@@ -347,7 +363,12 @@ function DialogoTienda({
           <Button variant="outline" onClick={onCerrar} disabled={enviando}>
             Cancelar
           </Button>
-          <Button onClick={enviar} disabled={enviando || token.trim().length === 0 || shopDomain.trim().length === 0}>
+          <Button onClick={enviar} disabled={
+              enviando ||
+              clientId.trim().length === 0 ||
+              clientSecret.trim().length === 0 ||
+              shopDomain.trim().length === 0
+            }>
             {enviando ? (
               <>
                 <Loader2 className="animate-spin" data-icon="inline-start" aria-hidden />

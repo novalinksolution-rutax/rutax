@@ -37,6 +37,7 @@ vi.mock("@/lib/observabilidad", () => ({
 vi.mock("../puerto", () => ({
   obtenerAccessToken: vi.fn(),
   marcarSalud: vi.fn().mockResolvedValue(undefined),
+  ErrorCredencialShopifyInvalida: class ErrorCredencialShopifyInvalida extends Error {},
 }));
 
 vi.mock("../cliente-http", () => ({

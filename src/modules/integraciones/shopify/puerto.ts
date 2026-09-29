@@ -2,11 +2,18 @@
  * Puerto de Shopify — conexión de la tienda de un seller y acceso a su token.
  *
  * Es el equivalente de `../ml/puerto.ts`, pero mucho más chico, y la razón es
- * que **no hay OAuth**. El seller crea una *custom app* en el admin de su propia
- * tienda y pega el Admin API access token en el portal de Rutax. Ese token no
- * expira ni rota: vive hasta que el comerciante desinstala la app. Por eso acá
- * no hay `refrescarToken`, ni `token_expira_en`, ni margen de refresco
- * proactivo, ni el enredo de la doble llamada al callback.
+ * que **no hay OAuth**. El seller crea una app en el **Dev Dashboard** de
+ * Shopify, la instala en su propia tienda y pega en el portal de Rutax su
+ * Client ID y su Client secret. Rutax los canjea por un token de 24 h cuando lo
+ * necesita (client credentials grant, ver `canjearCredencialesApp`): no hay
+ * refresh token que rotar ni callback que atender.
+ *
+ * ⚠️ Hasta septiembre de 2026 esto pedía el `shpat_…` de una *custom app*
+ * creada en el admin. Shopify dejó de permitir crear esas apps el 1 de enero de
+ * 2026, así que el formulario le pedía al seller algo que ya no podía
+ * conseguir. Las conexiones con un `shpat_` guardado (`token_admin_shopify`)
+ * siguen andando; toda conexión nueva guarda credenciales
+ * (`credencial_app_shopify`).
  *
  * Lo que sí se conserva del molde de ML, porque son reglas del proyecto y no
  * detalles de Mercado Libre:
@@ -19,7 +26,14 @@
 
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { cifrarSecreto, descifrarSecreto, olvidarSecreto } from "../secretos/cifrado";
-import { peticionShopify, normalizarShopDomain, ErrorShopDomainInvalido } from "./cliente-http";
+import {
+  peticionShopify,
+  canjearCredencialesApp,
+  normalizarShopDomain,
+  ErrorShopDomainInvalido,
+  ErrorHttpShopify,
+  type TokenCanjeado,
+} from "./cliente-http";
 import { SCOPES_REQUERIDOS, type ConexionShopify, type EstadoSaludShopify } from "./tipos";
 
 // =============================================================================
@@ -65,6 +79,45 @@ interface RespuestaValidacion {
   currentAppInstallation: { accessScopes: Array<{ handle: string }> } | null;
 }
 
+/** Lo que el seller copia de su app en el Dev Dashboard. */
+export interface CredencialAppShopify {
+  clientId: string;
+  clientSecret: string;
+}
+
+/**
+ * Canjea las credenciales y traduce el rechazo a algo que el seller entienda.
+ *
+ * Un 4xx del canje significa lo mismo para quien mira la pantalla: copió mal
+ * alguno de los dos valores, o la app no está instalada en ESA tienda (el
+ * canje exige que lo esté). El detalle crudo queda en el log del servidor; el
+ * cuerpo es la respuesta de Shopify, que no contiene el secreto.
+ */
+async function canjear(shopDomain: string, credencial: CredencialAppShopify): Promise<TokenCanjeado> {
+  try {
+    return await canjearCredencialesApp({
+      shopDomain,
+      clientId: credencial.clientId.trim(),
+      clientSecret: credencial.clientSecret.trim(),
+      opcionesReintento: { maxIntentos: 2 },
+    });
+  } catch (error) {
+    console.error(
+      "[shopify/canjear]",
+      shopDomain,
+      error instanceof ErrorHttpShopify ? `${error.status} ${JSON.stringify(error.cuerpo)}` : error,
+    );
+    if (error instanceof ErrorHttpShopify && error.status >= 400 && error.status < 500) {
+      throw new ErrorCredencialShopifyInvalida(
+        "Shopify no aceptó esas credenciales. Revisa el ID de cliente y el Secreto del cliente, y que la app esté instalada en esta tienda.",
+      );
+    }
+    throw new ErrorCredencialShopifyInvalida(
+      "No se pudo conectar con la tienda. Inténtalo de nuevo en unos minutos.",
+    );
+  }
+}
+
 export interface CredencialValidada {
   shopDomain: string;
   nombreTienda: string;
@@ -84,10 +137,12 @@ export interface CredencialValidada {
  */
 export async function validarCredencial(
   shopDomainCrudo: string,
-  accessToken: string,
+  credencial: CredencialAppShopify,
 ): Promise<CredencialValidada> {
   const shopDomain = normalizarShopDomain(shopDomainCrudo);
   if (!shopDomain) throw new ErrorShopDomainInvalido(shopDomainCrudo);
+
+  const { accessToken } = await canjear(shopDomain, credencial);
 
   let data: RespuestaValidacion;
   try {
@@ -101,7 +156,7 @@ export async function validarCredencial(
     // GraphQL que no le dice nada. Queda en el log del servidor.
     console.error("[shopify/validarCredencial]", error instanceof Error ? error.message : error);
     throw new ErrorCredencialShopifyInvalida(
-      "No se pudo conectar con la tienda. Revisa el dominio y el token de acceso.",
+      "No se pudo conectar con la tienda. Revisa el dominio y las credenciales.",
     );
   }
 
@@ -156,7 +211,7 @@ export interface ConectarTiendaEntrada {
   tenantId: string;
   sellerId: string;
   shopDomain: string;
-  accessToken: string;
+  credencial: CredencialAppShopify;
   filtroEtiqueta?: string | null;
   alias?: string | null;
 }
@@ -169,7 +224,7 @@ export interface ConectarTiendaEntrada {
  * seller un estado de incertidumbre que ya resolvimos.
  */
 export async function conectarTienda(entrada: ConectarTiendaEntrada): Promise<ConexionShopify> {
-  const validada = await validarCredencial(entrada.shopDomain, entrada.accessToken);
+  const validada = await validarCredencial(entrada.shopDomain, entrada.credencial);
   const supabase = crearClienteServiceRole();
 
   const { data: yaExiste } = await supabase
@@ -186,8 +241,8 @@ export async function conectarTienda(entrada: ConectarTiendaEntrada): Promise<Co
   // de conexión huérfana apuntando a un token que no existe.
   const { referenciaExternaId } = await cifrarSecreto({
     tenantId: entrada.tenantId,
-    tipoSecreto: "token_admin_shopify",
-    valor: entrada.accessToken,
+    tipoSecreto: "credencial_app_shopify",
+    valor: serializarCredencial(entrada.credencial),
     venceEn: null,
     metadata: { shopDomain: validada.shopDomain },
   });
@@ -237,7 +292,7 @@ export async function conectarTienda(entrada: ConectarTiendaEntrada): Promise<Co
 export async function reconectarTienda(entrada: {
   conexionId: string;
   tenantId: string;
-  accessToken: string;
+  credencial: CredencialAppShopify;
 }): Promise<ConexionShopify> {
   const supabase = crearClienteServiceRole();
 
@@ -253,21 +308,21 @@ export async function reconectarTienda(entrada: {
   if (!existente) throw new ErrorCredencialShopifyInvalida("La conexión no existe.");
 
   // Se valida contra la tienda ANTES de escribir, igual que en el alta.
-  const validada = await validarCredencial(existente.shop_domain as string, entrada.accessToken);
+  const validada = await validarCredencial(existente.shop_domain as string, entrada.credencial);
 
   // Y se comprueba que el token nuevo sea DE ESA tienda: pegar por error el
   // token de otra tienda dejaría la conexión apuntando a un catálogo ajeno, con
   // los pedidos de un seller entrando como si fueran de otro.
   if (validada.shopDomain !== existente.shop_domain) {
     throw new ErrorCredencialShopifyInvalida(
-      `Ese token pertenece a ${validada.shopDomain}, no a ${existente.shop_domain}.`,
+      `Esa app pertenece a ${validada.shopDomain}, no a ${existente.shop_domain}.`,
     );
   }
 
   const { referenciaExternaId } = await cifrarSecreto({
     tenantId: entrada.tenantId,
-    tipoSecreto: "token_admin_shopify",
-    valor: entrada.accessToken,
+    tipoSecreto: "credencial_app_shopify",
+    valor: serializarCredencial(entrada.credencial),
     venceEn: null,
     metadata: { shopDomain: validada.shopDomain },
   });
@@ -402,13 +457,54 @@ export async function obtenerAccessToken(conexionId: string, tenantId: string): 
     );
   }
 
-  const { valor } = await descifrarSecreto(data.token_ref as string);
+  const tokenRef = data.token_ref as string;
+  const enCache = TOKENS_CANJEADOS.get(tokenRef);
+  if (enCache && enCache.expiraEn.getTime() - Date.now() > MARGEN_RENOVACION_MS) {
+    return enCache.accessToken;
+  }
+
+  const { valor, tipoSecreto } = await descifrarSecreto(tokenRef);
   if (typeof valor !== "string") {
     throw new ErrorCredencialShopifyInvalida(
       "El token de Shopify se descifró como binario — revisa el tipo de secreto.",
     );
   }
-  return valor;
+
+  // Conexión anterior a 2026: el `shpat_` permanente se usa tal cual.
+  if (tipoSecreto === "token_admin_shopify") return valor;
+
+  const canjeado = await canjear(data.shop_domain as string, leerCredencial(valor));
+  TOKENS_CANJEADOS.set(tokenRef, canjeado);
+  return canjeado.accessToken;
+}
+
+/**
+ * Tokens de 24 h ya canjeados, por referencia de secreto.
+ *
+ * Solo memoria del proceso: en serverless se pierde a menudo y no pasa nada,
+ * porque el canje es una llamada barata. Lo que evita es canjear en CADA
+ * petición de un mismo barrido. Va por `token_ref` y no por conexión: al
+ * reconectar cambia la referencia y el token viejo queda inalcanzable solo.
+ */
+const TOKENS_CANJEADOS = new Map<string, TokenCanjeado>();
+const MARGEN_RENOVACION_MS = 30 * 60 * 1000;
+
+function serializarCredencial(c: CredencialAppShopify): string {
+  return JSON.stringify({ clientId: c.clientId.trim(), clientSecret: c.clientSecret.trim() });
+}
+
+function leerCredencial(valor: string): CredencialAppShopify {
+  try {
+    const c = JSON.parse(valor) as Partial<CredencialAppShopify>;
+    if (typeof c.clientId === "string" && typeof c.clientSecret === "string") {
+      return { clientId: c.clientId, clientSecret: c.clientSecret };
+    }
+  } catch {
+    // Cae al error de abajo, sin arrastrar el contenido.
+  }
+  throw new ErrorCredencialShopifyInvalida(
+    "Las credenciales guardadas de la tienda están dañadas. Hay que reconectarla.",
+  );
 }
 
 /**

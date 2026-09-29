@@ -108,7 +108,7 @@ function traducirError(error: unknown): ResultadoAccionShopify {
     };
   }
   if (error instanceof ErrorTiendaShopifyYaConectada) {
-    return { ok: false, mensaje: "Esa tienda ya está conectada. Si el token cambió, usa Reconectar." };
+    return { ok: false, mensaje: "Esa tienda ya está conectada. Si cambiaste la app, usa Reconectar." };
   }
   if (error instanceof ErrorCredencialShopifyInvalida) {
     return { ok: false, mensaje: error.message };
@@ -119,7 +119,8 @@ function traducirError(error: unknown): ResultadoAccionShopify {
 
 export async function conectarTiendaShopify(entrada: {
   shopDomain: string;
-  accessToken: string;
+  clientId: string;
+  clientSecret: string;
   filtroEtiqueta?: string | null;
 }): Promise<ResultadoAccionShopify> {
   const s = await sesionSellerConPermiso();
@@ -150,7 +151,7 @@ export async function conectarTiendaShopify(entrada: {
       tenantId: s.tenantId,
       sellerId: s.sellerId,
       shopDomain: dominio,
-      accessToken: entrada.accessToken,
+      credencial: { clientId: entrada.clientId, clientSecret: entrada.clientSecret },
       filtroEtiqueta: entrada.filtroEtiqueta ?? null,
     });
   } catch (error) {
@@ -163,7 +164,8 @@ export async function conectarTiendaShopify(entrada: {
 
 export async function reconectarTiendaShopify(entrada: {
   conexionId: string;
-  accessToken: string;
+  clientId: string;
+  clientSecret: string;
 }): Promise<ResultadoAccionShopify> {
   const s = await sesionSellerConPermiso();
   if (!s) return { ok: false, mensaje: "No tienes permiso para reconectar esta tienda." };
@@ -190,7 +192,7 @@ export async function reconectarTiendaShopify(entrada: {
     await reconectarTienda({
       conexionId: entrada.conexionId,
       tenantId: s.tenantId,
-      accessToken: entrada.accessToken,
+      credencial: { clientId: entrada.clientId, clientSecret: entrada.clientSecret },
     });
   } catch (error) {
     return traducirError(error);

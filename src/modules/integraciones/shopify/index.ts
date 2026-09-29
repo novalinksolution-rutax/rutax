@@ -20,6 +20,7 @@ export {
   ErrorScopesShopifyFaltantes,
   ErrorTiendaShopifyYaConectada,
   type ConectarTiendaEntrada,
+  type CredencialAppShopify,
   type CredencialValidada,
 } from "./puerto";
 

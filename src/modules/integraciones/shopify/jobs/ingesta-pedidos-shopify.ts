@@ -50,7 +50,7 @@
 import { inngest } from "@/lib/inngest/cliente";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { capturarMensaje } from "@/lib/observabilidad";
-import { marcarSalud, obtenerAccessToken } from "../puerto";
+import { marcarSalud, obtenerAccessToken, ErrorCredencialShopifyInvalida } from "../puerto";
 import {
   consultarOrdenesPorId,
   ingestarVentanaShopify,
@@ -375,16 +375,21 @@ export async function sincronizarConexionShopify(
   let accessToken: string;
   try {
     accessToken = await obtenerAccessToken(conexion.id, conexion.tenantId);
-  } catch {
+  } catch (error) {
     // El mensaje del error de descifrado NO se propaga: podría llevar fragmentos
-    // del material cifrado.
+    // del material cifrado. Los de `ErrorCredencialShopifyInvalida` sí: son
+    // textos nuestros (p. ej. Shopify rechazó el canje porque desinstalaron la
+    // app) y dicen qué hacer.
     logger.warn(
       `Ingesta Shopify conexión ${conexion.id}: no se pudo obtener el token. Se omite.`,
     );
     resumen.omitida = "token_ilegible";
     await marcarSalud(conexion.id, conexion.tenantId, {
       ok: false,
-      error: "No se pudo descifrar el token de la tienda. Hay que reconectarla.",
+      error:
+        error instanceof ErrorCredencialShopifyInvalida
+          ? error.message
+          : "No se pudo descifrar el token de la tienda. Hay que reconectarla.",
     });
     return resumen;
   }

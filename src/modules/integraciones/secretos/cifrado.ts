@@ -216,7 +216,9 @@ export async function descifrarSecreto(
     // `x-shopify-access-token`. Sin esta línea se descifraría como Uint8Array y
     // el header saldría con "[object Uint8Array]" — la petición fallaría con un
     // 401 que no explica nada.
-    tipoSecreto === "token_admin_shopify";
+    tipoSecreto === "token_admin_shopify" ||
+    // Client ID + secret de la app Shopify del seller, como JSON.
+    tipoSecreto === "credencial_app_shopify";
 
   return {
     valor: esTexto ? textoPlano.toString("utf8") : new Uint8Array(textoPlano),

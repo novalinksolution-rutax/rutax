@@ -1,0 +1,21 @@
+-- =============================================================================
+-- identidad.tipo_secreto += 'credencial_app_shopify'
+-- =============================================================================
+--
+-- Desde el 1 de enero de 2026 Shopify no deja crear custom apps en el admin de
+-- la tienda, y con ellas se acabó el Admin API access token permanente
+-- (`shpat_…`) que el seller pegaba en el portal (`token_admin_shopify`).
+--
+-- El reemplazo es una app del Dev Dashboard instalada en la propia tienda: el
+-- seller entrega Client ID + Client secret y Rutax los canjea por un token de
+-- 24 h (client credentials grant) cada vez que lo necesita. Lo que se guarda
+-- cifrado es ese par, como JSON compacto; el token de 24 h no se persiste.
+--
+-- `token_admin_shopify` se conserva: una tienda conectada con un token legado
+-- sigue funcionando, y un valor de enum no se puede quitar sin reescribir el
+-- tipo.
+--
+-- `add value` no puede usarse en la misma transacción que lo consume: por eso
+-- esta migración no hace nada más.
+
+alter type identidad.tipo_secreto add value if not exists 'credencial_app_shopify';

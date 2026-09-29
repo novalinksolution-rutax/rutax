@@ -271,3 +271,83 @@ export async function peticionShopify<T>(peticion: PeticionShopify): Promise<T> 
     return cuerpo.data;
   }, peticion.opcionesReintento);
 }
+
+// =============================================================================
+// Canje de credenciales de app por un access token (client credentials grant)
+// =============================================================================
+
+/**
+ * Desde el 1 de enero de 2026 Shopify ya no deja crear custom apps en el admin
+ * de la tienda, y con ellas desapareció el `shpat_…` permanente que se copiaba
+ * desde ahí. Lo que las reemplaza es una app del **Dev Dashboard** instalada en
+ * la propia tienda: entrega un Client ID y un Client secret, y el token se
+ * obtiene canjeándolos contra la tienda. Ese token dura **24 h** (`expires_in`
+ * = 86399), así que se canjea cuando hace falta, no se guarda.
+ *
+ * ⚠️ El canje solo funciona si la app y la tienda son de la **misma
+ * organización** de Shopify — que es justo el caso del seller que crea la app
+ * para su propia tienda. No sirve para una app de Rutax instalada en tiendas
+ * ajenas (eso es OAuth de app pública, con revisión de Shopify).
+ */
+export interface TokenCanjeado {
+  accessToken: string;
+  scopes: string[];
+  expiraEn: Date;
+}
+
+export async function canjearCredencialesApp(entrada: {
+  shopDomain: string;
+  clientId: string;
+  clientSecret: string;
+  opcionesReintento?: OpcionesReintento;
+}): Promise<TokenCanjeado> {
+  if (!esShopDomainValido(entrada.shopDomain)) {
+    throw new ErrorShopDomainInvalido(entrada.shopDomain);
+  }
+
+  return reintentarConBackoff(async () => {
+    const url = `https://${entrada.shopDomain}/admin/oauth/access_token`;
+    const respuesta = await ejecutarPeticionDeRed("Shopify", entrada.shopDomain, () =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          accept: "application/json",
+        },
+        // El secreto viaja en el CUERPO, nunca en la URL.
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          client_id: entrada.clientId,
+          client_secret: entrada.clientSecret,
+        }).toString(),
+      }),
+    );
+
+    if (!respuesta.ok) {
+      throw new ErrorHttpShopify(
+        `Shopify rechazó el canje de credenciales (${respuesta.status}) para la tienda ${entrada.shopDomain}`,
+        respuesta.status,
+        await leerCuerpoSeguro(respuesta),
+        leerRetryAfterMs(respuesta.headers),
+      );
+    }
+
+    const cuerpo = (await respuesta.json()) as {
+      access_token?: string;
+      scope?: string;
+      expires_in?: number;
+    };
+    if (!cuerpo.access_token) {
+      throw new ErrorHttpShopify("Shopify respondió el canje sin access_token.", respuesta.status, null);
+    }
+
+    return {
+      accessToken: cuerpo.access_token,
+      scopes: (cuerpo.scope ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      expiraEn: new Date(Date.now() + (cuerpo.expires_in ?? 86_399) * 1000),
+    };
+  }, entrada.opcionesReintento);
+}
