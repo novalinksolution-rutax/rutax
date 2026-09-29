@@ -85,6 +85,7 @@ export function CampoDireccion({
   ayuda,
   placeholder,
   required,
+  claseCampo,
 }: {
   id?: string;
   name?: string;
@@ -99,6 +100,11 @@ export function CampoDireccion({
   ayuda?: React.ReactNode;
   placeholder?: string;
   required?: boolean;
+  /**
+   * Alto del campo. Por defecto 52 px (las pantallas donde nació). Una pantalla
+   * que lo pone al lado de controles de 32 px pasa el suyo para no desalinear.
+   */
+  claseCampo?: string;
 }) {
   const idAuto = useId();
   const idCampo = id ?? idAuto;
@@ -250,7 +256,7 @@ export function CampoDireccion({
           aria-controls={idLista}
           aria-autocomplete="list"
           aria-activedescendant={activa >= 0 ? `${idLista}-${activa}` : undefined}
-          className="h-[52px] pe-9"
+          className={cn(claseCampo ?? "h-[52px]", "pe-9")}
           onChange={(e) => {
             onCambio(e.target.value);
           }}

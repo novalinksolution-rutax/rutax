@@ -95,7 +95,10 @@ export function PasoOperacion({
             type="time"
             step={900}
             value={salida}
-            onChange={(e) => setSalida(e.target.value)}
+            onChange={(e) => {
+              setSalida(e.target.value);
+              setErrorHora(null); // el error se recalcula al continuar; dejarlo con la hora ya corregida confunde
+            }}
             className="tabular-nums pointer-coarse:h-12"
           />
         </div>
@@ -106,7 +109,10 @@ export function PasoOperacion({
             type="time"
             step={900}
             value={corte}
-            onChange={(e) => setCorte(e.target.value)}
+            onChange={(e) => {
+              setCorte(e.target.value);
+              setErrorHora(null);
+            }}
             aria-invalid={Boolean(errorHora)}
             aria-describedby={errorHora ? `${id}-hora-error` : undefined}
             className="tabular-nums pointer-coarse:h-12"

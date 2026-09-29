@@ -152,6 +152,52 @@ export function comunasDe(
   return COMUNAS_RM.filter((c) => asignacion[c] === zona);
 }
 
+/** La otra zona: 1 ↔ 2. */
+export function zonaOpuesta(zona: NumeroZona): NumeroZona {
+  return zona === 1 ? 2 : 1;
+}
+
+/**
+ * Un clic en una comuna la pasa a la otra zona. Devuelve una asignación nueva
+ * (la original no se toca) y NO crea claves: una comuna fuera del catálogo se
+ * ignora, porque la acción del servidor rechaza cualquier nombre ajeno.
+ */
+export function alternarZona(
+  asignacion: Readonly<Record<string, NumeroZona>>,
+  comuna: string,
+): Readonly<Record<string, NumeroZona>> {
+  const actual = asignacion[comuna];
+  if (actual === undefined) return asignacion;
+  return { ...asignacion, [comuna]: zonaOpuesta(actual) };
+}
+
+/** Fija la zona de una comuna. Si ya la tenía, devuelve la misma referencia. */
+export function asignarZona(
+  asignacion: Readonly<Record<string, NumeroZona>>,
+  comuna: string,
+  zona: NumeroZona,
+): Readonly<Record<string, NumeroZona>> {
+  if (asignacion[comuna] === undefined || asignacion[comuna] === zona) return asignacion;
+  return { ...asignacion, [comuna]: zona };
+}
+
+/** Minúsculas y sin tildes: «nunoa» encuentra «Ñuñoa». */
+export function normalizarBusqueda(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Comunas del catálogo que contienen el texto, en orden alfabético estable. */
+export function filtrarComunas(consulta: string): string[] {
+  const q = normalizarBusqueda(consulta);
+  return [...COMUNAS_RM]
+    .sort((a, b) => a.localeCompare(b, "es"))
+    .filter((c) => q === "" || normalizarBusqueda(c).includes(q));
+}
+
 export function asignacionSugerida(): Record<string, NumeroZona> {
   const a: Record<string, NumeroZona> = {};
   for (const c of COMUNAS_RM) a[c] = COMUNAS_ZONA_1_SUGERIDAS.includes(c) ? 1 : 2;

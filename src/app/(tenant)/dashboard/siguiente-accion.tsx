@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Copy } from "lucide-react";
@@ -53,20 +54,24 @@ export function SiguienteAccionTarjeta({ accion }: { accion: SiguienteAccion }) 
         {TITULOS[accion]}
       </h2>
       {accion === "invitar_seller" ? (
-        <div className="mt-5">
-          <Button type="button" onClick={copiar} disabled={!url} className="h-10 pointer-coarse:h-12">
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          {/* El enlace se muestra siempre: copiar algo que no se ve obliga a
+              pegarlo en otra parte para saber qué es. Si el portapapeles falla,
+              el campo ya está ahí para seleccionarlo a mano. */}
+          <input
+            readOnly
+            value={url ?? ""}
+            aria-label="Enlace para sellers"
+            onFocus={(e) => e.currentTarget.select()}
+            className={cn(
+              "h-10 min-w-0 flex-1 truncate border bg-bg-sunken px-2.5 font-mono text-xs pointer-coarse:h-12",
+              falloCopia ? "border-attention-fg" : "border-line",
+            )}
+          />
+          <Button type="button" onClick={copiar} disabled={!url} className="h-10 shrink-0 pointer-coarse:h-12">
             {copiado ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
-            {copiado ? "Copiado" : "Copiar enlace"}
+            {copiado ? "Copiado" : "Copiar"}
           </Button>
-          {falloCopia && url ? (
-            <input
-              readOnly
-              value={url}
-              aria-label="Enlace"
-              onFocus={(e) => e.currentTarget.select()}
-              className="mt-3 block w-full truncate border border-line bg-bg-sunken px-2.5 py-2 font-mono text-xs"
-            />
-          ) : null}
         </div>
       ) : null}
       {accion === "sumar_conductor" ? (

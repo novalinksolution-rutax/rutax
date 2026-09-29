@@ -18,33 +18,35 @@
  * operación atómica en el servidor; ver `guardarPasoTarifas`.
  */
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { useId, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { HojaInferior } from "@/components/ui/hoja-inferior";
 import { Input } from "@/components/ui/input";
 import { Interruptor } from "@/components/ui/interruptor";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { cn } from "@/lib/utils";
 import type { FuentePedido } from "@/modules/operacion/tipos";
 import { guardarPasoTarifas } from "./actions";
 import { coloresDeZona, MapaZonas } from "./mapa-zonas";
 import { PieDePaso } from "./pie-de-paso";
 import {
+  alternarZona,
+  asignarZona,
   calcularMargen,
   comunasDe,
   construirEntrada,
+  filtrarComunas,
   ETIQUETA_PLATAFORMA,
   miles,
   montosDeExcepcion,
   parsearMonto,
   pesos,
   validarPaso4,
+  zonaOpuesta,
   type EstadoPaso4,
   type ErroresPaso4,
   type NumeroZona,
@@ -266,68 +268,133 @@ function TarjetaZona({
 }
 
 /**
- * Lista de comunas agrupada por zona. Cada casilla dice «esta comuna es de esta
- * zona»: desmarcarla la pasa a la otra. Como la casilla cambia de grupo al
- * tocarla, se devuelve el foco a su nueva posición — sin eso el teclado se
- * pierde en cada cambio.
+ * Lista de comunas: buscador arriba y una fila por comuna, en orden alfabético
+ * estable. Cada fila lleva su selector Zona 1 | Zona 2; cambiarlo NO mueve la
+ * fila, así que el foco y la posición de lectura se quedan donde están.
  */
+function SelectorZona({
+  comuna,
+  zona,
+  colores,
+  onElegir,
+}: {
+  comuna: string;
+  zona: NumeroZona;
+  colores: Record<NumeroZona, string>;
+  onElegir: (comuna: string, zona: NumeroZona) => void;
+}) {
+  const refs = useRef<Record<NumeroZona, HTMLButtonElement | null>>({ 1: null, 2: null });
+
+  function alTeclear(e: React.KeyboardEvent) {
+    const paso =
+      e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!paso) return;
+    e.preventDefault();
+    const destino = zonaOpuesta(zona);
+    onElegir(comuna, destino);
+    refs.current[destino]?.focus();
+  }
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={`Zona de ${comuna}`}
+      onKeyDown={alTeclear}
+      className="inline-flex shrink-0 overflow-hidden rounded-[3px] border border-line"
+    >
+      {([1, 2] as const).map((n) => {
+        const activa = zona === n;
+        return (
+          <button
+            key={n}
+            ref={(el) => {
+              refs.current[n] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={activa}
+            tabIndex={activa ? 0 : -1}
+            onClick={() => onElegir(comuna, n)}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 px-2.5 text-xs outline-none focus-visible:relative focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:h-11 pointer-coarse:px-3.5",
+              n === 2 && "border-l border-line",
+              activa ? "bg-bg-sunken font-medium text-fg" : "text-fg-muted hover:bg-bg-sunken",
+            )}
+          >
+            <Muestra color={activa ? colores[n] : "transparent"} />
+            Zona {n}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ListaComunas({
   estado,
   colores,
-  onMover,
+  onElegir,
 }: {
   estado: EstadoPaso4;
   colores: Record<NumeroZona, string>;
-  onMover: (comuna: string) => void;
+  onElegir: (comuna: string, zona: NumeroZona) => void;
 }) {
-  const prefijo = useId();
-  const foco = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!foco.current) return;
-    const idx = COMUNAS_RM.indexOf(foco.current as (typeof COMUNAS_RM)[number]);
-    foco.current = null;
-    document.getElementById(`${prefijo}-${idx}`)?.focus();
-  }, [estado.asignacion, prefijo]);
+  const [consulta, setConsulta] = useState("");
+  const idBusqueda = useId();
+  const visibles = filtrarComunas(consulta);
 
   return (
-    <div className="space-y-5">
-      {([1, 2] as const).map((n) => {
-        const zona = n === 1 ? estado.zona1 : estado.zona2;
-        const comunas = comunasDe(estado.asignacion, n);
-        return (
-          <fieldset key={n} className="min-w-0">
-            <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <Muestra color={colores[n]} />
-              <span>
-                Zona {n} · {zona.nombre}
+    <div>
+      <div className="sticky top-0 z-10 space-y-2 bg-bg pb-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          {([1, 2] as const).map((n) => {
+            const zona = n === 1 ? estado.zona1 : estado.zona2;
+            return (
+              <span key={n} className="inline-flex min-w-0 items-center gap-2">
+                <Muestra color={colores[n]} />
+                <span className="truncate font-medium">
+                  Zona {n} · {zona.nombre}
+                </span>
+                <span className="tabular-nums text-fg-muted">{comunasDe(estado.asignacion, n).length}</span>
               </span>
-              <span className="tabular-nums text-fg-muted">{comunas.length}</span>
-            </legend>
-            <ul className="grid grid-cols-2 gap-x-3">
-              {comunas.map((c) => {
-                const idx = COMUNAS_RM.indexOf(c as (typeof COMUNAS_RM)[number]);
-                const id = `${prefijo}-${idx}`;
-                return (
-                  <li key={c} className="flex min-h-9 items-center gap-2 pointer-coarse:min-h-12">
-                    <Checkbox
-                      id={id}
-                      checked
-                      onCheckedChange={() => {
-                        foco.current = c;
-                        onMover(c);
-                      }}
-                    />
-                    <Label htmlFor={id} className="min-w-0 flex-1 cursor-pointer text-sm font-normal">
-                      {c}
-                    </Label>
-                  </li>
-                );
-              })}
-            </ul>
-          </fieldset>
-        );
-      })}
+            );
+          })}
+        </div>
+        <Label htmlFor={idBusqueda} className="sr-only">
+          Buscar comuna
+        </Label>
+        <Input
+          id={idBusqueda}
+          type="search"
+          value={consulta}
+          onChange={(e) => setConsulta(e.target.value)}
+          placeholder="Buscar comuna"
+          autoComplete="off"
+          className="pointer-coarse:h-12"
+        />
+      </div>
+
+      {visibles.length === 0 ? (
+        <p role="status" className="py-6 text-center text-sm text-fg-muted">
+          Sin resultados.
+        </p>
+      ) : (
+        <ul>
+          {visibles.map((c) => {
+            const zona = estado.asignacion[c] ?? 2;
+            return (
+              <li
+                key={c}
+                className="flex min-h-11 items-center justify-between gap-3 border-b border-line py-1 pl-2.5"
+                style={{ boxShadow: `inset 3px 0 0 ${colores[zona]}` }}
+              >
+                <span className="min-w-0 truncate text-sm">{c}</span>
+                <SelectorZona comuna={c} zona={zona} colores={colores} onElegir={onElegir} />
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -350,7 +417,7 @@ export function PasoTarifas({
   const formRef = useRef<HTMLDivElement>(null);
 
   const [estado, setEstado] = useState<EstadoPaso4>(inicial);
-  const [pincel, setPincel] = useState<NumeroZona>(1);
+  const [anuncio, setAnuncio] = useState("");
   const [vista, setVista] = useState<"mapa" | "lista">("mapa");
   const [hojaAbierta, setHojaAbierta] = useState(false);
   const [mapaFallo, setMapaFallo] = useState(false);
@@ -363,11 +430,16 @@ export function PasoTarifas({
     ? validacion.errores
     : { nombre: {}, cobro: {}, pago: {}, comunas: {}, excepciones: {} };
 
-  function pintar(comuna: string, zona: NumeroZona) {
-    setEstado((e) => (e.asignacion[comuna] === zona ? e : { ...e, asignacion: { ...e.asignacion, [comuna]: zona } }));
+  function elegirZona(comuna: string, zona: NumeroZona) {
+    if (estado.asignacion[comuna] === zona) return;
+    setEstado((e) => ({ ...e, asignacion: asignarZona(e.asignacion, comuna, zona) }));
+    setAnuncio(`${comuna}: Zona ${zona}`);
   }
-  function moverAOtra(comuna: string) {
-    setEstado((e) => ({ ...e, asignacion: { ...e.asignacion, [comuna]: e.asignacion[comuna] === 1 ? 2 : 1 } }));
+  function alternar(comuna: string) {
+    const actual = estado.asignacion[comuna];
+    if (actual === undefined) return;
+    setEstado((e) => ({ ...e, asignacion: alternarZona(e.asignacion, comuna) }));
+    setAnuncio(`${comuna}: Zona ${zonaOpuesta(actual)}`);
   }
   function cambiarNombre(n: NumeroZona, valor: string) {
     setEstado((e) => (n === 1 ? { ...e, zona1: { ...e.zona1, nombre: valor } } : { ...e, zona2: { ...e.zona2, nombre: valor } }));
@@ -404,27 +476,11 @@ export function PasoTarifas({
     });
   }
 
-  const botonesPincel = (
-    <div role="radiogroup" aria-label="Pincel" className="flex flex-wrap items-center gap-2">
-      <span className="text-sm text-fg-muted">Pincel</span>
-      {([1, 2] as const).map((n) => (
-        <button
-          key={n}
-          type="button"
-          role="radio"
-          aria-checked={pincel === n}
-          onClick={() => setPincel(n)}
-          className={cn(
-            "inline-flex h-8 items-center gap-2 rounded-[3px] border px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-            pincel === n ? "border-fg bg-bg-sunken font-medium" : "border-line hover:bg-bg-sunken",
-          )}
-        >
-          <Muestra color={colores[n]} />
-          Zona {n}
-        </button>
-      ))}
-    </div>
-  );
+  const leyenda = ([1, 2] as const).map((n) => ({
+    n,
+    nombre: (n === 1 ? estado.zona1 : estado.zona2).nombre,
+    cantidad: comunasDe(estado.asignacion, n).length,
+  }));
 
   return (
     <>
@@ -442,10 +498,10 @@ export function PasoTarifas({
                 <TabsTrigger value="lista">Lista</TabsTrigger>
               </TabsList>
               <TabsContent value="mapa" className="space-y-3 pt-2">
-                {botonesPincel}
                 <MapaZonas
                   asignacion={estado.asignacion}
-                  onPintar={(c) => pintar(c, pincel)}
+                  leyenda={leyenda}
+                  onAlternar={alternar}
                   onError={() => setMapaFallo(true)}
                   altura={440}
                   etiqueta="Mapa de comunas por zona"
@@ -453,7 +509,7 @@ export function PasoTarifas({
               </TabsContent>
               <TabsContent value="lista" className="max-h-[520px] overflow-y-auto pt-3 pr-1">
                 {mapaFallo ? <p className="mb-3 text-sm text-fg-muted">No pudimos cargar el mapa.</p> : null}
-                <ListaComunas estado={estado} colores={colores} onMover={moverAOtra} />
+                <ListaComunas estado={estado} colores={colores} onElegir={elegirZona} />
               </TabsContent>
             </Tabs>
           ) : (
@@ -511,9 +567,13 @@ export function PasoTarifas({
 
       <HojaInferior abierta={hojaAbierta && !escritorio} onOpenChange={setHojaAbierta} titulo="Comunas">
         <div className="px-4 pb-6">
-          <ListaComunas estado={estado} colores={colores} onMover={moverAOtra} />
+          <ListaComunas estado={estado} colores={colores} onElegir={elegirZona} />
         </div>
       </HojaInferior>
+
+      <p aria-live="polite" className="sr-only">
+        {anuncio}
+      </p>
 
       <PieDePaso volverAPaso={3} etiqueta="Continuar" cargando={pendiente} onClick={continuar} />
     </>

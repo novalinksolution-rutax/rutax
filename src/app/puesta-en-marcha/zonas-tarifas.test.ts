@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import {
+  alternarZona,
+  asignarZona,
+  filtrarComunas,
+  normalizarBusqueda,
+  zonaOpuesta,
   asignacionSugerida,
   calcularMargen,
   comunasDe,
@@ -192,5 +197,41 @@ describe("reentrada", () => {
     // Providencia en la 1; todo lo demás cae en la de respaldo.
     expect(comunasDe(e.asignacion, 1)).toEqual(["Providencia"]);
     expect(comunasDe(e.asignacion, 2)).toHaveLength(COMUNAS_RM.length - 1);
+  });
+});
+
+describe("alternar y buscar comunas", () => {
+  it("alternarZona pasa la comuna a la otra zona y es reversible, sin mutar", () => {
+    const a = asignacionSugerida();
+    const b = alternarZona(a, "Providencia");
+    expect(a["Providencia"]).toBe(1);
+    expect(b["Providencia"]).toBe(2);
+    expect(alternarZona(b, "Providencia")).toEqual(a);
+    expect(comunasDe(b, 1)).toHaveLength(33);
+    expect(comunasDe(b, 2)).toHaveLength(19);
+  });
+
+  it("ignora una comuna que no está en la asignación", () => {
+    const a = asignacionSugerida();
+    expect(alternarZona(a, "Narnia")).toBe(a);
+    expect(asignarZona(a, "Narnia", 2)).toBe(a);
+  });
+
+  it("asignarZona es idempotente", () => {
+    const a = asignacionSugerida();
+    expect(asignarZona(a, "Providencia", 1)).toBe(a);
+    expect(asignarZona(a, "Providencia", 2)["Providencia"]).toBe(2);
+    expect(zonaOpuesta(1)).toBe(2);
+    expect(zonaOpuesta(2)).toBe(1);
+  });
+
+  it("la búsqueda ignora tildes y mayúsculas y conserva el orden alfabético", () => {
+    expect(normalizarBusqueda("  ÑUÑOA ")).toBe("nunoa");
+    expect(filtrarComunas("nunoa")).toEqual(["Ñuñoa"]);
+    expect(filtrarComunas("PENA")).toEqual(expect.arrayContaining(["Peñalolén", "Peñaflor"]));
+    expect(filtrarComunas("zzzz")).toEqual([]);
+    const todas = filtrarComunas("");
+    expect(todas).toHaveLength(COMUNAS_RM.length);
+    expect(todas).toEqual([...todas].sort((x, y) => x.localeCompare(y, "es")));
   });
 });

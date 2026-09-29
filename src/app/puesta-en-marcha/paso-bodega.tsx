@@ -193,6 +193,7 @@ export function PasoBodega({
                 onElegir={elegirDireccion}
                 buscar={actionSugerirDirecciones}
                 resolver={actionResolverDireccion}
+                claseCampo="h-8 pointer-coarse:h-12"
               />
               {estado === "ubicando" ? (
                 <Loader2
