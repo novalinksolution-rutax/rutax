@@ -4,9 +4,14 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CampoDireccion, type DireccionElegida } from "@/components/ui/campo-direccion";
 import { Label } from "@/components/ui/label";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { comunaDelCatalogo } from "@/app/(tenant)/operaciones/nuevo/reglas-alta";
+import {
+  actionResolverDireccion,
+  actionSugerirDirecciones,
+} from "@/app/(tenant)/operaciones/nuevo/actions";
 import { guardarPasoBodega, previsualizarUbicacion } from "./actions";
 import { MapaPin, type PuntoMapa } from "./mapa-pin";
 import { PieDePaso } from "./pie-de-paso";
@@ -32,6 +37,8 @@ export function PasoBodega({
   const router = useRouter();
   const id = useId();
   const [direccion, setDireccion] = useState(inicial.direccion);
+  /** `true` cuando la dirección vino de la lista de sugerencias, no de teclear. */
+  const [elegida, setElegida] = useState(false);
   const [comuna, setComuna] = useState(inicial.comuna);
   const [punto, setPunto] = useState<PuntoMapa | null>(inicial.punto);
   const [estado, setEstado] = useState<EstadoUbicacion>(inicial.punto ? "resuelto" : "vacio");
@@ -76,6 +83,41 @@ export function PasoBodega({
       setPunto(null);
       setEstado(r.estado);
     }
+  }
+
+  /**
+   * Elegir de la lista trae la dirección normalizada CON su coordenada y su
+   * comuna: el pin cae al tiro, sin geocodificar. Es el mismo `CampoDireccion`
+   * de Configuración → Bodegas y del alta de pedidos.
+   *
+   * Si el autocompletado no responde (proveedor caído, facturación de Google,
+   * sin permiso), el campo sigue siendo texto libre: al salir de él se
+   * geocodifica como antes y el pin se puede arrastrar.
+   */
+  function elegirDireccion(d: DireccionElegida) {
+    const dir = d.direccionCorta ?? d.direccion;
+    const com = comunaDelCatalogo(d.comuna) ?? comuna;
+    peticion.current++; // cancela el geocoding que disparó el blur al tocar la lista
+    if (temporizador.current) clearTimeout(temporizador.current);
+    setTarda(false);
+    setErrorGuardado(null);
+    setDireccion(dir);
+    setElegida(true);
+    setComuna(com);
+    ultimaConsulta.current = `${dir.trim()}|${com}`;
+    if (d.lat == null || d.long == null) {
+      // Sin coordenada del proveedor: se ubica como si se hubiera tecleado.
+      ultimaConsulta.current = "";
+      void ubicar(dir, com);
+      return;
+    }
+    if (!dentroDeLaRegion(d.lat, d.long)) {
+      setPunto(null);
+      setEstado("fuera_de_region");
+      return;
+    }
+    setPunto({ lat: d.lat, long: d.long });
+    setEstado("resuelto");
   }
 
   function moverPin(p: PuntoMapa) {
@@ -127,16 +169,30 @@ export function PasoBodega({
         <div className="grid gap-4 sm:grid-cols-[1fr_180px]">
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-direccion`}>Dirección</Label>
-            <div className="relative">
-              <Input
+            {/* El blur del contenedor cubre el camino de texto libre: si no se
+                eligió de la lista, se geocodifica lo tecleado al salir. */}
+            <div
+              className="relative"
+              onBlur={() => {
+                if (!elegida) void ubicar(direccion, comuna);
+              }}
+            >
+              <CampoDireccion
                 id={`${id}-direccion`}
-                autoFocus
-                autoComplete="street-address"
-                enterKeyHint="next"
-                value={direccion}
-                onChange={(e) => setDireccion(e.target.value)}
-                onBlur={() => void ubicar(direccion, comuna)}
-                className="pr-8 pointer-coarse:h-12"
+                valor={direccion}
+                elegida={elegida}
+                onCambio={(v) => {
+                  setDireccion(v);
+                  setElegida(false);
+                  // El pin sigue siendo el de la dirección anterior: no se puede
+                  // confirmar hasta que la nueva se ubique (al elegirla de la
+                  // lista o al salir del campo). Si no, se guardaría la dirección
+                  // nueva con la coordenada vieja.
+                  if (estado === "resuelto") setEstado("vacio");
+                }}
+                onElegir={elegirDireccion}
+                buscar={actionSugerirDirecciones}
+                resolver={actionResolverDireccion}
               />
               {estado === "ubicando" ? (
                 <Loader2
