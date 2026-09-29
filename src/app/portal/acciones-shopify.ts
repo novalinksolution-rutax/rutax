@@ -5,8 +5,8 @@
  *
  * Van en archivo propio y no en `./actions.ts` porque ese archivo es del panel
  * de Mercado Libre y ya carga la semántica del OAuth (modos, cookies de estado,
- * reconexión por id). Shopify no tiene nada de eso: el seller pega un token y
- * listo. Mezclarlos obligaría a leer el enredo de ML para entender este flujo.
+ * reconexión por id). Shopify no tiene nada de eso: el seller pega las
+ * credenciales de su app y listo. Mezclarlos obligaría a leer el enredo de ML para entender este flujo.
  *
  * Patrón del proyecto que sí se respeta: bitácora ANTES del efecto, capacidad
  * RBAC verificada en el servidor, y el token NUNCA vuelve al cliente ni queda en
@@ -28,6 +28,7 @@ import {
   ErrorScopesShopifyFaltantes,
   ErrorTiendaShopifyYaConectada,
   ErrorShopDomainInvalido,
+  solicitarSincronizacionShopify,
   type ConexionShopify,
 } from "@/modules/integraciones/shopify";
 
@@ -117,6 +118,58 @@ function traducirError(error: unknown): ResultadoAccionShopify {
   return { ok: false, mensaje: "No pudimos conectar la tienda. Inténtalo de nuevo en unos minutos." };
 }
 
+type SesionSeller = NonNullable<Awaited<ReturnType<typeof sesionSellerConPermiso>>>;
+
+/**
+ * Bitácora y DESPUÉS el evento — el mismo orden que «Sincronizar ahora» de ML
+ * (`solicitarSincronizacionMlPropia`). Se publica por el puerto: la llave de
+ * idempotencia por minuto vive ahí. La de tras-conectar es distinta de la del
+ * botón a propósito (ver `trasCambioDeCredencial`); si coinciden en el minuto,
+ * la concurrencia 1 por conexión del job las pone en fila.
+ */
+async function pedirSincronizacion(
+  s: SesionSeller,
+  conexionId: string,
+  origen: "boton" | "tras_conectar" | "tras_reconectar",
+): Promise<void> {
+  await registrarEnBitacora(crearClienteServiceRole(), {
+    tenantId: s.tenantId,
+    actorUsuarioId: s.usuarioId,
+    actorTipo: "usuario",
+    accion: "seller.conexion_shopify_sincronizacion_solicitada",
+    entidadTipo: "identidad.conexiones_seller_shopify",
+    entidadId: conexionId,
+    detalle: { sellerId: s.sellerId, origen },
+  });
+  await solicitarSincronizacionShopify({
+    conexionId,
+    sellerId: s.sellerId,
+    tenantId: s.tenantId,
+    actorUsuarioId: s.usuarioId,
+    trasCambioDeCredencial: origen !== "boton",
+  });
+}
+
+/**
+ * Tras conectar o reconectar, el primer barrido sale solo: sin esto el seller
+ * espera hasta el cron de 15 min mirando una tienda «sin sincronizar todavía».
+ *
+ * ⚠️ Nunca tumba la conexión: la tienda YA quedó guardada, y si el evento no
+ * sale el cron la recoge igual. Devolver error acá le diría al seller que no
+ * conectó algo que sí conectó.
+ */
+async function sincronizarSinBloquear(
+  s: SesionSeller,
+  conexionId: string,
+  origen: "tras_conectar" | "tras_reconectar",
+): Promise<void> {
+  try {
+    await pedirSincronizacion(s, conexionId, origen);
+  } catch (error) {
+    console.error("[portal/shopify] no se pudo pedir la primera sincronización:", error);
+  }
+}
+
 export async function conectarTiendaShopify(entrada: {
   shopDomain: string;
   clientId: string;
@@ -146,8 +199,9 @@ export async function conectarTiendaShopify(entrada: {
     detalle: { shopDomain: dominio, sellerId: s.sellerId },
   });
 
+  let conexion: ConexionShopify;
   try {
-    await conectarTienda({
+    conexion = await conectarTienda({
       tenantId: s.tenantId,
       sellerId: s.sellerId,
       shopDomain: dominio,
@@ -158,6 +212,7 @@ export async function conectarTiendaShopify(entrada: {
     return traducirError(error);
   }
 
+  await sincronizarSinBloquear(s, conexion.id, "tras_conectar");
   revalidatePath("/portal");
   return { ok: true };
 }
@@ -198,10 +253,46 @@ export async function reconectarTiendaShopify(entrada: {
     return traducirError(error);
   }
 
+  await sincronizarSinBloquear(s, entrada.conexionId, "tras_reconectar");
   revalidatePath("/portal");
   return { ok: true };
 }
 
+/**
+ * «Sincronizar ahora» de una tienda — gemela de `solicitarSincronizacionMlPropia`.
+ *
+ * Solo sobre tiendas encendidas: el job salta la apagada o desvinculada, y
+ * aceptar el pedido igual prometería un efecto que no ocurre.
+ */
+export async function sincronizarTiendaShopify(
+  conexionId: string,
+): Promise<ResultadoAccionShopify> {
+  const s = await sesionSellerConPermiso();
+  if (!s) return { ok: false, mensaje: "No tienes permiso para sincronizar esta tienda." };
+
+  // Propiedad contra las tiendas DEL SELLER DE LA SESIÓN, nunca contra el id
+  // que llega en la petición.
+  let propias: ConexionShopify[];
+  try {
+    propias = await obtenerConexionesPorSeller(s.tenantId, s.sellerId);
+  } catch (error) {
+    return traducirError(error);
+  }
+  const conexion = propias.find((c) => c.id === conexionId);
+  if (!conexion) return { ok: false, mensaje: "Esa tienda no es tuya." };
+  if (!conexion.activa || conexion.estadoSalud === "desvinculada") {
+    return { ok: false, mensaje: "Esta tienda está desconectada. Reconéctala primero." };
+  }
+
+  try {
+    await pedirSincronizacion(s, conexion.id, "boton");
+  } catch (error) {
+    console.error("[portal/shopify] no se pudo pedir la sincronización:", error);
+    return { ok: false, mensaje: "No pudimos pedir la sincronización. Inténtalo de nuevo en unos minutos." };
+  }
+
+  return { ok: true };
+}
 
 /**
  * Apaga la ingesta de una tienda. El trabajo sucio lo hace el puerto.

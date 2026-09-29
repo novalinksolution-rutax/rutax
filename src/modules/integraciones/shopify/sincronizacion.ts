@@ -29,6 +29,15 @@ export interface SolicitarSincronizacionShopifyEntrada {
   tenantId: string;
   /** UUID de auth de quien la pidió; `null` si la dispara el sistema. */
   actorUsuarioId: string | null;
+  /**
+   * `true` cuando la dispara conectar/reconectar con credenciales nuevas.
+   *
+   * Lleva llave propia: con la misma que el botón, un clic que falló por
+   * credenciales malas un momento antes dejaba el minuto ocupado, y el barrido
+   * con las credenciales buenas se descartaba como duplicado — el seller
+   * esperaba al cron sin saberlo. Pasó al probarlo, 2026-09-28.
+   */
+  trasCambioDeCredencial?: boolean;
 }
 
 /**
@@ -56,7 +65,7 @@ export async function solicitarSincronizacionShopify(
 ): Promise<void> {
   await inngest.send({
     name: "shopify/sincronizacion.solicitada",
-    id: `shopify-sync-${entrada.conexionId}-${cuboDeMinuto()}`,
+    id: `shopify-sync-${entrada.conexionId}-${cuboDeMinuto()}${entrada.trasCambioDeCredencial ? "-credencial" : ""}`,
     data: {
       conexionId: entrada.conexionId,
       sellerId: entrada.sellerId,

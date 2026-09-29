@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { CheckCircle2, Loader2, Plus, RefreshCw, Store, TriangleAlert } from "lucide-react";
+import { CheckCircle2, KeyRound, Loader2, Plus, RefreshCw, Store, TriangleAlert } from "lucide-react";
 import { BotonConfirmado } from "@/components/ui/boton-confirmado";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import {
   conectarTiendaShopify,
   desconectarTiendaShopify,
   reconectarTiendaShopify,
+  sincronizarTiendaShopify,
   type ConexionShopifySeller,
 } from "./acciones-shopify";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
@@ -46,6 +47,8 @@ import { TEXTO_SALUD_CONEXION } from "@/lib/ui/traduccion-estados";
 // está «con problemas» — dos nombres para lo mismo, uno al lado del otro.
 // Ahora los dos paneles usan `TarjetaSaludConexion`.
 
+const VENTANA_ENFRIAMIENTO_SYNC_MS = 60_000;
+
 export function PanelConexionesShopify({
   conexionesIniciales,
 }: {
@@ -58,6 +61,42 @@ export function PanelConexionesShopify({
   // Keyed por id: con varias tiendas, un solo string pintaría el error de una
   // en la fila de la otra.
   const [errorPorId, setErrorPorId] = useState<Record<string, string>>({});
+
+  // «Sincronizar ahora», con el mismo control que el panel de ML: un disparo a
+  // la vez y un enfriamiento de un minuto por tienda para que el botón no
+  // invite a apretarlo diez veces. La deduplicación real vive en el servidor
+  // (llave de idempotencia por minuto en `solicitarSincronizacionShopify`).
+  const [sincronizandoId, setSincronizandoId] = useState<string | null>(null);
+  const [enEnfriamientoIds, setEnEnfriamientoIds] = useState<Set<string>>(new Set());
+  const [pedidaPorId, setPedidaPorId] = useState<Record<string, boolean>>({});
+
+  async function sincronizar(id: string) {
+    if (sincronizandoId || enEnfriamientoIds.has(id)) return;
+    setSincronizandoId(id);
+    setErrorPorId((prev) => {
+      const { [id]: _, ...resto } = prev;
+      return resto;
+    });
+    try {
+      const r = await sincronizarTiendaShopify(id);
+      if (r.ok) setPedidaPorId((prev) => ({ ...prev, [id]: true }));
+      else setErrorPorId((prev) => ({ ...prev, [id]: r.mensaje }));
+    } catch {
+      // La Server Action puede rechazar (red caída, deploy nuevo): el botón no
+      // puede quedar colgado en el spinner sin decir nada.
+      setErrorPorId((prev) => ({ ...prev, [id]: "No pudimos pedir la sincronización. Inténtalo de nuevo en unos minutos." }));
+    } finally {
+      setSincronizandoId(null);
+      setEnEnfriamientoIds((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        setEnEnfriamientoIds((prev) => {
+          const copia = new Set(prev);
+          copia.delete(id);
+          return copia;
+        });
+      }, VENTANA_ENFRIAMIENTO_SYNC_MS);
+    }
+  }
 
   async function desconectar(id: string) {
     setDesconectandoId(id);
@@ -118,7 +157,11 @@ export function PanelConexionesShopify({
                     </p>
                   ) : null}
                   {errorPorId[c.id] ? (
-                    <p className="text-xs text-destructive">{errorPorId[c.id]}</p>
+                    <p role="alert" className="text-xs text-destructive">{errorPorId[c.id]}</p>
+                  ) : pedidaPorId[c.id] ? (
+                    <p role="status" className="text-xs text-muted-foreground">
+                      Tus pedidos aparecerán en unos minutos.
+                    </p>
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -135,12 +178,29 @@ export function PanelConexionesShopify({
                       etiqueta={TEXTO_SALUD_CONEXION[c.estadoSalud]}
                     />
                   )}
+                  {/* Solo sobre tiendas encendidas: el job salta la apagada o
+                      desvinculada, y ofrecerlo prometería un efecto que no
+                      ocurre. Condicional y no `hidden`: las utilidades de
+                      `display` del botón le ganan al atributo. */}
+                  {c.activa && c.estadoSalud !== "desvinculada" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void sincronizar(c.id)}
+                      disabled={sincronizandoId !== null || enEnfriamientoIds.has(c.id)}
+                      loading={sincronizandoId === c.id}
+                      aria-label={`Sincronizar ahora los pedidos de ${c.alias ?? c.nombreTienda ?? c.shopDomain}`}
+                    >
+                      {sincronizandoId === c.id ? null : <RefreshCw data-icon="inline-start" aria-hidden />}
+                      Sincronizar ahora
+                    </Button>
+                  ) : null}
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => setAbierto({ modo: "reconexion", conexion: c })}
                   >
-                    <RefreshCw data-icon="inline-start" aria-hidden />
+                    <KeyRound data-icon="inline-start" aria-hidden />
                     Reconectar
                   </Button>
 
