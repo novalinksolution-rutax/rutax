@@ -69,3 +69,17 @@ export function etiquetaTipoEntrega(tipo: string | null | undefined): string {
  * alguna superficie no cabe, se resuelve con el ancho de esa superficie, no
  * inventando un segundo vocabulario que el courier tenga que aprender.
  */
+
+/**
+ * La referencia del pedido en la tienda de origen, lista para imprimir:
+ * «Shopify #1001». `null` para el pedido propio (no hay otra tienda que
+ * nombrar) y cuando la fuente no trae referencia.
+ */
+export function referenciaTiendaDePedido(
+  fuente: string | null | undefined,
+  referenciaExterna: string | null | undefined,
+): string | null {
+  const ref = (referenciaExterna ?? "").trim();
+  if (!fuente || fuente === "rutax_manual" || !ref) return null;
+  return `${etiquetaFuentePedido(fuente)} ${ref}`;
+}

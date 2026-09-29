@@ -34,6 +34,7 @@ import {
   generarEtiquetaSameDayPdf,
   type FormatoEtiqueta,
 } from "@/modules/operacion/etiqueta-same-day-pdf";
+import { referenciaTiendaDePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 
 interface Params {
   params: Promise<{ pedidoId: string }>;
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
   const { data: pedido, error: errorLectura } = await cliente
     .from("pedidos")
     .select(
-      "id, tenant_id, seller_id, tipo_pedido, fuente, codigo_interno, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso",
+      "id, tenant_id, seller_id, tipo_pedido, fuente, codigo_interno, referencia_externa, destinatario_nombre, destinatario_direccion, destinatario_comuna, destinatario_telefono, instrucciones_entrega, fecha_compromiso",
     )
     .eq("id", pedidoId)
     .eq("tenant_id", tenantId)
@@ -149,6 +150,7 @@ export async function GET(request: NextRequest, { params }: Params): Promise<Nex
       destinatarioComuna: pedido.destinatario_comuna,
       destinatarioTelefono: pedido.destinatario_telefono ?? null,
       sellerNombre: seller?.razon_social ?? "—",
+      referenciaTienda: referenciaTiendaDePedido(pedido.fuente, pedido.referencia_externa),
       fechaCompromiso: pedido.fecha_compromiso ?? null,
       instruccionesEntrega: pedido.instrucciones_entrega ?? null,
       formato,

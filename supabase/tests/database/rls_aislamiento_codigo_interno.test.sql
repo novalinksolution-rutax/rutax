@@ -3,14 +3,15 @@
 -- =============================================================================
 -- Demuestra, contra una base Postgres real (no mocks de aplicación):
 --   1. La columna operacion.pedidos.codigo_interno existe y es NULLABLE.
---   2. El índice único parcial por tenant existe (idx_pedidos_codigo_interno_uk).
+--   2. El índice único parcial es GLOBAL (idx_pedidos_codigo_interno_global_uk,
+--      solo sobre codigo_interno) y el viejo por tenant ya no existe.
 --   3. Aislamiento de TENANT (P1): un usuario del tenant A NO lee el codigo_interno
 --      de un pedido del tenant B a través de public.pedidos (bajo RLS).
 --   4. Aislamiento de SELLER (P2): el seller A solo ve el codigo_interno de SUS
 --      pedidos, NO el de otro seller del mismo tenant.
---   5. La unicidad de codigo_interno es POR TENANT: el mismo código puede existir
---      en dos tenants distintos (no colisiona), pero repetirlo dentro del mismo
---      tenant es rechazado (23505).
+--   5. La unicidad de codigo_interno es GLOBAL (desde 2026-09-29): repetirlo en
+--      OTRO tenant es rechazado (23505), igual que dentro del mismo. Antes esta
+--      prueba afirmaba lo contrario — el mismo código podía vivir en dos couriers.
 --
 -- Mecanismo: idéntico a rls_aislamiento_operacion.test.sql — simulamos el JWT
 -- fijando `request.jwt.claims` y conmutando el rol a `authenticated`. Los fixtures
@@ -21,7 +22,7 @@
 
 begin;
 
-select plan(9);
+select plan(10);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (redefinidos aquí — cada .test.sql corre en su
@@ -78,15 +79,19 @@ select col_is_null(
 );
 
 select has_index(
+  'operacion', 'pedidos', 'idx_pedidos_codigo_interno_global_uk', array['codigo_interno'],
+  'Existe el índice único parcial GLOBAL, solo sobre codigo_interno (sin tenant_id)'
+);
+
+select hasnt_index(
   'operacion', 'pedidos', 'idx_pedidos_codigo_interno_uk',
-  'Existe el índice único parcial idx_pedidos_codigo_interno_uk'
+  'El índice por tenant se retiró: si volviera, alguien podría creer que basta'
 );
 
 -- -----------------------------------------------------------------------------
 -- Fixtures: dos tenants (A y B). Tenant A tiene 2 sellers (s_a, s_a2) con un
 -- pedido same-day cada uno y su codigo_interno. Tenant B tiene 1 seller con un
--- pedido same-day que reutiliza el MISMO codigo_interno que un pedido de A (para
--- probar que la unicidad es por tenant, no global). Insertados como `postgres`.
+-- pedido same-day con su PROPIO código. Insertados como `postgres`.
 -- -----------------------------------------------------------------------------
 do $$
 declare
@@ -102,7 +107,7 @@ declare
 
   pedido_a1 uuid := 'aaaaaaaa-6666-0000-0000-000000000001'; -- seller A,  code RX-AAAA-0001
   pedido_a3 uuid := 'aaaaaaaa-6666-0000-0000-000000000003'; -- seller A2, code RX-AAAA-0003
-  pedido_b1 uuid := 'bbbbbbbb-6666-0000-0000-000000000001'; -- seller B,  code RX-AAAA-0001 (dup cross-tenant)
+  pedido_b1 uuid := 'bbbbbbbb-6666-0000-0000-000000000001'; -- seller B,  code RX-BBBB-0001
 begin
   insert into identidad.tenants (id, nombre_fantasia, razon_social, rut, estado)
   values
@@ -129,8 +134,7 @@ begin
     (u_seller_a,  t_a, 'Usuario Seller A', 'seller',  s_a,  null, 'seller', 'activo')
   on conflict (id) do nothing;
 
-  -- Pedidos same-day con codigo_interno. pedido_a1 y pedido_b1 comparten código
-  -- (distinto tenant) — la unicidad es por tenant, así que no colisionan.
+  -- Pedidos same-day con codigo_interno, todos distintos: el índice es global.
   insert into operacion.pedidos (id, tenant_id, seller_id, tipo_pedido, fuente, origen,
     ml_shipment_id, estado, destinatario_nombre, destinatario_direccion,
     destinatario_comuna, codigo_interno)
@@ -140,20 +144,28 @@ begin
     (pedido_a3, t_a, s_a2, 'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
      'Destinatario A3', 'Calle A 3', 'Las Condes', 'RX-AAAA-0003'),
     (pedido_b1, t_b, s_b,  'same_day', 'rutax_manual', 'same_day_manual', null, 'pendiente_asignacion',
-     'Destinatario B1', 'Calle B 1', 'Vitacura',   'RX-AAAA-0001')
+     'Destinatario B1', 'Calle B 1', 'Vitacura',   'RX-BBBB-0001')
   on conflict (id) do nothing;
 end $$;
 
 -- =============================================================================
--- BLOQUE 1 · Unicidad POR TENANT (no global)
+-- BLOQUE 1 · Unicidad GLOBAL
 -- =============================================================================
--- El mismo codigo_interno ya vive en tenant A (pedido_a1) y en tenant B
--- (pedido_b1) sin colisión: si el índice fuera global, el INSERT del fixture
--- habría fallado. Lo comprobamos leyendo ambos como postgres (sin RLS).
-select results_eq(
-  $$ select count(*)::int from operacion.pedidos where codigo_interno = 'RX-AAAA-0001' $$,
-  $$ values (2) $$,
-  'Unicidad por tenant: el mismo codigo_interno coexiste en dos tenants distintos'
+-- Reusar en el tenant B un código que ya tiene el tenant A es rechazado (23505).
+-- Es el caso que el índice por tenant dejaba pasar.
+select throws_ok(
+  $$ insert into operacion.pedidos (tenant_id, seller_id, tipo_pedido, fuente, origen,
+       estado, destinatario_nombre, destinatario_direccion, destinatario_comuna,
+       codigo_interno)
+     values
+       ('bbbbbbbb-0000-0000-0000-000000000002',  -- t_b (OTRO tenant)
+        'bbbbbbbb-1111-0000-0000-000000000002',  -- s_b
+        'same_day', 'rutax_manual', 'same_day_manual', 'pendiente_asignacion',
+        'Dup B', 'Calle Dup', 'Ñuñoa',
+        'RX-AAAA-0001') $$,                        -- código ya usado en t_a
+  '23505',  -- unique_violation
+  null,
+  'Unicidad global: repetir en otro tenant un codigo_interno ya usado es rechazado'
 );
 
 -- Repetir el código DENTRO del mismo tenant A es rechazado (23505).
@@ -169,7 +181,7 @@ select throws_ok(
         'RX-AAAA-0001') $$,                        -- código ya usado en t_a
   '23505',  -- unique_violation
   null,
-  'Unicidad por tenant: repetir codigo_interno dentro del mismo tenant es rechazado'
+  'Unicidad global: repetir codigo_interno dentro del mismo tenant también es rechazado'
 );
 
 -- =============================================================================
@@ -189,12 +201,11 @@ select is_empty(
   'P1: interno del tenant A NO ve pedidos del tenant B'
 );
 
--- Aunque el código 'RX-AAAA-0001' existe en ambos tenants, el interno de A solo
--- alcanza la fila de SU tenant (una sola, la de pedido_a1).
-select results_eq(
-  $$ select count(*)::int from public.pedidos where codigo_interno = 'RX-AAAA-0001' $$,
-  $$ values (1) $$,
-  'P1: buscando por codigo_interno, el interno de A solo ve la fila de su tenant (no la del tenant B)'
+-- Aunque conozca el código exacto de un pedido del tenant B, el interno de A no
+-- lo alcanza: la barrera es la RLS de fila, no la unicidad del código.
+select is_empty(
+  $$ select 1 from public.pedidos where codigo_interno = 'RX-BBBB-0001' $$,
+  'P1: buscando por el codigo_interno de un pedido del tenant B, el interno de A no ve nada'
 );
 
 -- =============================================================================

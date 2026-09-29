@@ -40,6 +40,12 @@ export interface EtiquetaSameDayPdfProps {
   destinatarioComuna: string;
   destinatarioTelefono?: string | null;
   sellerNombre: string;
+  /**
+   * Cómo llama la tienda de origen a este pedido — «Shopify #1001». Va pegado al
+   * remitente: es lo que el seller busca en su propio admin cuando tiene la
+   * caja en la mano. `null` en pedidos propios, que no tienen otra referencia.
+   */
+  referenciaTienda?: string | null;
   /** Fecha compromiso 'YYYY-MM-DD'. */
   fechaCompromiso?: string | null;
   /**
@@ -91,7 +97,7 @@ const estilosTermica = StyleSheet.create({
   pagina: {
     fontFamily: "Helvetica",
     fontSize: 15, // --rx-thermal-min-text, el piso absoluto
-    padding: 12,
+    padding: 10,
     color: "#000000",
   },
   // Encabezado sin fondo: rótulo en negro sobre blanco y una regla de 3 px
@@ -104,11 +110,17 @@ const estilosTermica = StyleSheet.create({
     paddingBottom: 6,
     borderBottomWidth: 3, // --rx-thermal-rule-lead
     borderBottomColor: "#000000",
-    marginBottom: 10,
-  },
-  bloqueQr: {
-    alignItems: "center",
     marginBottom: 6,
+  },
+  // ⚠️ QR y código LADO A LADO, no apilados (29-09-2026). Apilados, el QR más
+  // las dos líneas del código a cuerpo 40 se comían media etiqueta, y con
+  // teléfono y fecha el pie saltaba a una SEGUNDA hoja: en térmica eso son dos
+  // etiquetas por bulto, la segunda suelta y sin QR. Lado a lado cabe en una.
+  bloqueQr: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
   },
   qr: {
     width: 100, // --rx-thermal-qr · 2,6 cm
@@ -116,14 +128,15 @@ const estilosTermica = StyleSheet.create({
     // Zona de silencio: sin ella el lector engancha el texto de al lado como si
     // fuera parte del símbolo y falla a media luz.
     padding: 4, // --rx-thermal-qr-quiet
+    marginRight: 8,
   },
-  // El código, PRIMERA aparición: grande y partido, para leerlo de lejos.
+  // El código, PRIMERA aparición: grande y partido, para leerlo de lejos. Baja
+  // de 40 a 34 para caber al lado del QR en 10 cm; sigue siendo lo más grande
+  // de la etiqueta.
   codigo: {
     fontFamily: "Courier-Bold",
-    fontSize: 40, // --rx-thermal-code
+    fontSize: 34, // --rx-thermal-code
     letterSpacing: 1,
-    textAlign: "center",
-    marginTop: 4,
     lineHeight: 1.05,
   },
   // SEGUNDA aparición: sin guiones, para digitarlo sin equivocarse. Todo código
@@ -132,13 +145,30 @@ const estilosTermica = StyleSheet.create({
     fontFamily: "Courier",
     fontSize: 15,
     letterSpacing: 2,
-    textAlign: "center",
-    marginTop: 2,
+    marginTop: 4,
+  },
+  // «Shopify #1001» bajo el código, en el hueco que deja el QR a su lado: no
+  // suma alto y queda junto al identificador, que es donde se mira primero.
+  referenciaTienda: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 15,
+    marginTop: 4,
+  },
+  // Teléfono, remitente y fecha: rótulo y valor en UNA línea. Son datos de
+  // consulta, no de clasificación; la comuna y el nombre conservan su rótulo
+  // arriba y su cuerpo grande.
+  lineaDato: {
+    fontSize: 15,
+    marginBottom: 3,
+  },
+  rotuloEnLinea: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 15,
   },
   separador: {
     borderBottomWidth: 2, // --rx-thermal-rule
     borderBottomColor: "#000000",
-    marginVertical: 8,
+    marginVertical: 6,
   },
   etiquetaCampo: {
     fontSize: 15, // el piso también rige para los rótulos
@@ -277,6 +307,7 @@ function DocumentoEtiqueta({
   destinatarioComuna,
   destinatarioTelefono,
   sellerNombre,
+  referenciaTienda,
   fechaCompromiso,
   formato,
   qrDataUrl,
@@ -286,6 +317,10 @@ function DocumentoEtiqueta({
 
   return (
     <Document title={`Etiqueta ${codigoInterno}`} author="Rutax">
+      {/* ⚠️ NO usar `wrap={false}` para forzar una hoja: @react-pdf ajusta
+          entonces el ALTO de la página al contenido (397, 430 pt…) y la
+          etiqueta deja de medir 10×15. Que quepa lo garantiza el diseño, y lo
+          vigila `etiqueta-same-day-pdf.una-hoja.test.ts`. */}
       <Page
         size={formato === "termica" ? TAMANO_TERMICA : "A4"}
         style={estilos.pagina}
@@ -301,10 +336,13 @@ function DocumentoEtiqueta({
               solo formato obliga a elegir entre las dos lecturas, y las dos
               ocurren todos los días. */}
           {formato === "termica" ? (
-            <>
+            <View>
               <Text style={estilosTermica.codigo}>{partirCodigo(codigoInterno)}</Text>
               <Text style={estilosTermica.codigoDigitable}>{sinGuiones(codigoInterno)}</Text>
-            </>
+              {referenciaTienda ? (
+                <Text style={estilosTermica.referenciaTienda}>{referenciaTienda}</Text>
+              ) : null}
+            </View>
           ) : (
             <Text style={estilos.codigo}>{codigoInterno}</Text>
           )}
@@ -339,22 +377,49 @@ function DocumentoEtiqueta({
           </>
         )}
 
-        {destinatarioTelefono ? (
+        {/* La referencia de la tienda («Shopify #1001»): en térmica va junto al
+            código (arriba); en carta, pegada al remitente, que ahí sobra alto. */}
+        {formato === "termica" ? (
           <>
-            <Text style={estilos.etiquetaCampo}>Teléfono</Text>
-            <Text style={estilos.valor}>{destinatarioTelefono}</Text>
+            {destinatarioTelefono ? (
+              <Text style={estilosTermica.lineaDato}>
+                <Text style={estilosTermica.rotuloEnLinea}>TELÉFONO </Text>
+                {destinatarioTelefono}
+              </Text>
+            ) : null}
+            <Text style={estilosTermica.lineaDato}>
+              <Text style={estilosTermica.rotuloEnLinea}>REMITENTE </Text>
+              {sellerNombre}
+            </Text>
+            {fechaFormateada ? (
+              <Text style={estilosTermica.lineaDato}>
+                <Text style={estilosTermica.rotuloEnLinea}>COMPROMISO </Text>
+                {fechaFormateada}
+              </Text>
+            ) : null}
           </>
-        ) : null}
-
-        <Text style={estilos.etiquetaCampo}>Remitente</Text>
-        <Text style={estilos.valor}>{sellerNombre}</Text>
-
-        {fechaFormateada ? (
+        ) : (
           <>
-            <Text style={estilos.etiquetaCampo}>Fecha compromiso</Text>
-            <Text style={estilos.valor}>{fechaFormateada}</Text>
+            {destinatarioTelefono ? (
+              <>
+                <Text style={estilos.etiquetaCampo}>Teléfono</Text>
+                <Text style={estilos.valor}>{destinatarioTelefono}</Text>
+              </>
+            ) : null}
+
+            <Text style={estilos.etiquetaCampo}>Remitente</Text>
+            <Text style={estilos.valor}>
+              {referenciaTienda ? `${sellerNombre} · ${referenciaTienda}` : sellerNombre}
+            </Text>
+
+            {fechaFormateada ? (
+              <>
+                <Text style={estilos.etiquetaCampo}>Fecha compromiso</Text>
+                <Text style={estilos.valor}>{fechaFormateada}</Text>
+              </>
+            ) : null}
           </>
-        ) : null}
+        )}
 
         {/* ⚠️ ACÁ SE IMPRIMÍAN LAS INSTRUCCIONES DE ENTREGA, y se retiraron
             (decisión del usuario, 23-08-2026).
@@ -366,9 +431,13 @@ function DocumentoEtiqueta({
             La instrucción **no se perdió**: sigue en el pedido y el conductor la
             ve en la app, que es donde solo la ve él. */}
 
-        <View style={estilos.pie}>
-          <Text>Etiqueta operativa interna · Rutax</Text>
-        </View>
+        {/* El pie no va en térmica: repetía lo que ya dice el encabezado y era lo
+            primero que saltaba a una segunda hoja. */}
+        {formato === "termica" ? null : (
+          <View style={estilos.pie}>
+            <Text>Etiqueta operativa interna · Rutax</Text>
+          </View>
+        )}
       </Page>
     </Document>
   );
