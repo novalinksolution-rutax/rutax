@@ -3,11 +3,15 @@
  * (tarifa → $0) de la bandeja de asignación.
  *
  * Un doble PROPIO (no el de `asignacion.test.ts`): esta función toca una
- * tabla más (`tarifas`, vía `detectarPedidosSinTarifa` → `resolverTarifaVigente`
- * en `./tarifas`) que el resto del módulo no necesita, así que reimplementar
- * el doble estricto de `asignacion.test.ts` para una sola función no vale la
- * pena. Este doble es deliberadamente más simple: solo entiende los filtros
- * que `resolverTarifaVigente` y esta función realmente usan.
+ * RPC más (`identidad.resolver_tarifa_por_comuna`, vía `detectarPedidosSinTarifa`
+ * → `resolverTarifaVigente` en `./tarifas`) que el resto del módulo no necesita.
+ * Este doble es deliberadamente simple.
+ *
+ * ⚠️ El `rpc` de este doble es un SUSTITUTO de la función SQL, no su prueba: la
+ * resolución real (precedencia, zonas, respaldo) la verifica pgTAP
+ * (`identidad_resolver_tarifa.test.sql`). Aquí solo se necesita que «hay tarifa /
+ * no hay tarifa» responda por seller, régimen y fuente, que es lo que consume el
+ * detector.
  */
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -32,6 +36,8 @@ function pedidoSeed(overrides: Partial<{
   retirado_en: string;
   seller_id: string;
   tipo_pedido: string;
+  fuente: string;
+  destinatario_comuna: string;
 }>) {
   const n = ++contadorId;
   return {
@@ -42,6 +48,8 @@ function pedidoSeed(overrides: Partial<{
     retirado_en: HOY_09H,
     seller_id: SELLER_SAME_DAY_SIN_TARIFA,
     tipo_pedido: "same_day",
+    fuente: "rutax_manual",
+    destinatario_comuna: "Providencia",
     ...overrides,
   };
 }
@@ -133,6 +141,40 @@ function crearClienteFalso(entrada: {
       throw new Error(`[doble] tabla inesperada en el esquema por defecto: '${tabla}'`);
     },
     schema(esquema: string) {
+      if (esquema === "identidad") {
+        return {
+          async rpc(nombre: string, args: Record<string, string | null>) {
+            if (nombre !== "resolver_tarifa_por_comuna") {
+              throw new Error(`[doble] rpc inesperado: '${nombre}'`);
+            }
+            const candidatas = entrada.tarifas.filter(
+              (t) =>
+                t.tenant_id === args.p_tenant &&
+                t.estado === "activa" &&
+                String(t.vigente_desde) <= String(args.p_fecha) &&
+                (t.vigente_hasta == null || String(t.vigente_hasta) >= String(args.p_fecha)) &&
+                (t.seller_id == null || t.seller_id === args.p_seller) &&
+                (t.fuente == null || t.fuente === args.p_fuente) &&
+                (t.tipo_entrega == null || t.tipo_entrega === args.p_tipo_pedido),
+            );
+            const elegida = candidatas[0];
+            return {
+              data: [
+                {
+                  tarifa_id: elegida ? elegida.id : null,
+                  zona_id: null,
+                  zona_por_respaldo: false,
+                  por_seller: elegida?.seller_id != null,
+                  por_fuente: elegida?.fuente != null,
+                  por_regimen: elegida?.tipo_entrega != null,
+                  por_zona: false,
+                },
+              ],
+              error: null,
+            };
+          },
+        };
+      }
       if (esquema !== "operacion") throw new Error(`[doble] esquema inesperado: '${esquema}'`);
       return {
         from(tabla: string) {

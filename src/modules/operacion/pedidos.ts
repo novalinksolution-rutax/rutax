@@ -38,7 +38,7 @@ import { ahoraEnSantiago, hoyEnSantiago } from "@/lib/fecha-santiago";
 import { filtroPedidosDelDia } from "./dia-operativo";
 import { resolverZona } from "./zonas";
 import { evaluarVentanaCorte } from "./ventanas-corte";
-import { resolverTarifaVigente } from "./tarifas";
+import { resolverTarifa } from "./tarifas";
 import { podEsAutoritativoEnRutax, podLoGobiernaLaFuente } from "./fuente";
 import { ErrorPedidoNoEncontrado } from "./errores";
 import { ErrorValidacion, ErrorConflicto } from "@/modules/identidad/errores";
@@ -1173,30 +1173,39 @@ export async function crearPedidoSameDay(
   cliente: SupabaseClient,
   entrada: CrearPedidoSameDayEntrada,
 ): Promise<ResultadoCrearPedidoSameDay> {
-  // --- 1. Tarifa vigente -------------------------------------------------------
+  // --- 1. Comuna y zona (ANTES que la tarifa) ---------------------------------
+  // La tarifa depende de la zona de la comuna (y, si la comuna no está mapeada, de
+  // la zona de respaldo), así que la comuna se canoniza primero. Normalizar antes
+  // de llamar a resolver_zona: la función SQL compara por igualdad exacta y espera
+  // la forma canónica del catálogo.
   const { fecha: fechaHoy } = ahoraEnSantiago(); // 'YYYY-MM-DD' en Santiago
 
-  const tarifaAplicableId = await resolverTarifaVigente(cliente, {
-    tenantId: entrada.tenantId,
-    sellerId: entrada.sellerId,
-    tipoEntrega: "same_day",
-    fecha: fechaHoy,
-  });
-
-  if (!tarifaAplicableId) {
-    throw new ErrorValidacion(
-      "El seller no tiene una tarifa configurada para pedidos propios — " +
-        "configúrala en /onboarding/tarifas antes de crear pedidos",
-    );
-  }
-
-  // --- 2. Resolver zona de la comuna -----------------------------------------
-  // Normalizar la comuna antes de llamar a resolver_zona (la función SQL compara
-  // por igualdad exacta y espera la forma canónica del catálogo).
   const comunaCanonica = resolverComunaCanonica(entrada.destinatarioComuna);
   const zonaId = comunaCanonica
     ? await resolverZona(cliente, entrada.tenantId, comunaCanonica)
     : null;
+
+  // --- 2. Tarifa aplicable ------------------------------------------------------
+  // `resolverTarifa` (identidad.resolver_tarifa_por_comuna): seller > tenant,
+  // fuente > régimen > general, zona > sin zona. El alta manual es fuente
+  // 'rutax_manual' y régimen 'same_day'.
+  const tarifaAplicableId = (
+    await resolverTarifa(cliente, {
+      tenantId: entrada.tenantId,
+      sellerId: entrada.sellerId,
+      fuente: "rutax_manual",
+      tipoPedido: "same_day",
+      comuna: comunaCanonica,
+      fecha: fechaHoy,
+    })
+  ).tarifaId;
+
+  if (!tarifaAplicableId) {
+    throw new ErrorValidacion(
+      "El seller no tiene una tarifa configurada para pedidos propios — " +
+        "configúrala en /configuracion/tarifas antes de crear pedidos",
+    );
+  }
 
   // --- 3-4. Resolver la ventana de corte y evaluarla en TZ Santiago -----------
   // El cálculo vive en `evaluarVentanaCorte` (./ventanas-corte.ts) porque lo

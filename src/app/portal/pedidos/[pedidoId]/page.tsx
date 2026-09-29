@@ -368,20 +368,18 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
     } else if (pedido.tarifaAplicableId) {
       const { data: tarifa } = await cliente
         .from("tarifas")
-        .select("monto_clp, tipo_entrega")
+        .select("monto_clp")
         .eq("id", pedido.tarifaAplicableId)
         .eq("tenant_id", tenantId)
         .maybeSingle();
       if (tarifa) {
         cobro = {
           montoClp: Number(tarifa.monto_clp),
-          // `tipo_entrega` es el identificador de la tarifa ('flex',
-          // 'same_day'): imprimirlo crudo daba «Entrega flex» y, peor,
-          // «Entrega same_day» con guion bajo a la vista.
-          concepto:
-            (tarifa.tipo_entrega as string) === "same_day"
-              ? "Entrega del día"
-              : "Entrega Flex",
+          // El rótulo sale del RÉGIMEN DEL PEDIDO, no de la tarifa: desde
+          // 20260928000002 `tarifas.tipo_entrega` puede ser NULL (tarifa por
+          // fuente o general) y leerlo de ahí rotulaba todo como «Flex».
+          // Tampoco se imprime el identificador crudo («same_day»).
+          concepto: pedido.tipoPedido === "same_day" ? "Entrega del día" : "Entrega Flex",
           esDefinitivo: false,
           periodoEtiqueta: null,
           periodoAbierto: false,

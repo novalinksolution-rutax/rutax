@@ -31,6 +31,7 @@ import {
   type AbiertoControlable,
 } from "../usar-abierto-controlable";
 import { useCallback, useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -106,6 +107,7 @@ export function DialogEmitirFactura({
   // lo pierde quien parpadea, y la pregunta que deja —¿se consumió el folio?—
   // no tiene dónde leerse después.
   const [errorEmision, setErrorEmision] = useState<string | null>(null);
+  const [enlaceEmision, setEnlaceEmision] = useState<{ href: string; etiqueta: string } | null>(null);
   // El comprobante en sitio: mientras exista, el cuadro deja de ser ceremonia.
   const [comprobante, setComprobante] = useState<ComprobanteActo | null>(null);
 
@@ -137,6 +139,7 @@ export function DialogEmitirFactura({
 
   function handleConfirmar() {
     setErrorEmision(null);
+    setEnlaceEmision(null);
     startTransition(async () => {
       if (verificacionOmitida) {
         try {
@@ -198,6 +201,7 @@ export function DialogEmitirFactura({
         router.refresh();
       } else {
         setErrorEmision(resultado.mensaje ?? "No pudimos emitir la factura.");
+        setEnlaceEmision(resultado.enlace ?? null);
       }
     });
   }
@@ -218,6 +222,14 @@ export function DialogEmitirFactura({
         <>
           <strong>No pudimos emitir la factura.</strong> {errorEmision} El
           período sigue cerrado y puedes volver a intentarlo.
+          {enlaceEmision ? (
+            <>
+              {" "}
+              <Link href={enlaceEmision.href} className="font-medium underline">
+                {enlaceEmision.etiqueta} ›
+              </Link>
+            </>
+          ) : null}
         </>
       ),
     });

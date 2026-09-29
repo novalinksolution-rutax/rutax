@@ -20,7 +20,9 @@ import {
   puedeVerReportesEjecutivos,
   puedeVerConciliacion,
   puedeGestionarSuscripcion,
+  puedeGestionarTarifas,
 } from "@/modules/identidad/capacidades";
+import { obtenerCoberturaPorRespaldo } from "@/modules/operacion/cobertura-respaldo";
 import { verificarLimite } from "@/modules/plataforma/enforcement";
 import { obtenerComunicacionesActivasParaCourier } from "@/modules/plataforma/comunicaciones";
 import { UMBRAL_FOLIOS } from "@/modules/dinero/folios";
@@ -111,7 +113,7 @@ async function avisosFoliosBajos(tenantId: string): Promise<Aviso[]> {
         descripcion: agotado
           ? "La emisión de facturas está detenida hasta subir un nuevo CAF."
           : "Sube un nuevo CAF para no interrumpir la facturación.",
-        href: "/onboarding/folios",
+        href: "/configuracion/facturacion#folios",
         accion: "Cargar folios",
       },
     ];
@@ -283,6 +285,42 @@ async function avisosDiscrepanciasConciliacion(tenantId: string): Promise<Aviso[
   }
 }
 
+/**
+ * Comunas sin zona que hoy se cobran por la zona de respaldo (Q6: «se cobra como
+ * Periferia y se avisa»). Derivado en cada lectura, sin persistir: desaparece
+ * solo cuando el courier mapea la comuna. Ver `cobertura-respaldo.ts`.
+ */
+async function avisosComunasPorRespaldo(tenantId: string): Promise<Aviso[]> {
+  try {
+    const cliente = crearClienteServiceRole();
+    const cobertura = await obtenerCoberturaPorRespaldo(cliente, {
+      tenantId,
+      fecha: ahoraEnSantiago().fecha,
+    });
+    if (!cobertura) return [];
+
+    const nombres = cobertura.comunas.slice(0, 3).map((c) => c.comuna).join(", ");
+    const resto = cobertura.comunas.length - 3;
+    return [
+      {
+        id: "comunas-por-respaldo",
+        urgencia: "importante",
+        titulo:
+          cobertura.comunas.length === 1
+            ? `${cobertura.comunas[0].comuna} no tiene zona`
+            : `${cobertura.comunas.length} comunas sin zona`,
+        descripcion:
+          `${cobertura.totalPedidos} pedido${cobertura.totalPedidos !== 1 ? "s" : ""} de hoy se cobra${cobertura.totalPedidos !== 1 ? "n" : ""} como ${cobertura.zonaRespaldoNombre}: ` +
+          `${nombres}${resto > 0 ? ` y ${resto} más` : ""}.`,
+        href: "/configuracion/zonas",
+        accion: "Asignar zona",
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
 /** Días de anticipación con que se avisa un SLA de excepción por vencer. */
 const UMBRAL_EXCEPCION_DIAS = 2;
 
@@ -439,6 +477,9 @@ export async function obtenerAvisos(
   if (puedeVerConciliacion(usuario)) {
     tareas.push(avisosDiscrepanciasConciliacion(tenantId));
     tareas.push(avisosExcepcionesVencidas(tenantId, usuarioId));
+  }
+  if (puedeGestionarTarifas(usuario)) {
+    tareas.push(avisosComunasPorRespaldo(tenantId));
   }
   if (puedeGestionarSuscripcion(usuario)) {
     tareas.push(avisosConsumoPlan(tenantId));

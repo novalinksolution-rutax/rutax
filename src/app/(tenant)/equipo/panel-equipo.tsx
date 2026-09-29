@@ -55,7 +55,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DistintivoEstado } from "@/components/ui/distintivo-estado";
-import { EstadoError, EstadoVacio } from "@/components/onboarding/estado-pantalla";
+import { EstadoError, EstadoVacio } from "@/components/estado/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { PermisosPorRol } from "./permisos-por-rol";

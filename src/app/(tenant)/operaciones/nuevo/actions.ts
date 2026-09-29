@@ -138,6 +138,9 @@ export async function actionEstadoSellerParaAlta(
       tenantId,
       sellerId,
       tipoEntrega: "same_day",
+      // Aún no hay comuna (se elige después del seller): responde «¿tiene alguna
+      // tarifa que le aplique?», que es lo que este aviso puede afirmar.
+      fuente: "rutax_manual",
       fecha: ahoraEnSantiago().fecha,
     }).catch(() => null),
   ]);

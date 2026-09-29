@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatearCLP, formatearAjuste } from "@/lib/ui/formato-moneda";
 import { traducirTipoIncidencia } from "@/lib/ui/traduccion-estados";
-import { etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
+import { etiquetaFuentePedido, etiquetaTipoEntrega } from "@/lib/ui/etiqueta-fuente-pedido";
 import type { TipoIncidencia } from "@/modules/operacion/tipos";
 import { cn } from "@/lib/utils";
 import { formatearFechaHora } from "@/lib/formato-cl";
@@ -49,6 +49,28 @@ function textoTraducido(mapa: Record<string, string>, valor: unknown): string {
 
 function textoOGuion(valor: unknown): string {
   return typeof valor === "string" && valor ? valor : "—";
+}
+
+/**
+ * A qué aplica la tarifa, tolerando las dos versiones del snapshot.
+ * v1 (y tarifas legadas): `tarifa.tipo_entrega` es el régimen. v2: las tarifas
+ * nuevas lo dejan NULL y traen `tarifa.fuente_pedido_tarifa` (la plataforma) o
+ * nada, que significa tarifa general. Un snapshot sin ninguna de las dos claves
+ * (v1 antiguo con tipo_entrega null) cae también en «General».
+ */
+export function alcanceDeTarifa(tarifa: Record<string, unknown>): string {
+  if (typeof tarifa.tipo_entrega === "string" && tarifa.tipo_entrega) {
+    return etiquetaTipoEntrega(tarifa.tipo_entrega);
+  }
+  if (typeof tarifa.fuente_pedido_tarifa === "string" && tarifa.fuente_pedido_tarifa) {
+    return etiquetaFuentePedido(tarifa.fuente_pedido_tarifa);
+  }
+  return "General";
+}
+
+/** true solo si el snapshot (v2) dice que la comuna se cobró por la zona de respaldo. */
+export function cobradaPorZonaDeRespaldo(zona: Record<string, unknown> | null): boolean {
+  return zona?.por_respaldo === true;
 }
 
 function montoONull(valor: unknown): string | null {
@@ -164,7 +186,7 @@ export function PopoverSnapshotRegla({ snapshotRegla, className, iconoSolo = fal
               <div>
                 <dt className="font-medium text-muted-foreground">Tarifa aplicada</dt>
                 <dd className="mt-0.5">
-                  {etiquetaTipoEntrega(typeof tarifa.tipo_entrega === "string" ? tarifa.tipo_entrega : null)} ·{" "}
+                  {alcanceDeTarifa(tarifa)} ·{" "}
                   {textoTraducido(MODO_CALCULO_TEXTO, tarifa.modo_calculo)} ·{" "}
                   <span className="font-medium tabular-nums">
                     {montoONull(tarifa.valor_base_clp) ?? "—"}
@@ -181,6 +203,7 @@ export function PopoverSnapshotRegla({ snapshotRegla, className, iconoSolo = fal
                   {typeof zona.comuna_destinatario === "string" && zona.comuna_destinatario && (
                     <> · Comuna: {zona.comuna_destinatario}</>
                   )}
+                  {cobradaPorZonaDeRespaldo(zona) && <> · Comuna sin zona: se cobró como zona de respaldo</>}
                 </dd>
               </div>
             )}

@@ -10,7 +10,7 @@ import { useState } from "react";
 import { Warehouse } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { EstadoCargando, EstadoError } from "@/components/onboarding/estado-pantalla";
+import { EstadoCargando, EstadoError } from "@/components/estado/estado-pantalla";
 import { accionListarBodegasCourier, type BodegaFila } from "./actions";
 import { PanelBodega } from "./panel-bodega";
 import { TarjetaBodega } from "./tarjeta-bodega";

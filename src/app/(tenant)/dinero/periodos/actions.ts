@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { ErrorValidacion, type EnlaceError } from "@/modules/identidad/errores";
 import { cerrarPeriodoManualmente, emitirFacturaPeriodo, reabrirPeriodo } from "@/modules/dinero/acciones";
 
 // =============================================================================
@@ -19,7 +20,7 @@ import { cerrarPeriodoManualmente, emitirFacturaPeriodo, reabrirPeriodo } from "
 
 export async function accionCerrarPeriodo(
   periodoId: string,
-): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+): Promise<{ ok: true } | { ok: false; mensaje: string; enlace?: EnlaceError }> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) {
     return { ok: false, mensaje: "No autenticado." };
@@ -38,7 +39,7 @@ export async function accionCerrarPeriodo(
   } catch (err) {
     const mensaje =
       err instanceof Error ? err.message : "Error desconocido al cerrar el período.";
-    return { ok: false, mensaje };
+    return { ok: false, mensaje, enlace: err instanceof ErrorValidacion ? err.enlace : undefined };
   }
 }
 /**
@@ -86,7 +87,7 @@ export async function accionReabrirPeriodo(
  */
 export async function accionEmitirFactura(
   periodoId: string,
-): Promise<{ ok: true } | { ok: false; mensaje: string }> {
+): Promise<{ ok: true } | { ok: false; mensaje: string; enlace?: EnlaceError }> {
   const sesion = await obtenerSesionActual();
   if (!sesion?.usuario.tenantId) {
     return { ok: false, mensaje: "No autenticado." };
@@ -106,7 +107,7 @@ export async function accionEmitirFactura(
   } catch (err) {
     const mensaje =
       err instanceof Error ? err.message : "Error desconocido al emitir la factura.";
-    return { ok: false, mensaje };
+    return { ok: false, mensaje, enlace: err instanceof ErrorValidacion ? err.enlace : undefined };
   }
 }
 

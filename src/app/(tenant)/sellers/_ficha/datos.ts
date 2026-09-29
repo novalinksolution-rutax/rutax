@@ -35,7 +35,7 @@ export interface FichaSeller extends VistaPreviaSellerCourier {
     apagadaPorSeller: boolean;
   }[];
   bodegas: { id: string; nombre: string; direccion: string; comuna: string | null }[];
-  tarifas: { id: string; tipoEntrega: string; montoClp: number; montoConductorClp: number | null }[];
+  tarifas: { id: string; tipoEntrega: string | null; montoClp: number; montoConductorClp: number | null }[];
   periodos: { id: string; etiqueta: string; estado: string; montoClp: number | null }[];
   zonas: Zona[];
   /** `null` si nunca se registró por el enlace: no hay acceso que bloquear. */
@@ -152,7 +152,7 @@ export async function cargarFichaSeller(
     })),
     tarifas: ((tarifas.data ?? []) as Fila[]).map((t) => ({
       id: t.id as string,
-      tipoEntrega: t.tipo_entrega as string,
+      tipoEntrega: (t.tipo_entrega as string | null) ?? null,
       montoClp: Number(t.monto_clp),
       montoConductorClp: t.monto_conductor_clp === null ? null : Number(t.monto_conductor_clp),
     })),

@@ -63,7 +63,7 @@ const actorSinPermiso: UsuarioActual = {
 // ---------------------------------------------------------------------------
 
 import { readFileSync } from 'node:fs';
-import { guardarZonaConComunas } from './zonas';
+import { activarDesactivarZona, guardarZonaConComunas } from './zonas';
 import { AREAS_PRODUCTO } from "@/modules/identidad/areas-producto";
 
 /**
@@ -291,5 +291,64 @@ describe('candado: la migración del guardado atómico', () => {
 
   it('no es `security definer`: quien la llama ya pasa por encima de RLS', () => {
     expect(sql).not.toMatch(/security\s+definer/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// activarDesactivarZona: la zona de respaldo no se apaga
+// ---------------------------------------------------------------------------
+
+describe('activarDesactivarZona — zona de respaldo', () => {
+  function clienteConZona(esRespaldo: boolean) {
+    const bitacora: Record<string, unknown>[] = [];
+    const updates: Record<string, unknown>[] = [];
+    const cadena = {
+      select: vi.fn(() => cadena),
+      eq: vi.fn(() => cadena),
+      maybeSingle: vi.fn(() => Promise.resolve({ data: { es_respaldo: esRespaldo }, error: null })),
+      single: vi.fn(() =>
+        Promise.resolve({
+          data: {
+            id: 'zona-1',
+            tenant_id: 'tenant-1',
+            nombre: 'Periferia',
+            activa: false,
+            creado_en: '2026-09-28T00:00:00Z',
+            actualizado_en: '2026-09-28T00:00:00Z',
+          },
+          error: null,
+        }),
+      ),
+      update: vi.fn((valores: Record<string, unknown>) => {
+        updates.push(valores);
+        return cadena;
+      }),
+    };
+    const cliente = {
+      from: vi.fn(() => ({
+        insert: vi.fn((fila: Record<string, unknown>) => {
+          bitacora.push(fila);
+          return Promise.resolve({ error: null });
+        }),
+      })),
+      schema: vi.fn(() => ({ from: vi.fn(() => cadena) })),
+    } as unknown as SupabaseClient;
+    return { cliente, bitacora, updates };
+  }
+
+  it('rechaza desactivar la zona de respaldo sin escribir bitácora ni tocar la fila', async () => {
+    const { cliente, bitacora, updates } = clienteConZona(true);
+    await expect(
+      activarDesactivarZona(cliente, 'tenant-1', 'zona-1', false, 'usuario-1', actorValido),
+    ).rejects.toThrow('No se puede desactivar');
+    expect(bitacora).toHaveLength(0);
+    expect(updates).toHaveLength(0);
+  });
+
+  it('desactiva una zona común: bitácora primero, luego el update', async () => {
+    const { cliente, bitacora, updates } = clienteConZona(false);
+    await activarDesactivarZona(cliente, 'tenant-1', 'zona-1', false, 'usuario-1', actorValido);
+    expect(bitacora).toHaveLength(1);
+    expect(updates).toEqual([{ activa: false }]);
   });
 });

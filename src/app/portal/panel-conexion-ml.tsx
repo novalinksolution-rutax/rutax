@@ -36,7 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { EstadoError } from "@/components/onboarding/estado-pantalla";
+import { EstadoError } from "@/components/estado/estado-pantalla";
 import { formatearFecha, formatearTiempoRelativo } from "@/lib/formato-cl";
 import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { MAX_CUENTAS_ML } from "./conectar-ml/compartido";

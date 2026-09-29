@@ -243,7 +243,7 @@ export default async function PaginaPeriodosCobro({
             restantes={foliosRestantes}
             accion={
               <Link
-                href="/onboarding/folios"
+                href="/configuracion/facturacion#folios"
                 className="text-xs font-medium text-accent-text hover:underline"
               >
                 Subir un CAF ›

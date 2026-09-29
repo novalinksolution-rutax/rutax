@@ -125,6 +125,22 @@ function crearSupabaseMock(opciones: {
     _ultimaTabla: '' as string,
     schema: vi.fn(() => cliente),
     from: vi.fn((tabla: string) => builderPara(tabla)),
+    // La tarifa se resuelve con identidad.resolver_tarifa_por_comuna (siempre
+    // devuelve UNA fila; `tarifa_id` NULL = no hay tarifa aplicable).
+    rpc: vi.fn(async () => ({
+      data: [
+        {
+          tarifa_id: opciones.hayTarifa ? 'tarifa-1' : null,
+          zona_id: null,
+          zona_por_respaldo: false,
+          por_seller: false,
+          por_fuente: false,
+          por_regimen: opciones.hayTarifa,
+          por_zona: false,
+        },
+      ],
+      error: null,
+    })),
   };
 
   return { cliente, upsertCache, updatePedido };
@@ -162,6 +178,7 @@ const pedidoPendiente = {
   seller_id: 'seller-1',
   geo_estado: 'pendiente',
   destinatario_comuna: 'Providencia',
+  fuente: 'ml_flex',
 };
 
 beforeEach(() => {

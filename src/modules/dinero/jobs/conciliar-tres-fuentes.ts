@@ -614,6 +614,33 @@ async function detectorD3_ReprogramacionNoCobrada(
 // monto_diferencia_clp = diferencia hasta el mínimo.
 // =============================================================================
 
+interface FilaTarifaMinimos {
+  minimo_facturacion_clp: number | string | null;
+  minimo_retiro_clp: number | string | null;
+  fuente?: string | null;
+  tipo_entrega?: string | null;
+  zona_id?: string | null;
+  vigente_desde?: string | null;
+  vigente_hasta?: string | null;
+}
+
+/**
+ * De las tarifas activas de un seller, la que manda para los MÍNIMOS: la fila
+ * general (sin zona, sin fuente, sin régimen legado); si no hay, la menos
+ * específica. Entre iguales, la de vigencia más reciente. Pura y determinista:
+ * dos filas nunca dan un resultado que dependa del orden en que llegaron.
+ */
+export function elegirTarifaGeneralParaMinimos<T extends FilaTarifaMinimos>(filas: readonly T[]): T | null {
+  if (filas.length === 0) return null;
+  const especificidad = (f: T) =>
+    (f.zona_id ? 1 : 0) + (f.fuente ? 1 : 0) + (f.tipo_entrega ? 1 : 0);
+  return [...filas].sort(
+    (a, b) =>
+      especificidad(a) - especificidad(b) ||
+      (b.vigente_desde ?? '').localeCompare(a.vigente_desde ?? ''),
+  )[0];
+}
+
 async function detectorD4_MinimoOmitido(
   tenantId: string,
   runId: string,
@@ -640,23 +667,24 @@ async function detectorD4_MinimoOmitido(
     const sellerId = periodo.seller_id as string;
     const montoTotalPeriodo = Math.round(Number(periodo.monto_total_clp ?? 0));
 
-    // Obtener tarifa vigente del seller para este tenant.
+    // Mínimos del seller. Un seller puede tener VARIAS tarifas activas a la vez
+    // (por fuente, por zona, por vigencia): antes `.maybeSingle()` lanzaba
+    // PGRST116 con más de una fila, el `throw` tumbaba el `step.run` del tenant y
+    // D5/D6 tampoco corrían. Los mínimos son del seller, no de una zona: se leen
+    // de su fila GENERAL (`elegirTarifaGeneralParaMinimos`).
     // `identidad.tarifas` no tiene columna booleana `activa`: su estado vive en
-    // la columna `estado` (enum identidad.estado_tarifa: 'activa' | 'inactiva').
-    // Antes se filtraba por `.eq('activa', true)` — columna inexistente → 42703,
-    // el `throw` de la línea siguiente tumbaba el `step.run` completo del tenant
-    // (D5 y D6 tampoco corrían) y, tras 3 reintentos, todo el job C7 fallaba.
-    // Mismo patrón que el fix de `tenants.activo` en el paso 0 de este archivo.
-    const { data: tarifa, error: errTarifa } = await supabase
+    // `estado` (enum 'activa' | 'inactiva').
+    const { data: tarifas, error: errTarifa } = await supabase
       .schema('identidad')
       .from('tarifas')
-      .select('id, minimo_facturacion_clp, minimo_retiro_clp')
+      .select('id, minimo_facturacion_clp, minimo_retiro_clp, fuente, tipo_entrega, zona_id, vigente_desde, vigente_hasta')
       .eq('tenant_id', tenantId)
       .eq('seller_id', sellerId)
-      .eq('estado', 'activa')
-      .maybeSingle();
+      .eq('estado', 'activa');
 
     if (errTarifa) throw new Error(`D4 · Error al leer tarifa seller ${sellerId}: ${errTarifa.message}`);
+
+    const tarifa = elegirTarifaGeneralParaMinimos(tarifas ?? []);
 
     // Sin tarifa configurada o sin mínimos → omitir (no falso positivo).
     if (!tarifa) continue;

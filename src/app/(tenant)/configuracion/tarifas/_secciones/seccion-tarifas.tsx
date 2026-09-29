@@ -107,7 +107,9 @@ export async function SeccionTarifas({
     id: t.id as string,
     sellerId: (t.seller_id as string | null) ?? null,
     sellerNombre: t.seller_id ? (sellersMap.get(t.seller_id as string) ?? null) : null,
-    tipoEntrega: t.tipo_entrega as "flex" | "same_day",
+    // NULL en las tarifas creadas desde 2026-09-28 (aplican por `fuente` o a todo).
+    tipoEntrega: (t.tipo_entrega as "flex" | "same_day" | null) ?? null,
+    fuente: (t.fuente as string | null) ?? null,
     modoCalculo: t.modo_calculo as "monto_fijo" | "por_zona",
     zona: (t.zona as string | null) ?? null,
     montoClp: Number(t.monto_clp),

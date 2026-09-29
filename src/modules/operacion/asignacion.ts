@@ -148,7 +148,7 @@ import type { SellerSinTarifa } from "./retiro/expectativa";
 import { mapaNombresConductores } from "@/modules/identidad/consultas";
 import { ESTADOS_TERMINALES_PEDIDO } from "./metricas";
 import { detectarPedidosSinTarifa } from "./tarifas";
-import type { TipoPedido } from "./tipos";
+import type { FuentePedido, TipoPedido } from "./tipos";
 
 // =============================================================================
 // La segunda reja — fuente de verdad única
@@ -641,13 +641,13 @@ export async function detectarSellersAsignablesSinTarifa(
 ): Promise<SellerSinTarifa[]> {
   const { hasta } = limitesDelDiaSantiago(entrada.fecha);
 
-  const filas = await leerTodasLasFilas<{ id: string; seller_id: string; tipo_pedido: TipoPedido }>(
+  const filas = await leerTodasLasFilas<{ id: string; seller_id: string; tipo_pedido: TipoPedido; fuente: FuentePedido | null; destinatario_comuna: string | null }>(
     "asignables del día para el aviso de tarifa",
     (ini, fin) =>
       cliente
         .schema("operacion")
         .from("pedidos")
-        .select("id, seller_id, tipo_pedido")
+        .select("id, seller_id, tipo_pedido, fuente, destinatario_comuna")
         .eq("tenant_id", entrada.tenantId)
         .eq("situacion_retiro", "retirado")
         .in("estado", ESTADOS_ASIGNABLES)
@@ -660,7 +660,13 @@ export async function detectarSellersAsignablesSinTarifa(
   const sinTarifaIds = await detectarPedidosSinTarifa(
     cliente,
     { tenantId: entrada.tenantId, fecha: entrada.fecha },
-    filas.map((f) => ({ id: f.id, sellerId: f.seller_id, tipoPedido: f.tipo_pedido })),
+    filas.map((f) => ({
+      id: f.id,
+      sellerId: f.seller_id,
+      tipoPedido: f.tipo_pedido,
+      fuente: f.fuente,
+      comuna: f.destinatario_comuna,
+    })),
   );
   if (sinTarifaIds.size === 0) return [];
 

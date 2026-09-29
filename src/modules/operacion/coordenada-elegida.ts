@@ -40,6 +40,9 @@ export async function guardarCoordenadaElegida(
       tenantId: args.tenantId,
       sellerId: args.sellerId,
       tipoEntrega: "same_day",
+      // Esta ruta solo da de alta same-day propio (courier y portal del seller).
+      fuente: "rutax_manual",
+      comuna: args.comunaResuelta ?? args.comunaDeclarada,
       fecha: ahoraEnSantiago().fecha,
     });
 

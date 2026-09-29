@@ -51,8 +51,8 @@ export function PantallaConfiguracion({
   children,
 }: {
   titulo: string;
-  /** Qué es esto, en lenguaje de negocio. No es opcional: sin ella el título solo. */
-  bajada: string;
+  /** Solo si dice algo que el título no dice. */
+  bajada?: string;
   /** La acción principal de la pantalla, si tiene una. Va arriba a la derecha. */
   accion?: React.ReactNode;
   /** Ver el bloque de arriba. `tabla` exige estar también en `rutasAnchas`. */
@@ -64,7 +64,7 @@ export function PantallaConfiguracion({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="font-heading text-2xl font-semibold">{titulo}</h1>
-          <p className="mt-0.5 text-sm leading-relaxed text-fg-muted">{bajada}</p>
+          {bajada ? <p className="mt-0.5 text-sm leading-relaxed text-fg-muted">{bajada}</p> : null}
         </div>
         {accion ? <div className="shrink-0">{accion}</div> : null}
       </div>

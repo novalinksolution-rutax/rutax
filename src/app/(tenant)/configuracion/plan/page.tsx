@@ -10,7 +10,7 @@ import {
   type Entitlements,
 } from "@/modules/plataforma/superficie-courier";
 import { obtenerConsumoTenant, type ConsumoTenant } from "@/modules/plataforma/consumo";
-import { EstadoError } from "@/components/onboarding/estado-pantalla";
+import { EstadoError } from "@/components/estado/estado-pantalla";
 import { obtenerContadorDelMes, type ContadorDelMes } from "@/modules/plataforma/contador-comision";
 import { MiPlan } from "./mi-plan";
 

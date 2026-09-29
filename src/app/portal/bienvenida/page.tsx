@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { Button } from "@/components/ui/button";
-import { EstadoError } from "@/components/onboarding/estado-pantalla";
+import { EstadoError } from "@/components/estado/estado-pantalla";
 import { obtenerDatosBienvenida } from "./actions";
 
 export const metadata: Metadata = {

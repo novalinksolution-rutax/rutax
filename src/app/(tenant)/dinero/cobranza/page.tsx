@@ -177,7 +177,7 @@ export default async function PaginaBandejaCobranza() {
                   sellers solo.
                 </p>
                 <Link
-                  href="/onboarding/cobranza"
+                  href="/configuracion/cobranza"
                   className="mt-3 inline-block text-sm font-medium text-accent-text hover:underline"
                 >
                   Conectar el banco ›

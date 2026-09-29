@@ -45,7 +45,7 @@ export function MarcoPuerta({ children }: { children: ReactNode }) {
         {children}
       </div>
 
-      <div className="hidden lg:block">
+      <div className="hidden min-w-0 overflow-hidden lg:block">
         <LienzoLogin />
       </div>
     </div>

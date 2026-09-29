@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EstadoCargando, EstadoError } from "@/components/onboarding/estado-pantalla";
+import { EstadoCargando, EstadoError } from "@/components/estado/estado-pantalla";
 import { etiquetaSellerConEstado } from "@/lib/ui/traduccion-estados";
 import type { SellerFiltro } from "@/lib/datos-tenant/sellers";
 import { accionListarBodegasSeller, type BodegaFila } from "./actions";

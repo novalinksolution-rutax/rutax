@@ -1129,6 +1129,14 @@ update operacion.manifiestos
   set fecha_operacion = current_date;
 
 -- =============================================================================
+-- Puesta en marcha v2 (migración 20260928000003)
+-- =============================================================================
+-- `db reset` aplica las migraciones ANTES del seed, así que el backfill de la
+-- migración no ve este tenant y el gate del layout lo dejaría bloqueado. Se
+-- llama la MISMA función del backfill (idempotente: no pisa filas existentes).
+select identidad.courier_config_operacion_marcar_existentes(now());
+
+-- =============================================================================
 -- Fin del seed
 -- =============================================================================
 do $$

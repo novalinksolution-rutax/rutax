@@ -61,7 +61,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { limitesDelDiaSantiago } from "@/lib/fecha-santiago";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
-import type { TipoPedido } from "../tipos";
+import type { FuentePedido, TipoPedido } from "../tipos";
 
 import { abrirVisitaBodega } from "./bodegas";
 import { registrarLoteEscaneos, type ResultadoEscaneo } from "./escaneos";
@@ -328,6 +328,8 @@ export interface PedidoPendienteDeRetiro {
    * pantalla) — `registrarRetiroDesdeWeb` no lo usa ni lo necesita.
    */
   tipoPedido: TipoPedido;
+  /** Procedencia; junto con la comuna decide la tarifa (`resolver_tarifa_por_comuna`). */
+  fuente?: FuentePedido | null;
 }
 
 /**
@@ -353,7 +355,7 @@ export async function listarPedidosPendientesDeRetiro(
   const { data, error } = await cliente
     .schema("operacion")
     .from("pedidos")
-    .select("id, ml_shipment_id, codigo_interno, destinatario_comuna, seller_id, tipo_pedido")
+    .select("id, ml_shipment_id, codigo_interno, destinatario_comuna, seller_id, tipo_pedido, fuente")
     .eq("tenant_id", entrada.tenantId)
     .eq("situacion_retiro", "pendiente")
     .eq("estado", "pendiente_asignacion")
@@ -377,6 +379,7 @@ export async function listarPedidosPendientesDeRetiro(
       sellerId: fila.seller_id as string,
       registrable: codigo !== null,
       tipoPedido: fila.tipo_pedido as TipoPedido,
+      fuente: (fila.fuente as FuentePedido | null) ?? null,
     };
   });
 }

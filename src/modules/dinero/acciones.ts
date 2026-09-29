@@ -113,6 +113,7 @@ export async function cerrarPeriodoManualmente(
   if (!periodicidad.explicita) {
     throw new ErrorValidacion(
       'Elige tu periodicidad de facturación antes de cerrar tu primer período.',
+      { href: '/configuracion/tarifas?seccion=periodos', etiqueta: 'Elegir periodicidad' },
     );
   }
 
@@ -404,6 +405,7 @@ export async function emitirFacturaPeriodo(
   if (!datosCobro?.numero_cuenta || String(datosCobro.numero_cuenta).trim().length === 0) {
     throw new ErrorValidacion(
       'Configura dónde te pagan (datos de cobro) antes de emitir facturas.',
+      { href: '/configuracion/facturacion#cobro', etiqueta: 'Configurar' },
     );
   }
 
@@ -439,6 +441,7 @@ export async function emitirFacturaPeriodo(
   if (!(await hayFolioDisponible(tenantId, 33))) {
     throw new ErrorValidacion(
       'No hay folios CAF disponibles para facturas (tipo 33). Carga un nuevo CAF antes de emitir.',
+      { href: '/configuracion/facturacion#folios', etiqueta: 'Cargar folios' },
     );
   }
 
@@ -594,6 +597,7 @@ export async function emitirNotaCreditoPeriodo(
   if (!(await hayFolioDisponible(tenantId, 61))) {
     throw new ErrorValidacion(
       'No hay folios CAF disponibles para notas de crédito (tipo 61). Carga un nuevo CAF antes de emitir.',
+      { href: '/configuracion/facturacion#folios', etiqueta: 'Cargar folios' },
     );
   }
 

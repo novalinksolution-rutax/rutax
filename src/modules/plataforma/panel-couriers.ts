@@ -75,8 +75,8 @@ export interface CourierInvitadoItem {
   tenantId: string;
   nombreFantasia: string | null;
   /**
-   * `true` si el dueño aún no completó su puesta en marcha (razón social o RUT
-   * en NULL). Distingue «invitado, esperando que el dueño entre» de «con datos,
+   * `true` si el dueño aún no completó su puesta en marcha
+   * (`courier_config_operacion.puesta_en_marcha_completada_en` en NULL o sin fila). Distingue «invitado, esperando que el dueño entre» de «con datos,
    * esperando que Rutax le asigne un plan».
    */
   datosPendientes: boolean;
@@ -187,8 +187,8 @@ export async function obtenerPanelCouriers(): Promise<PanelCouriers> {
  * escala de couriers de Rutax es barato, y es el mismo patrón de
  * `obtenerTodosLosTenantsSinSuscripcion`.
  *
- * Se lee `razon_social` y `rut` solo para saber si el dueño ya hizo su puesta
- * en marcha; NO se exponen sus valores en el tipo de salida.
+ * La puesta en marcha se lee de `courier_config_operacion.puesta_en_marcha_completada_en`
+ * (sin fila = pendiente). Ya no se infiere de razón social/RUT: la v2 no los pide.
  */
 async function obtenerCouriersInvitadosSinSuscripcion(
   supabase: ReturnType<typeof crearClienteServiceRole>,
@@ -197,16 +197,36 @@ async function obtenerCouriersInvitadosSinSuscripcion(
   const { data, error } = await supabase
     .schema('identidad')
     .from('tenants')
-    .select('id, nombre_fantasia, razon_social, rut')
+    .select('id, nombre_fantasia')
     .order('creado_en', { ascending: false });
 
   if (error) throw new Error(`Error al leer couriers sin suscripción: ${error.message}`);
 
-  return (data ?? [])
-    .filter((t) => !tenantIdsConSusc.has(t.id as string))
+  const sinSuscripcion = (data ?? []).filter((t) => !tenantIdsConSusc.has(t.id as string));
+  if (sinSuscripcion.length === 0) return [];
+
+  const { data: config, error: errorConfig } = await supabase
+    .schema('identidad')
+    .from('courier_config_operacion')
+    .select('tenant_id, puesta_en_marcha_completada_en')
+    .in(
+      'tenant_id',
+      sinSuscripcion.map((t) => t.id as string),
+    );
+
+  if (errorConfig) {
+    throw new Error(`Error al leer la puesta en marcha de los couriers: ${errorConfig.message}`);
+  }
+  const completados = new Set(
+    (config ?? [])
+      .filter((c) => c.puesta_en_marcha_completada_en != null)
+      .map((c) => c.tenant_id as string),
+  );
+
+  return sinSuscripcion
     .map((t) => ({
       tenantId: t.id as string,
       nombreFantasia: (t.nombre_fantasia ?? null) as string | null,
-      datosPendientes: t.razon_social == null || t.rut == null,
+      datosPendientes: !completados.has(t.id as string),
     }));
 }

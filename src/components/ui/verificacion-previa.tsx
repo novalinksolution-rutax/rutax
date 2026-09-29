@@ -35,6 +35,7 @@
  * lo que se pasó por alto (regla 20: la causa viaja con el hecho).
  */
 
+import Link from "next/link";
 import * as React from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 
@@ -278,6 +279,14 @@ function LineasInformativas({ items }: { items: ItemPreflight[] }) {
   );
 }
 
+/** Dónde se resuelve un bloqueo o reparo que se arregla en Configuración. */
+const ENLACE_POR_CODIGO: Partial<
+  Record<ItemPreflight["codigo"], { href: string; etiqueta: string }>
+> = {
+  folios_agotados: { href: "/configuracion/facturacion#folios", etiqueta: "Cargar folios" },
+  folios_bajos: { href: "/configuracion/facturacion#folios", etiqueta: "Cargar folios" },
+};
+
 function BandaItems({
   items,
   tono,
@@ -294,6 +303,14 @@ function BandaItems({
           <span>
             <span className="font-medium">{item.titulo}</span>
             {item.detalle && <span className="block text-xs opacity-90">{item.detalle}</span>}
+            {ENLACE_POR_CODIGO[item.codigo] ? (
+              <Link
+                href={ENLACE_POR_CODIGO[item.codigo]!.href}
+                className="block text-xs font-medium underline"
+              >
+                {ENLACE_POR_CODIGO[item.codigo]!.etiqueta} ›
+              </Link>
+            ) : null}
           </span>
         </li>
       ))}

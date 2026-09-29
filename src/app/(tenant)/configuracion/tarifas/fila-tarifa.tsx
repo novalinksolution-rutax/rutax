@@ -37,7 +37,10 @@ export interface TarifaFila {
   id: string;
   sellerId: string | null;
   sellerNombre: string | null;
-  tipoEntrega: "flex" | "same_day";
+  /** NULL en las tarifas nuevas (por `fuente` o generales). */
+  tipoEntrega: "flex" | "same_day" | null;
+  /** Plataforma a la que aplica; NULL = todas. */
+  fuente?: string | null;
   modoCalculo: "monto_fijo" | "por_zona";
   zona: string | null;
   montoClp: number;

@@ -92,6 +92,11 @@ export async function existeEventoConciliacion(
 }
 
 export interface EventoConciliacionPayload {
+  /**
+   * Opcional: quien necesita citar el id en la bitácora ANTES del INSERT (regla
+   * «bitácora antes que efectos») lo genera y lo pasa; si se omite, lo pone la base.
+   */
+  id?: string;
   tenant_id: string;
   seller_id?: string | null;
   periodo_cobro_id?: string | null;

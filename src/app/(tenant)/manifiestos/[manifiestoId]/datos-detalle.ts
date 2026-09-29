@@ -228,6 +228,8 @@ export async function cargarDetalleManifiesto(
       id: pedido.id,
       sellerId: pedido.sellerId,
       tipoPedido: pedido.tipoPedido,
+      fuente: pedido.fuente,
+      comuna: pedido.destinatarioComuna,
     })),
   ).catch(() => new Set<string>());
 

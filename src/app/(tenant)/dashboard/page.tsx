@@ -55,6 +55,8 @@ import { obtenerPorPagarConductores } from "@/modules/dinero/magnitudes-dashboar
 import { obtenerFuga } from "@/modules/dinero/analitica";
 import { puedeVerReportesEjecutivos } from "@/modules/identidad/capacidades";
 import { Button } from "@/components/ui/button";
+import { SiguienteAccionTarjeta } from "./siguiente-accion";
+import { leerSiguienteAccion } from "./siguiente-accion-datos";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GraficoBarras } from "@/components/ui/chart";
 import {
@@ -264,6 +266,21 @@ export default async function PaginaDashboard() {
   // La fecha no necesita base: se pinta en el primer byte, y así el encabezado
   // no parpadea mientras llega el mosaico.
   const hoy = formatearFechaLarga(new Date());
+
+  // §9 de la puesta en marcha v2: sin pedidos reales, el dueño ve UNA acción y
+  // no la grilla de KPIs en cero. Los demás roles ven el dashboard de siempre.
+  const siguienteAccion =
+    sesion.usuario.rol === "dueno"
+      ? await leerSiguienteAccion(crearClienteServiceRole(), tenantId)
+      : null;
+  if (siguienteAccion) {
+    return (
+      <div className="space-y-6">
+        <h1 className="font-heading text-xl font-semibold sm:text-2xl">Hoy, {hoy}</h1>
+        <SiguienteAccionTarjeta accion={siguienteAccion} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -514,7 +531,7 @@ function FranjaFolios({ alerta }: { alerta: AlertaFolios }) {
           : `Te quedan ${alerta.foliosRestantes} ${alerta.foliosRestantes === 1 ? "folio" : "folios"} hasta el ${alerta.folioHasta}.`}
       </span>
       <Button asChild variant="outline" className="min-h-11">
-        <Link href="/onboarding/folios">Subir CAF</Link>
+        <Link href="/configuracion/facturacion#folios">Subir CAF</Link>
       </Button>
     </div>
   );

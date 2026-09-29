@@ -18,8 +18,14 @@
  * - Si falta dato de tarifa (NULL) → no genera falso positivo.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { diferenciaEnDiasCalendario } from '@/lib/fecha-santiago';
+import { elegirTarifaGeneralParaMinimos } from './conciliar-tres-fuentes';
+
+vi.mock('@/lib/inngest/cliente', () => ({
+  inngest: { createFunction: vi.fn((config: unknown, handler: unknown) => ({ config, handler })) },
+}));
+vi.mock('@/lib/supabase/service-role', () => ({ crearClienteServiceRole: vi.fn() }));
 
 // =============================================================================
 // Lógica pura extraída de cada detector — sin dependencias de BD
@@ -1008,5 +1014,34 @@ describe('Job C7 — conciliar-tres-fuentes', () => {
     it('1 día de diferencia → 1', () => {
       expect(diasEntre('2026-06-19', '2026-06-20')).toBe(1);
     });
+  });
+});
+
+// =============================================================================
+// D4 · mínimos con VARIAS tarifas activas por seller
+// =============================================================================
+describe('D4 · elegirTarifaGeneralParaMinimos (antes maybeSingle() reventaba con más de una fila)', () => {
+  const general = { id: 'g', minimo_facturacion_clp: 50000, minimo_retiro_clp: 1000, vigente_desde: '2026-01-01' };
+  const porZona = { id: 'z', minimo_facturacion_clp: 1, minimo_retiro_clp: 1, zona_id: 'zona-1', vigente_desde: '2026-06-01' };
+  const porFuente = { id: 'f', minimo_facturacion_clp: 2, minimo_retiro_clp: 2, fuente: 'ml_flex', vigente_desde: '2026-06-01' };
+
+  it('sin tarifas → null (D4 omite al seller, sin falso positivo)', () => {
+    expect(elegirTarifaGeneralParaMinimos([])).toBeNull();
+  });
+
+  it('toma la fila GENERAL aunque haya otras más recientes por zona o por fuente, en cualquier orden', () => {
+    expect(elegirTarifaGeneralParaMinimos([porZona, porFuente, general])?.id).toBe('g');
+    expect(elegirTarifaGeneralParaMinimos([general, porFuente, porZona])?.id).toBe('g');
+  });
+
+  it('entre dos generales gana la de vigencia más reciente', () => {
+    const nueva = { ...general, id: 'g2', vigente_desde: '2026-09-01' };
+    expect(elegirTarifaGeneralParaMinimos([general, nueva])?.id).toBe('g2');
+  });
+
+  it('si no hay general, cae a la menos específica', () => {
+    const legada = { id: 'l', minimo_facturacion_clp: 3, minimo_retiro_clp: 3, tipo_entrega: 'flex', vigente_desde: '2026-01-01' };
+    const zonaYFuente = { ...porZona, id: 'zf', fuente: 'ml_flex' };
+    expect(elegirTarifaGeneralParaMinimos([zonaYFuente, legada])?.id).toBe('l');
   });
 });

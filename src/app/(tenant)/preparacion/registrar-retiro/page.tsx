@@ -142,7 +142,13 @@ async function construirAvisoSinTarifa(
   const sinTarifaIds = await detectarPedidosSinTarifa(
     cliente,
     { tenantId, fecha },
-    pedidos.map((p) => ({ id: p.id, sellerId: p.sellerId, tipoPedido: p.tipoPedido })),
+    pedidos.map((p) => ({
+      id: p.id,
+      sellerId: p.sellerId,
+      tipoPedido: p.tipoPedido,
+      fuente: p.fuente,
+      comuna: p.destinatarioComuna,
+    })),
   );
   if (sinTarifaIds.size === 0) return [];
 

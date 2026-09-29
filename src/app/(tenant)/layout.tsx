@@ -10,6 +10,7 @@ import {
   puedeGenerarManifiestos,
   puedeGestionarUsuariosYRoles,
   puedeGestionarConfiguracionDte,
+  puedeGestionarPerfilEmpresa,
   puedeGestionarTarifas,
   puedeGestionarIncidencias,
   puedeVerPeriodosCobro,
@@ -25,8 +26,8 @@ import {
 import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/app-shell";
 import { LanzadorHerramientaPrueba } from "@/app/(tenant)/configuracion/_componentes/lanzador-herramienta-prueba";
 import { destinosMovil } from "@/components/app-shell/destinos-movil";
-import { BannerOnboarding } from "@/components/onboarding/banner-onboarding";
-import { resolverBloqueoOperativo } from "@/app/(tenant)/onboarding/estado";
+import { PantallaEmpresaPendiente } from "@/components/puesta-en-marcha/pantalla-empresa-pendiente";
+import { leerGatePuestaEnMarcha } from "@/modules/identidad/puesta-en-marcha";
 import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { listarEventosConciliacion } from "@/modules/dinero/index";
@@ -39,7 +40,6 @@ import { listarEventosConciliacion } from "@/modules/dinero/index";
  * Redirección por rol al iniciar sesión:
  * - dueno → /dashboard
  * - supervisor / coordinador → /operaciones
- * - administracion → /onboarding (sin sección operativa en este MVP)
  */
 export default async function LayoutTenant({ children }: { children: React.ReactNode }) {
   const sesion = await obtenerSesionActual();
@@ -84,6 +84,34 @@ export default async function LayoutTenant({ children }: { children: React.React
     .select("nombre_fantasia")
     .eq("id", sesion.usuario.tenantId)
     .maybeSingle();
+
+  // 🔒 GATE DE LA PUESTA EN MARCHA (docs/ux/puesta-en-marcha-v2.md §8).
+  //
+  // `/puesta-en-marcha` NO vive bajo este layout —está en `src/app/puesta-en-marcha`,
+  // con su propio marco sin AppShell—, así que este redirect no puede entrar en
+  // bucle: la ruta destino no pasa por aquí. Por eso no hace falta saber la ruta
+  // actual (H7). Toda pantalla de este grupo queda detrás del gate sin tocar
+  // ninguna, y la cara nueva que se agregue aquí nace ya bloqueada.
+  //
+  // Falla cerrado: sin fila = pendiente. Un error de lectura NO redirige (podría
+  // ser un courier que sí terminó, y redirigirlo lo dejaría rebotando entre las
+  // dos rutas): muestra la pantalla mínima y punto.
+  const gate = await leerGatePuestaEnMarcha(supabase, sesion.usuario.tenantId);
+  if (gate.estado !== "completada") {
+    if (gate.estado === "pendiente" && sesion.usuario.rol === "dueno") {
+      redirect("/puesta-en-marcha");
+    }
+    return (
+      <PantallaEmpresaPendiente
+        nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
+        motivo={gate.estado === "error" ? "error" : "no_dueno"}
+        accionSalir={async () => {
+          "use server";
+          await cerrarSesion("/login");
+        }}
+      />
+    );
+  }
 
   const u = sesion.usuario;
   const esOperativo =
@@ -195,8 +223,7 @@ export default async function LayoutTenant({ children }: { children: React.React
 
   // Settings anidado (Patrón H de Retell): el grupo Configuración SALE del sidebar
   // principal y se vuelve una sub-navegación que reemplaza el sidebar al entrar
-  // (con "‹ Volver"). Mismo gating RBAC que antes; el hub de onboarding es
-  // "Puesta en marcha".
+  // (con "‹ Volver"). Mismo gating RBAC que antes.
   //
   // ⚠️ **«Mi plan» NO va acá (26-08-2026).** Vivía en esta lista *y* en la
   // tarjeta de plan del bloque inferior *y* en el índice de `/configuracion`:
@@ -205,9 +232,15 @@ export default async function LayoutTenant({ children }: { children: React.React
   // misma razón por la que el bloque de marca perdió su desplegable (ver más
   // abajo). Lo que le pagas a Rutax tampoco es «cómo está armado tu courier»,
   // que es lo que esta sub-navegación reúne.
-  const itemsSettings: ItemNav[] = [
-    { href: "/onboarding", etiqueta: "Puesta en marcha", icono: "puesta-en-marcha" },
-  ];
+  const itemsSettings: ItemNav[] = [];
+  // Lo fiscal (emisor, DTE, folios, cuenta de cobro, retención) y la conexión del
+  // banco se piden cuando duelen —emitir, pagar— y los bloqueos enlazan aquí.
+  if (puedeGestionarConfiguracionDte(u) || puedeGestionarPerfilEmpresa(u)) {
+    itemsSettings.push({ href: "/configuracion/facturacion", etiqueta: "Facturación", icono: "facturacion" });
+  }
+  if (puedeVerConciliacion(u) && u.areasHabilitadas.includes("conciliacion_cobranza")) {
+    itemsSettings.push({ href: "/configuracion/cobranza", etiqueta: "Conciliación de pagos", icono: "pagos" });
+  }
   if (puedeGestionarTarifas(u)) {
     // ⚠️ **Zonas y Retiro ya no son entradas propias (26-08-2026).** Son las
     // otras dos secciones del módulo de tarifas: la zona es la clave por la que
@@ -298,17 +331,7 @@ export default async function LayoutTenant({ children }: { children: React.React
     administracion: "Administración",
   };
 
-  const puedeActuarSobreOnboarding = puedeGestionarConfiguracionDte(sesion.usuario);
-  // ⚠️ La lectura LIGERA, no el estado completo del asistente. El banner usa un
-  // solo campo y esto corre en CADA carga de página del área autenticada:
-  // con los catorce pasos, el estado completo serían catorce consultas por
-  // navegación para pintar un aviso de una línea.
-  const [faltaParaOperar, avisos] = await Promise.all([
-    puedeActuarSobreOnboarding && sesion.usuario.tenantId
-      ? resolverBloqueoOperativo(sesion.usuario.tenantId)
-      : Promise.resolve(null),
-    obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId),
-  ]);
+  const avisos = await obtenerAvisos(sesion.usuario.tenantId, sesion.usuario, sesion.usuarioId);
 
   // Los cuatro destinos del teléfono salen de la MISMA navegación que ya se
   // filtró por capacidad arriba: no hay una segunda lista que se desincronice.
@@ -402,9 +425,6 @@ export default async function LayoutTenant({ children }: { children: React.React
       }}
       avisos={avisos}
       destinosMovil={destinos}
-      // `null` ya significa «no falta nada»: el propio banner no se pinta sin
-      // frase, así que no hace falta una segunda condición que pueda discrepar.
-      banner={<BannerOnboarding faltaParaOperar={faltaParaOperar} />}
     >
       {children}
     </AppShell>

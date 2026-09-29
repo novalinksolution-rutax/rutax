@@ -78,7 +78,7 @@ export async function crearSameDayAction(
   } catch (err) {
     if (err instanceof ErrorValidacion) {
       // El mensaje de `crearPedidoSameDay` para "sin tarifa configurada" referencia
-      // /onboarding/tarifas — una pantalla interna del courier a la que el seller no
+      // /configuracion/tarifas — una pantalla interna del courier a la que el seller no
       // tiene acceso. Se reemplaza por un mensaje neutral orientado al seller; el
       // mensaje original (con la ruta interna) sigue intacto para el flujo interno.
       if (err.message.includes("no tiene una tarifa configurada")) {

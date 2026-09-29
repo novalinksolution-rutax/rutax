@@ -30,7 +30,7 @@ import {
   Plug,
   Radar,
   Receipt,
-  Rocket,
+  FileText,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -68,7 +68,7 @@ export const ICONOS: Record<string, LucideIcon> = {
   conductores: UserCheck,
   tarifas: Tag,
   plan: CreditCard,
-  "puesta-en-marcha": Rocket,
+  facturacion: FileText,
   integraciones: Plug,
   zonas: MapPinned,
   // `Building2` ya está tomado por "couriers" en el panel de administración.

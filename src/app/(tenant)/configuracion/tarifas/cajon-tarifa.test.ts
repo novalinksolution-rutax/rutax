@@ -75,15 +75,28 @@ describe("clasificarTarifa", () => {
 });
 
 describe("🔴 el predicado no puede separarse del motor", () => {
-  it("`resolverTarifaVigente` sigue usando estado=activa + lte(desde) + (hasta null o gte)", () => {
-    // Esta prueba es un candado, no una comprobación de comportamiento. Si
-    // alguien cambia el predicado del motor —por ejemplo, para que una tarifa
-    // vencida siga cobrando— esta prueba falla y obliga a mirar ESTE archivo,
-    // que es la mitad que se le muestra al courier.
+  it("`identidad.resolver_tarifa` sigue usando estado=activa + desde<=fecha + (hasta null o >=fecha)", () => {
+    // Esta prueba es un candado, no una comprobación de comportamiento. Desde
+    // 20260928000002 el predicado del motor vive en la función SQL (y
+    // `resolverTarifaVigente` es solo un envoltorio del RPC). Si alguien cambia
+    // el predicado allí —por ejemplo, para que una tarifa vencida siga
+    // cobrando— esta prueba falla y obliga a mirar ESTE archivo, que es la
+    // mitad que se le muestra al courier.
+    const sql = readFileSync(
+      "supabase/migrations/20260928000002_identidad_tarifas_fuente_y_resolver_tarifa.sql",
+      "utf8",
+    );
+    expect(sql).toContain("t.estado = 'activa'");
+    expect(sql).toContain("t.vigente_desde <= p_fecha");
+    expect(sql).toContain("(t.vigente_hasta is null or t.vigente_hasta >= p_fecha)");
+  });
+
+  it("`resolverTarifaVigente` no decide nada: delega en el RPC único", () => {
+    // Si volviera a filtrar por su cuenta habría dos resoluciones distintas del
+    // mismo pedido (la pantalla y el motor), justo lo que esta migración cerró.
     const fuente = readFileSync("src/modules/operacion/tarifas.ts", "utf8");
-    expect(fuente).toContain('.eq("estado", "activa")');
-    expect(fuente).toContain('.lte("vigente_desde", entrada.fecha)');
-    expect(fuente).toContain("vigente_hasta.is.null,vigente_hasta.gte.");
+    expect(fuente).toContain('rpc("resolver_tarifa_por_comuna"');
+    expect(fuente).not.toContain('.from("tarifas")');
   });
 });
 

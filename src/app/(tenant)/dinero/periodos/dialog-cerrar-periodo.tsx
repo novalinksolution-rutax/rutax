@@ -15,6 +15,7 @@ import {
   type AbiertoControlable,
 } from "./usar-abierto-controlable";
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { formatearCLPOGuion } from "@/lib/ui/formato-moneda";
@@ -52,10 +53,12 @@ export function DialogCerrarPeriodo({
     onAbiertoChange,
   });
   const [error, setError] = useState<string | null>(null);
+  const [enlaceError, setEnlaceError] = useState<{ href: string; etiqueta: string } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleConfirmar() {
     setError(null);
+    setEnlaceError(null);
     startTransition(async () => {
       const resultado = await accionCerrarPeriodo(periodoId);
       if (resultado.ok) {
@@ -70,6 +73,7 @@ export function DialogCerrarPeriodo({
         router.refresh();
       } else {
         setError(resultado.mensaje);
+        setEnlaceError(resultado.enlace ?? null);
       }
     });
   }
@@ -91,7 +95,10 @@ export function DialogCerrarPeriodo({
         onOpenChange={(o) => {
           if (isPending) return;
           setAbierto(o);
-          if (!o) setError(null);
+          if (!o) {
+            setError(null);
+            setEnlaceError(null);
+          }
         }}
         // Peldaño 2: tiene consecuencia y no es reversible, pero no mueve plata
         // hacia afuera. El nombre escrito se reserva para el peldaño 3.
@@ -131,6 +138,14 @@ export function DialogCerrarPeriodo({
                     <>
                       <strong>No pudimos cerrar el período.</strong> {error}{" "}
                       Sigue abierto y puedes volver a intentarlo.
+                      {enlaceError ? (
+                        <>
+                          {" "}
+                          <Link href={enlaceError.href} className="font-medium underline">
+                            {enlaceError.etiqueta} ›
+                          </Link>
+                        </>
+                      ) : null}
                     </>
                   ),
                 },

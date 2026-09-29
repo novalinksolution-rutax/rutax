@@ -72,7 +72,7 @@ const SELLER_DEFECTO = "__defecto__";
 interface TarifaExistente {
   id: string;
   sellerId: string | null;
-  tipoEntrega: string;
+  tipoEntrega: string | null;
   modoCalculo: string;
   zona: string | null;
   montoClp: number;

@@ -945,7 +945,7 @@ export function traducirEstadoInvitacion(estado: string): string {
 }
 
 // --- Folio CAF ---------------------------------------------------------------
-// Estaba en `(tenant)/onboarding/folios/panel-folios-caf.tsx`, como `switch`.
+// Estaba en `(tenant)/configuracion/facturacion/folios/panel-folios-caf.tsx`, como `switch`.
 //
 // El registro (Anexo A) dice que el folio NO es un objeto compartido: "es un
 // número consumible, no un objeto con estados propios más allá de
@@ -973,7 +973,7 @@ export function traducirEstadoFolioCaf(estado: string): string {
 }
 
 // --- Certificación ante el proveedor DTE -------------------------------------
-// Estaba en `(tenant)/onboarding/dte/formulario-configuracion-dte.tsx`.
+// Estaba en `(tenant)/configuracion/facturacion/dte/formulario-configuracion-dte.tsx`.
 
 export type EstadoCertificacionDte = "activo" | "en_proceso" | "con_problemas" | "pendiente";
 
@@ -997,7 +997,7 @@ export function traducirEstadoCertificacionDte(estado: string): string {
 }
 
 // --- Conexión bancaria de cobranza -------------------------------------------
-// Estaba en `(tenant)/onboarding/cobranza/formulario-conexion-cobranza.tsx`.
+// Estaba en `(tenant)/configuracion/cobranza/formulario-conexion-cobranza.tsx`.
 
 export type EstadoConexionCobranza = "conectado" | "error" | "revocado" | "desconectado";
 

@@ -258,8 +258,15 @@ export function FormularioLogin({ errorInicial }: { errorInicial?: string }) {
         )}
       </div>
 
-      <p className="mt-8 text-center text-sm text-fg-subtle">
-        <Link href="/" className="underline underline-offset-4 hover:text-fg">
+      <p className="mt-8 flex flex-wrap items-center justify-center gap-x-2 text-center text-sm text-fg-subtle">
+        <Link
+          href="/registro"
+          className="underline underline-offset-4 hover:text-fg pointer-coarse:py-3"
+        >
+          Crear cuenta de courier
+        </Link>
+        <span aria-hidden="true">·</span>
+        <Link href="/" className="underline underline-offset-4 hover:text-fg pointer-coarse:py-3">
           Qué es Rutax
         </Link>
       </p>

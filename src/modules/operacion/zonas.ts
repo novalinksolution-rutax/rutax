@@ -102,6 +102,28 @@ export async function activarDesactivarZona(
     throw new ErrorValidacion('El usuario no tiene capacidad para gestionar zonas');
   }
 
+  // La zona de respaldo cobra las comunas que no están en ninguna otra: apagarla
+  // dejaría esas entregas sin tarifa. La base lo impide igual (CHECK
+  // `zonas_respaldo_activa`), pero se rechaza ANTES de la bitácora para no
+  // registrar una desactivación que nunca ocurre.
+  if (!activa) {
+    const { data: zona, error: errorLectura } = await cliente
+      .schema('identidad')
+      .from('zonas')
+      .select('es_respaldo')
+      .eq('id', zonaId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (errorLectura) {
+      throw new Error(`Error al leer zona: ${errorLectura.message}`);
+    }
+    if (zona?.es_respaldo === true) {
+      throw new ErrorValidacion(
+        'Esta zona cobra las comunas que no están en ninguna otra. No se puede desactivar.',
+      );
+    }
+  }
+
   await registrarEnBitacora(cliente, {
     tenantId,
     actorUsuarioId,

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
+import { MarcoPuerta } from "@/app/login/marco-puerta";
 import { IngresaCodigoRegistro } from "./ingresa-codigo-registro";
 
 export const metadata: Metadata = {
@@ -28,8 +28,8 @@ export default async function PaginaRevisaTuCorreo({ searchParams }: PageProps) 
   }
 
   return (
-    <PantallaSinSesion marca={{ tipo: "rutax" }}>
+    <MarcoPuerta>
       <IngresaCodigoRegistro email={email} />
-    </PantallaSinSesion>
+    </MarcoPuerta>
   );
 }

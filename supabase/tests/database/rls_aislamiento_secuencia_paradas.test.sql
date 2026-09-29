@@ -38,7 +38,7 @@
 
 begin;
 
-select plan(56);
+select plan(57);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada (redefinidos aquí — cada .test.sql corre en su
@@ -231,12 +231,12 @@ end $$;
 
 
 -- =============================================================================
--- BLOQUE 0 · Privilegios de EJECUCIÓN — ningún rol de cliente (5 tests)
+-- BLOQUE 0 · Privilegios de EJECUCIÓN — ningún rol de cliente (6 tests)
 -- =============================================================================
 select ok(
   not has_function_privilege(
     'authenticated',
-    'operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid)',
+    'operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid,boolean[],jsonb)',
     'EXECUTE'),
   'privilegios: authenticated NO puede ejecutar aplicar_secuencia_paradas'
 );
@@ -244,7 +244,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'anon',
-    'operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid)',
+    'operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid,boolean[],jsonb)',
     'EXECUTE'),
   'privilegios: anon NO puede ejecutar aplicar_secuencia_paradas'
 );
@@ -252,7 +252,7 @@ select ok(
 select ok(
   has_function_privilege(
     'service_role',
-    'operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid)',
+    'operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid,boolean[],jsonb)',
     'EXECUTE'),
   'privilegios: service_role SÍ puede ejecutarla (control positivo — un revoke de más dejaría el ruteo muerto)'
 );
@@ -260,8 +260,21 @@ select ok(
 select ok(
   (select p.prosecdef
      from pg_proc p
-    where p.oid = to_regprocedure('operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid)')::oid),
+    where p.oid = to_regprocedure('operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid,boolean[],jsonb)')::oid),
   'privilegios: la función es SECURITY DEFINER (escribe sin RLS, con el tenant por parámetro)'
+);
+
+-- Las aserciones de privilegio nombran UNA firma exacta. Si una migración deja
+-- viva una sobrecarga (p. ej. la de 5 parámetros previa a 20260827000001), esa
+-- otra quedaría fuera de toda prueba y con sus propios grants. El conjunto de
+-- firmas tiene que ser exactamente este.
+select set_eq(
+  $$ select p.oid::regprocedure::text
+       from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'operacion' and p.proname = 'aplicar_secuencia_paradas' $$,
+  $$ values ('operacion.aplicar_secuencia_paradas(uuid,uuid,uuid[],text,uuid,boolean[],jsonb)') $$,
+  'privilegios: existe una sola aplicar_secuencia_paradas, la vigente (ninguna sobrecarga huérfana)'
 );
 
 -- Comportamiento real: ni el DUEÑO del courier, con su sesión bien formada, la
@@ -318,18 +331,31 @@ select ok(
   'columna: authenticated SÍ puede LEER orden_ruta (la RLS de fila es la que aísla, no el grant)'
 );
 
--- Control positivo del revoke: NINGUNA otra columna perdió la escritura. Un
--- revoke de más rompería en silencio cualquier camino que aún escriba con sesión
--- de usuario, y el síntoma sería un 42501 en producción.
+-- La tabla ENTERA no se escribe con sesión de usuario, en ninguna columna.
+--
+-- Historia: esta aserción decía lo contrario («ninguna columna distinta de
+-- orden_ruta perdió el UPDATE»), porque en 20260814000004 el cierre fue
+-- quirúrgico. La migración 20260827000002 repuso el cierre con un
+-- `revoke insert, update ... from authenticated` de TABLA, y en Postgres ese
+-- revoke borra también los grants por columna: desde entonces authenticated no
+-- escribe ninguna. Nadie lo notó porque este archivo abortaba antes de llegar
+-- aquí (llamaba a la firma vieja de aplicar_secuencia_paradas). Verificado el
+-- 2026-09-29: producción está igual (0 columnas escribibles) y ningún camino de
+-- la app escribe esta tabla con sesión — asignar, desasignar y secuenciar van
+-- por service_role tras validar RBAC. Así que el estado real es el diseño, y lo
+-- que se fija es eso: cualquier grant de escritura que reaparezca aquí es una
+-- puerta para asignar o reordenar sin bitácora.
 select is_empty($$
-  select a.attname
-    from pg_attribute a
-   where a.attrelid = 'operacion.asignaciones_pedido'::regclass
-     and a.attnum > 0
+  select t.rel || '.' || a.attname || ' ' || t.priv
+    from (values ('operacion.asignaciones_pedido'::regclass, 'operacion.asignaciones_pedido'),
+                 ('public.asignaciones_pedido'::regclass,    'public.asignaciones_pedido')) as t0(oid, rel)
+    cross join (values ('INSERT'), ('UPDATE')) as p(priv)
+    cross join lateral (select t0.rel, p.priv) as t
+    join pg_attribute a on a.attrelid = t0.oid
+   where a.attnum > 0
      and not a.attisdropped
-     and a.attname <> 'orden_ruta'
-     and not has_column_privilege('authenticated', 'operacion.asignaciones_pedido', a.attname, 'UPDATE')
-$$, 'columna: ninguna columna DISTINTA de orden_ruta perdió el UPDATE — el revoke fue quirúrgico, no una amputación');
+     and has_column_privilege('authenticated', t0.oid, a.attname, p.priv)
+$$, 'columna: authenticated no puede INSERT ni UPDATE ninguna columna de asignaciones_pedido (tabla ni vista): se escribe solo con service_role');
 
 -- Y el comportamiento real, que es lo que importa: el dueño del courier, con su
 -- sesión bien formada y con la fila perfectamente visible para él, NO puede

@@ -724,7 +724,7 @@ describe('construirSnapshotRegla — envelope de snapshot inmutable', () => {
       genera: true,
     });
 
-    expect(snapshot.version).toBe(1);
+    expect(snapshot.version).toBe(2);
     expect(snapshot.origen_snapshot).toBe('generacion_original');
     expect(snapshot.generado_en).toBe('2026-07-07T12:00:00.000Z');
     expect(snapshot.job_run_id).toBe('run-123');
@@ -760,6 +760,9 @@ describe('construirSnapshotRegla — envelope de snapshot inmutable', () => {
       tipo_entrega: 'flex',
       modo_calculo: 'monto_fijo',
       valor_base_clp: 3500,
+      // v2: sin fuente de tarifa ni resolución si la tarifa venía fijada en el pedido.
+      fuente_pedido_tarifa: null,
+      resolucion: null,
       vigente_desde: '2026-01-01',
       vigente_hasta: null,
       estado: 'activa',
@@ -828,6 +831,9 @@ describe('construirSnapshotRegla — envelope de snapshot inmutable', () => {
       zona_id: 'zona-uuid-1',
       zona_texto: 'Zona Oriente',
       comuna_destinatario: 'Ñuñoa',
+      // v2: sin resolución por comuna en este caso → null (no `false`: no se evaluó).
+      zona_pedido_id: null,
+      por_respaldo: null,
     });
   });
 
@@ -912,6 +918,8 @@ describe('construirSnapshotRegla — envelope de snapshot inmutable', () => {
       tipo_entrega: null,
       modo_calculo: null,
       valor_base_clp: 0,
+      fuente_pedido_tarifa: null,
+      resolucion: null,
       vigente_desde: null,
       vigente_hasta: null,
       estado: null,
@@ -928,6 +936,8 @@ describe('construirSnapshotRegla — envelope de snapshot inmutable', () => {
       zona_id: null,
       zona_texto: null,
       comuna_destinatario: null,
+      zona_pedido_id: null,
+      por_respaldo: null,
     });
   });
 
@@ -983,7 +993,56 @@ describe('construirSnapshotRegla — envelope de snapshot inmutable', () => {
       estado_nuevo: 'entregado',
       estado_anterior: 'en_ruta',
       tipo_pedido: 'same_day',
+      fuente: null,
       es_gasto_propio: true,
+    });
+  });
+
+  it('v2: registra fuente del pedido, fuente de la tarifa, resolución y zona/respaldo (sin pisar zona.fuente)', () => {
+    const snapshot = construirSnapshotRegla({
+      lado: 'cobro',
+      jobRunId: 'run-v2',
+      generadoEn: '2026-09-28T12:00:00.000Z',
+      tarifa: {
+        ...tarifaCompleta,
+        tipoEntrega: null,
+        fuente: 'ml_flex',
+        resolucion: { porSeller: true, porFuente: true, porRegimen: false, porZona: true },
+      },
+      valorBaseClp: 1800,
+      ajusteIncidenciaClp: 0,
+      comunaDestinatario: 'Pudahuel',
+      fuentePedido: 'ml_flex',
+      zonaPedidoId: 'zona-periferia',
+      zonaPorRespaldo: true,
+      fechaTransicion: '2026-09-28T11:30:00.000Z',
+      fechaEntregaLocal: '2026-09-28',
+      estadoNuevo: 'entregado',
+      estadoAnterior: 'en_ruta',
+      tipoPedido: 'flex',
+      esGastoPropio: false,
+      incidencia: null,
+      motivo: motivoCobro,
+      genera: true,
+    });
+
+    expect(snapshot.version).toBe(2);
+    const tarifa = snapshot.tarifa as Record<string, unknown>;
+    expect(tarifa.fuente_pedido_tarifa).toBe('ml_flex');
+    expect(tarifa.tipo_entrega).toBeNull();
+    expect(tarifa.resolucion).toEqual({
+      por_seller: true,
+      por_fuente: true,
+      por_regimen: false,
+      por_zona: true,
+    });
+    // `tarifa.fuente` NO existe: colisionaría en significado con `zona.fuente`.
+    expect(tarifa).not.toHaveProperty('fuente');
+    expect(snapshot.estado_pedido).toMatchObject({ fuente: 'ml_flex' });
+    expect(snapshot.zona).toMatchObject({
+      fuente: 'tarifa',
+      zona_pedido_id: 'zona-periferia',
+      por_respaldo: true,
     });
   });
 

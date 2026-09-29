@@ -150,14 +150,23 @@ describe('obtenerPanelCouriers', () => {
     vi.mocked(obtenerBacklogSistema).mockResolvedValue(BACKLOG_VACIO);
 
     // El primer courier de Rutax: invitado por correo, sin suscripción y sin
-    // haber completado su puesta en marcha (razón social/rut en null).
+    // haber completado su puesta en marcha (sin `puesta_en_marcha_completada_en`).
     const { q, llamadas } = crearMockSupabase({
       tenants: {
         data: [
-          // Recién invitado, sin puesta en marcha: falta razón social/rut.
-          { id: 'tenant-nuevo', nombre_fantasia: 'Courier de dueno@x.cl', razon_social: null, rut: null },
-          // Ya completó sus datos; solo le falta que Rutax le ponga plan.
-          { id: 'tenant-listo', nombre_fantasia: 'Courier Listo', razon_social: 'Listo SpA', rut: '76543210-3' },
+          // Recién invitado: sin fila de configuración, puesta en marcha pendiente.
+          { id: 'tenant-nuevo', nombre_fantasia: 'Courier de dueno@x.cl' },
+          // Terminó su puesta en marcha; solo le falta que Rutax le ponga plan.
+          { id: 'tenant-listo', nombre_fantasia: 'Courier Listo' },
+          // Tiene fila pero sin completar: sigue pendiente.
+          { id: 'tenant-a-medias', nombre_fantasia: 'Courier a medias' },
+        ],
+        error: null,
+      },
+      courier_config_operacion: {
+        data: [
+          { tenant_id: 'tenant-listo', puesta_en_marcha_completada_en: '2026-09-20T15:00:00Z' },
+          { tenant_id: 'tenant-a-medias', puesta_en_marcha_completada_en: null },
         ],
         error: null,
       },
@@ -168,10 +177,11 @@ describe('obtenerPanelCouriers', () => {
 
     expect(resultado.couriers).toEqual([]);
     expect(resultado.saludSistema).toEqual({ jobs: [], backlog: BACKLOG_VACIO });
-    // Los dos lados del flag: sin datos → pendiente; con datos → solo falta plan.
+    // Los dos lados del flag: sin completar (con o sin fila) → pendiente; completada → solo falta plan.
     expect(resultado.couriersSinSuscripcion).toEqual([
       { tenantId: 'tenant-nuevo', nombreFantasia: 'Courier de dueno@x.cl', datosPendientes: true },
       { tenantId: 'tenant-listo', nombreFantasia: 'Courier Listo', datosPendientes: false },
+      { tenantId: 'tenant-a-medias', nombreFantasia: 'Courier a medias', datosPendientes: true },
     ]);
     // Sin suscripciones no se consulta morosidad (no hay a quién contársela).
     expect(llamadas.some((l) => l.tabla === 'periodos_suscripcion')).toBe(false);

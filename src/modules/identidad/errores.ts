@@ -14,10 +14,20 @@ export class ErrorIdentidad extends Error {
   }
 }
 
+/** Destino que resuelve un bloqueo (p. ej. la sección de configuración que falta). */
+export interface EnlaceError {
+  href: string;
+  etiqueta: string;
+}
+
 export class ErrorValidacion extends ErrorIdentidad {
-  constructor(mensaje: string) {
+  /** Opcional: adónde ir a resolver lo que bloquea. La UI lo muestra junto al mensaje. */
+  readonly enlace?: EnlaceError;
+
+  constructor(mensaje: string, enlace?: EnlaceError) {
     super("validacion", mensaje);
     this.name = "ErrorValidacion";
+    this.enlace = enlace;
   }
 }
 

@@ -134,7 +134,7 @@ export function resolverMontoVisita(
  * y hacerlo obligatorio convertiría un problema de la tarifa en un bloqueo del
  * pago del retiro. Si devuelve null, el job levanta su excepción como siempre.
  */
-async function leerMontoConductorDeTarifa(
+export async function leerMontoConductorDeTarifa(
   supabase: ReturnType<typeof crearClienteServiceRole>,
   tenantId: string,
   sellerId: string,
@@ -150,7 +150,16 @@ async function leerMontoConductorDeTarifa(
     .or(`vigente_hasta.is.null,vigente_hasta.gte.${hoy}`)
     .or(`seller_id.eq.${sellerId},seller_id.is.null`)
     .order('seller_id', { ascending: false, nullsFirst: false })
+    // Desde la puesta en marcha v2 un courier tiene VARIAS tarifas vigentes a la
+    // vez con la MISMA vigencia (una por zona, excepciones por plataforma y la
+    // general). Sin este desempate `limit 1` elegía una cualquiera —en la
+    // práctica la excepción de Shopify de la Zona 1— y el retiro se pagaba con
+    // la tarifa de otra cosa. Se prefiere la fila menos específica: sin zona y
+    // sin plataforma (la general, que lleva los montos de la zona de respaldo).
+    .order('zona_id', { ascending: true, nullsFirst: true })
+    .order('fuente', { ascending: true, nullsFirst: true })
     .order('vigente_desde', { ascending: false })
+    .order('id', { ascending: true })
     .limit(1);
 
   const fila = data?.[0];

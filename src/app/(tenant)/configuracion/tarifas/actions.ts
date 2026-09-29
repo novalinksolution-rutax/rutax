@@ -10,6 +10,9 @@ import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { puedeGestionarTarifas } from "@/modules/identidad/capacidades";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
+import { cerrarTarifasLegadasDelTenant } from "@/modules/identidad/tarifas-legadas";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
+import { resolverAlcanceTarifa, MENSAJE_TARIFA_DUPLICADA } from "./alcance-tarifa";
 
 type ResultadoAccion = { ok: true } | { ok: false; mensaje: string };
 
@@ -49,7 +52,11 @@ export async function accionCrearTarifa(formData: FormData): Promise<ResultadoAc
 
   try {
     const sellerId = (formData.get("seller_id") as string | null) || null;
-    const tipoEntrega = formData.get("tipo_entrega") as string;
+    const alcance = resolverAlcanceTarifa(
+      formData.get("tipo_entrega") as string | null,
+      formData.get("fuente") as string | null,
+    );
+    if (!alcance.ok) return { ok: false, mensaje: alcance.mensaje };
     const modoCalculo = formData.get("modo_calculo") as string;
     const zona = (formData.get("zona") as string | null)?.trim() || null;
     const montoClp = validarMonto(formData.get("monto_clp"), "Monto base");
@@ -75,9 +82,6 @@ export async function accionCrearTarifa(formData: FormData): Promise<ResultadoAc
       ? validarMonto(formData.get("recargo_reprogramacion_clp"), "Recargo reprogramación")
       : null;
 
-    if (!["flex", "same_day"].includes(tipoEntrega)) {
-      return { ok: false, mensaje: "Tipo de entrega inválido." };
-    }
     if (!["monto_fijo", "por_zona"].includes(modoCalculo)) {
       return { ok: false, mensaje: "Modo de cálculo inválido." };
     }
@@ -85,13 +89,34 @@ export async function accionCrearTarifa(formData: FormData): Promise<ResultadoAc
       return { ok: false, mensaje: "La fecha 'vigente hasta' debe ser posterior a 'vigente desde'." };
     }
 
-    const { data: tarifa, error } = await supabase
+    // Bitácora ANTES del efecto (CLAUDE.md): el id se genera acá y se pasa
+    // explícito al INSERT, para que la entrada pueda citarlo sin invertir el orden.
+    const tarifaId = crypto.randomUUID();
+    await registrarEnBitacora(supabase, {
+      tenantId,
+      actorUsuarioId: sesion.usuarioId,
+      actorTipo: "usuario",
+      accion: "identidad.tarifa_creada",
+      entidadTipo: "tarifa",
+      entidadId: tarifaId,
+      detalle: {
+        seller_id: sellerId,
+        tipo_entrega: alcance.tipoEntrega,
+        fuente: alcance.fuente,
+        monto_clp: montoClp,
+        monto_conductor_clp: montoConductorClp,
+      },
+    });
+
+    const { error } = await supabase
       .schema("identidad")
       .from("tarifas")
       .insert({
+        id: tarifaId,
         tenant_id: tenantId,
         seller_id: sellerId,
-        tipo_entrega: tipoEntrega,
+        tipo_entrega: alcance.tipoEntrega,
+        fuente: alcance.fuente,
         modo_calculo: modoCalculo,
         zona,
         monto_clp: montoClp,
@@ -102,26 +127,38 @@ export async function accionCrearTarifa(formData: FormData): Promise<ResultadoAc
         minimo_facturacion_clp: minimoFacturacion,
         minimo_retiro_clp: minimoRetiro,
         recargo_reprogramacion_clp: recargoReprogramacion,
-      })
-      .select("id")
-      .single();
+      });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      // 23505 sobre `tarifas_clave_resolucion_activa_uk`: dos tarifas activas igual
+      // de específicas con la misma vigencia harían que el cobro dependiera del
+      // orden físico de las filas. Se explica en términos de negocio.
+      if (error.code === "23505") {
+        return { ok: false, mensaje: MENSAJE_TARIFA_DUPLICADA };
+      }
+      throw new Error(error.message);
+    }
 
-    await registrarEnBitacora(supabase, {
-      tenantId,
-      actorUsuarioId: sesion.usuarioId,
-      actorTipo: "usuario",
-      accion: "identidad.tarifa_creada",
-      entidadTipo: "tarifa",
-      entidadId: tarifa.id as string,
-      detalle: {
-        seller_id: sellerId,
-        tipo_entrega: tipoEntrega,
-        monto_clp: montoClp,
-        monto_conductor_clp: montoConductorClp,
-      },
-    });
+    // Una tarifa del modelo nuevo (sin régimen) a nivel de tenant: las tarifas
+    // antiguas por régimen dejan de ganarle a la zona. Solo si hay general; la
+    // regla vive en SQL. Las de un seller no se tocan, y crear una tarifa de
+    // seller no cierra nada del tenant.
+    if (alcance.tipoEntrega === null && sellerId === null) {
+      try {
+        await cerrarTarifasLegadasDelTenant(supabase, {
+          tenantId,
+          actorUsuarioId: sesion.usuarioId,
+          hoy: hoyEnSantiago(),
+        });
+      } catch (err) {
+        console.error("[tarifas] cierre de tarifas antiguas falló:", err);
+        revalidatePath("/configuracion/tarifas");
+        return {
+          ok: false,
+          mensaje: "La tarifa se creó, pero no pudimos cerrar las tarifas antiguas. Avisa a soporte.",
+        };
+      }
+    }
 
     revalidatePath("/configuracion/tarifas");
     return { ok: true };

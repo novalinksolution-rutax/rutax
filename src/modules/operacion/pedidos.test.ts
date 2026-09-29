@@ -526,11 +526,31 @@ function crearClienteFalso(opts?: {
   // resolver_zona vive en el esquema `identidad`: el código llama
   // `cliente.schema('identidad').rpc('resolver_zona', ...)`. El doble devuelve
   // null (sin zona mapeada), replicando el best-effort de producción.
-  const rpcStub = (_fn: string, _args: unknown) => ({
-    then: (resolve: (r: { data: null; error: null }) => void) => {
-      resolve({ data: null, error: null });
-    },
-  });
+  // `resolver_tarifa_por_comuna` devuelve SIEMPRE una fila (tarifa_id NULL si no
+  // hay tarifa): el doble responde con la primera tarifa configurada del caso.
+  const llamadasRpc: Array<{ fn: string; args: Record<string, unknown> }> = [];
+  const rpcStub = (fn: string, args: unknown) => {
+    llamadasRpc.push({ fn, args: args as Record<string, unknown> });
+    const data =
+      fn === 'resolver_tarifa_por_comuna'
+        ? [
+            {
+              tarifa_id: tarifas[0]?.id ?? null,
+              zona_id: null,
+              zona_por_respaldo: false,
+              por_seller: false,
+              por_fuente: false,
+              por_regimen: tarifas.length > 0,
+              por_zona: false,
+            },
+          ]
+        : null;
+    return {
+      then: (resolve: (r: { data: unknown; error: null }) => void) => {
+        resolve({ data, error: null });
+      },
+    };
+  };
 
   return {
     cliente: {
@@ -542,6 +562,7 @@ function crearClienteFalso(opts?: {
       rpc: rpcStub,
     } as never,
     estado,
+    llamadasRpc,
   };
 }
 
@@ -1584,6 +1605,32 @@ describe("crearPedidoSameDay — manejo de tarifa", () => {
     expect(estado.pedidos.find((p) => p.id === pedido.id)?.tarifa_aplicable_id).toBe(TARIFA_1);
   });
 
+  it("resuelve la tarifa con la fuente 'rutax_manual', el régimen same_day y la comuna CANÓNICA, DESPUÉS de resolver la zona", async () => {
+    const { cliente, llamadasRpc } = crearClienteFalso({ tarifas: [{ id: TARIFA_1 }] });
+
+    await crearPedidoSameDay(cliente, {
+      tenantId: TENANT_A,
+      sellerId: SELLER_1,
+      destinatarioNombre: "María González",
+      destinatarioDireccion: "Calle Falsa 123",
+      // Sin tilde ni mayúsculas: la función SQL compara igualdad exacta contra el catálogo.
+      destinatarioComuna: "nunoa",
+    });
+
+    const orden = llamadasRpc.map((l) => l.fn);
+    expect(orden.indexOf("resolver_zona")).toBeGreaterThanOrEqual(0);
+    expect(orden.indexOf("resolver_zona")).toBeLessThan(orden.indexOf("resolver_tarifa_por_comuna"));
+
+    const llamada = llamadasRpc.find((l) => l.fn === "resolver_tarifa_por_comuna");
+    expect(llamada?.args).toMatchObject({
+      p_tenant: TENANT_A,
+      p_seller: SELLER_1,
+      p_fuente: "rutax_manual",
+      p_tipo_pedido: "same_day",
+      p_comuna: "Ñuñoa",
+    });
+  });
+
   it("lanza ErrorValidacion si no hay tarifa configurada para same-day", async () => {
     // Sin tarifas disponibles
     const { cliente } = crearClienteFalso({ tarifas: [] });
@@ -1599,7 +1646,7 @@ describe("crearPedidoSameDay — manejo de tarifa", () => {
     ).rejects.toBeInstanceOf(ErrorValidacion);
   });
 
-  it("el mensaje de ErrorValidacion sin tarifa menciona /onboarding/tarifas", async () => {
+  it("el mensaje de ErrorValidacion sin tarifa menciona /configuracion/tarifas", async () => {
     const { cliente } = crearClienteFalso({ tarifas: [] });
 
     try {
@@ -1613,7 +1660,7 @@ describe("crearPedidoSameDay — manejo de tarifa", () => {
       expect.fail("debería haber lanzado");
     } catch (e) {
       expect(e).toBeInstanceOf(ErrorValidacion);
-      expect((e as ErrorValidacion).message).toContain("/onboarding/tarifas");
+      expect((e as ErrorValidacion).message).toContain("/configuracion/tarifas");
     }
   });
 

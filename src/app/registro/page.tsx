@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { FormularioAltaEmpresa } from "./formulario-alta-empresa";
-import { PantallaSinSesion } from "@/components/ui/pantalla-sin-sesion";
+import { MarcoPuerta } from "@/app/login/marco-puerta";
 
 export const metadata: Metadata = {
   title: "Crea tu cuenta de courier",
@@ -14,8 +14,8 @@ interface PaginaRegistroProps {
 export default async function PaginaRegistro({ searchParams }: PaginaRegistroProps) {
   const { error } = await searchParams;
   return (
-    <PantallaSinSesion marca={{ tipo: "rutax" }}>
+    <MarcoPuerta>
       <FormularioAltaEmpresa errorInicial={error} />
-    </PantallaSinSesion>
+    </MarcoPuerta>
   );
 }

@@ -25,6 +25,18 @@
  *   - cobro   : `linea_cobro_sin_pedido_entregado`       + `bloquea_facturacion=true`.
  *   - liquidac: `linea_liquidacion_sin_pedido_entregado` + `bloquea_pago=true`.
  *
+ * Tarifa (2026-09-28): el evento trae `tarifaAplicableId`, pero la ingesta de
+ * Mercado Libre NUNCA lo escribe en el pedido, así que llega `null` para todo
+ * Flex. Cuando es null, este job resuelve la tarifa con
+ * `identidad.resolver_tarifa_por_comuna` (fuente, régimen, comuna→zona, seller y
+ * fecha del hecho). Si NI ASÍ hay tarifa NO se lanza: `lineas_cobro.tarifa_id` es
+ * NOT NULL y reintentar no crea una tarifa, así que un throw es un bucle de 4
+ * reintentos que termina en un run fallido sin que nadie lo vea. En su lugar no
+ * se escribe ninguna línea (ni un monto $0 que taparía el hueco) y se levanta una
+ * excepción BLOQUEANTE de conciliación — `pedido_entregado_sin_linea_cobro` /
+ * `pedido_entregado_sin_linea_liquidacion` — que la bandeja ya muestra y que
+ * impide facturar el período hasta resolverla. Ver `levantarExcepcionSinTarifa`.
+ *
  * Idempotencia:
  * - EventId = `dinero-lineas-${pedidoId}-${estadoNuevo}` — Inngest no deduplica
  *   eventos de estados distintos del mismo pedido (fix del bug original donde el
@@ -46,7 +58,7 @@ import { inngest } from '@/lib/inngest/cliente';
 import { crearClienteServiceRole } from '@/lib/supabase/service-role';
 import { registrarEnBitacora } from '@/modules/identidad/auditoria';
 import { evaluarElegibilidad, evaluarMotivoElegibilidad, construirSnapshotRegla } from '../motor';
-import type { TarifaSnapshotInput, IncidenciaSnapshotInput } from '../motor';
+import type { TarifaSnapshotInput, IncidenciaSnapshotInput, ResolucionTarifaSnapshot } from '../motor';
 import { obtenerOCrearPeriodoCobroAbierto, obtenerOCrearLiquidacionAbierta } from '../periodos';
 import { existeEventoConciliacion, insertarEventoConciliacion } from '../conciliacion-insercion';
 import { decidirReatribucionLiquidacion } from '../reatribucion-liquidacion';
@@ -56,7 +68,9 @@ import {
   ESTADOS_NO_TERMINALES_CONCILIACION,
 } from '../conciliacion-clasificacion';
 import type { TipoDiferenciaConciliacion } from '../tipos';
-import type { EstadoPedido } from '@/modules/operacion/tipos';
+import type { EstadoPedido, FuentePedido } from '@/modules/operacion/tipos';
+import { resolverTarifa } from '@/modules/operacion/tarifas';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 const TZ = 'America/Santiago';
 
@@ -217,6 +231,92 @@ export async function levantarExcepcionLineaNoAnulable(
   return eventoConciliacionId;
 }
 
+/**
+ * Un pedido entregado/fallido cobrable al que NO se le encontró ninguna tarifa
+ * (ni la fijada en el pedido ni la que resuelve `resolver_tarifa_por_comuna`).
+ *
+ * No hay línea que escribir: `lineas_cobro.tarifa_id` es NOT NULL, y una línea
+ * con monto 0 sería peor que ninguna (el `ON CONFLICT (pedido_id) DO NOTHING` la
+ * volvería definitiva y nadie sabría que faltó dinero). Se deja la excepción
+ * BLOQUEANTE que la bandeja de conciliación ya sabe mostrar:
+ *   - lado cobro       → `pedido_entregado_sin_linea_cobro`, bloquea facturación.
+ *   - lado liquidación → `pedido_entregado_sin_linea_liquidacion`, bloquea pago
+ *     (el monto del conductor sale de la misma tarifa; no hay a qué atarlo).
+ *
+ * Bitácora ANTES del INSERT (invariante CLAUDE.md), con `evento_conciliacion_id`.
+ * Idempotente por `(tenant, pedido, tipo)` — C1 se reintenta, y
+ * `conciliar-periodo` (C6) detecta el mismo hecho al cerrar el período con la
+ * misma llave, así que no se duplican.
+ *
+ * Devuelve el id creado, o `null` si ya había uno.
+ */
+export async function levantarExcepcionSinTarifa(
+  supabase: ReturnType<typeof crearClienteServiceRole>,
+  input: {
+    tenantId: string;
+    pedidoId: string;
+    sellerId: string;
+    lado: 'cobro' | 'liquidacion';
+    driverId?: string | null;
+    estadoNuevo: string;
+    fuentePedido: string | null;
+    tipoPedido: string;
+    comuna: string | null;
+    jobRunId: string;
+  },
+): Promise<string | null> {
+  const tipoDiferencia: TipoDiferenciaConciliacion =
+    input.lado === 'cobro' ? 'pedido_entregado_sin_linea_cobro' : 'pedido_entregado_sin_linea_liquidacion';
+
+  const yaExiste = await existeEventoConciliacion(supabase, input.tenantId, tipoDiferencia, {
+    pedidoId: input.pedidoId,
+  });
+  if (yaExiste) return null;
+
+  const eventoId = crypto.randomUUID();
+  const ladoTexto = input.lado === 'cobro' ? 'cobro' : 'liquidación';
+  const motivo =
+    `Pedido ${input.pedidoId} (${input.estadoNuevo}) sin tarifa aplicable: el seller no tiene ninguna tarifa ` +
+    `vigente que cubra la fuente '${input.fuentePedido ?? 'desconocida'}', el régimen '${input.tipoPedido}' ` +
+    `y la comuna '${input.comuna ?? 'sin comuna'}'. No se generó la línea de ${ladoTexto}. ` +
+    `Configura la tarifa y regenera el pedido.`;
+
+  await registrarEnBitacora(supabase, {
+    tenantId: input.tenantId,
+    actorUsuarioId: null,
+    actorTipo: 'sistema',
+    accion: 'dinero.linea_no_generada_sin_tarifa',
+    entidadTipo: 'pedido',
+    entidadId: input.pedidoId,
+    detalle: {
+      lado: input.lado,
+      estado_pedido: input.estadoNuevo,
+      fuente: input.fuentePedido,
+      tipo_pedido: input.tipoPedido,
+      comuna: input.comuna,
+      evento_conciliacion_id: eventoId,
+      job_run_id: input.jobRunId,
+    },
+  });
+
+  await insertarEventoConciliacion(supabase, {
+    id: eventoId,
+    tenant_id: input.tenantId,
+    seller_id: input.sellerId,
+    pedido_id: input.pedidoId,
+    driver_id: input.lado === 'liquidacion' ? (input.driverId ?? null) : null,
+    tipo_diferencia: tipoDiferencia,
+    descripcion: motivo,
+    estado: 'pendiente',
+    bloquea_facturacion: input.lado === 'cobro',
+    bloquea_pago: input.lado === 'liquidacion',
+    motivo_bloqueo: motivo,
+    job_run_id: input.jobRunId,
+  });
+
+  return eventoId;
+}
+
 export const jobGenerarLineas = inngest.createFunction(
   {
     id: 'dinero/generarLineas',
@@ -253,7 +353,18 @@ export const jobGenerarLineas = inngest.createFunction(
     // ver `snapshot_regla` en dinero.lineas_cobro/lineas_liquidacion, migración
     // 20260707000001): la tarifa completa (no solo los montos), el tipo de la
     // incidencia y la comuna del destinatario como contexto geográfico.
-    const { elegibilidad, motivos, tarifa, incidencia, esGastoPropio, comunaDestinatario } = await step.run(
+    const {
+      elegibilidad,
+      motivos,
+      tarifa,
+      incidencia,
+      esGastoPropio,
+      comunaDestinatario,
+      fuentePedido,
+      tarifaIdEfectiva,
+      zonaPedidoId,
+      zonaPorRespaldo,
+    } = await step.run(
       'evaluar-elegibilidad',
       async () => {
         const supabase = crearClienteServiceRole();
@@ -270,24 +381,76 @@ export const jobGenerarLineas = inngest.createFunction(
         let vigenteDesde: string | null = null;
         let vigenteHasta: string | null = null;
         let estadoTarifa: string | null = null;
+        let fuenteTarifa: string | null = null;
         let minimoRetiroClp: number | null = null;
         let minimoFacturacionClp: number | null = null;
         let recargoReprogramacionClp: number | null = null;
 
-        if (tarifaAplicableId) {
+        // Comuna y fuente del pedido. La comuna es contexto geográfico del snapshot
+        // Y la entrada de la resolución de tarifa por zona; la fuente
+        // (`operacion.pedidos.fuente`) es la procedencia y NO viaja en el evento.
+        // Se lee ANTES que la tarifa porque la resolución las necesita.
+        const { data: pedidoData } = await supabase
+          .schema('operacion')
+          .from('pedidos')
+          .select('destinatario_comuna, fuente')
+          .eq('id', pedidoId)
+          .eq('tenant_id', tenantId)
+          .maybeSingle();
+
+        const comunaPedido = (pedidoData?.destinatario_comuna as string | null) ?? null;
+        const fuenteDelPedido = (pedidoData?.fuente as FuentePedido | null) ?? null;
+
+        // Tarifa: la fijada en el pedido, o —si el pedido nació sin ella— la que
+        // resuelve la función SQL única. La ingesta de ML nunca escribe
+        // `tarifa_aplicable_id`; sin esto, todo Flex entregado llegaba a
+        // `tarifa_id` NULL contra una columna NOT NULL.
+        let tarifaId: string | null = tarifaAplicableId;
+        let resolucion: ResolucionTarifaSnapshot | null = null;
+        let zonaPedido: string | null = null;
+        let porRespaldo: boolean | null = null;
+
+        // `devuelto`/`cancelado` nunca generan línea (solo anulan): no hay nada que
+        // tarifar y resolver sería una consulta de más en el camino de anulación.
+        const requiereTarifa = estadoNuevo !== 'devuelto' && estadoNuevo !== 'cancelado';
+
+        if (!tarifaId && requiereTarifa) {
+          const r = await resolverTarifa(supabase as unknown as SupabaseClient, {
+            tenantId,
+            sellerId,
+            fuente: fuenteDelPedido,
+            tipoPedido,
+            comuna: comunaPedido,
+            // La fecha del HECHO (cuándo ocurrió), no la de hoy: un reintento o
+            // una regeneración tardía no debe cambiar de tarifa por el calendario.
+            fecha: fechaLocalSantiago(fechaTransicion),
+          });
+          tarifaId = r.tarifaId;
+          zonaPedido = r.zonaId;
+          porRespaldo = r.zonaPorRespaldo;
+          resolucion = {
+            porSeller: r.porSeller,
+            porFuente: r.porFuente,
+            porRegimen: r.porRegimen,
+            porZona: r.porZona,
+          };
+        }
+
+        if (tarifaId) {
           const { data: tarifaData } = await supabase
             .schema('identidad')
             .from('tarifas')
             .select(
-              'monto_clp, monto_conductor_clp, tipo_entrega, modo_calculo, zona, zona_id, vigente_desde, vigente_hasta, estado, minimo_retiro_clp, minimo_facturacion_clp, recargo_reprogramacion_clp',
+              'monto_clp, monto_conductor_clp, tipo_entrega, fuente, modo_calculo, zona, zona_id, vigente_desde, vigente_hasta, estado, minimo_retiro_clp, minimo_facturacion_clp, recargo_reprogramacion_clp',
             )
-            .eq('id', tarifaAplicableId)
+            .eq('id', tarifaId)
             .eq('tenant_id', tenantId)
             .maybeSingle();
 
           montoCobroBase = tarifaData ? Math.round(Number(tarifaData.monto_clp)) : 0;
           montoConductorBase = tarifaData ? Math.round(Number(tarifaData.monto_conductor_clp ?? 0)) : 0;
           tipoEntrega = (tarifaData?.tipo_entrega as string | null) ?? null;
+          fuenteTarifa = (tarifaData?.fuente as string | null) ?? null;
           modoCalculo = (tarifaData?.modo_calculo as string | null) ?? null;
           zona = (tarifaData?.zona as string | null) ?? null;
           zonaId = (tarifaData?.zona_id as string | null) ?? null;
@@ -330,17 +493,6 @@ export const jobGenerarLineas = inngest.createFunction(
           tenantData?.seller_id_gasto_propio != null &&
           tenantData.seller_id_gasto_propio === sellerId;
 
-        // Leer comuna del destinatario — contexto geográfico del pedido para el
-        // snapshot (NO es lo que determina el precio; eso lo determina la zona
-        // de la tarifa). No viene en el evento, así que se lee puntualmente.
-        const { data: pedidoData } = await supabase
-          .schema('operacion')
-          .from('pedidos')
-          .select('destinatario_comuna')
-          .eq('id', pedidoId)
-          .eq('tenant_id', tenantId)
-          .maybeSingle();
-
         const entradaMotor = {
           estadoPedido: estadoNuevo as EstadoPedido,
           afectaCobro: afectaCobro as boolean | null,
@@ -359,6 +511,8 @@ export const jobGenerarLineas = inngest.createFunction(
             montoCobroBase,
             montoConductorBase,
             tipoEntrega,
+            fuente: fuenteTarifa,
+            resolucion,
             modoCalculo,
             zona,
             zonaId,
@@ -378,7 +532,11 @@ export const jobGenerarLineas = inngest.createFunction(
               }
             : null,
           esGastoPropio: gastoPropio,
-          comunaDestinatario: (pedidoData?.destinatario_comuna as string | null) ?? null,
+          comunaDestinatario: comunaPedido,
+          fuentePedido: fuenteDelPedido,
+          tarifaIdEfectiva: tarifaId,
+          zonaPedidoId: zonaPedido,
+          zonaPorRespaldo: porRespaldo,
         };
       },
     );
@@ -661,6 +819,29 @@ export const jobGenerarLineas = inngest.createFunction(
       }
 
       const supabase = crearClienteServiceRole();
+
+      // Sin tarifa NO se escribe línea (tarifa_id es NOT NULL y un monto 0 taparía
+      // el hueco): se deja la excepción bloqueante y el job termina bien. Lanzar
+      // acá sería un bucle de reintentos que no puede resolverse solo.
+      if (!tarifaIdEfectiva) {
+        logger.warn(
+          `Pedido ${pedidoId}: sin tarifa aplicable (fuente=${fuentePedido}, régimen=${tipoPedido}). ` +
+          `No se genera la línea de cobro; se levanta excepción de conciliación bloqueante.`,
+        );
+        await levantarExcepcionSinTarifa(supabase, {
+          tenantId,
+          pedidoId,
+          sellerId,
+          lado: 'cobro',
+          estadoNuevo,
+          fuentePedido,
+          tipoPedido,
+          comuna: comunaDestinatario,
+          jobRunId: runId,
+        });
+        return null;
+      }
+
       const montoBase = tarifa.montoCobroBase;
       const ajuste = elegibilidad.ajusteCobroCLP;
       const concepto = `Servicio de entrega ${tipoPedido} — pedido ${pedidoId}`;
@@ -670,10 +851,12 @@ export const jobGenerarLineas = inngest.createFunction(
       // monto_base_clp/ajuste_incidencia_clp — atomicidad, no una escritura
       // separada. `genera` es siempre true aquí: este bloque solo se alcanza
       // cuando elegibilidad.generaCobro === true.
-      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaAplicableId
+      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaIdEfectiva
         ? {
-            tarifaId: tarifaAplicableId,
+            tarifaId: tarifaIdEfectiva,
             tipoEntrega: tarifa.tipoEntrega,
+            fuente: tarifa.fuente,
+            resolucion: tarifa.resolucion,
             modoCalculo: tarifa.modoCalculo,
             zona: tarifa.zona,
             zonaId: tarifa.zonaId,
@@ -701,6 +884,9 @@ export const jobGenerarLineas = inngest.createFunction(
         valorBaseClp: montoBase,
         ajusteIncidenciaClp: ajuste,
         comunaDestinatario,
+        fuentePedido,
+        zonaPedidoId,
+        zonaPorRespaldo,
         fechaTransicion,
         fechaEntregaLocal: fechaHecho,
         estadoNuevo,
@@ -720,7 +906,7 @@ export const jobGenerarLineas = inngest.createFunction(
           tenant_id: tenantId,
           seller_id: sellerId,
           pedido_id: pedidoId,
-          tarifa_id: tarifaAplicableId!,
+          tarifa_id: tarifaIdEfectiva,
           monto_base_clp: montoBase,
           ajuste_incidencia_clp: ajuste,
           concepto,
@@ -784,6 +970,29 @@ export const jobGenerarLineas = inngest.createFunction(
       }
 
       const supabase = crearClienteServiceRole();
+
+      // Mismo criterio que el lado cobro: el monto del conductor sale de la
+      // tarifa, y sin ella no hay línea ni un $0 que la reemplace.
+      if (!tarifaIdEfectiva) {
+        logger.warn(
+          `Pedido ${pedidoId}: sin tarifa aplicable (fuente=${fuentePedido}, régimen=${tipoPedido}). ` +
+          `No se genera la línea de liquidación; se levanta excepción de conciliación bloqueante.`,
+        );
+        await levantarExcepcionSinTarifa(supabase, {
+          tenantId,
+          pedidoId,
+          sellerId,
+          lado: 'liquidacion',
+          driverId: driverIdAsignado,
+          estadoNuevo,
+          fuentePedido,
+          tipoPedido,
+          comuna: comunaDestinatario,
+          jobRunId: runId,
+        });
+        return null;
+      }
+
       const montoBase = tarifa.montoConductorBase;
       const ajuste = elegibilidad.ajusteLiquidacionCLP;
       const concepto = `Liquidación entrega ${tipoPedido} — pedido ${pedidoId}`;
@@ -791,10 +1000,12 @@ export const jobGenerarLineas = inngest.createFunction(
       // Snapshot inmutable de la regla económica (hallazgo P0 de auditoría) —
       // ver comentario análogo en 'generar-linea-cobro'. El lado 'liquidacion'
       // NO lleva mínimos ni recargo de reprogramación (economía de cobro).
-      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaAplicableId
+      const tarifaSnapshot: TarifaSnapshotInput | null = tarifaIdEfectiva
         ? {
-            tarifaId: tarifaAplicableId,
+            tarifaId: tarifaIdEfectiva,
             tipoEntrega: tarifa.tipoEntrega,
+            fuente: tarifa.fuente,
+            resolucion: tarifa.resolucion,
             modoCalculo: tarifa.modoCalculo,
             zona: tarifa.zona,
             zonaId: tarifa.zonaId,
@@ -822,6 +1033,9 @@ export const jobGenerarLineas = inngest.createFunction(
         valorBaseClp: montoBase,
         ajusteIncidenciaClp: ajuste,
         comunaDestinatario,
+        fuentePedido,
+        zonaPedidoId,
+        zonaPorRespaldo,
         fechaTransicion,
         fechaEntregaLocal: fechaHecho,
         estadoNuevo,
@@ -1017,6 +1231,21 @@ export const jobGenerarLineas = inngest.createFunction(
 
       return existente.id as string;
     });
+
+    // Sin tarifa no hay líneas: los pasos 2 y 4 ya dejaron la excepción bloqueante.
+    // Cortar acá evita marcar `cobro_generado`/`liquidacion_generada` en el pedido
+    // (paso 6) y registrar 'dinero.lineas_generadas' (paso 7) por algo que no
+    // ocurrió: esos flags son los que la UI y C6 leen para creer que hay cobro.
+    if (!tarifaIdEfectiva) {
+      return {
+        pedidoId,
+        generaCobro: elegibilidad.generaCobro,
+        lineaCobroId: null,
+        generaLiquidacion: elegibilidad.generaLiquidacion,
+        lineaLiquidacionId: null,
+        sinTarifa: true,
+      };
+    }
 
     // Paso 5: Asignar línea de liquidación a su liquidación abierta.
     await step.run('asignar-liquidacion', async () => {

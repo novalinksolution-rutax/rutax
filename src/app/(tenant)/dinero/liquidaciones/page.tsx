@@ -304,7 +304,7 @@ export default async function PaginaLiquidaciones({
               // que alguien pregunta por qué el conductor no recibió nada.
               <>
                 Los pagos no salen del banco todavía ·{" "}
-                <Link href="/onboarding/cobranza" className="underline">
+                <Link href="/configuracion/cobranza" className="underline">
                   Configurar ›
                 </Link>
               </>

@@ -3,37 +3,30 @@
 /**
  * Pantalla A — Alta de la empresa (RF-006), F1 (login sin contraseña).
  * =============================================================================
- * Arranque MÍNIMO (rediseño de onboarding, doc §6): 4 campos
- * (`nombreFantasia`, `rut`, `nombreDueno`, `emailDueno`) y el mismo checkbox
- * de consentimiento bloqueante (Ley 21.719). La razón social YA NO se pide
- * aquí — se difiere al hub de onboarding («datos de tu empresa»,
- * `(tenant)/onboarding/_formularios/datos-emisor.tsx`), que es donde el
- * dueño la completa antes de que el motor de dinero la necesite (gateado
- * por F2b). El tenant nace con `razon_social = null`.
+ * Arranque MÍNIMO: 4 campos (`nombreFantasia`, `rut`, `nombreDueno`,
+ * `emailDueno`) y el checkbox de consentimiento bloqueante (Ley 21.719). La
+ * razón social no se pide aquí: se difiere a «Antes de facturar». El tenant
+ * nace con `razon_social = null`.
  *
- * Lo que cambia respecto al F1 original es el desenlace. Antes el botón
- * llamaba a `altaDeEmpresa`
- * (creaba el tenant de un golpe y mandaba un correo para "crear tu
- * contraseña"). Ahora no hay contraseña que crear: hay DOS caminos, y los
- * dos arrancan guardando el mismo borrador (`guardarBorradorTenant`) porque
- * sin identidad resuelta todavía no hay a quién asignarle el tenant:
+ * Misma puerta que `/login` (`MarcoPuerta`, columna de 400 px). Hay DOS
+ * caminos, y los dos arrancan guardando el mismo borrador
+ * (`guardarBorradorTenant`) porque sin identidad resuelta todavía no hay a
+ * quién asignarle el tenant:
  *
  *   1. **"Continuar con Google"** — el navegador redirige a Google; el resto
  *      (crear el tenant, activar el dueño) lo resuelve `/auth/callback`.
  *   2. **"Enviar código por correo"** — `enviarCodigoRegistro` y de ahí a
  *      `/registro/revisa-tu-correo`, donde se ingresa el código de 6 dígitos
- *      con el componente compartido `IngresaCodigo` (el mismo que usa
- *      `/login`).
+ *      con el componente compartido `IngresaCodigo` (el mismo que usa `/login`).
  */
 
 import { useId, useRef, useState, type FormEvent, type RefObject } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, Loader2, TriangleAlert, User } from "lucide-react";
+import { Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { esRutValido } from "@/modules/identidad/rut";
 import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
 import { createClient } from "@/lib/supabase/client";
@@ -41,8 +34,9 @@ import { IconoGoogle } from "@/components/identidad/icono-google";
 import { enviarCodigoRegistro, guardarBorradorTenant } from "./actions";
 import { iniciarLoginConGoogle } from "@/lib/supabase/iniciar-login-google";
 
-const MENSAJE_RUT_INVALIDO = "El dígito verificador no corresponde a este RUT.";
-const MENSAJE_RUT_FORMATO = "Ingresa el RUT con el formato 12.345.678-9.";
+const MENSAJE_RUT_INVALIDO = "El dígito verificador no coincide.";
+const MENSAJE_RUT_FORMATO = "Usa el formato 12.345.678-9.";
+const MENSAJE_OBLIGATORIO = "Obligatorio.";
 
 interface CamposFormulario {
   nombreFantasia: string;
@@ -65,13 +59,15 @@ const CAMPOS_INICIALES: CamposFormulario = {
   emailDueno: "",
 };
 
+const CLASE_ERROR_CAMPO = "text-sm text-fault-fg";
+
 /** Traduce `?error=` de `/auth/callback` (o de un `router.push` propio). */
 function errorGeneralDesdeUrl(codigo: string | undefined): { tipo: string; mensaje: string } | null {
   switch (codigo) {
     case "correo_ocupado":
-      return { tipo: "correo_ocupado", mensaje: "Ese correo ya tiene una cuenta en Rutax. Usa otro o inicia sesión." };
+      return { tipo: "correo_ocupado", mensaje: "Ese correo ya tiene una cuenta." };
     case "conflicto_rut":
-      return { tipo: "conflicto_rut", mensaje: "Ya existe un courier registrado con este RUT." };
+      return { tipo: "conflicto_rut", mensaje: "Ya existe un courier con este RUT." };
     case "error_sistema":
     case "oauth_invalido":
       return {
@@ -86,7 +82,6 @@ function errorGeneralDesdeUrl(codigo: string | undefined): { tipo: string; mensa
 export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string }) {
   const router = useRouter();
   const idBase = useId();
-  const idAyudaTerminos = `${idBase}-ayuda-terminos`;
 
   const [campos, setCampos] = useState<CamposFormulario>(CAMPOS_INICIALES);
   const [errores, setErrores] = useState<ErroresFormulario>({});
@@ -146,12 +141,12 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
     const nuevosErrores: ErroresFormulario = {};
 
     if (!campos.nombreFantasia.trim()) {
-      nuevosErrores.nombreFantasia = "El nombre de fantasía de tu empresa es obligatorio.";
+      nuevosErrores.nombreFantasia = MENSAJE_OBLIGATORIO;
     }
 
     const rutLimpio = limpiarMascaraRut(campos.rut);
     if (!rutLimpio) {
-      nuevosErrores.rut = "El RUT de tu empresa es obligatorio.";
+      nuevosErrores.rut = MENSAJE_OBLIGATORIO;
     } else if (!/^[0-9]{1,8}-[0-9kK]$/.test(rutLimpio)) {
       nuevosErrores.rut = MENSAJE_RUT_FORMATO;
     } else if (!esRutValido(rutLimpio)) {
@@ -159,10 +154,12 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
     }
 
     if (!campos.nombreDueno.trim()) {
-      nuevosErrores.nombreDueno = "El nombre completo del dueño es obligatorio.";
+      nuevosErrores.nombreDueno = MENSAJE_OBLIGATORIO;
     }
-    if (!campos.emailDueno.trim() || !campos.emailDueno.includes("@")) {
-      nuevosErrores.emailDueno = "El email del dueño es obligatorio y debe ser un correo válido.";
+    if (!campos.emailDueno.trim()) {
+      nuevosErrores.emailDueno = MENSAJE_OBLIGATORIO;
+    } else if (!campos.emailDueno.includes("@")) {
+      nuevosErrores.emailDueno = "Correo inválido.";
     }
 
     setErrores(nuevosErrores);
@@ -256,213 +253,200 @@ export function FormularioAltaEmpresa({ errorInicial }: { errorInicial?: string 
   }
 
   return (
-    <Card className="w-full max-w-2xl">
-      <CardHeader>
-        <CardTitle className="text-2xl font-semibold">Crea tu cuenta de courier</CardTitle>
-        <CardDescription>
-          Registra tu empresa en un solo paso. Sin contraseña: entras con Google o con un código
-          que te enviamos por correo.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form noValidate className="space-y-8" onSubmit={(e) => e.preventDefault()}>
-          <fieldset className="space-y-4">
-            <legend className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Building2 className="size-4" aria-hidden="true" />
-              Tu empresa
-            </legend>
+    <div className="w-full max-w-[400px]">
+      <h1 className="font-heading text-2xl font-semibold text-fg">Crea tu cuenta</h1>
 
-            <div className="space-y-2">
-              <Label htmlFor={`${idBase}-nombreFantasia`}>Nombre de fantasía</Label>
-              <Input
-                id={`${idBase}-nombreFantasia`}
-                ref={refNombreFantasia}
-                autoFocus
-                autoComplete="organization"
-                placeholder="Ej: Despachos Rápidos SpA"
-                value={campos.nombreFantasia}
-                onChange={(e) => actualizarCampo("nombreFantasia", e.target.value)}
-                readOnly={enviando}
-                aria-invalid={Boolean(errores.nombreFantasia)}
-                aria-describedby={errores.nombreFantasia ? `${idBase}-nombreFantasia-error` : undefined}
-              />
-              {errores.nombreFantasia ? (
-                <p id={`${idBase}-nombreFantasia-error`} role="alert" className="text-sm text-destructive">
-                  {errores.nombreFantasia}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor={`${idBase}-rut`}>RUT de la empresa</Label>
-              <Input
-                id={`${idBase}-rut`}
-                ref={refRut}
-                inputMode="text"
-                autoComplete="off"
-                placeholder="12.345.678-9"
-                value={campos.rut}
-                onChange={(e) => manejarCambioRut(e.target.value)}
-                onBlur={validarRutAlPerderFoco}
-                readOnly={enviando}
-                aria-invalid={Boolean(errores.rut)}
-                aria-describedby={errores.rut ? `${idBase}-rut-error` : undefined}
-              />
-              {errores.rut ? (
-                <p id={`${idBase}-rut-error`} role="alert" className="text-sm text-destructive">
-                  {errores.rut}
-                </p>
-              ) : null}
-            </div>
-          </fieldset>
-
-          <fieldset className="space-y-4">
-            <legend className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <User className="size-4" aria-hidden="true" />
-              Tú, como dueño
-            </legend>
-
-            <div className="space-y-2">
-              <Label htmlFor={`${idBase}-nombreDueno`}>Nombre completo</Label>
-              <Input
-                id={`${idBase}-nombreDueno`}
-                ref={refNombreDueno}
-                autoComplete="name"
-                placeholder="Ej: María Pérez Soto"
-                value={campos.nombreDueno}
-                onChange={(e) => actualizarCampo("nombreDueno", e.target.value)}
-                readOnly={enviando}
-                aria-invalid={Boolean(errores.nombreDueno)}
-                aria-describedby={errores.nombreDueno ? `${idBase}-nombreDueno-error` : undefined}
-              />
-              {errores.nombreDueno ? (
-                <p id={`${idBase}-nombreDueno-error`} role="alert" className="text-sm text-destructive">
-                  {errores.nombreDueno}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor={`${idBase}-emailDueno`}>Correo electrónico</Label>
-              <Input
-                id={`${idBase}-emailDueno`}
-                ref={refEmailDueno}
-                type="email"
-                autoComplete="email"
-                placeholder="tu@empresa.cl"
-                value={campos.emailDueno}
-                onChange={(e) => actualizarCampo("emailDueno", e.target.value)}
-                readOnly={enviando}
-                aria-invalid={Boolean(errores.emailDueno)}
-                aria-describedby={errores.emailDueno ? `${idBase}-emailDueno-error` : undefined}
-              />
-              {errores.emailDueno ? (
-                <p id={`${idBase}-emailDueno-error`} role="alert" className="text-sm text-destructive">
-                  {errores.emailDueno}
-                </p>
-              ) : null}
-            </div>
-          </fieldset>
-
-          {errorGeneral ? (
-            <Alert variant="destructive">
-              <TriangleAlert className="size-4" aria-hidden="true" />
-              <AlertTitle>
-                {errorGeneral.tipo === "conflicto_rut"
-                  ? "Ya existe un courier registrado con este RUT"
-                  : errorGeneral.tipo === "correo_ocupado"
-                    ? "Ese correo ya tiene una cuenta"
-                    : "No pudimos continuar"}
-              </AlertTitle>
-              <AlertDescription className="space-y-2">
-                <p>{errorGeneral.mensaje}</p>
-                {errorGeneral.tipo === "correo_ocupado" ? (
-                  <p>
-                    <a href="/login" className="font-medium underline underline-offset-4">
-                      ¿Ya tienes cuenta? Inicia sesión
-                    </a>
-                  </p>
-                ) : null}
-              </AlertDescription>
-            </Alert>
+      <form
+        noValidate
+        className="mt-7 space-y-4"
+        aria-busy={enviando}
+        onSubmit={(e) => e.preventDefault()}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor={`${idBase}-nombreFantasia`}>Nombre de fantasía</Label>
+          <Input
+            id={`${idBase}-nombreFantasia`}
+            ref={refNombreFantasia}
+            autoFocus
+            autoComplete="organization"
+            value={campos.nombreFantasia}
+            onChange={(e) => actualizarCampo("nombreFantasia", e.target.value)}
+            readOnly={enviando}
+            aria-invalid={Boolean(errores.nombreFantasia)}
+            aria-describedby={errores.nombreFantasia ? `${idBase}-nombreFantasia-error` : undefined}
+            className="pointer-coarse:h-12"
+          />
+          {errores.nombreFantasia ? (
+            <p id={`${idBase}-nombreFantasia-error`} role="alert" className={CLASE_ERROR_CAMPO}>
+              {errores.nombreFantasia}
+            </p>
           ) : null}
+        </div>
 
-          {/* Consentimiento explícito. Va con casilla SIN marcar y bloqueando el
-              envío a propósito: un consentimiento premarcado no es consentimiento
-              (Ley 21.719 exige que sea inequívoco), y un "al continuar aceptas"
-              al pie no deja constancia de que alguien decidió nada. */}
-          <div className="space-y-3">
-            <label className="flex items-start gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                checked={aceptaTerminos}
-                onChange={(e) => setAceptaTerminos(e.target.checked)}
-                className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]"
-                aria-describedby={idAyudaTerminos}
-              />
-              <span>
-                He leído y acepto los{" "}
-                <a
-                  href="/terminos"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium underline underline-offset-4"
-                >
-                  términos y condiciones
-                </a>{" "}
-                y la{" "}
-                <a
-                  href="/privacidad"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium underline underline-offset-4"
-                >
-                  política de privacidad
-                </a>
-                .
-              </span>
-            </label>
-            <p id={idAyudaTerminos} className="pl-6.5 text-xs text-muted-foreground">
-              Rutax trata los datos de tus conductores y destinatarios por encargo tuyo: tú
-              decides qué se recoge y para qué.
+        <div className="space-y-1.5">
+          <Label htmlFor={`${idBase}-rut`}>RUT de la empresa</Label>
+          <Input
+            id={`${idBase}-rut`}
+            ref={refRut}
+            inputMode="text"
+            autoComplete="off"
+            placeholder="12.345.678-9"
+            value={campos.rut}
+            onChange={(e) => manejarCambioRut(e.target.value)}
+            onBlur={validarRutAlPerderFoco}
+            readOnly={enviando}
+            aria-invalid={Boolean(errores.rut)}
+            aria-describedby={errores.rut ? `${idBase}-rut-error` : undefined}
+            className="pointer-coarse:h-12"
+          />
+          {errores.rut ? (
+            <p id={`${idBase}-rut-error`} role="alert" className={CLASE_ERROR_CAMPO}>
+              {errores.rut}
             </p>
-          </div>
+          ) : null}
+        </div>
 
-          <div className="space-y-3">
-            <Button
-              type="button"
-              size="lg"
-              className="w-full sm:w-auto"
-              disabled={enviando || !aceptaTerminos}
-              onClick={manejarGoogle}
+        <hr className="border-line" />
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${idBase}-nombreDueno`}>Tu nombre</Label>
+          <Input
+            id={`${idBase}-nombreDueno`}
+            ref={refNombreDueno}
+            autoComplete="name"
+            value={campos.nombreDueno}
+            onChange={(e) => actualizarCampo("nombreDueno", e.target.value)}
+            readOnly={enviando}
+            aria-invalid={Boolean(errores.nombreDueno)}
+            aria-describedby={errores.nombreDueno ? `${idBase}-nombreDueno-error` : undefined}
+            className="pointer-coarse:h-12"
+          />
+          {errores.nombreDueno ? (
+            <p id={`${idBase}-nombreDueno-error`} role="alert" className={CLASE_ERROR_CAMPO}>
+              {errores.nombreDueno}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor={`${idBase}-emailDueno`}>Tu correo</Label>
+          <Input
+            id={`${idBase}-emailDueno`}
+            ref={refEmailDueno}
+            type="email"
+            autoComplete="email"
+            value={campos.emailDueno}
+            onChange={(e) => actualizarCampo("emailDueno", e.target.value)}
+            readOnly={enviando}
+            aria-invalid={Boolean(errores.emailDueno)}
+            aria-describedby={errores.emailDueno ? `${idBase}-emailDueno-error` : undefined}
+            className="pointer-coarse:h-12"
+          />
+          {errores.emailDueno ? (
+            <p id={`${idBase}-emailDueno-error`} role="alert" className={CLASE_ERROR_CAMPO}>
+              {errores.emailDueno}
+            </p>
+          ) : null}
+        </div>
+
+        {errorGeneral ? (
+          <div
+            role="alert"
+            className="border border-fault-line bg-fault-bg px-3 py-2 text-sm text-fault-fg"
+          >
+            <span className="flex items-start gap-1.5">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              <span>{errorGeneral.mensaje}</span>
+            </span>
+            {errorGeneral.tipo === "correo_ocupado" ? (
+              <Link href="/login" className="mt-1.5 block font-medium underline underline-offset-4">
+                Iniciar sesión ›
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Consentimiento explícito. Va con casilla SIN marcar y bloqueando el
+            envío a propósito: un consentimiento premarcado no es consentimiento
+            (Ley 21.719 exige que sea inequívoco). */}
+        <label className="flex items-start gap-2.5 text-sm pointer-coarse:py-2">
+          <input
+            type="checkbox"
+            checked={aceptaTerminos}
+            onChange={(e) => setAceptaTerminos(e.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-[var(--primary)]"
+          />
+          <span>
+            Acepto los{" "}
+            <a
+              href="/terminos"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium underline underline-offset-4"
             >
-              {enviandoGoogle ? (
+              términos
+            </a>{" "}
+            y la{" "}
+            <a
+              href="/privacidad"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium underline underline-offset-4"
+            >
+              política de privacidad
+            </a>
+            .
+          </span>
+        </label>
+        {/* PENDIENTE seguridad-cumplimiento (Q8): se conserva hasta que decidan
+            si el párrafo es exigencia legal en el registro o basta la política. */}
+        <p className="text-xs text-fg-muted">
+          Rutax trata los datos de tus conductores y destinatarios por encargo tuyo: tú decides
+          qué se recoge y para qué.
+        </p>
+
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full pointer-coarse:h-12"
+            disabled={enviando || !aceptaTerminos}
+            onClick={manejarGoogle}
+          >
+            {enviandoGoogle ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <IconoGoogle className="size-4" />
+            )}
+            {enviandoGoogle ? "Conectando con Google…" : "Continuar con Google"}
+          </Button>
+
+          <Button
+            type="button"
+            className="w-full pointer-coarse:h-12"
+            disabled={enviando || !aceptaTerminos}
+            onClick={manejarEnviarCodigo}
+          >
+            {enviandoCodigo ? (
+              <>
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <IconoGoogle className="size-4" />
-              )}
-              {enviandoGoogle ? "Conectando con Google…" : "Continuar con Google"}
-            </Button>
+                Enviando código…
+              </>
+            ) : (
+              "Enviar código por correo"
+            )}
+          </Button>
+        </div>
+      </form>
 
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              className="w-full sm:w-auto"
-              disabled={enviando || !aceptaTerminos}
-              onClick={manejarEnviarCodigo}
-            >
-              {enviandoCodigo ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {enviandoCodigo ? "Enviando código…" : "Enviar código por correo"}
-            </Button>
-
-            <p className="text-sm text-muted-foreground">
-              Con Google entras al tiro. Con el código, te lo enviamos a{" "}
-              {campos.emailDueno.trim() || "tu correo"} y dura 10 minutos.
-            </p>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+      <p className="mt-8 text-center text-sm text-fg-subtle">
+        <Link
+          href="/login"
+          className="underline underline-offset-4 hover:text-fg pointer-coarse:py-3"
+        >
+          Ya tengo cuenta
+        </Link>
+      </p>
+    </div>
   );
 }

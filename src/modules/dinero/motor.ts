@@ -233,7 +233,20 @@ export function evaluarMotivoElegibilidad(entrada: EntradaMotor): MotivosElegibi
 /** Datos de la tarifa aplicada, tal como se leyeron de `identidad.tarifas`. */
 export interface TarifaSnapshotInput {
   tarifaId: string;
+  /** Régimen LEGADO de la tarifa (`tarifas.tipo_entrega`). NULL en las tarifas nuevas. */
   tipoEntrega: string | null;
+  /**
+   * Plataforma a la que aplica la tarifa (`tarifas.fuente`), NULL = todas.
+   * Se guarda como `tarifa.fuente_pedido_tarifa`, NUNCA como `tarifa.fuente`:
+   * en el snapshot `zona.fuente` ya significa «de dónde salió la zona» y dos
+   * `fuente` con sentidos distintos en un mismo documento se leen mal.
+   */
+  fuente?: string | null;
+  /**
+   * Por qué ganó esta tarifa. Solo existe cuando la tarifa la eligió el motor
+   * (`resolver_tarifa_por_comuna`); `null` si ya venía fijada en el pedido.
+   */
+  resolucion?: ResolucionTarifaSnapshot | null;
   modoCalculo: string | null;
   zona: string | null;
   zonaId: string | null;
@@ -243,6 +256,13 @@ export interface TarifaSnapshotInput {
   minimoRetiroClp: number | null;
   minimoFacturacionClp: number | null;
   recargoReprogramacionClp: number | null;
+}
+
+export interface ResolucionTarifaSnapshot {
+  porSeller: boolean;
+  porFuente: boolean;
+  porRegimen: boolean;
+  porZona: boolean;
 }
 
 /** Datos de la incidencia asociada (si la hay), tal como se leyó de `operacion.incidencias`. */
@@ -268,6 +288,12 @@ export interface ConstruirSnapshotReglaInput {
   ajusteIncidenciaClp: number;
   /** Comuna del destinatario del pedido — contexto geográfico, no determina el precio. */
   comunaDestinatario: string | null;
+  /** Procedencia del pedido (`operacion.pedidos.fuente`). Contexto: NO se ramifica por esto (ver CLAUDE.md, eje de fuente). */
+  fuentePedido?: string | null;
+  /** Zona que la comuna del pedido resolvió (`identidad.resolver_tarifa_por_comuna`), si se resolvió. */
+  zonaPedidoId?: string | null;
+  /** La comuna no estaba mapeada y se cobró como la zona de respaldo. `null` = no se evaluó. */
+  zonaPorRespaldo?: boolean | null;
   fechaTransicion: string;
   fechaEntregaLocal: string;
   estadoNuevo: string;
@@ -304,7 +330,11 @@ export function construirSnapshotRegla(input: ConstruirSnapshotReglaInput): Reco
         };
 
   return {
-    version: 1,
+    // v2 (2026-09-28): + tarifa.fuente_pedido_tarifa, tarifa.resolucion,
+    // estado_pedido.fuente, zona.zona_pedido_id, zona.por_respaldo. Los snapshots
+    // v1 ya escritos son inmutables y siguen siendo válidos: quien los lee tolera
+    // la ausencia de estas claves.
+    version: 2,
     origen_snapshot: 'generacion_original',
     generado_en: input.generadoEn,
     job_run_id: input.jobRunId,
@@ -318,6 +348,15 @@ export function construirSnapshotRegla(input: ConstruirSnapshotReglaInput): Reco
       tipo_entrega: tarifa?.tipoEntrega ?? null,
       modo_calculo: tarifa?.modoCalculo ?? null,
       valor_base_clp: input.valorBaseClp,
+      fuente_pedido_tarifa: tarifa?.fuente ?? null,
+      resolucion: tarifa?.resolucion
+        ? {
+            por_seller: tarifa.resolucion.porSeller,
+            por_fuente: tarifa.resolucion.porFuente,
+            por_regimen: tarifa.resolucion.porRegimen,
+            por_zona: tarifa.resolucion.porZona,
+          }
+        : null,
       vigente_desde: tarifa?.vigenteDesde ?? null,
       vigente_hasta: tarifa?.vigenteHasta ?? null,
       estado: tarifa?.estado ?? null,
@@ -328,6 +367,8 @@ export function construirSnapshotRegla(input: ConstruirSnapshotReglaInput): Reco
       zona_id: tarifa?.zonaId ?? null,
       zona_texto: tarifa?.zona ?? null,
       comuna_destinatario: input.comunaDestinatario,
+      zona_pedido_id: input.zonaPedidoId ?? null,
+      por_respaldo: input.zonaPorRespaldo ?? null,
     },
     fecha_efectiva: {
       fecha_transicion: input.fechaTransicion,
@@ -337,6 +378,7 @@ export function construirSnapshotRegla(input: ConstruirSnapshotReglaInput): Reco
       estado_nuevo: input.estadoNuevo,
       estado_anterior: input.estadoAnterior,
       tipo_pedido: input.tipoPedido,
+      fuente: input.fuentePedido ?? null,
       es_gasto_propio: input.esGastoPropio,
     },
     incidencia: {

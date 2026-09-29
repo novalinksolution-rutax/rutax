@@ -23,18 +23,18 @@
  * el seller nunca prometió.
  *
  * -----------------------------------------------------------------------------
- * LA TARIFA ES POR SELLER, NO POR COMUNA
+ * LA TARIFA YA NO ES SOLO POR SELLER
  * -----------------------------------------------------------------------------
- * El tablero B1a escribe el aviso como «Colina no tiene tarifa configurada». El
- * motor resuelve la tarifa **por seller** (`resolverTarifaVigente`), no por
- * comuna — la misma contradicción que apareció en «Crear pedido same-day» y que
- * se resolvió igual: **el aviso dice lo que el sistema puede verificar**. Si
- * algún día existe tarifa por zona, este módulo es el único lugar que cambia.
+ * Desde la migración 20260928000002 el motor resuelve por seller, fuente, régimen
+ * y **zona de la comuna** (con zona de respaldo para la comuna sin mapear). El
+ * aviso sigue diciendo «este seller tiene N bultos sin cobrar» —lo que el sistema
+ * puede verificar—, pero ahora esos N salen de la misma resolución del motor.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { leerTodasLasFilas } from "@/lib/supabase/leer-paginado";
-import { resolverTarifaVigente } from "../tarifas";
+import { detectarPedidosSinTarifa } from "../tarifas";
+import type { FuentePedido, TipoPedido } from "../tipos";
 
 export interface SellerSinTarifa {
   id: string;
@@ -76,13 +76,13 @@ export async function obtenerExpectativaDelDia(
   cliente: SupabaseClient,
   entrada: { tenantId: string; fecha: string },
 ): Promise<ExpectativaRetiro> {
-  const esperados = await leerTodasLasFilas<{ seller_id: string }>(
+  const esperados = await leerTodasLasFilas<EsperadoDelDia>(
     "bultos esperados del día",
     (desde, hasta) =>
       cliente
         .schema("operacion")
         .from("pedidos")
-        .select("seller_id")
+        .select("id, seller_id, tipo_pedido, fuente, destinatario_comuna")
         .eq("tenant_id", entrada.tenantId)
         .eq("fecha_compromiso", entrada.fecha)
         .neq("situacion_retiro", "no_procesado")
@@ -94,7 +94,7 @@ export async function obtenerExpectativaDelDia(
     porSeller[p.seller_id] = (porSeller[p.seller_id] ?? 0) + 1;
   }
 
-  const sinTarifa = await detectarSellersSinTarifa(cliente, entrada, porSeller);
+  const sinTarifa = await detectarSellersSinTarifa(cliente, entrada, esperados);
 
   return {
     porSeller,
@@ -159,54 +159,66 @@ export async function listarEsperadosDeSeller(
   }));
 }
 
+interface EsperadoDelDia {
+  id: string;
+  seller_id: string;
+  tipo_pedido: TipoPedido;
+  fuente: FuentePedido | null;
+  destinatario_comuna: string | null;
+}
+
 /**
- * Cuáles de los sellers con carga hoy no tienen tarifa vigente.
+ * Cuáles de los sellers con carga hoy tienen bultos sin tarifa aplicable.
  *
- * Se consulta **solo por los que tienen carga**: preguntar por toda la cartera
- * gastaría una consulta por seller para avisar de gente que hoy no despacha
- * nada, y el aviso solo tiene sentido si esa entrega va a ocurrir.
+ * Se resuelve **por bulto** (seller, régimen, fuente y comuna) con el mismo
+ * detector que la bandeja de asignación: un seller con tarifa solo para Shopify
+ * y bultos de Flex debe figurar aquí, y con la resolución por seller a secas no
+ * figuraba. Se consulta solo por lo que tiene carga hoy.
  */
 async function detectarSellersSinTarifa(
   cliente: SupabaseClient,
   entrada: { tenantId: string; fecha: string },
-  porSeller: Record<string, number>,
+  esperados: readonly EsperadoDelDia[],
 ): Promise<SellerSinTarifa[]> {
-  const ids = Object.keys(porSeller);
-  if (ids.length === 0) return [];
+  if (esperados.length === 0) return [];
 
-  const [tarifas, nombres] = await Promise.all([
-    Promise.all(
-      ids.map(async (sellerId) => ({
-        sellerId,
-        tarifaId: await resolverTarifaVigente(cliente, {
-          tenantId: entrada.tenantId,
-          sellerId,
-          // El régimen del retiro es el del same-day: es el que tiene bodega.
-          tipoEntrega: "same_day",
-          fecha: entrada.fecha,
-        }).catch(() => null),
-      })),
-    ),
-    leerTodasLasFilas<{ id: string; razon_social: string }>(
-      "sellers con carga hoy",
-      (desde, hasta) =>
-        cliente
-          .from("sellers")
-          .select("id, razon_social")
-          .eq("tenant_id", entrada.tenantId)
-          .in("id", ids)
-          .range(desde, hasta),
-    ).catch(() => [] as { id: string; razon_social: string }[]),
-  ]);
+  const sinTarifaIds = await detectarPedidosSinTarifa(
+    cliente,
+    { tenantId: entrada.tenantId, fecha: entrada.fecha },
+    esperados.map((e) => ({
+      id: e.id,
+      sellerId: e.seller_id,
+      tipoPedido: e.tipo_pedido,
+      fuente: e.fuente,
+      comuna: e.destinatario_comuna,
+    })),
+  );
+  if (sinTarifaIds.size === 0) return [];
+
+  const bultosSinTarifa: Record<string, number> = {};
+  for (const e of esperados) {
+    if (sinTarifaIds.has(e.id)) bultosSinTarifa[e.seller_id] = (bultosSinTarifa[e.seller_id] ?? 0) + 1;
+  }
+  const ids = Object.keys(bultosSinTarifa);
+
+  const nombres = await leerTodasLasFilas<{ id: string; razon_social: string }>(
+    "sellers con carga hoy",
+    (desde, hasta) =>
+      cliente
+        .from("sellers")
+        .select("id, razon_social")
+        .eq("tenant_id", entrada.tenantId)
+        .in("id", ids)
+        .range(desde, hasta),
+  ).catch(() => [] as { id: string; razon_social: string }[]);
 
   const nombrePorId = new Map(nombres.map((s) => [s.id, s.razon_social]));
 
-  return tarifas
-    .filter((t) => t.tarifaId === null)
-    .map((t) => ({
-      id: t.sellerId,
-      nombre: nombrePorId.get(t.sellerId) ?? "Seller sin nombre",
-      bultos: porSeller[t.sellerId] ?? 0,
+  return ids
+    .map((sellerId) => ({
+      id: sellerId,
+      nombre: nombrePorId.get(sellerId) ?? "Seller sin nombre",
+      bultos: bultosSinTarifa[sellerId],
     }))
     .sort((a, b) => b.bultos - a.bultos);
 }

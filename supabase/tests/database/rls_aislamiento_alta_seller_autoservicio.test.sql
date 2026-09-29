@@ -29,7 +29,7 @@
 
 begin;
 
-select plan(36);
+select plan(37);
 
 -- -----------------------------------------------------------------------------
 -- Helpers de sesión simulada.
@@ -457,13 +457,46 @@ select lives_ok(
              'ml_flex', 'pendiente') $$,
   'escritura: el interno A declara una fuente para un seller de SU tenant'
 );
+-- Cruzar de tenant choca con DOS paredes, en este orden, y cada una se prueba
+-- por separado. Antes había una sola aserción que esperaba 42501 y nunca podía
+-- cumplirse: el trigger `seller_fuentes_declaradas_validar_tenant` es SECURITY
+-- INVOKER y corre ANTES del WITH CHECK de la política; con la sesión de A, la RLS
+-- de `sellers` le esconde el seller de B, y el trigger lo reporta como
+-- inexistente (P0001) sin que la política llegue a evaluarse. El seller de B SÍ
+-- existe en el fixture (s_b_multi).
+--
+-- Pared 1: el trigger. Se fija su mensaje exacto para que otro P0001 cualquiera
+-- no la dé por buena.
+select throws_ok(
+  $$ insert into identidad.seller_fuentes_declaradas (tenant_id, seller_id, fuente, estado)
+     values ('bbbbbbbb-0000-0000-0000-0000000000d2', 'bbbbbbbb-1111-0000-0000-0000000000d2',
+             'shopify', 'pendiente') $$,
+  'P0001', 'seller_id bbbbbbbb-1111-0000-0000-0000000000d2 no existe',
+  'escritura: el interno A NO puede escribir en el tenant B (pared 1: el trigger no ve el seller ajeno)'
+);
+
+-- Pared 2: la política (with check + claim), aislada. Se desactiva SOLO el
+-- trigger, dentro de la transacción de esta prueba (el `rollback` final lo
+-- revierte: DISABLE TRIGGER es transaccional). La política bajo prueba queda tal
+-- como la dejó la migración; no se re-aplica DDL de lo que se prueba.
+reset role;
+alter table identidad.seller_fuentes_declaradas
+  disable trigger trg_seller_fuentes_declaradas_validar_tenant;
+select test_iniciar_sesion(
+  'aaaaaaaa-3333-0000-0000-0000000000d3'::uuid, -- interno A
+  'aaaaaaaa-0000-0000-0000-0000000000d1'::uuid,
+  'interno', 'dueno'
+);
 select throws_ok(
   $$ insert into identidad.seller_fuentes_declaradas (tenant_id, seller_id, fuente, estado)
      values ('bbbbbbbb-0000-0000-0000-0000000000d2', 'bbbbbbbb-1111-0000-0000-0000000000d2',
              'shopify', 'pendiente') $$,
   '42501', null,
-  'escritura: el interno A NO puede escribir en el tenant B (with check + claim)'
+  'escritura: el interno A NO puede escribir en el tenant B (pared 2: with check + claim, sin el trigger delante)'
 );
+select test_cerrar_sesion();
+alter table identidad.seller_fuentes_declaradas
+  enable trigger trg_seller_fuentes_declaradas_validar_tenant;
 
 select test_iniciar_sesion(
   'aaaaaaaa-3333-0000-0000-0000000000d1'::uuid, -- seller_multi

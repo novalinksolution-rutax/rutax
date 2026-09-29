@@ -41,6 +41,8 @@ import { resolverComunaCanonica } from '../normalizacion';
 import { resolverCoordenadaConCache } from '../resolver-coordenada';
 import type { CoberturaEstado, ResultadoGeocoding } from '../tipos';
 import { fechaLocalEnSantiago } from "@/lib/fecha-santiago";
+import { resolverTarifa } from '@/modules/operacion/tarifas';
+import type { FuentePedido } from '@/modules/operacion/tipos';
 
 /**
  * Techo de tiempo por llamada al geocoder desde el JOB. Más alto que el del
@@ -163,7 +165,7 @@ export const jobGeocodificarPedido = inngest.createFunction(
       const { data: fila, error } = await supabase
         .schema('operacion')
         .from('pedidos')
-        .select('id, tenant_id, seller_id, geo_estado, destinatario_comuna')
+        .select('id, tenant_id, seller_id, geo_estado, destinatario_comuna, fuente')
         .eq('id', pedidoId)
         .maybeSingle();
 
@@ -177,6 +179,7 @@ export const jobGeocodificarPedido = inngest.createFunction(
             seller_id: string;
             geo_estado: string;
             destinatario_comuna: string | null;
+            fuente: FuentePedido | null;
           }
         | null;
     });
@@ -226,29 +229,22 @@ export const jobGeocodificarPedido = inngest.createFunction(
     await step.run('persistir-pedido', async () => {
       const supabase = crearClienteServiceRole();
 
-      // ¿Hay tarifa vigente para este seller/tipo? MISMA query que
-      // `crearPedidoSameDay` (operacion/pedidos.ts): tarifa activa, vigente,
-      // del tipo del pedido, específica del seller o por defecto del tenant.
-      // Las tarifas viven en `identidad.tarifas`; se consultan vía la vista
-      // `public.tarifas` (schema por defecto del cliente), igual que en
-      // `crearPedidoSameDay`.
+      // ¿Hay tarifa aplicable? La MISMA resolución que el motor de dinero y el alta
+      // (`identidad.resolver_tarifa_por_comuna`, vía `resolverTarifa`): antes esto
+      // era una copia de la query vieja filtrada por `tipo_entrega`, y con las
+      // tarifas nuevas (fuente / general, `tipo_entrega` NULL) habría marcado
+      // TODO pedido como `sin_tarifa_zona`.
       const hoy = fechaLocalEnSantiago(new Date());
-      const { data: tarifas, error: errorTarifa } = await supabase
-        .from('tarifas')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('tipo_entrega', tipoPedido)
-        .eq('estado', 'activa')
-        .lte('vigente_desde', hoy)
-        .or(`vigente_hasta.is.null,vigente_hasta.gte.${hoy}`)
-        .or(`seller_id.eq.${sellerId},seller_id.is.null`)
-        .limit(1);
+      const { tarifaId } = await resolverTarifa(supabase, {
+        tenantId,
+        sellerId,
+        fuente: pedido.fuente,
+        tipoPedido,
+        comuna: comunaEfectiva,
+        fecha: hoy,
+      });
 
-      if (errorTarifa) {
-        throw new Error(`Error al buscar tarifa vigente: ${errorTarifa.message}`);
-      }
-
-      const hayTarifaVigente = (tarifas?.length ?? 0) > 0;
+      const hayTarifaVigente = tarifaId !== null;
 
       const cobertura = calcularCobertura({
         comunaDeclarada: comunaEfectiva,
