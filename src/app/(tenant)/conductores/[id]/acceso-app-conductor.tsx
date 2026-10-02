@@ -102,7 +102,7 @@ export function AccesoAppConductor({
           <div className="flex flex-wrap items-center gap-2">
             <DistintivoEstado tono="neutral" etiqueta="Invitación pendiente" />
             <span className="text-sm text-muted-foreground">
-              Le llega por WhatsApp al {estado.telefonoMascara} · vence el{" "}
+              Entra a la app con el {estado.telefonoMascara} · vence el{" "}
               {formatearFecha(estado.expiraEn)}
             </span>
           </div>
@@ -141,8 +141,7 @@ export function AccesoAppConductor({
                 <div className="flex items-start gap-2 border border-attention-line bg-attention-bg px-3 py-2.5 text-sm text-attention-fg">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                   <p className="leading-relaxed">
-                    Primero registra el teléfono del conductor para poder invitarlo por WhatsApp — usa
-                    el campo de teléfono en la sección de arriba.
+                    Agrega su teléfono para poder invitarlo.
                   </p>
                 </div>
               )}
@@ -189,7 +188,7 @@ function DialogInvitarConductor({
     }
 
     toast.success(`Invitamos a ${nombreConductor}.`, {
-      description: `Le llegará un código por WhatsApp al ${resultado.invitacion.telefonoMascara}.`,
+      description: `Que abra la app y entre con el ${resultado.invitacion.telefonoMascara}: ahí le llega el código por WhatsApp.`,
     });
 
     onInvitado(resultado.invitacion);
@@ -215,9 +214,9 @@ function DialogInvitarConductor({
         <DialogHeader>
           <DialogTitle>Invitar a {nombreConductor} a la app</DialogTitle>
           <DialogDescription>
-            Le enviaremos un código por WhatsApp al número{" "}
+            Entra a la app del conductor con el{" "}
             <span className="font-medium text-foreground">{enmascararTelefono(telefonoConductor)}</span>{" "}
-            para que entre a la app del conductor. No necesita correo ni contraseña.
+            y recibe el código por WhatsApp. Sin correo ni contraseña.
           </DialogDescription>
         </DialogHeader>
 

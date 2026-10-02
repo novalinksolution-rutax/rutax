@@ -54,7 +54,7 @@
  * deshabilitada **con su motivo escrito**, nunca escondida.
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { ChevronRight, Minus, Plus, TriangleAlert, Users } from "lucide-react";
 import { FichaFila390 } from "@/components/ui/ficha-fila-390";
@@ -91,6 +91,8 @@ import {
 } from "@/lib/ui/traduccion-estados";
 import { formatearTelefonoLegible } from "@/lib/telefono-cl";
 import { EditorTelefonoConductor } from "./editor-telefono";
+import { AccesoAppConductor, type EstadoAccesoAppConductor } from "./[id]/acceso-app-conductor";
+import { consultarAccesoAppConductor } from "./[id]/actions";
 import type { Conductor, Zona } from "@/modules/operacion/tipos";
 import {
   esVehiculoConductor,
@@ -560,6 +562,11 @@ function CajonConductor({
                   bloque termina diciendo «si no aparece, hay que llamarlo», y
                   hasta ahora no había con qué. */}
               <BloqueTelefono conductor={conductor} onActualizado={onActualizado} />
+              {/* Invitar va pegado al teléfono porque depende de él: el código
+                  llega por WhatsApp a ese número. Antes solo existía en la
+                  ficha, detrás del enlace del pie, y un courier nuevo no lo
+                  encontró (2026-10-02). */}
+              <BloqueAccesoApp conductor={conductor} />
               {/* El vehículo va pegado al cupo, y ANTES: es el que lo explica
                   —«anda en moto, por eso lleva 20»—. En la tabla se muestran en
                   la misma celda por lo mismo. */}
@@ -603,6 +610,44 @@ function CajonConductor({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * Acceso a la app en el cajón. El estado se pide al servidor al abrir (la
+ * nómina no lo trae: costaría una consulta a `auth.admin` por conductor). Si
+ * quien mira no puede invitar, la acción devuelve `null` y el bloque no existe.
+ */
+function BloqueAccesoApp({ conductor }: { conductor: ConductorEnNomina }) {
+  const [estado, setEstado] = useState<{ id: string; acceso: EstadoAccesoAppConductor | null } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let vigente = true;
+    consultarAccesoAppConductor(conductor.id)
+      .then((acceso) => {
+        if (vigente) setEstado({ id: conductor.id, acceso });
+      })
+      .catch(() => {
+        if (vigente) setEstado({ id: conductor.id, acceso: null });
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [conductor.id]);
+
+  if (!estado || estado.id !== conductor.id || !estado.acceso) return null;
+
+  return (
+    <AccesoAppConductor
+      key={conductor.id}
+      driverId={conductor.id}
+      nombreConductor={conductor.nombre}
+      telefonoConductor={conductor.telefono ?? null}
+      puedeInvitar
+      estadoInicial={estado.acceso}
+    />
   );
 }
 

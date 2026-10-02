@@ -52,6 +52,45 @@ import { crearInvitacion } from "@/modules/identidad/invitaciones";
 import { registrarEnBitacora } from "@/modules/identidad/auditoria";
 import { ErrorConflicto, ErrorNoEncontrado, ErrorValidacion } from "@/modules/identidad/errores";
 import { enmascararTelefono } from "@/lib/telefono-cl";
+import { resolverEstadoAccesoApp } from "./estado-acceso-app";
+import type { EstadoAccesoAppConductor } from "./acceso-app-conductor";
+
+// -----------------------------------------------------------------------------
+// 0. Consultar el estado de acceso — para el cajón de la nómina (`/conductores`)
+// -----------------------------------------------------------------------------
+
+/**
+ * Mismo estado que calcula la ficha, para que el cajón lateral pueda ofrecer
+ * «Invitar a la app» sin mandar al courier a otra pantalla. Pasó de verdad el
+ * 2026-10-02: un courier nuevo creó su conductor desde el cajón y no encontró
+ * dónde invitarlo.
+ *
+ * Devuelve `null` si quien pregunta no puede invitar: en ese caso el cajón no
+ * muestra el bloque (no existe, no se ve en gris).
+ */
+export async function consultarAccesoAppConductor(
+  driverId: string,
+): Promise<EstadoAccesoAppConductor | null> {
+  const sesion = await obtenerSesionActual();
+  if (!sesion?.usuario.tenantId) return null;
+  if (!puedeInvitarUsuarios(sesion.usuario)) return null;
+
+  const tenantId = sesion.usuario.tenantId;
+  const cliente = crearClienteServiceRole();
+
+  // Cruce de tenant: `service_role` salta RLS, así que el aislamiento lo impone
+  // esta cláusula — sin ella se podría sondear el acceso de un conductor ajeno.
+  const { data: conductor } = await cliente
+    .from("conductores")
+    .select("id")
+    .eq("id", driverId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!conductor) return null;
+
+  const { acceso } = await resolverEstadoAccesoApp(cliente, tenantId, driverId);
+  return acceso;
+}
 
 // -----------------------------------------------------------------------------
 // 1. Invitar
