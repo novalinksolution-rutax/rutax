@@ -50,6 +50,15 @@ import {
   traducirEstadoSuscripcion,
   BADGE_ESTADO_SUSCRIPCION,
 } from "@/lib/ui/traduccion-estados";
+import {
+  ENVIOS_DIA_OPCIONES,
+  etiquetaConductores,
+  etiquetaEnviosDia,
+  etiquetaFuentePedidos,
+  ordenConductores,
+  ordenEnviosDia,
+} from "@/lib/ui/perfil-comercial";
+import type { PerfilesPorTenant } from "@/modules/plataforma/perfil-comercial";
 import { DESCRIPCION_AREAS, type AreaProducto } from "@/modules/identidad/areas-producto";
 import type {
   CourierInvitadoItem,
@@ -136,22 +145,53 @@ function SeccionInvitados({ invitados }: { invitados: CourierInvitadoItem[] }) {
   );
 }
 
+type Orden = "nombre" | "envios" | "conductores";
+
 interface Props {
   couriers: CourierPanelItem[];
   invitados: CourierInvitadoItem[];
+  /** Respuestas de «Tu empresa» por courier; sin entrada = sin responder. */
+  perfiles: PerfilesPorTenant;
 }
 
-export function TablaCouriers({ couriers, invitados }: Props) {
+const CLASE_SELECT =
+  "h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** «Shopify, Falabella +1» — corto para la tabla; el detalle completo va en `title`. */
+function resumenOrigenes(perfil: PerfilesPorTenant[string] | undefined): { corto: string; completo: string } {
+  if (!perfil) return { corto: "Sin responder", completo: "Sin responder" };
+  const nombres = perfil.fuentesPedidos.map((f) =>
+    f === "otra" && perfil.fuenteOtra ? `Otra: ${perfil.fuenteOtra}` : etiquetaFuentePedidos(f),
+  );
+  const corto = nombres.length > 2 ? `${nombres.slice(0, 2).join(", ")} +${nombres.length - 2}` : nombres.join(", ");
+  return { corto, completo: nombres.join(", ") };
+}
+
+export function TablaCouriers({ couriers, invitados, perfiles }: Props) {
   const [busqueda, setBusqueda] = useState("");
+  const [orden, setOrden] = useState<Orden>("nombre");
+  const [filtroEnvios, setFiltroEnvios] = useState("");
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return couriers;
-    return couriers.filter((c) => {
+    const lista = couriers.filter((c) => {
+      if (filtroEnvios === "sin_responder") {
+        if (perfiles[c.tenantId]) return false;
+      } else if (filtroEnvios && perfiles[c.tenantId]?.enviosDiaRango !== filtroEnvios) {
+        return false;
+      }
+      if (!q) return true;
       const nombre = (c.nombreFantasia ?? "").toLowerCase();
       return nombre.includes(q) || c.tenantId.toLowerCase().includes(q);
     });
-  }, [couriers, busqueda]);
+    if (orden === "nombre") return lista;
+    // De más a menos; los sin responder (-1) quedan al final.
+    const clave = (c: CourierPanelItem) =>
+      orden === "envios"
+        ? ordenEnviosDia(perfiles[c.tenantId]?.enviosDiaRango)
+        : ordenConductores(perfiles[c.tenantId]?.conductoresRango);
+    return [...lista].sort((a, b) => clave(b) - clave(a));
+  }, [couriers, busqueda, orden, filtroEnvios, perfiles]);
 
   if (couriers.length === 0) {
     return (
@@ -188,6 +228,37 @@ export function TablaCouriers({ couriers, invitados }: Props) {
           aria-label="Buscar courier por nombre"
           className="h-9 pl-8"
         />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          Ordenar por
+          <select
+            value={orden}
+            onChange={(e) => setOrden(e.target.value as Orden)}
+            className={CLASE_SELECT}
+          >
+            <option value="nombre">Nombre</option>
+            <option value="envios">Envíos al día (mayor primero)</option>
+            <option value="conductores">Conductores (mayor primero)</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          Envíos al día
+          <select
+            value={filtroEnvios}
+            onChange={(e) => setFiltroEnvios(e.target.value)}
+            className={CLASE_SELECT}
+          >
+            <option value="">Todos</option>
+            {ENVIOS_DIA_OPCIONES.map((o) => (
+              <option key={o.valor} value={o.valor}>
+                {o.etiqueta}
+              </option>
+            ))}
+            <option value="sin_responder">Sin responder</option>
+          </select>
+        </label>
       </div>
 
       {filtrados.length === 0 ? (
@@ -229,7 +300,11 @@ export function TablaCouriers({ couriers, invitados }: Props) {
                       </>
                     }
                     titulo={c.nombreFantasia ?? `${c.tenantId.slice(0, 8)}…`}
-                    detalle={`${c.planNombre} · ${TEXTO_PERIODICIDAD[c.periodicidad]} · ${SALUD_CONFIG[c.salud].texto}`}
+                    detalle={`${c.planNombre} · ${TEXTO_PERIODICIDAD[c.periodicidad]} · ${SALUD_CONFIG[c.salud].texto} · ${
+                      perfiles[c.tenantId]
+                        ? `${etiquetaEnviosDia(perfiles[c.tenantId].enviosDiaRango)} envíos/día · ${etiquetaConductores(perfiles[c.tenantId].conductoresRango)} conductores`
+                        : "Sin responder"
+                    }`}
                   />
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 </Link>
@@ -247,6 +322,9 @@ export function TablaCouriers({ couriers, invitados }: Props) {
                     <th scope="col" className="px-4 py-2">Plan</th>
                     <th scope="col" className="px-4 py-2">Morosidad</th>
                     <th scope="col" className="px-4 py-2">Salud</th>
+                    <th scope="col" className="px-4 py-2">Envíos/día</th>
+                    <th scope="col" className="px-4 py-2">Conductores</th>
+                    <th scope="col" className="px-4 py-2">Orígenes</th>
                     {/* Qué le tiene apagado Rutax. Columna propia y no un
                         adorno del nombre: es la única vista donde se ve de un
                         golpe a quién le falta algo por encender. */}
@@ -289,6 +367,19 @@ export function TablaCouriers({ couriers, invitados }: Props) {
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={salud.variant}>{salud.texto}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {perfiles[c.tenantId] ? etiquetaEnviosDia(perfiles[c.tenantId].enviosDiaRango) : "Sin responder"}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {perfiles[c.tenantId]
+                            ? etiquetaConductores(perfiles[c.tenantId].conductoresRango)
+                            : "Sin responder"}
+                        </td>
+                        <td className="max-w-56 px-4 py-3 text-muted-foreground">
+                          <span className="block truncate" title={resumenOrigenes(perfiles[c.tenantId]).completo}>
+                            {resumenOrigenes(perfiles[c.tenantId]).corto}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           {c.areasApagadas.length === 0 ? (

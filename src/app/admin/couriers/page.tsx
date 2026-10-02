@@ -4,6 +4,12 @@ import { obtenerPanelCouriers } from "@/modules/plataforma/panel-couriers";
 import { tieneSesionAdmin, obtenerRolAdminActual } from "../sesion-admin";
 import { TablaCouriers } from "./tabla-couriers";
 import { DialogNuevoCourier } from "./dialog-nuevo-courier";
+import {
+  obtenerPerfilesComerciales,
+  resumirPlataformas,
+  type PerfilesPorTenant,
+} from "@/modules/plataforma/perfil-comercial";
+import { ResumenPlataformasOrigen } from "./resumen-plataformas";
 
 export const metadata: Metadata = {
   title: "Couriers · Rutax Admin",
@@ -24,6 +30,8 @@ export default async function PaginaCouriers() {
   let couriers: Panel["couriers"] = [];
   let invitados: Panel["couriersSinSuscripcion"] = [];
   let errorCarga = false;
+  let perfiles: PerfilesPorTenant = {};
+  let errorPerfiles = false;
 
   // El rol decide si se muestra el botón de alta (crear courier es escritura,
   // `admin_total` + AAL2). Es solo UX: el gate real vive en `accionCrearCourier`
@@ -38,6 +46,16 @@ export default async function PaginaCouriers() {
   } catch {
     errorCarga = true;
   }
+
+  // Aparte: si las respuestas comerciales fallan, el panel de couriers sigue.
+  try {
+    perfiles = await obtenerPerfilesComerciales();
+  } catch {
+    errorPerfiles = true;
+  }
+  // Solo cuentan los couriers que están en el panel o invitados (no huérfanos).
+  const idsVisibles = new Set([...couriers.map((c) => c.tenantId), ...invitados.map((c) => c.tenantId)]);
+  const perfilesVisibles = Object.entries(perfiles).filter(([id]) => idsVisibles.has(id));
 
   return (
     <div className="space-y-6">
@@ -61,7 +79,22 @@ export default async function PaginaCouriers() {
           No se pudo cargar el panel de couriers. Intenta recargar la página.
         </div>
       ) : (
-        <TablaCouriers couriers={couriers} invitados={invitados} />
+        <>
+          {errorPerfiles ? (
+            <div
+              role="alert"
+              className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+            >
+              No se pudieron cargar las respuestas de Tu empresa. Intenta recargar la página.
+            </div>
+          ) : (
+            <ResumenPlataformasOrigen
+              resumen={resumirPlataformas(perfilesVisibles.map(([, p]) => p))}
+              totalCouriers={idsVisibles.size}
+            />
+          )}
+          <TablaCouriers couriers={couriers} invitados={invitados} perfiles={perfiles} />
+        </>
       )}
     </div>
   );

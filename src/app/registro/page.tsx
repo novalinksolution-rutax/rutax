@@ -1,21 +1,21 @@
 import type { Metadata } from "next";
-import { FormularioAltaEmpresa } from "./formulario-alta-empresa";
+import { FormularioRegistro } from "./formulario-registro";
 import { MarcoPuerta } from "@/app/login/marco-puerta";
 
 export const metadata: Metadata = {
-  title: "Crea tu cuenta de courier",
+  title: "Crea tu cuenta",
 };
 
 interface PaginaRegistroProps {
   searchParams: Promise<{ error?: string }>;
 }
 
-/** Pantalla A — Alta de la empresa (RF-006). Landing pública / auto-servicio. */
+/** Registro v2, paso 1: identificarse. La empresa se pide en `/registro/empresa`. */
 export default async function PaginaRegistro({ searchParams }: PaginaRegistroProps) {
   const { error } = await searchParams;
   return (
     <MarcoPuerta>
-      <FormularioAltaEmpresa errorInicial={error} />
+      <FormularioRegistro errorInicial={error} />
     </MarcoPuerta>
   );
 }

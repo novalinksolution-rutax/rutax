@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
+import { RUTA_REGISTRO_EMPRESA } from "@/modules/identidad/registro-empresa";
 import { FormularioLogin } from "./formulario-login";
 import { MarcoPuerta } from "./marco-puerta";
 
@@ -52,6 +53,11 @@ interface PaginaLoginProps {
 
 export default async function PaginaLogin({ searchParams }: PaginaLoginProps) {
   const sesion = await obtenerSesionActual();
+  // Identificada y sin empresa: el login no tiene nada que ofrecerle. Sin esto
+  // se quedaba mirando el formulario aunque ya estuviera dentro.
+  if (sesion?.sinPerfil) {
+    redirect(RUTA_REGISTRO_EMPRESA);
+  }
   // ⚠️ `estado !== 'suspendido'` es lo que impide un bucle de redirects: una
   // cuenta dada de baja (`plataforma/baja-cuentas.ts`) todavía puede traer una
   // sesión de Auth viva y un `tenantId` en el claim, así que sin este segundo

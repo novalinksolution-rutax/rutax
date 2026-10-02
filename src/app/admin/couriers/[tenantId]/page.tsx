@@ -29,6 +29,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { formatearFechaHora } from "@/lib/formato-cl";
 import { cn } from "@/lib/utils";
 import { BotonSoporte } from "./boton-soporte";
+import { obtenerPerfilesComerciales } from "@/modules/plataforma/perfil-comercial";
+import { etiquetaConductores, etiquetaEnviosDia, etiquetaFuentePedidos } from "@/lib/ui/perfil-comercial";
 
 export const metadata: Metadata = {
   title: "Detalle de courier · Rutax Admin",
@@ -126,6 +128,15 @@ export default async function PaginaDetalleCourier({
     areas = null;
   }
 
+  // Las tres respuestas de «Tu empresa»; falla aparte sin tumbar el detalle.
+  let perfil: Awaited<ReturnType<typeof obtenerPerfilesComerciales>>[string] | undefined;
+  let errorPerfil = false;
+  try {
+    perfil = (await obtenerPerfilesComerciales())[tenantId];
+  } catch {
+    errorPerfil = true;
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -160,6 +171,38 @@ export default async function PaginaDetalleCourier({
       ) : (
         <ContenidoDrillDown datos={datos} />
       )}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Tu empresa</h2>
+        {errorPerfil ? (
+          <p role="alert" className="text-sm text-destructive">
+            No se pudieron cargar las respuestas.
+          </p>
+        ) : !perfil ? (
+          <p className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">Sin responder</p>
+        ) : (
+          <dl className="grid gap-x-6 gap-y-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
+            <div>
+              <dt className="text-xs text-muted-foreground">Envíos al día</dt>
+              <dd className="mt-1 text-sm font-medium">{etiquetaEnviosDia(perfil.enviosDiaRango)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Conductores</dt>
+              <dd className="mt-1 text-sm font-medium">{etiquetaConductores(perfil.conductoresRango)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Origen de los pedidos</dt>
+              <dd className="mt-1 text-sm font-medium">
+                {perfil.fuentesPedidos
+                  .map((f) =>
+                    f === "otra" && perfil?.fuenteOtra ? `Otra: ${perfil.fuenteOtra}` : etiquetaFuentePedidos(f),
+                  )
+                  .join(", ")}
+              </dd>
+            </div>
+          </dl>
+        )}
+      </section>
 
       {/* El interruptor de Rutax. Va al final: se mira después de entender cómo
           está el courier, no antes. Vive en la PÁGINA y no en el drill-down

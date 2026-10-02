@@ -14,6 +14,7 @@ import {
   ArrowLeftRight,
   Banknote,
   Boxes,
+  Briefcase,
   Building2,
   CreditCard,
   Download,
@@ -69,6 +70,7 @@ export const ICONOS: Record<string, LucideIcon> = {
   tarifas: Tag,
   plan: CreditCard,
   facturacion: FileText,
+  empresa: Briefcase,
   integraciones: Plug,
   zonas: MapPinned,
   // `Building2` ya está tomado por "couriers" en el panel de administración.

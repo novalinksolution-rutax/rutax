@@ -27,6 +27,7 @@ import { AppShell, type GrupoNav, type ItemNav } from "@/components/app-shell/ap
 import { LanzadorHerramientaPrueba } from "@/app/(tenant)/configuracion/_componentes/lanzador-herramienta-prueba";
 import { destinosMovil } from "@/components/app-shell/destinos-movil";
 import { PantallaEmpresaPendiente } from "@/components/puesta-en-marcha/pantalla-empresa-pendiente";
+import { RUTA_REGISTRO_EMPRESA } from "@/modules/identidad/registro-empresa";
 import { leerGatePuestaEnMarcha } from "@/modules/identidad/puesta-en-marcha";
 import { obtenerAvisos } from "@/lib/avisos/obtener-avisos";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
@@ -46,6 +47,13 @@ export default async function LayoutTenant({ children }: { children: React.React
 
   if (!sesion) {
     redirect("/login");
+  }
+  // Regreso automático: se identificó pero nunca creó su empresa. Va ANTES de
+  // los demás chequeos porque sin perfil `estado` cae a "invitado" y lo mandaría
+  // al login. Sin bucle: /registro/empresa solo manda de vuelta a quien YA tiene
+  // perfil, y `sinPerfil` solo es true si no lo tiene.
+  if (sesion.sinPerfil) {
+    redirect(RUTA_REGISTRO_EMPRESA);
   }
   if (sesion.usuario.estado === "invitado") {
     // F1 retiró `/activar-cuenta`: la activación (invitado → activo) ahora la
@@ -233,6 +241,9 @@ export default async function LayoutTenant({ children }: { children: React.React
   // abajo). Lo que le pagas a Rutax tampoco es «cómo está armado tu courier»,
   // que es lo que esta sub-navegación reúne.
   const itemsSettings: ItemNav[] = [];
+  // Los cuatro roles internos la ven; solo dueño y administración la editan
+  // (la pantalla y la RLS lo imponen).
+  itemsSettings.push({ href: "/configuracion/empresa", etiqueta: "Tu empresa", icono: "empresa" });
   // Lo fiscal (emisor, DTE, folios, cuenta de cobro, retención) y la conexión del
   // banco se piden cuando duelen —emitir, pagar— y los bloqueos enlazan aquí.
   if (puedeGestionarConfiguracionDte(u) || puedeGestionarPerfilEmpresa(u)) {

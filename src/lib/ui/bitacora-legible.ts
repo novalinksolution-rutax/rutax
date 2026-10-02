@@ -86,6 +86,7 @@ const FRASES_ACCION: Record<string, string> = {
   "dinero.alerta_morosidad": "Emitió una alerta de morosidad",
   "dinero.alerta_folios_proximos": "Emitió una alerta de folios próximos a agotarse",
   // Identidad / configuración del courier
+  "identidad.perfil_comercial_guardado": "Actualizó las respuestas de Tu empresa",
   "identidad.tarifa_creada": "Creó una tarifa",
   "identidad.tarifa_editada": "Editó una tarifa",
   "identidad.tarifa_inactivada": "Inactivó una tarifa",

@@ -45,6 +45,7 @@ export const TERMINOS: VersionDocumentoLegal = {
 };
 
 export const PRIVACIDAD: VersionDocumentoLegal = {
-  version: "v1",
-  vigenteDesde: "2026-08-05",
+  // v2 (2026-10-01): sección «Datos de nuestros clientes (couriers)».
+  version: "v2",
+  vigenteDesde: "2026-10-01",
 };

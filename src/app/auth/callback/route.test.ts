@@ -17,9 +17,9 @@ vi.mock("@/lib/supabase/service-role", () => ({
   crearClienteServiceRole: vi.fn(),
 }));
 
-vi.mock("@/lib/identidad/borrador-registro", () => ({
-  leerBorrador: vi.fn(),
-  limpiarBorrador: vi.fn(),
+vi.mock("@/lib/identidad/intencion-registro", () => ({
+  leerIntencion: vi.fn(),
+  limpiarIntencion: vi.fn(),
 }));
 
 vi.mock("@/lib/identidad/borrador-invitacion", () => ({
@@ -38,7 +38,6 @@ vi.mock("@/lib/identidad/borrador-wizard-seller", () => ({
 
 vi.mock("@/modules/identidad/onboarding", () => ({
   buscarPerfilPorAuthUserId: vi.fn(),
-  provisionarTenantParaAuthUser: vi.fn(),
   activarPerfilDueno: vi.fn(),
 }));
 
@@ -57,7 +56,7 @@ vi.mock("@/modules/identidad/seller-membresias", () => ({
 
 import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { leerBorrador, limpiarBorrador } from "@/lib/identidad/borrador-registro";
+import { leerIntencion, limpiarIntencion } from "@/lib/identidad/intencion-registro";
 import {
   leerBorrador as leerBorradorInvitacion,
   limpiarBorrador as limpiarBorradorInvitacion,
@@ -67,11 +66,7 @@ import {
   limpiarBorrador as limpiarBorradorRegistroSeller,
 } from "@/lib/identidad/borrador-registro-seller";
 import { guardarBorrador as guardarBorradorWizardSeller } from "@/lib/identidad/borrador-wizard-seller";
-import {
-  activarPerfilDueno,
-  buscarPerfilPorAuthUserId,
-  provisionarTenantParaAuthUser,
-} from "@/modules/identidad/onboarding";
+import { activarPerfilDueno, buscarPerfilPorAuthUserId } from "@/modules/identidad/onboarding";
 import {
   aplicarAceptacionInvitacionPasswordless,
   buscarInvitacionPorToken,
@@ -83,12 +78,10 @@ import { GET } from "./route";
 
 const AUTH_USER_ID = "11111111-1111-1111-1111-111111111111";
 
-const BORRADOR = {
-  nombreFantasia: "Despachos Rápidos SpA",
-  rut: "76543210-3",
-  nombreDueno: "María Pérez",
-  emailDueno: "dueno@despachosrapidos.cl",
-  aceptaTerminos: true as const,
+const INTENCION = {
+  terminosVersion: "v1",
+  privacidadVersion: "v2",
+  aceptadoEn: "2026-10-01T15:00:00.000Z",
 };
 
 function usuarioAuth(overrides: Partial<{ created_at: string; last_sign_in_at: string | null }> = {}) {
@@ -133,8 +126,8 @@ function destino(res: Response): { ruta: string; error: string | null } {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(leerBorrador).mockResolvedValue(null);
-  vi.mocked(limpiarBorrador).mockResolvedValue(undefined);
+  vi.mocked(leerIntencion).mockResolvedValue(null);
+  vi.mocked(limpiarIntencion).mockResolvedValue(undefined);
   vi.mocked(leerBorradorInvitacion).mockResolvedValue(null);
   vi.mocked(limpiarBorradorInvitacion).mockResolvedValue(undefined);
   vi.mocked(leerBorradorRegistroSeller).mockResolvedValue(null);
@@ -160,7 +153,7 @@ describe("GET /auth/callback — el canje falla", () => {
   });
 });
 
-describe("GET /auth/callback — camino LOGIN (sin borrador)", () => {
+describe("GET /auth/callback — camino LOGIN (sin intención)", () => {
   it("con perfil existente ACTIVO: refresca la sesión y va a /, sin activar nada", async () => {
     const supa = clienteSupabaseFalso({ user: usuarioAuth() });
     vi.mocked(createClient).mockResolvedValue(supa as never);
@@ -195,7 +188,7 @@ describe("GET /auth/callback — camino LOGIN (sin borrador)", () => {
     expect(destino(res)).toEqual({ ruta: "/", error: null });
   });
 
-  it("sin perfil: cierra sesión, borra el huérfano y va a /login?error=sin_cuenta", async () => {
+  it("🔴 regreso automático: sin perfil y sin intención → /registro/empresa, SIN cerrar sesión ni borrar la identidad", async () => {
     const supa = clienteSupabaseFalso({ user: usuarioAuth() });
     vi.mocked(createClient).mockResolvedValue(supa as never);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
@@ -204,40 +197,30 @@ describe("GET /auth/callback — camino LOGIN (sin borrador)", () => {
 
     const res = await GET(peticion({ code: "un-code" }));
 
-    expect(destino(res)).toEqual({ ruta: "/login", error: "sin_cuenta" });
-    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
-    expect(admin.auth.admin.deleteUser).toHaveBeenCalledWith(AUTH_USER_ID);
+    expect(destino(res)).toEqual({ ruta: "/registro/empresa", error: null });
+    expect(supa.auth.signOut).not.toHaveBeenCalled();
+    expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
   });
 });
 
-describe("GET /auth/callback — camino REGISTRO (hay borrador)", () => {
-  it("sin perfil previo: provisiona con estado activo y compensarAuthUser false, limpia el borrador y va a /", async () => {
+describe("GET /auth/callback — camino REGISTRO (hay intención de registro)", () => {
+  it("🔴 intención + identidad SIN perfil → /registro/empresa; NO crea nada y CONSERVA la intención (lleva la evidencia de términos)", async () => {
     const supa = clienteSupabaseFalso({ user: usuarioAuth() });
     vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(leerBorrador).mockResolvedValue(BORRADOR);
+    vi.mocked(leerIntencion).mockResolvedValue(INTENCION);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(provisionarTenantParaAuthUser).mockResolvedValue({ tenantId: "t-1", duenoUsuarioId: AUTH_USER_ID });
 
     const res = await GET(peticion({ code: "un-code" }));
 
-    expect(provisionarTenantParaAuthUser).toHaveBeenCalledWith(
-      expect.anything(),
-      AUTH_USER_ID,
-      expect.objectContaining({
-        tenant: { nombreFantasia: BORRADOR.nombreFantasia, rut: BORRADOR.rut },
-        dueno: { email: BORRADOR.emailDueno, nombreCompleto: BORRADOR.nombreDueno },
-      }),
-      { estado: "activo", compensarAuthUser: false },
-    );
-    expect(limpiarBorrador).toHaveBeenCalledTimes(1);
-    expect(supa.auth.refreshSession).toHaveBeenCalledTimes(1);
-    expect(destino(res)).toEqual({ ruta: "/", error: null });
+    expect(destino(res)).toEqual({ ruta: "/registro/empresa", error: null });
+    expect(limpiarIntencion).not.toHaveBeenCalled();
+    expect(supa.auth.signOut).not.toHaveBeenCalled();
   });
 
-  it("🔴 H5 idempotencia: perfil existente interno+dueno ACTIVO → NO reprovisiona ni reactiva, limpia borrador y va a /", async () => {
+  it("intención + dueño con perfil activo → es un login: entra a /, limpia la intención", async () => {
     const supa = clienteSupabaseFalso({ user: usuarioAuth() });
     vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(leerBorrador).mockResolvedValue(BORRADOR);
+    vi.mocked(leerIntencion).mockResolvedValue(INTENCION);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue({
       tenantId: "t-1",
       tipoUsuario: "interno",
@@ -247,16 +230,30 @@ describe("GET /auth/callback — camino REGISTRO (hay borrador)", () => {
 
     const res = await GET(peticion({ code: "un-code" }));
 
-    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
-    expect(activarPerfilDueno).not.toHaveBeenCalled();
-    expect(limpiarBorrador).toHaveBeenCalledTimes(1);
     expect(destino(res)).toEqual({ ruta: "/", error: null });
+    expect(limpiarIntencion).toHaveBeenCalledTimes(1);
+    expect(supa.auth.refreshSession).toHaveBeenCalledTimes(1);
+    expect(activarPerfilDueno).not.toHaveBeenCalled();
   });
 
-  it("🔴 H2 un correo, una cuenta: perfil existente de OTRO tipo → correo_ocupado, sin provisionar ni borrar el auth user", async () => {
+  it("intención + dueño INVITADO → se activa (evita el bucle)", async () => {
     const supa = clienteSupabaseFalso({ user: usuarioAuth() });
     vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(leerBorrador).mockResolvedValue(BORRADOR);
+    vi.mocked(leerIntencion).mockResolvedValue(INTENCION);
+    vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue({
+      tenantId: "t-1",
+      tipoUsuario: "interno",
+      rol: "dueno",
+      estado: "invitado",
+    });
+    await GET(peticion({ code: "un-code" }));
+    expect(activarPerfilDueno).toHaveBeenCalledWith(expect.anything(), AUTH_USER_ID);
+  });
+
+  it("🔴 H2 un correo, una cuenta: intención + perfil de OTRO tipo → correo_ocupado, cierra sesión, no borra el auth user", async () => {
+    const supa = clienteSupabaseFalso({ user: usuarioAuth() });
+    vi.mocked(createClient).mockResolvedValue(supa as never);
+    vi.mocked(leerIntencion).mockResolvedValue(INTENCION);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue({
       tenantId: "t-9",
       tipoUsuario: "seller",
@@ -268,60 +265,10 @@ describe("GET /auth/callback — camino REGISTRO (hay borrador)", () => {
 
     const res = await GET(peticion({ code: "un-code" }));
 
-    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
     expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
     expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+    expect(limpiarIntencion).toHaveBeenCalledTimes(1);
     expect(destino(res)).toEqual({ ruta: "/registro", error: "correo_ocupado" });
-  });
-
-  it("🔴 H3: provisión falla con identidad RECIÉN creada → borra el usuario Auth huérfano", async () => {
-    const supa = clienteSupabaseFalso({ user: usuarioAuth({ created_at: new Date().toISOString(), last_sign_in_at: new Date().toISOString() }) });
-    vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(leerBorrador).mockResolvedValue(BORRADOR);
-    vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(provisionarTenantParaAuthUser).mockRejectedValue(new Error("fallo de infraestructura"));
-    const admin = adminFalso();
-    vi.mocked(crearClienteServiceRole).mockReturnValue(admin as never);
-
-    const res = await GET(peticion({ code: "un-code" }));
-
-    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
-    expect(admin.auth.admin.deleteUser).toHaveBeenCalledWith(AUTH_USER_ID);
-    expect(destino(res)).toEqual({ ruta: "/registro", error: "error_sistema" });
-  });
-
-  it("🔴 H3: provisión falla con identidad ANTIGUA (created_at lejano) → NO borra el usuario Auth", async () => {
-    const antiguo = usuarioAuth({
-      created_at: new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(),
-      last_sign_in_at: new Date().toISOString(),
-    });
-    const supa = clienteSupabaseFalso({ user: antiguo });
-    vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(leerBorrador).mockResolvedValue(BORRADOR);
-    vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(provisionarTenantParaAuthUser).mockRejectedValue(new Error("fallo de infraestructura"));
-    const admin = adminFalso();
-    vi.mocked(crearClienteServiceRole).mockReturnValue(admin as never);
-
-    const res = await GET(peticion({ code: "un-code" }));
-
-    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
-    expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
-    expect(destino(res)).toEqual({ ruta: "/registro", error: "error_sistema" });
-  });
-
-  it("RUT duplicado (ErrorConflicto con 'rut' en el mensaje) → error=conflicto_rut", async () => {
-    const supa = clienteSupabaseFalso({ user: usuarioAuth() });
-    vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(leerBorrador).mockResolvedValue(BORRADOR);
-    vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(provisionarTenantParaAuthUser).mockRejectedValue(
-      new ErrorConflicto("Ya existe un courier registrado con el RUT 76543210-3."),
-    );
-
-    const res = await GET(peticion({ code: "un-code" }));
-
-    expect(destino(res)).toEqual({ ruta: "/registro", error: "conflicto_rut" });
   });
 });
 
@@ -341,8 +288,7 @@ describe("GET /auth/callback — camino ACEPTACIÓN (F3, hay borrador de invitac
 
     await GET(peticion({ code: "un-code" }));
 
-    expect(leerBorrador).not.toHaveBeenCalled();
-    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
+    expect(leerIntencion).not.toHaveBeenCalled();
   });
 
   it("seller: acepta y redirige al destino que devuelve la aceptación (/portal/conectar-ml)", async () => {
@@ -532,8 +478,7 @@ describe("GET /auth/callback — camino REGISTRO-SELLER (RF-010 rediseño, hay b
 
     await GET(peticion({ code: "un-code" }));
 
-    expect(leerBorrador).not.toHaveBeenCalled();
-    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
+    expect(leerIntencion).not.toHaveBeenCalled();
   });
 });
 

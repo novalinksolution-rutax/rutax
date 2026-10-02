@@ -32,6 +32,17 @@ export interface SesionActual {
   email: string | null;
   nombreCompleto: string | null;
   usuario: UsuarioActual;
+  /**
+   * `true` SOLO cuando la lectura en vivo confirmó que esta identidad de Auth no
+   * tiene fila en `usuarios_perfil`: se identificó (Google o código) pero nunca
+   * terminó de crear su empresa. Es lo que la manda a `/registro/empresa`.
+   *
+   * ⚠️ Falla hacia el lado contrario: si la lectura falló (red, Postgres) o el
+   * JWT no se pudo validar, vale `false`. Mandar a alguien con empresa a "Tu
+   * empresa" por un hipo de lectura sería peor que dejarlo donde está.
+   * Ausente (`undefined`) = `false`.
+   */
+  sinPerfil?: boolean;
 }
 
 function leerClaimTexto(claims: Record<string, unknown>, clave: string): string | null {
@@ -94,7 +105,9 @@ function leerRol(claims: Record<string, unknown>): Rol {
  * puede expulsar a todo el mundo de golpe — el fail-closed real de esta
  * función es el gate de `estaActivo()`, no esta lectura.
  */
-async function leerEstadoVivo(usuarioId: string): Promise<UsuarioActual["estado"] | null> {
+async function leerPerfilVivo(
+  usuarioId: string,
+): Promise<{ estado: UsuarioActual["estado"] } | "sin_fila" | null> {
   try {
     const { data, error } = await crearClienteServiceRole()
       .schema("identidad")
@@ -103,9 +116,12 @@ async function leerEstadoVivo(usuarioId: string): Promise<UsuarioActual["estado"
       .eq("id", usuarioId)
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) return null;
+    // La lectura funcionó y no hay fila: es distinto de "la lectura falló"
+    // (`null`). Solo esto marca `SesionActual.sinPerfil`.
+    if (!data) return "sin_fila";
     const estado = (data as { estado?: unknown }).estado;
-    if (estado === "activo" || estado === "invitado" || estado === "suspendido") return estado;
+    if (estado === "activo" || estado === "invitado" || estado === "suspendido") return { estado };
     return null;
   } catch {
     return null;
@@ -176,10 +192,11 @@ export const obtenerSesionActual = cache(async function obtenerSesionActual(): P
   // a sí mismo.
   const areasHabilitadas = tenantId ? await obtenerAreasHabilitadas(tenantId) : [];
 
-  // Estado EN VIVO (ver `leerEstadoVivo` arriba) — gana sobre el claim del JWT
+  // Estado EN VIVO (ver `leerPerfilVivo` arriba) — gana sobre el claim del JWT
   // cuando la lectura funciona. `null` (fila sin perfil, o la lectura falló)
   // conserva el fallback de siempre: el claim, o 'invitado' si tampoco existe.
-  const estadoVivo = await leerEstadoVivo(user.id);
+  const perfilVivo = await leerPerfilVivo(user.id);
+  const estadoVivo = perfilVivo && perfilVivo !== "sin_fila" ? perfilVivo.estado : null;
 
   const usuario: UsuarioActual = {
     tenantId,
@@ -205,6 +222,7 @@ export const obtenerSesionActual = cache(async function obtenerSesionActual(): P
     email: user.email ?? (typeof claims["email"] === "string" ? (claims["email"] as string) : null),
     nombreCompleto,
     usuario,
+    sinPerfil: perfilVivo === "sin_fila",
   };
 });
 

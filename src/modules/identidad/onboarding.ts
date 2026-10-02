@@ -106,7 +106,7 @@ export interface CrearTenantConDuenoInput {
    * (el propio interesado se da de alta) — en ese caso `actorTipo` debe ser
    * `'sistema'` o, si lo opera el fundador, `'super_admin'` con su uuid.
    */
-  actor: { usuarioId: string | null; tipo: "super_admin" | "sistema" };
+  actor: { usuarioId: string | null; tipo: "super_admin" | "sistema" | "usuario" };
 }
 
 export interface CrearTenantConDuenoResultado {
@@ -299,7 +299,10 @@ export async function provisionarTenantParaAuthUser(
       AREAS_PRODUCTO.map((area) => ({
         tenant_id: tenantId,
         area,
-        habilitada_por: input.actor.usuarioId,
+        // Solo un super-admin "enciende" áreas. En el autoservicio el actor es
+        // el propio dueño (`tipo: 'usuario'`, para que `tenant.alta` lleve su
+        // autor) y atribuirle haber habilitado sus áreas sería falso.
+        habilitada_por: input.actor.tipo === "super_admin" ? input.actor.usuarioId : null,
         nota: "Encendida al dar de alta el courier.",
       })),
     );

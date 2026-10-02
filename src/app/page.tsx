@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { RUTA_REGISTRO_EMPRESA } from "@/modules/identidad/registro-empresa";
 import { Portada } from "./(marketing)/portada";
 import { MINIMO_MENSUAL_CLP, PRECIO_BASE_CLP } from "./(marketing)/_lib/precio";
 
@@ -34,6 +35,13 @@ export default async function Home() {
   // Sin sesión: la portada. No una redirección al login.
   if (!sesion) {
     return <Portada />;
+  }
+
+  // Se identificó pero nunca creó su empresa: se la devuelve a «Tu empresa».
+  // Antes del switch porque sin perfil `tipoUsuario` cae a "interno" por omisión
+  // y lo mandaría a /dashboard, que lo rebota al login: callejón sin salida.
+  if (sesion.sinPerfil) {
+    redirect(RUTA_REGISTRO_EMPRESA);
   }
 
   switch (sesion.usuario.tipoUsuario) {

@@ -1,101 +1,37 @@
 /**
- * Pruebas de las Server Actions de `/registro` (F1, login sin contraseña).
- *
- * Reemplaza las pruebas de `altaDeEmpresa`/`reenviarCorreoActivacion`
- * (retiradas en F1 — ver cabecera de `actions.ts`) por las de las tres
- * acciones nuevas: `guardarBorradorTenant`, `enviarCodigoRegistro` y
- * `verificarCodigoRegistro`.
+ * Pruebas de las Server Actions de `/registro` (registro v2, paso 1).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/identidad/borrador-registro", () => ({
-  guardarBorrador: vi.fn(),
-  leerBorrador: vi.fn(),
-  limpiarBorrador: vi.fn(),
+vi.mock("@/lib/identidad/intencion-registro", () => ({
+  asegurarIntencion: vi.fn(),
+  limpiarIntencion: vi.fn(),
 }));
-
-vi.mock("@/lib/supabase/server", () => ({
-  createClient: vi.fn(),
-}));
-
-vi.mock("@/lib/supabase/service-role", () => ({
-  crearClienteServiceRole: vi.fn(),
-}));
-
+vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
+vi.mock("@/lib/supabase/service-role", () => ({ crearClienteServiceRole: vi.fn() }));
 vi.mock("@/modules/identidad/onboarding", () => ({
   buscarPerfilPorAuthUserId: vi.fn(),
-  provisionarTenantParaAuthUser: vi.fn(),
   activarPerfilDueno: vi.fn(),
 }));
+vi.mock("@/modules/identidad/cuenta-por-email", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/modules/identidad/cuenta-por-email")>()),
+  correoTienePerfil: vi.fn(),
+}));
 
-import { guardarBorrador, leerBorrador, limpiarBorrador } from "@/lib/identidad/borrador-registro";
+import { asegurarIntencion, limpiarIntencion } from "@/lib/identidad/intencion-registro";
 import { createClient } from "@/lib/supabase/server";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import {
-  activarPerfilDueno,
-  buscarPerfilPorAuthUserId,
-  provisionarTenantParaAuthUser,
-} from "@/modules/identidad/onboarding";
-import { ErrorConflicto } from "@/modules/identidad/errores";
-import { enviarCodigoRegistro, guardarBorradorTenant, verificarCodigoRegistro } from "./actions";
+import { correoTienePerfil } from "@/modules/identidad/cuenta-por-email";
+import { activarPerfilDueno, buscarPerfilPorAuthUserId } from "@/modules/identidad/onboarding";
+import { enviarCodigoRegistro, iniciarIntencionRegistro, verificarCodigoRegistro } from "./actions";
 
-const ENTRADA_VALIDA = {
-  nombreFantasia: "Despachos Rápidos SpA",
-  rut: "76.543.210-3", // cuerpo 76543210 → DV módulo 11 = 3
-  nombreDueno: "María Pérez",
-  emailDueno: "Dueno@DespachosRapidos.cl",
-  aceptaTerminos: true,
-};
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
-describe("guardarBorradorTenant", () => {
-  it("rechaza nombre de fantasía vacío sin guardar la cookie", async () => {
-    const resultado = await guardarBorradorTenant({ ...ENTRADA_VALIDA, nombreFantasia: "   " });
-    expect(resultado).toMatchObject({ ok: false, campo: "nombreFantasia" });
-    expect(guardarBorrador).not.toHaveBeenCalled();
-  });
-
-  it("rechaza un RUT con dígito verificador inválido", async () => {
-    const resultado = await guardarBorradorTenant({ ...ENTRADA_VALIDA, rut: "76543210-9" });
-    expect(resultado).toMatchObject({ ok: false, campo: "rut" });
-    expect(guardarBorrador).not.toHaveBeenCalled();
-  });
-
-  it("rechaza un correo con formato inválido", async () => {
-    const resultado = await guardarBorradorTenant({ ...ENTRADA_VALIDA, emailDueno: "no-es-un-correo" });
-    expect(resultado).toMatchObject({ ok: false, campo: "emailDueno" });
-  });
-
-  it("🔴 H6: rechaza si no se aceptaron los términos, aunque el resto sea válido", async () => {
-    const resultado = await guardarBorradorTenant({ ...ENTRADA_VALIDA, aceptaTerminos: false });
-    expect(resultado).toMatchObject({ ok: false, campo: "aceptaTerminos" });
-    expect(guardarBorrador).not.toHaveBeenCalled();
-  });
-
-  it("con datos válidos, guarda el borrador con el RUT normalizado y el correo en minúsculas", async () => {
-    const resultado = await guardarBorradorTenant(ENTRADA_VALIDA);
-
-    expect(resultado).toEqual({ ok: true });
-    expect(guardarBorrador).toHaveBeenCalledWith({
-      nombreFantasia: "Despachos Rápidos SpA",
-      rut: "76543210-3",
-      nombreDueno: "María Pérez",
-      emailDueno: "dueno@despachosrapidos.cl",
-      aceptaTerminos: true,
-    });
-  });
-});
-
-function clienteFalso(opts: { errorEnvio?: { message: string } | null; errorVerify?: { message: string } | null; user?: unknown } = {}) {
+function clienteFalso(opts: { errorEnvio?: boolean; errorVerify?: boolean } = {}) {
   return {
     auth: {
-      signInWithOtp: vi.fn(async () => ({ error: opts.errorEnvio ?? null })),
+      signInWithOtp: vi.fn(async () => ({ error: opts.errorEnvio ? { message: "x" } : null })),
       verifyOtp: vi.fn(async () => ({
-        data: { user: opts.errorVerify ? null : (opts.user ?? { id: "auth-user-1" }) },
-        error: opts.errorVerify ?? null,
+        data: { user: opts.errorVerify ? null : { id: "auth-1" } },
+        error: opts.errorVerify ? { message: "x" } : null,
       })),
       refreshSession: vi.fn(async () => ({ data: {}, error: null })),
       signOut: vi.fn(async () => ({ error: null })),
@@ -103,68 +39,86 @@ function clienteFalso(opts: { errorEnvio?: { message: string } | null; errorVeri
   };
 }
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(crearClienteServiceRole).mockReturnValue({ marcador: "admin" } as never);
+  vi.mocked(correoTienePerfil).mockResolvedValue(false);
+});
+
+describe("iniciarIntencionRegistro (camino Google)", () => {
+  it("anota la intención en el servidor antes de que el cliente salga a Google", async () => {
+    await expect(iniciarIntencionRegistro()).resolves.toEqual({ ok: true });
+    expect(asegurarIntencion).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("enviarCodigoRegistro", () => {
-  it("H1: llama a signInWithOtp con shouldCreateUser:true (a diferencia del login)", async () => {
+  it("correo inválido: no toca Supabase ni anota intención", async () => {
+    const r = await enviarCodigoRegistro("no-es-correo");
+    expect(r).toMatchObject({ ok: false, tipo: "correo_invalido" });
+    expect(createClient).not.toHaveBeenCalled();
+    expect(asegurarIntencion).not.toHaveBeenCalled();
+  });
+
+  it("🔴 correo que ya tiene cuenta: se rechaza ANTES de enviar el código, con el mensaje genérico", async () => {
+    vi.mocked(correoTienePerfil).mockResolvedValue(true);
+    const r = await enviarCodigoRegistro("Seller@Tienda.cl");
+    expect(r).toEqual({
+      ok: false,
+      tipo: "correo_ocupado",
+      mensaje: "Ese correo ya tiene una cuenta en Rutax. Usa otro.",
+    });
+    expect(correoTienePerfil).toHaveBeenCalledWith(expect.anything(), "seller@tienda.cl");
+    expect(createClient).not.toHaveBeenCalled();
+    expect(asegurarIntencion).not.toHaveBeenCalled();
+  });
+
+  it("correo libre: anota la intención ANTES de enviar y crea la identidad (shouldCreateUser)", async () => {
     const supa = clienteFalso();
     vi.mocked(createClient).mockResolvedValue(supa as never);
+    const orden: string[] = [];
+    vi.mocked(asegurarIntencion).mockImplementation(async () => {
+      orden.push("intencion");
+      return {} as never;
+    });
+    supa.auth.signInWithOtp.mockImplementation(async () => {
+      orden.push("envio");
+      return { error: null };
+    });
 
-    await enviarCodigoRegistro("Dueno@Nuevo.cl");
+    const r = await enviarCodigoRegistro("Dueno@Nuevo.cl");
 
+    expect(r.ok).toBe(true);
+    expect(orden).toEqual(["intencion", "envio"]);
     expect(supa.auth.signInWithOtp).toHaveBeenCalledWith({
       email: "dueno@nuevo.cl",
       options: { shouldCreateUser: true },
     });
   });
 
-  it("rechaza un correo con formato inválido sin llamar a Supabase", async () => {
-    const resultado = await enviarCodigoRegistro("no-es-un-correo");
-    expect(resultado.ok).toBe(false);
-    expect(createClient).not.toHaveBeenCalled();
+  it("falla del envío → envio_fallido", async () => {
+    vi.mocked(createClient).mockResolvedValue(clienteFalso({ errorEnvio: true }) as never);
+    expect(await enviarCodigoRegistro("a@b.cl")).toMatchObject({ ok: false, tipo: "envio_fallido" });
   });
 });
 
 describe("verificarCodigoRegistro", () => {
-  beforeEach(() => {
-    vi.mocked(crearClienteServiceRole).mockReturnValue({ marcador: "admin" } as never);
-  });
-
-  it("código inválido → tipo codigo_invalido, sin tocar el borrador", async () => {
-    const supa = clienteFalso({ errorVerify: { message: "token inválido" } });
-    vi.mocked(createClient).mockResolvedValue(supa as never);
-
-    const resultado = await verificarCodigoRegistro("dueno@nuevo.cl", "000000");
-
-    expect(resultado).toMatchObject({ ok: false, tipo: "codigo_invalido" });
+  it("código inválido: no consulta perfiles", async () => {
+    vi.mocked(createClient).mockResolvedValue(clienteFalso({ errorVerify: true }) as never);
+    const r = await verificarCodigoRegistro("a@b.cl", "000000");
+    expect(r).toMatchObject({ ok: false, tipo: "codigo_invalido" });
     expect(buscarPerfilPorAuthUserId).not.toHaveBeenCalled();
   });
 
-  it("sin perfil previo y con borrador: provisiona con estado activo y compensarAuthUser false", async () => {
-    const supa = clienteFalso();
-    vi.mocked(createClient).mockResolvedValue(supa as never);
+  it("identidad SIN perfil → /registro/empresa, sin tocar la intención (la consume el paso 2)", async () => {
+    vi.mocked(createClient).mockResolvedValue(clienteFalso() as never);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(leerBorrador).mockResolvedValue({
-      nombreFantasia: "Despachos Rápidos SpA",
-      rut: "76543210-3",
-      nombreDueno: "María Pérez",
-      emailDueno: "dueno@nuevo.cl",
-      aceptaTerminos: true,
-    });
-    vi.mocked(provisionarTenantParaAuthUser).mockResolvedValue({ tenantId: "t-1", duenoUsuarioId: "auth-user-1" });
-
-    const resultado = await verificarCodigoRegistro("dueno@nuevo.cl", "123456");
-
-    expect(resultado).toEqual({ ok: true });
-    expect(provisionarTenantParaAuthUser).toHaveBeenCalledWith(
-      expect.anything(),
-      "auth-user-1",
-      expect.anything(),
-      { estado: "activo", compensarAuthUser: false },
-    );
-    expect(limpiarBorrador).toHaveBeenCalledTimes(1);
-    expect(supa.auth.refreshSession).toHaveBeenCalledTimes(1);
+    const r = await verificarCodigoRegistro("a@b.cl", "123456");
+    expect(r).toEqual({ ok: true, destino: "/registro/empresa" });
+    expect(limpiarIntencion).not.toHaveBeenCalled();
   });
 
-  it("🔴 H5 idempotencia: perfil existente interno+dueno ACTIVO → no reprovisiona ni reactiva", async () => {
+  it("dueño que ya tenía perfil → comportamiento de login (/), refresca el JWT y limpia la intención", async () => {
     const supa = clienteFalso();
     vi.mocked(createClient).mockResolvedValue(supa as never);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue({
@@ -173,32 +127,26 @@ describe("verificarCodigoRegistro", () => {
       rol: "dueno",
       estado: "activo",
     });
-
-    const resultado = await verificarCodigoRegistro("dueno@nuevo.cl", "123456");
-
-    expect(resultado).toEqual({ ok: true });
-    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
+    const r = await verificarCodigoRegistro("a@b.cl", "123456");
+    expect(r).toEqual({ ok: true, destino: "/" });
+    expect(supa.auth.refreshSession).toHaveBeenCalledTimes(1);
+    expect(limpiarIntencion).toHaveBeenCalledTimes(1);
     expect(activarPerfilDueno).not.toHaveBeenCalled();
-    expect(limpiarBorrador).toHaveBeenCalledTimes(1);
   });
 
-  it("🔴 caso de borde: perfil interno+dueno pero INVITADO (colisión con invitación del backstage) → se activa igual, evitando el bucle", async () => {
-    const supa = clienteFalso();
-    vi.mocked(createClient).mockResolvedValue(supa as never);
+  it("dueño con perfil `invitado` → se activa (evita el bucle login↔dashboard)", async () => {
+    vi.mocked(createClient).mockResolvedValue(clienteFalso() as never);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue({
       tenantId: "t-1",
       tipoUsuario: "interno",
       rol: "dueno",
       estado: "invitado",
     });
-
-    const resultado = await verificarCodigoRegistro("dueno@nuevo.cl", "123456");
-
-    expect(resultado).toEqual({ ok: true });
-    expect(activarPerfilDueno).toHaveBeenCalledWith(expect.anything(), "auth-user-1");
+    await verificarCodigoRegistro("a@b.cl", "123456");
+    expect(activarPerfilDueno).toHaveBeenCalledWith(expect.anything(), "auth-1");
   });
 
-  it("🔴 H2 un correo, una cuenta: perfil existente de OTRO tipo → correo_ocupado, cierra sesión", async () => {
+  it("🔴 perfil de OTRO tipo (conductor) → correo_ocupado y cierra sesión", async () => {
     const supa = clienteFalso();
     vi.mocked(createClient).mockResolvedValue(supa as never);
     vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue({
@@ -207,65 +155,8 @@ describe("verificarCodigoRegistro", () => {
       rol: "conductor",
       estado: "activo",
     });
-
-    const resultado = await verificarCodigoRegistro("conductor@otro.cl", "123456");
-
-    expect(resultado).toMatchObject({ ok: false, tipo: "correo_ocupado" });
-    expect(provisionarTenantParaAuthUser).not.toHaveBeenCalled();
+    const r = await verificarCodigoRegistro("c@b.cl", "123456");
+    expect(r).toMatchObject({ ok: false, tipo: "correo_ocupado" });
     expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
-  });
-
-  it("sin perfil y sin borrador (venció) → sin_borrador, cierra sesión", async () => {
-    const supa = clienteFalso();
-    vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(leerBorrador).mockResolvedValue(null);
-
-    const resultado = await verificarCodigoRegistro("dueno@nuevo.cl", "123456");
-
-    expect(resultado).toMatchObject({ ok: false, tipo: "sin_borrador" });
-    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
-  });
-
-  it("RUT duplicado al provisionar → conflicto_rut", async () => {
-    const supa = clienteFalso();
-    vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(leerBorrador).mockResolvedValue({
-      nombreFantasia: "X",
-      rut: "76543210-3",
-      nombreDueno: "Otro",
-      emailDueno: "otro@nuevo.cl",
-      aceptaTerminos: true,
-    });
-    vi.mocked(provisionarTenantParaAuthUser).mockRejectedValue(
-      new ErrorConflicto("Ya existe un courier registrado con el RUT 76543210-3."),
-    );
-
-    const resultado = await verificarCodigoRegistro("otro@nuevo.cl", "123456");
-
-    expect(resultado).toMatchObject({ ok: false, tipo: "conflicto_rut" });
-    expect(supa.auth.signOut).toHaveBeenCalledTimes(1);
-  });
-
-  it("falla desconocida al provisionar → tipo desconocido, sin filtrar el detalle técnico", async () => {
-    const supa = clienteFalso();
-    vi.mocked(createClient).mockResolvedValue(supa as never);
-    vi.mocked(buscarPerfilPorAuthUserId).mockResolvedValue(null);
-    vi.mocked(leerBorrador).mockResolvedValue({
-      nombreFantasia: "X",
-      rut: "76543210-3",
-      nombreDueno: "Otro",
-      emailDueno: "otro@nuevo.cl",
-      aceptaTerminos: true,
-    });
-    vi.mocked(provisionarTenantParaAuthUser).mockRejectedValue(new Error("boom interno de infraestructura"));
-
-    const resultado = await verificarCodigoRegistro("otro@nuevo.cl", "123456");
-
-    expect(resultado).toMatchObject({ ok: false, tipo: "desconocido" });
-    if (!resultado.ok) {
-      expect(resultado.mensaje).not.toContain("boom");
-    }
   });
 });

@@ -84,15 +84,15 @@ async function buscarUsuarioAuth(
   cliente: ClienteConAuth,
   correo: string,
 ): Promise<{ id: string } | null> {
-  const porPagina = 200;
-  for (let pagina = 1; pagina <= 25; pagina += 1) {
-    const { data, error } = await cliente.auth.admin.listUsers({ page: pagina, perPage: porPagina });
-    if (error || !data) return null;
-    const encontrado = data.users.find((u) => (u.email ?? "").toLowerCase() === correo);
-    if (encontrado) return { id: encontrado.id };
-    if (data.users.length < porPagina) return null;
-  }
-  return null;
+  // Consulta directa por correo (migración 20261002000001). Reemplaza el
+  // recorrido de `auth.admin.listUsers`, que en local responde 500 y, al fallar,
+  // se leía como «no existe»: el registro dejaba pasar correos que YA eran
+  // cuenta. Un error ahora LANZA — quien llama decide si falla abierto o cerrado.
+  const { data, error } = await cliente
+    .schema("identidad")
+    .rpc("auth_usuario_id_por_email", { p_email: correo });
+  if (error) throw new Error(`No se pudo buscar la cuenta por correo: ${error.message}`);
+  return typeof data === "string" && data ? { id: data } : null;
 }
 
 /**
@@ -159,4 +159,43 @@ export function mensajeCorreoOcupado(cuenta: CuentaPorEmail): string {
     );
   }
   return "Ese correo ya tiene una cuenta en Rutax. Usa otro.";
+}
+
+/**
+ * ¿Este correo ya es una cuenta COMPLETA en Rutax (tiene perfil)?
+ *
+ * Es la pregunta de la pantalla pública «Crea tu cuenta», y NO es la de
+ * `buscarCuentaPorEmail`: allá una identidad de Auth sin perfil cuenta como
+ * «ocupada» (para invitar, da lo mismo). Acá no — es justo la persona que se
+ * identificó, no terminó «Tu empresa» y vuelve a empezar: tiene que poder
+ * seguir, no recibir «ese correo ya tiene una cuenta».
+ *
+ * Nunca lanza: ante un fallo de lectura devuelve `false`. Esta comprobación es
+ * una cortesía previa al envío del código; la barrera real (H2) sigue estando
+ * al verificar el código y en `/auth/callback`.
+ *
+ * ⚠️ Es un oráculo de existencia de cuentas sobre un formulario público. Lo pidió
+ * el producto («se rechaza ANTES de enviar el código»); por eso el mensaje es
+ * siempre el genérico (`mensajeCorreoOcupado` sin `tipoEnMiCourier`) y nunca
+ * dice de qué tipo es la cuenta ni de qué courier.
+ */
+export async function correoTienePerfil(cliente: ClienteConAuth, email: string): Promise<boolean> {
+  const correo = email.trim().toLowerCase();
+  if (!correo) return false;
+
+  try {
+    const usuario = await buscarUsuarioAuth(cliente, correo);
+    if (!usuario) return false;
+
+    const { data: perfil } = await cliente
+      .schema("identidad")
+      .from("usuarios_perfil")
+      .select("id")
+      .eq("id", usuario.id)
+      .maybeSingle();
+
+    return Boolean(perfil);
+  } catch {
+    return false;
+  }
 }

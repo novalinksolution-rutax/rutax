@@ -151,7 +151,59 @@ export default function PaginaPrivacidad() {
         prueba de algo que alguien todavía está discutiendo.
       </p>
 
-      <h2>4. Con quién los compartimos</h2>
+      <h2>4. Datos de nuestros clientes (couriers)</h2>
+      <p>
+        Lo anterior trata los datos que el courier maneja con Rutax. Sobre los datos del
+        propio courier —la empresa que se registra— Novalink SpA actúa como{" "}
+        <strong>responsable</strong>, no como encargado.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Qué</th>
+            <th>Para qué</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Nombre, correo y RUT de quien registra la empresa; nombre de fantasía de la
+              empresa
+            </td>
+            <td>Celebrar y ejecutar el contrato de uso del software, y facturarlo</td>
+          </tr>
+          <tr>
+            <td>
+              Rango de envíos al día, rango de conductores y plataformas de las que vienen sus
+              pedidos (declarados al registrarse)
+            </td>
+            <td>
+              Priorizar la atención comercial y decidir qué plataformas conviene integrar. No
+              configuran tu cuenta ni cambian lo que puedes hacer en ella.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>Base de licitud.</strong> Los datos de contacto, el RUT y el nombre de fantasía
+        se tratan para ejecutar el contrato (art. 13, letra c, de la Ley 21.719). Los rangos y
+        las plataformas se tratan por <strong>interés legítimo</strong> de Novalink SpA en
+        atender mejor a quienes usan el software y en orientar el desarrollo del producto (art.
+        13, letra d). Son cifras aproximadas de la empresa, no datos de personas, y no se usan
+        para decidir nada sobre ti de forma automatizada.
+      </p>
+      <p>
+        <strong>Conservación.</strong> Mientras dure la relación comercial. Al terminarla,
+        conservamos solo lo que la normativa tributaria nos obliga a guardar.
+      </p>
+      <p>
+        <strong>Oposición.</strong> Puedes oponerte al tratamiento por interés legítimo cuando
+        quieras, escribiendo a{" "}
+        <a href="mailto:novalinksolution@gmail.com">novalinksolution@gmail.com</a>. Los rangos y
+        las plataformas también los puedes corregir tú mismo en Configuración.
+      </p>
+
+      <h2>5. Con quién los compartimos</h2>
       <p>
         No vendemos datos personales ni los cedemos con fines publicitarios. Los compartimos
         solo con proveedores que nos prestan servicios de infraestructura, y únicamente en lo
@@ -184,7 +236,7 @@ export default function PaginaPrivacidad() {
         ellos a usar los datos para fines propios.
       </p>
 
-      <h2>5. Cómo los protegemos</h2>
+      <h2>6. Cómo los protegemos</h2>
       <ul>
         <li>
           <strong>Separación entre couriers impuesta por la base de datos</strong>, no solo por
@@ -204,7 +256,7 @@ export default function PaginaPrivacidad() {
         </li>
       </ul>
 
-      <h2>6. Tus derechos</h2>
+      <h2>7. Tus derechos</h2>
       <p>
         Puedes pedir acceder a tus datos, corregirlos, eliminarlos, oponerte a su tratamiento o
         pedir que te los entreguemos en un formato portable.
@@ -222,14 +274,14 @@ export default function PaginaPrivacidad() {
         conforme a la Ley 21.719.
       </p>
 
-      <h2>7. Brechas de seguridad</h2>
+      <h2>8. Brechas de seguridad</h2>
       <p>
         Si ocurre un incidente que afecte datos personales, notificamos al courier afectado sin
         dilaciones indebidas, con lo que sepamos del alcance y de las medidas tomadas, para que
         pueda cumplir sus propias obligaciones de notificación.
       </p>
 
-      <h2>8. Cambios</h2>
+      <h2>9. Cambios</h2>
       <p>
         Si cambiamos esta política, actualizamos la fecha del encabezado y avisamos a los
         couriers con cuenta activa. Los cambios que afecten de forma relevante el tratamiento

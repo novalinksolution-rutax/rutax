@@ -4,6 +4,7 @@ import { PantallaEmpresaPendiente } from "@/components/puesta-en-marcha/pantalla
 import { cerrarSesion } from "@/lib/identidad/cerrar-sesion";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
+import { RUTA_REGISTRO_EMPRESA } from "@/modules/identidad/registro-empresa";
 
 export const metadata: Metadata = { title: "Puesta en marcha" };
 
@@ -18,6 +19,7 @@ export const metadata: Metadata = { title: "Puesta en marcha" };
  */
 export default async function LayoutPuestaEnMarcha({ children }: { children: React.ReactNode }) {
   const sesion = await obtenerSesionActual();
+  if (sesion?.sinPerfil) redirect(RUTA_REGISTRO_EMPRESA);
   if (!sesion || !sesion.usuario.tenantId) redirect("/login");
   if (sesion.usuario.estado !== "activo") redirect("/login");
   if (sesion.usuario.tipoUsuario === "conductor") redirect("/conductor");
