@@ -35,8 +35,8 @@ export function FormularioMiPerfil({
    * texto compartido que solo es cierto en una de las pantallas es peor que dos
    * textos.
    */
-  ayudaNombre: string;
-  ayudaTelefono: string;
+  ayudaNombre?: string;
+  ayudaTelefono?: string;
 }) {
   const [nombre, setNombre] = useState(nombreInicial);
   const [telefono, setTelefono] = useState(telefonoInicial);
@@ -98,7 +98,7 @@ export function FormularioMiPerfil({
           autoComplete="name"
           maxLength={120}
         />
-        <p className="text-xs text-fg-muted">{ayudaNombre}</p>
+        {ayudaNombre ? <p className="text-xs text-fg-muted">{ayudaNombre}</p> : null}
       </div>
 
       <div className="space-y-1.5">
@@ -116,7 +116,7 @@ export function FormularioMiPerfil({
         />
         {/* Se dice para qué sirve, que es opcional, Y qué pasa si se deja
             vacío: sin lo último, borrar el número parece que no se pudo. */}
-        <p className="text-xs text-fg-muted">{ayudaTelefono}</p>
+        {ayudaTelefono ? <p className="text-xs text-fg-muted">{ayudaTelefono}</p> : null}
       </div>
 
       {error ? (

@@ -148,8 +148,10 @@ export default async function PaginaPortalSeller() {
                 ? "Una de tus cuentas se desconectó."
                 : `${conexionesCaidas} de tus cuentas se desconectaron.`}
             </strong>{" "}
-            Mientras esté así, tus pedidos nuevos no le llegan a {nombreCourier}. Vuelve a
-            conectarla desde abajo.
+            Mientras esté así, tus pedidos nuevos no le llegan a {nombreCourier}.{" "}
+            <a href="#cuentas-ml" className="font-medium underline underline-offset-2">
+              Reconectar
+            </a>
           </p>
         </div>
       ) : null}
@@ -177,22 +179,15 @@ export default async function PaginaPortalSeller() {
               ? "Hoy no tienes pedidos"
               : entregados === total
                 ? `Todo salió hoy · ${total} de ${total}`
-                : `Hoy salieron ${entregados} de tus ${total} pedidos`}
+                : `Hoy salieron ${entregados} de ${total}`}
         </h1>
-        <p className="text-sm leading-relaxed text-fg-muted">
-          {estadosHoy === null
-            ? `Recarga en unos segundos. Si es urgente, escríbele a ${nombreCourier}.`
-            : total === 0
-              ? `Cuando entren pedidos por tus cuentas conectadas, o crees uno, van a aparecer acá.`
-              : entregados === total
-                ? "Todas las entregas del día llegaron a destino."
-                : // «van en camino» afirmaría que ya salieron, y el grupo
-                  // incluye los que todavía no se asignan. Se dice lo que es
-                  // cierto de los dos.
-                  `${enCamino} todavía no ${enCamino === 1 ? "llega" : "llegan"} y ${conProblemas} ${
-                    conProblemas === 1 ? "tuvo" : "tuvieron"
-                  } un problema.`}
-        </p>
+        {/* Las cifras del día van en las dos magnitudes de abajo: repetirlas
+            en una frase era decir lo mismo dos veces. */}
+        {estadosHoy === null ? (
+          <p className="text-sm leading-relaxed text-fg-muted">
+            Recarga en unos segundos. Si es urgente, escríbele a {nombreCourier}.
+          </p>
+        ) : null}
       </div>
 
       {/* 3 · Dos magnitudes, y solo dos: las accionables. */}

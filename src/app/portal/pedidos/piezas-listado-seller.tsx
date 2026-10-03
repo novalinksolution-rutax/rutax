@@ -81,7 +81,7 @@ export function BuscadorPedidosSeller({ inicial }: { inicial: string }) {
   return (
     <form
       role="search"
-      className="relative flex-1 sm:max-w-xs"
+      className="relative w-full sm:w-auto sm:max-w-xs sm:flex-1"
       onSubmit={(e) => {
         e.preventDefault();
         navegar("q", texto.trim() || null);

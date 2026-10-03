@@ -260,10 +260,9 @@ export default async function PaginaIncidenciasSeller({
             icon={SearchX}
             tono="filtro"
             titulo="Ninguna incidencia coincide"
-            descripcion="No hay incidencias con estos filtros. Prueba cambiando el tipo o el estado."
             accion={
               <Button asChild variant="outline" size="sm">
-                <Link href="/portal/incidencias">Limpiar filtros</Link>
+                <Link href="/portal/incidencias">Quitar filtros</Link>
               </Button>
             }
           />
@@ -271,8 +270,7 @@ export default async function PaginaIncidenciasSeller({
           <EmptyState
             icon={CheckCircle2}
             tono="buen-estado"
-            titulo="Sin incidencias — todo va bien"
-            descripcion="No hay problemas registrados en tus pedidos. Si te llega un reclamo, repórtalo desde acá."
+            titulo="Sin incidencias"
           />
         )
       ) : (

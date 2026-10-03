@@ -50,19 +50,8 @@ export async function WidgetSlaSeller({ tenantId, sellerId }: Props) {
     slaDatos = null;
   }
 
-  if (!slaDatos) {
-    return (
-      <article className="rounded-lg border border-border bg-card p-5 shadow-xs">
-        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-          <TrendingUp className="size-4" aria-hidden="true" />
-          Tu cumplimiento
-        </div>
-        <p className="mt-3 text-sm text-muted-foreground">
-          Todavía no hay entregas suficientes esta semana para decirte cómo vas.
-        </p>
-      </article>
-    );
-  }
+  // Sin entregas suficientes no hay nada que decir: el espacio va vacío.
+  if (!slaDatos) return null;
 
   const semaforo = semaforoSla(slaDatos.slaPct, slaDatos.objetivoPct);
   const pctMostrado =

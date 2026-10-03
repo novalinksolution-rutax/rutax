@@ -48,6 +48,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { semaforoSla } from "@/lib/ui/semaforo-sla";
 import { esRutValido } from "@/modules/identidad/rut";
+import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
 import type {
   Conductor,
   ConductorZona,
@@ -129,7 +130,7 @@ export function DialogNuevoConductor({
 
     const formData = new FormData();
     formData.set("nombre_completo", nombreLimpio);
-    formData.set("rut", rut);
+    formData.set("rut", limpiarMascaraRut(rut));
     formData.set("tipo_relacion", tipoRelacion);
 
     iniciarTransicion(async () => {
@@ -190,11 +191,13 @@ export function DialogNuevoConductor({
             id="nuevo-conductor-rut"
             value={rut}
             onChange={(e) => {
-              setRut(e.target.value);
-              validarRutInline(e.target.value);
+              setRut(enmascararRut(e.target.value));
+              setErrorRut(null);
               setError(null);
             }}
-            placeholder="12345678-9"
+            onBlur={() => validarRutInline(rut)}
+            inputMode="text"
+            placeholder="12.345.678-9"
             disabled={pendiente}
             autoComplete="off"
             aria-invalid={Boolean(errorRut)}

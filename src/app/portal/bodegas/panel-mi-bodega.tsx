@@ -111,7 +111,6 @@ export function PanelMiBodega({
       }}
       disparador={disparador}
       titulo={esEdicion ? bodega.nombre : "Nueva bodega"}
-      subtitulo="Desde acá retira tu courier. La dirección y el contacto son los que va a usar el conductor."
       pie={
         <div className="flex items-center gap-2">
           <Button type="submit" form="form-mi-bodega" disabled={guardando}>
@@ -138,9 +137,6 @@ export function PanelMiBodega({
             placeholder="Ej: Bodega Quilicura"
             disabled={guardando}
           />
-          <p className="text-xs text-fg-muted">
-            Con este nombre la vas a reconocer tú y la va a ver el conductor.
-          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -203,12 +199,12 @@ export function PanelMiBodega({
             name="contacto_telefono"
             defaultValue={bodega?.contactoTelefono ?? ""}
             placeholder="+56 9 …"
+            type="tel"
             inputMode="tel"
+            autoComplete="tel"
+            aria-label="Teléfono de contacto"
             disabled={guardando}
           />
-          <p className="text-xs text-fg-muted">
-            Es a quien llama el conductor si llega y no puede entrar.
-          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -221,9 +217,6 @@ export function PanelMiBodega({
             placeholder="Portón, andén, horarios de retiro, dónde estacionar…"
             disabled={guardando}
           />
-          <p className="text-xs text-fg-muted">
-            Lo lee el conductor en su app, antes de llegar.
-          </p>
         </div>
 
         {error && (

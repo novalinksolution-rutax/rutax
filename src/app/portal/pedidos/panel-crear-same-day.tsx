@@ -50,7 +50,6 @@ export function PanelCrearSameDay({
       onOpenChange={setAbierto}
       ancho="amplio"
       titulo="Crear pedido"
-      subtitulo="Queda pendiente de asignación hasta que tu courier le asigne un conductor."
       disparador={
         variante === "inicio" ? (
           <Button className="w-full sm:w-auto">

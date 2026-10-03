@@ -229,7 +229,8 @@ export function FormularioAltaSameDay({
   }
 
   const listo =
-    campos.sellerId !== "" &&
+    // En modo seller no hay nada que elegir: el seller sale de la sesión.
+    (modoSeller || campos.sellerId !== "") &&
     campos.destinatarioNombre.trim() !== "" &&
     campos.destinatarioDireccion.trim() !== "" &&
     campos.destinatarioComuna !== "" &&
@@ -238,11 +239,18 @@ export function FormularioAltaSameDay({
   /** Volver: cerrar el panel si está en el panel, navegar si está en la página. */
   const volver = () => {
     if (onListo) onListo();
-    else router.push("/operaciones");
+    else router.push(modoSeller ? "/portal/pedidos" : "/operaciones");
   };
 
   if (exito && !pendiente) {
-    return <BloqueExito exito={exito} onCrearOtro={() => setExito(null)} onVolver={volver} />;
+    return (
+      <BloqueExito
+        exito={exito}
+        hrefPedido={modoSeller ? `/portal/pedidos/${exito.pedidoId}` : `/operaciones/${exito.pedidoId}`}
+        onCrearOtro={() => setExito(null)}
+        onVolver={volver}
+      />
+    );
   }
 
   return (
@@ -357,7 +365,7 @@ export function FormularioAltaSameDay({
             </SelectContent>
           </Select>
           <p className="text-xs text-fg-muted">
-            Elige una de la lista: escribirla a mano no ubica la dirección.
+            Se completa al elegir la dirección.
           </p>
         </div>
 
@@ -389,7 +397,7 @@ export function FormularioAltaSameDay({
             <p className="text-xs text-fault-fg">{errorTelefono}</p>
           ) : (
             <p className="text-xs text-fg-muted">
-              Opcional. Sirve para avisar al destinatario cuando el conductor va en camino.
+              Opcional. Le avisamos cuando va en camino.
             </p>
           )}
         </div>
@@ -414,9 +422,9 @@ export function FormularioAltaSameDay({
           {fueraDeCorte ? (
             <AvisoEnLinea tono="attention" icono={<Clock className="size-4" aria-hidden="true" />}>
               <span className="block">
-                Estás creando este pedido pasada la hora de corte de {nombreSeller} (
-                {estadoSeller?.horaCorte}). Se va a crear igual y sale mañana; también puedes
-                reagendarlo.
+                {modoSeller
+                  ? `Ya pasó tu hora de corte (${estadoSeller?.horaCorte}). Puede salir mañana.`
+                  : `Ya pasó la hora de corte de ${nombreSeller} (${estadoSeller?.horaCorte}). Puede salir mañana.`}
               </span>
               <Button
                 type="button"
@@ -522,10 +530,12 @@ function AvisoEnLinea({
 
 function BloqueExito({
   exito,
+  hrefPedido,
   onCrearOtro,
   onVolver,
 }: {
   exito: Exito;
+  hrefPedido: string;
   onCrearOtro: () => void;
   onVolver: () => void;
 }) {
@@ -549,7 +559,7 @@ function BloqueExito({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button asChild>
-          <Link href={`/operaciones/${exito.pedidoId}`}>Ver el pedido</Link>
+          <Link href={hrefPedido}>Ver el pedido</Link>
         </Button>
         <Button variant="outline" onClick={onCrearOtro}>
           Crear otro

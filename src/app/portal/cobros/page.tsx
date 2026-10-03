@@ -53,8 +53,7 @@ function resumenPeriodos(abiertos: number, facturados: number, otros: number): s
   if (abiertos > 0) partes.push(`${abiertos} en curso`);
   if (otros > 0) partes.push(`${otros} esperando la factura`);
   if (facturados > 0) partes.push(`${facturados} ya ${facturados === 1 ? "facturado" : "facturados"}`);
-  if (partes.length === 0) return "Todavía no tienes períodos de cobro.";
-  return `Tus períodos de cobro: ${partes.join(" · ")}.`;
+  return partes.join(" · ");
 }
 
 function formatearFechaCorta(fechaIso: string): string {
@@ -145,7 +144,7 @@ export default async function PaginaCobrosPortal() {
           role="alert"
           className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
-          No se pudo cargar tu estado de cuenta. Intenta recargar la página.
+          No se pudieron cargar tus cobros. Intenta recargar la página.
         </div>
       )}
 
@@ -154,7 +153,6 @@ export default async function PaginaCobrosPortal() {
         <EmptyState
           icon={Receipt}
           titulo="Aún no tienes cobros"
-          descripcion="Aquí verás tus períodos y facturas cuando tu empresa de despacho registre tus entregas."
         />
       ) : (
         !errorCarga && (
@@ -166,11 +164,11 @@ export default async function PaginaCobrosPortal() {
                   <TableHead className="px-4" style={{ width: "18%" }}>Estado</TableHead>
                   {/* Sin la columna «Líneas»: al seller no le dice nada cuántas
                       filas tiene el período por dentro. La cifra y el estado sí. */}
-                  <TableHead className="hidden px-4 text-right md:table-cell" style={{ width: "18%" }}>
+                  <TableHead className="px-4 text-right" style={{ width: "18%" }}>
                     Total neto
                   </TableHead>
-                  <TableHead className="px-4" style={{ width: "22%" }}>Factura</TableHead>
-                  <TableHead className="px-4" style={{ width: "14%" }}>Pago</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell" style={{ width: "22%" }}>Factura</TableHead>
+                  <TableHead className="hidden px-4 md:table-cell" style={{ width: "14%" }}>Pago</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -198,7 +196,7 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
 
   return (
     <TableRow className="group">
-      <TableCell className="px-4">
+      <TableCell className="px-4 whitespace-normal">
         <Link
           href={`/portal/cobros/${periodo.id}`}
           className="font-medium tabular-nums hover:underline"
@@ -210,17 +208,17 @@ function FilaPeriodoSeller({ periodo }: { periodo: PeriodoConDte }) {
       <TableCell className="px-4">
         <BadgeEstado variante={BADGE_ESTADO_PERIODO[periodo.estado]} eje="periodo" valor={periodo.estado} texto={textoBadge} />
       </TableCell>
-      <TableCell className="hidden px-4 text-right font-medium tabular-nums md:table-cell">
+      <TableCell className="px-4 text-right font-medium tabular-nums">
         {formatearCLPOGuion(periodo.netoClp)}
       </TableCell>
-      <TableCell className="px-4">
+      <TableCell className="hidden px-4 md:table-cell">
         {periodo.dte ? (
           <BadgeEstadoSiiCompacto estadoSii={periodo.dte.estadoSii} />
         ) : (
           <span className="text-xs text-muted-foreground">Sin factura</span>
         )}
       </TableCell>
-      <TableCell className="px-4">
+      <TableCell className="hidden px-4 md:table-cell">
         {periodo.estadoCobro === "no_aplica" ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : (

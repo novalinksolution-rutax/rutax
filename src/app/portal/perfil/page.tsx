@@ -3,20 +3,16 @@ import { redirect } from "next/navigation";
 
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ListaCapacidades } from "@/components/ui/bloque-capacidades";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormularioMiPerfil } from "@/components/perfil/formulario-mi-perfil";
 import {
   BloqueCorreo,
-  ContenidoContrasena,
   DatoDesdeCuando,
   DatoPerfil,
   NotaPerfil,
 } from "@/components/perfil/secciones-perfil";
 import { enmascararRut } from "@/lib/formato-cl";
 import { formatearTelefonoLegible } from "@/lib/telefono-cl";
-import { capacidadesLegiblesDeRol } from "@/modules/identidad/capacidades-legibles";
 import { obtenerWhatsAppDelSeller } from "./actions";
 import { PanelWhatsAppDelSeller } from "./panel-whatsapp";
 
@@ -81,30 +77,22 @@ export default async function PaginaPerfilSeller() {
   ]);
 
   const telefonoE164 = (perfil?.telefono as string | null) ?? null;
-  const { vaAPoder } = capacidadesLegiblesDeRol("seller");
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold text-fg">Mi perfil</h1>
-        <p className="text-fg-muted">Tus datos, cómo te contactamos y qué puedes hacer acá.</p>
-      </header>
+      <h1 className="text-2xl font-semibold text-fg">Mi perfil</h1>
 
       <Card>
         <CardHeader>
           <CardTitle>Tus datos</CardTitle>
-          <CardDescription>Los puedes cambiar cuando quieras.</CardDescription>
         </CardHeader>
         <CardContent>
           <FormularioMiPerfil
             nombreInicial={(perfil?.nombre_completo as string | null) ?? sesion.nombreCompleto ?? ""}
             telefonoInicial={telefonoE164 ? formatearTelefonoLegible(telefonoE164) : ""}
-            ayudaNombre="Es el nombre con el que te ve tu courier cuando hay que resolver algo de un pedido tuyo."
-            /* ⚠️ Se dice explícitamente que NO es el de los avisos, porque
-               abajo en la misma pantalla hay otro campo de teléfono. Sin esta
-               frase, quien cambie éste va a creer que cambió aquél — y se va a
-               quedar esperando avisos que llegan al número viejo. */
-            ayudaTelefono="Opcional, para que te llamen si hay un problema. No es el de los avisos por WhatsApp: ese se cambia más abajo."
+            /* ⚠️ Se dice que NO es el de los avisos: abajo hay otro campo de
+               teléfono, y quien cambie éste creería que cambió aquél. */
+            ayudaTelefono="Opcional. Los avisos por WhatsApp van al número de más abajo."
           />
         </CardContent>
       </Card>
@@ -134,19 +122,8 @@ export default async function PaginaPerfilSeller() {
               </DatoPerfil>
             ) : null}
             {empresa?.razon_social ? (
-              <NotaPerfil>
-                Es la empresa a la que tu courier le factura. Si está mal, avísale a tu courier: lo
-                corrige él.
-              </NotaPerfil>
+              <NotaPerfil>Si está mal, avísale a tu courier.</NotaPerfil>
             ) : null}
-
-            <DatoPerfil termino="Rol" conSeparador>
-              <Badge variant="outline">Seller</Badge>
-            </DatoPerfil>
-            <NotaPerfil>
-              Entras a tu portal: tus pedidos, tus bodegas, tus incidencias y tus cobros. No ves la
-              operación del courier ni la de los demás sellers.
-            </NotaPerfil>
 
             <DatoDesdeCuando
               rotulo="Con este courier desde"
@@ -156,30 +133,6 @@ export default async function PaginaPerfilSeller() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Qué puedes hacer</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ListaCapacidades
-            rotulo="Puedes"
-            tono="balanced"
-            items={vaAPoder}
-            vacio="Tu cuenta no habilita ninguna acción todavía."
-            colapsable
-            umbral={8}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Tu contraseña</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <ContenidoContrasena email={sesion.email} />
-        </CardContent>
-      </Card>
     </div>
   );
 }

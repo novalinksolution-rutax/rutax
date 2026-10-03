@@ -101,8 +101,7 @@ export function DialogCancelarPedido({ pedidoId }: Props) {
             <DialogHeader>
               <DialogTitle>Cancelar pedido</DialogTitle>
               <DialogDescription>
-                El pedido pasará a estado Cancelado. No se puede revertir — si el destinatario
-                todavía necesita el envío, tendrás que crear uno nuevo.
+                No se puede deshacer. Si después lo necesitas, crea uno nuevo.
               </DialogDescription>
             </DialogHeader>
 

@@ -75,8 +75,7 @@ export function PanelWhatsAppDelSeller({ datos }: { datos: WhatsAppDelSeller }) 
           <CardTitle>Avisos por WhatsApp</CardTitle>
         </div>
         <CardDescription>
-          Te avisamos cuando retiramos pedidos desde tus bodegas. Los mensajes llegan desde el
-          número oficial de Rutax.
+          Te avisamos cuando retiramos pedidos en tus bodegas.
         </CardDescription>
       </CardHeader>
 
@@ -119,9 +118,6 @@ export function PanelWhatsAppDelSeller({ datos }: { datos: WhatsAppDelSeller }) 
                 onChange={(e) => setTelefono(e.target.value)}
                 required
               />
-              <p className="text-sm text-fg-muted">
-                Da lo mismo cómo lo escribas: lo guardamos en el formato que exige WhatsApp.
-              </p>
             </div>
 
             <div className="flex items-start gap-3 rounded-md border border-border bg-bg-subtle p-3">
@@ -132,8 +128,11 @@ export function PanelWhatsAppDelSeller({ datos }: { datos: WhatsAppDelSeller }) 
                 className="mt-0.5"
               />
               <Label htmlFor="acepta" className="cursor-pointer text-sm font-normal leading-relaxed">
-                Acepto recibir avisos de mis entregas por WhatsApp. Puedo darme de baja desde acá,
-                o respondiendo <span className="font-medium">BAJA</span> al mensaje.
+                {/* Un solo bloque: `Label` es flex y partía la frase en columnas. */}
+                <span className="block">
+                  Acepto recibir avisos de mis entregas por WhatsApp. Puedo darme de baja desde acá,
+                  o respondiendo <span className="font-medium">BAJA</span> al mensaje.
+                </span>
               </Label>
             </div>
 

@@ -23,6 +23,7 @@ import { useState } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { enmascararRut } from "@/lib/formato-cl";
 import {
   Select,
   SelectContent,
@@ -130,7 +131,12 @@ export function FormularioDatosCobro({ iniciales }: { iniciales: DatosCobroInici
             id="cobro-rut"
             name="rut_titular"
             required
-            defaultValue={iniciales.rutTitular ?? ""}
+            defaultValue={enmascararRut(iniciales.rutTitular ?? "")}
+            onChange={(e) => {
+              e.currentTarget.value = enmascararRut(e.currentTarget.value);
+            }}
+            inputMode="text"
+            autoComplete="off"
             placeholder="76.543.210-9"
             className="rx-num"
           />

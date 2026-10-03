@@ -88,10 +88,10 @@ function PantallaConectar({ modo }: { modo: ModoConexionMl }) {
         </h1>
         <p className="text-sm text-muted-foreground">
           {modo === "reconexion"
-            ? "Vamos a llevarte a Mercado Libre para que vuelvas a autorizar el acceso. Esto solo toma un minuto."
+            ? "Te llevamos a Mercado Libre para volver a autorizar."
             : modo === "agregar_cuenta"
-              ? `Vamos a llevarte a Mercado Libre para autorizar otra de tus cuentas. Puedes conectar hasta ${MAX_CUENTAS_ML}.`
-              : "Para que tus pedidos se sincronicen automáticamente, necesitamos que autorices el acceso desde tu cuenta de Mercado Libre."}
+              ? `Puedes conectar hasta ${MAX_CUENTAS_ML} cuentas.`
+              : "Te llevamos a Mercado Libre para autorizar el acceso."}
         </p>
       </div>
 
@@ -113,11 +113,10 @@ function PantallaConectar({ modo }: { modo: ModoConexionMl }) {
         />
         <div className="space-y-1">
           <p className="font-semibold text-foreground">
-            Importante: inicia sesión con tu cuenta PRINCIPAL de Mercado Libre
+            Entra con la cuenta principal de tu tienda
           </p>
           <p className="text-sm text-foreground">
-            Es la cuenta del dueño o administrador de tu tienda. Si entras con la cuenta de un colaborador u
-            operador, la conexión no va a funcionar y vas a tener que rehacerla.
+            La del dueño o administrador. Con la de un colaborador no funciona.
           </p>
         </div>
       </div>
@@ -146,8 +145,7 @@ function PantallaConectar({ modo }: { modo: ModoConexionMl }) {
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Solo compartimos contigo la información de tus pedidos y publicaciones para sincronizarlos en este portal —
-        nunca vemos ni guardamos tu contraseña de Mercado Libre.
+        Nunca vemos ni guardamos tu contraseña de Mercado Libre.
       </p>
     </div>
   );
@@ -244,10 +242,10 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         titulo: "¡Listo! Tu cuenta de Mercado Libre está conectada",
         descripcion:
           modo === "reconexion"
-            ? "Volviste a autorizar el acceso correctamente. Tus pedidos van a seguir sincronizándose con normalidad."
+            ? "Tus pedidos vuelven a entrar."
             : modo === "agregar_cuenta"
-              ? "Agregaste la cuenta correctamente. Ya estamos sincronizando sus pedidos junto con los de tus otras cuentas."
-              : "Ya podemos empezar a sincronizar tus pedidos automáticamente. Desde tu portal vas a poder seguir su estado en todo momento.",
+              ? "Sus pedidos ya empiezan a entrar."
+              : "Tus pedidos ya empiezan a entrar.",
         acciones: <BotonIrAlPortal />,
       };
 
@@ -257,7 +255,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "error",
         titulo: "Esta cuenta de Mercado Libre ya está conectada a otra empresa",
         descripcion:
-          "La cuenta con la que iniciaste sesión ya está vinculada a otra empresa de despacho en nuestra plataforma. Si crees que esto es un error, contacta a la empresa que te invitó o a soporte para revisarlo.",
+          "Si crees que es un error, escríbele a tu courier.",
         acciones: (
           <>
             <BotonVolverAIntentar modo={modo} />
@@ -271,7 +269,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         icono: <XCircle className="size-7" aria-hidden="true" />,
         tono: "neutro",
         titulo: "No completaste la conexión con Mercado Libre",
-        descripcion: "No pasa nada — puedes intentarlo de nuevo cuando quieras.",
+        descripcion: "Puedes intentarlo de nuevo cuando quieras.",
         acciones: <BotonVolverAIntentar modo={modo} />,
       };
 
@@ -281,7 +279,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "advertencia",
         titulo: "Iniciaste sesión con una cuenta de colaborador",
         descripcion:
-          "Para conectar correctamente, vuelve a intentarlo iniciando sesión con la cuenta PRINCIPAL de tu tienda — la del dueño o administrador, no la de un colaborador u operador.",
+          "Vuelve a intentarlo con la cuenta principal de tu tienda, la del dueño o administrador.",
         acciones: <BotonVolverAIntentar modo={modo} />,
       };
 
@@ -290,7 +288,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         icono: <AlertOctagon className="size-7" aria-hidden="true" />,
         tono: "advertencia",
         titulo: "Mercado Libre no respondió a tiempo",
-        descripcion: "Esto no es un problema de tu cuenta — es algo pasajero del lado de Mercado Libre. Intenta de nuevo en unos minutos.",
+        descripcion: "Es pasajero. Intenta de nuevo en unos minutos.",
         acciones: <BotonVolverAIntentar modo={modo} />,
       };
 
@@ -300,7 +298,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "neutro",
         titulo: "Tu sesión de conexión expiró",
         descripcion:
-          "Pasó demasiado tiempo desde que iniciaste el proceso (o lo abriste en otra pestaña). No es un problema de tu cuenta de Mercado Libre — solo necesitas iniciar la conexión de nuevo.",
+          "Vuelve a iniciar la conexión.",
         acciones: <BotonVolverAIntentar modo={modo} />,
       };
 
@@ -310,7 +308,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "advertencia",
         titulo: "Ya llegaste al límite de cuentas conectadas",
         descripcion:
-          `Tu cuenta tiene hasta ${MAX_CUENTAS_ML} conexiones de Mercado Libre. Para agregar una nueva, primero desconecta una de las que ya tienes desde tu portal.`,
+          `El máximo es ${MAX_CUENTAS_ML}. Para agregar una, primero desconecta otra.`,
         acciones: <BotonIrAMisConexiones />,
       };
 
@@ -320,7 +318,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "advertencia",
         titulo: "No se agregó una cuenta nueva",
         descripcion:
-          "Mercado Libre conectó la cuenta que ya tenías abierta en este navegador, y esa cuenta ya estaba vinculada a tu portal — por eso no se sumó como una cuenta distinta. Si querías conectar otra cuenta, cierra sesión en mercadolibre.cl (o hazlo desde una ventana de navegación privada) y vuelve a intentarlo.",
+          "Mercado Libre usó la cuenta abierta en este navegador, que ya estaba conectada. Para agregar otra, cierra sesión en mercadolibre.cl (o usa una ventana privada) y vuelve a intentarlo.",
         acciones: <BotonIrAMisConexiones />,
       };
 
@@ -336,7 +334,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "advertencia",
         titulo: "Agregamos una cuenta nueva, pero no reconectamos la que querías",
         descripcion:
-          "Mercado Libre te conectó con la cuenta que tenías abierta en este navegador, que era otra distinta de la que ibas a reconectar. La sumamos a tu portal como una cuenta más, así que sus pedidos ya empiezan a sincronizarse — pero la cuenta que estaba desconectada sigue igual. Para arreglarla, cierra sesión en mercadolibre.cl (o usa una ventana de navegación privada), entra con esa cuenta y vuelve a apretar Reconectar en su tarjeta.",
+          "Mercado Libre usó otra cuenta abierta en este navegador y la sumamos como una más. La desconectada sigue igual: cierra sesión en mercadolibre.cl (o usa una ventana privada), entra con ella y vuelve a apretar Reconectar.",
         acciones: <BotonIrAMisConexiones />,
       };
 
@@ -346,7 +344,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         tono: "advertencia",
         titulo: "Renovamos otra de tus cuentas, no la que querías reconectar",
         descripcion:
-          "Mercado Libre te conectó con la cuenta que tenías abierta en este navegador, que ya estaba vinculada a tu portal — no con la que ibas a reconectar, que sigue desconectada. Para arreglarla, cierra sesión en mercadolibre.cl (o usa una ventana de navegación privada), entra con esa cuenta y vuelve a apretar Reconectar en su tarjeta.",
+          "Mercado Libre usó otra cuenta abierta en este navegador. La desconectada sigue igual: cierra sesión en mercadolibre.cl (o usa una ventana privada), entra con ella y vuelve a apretar Reconectar.",
         acciones: <BotonIrAMisConexiones />,
       };
 
@@ -356,7 +354,7 @@ function construirContenido(modo: ModoConexionMl, resultado: ResultadoCallbackMl
         icono: <AlertOctagon className="size-7" aria-hidden="true" />,
         tono: "error",
         titulo: "No pudimos completar la conexión",
-        descripcion: "Tuvimos un problema de nuestro lado al procesar tu conexión — no es algo que debas resolver tú. Ya quedó registrado; intenta de nuevo en unos minutos o contáctanos si sigue ocurriendo.",
+        descripcion: "Fue un problema nuestro. Intenta de nuevo en unos minutos.",
         acciones: (
           <>
             <BotonVolverAIntentar modo={modo} />

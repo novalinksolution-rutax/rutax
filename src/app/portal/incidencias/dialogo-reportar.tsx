@@ -117,14 +117,8 @@ export function DialogoReportar({
           {listo ? (
             <div className="space-y-3">
               <p className="text-sm leading-relaxed text-fg-muted">
-                {nombreCourier} lo va a ver en su bandeja de incidencias. Vas a poder seguirlo
-                desde <strong className="font-medium text-fg">Mis incidencias</strong>, con lo que
-                respondan y el efecto que tenga en tu cobro.
-              </p>
-              {/* Lo que NO pasa, dicho. Sin esto se espera un correo que no llega
-                  y a los veinte minutos suena el teléfono del courier. */}
-              <p className="text-sm leading-relaxed text-fg-muted">
-                No te vamos a mandar un correo: revísalo acá cuando quieras.
+                {nombreCourier} ya lo ve. La respuesta te aparece en{" "}
+                <strong className="font-medium text-fg">Mis incidencias</strong>.
               </p>
             </div>
           ) : (
@@ -176,9 +170,6 @@ export function DialogoReportar({
                   onChange={(e) => setDescripcion(e.target.value)}
                   placeholder="El cliente dice que nadie tocó el timbre y estuvo toda la tarde."
                 />
-                <p className="text-xs text-fg-muted">
-                  Lo lee {nombreCourier}. Mientras más concreto, más rápido lo resuelven.
-                </p>
               </div>
 
               {error ? (

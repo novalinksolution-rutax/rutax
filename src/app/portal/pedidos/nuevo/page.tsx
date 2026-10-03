@@ -79,11 +79,6 @@ export default async function PaginaNuevoPedido() {
           Mis pedidos
         </Link>
         <h1 className="font-heading text-2xl font-semibold">Crear pedido</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          El envío quedará en estado <em>pendiente de asignación</em> hasta que el courier lo
-          asigne a un conductor. Puedes cargar varios envíos seguidos: el formulario
-          queda listo para el siguiente apenas confirmas uno.
-        </p>
       </div>
 
       <div className="rounded-lg border bg-card p-6 shadow-sm">

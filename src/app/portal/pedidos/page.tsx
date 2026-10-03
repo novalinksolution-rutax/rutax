@@ -304,12 +304,7 @@ export default async function PaginaPedidosSeller({
     <ProveedorVistaPreviaSeller>
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Mis pedidos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Seguimiento de tus entregas. Los estados se actualizan automáticamente.
-          </p>
-        </div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Mis pedidos</h1>
         {/* 🔴 Abre el PANEL, no navega. Llevaba a `/portal/pedidos/nuevo` y
             cargar una pantalla entera —perdiendo de vista la lista que estabas
             mirando— por el gesto que más se repite es la fricción más cara del
@@ -320,7 +315,7 @@ export default async function PaginaPedidosSeller({
       {/* Confirmación de envío creado */}
       {pedidoNuevoId && (
         <div role="status" className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
-          Envío solicitado. Queda pendiente hasta que el courier lo asigne a un conductor.
+          Pedido creado.
         </div>
       )}
 
@@ -345,7 +340,7 @@ export default async function PaginaPedidosSeller({
               al principio, como en el listado del courier, para que la fila se
               lea como un grupo y no como dos controles sueltos. */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase">
+            <span className="hidden font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase sm:inline">
               Filtros
             </span>
             <BuscadorPedidosSeller inicial={busqueda} />
@@ -375,13 +370,11 @@ export default async function PaginaPedidosSeller({
             tono="filtro"
             titulo={busqueda ? `Nada coincide con «${busqueda}»` : "Ningún pedido coincide"}
             descripcion={
-              busqueda
-                ? "Prueba con el código completo del envío, o con parte del nombre de quien recibe."
-                : "No hay pedidos con estos filtros. Prueba cambiando el cajón o la fecha."
+              busqueda ? "Busca por código de envío o por el nombre de quien recibe." : undefined
             }
             accion={
               <Button asChild variant="outline" size="sm">
-                <Link href="/portal/pedidos">Ver todos mis pedidos</Link>
+                <Link href="/portal/pedidos">Quitar filtros</Link>
               </Button>
             }
           />
@@ -389,7 +382,6 @@ export default async function PaginaPedidosSeller({
           <EmptyState
             icon={Inbox}
             titulo="Todavía no tienes pedidos"
-            descripcion="Aquí verás tus envíos cuando tu empresa de despacho los registre."
           />
         )
       ) : (
@@ -454,7 +446,7 @@ export default async function PaginaPedidosSeller({
                       <p className="text-xs text-muted-foreground">
                         {pedido.destinatarioComuna}
                         {mostrarOrigen && etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] ? (
-                          <span className="text-muted-foreground/80">
+                          <span className="text-muted-foreground/80 lg:hidden">
                             {" · "}
                             {etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""]}
                           </span>

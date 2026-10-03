@@ -118,9 +118,11 @@ export function PanelConexionesShopify({
               <Store className="size-4 text-muted-foreground" aria-hidden />
               Mis tiendas Shopify
             </h2>
-            <p className="text-sm text-muted-foreground">
-              Conecta tu tienda y tus pedidos entrarán solos, sin que tengas que copiar direcciones.
-            </p>
+            {conexionesIniciales.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Conecta tu tienda y tus pedidos entran solos.
+              </p>
+            ) : null}
           </div>
           <Button size="sm" variant="outline" onClick={() => setAbierto({ modo: "alta" })}>
             <Plus data-icon="inline-start" aria-hidden />
@@ -128,11 +130,7 @@ export function PanelConexionesShopify({
           </Button>
         </div>
 
-        {conexionesIniciales.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
-            Todavía no tienes ninguna tienda conectada.
-          </p>
-        ) : (
+        {conexionesIniciales.length === 0 ? null : (
           <ul className="space-y-2">
             {conexionesIniciales.map((c) => (
               <li
@@ -146,7 +144,7 @@ export function PanelConexionesShopify({
                   <p className="truncate text-xs text-muted-foreground">
                     {c.shopDomain}
                     {c.desconectadaPorPersona
-                      ? " · no estamos trayendo sus pedidos"
+                      ? ""
                       : c.ultimaSyncExitosaEn
                         ? ` · al día ${formatearTiempoRelativo(c.ultimaSyncExitosaEn)}`
                         : " · sin sincronizar todavía"}
@@ -195,14 +193,17 @@ export function PanelConexionesShopify({
                       Sincronizar ahora
                     </Button>
                   ) : null}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setAbierto({ modo: "reconexion", conexion: c })}
-                  >
-                    <KeyRound data-icon="inline-start" aria-hidden />
-                    Reconectar
-                  </Button>
+                  {/* Sobre una tienda sana es ruido: solo donde hay algo que reponer. */}
+                  {c.desconectadaPorPersona || c.estadoSalud !== "sana" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setAbierto({ modo: "reconexion", conexion: c })}
+                    >
+                      <KeyRound data-icon="inline-start" aria-hidden />
+                      Reconectar
+                    </Button>
+                  ) : null}
 
                   {/* Peldaño 3 · hay que escribir el dominio de la tienda. No
                       porque sea catastrófico —los pedidos ya traídos se quedan y

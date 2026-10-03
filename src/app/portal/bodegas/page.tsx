@@ -97,8 +97,7 @@ export default async function PaginaBodegasSeller() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Bodegas</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Desde acá retira {nombreCourier} tus pedidos. Agrega las que uses y mantén al día la
-          dirección y a quién llamar.
+          Desde acá retira {nombreCourier} tus pedidos.
         </p>
       </div>
 
@@ -117,7 +116,7 @@ export default async function PaginaBodegasSeller() {
           icon={Warehouse}
           tono="arranque"
           titulo="Todavía no tienes ninguna bodega"
-          descripcion={`Mientras no haya una, ${nombreCourier} no tiene dónde ir a retirar tus pedidos. Agrega la primera y quedas listo.`}
+          descripcion={`Sin una bodega, ${nombreCourier} no tiene dónde retirar tus pedidos.`}
           accion={<ListaMisBodegas bodegas={[]} />}
         />
       )}

@@ -226,7 +226,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
       setResultadoSyncPorId((prev) => ({
         ...prev,
         [conexionId]: resultado.ok
-          ? { ok: true, mensaje: "Pedimos traer tus pedidos de nuevo — deberían aparecer en unos minutos." }
+          ? { ok: true, mensaje: "Listo. Los pedidos nuevos aparecen en unos minutos." }
           : { ok: false, mensaje: resultado.mensaje },
       }));
     } catch {
@@ -263,13 +263,8 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
   const ordenadas = [...conexiones].sort((a, b) => prioridad(a.estadoSalud) - prioridad(b.estadoSalud));
 
   return (
-    <section className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight text-foreground">Mis cuentas de Mercado Libre</h2>
-        <p className="text-sm text-muted-foreground">
-          Tus pedidos se sincronizan automáticamente desde estas cuentas.
-        </p>
-      </div>
+    <section id="cuentas-ml" className="scroll-mt-20 space-y-4">
+      <h2 className="text-lg font-semibold tracking-tight text-foreground">Mis cuentas de Mercado Libre</h2>
 
       {conexiones.length === 0 ? (
         <Card>
@@ -277,12 +272,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
             <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <Clock className="size-6" aria-hidden="true" />
             </div>
-            <div className="space-y-1">
-              <p className="font-medium text-foreground">Todavía no conectaste ninguna cuenta de Mercado Libre</p>
-              <p className="text-sm text-muted-foreground">
-                Conéctala para que tus pedidos empiecen a sincronizarse automáticamente en este portal.
-              </p>
-            </div>
+            <p className="font-medium text-foreground">Todavía no conectaste ninguna cuenta de Mercado Libre</p>
             <Button onClick={() => iniciar("conexion_inicial")} disabled={accionandoId !== null} size="lg">
               {accionandoId === "nueva" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
               {accionandoId === "nueva" ? "Te llevamos a Mercado Libre…" : "Conectar mi cuenta de Mercado Libre"}
@@ -346,7 +336,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                                 ⚠️ Va con un condicional y NO con `hidden`: el
                                 botón trae utilidades de `display`, y ésas le
                                 ganan al atributo — quedaría visible. */}
-                            {c.desconectadaPorSeller ? null : (
+                            {c.desconectadaPorSeller || c.estadoSalud === "desvinculada" ? null : (
                             <Button
                               type="button"
                               variant="ghost"
@@ -473,20 +463,10 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
                       <BloqueFallaExterna
                         titulo="Dejamos de recibir tus pedidos nuevos de esta cuenta"
                         queSabemos={
-                          <>
-                            Mercado Libre dejó de aceptar nuestro permiso. Puede ser que caducara
-                            solo, que lo revocaras desde tu cuenta o que algo fallara de nuestro
-                            lado: <strong>no podemos distinguir cuál de los tres</strong>, y
-                            reconectar arregla los tres igual.
-                          </>
+                          <>Mercado Libre dejó de aceptar el permiso. Reconéctala para volver a recibirlos.</>
                         }
                         sigueFuncionando={
-                          <>
-                            Los pedidos que ya entraron <strong>siguen en el sistema</strong> y se
-                            despachan normal. Nada de lo ya cobrado ni liquidado cambia. Lo único
-                            que se detuvo es la llegada de pedidos <em>nuevos</em> desde esta
-                            cuenta.
-                          </>
+                          <>Los pedidos que ya entraron se despachan normal.</>
                         }
                       />
                     </div>
@@ -515,7 +495,7 @@ export function PanelConexionesMl({ conexionesIniciales, errorInicial }: Props) 
       ) : null}
 
       {conexiones.length >= MAX_CUENTAS_ML ? (
-        <p className="text-sm text-muted-foreground">Ya tienes {MAX_CUENTAS_ML} cuentas conectadas — ese es el límite máximo.</p>
+        <p className="text-sm text-muted-foreground">Llegaste al máximo de {MAX_CUENTAS_ML} cuentas.</p>
       ) : null}
 
       {errorAccion ? (
@@ -654,8 +634,8 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
       icono: <PowerOff className="size-5" aria-hidden="true" />,
       titulo: "Desconectada por ti",
       detalle: c.desconectadaDesde
-        ? `Desde el ${formatearFecha(c.desconectadaDesde)}. No estamos trayendo sus pedidos.`
-        : "No estamos trayendo sus pedidos.",
+        ? `Desde el ${formatearFecha(c.desconectadaDesde)}.`
+        : null,
       fondoIcono: "bg-muted text-muted-foreground",
       bordeTarjeta: "border-border",
       tono: "neutro",
@@ -680,7 +660,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
       return {
         icono: <Clock className="size-5" aria-hidden="true" />,
         titulo: TEXTO_SALUD_CONEXION.pendiente,
-        detalle: "Esto es transitorio — no necesitas hacer nada por ahora.",
+        detalle: null,
         fondoIcono: "bg-muted text-muted-foreground",
         bordeTarjeta: "border-border",
         tono: "neutro",
@@ -691,7 +671,7 @@ function presentacion(c: ConexionMlSellerItem): Presentacion {
       return {
         icono: <TriangleAlert className="size-5" aria-hidden="true" />,
         titulo: TEXTO_SALUD_CONEXION.atencion,
-        detalle: "Es un problema operativo de nuestro lado o de Mercado Libre. Si persiste, reconéctala.",
+        detalle: "Si sigue así, reconéctala.",
         fondoIcono: "bg-warning/15 text-warning",
         bordeTarjeta: "border-warning/30",
         tono: "atencion",

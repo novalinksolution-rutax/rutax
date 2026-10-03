@@ -110,8 +110,8 @@ export function VisorPodSeller({ pod }: { pod: PodSeller }) {
           )}
           <span>
             {pod.esValido
-              ? "Entrega confirmada por el sistema"
-              : "Entrega en revisión — tu empresa de despacho verificará el resultado"}
+              ? "Entrega confirmada"
+              : "En revisión"}
           </span>
         </div>
       )}

@@ -156,14 +156,12 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             {formatearFechaCorta(periodo.fechaFin)}
           </h1>
           <p className="rx-num text-xs text-fg-muted">
+            {/* El estado lo dice el distintivo de abajo; acá solo lo que agrega. */}
             {periodo.estado === "abierto"
-              ? `Abierto · cierra el ${formatearFechaCorta(periodo.fechaFin)}`
+              ? `Cierra el ${formatearFechaCorta(periodo.fechaFin)} · `
               : periodo.estado === "cerrado"
-                ? "Cerrado · esperando la factura"
-                : periodo.estado === "facturado"
-                  ? "Facturado"
-                  : "Anulado"}
-            {" · "}
+                ? "Esperando la factura · "
+                : null}
             {agrupacion.entregasTotales}{" "}
             {agrupacion.entregasTotales === 1 ? "entrega" : "entregas"}
           </p>
@@ -211,8 +209,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             Factura anulada con nota de crédito
           </h2>
           <p className="text-sm">
-            Esta factura fue anulada por tu empresa de despacho. No tienes saldo por pagar de este
-            período; las entregas se vuelven a facturar en el período en curso.
+            No tienes saldo por pagar en este período. Las entregas pasan al período en curso.
             {periodo.anuladoEn ? ` Anulada el ${formatearFechaCorta(periodo.anuladoEn)}.` : ""}
           </p>
           {periodo.motivoAnulacion && (
@@ -239,7 +236,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
             </div>
           ) : (
             <p className="mt-2 text-sm opacity-80">
-              La nota de crédito se está emitiendo. Recarga la página en unos segundos.
+              La nota de crédito se está emitiendo.
             </p>
           )}
         </section>
@@ -282,14 +279,12 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
               {/* Mensajes contextuales (sin detalles técnicos para el seller) */}
               {dte.estadoSii === "aceptado_con_discrepancias" && (
                 <p className="mt-2 rounded-lg bg-warning-subtle px-3 py-2 text-sm text-warning-subtle-foreground">
-                  Esta factura fue aceptada por el SII con observaciones. Si tienes dudas,
-                  contacta a tu empresa de despacho.
+                  El SII la aceptó con observaciones.
                 </p>
               )}
               {dte.estadoSii === "rechazado" && (
                 <p className="mt-2 rounded-lg bg-destructive-subtle px-3 py-2 text-sm text-destructive-subtle-foreground">
-                  Esta factura fue rechazada por el SII. Tu empresa de despacho está
-                  trabajando en resolverlo.
+                  El SII la rechazó. Tu courier la está corrigiendo.
                 </p>
               )}
             </div>
@@ -355,7 +350,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
         {lineas.length === 0 ? (
           <div className="border border-line bg-bg-sunken px-6 py-10 text-center">
             <p className="text-sm text-fg-muted">
-              Este período todavía no tiene entregas. Cada una que hagamos aparece acá.
+              Este período todavía no tiene entregas.
             </p>
           </div>
         ) : (
@@ -421,13 +416,7 @@ export default async function PaginaDetallePeriodoSeller({ params }: PageProps) 
                 contradecía sola. El cerrado-sin-factura tiene su propia frase,
                 porque es el único estado en que la cifra ya no se mueve y el
                 documento todavía no existe. */}
-            <p className="mt-3 text-sm leading-relaxed text-fg-muted">
-              {dte
-                ? "Este período está cerrado: la factura de arriba es la definitiva y no se modifica. Si hubo un ajuste posterior, va con nota de crédito."
-                : periodo.estado === "abierto"
-                  ? `Este período sigue abierto: cada entrega se suma acá. Cuando ${nombreCourier} lo cierre y lo facture, verás la factura en PDF con su folio.`
-                  : `Este período está cerrado: la cifra ya no cambia. Falta que ${nombreCourier} emita la factura; cuando lo haga, verás el PDF con su folio.`}
-            </p>
+            {/* El estado ya lo dicen el distintivo y la bajada del encabezado. */}
           </>
         )}
       </section>

@@ -459,8 +459,7 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
         <div className="border border-line bg-bg-sunken px-4 py-3.5">
           <p className="text-sm leading-relaxed text-fg-muted">
             <strong className="font-medium text-fg">Este pedido lo sigue Mercado Libre.</strong>{" "}
-            Tu comprador recibe el seguimiento por ahí, no por nosotros, y la prueba de entrega
-            oficial también queda allá. Acá ves lo que registra el courier.
+            El seguimiento y la prueba de entrega oficial quedan allá.
           </p>
           {/* El puente a la otra mitad. Si el seller necesita la prueba de
               entrega oficial o el chat con su comprador, tiene que ir a Mercado
@@ -509,8 +508,8 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
                 ? `Va en tu período ${cobro.periodoEtiqueta}, que ${
                     cobro.periodoAbierto ? "todavía está abierto" : "ya está cerrado"
                   }.`
-                : "Ya está registrada. Entra en tu próximo período de cobro."
-              : "Es la tarifa que aplica hoy. Se cobra solo si la entrega se hace: si no llega, no se te cobra."}
+                : "Entra en tu próximo período de cobro."
+              : "Solo se cobra si se entrega."}
           </p>
         </section>
       ) : null}
@@ -535,7 +534,7 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
             Seguimiento en vivo
           </h2>
           <p className="mb-3 text-sm text-muted-foreground">
-            Comparte este enlace con el destinatario para que siga el pedido en tiempo real.
+            Para que quien recibe siga su pedido.
           </p>
           <BotonCopiarTracking trackingToken={pedido.trackingToken} />
         </section>
@@ -649,7 +648,7 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
           ) : (
             <div className="rounded-lg border bg-card px-4 py-8 text-center">
               <p className="text-sm text-muted-foreground">
-                No se ha registrado la prueba de entrega para este pedido todavía.
+                Todavía no hay prueba de entrega.
               </p>
             </div>
           )}
@@ -689,9 +688,9 @@ export default async function PaginaDetallePedidoSeller({ params, searchParams }
         {!puedeCancelarSeller ? (
           <p className="text-sm leading-relaxed text-fg-muted">
             {pedido.tipoPedido === "flex"
-              ? "Este pedido no se puede cancelar desde acá: lo gobierna Mercado Libre."
+              ? "Los pedidos de Mercado Libre se cancelan allá."
               : yaSalioARuta
-                ? "Este pedido ya salió a ruta y no se puede cancelar desde acá. Si necesitas detenerlo, escríbele al courier."
+                ? `Ya salió a ruta. Para detenerlo, escríbele a ${nombreCourier}.`
                 : "Este pedido ya no se puede cancelar."}
           </p>
         ) : null}
@@ -804,7 +803,7 @@ function SeccionTimeline({ estado }: { estado: EstadoPedido }) {
             {/* El mismo hecho, dicho igual que arriba. Decía «Fallido» —la
                 palabra del courier— tres centímetros debajo de un distintivo
                 que dice «Nadie recibió», y en la misma pantalla. */}
-            Este pedido se salió de la línea:{" "}
+            Novedad:{" "}
             <span className="font-semibold">{estadoPedidoParaSeller(estado).toLowerCase()}</span>.
           </div>
         )}

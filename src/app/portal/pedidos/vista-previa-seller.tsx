@@ -52,7 +52,6 @@ export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }
           if (!a) setPedidoId(null);
         }}
         titulo="Tu pedido"
-        subtitulo="En qué va y qué se te cobra."
       >
         {/* `key`: al saltar de una fila a otra el panel se remonta y arranca en
             «cargando», en vez de mostrar los datos del pedido anterior mientras
@@ -98,7 +97,7 @@ function Cuerpo({ pedidoId }: { pedidoId: string }) {
   if (estado.fase === "falla") {
     return (
       <p role="alert" className="border border-fault-line bg-fault-bg px-3 py-2 text-sm text-fault-fg">
-        No pudimos cargar este pedido. Sigue estando en tu lista: lo que falló fue esta ficha.
+        No pudimos cargar este pedido. Intenta de nuevo.
       </p>
     );
   }
@@ -183,7 +182,7 @@ function Cuerpo({ pedidoId }: { pedidoId: string }) {
           </div>
         ) : (
           <p className="text-sm text-fg-muted">
-            Todavía no hay: el conductor la registra al cerrar la parada.
+            Todavía no hay.
           </p>
         )}
       </Bloque>
@@ -206,9 +205,6 @@ function Cuerpo({ pedidoId }: { pedidoId: string }) {
         <Button asChild className="w-full">
           <Link href={`/portal/pedidos/${d.id}`}>Abrir el detalle completo</Link>
         </Button>
-        <p className="mt-1.5 text-center text-xs text-fg-subtle">
-          La foto de la entrega y el enlace de seguimiento, allá
-        </p>
       </div>
     </div>
   );

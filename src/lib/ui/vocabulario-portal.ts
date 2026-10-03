@@ -68,7 +68,8 @@ export function estadoIncidenciaParaSeller(
 ): string {
   switch (estado) {
     case "abierta":
-      return "Recién reportada";
+      // «Recién» mentía al lado de «Sin respuesta hace 116 días».
+      return "Reportada";
     case "en_gestion":
       return `${nombreCourier} la está viendo`;
     case "resuelta":

@@ -109,9 +109,7 @@ export function BloqueCorreo({ email }: { email: string | null }) {
         <span className="rx-num text-sm text-fg">{email ?? "Sin correo registrado"}</span>
       </DatoPerfil>
       <NotaPerfil>
-        Es con lo que entras, así que no se cambia desde acá: hacerlo exige verificar el correo
-        nuevo y hay un rato en que podrías quedarte fuera de tu propia cuenta. Si necesitas
-        cambiarlo, escríbenos.
+        Para cambiarlo, escríbenos.
       </NotaPerfil>
     </>
   );
