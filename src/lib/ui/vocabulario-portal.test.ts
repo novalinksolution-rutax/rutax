@@ -76,8 +76,8 @@ describe("textoLlegada", () => {
   });
 
   it("una fecha pasada sin entregar dice que se pasó", () => {
-    // «Era el 20 ago» es lo que hay que leer: el compromiso venció.
-    expect(textoLlegada("2026-08-20", HOY, "en_ruta")).toBe("Era el 20 ago");
+    // El compromiso venció y todavía no llega: se dice como atraso.
+    expect(textoLlegada("2026-08-20", HOY, "en_ruta")).toBe("Atrasado desde el 20 ago");
   });
 
   it("el estado manda sobre la fecha en los terminales", () => {

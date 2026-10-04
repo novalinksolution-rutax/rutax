@@ -124,7 +124,7 @@ export function textoLlegada(
   const entregado = estado === "entregado" || estado === "entregado_manual";
 
   if (fecha === hoy) return entregado ? "Llegó hoy" : "Hoy";
-  if (fecha < hoy) return entregado ? `Llegó el ${diaMes(fecha)}` : `Era el ${diaMes(fecha)}`;
+  if (fecha < hoy) return entregado ? `Llegó el ${diaMes(fecha)}` : `Atrasado desde el ${diaMes(fecha)}`;
   return diaMes(fecha);
 }
 

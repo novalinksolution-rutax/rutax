@@ -154,7 +154,9 @@ export default async function PaginaIncidenciasSeller({
         .eq("tenant_id", tenantId)
         .neq("estado", "cancelado")
         .order("creado_en", { ascending: false })
-        .limit(40),
+        // Con buscador en el diálogo, el tope ya no es lo que se ve: es hasta
+        // dónde se puede buscar. 300 cubre varios días de un seller grande.
+        .limit(300),
       cliente.from("tenants").select("nombre_fantasia").eq("id", tenantId).maybeSingle(),
     ]);
 

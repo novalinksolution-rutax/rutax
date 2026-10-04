@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -63,6 +64,11 @@ export function DialogoReportar({
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
   const [pedidoId, setPedidoId] = useState(pedidoFijo?.id ?? "");
+  const [busquedaPedido, setBusquedaPedido] = useState("");
+  const termino = busquedaPedido.trim().toLowerCase();
+  const pedidosFiltrados = (
+    termino ? pedidos.filter((p) => p.etiqueta.toLowerCase().includes(termino)) : pedidos
+  ).slice(0, 50);
   const [tipo, setTipo] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +97,7 @@ export function DialogoReportar({
     setTipo("");
     setDescripcion("");
     if (!pedidoFijo) setPedidoId("");
+    setBusquedaPedido("");
   }
 
   return (
@@ -126,18 +133,38 @@ export function DialogoReportar({
               {!pedidoFijo ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="reportar-pedido">Qué pedido</Label>
-                  <Select value={pedidoId} onValueChange={setPedidoId}>
-                    <SelectTrigger id="reportar-pedido" className="w-full">
-                      <SelectValue placeholder="Elige el pedido" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pedidos.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.etiqueta}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {/* Buscador y no un desplegable: con cientos de pedidos, una
+                      lista para recorrer a ojo no sirve. */}
+                  <Input
+                    id="reportar-pedido"
+                    type="search"
+                    value={busquedaPedido}
+                    onChange={(e) => {
+                      setBusquedaPedido(e.target.value);
+                      setPedidoId("");
+                    }}
+                    placeholder="Código o nombre de quien recibe"
+                    autoComplete="off"
+                  />
+                  <ul role="listbox" aria-label="Pedidos" className="max-h-48 overflow-y-auto border border-line">
+                    {pedidosFiltrados.length === 0 ? (
+                      <li className="px-3 py-2 text-sm text-fg-muted">Ningún pedido coincide.</li>
+                    ) : (
+                      pedidosFiltrados.map((p) => (
+                        <li key={p.id} role="option" aria-selected={pedidoId === p.id}>
+                          <button
+                            type="button"
+                            onClick={() => setPedidoId(p.id)}
+                            className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                              pedidoId === p.id ? "bg-accent text-accent-foreground" : "hover:bg-bg-sunken"
+                            }`}
+                          >
+                            {p.etiqueta}
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
                 </div>
               ) : (
                 <p className="text-sm text-fg-muted">
