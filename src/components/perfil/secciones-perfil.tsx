@@ -138,15 +138,6 @@ export function ContenidoContrasena({ email }: { email: string | null }) {
   );
 }
 
-/** El mismo contenido, ya dentro de la caja cuadrada de configuración. */
-export function SeccionContrasena(props: { email: string | null }) {
-  return (
-    <SeccionPerfil titulo="Tu contraseña">
-      <ContenidoContrasena {...props} />
-    </SeccionPerfil>
-  );
-}
-
 // =============================================================================
 // La fecha de alta
 // =============================================================================

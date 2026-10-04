@@ -11,11 +11,10 @@ import {
   DatoDesdeCuando,
   DatoPerfil,
   NotaPerfil,
-  SeccionContrasena,
   SeccionPerfil,
 } from "@/components/perfil/secciones-perfil";
 import { formatearTelefonoLegible } from "@/lib/telefono-cl";
-import { capacidadesLegiblesDeRol, describirRol } from "@/modules/identidad/capacidades-legibles";
+import { capacidadesLegiblesDeRol } from "@/modules/identidad/capacidades-legibles";
 import { DESCRIPCIONES_ROLES_INTERNOS } from "@/modules/identidad/descripciones-roles";
 import { esRolInterno } from "@/modules/identidad/roles";
 import { PantallaConfiguracion } from "../configuracion/_componentes/pantalla-configuracion";
@@ -85,14 +84,12 @@ export default async function PaginaMiPerfil() {
   return (
     <PantallaConfiguracion
       titulo="Mi perfil"
-      bajada="Tus datos y lo que tu rol te permite hacer. Para cambiar el rol de alguien —incluido el tuyo— hace falta el dueño de la cuenta."
     >
       <SeccionPerfil titulo="Tus datos" className="space-y-4">
         <FormularioMiPerfil
           nombreInicial={(perfil?.nombre_completo as string | null) ?? sesion.nombreCompleto ?? ""}
           telefonoInicial={telefonoE164 ? formatearTelefonoLegible(telefonoE164) : ""}
-          ayudaNombre="Es el nombre con el que te ve tu equipo, y el que queda en la bitácora junto a cada cosa que hagas."
-          ayudaTelefono="Opcional. Déjalo en blanco para quitarlo."
+          ayudaTelefono="Opcional."
         />
       </SeccionPerfil>
 
@@ -105,7 +102,9 @@ export default async function PaginaMiPerfil() {
               {interno ? DESCRIPCIONES_ROLES_INTERNOS[rol].etiqueta : rol}
             </Badge>
           </DatoPerfil>
-          <NotaPerfil>{describirRol(rol)}</NotaPerfil>
+          {/* Lo que el rol permite ya está en la lista de abajo; acá solo
+              quién lo cambia, y solo a quien no puede cambiárselo. */}
+          {rol !== "dueno" ? <NotaPerfil>Tu rol lo cambia el dueño de la cuenta.</NotaPerfil> : null}
 
           <DatoDesdeCuando
             rotulo="En este courier desde"
@@ -123,16 +122,16 @@ export default async function PaginaMiPerfil() {
           colapsable
           umbral={8}
         />
-        <ListaCapacidades
-          rotulo="No puedes"
-          tono="muted"
-          items={noVaAPoder}
-          vacio="Nada queda fuera de tu rol."
-          colapsable
-        />
+        {noVaAPoder.length > 0 ? (
+          <ListaCapacidades
+            rotulo="No puedes"
+            tono="muted"
+            items={noVaAPoder}
+            vacio=""
+            colapsable
+          />
+        ) : null}
       </SeccionPerfil>
-
-      <SeccionContrasena email={sesion.email} />
     </PantallaConfiguracion>
   );
 }
