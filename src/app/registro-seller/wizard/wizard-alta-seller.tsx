@@ -137,6 +137,16 @@ export function WizardAltaSeller({
     estadoInicial.bodega?.lat != null && estadoInicial.bodega?.long != null,
   );
   const [instruccionesBodega, setInstruccionesBodega] = useState(estadoInicial.bodega?.instruccionesAcceso ?? "");
+  /**
+   * La comuna sale de la dirección elegida en la lista. El campo solo aparece
+   * cuando NO se pudo saber así: dirección escrita a mano, o una que cae fuera
+   * de la RM. Pedirla siempre era un campo más para un dato que ya tenemos.
+   */
+  const [comunaDesdeDireccion, setComunaDesdeDireccion] = useState(
+    estadoInicial.bodega?.lat != null &&
+      estadoInicial.bodega?.long != null &&
+      Boolean(estadoInicial.bodega?.comuna),
+  );
 
   // ── Paso 3 · Fuentes ──────────────────────────────────────────────────────
   // Same-day (despacho propio de Rutax) no requiere conectar ninguna cuenta, así
@@ -515,7 +525,7 @@ export function WizardAltaSeller({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={cn("grid gap-4", !comunaDesdeDireccion && "sm:grid-cols-2")}>
             <div className="space-y-1.5">
               <Label htmlFor="direccionBodega">Dirección</Label>
               <CampoDireccion
@@ -532,6 +542,7 @@ export function WizardAltaSeller({
                     setDireccionBodegaElegida(false);
                     setLatBodega(null);
                     setLongBodega(null);
+                    setComunaDesdeDireccion(false);
                   }
                 }}
                 onElegir={(d) => {
@@ -539,9 +550,9 @@ export function WizardAltaSeller({
                   // La comuna la llena la dirección elegida — pero solo si cae en
                   // el catálogo de la RM (el Select no acepta otra).
                   const comuna = comunaDelCatalogo(d.comuna);
-                  if (comuna && (COMUNAS_RM as readonly string[]).includes(comuna)) {
-                    setComunaBodega(comuna);
-                  }
+                  const enCatalogo = Boolean(comuna && (COMUNAS_RM as readonly string[]).includes(comuna));
+                  if (enCatalogo && comuna) setComunaBodega(comuna);
+                  setComunaDesdeDireccion(enCatalogo);
                   setLatBodega(d.lat);
                   setLongBodega(d.long);
                   setDireccionBodegaElegida(d.lat != null && d.long != null);
@@ -549,7 +560,11 @@ export function WizardAltaSeller({
                 buscar={sugerirDireccionSellerAction}
                 resolver={resolverDireccionSellerAction}
               />
+              {comunaDesdeDireccion ? (
+                <p className="text-xs text-fg-muted">{comunaBodega}</p>
+              ) : null}
             </div>
+            {comunaDesdeDireccion ? null : (
             <div className="space-y-1.5">
               <Label htmlFor="comunaBodega">Comuna</Label>
               <Select
@@ -569,6 +584,7 @@ export function WizardAltaSeller({
                 </SelectContent>
               </Select>
             </div>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
