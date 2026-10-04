@@ -13,17 +13,28 @@ import { Button } from "@/components/ui/button";
 
 export function BotonCopiarTracking({ trackingToken }: { trackingToken: string }) {
   const [copiado, setCopiado] = useState(false);
-  const [error, setError] = useState(false);
+  const [urlManual, setUrlManual] = useState<string | null>(null);
 
   async function copiar() {
-    setError(false);
+    setUrlManual(null);
     const url = `${window.location.origin}/tracking/${trackingToken}`;
+    // En el teléfono, la hoja de compartir del sistema lleva directo a
+    // WhatsApp, que es por donde el seller le manda el enlace a su cliente.
+    if (typeof navigator.share === "function" && window.matchMedia("(pointer: coarse)").matches) {
+      try {
+        await navigator.share({ url });
+        return;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }
     try {
       await navigator.clipboard.writeText(url);
       setCopiado(true);
       setTimeout(() => setCopiado(false), 2000);
     } catch {
-      setError(true);
+      // Sin portapapeles, el enlace a la vista para copiarlo a mano.
+      setUrlManual(url);
     }
   }
 
@@ -38,14 +49,19 @@ export function BotonCopiarTracking({ trackingToken }: { trackingToken: string }
         ) : (
           <>
             <Copy className="size-3.5" aria-hidden="true" />
-            Copiar enlace de seguimiento
+            Compartir enlace de seguimiento
           </>
         )}
       </Button>
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          No se pudo copiar. Cópialo manualmente desde la barra de direcciones.
-        </p>
+      {urlManual && (
+        <input
+          readOnly
+          value={urlManual}
+          aria-label="Enlace de seguimiento"
+          onFocus={(e) => e.currentTarget.select()}
+          autoFocus
+          className="rx-num w-full border border-line bg-bg-sunken px-2 py-1 text-xs"
+        />
       )}
     </div>
   );

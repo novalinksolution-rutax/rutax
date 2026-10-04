@@ -761,7 +761,9 @@ export function AppShell({
             onNavegar={enSheet ? () => setMenuAbierto(false) : undefined}
           />
         </div>
-        {mostrarAvisos ? <CentroAvisos avisos={avisos} /> : null}
+        {/* En el menú móvil la campana ya está en la barra superior, y acá
+            quedaba encima de la X de cerrar. */}
+        {mostrarAvisos && !enSheet ? <CentroAvisos avisos={avisos} /> : null}
         {botonColapsar(colapsadoLocal, enSheet)}
       </div>
       {mostrarBusqueda ? <div className="px-3 pb-1">{botonBuscar(colapsadoLocal, enSheet)}</div> : null}

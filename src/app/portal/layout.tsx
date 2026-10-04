@@ -45,12 +45,20 @@ export default async function LayoutPortal({
   }
 
   const cliente = crearClienteServiceRole();
-  const [{ data: seller }, avisos, membresias] = await Promise.all([
+  const [{ data: seller }, { data: perfil }, avisos, membresias] = await Promise.all([
     cliente
       .from("sellers")
       .select("razon_social")
       .eq("id", sesion.usuario.sellerId)
       .eq("tenant_id", sesion.usuario.tenantId)
+      .maybeSingle(),
+    // El nombre que el seller edita en «Mi perfil» vive acá, no en los
+    // metadatos de Auth: sin esto el menú decía «Cuenta» aunque tuviera nombre.
+    cliente
+      .schema("identidad")
+      .from("usuarios_perfil")
+      .select("nombre_completo")
+      .eq("id", sesion.usuarioId)
       .maybeSingle(),
     obtenerAvisosSeller(sesion.usuario.sellerId),
     // Multi-courier (RF-010 rediseño): el switcher solo se muestra con MÁS de
@@ -108,7 +116,7 @@ export default async function LayoutPortal({
   return (
     <AppShell
       nombreFantasia={(seller?.razon_social as string | undefined) ?? "Portal del seller"}
-      nombreCompleto={sesion.nombreCompleto}
+      nombreCompleto={(perfil?.nombre_completo as string | null) || sesion.nombreCompleto}
       subtituloCuenta="Seller"
       etiquetaMarca="Tienda"
       densidad="relajada"

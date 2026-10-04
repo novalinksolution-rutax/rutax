@@ -25,7 +25,8 @@ import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PanelAccion } from "@/components/ui/panel-accion";
 import { BADGE_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
-import { estadoPedidoParaSeller } from "@/lib/ui/vocabulario-portal";
+import { estadoPedidoParaSeller, textoLlegada } from "@/lib/ui/vocabulario-portal";
+import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { formatearFechaHora } from "@/lib/formato-cl";
@@ -141,7 +142,10 @@ function Cuerpo({ pedidoId }: { pedidoId: string }) {
         <p className="text-sm text-fg">{d.donde.direccion}</p>
         <p className="text-sm text-fg-muted">{d.donde.comuna}</p>
         {d.fechaCompromiso && (
-          <p className="rx-num mt-1 font-mono text-xs text-fg-muted">Llega el {d.fechaCompromiso}</p>
+          <p className="mt-1 text-xs text-fg-muted">
+            {/* Lo mismo que dice la columna «Llega» de la lista. */}
+            {textoLlegada(d.fechaCompromiso, hoyEnSantiago(), d.estado as EstadoPedido)}
+          </p>
         )}
       </Bloque>
 

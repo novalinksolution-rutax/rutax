@@ -21,7 +21,7 @@ export default function ErrorPortal({
     <PanelError
       error={error}
       reset={reset}
-      cuerpo="Tus pedidos y tus cobros están a salvo: lo que falló fue mostrarte esta pantalla. Reintenta, o vuelve a tus pedidos desde el menú."
+      cuerpo="Tus pedidos y tus cobros están a salvo. Reintenta en unos segundos."
       salida={{ href: "/portal/pedidos", texto: "Ver mis pedidos" }}
     />
   );

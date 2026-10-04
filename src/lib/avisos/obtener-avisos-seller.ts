@@ -42,7 +42,7 @@ export async function obtenerAvisosSeller(sellerId: string): Promise<Aviso[]> {
           urgencia: "urgente",
           titulo: `${etiquetaCuenta(c)} está desconectada`,
           descripcion: "Reconéctala para seguir recibiendo tus pedidos.",
-          href: "/portal",
+          href: "/portal#cuentas-ml",
           accion: "Reconectar cuenta",
         });
       } else if (c.estadoSalud === "atencion") {
@@ -51,7 +51,7 @@ export async function obtenerAvisosSeller(sellerId: string): Promise<Aviso[]> {
           urgencia: "importante",
           titulo: `${etiquetaCuenta(c)} necesita atención`,
           descripcion: "Si persiste, reconéctala.",
-          href: "/portal",
+          href: "/portal#cuentas-ml",
           accion: "Ver estado de la cuenta",
         });
       }

@@ -135,6 +135,7 @@ export function PanelMiBodega({
             name="nombre"
             defaultValue={bodega?.nombre ?? ""}
             placeholder="Ej: Bodega Quilicura"
+            required
             disabled={guardando}
           />
         </div>
@@ -147,6 +148,7 @@ export function PanelMiBodega({
             valor={direccion}
             elegida={direccionElegida}
             placeholder="Calle, número, y el detalle que haga falta"
+            required
             onCambio={(v) => {
               setDireccion(v);
               // Reescribir a mano suelta la coordenada: conservarla dejaría la

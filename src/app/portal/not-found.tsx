@@ -12,7 +12,7 @@ export default function NoEncontradaPortal() {
   return (
     <PanelNoEncontrada
       titulo="No encontramos esa página"
-      cuerpo="El enlace puede estar mal copiado, o el pedido ya no está disponible. Desde el menú puedes volver a tus pedidos y tus cobros."
+      cuerpo="El enlace puede estar mal copiado, o el pedido ya no está disponible."
       salida={{ href: "/portal/pedidos", texto: "Ver mis pedidos" }}
     />
   );

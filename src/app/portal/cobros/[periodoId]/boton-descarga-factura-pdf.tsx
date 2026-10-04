@@ -39,7 +39,7 @@ export function BotonDescargaFacturaPdf({
     <div className="flex flex-col gap-1">
       <Button type="button" onClick={handleClick} loading={isPending}>
         {!isPending && <Download className="size-4" aria-hidden="true" />}
-        {isPending ? "Generando enlace..." : etiqueta}
+        {isPending ? "Descargando…" : etiqueta}
       </Button>
       {error && (
         <p className="text-xs text-destructive" role="alert">

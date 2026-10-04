@@ -38,6 +38,12 @@ interface Props {
 
 type Paso = "formulario" | "confirmar";
 
+const MOTIVOS_FRECUENTES = [
+  "Ya no necesito el envío",
+  "La dirección está equivocada",
+  "La compra se anuló",
+];
+
 export function DialogCancelarPedido({ pedidoId }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -115,19 +121,37 @@ export function DialogCancelarPedido({ pedidoId }: Props) {
             >
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="motivo-cancelacion-seller">Motivo de la cancelación</Label>
+                {/* Los motivos de siempre, a un toque: el mínimo de caracteres
+                    se queda (es para la auditoría), la escritura no hace falta. */}
+                <div className="flex flex-wrap gap-1.5">
+                  {MOTIVOS_FRECUENTES.map((m) => (
+                    <Button
+                      key={m}
+                      type="button"
+                      size="xs"
+                      variant={motivo === m ? "default" : "outline"}
+                      disabled={isPending}
+                      onClick={() => setMotivo(m)}
+                    >
+                      {m}
+                    </Button>
+                  ))}
+                </div>
                 <Textarea
                   id="motivo-cancelacion-seller"
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
                   disabled={isPending}
-                  rows={4}
-                  placeholder="Ej.: ya no necesito el envío, dirección equivocada, la compra se anuló."
+                  rows={3}
+                  placeholder="U otro motivo"
                   aria-describedby="motivo-cancelacion-seller-ayuda"
                 />
-                <p id="motivo-cancelacion-seller-ayuda" className="text-xs text-muted-foreground">
-                  {motivo.trim().length}/{MOTIVO_MIN} caracteres mínimos
-                  {motivoValido && <span className="ml-1 text-success">&#10003;</span>}
-                </p>
+                {/* El contador solo cuando hace falta: mientras se escribe y no alcanza. */}
+                {motivo.trim().length > 0 && !motivoValido ? (
+                  <p id="motivo-cancelacion-seller-ayuda" className="text-xs text-muted-foreground">
+                    {motivo.trim().length}/{MOTIVO_MIN} caracteres mínimos
+                  </p>
+                ) : null}
               </div>
 
               {error && (
