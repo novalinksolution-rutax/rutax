@@ -262,7 +262,7 @@ export function MenuAccionesPago({
                 </Select>
                 {sellerSel && !cargandoPeriodos && periodos.length === 0 && (
                   <p className="text-xs text-muted-foreground">
-                    Este seller no tiene períodos facturados impagos. Puedes atribuir el pago igualmente.
+                    Este seller no tiene períodos facturados impagos.
                   </p>
                 )}
               </div>
@@ -322,10 +322,7 @@ export function MenuAccionesPago({
                 Vas a descartar {formatearCLP(montoClp)} del {fechaCorta}
               </p>
               <p className="text-xs text-muted-foreground">
-                Sale de los movimientos por atribuir y deja de aparecer.{" "}
-                <strong className="font-medium text-foreground">No se borra</strong>: queda
-                descartado con tu motivo, y se puede devolver a la bandeja desde el cajón
-                «Descartados».
+                No se borra: queda en «Descartados» con tu motivo y puedes devolverlo a la bandeja.
               </p>
               <div className="space-y-1">
                 <label htmlFor={`motivo-${pagoId}`} className="text-xs font-medium text-muted-foreground">

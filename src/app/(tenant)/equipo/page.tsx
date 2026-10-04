@@ -49,7 +49,7 @@ export default async function PaginaEquipo() {
       titulo="Equipo"
       bajada={
         personas === null
-          ? "Quién tiene acceso a tu cuenta, con qué rol, y qué invitaciones siguen pendientes."
+          ? undefined
           : `${personas} ${personas === 1 ? "persona" : "personas"} con acceso${
               pendientes > 0
                 ? ` · ${pendientes} ${pendientes === 1 ? "invitación pendiente" : "invitaciones pendientes"}`

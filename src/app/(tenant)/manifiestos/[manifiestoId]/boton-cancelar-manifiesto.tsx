@@ -102,10 +102,6 @@ export function BotonCancelarManifiesto({ manifiestoId, paradas }: Props) {
               onChange={(e) => setMotivo(e.target.value)}
               placeholder="El conductor se reportó enfermo y no hay reemplazo."
             />
-            <p className="text-xs text-fg-muted">
-              Queda en la bitácora con tu nombre. Lo va a leer quien mañana se pregunte por qué
-              esos pedidos quedaron sueltos.
-            </p>
           </div>
 
           {error ? (

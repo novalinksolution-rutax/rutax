@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { actionToggleZona } from "./actions";
 import type { EstadoZonas, ZonaEnriquecida } from "./actions";
 import { PanelZona } from "./panel-zona";
+import { toast } from "sonner";
 
 interface Props {
   estadoInicial: EstadoZonas;
@@ -121,9 +122,14 @@ function SeccionZonas({
   return (
     <div className="space-y-4">
       {zonas.length === 0 ? (
-        <p className="border border-line bg-bg-sunken px-4 py-8 text-center text-sm text-fg-muted">
-          Todavía no tienes zonas. Sin ellas, todas las comunas usan la misma tarifa.
-        </p>
+        <div className="flex flex-col items-center gap-3 border border-line bg-bg-sunken px-4 py-8 text-center">
+          <p className="text-sm text-fg-muted">
+            Todavía no tienes zonas. Sin ellas, todas las comunas usan la misma tarifa.
+          </p>
+          <Button size="sm" onClick={() => setNuevaAbierta(true)}>
+            Nueva zona
+          </Button>
+        </div>
       ) : (
         <>
           {/* La barra y la acción en la misma fila, como en Tarifas: el botón de
@@ -271,6 +277,7 @@ function FilaZona({
             iniciarTransicion(async () => {
               const r = await actionToggleZona(zona.id, !zona.activa);
               if (r.ok) onCambio();
+              else toast.error(r.mensaje);
             })
           }
         >

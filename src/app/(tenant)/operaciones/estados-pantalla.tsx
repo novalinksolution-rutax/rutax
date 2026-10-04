@@ -129,7 +129,7 @@ export function VacioFiltroSinResultados({
       descripcion={lista ? `Estás filtrando por ${lista}.${cuantos}` : `Ningún pedido coincide.${cuantos}`}
       accion={
         <Button asChild variant="outline" size="sm">
-          <Link href={hrefLimpiar}>Limpiar los filtros</Link>
+          <Link href={hrefLimpiar}>Quitar filtros</Link>
         </Button>
       }
     />
@@ -159,8 +159,8 @@ export function VacioArranque({ accionCrear }: { accionCrear?: React.ReactNode }
       titulo="Aún no hay pedidos para hoy"
       descripcion={
         accionCrear
-          ? "Los pedidos de tus sellers llegan solos cuando ellos venden. También puedes crear uno a mano."
-          : "Los pedidos de tus sellers llegan solos cuando ellos venden."
+          ? "También puedes crear uno a mano."
+          : undefined
       }
       accion={accionCrear}
     />
@@ -187,8 +187,8 @@ export function FallaDeLectura({ hrefReintentar }: { hrefReintentar: string }) {
       <div className="min-w-0 flex-1">
         <p className="font-heading text-sm font-medium text-fg">No pudimos cargar los pedidos</p>
         <p className="mt-1 text-sm text-fg-muted">
-          Esto no significa que no haya pedidos: significa que no los pudimos leer. Los contadores
-          de arriba son del último dato que alcanzamos a leer.
+          Esto no significa que no haya pedidos. Los contadores de arriba pueden estar
+          desactualizados.
         </p>
       </div>
       <Button asChild variant="outline" size="sm" className="shrink-0">

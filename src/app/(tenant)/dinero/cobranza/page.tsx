@@ -41,7 +41,7 @@ interface PagoConSeller extends PagoRecibido {
 function formatearFechaCorta(fechaIso: string): string {
   if (!fechaIso || fechaIso.length < 10) return fechaIso;
   const [anio, mes, dia] = fechaIso.slice(0, 10).split("-");
-  return `${dia}/${mes}/${anio}`;
+  return `${dia}-${mes}-${anio}`;
 }
 
 function formatearRut(rut: string | null): string | null {
@@ -118,8 +118,7 @@ export default async function PaginaBandejaCobranza() {
       <div>
         <h1 className="text-2xl font-semibold">Revisión de pagos</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pagos recibidos de tus sellers que aún no calzan solos con una factura. Atribúyelos al seller y período
-          correctos, o descártalos si no son cobranzas.
+          Pagos de tus sellers que no calzaron solos con una factura.
         </p>
       </div>
 
@@ -257,13 +256,6 @@ export default async function PaginaBandejaCobranza() {
               </table>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Para ver el estado de cobro de cada período, ve a{" "}
-            <Link href="/dinero/periodos" className="text-primary hover:underline">
-              Períodos de cobro
-            </Link>
-            .
-          </p>
         </section>
       )}
 
@@ -282,7 +274,6 @@ export default async function PaginaBandejaCobranza() {
             <span className="font-mono text-xs tabular-nums">
               {pagosDescartados.length}
             </span>
-            <span className="text-xs">— movimientos que marcaste como no cobranza</span>
           </summary>
           <div className="overflow-x-auto border-t border-line-subtle">
             <table className="w-full text-sm" aria-label="Movimientos descartados">

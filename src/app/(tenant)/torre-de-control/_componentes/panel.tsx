@@ -172,7 +172,7 @@ export function PanelTorre({
                         </>
                       ) : (
                         <span className="text-xs text-muted-foreground">
-                          Disponible hoy y sin paradas asignadas.
+                          Sin paradas asignadas.
                         </span>
                       )}
                     </Link>

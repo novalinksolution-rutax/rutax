@@ -181,7 +181,7 @@ export default async function PaginaPreparacionDelDia() {
           icon={Boxes}
           tono="arranque"
           titulo="Todavía no hay retiros hoy"
-          descripcion="Cuando un conductor abra una visita en la app, la vas a ver aquí, en vivo. Si un retiro ya ocurrió y no se pudo escanear, regístralo desde la oficina."
+          descripcion="Las visitas aparecen aquí cuando un conductor las abre en la app."
           // Un vacío sin salida obliga a saber de memoria dónde se mira lo que
           // viene. El primero lleva a los pedidos de hoy, que es lo que se va a
           // retirar; el segundo es la vía de excepción cuando la app no pudo.

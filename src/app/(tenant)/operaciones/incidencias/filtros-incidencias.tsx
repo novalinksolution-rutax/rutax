@@ -175,7 +175,7 @@ export function FiltrosIncidencias({
           onClick={() => router.push(pathname)}
           className="h-9 text-muted-foreground"
         >
-          Limpiar
+          Quitar filtros
         </Button>
       )}
     </div>

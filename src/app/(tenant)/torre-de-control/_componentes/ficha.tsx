@@ -354,7 +354,7 @@ function Tarjeta({
           href={`/operaciones/${pedido.id}`}
           className="mt-0.5 text-[11px] font-medium text-brand hover:underline"
         >
-          Ver en Operaciones
+          Ver en Pedidos
         </Link>
       ) : null}
     </div>

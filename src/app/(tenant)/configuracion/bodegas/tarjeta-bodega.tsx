@@ -191,7 +191,7 @@ export function TarjetaBodega({
                 ) : (
                   <span
                     className="text-warning-subtle-foreground"
-                    title="Configura el monto general en Configuración → Retiro, o uno propio para esta bodega."
+                    title="Configura el monto general en Tarifas → Retiro, o uno propio para esta bodega."
                   >
                     Sin configurar
                   </span>
@@ -306,7 +306,7 @@ export function TarjetaBodega({
             <DialogTitle>Cambiar la bodega principal</DialogTitle>
             <DialogDescription>
               «{bodega.nombre}» pasará a ser {tipo === "seller" ? "la bodega principal de este seller" : "tu bodega principal"}.
-              {principalActual && <> «{principalActual.nombre}» dejará de serlo.</>} Puedes cambiarlo cuando quieras.
+              {principalActual && <> «{principalActual.nombre}» dejará de serlo.</>}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

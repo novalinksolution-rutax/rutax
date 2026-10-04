@@ -35,7 +35,7 @@ export function VisorEvidencias({ evidencias }: Props) {
       </div>
 
       <p className="mb-3 text-xs text-muted-foreground">
-        Registro propio del courier. No reemplaza el estado de Mercado Libre Flex.
+        Informativas: el estado de Flex lo define Mercado Libre.
       </p>
 
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -359,8 +359,7 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
               role="alert"
               className="border border-fault-line bg-fault-bg px-3 py-2.5 text-xs leading-relaxed text-fault-fg"
             >
-              <strong>No se pudo {errorAccion.que}.</strong> {errorAccion.mensaje} Nada cambió:
-              lo que ves abajo sigue siendo el estado real.
+              <strong>No se pudo {errorAccion.que}.</strong> {errorAccion.mensaje} Nada cambió.
             </div>
           ) : null}
 
@@ -492,15 +491,11 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
                     </>
                   ) : (
                     <>
-                      Vuelve a la bandeja como pendiente. No bloqueaba facturación ni pagos, así
-                      que nada se detiene por esto.
+                      Vuelve a la bandeja como pendiente. No bloqueaba facturación ni pagos.
                     </>
                   )
                 ) : (
-                  <>
-                    Queda registrado en el historial de la excepción, con tu nombre y la nota que
-                    escribas.
-                  </>
+                  <>Queda en el historial de la excepción, a tu nombre.</>
                 )
               }
               motivo={{
@@ -510,7 +505,6 @@ export function PanelDetalleExcepcion({ evento, usuariosInternos, open, onOpenCh
                   destinoEnConfirmacion === "reabrir"
                     ? "Por qué la reabres"
                     : "Nota del cambio",
-                ayuda: "Queda en el historial de la excepción, a tu nombre.",
                 minimo: 1,
               }}
               avisos={

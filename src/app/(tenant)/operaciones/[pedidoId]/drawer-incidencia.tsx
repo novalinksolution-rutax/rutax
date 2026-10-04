@@ -122,7 +122,7 @@ export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
                     onValueChange={(v) => setTipo(v as TipoIncidencia)}
                   >
                     <SelectTrigger id="tipo-incidencia" className="mt-1 w-full">
-                      <SelectValue placeholder="Seleccionar tipo..." />
+                      <SelectValue placeholder="Tipo" />
                     </SelectTrigger>
                     <SelectContent>
                       {TIPOS_INCIDENCIA.map((t) => (
@@ -154,7 +154,7 @@ export function DrawerIncidencia({ pedidoId, sellerId }: Props) {
                     name="descripcion"
                     rows={3}
                     disabled={pending}
-                    placeholder="Describe brevemente la incidencia..."
+                    placeholder="Qué pasó"
                     className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>

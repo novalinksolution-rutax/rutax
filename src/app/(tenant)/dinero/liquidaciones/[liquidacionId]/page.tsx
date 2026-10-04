@@ -34,7 +34,7 @@ import { referenciaLineaLiquidacion } from "@/lib/ui/referencia-linea-liquidacio
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { PopoverSnapshotRegla } from "@/components/dinero/popover-snapshot-regla";
 import { BotonDescargaPdfLiquidacion } from "../boton-descarga-pdf-liquidacion";
-import { formatearFechaHora as formatearFechaHoraCl, formatearFecha } from "@/lib/formato-cl";
+import { formatearFechaHora as formatearFechaHoraCl, formatearFecha, enmascararRut } from "@/lib/formato-cl";
 import { Retorno, destinoRetorno } from "@/components/app-shell/retorno";
 import { TablaFinanciera } from "@/components/ui/tabla-financiera";
 import { agruparLiquidacion } from "@/modules/dinero/agrupacion-liquidacion";
@@ -57,7 +57,7 @@ const TEXTO_METODO_PAYOUT: Record<MetodoPayout, string> = {
 function formatearFechaCorta(fechaIso: string): string {
   if (!fechaIso || fechaIso.length < 10) return fechaIso;
   const [anio, mes, dia] = fechaIso.slice(0, 10).split("-");
-  return `${dia}/${mes}/${anio}`;
+  return `${dia}-${mes}-${anio}`;
 }
 
 function formatearFechaHora(fechaIso: string | null): string | null {
@@ -202,7 +202,7 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
             </h1>
             <p className="rx-num text-xs text-fg-muted">
               {etiquetaPeriodo(liquidacion.fechaInicio, liquidacion.fechaFin)}
-              {conductorRut ? ` · ${conductorRut}` : ""}
+              {conductorRut ? ` · ${enmascararRut(conductorRut)}` : ""}
               {conductorRelacion
                 ? ` · ${conductorRelacion}${
                     conductorRelacion === "independiente" ? " · boleta de honorarios" : ""
@@ -411,8 +411,7 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
         {lineas.length === 0 ? (
           <div className="rounded-lg border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">
-              Esta liquidación no tiene líneas todavía. Se agregarán automáticamente a medida que
-              se registren entregas del conductor.
+              Esta liquidación no tiene líneas todavía.
             </p>
           </div>
         ) : !verUnaPorUna ? (
@@ -529,9 +528,15 @@ export default async function PaginaDetalleLiquidacion({ params, searchParams }:
                 </tbody>
                 <tfoot className="border-t bg-muted/40">
                   <tr>
-                    <td colSpan={5} className="px-4 py-3 text-sm font-semibold">
+                    {/* Una celda por columna, con las mismas que se ocultan:
+                        un colSpan fijo de 5 corría el total en móvil. */}
+                    <td className="px-4 py-3 text-sm font-semibold whitespace-nowrap">
                       Total: {lineas.length} línea{lineas.length !== 1 ? "s" : ""}
                     </td>
+                    <td className="hidden sm:table-cell" />
+                    <td />
+                    <td className="hidden lg:table-cell" />
+                    <td className="hidden lg:table-cell" />
                     <td className="px-4 py-3 text-right text-sm font-bold tabular-nums">
                       {formatearCLPOGuion(lineas.reduce((acc, l) => acc + l.montoFinalClp, 0))}
                     </td>

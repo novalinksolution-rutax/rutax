@@ -34,7 +34,7 @@ interface Props extends AbiertoControlable {
 function formatearFechaCorta(fechaIso: string): string {
   if (!fechaIso || fechaIso.length < 10) return fechaIso;
   const [anio, mes, dia] = fechaIso.slice(0, 10).split("-");
-  return `${dia}/${mes}/${anio}`;
+  return `${dia}-${mes}-${anio}`;
 }
 
 export function DialogCerrarPeriodo({
@@ -106,10 +106,9 @@ export function DialogCerrarPeriodo({
         titulo={`Vas a cerrar el período de ${sellerNombre}`}
         consecuencia={
           <>
-            Después de cerrarlo, las entregas nuevas de este seller van al
-            período siguiente. <strong>Todavía no se factura nada</strong>: eso
-            es un paso aparte. Se puede volver a abrir mientras no esté
-            facturado.
+            <strong>Todavía no se factura nada.</strong> Las entregas nuevas de
+            este seller van al período siguiente, y puedes reabrirlo mientras
+            no esté facturado.
           </>
         }
         resumen={[

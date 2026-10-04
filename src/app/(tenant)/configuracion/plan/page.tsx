@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { ShieldAlert } from "lucide-react";
+import { SinPermisoConfiguracion } from "../_componentes/pantalla-configuracion";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { puedeGestionarSuscripcion } from "@/modules/identidad/capacidades";
 import {
@@ -42,15 +42,7 @@ export default async function PaginaMiPlan() {
 
   if (!puedeGestionarSuscripcion(sesion.usuario)) {
     return (
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-14 text-center">
-        <ShieldAlert className="size-8 text-muted-foreground" aria-hidden="true" />
-        <div className="space-y-1">
-          <p className="font-medium text-foreground">Sin permiso para ver esta sección</p>
-          <p className="text-sm text-muted-foreground">
-            La gestión del plan y la facturación de Rutax es exclusiva del dueño.
-          </p>
-        </div>
-      </div>
+      <SinPermisoConfiguracion frase="El plan y la facturación de Rutax solo los puede ver y cambiar el dueño de la cuenta." />
     );
   }
 
@@ -102,12 +94,11 @@ export default async function PaginaMiPlan() {
       <div className="mx-auto max-w-2xl space-y-3">
         <h1 className="font-heading text-2xl font-semibold">Tu plan en Rutax</h1>
         <p className="border border-line bg-bg-sunken px-4 py-3.5 text-sm leading-relaxed text-fg-muted">
-          Todavía no tienes un plan asignado. Rutax te cobra una tarifa por cada pedido que
-          entregas, y esa tarifa la acordamos contigo — escríbenos a{" "}
+          Todavía no tienes un plan asignado. Escríbenos a{" "}
           <a href="mailto:admin@rutax.io" className="font-medium underline underline-offset-4">
             admin@rutax.io
           </a>{" "}
-          y la dejamos configurada. Mientras tanto puedes operar con normalidad.
+          y lo dejamos configurado.
         </p>
       </div>
     );

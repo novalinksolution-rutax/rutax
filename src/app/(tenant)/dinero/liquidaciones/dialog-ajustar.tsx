@@ -129,7 +129,6 @@ export function DialogAjustarLiquidacion({
                 onChange={(e) => setBono(e.target.value)}
                 placeholder="0"
               />
-              <p className="text-xs text-muted-foreground">Ej. bono on-time, rendimiento</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="penalizacion">Penalización (CLP)</Label>
@@ -142,7 +141,6 @@ export function DialogAjustarLiquidacion({
                 onChange={(e) => setPenalizacion(e.target.value)}
                 placeholder="0"
               />
-              <p className="text-xs text-muted-foreground">Ej. fallo evitable, daño</p>
             </div>
           </div>
 

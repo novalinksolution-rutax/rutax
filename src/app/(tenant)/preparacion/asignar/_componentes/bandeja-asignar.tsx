@@ -291,11 +291,7 @@ export function BandejaAsignar({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-heading text-2xl font-semibold">Asignar pedidos</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Solo se muestran pedidos ya retirados en bodega. Lo que todavía no se escaneó no aparece
-            acá.
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground tabular-nums">
+          <p className="mt-0.5 text-sm text-muted-foreground tabular-nums">
             {textoCabecera(totalRetiradosHoy, totalSinAsignar)}
           </p>
         </div>
@@ -353,7 +349,7 @@ export function BandejaAsignar({
           icon={Boxes}
           tono="arranque"
           titulo="Todavía no hay pedidos para asignar"
-          descripcion="Cuando un conductor cierre una visita, sus pedidos aparecen acá. Si un retiro ya ocurrió pero no se pudo escanear, regístralo desde la oficina."
+          descripcion="Los pedidos aparecen aquí cuando un conductor cierra su visita."
           accion={
             // La segunda salida NO es decorativa: sin ella, un conductor sin
             // batería bloquea el día entero y esta pantalla es donde el
@@ -393,10 +389,9 @@ export function BandejaAsignar({
               icon={SearchX}
               tono="filtro"
               titulo="Ningún pedido retirado coincide con estos filtros"
-              descripcion="Prueba ampliando la comuna, el seller o el texto de búsqueda."
               accion={
                 <Button asChild variant="outline" size="sm">
-                  <Link href={pathname}>Limpiar filtros</Link>
+                  <Link href={pathname}>Quitar filtros</Link>
                 </Button>
               }
             />

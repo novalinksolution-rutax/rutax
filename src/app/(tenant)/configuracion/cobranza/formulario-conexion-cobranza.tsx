@@ -290,7 +290,7 @@ function SeccionConexion({
             <Alert className="bg-success-subtle text-success-subtle-foreground">
               <CheckCircle2 className="text-success" />
               <AlertDescription className="text-success-subtle-foreground">
-                Banco conectado de forma segura.
+                Banco conectado.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -307,10 +307,6 @@ function SeccionConexion({
                   </p>
                   <BadgeEstadoConexion estado={estado.estadoConexion} />
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  La conexión se guarda cifrada. Si cambiaste de cuenta o la conexión dejó de funcionar, puedes
-                  reconectar.
-                </p>
               </div>
             </div>
             <Button
@@ -348,7 +344,7 @@ function SeccionConexion({
             <Banknote className="size-5" aria-hidden="true" />
           </div>
           <p className="text-sm text-muted-foreground">
-            Cada transferencia se reconciliará automáticamente. Los pagos que no calcen van a revisión manual.
+            Cada transferencia se concilia sola. Lo que no calce queda para revisión.
           </p>
         </div>
 
@@ -364,7 +360,7 @@ function SeccionConexion({
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <RefreshCw className="size-4 animate-spin" aria-hidden="true" />
               {confirmando
-                ? "Confirmar conexión con tu banco…"
+                ? "Confirmando la conexión con tu banco…"
                 : "Abriendo ventana segura — completa los pasos ahí."}
             </p>
             {abriendoWidget && !confirmando ? (

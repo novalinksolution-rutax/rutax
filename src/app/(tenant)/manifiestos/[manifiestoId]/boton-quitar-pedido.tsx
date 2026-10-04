@@ -118,9 +118,6 @@ export function BotonQuitarPedido({
               onChange={(e) => setMotivo(e.target.value)}
               placeholder="El bulto no llegó a la bodega."
             />
-            <p className="text-xs text-fg-muted">
-              Queda en la bitácora con tu nombre, junto a la parada.
-            </p>
           </div>
 
           {error ? (

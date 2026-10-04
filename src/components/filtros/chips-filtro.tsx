@@ -91,7 +91,7 @@ export function ChipsFiltro({
             onClick={onLimpiarTodo}
             className="h-7 px-2 text-fg-muted"
           >
-            Limpiar
+            Quitar filtros
           </Button>
         ) : null}
       </div>

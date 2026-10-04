@@ -174,8 +174,7 @@ function Cabecera() {
     <header className="space-y-1">
       <h1 className="text-2xl font-semibold tracking-tight">Registrar retiro</h1>
       <p className="text-sm text-muted-foreground">
-        Para cuando el retiro ocurrió pero no se pudo escanear. Queda registrado igual que en
-        terreno: con su conductor, su bodega y su acta.
+        Para retiros que ocurrieron pero no se pudieron escanear.
       </p>
     </header>
   );

@@ -72,7 +72,7 @@ export function SelectorComuna({ opciones, seleccionadas, onCambiar }: Props) {
                 className="text-xs font-medium text-muted-foreground hover:underline"
                 onClick={() => onCambiar([])}
               >
-                Limpiar
+                Quitar
               </button>
             </div>
             <ul className="max-h-72 overflow-y-auto p-1">

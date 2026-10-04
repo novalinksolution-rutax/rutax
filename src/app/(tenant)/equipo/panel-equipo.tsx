@@ -208,8 +208,7 @@ export function PanelEquipo({
     contenido = (
       <EstadoVacio
         icono={<Users className="size-8" aria-hidden="true" />}
-        titulo="Aún no has invitado a nadie de tu equipo"
-        descripcion="Empieza por dar acceso a la primera persona — podrás ajustar su rol cuando quieras."
+        titulo="Aún no has invitado a nadie"
         accion={
           puedeInvitar ? (
             <Button onClick={() => setFormularioAbierto(true)}>
@@ -222,10 +221,7 @@ export function PanelEquipo({
     );
   } else if (grupos.length === 0) {
     contenido = (
-      <EstadoVacio
-        titulo="No hay nada que mostrar con este filtro"
-        descripcion="Prueba con otra pestaña — por ejemplo, 'Todos'."
-      />
+      <EstadoVacio titulo="Nadie en esta pestaña" />
     );
   } else {
     contenido = (
@@ -687,7 +683,7 @@ function MenuAccionesInvitacion({
     if (resultado.emailEnviado) {
       toast.success(`Correo reenviado a ${invitacion.email}.`);
     } else {
-      toast.error("No pudimos enviar el correo. El envío no está habilitado en este entorno.");
+      toast.error("No pudimos enviar el correo.");
     }
   }
 

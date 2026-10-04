@@ -69,8 +69,7 @@ export function FormularioRetiro({ montoActual }: Props) {
             tabla con su botón—. La ayuda del campo se queda con lo único que el
             campo necesita explicar. */}
         <p className="text-xs text-fg-muted">
-          Se paga por CADA visita cerrada, sin importar cuántos bultos retiró el conductor en
-          ella.
+          Se paga por cada visita cerrada, sin importar cuántos bultos se retiren.
         </p>
       </div>
     </SeccionConfiguracion>

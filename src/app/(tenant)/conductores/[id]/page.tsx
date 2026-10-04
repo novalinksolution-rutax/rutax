@@ -201,10 +201,6 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-heading text-2xl font-semibold">{conductor.nombre_completo as string}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Dinero consolidado de sus entregas. El detalle por pedido ya no vive en cada pedido:
-            se acumula aquí y se cierra en las liquidaciones.
-          </p>
         </div>
         <Link
           href={`/dinero/liquidaciones?conductor=${conductor.id as string}`}
@@ -254,8 +250,7 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
       {entregas.length === 0 ? (
         <div className="rounded-lg border bg-card px-6 py-12 text-center">
           <p className="text-muted-foreground">
-            Este conductor todavía no tiene entregas que generen liquidación. Aparecerán aquí a
-            medida que el motor registre sus entregas.
+            Aún no tiene entregas.
           </p>
         </div>
       ) : (

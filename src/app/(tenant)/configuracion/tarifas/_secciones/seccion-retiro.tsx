@@ -102,8 +102,8 @@ export async function SeccionRetiro({ tenantId }: { tenantId: string }) {
               </p>
               <p className="text-sm text-warning-subtle-foreground">
                 No definiste un monto por visita ni cuánto le pagas al conductor por entrega. Las
-                visitas que cierren tus conductores quedan como excepción bloqueante en la bandeja
-                de conciliación hasta que definas uno de los dos.
+                visitas que cierren tus conductores quedarán bloqueadas en conciliación hasta que
+                definas uno de los dos.
               </p>
             </div>
           </div>
@@ -122,9 +122,8 @@ export async function SeccionRetiro({ tenantId }: { tenantId: string }) {
                 Cada visita se está pagando {formatearCLP(montoEntregaRespaldo!)}
               </p>
               <p className="text-sm text-muted-foreground">
-                Es el mismo monto que le pagas al conductor por una entrega, porque todavía no
-                definiste uno propio para las visitas. Funciona, pero visitar una bodega y entregar
-                un paquete no son el mismo trabajo: si no te calza, define el monto acá abajo.
+                Es lo que le pagas al conductor por una entrega, porque no definiste un monto para
+                las visitas. Si no te calza, defínelo acá abajo.
               </p>
             </div>
           </div>
@@ -136,8 +135,7 @@ export async function SeccionRetiro({ tenantId }: { tenantId: string }) {
           <CardHeader>
             <CardTitle className="text-base">Pago por visita a bodega</CardTitle>
             <CardDescription>
-              Cuánto le pagas al conductor por cada visita que hace a una bodega de seller para
-              retirar pedidos. Es el monto general de tu courier: cada bodega puede tener el suyo.
+              Monto general por visita. Cada bodega puede tener el suyo.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -147,8 +145,7 @@ export async function SeccionRetiro({ tenantId }: { tenantId: string }) {
                 decisión del alcance, no un olvido, y quien configura esto se lo
                 pregunta apenas ve que hay un solo campo. */}
             <p className="border border-line bg-bg-sunken px-4 py-3 text-sm leading-relaxed text-fg-muted">
-              Al seller todavía no se le cobra el retiro: ese lado del modelo está vacío a
-              propósito. Solo la entrega efectiva genera una línea de cobro.
+              El retiro no se le cobra al seller: solo la entrega genera cobro.
             </p>
           </CardContent>
         </Card>

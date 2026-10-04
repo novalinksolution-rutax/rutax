@@ -107,7 +107,7 @@ export function PanelEnlaceSeller({ nombreFantasia }: { nombreFantasia: string }
       setToken(r.token);
       setActivo(r.activo);
       toast.success("Enlace regenerado.", {
-        description: "El enlace anterior dejó de funcionar — si ya lo compartiste, vuelve a enviarlo.",
+        description: "El anterior dejó de funcionar.",
       });
     });
   }
@@ -121,9 +121,7 @@ export function PanelEnlaceSeller({ nombreFantasia }: { nombreFantasia: string }
       }
       setActivo(false);
       setToken(null);
-      toast.success("Enlace anulado.", {
-        description: "Nadie puede registrarse con él. Puedes generar uno nuevo cuando quieras.",
-      });
+      toast.success("Enlace anulado.");
     });
   }
 
@@ -141,7 +139,6 @@ export function PanelEnlaceSeller({ nombreFantasia }: { nombreFantasia: string }
         }
       }}
       titulo="Enlace de registro"
-      subtitulo="Tus sellers entran solos con este enlace — sin que invites a nadie de a uno."
       disparador={
         <Button size="sm" className="min-h-11 shrink-0 sm:min-h-8">
           <Link2 className="size-4 shrink-0" aria-hidden="true" />
@@ -165,10 +162,8 @@ export function PanelEnlaceSeller({ nombreFantasia }: { nombreFantasia: string }
         </div>
       ) : !activo || !token ? (
         <div className="space-y-3">
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            No tienes un enlace activo — nadie puede registrarse hasta que generes uno.
-          </p>
-          <Button size="sm" onClick={recargar}>
+          <p className="text-sm leading-relaxed text-muted-foreground">No hay un enlace activo.</p>
+          <Button size="sm" onClick={regenerar} disabled={pendiente}>
             Generar enlace
           </Button>
         </div>
@@ -226,7 +221,7 @@ export function PanelEnlaceSeller({ nombreFantasia }: { nombreFantasia: string }
               variant="outline"
               size="sm"
               titulo="Vas a regenerar el enlace de registro"
-              consecuencia="El enlace actual deja de funcionar de inmediato. Si ya lo compartiste con algún seller, tendrás que enviarle el nuevo — el anterior no lo va a dejar entrar."
+              consecuencia="El enlace actual deja de funcionar. Si ya lo compartiste, tendrás que enviar el nuevo."
               textoConfirmar="Regenerar enlace"
               cargando={pendiente}
               onConfirmar={regenerar}

@@ -321,7 +321,7 @@ export function PanelTarifa({
         {/* ───────────── EL MOTOR, EN DOS CAMPOS ───────────── */}
         <div className="border border-line bg-bg-inset p-3.5">
           <p className="font-mono text-[9px] leading-normal tracking-[0.12em] text-fg-muted uppercase">
-            El motor, en dos campos
+            Montos
           </p>
 
           <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
@@ -384,8 +384,7 @@ export function PanelTarifa({
           )}
 
           <p className="mt-2.5 text-xs text-fg-subtle">
-            Sin IVA — el 19 % se agrega al facturar. Al conductor se le paga por
-            entrega efectiva.
+            Sin IVA: el 19 % se agrega al facturar.
           </p>
         </div>
 
@@ -403,7 +402,7 @@ export function PanelTarifa({
               {formatearCLP(nPagas - nCobras)}
             </span>{" "}
             más de lo que le cobras al seller. Cada entrega con esta tarifa te
-            deja esa diferencia en contra. Si es a propósito, sigue.
+            deja esa diferencia en contra.
           </p>
         )}
 

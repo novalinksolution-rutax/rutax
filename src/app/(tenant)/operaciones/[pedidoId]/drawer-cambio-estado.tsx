@@ -12,7 +12,7 @@
  */
 
 import { useState, useTransition } from "react";
-import { X, AlertTriangle } from "lucide-react";
+import { X } from "lucide-react";
 import { ESTADOS_PEDIDO } from "@/modules/operacion/tipos";
 import { esTransicionValida } from "@/modules/operacion/maquina-estados";
 import { traducirEstadoPedido } from "@/lib/ui/traduccion-estados";
@@ -155,7 +155,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                     required
                   >
                     <SelectTrigger id="selector-estado-nuevo" className="mt-1 w-full">
-                      <SelectValue placeholder="Seleccionar nuevo estado..." />
+                      <SelectValue placeholder="Nuevo estado" />
                     </SelectTrigger>
                     <SelectContent>
                       {estadosValidos.map((estado) => (
@@ -179,7 +179,7 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                     disabled={pending}
                     required
                     rows={4}
-                    placeholder="Describe el motivo del cambio de estado..."
+                    placeholder="Motivo del cambio"
                     className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     aria-describedby="motivo-ayuda"
                   />
@@ -189,15 +189,6 @@ export function DrawerCambioEstado({ pedidoId, estadoActual }: Props) {
                       <span className="ml-1 text-success">&#10003;</span>
                     )}
                   </p>
-                </div>
-
-                {/* Advertencia de bitácora */}
-                <div
-                  className="flex items-start gap-2 rounded-lg bg-warning-subtle px-3 py-3 text-sm text-warning-subtle-foreground"
-                  role="note"
-                >
-                  <AlertTriangle className="mt-0.5 size-4 flex-shrink-0" aria-hidden="true" />
-                  <p>Este cambio queda registrado en la bitácora de auditoría.</p>
                 </div>
 
                 {error && (

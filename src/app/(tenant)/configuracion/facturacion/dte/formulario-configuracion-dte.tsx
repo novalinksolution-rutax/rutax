@@ -141,8 +141,7 @@ function SeccionProveedor({
             </div>
             <CardDescription>
               Elegiste <span className="font-medium text-foreground">{proveedor?.nombre ?? estado.proveedorDte}</span>.
-              Para cambiar de proveedor, contacta a soporte — es una operación delicada que no se puede deshacer
-              desde aquí.
+              Para cambiarlo, escribe a soporte.
             </CardDescription>
           </div>
         </CardHeader>
@@ -305,6 +304,7 @@ function SeccionCertificado({
                 id="certificado-archivo"
                 type="file"
                 accept=".pfx,.p12"
+                required
                 onChange={(evento) => setArchivo(evento.target.files?.[0] ?? null)}
               />
             </div>
@@ -312,6 +312,7 @@ function SeccionCertificado({
               <Label htmlFor="certificado-contrasena">Contraseña del certificado</Label>
               <Input
                 id="certificado-contrasena"
+                required
                 type="password"
                 autoComplete="off"
                 value={contrasena}
@@ -323,12 +324,13 @@ function SeccionCertificado({
               <Label htmlFor="certificado-vence">Fecha de vencimiento</Label>
               <Input
                 id="certificado-vence"
+                required
                 type="date"
                 value={venceEn}
                 onChange={(evento) => setVenceEn(evento.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                La encuentras en los datos de tu certificado — te avisaremos antes de que venza.
+                Te avisaremos antes de que venza.
               </p>
             </div>
 
@@ -497,8 +499,7 @@ function SeccionCredenciales({
       <CardHeader>
         <CardTitle className="text-base">Credenciales de {proveedor.nombre}</CardTitle>
         <CardDescription>
-          Las que te entregó el proveedor al contratar el servicio. También se cifran antes de guardarse — no
-          podrás volver a verlas aquí, solo reemplazarlas.
+          Las que te entregó el proveedor. No las podrás volver a ver aquí, solo reemplazarlas.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -508,7 +509,7 @@ function SeccionCredenciales({
               <Alert className="bg-success-subtle text-success-subtle-foreground">
                 <CheckCircle2 className="text-success" />
                 <AlertDescription className="text-success-subtle-foreground">
-                  Credenciales guardadas de forma segura.
+                  Credenciales guardadas.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -545,6 +546,7 @@ function SeccionCredenciales({
                 <Label htmlFor={`credencial-${campo.clave}`}>{campo.etiqueta}</Label>
                 <Input
                   id={`credencial-${campo.clave}`}
+                  required
                   type={campo.tipo}
                   autoComplete="off"
                   value={valores[campo.clave] ?? ""}

@@ -21,6 +21,7 @@ import { Suspense, useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+import { enmascararRut } from "@/lib/formato-cl";
 import { Button } from "@/components/ui/button";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import {
@@ -82,7 +83,7 @@ function Encabezado(d: FichaSeller) {
       <div className="min-w-0 flex-1">
         <p className="truncate font-heading text-lg font-semibold">{d.razonSocial}</p>
         <p className="mt-0.5 flex flex-wrap items-center gap-2">
-          <span className="rx-num text-xs text-fg-muted">{d.rut}</span>
+          <span className="rx-num text-xs text-fg-muted">{enmascararRut(d.rut ?? "")}</span>
           {d.estado !== "activo" ? (
             <BadgeEstado
               variante={BADGE_ESTADO_SELLER[d.estado as EstadoSeller] ?? "neutral"}

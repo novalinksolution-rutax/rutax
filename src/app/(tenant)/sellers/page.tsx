@@ -8,6 +8,7 @@ import {
   puedeInvitarUsuarios,
   puedeSincronizarConexionesMl,
 } from "@/modules/identidad/capacidades";
+import { enmascararRut } from "@/lib/formato-cl";
 import { etiquetaConexionMl } from "@/lib/ui/etiqueta-conexion-ml";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -192,7 +193,7 @@ async function cargarSellers(tenantId: string): Promise<SellerFila[]> {
     return {
       id,
       razonSocial: s.razon_social as string,
-      rut: s.rut as string,
+      rut: enmascararRut((s.rut as string) ?? ""),
       estado: s.estado as string,
       peorSalud: peorDe(saludPorSeller.get(id) ?? []),
       invitacionPendiente: pendientes.has(id),

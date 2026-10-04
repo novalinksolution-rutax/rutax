@@ -114,8 +114,7 @@ export function PanelFoliosCaf({ estadoInicial, errorInicial }: Props) {
               </Badge>
             </div>
             <CardDescription>
-              {estado.nombreProveedor} gestiona tus folios directamente con el SII. No necesitas hacer nada aquí —
-              cuando emitas documentos, los folios se solicitan y se descuentan automáticamente.
+              {estado.nombreProveedor} gestiona tus folios directamente con el SII.
             </CardDescription>
           </div>
         </CardHeader>
@@ -189,7 +188,7 @@ function FormularioCargaCaf({ onCargado }: { onCargado: (folio: FolioCaf) => voi
         folioActual: desde,
         estado: "vigente",
       });
-      setExito(`Folios ${desde}-${hasta} cargados y cifrados correctamente.`);
+      setExito(`Folios ${desde}-${hasta} cargados.`);
       setArchivo(null);
       setTipoDocumento("");
       setFolioDesde("");
@@ -202,8 +201,7 @@ function FormularioCargaCaf({ onCargado }: { onCargado: (folio: FolioCaf) => voi
       <CardHeader>
         <CardTitle className="text-base">Cargar un nuevo rango de folios</CardTitle>
         <CardDescription>
-          El archivo CAF se cifra antes de guardarse — no podrás volver a descargarlo desde aquí, solo ver su rango y
-          estado.
+          No podrás volver a descargarlo desde aquí, solo ver su rango y estado.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -229,6 +227,7 @@ function FormularioCargaCaf({ onCargado }: { onCargado: (folio: FolioCaf) => voi
               <Label htmlFor="caf-folio-desde">Folio inicial</Label>
               <Input
                 id="caf-folio-desde"
+                required
                 type="number"
                 min={1}
                 inputMode="numeric"
@@ -240,6 +239,7 @@ function FormularioCargaCaf({ onCargado }: { onCargado: (folio: FolioCaf) => voi
               <Label htmlFor="caf-folio-hasta">Folio final</Label>
               <Input
                 id="caf-folio-hasta"
+                required
                 type="number"
                 min={1}
                 inputMode="numeric"
@@ -253,6 +253,7 @@ function FormularioCargaCaf({ onCargado }: { onCargado: (folio: FolioCaf) => voi
             <Label htmlFor="caf-archivo">Archivo CAF (.xml)</Label>
             <Input
               id="caf-archivo"
+              required
               type="file"
               accept=".xml"
               onChange={(evento) => setArchivo(evento.target.files?.[0] ?? null)}

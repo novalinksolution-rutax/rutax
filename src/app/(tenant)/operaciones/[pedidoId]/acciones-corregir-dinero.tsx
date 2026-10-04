@@ -78,7 +78,7 @@ export function DialogAnular({
           valor: motivo,
           onCambio: setMotivo,
           etiqueta: "Motivo",
-          ayuda: ayudaMotivo ?? "Queda en la bitácora, con tu nombre.",
+          ayuda: ayudaMotivo,
           // 10 caracteres: lo pide el copy de `cobro.anular.conf`. Es el mínimo
           // con el que un motivo dice algo — «error» no lo alcanza.
           minimo: 10,
@@ -136,7 +136,6 @@ export function AccionesCorregirDinero({
               el período ya estuviera facturado, esto no se puede hacer.
             </>
           }
-          ayudaMotivo="Queda en la bitácora, con tu nombre."
           accion={accionAnularCobroPedido}
           etiquetaBoton="Anular cobro"
           textoConfirmar="Anular el cobro"

@@ -153,7 +153,6 @@ export function MiPlan({ miPlan, entitlements, consumo, contador }: Props) {
             <EmptyState
               icon={CalendarClock}
               titulo="Aún no tienes período de cobro"
-              descripcion="Tu primer período se genera automáticamente cuando comience el ciclo."
             />
           )}
         </section>
@@ -191,8 +190,7 @@ export function MiPlan({ miPlan, entitlements, consumo, contador }: Props) {
                 </p>
               ) : null}
               <p className="text-xs text-fg-subtle">
-                Cuenta las entregas que hiciste y que quedaron asignadas en Rutax. Se actualiza
-                cada pocos minutos y se cierra el último día del mes.
+                Se cierra el último día del mes.
               </p>
             </div>
           ) : (
@@ -224,7 +222,6 @@ export function MiPlan({ miPlan, entitlements, consumo, contador }: Props) {
           <EmptyState
             icon={Receipt}
             titulo="Aún no hay pagos registrados"
-            descripcion="Aquí verás cada pago confirmado cuando se procese tu primer período."
           />
         ) : (
           /* ⚠️ **La primitiva compartida, no una `<table>` a mano.**

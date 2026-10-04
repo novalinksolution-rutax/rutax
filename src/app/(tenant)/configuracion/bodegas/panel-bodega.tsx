@@ -344,6 +344,7 @@ export function PanelBodega({
             <Textarea
               id="instrucciones_acceso"
               name="instrucciones_acceso"
+              aria-label="Cómo entrar a la bodega"
               rows={3}
               placeholder="Portón lateral, timbre 2. Preguntar por Marcela."
               defaultValue={bodegaExistente?.instruccionesAcceso ?? ""}
@@ -379,15 +380,13 @@ export function PanelBodega({
                 min={1}
                 step={1}
                 defaultValue={bodegaExistente?.montoVisitaClp ?? ""}
-                placeholder="Vacío = usa el monto general del courier"
+                placeholder="Monto general"
                 disabled={isPending}
               />
               <p className="text-xs text-muted-foreground">
-                Lo que le pagas al conductor por cerrar una visita en ESTA
-                bodega.{" "}
                 {montoVisitaDefaultClp !== null
-                  ? `Vacío = usa el monto general del courier (${formatearCLP(montoVisitaDefaultClp)}).`
-                  : "Vacío = usa el monto general del courier — todavía no lo configuras en Configuración → Retiro."}
+                  ? `Vacío = monto general (${formatearCLP(montoVisitaDefaultClp)}).`
+                  : "Vacío = monto general, que todavía no configuras en Tarifas → Retiro."}
               </p>
             </div>
           </div>
@@ -395,7 +394,7 @@ export function PanelBodega({
 
         {muestraLineaPrimera ? (
           <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-            Esta será tu bodega principal (es la primera).
+            Será tu bodega principal.
           </p>
         ) : (
           <div className="space-y-1.5">

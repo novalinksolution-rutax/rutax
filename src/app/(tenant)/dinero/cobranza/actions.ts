@@ -129,5 +129,5 @@ export async function listarPeriodosImpagosDeSeller(
 function formatearFechaCorta(fechaIso: string): string {
   if (!fechaIso || fechaIso.length < 10) return fechaIso;
   const [anio, mes, dia] = fechaIso.slice(0, 10).split("-");
-  return `${dia}/${mes}/${anio}`;
+  return `${dia}-${mes}-${anio}`;
 }

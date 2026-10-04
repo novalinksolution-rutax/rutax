@@ -314,8 +314,7 @@ function PanelFalla({ onCerrar }: { onCerrar: () => void }) {
         <BotonCerrar onCerrar={onCerrar} />
       </div>
       <p className="p-5 text-sm text-fg-muted">
-        No es que el pedido no exista: no lo pudimos leer. Ciérralo y vuelve a tocarlo, o abre su
-        detalle completo.
+        Ciérralo y vuelve a tocarlo, o abre el detalle completo.
       </p>
     </div>
   );
@@ -468,9 +467,6 @@ function PanelContenido({
             {/* Lo que se le paga al conductor NO se muestra acá a propósito: son
                 dos plata distintas y ponerlas juntas en un panel de un vistazo
                 invita a restarlas mentalmente. Vive en el detalle completo. */}
-            <p className="mt-2 text-xs text-fg-subtle">
-              Lo que se le paga al conductor se ve en el detalle completo.
-            </p>
           </Bloque>
         )}
         <Bloque titulo="Accesos rápidos">
@@ -522,9 +518,6 @@ function PanelContenido({
         {/* ⚠️ Decía «las acciones que no se deshacen viven allá», y dejó de
             ser cierto: ahora viven acá, en la zona de consecuencia. Mantener la
             frase mandaría a cargar una pantalla por algo que ya está a mano. */}
-        <p className="mt-1.5 text-center text-xs text-fg-subtle">
-          El historial completo y la prueba de entrega, allá
-        </p>
       </footer>
     </>
   );
@@ -563,7 +556,6 @@ function ZonaConsecuenciaPanel({
                 con tu nombre y tu motivo, <strong>no se borra</strong>.
               </>
             }
-            ayudaMotivo="Queda en la bitácora, con tu nombre."
             accion={accionAnularCobroPedido}
             etiquetaBoton="Anular"
             textoConfirmar="Anular el cobro"

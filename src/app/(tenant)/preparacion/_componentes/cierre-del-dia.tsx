@@ -79,12 +79,6 @@ export function CierreDelDia({
             {estimacion.conductores === 1 ? "conductor" : "conductores"} para cerrar antes de
             las {HORA_CORTE}.
           </span>
-          {/* Los supuestos, dichos. Un promedio presentado como certeza deja de
-              poder discutirse. */}
-          <span className="text-xs">
-            Estimación: {MINUTOS_POR_PARADA} min por parada es el promedio del rubro en hora
-            punta.
-          </span>
         </p>
       ) : null}
     </div>

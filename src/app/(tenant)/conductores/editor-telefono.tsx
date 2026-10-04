@@ -94,6 +94,7 @@ export function EditorTelefonoConductor({
             if (e.key === "Escape") cancelar();
           }}
           placeholder="9 1234 5678"
+          type="tel"
           inputMode="tel"
           autoFocus
           aria-describedby={error ? `${idCampo}-error` : `${idCampo}-ayuda`}

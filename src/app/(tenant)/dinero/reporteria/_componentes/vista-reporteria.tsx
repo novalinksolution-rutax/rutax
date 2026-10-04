@@ -121,8 +121,7 @@ export function VistaReporteria({
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Reportería</h1>
         <p className="text-sm text-muted-foreground">
-          El detalle de cada entrega con su cobro al seller y su pago al conductor, en la misma
-          fila. Es lo que se necesita para facturar y transferir a mano.
+          Cada entrega con su cobro al seller y su pago al conductor.
         </p>
       </header>
 
@@ -403,8 +402,7 @@ export function VistaReporteria({
             <CardContent>
               {reporte.filas.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No hay entregas en este rango. Prueba con otras fechas: la línea de dinero se
-                  genera cuando el pedido queda entregado.
+                  No hay entregas en este rango.
                 </p>
               ) : (
                 <>
@@ -555,11 +553,11 @@ export function VistaReporteria({
           ) : null}
 
           <p className="text-xs text-muted-foreground">
-            Se recalcula cada vez que entras: lo que ves es lo que hay en las líneas ahora mismo.{" "}
+            Las diferencias se resuelven en{" "}
             <Link href="/dinero/conciliacion" className="underline underline-offset-2">
               Conciliación
-            </Link>{" "}
-            es donde se resuelven las diferencias.
+            </Link>
+            .
           </p>
         </>
       )}

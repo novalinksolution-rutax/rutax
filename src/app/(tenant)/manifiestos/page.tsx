@@ -205,8 +205,8 @@ export default async function PaginaManifiestos({
           }
           descripcion={
             filtroEstado || rangoFecha.hayFecha
-              ? "Prueba cambiando el estado o la fecha."
-              : "Asigna pedidos ya retirados a un conductor: el manifiesto se arma solo, como parte de la asignación."
+              ? undefined
+              : "Se arman al asignar pedidos retirados a un conductor."
           }
           tono={filtroEstado || rangoFecha.hayFecha ? "filtro" : "arranque"}
           accion={

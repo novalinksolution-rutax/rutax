@@ -72,7 +72,7 @@ import { VisorPod } from "./visor-pod";
 import { VisorEvidencias } from "./visor-evidencias";
 import { DialogReclasificarIncidencia } from "./dialog-reclasificar-incidencia";
 import { ACCIONES_HISTORIAL_ESTADO_PEDIDO } from "./historial-estados";
-import { formatearFechaHora, formatearHora } from "@/lib/formato-cl";
+import { formatearFechaCivilLarga, formatearFechaHora, formatearHora } from "@/lib/formato-cl";
 
 // =============================================================================
 // Carga de datos
@@ -430,7 +430,7 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
                 <div>
                   <dt className="text-xs text-muted-foreground">Fecha comprometida</dt>
                   <dd className="mt-0.5 font-medium tabular-nums">
-                    {pedido.fechaCompromiso ?? "Sin fecha"}
+                    {pedido.fechaCompromiso ? formatearFechaCivilLarga(pedido.fechaCompromiso) : "Sin fecha"}
                   </dd>
                 </div>
                 <div>
@@ -666,12 +666,12 @@ export default async function PaginaDetallePedido({ params, searchParams }: Prop
                   <div>
                     <dt className="text-xs text-muted-foreground">Fecha de operación</dt>
                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    <dd>{(asignacion as any).manifiestos?.fecha_operacion ?? "—"}</dd>
+                    <dd>{(asignacion as any).manifiestos?.fecha_operacion ? formatearFechaCivilLarga((asignacion as any).manifiestos.fecha_operacion) : "—"}</dd>
                   </div>
                 </dl>
               ) : (
                 <p className="text-muted-foreground">
-                  Sin conductor asignado — pendiente de asignación.
+                  Sin conductor asignado.
                 </p>
               )}
             </div>
@@ -775,7 +775,7 @@ function BitacoraDelPedido({ entradas }: { entradas: EntradaBitacora[] }) {
       <div className="rounded-lg border bg-card p-4">
         {entradas.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Todavía no hay nada registrado sobre este pedido.
+            Sin registros.
           </p>
         ) : (
           <ol className="space-y-2.5">
@@ -856,7 +856,6 @@ function ZonaConsecuenciaPedido({
                 el período ya estuviera facturado, esto no se puede hacer.
               </>
             }
-            ayudaMotivo="Queda en la bitácora, con tu nombre."
             accion={accionAnularCobroPedido}
             etiquetaBoton="Anular"
             textoConfirmar="Anular el cobro"
@@ -1018,8 +1017,7 @@ function SeccionGeocoding({
         {/* Explicación cuando la ubicación quedó pendiente y no se resolvió sola */}
         {esPendiente && pendienteRancio && (
           <p className="mt-3 text-xs text-muted-foreground">
-            La ubicación quedó pendiente y no se resolvió automáticamente. Reintenta para
-            geocodificar la dirección.
+            No se pudo ubicar la dirección. Reintenta.
           </p>
         )}
 

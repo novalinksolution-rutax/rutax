@@ -647,10 +647,6 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
                     className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-attention-line bg-attention-bg px-3 py-1.5 text-xs text-attention-fg"
                   >
                     <span className="font-medium">El plano urbano no cargó.</span>
-                    <span>
-                      Las comunas, los puntos y las cifras son reales; lo que falta es el mapa
-                      de calles de fondo.
-                    </span>
                   </div>
                 ) : null}
 
@@ -678,8 +674,7 @@ export function Torre({ estado, tenantId }: { estado: EstadoTorre; tenantId: str
             ) : fallaGeometria ? (
               <div className="flex h-full items-center justify-center p-6 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No se pudo cargar la geometría comunal. La lista de al lado tiene la misma
-                  información.
+                  No se pudo cargar el mapa de comunas.
                 </p>
               </div>
             ) : (

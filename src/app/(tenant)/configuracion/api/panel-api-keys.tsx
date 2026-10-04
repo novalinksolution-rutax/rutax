@@ -292,7 +292,6 @@ export function PanelApiKeys({ apiKeys }: { apiKeys: ApiKeyRow[] }) {
           icon={KeyRound}
           tono="arranque"
           titulo="Todavía no tienes claves"
-          descripcion="Crea la primera para conectar tus propios sistemas a Rutax."
           accion={<DialogCrearKey onCreada={() => router.refresh()} />}
         />
       ) : (

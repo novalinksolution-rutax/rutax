@@ -82,18 +82,12 @@ export function AccesoAppConductor({
       {estado.tipo === "cuenta_activa" && (
         <div className="flex flex-wrap items-center gap-2">
           <DistintivoEstado tono="neutral" etiqueta="Tiene cuenta activa" />
-          <span className="text-sm text-muted-foreground">
-            Puede iniciar sesión en la app y ver su manifiesto del día.
-          </span>
         </div>
       )}
 
       {estado.tipo === "cuenta_suspendida" && (
         <div className="flex flex-wrap items-center gap-2">
           <DistintivoEstado tono="inert" etiqueta="Cuenta suspendida" />
-          <span className="text-sm text-muted-foreground">
-            Tiene una cuenta creada, pero no puede iniciar sesión mientras esté suspendida.
-          </span>
         </div>
       )}
 
@@ -113,9 +107,6 @@ export function AccesoAppConductor({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">Sin acceso a la app</Badge>
-            <span className="text-sm text-muted-foreground">
-              Todavía no puede iniciar sesión en la app del conductor.
-            </span>
           </div>
           {estado.ultimaInvitacionVencida && (
             <p className="text-xs text-muted-foreground">
@@ -216,7 +207,7 @@ function DialogInvitarConductor({
           <DialogDescription>
             Entra a la app del conductor con el{" "}
             <span className="font-medium text-foreground">{enmascararTelefono(telefonoConductor)}</span>{" "}
-            y recibe el código por WhatsApp. Sin correo ni contraseña.
+            y recibe el código por WhatsApp.
           </DialogDescription>
         </DialogHeader>
 

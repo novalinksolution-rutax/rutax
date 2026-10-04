@@ -164,7 +164,7 @@ export function FiltrosBandeja({
         </div>
         {hayFiltros && (
           <Button type="button" variant="ghost" size="sm" onClick={limpiarTodo} className="h-9 text-muted-foreground">
-            Limpiar filtros
+            Quitar filtros
           </Button>
         )}
       </div>
@@ -219,7 +219,7 @@ export function FiltrosBandeja({
                 onClick={limpiarTodo}
                 className="self-start text-muted-foreground"
               >
-                Limpiar filtros
+                Quitar filtros
               </Button>
             )}
           </div>

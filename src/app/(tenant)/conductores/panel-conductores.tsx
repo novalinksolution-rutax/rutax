@@ -355,7 +355,7 @@ export function EditorZonasConductor({
       setExito(
         zonasSeleccionadas.length > 0
           ? `${zonasSeleccionadas.length} zona${zonasSeleccionadas.length !== 1 ? "s" : ""} preferente${zonasSeleccionadas.length !== 1 ? "s" : ""} guardada${zonasSeleccionadas.length !== 1 ? "s" : ""}.`
-          : "Conductor sin preferencia de zona (acepta cualquier pedido).",
+          : "Sin preferencia de zona.",
       );
     });
   }
@@ -367,12 +367,12 @@ export function EditorZonasConductor({
           Zonas preferentes
         </p>
         <p className="text-sm text-muted-foreground">
-          Aún no tienes zonas configuradas.{" "}
+          Sin zonas.{" "}
           <a
             href="/configuracion/zonas"
             className="underline hover:text-foreground"
           >
-            Configúralas aquí.
+            Configurar
           </a>
         </p>
       </div>
@@ -677,7 +677,7 @@ null
               type="text"
               inputMode="numeric"
               pattern="\d*"
-              placeholder="Ingresa el número de cuenta"
+              required
               value={numeroCuenta}
               onChange={(e) => {
                 setNumeroCuenta(e.target.value.replace(/\D/g, ""));
@@ -692,8 +692,7 @@ null
               id={`numero-cuenta-hint-${conductor.id}`}
               className="text-xs text-muted-foreground"
             >
-              Solo dígitos. El número se guardará de forma segura; solo verás
-              los últimos 4.
+              Solo dígitos. Después verás solo los últimos 4.
             </p>
           </div>
 

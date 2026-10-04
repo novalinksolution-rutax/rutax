@@ -67,24 +67,18 @@ export default async function PaginaExportarDatos() {
     .maybeSingle();
 
   return (
-    <PantallaConfiguracion
-      titulo="Exportar datos"
-      bajada="Una copia de todo lo tuyo: sellers, conductores, pedidos, manifiestos, incidencias, períodos, líneas de cobro, liquidaciones y documentos tributarios."
-    >
+    <PantallaConfiguracion titulo="Exportar datos">
       <div className="space-y-4 border border-line bg-bg-sunken px-5 py-4">
         <div className="space-y-1">
           <p className="text-sm font-medium text-fg">Archivo de exportación (JSON)</p>
           <p className="text-sm leading-relaxed text-fg-muted">
-            La descarga empieza en cuanto la pides y puede tardar según el volumen de datos: deja
-            la pestaña abierta hasta que termine. Cada exportación queda en tu bitácora de
-            auditoría.
+            Puede tardar según cuántos datos tengas: deja la pestaña abierta hasta que termine.
           </p>
           {/* Lo que NO se lleva, dicho acá. Es la pregunta que se hace quien
               exporta para migrar, y la respuesta importa: los secretos no
               salen del sistema, ni siquiera en un export propio. */}
           <p className="text-sm leading-relaxed text-fg-muted">
-            No incluye credenciales ni tokens de conexión — esos están cifrados y no salen del
-            sistema, ni siquiera en tu propia copia.
+            No incluye credenciales ni tokens de conexión.
           </p>
         </div>
 
@@ -101,9 +95,7 @@ export default async function PaginaExportarDatos() {
           <p className="rx-num text-xs text-fg-muted">
             Última exportación: {formatearFechaHora(ultima.creado_en as string)}
           </p>
-        ) : (
-          <p className="text-xs text-fg-muted">Todavía no has exportado tus datos.</p>
-        )}
+        ) : null}
       </div>
     </PantallaConfiguracion>
   );

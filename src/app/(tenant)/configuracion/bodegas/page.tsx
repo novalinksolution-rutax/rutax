@@ -37,11 +37,7 @@ export default async function PaginaBodegas() {
   const errorCourierInicial = bodegasCourierResultado.ok ? null : bodegasCourierResultado.mensaje;
 
   return (
-    <PantallaConfiguracion
-      titulo="Bodegas"
-      bajada="Dónde se retiran los pedidos y desde dónde sale tu flota a repartir."
-      ancho="tabla"
-    >
+    <PantallaConfiguracion titulo="Bodegas" ancho="tabla">
       <PanelBodegas
         sellers={sellers}
         bodegasCourierIniciales={bodegasCourierIniciales}

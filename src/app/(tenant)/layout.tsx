@@ -93,6 +93,23 @@ export default async function LayoutTenant({ children }: { children: React.React
     .eq("id", sesion.usuario.tenantId)
     .maybeSingle();
 
+  // El nombre editable vive en el perfil, no en los metadatos de Auth.
+  // Si la lectura falla, el menú cae a los metadatos: un nombre no puede
+  // tumbar el layout entero.
+  const perfilNombre = await (async () => {
+    try {
+      const { data } = await crearClienteServiceRole()
+        .schema("identidad")
+        .from("usuarios_perfil")
+        .select("nombre_completo")
+        .eq("id", sesion.usuarioId)
+        .maybeSingle();
+      return data;
+    } catch {
+      return null;
+    }
+  })();
+
   // 🔒 GATE DE LA PUESTA EN MARCHA (docs/ux/puesta-en-marcha-v2.md §8).
   //
   // `/puesta-en-marcha` NO vive bajo este layout —está en `src/app/puesta-en-marcha`,
@@ -353,7 +370,7 @@ export default async function LayoutTenant({ children }: { children: React.React
   return (
     <AppShell
       nombreFantasia={(tenant?.nombre_fantasia as string | undefined) ?? "Tu courier"}
-      nombreCompleto={sesion.nombreCompleto}
+      nombreCompleto={(perfilNombre?.nombre_completo as string | null) || sesion.nombreCompleto}
       subtituloCuenta={ROL_ETIQUETA[sesion.usuario.rol] ?? null}
       grupos={grupos}
       itemsInferiores={itemsInferiores}

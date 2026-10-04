@@ -106,7 +106,7 @@ export function FiltrosManifiestos({
           onClick={() => router.push(pathname)}
           className="col-span-2 h-9 justify-self-start text-muted-foreground sm:col-span-1"
         >
-          Limpiar
+          Quitar filtros
         </Button>
       )}
     </div>

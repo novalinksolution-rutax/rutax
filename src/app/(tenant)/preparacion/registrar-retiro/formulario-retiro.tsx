@@ -174,8 +174,7 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
     return (
       <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          No hay pedidos pendientes de retiro para hoy. Todo lo del día ya está en poder del
-          courier, o todavía no ha entrado ningún pedido.
+          No hay pedidos pendientes de retiro hoy.
         </CardContent>
       </Card>
     );
@@ -254,7 +253,7 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
               <span className="text-muted-foreground">{p.destinatarioComuna ?? "Sin comuna"}</span>
               {!p.registrable && (
                 <span className="ml-auto text-xs text-muted-foreground">
-                  Sin código — no se puede registrar
+                  Sin código
                 </span>
               )}
             </label>
@@ -264,8 +263,7 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
               al coordinador con un conteo que no le cuadra y sin explicación. */}
           {sinCodigo > 0 && (
             <p className="pt-2 text-xs text-muted-foreground">
-              {sinCodigo} pedido{sinCodigo === 1 ? "" : "s"} sin código identificable. Se muestran
-              para que el conteo cuadre, pero hay que resolverlos por otra vía.
+              {sinCodigo} pedido{sinCodigo === 1 ? "" : "s"} sin código: no se puede{sinCodigo === 1 ? "" : "n"} registrar desde aquí.
             </p>
           )}
         </CardContent>
@@ -308,11 +306,6 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
           <PackageCheck className="mr-2 size-4" />
           Registrar retiro
         </Button>
-        {!listo && (
-          <span className="text-sm text-muted-foreground">
-            Elige conductor, bodega y al menos un pedido.
-          </span>
-        )}
       </div>
 
       <DialogConfirmacionDinero
@@ -358,12 +351,6 @@ export function FormularioRetiro({ conductores, bodegas, pedidos }: Props) {
           </p>
         </div>
       </DialogConfirmacionDinero>
-
-      <p className="flex items-start gap-2 text-xs text-muted-foreground">
-        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-        Los bultos quedan registrados como tecleados, no escaneados: el acta deja constancia de
-        que no hubo lectura de QR.
-      </p>
     </div>
   );
 }

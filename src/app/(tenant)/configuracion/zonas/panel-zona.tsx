@@ -252,8 +252,7 @@ export function PanelZona({
       )}
 
       <p className="text-xs text-fg-subtle">
-        Una comuna solo puede estar en una zona. Las que ya tienen dueño se ven con su zona y no se
-        pueden marcar desde acá.
+        Una comuna solo puede estar en una zona.
       </p>
 
       {error && (

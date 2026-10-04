@@ -302,7 +302,7 @@ export default async function PaginaConciliacion({
           icon={CheckCircle2}
           tono="buen-estado"
           titulo="Sin diferencias — todo cuadra"
-          descripcion="Los últimos períodos cerrados no presentaron descuadres entre lo entregado y lo facturado. No necesitas hacer nada."
+          descripcion="Lo entregado y lo facturado coinciden en los últimos períodos cerrados."
         />
       </div>
     );
@@ -386,11 +386,10 @@ export default async function PaginaConciliacion({
           icon={SearchX}
           tono="filtro"
           titulo="Ninguna excepción coincide"
-          descripcion="No hay excepciones de conciliación con los filtros aplicados."
           accion={
             hayFiltroActivo ? (
               <Button asChild variant="outline" size="sm">
-                <Link href="/dinero/conciliacion">Limpiar filtros</Link>
+                <Link href="/dinero/conciliacion">Quitar filtros</Link>
               </Button>
             ) : undefined
           }

@@ -1020,9 +1020,8 @@ function BloqueReincorporar({
     <div className="border border-line p-3">
       <p className="text-sm font-medium">Fuera de la nómina</p>
       <p className="mt-0.5 text-xs leading-relaxed text-fg-muted">
-        No aparece para asignar rutas. Al reincorporarlo vuelve{" "}
-        <strong className="font-medium text-fg">no disponible</strong>: volver a la nómina no
-        es salir a repartir hoy.
+        Al reincorporarlo vuelve como{" "}
+        <strong className="font-medium text-fg">no disponible</strong> hasta que se marque en su app.
       </p>
       {puede ? (
         <Button

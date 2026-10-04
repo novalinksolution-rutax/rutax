@@ -85,7 +85,7 @@ export function FiltrosPeriodosForm({ sellers, filtroSeller, hayFiltroActivo }: 
           onClick={() => router.push(pathname)}
           className="h-9 text-fg-muted"
         >
-          Limpiar filtros
+          Quitar filtros
         </Button>
       )}
     </div>

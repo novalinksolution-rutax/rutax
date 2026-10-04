@@ -26,6 +26,7 @@
  */
 
 import { Phone, Mail, IdCard } from "lucide-react";
+import { enmascararRut } from "@/lib/formato-cl";
 import { EditorTelefonoConductor } from "../editor-telefono";
 
 /** De dónde salió el correo, porque las dos procedencias NO significan lo mismo. */
@@ -87,7 +88,7 @@ export function DatosContactoConductor({
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <Campo icono={<IdCard className="size-4" />} etiqueta="RUT">
-          <span className="rx-num tabular-nums">{rut}</span>
+          <span className="rx-num tabular-nums">{enmascararRut(rut)}</span>
         </Campo>
 
         <Campo icono={<Phone className="size-4" />} etiqueta="Teléfono">

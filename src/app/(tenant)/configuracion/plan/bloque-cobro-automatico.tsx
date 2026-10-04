@@ -31,7 +31,7 @@ const MENSAJE_POR_ESTADO: Record<EstadoMandato, string> = {
   sin_mandato:
     "Activa el cobro automático para que Rutax cobre tu plan cada período sin que tengas que hacerlo a mano.",
   pendiente: "Estamos confirmando tu autorización con el banco. Puede tardar unos minutos.",
-  activo: "Rutax cobra tu plan cada período automáticamente.",
+  activo: "Rutax cobra tu plan cada período sin que hagas nada.",
   cancelado: "El cobro automático está desactivado. Puedes activarlo nuevamente cuando quieras.",
   fallido: "Hubo un problema al activar el cobro automático. Intenta nuevamente.",
 };
@@ -88,7 +88,6 @@ export function BloqueCobroAutomatico({ mandatoEstado }: Props) {
           </div>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="font-medium text-foreground">Cobro automático</p>
               <BadgeEstado variante={BADGE_ESTADO_MANDATO[estado]} eje="mandato" valor={estado} texto={TEXTO_ESTADO_MANDATO[estado]} />
             </div>
             <p className="max-w-md text-sm text-muted-foreground">{MENSAJE_POR_ESTADO[estado]}</p>

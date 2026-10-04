@@ -286,7 +286,6 @@ export function PanelWebhooks({
           icon={Webhook}
           tono="arranque"
           titulo="Sin endpoints configurados"
-          descripcion="Añade un endpoint para que Rutax notifique a tus sistemas en tiempo real."
           accion={<DialogCrearEndpoint onCreado={() => router.refresh()} />}
         />
       ) : (
@@ -321,8 +320,7 @@ function UltimosAvisos({ avisos }: { avisos: AvisoWebhookRow[] }) {
     return (
       <div className="border border-line bg-bg-sunken px-4 py-6 text-center">
         <p className="text-sm text-fg-muted">
-          Todavía no hemos mandado ningún aviso. El primero sale con el próximo
-          pedido que cierre uno de los eventos que elegiste.
+          Todavía no se envía ningún aviso.
         </p>
       </div>
     );

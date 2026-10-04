@@ -120,7 +120,6 @@ export function FormularioInvitacion({ abierto, onCerrar, onInvitada }: Props) {
         if (!siguiente) onCerrar();
       }}
       titulo="Invitar a una persona"
-      subtitulo="Le llega un correo para crear su contraseña y entrar con el rol que elijas."
     >
       <form onSubmit={manejarEnvio} className="flex flex-1 flex-col gap-5">
         <div className="space-y-2">

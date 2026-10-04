@@ -87,9 +87,8 @@ export async function SeccionPeriodos({ tenantId }: { tenantId: string }) {
                 pero nadie lo eligió
               </p>
               <p className="text-sm text-muted-foreground">
-                Es lo que Rutax usa mientras el courier no decide. Funciona, y puede que sea
-                justo lo que necesitas — pero conviene confirmarlo antes de tu primer cierre:
-                después, cambiarlo exige cerrar los períodos que ya tengan líneas.
+                Es el valor por defecto. Confírmalo antes de tu primer cierre: después, cambiarlo
+                exige cerrar los períodos que ya tengan líneas.
               </p>
             </div>
           </div>
@@ -126,8 +125,7 @@ export async function SeccionPeriodos({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle className="text-base">Cada cuánto le pasas la cuenta</CardTitle>
           <CardDescription>
-            Define el tramo de días que agrupa las entregas de un seller antes de facturarlas.
-            La misma periodicidad rige el cierre de las liquidaciones de tus conductores.
+            Rige también el cierre de las liquidaciones de tus conductores.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

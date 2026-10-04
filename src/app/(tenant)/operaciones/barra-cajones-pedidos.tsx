@@ -142,8 +142,8 @@ export function BarraCajonesPedidos({
       {!hayCifras && (
         <p className="text-xs text-fault-fg" role="status">
           {enUso?.leidoEn
-            ? `No pudimos actualizar las cifras. Éstas son las de las ${formatearHora(enUso.leidoEn)}.`
-            : "No pudimos leer las cifras. No son cero: no las pudimos leer."}
+            ? `No pudimos actualizar las cifras. Estas son las de las ${formatearHora(enUso.leidoEn)}.`
+            : "No pudimos leer las cifras."}
         </p>
       )}
     </div>

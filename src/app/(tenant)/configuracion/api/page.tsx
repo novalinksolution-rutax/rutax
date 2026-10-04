@@ -97,7 +97,6 @@ export default async function PaginaApiIntegraciones() {
        rompería enlaces guardados— pero el título ya no es un tercer nombre. */
     <PantallaConfiguracion
       titulo="Integraciones"
-      bajada="Las credenciales y los avisos con que conectas tus propios sistemas a Rutax."
       ancho="tabla"
     >
 

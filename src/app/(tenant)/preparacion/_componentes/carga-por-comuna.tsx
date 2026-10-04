@@ -47,9 +47,6 @@ export function CargaPorComuna({
         {/* «Por despachar» y no «ya retirados»: el bulto sale de esta lista en
             cuanto su manifiesto se confirma. El rótulo viejo prometía todo lo
             retirado del día y mostraba solo lo pendiente. */}
-        <p className="text-xs text-muted-foreground">
-          Lo retirado que falta por despachar, agrupado por comuna de destino.
-        </p>
       </div>
 
       {errorCarga ? (
@@ -57,7 +54,7 @@ export function CargaPorComuna({
           role="alert"
           className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground"
         >
-          No pudimos cargar la carga por comuna. Intenta recargar la página.
+          No pudimos cargar las comunas. Intenta recargar la página.
         </div>
       ) : filas.length === 0 ? (
         // 🔴 Decía siempre «todavía no hay bultos retirados», y con 17 retirados

@@ -39,7 +39,7 @@ export function BotonSincronizarCuenta({ conexionId, etiqueta }: { conexionId: s
       setEstado("pedido");
       setTimeout(() => setEstado("listo"), VENTANA_ENFRIAMIENTO_MS);
     } catch {
-      toast.error("No se pudo pedir. Intenta de nuevo.");
+      toast.error("No pudimos sincronizar. Intenta de nuevo.");
       setEstado("listo");
     }
   }

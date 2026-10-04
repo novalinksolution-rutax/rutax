@@ -67,8 +67,7 @@ export function SeccionMisBodegas({ bodegasIniciales, errorInicial = null }: Pro
           <EmptyState
             icon={Warehouse}
             tono="arranque"
-            titulo="Todavía no registraste ninguna bodega"
-            descripcion="Agrega la bodega desde la que sale tu flota a repartir."
+            titulo="Todavía no registras ninguna bodega"
             accion={<PanelBodega tipo="courier" esPrimera principalActual={null} onGuardada={recargar} />}
           />
         )}

@@ -148,7 +148,7 @@ export function Bandeja({
               <CabeceraGrupo
                 titulo={`Sin gestionar · más de ${UMBRAL_INCIDENCIA_SIN_GESTION_HORAS} h`}
                 conteo={sinGestionar.length}
-                nota="Genera aviso al centro de avisos y al correo de los internos."
+                nota="Ya generó aviso."
                 urgente
               />
               {sinGestionar.map((i) => (
@@ -344,7 +344,7 @@ function vacioDelCajon(cajon: EstadoIncidencia | null): {
       return {
         titulo: "Ninguna incidencia abierta",
         descripcion:
-          "Cuando un conductor reporte un problema en una entrega, aparece acá y te llega un aviso.",
+          "Los problemas que reporten los conductores aparecen acá.",
       };
     case "en_gestion":
       return {
@@ -365,7 +365,7 @@ function vacioDelCajon(cajon: EstadoIncidencia | null): {
       return {
         titulo: "Sin incidencias activas",
         descripcion:
-          "Las entregas cerraron sin problemas reportados. Cuando un conductor reporte algo, aparece acá y te llega un aviso.",
+          "Ninguna entrega con problemas reportados.",
       };
   }
 }

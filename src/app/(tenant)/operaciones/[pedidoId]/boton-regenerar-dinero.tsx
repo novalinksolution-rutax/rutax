@@ -64,14 +64,13 @@ export function AvisoLineaFaltante({
     <div className="mt-3 rounded-md border border-amber-500/50 bg-amber-500/10 px-4 py-3">
       <p className="text-sm font-medium">Esta entrega no tiene {queFalta}.</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Pasa cuando el motor no alcanzó a escribir una de las dos líneas. Pedir que se
-        regeneren no duplica lo que ya existe: solo escribe lo que falta.
+        Regenerar no duplica lo que ya existe: solo escribe lo que falta.
       </p>
 
       {estado === "pedido" ? (
         <p className="mt-3 text-xs font-medium">
-          Se pidió la regeneración. El motor corre aparte y tarda unos segundos — recarga
-          la página para ver si la línea apareció.
+          Pedido enviado. Recarga
+          la página en unos segundos.
         </p>
       ) : (
         <Button

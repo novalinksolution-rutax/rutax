@@ -59,7 +59,7 @@ export function SeccionBodegasSellers({ sellers, montoVisitaDefaultClp }: Props)
       <CardHeader>
         <CardTitle className="text-base">Bodegas de sellers</CardTitle>
         <CardDescription>
-          Dónde retira el conductor los pedidos de cada seller. Un seller puede tener varias.
+          Dónde retira el conductor los pedidos de cada seller.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -100,12 +100,6 @@ export function SeccionBodegasSellers({ sellers, montoVisitaDefaultClp }: Props)
               )}
             </div>
 
-            {!sellerId && (
-              <p className="text-sm text-muted-foreground">
-                Selecciona un seller para ver y gestionar sus bodegas de retiro.
-              </p>
-            )}
-
             {sellerId && cargando && <EstadoCargando mensaje="Cargando bodegas…" />}
 
             {sellerId && !cargando && error && (
@@ -117,7 +111,6 @@ export function SeccionBodegasSellers({ sellers, montoVisitaDefaultClp }: Props)
                 icon={Warehouse}
                 tono="arranque"
                 titulo="Este seller no tiene bodegas registradas"
-                descripcion="Agrega la primera bodega para coordinar sus retiros."
                 accion={
                   <PanelBodega
                     tipo="seller"

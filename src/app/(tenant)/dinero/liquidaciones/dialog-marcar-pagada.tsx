@@ -23,7 +23,7 @@ interface Props {
 function formatearFechaCorta(fechaIso: string): string {
   if (!fechaIso || fechaIso.length < 10) return fechaIso;
   const [anio, mes, dia] = fechaIso.slice(0, 10).split("-");
-  return `${dia}/${mes}/${anio}`;
+  return `${dia}-${mes}-${anio}`;
 }
 
 export function DialogMarcarPagada({
@@ -96,7 +96,7 @@ export function DialogMarcarPagada({
           valor: motivo,
           onCambio: setMotivo,
           etiqueta: "Cómo y cuándo le pagaste",
-          ayuda: "Queda en la bitácora, con tu nombre. Es la única constancia de que el pago ocurrió fuera de Rutax.",
+          ayuda: "Es la única constancia de que el pago se hizo fuera de Rutax.",
           minimo: 10,
         }}
         avisos={

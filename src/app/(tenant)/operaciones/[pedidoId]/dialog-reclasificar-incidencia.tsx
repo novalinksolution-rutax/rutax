@@ -69,8 +69,7 @@ export function DialogReclasificarIncidencia({ pedidoId, incidenciaId, tipoActua
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          Cambiar el tipo recalculará si esta incidencia afecta el cobro al seller y/o la
-          liquidación del conductor, y regenerará las líneas automáticamente.
+          Cambiar el tipo recalcula el cobro al seller y la liquidación del conductor.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

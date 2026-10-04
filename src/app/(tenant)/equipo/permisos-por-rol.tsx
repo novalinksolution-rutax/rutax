@@ -58,10 +58,6 @@ export function PermisosPorRol() {
       >
         <span className="min-w-0">
           <span className="block text-sm font-medium text-fg">Qué puede hacer cada rol</span>
-          <span className="block text-xs leading-snug text-fg-muted">
-            Los {ROLES_INTERNOS.length} roles y sus permisos reales, salidos del catálogo. No es un
-            resumen escrito a mano.
-          </span>
         </span>
         <ChevronDown
           className={cn("size-4 shrink-0 text-fg-muted transition-transform", abierto && "rotate-180")}

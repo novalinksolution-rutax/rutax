@@ -332,7 +332,7 @@ export default async function PaginaLiquidaciones({
           <p className="text-fg-muted">
             {filtroConductor
               ? "Este conductor no tiene liquidaciones."
-              : "Todavía no hay liquidaciones. Se generan solas con las entregas y las visitas a bodega de cada conductor."}
+              : "Todavía no hay liquidaciones."}
           </p>
         </div>
       ) : (

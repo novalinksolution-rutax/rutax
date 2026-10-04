@@ -83,8 +83,8 @@ export function DialogReasignacion({
                   <strong className="text-foreground">{conductorActual}</strong>.
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Si continúas, el pedido se devolverá a la cola de pendientes de asignación y
-                  quedará disponible para asignarlo a otro manifiesto.
+                  El pedido vuelve a la cola de pendientes de asignación y
+                  queda disponible para otro manifiesto.
                 </p>
 
                 {error && (

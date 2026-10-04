@@ -180,22 +180,13 @@ export function DialogoCambiarRol({
               colapsable
             />
           </div>
-        ) : (
-          <p className="text-sm text-fg-muted">
-            Elige otro rol para ver qué cambia.
-          </p>
-        )}
+        ) : null}
 
         {error ? (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
-
-        <p className="text-xs leading-relaxed text-fg-muted">
-          Toma efecto en su próxima carga de pantalla y queda en la bitácora a
-          tu nombre.
-        </p>
       </div>
     </PanelAccion>
   );

@@ -160,13 +160,6 @@ export function ContenidoManifiesto({
             </section>
           ) : null}
 
-          {esConfirmado ? (
-            <p className="border border-line bg-bg-sunken px-3 py-2.5 text-sm text-fg-muted">
-              Manifiesto confirmado. Sus paradas ya le aparecen al conductor en la app, en el
-              orden de la ruta.
-            </p>
-          ) : null}
-
           {enRuta && puede.asignar && !fallaDeLectura ? (
             <section className="flex flex-col items-stretch gap-2">
               <Rotulo>Cerrar la ruta</Rotulo>
@@ -183,7 +176,7 @@ export function ContenidoManifiesto({
               pero con su recordatorio de que todo queda en la bitácora. */}
           {!fallaDeLectura && puede.asignar && (esBorrador || esConfirmado || enRuta) ? (
             <section className="flex flex-col items-stretch gap-2.5">
-              <Rotulo>Todo queda en la bitácora</Rotulo>
+              <Rotulo>Más acciones</Rotulo>
 
               {esConfirmado || enRuta ? (
                 <div className="space-y-1.5">
@@ -203,8 +196,7 @@ export function ContenidoManifiesto({
               {puede.crearManifiesto && esBorrador ? (
                 <div className="space-y-1.5">
                   <p className="text-xs leading-relaxed text-fg-muted">
-                    Cancelar devuelve las paradas a la bandeja sin conductor. Queda con tu
-                    nombre y con el motivo que escribas.
+                    Cancelar devuelve las paradas a la bandeja sin conductor.
                   </p>
                   <BotonCancelarManifiesto manifiestoId={manifiestoId} paradas={totalPedidos} />
                 </div>
@@ -235,7 +227,7 @@ function textoVacioSegunEstado(estado: EstadoManifiesto, nombreConductor: string
     case "completado":
       return `Se cerró sin ninguna parada. ${nombreConductor} no entregó nada con este manifiesto.`;
     case "cancelado":
-      return "Se canceló y sus paradas volvieron a la bandeja. No hay nada que hacer acá.";
+      return "Se canceló y sus paradas volvieron a la bandeja.";
   }
 }
 

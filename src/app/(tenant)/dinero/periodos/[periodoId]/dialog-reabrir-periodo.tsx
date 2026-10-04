@@ -87,7 +87,7 @@ export function DialogReabrirPeriodo({
           valor: motivo,
           onCambio: setMotivo,
           etiqueta: "Por qué lo reabres",
-          ayuda: "Queda en la bitácora, con tu nombre.",
+          ayuda: undefined,
           minimo: 10,
         }}
         avisos={

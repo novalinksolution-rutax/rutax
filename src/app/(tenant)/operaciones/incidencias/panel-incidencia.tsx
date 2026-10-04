@@ -69,8 +69,8 @@ const DESTINOS: Record<EstadoIncidencia, EstadoIncidencia[]> = {
 
 /** Por qué no está el destino que falta. Nunca un botón muerto y mudo. */
 const POR_QUE_FALTA: Record<EstadoIncidencia, string | null> = {
-  abierta: "«Resuelta» aparece cuando alguien la tome: primero se gestiona.",
-  en_gestion: "«Cerrada» aparece una vez resuelta.",
+  abierta: "Primero hay que tomarla.",
+  en_gestion: "Se cierra una vez resuelta.",
   resuelta: null,
   cerrada: "Una incidencia cerrada no vuelve atrás. Si reaparece, se abre una nueva.",
 };
@@ -264,7 +264,7 @@ export function PanelCaso({
                 placeholder={incidencia.notasResolucion ?? "Qué se hizo con este caso."}
               />
               <p className="mt-1 text-xs text-fg-muted">
-                Las lee el seller en su portal, y quien revise este caso después.
+                Las lee el seller en su portal.
               </p>
 
               <div className="mt-4 border border-fault-line p-3">
