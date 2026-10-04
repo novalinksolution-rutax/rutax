@@ -12,7 +12,9 @@ import type { NextConfig } from "next";
 const origenesDevPermitidos: string[] = [];
 if (process.env.APP_PUBLIC_URL) {
   try {
-    origenesDevPermitidos.push(new URL(process.env.APP_PUBLIC_URL).host);
+    // `hostname`, no `host`: Next compara sin puerto, y con `host` una URL de
+    // red local (http://192.168.x.x:3000) quedaba bloqueada igual.
+    origenesDevPermitidos.push(new URL(process.env.APP_PUBLIC_URL).hostname);
   } catch {
     // APP_PUBLIC_URL malformada: se ignora (el dev local por localhost sigue
     // funcionando sin necesidad de allowedDevOrigins).
