@@ -118,7 +118,12 @@ export function WizardAltaSeller({
    * nombre es con lo que el conductor la reconoce en su app, y «a quién llamar»
    * es lo que necesita cuando llega y no puede entrar.
    */
-  const [nombreBodega, setNombreBodega] = useState(estadoInicial.bodega?.nombre ?? "");
+  // El nombre nace «Bodega principal» y se edita solo si el seller quiere: un
+  // campo más que llenar en el alta no le aporta (decisión del usuario).
+  const [nombreBodega, setNombreBodega] = useState(
+    estadoInicial.bodega?.nombre?.trim() || "Bodega principal",
+  );
+  const [editandoNombreBodega, setEditandoNombreBodega] = useState(false);
   const [contactoBodega, setContactoBodega] = useState(estadoInicial.bodega?.contactoNombre ?? "");
   const [telefonoBodega, setTelefonoBodega] = useState(
     formatearTelefonoMientrasEscribe(estadoInicial.bodega?.contactoTelefono ?? ""),
@@ -228,7 +233,7 @@ export function WizardAltaSeller({
     }
     setGuardando(true);
     const r = await guardarPasoBodegaAction({
-      nombre: nombreBodega,
+      nombre: nombreBodega.trim() || "Bodega principal",
       direccion: direccionBodega,
       comuna: comunaBodega,
       instruccionesAcceso: instruccionesBodega || undefined,
@@ -472,18 +477,43 @@ export function WizardAltaSeller({
       {/* ── Paso 2 · Bodega ── */}
       {paso === 2 ? (
         <form onSubmit={guardarBodega} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="nombreBodega">Nombre</Label>
-            <Input
-              id="nombreBodega"
-              autoFocus
-              placeholder="Nombre de la bodega"
-              value={nombreBodega}
-              onChange={(e) => setNombreBodega(e.target.value)}
-              disabled={guardando}
-              required
-            />
-          </div>
+          {editandoNombreBodega ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="nombreBodega">Nombre</Label>
+              <Input
+                id="nombreBodega"
+                autoFocus
+                placeholder="Nombre de la bodega"
+                value={nombreBodega}
+                onChange={(e) => setNombreBodega(e.target.value)}
+                onBlur={() => {
+                  if (!nombreBodega.trim()) setNombreBodega("Bodega principal");
+                  setEditandoNombreBodega(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
+                disabled={guardando}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-fg">{nombreBodega}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => setEditandoNombreBodega(true)}
+                disabled={guardando}
+                className="text-muted-foreground"
+              >
+                Editar
+              </Button>
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
