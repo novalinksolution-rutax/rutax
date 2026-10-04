@@ -1,26 +1,21 @@
 "use client";
 
 /**
- * El filtro de fecha de «Mis pedidos» (portal del seller).
+ * Los filtros de «Mis pedidos» (portal del seller), en chips.
  * =============================================================================
  *
- * -----------------------------------------------------------------------------
- * AQUÍ VIVÍA UN SELECTOR CON LOS NUEVE ESTADOS DEL MOTOR
- * -----------------------------------------------------------------------------
- * Se retiró. Ese selector hablaba el idioma del courier —«Pendiente de
- * asignación», «Fallido»— y obligaba a filtrar tres veces para llegar a «los que
- * tuvieron un problema». Lo reemplazan los cuatro cajones de la lista, que
- * además traen su contador. Un mismo eje no puede filtrarse desde dos controles
- * distintos: quedaría un estado elegido arriba y otro abajo, y la pantalla no
- * podría decir cuál manda.
+ * Mismo componente que el listado del courier (`ChipsFiltro`), para que las dos
+ * pantallas de pedidos se lean igual. El estado NO se filtra acá: lo hacen los
+ * cajones de la barra, que además traen su contador.
  *
- * Lo que queda acá es la fecha, que es un eje independiente y se combina con el
- * cajón sin ambigüedad.
+ * ⚠️ A diferencia del courier, acá la fecha **no cae a hoy**: el seller entra
+ * buscando un pedido de cualquier día. Por eso su chip se puede quitar.
  */
 
-import { useRouter, usePathname } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { ChipsFiltro, type ChipFiltro } from "@/components/filtros/chips-filtro";
 import { FiltroFecha } from "@/components/filtros/filtro-fecha";
+import { formatearFechaCivilCorta } from "@/lib/formato-cl";
 
 interface Props {
   /** "Hoy" civil de Santiago (para los atajos y la etiqueta del filtro de fecha). */
@@ -30,7 +25,7 @@ interface Props {
   /** Rango de fecha de compromiso ("" si hay día exacto). */
   filtroFechaDesde: string;
   filtroFechaHasta: string;
-  /** Incluye el cajón y la búsqueda, no solo la fecha: limpiar los limpia todos. */
+  /** Incluye el cajón y la búsqueda, no solo la fecha: quitar los quita todos. */
   hayFiltros: boolean;
 }
 
@@ -43,35 +38,47 @@ export function FiltrosPedidosSeller({
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
+  const params = useSearchParams();
+
+  const etiquetaFecha =
+    filtroFecha === hoy
+      ? "Hoy"
+      : filtroFecha
+        ? formatearFechaCivilCorta(filtroFecha)
+        : filtroFechaDesde || filtroFechaHasta
+          ? `${filtroFechaDesde ? formatearFechaCivilCorta(filtroFechaDesde) : "…"} a ${filtroFechaHasta ? formatearFechaCivilCorta(filtroFechaHasta) : "…"}`
+          : null;
+
+  function quitarFecha() {
+    const siguiente = new URLSearchParams(params.toString());
+    for (const k of ["fecha", "fecha_desde", "fecha_hasta", "pagina"]) siguiente.delete(k);
+    const qs = siguiente.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  const chips: ChipFiltro[] = [
+    {
+      clave: "fecha",
+      etiqueta: "Fecha",
+      valor: etiquetaFecha,
+      onQuitar: quitarFecha,
+      control: (
+        <FiltroFecha
+          id="f-fecha-p"
+          label="Fecha comprometida"
+          hoy={hoy}
+          exacto={filtroFecha}
+          desde={filtroFechaDesde}
+          hasta={filtroFechaHasta}
+        />
+      ),
+    },
+  ];
 
   return (
-    <>
-      {/* 🔴 SIN `label`, y no es un descuido de accesibilidad — el control ya
-          dice qué filtra en su propio texto («Todas las fechas», «Hoy», «22
-          ago»). La etiqueta flotaba ARRIBA del selector mientras el buscador de
-          al lado no tenía ninguna, así que los dos controles quedaban a
-          distinta altura y el rótulo se leía como si fuera de la fila entera.
-          El nombre accesible no se pierde: `FiltroFecha` cae a un `aria-label`
-          propio cuando no recibe `label`. */}
-      <FiltroFecha
-        id="f-fecha-p"
-        hoy={hoy}
-        exacto={filtroFecha}
-        desde={filtroFechaDesde}
-        hasta={filtroFechaHasta}
-      />
-
-      {hayFiltros && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push(pathname)}
-          className="h-9 text-muted-foreground"
-        >
-          Limpiar filtros
-        </Button>
-      )}
-    </>
+    <ChipsFiltro
+      chips={chips}
+      onLimpiarTodo={hayFiltros ? () => router.push(pathname) : undefined}
+    />
   );
 }

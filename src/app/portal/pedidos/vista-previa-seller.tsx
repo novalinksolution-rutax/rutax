@@ -34,7 +34,7 @@ import type { EstadoPedido } from "@/modules/operacion/tipos";
 import type { VistaPreviaSeller } from "@/modules/operacion/vista-previa-seller";
 import { accionVistaPreviaSeller } from "./accion-vista-previa";
 
-const Ctx = createContext<{ abrir: (id: string) => void } | null>(null);
+const Ctx = createContext<{ abrir: (id: string) => void; pedidoId: string | null } | null>(null);
 
 /** Lo usa cada fila del listado para abrir su pedido. */
 export function useVistaPreviaSeller() {
@@ -45,7 +45,7 @@ export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }
   const [pedidoId, setPedidoId] = useState<string | null>(null);
 
   return (
-    <Ctx.Provider value={{ abrir: setPedidoId }}>
+    <Ctx.Provider value={{ abrir: setPedidoId, pedidoId }}>
       {children}
       <PanelAccion
         abierto={pedidoId !== null}

@@ -39,8 +39,6 @@ import { Inbox, SearchX } from "lucide-react";
 import { obtenerSesionActual } from "@/lib/identidad/usuario-actual-servidor";
 import { crearClienteServiceRole } from "@/lib/supabase/service-role";
 import { obtenerConexionesPorSeller } from "@/modules/integraciones/ml";
-import { BADGE_ESTADO_PEDIDO } from "@/lib/ui/traduccion-estados";
-import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable } from "@/components/ui/data-table";
@@ -48,15 +46,12 @@ import { Pagination } from "@/components/ui/pagination";
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
 import type { EstadoPedido, Pedido } from "@/modules/operacion/tipos";
 import {
-  estadoPedidoParaSeller,
-  textoLlegada,
   GRUPOS_PEDIDO_PORTAL,
   ETIQUETA_GRUPO_PORTAL,
   normalizarGrupoPortal,
@@ -64,8 +59,8 @@ import {
 import { FiltrosPedidosSeller } from "./filtros-pedidos-seller";
 import { CajonesPedidosSeller, BuscadorPedidosSeller } from "./piezas-listado-seller";
 import { PanelCrearSameDay } from "./panel-crear-same-day";
-import { ProveedorVistaPreviaSeller, BotonVerPedido } from "./vista-previa-seller";
-import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
+import { ProveedorVistaPreviaSeller } from "./vista-previa-seller";
+import { FilaPedidoSeller, FichaPedidoSellerMovil } from "./fila-pedido-seller";
 import { obtenerEstadoAltaSeller } from "./estado-alta-seller";
 import { hoyEnSantiago } from "@/lib/fecha-santiago";
 import { parsearRangoFecha } from "@/lib/filtros/fecha";
@@ -302,17 +297,18 @@ export default async function PaginaPedidosSeller({
 
   return (
     <ProveedorVistaPreviaSeller>
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Mis pedidos</h1>
-        {/* 🔴 Abre el PANEL, no navega. Llevaba a `/portal/pedidos/nuevo` y
-            cargar una pantalla entera —perdiendo de vista la lista que estabas
-            mirando— por el gesto que más se repite es la fricción más cara del
-            portal. La página sigue existiendo para quien llegue por enlace. */}
-        <PanelCrearSameDay estadoSeller={estadoAlta} />
+    {/* Misma forma que `/operaciones` del courier (decisión del usuario,
+        04-10-2026): encabezado, cajones, filtros en chips y la lista en tabla
+        compacta con fichas en el teléfono. */}
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h1 className="font-heading min-w-0 truncate text-2xl font-semibold">Mis pedidos</h1>
+        {/* 🔴 Abre el PANEL, no navega: crear no saca de la lista. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <PanelCrearSameDay estadoSeller={estadoAlta} />
+        </div>
       </div>
 
-      {/* Confirmación de envío creado */}
       {pedidoNuevoId && (
         <div role="status" className="rounded-lg bg-success-subtle px-4 py-3 text-sm text-success-subtle-foreground">
           Pedido creado.
@@ -320,49 +316,43 @@ export default async function PaginaPedidosSeller({
       )}
 
       {!errorCarga ? (
-        <div className="space-y-3">
-          <CajonesPedidosSeller
-            cajones={(["en_camino", "entregado", "problema"] as const).map((g) => ({
-              clave: g,
-              etiqueta: ETIQUETA_GRUPO_PORTAL[g],
-              conteo: conteos[g],
-            }))}
-            excluido={{
-              clave: "cancelado",
-              etiqueta: ETIQUETA_GRUPO_PORTAL.cancelado,
-              conteo: conteos.cancelado,
-            }}
-            activo={grupoActivo}
-            total={total}
-          />
+        <CajonesPedidosSeller
+          cajones={(["en_camino", "entregado", "problema"] as const).map((g) => ({
+            clave: g,
+            etiqueta: ETIQUETA_GRUPO_PORTAL[g],
+            conteo: conteos[g],
+          }))}
+          excluido={{
+            clave: "cancelado",
+            etiqueta: ETIQUETA_GRUPO_PORTAL.cancelado,
+            conteo: conteos.cancelado,
+          }}
+          activo={grupoActivo}
+          total={total}
+        />
+      ) : null}
 
-          {/* Buscador y fecha en la MISMA línea base. El rótulo «Filtros» va
-              al principio, como en el listado del courier, para que la fila se
-              lea como un grupo y no como dos controles sueltos. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="hidden font-mono text-[10px] font-medium tracking-[0.12em] text-fg-subtle uppercase sm:inline">
-              Filtros
-            </span>
-            <BuscadorPedidosSeller inicial={busqueda} />
-            <FiltrosPedidosSeller
-              hoy={hoyIso}
-              filtroFecha={rangoFecha.exacto}
-              filtroFechaDesde={rangoFecha.desde}
-              filtroFechaHasta={rangoFecha.hasta}
-              hayFiltros={hayFiltros}
-            />
-          </div>
+      {!errorCarga ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {/* El buscador es lo único que el courier no tiene: el seller entra
+              buscando UN pedido, el que le preguntó su cliente. */}
+          <BuscadorPedidosSeller inicial={busqueda} />
+          <FiltrosPedidosSeller
+            hoy={hoyIso}
+            filtroFecha={rangoFecha.exacto}
+            filtroFechaDesde={rangoFecha.desde}
+            filtroFechaHasta={rangoFecha.hasta}
+            hayFiltros={hayFiltros}
+          />
         </div>
       ) : null}
 
-      {/* Error */}
       {errorCarga && (
         <div role="alert" className="rounded-lg bg-destructive-subtle px-4 py-3 text-sm text-destructive-subtle-foreground">
           No se pudo cargar la lista de pedidos. Intenta recargar la página.
         </div>
       )}
 
-      {/* Tabla / estados de vista */}
       {!errorCarga && pedidos.length === 0 ? (
         hayFiltros ? (
           <EmptyState
@@ -379,14 +369,16 @@ export default async function PaginaPedidosSeller({
             }
           />
         ) : (
-          <EmptyState
-            icon={Inbox}
-            titulo="Todavía no tienes pedidos"
-          />
+          <EmptyState icon={Inbox} titulo="Todavía no tienes pedidos" />
         )
       ) : (
         !errorCarga && (
           <DataTable
+            toolbar={
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {enCajon} {enCajon === 1 ? "pedido" : "pedidos"}
+              </span>
+            }
             footer={
               totalPaginas > 1 ? (
                 <Pagination
@@ -397,92 +389,38 @@ export default async function PaginaPedidosSeller({
               ) : undefined
             }
           >
-            <Table densidad="relaxed" aria-label="Mis pedidos">
+            {/* Las dos formas se renderizan y CSS elige, como en el courier: el
+                servidor no sabe el ancho. */}
+            <div className="border border-line md:hidden">
+              {pedidos.map((pedido) => (
+                <FichaPedidoSellerMovil key={pedido.id} pedido={pedido} hoy={hoyIso} />
+              ))}
+            </div>
+
+            <Table densidad="compact" aria-label="Mis pedidos" className="hidden md:table">
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead className="px-4">Estado</TableHead>
                   <TableHead className="px-4">Destinatario</TableHead>
-                  <TableHead className="hidden px-4 sm:table-cell">Dirección</TableHead>
-                  {/* «Llega» y no «F. compromiso»: es la pregunta con la que el
-                      seller entra a esta pantalla, y la respuesta era una fecha
-                      ISO cruda impresa tal cual. */}
-                  <TableHead className="hidden px-4 md:table-cell">Llega</TableHead>
-                  {/* 🔴 De dónde vino el pedido, que antes NO estaba en ninguna
-                      parte del listado. El seller vende en varios sitios: sin
-                      esto, dos pedidos de tiendas distintas se ven idénticos y
-                      hay que abrir cada uno para saber cuál es cuál. */}
-                  <TableHead className="hidden px-4 lg:table-cell">De dónde vino</TableHead>
+                  <TableHead className="hidden px-4 text-right md:table-cell">Llega</TableHead>
+                  <TableHead className="hidden px-4 xl:table-cell">Origen</TableHead>
+                  <TableHead className="px-4 text-right">
+                    <span className="sr-only">Acciones</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pedidos.map((pedido) => (
-                  <TableRow key={pedido.id}>
-                    <TableCell className="px-4 align-top">
-                      {/* El idioma del seller: «Nadie recibió», no «Fallido».
-                          El TONO no cambia — sale del mismo eje y valor—, solo
-                          la palabra. */}
-                      <BadgeEstado
-                        variante={BADGE_ESTADO_PEDIDO[pedido.estado]} eje="pedido" valor={pedido.estado}
-                        texto={estadoPedidoParaSeller(pedido.estado)}
-                      />
-                    </TableCell>
-                    <TableCell className="px-4 align-top whitespace-normal">
-                      {/* 🔴 El nombre ABRE EL PANEL, ya no navega. Para mirar
-                          «¿ya llegó?» de tres pedidos había que entrar y volver
-                          tres veces, perdiendo el filtro y el sitio de la lista
-                          cada vez. El detalle sigue a un clic, desde el pie del
-                          panel. */}
-                      <BotonVerPedido
-                        pedidoId={pedido.id}
-                        destinatario={pedido.destinatarioNombre}
-                      >
-                        <span className="font-medium">{pedido.destinatarioNombre}</span>
-                      </BotonVerPedido>
-                      {/* El código de envío bajo el nombre: es con lo que el
-                          seller busca el pedido cuando su cliente le escribe. */}
-                      <p className="rx-num text-xs text-fg-muted">
-                        {pedido.codigoInterno ?? pedido.mlShipmentId ?? pedido.id.slice(0, 8)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {pedido.destinatarioComuna}
-                        {mostrarOrigen && etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] ? (
-                          <span className="text-muted-foreground/80 lg:hidden">
-                            {" · "}
-                            {etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""]}
-                          </span>
-                        ) : null}
-                        {/* En teléfono no hay columna «Llega», y es la mitad de
-                            la pregunta. Baja acá en vez de desaparecer. */}
-                        <span className="md:hidden">
-                          {" · "}
-                          {textoLlegada(pedido.fechaCompromiso, hoyIso, pedido.estado)}
-                        </span>
-                      </p>
-                    </TableCell>
-                    <TableCell className="hidden px-4 align-top text-muted-foreground sm:table-cell">
-                      {pedido.destinatarioDireccion}
-                    </TableCell>
-                    <TableCell className="hidden px-4 align-top text-muted-foreground md:table-cell">
-                      {textoLlegada(pedido.fechaCompromiso, hoyIso, pedido.estado)}
-                    </TableCell>
-                    {/* De dónde vino: la tienda, y el identificador CON EL QUE
-                        EL SELLER LA BUSCA ALLÁ. El de Mercado Libre es el número
-                        de venta, no el de envío: es el que aparece en su panel
-                        de ventas y el que su comprador le menciona. */}
-                    <TableCell className="hidden px-4 align-top lg:table-cell">
-                      <span className="text-foreground">{etiquetaFuentePedido(pedido.fuente)}</span>
-                      {mostrarOrigen && etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] && (
-                        <span className="block text-xs text-muted-foreground">
-                          {etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""]}
-                        </span>
-                      )}
-                      {(pedido.mlOrderId ?? pedido.referenciaExterna ?? pedido.idExterno) && (
-                        <span className="rx-num block font-mono text-xs text-muted-foreground">
-                          {pedido.mlOrderId ?? pedido.referenciaExterna ?? pedido.idExterno}
-                        </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                  <FilaPedidoSeller
+                    key={pedido.id}
+                    pedido={pedido}
+                    hoy={hoyIso}
+                    cuenta={
+                      mostrarOrigen
+                        ? (etiquetaPorCuenta[mlUserPorPedido[pedido.id] ?? ""] ?? null)
+                        : null
+                    }
+                  />
                 ))}
               </TableBody>
             </Table>
