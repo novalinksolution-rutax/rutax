@@ -152,7 +152,7 @@ export function AccionesCorregirDinero({
               devuelve: hay que ajustarlo en el próximo.
             </>
           }
-          ayudaMotivo="Lo lee el conductor, en su liquidación y en su PDF."
+          ayudaMotivo="Lo lee el conductor."
           accion={accionAnularLiquidacionPedido}
           etiquetaBoton="Anular liquidación"
           textoConfirmar="Anular la línea"

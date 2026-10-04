@@ -70,7 +70,7 @@ interface EntregaConsolidada {
 function formatearFechaCorta(iso: string | null): string {
   if (!iso || iso.length < 10) return "—";
   const [a, m, d] = iso.slice(0, 10).split("-");
-  return `${d}/${m}/${a}`;
+  return `${d}-${m}-${a}`;
 }
 
 function clasificar(liqEstado: EstadoLiquidacion | null): Bucket {
@@ -249,9 +249,7 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
       {/* Detalle de entregas */}
       {entregas.length === 0 ? (
         <div className="rounded-lg border bg-card px-6 py-12 text-center">
-          <p className="text-muted-foreground">
-            Aún no tiene entregas.
-          </p>
+          <p className="text-muted-foreground">Sin entregas todavía.</p>
         </div>
       ) : (
         // Sin sombra (regla 4): la elevación es escalón de fondo + borde.
@@ -318,7 +316,7 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
                                 hay que ajustarlo en el próximo.
                               </>
                             }
-                            ayudaMotivo="Lo lee el conductor, en su liquidación y en su PDF."
+                            ayudaMotivo="Lo lee el conductor."
                             accion={accionAnularLiquidacionPedido}
                             etiquetaBoton="Anular"
                             textoConfirmar="Anular la línea"
@@ -338,7 +336,7 @@ export default async function PaginaDetalleConductor({ params, searchParams }: P
                                 a ver el motivo en su liquidación.
                               </>
                             }
-                            ayudaMotivo="Lo lee el conductor, en su liquidación."
+                            ayudaMotivo="Lo lee el conductor."
                             accion={accionAnularLineaLiquidacion}
                             etiquetaBoton="Anular"
                             textoConfirmar="Anular el pago de la visita"

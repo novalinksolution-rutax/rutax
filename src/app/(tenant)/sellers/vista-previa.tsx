@@ -48,6 +48,13 @@ import { VentanasCorteSeller } from "./_ficha/ventanas-corte-seller";
 import { MenuSeller } from "./menu-seller";
 import { CifraFicha, FranjaCifras, TarjetaFicha } from "@/components/ui/ficha-lateral";
 
+
+/** La clave de tarifa, como la lee una persona. */
+const ETIQUETA_TIPO_ENTREGA: Record<string, string> = {
+  flex: "Flex",
+  same_day: "Same-day",
+};
+
 export function ProveedorVistaPreviaSeller({ children }: { children: ReactNode }) {
   return (
     <ProveedorVistaPreviaLateral<FichaSeller>
@@ -125,7 +132,7 @@ function Cuerpo(d: FichaSeller) {
       <FranjaCifras>
         <CifraFicha rotulo="Hoy">{d.hayMetricas ? d.pedidosHoy : "—"}</CifraFicha>
         <CifraFicha rotulo="Por semana">{d.hayMetricas ? `~${Math.round(d.promedioSemanal)}` : "—"}</CifraFicha>
-        <CifraFicha rotulo="Por cobrar">
+        <CifraFicha rotulo="Por cobrar · neto">
           {d.hayDinero ? formatearCLPOGuion(d.periodoVivoClp) : "—"}
         </CifraFicha>
       </FranjaCifras>
@@ -153,9 +160,12 @@ function Cuerpo(d: FichaSeller) {
               <li key={c.id} className="flex items-center gap-2 py-1.5">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-fg">{c.nombre}</span>
-                  <span className="block text-xs text-fg-muted">
-                    {c.tipo === "ml" ? "Mercado Libre" : "Shopify"}
-                  </span>
+                  {/* Sin alias, el nombre ya ES la plataforma: no repetirla. */}
+                  {c.nombre !== (c.tipo === "ml" ? "Mercado Libre" : "Shopify") ? (
+                    <span className="block text-xs text-fg-muted">
+                      {c.tipo === "ml" ? "Mercado Libre" : "Shopify"}
+                    </span>
+                  ) : null}
                 </span>
                 {c.apagadaPorSeller ? (
                   <BadgeEstado
@@ -193,7 +203,7 @@ function Cuerpo(d: FichaSeller) {
           <ul className="space-y-1">
             {d.tarifas.map((t) => (
               <li key={t.id} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-fg">{t.tipoEntrega}</span>
+                <span className="text-fg">{ETIQUETA_TIPO_ENTREGA[t.tipoEntrega ?? ""] ?? t.tipoEntrega ?? "General"}</span>
                 <span className="rx-num text-fg-muted">
                   {formatearCLPOGuion(t.montoClp)} · paga {formatearCLPOGuion(t.montoConductorClp)}
                 </span>
@@ -215,7 +225,10 @@ function Cuerpo(d: FichaSeller) {
                   {p.etiqueta}
                 </Link>
                 <span className="flex items-center gap-2">
-                  <span className="rx-num text-sm text-fg-muted">{formatearCLPOGuion(p.montoClp)}</span>
+                  {/* `monto_total_clp` trae IVA; «Por cobrar» de arriba es neto. */}
+                  <span className="rx-num text-sm text-fg-muted">
+                    {formatearCLPOGuion(p.montoClp)} <span className="text-xs">con IVA</span>
+                  </span>
                   <BadgeEstado
                     variante={BADGE_ESTADO_PERIODO[p.estado as "abierto"] ?? "neutral"}
                     eje="periodo"

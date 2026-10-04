@@ -161,7 +161,7 @@ export async function accionGuardarDatosEmisor(formData: FormData): Promise<Resu
     revalidatePath(RUTA_FACTURACION);
     return {
       ok: true,
-      acuse: "Listo: tu empresa quedó con su nombre, razón social, RUT y los datos de facturación.",
+      acuse: "Listo: los datos de tu empresa quedaron guardados.",
     };
   } catch (err) {
     return { ok: false, mensaje: mensajeDeError(err, "los datos de tu empresa") };

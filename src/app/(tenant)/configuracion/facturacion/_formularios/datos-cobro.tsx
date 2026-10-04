@@ -155,8 +155,7 @@ export function FormularioDatosCobro({ iniciales }: { iniciales: DatosCobroInici
             placeholder="pagos@tuempresa.cl"
           />
           <p className="text-xs text-fg-muted">
-            A dónde te avisa el seller que ya transfirió. Déjalo vacío si prefieres solo la
-            conciliación automática.
+            Ahí te avisa el seller cuando transfiere.
           </p>
         </div>
       </div>

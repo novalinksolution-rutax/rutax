@@ -44,7 +44,7 @@ export async function bloquearSellerAction(sellerId: string): Promise<ResultadoB
     return { ok: true };
   } catch (err) {
     if (err instanceof ErrorIdentidad) return { ok: false, mensaje: err.message };
-    return { ok: false, mensaje: "No pudimos bloquear a este seller por un problema de nuestro sistema." };
+    return { ok: false, mensaje: "No pudimos bloquear el acceso. Intenta de nuevo." };
   }
 }
 
@@ -63,6 +63,6 @@ export async function desbloquearSellerAction(sellerId: string): Promise<Resulta
     return { ok: true };
   } catch (err) {
     if (err instanceof ErrorIdentidad) return { ok: false, mensaje: err.message };
-    return { ok: false, mensaje: "No pudimos desbloquear a este seller por un problema de nuestro sistema." };
+    return { ok: false, mensaje: "No pudimos restaurar el acceso. Intenta de nuevo." };
   }
 }

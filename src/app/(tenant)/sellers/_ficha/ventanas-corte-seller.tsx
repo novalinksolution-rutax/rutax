@@ -448,7 +448,7 @@ function FormularioVentanaCorte({
       ) : null}
 
       {!ventana && reemplaza ? (
-        <p className="text-sm text-attention-fg">Ya existe: vas a cambiarla.</p>
+        <p className="text-sm text-attention-fg">Ya existe. Guardar la reemplaza.</p>
       ) : null}
 
       <div className="space-y-1.5">

@@ -127,7 +127,7 @@ export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIni
             defaultValue={fantasiaProvisional ? "" : (iniciales.nombreFantasia ?? "")}
             placeholder="Ej: Despachos del Centro"
           />
-          <p className="text-xs text-fg-muted">Es como se llama tu courier en Rutax y en el seguimiento.</p>
+          <p className="text-xs text-fg-muted">Se muestra en el seguimiento.</p>
         </div>
 
         <div className="space-y-1.5">
@@ -209,7 +209,7 @@ export function FormularioDatosEmisor({ iniciales }: { iniciales: DatosEmisorIni
             resolver={actionResolverDireccion}
             // La ayuda va por la prop del componente y no como un `<p>` aparte:
             // él la enlaza con `aria-describedby` al campo.
-            ayuda="Elígela de la lista y completamos la comuna sola. Si no aparece, escríbela igual."
+            ayuda="Elígela de la lista para completar la comuna. Si no aparece, escríbela igual."
           />
         </div>
 
