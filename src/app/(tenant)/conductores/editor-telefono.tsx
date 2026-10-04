@@ -30,7 +30,7 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatearTelefonoLegible, telefonoParaMarcar } from "@/lib/telefono-cl";
+import { formatearTelefonoLegible, telefonoParaMarcar, formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 import { actionActualizarTelefonoConductor } from "./actions";
 
 export function EditorTelefonoConductor({
@@ -88,7 +88,7 @@ export function EditorTelefonoConductor({
         <Input
           id={idCampo}
           value={valor}
-          onChange={(e) => setValor(e.target.value)}
+          onChange={(e) => setValor(formatearTelefonoMientrasEscribe(e.target.value))}
           onKeyDown={(e) => {
             if (e.key === "Enter") guardar();
             if (e.key === "Escape") cancelar();

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BadgeEstado } from "@/components/ui/badge-estado";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 import {
   guardarWhatsAppDelSeller,
   darseDeBajaDeWhatsApp,
@@ -115,7 +116,7 @@ export function PanelWhatsAppDelSeller({ datos }: { datos: WhatsAppDelSeller }) 
                 autoComplete="tel"
                 placeholder="+56 9 1234 5678"
                 value={telefono}
-                onChange={(e) => setTelefono(e.target.value)}
+                onChange={(e) => setTelefono(formatearTelefonoMientrasEscribe(e.target.value))}
                 required
               />
             </div>

@@ -133,6 +133,26 @@ export function formatearTelefonoLegible(telefonoE164: string): string {
   return `+${telefonoE164}`;
 }
 
+/**
+ * Formatea un móvil chileno MIENTRAS se escribe, igual que `enmascararRut`:
+ * `9471` → `+56 9 471`, `56947095571` → `+56 9 4709 5571`.
+ *
+ * Acepta entradas parciales y nunca deja un separador colgando al final, así
+ * que borrar con la tecla de retroceso no se traba en un espacio. Tope de nueve
+ * dígitos nacionales. La validación real sigue siendo `normalizarTelefonoE164`.
+ */
+export function formatearTelefonoMientrasEscribe(valorCrudo: string): string {
+  let digitos = valorCrudo.replace(/\D/g, "").replace(/^0+/, "");
+  if (digitos.length === 0) return "";
+  // `5` solo puede ser el comienzo de `56`: se deja tal cual hasta saberlo.
+  if (digitos === "5") return "+5";
+  if (digitos.startsWith(CODIGO_PAIS_CHILE)) digitos = digitos.slice(CODIGO_PAIS_CHILE.length);
+  const nacional = digitos.slice(0, LARGO_NACIONAL_CL);
+  if (nacional.length === 0) return "+56";
+  const partes = [nacional.slice(0, 1), nacional.slice(1, 5), nacional.slice(5)].filter(Boolean);
+  return `+56 ${partes.join(" ")}`;
+}
+
 /** Para un `href="tel:…"`. E.164 con `+`, sin separadores. */
 export function telefonoParaMarcar(telefonoE164: string): string {
   return `+${telefonoE164}`;

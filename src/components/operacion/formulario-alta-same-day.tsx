@@ -77,6 +77,7 @@ import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { hoyEnSantiago, sumarDiasCalendario } from "@/lib/fecha-santiago";
 import { formatearHora } from "@/lib/formato-cl";
 import { comunaDelCatalogo, esMovilChileno, superaHoraDeCorte } from "@/app/(tenant)/operaciones/nuevo/reglas-alta";
+import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 import {
   actionCrearSameDay,
   actionEstadoSellerParaAlta,
@@ -378,7 +379,7 @@ export function FormularioAltaSameDay({
             value={campos.destinatarioTelefono}
             placeholder="+56 9 1234 5678"
             onChange={(e) => {
-              set("destinatarioTelefono", e.target.value);
+              set("destinatarioTelefono", formatearTelefonoMientrasEscribe(e.target.value));
               // Se limpia al escribir: el error se dice al salir, no mientras
               // todavía se está escribiendo.
               if (errorTelefono) setErrorTelefono(null);

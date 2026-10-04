@@ -50,6 +50,7 @@ import { IconoGoogle } from "@/components/identidad/icono-google";
 import { IngresaCodigo } from "@/components/identidad/ingresa-codigo";
 import type { Rol } from "@/modules/identidad/roles";
 import { iniciarLoginConGoogle } from "@/lib/supabase/iniciar-login-google";
+import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 
 import {
   enviarCodigoInvitacion,
@@ -268,7 +269,7 @@ function FormularioPasswordless({
               autoComplete="tel"
               placeholder="+56 9 1234 5678"
               value={telefonoWhatsApp}
-              onChange={(e) => setTelefonoWhatsApp(e.target.value)}
+              onChange={(e) => setTelefonoWhatsApp(formatearTelefonoMientrasEscribe(e.target.value))}
               readOnly={cargando}
             />
             <p className="text-sm text-fg-muted">

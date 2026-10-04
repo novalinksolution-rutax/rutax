@@ -22,6 +22,7 @@ import {
   type ResultadoGuardado,
 } from "@/app/(tenant)/configuracion/_componentes/seccion-configuracion";
 import { accionGuardarContacto } from "../acciones-datos-courier";
+import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 
 export function FormularioContacto({
   telefono,
@@ -49,7 +50,10 @@ export function FormularioContacto({
             id="contacto-telefono"
             name="telefono_contacto"
             type="tel"
-            defaultValue={telefono ?? ""}
+            defaultValue={formatearTelefonoMientrasEscribe(telefono ?? "")}
+            onChange={(e) => {
+              e.currentTarget.value = formatearTelefonoMientrasEscribe(e.currentTarget.value);
+            }}
             placeholder="+56 9 1234 5678"
             className="rx-num"
           />

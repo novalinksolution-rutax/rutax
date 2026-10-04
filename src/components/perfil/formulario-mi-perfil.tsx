@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 import { accionGuardarMiPerfil } from "@/modules/identidad/mi-perfil.acciones";
+import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 
 export function FormularioMiPerfil({
   nombreInicial,
@@ -107,7 +108,7 @@ export function FormularioMiPerfil({
           id="perfil-telefono"
           value={telefono}
           onChange={(e) => {
-            setTelefono(e.target.value);
+            setTelefono(formatearTelefonoMientrasEscribe(e.target.value));
             setGuardado(false);
           }}
           inputMode="tel"

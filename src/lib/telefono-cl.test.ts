@@ -15,8 +15,7 @@ import {
   normalizarTelefonoE164,
   formatearTelefonoLegible,
   telefonoParaMarcar,
-  enmascararTelefono,
-} from "./telefono-cl";
+  enmascararTelefono, formatearTelefonoMientrasEscribe } from "./telefono-cl";
 
 describe("formatearTelefonoLegible", () => {
   it("agrupa un móvil chileno como lo escribiría una persona", () => {
@@ -75,5 +74,35 @@ describe("enmascarar y formatear son cosas distintas", () => {
     // Son los que permiten reconocer el número en una bitácora enmascarada.
     expect(enmascararTelefono("56947095571")).toContain("5571");
     expect(formatearTelefonoLegible("56947095571")).toContain("5571");
+  });
+});
+
+describe("formatearTelefonoMientrasEscribe", () => {
+  it("formatea a medida que se escribe, sin separador colgando", () => {
+    expect(formatearTelefonoMientrasEscribe("")).toBe("");
+    expect(formatearTelefonoMientrasEscribe("9")).toBe("+56 9");
+    expect(formatearTelefonoMientrasEscribe("947")).toBe("+56 9 47");
+    expect(formatearTelefonoMientrasEscribe("94709")).toBe("+56 9 4709");
+    expect(formatearTelefonoMientrasEscribe("947095")).toBe("+56 9 4709 5");
+    expect(formatearTelefonoMientrasEscribe("947095571")).toBe("+56 9 4709 5571");
+  });
+
+  it("reconoce el código de país escrito o pegado, y lo que ya viene formateado", () => {
+    expect(formatearTelefonoMientrasEscribe("5")).toBe("+5");
+    expect(formatearTelefonoMientrasEscribe("56")).toBe("+56");
+    expect(formatearTelefonoMientrasEscribe("+56 9 4709 5571")).toBe("+56 9 4709 5571");
+    expect(formatearTelefonoMientrasEscribe("56947095571")).toBe("+56 9 4709 5571");
+  });
+
+  it("no pasa de nueve dígitos nacionales", () => {
+    expect(formatearTelefonoMientrasEscribe("9470955719999")).toBe("+56 9 4709 5571");
+  });
+
+  it("borrar desde el final no se traba: el resultado nunca termina en espacio", () => {
+    let v = formatearTelefonoMientrasEscribe("947095571");
+    while (v.length > 0) {
+      expect(v.endsWith(" ")).toBe(false);
+      v = formatearTelefonoMientrasEscribe(v.slice(0, -1));
+    }
   });
 });

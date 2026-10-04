@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { accionCrearMiBodega, accionEditarMiBodega } from "./actions";
+import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 
 export interface BodegaEditable {
   id: string;
@@ -199,8 +200,11 @@ export function PanelMiBodega({
           />
           <Input
             name="contacto_telefono"
-            defaultValue={bodega?.contactoTelefono ?? ""}
-            placeholder="+56 9 …"
+            defaultValue={formatearTelefonoMientrasEscribe(bodega?.contactoTelefono ?? "")}
+            onChange={(e) => {
+              e.currentTarget.value = formatearTelefonoMientrasEscribe(e.currentTarget.value);
+            }}
+            placeholder="+56 9 1234 5678"
             type="tel"
             inputMode="tel"
             autoComplete="tel"

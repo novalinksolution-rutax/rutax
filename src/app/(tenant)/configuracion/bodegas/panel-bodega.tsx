@@ -64,6 +64,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
+import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 import {
   accionCrearBodegaCourier,
   accionCrearBodegaSeller,
@@ -327,7 +328,10 @@ export function PanelBodega({
                   name="contacto_telefono"
                   type="tel"
                   placeholder="+56 9 1234 5678"
-                  defaultValue={bodegaExistente?.contactoTelefono ?? ""}
+                  defaultValue={formatearTelefonoMientrasEscribe(bodegaExistente?.contactoTelefono ?? "")}
+                  onChange={(e) => {
+                    e.currentTarget.value = formatearTelefonoMientrasEscribe(e.currentTarget.value);
+                  }}
                   disabled={isPending}
                 />
               </div>

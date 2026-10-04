@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { esRutValido } from "@/modules/identidad/rut";
 import { enmascararRut, limpiarMascaraRut } from "@/lib/formato-cl";
-import { formatearTelefonoLegible, normalizarTelefonoE164 } from "@/lib/telefono-cl";
+import { formatearTelefonoLegible, normalizarTelefonoE164, formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 import { cn } from "@/lib/utils";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
 import { etiquetaFuentePedido } from "@/lib/ui/etiqueta-fuente-pedido";
@@ -114,11 +114,16 @@ export function WizardAltaSeller({
 
   // ── Paso 2 · Bodega ───────────────────────────────────────────────────────
   /**
-   * En el alta el seller tiene UNA bodega: pedirle que la bautice es trabajo sin
-   * recompensa. Nace con un nombre por defecto y la renombra desde el portal el
-   * día que abra la segunda. El borrador conserva el nombre si ya venía puesto.
+   * Nombre y contacto se piden en el alta (decisión del usuario, 04-10-2026): el
+   * nombre es con lo que el conductor la reconoce en su app, y «a quién llamar»
+   * es lo que necesita cuando llega y no puede entrar.
    */
-  const nombreBodega = estadoInicial.bodega?.nombre?.trim() || "Bodega principal";
+  const [nombreBodega, setNombreBodega] = useState(estadoInicial.bodega?.nombre ?? "");
+  const [contactoBodega, setContactoBodega] = useState(estadoInicial.bodega?.contactoNombre ?? "");
+  const [telefonoBodega, setTelefonoBodega] = useState(
+    formatearTelefonoMientrasEscribe(estadoInicial.bodega?.contactoTelefono ?? ""),
+  );
+  const [errorTelefonoBodega, setErrorTelefonoBodega] = useState<string | null>(null);
   const [direccionBodega, setDireccionBodega] = useState(estadoInicial.bodega?.direccion ?? "");
   const [comunaBodega, setComunaBodega] = useState(estadoInicial.bodega?.comuna ?? "");
   const [latBodega, setLatBodega] = useState<number | null>(estadoInicial.bodega?.lat ?? null);
@@ -217,16 +222,18 @@ export function WizardAltaSeller({
     e.preventDefault();
     if (guardando) return;
     setError(null);
+    if (!normalizarTelefonoE164(telefonoBodega).valido) {
+      setErrorTelefonoBodega("Escríbelo como +56 9 1234 5678.");
+      return;
+    }
     setGuardando(true);
     const r = await guardarPasoBodegaAction({
       nombre: nombreBodega,
       direccion: direccionBodega,
       comuna: comunaBodega,
       instruccionesAcceso: instruccionesBodega || undefined,
-      // El contacto de bodega ya no se pide en el alta (el paso anterior captura
-      // nombre y WhatsApp del seller); se conserva lo que traiga el borrador.
-      contactoNombre: estadoInicial.bodega?.contactoNombre || undefined,
-      contactoTelefono: estadoInicial.bodega?.contactoTelefono || undefined,
+      contactoNombre: contactoBodega.trim() || undefined,
+      contactoTelefono: telefonoBodega.trim() || undefined,
       // Si eligió del buscador, la coordenada ya viene resuelta y la Server
       // Action la usa tal cual (no re-geocodifica).
       lat: latBodega ?? undefined,
@@ -413,7 +420,7 @@ export function WizardAltaSeller({
               placeholder="+56 9 1234 5678"
               value={telefonoContacto}
               onChange={(e) => {
-                setTelefonoContacto(e.target.value);
+                setTelefonoContacto(formatearTelefonoMientrasEscribe(e.target.value));
                 setErrorTelefono(null);
               }}
               onBlur={normalizarWhatsappAlPerderFoco}
@@ -464,8 +471,19 @@ export function WizardAltaSeller({
 
       {/* ── Paso 2 · Bodega ── */}
       {paso === 2 ? (
-        <form onSubmit={guardarBodega} noValidate className="space-y-4">
-
+        <form onSubmit={guardarBodega} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="nombreBodega">Nombre</Label>
+            <Input
+              id="nombreBodega"
+              autoFocus
+              placeholder="Nombre de la bodega"
+              value={nombreBodega}
+              onChange={(e) => setNombreBodega(e.target.value)}
+              disabled={guardando}
+              required
+            />
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -520,6 +538,42 @@ export function WizardAltaSeller({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="contactoBodega">A quién llamar</Label>
+              <Input
+                id="contactoBodega"
+                placeholder="Nombre de quien recibe al conductor"
+                autoComplete="off"
+                value={contactoBodega}
+                onChange={(e) => setContactoBodega(e.target.value)}
+                disabled={guardando}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="telefonoBodega">Teléfono</Label>
+              <Input
+                id="telefonoBodega"
+                type="tel"
+                inputMode="tel"
+                autoComplete="off"
+                placeholder="+56 9 1234 5678"
+                value={telefonoBodega}
+                onChange={(e) => {
+                  setTelefonoBodega(formatearTelefonoMientrasEscribe(e.target.value));
+                  setErrorTelefonoBodega(null);
+                }}
+                disabled={guardando}
+                aria-invalid={Boolean(errorTelefonoBodega)}
+                required
+              />
+              {errorTelefonoBodega ? (
+                <p className="text-xs text-destructive">{errorTelefonoBodega}</p>
+              ) : null}
             </div>
           </div>
 
