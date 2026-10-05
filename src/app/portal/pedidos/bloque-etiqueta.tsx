@@ -39,6 +39,15 @@ interface Props {
   baseUrl?: string;
   /** Variante compacta — solo íconos, para filas de tabla. */
   compacto?: boolean;
+  /**
+   * Variante de la confirmación de «pedido creado»: la etiqueta es el paso que
+   * sigue, así que el botón es el principal de la pantalla. Descarga el PDF en
+   * térmica y deja «Imprimir» al lado; el formato se cambia en un enlace, no en
+   * un selector que hay que abrir antes de poder hacer nada.
+   */
+  principal?: boolean;
+  /** Código visible del pedido (RX-…): nombra el archivo descargado. */
+  codigo?: string | null;
   className?: string;
 }
 
@@ -62,6 +71,8 @@ export function BloqueEtiqueta({
   pedidoId,
   baseUrl = "/api/portal/pedidos",
   compacto = false,
+  principal = false,
+  codigo = null,
   className,
 }: Props) {
   const [formato, setFormato] = useState<FormatoEtiqueta>("termica");
@@ -90,7 +101,7 @@ export function BloqueEtiqueta({
       const objectUrl = URL.createObjectURL(resultado.blob);
       const enlace = document.createElement("a");
       enlace.href = objectUrl;
-      enlace.download = `etiqueta-${pedidoId}.pdf`;
+      enlace.download = `etiqueta-${codigo ?? pedidoId}.pdf`;
       document.body.appendChild(enlace);
       enlace.click();
       enlace.remove();
@@ -99,6 +110,57 @@ export function BloqueEtiqueta({
       setError(resultado.mensaje);
     }
     setCargando(null);
+  }
+
+  if (principal) {
+    return (
+      <div className={["space-y-2", className].filter(Boolean).join(" ")}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            onClick={descargarEtiqueta}
+            loading={cargando === "descargar"}
+            className="w-full sm:w-auto"
+          >
+            {cargando !== "descargar" && <Download className="size-4" aria-hidden="true" />}
+            Descargar etiqueta
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={verEtiqueta}
+            loading={cargando === "ver"}
+            className="w-full sm:w-auto"
+          >
+            {cargando !== "ver" && <Printer className="size-4" aria-hidden="true" />}
+            Imprimir
+          </Button>
+        </div>
+        <p className="text-xs text-fg-muted">
+          {formato === "termica" ? "Térmica 10x15" : "Carta / A4"} ·{" "}
+          <button
+            type="button"
+            onClick={() => setFormato(formato === "termica" ? "carta" : "termica")}
+            className="font-medium underline underline-offset-2"
+          >
+            {formato === "termica" ? "Usar carta / A4" : "Usar térmica 10x15"}
+          </button>
+        </p>
+        {error && (
+          <p role="alert" className="flex items-center gap-1.5 text-xs text-destructive">
+            {error}
+            <button
+              type="button"
+              onClick={descargarEtiqueta}
+              className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+            >
+              <RotateCw className="size-3" aria-hidden="true" />
+              Intentar de nuevo
+            </button>
+          </p>
+        )}
+      </div>
+    );
   }
 
   if (compacto) {

@@ -62,6 +62,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BloqueEtiqueta } from "@/app/portal/pedidos/bloque-etiqueta";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -251,6 +252,7 @@ export function FormularioAltaSameDay({
       <BloqueExito
         exito={exito}
         hrefPedido={modoSeller ? `/portal/pedidos/${exito.pedidoId}` : `/operaciones/${exito.pedidoId}`}
+        baseUrlEtiqueta={modoSeller ? "/api/portal/pedidos" : "/api/operaciones"}
         onCrearOtro={() => setExito(null)}
         onVolver={volver}
       />
@@ -539,11 +541,13 @@ function AvisoEnLinea({
 function BloqueExito({
   exito,
   hrefPedido,
+  baseUrlEtiqueta,
   onCrearOtro,
   onVolver,
 }: {
   exito: Exito;
   hrefPedido: string;
+  baseUrlEtiqueta: string;
   onCrearOtro: () => void;
   onVolver: () => void;
 }) {
@@ -565,8 +569,18 @@ function BloqueExito({
         <p className="mt-2 text-sm leading-relaxed text-attention-fg">{exito.avisoCorte}</p>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button asChild>
+      {/* Lo que sigue a crear un pedido es imprimir su etiqueta: va primero y
+          es el botón principal; el resto de salidas queda debajo. */}
+      <BloqueEtiqueta
+        pedidoId={exito.pedidoId}
+        codigo={exito.codigo}
+        baseUrl={baseUrlEtiqueta}
+        principal
+        className="mt-4"
+      />
+
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-balanced-line pt-4">
+        <Button asChild variant="outline">
           <Link href={hrefPedido}>Ver el pedido</Link>
         </Button>
         <Button variant="outline" onClick={onCrearOtro}>
