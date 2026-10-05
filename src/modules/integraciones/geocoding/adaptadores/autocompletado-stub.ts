@@ -64,15 +64,27 @@ export class AutocompletadoStub implements PuertoAutocompletadoDireccion {
     const texto = consulta.trim();
     if (texto.length < 3) return [];
 
-    // Si lo escrito nombra una comuna, se proponen direcciones de esa comuna;
-    // si no, se recorren las primeras del catálogo. Determinista en los dos
-    // casos: la misma consulta da siempre la misma lista.
+    // Si lo escrito nombra una comuna, se proponen direcciones de esa comuna.
+    // Determinista: la misma consulta da siempre la misma lista.
     const buscado = normalizar(texto);
     const calzan = COMUNAS_RM.filter((c) => buscado.includes(normalizar(c)));
-    const comunas = (calzan.length > 0 ? calzan : COMUNAS_RM).slice(0, TOPE);
+
+    // Sin comuna escrita no hay cómo saber en cuál está la calle, y inventar las
+    // primeras cinco del catálogo (lo que hacía antes) mostraba direcciones que
+    // no existen. Se ofrece UNA sugerencia sin comuna: al elegirla el formulario
+    // pide la comuna, igual que con una dirección escrita a mano.
+    if (calzan.length === 0) {
+      return [
+        {
+          id: componerId(texto, ""),
+          principal: texto,
+          secundaria: "Región Metropolitana, Chile",
+        },
+      ];
+    }
 
     const calle = sinComunaAlFinal(texto, calzan);
-    return comunas.map((comuna) => ({
+    return calzan.slice(0, TOPE).map((comuna) => ({
       id: componerId(calle, comuna),
       principal: calle,
       secundaria: `${comuna}, Región Metropolitana, Chile`,
@@ -82,7 +94,18 @@ export class AutocompletadoStub implements PuertoAutocompletadoDireccion {
   async resolver({ id }: { id: string }): Promise<DireccionResuelta | null> {
     if (!id.startsWith("stub:")) return null;
     const [, calle, comuna] = id.split(":");
-    if (!calle || !comuna) return null;
+    if (!calle) return null;
+
+    // Sin comuna: la calle se acepta tal cual y la comuna queda por decidir.
+    if (!comuna) {
+      return {
+        direccion: decodeURIComponent(calle),
+        direccionCorta: decodeURIComponent(calle),
+        comuna: null,
+        lat: null,
+        long: null,
+      };
+    }
 
     const nombreComuna = decodeURIComponent(comuna);
     const centroide = CENTROIDES_RM[nombreComuna as ComunaRM];

@@ -29,4 +29,15 @@ describe("AutocompletadoStub: la sugerencia es calle y número, como la de Googl
     expect(d?.direccionCorta).toBe("La montaña sur 4603");
     expect(d?.comuna).toBe("Lampa");
   });
+
+  it("sin comuna escrita no inventa comunas: una sola sugerencia, sin comuna", async () => {
+    const r = await stub.sugerir({ consulta: "La Montaña sur 4603" });
+    expect(r).toHaveLength(1);
+    expect(r[0].principal).toBe("La Montaña sur 4603");
+    expect(r[0].secundaria).toBe("Región Metropolitana, Chile");
+    const d = await stub.resolver({ id: r[0].id });
+    expect(d?.direccionCorta).toBe("La Montaña sur 4603");
+    expect(d?.comuna).toBeNull();
+    expect(d?.lat).toBeNull();
+  });
 });
