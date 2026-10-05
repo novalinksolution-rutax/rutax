@@ -124,6 +124,21 @@ export function WizardAltaSeller({
     estadoInicial.bodega?.nombre?.trim() || "Bodega principal",
   );
   const [editandoNombreBodega, setEditandoNombreBodega] = useState(false);
+  /**
+   * A quién llama el conductor. Lo normal es que sea la persona del paso
+   * anterior, así que viene elegida y el seller no escribe nada; «Otra persona»
+   * (la pareja, el jefe de bodega) pide nombre y número. Si el borrador ya traía
+   * un contacto distinto del seller, se abre en «Otra persona» con esos datos.
+   */
+  const [contactoEsOtro, setContactoEsOtro] = useState(() => {
+    const b = estadoInicial.bodega;
+    if (!b?.contactoNombre) return false;
+    return (
+      b.contactoNombre.trim() !== (estadoInicial.contacto?.nombreContacto ?? "").trim() ||
+      (b.contactoTelefono ?? "").replace(/\D/g, "") !==
+        (estadoInicial.contacto?.telefono ?? "").replace(/\D/g, "")
+    );
+  });
   const [contactoBodega, setContactoBodega] = useState(estadoInicial.bodega?.contactoNombre ?? "");
   const [telefonoBodega, setTelefonoBodega] = useState(
     formatearTelefonoMientrasEscribe(estadoInicial.bodega?.contactoTelefono ?? ""),
@@ -237,7 +252,7 @@ export function WizardAltaSeller({
     e.preventDefault();
     if (guardando) return;
     setError(null);
-    if (!normalizarTelefonoE164(telefonoBodega).valido) {
+    if (contactoEsOtro && !normalizarTelefonoE164(telefonoBodega).valido) {
       setErrorTelefonoBodega("Escríbelo como +56 9 1234 5678.");
       return;
     }
@@ -247,8 +262,9 @@ export function WizardAltaSeller({
       direccion: direccionBodega,
       comuna: comunaBodega,
       instruccionesAcceso: instruccionesBodega || undefined,
-      contactoNombre: contactoBodega.trim() || undefined,
-      contactoTelefono: telefonoBodega.trim() || undefined,
+      // «Tú» usa lo que se digitó en el paso 2; «Otra persona», lo de acá.
+      contactoNombre: (contactoEsOtro ? contactoBodega : nombreContacto).trim() || undefined,
+      contactoTelefono: (contactoEsOtro ? telefonoBodega : telefonoContacto).trim() || undefined,
       // Si eligió del buscador, la coordenada ya viene resuelta y la Server
       // Action la usa tal cual (no re-geocodifica).
       lat: latBodega ?? undefined,
@@ -587,41 +603,84 @@ export function WizardAltaSeller({
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="contactoBodega">A quién llamar</Label>
-              <Input
-                id="contactoBodega"
-                placeholder="Nombre de quien recibe al conductor"
-                autoComplete="off"
-                value={contactoBodega}
-                onChange={(e) => setContactoBodega(e.target.value)}
-                disabled={guardando}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="telefonoBodega">Teléfono</Label>
-              <Input
-                id="telefonoBodega"
-                type="tel"
-                inputMode="tel"
-                autoComplete="off"
-                placeholder="+56 9 1234 5678"
-                value={telefonoBodega}
-                onChange={(e) => {
-                  setTelefonoBodega(formatearTelefonoMientrasEscribe(e.target.value));
-                  setErrorTelefonoBodega(null);
-                }}
-                disabled={guardando}
-                aria-invalid={Boolean(errorTelefonoBodega)}
-                required
-              />
-              {errorTelefonoBodega ? (
-                <p className="text-xs text-destructive">{errorTelefonoBodega}</p>
-              ) : null}
-            </div>
-          </div>
+          <fieldset className="space-y-2">
+            <legend className="mb-1.5 text-sm leading-none font-medium text-fg">A quién llamar</legend>
+
+            {/* Dos opciones, no un campo: la primera ya trae a la persona del
+                paso anterior CON su nombre y número a la vista —se ve qué se va
+                a usar sin leer una instrucción— y viene elegida. */}
+            {[
+              { otro: false, nombre: nombreContacto.trim() || "Tú", detalle: telefonoContacto },
+              { otro: true, nombre: "Otra persona", detalle: null as string | null },
+            ].map((op) => {
+              const elegida = contactoEsOtro === op.otro;
+              return (
+                <label
+                  key={String(op.otro)}
+                  className={cn(
+                    "flex min-h-(--rx-row-portal) cursor-pointer items-center gap-2.5 border px-3 py-2 text-sm",
+                    "transition-colors duration-(--motion-fast) ease-standard",
+                    elegida ? "border-accent-line bg-accent-deep" : "border-line hover:border-fg-muted",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="contactoBodega"
+                    checked={elegida}
+                    onChange={() => {
+                      setContactoEsOtro(op.otro);
+                      setErrorTelefonoBodega(null);
+                    }}
+                    disabled={guardando}
+                    className="size-4 shrink-0 accent-brand"
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium text-fg">{op.nombre}</span>
+                  {op.detalle ? (
+                    <span className="rx-num shrink-0 text-xs text-fg-muted">{op.detalle}</span>
+                  ) : null}
+                </label>
+              );
+            })}
+
+            {contactoEsOtro ? (
+              <div className="grid gap-4 pt-1 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="contactoBodega">Nombre</Label>
+                  <Input
+                    id="contactoBodega"
+                    autoFocus
+                    placeholder="Nombre de quien recibe al conductor"
+                    autoComplete="off"
+                    value={contactoBodega}
+                    onChange={(e) => setContactoBodega(e.target.value)}
+                    disabled={guardando}
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="telefonoBodega">Teléfono</Label>
+                  <Input
+                    id="telefonoBodega"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="off"
+                    placeholder="+56 9 1234 5678"
+                    value={telefonoBodega}
+                    onChange={(e) => {
+                      setTelefonoBodega(formatearTelefonoMientrasEscribe(e.target.value));
+                      setErrorTelefonoBodega(null);
+                    }}
+                    disabled={guardando}
+                    aria-invalid={Boolean(errorTelefonoBodega)}
+                    required
+                  />
+                  {errorTelefonoBodega ? (
+                    <p className="text-xs text-destructive">{errorTelefonoBodega}</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </fieldset>
 
           <div className="space-y-1.5">
             <Label htmlFor="instruccionesBodega">Instrucciones de acceso (opcional)</Label>
