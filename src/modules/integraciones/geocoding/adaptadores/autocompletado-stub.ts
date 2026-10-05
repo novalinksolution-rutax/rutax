@@ -36,6 +36,29 @@ function normalizar(texto: string): string {
     .trim();
 }
 
+/**
+ * Calle y número, sin la comuna que la persona haya escrito al final.
+ *
+ * Google devuelve «La Montaña Sur 4603» y la comuna aparte; el stub devolvía
+ * todo lo tecleado («… 4603 lampa»), y probando en local la elección dejaba la
+ * comuna escrita en el campo. Solo se quita la comuna cuando va AL FINAL: en
+ * «Av. Providencia 1234» la comuna es también el nombre de la calle y no se toca.
+ */
+function sinComunaAlFinal(texto: string, comunas: readonly string[]): string {
+  const limpio = texto.trim();
+  const buscado = normalizar(limpio);
+  for (const comuna of comunas) {
+    const c = normalizar(comuna);
+    if (!buscado.endsWith(c)) continue;
+    const corte = limpio.length - c.length;
+    // Tiene que ir separada: «… 4603 lampa» sí, «… 4603lampa» no.
+    if (corte > 0 && /[\s,]/.test(limpio[corte - 1])) {
+      return limpio.slice(0, corte).replace(/[\s,]+$/, "");
+    }
+  }
+  return limpio;
+}
+
 export class AutocompletadoStub implements PuertoAutocompletadoDireccion {
   async sugerir({ consulta }: { consulta: string }): Promise<SugerenciaDireccion[]> {
     const texto = consulta.trim();
@@ -48,9 +71,10 @@ export class AutocompletadoStub implements PuertoAutocompletadoDireccion {
     const calzan = COMUNAS_RM.filter((c) => buscado.includes(normalizar(c)));
     const comunas = (calzan.length > 0 ? calzan : COMUNAS_RM).slice(0, TOPE);
 
+    const calle = sinComunaAlFinal(texto, calzan);
     return comunas.map((comuna) => ({
-      id: componerId(texto, comuna),
-      principal: texto,
+      id: componerId(calle, comuna),
+      principal: calle,
       secundaria: `${comuna}, Región Metropolitana, Chile`,
     }));
   }

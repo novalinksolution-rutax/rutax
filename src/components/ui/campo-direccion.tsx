@@ -132,6 +132,19 @@ export function CampoDireccion({
   // sin esto, teclear rápido puede dejar en pantalla la lista de «Av. Pro»
   // encima de la de «Av. Providencia».
   const ultimaConsulta = useRef("");
+  const campoRef = useRef<HTMLInputElement | null>(null);
+  /**
+   * Cuándo se eligió y qué estaba escrito entonces.
+   *
+   * 🔴 **En el teléfono, el teclado predictivo vuelve a escribir lo tecleado
+   * ENCIMA de la elección.** Mientras se escribe, Gboard/iOS tienen el texto «en
+   * composición»; al tocar una sugerencia lo confirman, y esa confirmación llega
+   * como un `onChange` con el texto viejo DESPUÉS de que pusimos la dirección
+   * elegida. Resultado: queda lo que la persona escribió («… 4603 lampa»), la
+   * marca de elegida se suelta y reaparece el selector de comuna. En escritorio
+   * no pasa porque no hay composición, y por eso nunca se vio probando ahí.
+   */
+  const eleccion = useRef<{ en: number; tecleado: string } | null>(null);
 
   function nuevaSesion(): string {
     if (!sesion.current) {
@@ -188,7 +201,11 @@ export function CampoDireccion({
   }, [valor, elegida, buscar]);
 
   async function elegir(s: SugerenciaVisible) {
+    eleccion.current = { en: Date.now(), tecleado: campoRef.current?.value ?? valor };
     setAbierta(false);
+    // Suelta el foco ANTES de resolver: así el teclado confirma ahora lo que
+    // había en composición, y no después de que pusimos la dirección elegida.
+    campoRef.current?.blur();
     setBuscando(true);
     const detalle = await resolver(s.id, nuevaSesion());
     setBuscando(false);
@@ -212,6 +229,7 @@ export function CampoDireccion({
        * traiga calle: un lugar con nombre propio, «Mall Parque Arauco». Ahí lo
        * que la persona vio en la lista es mejor que la dirección larga.
        */
+      eleccion.current = { en: Date.now(), tecleado: eleccion.current?.tecleado ?? "" };
       onElegir({ ...detalle, direccion: detalle.direccionCorta || s.principal });
     } else {
       // El proveedor ya no la reconoce. Se conserva lo que la lista mostraba en
@@ -250,7 +268,13 @@ export function CampoDireccion({
           value={valor}
           required={required}
           placeholder={placeholder}
+          ref={campoRef}
           autoComplete="off"
+          // Sin autocorrección ni predicción: una dirección no es lenguaje
+          // natural, y la composición del teclado es lo que pisaba la elección.
+          autoCorrect="off"
+          autoCapitalize="words"
+          spellCheck={false}
           role="combobox"
           aria-expanded={abierta}
           aria-controls={idLista}
@@ -258,6 +282,16 @@ export function CampoDireccion({
           aria-activedescendant={activa >= 0 ? `${idLista}-${activa}` : undefined}
           className={cn(claseCampo ?? "h-[52px]", "pe-9")}
           onChange={(e) => {
+            const previa = eleccion.current;
+            if (
+              previa &&
+              Date.now() - previa.en < 1500 &&
+              e.target.value === previa.tecleado
+            ) {
+              // Eco tardío del teclado con el texto de antes de elegir: se ignora
+              // y React devuelve el campo al valor de la dirección elegida.
+              return;
+            }
             onCambio(e.target.value);
           }}
           onKeyDown={alTeclado}
