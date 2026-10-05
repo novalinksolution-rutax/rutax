@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { COMUNAS_RM } from "@/lib/ui/comunas-rm";
+import { cn } from "@/lib/utils";
 import { formatearCLP } from "@/lib/ui/formato-moneda";
 import { formatearTelefonoMientrasEscribe } from "@/lib/telefono-cl";
 import {
@@ -142,6 +143,9 @@ export function PanelBodega({
   const [direccion, setDireccion] = useState(bodegaExistente?.direccion ?? "");
   const [direccionElegida, setDireccionElegida] = useState(false);
   const [comuna, setComuna] = useState(bodegaExistente?.comuna ?? "");
+  // La comuna sale de la dirección elegida en la lista; el selector solo
+  // aparece cuando no se pudo saber así (escrita a mano o fuera del catálogo).
+  const [comunaDesdeDireccion, setComunaDesdeDireccion] = useState(false);
   const [coordenada, setCoordenada] = useState<{ lat: number; long: number } | null>(null);
 
   const [esPrincipal, setEsPrincipal] = useState(
@@ -238,7 +242,7 @@ export function PanelBodega({
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={cn("grid gap-4", !comunaDesdeDireccion && "sm:grid-cols-2")}>
             <div className="space-y-1.5">
               <Label htmlFor="direccion">Dirección</Label>
               <CampoDireccion
@@ -256,6 +260,7 @@ export function PanelBodega({
                   if (direccionElegida) {
                     setDireccionElegida(false);
                     setCoordenada(null);
+                    setComunaDesdeDireccion(false);
                   }
                 }}
                 onElegir={(d) => {
@@ -263,6 +268,7 @@ export function PanelBodega({
                   setDireccionElegida(true);
                   const delCatalogo = comunaDelCatalogo(d.comuna);
                   if (delCatalogo) setComuna(delCatalogo);
+                  setComunaDesdeDireccion(Boolean(delCatalogo));
                   setCoordenada(
                     d.lat != null && d.long != null ? { lat: d.lat, long: d.long } : null,
                   );
@@ -279,7 +285,14 @@ export function PanelBodega({
                   <input type="hidden" name="long" value={coordenada.long} />
                 </>
               ) : null}
+              {comunaDesdeDireccion ? (
+                <>
+                  <p className="text-xs text-fg-muted">{comuna}</p>
+                  <input type="hidden" name="comuna" value={comuna} />
+                </>
+              ) : null}
             </div>
+            {comunaDesdeDireccion ? null : (
             <div className="space-y-1.5">
               <Label htmlFor="comuna">Comuna</Label>
               <Select
@@ -301,6 +314,7 @@ export function PanelBodega({
                 </SelectContent>
               </Select>
             </div>
+            )}
           </div>
         </div>
 

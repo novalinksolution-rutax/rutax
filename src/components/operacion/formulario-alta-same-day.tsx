@@ -152,6 +152,9 @@ export function FormularioAltaSameDay({
   const router = useRouter();
   const [campos, setCampos] = useState({ ...ESTADO_VACIO });
   const [direccionElegida, setDireccionElegida] = useState(false);
+  // La comuna sale de la dirección elegida en la lista; el selector solo
+  // aparece cuando no se pudo saber así (escrita a mano o fuera del catálogo).
+  const [comunaDesdeDireccion, setComunaDesdeDireccion] = useState(false);
   const [coordenada, setCoordenada] = useState<{
     lat: number | null;
     long: number | null;
@@ -326,6 +329,7 @@ export function FormularioAltaSameDay({
               if (direccionElegida) {
                 setDireccionElegida(false);
                 setCoordenada({ lat: null, long: null, comunaResuelta: null });
+                setComunaDesdeDireccion(false);
               }
             }}
             onElegir={(d) => {
@@ -338,6 +342,7 @@ export function FormularioAltaSameDay({
               }));
               setCoordenada({ lat: d.lat, long: d.long, comunaResuelta: d.comuna });
               setDireccionElegida(d.lat != null && d.long != null);
+              setComunaDesdeDireccion(Boolean(comunaDelCatalogo(d.comuna)));
             }}
             buscar={actionSugerirDirecciones}
             resolver={actionResolverDireccion}
@@ -346,8 +351,12 @@ export function FormularioAltaSameDay({
                texto libre igual — explicarlo de antemano era enseñar algo que la
                pantalla ya enseña sola al segundo carácter. */
           />
+          {comunaDesdeDireccion ? (
+            <p className="text-xs text-fg-muted">{campos.destinatarioComuna}</p>
+          ) : null}
         </div>
 
+        {comunaDesdeDireccion ? null : (
         <div className="space-y-1.5">
           <Label htmlFor="comuna">Comuna</Label>
           <Select
@@ -365,10 +374,8 @@ export function FormularioAltaSameDay({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-fg-muted">
-            Se completa al elegir la dirección.
-          </p>
         </div>
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="telefono">Teléfono</Label>

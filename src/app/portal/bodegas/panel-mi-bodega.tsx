@@ -67,6 +67,9 @@ export function PanelMiBodega({
   const esEdicion = !!bodega;
   const [error, setError] = useState<string | null>(null);
   const [comuna, setComuna] = useState(bodega?.comuna ?? "");
+  // La comuna sale de la dirección elegida en la lista; el selector solo
+  // aparece cuando no se pudo saber así (escrita a mano o fuera del catálogo).
+  const [comunaDesdeDireccion, setComunaDesdeDireccion] = useState(false);
   /**
    * Misma búsqueda de direcciones que el alta same-day (encargo del usuario,
    * 26-08-2026): acá es adonde el conductor va a buscar los bultos, así que una
@@ -157,6 +160,7 @@ export function PanelMiBodega({
               if (direccionElegida) {
                 setDireccionElegida(false);
                 setCoordenada(null);
+                setComunaDesdeDireccion(false);
               }
             }}
             onElegir={(d) => {
@@ -164,6 +168,7 @@ export function PanelMiBodega({
               setDireccionElegida(true);
               const delCatalogo = comunaDelCatalogo(d.comuna);
               if (delCatalogo) setComuna(delCatalogo);
+              setComunaDesdeDireccion(Boolean(delCatalogo));
               setCoordenada(
                 d.lat != null && d.long != null ? { lat: d.lat, long: d.long } : null,
               );
@@ -171,8 +176,10 @@ export function PanelMiBodega({
             buscar={actionSugerirDirecciones}
             resolver={actionResolverDireccion}
           />
+          {comunaDesdeDireccion ? <p className="text-xs text-fg-muted">{comuna}</p> : null}
         </div>
 
+        {comunaDesdeDireccion ? null : (
         <div className="space-y-1.5">
           <Label htmlFor="comuna">Comuna</Label>
           <Select value={comuna} onValueChange={setComuna} disabled={guardando}>
@@ -188,6 +195,7 @@ export function PanelMiBodega({
             </SelectContent>
           </Select>
         </div>
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="contacto_nombre">A quién llamar</Label>
