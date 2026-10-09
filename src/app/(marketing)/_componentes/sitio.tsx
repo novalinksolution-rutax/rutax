@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 import { WHATSAPP_VENTAS } from "../_lib/precio";
 import { MenuMovil } from "./menu-movil";
+import { ScrollSuave } from "./scroll-suave";
 import { BotonVentas, VentasProvider } from "./ventas";
 
 /**
@@ -48,6 +49,7 @@ export function MarcoSitio({ children }: { children: ReactNode }) {
         <Pie />
       </div>
       <Analytics />
+      <ScrollSuave />
     </VentasProvider>
   );
 }
